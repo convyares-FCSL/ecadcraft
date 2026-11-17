@@ -512,7 +512,7 @@ pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&st
         let max = if key == address::START_KEY { address::MAX_BYTE } else { address::MAX_SIZE };
         return Some(match v {
             None => Ok(None),
-            Some(t) if t.len() <= 5 && t.bytes().all(|b| b.is_ascii_digit()) && t.parse::<u32>().is_ok_and(|n| n <= max) => Ok(Some(t.to_string())),
+            Some(t) if t.len() <= 5 && ecad_model::words::is_digits(t) && t.parse::<u32>().is_ok_and(|n| n <= max) => Ok(Some(t.to_string())),
             Some(_) => Err(format!("{key} is a whole number of bytes from 0 to {max}.")),
         });
     }

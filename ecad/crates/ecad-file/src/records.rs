@@ -614,7 +614,7 @@ impl<'de, const N: usize> Deserialize<'de> for Hex<N> {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let t = String::deserialize(d)?;
         let bad = || serde::de::Error::custom(format!("{t:?} is not {N} bytes of lower-case hex"));
-        if t.len() != N * 2 || !t.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {
+        if t.len() != N * 2 || !t.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
             return Err(bad());
         }
         let mut out = [0u8; N];

@@ -826,7 +826,7 @@ pub fn bank_outputs(doc: &Document, c: ecad_model::ComponentId) -> BTreeSet<Stri
         .filter_map(|(_, r)| crate::devices::rep_starter(doc, r))
         .find(|s| s.kind == Kind::Fixed { exclusive: true })
         .filter(|s| is_fuse_bank(s))
-        .map(|s| s.labels().into_iter().filter(|l| l.bytes().all(|b| b.is_ascii_digit())).collect())
+        .map(|s| s.labels().into_iter().filter(|l| ecad_model::words::is_digits(l)).collect())
         .unwrap_or_default()
 }
 
@@ -895,7 +895,7 @@ pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<
         let Some(bank) = bank else {
             return Err(format!("rating.{shown}{more} is for a fuse bank's fuses; {who} is not a fuse bank."));
         };
-        let has = !long && bank.labels().iter().any(|l| l == n && l.bytes().all(|b| b.is_ascii_digit()));
+        let has = !long && bank.labels().iter().any(|l| l == n && ecad_model::words::is_digits(l));
         if !has {
             return Err(format!("{who} has no fuse {shown}{more}."));
         }
@@ -1008,7 +1008,7 @@ pub fn anchors(s: &Starter) -> Vec<Anchor> {
         _ => vec![tag, description, rating],
     };
     if is_fuse_bank(s) {
-        for t in d.terminals.iter().filter(|t| t.key.bytes().all(|b| b.is_ascii_digit())) {
+        for t in d.terminals.iter().filter(|t| ecad_model::words::is_digits(&t.key)) {
             out.push(Anchor {
                 role: TextRole::RatingOf(t.key.clone()),
                 at: p(t.at.x + 3.0, -8.0),

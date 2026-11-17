@@ -52,7 +52,7 @@ pub fn key(i: u32, role: &str) -> String {
 pub fn parse_key(k: &str) -> Option<(u32, &'static str)> {
     let rest = k.strip_prefix('.')?;
     let (i, role) = rest.split_once('.')?;
-    if i.is_empty() || i.len() > 4 || !i.bytes().all(|b| b.is_ascii_digit()) {
+    if i.len() > 4 || !ecad_model::words::is_digits(i) {
         return None;
     }
     let i: u32 = i.parse().ok().filter(|n| *n <= MAX_INDEX)?;
@@ -68,7 +68,7 @@ pub fn parse_legacy(k: &str) -> Option<(u32, &'static str)> {
         _ => return None,
     };
     let (a, b) = rest.split_once('.')?;
-    if a.is_empty() || a.len() > 4 || b.len() != 1 || !a.bytes().all(|x| x.is_ascii_digit()) {
+    if a.len() > 4 || b.len() != 1 || !ecad_model::words::is_digits(a) {
         return None;
     }
     let (a, b): (u32, u32) = (a.parse().ok()?, b.parse().ok()?);
@@ -499,7 +499,7 @@ pub fn ch_key(i: u32, what: &str) -> String {
 pub fn parse_ch_key(k: &str) -> Option<(u32, &'static str)> {
     let rest = k.strip_prefix(CH_PREFIX)?;
     let (i, what) = rest.split_once('.')?;
-    if i.is_empty() || i.len() > 4 || !i.bytes().all(|b| b.is_ascii_digit()) {
+    if i.len() > 4 || !ecad_model::words::is_digits(i) {
         return None;
     }
     let i: u32 = i.parse().ok().filter(|n| *n <= MAX_INDEX)?;
