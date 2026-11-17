@@ -55,3 +55,26 @@ and the project file:
 
 These steps have been checked only by the automated tests (`text_ui`, `standards_ui`, `lane_054`);
 nobody has tried them by hand yet.
+
+## Lane A2: tag prefixes say which symbol they are for
+
+The project's own tag prefixes are stored by symbol, `starter:coil` for a built-in symbol and
+`project:valve-x` for one made in the project, and the cable prefix is a field of its own
+(`cable_prefix`). A prefix is 1 to 10 upper-case letters.
+
+- A project that gave one of its own symbols a prefix (`setdefault
+  {"key": "symbol.<key>.prefix", "value": "BL"}`) now opens writable; before, it opened
+  read-only.
+- A file whose prefix key is neither form, names a built-in symbol that does not exist, or holds
+  a prefix that is not letters opens read-only and names the setting.
+- The inspector shows the new keys and the cable prefix in its Readable view.
+
+### Try it
+
+1. Open a project and make a symbol in the symbol builder with the key `float1`.
+2. In the command line run `setdefault {"key": "symbol.float1.prefix", "value": "BL"}`, then place
+   the symbol: its tag starts `-BL`.
+3. Save, close and open the project again: it opens writable (no read-only notice).
+
+The headless test `lanes::lane_072a::a_project_symbol_with_its_own_prefix_opens_writable`
+(ecad-cadcraft) runs these steps; nobody has tried them by hand yet.

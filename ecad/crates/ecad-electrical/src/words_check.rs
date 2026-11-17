@@ -49,9 +49,13 @@ pub fn check(doc: &Document) -> Vec<UnknownWord> {
         reserved(&c.properties, WordPlace::Cable(*id), &mut out);
         flags(&c.properties, WordPlace::Cable(*id), &mut out);
     }
+    // Design 072 F5: a starter's prefix names a starter of the catalogue (the key's form is read
+    // strictly with the file); a project symbol's key is its own and is not looked up.
     for key in doc.settings.tag_prefixes.keys() {
-        if crate::symbols::by_key(key).is_none() {
-            out.push(UnknownWord::Value { place: WordPlace::Settings, setting: "tag_prefixes".into(), word: key.clone(), allowed: Vec::new() });
+        if let ecad_model::prefix::PrefixOf::Starter(w) = key
+            && crate::symbols::by_key(w).is_none()
+        {
+            out.push(UnknownWord::Value { place: WordPlace::Settings, setting: "tag_prefixes".into(), word: key.to_string(), allowed: Vec::new() });
         }
     }
     out.sort();
@@ -188,10 +192,13 @@ mod tests {
     #[test]
     fn tag_prefixes_name_built_in_symbols() {
         let mut d = doc();
-        d.settings.tag_prefixes.insert("no_such_symbol".into(), "Q".into());
+        let q = ecad_model::prefix::TagPrefix::typed("Q").unwrap();
+        d.settings.tag_prefixes.insert(ecad_model::prefix::PrefixOf::Starter("nosuch".into()), q.clone());
+        // A project symbol's own prefix is not a word to check (it opens writable).
+        d.settings.tag_prefixes.insert(ecad_model::prefix::PrefixOf::Project("valve-x".into()), q);
         let found = check(&d);
         assert_eq!(found.len(), 1);
-        assert!(found[0].to_string().contains("tag_prefixes"));
+        assert!(found[0].to_string().contains("tag_prefixes") && found[0].to_string().contains("starter:nosuch"));
     }
 
     #[test]

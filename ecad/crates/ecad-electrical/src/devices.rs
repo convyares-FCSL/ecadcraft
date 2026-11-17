@@ -38,7 +38,7 @@ pub const TAG_LAYER: &str = "ECAD-TAGS";
 /// `ecad.provisional` (design 026 §10): ACI 30, orange, for provisional tags and wire numbers.
 pub const PROVISIONAL_ACI: u8 = 30;
 /// Most letters in a tag prefix a project may set.
-pub const MAX_PREFIX_LETTERS: usize = 10;
+pub const MAX_PREFIX_LETTERS: usize = ecad_model::prefix::MAX_PREFIX_LETTERS;
 /// Refusal of an edit of a derived tag text or terminal label.
 pub const TAG_DERIVED: &str = "The tag text is derived: change the tag with Device Properties, or move it with Move Text.";
 /// Most characters in a property value (design 018 §6.1).
@@ -65,9 +65,24 @@ pub fn padding(doc: &Document) -> u8 {
 /// A prefix as a project may set it: 1 to [`MAX_PREFIX_LETTERS`] ASCII letters, with or without a
 /// leading `-`; stored in upper case without the `-`.
 pub fn valid_prefix(text: &str) -> Option<String> {
-    let t = text.trim();
-    let t = t.strip_prefix('-').unwrap_or(t);
-    ((1..=MAX_PREFIX_LETTERS).contains(&t.len()) && t.bytes().all(|b| b.is_ascii_alphabetic())).then(|| t.to_ascii_uppercase())
+    ecad_model::prefix::TagPrefix::typed(text).map(|p| p.to_string())
+}
+
+/// Set (with `None` remove) the project's prefix of symbol `of` in `s` (design 072 F5): a
+/// starter's own built-in prefix, or text that is not a prefix, is stored as none.
+pub fn set_symbol_prefix(s: &mut ecad_model::ProjectSettings, of: ecad_model::prefix::PrefixOf, prefix: Option<&str>) {
+    let builtin = match &of {
+        ecad_model::prefix::PrefixOf::Starter(w) => crate::symbols::by_key(w).map(|x| x.prefix()),
+        ecad_model::prefix::PrefixOf::Project(_) => None,
+    };
+    match prefix.and_then(ecad_model::prefix::TagPrefix::typed) {
+        Some(p) if builtin != Some(p.as_str()) => {
+            s.tag_prefixes.insert(of, p);
+        }
+        Some(_) | None => {
+            s.tag_prefixes.remove(&of);
+        }
+    }
 }
 
 /// The tag prefix a new device of symbol `s` gets in this project (letters, without `-`): the
@@ -315,9 +330,9 @@ pub fn holder_words_of(doc: &Document, h: Holder) -> String {
     }
 }
 
-/// The prefix of new cable tags: the project's `tag_prefixes["cable"]`, else `W` (brief 026).
+/// The prefix of new cable tags: the project's `cable_prefix`, else `W` (brief 026, design 072 F5).
 pub fn cable_prefix(doc: &Document) -> String {
-    doc.settings.tag_prefixes.get("cable").and_then(|p| valid_prefix(p)).unwrap_or_else(|| "W".to_string())
+    doc.settings.cable_prefix.as_ref().map_or_else(|| "W".to_string(), |p| p.to_string())
 }
 
 /// The tag a new cable gets (brief 026, design §6): `typed` as stored (normalised; `-W?` is the next

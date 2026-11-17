@@ -604,7 +604,7 @@ fn tag_settings_change_padding_and_prefixes_and_survive_reopening() {
     // Undo takes the settings back with everything else.
     h.run("u", Value::Null).unwrap();
     h.run("u", Value::Null).unwrap();
-    assert_eq!(h.doc().settings.tag_prefixes.get("coil").map(String::as_str), Some("KA"));
+    assert_eq!(h.doc().settings.starter_prefix("coil").map(|p| p.as_str()), Some("KA"));
     h.check();
 }
 

@@ -192,7 +192,7 @@ macro_rules! prefixes {
                 levels: SP,
                 project: ProjectSource::Settings({
                     fn read(s: &ProjectSettings) -> Option<Value<'_>> {
-                        s.tag_prefixes.get($key).map(|p| Value::Text(p.as_str()))
+                        s.starter_prefix($key).map(|p| Value::Text(p.as_str()))
                     }
                     read
                 }),

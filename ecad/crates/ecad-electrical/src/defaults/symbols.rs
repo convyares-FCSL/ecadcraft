@@ -42,7 +42,7 @@ macro_rules! prefixes {
                 levels: SP,
                 project: ProjectSource::Settings({
                     fn read(s: &ProjectSettings) -> Option<Value<'_>> {
-                        s.tag_prefixes.get($key).map(|p| Value::Text(p.as_str()))
+                        s.starter_prefix($key).map(|p| Value::Text(p.as_str()))
                     }
                     read
                 }),
@@ -303,7 +303,7 @@ pub fn project_value(doc: &Document, symbol: &str, field: Field) -> Option<Strin
         return None;
     }
     match field {
-        Field::Prefix => doc.settings.tag_prefixes.get(symbol).and_then(|v| crate::devices::valid_prefix(v)),
+        Field::Prefix => doc.settings.project_prefix(symbol).map(|p| p.to_string()),
         _ => family_property(symbol, field).and_then(|k| doc.properties.get(&k)).filter(|v| field.accepts(v)).map(|v| v.trim().to_string()),
     }
 }
@@ -404,9 +404,10 @@ mod tests {
 
     #[test]
     fn the_project_level_is_tag_prefixes_and_hostile_values_fall_back() {
+        use ecad_model::prefix::{PrefixOf, TagPrefix};
         let mut doc = Document::default();
         assert_eq!(prefix(&doc, "fusebank8"), "F");
-        doc.settings.tag_prefixes.insert("fusebank8".into(), "FB".into());
+        doc.settings.tag_prefixes.insert(PrefixOf::Starter("fusebank8".into()), TagPrefix::typed("FB").unwrap());
         assert_eq!(prefix(&doc, "fusebank8"), "FB");
         assert_eq!(super::super::resolve(&doc, &FUSEBANK8, Scope::project()).from, super::super::Source::Project);
         // A project property of the same key is never read: one project path.
@@ -414,9 +415,9 @@ mod tests {
         doc.properties.insert("symbol.fusebank8.prefix".into(), "ZZ".into());
         assert_eq!(prefix(&doc, "fusebank8"), "F");
         let long = "x".repeat(10_000);
+        // A hostile value cannot be stored: the prefix type refuses it.
         for bad in ["", "K1", long.as_str(), "K\u{7}", "-"] {
-            doc.settings.tag_prefixes.insert("fusebank8".into(), bad.into());
-            assert_eq!(prefix(&doc, "fusebank8"), "F", "{bad:?}");
+            assert!(TagPrefix::typed(bad).is_none(), "{bad:?}");
         }
         assert_eq!(prefix(&doc, "junction"), "");
         assert_eq!(prefix(&doc, "nonsense"), "");

@@ -113,11 +113,7 @@ fn starter_key(entry: &Entry) -> Option<&'static str> {
 /// Set (or with `None` remove) starter `key`'s tag prefix in `s`, as Tag Settings writes it: the
 /// starter's own prefix is stored as none.
 pub fn set_tag_prefix(s: &mut ProjectSettings, key: &str, prefix: Option<&str>) {
-    match prefix {
-        Some(px) if crate::symbols::by_key(key).is_some_and(|x| x.prefix() == px) => s.tag_prefixes.remove(key),
-        Some(px) => s.tag_prefixes.insert(key.to_string(), px.to_string()),
-        None => s.tag_prefixes.remove(key),
-    };
+    crate::devices::set_symbol_prefix(s, ecad_model::prefix::PrefixOf::Starter(key.into()), prefix);
 }
 
 /// Write `value` (`None`: remove) into the project setting behind a [`ProjectSource::Settings`]
@@ -338,10 +334,8 @@ pub fn plan_family(doc: &Document, key: &str, level: Option<&str>, value: Option
         Field::Prefix => {
             let before = doc.settings.clone();
             let mut after = before.clone();
-            match value.as_deref().and_then(crate::devices::valid_prefix) {
-                Some(px) => after.tag_prefixes.insert(symbol.clone(), px),
-                None => after.tag_prefixes.remove(&symbol),
-            };
+            let of = ecad_model::prefix::PrefixOf::Project(symbol.as_str().into());
+            crate::devices::set_symbol_prefix(&mut after, of, value.as_deref());
             if after == before { Vec::new() } else { vec![Op::SetProjectSettings { before, after }] }
         }
         _ => {

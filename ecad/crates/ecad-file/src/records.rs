@@ -330,8 +330,12 @@ pub struct ProjectSettings {
     /// built-in; absent follows the built-in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tag_padding: Option<u8>,
+    /// Design 072 F5: keyed by the symbol, `starter:<word>` or `project:<key>`; read strictly.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub tag_prefixes: BTreeMap<String, String>,
+    pub tag_prefixes: BTreeMap<m::prefix::PrefixOf, m::prefix::TagPrefix>,
+    /// Design 072 F5: the cable tag prefix, written only when the project chose one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cable_prefix: Option<m::prefix::TagPrefix>,
     /// Wire numbering and potential defaults (brief 022, FP1): left out at its default, so a
     /// project that never changes them is written exactly as before.
     #[serde(default, skip_serializing_if = "is_default_wiring")]
@@ -1037,6 +1041,7 @@ impl From<&m::ProjectSettings> for ProjectSettings {
             },
             tag_padding: s.tag_padding,
             tag_prefixes: s.tag_prefixes.clone(),
+            cable_prefix: s.cable_prefix.clone(),
             wiring: WiringSettings::from(&s.wiring),
             sheet: s.sheet.as_ref().map(SheetSpec::from),
             page_number_step: s.page_number_step,
@@ -1282,6 +1287,7 @@ impl From<ProjectSettings> for m::ProjectSettings {
             },
             tag_padding: s.tag_padding,
             tag_prefixes: s.tag_prefixes,
+            cable_prefix: s.cable_prefix,
             wiring: s.wiring.into(),
             sheet: s.sheet.map(Into::into),
             page_number_step: s.page_number_step,

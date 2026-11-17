@@ -715,11 +715,7 @@ pub fn tag_settings(
         settings.tag_padding = Some(n);
     }
     for (k, v) in changes {
-        match v {
-            Some(px) if crate::symbols::by_key(k).is_some_and(|s| s.prefix() == px) => settings.tag_prefixes.remove(k),
-            Some(px) => settings.tag_prefixes.insert(k.to_string(), px),
-            None => settings.tag_prefixes.remove(k),
-        };
+        crate::devices::set_symbol_prefix(settings, ecad_model::prefix::PrefixOf::Starter(k.into()), v.as_deref());
     }
     Ok(())
 }

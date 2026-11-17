@@ -132,12 +132,13 @@ fn prefixes_are_registered_defaults() {
     }
     let mut doc = ecad_model::Document::default();
     assert_eq!(defaults::symbols::prefix(&doc, "valve"), "MB");
-    doc.settings.tag_prefixes.insert("valve".into(), "Y".into());
+    let valve = ecad_model::prefix::PrefixOf::Starter("valve".into());
+    doc.settings.tag_prefixes.insert(valve, ecad_model::prefix::TagPrefix::typed("Y").unwrap());
     assert_eq!(defaults::symbols::prefix(&doc, "valve"), "Y");
     assert_eq!(defaults::symbols::prefix(&doc, "valve2"), "MB", "only that key");
+    // Design 072 F5: a bad prefix cannot be held at all (the file read refuses it).
     for bad in ["", "1", "K\u{0}", "TOOLONGPREFIXX", "\u{1F642}"] {
-        doc.settings.tag_prefixes.insert("valve".into(), bad.into());
-        assert_eq!(defaults::symbols::prefix(&doc, "valve"), "MB", "{bad:?} falls back");
+        assert!(ecad_model::prefix::TagPrefix::typed(bad).is_none(), "{bad:?} refused");
     }
     // Brief 057's `rating.` area (FP5) holds project defaults of the rating checks, not a default
     // device rating: exactly these keys are excepted; the 034 ruling holds for everything else.
