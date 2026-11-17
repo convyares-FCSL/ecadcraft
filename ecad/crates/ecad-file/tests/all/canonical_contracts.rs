@@ -125,7 +125,7 @@ fn record_and_definition_hashes_are_pinned() {
         ("d1", "a8b35e81d6a9d456e9f70d188e8b6fb8b729a950d94ca54fbcbd793e9f908952"),
         ("d2", "0fcefba53f430d7f0e8467eb0eddb6166605310dee1a02896b16543e6ca99682"),
         // Design 072 F14 and F20 (lanes B and D): the device and typed wire records.
-        ("head", "a9f11f1c00d2a8bfc504325026d4906edf206df243f86faeb03f96753b1c20cf"),
+        ("head", "b8bf965b8930fa225c9cdac157fbb2bdf66cac3d09a0a1d98fa4dfddcf9d4d40"),
     ];
     for ((name, h), (wname, w)) in got.iter().chain(std::iter::once(&head)).zip(want) {
         assert_eq!((*name, h.as_str()), (wname, w), "a pinned hash changed");

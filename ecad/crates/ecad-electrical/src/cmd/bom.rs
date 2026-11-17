@@ -277,10 +277,7 @@ pub fn plan_bomitem(doc: &Document, ids: &mut IdAllocator, change: ItemChange) -
             }
             let words = item_words(doc, &props);
             let item: DeviceId = ids.fresh();
-            ops.push(Op::CreateDevice {
-                id: item,
-                device: Device { properties: props, definition: None, device_type: ecad_model::DeviceType::General },
-            });
+            ops.push(Op::CreateDevice { id: item, device: Device { properties: props, ..Device::default() } });
             Ok(ItemPlan { ops, item, label: "Add item", message: Some(format!("Added item {words}.")) })
         }
     }

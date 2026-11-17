@@ -504,6 +504,9 @@ impl Op {
                 doc.index.cable_member(*cable, &old, Delta::Remove);
             }
             Op::SetProperty { object, key, before, after } => {
+                if matches!(object, ObjectRef::Device(_)) && crate::keys::is_reserved_on(key, crate::keys::Holder::Device) {
+                    return Err(pre(format!("{key} is a field of the device: change it with ModifyDevice")));
+                }
                 let props = match object {
                     ObjectRef::Device(id) => doc.devices.get_mut(id).map(|c| &mut c.properties),
                     ObjectRef::Wire(id) => doc.wires.get_mut(id).map(|c| &mut c.display),
@@ -538,17 +541,6 @@ impl Op {
                         if let Some(k) = now {
                             doc.index.continuation(*id, k, Delta::Add);
                         }
-                    }
-                }
-                // A component's tag is indexed (brief 018).
-                if let ObjectRef::Device(id) = object
-                    && key == crate::tag::TAG_KEY
-                {
-                    if let Some(old) = &old {
-                        doc.index.tag(*id, old, Delta::Remove);
-                    }
-                    if let Some(new) = after {
-                        doc.index.tag(*id, new, Delta::Add);
                     }
                 }
                 if let ObjectRef::Cable(id) = object

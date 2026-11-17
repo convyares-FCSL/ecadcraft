@@ -14,7 +14,7 @@ use cadcraft_engine::geom::{Bounds2, Mat3, Vec2};
 use ecad_cadcraft::outputs::Outputs;
 use ecad_cadcraft::printbook::{self, Sheet};
 use ecad_cadcraft::{frame, generated, xref};
-use ecad_model::{DeviceId, Document, ObjectRef, Op, PageId};
+use ecad_model::{DeviceId, Document, Op, PageId};
 use serde_json::{Value, json};
 
 use crate::common::place;
@@ -69,7 +69,7 @@ fn sets(ops: &[Op], key: &str) -> bool {
 }
 
 fn tag(h: &mut H, c: DeviceId) -> String {
-    h.doc().devices[&c].properties.get("tag").cloned().unwrap_or_default()
+    h.doc().devices[&c].tag().map(str::to_string).unwrap_or_default()
 }
 
 /// A refusal: `cmd` fails and the head does not move.
@@ -570,7 +570,7 @@ fn ac11_tag_style_rewrites_in_one_undoable_step() {
     assert_eq!(v["tag_dash"], json!(false), "{v}");
     let (_, ops) = last_tx(&mut h);
     assert!(sets(&ops, "tags.dash"), "{ops:?}");
-    assert_eq!(ops.iter().filter(|o| matches!(o, Op::SetProperty { object: ObjectRef::Device(_), key, .. } if key == "tag")).count(), 3);
+    assert_eq!(ops.iter().filter(|o| matches!(o, Op::ModifyDevice { before, after, .. } if before.tag != after.tag)).count(), 3);
     h.run("u", Value::Null).unwrap();
     let after_undo = h.doc();
     assert_eq!(after_undo.devices, before.devices, "undo restores every tag");
@@ -587,7 +587,7 @@ fn ac11_tag_style_rewrites_in_one_undoable_step() {
     assert!(
         e.is_err()
             || tag(&mut h, k1) != "K01"
-            || h.doc().devices.values().filter(|c| c.properties.get("tag").is_some_and(|t| t.eq_ignore_ascii_case("k01"))).count() == 1,
+            || h.doc().devices.values().filter(|c| c.tag().is_some_and(|t| t.eq_ignore_ascii_case("k01"))).count() == 1,
         "conflict rules unchanged"
     );
     // Dash yes with typed case.

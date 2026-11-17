@@ -172,6 +172,9 @@ pub struct Item {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Device {
+    /// Design 072 §2.1: validated on read (1 to 40 characters, no hidden character).
+    pub tag: Option<m::tag::Tag>,
+    pub tag_fixed: bool,
     pub properties: BTreeMap<String, String>,
     pub definition: Option<DefinitionId>,
     /// What the device is (design 072 F15): the model's own type, whose words and fields are
@@ -970,7 +973,13 @@ impl From<&m::Item> for Item {
 
 impl From<&m::Device> for Device {
     fn from(c: &m::Device) -> Self {
-        Device { properties: c.properties.clone(), definition: c.definition, device_type: c.device_type.clone() }
+        Device {
+            tag: c.tag.clone(),
+            tag_fixed: c.tag_fixed,
+            properties: c.properties.clone(),
+            definition: c.definition,
+            device_type: c.device_type.clone(),
+        }
     }
 }
 
@@ -1252,7 +1261,7 @@ impl From<Item> for m::Item {
 
 impl From<Device> for m::Device {
     fn from(c: Device) -> Self {
-        m::Device { properties: c.properties, definition: c.definition, device_type: c.device_type }
+        m::Device { tag: c.tag, tag_fixed: c.tag_fixed, properties: c.properties, definition: c.definition, device_type: c.device_type }
     }
 }
 
