@@ -9,10 +9,13 @@
 //!   comes from ([`Join::From`]); a route landing on the middle of a route joins from the **nearer
 //!   end** of the wire that route carries ([`Join::OnWire`]); a point that joins with no route to
 //!   follow ([`Join::Next`]) continues the chain from the last point added. A point takes at most
-//!   as many wires as it accepts (2 normally, more on PE bars and earth studs): when the preferred
-//!   point is full, the wire starts from the most recently added point that still has room, so the
-//!   order chains by default and fans out (a star) only at points that accept more than two. When
-//!   no point has room, the preferred point takes it anyway, and the over-count check reports it.
+//!   as many wires as it accepts (2 normally, more on PE bars and earth studs), so the order chains
+//!   by default and fans out (a star) only at points that accept more than two.
+//! - **When the point is full** (overseer, 2026-11-17: predictable, never a point the person did
+//!   not draw at). A T: the nearer end of the hit wire; if it is full, the far end of that wire; if
+//!   both are full, the nearer end takes it anyway. A route from a point: that point, full or not.
+//!   A point taking more wires than it accepts is an error the over-count check reports, so the
+//!   person fixes it where they can see it ([`Order::over`]).
 //! - **A point that leaves** is cut out: its neighbours in the order are joined to each other in
 //!   order (a chain A–X–B becomes A–B), in the place of its first wire.
 //! - Every operation costs time in proportion to the one net's wires, never the project's.
@@ -85,22 +88,17 @@ impl Order {
             self.points.push(p);
             return;
         };
-        let room = |o: &Order, t: TerminalId| o.has(t) && o.count(t) < accepts(t).max(1);
-        let preferred: Vec<TerminalId> = match join {
-            Join::From(q) => vec![q],
+        let room = |t: TerminalId| self.has(t) && self.count(t) < accepts(t).max(1);
+        let on_net = |t: TerminalId| self.has(t).then_some(t);
+        let start = match join {
+            Join::From(q) => on_net(q),
             Join::OnWire { wire, near } => {
                 let far = if wire[0] == near { wire[1] } else { wire[0] };
-                vec![near, far]
+                if room(near) || !room(far) { on_net(near).or_else(|| on_net(far)) } else { Some(far) }
             }
-            Join::Next => vec![last],
-        };
-        let start = preferred
-            .iter()
-            .copied()
-            .find(|t| room(self, *t))
-            .or_else(|| self.points.iter().rev().copied().find(|t| room(self, *t)))
-            .or_else(|| preferred.first().copied().filter(|t| self.has(*t)))
-            .unwrap_or(last);
+            Join::Next => Some(last),
+        }
+        .unwrap_or(last);
         self.points.push(p);
         self.wires.push([start, p]);
     }
@@ -158,13 +156,32 @@ mod tests {
         o.add(t(2), Join::From(t(1)), &two);
         o.add(t(3), Join::OnWire { wire: [t(1), t(2)], near: t(2) }, &two);
         assert_eq!(order(&o), [(1, 2), (2, 3)]);
-        // D onto A–B nearer B: B is full, so the far end A takes it.
+        assert!(o.over(&two).is_empty());
+    }
+
+    #[test]
+    fn a_tee_takes_the_nearer_end_then_the_far_end_then_the_nearer_end_over() {
+        let mut o = Order::from_wires(vec![[t(1), t(2)], [t(2), t(3)]]);
+        // 1. The nearer end has room: it takes the wire.
+        let mut room = o.clone();
+        room.add(t(4), Join::OnWire { wire: [t(2), t(3)], near: t(3) }, &two);
+        assert_eq!(order(&room), [(1, 2), (2, 3), (3, 4)]);
+        // 2. The nearer end (2) is full: the far end of the same wire (1) takes it.
         o.add(t(4), Join::OnWire { wire: [t(1), t(2)], near: t(2) }, &two);
         assert_eq!(order(&o), [(1, 2), (2, 3), (1, 4)]);
-        // E from the full B: the most recent point with room (D) takes it.
-        o.add(t(5), Join::From(t(2)), &two);
-        assert_eq!(order(&o), [(1, 2), (2, 3), (1, 4), (4, 5)]);
         assert!(o.over(&two).is_empty());
+        // 3. Both ends (1 and 2) are full: the nearer end takes it anyway and is reported over.
+        o.add(t(5), Join::OnWire { wire: [t(1), t(2)], near: t(2) }, &two);
+        assert_eq!(order(&o), [(1, 2), (2, 3), (1, 4), (2, 5)]);
+        assert_eq!(o.over(&two), [(t(2), 3, 2)]);
+    }
+
+    #[test]
+    fn a_route_from_a_full_point_starts_there_and_is_reported_over() {
+        let mut o = Order::from_wires(vec![[t(1), t(2)], [t(2), t(3)]]);
+        o.add(t(4), Join::From(t(2)), &two);
+        assert_eq!(order(&o), [(1, 2), (2, 3), (2, 4)], "never a point the person did not draw at");
+        assert_eq!(o.over(&two), [(t(2), 3, 2)]);
     }
 
     #[test]
