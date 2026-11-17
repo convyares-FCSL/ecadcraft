@@ -129,13 +129,13 @@ impl Plc {
                 ty,
                 rack: r,
                 slot: rack::slot_of(doc, c),
-                channels: rack::channel_count(doc, c, ty),
+                channels: rack::channel_count(doc, c),
                 page,
                 part_number: text("part_number"),
                 maker: text("maker"),
                 rows: {
                     let chans = channel_data(doc, c);
-                    let n = rack::channel_count(doc, c, ty);
+                    let n = rack::channel_count(doc, c);
                     usize::try_from(n).unwrap_or(0) + chans.keys().filter(|i| **i >= n).count()
                 },
                 chans: channel_data(doc, c),
@@ -154,6 +154,11 @@ impl Plc {
             match op {
                 Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } => {
                     out.insert(*id);
+                }
+                // Design 072 §3: a station's or module's own fields; a station's cards read it.
+                Op::ModifyDevice { id, .. } => {
+                    out.insert(*id);
+                    out.extend(self.naming.get(id).into_iter().flatten().copied());
                 }
                 Op::SetProperty { object: ObjectRef::Device(c), key, .. } => {
                     if key.starts_with("plc.") || key == ecad_model::tag::TAG_KEY || key == "part_number" || key == "maker" {
@@ -376,7 +381,7 @@ impl Plc {
             look::wide_checks(doc, card.id, &card.tag, |i| self.address_of(doc, card.id, i).0, m, &mut out);
         }
         if let Some(card) = self.cards.get(&g)
-            && matches!(card.rack, RackRef::Missing(_) | RackRef::Bad)
+            && matches!(card.rack, RackRef::Missing(_))
         {
             out.push(Check {
                 kind: Kind::RackMissing,
@@ -782,7 +787,7 @@ impl Plc {
         let (inputs, outputs) = overview::spans(doc, self, card);
         let rack = match card.rack {
             RackRef::Rack(r) => json!(self.tag_of(r)),
-            RackRef::Missing(_) | RackRef::Bad => json!("missing"),
+            RackRef::Missing(_) => json!("missing"),
             RackRef::None => Value::Null,
         };
         json!({

@@ -268,7 +268,19 @@ pub const FAMILIES: &[Family] = &[
 
 /// Keys that became struct fields: a property bag holding one is a read error (design 072 §9.4).
 /// Lanes B–F move keys here from [`KEYS`].
-pub const RESERVED: &[PropKey] = &[];
+pub const RESERVED: &[PropKey] = &[
+    // Lane C (design 072 §3): a PLC module's and station's fields.
+    PropKey("plc.rack"),
+    PropKey("plc.slot"),
+    PropKey("plc.channels"),
+    PropKey("plc.addr.start"),
+    PropKey("plc.addr.size"),
+    PropKey("plc.kind"),
+];
+
+/// Key prefixes that became struct fields, as [`RESERVED`]: a PLC channel's own data
+/// (`plc.ch.<i>.<field>`, design 072 §3).
+pub const RESERVED_PREFIXES: &[&str] = &["plc.ch."];
 
 /// The fixed key `key`, if it is one.
 pub fn spec(key: &str) -> Option<&'static KeySpec> {
@@ -280,9 +292,9 @@ pub fn family_of(key: &str) -> Option<&'static Family> {
     FAMILIES.iter().find(|f| f.parse(key).is_some())
 }
 
-/// Whether `key` became a struct field ([`RESERVED`]).
+/// Whether `key` became a struct field ([`RESERVED`], [`RESERVED_PREFIXES`]).
 pub fn is_reserved(key: &str) -> bool {
-    RESERVED.iter().any(|k| k.0 == key)
+    RESERVED.iter().any(|k| k.0 == key) || RESERVED_PREFIXES.iter().any(|p| key.starts_with(p))
 }
 
 /// The area `key` belongs to.

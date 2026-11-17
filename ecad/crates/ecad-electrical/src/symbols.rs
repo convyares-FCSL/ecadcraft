@@ -575,7 +575,7 @@ impl Starter {
             origin: None,
             graphics: graphics(self.key),
             terminals: terminals(self.key),
-            device_type: DeviceType::of_group(self.key.device_group()),
+            device_type: crate::plc::types::starter_type(self.key),
             ..Default::default()
         };
         let content_hash =
@@ -586,7 +586,7 @@ impl Starter {
 
     /// What a device this starter begins is: the type its definition declares (design 072 §2.3).
     pub fn device_type(&self) -> DeviceType {
-        DeviceType::of_group(self.key.device_group())
+        crate::plc::types::starter_type(self.key)
     }
 
     /// The version of this starter's definition (`library_seq`): 2 for the 24 mating halves brief
@@ -2776,8 +2776,8 @@ mod tests {
             ("trafo", "b93505f2eab3aad42fbc8c2f647632effceeda5a6e1e06e634d3f53467dd92fd"),
             ("terminal", "c5c7b47bbddcd35973ad00f1dd8906db9602290ce0b955f0fd7ee1c2bf403a1f"),
             ("terminalpe", "d38f6429abbaf0e8e110505625b467b6531504a762e11205542230148f9f1c00"),
-            ("di", "418a6aab8d5818614ba43098c08872d64592926ca89ab42557f185476425f06a"),
-            ("do", "a7d39c8d471f7b36a469fff10c05eaa40ee4f93e921349a265a23e34cda6461f"),
+            ("di", "aea5bde9161fa1c8b923a5767b9f995055b14c08102b6ded6c59487760c9c1bb"),
+            ("do", "37c93f7a1135b9a06a92121a44942ead0f3267adb65ef0533173c7346b288ae9"),
             ("junction", "8a6e36eab66ded66ec4ef470682d2d5cecf536a0d1fe6c148c632154232a4868"),
             ("continuation", "7289a1f63b563b3f0ceb6959fd7fb34763daf4c1c6e56bb2366e01129ae7afaf"),
         ];

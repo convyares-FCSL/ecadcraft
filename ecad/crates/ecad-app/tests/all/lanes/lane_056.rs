@@ -65,8 +65,8 @@ fn p56(h: &mut H) {
     }
     let (a02, a03) = (tagged(h, "-A02").hex(), tagged(h, "-A03").hex());
     ok(h, &format!(r#"setprop {{"component":"{a03}","key":"description","value":"Outputs, pumps and valves"}}"#));
-    ok(h, &format!(r#"setprop {{"component":"{a03}","key":"plc.kind","value":"relay"}}"#));
-    ok(h, &format!(r#"setprop {{"component":"{a02}","key":"plc.kind","value":"24 V"}}"#));
+    ok(h, &format!(r#"setprop {{"component":"{a03}","key":"plc.signal","value":"relay"}}"#));
+    ok(h, &format!(r#"setprop {{"component":"{a02}","key":"plc.signal","value":"dc24v"}}"#));
     // Board 2.03's card: its main part and a front connector; the control function from the page
     // and the cabinet from a location box drawn round the rack.
     ok(h, &format!(r#"setprop {{"component":"{a03}","key":"maker","value":"Generic"}}"#));
@@ -244,7 +244,8 @@ fn the_card_editor_edits_type_id_rack_slot_parts_and_start() {
     let d = doc(&mut h);
     let p = &d.devices[&a03].properties;
     assert_eq!(p.get("part_number").map(String::as_str), Some("DQ16-R-2B"));
-    assert_eq!(p.get("plc.slot").map(String::as_str), Some("7"));
+    let ecad_model::DeviceType::PlcModule(m) = &d.devices[&a03].device_type else { panic!("a module") };
+    assert_eq!(m.slot, Some(7), "design 072 §3: the slot is the module's field");
     // An accessory (the front connector) as a part line.
     ok(
         &mut h,
@@ -275,7 +276,9 @@ fn the_card_editor_edits_type_id_rack_slot_parts_and_start() {
     h.run_steps(4);
     assert_eq!(head_of(&mut h), before + 1);
     assert_eq!(ecad_cadcraft::plc::card_type_of(&doc(&mut h), a03), Some(CardType::Di), "the card is now a DI card");
-    assert_eq!(doc(&mut h).devices[&a03].properties.get("plc.ch.2.tag").map(String::as_str), Some("Valve_Inlet"));
+    let d = doc(&mut h);
+    let ecad_model::DeviceType::PlcModule(m) = &d.devices[&a03].device_type else { panic!("a module") };
+    assert_eq!(m.channel(2).and_then(|c| c.tag.as_ref()).map(|t| t.as_str()), Some("Valve_Inlet"));
     assert_eq!(start_byte("%Q4.0"), Some(Some(4)));
     assert_eq!(start_byte("IW64"), Some(Some(64)));
     assert_eq!(start_byte(""), Some(None), "empty unpins");

@@ -1260,6 +1260,12 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
             Op::SetDeviceDefinition { id: c, .. } => {
                 out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
             }
+            // Design 072 §3: a PLC station's or module's fields: its own pages, and its station's
+            // cards' (their captions and addresses read it).
+            Op::ModifyDevice { id: c, before, after } if crate::plc::is_plc(before) || crate::plc::is_plc(after) => {
+                out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
+                out.extend(crate::plc::pages_modified(doc, plc, *c, before, after));
+            }
             // Brief 048 (FP8): a superseded version nothing shows after the transaction is drawn
             // nowhere. Its last copies move off it in the same transaction (review of PR #86,
             // finding 1), and their own ops name their pages; the document here is the one before.

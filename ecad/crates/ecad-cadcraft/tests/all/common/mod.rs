@@ -311,3 +311,77 @@ pub fn small_project(seed: u64) -> (H, DeviceId, DeviceId, ConductorId) {
     assert!(h.doc().conductors[&w].ends.iter().all(Option::is_some), "both ends attached");
     (h, c1, c2, w)
 }
+
+/// A device's values as the `setprop` keys name them (design 072 §3): its property bag, with a PLC
+/// module's and station's typed fields under their keys (`plc.rack` as the station's ID, `plc.slot`,
+/// `plc.addr.start`, `plc.addr.size`, `plc.ch.<i>.text|address|tag|safe`).
+pub fn plc_view(doc: &Document, c: DeviceId) -> std::collections::BTreeMap<String, String> {
+    let Some(d) = doc.devices.get(&c) else { return Default::default() };
+    let mut out = d.properties.clone();
+    if let ecad_model::DeviceType::PlcModule(m) = &d.device_type {
+        let mut put = |k: String, v: Option<String>| {
+            if let Some(v) = v {
+                out.insert(k, v);
+            }
+        };
+        put("plc.rack".into(), m.rack.map(|r| r.hex()));
+        put("plc.slot".into(), m.slot.map(|s| s.to_string()));
+        put("plc.addr.start".into(), m.address.start.map(|s| s.to_string()));
+        put("plc.addr.size".into(), m.address.size.map(|s| s.to_string()));
+        for (i, ch) in m.channels() {
+            put(format!("plc.ch.{i}.text"), ch.text.as_ref().map(ToString::to_string));
+            put(format!("plc.ch.{i}.address"), ch.address.as_ref().map(ToString::to_string));
+            put(format!("plc.ch.{i}.tag"), ch.tag.as_ref().map(ToString::to_string));
+            put(format!("plc.ch.{i}.safe"), ch.safe.as_ref().map(ToString::to_string));
+        }
+    }
+    out
+}
+
+/// A device's value of `setprop` key `k` ([`plc_view`]); `plc.channels` is a module's count.
+pub fn plc_value(doc: &Document, c: DeviceId, k: &str) -> Option<String> {
+    if k == "plc.channels" {
+        return match &doc.devices.get(&c)?.device_type {
+            ecad_model::DeviceType::PlcModule(m) => Some(m.channel_count().to_string()),
+            _ => None,
+        };
+    }
+    plc_view(doc, c).remove(k)
+}
+
+/// A hand-made op setting a PLC module's field named by `setprop` key `k` (as a file or a merge
+/// might hold it, bypassing the commands): one `ModifyDevice`. `plc.rack` takes any ID.
+pub fn plc_raw(doc: &Document, c: DeviceId, k: &str, value: Option<&str>) -> ecad_model::Op {
+    let before = doc.devices[&c].clone();
+    let mut after = before.clone();
+    let ecad_model::DeviceType::PlcModule(m) = &mut after.device_type else { panic!("{c:?} is not a module") };
+    let num = |v: Option<&str>| v.map(|t| t.parse::<u32>().unwrap());
+    match k {
+        "plc.rack" => m.rack = value.map(|t| DeviceId::parse(t).unwrap()),
+        "plc.slot" => m.slot = num(value).map(|n| u16::try_from(n).unwrap()),
+        "plc.addr.start" => m.address.start = num(value),
+        "plc.addr.size" => m.address.size = num(value),
+        "plc.channels" => m.function.groups_mut()[0].count = u16::try_from(num(value).unwrap_or(0)).unwrap(),
+        _ => {
+            let rest = k.strip_prefix("plc.ch.").unwrap_or_else(|| panic!("not a module field: {k}"));
+            let (i, what) = rest.split_once('.').unwrap();
+            let v = value.map(str::to_string);
+            m.edit_channel(i.parse().unwrap(), |ch| match what {
+                "text" => ch.text = v.as_deref().map(|t| ecad_model::text::Text::new(t).unwrap()),
+                "address" => ch.address = v.as_deref().map(|t| ecad_model::text::Text::new(t).unwrap()),
+                "tag" => ch.tag = v.as_deref().map(|t| ecad_model::text::Text::new(t).unwrap()),
+                "safe" => ch.safe = v.as_deref().map(|t| ecad_model::plc::SafeState::parse(t).unwrap()),
+                other => panic!("no channel field {other}"),
+            });
+        }
+    }
+    ecad_model::Op::ModifyDevice { id: c, before, after }
+}
+
+/// Device `c`'s station data (design 072 §3); panics when it is not a station.
+pub fn plc_station(doc: &Document, c: DeviceId) -> ecad_model::plc::PlcRack {
+    match &doc.devices[&c].device_type {
+        ecad_model::DeviceType::PlcRack(r) => r.clone(),
+        other => panic!("{c:?} is not a station: {other:?}"),
+    }
+}

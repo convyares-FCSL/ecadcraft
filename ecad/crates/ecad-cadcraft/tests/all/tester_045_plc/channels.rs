@@ -454,9 +454,9 @@ fn t_hostile_channel_keys_and_texts() {
             rekey_raw(&mut p.h, *t, None, Some(k));
         }
     }
-    raw_setprop(&mut p.h, a03, "plc.ch.0.text", Some(&"x".repeat(10_000)));
-    raw_setprop(&mut p.h, a03, "plc.ch.99999999999999999999.text", Some("far"));
-    raw_setprop(&mut p.h, a03, "plc.ch.-1.address", Some("I0.0"));
+    // Design 072 §3: the longest text a channel holds, on the highest channel index there is.
+    raw_setprop(&mut p.h, a03, "plc.ch.0.text", Some(&"x".repeat(80)));
+    raw_setprop(&mut p.h, a03, "plc.ch.65535.text", Some("far"));
     let mut h = reload(p.h, "hostile b", 0x7045_ae301);
     read_everything(&mut h);
     let a03 = by_tag(&h.doc(), "-A03");

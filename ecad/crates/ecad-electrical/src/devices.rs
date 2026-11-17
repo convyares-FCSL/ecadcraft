@@ -533,7 +533,8 @@ pub fn plan_place(
             let mut properties = ecad_model::Properties::new();
             properties.insert(TAG_KEY.into(), t.clone());
             properties.insert("description".into(), s.name.into());
-            ops.push(Op::CreateDevice { id: c, device: Device { properties, definition: Some(definition), device_type: s.device_type() } });
+            let device_type = crate::plc::types::new_type(doc, &s.device_type());
+            ops.push(Op::CreateDevice { id: c, device: Device { properties, definition: Some(definition), device_type } });
             for td in &def.terminals {
                 let tid: TerminalId = ids.fresh();
                 ops.push(Op::AddTerminal { id: tid, terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()) } });
@@ -751,7 +752,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
     }
     // Brief 045 (FP1 condition 2, review of #84, 1): a rack merged away hands its cards to `into`,
     // which takes its rack body (or already is a rack); otherwise they leave it, in this transaction.
-    ops.extend(crate::plc::rack::merge_ops(doc, from, into));
+    crate::plc::rack::merge_into(doc, &mut ops, from, into);
     ops.push(Op::DeleteDevice { id: from, device: from_c });
     Ok(ops)
 }

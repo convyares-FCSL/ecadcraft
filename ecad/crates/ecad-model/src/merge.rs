@@ -426,6 +426,56 @@ fn field<T: PartialEq + Clone>(ctx: &mut Ctx<'_, '_>, obj: Obj, name: &str, what
     }
 }
 
+/// Merge a device's type: a PLC station's and module's fields one by one when all three keep the
+/// same group (design 072 §3, FP1: a station is shown by its tag); otherwise the type whole.
+fn merge_device_type(
+    ctx: &mut Ctx<'_, '_>, obj: Obj, what: &str, docs: &[&Document], a: &crate::DeviceType, t: &crate::DeviceType, s: &crate::DeviceType,
+) -> crate::DeviceType {
+    use crate::DeviceType as T;
+    let words = |v: &dyn Fn() -> Option<String>| v().unwrap_or_else(|| "(none)".into());
+    match (a, t, s) {
+        (T::PlcModule(a), T::PlcModule(t), T::PlcModule(s)) => {
+            let rack_name = |r: &Option<DeviceId>| r.map_or_else(|| "no rack".into(), |r| name_of(docs, Obj::Device(r)));
+            T::PlcModule(crate::plc::PlcModule {
+                rack: field(ctx, obj, "plc.rack", format!("{what} · rack"), &a.rack, &t.rack, &s.rack, &rack_name),
+                slot: field(ctx, obj, "plc.slot", format!("{what} · slot"), &a.slot, &t.slot, &s.slot, &|x| words(&|| x.map(|n| n.to_string()))),
+                function: field(ctx, obj, "plc.function", format!("{what} · function and channels"), &a.function, &t.function, &s.function, &|f| {
+                    f.word().replace('_', " ")
+                }),
+                attributes: field(ctx, obj, "plc.attributes", format!("{what} · attributes"), &a.attributes, &t.attributes, &s.attributes, &|x| {
+                    format!("{x:?}")
+                }),
+                address: field(ctx, obj, "plc.addr", format!("{what} · pinned address"), &a.address, &t.address, &s.address, &|x| {
+                    words(&|| x.start.map(|n| n.to_string()))
+                }),
+                supply: field(ctx, obj, "plc.supply", format!("{what} · supply"), &a.supply, &t.supply, &s.supply, &|x| {
+                    words(&|| x.map(|v| v.to_string()))
+                }),
+            })
+        }
+        (T::PlcRack(a), T::PlcRack(t), T::PlcRack(s)) => T::PlcRack(crate::plc::PlcRack {
+            network: field(ctx, obj, "plc.network", format!("{what} · network"), &a.network, &t.network, &s.network, &|x| {
+                words(&|| x.as_ref().map(ToString::to_string))
+            }),
+            address: field(ctx, obj, "plc.network.address", format!("{what} · network address"), &a.address, &t.address, &s.address, &|x| {
+                words(&|| x.map(|v| v.to_string()))
+            }),
+            head: field(ctx, obj, "plc.head", format!("{what} · head"), &a.head, &t.head, &s.head, &|h| format!("{h:?}")),
+            address_style: field(
+                ctx,
+                obj,
+                "plc.address.style",
+                format!("{what} · address style"),
+                &a.address_style,
+                &t.address_style,
+                &s.address_style,
+                &|x| words(&|| x.map(|v| crate::Word::word(v).to_string())),
+            ),
+        }),
+        _ => field(ctx, obj, "device_type", format!("{what} · type"), a, t, s, &|d| d.group().label().into()),
+    }
+}
+
 /// Merge one object: whole when it resolves, else by `fields` when both sides kept it, else a
 /// removed conflict.
 fn object<T: PartialEq + Clone>(
@@ -636,9 +686,7 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                     definition: field(ctx, obj, "definition", format!("{what} · symbol"), &a.definition, &t.definition, &s.definition, &|d| {
                         d.map_or_else(|| "(none)".into(), |d| name_of(&docs, Obj::Definition(d)))
                     }),
-                    device_type: field(ctx, obj, "device_type", format!("{what} · type"), &a.device_type, &t.device_type, &s.device_type, &|d| {
-                        d.group().label().into()
-                    }),
+                    device_type: merge_device_type(ctx, obj, &what, &docs, &a.device_type, &t.device_type, &s.device_type),
                 });
                 set(&mut m.devices, id, v);
             }
@@ -1773,6 +1821,20 @@ fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
                 return format!("· {word} {} → {}", show(x.end(e)), show(y.end(e)));
             }
         }
+    }
+    // Design 072 §3 (FP1): a module moved to another station shows the stations' tags.
+    if let Obj::Device(c) = obj
+        && let (Some(x), Some(y)) = (a.devices.get(&c), s.devices.get(&c))
+        && let (crate::DeviceType::PlcModule(mx), crate::DeviceType::PlcModule(my)) = (&x.device_type, &y.device_type)
+        && (mx.rack, mx.slot) != (my.rack, my.slot)
+    {
+        let docs = [s, a];
+        let at = |r: Option<DeviceId>, slot: Option<u16>| match (r, slot) {
+            (Some(r), Some(n)) => format!("{} slot {n}", name_of(&docs, Obj::Device(r))),
+            (Some(r), None) => name_of(&docs, Obj::Device(r)),
+            (None, _) => "no rack".into(),
+        };
+        return format!("· rack {} → {}", at(mx.rack, mx.slot), at(my.rack, my.slot));
     }
     match (props(a), props(s)) {
         (Some(pa), Some(ps)) => {

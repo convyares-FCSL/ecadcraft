@@ -19,9 +19,8 @@
 use crate::CmdError;
 use std::collections::BTreeMap;
 
-use ecad_model::{DeviceId, Document, ObjectRef, Op};
+use ecad_model::{DeviceId, Document, Op};
 
-use super::channels::ch_key;
 use super::tagtable::{self, Caps, Read, TagFormat, TagRow};
 use super::{CardData, iolist, kept::Plc, signals};
 
@@ -228,16 +227,14 @@ pub fn plan_fill(doc: &Document, plc: &Plc, rows: &[TagRow], tags: bool, texts: 
         if tags && ch.and_then(|x| x.tag.as_deref()) != Some(r.name.as_str()) {
             let name = signals::tag_value(Some(&r.name))?.unwrap_or_default();
             new_tags.insert((c, i), name.clone());
-            let before = doc.devices.get(&c).and_then(|x| x.properties.get(&ch_key(i, signals::TAG))).cloned();
-            fill.ops.push(Op::SetProperty { object: ObjectRef::Device(c), key: ch_key(i, signals::TAG), before, after: Some(name) });
+            super::channels::set_field(doc, &mut fill.ops, c, i, signals::TAG, Some(&name))?;
             fill.tags += 1;
             changed = true;
         }
         let comment = r.comment.trim();
         if texts && !comment.is_empty() && ch.and_then(|x| x.text.as_deref()) != Some(comment) {
             let text = super::channels::ch_value("text", Some(comment))?;
-            let before = doc.devices.get(&c).and_then(|x| x.properties.get(&ch_key(i, "text"))).cloned();
-            fill.ops.push(Op::SetProperty { object: ObjectRef::Device(c), key: ch_key(i, "text"), before, after: text });
+            super::channels::set_field(doc, &mut fill.ops, c, i, "text", text.as_deref())?;
             fill.descriptions += 1;
             changed = true;
         }

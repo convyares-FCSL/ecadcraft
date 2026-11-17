@@ -223,7 +223,7 @@ pub fn type_text(doc: &Document, c: DeviceId) -> String {
     let desc = doc.devices.get(&c).and_then(|x| x.properties.get("description")).map(|v| v.trim()).filter(|v| !v.is_empty() && Some(*v) != builtin);
     match desc {
         Some(d) => d.to_string(),
-        None if ty.has_channels() => format!("{} {}", ty.code(), rack::channel_count(doc, c, ty)),
+        None if ty.has_channels() => format!("{} {}", ty.code(), rack::channel_count(doc, c)),
         None => ty.code().to_string(),
     }
 }
@@ -248,7 +248,7 @@ pub fn parts_on_page_measured(doc: &Document, page: PageId, m: &dyn TextMetrics)
 fn frame_parts(doc: &Document, run: &Run, m: &dyn TextMetrics, out: &mut Vec<Part>) {
     let c = run.card;
     let Some(ty) = super::card_type_of(doc, c) else { return };
-    let n = if ty.has_channels() { rack::channel_count(doc, c, ty) } else { 0 };
+    let n = if ty.has_channels() { rack::channel_count(doc, c) } else { 0 };
     let has_body = doc
         .representations_of(Subject::Device(c))
         .any(|(_, r)| crate::devices::rep_starter(doc, r).is_some_and(|s| CardType::of_body(s.key).is_some()));

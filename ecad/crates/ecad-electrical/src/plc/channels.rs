@@ -201,7 +201,7 @@ pub fn join(doc: &Document, c: DeviceId, s: &Starter, named: Option<u32>, extra:
     if ct != t {
         return Err(CmdError::refused(format!("{who} is a {}; pick a {} channel ({}), or another card.", ct.noun(), ct.code(), cells_words(ct))));
     }
-    let n = channel_count(doc, c, ct);
+    let n = channel_count(doc, c);
     let pts = points(doc, c);
     let drawn = |i: u32| pts.contains_key(&i) || taken.contains(&i);
     let first = first_number(doc, c);
@@ -307,7 +307,8 @@ pub fn new_card_ops(
     properties.insert(ecad_model::tag::TAG_KEY.into(), tag.clone());
     let name = crate::symbols::by_key(t.body()).map_or("PLC card", |b| b.name);
     properties.insert("description".into(), name.into());
-    ops.push(Op::CreateDevice { id: c, device: ecad_model::Device { properties, definition: Some(def), device_type: s.device_type() } });
+    let device_type = super::types::new_type(doc, &s.device_type());
+    ops.push(Op::CreateDevice { id: c, device: ecad_model::Device { properties, definition: Some(def), device_type } });
     Ok((c, tag))
 }
 
@@ -487,7 +488,7 @@ fn id_of_route(doc: &Document, c: ecad_model::ConductorId, page: PageId) -> Opti
     crate::wires::route_vertices(doc, c, page).map(|(id, _, _)| id)
 }
 
-/// A channel's own property key: `plc.ch.<i>.<what>`.
+/// A channel's own field as `setprop` names it: `plc.ch.<i>.<what>`.
 pub fn ch_key(i: u32, what: &str) -> String {
     format!("{CH_PREFIX}{i}.{what}")
 }
@@ -524,11 +525,52 @@ pub fn ch_value(what: &str, value: Option<&str>) -> Result<Option<String>, CmdEr
     Ok(Some(v.to_string()))
 }
 
-/// The value check of `plc.ch.<i>.text` and `plc.ch.<i>.address` with `setprop`. `None`: not a
-/// channel key.
-pub fn setprop_value(key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
-    let (_, what) = parse_ch_key(key)?;
-    Some(ch_value(what, value))
+/// Field `what` (`text`, `address`, `tag` or `safe`) of channel `i` of module `c`, as text.
+pub fn field(doc: &Document, c: DeviceId, i: u32, what: &str) -> Option<String> {
+    let ch = super::edit::module_of(doc, c)?.channel(i)?;
+    match what {
+        "text" => ch.text.as_ref().map(ToString::to_string),
+        "address" => ch.address.as_ref().map(ToString::to_string),
+        super::signals::TAG => ch.tag.as_ref().map(ToString::to_string),
+        super::signals::SAFE => ch.safe.as_ref().map(ToString::to_string),
+        _ => None,
+    }
+}
+
+/// Set field `what` (`text`, `address`, `tag` or `safe`, as [`parse_ch_key`] gives it) of channel
+/// `i` of module `c` to `value` (already checked with [`ch_value`]; `None` clears it), adding the
+/// change to `ops`.
+///
+/// # Errors
+/// `c` is not a module with channels; a value with a hidden character.
+pub fn set_field(doc: &Document, ops: &mut Vec<Op>, c: DeviceId, i: u32, what: &str, value: Option<&str>) -> Result<(), CmdError> {
+    use ecad_model::plc::SafeState;
+    let refused = |e: ecad_model::text::TextError| CmdError::refused(format!("{e}."));
+    let mut field: Box<dyn FnMut(&mut ecad_model::plc::Channel)> = match what {
+        "text" => {
+            let v = value.map(ecad_model::plc::ChannelText::new).transpose().map_err(refused)?;
+            Box::new(move |ch| ch.text = v.clone())
+        }
+        "address" => {
+            let v = value.map(ecad_model::plc::ChannelAddress::new).transpose().map_err(refused)?;
+            Box::new(move |ch| ch.address = v.clone())
+        }
+        super::signals::TAG => {
+            let v = value.map(ecad_model::plc::PlcTag::new).transpose().map_err(refused)?;
+            Box::new(move |ch| ch.tag = v.clone())
+        }
+        super::signals::SAFE => {
+            let v = match value {
+                None => None,
+                Some(t) => Some(SafeState::parse(t).ok_or_else(|| CmdError::refused(format!("{t} is not a safe state.")))?),
+            };
+            Box::new(move |ch| ch.safe = v.clone())
+        }
+        _ => return Err(CmdError::input("a channel has text, address, tag and safe")),
+    };
+    let mut fits = true;
+    let module = super::edit::module(doc, ops, c, |m| fits = m.edit_channel(i, &mut *field));
+    if module && fits { Ok(()) } else { Err(CmdError::refused(format!("{} has no channels.", crate::devices::tag_words(doc, c)))) }
 }
 
 /// Whether `id` is a definition of a channel symbol (for callers holding only an embedded ID).

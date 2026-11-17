@@ -206,7 +206,7 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
                 let last = p.last_placed.as_ref().map(|(_, c)| *c);
                 let at = crate::plc::rack::place_target(p.ledger.document(), rack.as_ref().map(Option::as_deref), slot.as_deref(), last)?;
                 if let Some((r, s)) = at {
-                    plan.ops.extend(crate::plc::rack::new_card_ops(plan.component, r, s));
+                    crate::plc::rack::put_new_card(p.ledger.document(), &mut plan.ops, plan.component, r, s);
                 }
                 at.map(|x| (t, x))
             }

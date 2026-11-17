@@ -51,8 +51,8 @@ fn fp1_make_them_one_re_points_the_cards_too() {
     let ops = h.cfg(|p| ecad_cadcraft::devices::plan_merge(&d, &mut p.ids, cpu, k)).unwrap();
     for c in &cards {
         let repointed = ops.iter().any(|op| {
-            matches!(op, ecad_model::Op::SetProperty { object: ecad_model::ObjectRef::Device(x), key, after, .. }
-                if x == c && key == "plc.rack" && after.as_deref() == Some(k.hex().as_str()))
+            matches!(op, ecad_model::Op::ModifyDevice { id, after, .. }
+                if id == c && matches!(&after.device_type, ecad_model::DeviceType::PlcModule(m) if m.rack == Some(k)))
         });
         assert!(repointed, "card re-pointed in the merge's ops");
     }

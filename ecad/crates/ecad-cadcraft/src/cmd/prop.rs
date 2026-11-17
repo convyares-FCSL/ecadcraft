@@ -135,6 +135,11 @@ impl Command for SetpropParams {
                     _ => set_value(p, pg, object, &key, typed.as_deref()),
                 },
                 Build::Value(_) | Build::Aspect => set_value(p, pg, object, &key, typed.as_deref()),
+                Build::Record(_) => {
+                    let Some(op) = rules::plan_record(doc, object, &key, typed.as_deref())? else { return Ok(json!({"changed": false})) };
+                    p.apply_edit(pg, "setprop", "Set property", vec![op])?;
+                    Ok(json!({"changed": true}))
+                }
             }
         })
     }

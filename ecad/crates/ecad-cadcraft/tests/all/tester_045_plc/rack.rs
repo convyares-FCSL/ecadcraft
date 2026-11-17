@@ -206,7 +206,17 @@ fn c_rack_missing_from_a_hand_made_file() {
     let (mut p, c) = with_cards(0x7045_c002);
     raw_setprop(&mut p.h, c["-A03"], "plc.rack", Some("0123456789abcdef0123456789abcdef"));
     raw_setprop(&mut p.h, c["-A04"], "plc.rack", Some(&c["-A05"].hex())); // a card, not a rack
-    raw_setprop(&mut p.h, c["-A05"], "plc.rack", Some("not hex at all"));
+    // Design 072 §3: a station that is no longer one (a device retyped by hand).
+    let d = p.h.doc();
+    let gone = c["-A06"];
+    let mut was = d.devices[&gone].clone();
+    was.device_type = ecad_model::DeviceType::PlcRack(ecad_model::plc::PlcRack::default());
+    raw(&mut p.h, vec![ecad_model::Op::ModifyDevice { id: gone, before: d.devices[&gone].clone(), after: was }]);
+    raw_setprop(&mut p.h, c["-A05"], "plc.rack", Some(&gone.hex()));
+    let d = p.h.doc();
+    let mut card = d.devices[&gone].clone();
+    card.device_type = ecad_cadcraft::plc::types::of_card(ecad_cadcraft::plc::rack::CardType::Dq);
+    raw(&mut p.h, vec![ecad_model::Op::ModifyDevice { id: gone, before: d.devices[&gone].clone(), after: card }]);
     let mut h = reload(p.h, "rack missing", 0x7045_c102);
     let rows = checks_of(&mut h, "rack-missing");
     assert_eq!(rows.len(), 3, "{rows:?}");
@@ -311,7 +321,12 @@ fn fp1_deleting_a_rack_takes_its_cards_out_in_one_transaction() {
         assert_eq!((prop(&d, *x, "plc.rack"), prop(&d, *x, "plc.slot")), (None, None), "{}", tag(&d, *x));
     }
     let ops = p.h.p(|p| p.ledger.log().last().map(|t| t.ops.clone())).unwrap_or_default();
-    let cleared = ops.iter().filter(|o| matches!(o, Op::SetProperty { key, after: None, .. } if key == "plc.rack")).count();
+    let cleared = ops
+        .iter()
+        .filter(
+            |o| matches!(o, Op::ModifyDevice { after, .. } if matches!(&after.device_type, ecad_model::DeviceType::PlcModule(m) if m.rack.is_none())),
+        )
+        .count();
     assert_eq!(cleared, 6, "the same transaction clears each card's key");
     let e = echo(&p.h, 3);
     assert!(e.contains("Deleted -A01; 6 cards are now in no rack."), "{e}");
@@ -410,7 +425,10 @@ fn registry_a_entries() {
     }
     p.h.run("setprop", json!({"component": c["-A04"].hex(), "key": "plc.channels", "value": "8"})).unwrap();
     step(&mut p.h, "setdefault", json!({"key": "plc.di.channels", "level": "project", "value": 32}));
-    assert_eq!(slot_row(&mut p.h, "-A03").and_then(|r| num(&r["channels"])), Some(32));
+    // Design 072 §3: a placed card keeps its count; a new one takes the project's.
+    assert_eq!(slot_row(&mut p.h, "-A03").and_then(|r| num(&r["channels"])), Some(16));
+    let v = place_card(&mut p.h, "plcdi", 460.0, json!({}));
+    assert_eq!(prop(&p.h.doc(), id(&v, "component"), "plc.channels").as_deref(), Some("32"));
     assert_eq!(slot_row(&mut p.h, "-A04").and_then(|r| num(&r["channels"])), Some(8), "own value kept");
     step(&mut p.h, "setdefault", json!({"key": "plc.slot.first", "level": "object", "component": p.rack.hex(), "value": "0"}));
     let v = place_card(&mut p.h, "plcdq", 500.0, json!({}));
@@ -441,11 +459,10 @@ fn t_hostile_slots_racks_and_captions() {
     for v in [json!(0), json!(1000), json!(-5), json!("many")] {
         survives(&mut p.h, "setdefault", json!({"key": "plc.slots", "level": "object", "component": p.rack.hex(), "value": v}));
     }
-    // A card naming itself, and a rack naming a rack.
+    // A card naming itself; the largest slot and count the module holds.
     raw_setprop(&mut p.h, c["-A03"], "plc.rack", Some(&c["-A03"].hex()));
-    raw_setprop(&mut p.h, p.rack, "plc.rack", Some(&p.rack.hex()));
-    raw_setprop(&mut p.h, c["-A04"], "plc.slot", Some("99999999999999999999"));
-    raw_setprop(&mut p.h, c["-A05"], "plc.channels", Some("4294967296"));
+    raw_setprop(&mut p.h, c["-A04"], "plc.slot", Some("999"));
+    raw_setprop(&mut p.h, c["-A05"], "plc.channels", Some("256"));
     let mut h = reload(p.h, "hostile a", 0x7045_ae101);
     read_everything(&mut h);
     survives(&mut h, "plcslot", json!({"card": "zz", "slot": 1}));

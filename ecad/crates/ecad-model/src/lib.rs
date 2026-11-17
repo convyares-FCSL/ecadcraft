@@ -42,6 +42,7 @@ pub mod links;
 pub mod merge;
 pub mod numbering;
 pub mod op;
+pub mod plc;
 pub mod prefix;
 pub mod sheet;
 pub mod strict;
