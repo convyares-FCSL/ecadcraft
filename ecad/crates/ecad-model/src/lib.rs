@@ -28,6 +28,7 @@ pub mod derive;
 mod dev;
 pub mod diff;
 pub mod doc;
+pub mod effect;
 pub mod error;
 pub mod geom;
 pub mod id;
@@ -46,6 +47,7 @@ pub mod tag;
 pub mod text;
 pub mod title_block;
 pub mod units;
+pub mod view;
 pub mod wiring;
 pub mod words;
 
