@@ -10,19 +10,19 @@ use crate::common::{H, id};
 use cadcraft_engine::Session;
 use ecad_cadcraft::outputs::{BomView, Group, Outputs};
 use ecad_cadcraft::{Persistence, ProjectHandle};
-use ecad_model::ComponentId;
+use ecad_model::DeviceId;
 use serde_json::{Value, json};
 
 /// The fixture of design 047 §12: contactors -K03…-K06, an 8-way fuse bank -F01, a strip -X05
 /// with six positions (fuse positions 1, 5 and 6), project location +CP1, every device set to +CP1.
 struct F {
     h: H,
-    k: Vec<ComponentId>,
-    f01: ComponentId,
-    x05: ComponentId,
+    k: Vec<DeviceId>,
+    f01: DeviceId,
+    x05: DeviceId,
 }
 
-fn place(h: &mut H, params: Value) -> ComponentId {
+fn place(h: &mut H, params: Value) -> DeviceId {
     id(&h.run("place", params).unwrap(), "component")
 }
 
@@ -44,7 +44,7 @@ fn fixture(seed: u64) -> F {
     }
     // Brief 052: the project's location only proposes; the devices store +CP1.
     let all: Vec<String> = k.iter().chain([&f01, &x05]).map(|c| c.hex()).collect();
-    h.run("setlocation", json!({"components": all, "value": "+CP1"})).unwrap();
+    h.run("setlocation", json!({"devices": all, "value": "+CP1"})).unwrap();
     F { h, k, f01, x05 }
 }
 
@@ -86,7 +86,7 @@ fn same_as_built(h: &mut H) {
     assert_eq!(a, b);
 }
 
-fn hexes(cs: &[ComponentId]) -> Vec<String> {
+fn hexes(cs: &[DeviceId]) -> Vec<String> {
     cs.iter().map(|c| c.hex()).collect()
 }
 
@@ -144,7 +144,7 @@ fn items_add_up_in_metres_and_undo() {
 #[test]
 fn items_refuse_tags_and_lines_and_edit_and_delete() {
     let mut f = fixture(0x47_03);
-    let item: ComponentId = id(&f.h.run("bomitem", json!({"description": "DIN rail 35x7.5", "qty": 2, "unit": "m"})).unwrap(), "item");
+    let item: DeviceId = id(&f.h.run("bomitem", json!({"description": "DIN rail 35x7.5", "qty": 2, "unit": "m"})).unwrap(), "item");
     let head = f.h.head();
     for (key, value, words) in [
         ("tag", json!("X9"), "An item has no tag"),
@@ -168,11 +168,11 @@ fn items_refuse_tags_and_lines_and_edit_and_delete() {
     assert_eq!((r["qty"].clone(), r["unit"].clone(), r["location"].clone()), (json!(3), json!("pcs"), json!("+CP2")));
     same_as_built(&mut f.h);
     f.h.run("bomitem", json!({"item": item.hex(), "delete": true})).unwrap();
-    assert!(!f.h.doc().components.contains_key(&item));
+    assert!(!f.h.doc().devices.contains_key(&item));
     assert!(bom(&mut f.h, json!({})).iter().all(|r| r["description"] != "DIN rail 35x7.5"));
     same_as_built(&mut f.h);
     f.h.cmdline("u");
-    assert!(f.h.doc().components.contains_key(&item));
+    assert!(f.h.doc().devices.contains_key(&item));
     same_as_built(&mut f.h);
 }
 
@@ -182,10 +182,10 @@ fn one_line_on_four_devices_is_one_row() {
     let mut f = fixture(0x47_04);
     let head = f.h.head();
     let v =
-        f.h.run("partline", json!({"components": hexes(&f.k), "add": {"part_number": "AB-1NO", "maker": "Generic", "description": "Aux block 1NO"}}))
+        f.h.run("partline", json!({"devices": hexes(&f.k), "add": {"part_number": "AB-1NO", "maker": "Generic", "description": "Aux block 1NO"}}))
             .unwrap();
     assert_eq!(f.h.head(), head + 1, "one transaction");
-    assert_eq!(v["components"].as_array().unwrap().len(), 4);
+    assert_eq!(v["devices"].as_array().unwrap().len(), 4);
     let label = f.h.p(|p| p.ledger.log().last().map(|t| t.label.clone())).unwrap();
     assert_eq!(label, "Add part line");
     let rows = bom(&mut f.h, json!({}));
@@ -204,7 +204,7 @@ fn one_line_on_four_devices_is_one_row() {
     assert_eq!(row(&bom(&mut f.h, json!({})), "AB-1NO")["qty"], 4);
     // Remove takes every key of the line.
     f.h.run("partline", json!({"component": f.k[3].hex(), "line": 1, "remove": true})).unwrap();
-    assert!(f.h.doc().components[&f.k[3]].properties.keys().all(|k| !k.starts_with("part.")));
+    assert!(f.h.doc().devices[&f.k[3]].properties.keys().all(|k| !k.starts_with("part.")));
     assert_eq!(row(&bom(&mut f.h, json!({})), "AB-1NO")["tags"], "-K03, -K04, -K05");
     same_as_built(&mut f.h);
     // A device's own part merges with another device's line of that part (Q6).
@@ -263,7 +263,7 @@ fn fuse_inserts_count_per_fuse_and_uncovered_fuses_are_checked() {
     assert!(bom(&mut f.h, json!({})).iter().any(|r| r["part_number"] == "FU-5T" && r["tags"] == "-X05"), "the strip's terminals use it");
     let v = f.h.run("article", json!({"part_number": "FU-5T", "article_number": "A-0400"})).unwrap();
     assert_eq!(v["message"], "Set A-0400 on 2 parts (1 line, 1 strip part).", "{v}");
-    assert_eq!(f.h.doc().components[&f.x05].properties.get("article_number").map(String::as_str), Some("A-0400"));
+    assert_eq!(f.h.doc().devices[&f.x05].properties.get("article_number").map(String::as_str), Some("A-0400"));
     same_as_built(&mut f.h);
 }
 
@@ -274,7 +274,7 @@ fn renumbering_a_strip_keeps_its_part_lines_for() {
     let mut f = fixture(0x47_0a);
     f.h.run("partline", json!({"component": f.x05.hex(), "add": {"part_number": "FU-6T", "description": "Fuse 6A T 5x20", "for": "1, 5-6"}}))
         .unwrap();
-    let for_of = |h: &mut H| h.doc().components[&f.x05].properties.get("part.1.for").cloned();
+    let for_of = |h: &mut H| h.doc().devices[&f.x05].properties.get("part.1.for").cloned();
     let pv = f.h.run("renumber", json!({"kind": "terminals", "scope": "all", "start": 3, "preview": true})).unwrap();
     assert!(pv["accessories"].to_string().contains("-X05: part line 1 for 1, 5-6 \u{2192} 3, 7-8"), "{pv}");
     let head = f.h.head();
@@ -295,7 +295,7 @@ fn renumbering_a_strip_keeps_its_part_lines_for() {
 fn strip_parts_take_article_numbers_from_their_own_level() {
     let mut f = fixture(0x47_0e);
     f.h.run("setdefault", json!({"key": "bom.column.article", "level": "project", "value": "on"})).unwrap();
-    let set = |h: &mut H, c: ComponentId, key: &str, value: &str| {
+    let set = |h: &mut H, c: DeviceId, key: &str, value: &str| {
         h.run("setprop", json!({"component": c.hex(), "key": key, "value": value})).unwrap();
     };
     set(&mut f.h, f.x05, "part_number", "TB-4");
@@ -345,7 +345,7 @@ fn strip_parts_take_article_numbers_from_their_own_level() {
     assert_eq!(v["message"], "Set A-0210 on 1 part (1 strip part).", "{v}");
     assert_eq!(f.h.doc().properties.get("strip_end_plate_article_number").map(String::as_str), Some("A-0210"));
     f.h.run("article", json!({"part_number": "jb-1", "article_number": "A-0310"})).unwrap();
-    assert_eq!(f.h.doc().components[&f.x05].properties.get("link.1.article_number").map(String::as_str), Some("A-0310"));
+    assert_eq!(f.h.doc().devices[&f.x05].properties.get("link.1.article_number").map(String::as_str), Some("A-0310"));
     let rows = bom(&mut f.h, json!({}));
     assert_eq!(row(&rows, "EP-1")["article_number"], "A-0210");
     assert_eq!(row(&rows, "JB-1")["article_number"], "A-0310");
@@ -357,7 +357,7 @@ fn strip_parts_take_article_numbers_from_their_own_level() {
 #[test]
 fn article_numbers_column_command_and_conflict() {
     let mut f = fixture(0x47_06);
-    f.h.run("partline", json!({"components": hexes(&f.k), "add": {"part_number": "AB-1NO", "maker": "Generic", "description": "Aux block 1NO"}}))
+    f.h.run("partline", json!({"devices": hexes(&f.k), "add": {"part_number": "AB-1NO", "maker": "Generic", "description": "Aux block 1NO"}}))
         .unwrap();
     let rows = bom(&mut f.h, json!({}));
     assert!(row(&rows, "AB-1NO").get("article_number").is_none());
@@ -440,10 +440,10 @@ fn kits_and_the_nested_layout() {
     assert_eq!(v["lines"], json!([1, 2]));
     let label = f.h.p(|p| p.ledger.log().last().map(|t| t.label.clone())).unwrap();
     assert_eq!(label, "Add kit Starter set");
-    let props = f.h.doc().components[&f.k[0]].properties.clone();
+    let props = f.h.doc().devices[&f.k[0]].properties.clone();
     assert_eq!(props.get("part.2.kit").map(String::as_str), Some("Starter set"));
     // The other contactors take the same suppressor line, so flat merges it.
-    f.h.run("partline", json!({"components": hexes(&f.k[1..]), "add": {"part_number": "SUP-1", "maker": "Generic", "description": "Suppressor"}}))
+    f.h.run("partline", json!({"devices": hexes(&f.k[1..]), "add": {"part_number": "SUP-1", "maker": "Generic", "description": "Suppressor"}}))
         .unwrap();
     assert_eq!(row(&bom(&mut f.h, json!({})), "SUP-1")["qty"], 4);
     same_as_built(&mut f.h);
@@ -475,13 +475,13 @@ fn missing_for_names_and_bad_keys_are_checked() {
         let c = f.f01;
         let ops = vec![
             ecad_model::Op::SetProperty {
-                object: ecad_model::ObjectRef::Component(c),
+                object: ecad_model::ObjectRef::Device(c),
                 key: "part.1.for".into(),
                 before: Some("1,7,8".into()),
                 after: Some("1,9".into()),
             },
             ecad_model::Op::SetProperty {
-                object: ecad_model::ObjectRef::Component(c),
+                object: ecad_model::ObjectRef::Device(c),
                 key: "part.100.maker".into(),
                 before: None,
                 after: Some("X".into()),
@@ -503,7 +503,7 @@ fn missing_for_names_and_bad_keys_are_checked() {
     });
     assert_eq!(fixes[0].0, "Remove 9");
     f.h.run(fixes[0].1, fixes[0].2.clone()).unwrap();
-    assert_eq!(f.h.doc().components[&f.f01].properties.get("part.1.for").map(String::as_str), Some("1"));
+    assert_eq!(f.h.doc().devices[&f.f01].properties.get("part.1.for").map(String::as_str), Some("1"));
     assert!(checks(&mut f.h, "part-for-missing").is_empty());
 }
 
@@ -512,7 +512,7 @@ fn missing_for_names_and_bad_keys_are_checked() {
 #[test]
 fn a_part_line_edit_recomputes_one_device() {
     let mut f = fixture(0x47_0b);
-    f.h.run("partline", json!({"components": hexes(&f.k), "add": {"part_number": "AB-1NO"}})).unwrap();
+    f.h.run("partline", json!({"devices": hexes(&f.k), "add": {"part_number": "AB-1NO"}})).unwrap();
     let _ = f.h.cfg(|p| p.outputs().bom_count(Group::Location));
     f.h.run("partline", json!({"component": f.k[1].hex(), "line": 1, "set": {"part_number": "AB-1NC"}})).unwrap();
     let work = f.h.cfg(|p| p.outputs().last_work);
@@ -549,9 +549,7 @@ fn hostile_values_are_refused_in_words() {
         let e = f.h.run("setprop", json!({"component": k, "key": key, "value": "X"})).unwrap_err();
         assert!(e.contains("is not a part line key"), "{key}: {e}");
     }
-    for bad in
-        [json!({"components": [k], "add": []}), json!({"component": k, "add": {"nope": 1}}), json!({"component": k, "line": 0, "remove": true})]
-    {
+    for bad in [json!({"devices": [k], "add": []}), json!({"component": k, "add": {"nope": 1}}), json!({"component": k, "line": 0, "remove": true})] {
         assert!(f.h.run("partline", bad).is_err());
     }
     let many: Vec<Value> = (0..21).map(|i| json!({"part_number": format!("P{i}")})).collect();
@@ -659,17 +657,17 @@ fn the_bom_page_shows_units_articles_and_nested_lines() {
 #[test]
 fn an_item_value_that_does_not_parse_is_checked() {
     let mut f = fixture(0x47_0f);
-    let item: ComponentId = id(&f.h.run("bomitem", json!({"description": "Cable tray", "qty": 2})).unwrap(), "item");
+    let item: DeviceId = id(&f.h.run("bomitem", json!({"description": "Cable tray", "qty": 2})).unwrap(), "item");
     f.h.cfg(|p| {
         let ops = vec![
             ecad_model::Op::SetProperty {
-                object: ecad_model::ObjectRef::Component(item),
+                object: ecad_model::ObjectRef::Device(item),
                 key: "qty".into(),
                 before: Some("2".into()),
                 after: Some("3.6".into()),
             },
             ecad_model::Op::SetProperty {
-                object: ecad_model::ObjectRef::Component(item),
+                object: ecad_model::ObjectRef::Device(item),
                 key: "unit".into(),
                 before: None,
                 after: Some("yards".into()),

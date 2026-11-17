@@ -20,7 +20,7 @@
 
 use cadcraft_engine::doc::EntityKind;
 use ecad_model::book::Book;
-use ecad_model::{ComponentId, FolderId, PageId};
+use ecad_model::{DeviceId, FolderId, PageId};
 use serde_json::{Value, json};
 
 use crate::common::tmp_dir;
@@ -108,7 +108,7 @@ fn sheet_text(h: &mut H, page: PageId) -> String {
     ecad_model::sheet::sheet_of(&d, page).text()
 }
 
-fn coil(h: &mut H, x: f64) -> ComponentId {
+fn coil(h: &mut H, x: f64) -> DeviceId {
     id(&h.run("place", json!({"symbol": "coil", "at": [x, 100]})).unwrap(), "component")
 }
 
@@ -133,12 +133,12 @@ fn ac1_the_page_catalogue_lists_six_built_ins_with_their_fields() {
     let ids: Vec<String> = rows.iter().map(|r| s(&r["id"])).collect();
     assert_eq!(ids.len(), 7, "{ids:?}: the six of board 5.02 and Plain (owner, fix round)");
     for (id, name, holds, zones) in [
-        ("front", "Cover sheet", "front", "off"),
-        ("schematic", "Schematic", "none", "on"),
-        ("network", "Network", "none", "on"),
-        ("singleline", "Single-line", "none", "on"),
-        ("panel", "Panel layout", "none", "off"),
-        ("report", "Report", "report", "off"),
+        ("front", "Cover sheet", "front", "no"),
+        ("schematic", "Schematic", "none", "yes"),
+        ("network", "Network", "none", "yes"),
+        ("singleline", "Single-line", "none", "yes"),
+        ("panel", "Panel layout", "none", "no"),
+        ("report", "Report", "report", "no"),
     ] {
         let r = style_row(&mut h, "page", id);
         assert_eq!(s(&r["name"]), name, "{id}");

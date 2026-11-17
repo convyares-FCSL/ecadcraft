@@ -23,7 +23,7 @@ use crate::common::{H, id, pts};
 use crate::common::{close_all, reopen};
 use ecad_cadcraft::locations::{self, Source};
 use ecad_cadcraft::outputs::{Cell, Group, Outputs, Table, csv};
-use ecad_model::{ComponentId, Document, ItemId, ItemKind, PageId, Primitive, Pt, Subject};
+use ecad_model::{DeviceId, Document, ItemId, ItemKind, PageId, Primitive, Pt, Subject};
 use serde_json::{Value, json};
 
 // ---------------------------------------------------------------- helpers
@@ -52,33 +52,33 @@ impl Rng {
 
 const LOCS: &[&str] = &["+A", "+B", "+CP1", "+CP10", "+JB1", "+FIELD"];
 
-fn devices(doc: &Document) -> Vec<ComponentId> {
-    doc.components.keys().copied().filter(|c| locations::is_device(doc, *c)).collect()
+fn devices(doc: &Document) -> Vec<DeviceId> {
+    doc.devices.keys().copied().filter(|c| locations::is_device(doc, *c)).collect()
 }
 
 /// Every box: (component, page, outline item, vertex count).
-fn boxes(doc: &Document) -> Vec<(ComponentId, PageId, ItemId, usize)> {
+fn boxes(doc: &Document) -> Vec<(DeviceId, PageId, ItemId, usize)> {
     doc.page_order.iter().flat_map(|p| locations::boxes_on(doc, *p)).map(|b| (b.component, b.page, b.item, b.vertices.len())).collect()
 }
 
 /// Each device's own `location` property.
-fn own(doc: &Document) -> BTreeMap<ComponentId, Option<String>> {
-    devices(doc).into_iter().map(|c| (c, doc.components[&c].properties.get("location").cloned())).collect()
+fn own(doc: &Document) -> BTreeMap<DeviceId, Option<String>> {
+    devices(doc).into_iter().map(|c| (c, doc.devices[&c].properties.get("location").cloned())).collect()
 }
 
 /// The page of a component's first representation.
-fn page_of(doc: &Document, c: ComponentId) -> Option<PageId> {
-    doc.representations_of(Subject::Component(c)).next().map(|(_, r)| r.page)
+fn page_of(doc: &Document, c: DeviceId) -> Option<PageId> {
+    doc.representations_of(Subject::Device(c)).next().map(|(_, r)| r.page)
 }
 
-fn place(h: &mut H, symbol: &str, at: (f64, f64)) -> ComponentId {
+fn place(h: &mut H, symbol: &str, at: (f64, f64)) -> DeviceId {
     let r = h.run("place", json!({"symbol": symbol, "at": [at.0, at.1]})).unwrap();
     id(&r, "component")
 }
 
 /// What device `c`'s go-to symbol's context proposes (design 052 §5.3): a box, the page, the
 /// project, or none.
-fn context(doc: &Document, c: ComponentId) -> locations::Located {
+fn context(doc: &Document, c: DeviceId) -> locations::Located {
     let r = ecad_cadcraft::reps::goto(doc, c, None).unwrap();
     locations::rep_context(doc, &doc.representations[&r], &mut locations::BoxCache::default())
 }
@@ -261,7 +261,7 @@ fn step(f: &mut Fx, r: &mut Rng, act: Act) -> Result<Value, String> {
         }
         Act::DevMove => {
             let Some(c) = r.pick(&devices(&doc)) else { return Err("no device".into()) };
-            let reps: Vec<PageId> = doc.representations_of(Subject::Component(c)).map(|(_, r)| r.page).collect();
+            let reps: Vec<PageId> = doc.representations_of(Subject::Device(c)).map(|(_, r)| r.page).collect();
             let Some(p) = r.pick(&reps) else { return Err("no rep".into()) };
             f.h.activate(p);
             let handles = f.h.rep_handles(p, c);
@@ -294,7 +294,7 @@ fn step(f: &mut Fx, r: &mut Rng, act: Act) -> Result<Value, String> {
                 f.h.run("setprop", json!({"component": c.hex(), "key": "location", "value": v}))
             } else {
                 let some: Vec<String> = all.iter().filter(|_| r.below(2) == 0).map(|c| c.hex()).collect();
-                f.h.run("setprop", json!({"components": some, "key": "location", "value": v}))
+                f.h.run("setprop", json!({"devices": some, "key": "location", "value": v}))
             }
         }
         Act::PageLoc => {
@@ -323,7 +323,7 @@ fn step(f: &mut Fx, r: &mut Rng, act: Act) -> Result<Value, String> {
             f.h.activate(p);
             let mut handles = vec![f.h.handle_of(p, item).hex()];
             for c in devices(&doc) {
-                if doc.representations_of(Subject::Component(c)).any(|(_, x)| x.page == p) && r.below(2) == 0 {
+                if doc.representations_of(Subject::Device(c)).any(|(_, x)| x.page == p) && r.below(2) == 0 {
                     handles.extend(f.h.rep_handles(p, c));
                 }
             }
@@ -440,7 +440,7 @@ fn a_page_location_set_reaches_devices_on_that_page_with_none() {
 // relabelled by `setprop`); the tests of the others guard the same rule.
 
 /// A coil on page 1 (its main symbol) and its contact on page 2: (harness, page 1, page 2, coil).
-fn two_page_device(seed: u64) -> (H, PageId, PageId, ComponentId) {
+fn two_page_device(seed: u64) -> (H, PageId, PageId, DeviceId) {
     let mut h = H::new(seed);
     let p1 = h.first_page();
     let k = place(&mut h, "coil", (100.0, 100.0));
@@ -567,7 +567,7 @@ fn rotating_mirroring_and_scaling_a_box_with_its_devices_keeps_them_inside() {
     let k2 = place(&mut h, "coil", (130.0, 110.0));
     let out = place(&mut h, "coil", (300.0, 200.0));
     let r = h.run("locationbox", json!({"location": "+JB1", "corners": [[80, 80], [160, 140]]})).unwrap();
-    let (bc, item): (ComponentId, ItemId) = (id(&r, "component"), id(&r, "item"));
+    let (bc, item): (DeviceId, ItemId) = (id(&r, "component"), id(&r, "item"));
     let stored = own(&h.doc());
     let sel = |h: &mut H| {
         let mut v = vec![h.handle_of(page, item).hex()];
@@ -609,13 +609,13 @@ fn erasing_a_box_with_its_devices_and_undoing() {
     let page = h.first_page();
     let k1 = place(&mut h, "coil", (100.0, 100.0));
     let r = h.run("locationbox", json!({"location": "+JB1", "corners": [[80, 80], [160, 140]]})).unwrap();
-    let (bc, item): (ComponentId, ItemId) = (id(&r, "component"), id(&r, "item"));
+    let (bc, item): (DeviceId, ItemId) = (id(&r, "component"), id(&r, "item"));
     let before = h.doc();
     let mut handles = vec![h.handle_of(page, item).hex()];
     handles.extend(h.rep_handles(page, k1));
     h.run("erase", json!({"handles": handles})).unwrap();
     let doc = h.doc();
-    assert!(!doc.components.contains_key(&bc) && !doc.components.contains_key(&k1));
+    assert!(!doc.devices.contains_key(&bc) && !doc.devices.contains_key(&k1));
     assert!(!doc.items.contains_key(&item), "the outline goes with the box");
     verify(&mut h, "erase both");
     h.run("u", Value::Null).unwrap();
@@ -632,7 +632,7 @@ fn erasing_the_box_label_alone_leaves_no_half_box() {
     let page = h.first_page();
     let k1 = place(&mut h, "coil", (100.0, 100.0));
     let r = h.run("locationbox", json!({"location": "+JB1", "corners": [[80, 80], [160, 140]]})).unwrap();
-    let (bc, item): (ComponentId, ItemId) = (id(&r, "component"), id(&r, "item"));
+    let (bc, item): (DeviceId, ItemId) = (id(&r, "component"), id(&r, "item"));
     let label = h
         .pv(|p, pg| pg.entities_of(p, page))
         .into_iter()
@@ -641,7 +641,7 @@ fn erasing_the_box_label_alone_leaves_no_half_box() {
     let Some(label) = label else { panic!("no +JB1 label drawn") };
     let res = h.run("erase", json!({"handles": [label.hex()]}));
     let doc = h.doc();
-    let gone = !doc.components.contains_key(&bc);
+    let gone = !doc.devices.contains_key(&bc);
     assert_eq!(gone, !doc.items.contains_key(&item), "box and outline go together: {res:?}");
     if !gone {
         assert_eq!(locations::resolve(&doc, k1).value, s("+JB1"), "{res:?}");
@@ -751,7 +751,7 @@ fn bom_csv_survives_hostile_values_end_to_end() {
     for cell in &rows[1] {
         assert!(!cell.starts_with(['=', '+', '-', '@']), "unsafe cell {cell:?} in {text:?}");
     }
-    let stored = h.doc().components[&k].properties.get("description").cloned();
+    let stored = h.doc().devices[&k].properties.get("description").cloned();
     if let Some(d) = stored {
         assert!(rows[1].iter().any(|c| c.trim_start_matches('\'') == d.trim()), "{rows:?}");
     }
@@ -1078,7 +1078,7 @@ fn merging_a_branch_with_a_box_edited_on_both_sides() {
     let k1 = place(&mut h, "coil", (100.0, 100.0));
     let k2 = place(&mut h, "coil", (250.0, 100.0));
     let r = h.run("locationbox", json!({"location": "+JB1", "corners": [[80, 80], [160, 140]]})).unwrap();
-    let (bc, item): (ComponentId, ItemId) = (id(&r, "component"), id(&r, "item"));
+    let (bc, item): (DeviceId, ItemId) = (id(&r, "component"), id(&r, "item"));
     h.run("saveas", json!({"path": d.path("m.ecad")})).unwrap();
     // Branch: move the box over k2 and relabel it.
     raw(&mut h, "branch", json!({"name": "B", "switch": true})).unwrap();

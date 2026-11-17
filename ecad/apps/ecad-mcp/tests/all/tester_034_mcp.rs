@@ -8,7 +8,7 @@
 
 use ecad_cadcraft::symbols::{self, STARTER_LIBRARY};
 use ecad_mcp::{EcadMcp, Options, policy};
-use ecad_model::{ComponentId, ObjectRef, Op};
+use ecad_model::{DeviceId, ObjectRef, Op};
 use serde_json::{Value, json};
 
 use crate::common::assert_one_by_agent;
@@ -77,8 +77,8 @@ fn labels(v: &Value) -> Vec<String> {
     v["terminals"].as_array().unwrap().iter().map(|t| t["label"].as_str().unwrap().to_string()).collect()
 }
 
-fn cid(v: &Value) -> ComponentId {
-    ComponentId::from(u128::from_str_radix(v["component"].as_str().unwrap(), 16).unwrap())
+fn cid(v: &Value) -> DeviceId {
+    DeviceId::from(u128::from_str_radix(v["component"].as_str().unwrap(), 16).unwrap())
 }
 
 fn embeds(ops: &[Op]) -> Vec<&Op> {
@@ -86,7 +86,7 @@ fn embeds(ops: &[Op]) -> Vec<&Op> {
 }
 
 fn sets(ops: &[Op], key: &str, value: &str) -> bool {
-    ops.iter().any(|o| matches!(o, Op::SetProperty { object: ObjectRef::Component(_), key: k, after: Some(a), .. } if k == key && a == value))
+    ops.iter().any(|o| matches!(o, Op::SetProperty { object: ObjectRef::Device(_), key: k, after: Some(a), .. } if k == key && a == value))
 }
 
 /// AC 7, §12 items 1–4.
@@ -122,7 +122,7 @@ fn every_family_places_by_the_agent_then_refused_with_writes_off() {
                 let tag = format!("-{prefix}{:02}", *k);
                 assert_eq!(v["tag"], json!(tag), "{key}: {v}");
                 assert_eq!(&labels(&v), want, "{key}: labels");
-                let props = c.doc().components[&cid(&v)].properties.clone();
+                let props = c.doc().devices[&cid(&v)].properties.clone();
                 // Brief 044 (design 044 §4.6): a connector half's device is described `Connector`.
                 let want = if matches!(s.kind, ecad_cadcraft::symbols::Kind::ConnectorHalf { .. }) { "Connector" } else { s.name };
                 assert_eq!(props.get("description").map(String::as_str), Some(want), "{key}: default description");
@@ -136,7 +136,7 @@ fn every_family_places_by_the_agent_then_refused_with_writes_off() {
             }
         }
         let (fb, rcbo) = (fb.unwrap(), rcbo.unwrap());
-        let fb_tag = c.doc().components[&fb].properties.get("tag").cloned().unwrap();
+        let fb_tag = c.doc().devices[&fb].properties.get("tag").cloned().unwrap();
 
         // §12 item 2: change-over join, each by the agent.
         let kv = c.exec("place", json!({"symbol": "coil", "at": [0, 2000]}));

@@ -5,6 +5,6 @@
 # field's built-in, [styles.<catalogue>.<id>] a built-in style's values.
 
 [values]
-"bom.column.article" = "off"
+"bom.column.article" = "no"
 "bom.lines" = "flat"
 "bom.item.unit" = "pcs"

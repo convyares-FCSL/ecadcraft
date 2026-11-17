@@ -740,7 +740,7 @@ fn a_read_only_project_lists_and_switches_but_writes_nothing() {
 // ---------------------------------------------------------------- Devices tab (after brief 018)
 
 /// A coil `-K01` on page 1 and its NO contact on page 2 (column A), page 1 shown, Devices tab open.
-pub(crate) fn devices_fixture(h: &mut Harness<'static, App>) -> (ecad_model::ComponentId, PageId, PageId) {
+pub(crate) fn devices_fixture(h: &mut Harness<'static, App>) -> (ecad_model::DeviceId, PageId, PageId) {
     h.state_mut().cad.session.viewport_px = (1280.0, 800.0);
     let t = h.state_mut();
     let page1 = {
@@ -762,7 +762,7 @@ pub(crate) fn devices_fixture(h: &mut Harness<'static, App>) -> (ecad_model::Com
     h.state_mut().set_workspace(ecad_app::shell::Workspace::Lists);
     h.state_mut().shell.lists = ecad_app::shell::ListsView::Devices;
     h.run_steps(3);
-    let c = ecad_model::ComponentId(u128::from_str_radix(&coil, 16).unwrap());
+    let c = ecad_model::DeviceId(u128::from_str_radix(&coil, 16).unwrap());
     (c, page1, page2)
 }
 
@@ -794,7 +794,7 @@ fn devices_tab_goes_to_a_symbol_and_filters() {
     let p = t.project().unwrap().clone();
     let mapped = p.read(&mut t.cad.session, |p, _| {
         let doc = p.ledger.document();
-        let rep = doc.representations_of(ecad_model::Subject::Component(coil)).find(|(_, r)| r.page == page1).unwrap().0;
+        let rep = doc.representations_of(ecad_model::Subject::Device(coil)).find(|(_, r)| r.page == page1).unwrap().0;
         ecad_cadcraft::device_list::symbol_target(p, rep).unwrap().2
     });
     assert_eq!(selected, mapped.unwrap(), "exactly the coil's drawing is selected");
@@ -851,7 +851,7 @@ fn devices_tab_edits_a_property_in_one_transaction() {
     // taken; the merge joins the contact to -K01 in one step.
     ok(&mut h, r#"place {"symbol":"no","at":[0,40]}"#);
     h.run_steps(2);
-    let other = doc(&mut h).components.keys().copied().find(|c| *c != coil).unwrap();
+    let other = doc(&mut h).devices.keys().copied().find(|c| *c != coil).unwrap();
     let before = head(&mut h);
     h.state_mut().panel_action(project_panel::Action::SetDeviceProperty { component: other, key: "tag", value: "K01".into(), conflict: None });
     h.run_steps(2);
@@ -934,7 +934,7 @@ fn page_rows_and_find_symbol_are_read_only_when_their_inputs_change() {
         let s = &mut h.state_mut().search;
         s.open = true;
         s.query = "k".into();
-        s.picked = Some(ecad_app::search::Pick::Symbol("no"));
+        s.picked = Some(ecad_app::search::Pick::Symbol(ecad_cadcraft::symbols::StarterKey::No));
     }
     h.run_steps(3);
     let count = |h: &Harness<'static, App>| (h.state().panel.rebuilds, h.state().search.rebuilds);

@@ -31,7 +31,7 @@ fn cross_reference_commands_through_execute() {
     // The offer: one `setprop`, by the agent.
     c.exec("setprop", json!({"component": k1, "key": "contacts", "value": "3P+1NO+1NC"}));
     assert!(
-        matches!(&last_by_agent(&mut c)[..], [Op::SetProperty { object: ObjectRef::Component(_), key, after: Some(v), .. }] if key == "contacts" && v == "3P+1NO+1NC")
+        matches!(&last_by_agent(&mut c)[..], [Op::SetProperty { object: ObjectRef::Device(_), key, after: Some(v), .. }] if key == "contacts" && v == "3P+1NO+1NC")
     );
     // A join takes the offered labels.
     let no = c.exec("place", json!({"symbol": "no", "at": [100, 100], "device": k1}));

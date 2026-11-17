@@ -132,7 +132,7 @@ fn hostile_files_are_refused_with_their_error() {
 /// Unknown keys are listed up to a bound, then counted; good values beside them still load.
 #[test]
 fn unknown_keys_are_listed_then_counted() {
-    let mut text = String::from("[values]\n\"text.tag.show\" = \"off\"\n");
+    let mut text = String::from("[values]\n\"text.tag.show\" = \"no\"\n");
     for i in 0..10_000 {
         text.push_str(&format!("\"text.nothing_{i}\" = 1\n"));
     }
@@ -144,7 +144,7 @@ fn unknown_keys_are_listed_then_counted() {
         _ => None,
     });
     assert_eq!(more, Some(10_000 - MAX_LISTED));
-    assert_eq!(loaded.value(&defaults::text::TAG_SHOW), Some(Value::Choice("off")));
+    assert_eq!(loaded.value(&defaults::text::TAG_SHOW), Some(Value::Choice("no")));
 }
 
 /// A syntax error names its line and column and the byte span the parser reports.
@@ -179,7 +179,7 @@ fn every_safe_value_is_valid_where_the_kind_allows_one() {
     for e in data::entries() {
         let v = data::safe_value(e.kind);
         match e.kind {
-            Kind::Length { .. } | Kind::Number { .. } | Kind::Choice(_) | Kind::Style(_) => {
+            Kind::Length { .. } | Kind::Number { .. } | Kind::Choice(_) | Kind::Flag | Kind::Style(_) => {
                 assert!(e.accepts(&v), "{}: safe {v:?}", e.key);
             }
             Kind::Text { .. } | Kind::Parsed { .. } => assert_eq!(v, Value::Text("")),
@@ -292,7 +292,7 @@ fn the_record_writes_only_chosen_values() {
 /// like a company standard beside the project and in the working folder change nothing.
 #[test]
 fn a_project_reads_the_same_whatever_company_files_the_machine_holds() {
-    let company = "[values]\n\"text.wire_label.height\" = 5.0\n\"text.tag.show\" = \"off\"\n";
+    let company = "[values]\n\"text.wire_label.height\" = 5.0\n\"text.tag.show\" = \"no\"\n";
     let mut reads = Vec::new();
     for (i, files) in [&[][..], &["company.toml", "defaults.toml"][..], &["text.toml", "standard.toml"][..]].into_iter().enumerate() {
         let seed = 0x66_b6 + i as u64;

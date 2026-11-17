@@ -7,7 +7,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::{ComponentId, Document, IdAllocator, ObjectRef, Op};
+use ecad_model::{DeviceId, Document, IdAllocator, ObjectRef, Op};
 
 use crate::designations::{self, Aspect};
 use crate::error::CmdError;
@@ -61,16 +61,16 @@ pub fn property_for(a: Aspect, ty: Option<&str>) -> Result<String, CmdError> {
 }
 
 /// The components named, each once, in the order first named (tester 052, finding 4: a device
-/// named twice is set once, not refused): `components` when given, else `component`.
+/// named twice is set once, not refused): `devices` when given, else `component`.
 ///
 /// # Errors
 /// Neither given.
-pub fn objects(component: Option<ComponentId>, components: Option<Vec<ComponentId>>) -> Result<Vec<ComponentId>, CmdError> {
-    if let Some(cs) = components {
+pub fn objects(component: Option<DeviceId>, devices: Option<Vec<DeviceId>>) -> Result<Vec<DeviceId>, CmdError> {
+    if let Some(cs) = devices {
         let mut seen = BTreeSet::new();
         return Ok(cs.into_iter().filter(|c| seen.insert(*c)).collect());
     }
-    component.map(|c| vec![c]).ok_or(CmdError::input("`component` or `components` (hex ids) is required"))
+    component.map(|c| vec![c]).ok_or(CmdError::input("`component` or `devices` (hex ids) is required"))
 }
 
 /// What a planned set does.
@@ -91,7 +91,7 @@ pub struct Planned {
 /// # Errors
 /// No such object; an override on a function, a box or a strip; an override type that is not one;
 /// a box left with neither value; a code that is not valid.
-pub fn plan(doc: &Document, ids: &mut IdAllocator, objects: &[ComponentId], prop: &str, text: Option<&str>) -> Result<Planned, CmdError> {
+pub fn plan(doc: &Document, ids: &mut IdAllocator, objects: &[DeviceId], prop: &str, text: Option<&str>) -> Result<Planned, CmdError> {
     // The type's own refusals first: `location.head` and `location.<bogus>` are no aspect
     // property at all.
     if let Some(t) = prop.strip_prefix("location.") {
@@ -115,7 +115,7 @@ pub fn plan(doc: &Document, ids: &mut IdAllocator, objects: &[ComponentId], prop
         None => None,
     };
     for c in objects {
-        let comp = doc.components.get(c).ok_or(CmdError::refused("no such device"))?;
+        let comp = doc.devices.get(c).ok_or(CmdError::refused("no such device"))?;
         let is_box = crate::locations::is_box_component(comp);
         if prop != a.property() {
             if is_box {
@@ -138,7 +138,7 @@ pub fn plan(doc: &Document, ids: &mut IdAllocator, objects: &[ComponentId], prop
         }
         let before = comp.properties.get(prop).cloned();
         if before != key {
-            out.ops.push(Op::SetProperty { object: ObjectRef::Component(*c), key: prop.to_string(), before, after: key.clone() });
+            out.ops.push(Op::SetProperty { object: ObjectRef::Device(*c), key: prop.to_string(), before, after: key.clone() });
             out.changed += 1;
         }
     }
@@ -186,7 +186,7 @@ pub struct SetPlan {
 ///
 /// # Errors
 /// [`plan`]'s refusals.
-pub fn plan_set(doc: &Document, ids: &mut IdAllocator, objects: &[ComponentId], prop: &str, text: Option<&str>) -> Result<SetPlan, CmdError> {
+pub fn plan_set(doc: &Document, ids: &mut IdAllocator, objects: &[DeviceId], prop: &str, text: Option<&str>) -> Result<SetPlan, CmdError> {
     let a = aspect_of(prop)?;
     let mut planned = plan(doc, ids, objects, prop, text)?;
     let mut out = SetPlan { label: label(a, planned.value.as_ref(), planned.changed), ..Default::default() };
@@ -197,7 +197,7 @@ pub fn plan_set(doc: &Document, ids: &mut IdAllocator, objects: &[ComponentId], 
     out.ops = std::mem::take(&mut planned.ops);
     if let ([b], Some((key, code))) = (objects, planned.value.as_ref())
         && prop == a.property()
-        && let Some(lb) = doc.representations_of(ecad_model::Subject::Component(*b)).find_map(|(rid, r)| crate::locations::box_of_rep(doc, rid, r))
+        && let Some(lb) = doc.representations_of(ecad_model::Subject::Device(*b)).find_map(|(rid, r)| crate::locations::box_of_rep(doc, rid, r))
     {
         let spots = proposals::spots_inside(doc, &lb);
         let proposed = proposals::plan_change(doc, a, &spots, lb.key(a), key, code, &proposals::Mode::Propose);
@@ -243,7 +243,7 @@ pub fn answer(word: Option<&str>) -> Result<Answer, CmdError> {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Pick {
     /// Only these devices.
-    pub only: Option<Vec<ComponentId>>,
+    pub only: Option<Vec<DeviceId>>,
     /// Only this aspect.
     pub aspect: Option<Aspect>,
 }

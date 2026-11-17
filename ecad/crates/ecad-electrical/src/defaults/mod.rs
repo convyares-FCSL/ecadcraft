@@ -24,7 +24,7 @@
 //! in its catalogue.
 
 pub use data::{DefaultsError, Slot};
-use ecad_model::{ComponentId, ConductorId, Document, LengthUnit, PageId, ProjectSettings, RepresentationId, Subject};
+use ecad_model::{ConductorId, DeviceId, Document, LengthUnit, PageId, ProjectSettings, RepresentationId, Subject};
 
 /// The areas a key may start with (overseer ruling, 2026-11-12): the words of
 /// [`ecad_model::keys::Area::REGISTRY`], in its order (design 064 §3.3). Keys already approved
@@ -79,6 +79,9 @@ pub enum Kind {
     Number { min: f64, max: f64 },
     /// One of these words (compared without case; the registered spelling is returned).
     Choice(&'static [&'static str]),
+    /// A switch (design 072 F4): stored as exactly `yes` or `no`; typed as any word
+    /// [`ecad_model::words::flag`] reads.
+    Flag,
     /// Free text of 1 to this many characters, no control characters.
     Text { max_chars: usize },
     /// Text of 1 to `max_chars` characters, no control characters, that `parse` accepts (a
@@ -97,6 +100,8 @@ pub enum Value<'a> {
     Number(f64),
     /// One of a [`Kind::Choice`] entry's words.
     Choice(&'static str),
+    /// A [`Kind::Flag`] entry's switch.
+    Flag(bool),
     /// A [`Kind::Text`] or [`Kind::Parsed`] value.
     Text(&'a str),
 }
@@ -168,7 +173,7 @@ impl std::fmt::Debug for ProjectSource {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Scope {
     pub page: Option<PageId>,
-    pub component: Option<ComponentId>,
+    pub component: Option<DeviceId>,
     pub rep: Option<RepresentationId>,
     pub conductor: Option<ConductorId>,
 }
@@ -185,7 +190,7 @@ impl Scope {
     }
 
     /// A component (device), with no page.
-    pub fn component(component: ComponentId) -> Self {
+    pub fn component(component: DeviceId) -> Self {
         Scope { component: Some(component), ..Scope::default() }
     }
 
@@ -194,7 +199,7 @@ impl Scope {
     pub fn symbol(doc: &Document, rep: RepresentationId) -> Self {
         let r = doc.representations.get(&rep);
         let component = r.and_then(|r| match r.subject {
-            Subject::Component(c) => Some(c),
+            Subject::Device(c) => Some(c),
             _ => None,
         });
         Scope { page: r.map(|r| r.page), component, rep: Some(rep), conductor: None }
@@ -229,10 +234,21 @@ impl Resolved<'_> {
         }
     }
 
-    /// A word (a [`Kind::Choice`] entry); `""` otherwise.
+    /// The value of a [`Kind::Choice`] entry declared as `E::WORDS`; `None` for any other entry.
+    pub fn choice<E: ecad_model::Word>(&self) -> Option<E> {
+        E::parse(self.word())
+    }
+
+    /// Whether a [`Kind::Flag`] entry is on; `false` for any other entry.
+    pub fn flag(&self) -> bool {
+        self.value == Value::Flag(true)
+    }
+
+    /// A word (a [`Kind::Choice`] entry, or a flag's `yes`/`no`); `""` otherwise.
     pub fn word(&self) -> &'static str {
         match self.value {
             Value::Choice(w) => w,
+            Value::Flag(b) => ecad_model::words::flag_word(b),
             _ => "",
         }
     }
@@ -242,6 +258,7 @@ impl Resolved<'_> {
         match self.value {
             Value::Length(x) | Value::Number(x) => format!("{x}"),
             Value::Choice(w) => w.to_string(),
+            Value::Flag(b) => ecad_model::words::flag_word(b).to_string(),
             Value::Text(t) => t.to_string(),
         }
     }
@@ -253,6 +270,12 @@ impl Entry {
     /// ([`data::safe_value`]), never a crash.
     pub fn builtin(&self) -> Value<'static> {
         *self.slot.get_or_init(|| data::builtin_value(self))
+    }
+
+    /// Parse a typed value for this entry ([`parse_input`]): a flag in any of
+    /// [`ecad_model::words::flag`]'s words, everything else as [`Entry::parse`].
+    pub fn parse_input<'a>(&self, typed: &'a str) -> Option<Value<'a>> {
+        parse_input(self.kind, typed)
     }
 
     /// Parse a stored value for this entry. Anything that does not parse, is not finite, is out of
@@ -285,6 +308,7 @@ pub fn accepts(kind: Kind, value: &Value<'_>) -> bool {
         match (kind, value) {
             (Kind::Length { min, max }, Value::Length(x)) | (Kind::Number { min, max }, Value::Number(x)) => x.is_finite() && (min..=max).contains(x),
             (Kind::Choice(words), Value::Choice(w)) => words.contains(w),
+            (Kind::Flag, Value::Flag(_)) => true,
             (Kind::Text { .. } | Kind::Parsed { .. } | Kind::Style(_), Value::Text(t)) => parse_value(kind, t) == Some(Value::Text(t)),
             _ => false,
         }
@@ -298,6 +322,7 @@ impl Entry {
             Kind::Length { .. } => "length",
             Kind::Number { .. } => "number",
             Kind::Choice(_) => "choice",
+            Kind::Flag => "flag",
             Kind::Text { .. } | Kind::Parsed { .. } => "text",
             Kind::Style(_) => "style",
         }
@@ -313,9 +338,26 @@ pub fn parse_value(kind: Kind, stored: &str) -> Option<Value<'_>> {
         Kind::Length { min, max } => number_in(s, min, max).map(Value::Length),
         Kind::Number { min, max } => number_in(s, min, max).map(Value::Number),
         Kind::Choice(words) => words.iter().find(|w| w.eq_ignore_ascii_case(s)).map(|w| Value::Choice(w)),
+        // Stored strictly: the written words only, as they are (F4).
+        Kind::Flag => [true, false].into_iter().find(|b| ecad_model::words::flag_word(*b) == stored).map(Value::Flag),
         Kind::Text { max_chars } => plain_text(s, max_chars).then_some(Value::Text(s)),
         Kind::Parsed { max_chars, parse } => (plain_text(s, max_chars) && parse(s)).then_some(Value::Text(s)),
         Kind::Style(_) => ecad_model::StyleRef::parse(s).is_some().then_some(Value::Text(s)),
+    }
+}
+
+/// Parse a value typed in a command or a box: a [`Kind::Flag`] in any of
+/// [`ecad_model::words::flag`]'s words (stored as `yes`/`no`); a choice whose words include `yes`
+/// and `no` (a text's Shown: `yes`, `no`, `first`) takes those the same way; any other kind as
+/// [`parse_value`].
+pub fn parse_input(kind: Kind, typed: &str) -> Option<Value<'_>> {
+    match kind {
+        Kind::Flag => ecad_model::words::flag(typed).map(Value::Flag),
+        Kind::Choice(words) => parse_value(kind, typed).or_else(|| {
+            let w = ecad_model::words::flag_word(ecad_model::words::flag(typed)?);
+            words.contains(&w).then_some(Value::Choice(w))
+        }),
+        _ => parse_value(kind, typed),
     }
 }
 
@@ -382,7 +424,7 @@ pub fn find(key: &str) -> Option<&'static Entry> {
 pub fn resolve<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Resolved<'a> {
     let stored = |props: &'a ecad_model::Properties, key: &str| props.get(key).and_then(|v| entry.parse_in(doc, v.as_str()));
     if entry.allows(Level::Object) {
-        if let Some(c) = at.component.and_then(|c| doc.components.get(&c)) {
+        if let Some(c) = at.component.and_then(|c| doc.devices.get(&c)) {
             if let Some(value) = at.rep.and_then(|rep| stored(&c.properties, &symbol_key(entry.key, rep))) {
                 return Resolved { value, from: Source::Symbol };
             }
@@ -446,7 +488,7 @@ pub fn chain<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Vec<(Source, Op
     if entry.allows(Level::Page) || page.is_some() {
         out.push((Source::Page, page.filter(|_| entry.allows(Level::Page))));
     }
-    let component = at.component.and_then(|c| doc.components.get(&c));
+    let component = at.component.and_then(|c| doc.devices.get(&c));
     let symbol = component.zip(at.rep).and_then(|(c, rep)| stored(&c.properties, &symbol_key(entry.key, rep)));
     let object = component
         .and_then(|c| stored(&c.properties, entry.key))
@@ -484,7 +526,7 @@ pub fn users(doc: &Document, entry: &Entry) -> usize {
         let px = resolve(doc, entry, Scope::project()).text();
         let px = px.trim().trim_start_matches('-').to_ascii_uppercase();
         return doc
-            .components
+            .devices
             .values()
             .filter_map(|c| c.properties.get(ecad_model::tag::TAG_KEY))
             .filter(|t| {
@@ -502,7 +544,7 @@ pub fn users(doc: &Document, entry: &Entry) -> usize {
     }
     let own = |props: &ecad_model::Properties| entry.allows(Level::Object) && props.get(entry.key).is_some_and(|v| entry.parse(v.as_str()).is_some());
     match users_noun(entry) {
-        "devices" => doc.components.values().filter(|c| !own(&c.properties)).count(),
+        "devices" => doc.devices.values().filter(|c| !own(&c.properties)).count(),
         "wires" => doc.conductors.values().filter(|c| !own(&c.properties)).count(),
         _ => doc.pages.len(),
     }
@@ -511,7 +553,7 @@ pub fn users(doc: &Document, entry: &Entry) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ecad_model::{Component, Page};
+    use ecad_model::{Device, Page};
 
     fn key_ok(key: &str) -> bool {
         let parts: Vec<&str> = key.split('.').collect();
@@ -568,11 +610,11 @@ mod tests {
         let mut doc = Document::default();
         let page = PageId(7);
         doc.pages.insert(page, Page::new("p"));
-        doc.properties.insert(show.key.into(), "off".into());
+        doc.properties.insert(show.key.into(), "no".into());
         if let Some(p) = doc.pages.get_mut(&page) {
             p.properties.insert(show.key.into(), "sideways".into());
         }
-        assert_eq!(resolve(&doc, show, Scope::page(page)), Resolved { value: Value::Choice("off"), from: Source::Project });
+        assert_eq!(resolve(&doc, show, Scope::page(page)), Resolved { value: Value::Choice("no"), from: Source::Project });
     }
 
     #[test]
@@ -580,19 +622,19 @@ mod tests {
         let show = &text::TAG_SHOW;
         let mut doc = Document::default();
         let page = PageId(1);
-        let comp = ComponentId(2);
+        let comp = DeviceId(2);
         let rep = RepresentationId(3);
         doc.pages.insert(page, Page::new("p"));
-        doc.components.insert(comp, Component { properties: Default::default(), definition: None });
+        doc.devices.insert(comp, Device::default());
         let at = Scope { page: Some(page), component: Some(comp), rep: Some(rep), conductor: None };
         assert_eq!(resolve(&doc, show, at).from, Source::Builtin);
-        doc.properties.insert(show.key.into(), "off".into());
-        assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("off"), from: Source::Project });
-        doc.pages.get_mut(&page).map(|p| p.properties.insert(show.key.into(), "on".into()));
-        assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("on"), from: Source::Page });
-        doc.components.get_mut(&comp).map(|c| c.properties.insert(show.key.into(), "off".into()));
-        assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("off"), from: Source::Object });
-        doc.components.get_mut(&comp).map(|c| c.properties.insert(symbol_key(show.key, rep), "first".into()));
+        doc.properties.insert(show.key.into(), "no".into());
+        assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("no"), from: Source::Project });
+        doc.pages.get_mut(&page).map(|p| p.properties.insert(show.key.into(), "yes".into()));
+        assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("yes"), from: Source::Page });
+        doc.devices.get_mut(&comp).map(|c| c.properties.insert(show.key.into(), "no".into()));
+        assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("no"), from: Source::Object });
+        doc.devices.get_mut(&comp).map(|c| c.properties.insert(symbol_key(show.key, rep), "first".into()));
         assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("first"), from: Source::Symbol });
         // The project-only scope still sees only the project.
         assert_eq!(resolve(&doc, show, Scope::project()).from, Source::Project);
@@ -623,6 +665,42 @@ mod tests {
 #[cfg(test)]
 mod kind_tests {
     use super::*;
+
+    /// Design 072 A2: each choice declared as a word enum keeps the words, in the order, of the
+    /// list it replaced (the first word is the entry's fallback).
+    #[test]
+    fn choice_enums_keep_their_words() {
+        let table: &[(&str, &[&str])] = &[
+            ("connector.maker.halves", &["socket", "plug", "both"]),
+            ("connector.maker.family", &["plain", "dsub", "m12", "rj45", "usba", "usbb"]),
+            ("connector.maker.names", &["numbers", "letters", "list"]),
+            ("connector.maker.layout", &["row", "pins"]),
+            ("plc.slot.first", &["0", "1"]),
+            ("plc.channel.first", &["0", "1"]),
+            ("plc.pins", &["role", "channel"]),
+            ("plc.address.style", &["byte.bit", "iec", "percent", "slot", "none"]),
+            ("plc.text.channel.rotation", &["90", "0"]),
+            ("plc.safe.dq", &["off", "on", "hold"]),
+            ("print.continuation_numbers", &["sequence"]),
+            ("print.missing_mark", &["boxed"]),
+            ("print.contact_table_fallback", &["right_then_lift"]),
+            (crate::revisions::PENDING_KEY, &["star", "draft", "off"]),
+            ("print.colour", &["mono", "colour"]),
+            ("rating.system", &["ac1", "ac3", "dc"]),
+            ("terminal.plan.style", &["table", "graphic"]),
+            ("bom.lines", &["flat", "nested"]),
+        ];
+        for (key, want) in table {
+            let e = find(key);
+            assert!(matches!(e.map(|e| e.kind), Some(Kind::Choice(w)) if w == *want), "{key}");
+        }
+        assert_eq!(<crate::styles::frame::BlockAt as ecad_model::Word>::WORDS, ["bottom_full", "bottom_right"]);
+        assert_eq!(<crate::text_style::Weight as ecad_model::Word>::WORDS, ["regular", "bold"]);
+        assert_eq!(<crate::styles::wire::LineType as ecad_model::Word>::WORDS, ["continuous", "dashed", "dashdot"]);
+        assert_eq!(<crate::styles::wire::RouteLabels as ecad_model::Word>::WORDS, ["project", "net", "each", "none"]);
+        assert_eq!(<crate::rating::ConductorClass as ecad_model::Word>::WORDS, ["1", "2", "5", "6"]);
+        assert_eq!(<crate::rating::Material as ecad_model::Word>::WORDS, ["cu"]);
+    }
 
     fn prefix(s: &str) -> bool {
         s.chars().all(|c| c.is_ascii_uppercase())

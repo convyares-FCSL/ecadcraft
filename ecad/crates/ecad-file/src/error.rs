@@ -166,7 +166,7 @@ pub enum FileError {
     OnAnotherPage { what: &'static str, id: String, page: String },
     /// A key that is not a component chunk, where one was asked for.
     #[error("{0} is not a component chunk")]
-    NotComponentChunk(String),
+    NotDeviceChunk(String),
     /// A chunk whose body does not match its hash.
     #[error("chunk {0} does not match its hash")]
     ChunkMismatch(String),

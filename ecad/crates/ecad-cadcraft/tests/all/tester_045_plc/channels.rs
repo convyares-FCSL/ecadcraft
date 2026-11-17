@@ -1,7 +1,7 @@
 //! Brief 045b, channels (design 045 §4, §6, §7, §9 b-rows `channel-*`, §13 F, G, H, K, L, M, T;
 //! FP2, FP3, FP6, FP7).
 
-use ecad_model::ComponentId;
+use ecad_model::DeviceId;
 use serde_json::json;
 
 use super::*;
@@ -84,7 +84,7 @@ fn f_fence_new_card() {
     let mut p = fixture_p(0x7045_f104);
     p.h.activate(p.inputs);
     let v = step(&mut p.h, "plcchannels", json!({"card": null, "type": "DI", "from": [90, 200], "to": [260, 200]}));
-    let card: ComponentId = id(&v, "card");
+    let card: DeviceId = id(&v, "card");
     let d = p.h.doc();
     assert!(tag(&d, card).starts_with("-A"));
     assert_eq!(drawn_channels(&d, card), (0..8).collect::<Vec<_>>());
@@ -148,7 +148,7 @@ fn g_rtd_and_iolink_roles() {
     );
     // An RTD card in no rack, placed by its first cell.
     let v = p.h.run("place", json!({"symbol": "chrtd", "at": [200, 200]})).unwrap();
-    let rtd: ComponentId = id(&v, "component");
+    let rtd: DeviceId = id(&v, "component");
     let keys: Vec<String> = channel_points(&p.h.doc(), rtd).keys().cloned().collect();
     assert_eq!(keys.len(), 4, "{keys:?}");
     for k in [".0.I+", ".0.S+", ".0.S-", ".0.I-"] {
@@ -206,7 +206,7 @@ fn h_compact_symbols_follow_fp7() {
     p.h.run("place", json!({"symbol": "do", "at": [100, 200], "device": c["-A07"].hex()})).unwrap();
     assert_eq!(pin(&p.h.doc(), c["-A07"], 0, "out").as_deref(), Some("1"));
     let v = p.h.run("place", json!({"symbol": "di", "at": [300, 100]})).unwrap();
-    let card: ComponentId = id(&v, "component");
+    let card: DeviceId = id(&v, "component");
     let d = p.h.doc();
     assert!(tag(&d, card).starts_with("-A"));
     assert_eq!(channel_points(&d, card).keys().cloned().collect::<Vec<_>>(), [".0.in"]);
@@ -341,7 +341,7 @@ fn spare_and_reserved_are_derived() {
     assert_eq!((num(&row["used"]), num(&row["spare"])), (Some(0), Some(16)), "{row}");
     // No stored state: no `plc.ch.*.state` or similar key appears.
     let d = p.h.doc();
-    assert!(d.components[&a03].properties.keys().all(|k| !k.contains("state") && !k.contains("spare")), "{:?}", d.components[&a03].properties);
+    assert!(d.devices[&a03].properties.keys().all(|k| !k.contains("state") && !k.contains("spare")), "{:?}", d.devices[&a03].properties);
     // `plc.spare.text`.
     p.h.run("setdefault", json!({"key": "plc.spare.text", "level": "project", "value": "Reserve"})).unwrap();
     assert_eq!(text_values(&mut p.h, p.inputs).iter().filter(|t| *t == "Reserve").count(), 7);

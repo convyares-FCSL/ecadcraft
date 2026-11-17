@@ -20,7 +20,7 @@
 //! (`crate::xref`), and anything stored. This module only reads.
 
 use ecad_model::numbering::{Order, Places};
-use ecad_model::{ComponentId, Document, Pt, Representation, RepresentationId, Subject};
+use ecad_model::{DeviceId, Document, Pt, Representation, RepresentationId, Subject};
 
 use crate::symbols::{Kind, Side};
 
@@ -114,7 +114,7 @@ pub fn kind_of(doc: &Document, r: &Representation) -> Option<Kind> {
 
 /// The type of representation `r` (design 052 §3.1), from its definition alone.
 pub fn rep_type(doc: &Document, r: &Representation) -> RepType {
-    if !matches!(r.subject, Subject::Component(_)) {
+    if !matches!(r.subject, Subject::Device(_)) {
         return RepType::Other;
     }
     if let Some(s) = crate::connectors::rep_half(doc, r) {
@@ -182,20 +182,20 @@ pub fn in_book_order_in(places: &mut Places<'_>, reps: Vec<(RepresentationId, &R
 }
 
 /// Device `c`'s representations in `view` that pass `keep`, in drawing order.
-fn of_device(doc: &Document, c: ComponentId, v: View, keep: impl Fn(&Representation) -> bool) -> Vec<RepresentationId> {
+fn of_device(doc: &Document, c: DeviceId, v: View, keep: impl Fn(&Representation) -> bool) -> Vec<RepresentationId> {
     of_device_in(&mut Places::new(doc), c, v, keep)
 }
 
-fn of_device_in(places: &mut Places<'_>, c: ComponentId, v: View, keep: impl Fn(&Representation) -> bool) -> Vec<RepresentationId> {
+fn of_device_in(places: &mut Places<'_>, c: DeviceId, v: View, keep: impl Fn(&Representation) -> bool) -> Vec<RepresentationId> {
     let doc = places.doc();
     let reps: Vec<(RepresentationId, &Representation)> =
-        doc.representations_of(Subject::Component(c)).filter(|(_, r)| view(doc, r) == v && keep(r)).collect();
+        doc.representations_of(Subject::Device(c)).filter(|(_, r)| view(doc, r) == v && keep(r)).collect();
     in_book_order_in(places, reps)
 }
 
-fn device_of(r: &Representation) -> Option<ComponentId> {
+fn device_of(r: &Representation) -> Option<DeviceId> {
     match r.subject {
-        Subject::Component(c) => Some(c),
+        Subject::Device(c) => Some(c),
         _ => None,
     }
 }
@@ -204,13 +204,13 @@ fn device_of(r: &Representation) -> Option<ComponentId> {
 
 /// Device `c`'s heads in the schematic, in book order. More than one only after a merge (Checks
 /// lists it); the reference rule uses the first.
-pub fn heads(doc: &Document, c: ComponentId) -> Vec<RepresentationId> {
+pub fn heads(doc: &Document, c: DeviceId) -> Vec<RepresentationId> {
     of_device(doc, c, View::Schematic, |r| rep_type(doc, r) == RepType::Head)
 }
 
 /// Device `c`'s head in the schematic: its first head in book order (design 052 §3.4). A coil
 /// placed after its contacts is the head as soon as it exists.
-pub fn head(doc: &Document, c: ComponentId) -> Option<RepresentationId> {
+pub fn head(doc: &Document, c: DeviceId) -> Option<RepresentationId> {
     heads(doc, c).into_iter().next()
 }
 
@@ -275,12 +275,12 @@ pub fn views(doc: &Document, rid: RepresentationId) -> Vec<RepresentationId> {
 /// Where go-to lands for device `c` (display only; it decides nothing). With no side: its head,
 /// else its first representation in book order. For a connector half: its whole-half symbol,
 /// else its first pin of that side in book order.
-pub fn goto(doc: &Document, c: ComponentId, side: Option<Side>) -> Option<RepresentationId> {
+pub fn goto(doc: &Document, c: DeviceId, side: Option<Side>) -> Option<RepresentationId> {
     goto_in(&mut Places::new(doc), c, side)
 }
 
 /// As [`goto`], reading the book and grids through `places`.
-pub fn goto_in(places: &mut Places<'_>, c: ComponentId, side: Option<Side>) -> Option<RepresentationId> {
+pub fn goto_in(places: &mut Places<'_>, c: DeviceId, side: Option<Side>) -> Option<RepresentationId> {
     let doc = places.doc();
     match side {
         None => of_device_in(places, c, View::Schematic, |r| rep_type(doc, r) == RepType::Head)
@@ -299,12 +299,12 @@ pub fn goto_in(places: &mut Places<'_>, c: ComponentId, side: Option<Side>) -> O
 }
 
 /// The page and anchor go-to lands on for device `c` ([`goto`]), for Checks rows.
-pub fn goto_place(doc: &Document, c: ComponentId) -> Option<(ecad_model::PageId, Option<Pt>)> {
+pub fn goto_place(doc: &Document, c: DeviceId) -> Option<(ecad_model::PageId, Option<Pt>)> {
     goto_place_in(&mut Places::new(doc), c)
 }
 
 /// As [`goto_place`], reading the book and grids through `places`, shared across a Checks build.
-pub fn goto_place_in(places: &mut Places<'_>, c: ComponentId) -> Option<(ecad_model::PageId, Option<Pt>)> {
+pub fn goto_place_in(places: &mut Places<'_>, c: DeviceId) -> Option<(ecad_model::PageId, Option<Pt>)> {
     let doc = places.doc();
     let r = doc.representations.get(&goto_in(places, c, None)?)?;
     Some((r.page, crate::xref::anchor(doc, r)))
@@ -312,6 +312,6 @@ pub fn goto_place_in(places: &mut Places<'_>, c: ComponentId) -> Option<(ecad_mo
 
 /// The whole-half symbol of connector `c`'s `side`, first in book order: the half's head-like
 /// anchor (design 052 §3.4). A pin-only half has none.
-pub fn half_anchor(doc: &Document, c: ComponentId, side: Side) -> Option<RepresentationId> {
+pub fn half_anchor(doc: &Document, c: DeviceId, side: Side) -> Option<RepresentationId> {
     of_device(doc, c, View::Schematic, |r| rep_type(doc, r) == RepType::Half && crate::connectors::rep_side(doc, r) == Some(side)).into_iter().next()
 }

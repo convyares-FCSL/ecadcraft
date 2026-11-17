@@ -8,7 +8,7 @@ use cadcraft_engine::geom::Vec2;
 use common::{H, id};
 use ecad_cadcraft::devices::{self, TextOf};
 use ecad_cadcraft::symbols::{self, STARTERS};
-use ecad_model::{ComponentId, ConductorId, End, ItemId, Op, PageId, Subject, TerminalId};
+use ecad_model::{ConductorId, DeviceId, End, ItemId, Op, PageId, Subject, TerminalId};
 use serde_json::{Value, json};
 
 const SEED: u64 = 18;
@@ -23,7 +23,7 @@ fn place(h: &mut H, symbol: &str, at: [f64; 2]) -> Value {
     h.run("place", json!({"symbol": symbol, "at": at})).unwrap()
 }
 
-fn join(h: &mut H, symbol: &str, device: ComponentId, at: [f64; 2]) -> Value {
+fn join(h: &mut H, symbol: &str, device: DeviceId, at: [f64; 2]) -> Value {
     h.run("place", json!({"symbol": symbol, "at": at, "device": device.hex()})).unwrap()
 }
 
@@ -31,7 +31,7 @@ fn labels(v: &Value) -> Vec<String> {
     v["terminals"].as_array().unwrap().iter().map(|t| t["label"].as_str().unwrap().to_string()).collect()
 }
 
-fn tag(h: &mut H, c: ComponentId) -> String {
+fn tag(h: &mut H, c: DeviceId) -> String {
     h.p(|p| devices::tag_words(p.ledger.document(), c))
 }
 
@@ -66,7 +66,7 @@ struct K1 {
     h: H,
     p1: PageId,
     p2: PageId,
-    k1: ComponentId,
+    k1: DeviceId,
     no: Value,
     nc: Value,
 }
@@ -75,7 +75,7 @@ fn k1() -> K1 {
     let mut h = new_h();
     let p1 = h.first_page();
     let coil = place(&mut h, "coil", [0.0, 0.0]);
-    let k1: ComponentId = id(&coil, "component");
+    let k1: DeviceId = id(&coil, "component");
     let p2 = new_page(&mut h, "Control");
     let no = join(&mut h, "no", k1, [0.0, 0.0]);
     let nc = join(&mut h, "nc", k1, [50.0, 0.0]);
@@ -198,7 +198,7 @@ fn c_renaming_the_tag_updates_every_symbol_in_one_undoable_transaction() {
 fn d_a_duplicate_tag_names_the_device_and_offers_the_ways_forward() {
     let mut f = k1();
     f.h.activate(f.p1);
-    let k2: ComponentId = id(&place(&mut f.h, "coil", [60.0, 0.0]), "component");
+    let k2: DeviceId = id(&place(&mut f.h, "coil", [60.0, 0.0]), "component");
     assert_eq!(tag(&mut f.h, k2), "-K02");
     let head = f.h.head();
     for typed in ["-K1", "K01", "k001"] {
@@ -236,15 +236,15 @@ fn d_merging_a_renamed_device_moves_its_symbols_terminals_and_wires() {
     let mut f = k1();
     // A NO contact placed as its own device (-K02) on page 2, wired at its 13.
     let k2v = place(&mut f.h, "no", [100.0, 0.0]);
-    let k2: ComponentId = id(&k2v, "component");
+    let k2: DeviceId = id(&k2v, "component");
     assert_eq!(labels(&k2v), ["13", "14"]);
     let w: ConductorId = id(&f.h.run("wire", json!({"points": [[100, 10], [140, 10]]})).unwrap(), "conductor");
     assert!(f.h.doc().conductors[&w].end(End::A).is_some());
     let r = f.h.run("setprop", json!({"component": k2.hex(), "key": "tag", "value": "-K01", "merge": true})).unwrap();
     assert_eq!(r["merged"], json!(true));
     let doc = f.h.doc();
-    assert!(!doc.components.contains_key(&k2), "the merged device is gone");
-    let reps = doc.representations_of(Subject::Component(f.k1)).count();
+    assert!(!doc.devices.contains_key(&k2), "the merged device is gone");
+    let reps = doc.representations_of(Subject::Device(f.k1)).count();
     assert_eq!(reps, 4);
     let t = doc.conductors[&w].end(End::A).unwrap();
     assert_eq!(doc.terminals[&t].component, f.k1, "the wire stays attached, now to -K01");
@@ -253,15 +253,15 @@ fn d_merging_a_renamed_device_moves_its_symbols_terminals_and_wires() {
     f.h.check();
     // One undo brings -K02 back.
     f.h.run("u", Value::Null).unwrap();
-    assert!(f.h.doc().components.contains_key(&k2));
+    assert!(f.h.doc().devices.contains_key(&k2));
     f.h.check();
 }
 
 #[test]
 fn d_next_number_is_the_highest_plus_one_and_deleted_tags_are_not_reused() {
     let mut h = new_h();
-    let k1: ComponentId = id(&place(&mut h, "coil", [0.0, 0.0]), "component");
-    let k2: ComponentId = id(&place(&mut h, "coil", [50.0, 0.0]), "component");
+    let k1: DeviceId = id(&place(&mut h, "coil", [0.0, 0.0]), "component");
+    let k2: DeviceId = id(&place(&mut h, "coil", [50.0, 0.0]), "component");
     h.run("ecaddelete", json!({"component": k2.hex()})).unwrap();
     assert_eq!(place(&mut h, "coil", [100.0, 0.0])["tag"], json!("-K03"));
     h.run("ecaddelete", json!({"component": k1.hex()})).unwrap();
@@ -290,7 +290,7 @@ fn e_save_and_reopen_keep_tags_devices_and_embedded_definitions() {
     assert_eq!(doc, live, "tags, properties, the three symbols of -K01 and their labels");
     assert!(h2.p(|p| p.ledger.replay_matches().unwrap()));
     assert!(doc.definitions.values().all(|d| d.origin.is_some()));
-    assert_eq!(doc.components[&f.k1].properties["maker"], "Acme");
+    assert_eq!(doc.devices[&f.k1].properties["maker"], "Acme");
     h2.check();
     drop(h2);
     let _ = std::fs::remove_dir_all(&dir);
@@ -303,7 +303,7 @@ fn e_save_and_reopen_keep_tags_devices_and_embedded_definitions() {
 fn e_a_reopened_project_previews_the_next_tag_from_its_history() {
     let mut h = new_h();
     place(&mut h, "coil", [0.0, 0.0]);
-    let k2: ComponentId = id(&place(&mut h, "coil", [50.0, 0.0]), "component");
+    let k2: DeviceId = id(&place(&mut h, "coil", [50.0, 0.0]), "component");
     h.run("ecaddelete", json!({"component": k2.hex()})).unwrap();
     let coil = symbols::by_key("coil").unwrap();
     assert_eq!(h.p(|p| devices::next_tag_preview(p, coil)).as_deref(), Some("-K03"));
@@ -331,9 +331,9 @@ fn e_a_reopened_project_previews_the_next_tag_from_its_history() {
 #[test]
 fn d_merging_a_device_whose_symbol_shows_no_connection_points_is_refused_clearly() {
     let mut f = k1();
-    let k2: ComponentId = id(&place(&mut f.h, "no", [100.0, 0.0]), "component");
+    let k2: DeviceId = id(&place(&mut f.h, "no", [100.0, 0.0]), "component");
     let mut doc = f.h.doc();
-    let (rid, _) = doc.representations_of(Subject::Component(k2)).next().unwrap();
+    let (rid, _) = doc.representations_of(Subject::Device(k2)).next().unwrap();
     doc.representations.get_mut(&rid).unwrap().connection_points.clear();
     let ts: Vec<TerminalId> = doc.terminals_of(k2).map(|(t, _)| t).collect();
     for t in ts {
@@ -350,7 +350,7 @@ fn d_merging_a_device_whose_symbol_shows_no_connection_points_is_refused_clearly
 #[test]
 fn g_typed_search_then_device_then_click_records_the_json_join() {
     let mut h = new_h();
-    let k1: ComponentId = id(&place(&mut h, "coil", [0.0, 0.0]), "component");
+    let k1: DeviceId = id(&place(&mut h, "coil", [0.0, 0.0]), "component");
     h.s.start("place").unwrap();
     assert_eq!(prompt(&h), "Enter symbol or [List/Rotate/Mirror] <coil>:");
     typed(&mut h, "cont");
@@ -381,7 +381,7 @@ fn g_typed_search_then_device_then_click_records_the_json_join() {
 #[test]
 fn g_a_typed_tag_that_exists_offers_to_add_the_symbol_to_that_device() {
     let mut h = new_h();
-    let k1: ComponentId = id(&place(&mut h, "coil", [0.0, 0.0]), "component");
+    let k1: DeviceId = id(&place(&mut h, "coil", [0.0, 0.0]), "component");
     h.s.start("place").unwrap();
     typed(&mut h, "nc");
     typed(&mut h, "T");
@@ -394,7 +394,7 @@ fn g_a_typed_tag_that_exists_offers_to_add_the_symbol_to_that_device() {
     typed(&mut h, "Y");
     typed(&mut h, "60,0");
     typed(&mut h, "");
-    assert_eq!(h.doc().representations_of(Subject::Component(k1)).count(), 2);
+    assert_eq!(h.doc().representations_of(Subject::Device(k1)).count(), 2);
     // A tag nobody has makes a new device with it.
     h.s.start("place").unwrap();
     typed(&mut h, "coil");
@@ -404,14 +404,14 @@ fn g_a_typed_tag_that_exists_offers_to_add_the_symbol_to_that_device() {
     typed(&mut h, "");
     typed(&mut h, "120,0");
     typed(&mut h, "");
-    assert!(h.doc().components.values().any(|c| c.properties.get("tag").map(String::as_str) == Some("-SR07")));
+    assert!(h.doc().devices.values().any(|c| c.properties.get("tag").map(String::as_str) == Some("-SR07")));
 }
 
 #[test]
 fn g_device_properties_renames_and_asks_before_merging() {
     let mut f = k1();
     f.h.activate(f.p1);
-    let k2: ComponentId = id(&place(&mut f.h, "no", [100.0, 0.0]), "component");
+    let k2: DeviceId = id(&place(&mut f.h, "no", [100.0, 0.0]), "component");
     let item: ItemId = id(&f.h.run("devices", json!({"tag": "-K02"})).unwrap()["devices"][0]["representations"][0], "representation");
     let _ = item;
     f.h.s.set_selection(vec![]);
@@ -442,7 +442,7 @@ fn g_device_properties_renames_and_asks_before_merging() {
     assert_eq!(prompt(&f.h), "New tag <-K02>:", "and asks for another tag");
     typed(&mut f.h, "K01");
     typed(&mut f.h, "Y");
-    assert!(!f.h.doc().components.contains_key(&k2), "merged into -K01");
+    assert!(!f.h.doc().devices.contains_key(&k2), "merged into -K01");
     typed(&mut f.h, "");
     assert!(f.h.s.running.is_none());
     let _ = at;
@@ -493,7 +493,7 @@ fn i_erasing_one_symbol_keeps_the_device_and_the_last_one_deletes_it() {
     let h = f.h.handle_of(f.p2, nc_item);
     f.h.run("erase", json!({"handles": [h.hex()]})).unwrap();
     let doc = f.h.doc();
-    assert!(doc.components.contains_key(&f.k1));
+    assert!(doc.devices.contains_key(&f.k1));
     let labels: Vec<String> = doc.terminals_of(f.k1).filter_map(|(_, t)| t.label.clone()).collect();
     assert_eq!(labels.len(), 4, "A1, A2, 13, 14 stay; 21, 22 went: {labels:?}");
     assert!(!labels.contains(&"21".to_string()));
@@ -502,16 +502,16 @@ fn i_erasing_one_symbol_keeps_the_device_and_the_last_one_deletes_it() {
     let no_rep = id::<ecad_model::RepresentationId>(&f.no, "representation");
     let text = f.h.p(|p| p.pages[&f.p2].map.tag_text(no_rep, TextOf::Tag)).unwrap();
     f.h.run("erase", json!({"handles": [text.hex()]})).unwrap();
-    assert_eq!(f.h.doc().representations_of(Subject::Component(f.k1)).count(), 1);
+    assert_eq!(f.h.doc().representations_of(Subject::Device(f.k1)).count(), 1);
     // The last symbol: the device goes, and U brings it back.
     f.h.activate(f.p1);
     let coil = f.h.symbol_item(f.k1);
     let ch = f.h.handle_of(f.p1, coil);
     f.h.run("erase", json!({"handles": [ch.hex()]})).unwrap();
-    assert!(!f.h.doc().components.contains_key(&f.k1));
+    assert!(!f.h.doc().devices.contains_key(&f.k1));
     assert!(f.h.s.log.iter().any(|l| l == "Deleted -K01 with its last symbol; U brings it back."));
     f.h.run("u", Value::Null).unwrap();
-    assert!(f.h.doc().components.contains_key(&f.k1));
+    assert!(f.h.doc().devices.contains_key(&f.k1));
     f.h.check();
 }
 
@@ -530,7 +530,7 @@ fn i_delete_device_asks_first() {
     f.h.s.set_selection(vec![h]);
     f.h.s.start("devicedelete").unwrap();
     typed(&mut f.h, "Y");
-    assert!(!f.h.doc().components.contains_key(&f.k1));
+    assert!(!f.h.doc().devices.contains_key(&f.k1));
     assert_eq!(f.h.head(), head + 1, "one transaction");
     f.h.check();
 }
@@ -551,7 +551,7 @@ fn i_moving_a_contact_moves_its_terminals_and_copying_a_device_gives_the_next_ta
     let ch = f.h.handle_of(f.p1, coil);
     f.h.run("copy", json!({"handles": [ch.hex()], "delta": [0, 60]})).unwrap();
     let doc = f.h.doc();
-    let tags: Vec<&str> = doc.components.values().filter_map(|c| c.properties.get("tag").map(String::as_str)).collect();
+    let tags: Vec<&str> = doc.devices.values().filter_map(|c| c.properties.get("tag").map(String::as_str)).collect();
     assert!(tags.contains(&"-K02"), "the copy is a new device with the next tag: {tags:?}");
     f.h.check();
 }
@@ -586,7 +586,7 @@ fn tag_settings_change_padding_and_prefixes_and_survive_reopening() {
     assert_eq!(place(&mut h, "mcb1", [40.0, 0.0])["tag"], json!("-F001"));
     assert_eq!(place(&mut h, "no", [80.0, 0.0])["tag"], json!("-K001"), "other symbols keep the built-in prefix");
     // Typed tags are padded the same way.
-    let c: ComponentId = id(&place(&mut h, "lamp", [120.0, 0.0]), "component");
+    let c: DeviceId = id(&place(&mut h, "lamp", [120.0, 0.0]), "component");
     h.run("setprop", json!({"component": c.hex(), "key": "tag", "value": "h7"})).unwrap();
     assert_eq!(tag(&mut h, c), "-H007");
     // null goes back to the built-in prefix; refusals.
@@ -604,7 +604,7 @@ fn tag_settings_change_padding_and_prefixes_and_survive_reopening() {
     // Undo takes the settings back with everything else.
     h.run("u", Value::Null).unwrap();
     h.run("u", Value::Null).unwrap();
-    assert_eq!(h.doc().settings.tag_prefixes.get("coil").map(String::as_str), Some("KA"));
+    assert_eq!(h.doc().settings.starter_prefix("coil").map(|p| p.as_str()), Some("KA"));
     h.check();
 }
 
@@ -618,7 +618,7 @@ fn a_tag_deleted_before_the_snapshot_is_not_given_again_after_reopening() {
     for i in 0..5 {
         k5 = Some(id(&place(&mut h, "coil", [50.0 * f64::from(i), 0.0]), "component"));
     }
-    let k5: ComponentId = k5.unwrap();
+    let k5: DeviceId = k5.unwrap();
     h.run("ecaddelete", json!({"component": k5.hex()})).unwrap();
     h.cfg(|p| p.persistence = ecad_cadcraft::Persistence::File);
     let dir = std::env::temp_dir().join(format!("ecad-021-c-{}", ecad_store::disk::unique()));
@@ -636,8 +636,8 @@ fn a_tag_deleted_before_the_snapshot_is_not_given_again_after_reopening() {
     let coil = symbols::by_key("coil").unwrap();
     assert_eq!(h2.p(|p| devices::next_tag_preview(p, coil)).as_deref(), Some("-K06"));
     let placed = place(&mut h2, "coil", [400.0, 0.0]);
-    let c: ComponentId = id(&placed, "component");
-    let tag = h2.p(|p| p.ledger.document().components[&c].properties.get("tag").cloned());
+    let c: DeviceId = id(&placed, "component");
+    let tag = h2.p(|p| p.ledger.document().devices[&c].properties.get("tag").cloned());
     assert_eq!(tag.as_deref(), Some("-K06"));
     drop(h2);
     let _ = std::fs::remove_dir_all(&dir);

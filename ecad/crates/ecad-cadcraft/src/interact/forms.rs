@@ -8,7 +8,7 @@ use cadcraft_engine::doc::color::{Color as CColor, Rgb};
 use cadcraft_engine::doc::{Entity, EntityKind, Handle};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, EngineError, Input, Interactive, Prompt, Session, Step};
-use ecad_model::{CableId, ComponentId, ConductorId, End, Placement, Primitive, Pt, Subject};
+use ecad_model::{CableId, ConductorId, DeviceId, End, Placement, Primitive, Pt, Subject};
 use serde_json::{Value, json};
 
 use super::{
@@ -170,7 +170,7 @@ impl AddTerminal {
                 .values()
                 .filter(|r| r.page == page && r.form == ecad_model::Form::Drawn)
                 .filter_map(|r| match r.subject {
-                    Subject::Component(c) => Some(next_terminal_name(doc, c)),
+                    Subject::Device(c) => Some(next_terminal_name(doc, c)),
                     _ => None,
                 })
                 .collect();
@@ -183,7 +183,7 @@ impl AddTerminal {
     /// Where a point puts a terminal: the picked outline object, its component and the point. A
     /// click lands on the outline (the nearest point of the picked object); a typed or snapped
     /// point on it is kept exactly.
-    fn resolve(s: &Session, p: Vec2, clicked: bool) -> Result<(Handle, ComponentId, Pt), String> {
+    fn resolve(s: &Session, p: Vec2, clicked: bool) -> Result<(Handle, DeviceId, Pt), String> {
         if !in_range(p) {
             return Err(OUT_OF_RANGE.into());
         }
@@ -721,7 +721,7 @@ impl Interactive for Link {
     }
 }
 
-// ---------------------------------------------------------------- Convert to Component (§8.3)
+// ---------------------------------------------------------------- Convert to Device (§8.3)
 
 /// `convertcomponent`: the current selection at once, else "Select objects", then one
 /// conversion of what was selected.
@@ -752,7 +752,7 @@ impl Convert {
         }
         let handles: Vec<String> = hs.iter().map(|h| h.hex()).collect();
         match commit(s, "convertcomponent", &json!({ "handles": handles })) {
-            Ok(r) => s.echo(format!("Component {} created from {} objects.", hex_of(&r, "component"), hs.len())),
+            Ok(r) => s.echo(format!("Device {} created from {} objects.", hex_of(&r, "component"), hs.len())),
             // Refused: the selection itself is wrong, so the command ends (no retry loop).
             Err(e) => s.echo(e.to_string()),
         }

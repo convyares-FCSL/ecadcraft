@@ -672,7 +672,10 @@ impl Debugger {
                     },
                 ),
             );
-            row("Converted from version 1", st.link_v1.as_ref().map_or_else(|| "no".into(), |(h, n)| format!("{n} transactions, final hash {h}")));
+            row(
+                "Converted from version 1",
+                st.link_v1.as_ref().map_or_else(|| ecad_model::words::flag_word(false).into(), |(h, n)| format!("{n} transactions, final hash {h}")),
+            );
             row("Writable", if st.writable { "yes".into() } else { "no (read-only)".into() });
         });
         let ask = ui

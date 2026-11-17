@@ -7,7 +7,7 @@
 use std::collections::BTreeMap;
 
 use ecad_model::{
-    ComponentId, Conductor, ConductorId, DefinitionId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Noun, Op, PageId, Placement,
+    Conductor, ConductorId, DefinitionId, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Noun, Op, PageId, Placement,
     Primitive, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId,
 };
 
@@ -64,7 +64,7 @@ pub fn definition_for(doc: &Document, ids: &mut IdAllocator, s: &crate::symbols:
 /// the definition's own point. Every symbol's role is its starter key (design 052 §4).
 #[allow(clippy::too_many_arguments)]
 fn terminal_symbol(
-    ids: &mut IdAllocator, page: PageId, style: Style, def: DefinitionId, strip: ComponentId, label: &str, at: Pt, first: bool, role: &str,
+    ids: &mut IdAllocator, page: PageId, style: Style, def: DefinitionId, strip: DeviceId, label: &str, at: Pt, first: bool, role: &str,
     ops: &mut Vec<Op>,
 ) -> TerminalId {
     let (t, item, rep): (TerminalId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
@@ -79,7 +79,7 @@ fn terminal_symbol(
     ops.push(Op::LinkRepresentation {
         id: rep,
         rep: Representation {
-            subject: Subject::Component(strip),
+            subject: Subject::Device(strip),
             page,
             form: Form::Symbol,
             role: role.into(),
@@ -94,7 +94,7 @@ fn terminal_symbol(
 #[derive(Debug, Clone)]
 pub struct Fence {
     pub ops: Vec<Op>,
-    pub strip: ComponentId,
+    pub strip: DeviceId,
     pub tag: String,
     /// (terminal, label, wire, new half) in crossing order.
     pub placed: Vec<(TerminalId, String, ConductorId, ConductorId)>,
@@ -111,7 +111,7 @@ pub struct Fence {
 /// No wire crossed, more than [`MAX_FENCE`], an unknown strip, or a refusal of one landing.
 #[allow(clippy::too_many_arguments)]
 pub fn plan_fence(
-    ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, strip: Option<ComponentId>, pe: bool, from: Pt, to: Pt,
+    ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, strip: Option<DeviceId>, pe: bool, from: Pt, to: Pt,
     tol: f64,
 ) -> Result<Fence, CmdError> {
     let ty = if pe { tt::by_code("pe") } else { Some(tt::feedthrough()) }.ok_or(CmdError::refused("no PE type"))?;
@@ -134,7 +134,7 @@ pub struct FenceKind {
 /// As [`plan_fence`], and a named position that cannot take the level.
 #[allow(clippy::too_many_arguments)]
 pub fn plan_fence_typed(
-    ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, strip: Option<ComponentId>, kind: FenceKind, from: Pt,
+    ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, strip: Option<DeviceId>, kind: FenceKind, from: Pt,
     to: Pt, tol: f64,
 ) -> Result<Fence, CmdError> {
     let doc = ledger.document();
@@ -174,13 +174,16 @@ pub fn plan_fence_typed(
     let (strip, tag, mut next, mut first_main) = match strip {
         Some(c) => (c, crate::devices::tag_words(doc, c), tt::highest_number(doc, c) + 1, false),
         None => {
-            let c: ComponentId = ids.fresh();
+            let c: DeviceId = ids.fresh();
             // Brief 026: a provisional `-X?n` when provisional tags are on, as Place gives.
             let tag = high.next_auto(ledger, &crate::devices::prefix_for(doc, starter))?;
             let mut properties = ecad_model::Properties::new();
             properties.insert(ecad_model::tag::TAG_KEY.into(), tag.clone());
             properties.insert("description".into(), "Terminal".into());
-            ops.push(Op::CreateComponent { id: c, component: ecad_model::Component { properties, definition: Some(def) } });
+            ops.push(Op::CreateDevice {
+                id: c,
+                device: ecad_model::Device { properties, definition: Some(def), device_type: starter.device_type() },
+            });
             (c, tag, 1, legacy)
         }
     };
@@ -192,7 +195,7 @@ pub fn plan_fence_typed(
         let on = on_wire_of(doc, page, m.conductor, m.at).ok_or(CmdError::refused("A crossed wire has no route here."))?;
         if legacy {
             let label = next.to_string();
-            let t = terminal_symbol(ids, page, style.clone(), def, strip, &label, m.at, first_main, starter.key, &mut ops);
+            let t = terminal_symbol(ids, page, style.clone(), def, strip, &label, m.at, first_main, ecad_model::Word::word(starter.key), &mut ops);
             first_main = false;
             let land = plan_land(doc, ids, page, on, t).map_err(|e| on_wire(e, m.conductor))?;
             ops.extend(land.ops);
@@ -222,7 +225,7 @@ pub fn plan_fence_typed(
 /// The starter's definition could not be built.
 #[allow(clippy::too_many_arguments)]
 pub fn level_symbol(
-    ids: &mut IdAllocator, page: PageId, style: Style, def: DefinitionId, starter: &crate::symbols::Starter, strip: ComponentId, position: &str,
+    ids: &mut IdAllocator, page: PageId, style: Style, def: DefinitionId, starter: &crate::symbols::Starter, strip: DeviceId, position: &str,
     placement: Placement, ops: &mut Vec<Op>,
 ) -> Result<Vec<(String, TerminalId, Pt)>, CmdError> {
     let d = starter.definition()?;
@@ -239,10 +242,10 @@ pub fn level_symbol(
     ops.push(Op::LinkRepresentation {
         id: rep,
         rep: Representation {
-            subject: Subject::Component(strip),
+            subject: Subject::Device(strip),
             page,
             form: Form::Symbol,
-            role: starter.key.into(),
+            role: starter.key.to_string(),
             items: vec![item],
             connection_points: cps,
         },
@@ -314,7 +317,7 @@ fn set_route_end(item: &mut Item, p: Pt, start: bool) {
 ///
 /// # Errors
 /// A word that names no level, with the type's levels.
-pub fn level_word(doc: &Document, c: Option<ComponentId>, t: &tt::TermType, word: &str) -> Result<Option<u32>, CmdError> {
+pub fn level_word(doc: &Document, c: Option<DeviceId>, t: &tt::TermType, word: &str) -> Result<Option<u32>, CmdError> {
     let w = word.trim();
     if !t.multi() {
         return Ok(Some(1));
@@ -361,7 +364,7 @@ pub fn term_type(word: Option<&str>, pe: bool) -> Result<&'static tt::TermType, 
 #[derive(Debug, Clone)]
 pub struct TerminalsInput {
     /// The strip joined (`None`: a new strip).
-    pub strip: Option<ComponentId>,
+    pub strip: Option<DeviceId>,
     pub ty: &'static tt::TermType,
     /// The level word (`None`: level 1).
     pub level: Option<String>,
@@ -478,7 +481,7 @@ pub fn plan_bridge(doc: &Document, ids: &mut IdAllocator, page: PageId, style: S
         return Ok(Bridge::Already { conductor: w, same, message: format!("{wa} and {wb} are already bridged.") });
     }
     let pos = |t: TerminalId| {
-        doc.representations_of(Subject::Component(doc.terminals.get(&t)?.component))
+        doc.representations_of(Subject::Device(doc.terminals.get(&t)?.component))
             .find_map(|(_, r)| (r.page == page).then(|| ecad_model::derive::terminal_position(doc, page, t)).flatten())
     };
     let (Some(pa), Some(pb)) = (pos(a), pos(b)) else {

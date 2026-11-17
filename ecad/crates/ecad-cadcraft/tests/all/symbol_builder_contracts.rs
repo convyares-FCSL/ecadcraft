@@ -4,7 +4,7 @@
 //! unchanged content, `makesymbol` and promotion, superseded versions and hostile input.
 
 use ecad_cadcraft::symbols::{self, PROJECT_SYMBOLS};
-use ecad_model::{ComponentId, ConductorId, DefinitionId, Document, Op, PageId, RepresentationId, TerminalId};
+use ecad_model::{ConductorId, DefinitionId, DeviceId, Document, Op, PageId, RepresentationId, TerminalId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -35,12 +35,12 @@ fn place(h: &mut H, x: f64, y: f64) -> Value {
     h.run("place", json!({"symbol": "float1", "at": [x, y]})).unwrap()
 }
 
-fn term(d: &Document, c: ComponentId, key: &str) -> TerminalId {
+fn term(d: &Document, c: DeviceId, key: &str) -> TerminalId {
     d.terminals_of(c).find(|(_, t)| t.key.as_deref() == Some(key)).map(|(t, _)| t).unwrap_or_else(|| panic!("no point {key}"))
 }
 
 /// A wire from point `key` of `c` straight down 20 mm.
-fn wire_from(h: &mut H, page: PageId, c: ComponentId, key: &str) -> ConductorId {
+fn wire_from(h: &mut H, page: PageId, c: DeviceId, key: &str) -> ConductorId {
     let d = h.doc();
     let t = term(&d, c, key);
     let at = h.terminal_pos(page, t);
@@ -76,9 +76,9 @@ fn row_2_place_makes_a_device_with_its_prefix_description_and_points() {
     h.run("symbolnew", float(json!({}))).unwrap();
     let v = place(&mut h, 100.0, 100.0);
     assert_eq!(v["tag"], "-B01");
-    let c: ComponentId = id(&v, "component");
+    let c: DeviceId = id(&v, "component");
     let d = h.doc();
-    let comp = &d.components[&c];
+    let comp = &d.devices[&c];
     assert_eq!(comp.properties.get("description").map(String::as_str), Some("Float switch"));
     assert_eq!(comp.properties.get("rating").map(String::as_str), Some("24 V"));
     let labels: Vec<(String, String)> = d.terminals_of(c).map(|(_, t)| (t.key.clone().unwrap(), t.label.clone().unwrap())).collect();
@@ -145,15 +145,15 @@ fn row_4_family_entries_resolve_and_a_project_override_wins() {
     h.run("setdefault", json!({"key": "symbol.float1.prefix", "value": "S"})).unwrap();
     assert_eq!(place(&mut h, 100.0, 100.0)["tag"], "-S01");
     h.run("setdefault", json!({"key": "symbol.float1.description", "value": "Level switch"})).unwrap();
-    let c: ComponentId = id(&place(&mut h, 150.0, 100.0), "component");
-    assert_eq!(h.doc().components[&c].properties.get("description").map(String::as_str), Some("Level switch"));
+    let c: DeviceId = id(&place(&mut h, 150.0, 100.0), "component");
+    assert_eq!(h.doc().devices[&c].properties.get("description").map(String::as_str), Some("Level switch"));
     let v = h.run("defaults", json!({"key": "symbol.float1.description"})).unwrap();
     assert_eq!(v["defaults"][0]["from"], "project");
     assert!(h.run("setdefault", json!({"key": "symbol.float1.join", "value": "part"})).unwrap_err().contains("symbol's own"));
 }
 
 /// Three copies; the first wired on point 2.
-fn three(h: &mut H) -> (DefinitionId, PageId, Vec<(ComponentId, RepresentationId)>, ConductorId) {
+fn three(h: &mut H) -> (DefinitionId, PageId, Vec<(DeviceId, RepresentationId)>, ConductorId) {
     let v = h.run("symbolnew", float(json!({}))).unwrap();
     let def: DefinitionId = id(&v, "definition");
     let page = h.first_page();
@@ -219,8 +219,8 @@ fn row_6_a_moved_wired_point_takes_its_wire_end_and_keeps_ids() {
     // FP8: version 1 is gone, the transaction has no delete of a component.
     let ops = last_ops(&mut h);
     assert!(ops.iter().any(|o| matches!(o, Op::RemoveDefinition { id, .. } if *id == def)), "v1 removed");
-    assert!(ops.iter().filter(|o| matches!(o, Op::SetComponentDefinition { .. })).count() == 3);
-    assert!(!ops.iter().any(|o| matches!(o, Op::DeleteComponent { .. })));
+    assert!(ops.iter().filter(|o| matches!(o, Op::SetDeviceDefinition { .. })).count() == 3);
+    assert!(!ops.iter().any(|o| matches!(o, Op::DeleteDevice { .. })));
     h.check();
     // Undo puts everything back.
     h.cmdline("u");
@@ -257,8 +257,12 @@ fn row_8_editing_a_built_in_makes_a_project_copy() {
     let coil = h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap();
     let rep: RepresentationId = id(&coil, "representation");
     let d = h.doc();
-    let (def_id, coil_def) =
-        d.definitions.iter().find(|(_, x)| symbols::of_definition(x).is_some_and(|s| s.key == "coil")).map(|(i, x)| (*i, x.clone())).unwrap();
+    let (def_id, coil_def) = d
+        .definitions
+        .iter()
+        .find(|(_, x)| symbols::of_definition(x).is_some_and(|s| s.key == ecad_cadcraft::symbols::StarterKey::Coil))
+        .map(|(i, x)| (*i, x.clone()))
+        .unwrap();
     let mut p = json!({"definition": def_id.hex(), "name": "Coil, mine", "key": "mycoil", "update": "all",
         "defaults": {"prefix": "K"}, "slots": [{"text": "tag", "at": [-10, 0]}]});
     let pts: Vec<Value> = coil_def.terminals.iter().map(|t| json!({"key": t.key, "label": t.label, "at": [t.at.x, t.at.y]})).collect();
@@ -312,7 +316,7 @@ fn row_11_makesymbol_from_lines_replaces_the_drawing() {
         .unwrap();
     assert_eq!(v["tag"], "-A01");
     let d = h.doc();
-    let c: ComponentId = id(&v, "component");
+    let c: DeviceId = id(&v, "component");
     assert_eq!(d.terminals_of(c).count(), 2);
     assert!(h.lines_on(page).is_empty(), "the drawing is replaced");
     // The symbol's origin is the grid point at the middle (105, 105): point 1 stays at (100, 100).
@@ -330,7 +334,7 @@ fn row_12_promotion_keeps_ids_and_wires() {
     }
     let handles: Vec<String> = h.lines_on(page).iter().map(|x| x.hex()).collect();
     let v = h.run("convertcomponent", json!({"handles": handles})).unwrap();
-    let c: ComponentId = id(&v, "component");
+    let c: DeviceId = id(&v, "component");
     let first = h.rep_handles(page, c)[0].clone();
     for (at, label) in [([100, 100], "A1"), ([110, 110], "A2")] {
         h.run("addterminal", json!({"handle": first, "at": at, "label": label})).unwrap();
@@ -349,7 +353,7 @@ fn row_12_promotion_keeps_ids_and_wires() {
     );
     let v = v.unwrap();
     let d = h.doc();
-    assert_eq!(id::<ComponentId>(&v, "component"), c);
+    assert_eq!(id::<DeviceId>(&v, "component"), c);
     let after: Vec<TerminalId> = d.terminals_of(c).map(|(t, _)| t).collect();
     assert_eq!(after, terms, "terminal IDs kept");
     for (t, w) in terms.iter().zip(&wires) {
@@ -358,8 +362,8 @@ fn row_12_promotion_keeps_ids_and_wires() {
     let rep: RepresentationId = id(&v, "representation");
     assert_eq!(d.representations[&rep].form, ecad_model::Form::Symbol);
     let ops = last_ops(&mut h);
-    assert_eq!(ops.iter().filter(|o| matches!(o, Op::SetComponentDefinition { .. })).count(), 1);
-    assert!(!ops.iter().any(|o| matches!(o, Op::DeleteComponent { .. })));
+    assert_eq!(ops.iter().filter(|o| matches!(o, Op::SetDeviceDefinition { .. })).count(), 1);
+    assert!(!ops.iter().any(|o| matches!(o, Op::DeleteDevice { .. })));
     h.check();
 }
 
@@ -411,7 +415,7 @@ fn hostile_inputs_never_panic() {
 fn update_available_reaches_the_devices_list_through_its_update_map() {
     let mut h = H::new(4815);
     let def: DefinitionId = id(&h.run("symbolnew", float(json!({}))).unwrap(), "definition");
-    let a: ComponentId = id(&place(&mut h, 100.0, 100.0), "component");
+    let a: DeviceId = id(&place(&mut h, 100.0, 100.0), "component");
     let entry = |d: &Document| ecad_cadcraft::device_list::device_entry(d, a).unwrap();
     assert!(!entry(&h.doc()).symbols[0].update);
     let before = h.doc();
@@ -422,7 +426,7 @@ fn update_available_reaches_the_devices_list_through_its_update_map() {
     let touched = ecad_cadcraft::device_list::devices_touched(&before, &ops);
     assert!(format!("{touched:?}").contains(&format!("{a:?}")), "{touched:?}");
     let props = ecad_cadcraft::props::touched(&before, &ops).unwrap();
-    assert!(props.contains(&ecad_model::ObjectRef::Component(a)));
+    assert!(props.contains(&ecad_model::ObjectRef::Device(a)));
     assert!(entry(&h.doc()).symbols[0].update, "update available");
 }
 

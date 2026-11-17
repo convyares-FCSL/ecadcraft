@@ -1,12 +1,11 @@
-//! Brief 048 (symbol builder): the new op `SetComponentDefinition` (FP5) through apply, inverse,
+//! Brief 048 (symbol builder): the new op `SetDeviceDefinition` (FP5) through apply, inverse,
 //! diff and merge, and invariant I7 for text slots, defaults and `derived_from` (FP1, FP2, FP4).
 
 use std::collections::BTreeMap;
 
 use ecad_model::merge::{self, Inputs, Scope};
 use ecad_model::{
-    Author, Component, ComponentId, ContentHash, Definition, DefinitionId, Document, Ledger, LibraryId, ObjectRef, Op, Origin, Pt, TerminalDef,
-    TextSlot,
+    Author, ContentHash, Definition, DefinitionId, Device, DeviceId, Document, Ledger, LibraryId, ObjectRef, Op, Origin, Pt, TerminalDef, TextSlot,
 };
 
 fn def(name: &str) -> Definition {
@@ -20,34 +19,34 @@ fn def(name: &str) -> Definition {
 const A: DefinitionId = DefinitionId(10);
 const B: DefinitionId = DefinitionId(11);
 const C: DefinitionId = DefinitionId(12);
-const K: ComponentId = ComponentId(20);
+const K: DeviceId = DeviceId(20);
 
 /// A ledger holding definitions A, B, C and component K made from A.
 fn base() -> Ledger {
     let mut l = Ledger::new(48);
     let mut ops: Vec<Op> = [(A, "a"), (B, "b"), (C, "c")].into_iter().map(|(id, n)| Op::EmbedDefinition { id, definition: def(n) }).collect();
-    ops.push(Op::CreateComponent { id: K, component: Component { definition: Some(A), ..Default::default() } });
+    ops.push(Op::CreateDevice { id: K, device: Device { definition: Some(A), ..Default::default() } });
     l.commit(Author::User, "base", ops).expect("base");
     l
 }
 
 fn set(before: Option<DefinitionId>, after: Option<DefinitionId>) -> Op {
-    Op::SetComponentDefinition { id: K, before, after }
+    Op::SetDeviceDefinition { id: K, before, after }
 }
 
 #[test]
 fn set_component_definition_applies_and_undoes() {
     let mut l = base();
     l.commit(Author::User, "edit", vec![set(Some(A), Some(B))]).expect("set");
-    assert_eq!(l.document().components[&K].definition, Some(B));
+    assert_eq!(l.document().devices[&K].definition, Some(B));
     assert_eq!(l.document().components_using(B), vec![K], "the index follows");
     assert!(l.document().components_using(A).is_empty());
     l.document().check_index().expect("index");
     l.undo(Author::User).expect("undo");
-    assert_eq!(l.document().components[&K].definition, Some(A));
+    assert_eq!(l.document().devices[&K].definition, Some(A));
     assert_eq!(l.document().components_using(A), vec![K]);
     l.redo(Author::User).expect("redo");
-    assert_eq!(l.document().components[&K].definition, Some(B));
+    assert_eq!(l.document().devices[&K].definition, Some(B));
 }
 
 #[test]
@@ -56,18 +55,18 @@ fn set_component_definition_keeps_properties() {
     l.commit(
         Author::User,
         "prop",
-        vec![Op::SetProperty { object: ObjectRef::Component(K), key: "tag".into(), before: None, after: Some("-K01".into()) }],
+        vec![Op::SetProperty { object: ObjectRef::Device(K), key: "tag".into(), before: None, after: Some("-K01".into()) }],
     )
     .expect("tag");
     l.commit(Author::User, "edit", vec![set(Some(A), Some(B))]).expect("set");
-    assert_eq!(l.document().components[&K].properties.get("tag").map(String::as_str), Some("-K01"));
+    assert_eq!(l.document().devices[&K].properties.get("tag").map(String::as_str), Some("-K01"));
 }
 
 #[test]
 fn set_component_definition_inverse_is_the_swap() {
     assert_eq!(set(Some(A), Some(B)).inverse(), set(Some(B), Some(A)));
     assert_eq!(set(None, Some(B)).inverse(), set(Some(B), None));
-    assert_eq!(set(Some(A), Some(B)).name(), "SetComponentDefinition");
+    assert_eq!(set(Some(A), Some(B)).name(), "SetDeviceDefinition");
 }
 
 #[test]
@@ -75,12 +74,10 @@ fn set_component_definition_checks_its_precondition() {
     let mut l = base();
     let e = l.commit(Author::User, "stale", vec![set(Some(B), Some(C))]).unwrap_err().to_string();
     assert!(e.contains("differs"), "{e}");
-    let e = l
-        .commit(Author::User, "missing", vec![Op::SetComponentDefinition { id: ComponentId(99), before: None, after: Some(A) }])
-        .unwrap_err()
-        .to_string();
+    let e =
+        l.commit(Author::User, "missing", vec![Op::SetDeviceDefinition { id: DeviceId(99), before: None, after: Some(A) }]).unwrap_err().to_string();
     assert!(e.contains("does not exist"), "{e}");
-    assert_eq!(l.document().components[&K].definition, Some(A), "nothing changed");
+    assert_eq!(l.document().devices[&K].definition, Some(A), "nothing changed");
     // A definition that is not embedded is refused by the invariants, not applied.
     assert!(l.commit(Author::User, "dangling", vec![set(Some(A), Some(DefinitionId(77)))]).is_err());
 }
@@ -117,7 +114,7 @@ fn merged(ancestor: &Document, target: &Document, source: &Document, source_ops:
 #[test]
 fn merge_a_property_against_a_definition_change_does_not_conflict() {
     let a = base().document().clone();
-    let tag = Op::SetProperty { object: ObjectRef::Component(K), key: "description".into(), before: None, after: Some("Pump".into()) };
+    let tag = Op::SetProperty { object: ObjectRef::Device(K), key: "description".into(), before: None, after: Some("Pump".into()) };
     let mut t = a.clone();
     tag.apply(&mut t).expect("target");
     let mut s = a.clone();
@@ -126,13 +123,13 @@ fn merge_a_property_against_a_definition_change_does_not_conflict() {
     let plan = merged(&a, &t, &s, &s_ops);
     assert!(plan.conflicts.is_empty(), "{:?}", plan.conflicts);
     assert!(plan.ops.contains(&set(Some(A), Some(B))), "{:?}", plan.ops);
-    assert!(!plan.ops.iter().any(|o| matches!(o, Op::DeleteComponent { .. })));
+    assert!(!plan.ops.iter().any(|o| matches!(o, Op::DeleteDevice { .. })));
     let mut m = t.clone();
     for op in &plan.ops {
         op.apply(&mut m).expect("merged op");
     }
-    assert_eq!(m.components[&K].definition, Some(B));
-    assert_eq!(m.components[&K].properties.get("description").map(String::as_str), Some("Pump"));
+    assert_eq!(m.devices[&K].definition, Some(B));
+    assert_eq!(m.devices[&K].properties.get("description").map(String::as_str), Some("Pump"));
 
     // The other way round: the source sets the property, the target the definition.
     let plan = merged(&a, &s, &t, std::slice::from_ref(&tag));

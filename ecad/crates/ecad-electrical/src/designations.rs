@@ -21,7 +21,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::CmdError;
 use ecad_model::book::{FUNCTION_KEY, LOCATION_KEY};
-use ecad_model::{ComponentId, Document, IdAllocator, Ledger, ObjectRef, Op};
+use ecad_model::{DeviceId, Document, IdAllocator, Ledger, ObjectRef, Op};
 
 /// The prefix of every list property.
 pub const PREFIX: &str = "designation.";
@@ -252,7 +252,7 @@ impl Pending {
         if let Some(k) = self.added.get(&(a, upper.clone())) {
             return Ok(k.clone());
         }
-        let id: ComponentId = ids.fresh();
+        let id: DeviceId = ids.fresh();
         let key = id.hex();
         ops.push(Op::SetProperty { object: ObjectRef::Project, key: code_property(a, &key), before: None, after: Some(code.clone()) });
         self.added.insert((a, upper), key.clone());
@@ -344,8 +344,8 @@ impl Uses {
     /// The index of `doc`, built in one pass over components, pages and the project.
     pub fn of(doc: &Document) -> Uses {
         let mut u = Uses::default();
-        for (c, x) in &doc.components {
-            u.add_props(ObjectRef::Component(*c), &x.properties);
+        for (c, x) in &doc.devices {
+            u.add_props(ObjectRef::Device(*c), &x.properties);
         }
         for (p, x) in &doc.pages {
             u.add_props(ObjectRef::Page(*p), &x.properties);
@@ -391,8 +391,8 @@ impl Uses {
                         self.note(a, v, *object, key, true);
                     }
                 }
-                Op::CreateComponent { id, component } => self.add_props(ObjectRef::Component(*id), &component.properties),
-                Op::DeleteComponent { id, component } => self.remove_props(ObjectRef::Component(*id), &component.properties),
+                Op::CreateDevice { id, device: component } => self.add_props(ObjectRef::Device(*id), &component.properties),
+                Op::DeleteDevice { id, device: component } => self.remove_props(ObjectRef::Device(*id), &component.properties),
                 Op::AddPage { id, page, .. } => self.add_props(ObjectRef::Page(*id), &page.properties),
                 Op::RemovePage { id, page, .. } => self.remove_props(ObjectRef::Page(*id), &page.properties),
                 _ => {}
@@ -446,11 +446,11 @@ impl Uses {
         let mut overrides = BTreeSet::new();
         for (o, prop) in &u.refs {
             match o {
-                ObjectRef::Component(x) if crate::locations::is_box(doc, *x) => c.boxes += 1,
-                ObjectRef::Component(x) if prop == a.property() => {
+                ObjectRef::Device(x) if crate::locations::is_box(doc, *x) => c.boxes += 1,
+                ObjectRef::Device(x) if prop == a.property() => {
                     devices.insert(*x);
                 }
-                ObjectRef::Component(x) => {
+                ObjectRef::Device(x) => {
                     overrides.insert(*x);
                 }
                 ObjectRef::Page(_) => c.pages += 1,

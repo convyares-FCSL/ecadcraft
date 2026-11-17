@@ -9,7 +9,7 @@ use ecad_model::book::{self, Book, FOLDER_KEY, FUNCTION_KEY, LOCATION_KEY, MAX_F
 use ecad_model::sheet::{SHEET_KEY, SheetSpec};
 use ecad_model::tag::{self, CASE_KEY, Case, DASH_KEY, TAG_KEY};
 use ecad_model::{
-    ComponentId, Document, Folder, FolderId, IdAllocator, Ledger, ObjectRef, Op, PageId, ProjectSettings, Properties, ReferenceStyle, StyleRef,
+    DeviceId, Document, Folder, FolderId, IdAllocator, Ledger, ObjectRef, Op, PageId, ProjectSettings, Properties, ReferenceStyle, StyleRef,
 };
 
 use crate::defaults::strip_pages;
@@ -336,7 +336,7 @@ pub struct NewPageKind {
     /// The terminal plan's style word (`table` or `graphic`).
     pub style: Option<String>,
     /// The one strip a terminal plan shows.
-    pub strip: Option<ComponentId>,
+    pub strip: Option<DeviceId>,
 }
 
 /// `newpage`'s `generated`, `style` and `strip` read together.
@@ -344,7 +344,7 @@ pub struct NewPageKind {
 /// # Errors
 /// A kind or style word that does not read; a style or strip for a page that is not a terminal
 /// plan.
-pub fn new_page_kind(generated: Option<&str>, style: Option<&str>, strip: Option<ComponentId>) -> Result<NewPageKind, CmdError> {
+pub fn new_page_kind(generated: Option<&str>, style: Option<&str>, strip: Option<DeviceId>) -> Result<NewPageKind, CmdError> {
     // Brief 024 (FP1): a generated page's kind, set only here.
     let generated = match generated {
         Some(t) => Some(
@@ -624,7 +624,7 @@ pub fn check_free_key(doc: &Document, key: &str) -> Result<(), CmdError> {
         return Ok(());
     }
     let n = key.chars().count();
-    if !(1..=MAX_KEY_CHARS).contains(&n) || !key.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
+    if !(1..=MAX_KEY_CHARS).contains(&n) || !key.chars().all(|c| matches!(c, 'a'..='z' | '0'..='9' | '_')) {
         return Err(CmdError::refused("A property name is 1 to 40 characters a-z, 0-9 or _."));
     }
     Ok(())
@@ -709,17 +709,13 @@ pub fn tag_settings(
                 CmdError::refused(format!("A prefix is 1 to {} letters, for example K or SR.", crate::devices::MAX_PREFIX_LETTERS))
             })?),
         };
-        changes.push((symbol.key, prefix));
+        changes.push((ecad_model::Word::word(symbol.key), prefix));
     }
     if let Some(n) = padding {
         settings.tag_padding = Some(n);
     }
     for (k, v) in changes {
-        match v {
-            Some(px) if crate::symbols::by_key(k).is_some_and(|s| s.prefix() == px) => settings.tag_prefixes.remove(k),
-            Some(px) => settings.tag_prefixes.insert(k.to_string(), px),
-            None => settings.tag_prefixes.remove(k),
-        };
+        crate::devices::set_symbol_prefix(settings, ecad_model::prefix::PrefixOf::Starter(k.into()), v.as_deref());
     }
     Ok(())
 }
@@ -758,9 +754,9 @@ pub fn tag_style_ops(doc: &Document, dash: Option<bool>, case: Option<&str>) -> 
     if rewrite {
         let mut seen: HashMap<String, String> = HashMap::new();
         let objects = doc
-            .components
+            .devices
             .iter()
-            .filter_map(|(id, c)| c.properties.get(TAG_KEY).map(|t| (ObjectRef::Component(*id), t)))
+            .filter_map(|(id, c)| c.properties.get(TAG_KEY).map(|t| (ObjectRef::Device(*id), t)))
             .chain(doc.cables.iter().filter_map(|(id, c)| c.properties.get(TAG_KEY).map(|t| (ObjectRef::Cable(*id), t))));
         for (object, old) in objects {
             let new = tag::restyle(old, after);
@@ -831,7 +827,12 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
     }
     // Brief 026 (design §5.1): Provisional tags until Finalise, as `numbering` writes it.
     if let Some(on) = change.provisional {
-        ops.extend(set(ObjectRef::Project, Some(&doc.properties), tag::PROVISIONAL_SETTING, on.then(|| "yes".to_string())));
+        ops.extend(set(
+            ObjectRef::Project,
+            Some(&doc.properties),
+            tag::PROVISIONAL_SETTING,
+            on.then(|| ecad_model::words::flag_word(true).to_string()),
+        ));
     }
     let mut settings = doc.settings.clone();
     if let Some(t) = &change.sheet {

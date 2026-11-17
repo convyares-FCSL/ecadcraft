@@ -37,7 +37,8 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
 use crate::doc::{Document, Properties};
-use crate::id::{ComponentId, ConductorId, TerminalId};
+use crate::id::{ConductorId, DeviceId, TerminalId};
+use crate::keys::PropsExt;
 use crate::op::{ObjectRef, Op};
 
 /// Conductor property: the wire number its net carries (design 022 §5.1).
@@ -46,13 +47,13 @@ pub const WIRE_NUMBER: &str = "wire_number";
 pub const WIRE_NUMBER_FIXED: &str = "wire_number_fixed";
 /// Conductor property: the potential (`24V`, `L1`…) the conductor carries.
 pub const POTENTIAL: &str = "potential";
-/// Component property naming what a tagless component is (`junction`, `continuation`).
+/// Device property naming what a tagless component is (`junction`, `continuation`).
 pub const KIND: &str = "kind";
 /// The [`KIND`] of a continuation.
 pub const CONTINUATION: &str = "continuation";
 /// The [`KIND`] of a junction.
 pub const JUNCTION: &str = "junction";
-/// Component property: a continuation's name.
+/// Device property: a continuation's name.
 pub const NAME: &str = "name";
 
 /// The key two continuation names are compared by: trimmed, upper case.
@@ -105,8 +106,8 @@ pub(crate) struct Contribution {
 impl Contribution {
     pub(crate) fn of(props: &Properties) -> Self {
         Self {
-            number: props.get(WIRE_NUMBER).cloned(),
-            fixed: props.get(WIRE_NUMBER_FIXED).is_some_and(|v| v == "yes"),
+            number: props.text(crate::keys::WIRE_NUMBER).map(str::to_string),
+            fixed: props.flag(crate::keys::WIRE_NUMBER_FIXED) == Some(true),
             potential: props.get(POTENTIAL).cloned(),
         }
     }
@@ -205,7 +206,7 @@ fn present(doc: &Document, node: &Node) -> bool {
 /// The name group a terminal's component joins it to, if it is a named continuation.
 fn name_of_terminal(doc: &Document, t: TerminalId) -> Option<String> {
     let c = doc.terminals.get(&t)?.component;
-    continuation_key(&doc.components.get(&c)?.properties)
+    continuation_key(&doc.devices.get(&c)?.properties)
 }
 
 /// The terminals bridged to `t` inside its device.
@@ -237,7 +238,7 @@ fn bridged(doc: &Document, t: TerminalId) -> Vec<TerminalId> {
             .map(|(id, _)| id)
             .collect();
     }
-    let Some(def) = doc.components.get(&term.component).and_then(|c| c.definition).and_then(|d| doc.definitions.get(&d)) else {
+    let Some(def) = doc.devices.get(&term.component).and_then(|c| c.definition).and_then(|d| doc.definitions.get(&d)) else {
         return Vec::new();
     };
     if def.bridges.is_empty() {
@@ -314,7 +315,7 @@ impl Connectivity {
             .chain(doc.index.continuations.keys().map(|k| Node::Name(k.clone())));
         // Link edges, worked out once per component with links (a chain per link).
         let mut link_edges: HashMap<TerminalId, Vec<TerminalId>> = HashMap::new();
-        for (id, comp) in &doc.components {
+        for (id, comp) in &doc.devices {
             for (_, p) in crate::links::of(&comp.properties) {
                 let m = crate::links::Matcher::of(&p);
                 let members: Vec<TerminalId> = doc.terminals_of(*id).filter(|(_, x)| m.matches_terminal(x)).map(|(t, _)| t).collect();
@@ -570,7 +571,7 @@ impl Connectivity {
     }
 
     /// The terminals of `component` (present ones).
-    fn terminals_of(doc: &Document, component: ComponentId) -> Vec<Node> {
+    fn terminals_of(doc: &Document, component: DeviceId) -> Vec<Node> {
         doc.terminals_of(component).map(|(t, _)| Node::Terminal(t)).collect()
     }
 
@@ -582,11 +583,11 @@ impl Connectivity {
     /// | `CreateConductor` / `DeleteConductor` | node added and joined to its ends / node removed, its net suspect |
     /// | `AttachEnd` | `before` cut (net suspect), `after` joined |
     /// | `AddTerminal` / `RemoveTerminal` | node added and joined (ends, name group, bridges) / removed |
-    /// | `CreateComponent` / `DeleteComponent` of a continuation | its terminals joined to / cut from its name group |
+    /// | `CreateDevice` / `DeleteDevice` of a continuation | its terminals joined to / cut from its name group |
     /// | `SetProperty` component `kind` or `name` | cut from the old name group, joined to the new |
     /// | `SetProperty` conductor `wire_number`, `wire_number_fixed`, `potential` | the net's counts and the number index |
     /// | `EmbedDefinition` / `RemoveDefinition` with bridges | its components' bridged terminals joined / cut |
-    /// | `SetComponentDefinition` (brief 048) | its terminals cut, then joined under the new definition |
+    /// | `SetDeviceDefinition` (brief 048) | its terminals cut, then joined under the new definition |
     /// | `SetProperty` component `link.<n>` (brief 030) | the terminals of the old value cut, of the new joined |
     /// | `LinkRepresentation` / `UnlinkRepresentation` / `ModifyItem` / `AddItem` / `RemoveItem` of a symbol whose definition has bridges (brief 036, FP8a; items: brief 044) | the level terminals it shows, and their position mates, joined / cut |
     /// | every other op | nothing |
@@ -602,12 +603,12 @@ impl Connectivity {
             }
             Op::RemoveTerminal { id, .. } => self.remove(doc, None, &Node::Terminal(*id)),
             // Brief 048 (FP5): another definition may bridge other points.
-            Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
+            Op::DeleteDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
                 for t in Self::terminals_of(doc, *id) {
                     self.cut_around(doc, &t);
                 }
             }
-            Op::SetProperty { object: ObjectRef::Component(id), key, .. } if key == KIND || key == NAME => {
+            Op::SetProperty { object: ObjectRef::Device(id), key, .. } if key == KIND || key == NAME => {
                 for t in Self::terminals_of(doc, *id) {
                     self.cut_around(doc, &t);
                 }
@@ -644,7 +645,7 @@ impl Connectivity {
                 }
             }
             // Brief 030: the terminals a link joined are on the sides of a cut.
-            Op::SetProperty { object: ObjectRef::Component(id), key, before, .. } if crate::links::link_number(key).is_some() => {
+            Op::SetProperty { object: ObjectRef::Device(id), key, before, .. } if crate::links::link_number(key).is_some() => {
                 for t in crate::links::terminals_named(doc, *id, before.as_deref()) {
                     self.cut(&Node::Terminal(t));
                 }
@@ -672,25 +673,25 @@ impl Connectivity {
                 self.ensure(doc, Node::Terminal(*t));
             }
             Op::AddTerminal { id, .. } => self.ensure(doc, Node::Terminal(*id)),
-            Op::CreateComponent { id, component } | Op::DeleteComponent { id, component } => {
+            Op::CreateDevice { id, device: component } | Op::DeleteDevice { id, device: component } => {
                 self.name_groups(doc, component.properties.get(NAME).map(|n| name_key(n)));
-                if matches!(op, Op::CreateComponent { .. }) {
+                if matches!(op, Op::CreateDevice { .. }) {
                     for t in Self::terminals_of(doc, *id) {
                         self.ensure(doc, t);
                     }
                 }
             }
-            Op::SetComponentDefinition { id, .. } => {
+            Op::SetDeviceDefinition { id, .. } => {
                 for t in Self::terminals_of(doc, *id) {
                     self.ensure(doc, t);
                 }
             }
-            Op::SetProperty { object: ObjectRef::Component(id), key, before, after } if key == KIND || key == NAME => {
+            Op::SetProperty { object: ObjectRef::Device(id), key, before, after } if key == KIND || key == NAME => {
                 // The old group may be gone, the new one may be new.
                 let old = (key == NAME).then(|| before.as_deref().map(name_key)).flatten();
                 let new = (key == NAME).then(|| after.as_deref().map(name_key)).flatten();
                 self.name_groups(doc, old);
-                let current = doc.components.get(id).and_then(|c| c.properties.get(NAME)).map(|n| name_key(n));
+                let current = doc.devices.get(id).and_then(|c| c.properties.get(NAME)).map(|n| name_key(n));
                 self.name_groups(doc, current);
                 self.name_groups(doc, new);
                 for t in Self::terminals_of(doc, *id) {
@@ -711,7 +712,7 @@ impl Connectivity {
                     }
                 }
             }
-            Op::SetProperty { object: ObjectRef::Component(id), key, after, .. } if crate::links::link_number(key).is_some() => {
+            Op::SetProperty { object: ObjectRef::Device(id), key, after, .. } if crate::links::link_number(key).is_some() => {
                 for t in crate::links::terminals_named(doc, *id, after.as_deref()) {
                     self.ensure(doc, Node::Terminal(t));
                 }

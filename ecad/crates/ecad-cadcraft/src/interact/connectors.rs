@@ -5,7 +5,7 @@
 use cadcraft_engine::doc::{Entity, EntityKind};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
-use ecad_model::{ComponentId, Pt};
+use ecad_model::{DeviceId, Pt};
 use serde_json::{Value, json};
 
 use super::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
@@ -31,7 +31,8 @@ pub(crate) fn connector(s: &Session) -> R<Box<dyn Interactive>> {
         let n = defaults::resolve(doc, &defaults::connectors::MAKER_PINS, Scope::project()).number();
         let pins = if n.is_finite() && (1.0..=cn::MAX_PINS as f64).contains(&n) { n as usize } else { 4 };
         let names = defaults::resolve(doc, &defaults::connectors::MAKER_NAMES, Scope::project()).word().to_string();
-        let pins_layout = defaults::resolve(doc, &defaults::connectors::MAKER_LAYOUT, Scope::project()).word() == "pins";
+        let pins_layout =
+            defaults::resolve(doc, &defaults::connectors::MAKER_LAYOUT, Scope::project()).choice() == Some(defaults::connectors::MakerLayout::Pins);
         let next = p.tag_high.peek_auto(doc, &crate::devices::prefix_for(doc, crate::devices::starter("socket4")?)).unwrap_or_else(|_| "-X?".into());
         Ok((halves, family, pins, names, pins_layout, next))
     })
@@ -74,7 +75,7 @@ const DRAW_WORDS: &[&str] = &["Row", "Pins"];
 struct PlaceConnector {
     stage: Stage,
     /// The connector added to (`None`: a new one) and its tag.
-    device: Option<(ComponentId, String)>,
+    device: Option<(DeviceId, String)>,
     /// The tag a new connector gets.
     next: String,
     halves: Side,
@@ -261,7 +262,7 @@ impl PlaceConnector {
             && let (Some(c), Some(t)) = (v.get("component").and_then(Value::as_str), v.get("tag").and_then(Value::as_str))
             && let Ok(n) = u128::from_str_radix(c, 16)
         {
-            self.device = Some((ComponentId::from(n), t.to_string()));
+            self.device = Some((DeviceId::from(n), t.to_string()));
         }
         self.drawn += 1;
         self.first = None;

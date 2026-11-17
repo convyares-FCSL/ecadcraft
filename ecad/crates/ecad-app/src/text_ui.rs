@@ -5,7 +5,7 @@
 use eframe::egui::{self, RichText};
 use serde_json::{Map, Value, json};
 
-use ecad_cadcraft::text_style::TextKind;
+use ecad_cadcraft::text_style::{Shown, TextKind};
 
 /// The section's element name.
 pub const SECTION_ID: &str = "ecad.projectsettings.text";
@@ -80,11 +80,7 @@ fn label_of(k: TextKind) -> &'static str {
 
 /// The visibility words a Shown drop-down shows.
 fn show_words(w: &str) -> &'static str {
-    match w {
-        "off" => "Hidden",
-        "first" => "Once per run",
-        _ => "Shown",
-    }
+    Shown::from_word(w).label()
 }
 
 /// A number as a field shows it.
@@ -258,15 +254,17 @@ impl TextSection {
                     ui.add(egui::TextEdit::singleline(&mut r.height).desired_width(36.0))
                         .accessible_name(format!("ecad.projectsettings.text.{}.height", r.kind));
                     ui.checkbox(&mut r.bold, "").accessible_name(format!("ecad.projectsettings.text.{}.bold", r.kind));
-                    let current = r.show.clone().unwrap_or_else(|| "on".into());
+                    let current = r.show.clone().unwrap_or_else(|| Shown::On.word().into());
                     ui.add_enabled_ui(!r.show_fixed, |ui| {
                         egui::ComboBox::from_id_salt(format!("ecad.projectsettings.text.{}.show", r.kind))
                             .selected_text(show_words(&current))
                             .show_ui(ui, |ui| {
-                                let words: &[&str] = if r.kind == "tag" { &["on", "off", "first"] } else { &["on", "off"] };
-                                for w in words {
-                                    if ui.selectable_label(current == *w, show_words(w)).clicked() {
-                                        r.show = Some((*w).to_string());
+                                // First (once per run) is for tags only.
+                                let all = [Shown::On, Shown::Off, Shown::First];
+                                let offered = if r.kind == "tag" { &all[..] } else { &all[..2] };
+                                for w in offered.iter().map(|s| s.word()) {
+                                    if ui.selectable_label(current == w, show_words(w)).clicked() {
+                                        r.show = Some(w.to_string());
                                     }
                                 }
                             });
@@ -305,10 +303,10 @@ mod tests {
         tag.height = "3".into();
         tag.bold = false;
         let pl = t.rows.iter_mut().find(|r| r.kind == "point_label").unwrap();
-        pl.show = Some("off".into());
+        pl.show = Some(Shown::Off.word().into());
         let line = t.line().unwrap().unwrap();
         let v: Value = serde_json::from_str(line.strip_prefix("textstyle ").unwrap()).unwrap();
-        assert_eq!(v, json!({"kinds": [{"kind": "tag", "height": 3.0, "weight": "regular"}, {"kind": "point_label", "show": "off"}]}));
+        assert_eq!(v, json!({"kinds": [{"kind": "tag", "height": 3.0, "weight": "regular"}, {"kind": "point_label", "show": "no"}]}));
         // A kind's own font, then back to the project font.
         let tag = t.rows.iter_mut().find(|r| r.kind == "tag").unwrap();
         tag.font = "Arial".into();

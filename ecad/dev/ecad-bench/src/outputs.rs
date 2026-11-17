@@ -128,7 +128,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredOutpu
         let fifty: Vec<String> = devices.iter().take(50).map(|c| c.hex()).collect();
         let mut locset = Vec::new();
         for i in 0..runs {
-            locset.push(timed(&mut s, "setprop", json!({"components": fifty, "key": "location", "value": format!("+B{i}")}))?);
+            locset.push(timed(&mut s, "setprop", json!({"devices": fifty, "key": "location", "value": format!("+B{i}")}))?);
             out.work = out.work.max(work(&project, &mut s));
         }
         out.locset_ms = median(&mut locset);
@@ -136,7 +136,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredOutpu
         let anchors: Vec<Pt> = project.read(&mut s, |p, _| {
             let doc = p.ledger.document();
             doc.representations_on(page1)
-                .filter(|(_, r)| matches!(r.subject, Subject::Component(c) if ecad_cadcraft::locations::is_device(doc, c)))
+                .filter(|(_, r)| matches!(r.subject, Subject::Device(c) if ecad_cadcraft::locations::is_device(doc, c)))
                 .filter_map(|(_, r)| ecad_cadcraft::locations::anchor(doc, r))
                 .collect()
         })?;
@@ -175,7 +175,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredOutpu
         let sym = project.read(&mut s, |p, _| {
             let doc = p.ledger.document();
             doc.representations_on(page1).find_map(|(_, r)| {
-                let Subject::Component(c) = r.subject else { return None };
+                let Subject::Device(c) = r.subject else { return None };
                 if !ecad_cadcraft::locations::is_device(doc, c) {
                     return None;
                 }
@@ -212,7 +212,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredOutpu
         // Brief 052 (design 052 §8.4): rename and merge an entry used by up to 500 devices.
         let users: Vec<String> = devices.iter().take(500).map(|c| c.hex()).collect();
         out.designation_users = users.len();
-        run(&mut s, "setlocation", json!({"components": users, "value": "+R0"}))?;
+        run(&mut s, "setlocation", json!({"devices": users, "value": "+R0"}))?;
         let mut renamebench = Vec::new();
         let mut mergebench = Vec::new();
         for i in 0..runs {
@@ -222,7 +222,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredOutpu
                 json!({"aspect": "location", "code": format!("+R{i}"), "to": format!("+R{}", i + 1)}),
             )?);
             out.work = out.work.max(work(&project, &mut s));
-            run(&mut s, "setlocation", json!({"components": users, "value": format!("+M{i}")}))?;
+            run(&mut s, "setlocation", json!({"devices": users, "value": format!("+M{i}")}))?;
             mergebench.push(timed(
                 &mut s,
                 "designationmerge",

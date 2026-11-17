@@ -13,6 +13,8 @@
 pub const YES_WORDS: [&str; 4] = ["yes", "true", "1", "on"];
 /// The words read as no, in lowercase. [`flag_word`] writes the first.
 pub const NO_WORDS: [&str; 4] = ["no", "false", "0", "off"];
+/// The two words a yes/no value is stored as, yes first: the choices a person picks from.
+pub const FLAG_WORDS: &[&str] = &[YES_WORDS[0], NO_WORDS[0]];
 
 /// The most digits [`uint`] and [`uint_canonical`] read: enough for any `u32`.
 pub const MAX_UINT_DIGITS: usize = 10;

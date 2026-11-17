@@ -36,7 +36,7 @@ pub fn terminal_positions(doc: &Document, page: PageId) -> Vec<(TerminalId, Repr
 /// representation through the same helper, so they cannot drift apart.
 pub fn terminal_position(doc: &Document, page: PageId, terminal: TerminalId) -> Option<Pt> {
     let component = doc.terminals.get(&terminal)?.component;
-    doc.representations_of(Subject::Component(component))
+    doc.representations_of(Subject::Device(component))
         .filter(|(_, r)| r.page == page)
         .find_map(|(_, r)| shown_by(doc, r).into_iter().find(|(t, _)| *t == terminal).map(|(_, p)| p))
 }
@@ -44,7 +44,7 @@ pub fn terminal_position(doc: &Document, page: PageId, terminal: TerminalId) -> 
 /// The terminals a component representation shows, with their positions, in the order
 /// [`terminal_positions`] lists them.
 fn shown_by(doc: &Document, r: &Representation) -> Vec<(TerminalId, Pt)> {
-    let Subject::Component(component) = r.subject else { return Vec::new() };
+    let Subject::Device(component) = r.subject else { return Vec::new() };
     match r.form {
         Form::Drawn => r.connection_points.iter().map(|(t, p)| (*t, *p)).collect(),
         Form::Symbol => {

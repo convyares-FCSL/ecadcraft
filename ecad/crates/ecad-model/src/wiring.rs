@@ -451,7 +451,7 @@ pub fn write_ops(doc: &Document, net: &NetData, number: &str, fixed: bool) -> Ve
             ops.push(Op::SetProperty { object, key: WIRE_NUMBER.into(), before: cur.cloned(), after: Some(number.to_string()) });
         }
         let flag = cond.properties.get(WIRE_NUMBER_FIXED);
-        let want = fixed.then(|| "yes".to_string());
+        let want = fixed.then(|| crate::words::flag_word(true).to_string());
         if flag != want.as_ref() {
             ops.push(Op::SetProperty { object, key: WIRE_NUMBER_FIXED.into(), before: flag.cloned(), after: want });
         }
@@ -501,7 +501,7 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetId>, BTreeSet<Ne
                 }
             }
             // Brief 048: another definition may bridge other points.
-            Op::SetComponentDefinition { id, .. } => {
+            Op::SetDeviceDefinition { id, .. } => {
                 for (t, _) in doc.terminals_of(*id) {
                     add(Node::Terminal(t), &mut nets);
                 }
@@ -512,7 +512,7 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetId>, BTreeSet<Ne
                     add(Node::Terminal(t), &mut nets);
                 }
             }
-            Op::CreateComponent { id, component } | Op::DeleteComponent { id, component } => {
+            Op::CreateDevice { id, device: component } | Op::DeleteDevice { id, device: component } => {
                 let cont = component.properties.get(KIND).is_some_and(|k| k == CONTINUATION);
                 for (t, _) in doc.terminals_of(*id) {
                     add(Node::Terminal(t), &mut nets);
@@ -527,7 +527,7 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetId>, BTreeSet<Ne
                     }
                 }
             }
-            Op::SetProperty { object: ObjectRef::Component(c), key, before, after } if key == KIND || key == NAME => {
+            Op::SetProperty { object: ObjectRef::Device(c), key, before, after } if key == KIND || key == NAME => {
                 for (t, _) in doc.terminals_of(*c) {
                     add(Node::Terminal(t), &mut nets);
                     add(Node::Terminal(t), &mut potential);
@@ -541,7 +541,7 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetId>, BTreeSet<Ne
             }
             // Brief 030 (FP7): a link edit touches the nets of its old and new terminals, so the
             // numbering pass merges or splits their numbers in the same transaction.
-            Op::SetProperty { object: ObjectRef::Component(c), key, before, after } if crate::links::link_number(key).is_some() => {
+            Op::SetProperty { object: ObjectRef::Device(c), key, before, after } if crate::links::link_number(key).is_some() => {
                 for v in [before, after] {
                     for t in crate::links::terminals_named(doc, *c, v.as_deref()) {
                         add(Node::Terminal(t), &mut nets);

@@ -84,7 +84,7 @@ pub fn parse(tag: &str) -> Option<(String, u64)> {
     if letters.is_empty() || digits.is_empty() || digits.len() > MAX_TAG_DIGITS {
         return None;
     }
-    if !digits.bytes().all(|b| b.is_ascii_digit()) {
+    if !crate::words::is_digits(digits) {
         return None;
     }
     let n = digits.parse::<u64>().ok()?;
@@ -108,7 +108,7 @@ pub fn provisional(tag: &str) -> Option<(String, u64)> {
     if letters.is_empty() || !letters.bytes().all(|b| b.is_ascii_alphabetic()) || digits.len() > MAX_TAG_DIGITS {
         return None;
     }
-    if !digits.bytes().all(|b| b.is_ascii_digit()) {
+    if !digits.is_empty() && !crate::words::is_digits(digits) {
         return None;
     }
     let n = if digits.is_empty() { 0 } else { digits.parse::<u64>().ok()? };
@@ -151,8 +151,8 @@ pub const TAG_RULE: u32 = 2;
 /// Count every tag `ops` write or remove (undone ones included), in order.
 ///
 /// # Semantics
-/// Device and cable tags share one mark per prefix (brief 026, Q7): `CreateComponent`,
-/// `DeleteComponent`, `CreateCable`, `DeleteCable` and any `SetProperty` of `tag` count (FP7). A
+/// Device and cable tags share one mark per prefix (brief 026, Q7): `CreateDevice`,
+/// `DeleteDevice`, `CreateCable`, `DeleteCable` and any `SetProperty` of `tag` count (FP7). A
 /// `SetProperty` of project property `numbering.high.<P>` to a newer generation (a renumber, or
 /// its redo) sets the mark of `P` to its number (FP4: overwrite, not max), so new tags follow a
 /// renumbered set; a later tag write raises it again as usual. One back to an older generation or
@@ -161,7 +161,7 @@ pub const TAG_RULE: u32 = 2;
 pub fn note_ops(high: &mut HighWater, ops: &[crate::Op]) {
     for op in ops {
         match op {
-            crate::Op::CreateComponent { component, .. } | crate::Op::DeleteComponent { component, .. } => {
+            crate::Op::CreateDevice { device: component, .. } | crate::Op::DeleteDevice { device: component, .. } => {
                 if let Some(t) = component.properties.get(TAG_KEY) {
                     note(high, t);
                 }
@@ -230,16 +230,18 @@ pub const CASE_KEY: &str = "tags.case";
 /// The values of [`DASH_KEY`]; its built-in is data ([`crate::builtins`], brief 066).
 pub const DASH_WORDS: &[&str] = &["yes", "no"];
 /// The values of [`CASE_KEY`]; its built-in is data.
-pub const CASE_WORDS: &[&str] = &["upper", "typed"];
+pub const CASE_WORDS: &[&str] = <Case as crate::words::Word>::WORDS;
 
-/// The case tags are written in (brief 033, project property `tags.case`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Case {
-    /// Upper case (the default, and every tag before brief 033).
-    #[default]
-    Upper,
-    /// As typed.
-    Typed,
+crate::word_enum! {
+    /// The case tags are written in (brief 033, project property `tags.case`).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+    pub enum Case {
+        /// Upper case (the default, and every tag before brief 033).
+        #[default]
+        Upper,
+        /// As typed.
+        Typed,
+    }
 }
 
 /// How a project writes tags (brief 033, design 033 §8): number padding, the leading `-`
@@ -260,22 +262,18 @@ impl From<u8> for Style {
 }
 
 impl Style {
-    /// The project's tag style: its padding, and [`DASH_KEY`] and [`CASE_KEY`] read as the
-    /// defaults registry reads them (a word compared without case; anything else is the default).
-    /// `ecad-cadcraft` registers the same keys and defaults.
+    /// The project's tag style: its padding, and [`DASH_KEY`] (a yes/no word) and [`CASE_KEY`]
+    /// (a [`Case`] word) read as the defaults registry reads them: a value that is not one of the
+    /// words is the built-in. `ecad-electrical` registers the same keys and defaults.
     pub fn of(doc: &crate::Document) -> Style {
-        let word = |key: &str, words: &[&str], default: &'static str| -> String {
-            doc.properties
-                .get(key)
-                .map(|v| v.trim())
-                .and_then(|v| words.iter().find(|w| w.eq_ignore_ascii_case(v)))
-                .map_or(default, |w| w)
-                .to_string()
-        };
+        let b = crate::builtins::builtins();
+        let stored = |key: &str| doc.properties.get(key).map(String::as_str);
+        let builtin_dash = crate::words::flag(b.tag_dash).unwrap_or(true);
+        let builtin_case = <Case as crate::words::Word>::parse(b.tag_case).unwrap_or_default();
         Style {
             padding: doc.settings.tag_padding().min(MAX_PADDING),
-            dash: word(DASH_KEY, DASH_WORDS, crate::builtins::builtins().tag_dash) == "yes",
-            case: if word(CASE_KEY, CASE_WORDS, crate::builtins::builtins().tag_case) == "typed" { Case::Typed } else { Case::Upper },
+            dash: stored(DASH_KEY).and_then(crate::words::flag).unwrap_or(builtin_dash),
+            case: stored(CASE_KEY).and_then(<Case as crate::words::Word>::parse).unwrap_or(builtin_case),
         }
     }
 

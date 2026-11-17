@@ -162,7 +162,7 @@ impl Command for NumberingParams {
             Some(on) => on_project(s, |p, pg, _| {
                 let doc = p.ledger.document();
                 let before = doc.properties.get(PROVISIONAL_SETTING).cloned();
-                let after = on.then(|| "yes".to_string());
+                let after = on.then(|| ecad_model::words::flag_word(true).to_string());
                 if before != after {
                     p.apply_edit(
                         pg,
@@ -236,7 +236,7 @@ fn row_json(doc: &Document, r: &numbering::Row) -> Value {
 /// A row's Desc: the device's description, `Cable, 3 wires`, or the net's potential.
 fn desc(doc: &Document, o: ObjectRef) -> String {
     match o {
-        ObjectRef::Component(c) => devices::description(doc, c),
+        ObjectRef::Device(c) => devices::description(doc, c),
         ObjectRef::Cable(k) => {
             let n = doc.cables.get(&k).map_or(0, |c| c.members.len());
             format!("Cable, {}", plural(n, "wire", "wires"))

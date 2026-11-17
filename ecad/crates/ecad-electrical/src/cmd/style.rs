@@ -79,6 +79,7 @@ pub fn field_rule(f: &styles::Field) -> String {
         Kind::Length { min, max } => format!("{} is {min} to {max} mm", f.key),
         Kind::Number { min, max } => format!("{} is a number from {min} to {max}", f.key),
         Kind::Choice(words) => format!("{} is one of {}", f.key, words.join(", ")),
+        Kind::Flag => format!("{} is yes or no", f.key),
         Kind::Parsed { .. } if matches!(f.key, "colour" | "line_colour" | "fill") => {
             format!("{} is none, one IEC 60757 colour code (RD, BU…) or #rrggbb", f.key)
         }
@@ -116,10 +117,15 @@ fn field_value(doc: &Document, f: &styles::Field, v: FieldInput) -> Result<Optio
     if let Kind::Style(c) = f.kind {
         return styles::find(doc, c, &typed).map(|id| Some(id.text())).map_err(|_| CmdError::refused(format!("{}.", field_rule(f))));
     }
-    let parsed = defaults::parse_value_in(doc, f.kind, &typed).ok_or_else(|| CmdError::refused(format!("{}.", field_rule(f))))?;
+    let parsed = match f.kind {
+        Kind::Flag => defaults::parse_input(f.kind, &typed),
+        _ => defaults::parse_value_in(doc, f.kind, &typed),
+    }
+    .ok_or_else(|| CmdError::refused(format!("{}.", field_rule(f))))?;
     Ok(Some(match parsed {
         defaults::Value::Length(x) | defaults::Value::Number(x) => format!("{x}"),
         defaults::Value::Choice(w) => w.to_string(),
+        defaults::Value::Flag(b) => ecad_model::words::flag_word(b).to_string(),
         defaults::Value::Text(t) => t.to_string(),
     }))
 }
@@ -149,7 +155,7 @@ pub fn users_words(users: &[(&'static str, ObjectRef)]) -> String {
     let (mut d, mut w, mut p) = (0, 0, 0);
     for (_, o) in users {
         match o {
-            ObjectRef::Component(_) => d += 1,
+            ObjectRef::Device(_) => d += 1,
             ObjectRef::Conductor(_) | ObjectRef::Cable(_) => w += 1,
             ObjectRef::Page(_) => p += 1,
             ObjectRef::Project | ObjectRef::Standard => {}
@@ -162,7 +168,7 @@ pub fn users_words(users: &[(&'static str, ObjectRef)]) -> String {
 
 fn props_of(doc: &Document, o: ObjectRef) -> Option<&ecad_model::Properties> {
     match o {
-        ObjectRef::Component(c) => doc.components.get(&c).map(|x| &x.properties),
+        ObjectRef::Device(c) => doc.devices.get(&c).map(|x| &x.properties),
         ObjectRef::Conductor(c) => doc.conductors.get(&c).map(|x| &x.properties),
         ObjectRef::Cable(c) => doc.cables.get(&c).map(|x| &x.properties),
         ObjectRef::Page(p) => doc.pages.get(&p).map(|x| &x.properties),

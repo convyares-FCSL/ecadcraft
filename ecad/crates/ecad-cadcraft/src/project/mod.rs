@@ -17,7 +17,7 @@ use crate::access::{Pages, PagesRef, ProjectHandle};
 use ecad_electrical::CmdError;
 use ecad_inspect::{EventKind, EventLog, LiveFacts, PageInfo};
 use ecad_model::{
-    Author, CableId, ComponentId, ConductorId, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger, LengthUnit, Op, Page, PageId,
+    Author, CableId, ConductorId, DeviceId, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger, LengthUnit, Op, Page, PageId,
     ProjectId, ProjectSettings, Pt, RepresentationId, Subject, TerminalId,
 };
 use ecad_store::MemoryBackend;
@@ -116,7 +116,7 @@ pub struct Project {
     oops: crate::oops::Records,
     /// What the last placement in this session placed (symbol key, device), for the prompts'
     /// defaults (design 018 §5.3).
-    pub(crate) last_placed: Option<(String, ComponentId)>,
+    pub(crate) last_placed: Option<(String, DeviceId)>,
     /// The last continuation name placed in this session, the prompt's default (design 022 §3.2).
     pub(crate) last_continuation: Option<String>,
     /// Brief 049: the last caption given in this session, Caption Continuations' default.
@@ -562,7 +562,7 @@ pub fn project_page_kept(
             map.insert_marker(rid, *t, h);
             members.push(h);
         }
-        if matches!(r.subject, Subject::Component(_)) && members.len() > 1 {
+        if matches!(r.subject, Subject::Device(_)) && members.len() > 1 {
             groups.push(Group { name: format!("{ECAD_PREFIX}{:032x}", rid.0), description: String::new(), selectable: true, members });
         }
     }
@@ -626,7 +626,7 @@ pub fn project_page_kept(
         map.insert_xref(part.rep, part.index, h);
     }
     // Link lines (brief 030): derived on every draw, never stored.
-    let mut seen: BTreeMap<(ComponentId, u32), u32> = BTreeMap::new();
+    let mut seen: BTreeMap<(DeviceId, u32), u32> = BTreeMap::new();
     for part in crate::link_lines::parts_on_page(doc, page) {
         let i = seen.entry((part.strip, part.n)).or_default();
         let h = prev.link(part.strip, part.n, *i).unwrap_or_else(|| d.new_handle());
@@ -1168,10 +1168,10 @@ fn unused_after(doc: &ecad_model::Document, id: ecad_model::DefinitionId, ops: &
             _ => false,
         })
     };
-    let comp_left = |c: &ecad_model::ComponentId| {
+    let comp_left = |c: &ecad_model::DeviceId| {
         !ops.iter().any(|o| match o {
-            Op::DeleteComponent { id: x, .. } => x == c,
-            Op::SetComponentDefinition { id: x, after, .. } => x == c && *after != Some(id),
+            Op::DeleteDevice { id: x, .. } => x == c,
+            Op::SetDeviceDefinition { id: x, after, .. } => x == c && *after != Some(id),
             _ => false,
         })
     };
@@ -1207,18 +1207,18 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
             // Brief 049 (design 049 §8.2): a continuation's partners list it on their pages; those
             // pages come from the reference index's watch (`xref::Watch`), and its own pages from
             // its representation ops.
-            Op::CreateComponent { component, .. } | Op::DeleteComponent { component, .. }
+            Op::CreateDevice { device: component, .. } | Op::DeleteDevice { device: component, .. }
                 if ecad_model::connectivity::continuation_key(&component.properties).is_some() => {}
             Op::CreateConductor { id, .. } if !doc.conductors.contains_key(id) => {}
             // Brief 032: a deleted conductor's routes are unlinked and its ends detached in the
             // same transaction (the invariant requires it), and those ops name its pages.
             Op::DeleteConductor { .. } => {}
-            Op::CreateComponent { id, .. } if !doc.components.contains_key(id) => {}
+            Op::CreateDevice { id, .. } if !doc.devices.contains_key(id) => {}
             Op::AddTerminal { id, .. } if !doc.terminals.contains_key(id) => {}
             // Brief 028: a terminal relabelled (Remove + Add of one ID) is drawn by its device's
             // symbols only: their pages.
             Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
-                out.extend(doc.representations_of(Subject::Component(terminal.component)).map(|(_, r)| r.page));
+                out.extend(doc.representations_of(Subject::Device(terminal.component)).map(|(_, r)| r.page));
             }
             Op::EmbedDefinition { id, .. } if !doc.definitions.contains_key(id) => {}
             // A page's own properties show in its frame only (brief 019); the references they
@@ -1240,25 +1240,25 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
             // A device's tag is drawn beside each of its symbols (brief 018): their pages. Brief
             // 049 (design 049 §8.2): a continuation's name and kind are drawn on its own pages; its
             // partners' pages come from the reference index's watch.
-            Op::SetProperty { object: ecad_model::ObjectRef::Component(c), key, .. }
+            Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key, .. }
                 if (key == ecad_model::connectivity::NAME || key == ecad_model::connectivity::KIND)
                     && crate::continuations::is_continuation(doc, *c) =>
             {
-                out.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
+                out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
             }
-            Op::SetProperty { object: ecad_model::ObjectRef::Component(_), key, .. }
+            Op::SetProperty { object: ecad_model::ObjectRef::Device(_), key, .. }
                 if key == ecad_model::connectivity::NAME || key == ecad_model::connectivity::KIND =>
             {
                 return None;
             }
-            Op::SetProperty { object: ecad_model::ObjectRef::Component(c), key, after, .. } => {
-                out.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
+            Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key, after, .. } => {
+                out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
                 // Brief 045 (design 045 §11.1): a rack's tag shows in its cards' captions, and a
                 // card's slot or size moves the addresses of the cards after it.
                 out.extend(crate::plc::pages_touched(doc, plc, *c, key, after.as_deref()));
             }
-            Op::SetComponentDefinition { id: c, .. } => {
-                out.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
+            Op::SetDeviceDefinition { id: c, .. } => {
+                out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
             }
             // Brief 048 (FP8): a superseded version nothing shows after the transaction is drawn
             // nowhere. Its last copies move off it in the same transaction (review of PR #86,
@@ -1289,9 +1289,9 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
                     if doc.properties.iter().any(|(k, v)| crate::designations::Aspect::of_property(k).is_some() && v == entry) {
                         return None;
                     }
-                    for (c, x) in &doc.components {
+                    for (c, x) in &doc.devices {
                         if x.properties.iter().any(|(k, v)| crate::designations::Aspect::of_property(k).is_some() && v == entry) {
-                            out.extend(doc.representations_of(Subject::Component(*c)).map(|(_, r)| r.page));
+                            out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
                         }
                     }
                     for (pid, x) in &doc.pages {

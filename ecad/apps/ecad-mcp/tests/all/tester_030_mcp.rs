@@ -80,14 +80,14 @@ fn accessory_and_jumper_writes_by_the_agent_then_refused_with_writes_off() {
             assert!(
                 ops.iter()
                     .filter(|o| matches!(o, Op::SetProperty { key, .. } if key.starts_with("link.") || key.starts_with("acc.")))
-                    .all(|o| matches!(o, Op::SetProperty { object: ObjectRef::Component(_), .. })),
+                    .all(|o| matches!(o, Op::SetProperty { object: ObjectRef::Device(_), .. })),
                 "accessory and link keys are strip properties: {ops:?}"
             );
         }
         // Renumber rewrote the links with their terminals.
         let d = c.doc();
-        let sp = ecad_model::ComponentId::from(u128::from_str_radix(&strip, 16).unwrap());
-        let links: Vec<String> = d.components[&sp]
+        let sp = ecad_model::DeviceId::from(u128::from_str_radix(&strip, 16).unwrap());
+        let links: Vec<String> = d.devices[&sp]
             .properties
             .iter()
             .filter(|(k, _)| k.starts_with("link.") && k[5..].chars().all(|c| c.is_ascii_digit()))

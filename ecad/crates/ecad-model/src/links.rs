@@ -23,7 +23,7 @@ use std::cmp::Ordering;
 
 use crate::doc::{Document, Properties};
 use crate::error::{ParseError, Parsed};
-use crate::id::{ComponentId, TerminalId};
+use crate::id::{DeviceId, TerminalId};
 
 /// What every link key starts with.
 pub const PREFIX: &str = "link.";
@@ -53,7 +53,7 @@ fn level_text(k: &str) -> Option<(u32, Option<char>)> {
         Some(c @ ('i' | 'o')) => (k.get(..k.len() - 1)?, Some(c)),
         _ => (k, None),
     };
-    if digits.is_empty() || digits.len() > 2 || !digits.bytes().all(|b| b.is_ascii_digit()) {
+    if digits.len() > 2 || !crate::words::is_digits(digits) {
         return None;
     }
     let n: u32 = digits.parse().ok()?;
@@ -69,7 +69,7 @@ pub struct BadLevel;
 pub fn split_level(end: &str) -> Result<(&str, Option<(u32, Option<char>)>), BadLevel> {
     let Some((pos, tail)) = end.rsplit_once('.') else { return Ok((end, None)) };
     let core = tail.strip_suffix(['i', 'o']).unwrap_or(tail);
-    if pos.is_empty() || core.is_empty() || !core.bytes().all(|b| b.is_ascii_digit()) {
+    if pos.is_empty() || !crate::words::is_digits(core) {
         return Ok((end, None));
     }
     level_text(tail).map(|l| (pos, Some(l))).ok_or(BadLevel)
@@ -109,10 +109,7 @@ fn cmp_labels(a: &str, b: &str) -> Ordering {
 /// The link number of `key` when it is a link key (`link.3` → 3).
 pub fn link_number(key: &str) -> Option<u32> {
     let n = key.strip_prefix(PREFIX)?;
-    if n.is_empty() || n.len() > 3 || !n.bytes().all(|b| b.is_ascii_digit()) || n.starts_with('0') {
-        return None;
-    }
-    n.parse::<u32>().ok().filter(|n| (1..=MAX_LINK).contains(n))
+    crate::words::uint_canonical(n, MAX_LINK).filter(|n| *n >= 1)
 }
 
 /// The link key of number `n`.
@@ -445,7 +442,7 @@ pub fn plan_order(labels: impl IntoIterator<Item = String>) -> Vec<String> {
 /// component's terminals per link that names `t`.
 pub fn linked(doc: &Document, t: TerminalId) -> Vec<TerminalId> {
     let Some(term) = doc.terminals.get(&t) else { return Vec::new() };
-    let Some(comp) = doc.components.get(&term.component) else { return Vec::new() };
+    let Some(comp) = doc.devices.get(&term.component) else { return Vec::new() };
     let mut out = std::collections::BTreeSet::new();
     for (_, p) in of(&comp.properties) {
         let m = Matcher::of(&p);
@@ -462,7 +459,7 @@ pub fn linked(doc: &Document, t: TerminalId) -> Vec<TerminalId> {
 }
 
 /// The terminals of `component` a link value names (unreadable: none).
-pub fn terminals_named(doc: &Document, component: ComponentId, value: Option<&str>) -> Vec<TerminalId> {
+pub fn terminals_named(doc: &Document, component: DeviceId, value: Option<&str>) -> Vec<TerminalId> {
     let Some(p) = value.and_then(|v| parse(v).ok()) else { return Vec::new() };
     let m = Matcher::of(&p);
     doc.terminals_of(component).filter(|(_, x)| m.matches_terminal(x)).map(|(id, _)| id).collect()

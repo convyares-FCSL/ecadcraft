@@ -25,7 +25,7 @@ pub fn styled_label_entity(
     use crate::text_style::TextKind;
     let mut e = label_entity(look, value, at, handle);
     let Some(c) = doc.representations.get(&rep).and_then(|r| match r.subject {
-        Subject::Component(c) => Some(c),
+        Subject::Device(c) => Some(c),
         _ => None,
     }) else {
         return e;
@@ -48,7 +48,7 @@ pub fn styled_label_entity(
 /// the page to install (`install_family`).
 pub fn label_family(doc: &Document, rep: RepresentationId) -> Option<String> {
     let c = doc.representations.get(&rep).and_then(|r| match r.subject {
-        Subject::Component(c) => Some(c),
+        Subject::Device(c) => Some(c),
         _ => None,
     })?;
     let label = crate::styles::location::box_look(doc, c).label_style;

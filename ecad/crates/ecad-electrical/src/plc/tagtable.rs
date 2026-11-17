@@ -456,7 +456,7 @@ pub fn normalise(raw: &str) -> Address {
         // `AB…`, `IN…`, anything else after I/Q/E/A: not an I/O address.
         _ => return Address::NotIo,
     };
-    let digits = |t: &str| !t.is_empty() && t.len() <= 6 && t.bytes().all(|b| b.is_ascii_digit());
+    let digits = |t: &str| t.len() <= 6 && ecad_model::words::is_digits(t);
     let max = super::address::MAX_BYTE;
     if size.is_empty() {
         let Some((byte, bit)) = num.split_once('.') else { return Address::Bad };

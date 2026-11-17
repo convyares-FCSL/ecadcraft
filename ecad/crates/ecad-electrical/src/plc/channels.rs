@@ -18,7 +18,7 @@ use crate::CmdError;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
-    ComponentId, DefinitionId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Placement, Pt, Representation, RepresentationId,
+    DefinitionId, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Placement, Pt, Representation, RepresentationId,
     Style, Subject, SymbolInstance, Terminal, TerminalId,
 };
 
@@ -53,7 +53,7 @@ pub fn key(i: u32, role: &str) -> String {
 pub fn parse_key(k: &str) -> Option<(u32, &'static str)> {
     let rest = k.strip_prefix('.')?;
     let (i, role) = rest.split_once('.')?;
-    if i.is_empty() || i.len() > 4 || !i.bytes().all(|b| b.is_ascii_digit()) {
+    if i.len() > 4 || !ecad_model::words::is_digits(i) {
         return None;
     }
     let i: u32 = i.parse().ok().filter(|n| *n <= MAX_INDEX)?;
@@ -69,7 +69,7 @@ pub fn parse_legacy(k: &str) -> Option<(u32, &'static str)> {
         _ => return None,
     };
     let (a, b) = rest.split_once('.')?;
-    if a.is_empty() || a.len() > 4 || b.len() != 1 || !a.bytes().all(|x| x.is_ascii_digit()) {
+    if a.len() > 4 || b.len() != 1 || !ecad_model::words::is_digits(a) {
         return None;
     }
     let (a, b): (u32, u32) = (a.parse().ok()?, b.parse().ok()?);
@@ -84,7 +84,7 @@ pub fn point_of(doc: &Document, t: TerminalId) -> Option<(u32, &'static str)> {
 }
 
 /// The channel points of card `c`: index → (role, terminal, pin), roles in their cell order.
-pub fn points(doc: &Document, c: ComponentId) -> BTreeMap<u32, Vec<(&'static str, TerminalId, String)>> {
+pub fn points(doc: &Document, c: DeviceId) -> BTreeMap<u32, Vec<(&'static str, TerminalId, String)>> {
     let mut out: BTreeMap<u32, Vec<(&'static str, TerminalId, String)>> = BTreeMap::new();
     for (t, term) in doc.terminals_of(c) {
         if let Some((i, role)) = point_of(doc, t) {
@@ -128,9 +128,9 @@ fn cells_words(t: CardType) -> String {
 }
 
 /// The first channel number shown on card `c` (`plc.channel.first`, 0 or 1).
-pub fn first_number(doc: &Document, c: ComponentId) -> u32 {
+pub fn first_number(doc: &Document, c: DeviceId) -> u32 {
     let at = Scope { component: Some(c), ..Scope::project() };
-    u32::from(defaults::resolve(doc, &defaults::plc::CHANNEL_FIRST, at).word() == "1")
+    u32::from(defaults::resolve(doc, &defaults::plc::CHANNEL_FIRST, at).choice() == Some(defaults::plc::ChannelFirst::One))
 }
 
 /// Where channel `i` of card `c` is drawn, in words (`105-C-2`, or `page 3`).
@@ -146,10 +146,10 @@ fn drawn_words(doc: &Document, t: TerminalId) -> String {
 /// The pins a new channel `i` of card `c` gets for `roles` (design 045 §4.3): from the pin layout,
 /// or the next free whole number when the computed one is taken (`used`, which gains them).
 pub fn pins_for(
-    doc: &Document, c: Option<ComponentId>, ty: CardType, n: u32, i: u32, roles: &[&'static str], used: &mut BTreeSet<String>,
+    doc: &Document, c: Option<DeviceId>, ty: CardType, n: u32, i: u32, roles: &[&'static str], used: &mut BTreeSet<String>,
 ) -> Vec<String> {
     let at = Scope { component: c, ..Scope::project() };
-    let by_channel = defaults::resolve(doc, &defaults::plc::PINS, at).word() == "channel";
+    let by_channel = defaults::resolve(doc, &defaults::plc::PINS, at).choice() == Some(defaults::plc::PlcPins::Channel);
     let all = ty.roles();
     let r_count = u32::try_from(all.len()).unwrap_or(1).max(1);
     let n = n.max(i.saturating_add(1));
@@ -188,9 +188,7 @@ pub struct Join {
 ///
 /// # Errors
 /// The refusals of §4.4, each with the way out.
-pub fn join(
-    doc: &Document, c: ComponentId, s: &Starter, named: Option<u32>, extra: &BTreeSet<String>, taken: &BTreeSet<u32>,
-) -> Result<Join, CmdError> {
+pub fn join(doc: &Document, c: DeviceId, s: &Starter, named: Option<u32>, extra: &BTreeSet<String>, taken: &BTreeSet<u32>) -> Result<Join, CmdError> {
     let who = crate::devices::tag_words(doc, c);
     let t = cell_type(s).ok_or(CmdError::refused("That symbol is not a PLC channel."))?;
     let ct = match card_type_of(doc, c) {
@@ -241,7 +239,7 @@ pub fn join(
 ///
 /// # Errors
 /// As [`join`].
-pub fn join_labels(doc: &Document, c: ComponentId, s: &Starter, extra: &BTreeSet<String>) -> Result<Vec<String>, CmdError> {
+pub fn join_labels(doc: &Document, c: DeviceId, s: &Starter, extra: &BTreeSet<String>) -> Result<Vec<String>, CmdError> {
     join(doc, c, s, None, extra, &BTreeSet::new()).map(|j| j.pins.into_iter().map(|(_, p)| p).collect())
 }
 
@@ -259,7 +257,7 @@ pub struct Cell {
 /// points.
 #[allow(clippy::too_many_arguments)]
 pub fn plan_cell(
-    ids: &mut IdAllocator, page: PageId, style: Style, def_id: DefinitionId, s: &Starter, card: ComponentId, j: &Join, placement: Placement,
+    ids: &mut IdAllocator, page: PageId, style: Style, def_id: DefinitionId, s: &Starter, card: DeviceId, j: &Join, placement: Placement,
     ops: &mut Vec<Op>,
 ) -> Result<Cell, CmdError> {
     let def = s.definition()?;
@@ -282,10 +280,10 @@ pub fn plan_cell(
     ops.push(Op::LinkRepresentation {
         id: representation,
         rep: Representation {
-            subject: Subject::Component(card),
+            subject: Subject::Device(card),
             page,
             form: Form::Symbol,
-            role: s.key.into(),
+            role: s.key.to_string(),
             items: vec![item],
             connection_points: cps,
         },
@@ -298,18 +296,18 @@ pub fn plan_cell(
 pub fn new_card_ops(
     ledger: &ecad_model::Ledger, ids: &mut IdAllocator, high: &mut crate::devices::TagHigh, s: &Starter, def: DefinitionId, t: CardType,
     tag: Option<String>, ops: &mut Vec<Op>,
-) -> Result<(ComponentId, String), CmdError> {
+) -> Result<(DeviceId, String), CmdError> {
     let doc = ledger.document();
     let tag = match tag {
         Some(t) => t,
         None => high.next_auto(ledger, &crate::devices::prefix_for(doc, s))?,
     };
-    let c: ComponentId = ids.fresh();
+    let c: DeviceId = ids.fresh();
     let mut properties = ecad_model::Properties::new();
     properties.insert(ecad_model::tag::TAG_KEY.into(), tag.clone());
     let name = crate::symbols::by_key(t.body()).map_or("PLC card", |b| b.name);
     properties.insert("description".into(), name.into());
-    ops.push(Op::CreateComponent { id: c, component: ecad_model::Component { properties, definition: Some(def) } });
+    ops.push(Op::CreateDevice { id: c, device: ecad_model::Device { properties, definition: Some(def), device_type: s.device_type() } });
     Ok((c, tag))
 }
 
@@ -498,7 +496,7 @@ pub fn ch_key(i: u32, what: &str) -> String {
 pub fn parse_ch_key(k: &str) -> Option<(u32, &'static str)> {
     let rest = k.strip_prefix(CH_PREFIX)?;
     let (i, what) = rest.split_once('.')?;
-    if i.is_empty() || i.len() > 4 || !i.bytes().all(|b| b.is_ascii_digit()) {
+    if i.len() > 4 || !ecad_model::words::is_digits(i) {
         return None;
     }
     let i: u32 = i.parse().ok().filter(|n| *n <= MAX_INDEX)?;
@@ -539,7 +537,7 @@ pub fn is_channel_definition(doc: &Document, id: DefinitionId) -> bool {
 }
 
 /// `-A02 channel 3`.
-pub fn channel_words(doc: &Document, c: ComponentId, i: u32) -> String {
+pub fn channel_words(doc: &Document, c: DeviceId, i: u32) -> String {
     format!("{} channel {}", crate::devices::tag_words(doc, c), i + first_number(doc, c))
 }
 

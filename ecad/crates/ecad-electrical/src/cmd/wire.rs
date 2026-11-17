@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use ecad_model::connectivity::{CONTINUATION, JUNCTION, KIND, NAME};
 use ecad_model::wiring::{self, Scheme};
 use ecad_model::{
-    ComponentId, ConductorId, Document, End, IdAllocator, Ledger, NetData, NetId, Noun, ObjectRef, Op, PageId, Placement, ProjectSettings, Pt, Style,
+    ConductorId, DeviceId, Document, End, IdAllocator, Ledger, NetData, NetId, Noun, ObjectRef, Op, PageId, Placement, ProjectSettings, Pt, Style,
     StyleRef, Subject, TerminalId,
 };
 
@@ -90,7 +90,7 @@ pub fn net_view(doc: &Document, net: &NetData) -> NetView {
         .iter()
         .filter_map(|t| doc.terminals.get(t))
         .filter(|x| wires::kind_of(doc, x.component) == Some(CONTINUATION))
-        .filter_map(|x| doc.components.get(&x.component).and_then(|c| c.properties.get(NAME)).cloned())
+        .filter_map(|x| doc.devices.get(&x.component).and_then(|c| c.properties.get(NAME)).cloned())
         .collect();
     let looks = crate::styles::wire::WireLooks::new(doc);
     let cats: BTreeSet<StyleRef> = net.conductors.iter().filter_map(|c| looks.category(doc, *c).0).collect();
@@ -336,7 +336,7 @@ pub enum Numbered {
     /// The number was taken, and the other net took this one's.
     Swapped { ops: Vec<Op>, number: String, conductors: usize, swapped: String },
     /// The number was taken, and the nets were joined with a continuation pair.
-    Merged { ops: Vec<Op>, number: String, continuations: Vec<ComponentId> },
+    Merged { ops: Vec<Op>, number: String, continuations: Vec<DeviceId> },
 }
 
 impl Numbered {
@@ -669,7 +669,7 @@ pub fn renumber(doc: &Document, all: bool) -> (Vec<Op>, usize) {
 /// A junction placed by `junction` or `joinwires`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Junctioned {
-    pub junction: ComponentId,
+    pub junction: DeviceId,
     pub terminal: TerminalId,
     /// The new second half of the wire split at it (`None`: loose ends that only met).
     pub conductor: Option<ConductorId>,
@@ -779,8 +779,8 @@ pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<
             _ => Ok(None),
         },
         // Brief 049 (design 049 §3.1): a caption only on a continuation, checked.
-        ObjectRef::Component(c) if key == crate::continuations::CAPTION_KEY => Ok(Some(crate::continuations::caption_value(doc, c, value)?)),
-        ObjectRef::Component(c) if wires::kind_of(doc, c).is_some() => match key {
+        ObjectRef::Device(c) if key == crate::continuations::CAPTION_KEY => Ok(Some(crate::continuations::caption_value(doc, c, value)?)),
+        ObjectRef::Device(c) if wires::kind_of(doc, c).is_some() => match key {
             k if k == KIND => Err(CmdError::refused("A junction or continuation keeps its kind; erase it and place another.")),
             k if k == NAME && wires::kind_of(doc, c) == Some(CONTINUATION) => {
                 let v = value.ok_or(CmdError::refused("A continuation needs a name."))?;

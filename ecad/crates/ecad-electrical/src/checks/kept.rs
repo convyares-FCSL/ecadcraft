@@ -56,8 +56,8 @@ impl Checks {
         }
         // One drawing order for the pass: the book is built at most once (review of #105, 1).
         let mut places = Places::new(doc);
-        for c in doc.components.keys() {
-            ch.set(Key::Component(*c), component_checks_in(&mut places, *c, m));
+        for c in doc.devices.keys() {
+            ch.set(Key::Device(*c), component_checks_in(&mut places, *c, m));
         }
         for k in doc.cables.keys() {
             ch.set(Key::CableReferences(*k), reference_checks(doc, *k));
@@ -236,8 +236,8 @@ impl Checks {
             self.set(Key::Terminal(*t), terminal_checks(doc, *t));
         }
         let mut places = Places::new(doc);
-        for c in &scope.components {
-            self.set(Key::Component(*c), component_checks_in(&mut places, *c, m));
+        for c in &scope.devices {
+            self.set(Key::Device(*c), component_checks_in(&mut places, *c, m));
         }
         for k in &scope.cable_references {
             self.set(Key::CableReferences(*k), reference_checks(doc, *k));

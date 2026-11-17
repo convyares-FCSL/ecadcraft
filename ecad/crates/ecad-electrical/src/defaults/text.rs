@@ -19,8 +19,8 @@ const SPGO: &[Level] = &[Level::Standard, Level::Project, Level::Page, Level::Ob
 /// The heights a project may set: cap heights (baseline to the top of a capital), millimetres
 /// (brief 040, owner answer 9; CADCraft draws a text height as its cap height).
 const HEIGHT: Kind = Kind::Length { min: 0.5, max: 10.0 };
-const SHOW: Kind = Kind::Choice(&["on", "off"]);
-const SHOW_RUN: Kind = Kind::Choice(&["on", "off", "first"]);
+const SHOW: Kind = Kind::Flag;
+const SHOW_RUN: Kind = Kind::Choice(<crate::text_style::Shown as ecad_model::Word>::WORDS);
 
 const fn entry(key: &'static str, label: &'static str, kind: Kind, levels: &'static [Level]) -> Entry {
     Entry { key, label, group: GROUP, brief: BRIEF, kind, slot: Slot::new(), levels, project: ProjectSource::Property }

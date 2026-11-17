@@ -72,7 +72,7 @@ crate::word_enum! {
 /// Whether `w` is a well-formed catalogue word or built-in style word: 1–32 characters of
 /// `a-z 0-9 _`.
 pub fn is_word(w: &str) -> bool {
-    !w.is_empty() && w.len() <= MAX_WORD_CHARS && w.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+    !w.is_empty() && w.len() <= MAX_WORD_CHARS && w.bytes().all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'_'))
 }
 
 /// Whether a property `key` is a style choice (design 050 §2.5, FP5): `text.<kind>.style`,

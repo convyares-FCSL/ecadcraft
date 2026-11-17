@@ -6,7 +6,7 @@
 use cadcraft_engine::doc::{Entity, EntityKind};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
-use ecad_model::{ComponentId, Pt, TerminalId};
+use ecad_model::{DeviceId, Pt, TerminalId};
 use serde_json::{Value, json};
 
 use super::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
@@ -53,9 +53,9 @@ const TYPE_WORDS: &[&str] = &["Feedthrough", "PE", "x2", "x2B", "x3", "LNPE", "S
 struct PlaceTerminals {
     stage: Stage,
     /// The strip Enter takes: the last one used.
-    last: Option<(ComponentId, String)>,
+    last: Option<(DeviceId, String)>,
     /// The chosen strip (`None`: a new one).
-    strip: Option<ComponentId>,
+    strip: Option<DeviceId>,
     pe: bool,
     /// Brief 036: the type, its level (`None`: whole terminals), and a typed position.
     ty: &'static tt::TermType,
@@ -64,10 +64,13 @@ struct PlaceTerminals {
     first: Option<Pt>,
 }
 
+/// The answers that start a new strip.
+const NEW_STRIP: [&str; 2] = ["new", "n"];
+
 impl PlaceTerminals {
     fn choose(&mut self, s: &Session, text: &str) -> R<Step> {
         let t = text.trim();
-        if t.eq_ignore_ascii_case("new") || t.eq_ignore_ascii_case("n") {
+        if NEW_STRIP.iter().any(|w| t.eq_ignore_ascii_case(w)) {
             self.strip = None;
         } else if t.eq_ignore_ascii_case("pe") {
             self.pe = true;

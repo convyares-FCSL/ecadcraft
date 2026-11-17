@@ -18,7 +18,7 @@
 
 use std::collections::BTreeMap;
 
-use ecad_model::{ComponentId, Document, PageId, Pt, RepresentationId, Subject};
+use ecad_model::{DeviceId, Document, PageId, Pt, RepresentationId, Subject};
 
 use super::rack::{self, CardType};
 use crate::symbols::{CELL_TOP, HEADER_BAND, MARK_BAND, NAME_BAND};
@@ -61,7 +61,7 @@ struct Piece {
 /// up).
 #[derive(Debug, Clone)]
 pub struct Run {
-    pub card: ComponentId,
+    pub card: DeviceId,
     pub dir: f64,
     pub top: f64,
     pub left: f64,
@@ -75,13 +75,13 @@ pub struct Run {
 }
 
 /// Whether the frame of card `c` is drawn (`plc.frame.show`).
-pub fn frame_shown(doc: &Document, c: ComponentId) -> bool {
+pub fn frame_shown(doc: &Document, c: DeviceId) -> bool {
     let at = crate::defaults::Scope { component: Some(c), ..crate::defaults::Scope::project() };
-    crate::defaults::resolve(doc, &crate::defaults::plc::FRAME_SHOW, at).word() == "on"
+    crate::defaults::resolve(doc, &crate::defaults::plc::FRAME_SHOW, at).flag()
 }
 
 /// The piece of representation `r` of card `c`, when it is a PLC cell or card body at 0° or 180°.
-fn piece(doc: &Document, c: ComponentId, rid: RepresentationId, r: &ecad_model::Representation) -> Option<(Piece, f64)> {
+fn piece(doc: &Document, c: DeviceId, rid: RepresentationId, r: &ecad_model::Representation) -> Option<(Piece, f64)> {
     let s = crate::devices::rep_starter(doc, r)?;
     let (_, pl) = crate::devices::rep_definition(doc, r)?;
     if !pl.origin.is_finite() || !pl.rotation.is_finite() {
@@ -130,9 +130,9 @@ fn piece(doc: &Document, c: ComponentId, rid: RepresentationId, r: &ecad_model::
 
 /// The runs of every card on `page`.
 pub fn runs_on_page(doc: &Document, page: PageId) -> Vec<Run> {
-    let mut by_card: BTreeMap<ComponentId, Vec<(Piece, f64)>> = BTreeMap::new();
+    let mut by_card: BTreeMap<DeviceId, Vec<(Piece, f64)>> = BTreeMap::new();
     for (rid, r) in doc.representations_on(page) {
-        let Subject::Component(c) = r.subject else { continue };
+        let Subject::Device(c) = r.subject else { continue };
         let entry = by_card.entry(c).or_default();
         if entry.len() >= MAX_PER_CARD {
             continue;
@@ -176,7 +176,7 @@ pub fn runs_on_page(doc: &Document, page: PageId) -> Vec<Run> {
     out
 }
 
-fn make_run(card: ComponentId, dir: f64, pieces: &[Piece]) -> Run {
+fn make_run(card: DeviceId, dir: f64, pieces: &[Piece]) -> Run {
     let first = pieces.iter().filter_map(|p| p.channel).min();
     let last = pieces.iter().filter_map(|p| p.channel).max();
     let left = pieces.iter().map(|p| p.left).fold(f64::INFINITY, f64::min);
@@ -196,16 +196,18 @@ fn make_run(card: ComponentId, dir: f64, pieces: &[Piece]) -> Run {
 }
 
 /// The card's words for its name block, top to bottom, with their text kinds.
-fn name_block(doc: &Document, c: ComponentId) -> Vec<(String, TextKind)> {
+fn name_block(doc: &Document, c: DeviceId) -> Vec<(String, TextKind)> {
     let mut out = Vec::new();
     let at = crate::defaults::Scope { component: Some(c), ..crate::defaults::Scope::project() };
-    if crate::defaults::resolve(doc, &crate::defaults::text::TAG_SHOW, at).word() != "off" {
+    if crate::text_style::Shown::from_word(crate::defaults::resolve(doc, &crate::defaults::text::TAG_SHOW, at).word())
+        != crate::text_style::Shown::Off
+    {
         out.push((crate::devices::tag_words(doc, c), TextKind::Tag));
     }
     if let Some((caption, true)) = super::caption(doc, c) {
         out.push((caption, TextKind::PartNumber));
     }
-    let prop = |k: &str| doc.components.get(&c).and_then(|x| x.properties.get(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+    let prop = |k: &str| doc.devices.get(&c).and_then(|x| x.properties.get(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
     for k in ["maker", "part_number"] {
         if let Some(v) = prop(k) {
             out.push((v, TextKind::PartNumber));
@@ -215,11 +217,10 @@ fn name_block(doc: &Document, c: ComponentId) -> Vec<(String, TextKind)> {
 }
 
 /// The type text: the card's own description, else `DI 16`.
-pub fn type_text(doc: &Document, c: ComponentId) -> String {
+pub fn type_text(doc: &Document, c: DeviceId) -> String {
     let Some(ty) = super::card_type_of(doc, c) else { return String::new() };
     let builtin = crate::symbols::by_key(ty.body()).map(|s| s.name);
-    let desc =
-        doc.components.get(&c).and_then(|x| x.properties.get("description")).map(|v| v.trim()).filter(|v| !v.is_empty() && Some(*v) != builtin);
+    let desc = doc.devices.get(&c).and_then(|x| x.properties.get("description")).map(|v| v.trim()).filter(|v| !v.is_empty() && Some(*v) != builtin);
     match desc {
         Some(d) => d.to_string(),
         None if ty.has_channels() => format!("{} {}", ty.code(), rack::channel_count(doc, c, ty)),
@@ -249,7 +250,7 @@ fn frame_parts(doc: &Document, run: &Run, m: &dyn TextMetrics, out: &mut Vec<Par
     let Some(ty) = super::card_type_of(doc, c) else { return };
     let n = if ty.has_channels() { rack::channel_count(doc, c, ty) } else { 0 };
     let has_body = doc
-        .representations_of(Subject::Component(c))
+        .representations_of(Subject::Device(c))
         .any(|(_, r)| crate::devices::rep_starter(doc, r).is_some_and(|s| CardType::of_body(s.key).is_some()));
     let lines = name_block(doc, c);
     let ttext = type_text(doc, c);
@@ -347,19 +348,19 @@ pub fn is_frame_rep(doc: &Document, rid: RepresentationId) -> bool {
 /// block and caption are then the frame's name block (design 051 §2.6, "tags once per card"). A
 /// cell or body that makes no run (turned 90°, a cell whose channel cannot be read) keeps its
 /// ordinary tag block (review of #89, 1).
-pub fn framed(doc: &Document, c: ComponentId, rid: RepresentationId, r: &ecad_model::Representation) -> bool {
+pub fn framed(doc: &Document, c: DeviceId, rid: RepresentationId, r: &ecad_model::Representation) -> bool {
     frame_shown(doc, c) && piece(doc, c, rid, r).is_some()
 }
 
 // ---------------------------------------------------------------- Checks (design 051 §2.5, §2.8)
 
 /// The runs of card `c` on `page`, reading only `c`'s representations.
-pub fn runs_of_card(doc: &Document, c: ComponentId, page: PageId) -> Vec<Run> {
+pub fn runs_of_card(doc: &Document, c: DeviceId, page: PageId) -> Vec<Run> {
     if !frame_shown(doc, c) {
         return Vec::new();
     }
     let pieces: Vec<(Piece, f64)> = doc
-        .representations_of(Subject::Component(c))
+        .representations_of(Subject::Device(c))
         .filter(|(_, r)| r.page == page)
         .take(MAX_PER_CARD)
         .filter_map(|(rid, r)| piece(doc, c, rid, r))
@@ -402,7 +403,7 @@ fn frame_rect(doc: &Document, run: &Run) -> (f64, f64, f64, f64) {
 /// `wire-through-card` rows of card `c` (design 051 §2.8): a wire attached to one of the card's
 /// points whose route goes on into the card's frame and is attached at both ends (kept by the
 /// fence because it reaches something; connectivity is never changed silently).
-pub fn through_checks(doc: &Document, c: ComponentId, tag: &str, out: &mut Vec<crate::checks::Check>) {
+pub fn through_checks(doc: &Document, c: DeviceId, tag: &str, out: &mut Vec<crate::checks::Check>) {
     let pages = super::overview::pages_of(doc, c);
     for page in pages {
         let runs = runs_of_card(doc, c, page);
@@ -472,7 +473,7 @@ pub fn through_checks(doc: &Document, c: ComponentId, tag: &str, out: &mut Vec<c
 /// its cells, or whose header or mark band texts are deeper than the band, at the project's text
 /// styles. Nothing is shrunk: the style is the user's.
 pub fn wide_checks(
-    doc: &Document, c: ComponentId, tag: &str, address: impl Fn(u32) -> Option<String>, m: &dyn TextMetrics, out: &mut Vec<crate::checks::Check>,
+    doc: &Document, c: DeviceId, tag: &str, address: impl Fn(u32) -> Option<String>, m: &dyn TextMetrics, out: &mut Vec<crate::checks::Check>,
 ) {
     let pin = text_style(doc, TextKind::PointLabel).height;
     let addr_h = text_style(doc, TextKind::Address).height;
@@ -494,7 +495,7 @@ pub fn wide_checks(
                 kind: crate::checks::Kind::PlcTextWide,
                 page: Some(page),
                 at: Some(Pt::new(run.left, run.top)),
-                object: crate::checks::Object::Component(c),
+                object: crate::checks::Object::Device(c),
                 which: format!(
                     "{tag}: addresses are wider than the {} mm cells at {} mm (Settings \u{25b8} Standards \u{25b8} Text styles \u{25b8} address)",
                     (cell_w * 10.0).round() / 10.0,

@@ -18,7 +18,7 @@
 //!
 //! Excluded: any entry's levels, which only the registry sets.
 
-use ecad_model::{ComponentId, ConductorId, Document, Noun, ObjectRef, Op, PageId, ProjectSettings, RepresentationId};
+use ecad_model::{ConductorId, DeviceId, Document, Noun, ObjectRef, Op, PageId, ProjectSettings, RepresentationId};
 
 use crate::defaults::{self, Entry, Level, ProjectSource};
 use crate::error::CmdError;
@@ -70,13 +70,14 @@ pub fn level_refused(entry: &Entry, level: Level) -> String {
 /// # Errors
 /// The value is not valid for the entry, in words.
 pub fn stored_text(entry: &Entry, typed: &str) -> Result<String, CmdError> {
-    let parsed = entry.parse(typed).ok_or_else(|| bad_value(entry))?;
+    let parsed = entry.parse_input(typed).ok_or_else(|| bad_value(entry))?;
     if is_prefix(entry) {
         return crate::devices::valid_prefix(typed).ok_or_else(|| bad_value(entry));
     }
     Ok(match parsed {
         defaults::Value::Length(x) | defaults::Value::Number(x) => format!("{x}"),
         defaults::Value::Choice(w) => w.to_string(),
+        defaults::Value::Flag(b) => ecad_model::words::flag_word(b).to_string(),
         defaults::Value::Text(t) => t.trim().to_string(),
     })
 }
@@ -87,6 +88,7 @@ fn bad_value(entry: &Entry) -> CmdError {
         defaults::Kind::Length { min, max } => format!("`{}` is a length from {min} to {max} mm.", entry.key),
         defaults::Kind::Number { min, max } => format!("`{}` is a number from {min} to {max}.", entry.key),
         defaults::Kind::Choice(words) => format!("`{}` is one of: {}.", entry.key, words.join(", ")),
+        defaults::Kind::Flag => format!("`{}` is yes or no.", entry.key),
         _ if is_prefix(entry) => format!("A prefix is 1 to {} letters, for example K or SR.", crate::devices::MAX_PREFIX_LETTERS),
         defaults::Kind::Text { max_chars } | defaults::Kind::Parsed { max_chars, .. } => {
             format!("`{}` is 1 to {max_chars} characters with no control characters, in its own form.", entry.key)
@@ -111,11 +113,7 @@ fn starter_key(entry: &Entry) -> Option<&'static str> {
 /// Set (or with `None` remove) starter `key`'s tag prefix in `s`, as Tag Settings writes it: the
 /// starter's own prefix is stored as none.
 pub fn set_tag_prefix(s: &mut ProjectSettings, key: &str, prefix: Option<&str>) {
-    match prefix {
-        Some(px) if crate::symbols::by_key(key).is_some_and(|x| x.prefix() == px) => s.tag_prefixes.remove(key),
-        Some(px) => s.tag_prefixes.insert(key.to_string(), px.to_string()),
-        None => s.tag_prefixes.remove(key),
-    };
+    crate::devices::set_symbol_prefix(s, ecad_model::prefix::PrefixOf::Starter(key.into()), prefix);
 }
 
 /// Write `value` (`None`: remove) into the project setting behind a [`ProjectSource::Settings`]
@@ -153,7 +151,7 @@ pub fn write_setting(entry: &Entry, s: &mut ProjectSettings, value: Option<&str>
 pub enum Target {
     Project,
     Page(PageId),
-    Component(ComponentId),
+    Device(DeviceId),
     Conductor(ConductorId),
     Symbol(RepresentationId),
 }
@@ -188,14 +186,12 @@ pub fn ops(doc: &Document, entry: &Entry, level: Level, target: Target, value: O
         (Level::Page, Target::Page(pg)) => property(ObjectRef::Page(pg), doc.pages.get(&pg).map(|p| &p.properties), entry.key.to_string()),
         (Level::Object, Target::Symbol(rep)) => {
             let c = match doc.representations.get(&rep).map(|r| r.subject) {
-                Some(ecad_model::Subject::Component(c)) => c,
+                Some(ecad_model::Subject::Device(c)) => c,
                 _ => return Err(CmdError::refused(format!("No symbol {}.", rep.hex()))),
             };
-            property(ObjectRef::Component(c), doc.components.get(&c).map(|c| &c.properties), defaults::symbol_key(entry.key, rep))
+            property(ObjectRef::Device(c), doc.devices.get(&c).map(|c| &c.properties), defaults::symbol_key(entry.key, rep))
         }
-        (Level::Object, Target::Component(c)) => {
-            property(ObjectRef::Component(c), doc.components.get(&c).map(|c| &c.properties), entry.key.to_string())
-        }
+        (Level::Object, Target::Device(c)) => property(ObjectRef::Device(c), doc.devices.get(&c).map(|c| &c.properties), entry.key.to_string()),
         (Level::Object, Target::Conductor(c)) => {
             property(ObjectRef::Conductor(c), doc.conductors.get(&c).map(|c| &c.properties), entry.key.to_string())
         }
@@ -248,7 +244,7 @@ pub fn chosen(entry: &Entry, value: Option<Given>, reset: bool) -> Result<Chosen
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Objects {
     pub representation: Option<RepresentationId>,
-    pub component: Option<ComponentId>,
+    pub component: Option<DeviceId>,
     pub conductor: Option<ConductorId>,
 }
 
@@ -262,7 +258,7 @@ pub fn target(level: Level, page: Option<PageId>, shown: PageId, o: Objects) -> 
         Level::Page => Target::Page(page.unwrap_or(shown)),
         Level::Object => match (o.representation, o.component, o.conductor) {
             (Some(r), _, _) => Target::Symbol(r),
-            (None, Some(c), _) => Target::Component(c),
+            (None, Some(c), _) => Target::Device(c),
             (None, None, Some(c)) => Target::Conductor(c),
             _ => return Err(CmdError::refused(NEEDS_OBJECT)),
         },
@@ -336,10 +332,8 @@ pub fn plan_family(doc: &Document, key: &str, level: Option<&str>, value: Option
         Field::Prefix => {
             let before = doc.settings.clone();
             let mut after = before.clone();
-            match value.as_deref().and_then(crate::devices::valid_prefix) {
-                Some(px) => after.tag_prefixes.insert(symbol.clone(), px),
-                None => after.tag_prefixes.remove(&symbol),
-            };
+            let of = ecad_model::prefix::PrefixOf::Project(symbol.as_str().into());
+            crate::devices::set_symbol_prefix(&mut after, of, value.as_deref());
             if after == before { Vec::new() } else { vec![Op::SetProjectSettings { before, after }] }
         }
         _ => {

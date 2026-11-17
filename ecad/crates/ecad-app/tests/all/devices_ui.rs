@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use ecad_app::{search, tools};
-use ecad_model::{ComponentId, Subject};
+use ecad_model::{DeviceId, Subject};
 use eframe::egui::{self, Event};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -32,7 +32,7 @@ fn save(h: &H, deltas: &Deltas, name: &str) {
     }
 }
 
-fn device(h: &mut H, tag: &str) -> ComponentId {
+fn device(h: &mut H, tag: &str) -> DeviceId {
     let d = doc(h);
     d.components_tagged(tag).first().copied().unwrap_or_else(|| panic!("no device {tag}"))
 }
@@ -62,7 +62,7 @@ fn every_starter_symbol_on_one_page() {
         ok(&mut h, &format!(r#"place {{"symbol":"{}","at":[{x},{y}]}}"#, s.key));
     }
     let d = doc(&mut h);
-    assert_eq!(d.components.len(), 19);
+    assert_eq!(d.devices.len(), 19);
     zoom(&mut h);
     save(&h, &deltas, "018-symbols-all.png");
 }
@@ -86,7 +86,7 @@ fn search_place_hover_and_duplicate_by_the_ui() {
     ok(&mut h, r#"newpage {"title":"Control"}"#);
     ok(&mut h, &format!(r#"place {{"symbol":"no","at":[0,0],"device":"{}"}}"#, k1.hex()));
     ok(&mut h, &format!(r#"place {{"symbol":"nc","at":[30,0],"device":"{}"}}"#, k1.hex()));
-    assert_eq!(doc(&mut h).representations_of(Subject::Component(k1)).count(), 3);
+    assert_eq!(doc(&mut h).representations_of(Subject::Device(k1)).count(), 3);
     zoom(&mut h);
     ok(&mut h, "zoom s 0.5x");
     save(&h, &deltas, "018-k1-page2.png");
@@ -100,11 +100,11 @@ fn search_place_hover_and_duplicate_by_the_ui() {
     h.run_steps(3);
     assert_eq!(h.state().search.query, "cont");
     let rows = search::rows(Some(&doc(&mut h)), "cont").0;
-    assert!(rows.iter().any(|r| r.pick == search::Pick::Symbol("no")));
+    assert!(rows.iter().any(|r| r.pick == search::Pick::Symbol(ecad_cadcraft::symbols::StarterKey::No)));
     save(&h, &deltas, "018-search.png");
 
     // A symbol row starts Place Symbol at the insertion point; D and Enter join -K01.
-    h.state_mut().start_pick(search::Pick::Symbol("no")).unwrap();
+    h.state_mut().start_pick(search::Pick::Symbol(ecad_cadcraft::symbols::StarterKey::No)).unwrap();
     h.run_steps(2);
     assert!(prompt(&h).starts_with("Specify insertion point (new device -K02"), "{}", prompt(&h));
     type_enter(&mut h, "D");
@@ -157,23 +157,27 @@ fn find_symbol_offers_new_device_and_the_devices_to_join_by_click() {
         let p = t.project().unwrap().clone();
         p.read(&mut t.cad.session, |p, _| search::choices(p, &pick)).unwrap()
     };
-    let c = choices(&mut h, search::Pick::Symbol("no"));
+    let c = choices(&mut h, search::Pick::Symbol(ecad_cadcraft::symbols::StarterKey::No));
     assert_eq!(c[0].text, "New device (-K02)");
     assert_eq!(c[0].device, None);
     assert_eq!(c[1].device.as_deref(), Some("-K01"), "the coil's device comes next: {c:?}");
     assert!(c[1].text.ends_with("13/14"), "{c:?}");
     assert_eq!(c.iter().filter(|x| x.device.is_some()).count(), 2, "the fuse can take a contact too, after: {c:?}");
     // A second coil cannot join -K01: it is not offered.
-    let coil = choices(&mut h, search::Pick::Symbol("coil"));
+    let coil = choices(&mut h, search::Pick::Symbol(ecad_cadcraft::symbols::StarterKey::Coil));
     assert!(coil.iter().all(|x| x.device.as_deref() != Some("-K01")), "{coil:?}");
     // A device row lists what it can take, its own prefix's symbols first.
     let d = choices(&mut h, search::Pick::Device("-K01".into()));
-    assert!(d.iter().all(|x| x.symbol != "coil") && d.first().is_some_and(|x| x.symbol == "no"), "{d:?}");
+    assert!(
+        d.iter().all(|x| x.symbol != ecad_cadcraft::symbols::StarterKey::Coil)
+            && d.first().is_some_and(|x| x.symbol == ecad_cadcraft::symbols::StarterKey::No),
+        "{d:?}"
+    );
 
     // The window: a row click shows the second step; one click on a choice starts placing.
     button(&mut h, tools::TAB);
     button(&mut h, "Find Symbol");
-    h.state_mut().search.picked = Some(search::Pick::Symbol("no"));
+    h.state_mut().search.picked = Some(search::Pick::Symbol(ecad_cadcraft::symbols::StarterKey::No));
     h.run_steps(3);
     let label = c[1].text.clone();
     h.get_by_label(&label).click();
@@ -186,7 +190,7 @@ fn find_symbol_offers_new_device_and_the_devices_to_join_by_click() {
     let at = screen(&h, 20.0, 0.0);
     crate::common::click(&mut h, at);
     let log: Vec<String> = h.state().cad.session.log.iter().rev().take(4).cloned().collect();
-    assert_eq!(doc(&mut h).representations_of(Subject::Component(k1)).count(), 2, "the click placed it: {} {log:?}", prompt(&h));
+    assert_eq!(doc(&mut h).representations_of(Subject::Device(k1)).count(), 2, "the click placed it: {} {log:?}", prompt(&h));
     save(&h, &deltas, "018-choices.png");
     // The prompt's default device is a keyword: a click on it (sent as the keyword) answers.
     type_enter(&mut h, "D");

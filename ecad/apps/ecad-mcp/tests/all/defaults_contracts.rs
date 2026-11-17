@@ -17,7 +17,7 @@ fn setdefault_by_the_agent_then_refused_with_writes_off() {
     let log = c.log();
     assert_eq!(log.len(), n + 1, "one transaction");
     assert_eq!(log.last().map(|t| t.author.clone()), Some(Author::Agent(AGENT.into())));
-    assert_eq!(c.doc().settings.tag_prefixes.get("coil").map(String::as_str), Some("Q"));
+    assert_eq!(c.doc().settings.starter_prefix("coil").map(|p| p.as_str()), Some("Q"));
     // A level the entry does not allow: the reason and the levels it does.
     let m = c.refused("execute", json!({"command": "setdefault", "params": {"key": "text.run.gap", "level": "page", "value": 3}}));
     assert!(m.contains("cannot be set at page level") && m.contains("It can be set at: project"), "{m}");

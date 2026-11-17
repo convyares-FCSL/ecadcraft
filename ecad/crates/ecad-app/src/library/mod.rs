@@ -140,8 +140,8 @@ impl App {
 
     /// Edit symbol on a built-in starter from the browser: its embedded definition when the
     /// project uses it, else a new symbol drawn from it (design 048 §8.3).
-    pub fn edit_starter(&mut self, key: &str) -> Result<(), String> {
-        let s = symbols::by_key(key).ok_or("No such symbol.")?;
+    pub fn edit_starter(&mut self, key: symbols::StarterKey) -> Result<(), String> {
+        let s = symbols::starter(key);
         let p = self.project.clone().ok_or("No project is open.")?;
         let embedded = p.read(&mut self.cad.session, |p, _| symbols::embedded(p.ledger.document(), s))?;
         if let Some(id) = embedded {
@@ -187,7 +187,7 @@ impl App {
         {
             let found = p.read(&mut self.cad.session, |p, _| {
                 let doc = p.ledger.document();
-                let (_, rep) = doc.representations_of(Subject::Component(c)).find(|(_, r)| r.form == Form::Drawn)?;
+                let (_, rep) = doc.representations_of(Subject::Device(c)).find(|(_, r)| r.form == Form::Drawn)?;
                 let mut prims = Vec::new();
                 for i in &rep.items {
                     if let Some(ItemKind::Primitive(pr)) = doc.items.get(i).map(|x| &x.kind) {

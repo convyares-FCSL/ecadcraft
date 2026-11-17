@@ -6,7 +6,7 @@
 
 use ecad_mcp::{EcadMcp, Options};
 use ecad_model::sheet::Grid;
-use ecad_model::{Author, ComponentId, ObjectRef, Op, PageId};
+use ecad_model::{Author, DeviceId, ObjectRef, Op, PageId};
 use serde_json::{Value, json};
 
 use crate::common::writer;
@@ -36,8 +36,8 @@ fn coil_at(c: &mut Client, col: u32, row: u32, tag: Option<&str>) -> String {
 }
 
 fn tag_of(c: &mut Client, comp: &str) -> Option<String> {
-    let id = ComponentId::parse(comp).unwrap();
-    c.doc().components.get(&id).and_then(|x| x.properties.get("tag").cloned())
+    let id = DeviceId::parse(comp).unwrap();
+    c.doc().devices.get(&id).and_then(|x| x.properties.get("tag").cloned())
 }
 
 fn last_is_agents(c: &mut Client) {
@@ -111,7 +111,7 @@ fn setprop_tag_conflicts_and_tag_fixed_record_their_transactions() {
     last_is_agents(&mut c);
     assert_eq!(c.log().last().unwrap().label, "Swap tags");
     assert_eq!((tag_of(&mut c, &k4).as_deref(), tag_of(&mut c, &k2).as_deref()), (Some("-K02"), Some("-K04")));
-    let fixed = |c: &mut Client, k: &str| c.doc().components[&ComponentId::parse(k).unwrap()].properties.get("tag_fixed").cloned();
+    let fixed = |c: &mut Client, k: &str| c.doc().devices[&DeviceId::parse(k).unwrap()].properties.get("tag_fixed").cloned();
     assert_eq!(fixed(&mut c, &k4).as_deref(), Some("yes"));
     // Next: the next free tag, fixed.
     let r = c.exec("setprop", json!({"component": k2, "key": "tag", "value": "-K02", "conflict": "next"}));
@@ -121,7 +121,7 @@ fn setprop_tag_conflicts_and_tag_fixed_record_their_transactions() {
     let r = c.exec("setprop", json!({"component": k2, "key": "tag", "value": "-K02", "conflict": "merge"}));
     assert_eq!(r["merged"], json!(true), "{r}");
     last_is_agents(&mut c);
-    assert!(!c.doc().components.contains_key(&ComponentId::parse(&k2).unwrap()));
+    assert!(!c.doc().devices.contains_key(&DeviceId::parse(&k2).unwrap()));
     // tag_fixed: released and fixed again, each one transaction.
     let n = c.log().len();
     c.exec("setprop", json!({"component": k4, "key": "tag_fixed", "value": null}));
@@ -238,10 +238,10 @@ fn merge_choice_one_makes_two_devices_one_in_the_merge_transaction() {
     assert_eq!(c.log().len(), n + 1);
     last_is_agents(&mut c);
     let doc = c.doc();
-    let main_id = ComponentId::parse(&main_k).unwrap();
-    assert!(doc.components.contains_key(&main_id));
-    assert!(!doc.components.contains_key(&ComponentId::parse(&branch_k).unwrap()), "the branch's device joined main's");
-    let reps = doc.representations_of(ecad_model::Subject::Component(main_id)).count();
+    let main_id = DeviceId::parse(&main_k).unwrap();
+    assert!(doc.devices.contains_key(&main_id));
+    assert!(!doc.devices.contains_key(&DeviceId::parse(&branch_k).unwrap()), "the branch's device joined main's");
+    let reps = doc.representations_of(ecad_model::Subject::Device(main_id)).count();
     assert_eq!(reps, 2, "one device with both symbols");
 }
 

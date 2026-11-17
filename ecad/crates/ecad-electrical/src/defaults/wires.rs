@@ -17,7 +17,7 @@ pub static WIRE_JOIN: Entry = Entry {
     label: "Join wire ends that meet",
     group: "Wires",
     brief: "032",
-    kind: Kind::Choice(&["on", "off"]),
+    kind: Kind::Flag,
     slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,

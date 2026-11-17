@@ -17,10 +17,10 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::{ComponentId, Document, NetId, Node, Subject, TerminalId};
+use ecad_model::{DeviceId, Document, NetId, Node, Subject, TerminalId};
 
 use super::RatedSubject;
-use crate::symbols::Kind;
+use crate::symbols::{Kind, StarterKey, StarterKey as K};
 
 /// Most nets one subject's trace visits (design 057 §4.2).
 pub const MAX_TRACE_NETS: usize = 64;
@@ -45,39 +45,38 @@ impl How {
 /// a strip position), the nets it crossed, and whether it stopped at its bound.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Found {
-    pub devices: Vec<(ComponentId, Option<String>)>,
+    pub devices: Vec<(DeviceId, Option<String>)>,
     pub path: BTreeSet<NetId>,
     pub bounded: bool,
 }
 
 /// The overcurrent device starters (design 057 §4.1). `rcd2` and `rcd4` are not: they are crossed.
-pub fn is_protective_key(key: &str) -> bool {
-    matches!(key, "mcb1" | "mcb2" | "rcbo2" | "fuse" | "fuseterm")
-        || key.strip_prefix("fusebank").is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+pub fn is_protective_key(key: StarterKey) -> bool {
+    matches!(key, K::Mcb1 | K::Mcb2 | K::Rcbo2 | K::Fuse | K::Fuseterm) || key.fuse_bank_ways().is_some()
 }
 
 /// The load-side pins of a protective starter (design 057 §4.2), from its pin labels
 /// (`symbols.rs`): the even-numbered pins of `mcb*`, `rcbo2`, `fuse`, `fuseterm` (and `rcbo2`'s
 /// `N2`); a fuse bank's numbered outputs.
-pub fn load_side(key: &str, label: &str) -> bool {
+pub fn load_side(key: StarterKey, label: &str) -> bool {
     let n = label.parse::<u32>().ok();
-    if key.starts_with("fusebank") {
+    if key.fuse_bank_ways().is_some() {
         return n.is_some_and(|n| n >= 1);
     }
     match key {
-        "mcb1" | "mcb2" | "fuse" | "fuseterm" => n.is_some_and(|n| n % 2 == 0 && n > 0),
-        "rcbo2" => label == "N2" || n.is_some_and(|n| n % 2 == 0 && n > 0),
+        K::Mcb1 | K::Mcb2 | K::Fuse | K::Fuseterm => n.is_some_and(|n| n % 2 == 0 && n > 0),
+        K::Rcbo2 => label == "N2" || n.is_some_and(|n| n % 2 == 0 && n > 0),
         _ => false,
     }
 }
 
 /// The starter keys a component's symbols show.
-fn starters(doc: &Document, c: ComponentId) -> Vec<&'static crate::symbols::Starter> {
-    doc.representations_of(Subject::Component(c)).filter_map(|(_, r)| crate::devices::rep_starter(doc, r)).collect()
+fn starters(doc: &Document, c: DeviceId) -> Vec<&'static crate::symbols::Starter> {
+    doc.representations_of(Subject::Device(c)).filter_map(|(_, r)| crate::devices::rep_starter(doc, r)).collect()
 }
 
 /// Whether component `c` shows a protective starter.
-pub fn is_protective_component(doc: &Document, c: ComponentId) -> bool {
+pub fn is_protective_component(doc: &Document, c: DeviceId) -> bool {
     starters(doc, c).iter().any(|s| is_protective_key(s.key))
 }
 
@@ -96,7 +95,7 @@ pub fn pair(label: &str) -> Option<String> {
     }
     let up = t.to_ascii_uppercase();
     for (a, b) in [("L", "T"), ("T", "L")] {
-        if let Some(d) = up.strip_prefix(a).filter(|d| d.len() == 1 && d.bytes().all(|x| x.is_ascii_digit())) {
+        if let Some(d) = up.strip_prefix(a).filter(|d| d.len() == 1 && ecad_model::words::is_digits(d)) {
             return Some(format!("{b}{d}"));
         }
     }
@@ -109,13 +108,13 @@ pub fn pair(label: &str) -> Option<String> {
 
 /// Whether a starter is crossed by pin pairs: contacts, power contacts, SSR outputs and RCDs.
 fn crossed(s: &crate::symbols::Starter) -> bool {
-    matches!(s.kind, Kind::Contact { .. }) || matches!(s.key, "power3" | "power4" | "ssrout" | "rcd2" | "rcd4")
+    matches!(s.kind, Kind::Contact { .. }) || matches!(s.key, K::Power3 | K::Power4 | K::Ssrout | K::Rcd2 | K::Rcd4)
 }
 
 /// What reaching terminal `t` means.
 enum Step {
     /// A protective device's load side (with a bank's fuse or a strip's position).
-    Found(ComponentId, Option<String>),
+    Found(DeviceId, Option<String>),
     /// Cross to these terminals.
     Cross(Vec<TerminalId>),
     Stop,
@@ -153,7 +152,7 @@ fn step(doc: &Document, t: TerminalId) -> Step {
     let ss = starters(doc, c);
     if let Some(p) = ss.iter().find(|s| is_protective_key(s.key)) {
         if load_side(p.key, &label) {
-            let fuse = p.key.starts_with("fusebank").then(|| label.clone());
+            let fuse = p.key.fuse_bank_ways().is_some().then(|| label.clone());
             return Step::Found(c, fuse);
         }
         return Step::Stop;
@@ -178,7 +177,7 @@ pub fn trace_nets(doc: &Document, start: impl IntoIterator<Item = NetId>) -> Fou
     }
     while !level.is_empty() {
         let mut next = Vec::new();
-        let mut here: Vec<(ComponentId, Option<String>)> = Vec::new();
+        let mut here: Vec<(DeviceId, Option<String>)> = Vec::new();
         for n in &level {
             let Some(net) = conn.net(*n) else { continue };
             for t in &net.terminals {
@@ -248,7 +247,7 @@ pub fn trace_subject(doc: &Document, s: RatedSubject) -> Found {
 
 /// The device a `protected_by` value names: `-Q01`, or `-F01:3` (a fuse of a bank, a strip's fuse
 /// position).
-pub fn named(doc: &Document, text: &str) -> Option<(ComponentId, Option<String>)> {
+pub fn named(doc: &Document, text: &str) -> Option<(DeviceId, Option<String>)> {
     let t: String = text.trim().chars().take(64).collect();
     let (tag, fuse) = match t.rsplit_once(':') {
         Some((a, b)) if !b.is_empty() => (a.to_string(), Some(b.to_string())),
@@ -258,7 +257,7 @@ pub fn named(doc: &Document, text: &str) -> Option<(ComponentId, Option<String>)
     if let Some(f) = &fuse {
         let has = crate::terminal_types::positions(doc, c).iter().any(|p| &p.label == f && p.ty.code == "fuse")
             || doc.terminals_of(c).any(|(_, x)| x.label.as_deref() == Some(f.as_str()))
-                && starters(doc, c).iter().any(|s| s.key.starts_with("fusebank"));
+                && starters(doc, c).iter().any(|s| s.key.fuse_bank_ways().is_some());
         if !has {
             return None;
         }
@@ -267,19 +266,19 @@ pub fn named(doc: &Document, text: &str) -> Option<(ComponentId, Option<String>)
 }
 
 /// The rating text of a device (or its fuse).
-pub fn rating_text(doc: &Document, c: ComponentId, fuse: Option<&str>) -> String {
-    let props = doc.components.get(&c).map(|x| &x.properties);
+pub fn rating_text(doc: &Document, c: DeviceId, fuse: Option<&str>) -> String {
+    let props = doc.devices.get(&c).map(|x| &x.properties);
     let key = fuse.map_or_else(|| crate::symbols::RATING_KEY.to_string(), |f| format!("{}{f}", crate::symbols::RATING_OF_PREFIX));
     props.and_then(|p| p.get(&key)).map(|v| v.chars().take(64).collect()).unwrap_or_default()
 }
 
 /// In of a device (or its fuse), when its rating reads (design 057 §4.1).
-pub fn amps_of(doc: &Document, c: ComponentId, fuse: Option<&str>) -> Option<f64> {
+pub fn amps_of(doc: &Document, c: DeviceId, fuse: Option<&str>) -> Option<f64> {
     super::parse::amps(&rating_text(doc, c, fuse))
 }
 
 /// A device in words: `-Q01`, `-F01:3`.
-pub fn device_words(doc: &Document, c: ComponentId, fuse: Option<&str>) -> String {
+pub fn device_words(doc: &Document, c: DeviceId, fuse: Option<&str>) -> String {
     let tag = crate::devices::tag_words(doc, c);
     match fuse {
         Some(f) => format!("{tag}:{f}"),

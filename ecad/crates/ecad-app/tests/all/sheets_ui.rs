@@ -175,7 +175,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     let coil_items: Vec<_> = {
         let d = doc(&mut h);
         let c = d.components_tagged("-K01")[0];
-        d.representations_of(ecad_model::Subject::Component(c)).flat_map(|(_, r)| r.items.clone()).collect()
+        d.representations_of(ecad_model::Subject::Device(c)).flat_map(|(_, r)| r.items.clone()).collect()
     };
     let handles: Vec<_> = {
         let t = h.state_mut();

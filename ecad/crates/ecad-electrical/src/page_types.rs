@@ -50,7 +50,7 @@ pub fn start_key(folder: FolderId) -> String {
 
 /// Whether `t` is a start number: 1 to 6 ASCII digits.
 pub fn is_start(t: &str) -> bool {
-    (1..=MAX_START_DIGITS).contains(&t.len()) && t.bytes().all(|b| b.is_ascii_digit())
+    t.len() <= MAX_START_DIGITS && ecad_model::words::is_digits(t)
 }
 
 /// `folder`'s start number, when it has a valid one.

@@ -15,7 +15,7 @@
 
 use std::collections::BTreeMap;
 
-use ecad_model::{ComponentId, Document};
+use ecad_model::{DeviceId, Document};
 
 use super::rack::{self, CardType, Direction, RackRef};
 use crate::defaults::{self, Scope};
@@ -42,7 +42,7 @@ pub enum Style {
 
 impl Style {
     /// Rack `r`'s style (registry, rack level allowed).
-    pub fn of(doc: &Document, r: ComponentId) -> Style {
+    pub fn of(doc: &Document, r: DeviceId) -> Style {
         let at = Scope { component: Some(r), ..Scope::project() };
         match defaults::resolve(doc, &defaults::plc::ADDRESS_STYLE, at).word() {
             "iec" => Style::Iec,
@@ -65,18 +65,18 @@ impl Style {
 }
 
 /// A whole number property 0..=`max`, digits only.
-fn number(doc: &Document, c: ComponentId, key: &str, max: u32) -> Option<u32> {
-    let t = doc.components.get(&c)?.properties.get(key)?.trim();
-    (!t.is_empty() && t.len() <= 5 && t.bytes().all(|b| b.is_ascii_digit())).then(|| t.parse::<u32>().ok()).flatten().filter(|n| *n <= max)
+fn number(doc: &Document, c: DeviceId, key: &str, max: u32) -> Option<u32> {
+    let t = doc.devices.get(&c)?.properties.get(key)?.trim();
+    (t.len() <= 5 && ecad_model::words::is_digits(t)).then(|| t.parse::<u32>().ok()).flatten().filter(|n| *n <= max)
 }
 
 /// A card's pinned start, when set.
-pub fn pinned(doc: &Document, c: ComponentId) -> Option<u32> {
+pub fn pinned(doc: &Document, c: DeviceId) -> Option<u32> {
     number(doc, c, START_KEY, MAX_BYTE)
 }
 
 /// The bytes one analogue or IO-Link channel of card `c` takes.
-pub fn word_size(doc: &Document, c: ComponentId, ty: CardType) -> u32 {
+pub fn word_size(doc: &Document, c: DeviceId, ty: CardType) -> u32 {
     let at = Scope { component: Some(c), ..Scope::project() };
     let e = if ty == CardType::Iol { &defaults::plc::IOL_BYTES } else { &defaults::plc::ANALOG_BYTES };
     let n = defaults::resolve(doc, e, at).number();
@@ -84,7 +84,7 @@ pub fn word_size(doc: &Document, c: ComponentId, ty: CardType) -> u32 {
 }
 
 /// Card `c`'s (input, output) block size in bytes for `n` channels (design 045 §5.1).
-pub fn sizes(doc: &Document, c: ComponentId, ty: CardType, n: u32) -> (u32, u32) {
+pub fn sizes(doc: &Document, c: DeviceId, ty: CardType, n: u32) -> (u32, u32) {
     let own = number(doc, c, SIZE_KEY, MAX_SIZE).filter(|s| *s >= 1);
     let digital = n.div_ceil(8);
     let word = word_size(doc, c, ty).saturating_mul(n);
@@ -114,10 +114,10 @@ pub struct Block {
 }
 
 /// One card of a rack for the counters: (card, type, channel count, slot).
-pub type Member = (ComponentId, CardType, u32, u32);
+pub type Member = (DeviceId, CardType, u32, u32);
 
 /// The blocks of a rack's cards, `members` in slot order (design 045 §5.1).
-pub fn blocks(doc: &Document, r: ComponentId, members: &[Member]) -> BTreeMap<ComponentId, Block> {
+pub fn blocks(doc: &Document, r: DeviceId, members: &[Member]) -> BTreeMap<DeviceId, Block> {
     let at = Scope { component: Some(r), ..Scope::project() };
     let start = |e: &defaults::Entry| {
         let n = defaults::resolve(doc, e, at).number();
@@ -197,9 +197,9 @@ pub fn block_words(style: Style, output: bool, (start, size): (u32, u32)) -> Str
 
 /// The address of channel `i` of card `c` as shown: the typed one (`typed: true`), else the
 /// automatic input address (an output card's output address).
-pub fn shown(doc: &Document, c: ComponentId, i: u32, auto: Option<String>) -> (Option<String>, bool) {
+pub fn shown(doc: &Document, c: DeviceId, i: u32, auto: Option<String>) -> (Option<String>, bool) {
     let typed = doc
-        .components
+        .devices
         .get(&c)
         .and_then(|x| x.properties.get(&super::channels::ch_key(i, "address")))
         .map(|v| v.trim().to_string())
@@ -212,7 +212,7 @@ pub fn shown(doc: &Document, c: ComponentId, i: u32, auto: Option<String>) -> (O
 
 /// The members of rack `r` read straight from the document (texts and commands, which have no
 /// kept model): its cards with a slot, in slot order.
-pub fn members_of(doc: &Document, r: ComponentId) -> Vec<Member> {
+pub fn members_of(doc: &Document, r: DeviceId) -> Vec<Member> {
     rack::cards_naming(doc, r)
         .into_iter()
         .filter_map(|(c, s)| {
@@ -230,7 +230,7 @@ pub fn shows_output(ty: CardType) -> bool {
 /// Card `c`'s automatic address of channel `i` (input; and output for IO-Link), worked out from the
 /// document (texts, commands).
 pub fn of_channel(
-    doc: &Document, c: ComponentId, i: u32, kept: Option<&super::kept::Plc>, cache: &mut BTreeMap<ComponentId, BTreeMap<ComponentId, Block>>,
+    doc: &Document, c: DeviceId, i: u32, kept: Option<&super::kept::Plc>, cache: &mut BTreeMap<DeviceId, BTreeMap<DeviceId, Block>>,
 ) -> (Option<String>, Option<String>) {
     let (RackRef::Rack(r), Some(slot)) = (rack::rack_ref(doc, c), rack::slot_of(doc, c)) else { return (None, None) };
     let Some(ty) = super::card_type_of(doc, c) else { return (None, None) };
@@ -250,7 +250,7 @@ pub fn of_channel(
 }
 
 /// A snapshot of every card's block in `r` (for counting what a change moves).
-pub fn snapshot(doc: &Document, r: ComponentId) -> BTreeMap<ComponentId, Block> {
+pub fn snapshot(doc: &Document, r: DeviceId) -> BTreeMap<DeviceId, Block> {
     blocks(doc, r, &members_of(doc, r))
 }
 

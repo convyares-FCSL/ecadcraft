@@ -23,6 +23,7 @@
 //! This module stores nothing and has no notion of cores or numbering: the order is the member
 //! order and nothing else.
 
+use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{CableId, ConductorId, Document, ItemId, ItemKind, PageId, Primitive, Pt, Subject};
@@ -372,16 +373,16 @@ fn short(hex: &str) -> &str {
 
 /// A wire's name: its `tag` property, else `wire <first 8 hex>…`.
 pub fn wire_name(doc: &Document, c: ConductorId) -> String {
-    match doc.conductors.get(&c).and_then(|x| x.properties.get("tag")) {
-        Some(t) => t.clone(),
+    match doc.conductors.get(&c).and_then(|x| x.properties.text(ecad_model::keys::TAG)) {
+        Some(t) => t.to_string(),
         None => format!("wire {}…", short(&c.hex())),
     }
 }
 
 /// A cable's name: its `tag` property, else `cable <first 8 hex>…`.
 pub fn cable_name(doc: &Document, k: CableId) -> String {
-    match doc.cables.get(&k).and_then(|x| x.properties.get("tag")) {
-        Some(t) => t.clone(),
+    match doc.cables.get(&k).and_then(|x| x.properties.text(ecad_model::keys::TAG)) {
+        Some(t) => t.to_string(),
         None => format!("cable {}…", short(&k.hex())),
     }
 }
@@ -422,8 +423,8 @@ pub fn too_many() -> String {
 
 /// A wire after the word "Wire": its tag, else `8a3f19c0…` (so it never reads "Wire wire …").
 fn bare_wire_name(doc: &Document, c: ConductorId) -> String {
-    match doc.conductors.get(&c).and_then(|x| x.properties.get("tag")) {
-        Some(t) => t.clone(),
+    match doc.conductors.get(&c).and_then(|x| x.properties.text(ecad_model::keys::TAG)) {
+        Some(t) => t.to_string(),
         None => format!("{}…", short(&c.hex())),
     }
 }
@@ -441,7 +442,7 @@ pub fn already_in_cable(doc: &Document, blocked: &[(ConductorId, CableId)], tail
 
 /// `cable C1` for a tagged cable, else `cable 8a3f19c0…`.
 fn cable_label(doc: &Document, k: CableId) -> String {
-    match doc.cables.get(&k).and_then(|x| x.properties.get("tag")) {
+    match doc.cables.get(&k).and_then(|x| x.properties.text(ecad_model::keys::TAG)) {
         Some(t) => format!("cable {t}"),
         None => cable_name(doc, k),
     }

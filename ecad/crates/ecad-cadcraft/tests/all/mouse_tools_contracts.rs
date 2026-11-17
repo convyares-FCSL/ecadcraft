@@ -20,7 +20,7 @@ use cadcraft_engine::Input;
 use cadcraft_engine::doc::{EntityKind, Handle};
 use cadcraft_engine::geom::Vec2;
 use common::H;
-use ecad_model::{ComponentId, ConductorId, Document, End, PageId, TerminalId, Transaction};
+use ecad_model::{ConductorId, DeviceId, Document, End, PageId, TerminalId, Transaction};
 use serde_json::json;
 
 const SEED: u64 = 80_08;
@@ -90,12 +90,12 @@ fn conductor_from(d: &Document, page: PageId, x: f64, y: f64) -> ConductorId {
 
 /// Base scene, by JSON: rectangle component (terminal "1" at 40,10), coil at 100,0 rotated 90
 /// (A1 at 90,0), a loose wire 0,30 -> 20,30 and a wire 40,10 -> 90,0 attached at both ends.
-fn base(h: &mut H) -> ComponentId {
+fn base(h: &mut H) -> DeviceId {
     h.cmdline("line 0,0 40,0 40,20 0,20 c");
     let lines: Vec<String> =
         h.s.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle.hex()).collect();
     let r = h.run("convertcomponent", json!({ "handles": lines })).unwrap();
-    let c: ComponentId = common::id(&r, "component");
+    let c: DeviceId = common::id(&r, "component");
     let right = line_handle(h, 40.0, 0.0, 40.0, 20.0);
     h.run("addterminal", json!({"handle": right.hex(), "at": [40, 10], "label": "1"})).unwrap();
     h.run("place", json!({"at": [100, 0], "rotation": 90})).unwrap();
@@ -380,7 +380,7 @@ fn ac2_undo_after_each_finished_form_is_one_step_and_redo_restores_it() {
         if let Some(b) = &before_doc {
             assert!(h.doc() == *b, "{what}: one undo restores the document before the command");
         } else {
-            assert!(h.doc().components.len() == done.components.len() - 1, "{what}: the component is undone");
+            assert!(h.doc().devices.len() == done.devices.len() - 1, "{what}: the component is undone");
         }
         h.cmdline("redo");
         assert!(h.doc() == done, "{what}: redo restores it");

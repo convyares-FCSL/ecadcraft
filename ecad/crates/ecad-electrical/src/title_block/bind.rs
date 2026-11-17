@@ -30,7 +30,7 @@ pub const MISSING: &str = "?";
 
 /// Whether `key` is a project key a field may name: 1–32 characters of `a-z 0-9 _ .`.
 pub fn is_project_key(key: &str) -> bool {
-    !key.is_empty() && key.len() <= MAX_KEY_CHARS && key.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'.')
+    !key.is_empty() && key.len() <= MAX_KEY_CHARS && key.bytes().all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'_' | b'.'))
 }
 
 /// Whether this build can fill `b`.

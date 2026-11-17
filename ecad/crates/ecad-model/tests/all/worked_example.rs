@@ -2,7 +2,7 @@
 
 use ecad_model::derive::{mismatches, nets};
 use ecad_model::{
-    Author, CableMember, Color, Component, Conductor, End, Form, IdAllocator, Item, ItemKind, Layer, Ledger, Op, Page, Primitive, Pt, Representation,
+    Author, CableMember, Color, Conductor, Device, End, Form, IdAllocator, Item, ItemKind, Layer, Ledger, Op, Page, Primitive, Pt, Representation,
     Style, Subject, Terminal,
 };
 
@@ -40,7 +40,7 @@ fn worked_example_replays_and_undoes() {
     // 2. Convert to component, add terminals.
     let (c1, r1) = (ids.fresh(), ids.fresh());
     let rep1 = Representation {
-        subject: Subject::Component(c1),
+        subject: Subject::Device(c1),
         page: p1,
         form: Form::Drawn,
         role: "main".into(),
@@ -50,7 +50,7 @@ fn worked_example_replays_and_undoes() {
     l.commit(
         Author::User,
         "Convert to component",
-        vec![Op::CreateComponent { id: c1, component: Component::default() }, Op::LinkRepresentation { id: r1, rep: rep1.clone() }],
+        vec![Op::CreateDevice { id: c1, device: Device::default() }, Op::LinkRepresentation { id: r1, rep: rep1.clone() }],
     )
     .unwrap();
     let ts: Vec<_> = (0..3).map(|_| ids.fresh()).collect();

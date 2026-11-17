@@ -7,7 +7,7 @@ use cadcraft_engine::doc::Handle;
 use ecad_app::App;
 use ecad_app::canvas::{self, Sheet};
 use ecad_app::shell::state::{ShellState, Workspace};
-use ecad_model::{ComponentId, PageId, RepresentationId, Subject};
+use ecad_model::{DeviceId, PageId, RepresentationId, Subject};
 use eframe::egui::vec2;
 use egui_kittest::Harness;
 use serde_json::{Value, json};
@@ -78,8 +78,8 @@ fn the_page_is_paper_without_viewcube_ucs_icon_label_or_grid_and_dark_is_one_com
 }
 
 /// The coil `-K01` and two contacts on page 1, a third contact on page 2; back on page 1.
-fn device_on_two_pages(h: &mut Harness<'static, App>) -> (ComponentId, PageId, PageId, Vec<Handle>) {
-    let k: ComponentId = hex_id(&exec(h, "place", json!({"symbol": "coil", "at": [60, 200]})), "component");
+fn device_on_two_pages(h: &mut Harness<'static, App>) -> (DeviceId, PageId, PageId, Vec<Handle>) {
+    let k: DeviceId = hex_id(&exec(h, "place", json!({"symbol": "coil", "at": [60, 200]})), "component");
     exec(h, "place", json!({"symbol": "no", "at": [160, 200], "device": k.hex()}));
     exec(h, "place", json!({"symbol": "nc", "at": [220, 200], "device": k.hex()}));
     let p1 = h.state().panel.active.expect("a page");
@@ -91,7 +91,7 @@ fn device_on_two_pages(h: &mut Harness<'static, App>) -> (ComponentId, PageId, P
     let coil = handle
         .read(&mut h.state_mut().cad.session, |p, _| {
             let doc = p.ledger.document();
-            let (rid, _) = doc.representations_of(Subject::Component(k)).find(|(_, r)| r.page == p1).unwrap();
+            let (rid, _) = doc.representations_of(Subject::Device(k)).find(|(_, r)| r.page == p1).unwrap();
             ecad_cadcraft::device_list::symbol_target(p, rid).unwrap().2
         })
         .unwrap();
@@ -209,7 +209,7 @@ fn screenshots_of_the_canvas() {
             let doc = p.ledger.document();
             let page = p.active_page()?;
             doc.tagged().find_map(|(_, c)| {
-                let reps: Vec<_> = doc.representations_of(Subject::Component(c)).filter(|(_, r)| r.page == page).map(|(id, _)| id).collect();
+                let reps: Vec<_> = doc.representations_of(Subject::Device(c)).filter(|(_, r)| r.page == page).map(|(id, _)| id).collect();
                 (reps.len() > 1).then(|| ecad_cadcraft::device_list::symbol_target(p, reps[0]).map(|t| t.2).unwrap_or_default())
             })
         })

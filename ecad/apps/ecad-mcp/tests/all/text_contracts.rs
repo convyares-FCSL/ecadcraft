@@ -86,8 +86,8 @@ fn textstyle_refusals_write_nothing() {
         (json!({"kind": "tag", "height": "big"}), "`height` must be a number, or null"),
         (json!({"kind": "nope", "height": 3}), "Unknown text kind \"nope\". Kinds: tag, point_label"),
         (json!({"kind": "tag", "weight": "heavy"}), "Weight is regular or bold."),
-        (json!({"kind": "tag", "show": "maybe"}), "Shown is on, off or first (first: tag only)."),
-        (json!({"kind": "description", "show": "first"}), "Shown is on, off or first (first: tag only)."),
+        (json!({"kind": "tag", "show": "maybe"}), "Shown is yes, no or first (first: tag only)."),
+        (json!({"kind": "description", "show": "first"}), "Shown is yes, no or first (first: tag only)."),
         (json!({"font": ""}), "A font name is 1 to 64 characters with no control characters."),
         (json!({"font": "a".repeat(65)}), "A font name is 1 to 64 characters with no control characters."),
         (json!({"font": "a\u{7}b"}), "A font name is 1 to 64 characters with no control characters."),
@@ -160,7 +160,7 @@ fn showtext_at_each_level_is_one_transaction_by_the_agent_and_refused_with_write
         .doc()
         .representations
         .iter()
-        .find(|(_, r)| matches!(r.subject, ecad_model::Subject::Component(x) if x.hex() == comp))
+        .find(|(_, r)| matches!(r.subject, ecad_model::Subject::Device(x) if x.hex() == comp))
         .map(|(id, _)| id.hex())
         .unwrap();
     for (p, level) in [
@@ -217,7 +217,7 @@ fn movetext_and_its_reset_are_one_transaction_each_and_refused_with_writes_off()
         .doc()
         .representations
         .iter()
-        .find(|(_, r)| matches!(r.subject, ecad_model::Subject::Component(x) if x.hex() == comp))
+        .find(|(_, r)| matches!(r.subject, ecad_model::Subject::Device(x) if x.hex() == comp))
         .map(|(id, _)| id.hex())
         .unwrap();
     let r = one_by_agent(&mut c, "movetext", json!({"representation": rep, "kind": "tag", "to": [130, 170]}));

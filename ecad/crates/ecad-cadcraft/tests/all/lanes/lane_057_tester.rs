@@ -17,7 +17,7 @@
 //! - R_θ = R20 × (1 + 0.00393 × (θmax − 20)); mV/A/m = 2 R_θ (ac1, dc) or √3 R_θ (ac3);
 //!   ΔU = mV/A/m × I × L / 1000; ΔU % = 100 ΔU / U.
 
-use ecad_model::{ComponentId, ConductorId};
+use ecad_model::{ConductorId, DeviceId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -157,7 +157,7 @@ fn own_id(v: &Value) -> String {
 }
 
 /// The conductor with an end on `component`'s pin `label`.
-fn conductor_at(h: &mut H, component: ComponentId, label: &str) -> ConductorId {
+fn conductor_at(h: &mut H, component: DeviceId, label: &str) -> ConductorId {
     let d = h.doc();
     let t = d
         .terminals_of(component)
@@ -173,15 +173,15 @@ fn conductor_at(h: &mut H, component: ComponentId, label: &str) -> ConductorId {
 /// 2.5 mm², rated 33 A at 20 °C, conductor 80 °C (all made up).
 struct R {
     h: H,
-    q01: ComponentId,
-    cab: ComponentId,
+    q01: DeviceId,
+    cab: DeviceId,
     wire: ConductorId,
     category: String,
 }
 
 fn fixture(seed: u64) -> R {
     let mut h = H::new(seed);
-    let cab: ComponentId = id(&h.run("locationbox", json!({"location": "+CAB1", "corners": [[20, 150], [400, 420]]})).unwrap(), "component");
+    let cab: DeviceId = id(&h.run("locationbox", json!({"location": "+CAB1", "corners": [[20, 150], [400, 420]]})).unwrap(), "component");
     let q01 = placed(&mut h, "mcb1", 100.0, 300.0);
     h.run("setprop", json!({"component": q01.hex(), "key": "rating", "value": "4A C"})).unwrap();
     let lamp = placed(&mut h, "lamp", 100.0, 200.0);
@@ -202,20 +202,20 @@ fn fixture(seed: u64) -> R {
 
 /// A location box's panel temperature (FP6). No command writes it yet (finding F1), so it is
 /// written as a file made elsewhere would carry it.
-fn box_temp(h: &mut H, cab: ComponentId, v: &str) {
+fn box_temp(h: &mut H, cab: DeviceId, v: &str) {
     if h.run("setprop", json!({"component": cab.hex(), "key": "rating.temperature", "value": v})).is_ok() {
         return;
     }
     // Fix round: `rating {location, temperature}` writes it on the location's boxes.
-    let loc = h.doc().components.get(&cab).and_then(|c| c.properties.get(ecad_model::book::LOCATION_KEY).cloned()).unwrap_or_default();
+    let loc = h.doc().devices.get(&cab).and_then(|c| c.properties.get(ecad_model::book::LOCATION_KEY).cloned()).unwrap_or_default();
     let t = v.trim().parse::<f64>().map_or_else(|_| json!(v), |n| json!(n));
     if h.run("rating", json!({"location": loc, "temperature": t})).is_ok() {
         return;
     }
-    let before = h.doc().components.get(&cab).and_then(|c| c.properties.get("rating.temperature").cloned());
+    let before = h.doc().devices.get(&cab).and_then(|c| c.properties.get("rating.temperature").cloned());
     h.cfg(|p| {
         let op = ecad_model::Op::SetProperty {
-            object: ecad_model::ObjectRef::Component(cab),
+            object: ecad_model::ObjectRef::Device(cab),
             key: "rating.temperature".into(),
             before,
             after: Some(v.into()),
@@ -238,7 +238,7 @@ fn table(h: &mut H, extra: &str) -> String {
 
 /// A field cable `tag` slashed across a wire from its own MCB (`mcb1` at x, rated `dev_rating`)
 /// to a lamp; cable `type` text `type_text`, `length` `len`. Returns the MCB.
-fn cable(h: &mut H, x: f64, tag: &str, dev_rating: &str, type_text: &str, len: &str) -> ComponentId {
+fn cable(h: &mut H, x: f64, tag: &str, dev_rating: &str, type_text: &str, len: &str) -> DeviceId {
     let dev = placed(h, "mcb1", x, 120.0);
     h.run("setprop", json!({"component": dev.hex(), "key": "rating", "value": dev_rating})).unwrap();
     placed(h, "lamp", x, 20.0);
@@ -367,7 +367,7 @@ fn c06_a_wire_across_two_locations_takes_the_hotter() {
     let R { mut h, cab, wire, .. } = fixture(5706);
     box_temp(&mut h, cab, "44");
     // +CAB2 over the lamp end only (the lamp's X1 is at y 210).
-    let cab2: ComponentId = id(&h.run("locationbox", json!({"location": "+CAB2", "corners": [[60, 160], [140, 230]]})).unwrap(), "component");
+    let cab2: DeviceId = id(&h.run("locationbox", json!({"location": "+CAB2", "corners": [[60, 160], [140, 230]]})).unwrap(), "component");
     box_temp(&mut h, cab2, "56");
     // Brief 052: a box only proposes; the lamp, placed inside +CAB1, is moved to +CAB2 by hand.
     let lamp = h.doc().components_tagged("-H01")[0];

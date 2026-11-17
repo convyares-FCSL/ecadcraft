@@ -19,6 +19,7 @@
 //! This module has no UI and records nothing: the commands that use it commit through their JSON
 //! forms (`ecad_cadcraft::cmd`).
 
+use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::CmdError;
@@ -534,7 +535,7 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
             out.insert(k);
         }
         Subject::Conductor(w) => out.extend(doc.cables_of(w)),
-        Subject::Component(_) => {}
+        Subject::Device(_) => {}
     };
     for op in ops {
         // Brief 055 (FP4; review of #110, 1): a frame decides its pages' grids, so a frame choice
@@ -567,7 +568,7 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
             // Brief 032 (a fold deletes the folded wire; numbering writes wire numbers): a
             // conductor's cables only, never every cable.
             Op::DeleteConductor { id, .. } | Op::SetProperty { object: ecad_model::ObjectRef::Conductor(id), .. } => out.extend(doc.cables_of(*id)),
-            Op::CreateComponent { id, .. } if !doc.components.contains_key(id) => {}
+            Op::CreateDevice { id, .. } if !doc.devices.contains_key(id) => {}
             Op::AddTerminal { id, .. } if !doc.terminals.contains_key(id) => {}
             // Brief 028: a relabelled terminal reaches only the cables of the wires on it.
             Op::AddTerminal { id, .. } | Op::RemoveTerminal { id, .. } => {
@@ -576,7 +577,7 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
             Op::EmbedDefinition { id, .. } if !doc.definitions.contains_key(id) => {}
             // A device's properties (its tag, brief 018) are drawn beside its symbols only, never
             // in a cable's drawing or reference texts.
-            Op::SetProperty { object: ecad_model::ObjectRef::Component(_), .. } => {}
+            Op::SetProperty { object: ecad_model::ObjectRef::Device(_), .. } => {}
             // Brief 019 (design 019 §9): a page's number or sheet changes what the references on it
             // say about themselves, so their cables (whose other ends show it).
             Op::SetProperty { object: ecad_model::ObjectRef::Page(p), key, .. }
@@ -627,7 +628,7 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
             // Brief 053: a deleted component has no terminals and no representations left (the
             // model's invariants I8 and I10); removing those is its own op above, so the record
             // itself reaches no reference (`toposition` derived every one twice).
-            Op::DeleteComponent { .. } => {}
+            Op::DeleteDevice { .. } => {}
             _ => return None,
         }
     }
@@ -793,9 +794,9 @@ fn terminal_on(doc: &Document, shown: &BTreeSet<ecad_model::TerminalId>, c: &eca
     }
     let term = doc.terminals.get(&t)?;
     let comp = doc
-        .components
+        .devices
         .get(&term.component)
-        .and_then(|x| x.properties.get("tag").cloned())
+        .and_then(|x| x.properties.text(ecad_model::keys::TAG).map(str::to_string))
         .unwrap_or_else(|| format!("{}…", term.component.hex().get(..8).unwrap_or_default()));
     Some(format!("{comp}:{}", crate::terminal_types::terminal_name(doc, t)))
 }
@@ -826,17 +827,17 @@ pub fn diagnostics(doc: &Document) -> Vec<String> {
 // ---------------------------------------------------------------- core chains (brief 032 §3)
 
 /// The continuation a conductor end is attached to: (component, name key, its page).
-fn continuation_at(doc: &Document, t: TerminalId) -> Option<(ecad_model::ComponentId, String, Option<PageId>)> {
+fn continuation_at(doc: &Document, t: TerminalId) -> Option<(ecad_model::DeviceId, String, Option<PageId>)> {
     let c = doc.terminals.get(&t)?.component;
-    let key = ecad_model::connectivity::continuation_key(&doc.components.get(&c)?.properties)?;
-    let page = doc.representations_of(Subject::Component(c)).next().map(|(_, r)| r.page);
+    let key = ecad_model::connectivity::continuation_key(&doc.devices.get(&c)?.properties)?;
+    let page = doc.representations_of(Subject::Device(c)).next().map(|(_, r)| r.page);
     Some((c, key, page))
 }
 
 /// The members of `cable` attached to continuations, by name key: (member index, continuation,
 /// its page). Bounded by the cable's members.
-fn continuation_groups(doc: &Document, members: &[ConductorId]) -> BTreeMap<String, Vec<(usize, ecad_model::ComponentId, Option<PageId>)>> {
-    let mut groups: BTreeMap<String, Vec<(usize, ecad_model::ComponentId, Option<PageId>)>> = BTreeMap::new();
+fn continuation_groups(doc: &Document, members: &[ConductorId]) -> BTreeMap<String, Vec<(usize, ecad_model::DeviceId, Option<PageId>)>> {
+    let mut groups: BTreeMap<String, Vec<(usize, ecad_model::DeviceId, Option<PageId>)>> = BTreeMap::new();
     for (i, w) in members.iter().enumerate() {
         let Some(cond) = doc.conductors.get(w) else { continue };
         for t in cond.ends.iter().flatten() {
@@ -973,7 +974,7 @@ pub fn plan_slash_continue(doc: &Document, page: PageId, cable: CableId, crossed
             if kp != Some(page) {
                 return None;
             }
-            let name = doc.components.get(&k).and_then(|x| x.properties.get(ecad_model::connectivity::NAME)).cloned().unwrap_or(key.clone());
+            let name = doc.devices.get(&k).and_then(|x| x.properties.get(ecad_model::connectivity::NAME)).cloned().unwrap_or(key.clone());
             match groups.get(&key).map(Vec::as_slice) {
                 Some([(i, other, Some(op))]) if *other != k && *op != page => members.get(*i).copied().map(|m| (m, name)),
                 _ => None,

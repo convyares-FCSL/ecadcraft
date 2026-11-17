@@ -84,7 +84,7 @@ impl LibraryTab {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Tile {
     Project(DefinitionId),
-    Builtin(&'static str),
+    Builtin(ecad_cadcraft::symbols::StarterKey),
     Draft(u64),
 }
 

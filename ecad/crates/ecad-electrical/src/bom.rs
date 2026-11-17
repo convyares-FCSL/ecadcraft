@@ -12,7 +12,7 @@
 //! - `for` names the sub-items a line serves: a fuse bank's fuses, a strip's positions (§2.3).
 //! - Every value goes through [`setprop_rule`], also when written by `setprop`; a refusal is in
 //!   words and writes nothing. No new op and no format change: everything is `SetProperty`,
-//!   `CreateComponent` and `DeleteComponent`.
+//!   `CreateDevice` and `DeleteDevice`.
 //!
 //! Excluded: the parts catalogue and kits from it (2.3); counts derived from the drawing; the
 //! BOM model itself, which is [`crate::outputs`].
@@ -21,7 +21,7 @@ use crate::CmdError;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-use ecad_model::{Component, ComponentId, Document, ObjectRef, Op, Properties, Subject};
+use ecad_model::{Device, DeviceId, Document, ObjectRef, Op, Properties, Subject};
 use serde_json::{Value, json};
 
 use crate::defaults::{self, Scope};
@@ -118,8 +118,7 @@ pub fn parse_part_key(key: &str) -> Option<Result<(u8, Field), CmdError>> {
         CmdError::refused(format!("\"{shown}\" is not a part line key. Write part.<n>.<field>, n 1 to {MAX_LINES}, field one of {}.", field_words()))
     };
     let Some((n, f)) = rest.split_once('.') else { return Some(Err(bad())) };
-    let ok_n = !n.is_empty() && n.len() <= 2 && n.bytes().all(|b| b.is_ascii_digit()) && !n.starts_with('0');
-    let n = if ok_n { n.parse::<u8>().ok().filter(|n| (1..=MAX_LINES).contains(n)) } else { None };
+    let n = ecad_model::words::uint_canonical(n, u32::from(MAX_LINES)).filter(|n| *n >= 1).and_then(|n| u8::try_from(n).ok());
     match (n, Field::parse(f)) {
         (Some(n), Some(f)) => Some(Ok((n, f))),
         _ => Some(Err(bad())),
@@ -188,7 +187,8 @@ pub fn parse_qty(text: &str, metres: bool) -> Result<Qty, CmdError> {
     let more = if t.chars().count() > 20 { "…" } else { "" };
     let bad = || CmdError::refused(format!("\"{shown}{more}\" is not a quantity. Write a number greater than 0, at most 9999, like 2 or 3.6."));
     let (w, frac) = t.split_once('.').unwrap_or((t, ""));
-    if w.is_empty() && frac.is_empty() || w.len() > 6 || !w.bytes().all(|b| b.is_ascii_digit()) || !frac.bytes().all(|b| b.is_ascii_digit()) {
+    let digits_or_none = |t: &str| t.is_empty() || ecad_model::words::is_digits(t);
+    if w.is_empty() && frac.is_empty() || w.len() > 6 || !digits_or_none(w) || !digits_or_none(frac) {
         return Err(bad());
     }
     if frac.len() > 3 {
@@ -270,28 +270,28 @@ impl Subs {
 }
 
 /// The head symbol of `c` (its one exclusive symbol), when it is a starter.
-fn head(doc: &Document, c: ComponentId) -> Option<&'static crate::symbols::Starter> {
-    doc.representations_of(Subject::Component(c))
+fn head(doc: &Document, c: DeviceId) -> Option<&'static crate::symbols::Starter> {
+    doc.representations_of(Subject::Device(c))
         .filter_map(|(_, r)| crate::devices::rep_starter(doc, r))
         .find(|s| s.kind == crate::symbols::Kind::Fixed { exclusive: true })
 }
 
 /// What `for` may name on `c`.
-pub fn sub_items(doc: &Document, c: ComponentId) -> Subs {
+pub fn sub_items(doc: &Document, c: DeviceId) -> Subs {
     if crate::strips::is_strip(doc, c) {
         let ps = crate::terminal_types::positions(doc, c);
         let fuses = ps.iter().filter(|p| p.ty.code == "fuse").map(|p| p.label.clone()).collect();
         return Subs::Positions { all: ps.into_iter().map(|p| p.label).collect(), fuses };
     }
     match head(doc, c).filter(|s| crate::symbols::is_fuse_bank(s)) {
-        Some(bank) => Subs::Fuses(bank.labels().into_iter().filter(|l| !l.is_empty() && l.bytes().all(|b| b.is_ascii_digit())).collect()),
+        Some(bank) => Subs::Fuses(bank.labels().into_iter().filter(|l| ecad_model::words::is_digits(l)).collect()),
         None => Subs::None,
     }
 }
 
 /// Whether `c` is a fuse terminal device (034's `fuseterm`): covered by a part line with no `for`.
-pub fn is_fuse_terminal(doc: &Document, c: ComponentId) -> bool {
-    head(doc, c).is_some_and(|s| s.key == "fuseterm")
+pub fn is_fuse_terminal(doc: &Document, c: DeviceId) -> bool {
+    head(doc, c).is_some_and(|s| s.key == crate::symbols::StarterKey::Fuseterm)
 }
 
 /// The names a `for` value lists, ranges of whole numbers expanded (`1-4, 7`), in order, each
@@ -357,7 +357,7 @@ pub fn names_words(names: &[String]) -> String {
 }
 
 /// Check a `for` value on `c`: every name a sub-item of `c` (§2.3).
-fn check_for(doc: &Document, c: ComponentId, text: &str) -> Result<Option<String>, CmdError> {
+fn check_for(doc: &Document, c: DeviceId, text: &str) -> Result<Option<String>, CmdError> {
     let t = text.trim();
     if t.is_empty() {
         return Ok(None);
@@ -390,7 +390,7 @@ pub fn renumber_for_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {
         if !crate::strips::is_strip(doc, c) {
             continue;
         }
-        let Some(props) = doc.components.get(&c).map(|x| &x.properties) else { continue };
+        let Some(props) = doc.devices.get(&c).map(|x| &x.properties) else { continue };
         let tag = crate::devices::tag_words(doc, c);
         for n in used_lines(props) {
             let key = part_key(n, Field::For);
@@ -409,7 +409,7 @@ pub fn renumber_for_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {
             let after = names_words(&moved);
             if after != before.trim() {
                 lines.push(format!("{tag}: part line {n} for {} \u{2192} {after}", before.trim()));
-                out.push(Op::SetProperty { object: ObjectRef::Component(c), key, before: Some(before.clone()), after: Some(after) });
+                out.push(Op::SetProperty { object: ObjectRef::Device(c), key, before: Some(before.clone()), after: Some(after) });
             }
         }
     }
@@ -533,8 +533,8 @@ pub struct PartSetRow {
 
 /// The part set of `c`, line 0 first; empty when `c` has no part lines (the section is then not
 /// shown).
-pub fn part_set(doc: &Document, c: ComponentId) -> Vec<PartSetRow> {
-    let Some(comp) = doc.components.get(&c) else { return Vec::new() };
+pub fn part_set(doc: &Document, c: DeviceId) -> Vec<PartSetRow> {
+    let Some(comp) = doc.devices.get(&c) else { return Vec::new() };
     let props = &comp.properties;
     let (lines, _) = lines(props);
     if lines.is_empty() {
@@ -574,7 +574,7 @@ pub fn part_set(doc: &Document, c: ComponentId) -> Vec<PartSetRow> {
 // ---------------------------------------------------------------- items (§3)
 
 /// Whether `c` is an item.
-pub fn is_item(doc: &Document, c: ComponentId) -> bool {
+pub fn is_item(doc: &Document, c: DeviceId) -> bool {
     crate::wires::kind_of(doc, c) == Some(ITEM_KIND)
 }
 
@@ -601,12 +601,12 @@ pub fn item_bad_keys(props: &Properties) -> Vec<String> {
 }
 
 /// Whether a component's properties make it an item.
-pub fn is_item_component(c: &Component) -> bool {
+pub fn is_item_component(c: &Device) -> bool {
     c.properties.get(ecad_model::connectivity::KIND).map(String::as_str) == Some(ITEM_KIND)
 }
 
 /// Whether `c` takes part lines: a device or strip (a tag and no `kind`).
-pub fn takes_lines(doc: &Document, c: ComponentId) -> bool {
+pub fn takes_lines(doc: &Document, c: DeviceId) -> bool {
     crate::locations::is_device(doc, c)
 }
 
@@ -615,7 +615,7 @@ pub fn takes_lines(doc: &Document, c: ComponentId) -> bool {
 ///
 /// # Errors
 /// [`ITEM_NO_TAG`], [`ITEM_NO_LINES`], [`ITEM_NEEDS_DESCRIPTION`].
-pub fn refuse_on_item(doc: &Document, c: ComponentId, key: &str, value: Option<&str>) -> Result<(), CmdError> {
+pub fn refuse_on_item(doc: &Document, c: DeviceId, key: &str, value: Option<&str>) -> Result<(), CmdError> {
     if !is_item(doc, c) {
         return Ok(());
     }
@@ -632,7 +632,7 @@ pub fn refuse_on_item(doc: &Document, c: ComponentId, key: &str, value: Option<&
 }
 
 /// Whether [`setprop_rule`] has an opinion on `key` of `c`.
-pub fn is_bom_key(doc: &Document, c: ComponentId, key: &str) -> bool {
+pub fn is_bom_key(doc: &Document, c: DeviceId, key: &str) -> bool {
     key == ARTICLE_KEY || key.starts_with(PART_PREFIX) || (is_item(doc, c) && matches!(key, QTY_KEY | UNIT_KEY))
 }
 
@@ -641,9 +641,9 @@ pub fn is_bom_key(doc: &Document, c: ComponentId, key: &str) -> bool {
 ///
 /// # Errors
 /// Every refusal of §2.1, §2.3 and §3, in words. Clearing a part line key is always allowed.
-pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
+pub fn setprop_rule(doc: &Document, c: DeviceId, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     refuse_on_item(doc, c, key, value)?;
-    let props = doc.components.get(&c).map(|x| &x.properties);
+    let props = doc.devices.get(&c).map(|x| &x.properties);
     let clearing = value.map(str::trim).is_none_or(str::is_empty);
     if key == ARTICLE_KEY {
         return plain(key, value, MAX_ARTICLE_CHARS);
@@ -681,7 +681,7 @@ fn unit_value(qty: Option<&str>, value: Option<&str>) -> Result<Option<String>, 
 }
 
 /// One field's value for a line of `c` (with the line's unit `metres` and stored `qty`).
-fn field_value(doc: &Document, c: ComponentId, f: Field, value: Option<&str>, metres: bool, qty: Option<&str>) -> Result<Option<String>, CmdError> {
+fn field_value(doc: &Document, c: DeviceId, f: Field, value: Option<&str>, metres: bool, qty: Option<&str>) -> Result<Option<String>, CmdError> {
     let key = f.word();
     match f {
         Field::PartNumber | Field::Maker | Field::Description => crate::devices::property_value(doc, key, value),
@@ -709,22 +709,22 @@ fn field_value(doc: &Document, c: ComponentId, f: Field, value: Option<&str>, me
 
 /// Whether the BOM shows its Article number column (`bom.column.article`).
 pub fn article_column(doc: &Document) -> bool {
-    defaults::resolve(doc, &defaults::bom::COLUMN_ARTICLE, Scope::project()).word() == "on"
+    ecad_model::words::flag(defaults::resolve(doc, &defaults::bom::COLUMN_ARTICLE, Scope::project()).word()) == Some(true)
 }
 
 /// Whether part lines are listed under their device (`bom.lines = nested`).
 pub fn lines_nested(doc: &Document) -> bool {
-    defaults::resolve(doc, &defaults::bom::LINES, Scope::project()).word() == "nested"
+    defaults::resolve(doc, &defaults::bom::LINES, Scope::project()).choice() == Some(defaults::bom::BomLines::Nested)
 }
 
 /// Whether a new item's unit is metres (`bom.item.unit = m`).
 pub fn item_unit_metres(doc: &Document) -> bool {
-    defaults::resolve(doc, &defaults::bom::ITEM_UNIT, Scope::project()).word() == METRES
+    defaults::resolve(doc, &defaults::bom::ITEM_UNIT, Scope::project()).choice::<defaults::bom::ItemUnit>() == Some(defaults::bom::ItemUnit::Metres)
 }
 
 /// The ops writing `fields` on line `n` of `c`, every value checked.
-pub fn line_ops(doc: &Document, c: ComponentId, n: u8, fields: &[(Field, Option<String>)]) -> Result<Vec<Op>, CmdError> {
-    let props = doc.components.get(&c).map(|x| &x.properties).ok_or(CmdError::refused("no such component"))?;
+pub fn line_ops(doc: &Document, c: DeviceId, n: u8, fields: &[(Field, Option<String>)]) -> Result<Vec<Op>, CmdError> {
+    let props = doc.devices.get(&c).map(|x| &x.properties).ok_or(CmdError::refused("no such component"))?;
     let given = |f: Field| fields.iter().find(|(g, _)| *g == f).map(|(_, v)| v.clone());
     let metres = match given(Field::Unit) {
         Some(u) => parse_unit(u.as_deref().unwrap_or(""))?,
@@ -743,7 +743,7 @@ pub fn line_ops(doc: &Document, c: ComponentId, n: u8, fields: &[(Field, Option<
         let key = part_key(n, *f);
         let before = props.get(&key).cloned();
         if before != after {
-            ops.push(Op::SetProperty { object: ObjectRef::Component(c), key, before, after });
+            ops.push(Op::SetProperty { object: ObjectRef::Device(c), key, before, after });
         }
     }
     Ok(ops)
@@ -792,7 +792,7 @@ pub type ArticleTarget = (ObjectRef, String, &'static str);
 /// (design 047 §5): the strip's own key, or the project's `strip_<x>_article_number`.
 pub fn article_targets(doc: &Document, pn: &str, maker: Option<&str>) -> Vec<ArticleTarget> {
     let mut out = Vec::new();
-    for (c, comp) in &doc.components {
+    for (c, comp) in &doc.devices {
         let props = &comp.properties;
         let item = is_item_component(comp);
         let device = !item && props.contains_key(ecad_model::tag::TAG_KEY) && !props.contains_key(ecad_model::connectivity::KIND);
@@ -802,21 +802,21 @@ pub fn article_targets(doc: &Document, pn: &str, maker: Option<&str>) -> Vec<Art
         let maker_ok = |k: &str| maker.is_none_or(|m| same(props.get(k), m));
         let strip = crate::strips::is_strip(doc, *c);
         if same(props.get("part_number"), pn) && maker_ok("maker") && !strip {
-            out.push((ObjectRef::Component(*c), ARTICLE_KEY.to_string(), if item { "item" } else { "device" }));
+            out.push((ObjectRef::Device(*c), ARTICLE_KEY.to_string(), if item { "item" } else { "device" }));
         }
         if strip {
             for (part, mk, article, project_maker) in strip_slots(props) {
                 // The maker as the BOM reads it: the strip's, else the project's.
                 let maker_here = props.get(&mk).filter(|v| !v.trim().is_empty()).or_else(|| project_maker.and_then(|k| doc.properties.get(&k)));
                 if same(props.get(&part), pn) && maker.is_none_or(|m| same(maker_here, m)) {
-                    out.push((ObjectRef::Component(*c), article, "strip"));
+                    out.push((ObjectRef::Device(*c), article, "strip"));
                 }
             }
         }
         if device {
             for n in used_lines(props) {
                 if same(props.get(&part_key(n, Field::PartNumber)), pn) && maker_ok(&part_key(n, Field::Maker)) {
-                    out.push((ObjectRef::Component(*c), part_key(n, Field::ArticleNumber), "line"));
+                    out.push((ObjectRef::Device(*c), part_key(n, Field::ArticleNumber), "line"));
                 }
             }
         }

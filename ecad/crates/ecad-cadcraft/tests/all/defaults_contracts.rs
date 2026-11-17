@@ -8,7 +8,7 @@ use crate::common::{H, id};
 
 use ecad_cadcraft::default_cmds::{self, Target};
 use ecad_cadcraft::defaults::{self, Entry, Kind, Level, Scope, Source};
-use ecad_model::{ComponentId, PageId, RepresentationId};
+use ecad_model::{DeviceId, PageId, RepresentationId};
 use serde_json::{Value, json};
 
 const SEED: u64 = 42;
@@ -19,6 +19,7 @@ fn other_value(e: &Entry) -> Option<String> {
     let candidates: Vec<String> = match e.kind {
         Kind::Length { min, max } | Kind::Number { min, max } => vec![format!("{max}"), format!("{min}")],
         Kind::Choice(words) => words.iter().map(|w| w.to_string()).collect(),
+        Kind::Flag => ecad_model::words::FLAG_WORDS.iter().map(|w| w.to_string()).collect(),
         Kind::Text { .. } | Kind::Parsed { .. } => {
             [
                 "ZZ",
@@ -47,11 +48,11 @@ fn other_value(e: &Entry) -> Option<String> {
 }
 
 /// A project with a coil: its page, component and symbol.
-fn fixture() -> (H, PageId, ComponentId, RepresentationId) {
+fn fixture() -> (H, PageId, DeviceId, RepresentationId) {
     let mut h = H::new(SEED);
     let page = h.first_page();
     let r = h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap();
-    let c: ComponentId = id(&r, "component");
+    let c: DeviceId = id(&r, "component");
     let item: ecad_model::ItemId = id(&r, "item");
     let rep = h.p(|p| p.ledger.document().representation_of_item(item).map(|(r, _)| r)).unwrap();
     (h, page, c, rep)
@@ -59,11 +60,11 @@ fn fixture() -> (H, PageId, ComponentId, RepresentationId) {
 
 /// The levels a call can name, with the target, the scope to read at and the source the value
 /// then comes from.
-fn targets(page: PageId, c: ComponentId, rep: RepresentationId, doc: &ecad_model::Document) -> Vec<(Level, Target, Scope, Source)> {
+fn targets(page: PageId, c: DeviceId, rep: RepresentationId, doc: &ecad_model::Document) -> Vec<(Level, Target, Scope, Source)> {
     vec![
         (Level::Project, Target::Project, Scope::project(), Source::Project),
         (Level::Page, Target::Page(page), Scope::page(page), Source::Page),
-        (Level::Object, Target::Component(c), Scope { page: Some(page), component: Some(c), ..Scope::project() }, Source::Object),
+        (Level::Object, Target::Device(c), Scope { page: Some(page), component: Some(c), ..Scope::project() }, Source::Object),
         (Level::Object, Target::Symbol(rep), Scope::symbol(doc, rep), Source::Symbol),
     ]
 }
@@ -73,7 +74,7 @@ fn target_json(t: Target) -> Value {
     match t {
         Target::Project => json!({}),
         Target::Page(p) => json!({"page": p.hex()}),
-        Target::Component(c) => json!({"component": c.hex()}),
+        Target::Device(c) => json!({"component": c.hex()}),
         Target::Conductor(c) => json!({"conductor": c.hex()}),
         Target::Symbol(r) => json!({"representation": r.hex()}),
     }
@@ -145,7 +146,7 @@ fn setdefault_is_one_undoable_transaction() {
     let doc = h.doc();
     let t = targets(page, c, rep, &doc);
     for (key, value, (level, target, scope, source)) in
-        [("text.run.gap", "20", t[0]), ("wiring.label_rule", "each", t[0]), ("text.tag.show", "off", t[1]), ("text.tag.show", "first", t[3])]
+        [("text.run.gap", "20", t[0]), ("wiring.label_rule", "each", t[0]), ("text.tag.show", "no", t[1]), ("text.tag.show", "first", t[3])]
     {
         let e = defaults::find(key).unwrap();
         let d0 = h.doc();
@@ -205,7 +206,7 @@ fn a_prefix_goes_to_the_tag_settings_and_counts_its_devices() {
     assert_eq!(defaults::users(&h.doc(), e), 2);
     h.run("setdefault", json!({"key": e.key, "value": "-q"})).unwrap();
     let d = h.doc();
-    assert_eq!(d.settings.tag_prefixes.get("coil").map(String::as_str), Some("Q"), "as Tag Settings writes it");
+    assert_eq!(d.settings.starter_prefix("coil").map(|p| p.as_str()), Some("Q"), "as Tag Settings writes it");
     assert!(!d.properties.contains_key(e.key), "never a project property too");
     assert_eq!(defaults::resolve(&d, e, Scope::project()).from, Source::Project);
     // The chain: built-in K, the standard (no value of its own), the project's Q.
@@ -213,7 +214,7 @@ fn a_prefix_goes_to_the_tag_settings_and_counts_its_devices() {
     let words: Vec<(Source, Option<String>)> = chain.iter().map(|(s, v)| (*s, v.map(|v| defaults::Resolved { value: v, from: *s }.text()))).collect();
     assert_eq!(words, vec![(Source::Builtin, Some("K".into())), (Source::Standard, None), (Source::Project, Some("Q".into()))]);
     h.run("setdefault", json!({"key": e.key, "reset": true})).unwrap();
-    assert!(!h.doc().settings.tag_prefixes.contains_key("coil"));
+    assert!(!h.doc().settings.starter_prefix("coil").is_some());
 }
 
 #[test]
@@ -228,9 +229,9 @@ fn the_chain_shows_a_level_that_holds_a_value_or_is_allowed() {
     // A height has no page level (owner answer 4).
     assert!(!levels(height, &doc).contains(&Source::Page));
     let _ = c;
-    h.run("setdefault", json!({"key": show.key, "level": "page", "page": page.hex(), "value": "off"})).unwrap();
+    h.run("setdefault", json!({"key": show.key, "level": "page", "page": page.hex(), "value": "no"})).unwrap();
     let d = h.doc();
     let chain = defaults::chain(&d, show, at);
-    assert_eq!(chain.iter().find(|(s, _)| *s == Source::Page).and_then(|(_, v)| *v), Some(defaults::Value::Choice("off")));
+    assert_eq!(chain.iter().find(|(s, _)| *s == Source::Page).and_then(|(_, v)| *v), Some(defaults::Value::Choice("no")));
     assert_eq!(defaults::resolve(&d, show, at).from, Source::Page);
 }

@@ -26,6 +26,7 @@
 //!
 //! Nothing here changes a project: the only project access is through `try_lock` reads.
 
+use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::Arc;
@@ -33,7 +34,7 @@ use std::sync::Arc;
 use cadcraft_engine::doc::{Drawing, Handle};
 use ecad_inspect::Event;
 use ecad_model::{
-    CableId, ComponentId, ConductorId, DefinitionId, Document, ItemId, ItemKind, LayerId, Ledger, Op, PageId, ProjectId, RepresentationId, Subject,
+    CableId, ConductorId, DefinitionId, DeviceId, Document, ItemId, ItemKind, LayerId, Ledger, Op, PageId, ProjectId, RepresentationId, Subject,
     TerminalId, Transaction, TxId, TxKind,
 };
 use serde_json::{Value, json};
@@ -54,7 +55,7 @@ pub enum ObjectId {
     Page(PageId),
     Layer(LayerId),
     Item(ItemId),
-    Component(ComponentId),
+    Device(DeviceId),
     Terminal(TerminalId),
     Representation(RepresentationId),
     Conductor(ConductorId),
@@ -71,7 +72,7 @@ impl ObjectId {
             ObjectId::Page(_) => "page",
             ObjectId::Layer(_) => "layer",
             ObjectId::Item(_) => "item",
-            ObjectId::Component(_) => "component",
+            ObjectId::Device(_) => "component",
             ObjectId::Terminal(_) => "terminal",
             ObjectId::Representation(_) => "representation",
             ObjectId::Conductor(_) => "conductor",
@@ -87,7 +88,7 @@ impl ObjectId {
             ObjectId::Page(i) => i.short(),
             ObjectId::Layer(i) => i.short(),
             ObjectId::Item(i) => i.short(),
-            ObjectId::Component(i) => i.short(),
+            ObjectId::Device(i) => i.short(),
             ObjectId::Terminal(i) => i.short(),
             ObjectId::Representation(i) => i.short(),
             ObjectId::Conductor(i) => i.short(),
@@ -103,7 +104,7 @@ impl ObjectId {
             ObjectId::Page(i) => i.hex(),
             ObjectId::Layer(i) => i.hex(),
             ObjectId::Item(i) => i.hex(),
-            ObjectId::Component(i) => i.hex(),
+            ObjectId::Device(i) => i.hex(),
             ObjectId::Terminal(i) => i.hex(),
             ObjectId::Representation(i) => i.hex(),
             ObjectId::Conductor(i) => i.hex(),
@@ -123,7 +124,7 @@ impl std::fmt::Display for ObjectId {
 impl From<Subject> for ObjectId {
     fn from(s: Subject) -> Self {
         match s {
-            Subject::Component(c) => ObjectId::Component(c),
+            Subject::Device(c) => ObjectId::Device(c),
             Subject::Conductor(c) => ObjectId::Conductor(c),
             Subject::Cable(c) => ObjectId::Cable(c),
         }
@@ -896,9 +897,10 @@ pub fn op_view(op: &Op) -> OpView {
         Op::AddItem { item, .. } => (None, val(item)),
         Op::ModifyItem { before, after, .. } => (val(before), val(after)),
         Op::RemoveItem { item, .. } => (val(item), None),
-        Op::CreateComponent { component, .. } => (None, val(component)),
-        Op::DeleteComponent { component, .. } => (val(component), None),
-        Op::SetComponentDefinition { before, after, .. } => (val(before), val(after)),
+        Op::CreateDevice { device, .. } => (None, val(device)),
+        Op::DeleteDevice { device, .. } => (val(device), None),
+        Op::ModifyDevice { before, after, .. } => (val(before), val(after)),
+        Op::SetDeviceDefinition { before, after, .. } => (val(before), val(after)),
         Op::AddTerminal { terminal, .. } => (None, val(terminal)),
         Op::RemoveTerminal { terminal, .. } => (val(terminal), None),
         Op::LinkRepresentation { rep, .. } => (None, val(rep)),
@@ -959,17 +961,21 @@ pub fn op_targets(op: &Op) -> Vec<ObjectId> {
             item_refs(before, &mut out);
             item_refs(after, &mut out);
         }
-        Op::CreateComponent { id, component } | Op::DeleteComponent { id, component } => {
-            out.push(ObjectId::Component(*id));
-            out.extend(component.definition.map(ObjectId::Definition));
+        Op::CreateDevice { id, device } | Op::DeleteDevice { id, device } => {
+            out.push(ObjectId::Device(*id));
+            out.extend(device.definition.map(ObjectId::Definition));
         }
-        Op::SetComponentDefinition { id, before, after } => {
-            out.push(ObjectId::Component(*id));
+        Op::ModifyDevice { id, before, after } => {
+            out.push(ObjectId::Device(*id));
+            out.extend(before.definition.iter().chain(&after.definition).copied().map(ObjectId::Definition));
+        }
+        Op::SetDeviceDefinition { id, before, after } => {
+            out.push(ObjectId::Device(*id));
             out.extend(before.iter().chain(after).copied().map(ObjectId::Definition));
         }
         Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
             out.push(ObjectId::Terminal(*id));
-            out.push(ObjectId::Component(terminal.component));
+            out.push(ObjectId::Device(terminal.component));
         }
         Op::LinkRepresentation { id, rep } | Op::UnlinkRepresentation { id, rep } => {
             out.push(ObjectId::Representation(*id));
@@ -997,7 +1003,7 @@ pub fn op_targets(op: &Op) -> Vec<ObjectId> {
             out.push(ObjectId::Conductor(member.conductor));
         }
         Op::SetProperty { object, .. } => out.push(match object {
-            ecad_model::ObjectRef::Component(c) => ObjectId::Component(*c),
+            ecad_model::ObjectRef::Device(c) => ObjectId::Device(*c),
             ecad_model::ObjectRef::Conductor(c) => ObjectId::Conductor(*c),
             ecad_model::ObjectRef::Cable(c) => ObjectId::Cable(*c),
             ecad_model::ObjectRef::Page(p) => ObjectId::Page(*p),
@@ -1065,11 +1071,11 @@ pub fn resolve(doc: &Document, mapped: Mapped) -> Resolved {
     r.subject = match mapped {
         Mapped::Fan(k) => Some(Subject::Cable(k)),
         Mapped::Label(c) => Some(Subject::Conductor(c)),
-        Mapped::Link(c, _) => Some(Subject::Component(c)),
+        Mapped::Link(c, _) => Some(Subject::Device(c)),
         _ => r.representation.and_then(|id| doc.representations.get(&id)).map(|rep| rep.subject),
     };
     r.terminals = match r.subject {
-        Some(Subject::Component(c)) => doc.terminals.iter().filter(|(_, t)| t.component == c).map(|(id, _)| *id).collect(),
+        Some(Subject::Device(c)) => doc.terminals.iter().filter(|(_, t)| t.component == c).map(|(id, _)| *id).collect(),
         Some(Subject::Conductor(c)) => doc.conductors.get(&c).map(|x| x.ends.iter().flatten().copied().collect()).unwrap_or_default(),
         _ => Vec::new(),
     };
@@ -1091,7 +1097,7 @@ pub fn object_json(doc: &Document, id: ObjectId) -> Option<Value> {
         ObjectId::Page(i) => doc.pages.get(&i).and_then(val),
         ObjectId::Layer(i) => doc.layers.get(&i).and_then(val),
         ObjectId::Item(i) => doc.items.get(&i).and_then(val),
-        ObjectId::Component(i) => doc.components.get(&i).and_then(val),
+        ObjectId::Device(i) => doc.devices.get(&i).and_then(val),
         ObjectId::Terminal(i) => doc.terminals.get(&i).and_then(val),
         ObjectId::Representation(i) => doc.representations.get(&i).and_then(val),
         ObjectId::Conductor(i) => doc.conductors.get(&i).and_then(val),
@@ -1121,19 +1127,15 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
     };
     match id {
         ObjectId::Definition(d) => doc
-            .components
+            .devices
             .iter()
             .filter(|(_, c)| c.definition == Some(d))
-            .map(|(i, _)| ObjectId::Component(*i))
+            .map(|(i, _)| ObjectId::Device(*i))
             .chain(doc.items.iter().filter(|(_, it)| matches!(&it.kind, ItemKind::Symbol(s) if s.definition == d)).map(|(i, _)| ObjectId::Item(*i)))
             .collect(),
-        ObjectId::Component(c) => doc
-            .terminals
-            .iter()
-            .filter(|(_, t)| t.component == c)
-            .map(|(i, _)| ObjectId::Terminal(*i))
-            .chain(reps_of(Subject::Component(c)))
-            .collect(),
+        ObjectId::Device(c) => {
+            doc.terminals.iter().filter(|(_, t)| t.component == c).map(|(i, _)| ObjectId::Terminal(*i)).chain(reps_of(Subject::Device(c))).collect()
+        }
         ObjectId::Terminal(t) => doc.conductors.iter().filter(|(_, c)| c.ends.contains(&Some(t))).map(|(i, _)| ObjectId::Conductor(*i)).collect(),
         ObjectId::Conductor(c) => doc
             .cables
@@ -1165,12 +1167,12 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
 }
 
 fn tag(p: &ecad_model::Properties) -> Option<String> {
-    p.get("tag").cloned()
+    p.text(ecad_model::keys::TAG).map(str::to_string)
 }
 
 fn subject_label(doc: &Document, s: Subject) -> String {
     let t = match s {
-        Subject::Component(c) => doc.components.get(&c).and_then(|x| tag(&x.properties)),
+        Subject::Device(c) => doc.devices.get(&c).and_then(|x| tag(&x.properties)),
         Subject::Conductor(c) => doc.conductors.get(&c).and_then(|x| tag(&x.properties)),
         Subject::Cable(c) => doc.cables.get(&c).and_then(|x| tag(&x.properties)),
     };
@@ -1186,7 +1188,7 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
             ItemKind::Primitive(p) => format!("{p:?}").split([' ', '{', '(']).next().unwrap_or("item").to_lowercase(),
             ItemKind::Symbol(_) => "symbol".into(),
         }),
-        ObjectId::Component(c) => subject_label(doc, Subject::Component(c)),
+        ObjectId::Device(c) => subject_label(doc, Subject::Device(c)),
         // A member of a cable shows its core (design 009 §8): `W3 · core 1`.
         ObjectId::Conductor(c) => {
             let core = doc.cables_of(c).first().and_then(|k| doc.cables.get(k)).and_then(|k| {
@@ -1203,7 +1205,7 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
         ObjectId::Cable(c) => subject_label(doc, Subject::Cable(c)),
         ObjectId::Terminal(i) => doc.terminals.get(&i).map_or_else(String::new, |t| {
             let name = t.label.clone().or_else(|| t.key.clone()).unwrap_or_else(|| i.short());
-            format!("{}:{name}", subject_label(doc, Subject::Component(t.component)))
+            format!("{}:{name}", subject_label(doc, Subject::Device(t.component)))
         }),
         ObjectId::Representation(i) => doc.representations.get(&i).map_or_else(String::new, |r| {
             // A cable's reference end shows the text it draws (design 009 §8).
@@ -1223,7 +1225,7 @@ pub fn objects(doc: &Document) -> Vec<ObjectId> {
     let mut out: Vec<ObjectId> = Vec::new();
     out.extend(doc.page_order.iter().map(|i| ObjectId::Page(*i)));
     out.extend(doc.layers.keys().map(|i| ObjectId::Layer(*i)));
-    out.extend(doc.components.keys().map(|i| ObjectId::Component(*i)));
+    out.extend(doc.devices.keys().map(|i| ObjectId::Device(*i)));
     out.extend(doc.terminals.keys().map(|i| ObjectId::Terminal(*i)));
     out.extend(doc.conductors.keys().map(|i| ObjectId::Conductor(*i)));
     out.extend(doc.cables.keys().map(|i| ObjectId::Cable(*i)));

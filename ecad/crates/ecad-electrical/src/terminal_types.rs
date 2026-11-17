@@ -20,7 +20,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::links::{level_of_key, natural_key};
-use ecad_model::{ComponentId, Document, Primitive, Pt, Subject, TerminalDef, TerminalId};
+use ecad_model::{DeviceId, Document, Primitive, Pt, Subject, TerminalDef, TerminalId};
 
 use crate::CmdError;
 
@@ -96,7 +96,7 @@ impl TermType {
 
     /// Whether it is 028's feed-through or PE terminal (one level, old keys).
     pub fn legacy(&self) -> bool {
-        self.key == "terminal" || self.key == crate::strips::PE_KEY
+        self.key == "terminal" || self.key == ecad_model::Word::word(crate::strips::PE_KEY)
     }
 }
 
@@ -251,8 +251,8 @@ pub fn of_starter(key: &str) -> Option<(&'static TermType, Option<u32>)> {
 }
 
 /// Whether `key` is one of this brief's new starters (a level, a whole terminal, disconnect, fuse).
-pub fn is_level_starter(key: &str) -> bool {
-    of_starter(key).is_some_and(|(t, _)| !t.legacy())
+pub fn is_level_starter(key: crate::symbols::StarterKey) -> bool {
+    of_starter(ecad_model::Word::word(key)).is_some_and(|(t, _)| !t.legacy())
 }
 
 /// Every new starter key, in catalogue order: per multi-level type its levels then its whole
@@ -276,10 +276,10 @@ pub fn type_of_terminal(doc: &Document, t: TerminalId) -> &'static TermType {
     let from_reps = doc.representations_showing(t).find_map(|(_, r)| crate::devices::rep_starter(doc, r));
     let starter = from_reps.or_else(|| {
         let c = doc.terminals.get(&t)?.component;
-        let d = doc.components.get(&c)?.definition?;
+        let d = doc.devices.get(&c)?.definition?;
         crate::symbols::of_definition(doc.definitions.get(&d)?)
     });
-    starter.and_then(|s| of_starter(s.key)).map_or_else(feedthrough, |(t, _)| t)
+    starter.and_then(|s| of_starter(ecad_model::Word::word(s.key))).map_or_else(feedthrough, |(t, _)| t)
 }
 
 /// A terminal's level and point (`.1i` → (1, `i`)); a hostile key is level 1.
@@ -289,13 +289,13 @@ pub fn level_of(doc: &Document, t: TerminalId) -> (u32, Option<char>) {
 
 /// The registry value of `terminal.level.separator` for strip `c`: strip → project → built-in;
 /// the word `none` is no separator.
-pub fn separator(doc: &Document, c: ComponentId) -> String {
+pub fn separator(doc: &Document, c: DeviceId) -> String {
     let v = crate::defaults::resolve(doc, &crate::defaults::terminals::SEPARATOR, crate::defaults::Scope::component(c)).text();
     if v.eq_ignore_ascii_case(crate::defaults::terminals::NO_SEPARATOR) { String::new() } else { v }
 }
 
 /// The level names of type `t` on strip `c` (registry `terminal.<code>.levels`, else built-in).
-pub fn level_names(doc: &Document, c: ComponentId, t: &TermType) -> Vec<String> {
+pub fn level_names(doc: &Document, c: DeviceId, t: &TermType) -> Vec<String> {
     if let Some(e) = crate::defaults::terminals::levels_entry(t.code) {
         let v = crate::defaults::resolve(doc, e, crate::defaults::Scope::component(c)).text();
         let names: Vec<String> = v.split(',').map(|x| x.trim().to_string()).collect();
@@ -307,7 +307,7 @@ pub fn level_names(doc: &Document, c: ComponentId, t: &TermType) -> Vec<String> 
 }
 
 /// The name of level `n` of `t` on strip `c` (`N`).
-pub fn level_name(doc: &Document, c: ComponentId, t: &TermType, n: u32) -> String {
+pub fn level_name(doc: &Document, c: DeviceId, t: &TermType, n: u32) -> String {
     let i = usize::try_from(n.saturating_sub(1)).unwrap_or(0);
     level_names(doc, c, t).get(i).cloned().unwrap_or_else(|| n.to_string())
 }
@@ -323,7 +323,7 @@ pub fn rating_key(position: &str) -> String {
 }
 
 /// The derived label of level `n` of position `p` of type `t` on strip `c` (no override).
-pub fn derived_label(doc: &Document, c: ComponentId, t: &TermType, p: &str, n: u32) -> String {
+pub fn derived_label(doc: &Document, c: DeviceId, t: &TermType, p: &str, n: u32) -> String {
     if !t.multi() {
         return p.to_string();
     }
@@ -336,7 +336,7 @@ pub fn shown_label(doc: &Document, t: TerminalId) -> Option<String> {
     let p = term.label.clone()?;
     let (n, _) = level_of(doc, t);
     let c = term.component;
-    if let Some(v) = doc.components.get(&c).and_then(|x| x.properties.get(&label_key(&p, n))) {
+    if let Some(v) = doc.devices.get(&c).and_then(|x| x.properties.get(&label_key(&p, n))) {
         return Some(v.clone());
     }
     if !term.key.as_deref().is_some_and(|k| k.starts_with('.')) {
@@ -353,9 +353,9 @@ pub fn shown_label(doc: &Document, t: TerminalId) -> Option<String> {
 /// The ops removing strip `c`'s position-keyed properties that `dropped` terminals leave without
 /// a terminal (review M1, no silent data loss): `term_label.<p>.<n>` when level `n` of `p` has no
 /// terminal left, `rating.<p>` when position `p` has none; with a note for each.
-pub fn orphaned_key_ops(doc: &Document, c: ComponentId, dropped: &[TerminalId]) -> (Vec<ecad_model::Op>, Vec<String>) {
+pub fn orphaned_key_ops(doc: &Document, c: DeviceId, dropped: &[TerminalId]) -> (Vec<ecad_model::Op>, Vec<String>) {
     let (mut ops, mut notes) = (Vec::new(), Vec::new());
-    let Some(props) = doc.components.get(&c).map(|x| &x.properties) else { return (ops, notes) };
+    let Some(props) = doc.devices.get(&c).map(|x| &x.properties) else { return (ops, notes) };
     if dropped.is_empty() || !crate::strips::is_strip(doc, c) {
         return (ops, notes);
     }
@@ -368,7 +368,7 @@ pub fn orphaned_key_ops(doc: &Document, c: ComponentId, dropped: &[TerminalId]) 
             && !ops.iter().any(|o| matches!(o, ecad_model::Op::SetProperty { key: k, .. } if *k == key))
         {
             notes.push(format!("{tag}: {key} ({v}) removed with its terminal; U brings it back."));
-            ops.push(ecad_model::Op::SetProperty { object: ecad_model::ObjectRef::Component(c), key, before: Some(v.clone()), after: None });
+            ops.push(ecad_model::Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key, before: Some(v.clone()), after: None });
         }
     };
     for t in dropped {
@@ -408,7 +408,7 @@ impl Position {
 }
 
 /// The positions of strip `c`, in plan order (natural order of their labels).
-pub fn positions(doc: &Document, c: ComponentId) -> Vec<Position> {
+pub fn positions(doc: &Document, c: DeviceId) -> Vec<Position> {
     let mut by_label: BTreeMap<String, Vec<TerminalId>> = BTreeMap::new();
     for (t, x) in doc.terminals_of(c) {
         if let Some(l) = &x.label {
@@ -437,7 +437,7 @@ pub fn positions(doc: &Document, c: ComponentId) -> Vec<Position> {
 
 /// The position groups the numbering planner numbers (design 036 §10.3, FP8c): terminals with one
 /// label, split where a level is drawn twice (the second drawing is a group of its own).
-pub fn position_groups(doc: &Document, c: ComponentId) -> Vec<Vec<TerminalId>> {
+pub fn position_groups(doc: &Document, c: DeviceId) -> Vec<Vec<TerminalId>> {
     let mut out = Vec::new();
     for p in positions(doc, c) {
         let mut main: Vec<TerminalId> = Vec::new();
@@ -456,7 +456,7 @@ pub fn position_groups(doc: &Document, c: ComponentId) -> Vec<Vec<TerminalId>> {
 }
 
 /// The highest whole-number position label of strip `c`.
-pub fn highest_number(doc: &Document, c: ComponentId) -> u64 {
+pub fn highest_number(doc: &Document, c: DeviceId) -> u64 {
     doc.terminals_of(c).filter_map(|(_, t)| t.label.as_deref()?.parse::<u64>().ok()).filter(|n| *n < 1_000_000).max().unwrap_or(0)
 }
 
@@ -472,7 +472,7 @@ pub struct Chooser {
 
 impl Chooser {
     /// Start for strip `c` (`None`: a new strip).
-    pub fn new(doc: &Document, c: Option<ComponentId>) -> Chooser {
+    pub fn new(doc: &Document, c: Option<DeviceId>) -> Chooser {
         Chooser { next: c.map_or(0, |c| highest_number(doc, c)) + 1, ..Chooser::default() }
     }
 
@@ -482,7 +482,7 @@ impl Chooser {
     /// # Errors
     /// A named position of another type, or whose level is drawn, in words with the way out.
     pub fn choose(
-        &mut self, doc: &Document, c: Option<ComponentId>, t: &'static TermType, n: Option<u32>, named: Option<&str>,
+        &mut self, doc: &Document, c: Option<DeviceId>, t: &'static TermType, n: Option<u32>, named: Option<&str>,
     ) -> Result<String, CmdError> {
         let ps = c.map(|c| positions(doc, c)).unwrap_or_default();
         let tag = c.map(|c| crate::devices::tag_words(doc, c)).unwrap_or_default();
@@ -687,7 +687,7 @@ pub fn link_text(labels: &[&String], order: &[String], n: u32, point: Option<cha
 /// as numbers, so renaming a level never breaks a link). An end that already reads as a level, or
 /// whose name no type of its position has, is left as typed. A name containing `-` (the sensor
 /// terminal's `-`) is written by its number.
-pub fn link_names_to_numbers(doc: &Document, c: ComponentId, text: &str) -> String {
+pub fn link_names_to_numbers(doc: &Document, c: DeviceId, text: &str) -> String {
     if text.chars().count() > ecad_model::links::MAX_TEXT_CHARS {
         return text.to_string();
     }
@@ -715,7 +715,7 @@ pub fn link_names_to_numbers(doc: &Document, c: ComponentId, text: &str) -> Stri
 
 /// When link value `text` on strip `c` names an end like `2.1` while a position labelled `2.1`
 /// exists (§5.1, Q5): `Link -X01 2.1 (position 2, level 1); position 2.1 is written 2.1.1.`
-pub fn dotted_position_words(doc: &Document, c: ComponentId, text: &str) -> Option<String> {
+pub fn dotted_position_words(doc: &Document, c: DeviceId, text: &str) -> Option<String> {
     let p = ecad_model::links::parse(text).ok()?;
     let labels: BTreeSet<String> = doc.terminals_of(c).filter_map(|(_, t)| t.label.clone()).collect();
     let mut words = Vec::new();
@@ -773,7 +773,7 @@ fn ticks(n: u32) -> Vec<Primitive> {
 pub fn graphics(key: &str) -> Option<Vec<Primitive>> {
     let (t, n) = of_starter(key).filter(|(t, _)| !t.legacy())?;
     Some(match (t.key, n) {
-        ("termfuse", _) => crate::symbols::graphics_of("fuseterm"),
+        ("termfuse", _) => crate::symbols::graphics_of(crate::symbols::StarterKey::Fuseterm),
         ("termdisc", _) => {
             vec![rect((-3.5, -7.5), (3.5, 7.5)), line((0.0, 10.0), (0.0, 3.0)), line((0.0, 3.0), (2.5, -3.0)), line((0.0, -3.0), (0.0, -10.0))]
         }
@@ -828,8 +828,8 @@ pub fn bridges(key: &str) -> Vec<Vec<String>> {
 /// Where each level of a symbol of strip `c` sits, keyed by the definition keys it shows (the
 /// whole terminal: every level).
 pub fn rep_type(doc: &Document, r: &ecad_model::Representation) -> Option<(&'static TermType, Option<u32>)> {
-    let Subject::Component(_) = r.subject else { return None };
-    of_starter(crate::devices::rep_starter(doc, r)?.key)
+    let Subject::Device(_) = r.subject else { return None };
+    of_starter(ecad_model::Word::word(crate::devices::rep_starter(doc, r)?.key))
 }
 
 pub fn short(hex: &str) -> &str {
@@ -865,7 +865,7 @@ mod tests {
         assert_eq!(of_starter("termlnpe.4"), None);
         assert_eq!(of_starter("termfuse").map(|(t, n)| (t.code, n)), Some(("fuse", Some(1))));
         assert_eq!(starter_keys().len(), 20);
-        assert!(is_level_starter("term2b.1") && !is_level_starter("terminal"));
+        assert!(is_level_starter(crate::symbols::StarterKey::Term2bL1) && !is_level_starter(crate::symbols::StarterKey::Terminal));
         assert_eq!(by_word("x2b").map(|t| t.key), Some("term2b"));
         assert_eq!(by_word("Feedthrough").map(|t| t.key), Some("terminal"));
     }

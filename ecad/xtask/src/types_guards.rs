@@ -36,13 +36,13 @@ pub enum Scan {
 /// and the end of lane F sets each to 0.
 #[rustfmt::skip]
 pub const GUARDS: &[Guard] = &[
-    Guard { name: "G2", what: "boolean words compared or matched", allowed: 57, fix: "read it with ecad_model::words::flag", scan: Scan::Line(g2) },
-    Guard { name: "G3", what: "`.all(…is_ascii_digit…)` digit checks", allowed: 36, fix: "use ecad_model::words::is_digits, uint or uint_canonical", scan: Scan::Line(g3) },
-    Guard { name: "G8a", what: "`Kind::Choice(&[` word lists", allowed: 31, fix: "declare the words as a word_enum! and use a typed choice", scan: Scan::Line(g8_choice) },
-    Guard { name: "G8b", what: "`.word() == \"` comparisons", allowed: 10, fix: "compare the typed value, not its word", scan: Scan::Line(g8_word) },
+    Guard { name: "G2", what: "boolean words compared or matched", allowed: 0, fix: "read it with ecad_model::words::flag", scan: Scan::Line(g2) },
+    Guard { name: "G3", what: "`.all(…is_ascii_digit…)` digit checks", allowed: 0, fix: "use ecad_model::words::is_digits, uint or uint_canonical", scan: Scan::Line(g3) },
+    Guard { name: "G8a", what: "`Kind::Choice(&[` word lists", allowed: 0, fix: "declare the words as a word_enum! and use a typed choice", scan: Scan::Line(g8_choice) },
+    Guard { name: "G8b", what: "`.word() == \"` comparisons", allowed: 0, fix: "compare the typed value, not its word", scan: Scan::Line(g8_word) },
     Guard { name: "G10", what: "catch-all words or bodies (`Unknown(`, `Stored<`, `Raw`)", allowed: 4, fix: "an unknown word is a read error (design 072 §9.4); type it", scan: Scan::Line(g10) },
-    Guard { name: "G13", what: "`String` or `&str` fields in stored structs", allowed: 27, fix: "store a Text<N>, LongText<N> or a typed value (design 072 §9.4)", scan: Scan::File(g13) },
-    Guard { name: "G14", what: "hidden-character checks outside words.rs", allowed: 13, fix: "use ecad_model::text::Text<N> (or words::is_hidden in ecad-model's text types)", scan: Scan::Line(g14) },
+    Guard { name: "G13", what: "`String` or `&str` fields in stored structs", allowed: 26, fix: "store a Text<N>, LongText<N> or a typed value (design 072 §9.4)", scan: Scan::File(g13) },
+    Guard { name: "G14", what: "hidden-character checks outside words.rs", allowed: 0, fix: "use ecad_model::text::Text<N> (or words::is_hidden in ecad-model's text types)", scan: Scan::Line(g14) },
 ];
 
 fn g2(rel: &str, line: &str) -> bool {

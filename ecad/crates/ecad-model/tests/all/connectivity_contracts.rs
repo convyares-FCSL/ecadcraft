@@ -6,8 +6,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use ecad_model::connectivity::{CONTINUATION, KIND, NAME};
 use ecad_model::wiring::{self, Scheme};
 use ecad_model::{
-    Author, Component, ComponentId, Conductor, ConductorId, Connectivity, Definition, DefinitionId, Document, End, IdAllocator, Ledger, ObjectRef,
-    Op, Page, PageId, Terminal, TerminalDef, TerminalId,
+    Author, Conductor, ConductorId, Connectivity, Definition, DefinitionId, Device, DeviceId, Document, End, IdAllocator, Ledger, ObjectRef, Op,
+    Page, PageId, Terminal, TerminalDef, TerminalId,
 };
 
 /// A small project driven through the ledger, with the numbering pass as ECAD commits run it.
@@ -38,13 +38,13 @@ impl P {
     }
 
     /// A device with `n` terminals keyed `1`..`n`.
-    fn device(&mut self, n: usize) -> (ComponentId, Vec<TerminalId>) {
-        self.device_with(n, Component::default())
+    fn device(&mut self, n: usize) -> (DeviceId, Vec<TerminalId>) {
+        self.device_with(n, Device::default())
     }
 
-    fn device_with(&mut self, n: usize, component: Component) -> (ComponentId, Vec<TerminalId>) {
-        let c: ComponentId = self.ids.fresh();
-        let mut ops = vec![Op::CreateComponent { id: c, component }];
+    fn device_with(&mut self, n: usize, component: Device) -> (DeviceId, Vec<TerminalId>) {
+        let c: DeviceId = self.ids.fresh();
+        let mut ops = vec![Op::CreateDevice { id: c, device: component }];
         let mut ts = Vec::new();
         for k in 1..=n {
             let t: TerminalId = self.ids.fresh();
@@ -55,8 +55,8 @@ impl P {
         (c, ts)
     }
 
-    fn continuation(&mut self, name: &str) -> (ComponentId, TerminalId) {
-        let mut comp = Component::default();
+    fn continuation(&mut self, name: &str) -> (DeviceId, TerminalId) {
+        let mut comp = Device::default();
         comp.properties.insert(KIND.into(), CONTINUATION.into());
         comp.properties.insert(NAME.into(), name.into());
         let (c, ts) = self.device_with(1, comp);
@@ -136,7 +136,7 @@ fn nets_join_through_attachments_continuations_and_bridges_only() {
     let c = p.wire(None, None);
     assert!(!p.same_net(a, c));
     // With a junction: one net.
-    let mut j = Component::default();
+    let mut j = Device::default();
     j.properties.insert(KIND.into(), "junction".into());
     let (_, jt) = p.device_with(1, j);
     let d = p.wire(Some(jt[0]), Some(k[1]));
@@ -167,7 +167,7 @@ fn nets_join_through_attachments_continuations_and_bridges_only() {
         ..Default::default()
     };
     p.commit(vec![Op::EmbedDefinition { id: def, definition }]);
-    let (_, bt) = p.device_with(3, Component { definition: Some(def), ..Component::default() });
+    let (_, bt) = p.device_with(3, Device { definition: Some(def), ..Device::default() });
     let b1 = p.wire(Some(bt[0]), None);
     let b2 = p.wire(Some(bt[1]), None);
     let b3 = p.wire(Some(bt[2]), None);
@@ -377,7 +377,7 @@ fn random_ops(seed: u64, steps: usize) {
         let doc = p.doc();
         let terminals: Vec<TerminalId> = doc.terminals.keys().copied().collect();
         let conductors: Vec<ConductorId> = doc.conductors.keys().copied().collect();
-        let comps: Vec<ComponentId> = doc.components.keys().copied().collect();
+        let comps: Vec<DeviceId> = doc.devices.keys().copied().collect();
         let pick_t = |i: usize| terminals.get(i % terminals.len().max(1)).copied();
         match next(10) {
             0 | 1 => {
@@ -409,10 +409,10 @@ fn random_ops(seed: u64, steps: usize) {
             7 if !comps.is_empty() => {
                 // Rename a continuation (or a plain device, which changes nothing).
                 let c = comps[next(comps.len())];
-                let before = p.doc().components.get(&c).unwrap().properties.get(NAME).cloned();
+                let before = p.doc().devices.get(&c).unwrap().properties.get(NAME).cloned();
                 let after = Some(names[next(names.len())].to_string());
                 if before != after {
-                    p.commit(vec![Op::SetProperty { object: ObjectRef::Component(c), key: NAME.into(), before, after }]);
+                    p.commit(vec![Op::SetProperty { object: ObjectRef::Device(c), key: NAME.into(), before, after }]);
                 }
             }
             8 if !comps.is_empty() => {
@@ -422,7 +422,7 @@ fn random_ops(seed: u64, steps: usize) {
                 let ts: Vec<(TerminalId, Terminal)> = doc.terminals_of(c).map(|(t, x)| (t, x.clone())).collect();
                 if ts.iter().all(|(t, _)| doc.ends_at(*t).is_empty()) {
                     let mut ops: Vec<Op> = ts.into_iter().map(|(id, terminal)| Op::RemoveTerminal { id, terminal }).collect();
-                    ops.push(Op::DeleteComponent { id: c, component: doc.components.get(&c).unwrap().clone() });
+                    ops.push(Op::DeleteDevice { id: c, device: doc.devices.get(&c).unwrap().clone() });
                     p.commit(ops);
                 }
             }
@@ -455,7 +455,7 @@ fn unrelated_ops_change_no_net_and_number_nothing() {
     let (c, k) = p.device(2);
     p.wire(Some(k[0]), Some(k[1]));
     let before = p.doc().connectivity().clone();
-    let tag = Op::SetProperty { object: ObjectRef::Component(c), key: "tag".into(), before: None, after: Some("-K1".into()) };
+    let tag = Op::SetProperty { object: ObjectRef::Device(c), key: "tag".into(), before: None, after: Some("-K1".into()) };
     let page: PageId = p.ids.fresh();
     let ops = vec![tag, Op::AddPage { id: page, page: Page::new("2"), index: 1 }];
     let head = p.ledger.head();
@@ -475,8 +475,8 @@ fn links_join_terminals_by_label_and_number_in_the_same_transaction() {
     let w: Vec<ConductorId> = t.iter().map(|x| p.wire(Some(*x), None)).collect();
     assert!(!p.same_net(w[0], w[3]));
     let set = |p: &mut P, key: &str, value: Option<&str>| {
-        let before = p.doc().components.get(&strip).unwrap().properties.get(key).cloned();
-        p.commit(vec![Op::SetProperty { object: ObjectRef::Component(strip), key: key.into(), before, after: value.map(Into::into) }]);
+        let before = p.doc().devices.get(&strip).unwrap().properties.get(key).cloned();
+        p.commit(vec![Op::SetProperty { object: ObjectRef::Device(strip), key: key.into(), before, after: value.map(Into::into) }]);
     };
     set(&mut p, "link.1", Some("1-4"));
     assert!(p.same_net(w[0], w[3]) && p.same_net(w[1], w[2]));
@@ -520,8 +520,8 @@ fn a_999_terminal_strip_with_long_links_builds_quickly() {
     let (strip, t) = p.device(999);
     let skip: Vec<String> = (1..=999).step_by(2).map(|n| n.to_string()).collect();
     let set = |p: &mut P, key: &str, value: &str| {
-        let before = p.doc().components.get(&strip).unwrap().properties.get(key).cloned();
-        p.commit(vec![Op::SetProperty { object: ObjectRef::Component(strip), key: key.into(), before, after: Some(value.into()) }]);
+        let before = p.doc().devices.get(&strip).unwrap().properties.get(key).cloned();
+        p.commit(vec![Op::SetProperty { object: ObjectRef::Device(strip), key: key.into(), before, after: Some(value.into()) }]);
     };
     set(&mut p, "link.1", &skip.join(", "));
     set(&mut p, "link.2", "2-998");

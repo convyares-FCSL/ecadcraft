@@ -17,6 +17,7 @@
 //! This module draws nothing itself and records nothing: the projection turns [`Part`]s into
 //! entities on [`crate::views::LAYER`].
 
+use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{CableId, ConductorId, Document, End, ItemId, ItemKind, PageId, Primitive, Pt, RepresentationId, Subject};
@@ -531,8 +532,12 @@ fn frame(doc: &Document, members: &[Member], reference: usize, side: usize, ends
         .iter()
         .map(|m| {
             let core = m.core.as_deref().filter(|c| !c.trim().is_empty()).map(|c| shorten(c, MAX_CORE_CHARS));
-            let wire =
-                doc.conductors.get(&m.conductor).and_then(|c| c.properties.get("tag")).filter(|t| !t.is_empty()).map(|t| shorten(t, MAX_SHOWN_CHARS));
+            let wire = doc
+                .conductors
+                .get(&m.conductor)
+                .and_then(|c| c.properties.text(ecad_model::keys::TAG))
+                .filter(|t| !t.is_empty())
+                .map(|t| shorten(t, MAX_SHOWN_CHARS));
             let core_w = core.as_deref().map_or(0.0, measure) * h;
             let wire_w = wire.as_deref().map_or(0.0, measure) * h;
             Labels { core, wire, core_w, wire_w }
@@ -1054,7 +1059,7 @@ impl<'a> PageIndex<'a> {
                     }
                 }
                 Subject::Cable(k) => idx.cables.entry(k).or_default().push((id, r)),
-                Subject::Component(_) => {}
+                Subject::Device(_) => {}
             }
         }
         idx
@@ -1265,7 +1270,7 @@ pub fn provisional_tag_handles(p: &crate::Project, page: PageId) -> Vec<cadcraft
     map.tag_text_handles()
         .filter(|h| {
             let Some((rep, crate::devices::TextOf::Tag)) = map.tag_text_of(*h) else { return false };
-            let Some(Subject::Component(c)) = doc.representations.get(&rep).map(|r| r.subject) else { return false };
+            let Some(Subject::Device(c)) = doc.representations.get(&rep).map(|r| r.subject) else { return false };
             crate::devices::tag_of(doc, c).is_some_and(ecad_model::tag::is_provisional)
         })
         .collect()

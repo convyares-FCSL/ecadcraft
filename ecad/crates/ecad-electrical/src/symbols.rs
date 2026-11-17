@@ -17,11 +17,15 @@
 //! The catalogue reads no project; only [`setprop_rule`] reads one, to find a fuse bank's fuses.
 //! Nothing here changes a project.
 
+#![deny(clippy::wildcard_enum_match_arm)]
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
 use crate::CmdError;
-use ecad_model::{Definition, DefinitionId, Document, LibraryId, ObjectRef, Origin, Primitive, Pt, Subject, TerminalDef};
+use ecad_model::{
+    Definition, DefinitionId, DeviceGroup, DeviceType, Document, LibraryId, ObjectRef, Origin, Primitive, Pt, Subject, TerminalDef, Word,
+};
 
 /// The library ID of the starter symbols.
 pub const STARTER_LIBRARY: LibraryId = LibraryId(0x0000_ecad_0018_5ea1_0000_0000_0000_0001);
@@ -117,11 +121,375 @@ pub const SOCKET_KEY: &str = ".s";
 /// The terminal key of a plug pin (design 044 FP1).
 pub const PLUG_KEY: &str = ".p";
 
+ecad_model::word_enum! {
+    /// The key of a starter symbol (design 072 §9.1): one value per row of [`STARTERS`], in table
+    /// order, stored and typed as its word (`coil`, `no`, `term2.1`…). Variants are the words
+    /// with a capital first letter, `.` written `L` (level).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum StarterKey {
+        Coil,
+        No,
+        Nc,
+        Power3,
+        Mcb1,
+        Mcb2,
+        Fuse,
+        Psu,
+        Pbno,
+        Pbnc,
+        Sel,
+        Lamp,
+        Motor3,
+        Motor1,
+        Trafo,
+        Terminal,
+        Terminalpe,
+        Di,
+        Do,
+        Junction,
+        Continuation,
+        Co,
+        Swco,
+        Power4,
+        Rcbo2,
+        Rcd2,
+        Rcd4,
+        Ssrin,
+        Ssrout,
+        Fuseterm,
+        Fusebank4,
+        Fusebank6,
+        Fusebank8,
+        Fusebank10,
+        Fusebank12,
+        Prox3,
+        Floatno,
+        Floatnc,
+        Rollerno,
+        Rollernc,
+        Interlocknc,
+        Interlockno,
+        Valve,
+        Valve2,
+        Tc,
+        Heater,
+        Socket2,
+        Socket3,
+        Socket4,
+        Socket6,
+        Socket8,
+        Socket12,
+        Plug2,
+        Plug3,
+        Plug4,
+        Plug6,
+        Plug8,
+        Plug12,
+        Dsub9s,
+        Dsub15s,
+        Dsub25s,
+        Dsub9p,
+        Dsub15p,
+        Dsub25p,
+        M12s4,
+        M12s5,
+        M12s8,
+        M12p4,
+        M12p5,
+        M12p8,
+        Rj45,
+        Usba,
+        Usbb,
+        Pinpair,
+        Pins,
+        Pinp,
+        Plccpu,
+        Plcps,
+        Plcdi,
+        Plcdq,
+        Plcai,
+        Plcao,
+        Plcrtd,
+        Plciol,
+        #[strum(serialize = "term2.1")]
+        Term2L1,
+        #[strum(serialize = "term2.2")]
+        Term2L2,
+        Term2,
+        #[strum(serialize = "term2b.1")]
+        Term2bL1,
+        #[strum(serialize = "term2b.2")]
+        Term2bL2,
+        Term2b,
+        #[strum(serialize = "term3.1")]
+        Term3L1,
+        #[strum(serialize = "term3.2")]
+        Term3L2,
+        #[strum(serialize = "term3.3")]
+        Term3L3,
+        Term3,
+        #[strum(serialize = "termlnpe.1")]
+        TermlnpeL1,
+        #[strum(serialize = "termlnpe.2")]
+        TermlnpeL2,
+        #[strum(serialize = "termlnpe.3")]
+        TermlnpeL3,
+        Termlnpe,
+        #[strum(serialize = "termsensor.1")]
+        TermsensorL1,
+        #[strum(serialize = "termsensor.2")]
+        TermsensorL2,
+        #[strum(serialize = "termsensor.3")]
+        TermsensorL3,
+        Termsensor,
+        Termdisc,
+        Termfuse,
+        Plcim,
+        Plcpm,
+        Plccm,
+        Chdi,
+        Chdq,
+        Chai,
+        Chao,
+        Chrtd,
+        Chiol,
+    }
+}
+
+use StarterKey as K;
+
+impl StarterKey {
+    /// The group a device this starter begins belongs to (design 072 §2.2): what the starter
+    /// declares in its definition's [`Definition::device_type`]. Junctions and continuations are
+    /// `General` until lane F makes them drawing aids.
+    pub fn device_group(self) -> DeviceGroup {
+        match self {
+            K::Psu | K::Trafo => DeviceGroup::PowerSupply,
+            K::Fuse
+            | K::Mcb1
+            | K::Mcb2
+            | K::Rcbo2
+            | K::Rcd2
+            | K::Rcd4
+            | K::Fuseterm
+            | K::Fusebank4
+            | K::Fusebank6
+            | K::Fusebank8
+            | K::Fusebank10
+            | K::Fusebank12 => DeviceGroup::Protection,
+            K::Coil | K::No | K::Nc | K::Co | K::Power3 | K::Power4 | K::Ssrin | K::Ssrout | K::Pbno | K::Pbnc | K::Sel | K::Swco => {
+                DeviceGroup::Switching
+            }
+            K::Prox3 | K::Floatno | K::Floatnc | K::Rollerno | K::Rollernc | K::Interlockno | K::Interlocknc | K::Tc => DeviceGroup::Sensor,
+            K::Motor1 | K::Motor3 => DeviceGroup::Motor,
+            K::Heater | K::Valve | K::Valve2 => DeviceGroup::Load,
+            K::Lamp => DeviceGroup::Indicator,
+            K::Terminal
+            | K::Terminalpe
+            | K::Term2L1
+            | K::Term2L2
+            | K::Term2
+            | K::Term2bL1
+            | K::Term2bL2
+            | K::Term2b
+            | K::Term3L1
+            | K::Term3L2
+            | K::Term3L3
+            | K::Term3
+            | K::TermlnpeL1
+            | K::TermlnpeL2
+            | K::TermlnpeL3
+            | K::Termlnpe
+            | K::TermsensorL1
+            | K::TermsensorL2
+            | K::TermsensorL3
+            | K::Termsensor
+            | K::Termdisc
+            | K::Termfuse => DeviceGroup::TerminalStrip,
+            K::Socket2
+            | K::Socket3
+            | K::Socket4
+            | K::Socket6
+            | K::Socket8
+            | K::Socket12
+            | K::Plug2
+            | K::Plug3
+            | K::Plug4
+            | K::Plug6
+            | K::Plug8
+            | K::Plug12
+            | K::Dsub9s
+            | K::Dsub15s
+            | K::Dsub25s
+            | K::Dsub9p
+            | K::Dsub15p
+            | K::Dsub25p
+            | K::M12s4
+            | K::M12s5
+            | K::M12s8
+            | K::M12p4
+            | K::M12p5
+            | K::M12p8
+            | K::Rj45
+            | K::Usba
+            | K::Usbb
+            | K::Pinpair
+            | K::Pins
+            | K::Pinp => DeviceGroup::Connector,
+            K::Plccpu | K::Plcim => DeviceGroup::PlcRack,
+            K::Plcps
+            | K::Plcpm
+            | K::Plccm
+            | K::Plcdi
+            | K::Plcdq
+            | K::Plcai
+            | K::Plcao
+            | K::Plcrtd
+            | K::Plciol
+            | K::Di
+            | K::Do
+            | K::Chdi
+            | K::Chdq
+            | K::Chai
+            | K::Chao
+            | K::Chrtd
+            | K::Chiol => DeviceGroup::PlcModule,
+            K::Junction | K::Continuation => DeviceGroup::General,
+        }
+    }
+
+    /// The ways of a fuse bank key (`fusebank8` → 8); `None` for any other key.
+    pub fn fuse_bank_ways(self) -> Option<usize> {
+        match self {
+            K::Fusebank4 => Some(4),
+            K::Fusebank6 => Some(6),
+            K::Fusebank8 => Some(8),
+            K::Fusebank10 => Some(10),
+            K::Fusebank12 => Some(12),
+            K::Coil
+            | K::No
+            | K::Nc
+            | K::Power3
+            | K::Mcb1
+            | K::Mcb2
+            | K::Fuse
+            | K::Psu
+            | K::Pbno
+            | K::Pbnc
+            | K::Sel
+            | K::Lamp
+            | K::Motor3
+            | K::Motor1
+            | K::Trafo
+            | K::Terminal
+            | K::Terminalpe
+            | K::Di
+            | K::Do
+            | K::Junction
+            | K::Continuation
+            | K::Co
+            | K::Swco
+            | K::Power4
+            | K::Rcbo2
+            | K::Rcd2
+            | K::Rcd4
+            | K::Ssrin
+            | K::Ssrout
+            | K::Fuseterm
+            | K::Prox3
+            | K::Floatno
+            | K::Floatnc
+            | K::Rollerno
+            | K::Rollernc
+            | K::Interlocknc
+            | K::Interlockno
+            | K::Valve
+            | K::Valve2
+            | K::Tc
+            | K::Heater
+            | K::Socket2
+            | K::Socket3
+            | K::Socket4
+            | K::Socket6
+            | K::Socket8
+            | K::Socket12
+            | K::Plug2
+            | K::Plug3
+            | K::Plug4
+            | K::Plug6
+            | K::Plug8
+            | K::Plug12
+            | K::Dsub9s
+            | K::Dsub15s
+            | K::Dsub25s
+            | K::Dsub9p
+            | K::Dsub15p
+            | K::Dsub25p
+            | K::M12s4
+            | K::M12s5
+            | K::M12s8
+            | K::M12p4
+            | K::M12p5
+            | K::M12p8
+            | K::Rj45
+            | K::Usba
+            | K::Usbb
+            | K::Pinpair
+            | K::Pins
+            | K::Pinp
+            | K::Plccpu
+            | K::Plcps
+            | K::Plcdi
+            | K::Plcdq
+            | K::Plcai
+            | K::Plcao
+            | K::Plcrtd
+            | K::Plciol
+            | K::Term2L1
+            | K::Term2L2
+            | K::Term2
+            | K::Term2bL1
+            | K::Term2bL2
+            | K::Term2b
+            | K::Term3L1
+            | K::Term3L2
+            | K::Term3L3
+            | K::Term3
+            | K::TermlnpeL1
+            | K::TermlnpeL2
+            | K::TermlnpeL3
+            | K::Termlnpe
+            | K::TermsensorL1
+            | K::TermsensorL2
+            | K::TermsensorL3
+            | K::Termsensor
+            | K::Termdisc
+            | K::Termfuse
+            | K::Plcim
+            | K::Plcpm
+            | K::Plccm
+            | K::Chdi
+            | K::Chdq
+            | K::Chai
+            | K::Chao
+            | K::Chrtd
+            | K::Chiol => None,
+        }
+    }
+}
+
+impl std::fmt::Display for StarterKey {
+    /// Its word.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.pad(self.word())
+    }
+}
+
 /// One starter symbol in the catalogue.
 #[derive(Debug, Clone)]
 pub struct Starter {
     /// The short key typed at prompts and used in JSON (`coil`, `no`…).
-    pub key: &'static str,
+    pub key: StarterKey,
     /// Its name and default description.
     pub name: &'static str,
     /// Words that also find it.
@@ -184,9 +552,9 @@ impl Starter {
     /// Its content hash could not be computed (never for the built-in symbols; a definition is
     /// never stored with a made-up origin hash).
     pub fn definition(&self) -> Result<&'static Definition, CmdError> {
-        static BUILT: OnceLock<BTreeMap<&'static str, Result<Definition, CmdError>>> = OnceLock::new();
+        static BUILT: OnceLock<BTreeMap<StarterKey, Result<Definition, CmdError>>> = OnceLock::new();
         let built = BUILT.get_or_init(|| STARTERS.iter().map(|s| (s.key, s.build())).collect());
-        match built.get(self.key) {
+        match built.get(&self.key) {
             Some(Ok(d)) => Ok(d),
             Some(Err(e)) => Err(e.clone()),
             None => Err(CmdError::refused(format!("{} is not a starter symbol", self.key))),
@@ -197,7 +565,9 @@ impl Starter {
         // Brief 044 (FP2): a connector half's bridge joins the side keys written at placement.
         let bridges = match self.kind {
             Kind::ConnectorHalf { .. } => vec![vec![SOCKET_KEY.to_string(), PLUG_KEY.to_string()]],
-            _ => crate::terminal_types::bridges(self.key),
+            Kind::Contact { .. } | Kind::Terminal | Kind::Channel(_) | Kind::ChangeOver | Kind::Fixed { .. } | Kind::Tagless => {
+                crate::terminal_types::bridges(self.key.word())
+            }
         };
         let mut d = Definition {
             bridges,
@@ -205,6 +575,7 @@ impl Starter {
             origin: None,
             graphics: graphics(self.key),
             terminals: terminals(self.key),
+            device_type: DeviceType::of_group(self.key.device_group()),
             ..Default::default()
         };
         let content_hash =
@@ -213,12 +584,23 @@ impl Starter {
         Ok(d)
     }
 
+    /// What a device this starter begins is: the type its definition declares (design 072 §2.3).
+    pub fn device_type(&self) -> DeviceType {
+        DeviceType::of_group(self.key.device_group())
+    }
+
     /// The version of this starter's definition (`library_seq`): 2 for the 24 mating halves brief
     /// 044 changed (FP3), 1 for every other.
     pub fn library_seq(&self) -> u64 {
         match self.kind {
-            Kind::ConnectorHalf { side: Side::Socket | Side::Plug } if !matches!(self.key, "pins" | "pinp") => 2,
-            _ => 1,
+            Kind::ConnectorHalf { side: Side::Socket | Side::Plug } if !matches!(self.key, K::Pins | K::Pinp) => 2,
+            Kind::Contact { .. }
+            | Kind::Terminal
+            | Kind::Channel(_)
+            | Kind::ChangeOver
+            | Kind::Fixed { .. }
+            | Kind::Tagless
+            | Kind::ConnectorHalf { .. } => 1,
         }
     }
 
@@ -226,7 +608,7 @@ impl Starter {
     pub fn side(&self) -> Option<Side> {
         match self.kind {
             Kind::ConnectorHalf { side } => Some(side),
-            _ => None,
+            Kind::Contact { .. } | Kind::Terminal | Kind::Channel(_) | Kind::ChangeOver | Kind::Fixed { .. } | Kind::Tagless => None,
         }
     }
 
@@ -234,7 +616,7 @@ impl Starter {
     /// (`symbol.<key>.prefix`, [`crate::defaults::symbols`]); empty for a tagless symbol. A
     /// project's own prefix is [`crate::devices::prefix_for`].
     pub fn prefix(&self) -> &'static str {
-        crate::defaults::symbols::prefix_entry(self.key).map_or("", crate::defaults::symbols::builtin_prefix)
+        crate::defaults::symbols::prefix_entry(self.key.word()).map_or("", crate::defaults::symbols::builtin_prefix)
     }
 
     /// Whether it can join an existing device (every starter symbol can, within §3.1's rules).
@@ -261,7 +643,7 @@ const fn def_id(n: u128) -> DefinitionId {
 
 /// A catalogue entry of the [`Family::Basic`] family with no quiet points; [`Starter::of`] and
 /// [`Starter::quiet_at`] set the rest.
-const fn st(key: &'static str, name: &'static str, aliases: &'static [&'static str], kind: Kind, id: DefinitionId) -> Starter {
+const fn st(key: StarterKey, name: &'static str, aliases: &'static [&'static str], kind: Kind, id: DefinitionId) -> Starter {
     Starter { key, name, aliases, kind, id, family: Family::Basic, quiet: Quiet::None }
 }
 
@@ -293,12 +675,12 @@ const PIN_S: &[&str] = &["socket pin", "female pin", "connector pin", "connector
 const PIN_P: &[&str] = &["plug pin", "male pin", "connector pin", "connector"];
 
 /// A connector body (stage 3a): a head, every pin quiet (prefix `X`, `defaults::symbols`).
-const fn conn(key: &'static str, name: &'static str, aliases: &'static [&'static str], id: DefinitionId) -> Starter {
+const fn conn(key: StarterKey, name: &'static str, aliases: &'static [&'static str], id: DefinitionId) -> Starter {
     st(key, name, aliases, HEAD, id).of(Family::Connectors).quiet_at(Quiet::All)
 }
 
 /// A mating connector half or pin (brief 044, design 044 §3.1): every pin quiet.
-const fn half(key: &'static str, name: &'static str, aliases: &'static [&'static str], side: Side, id: DefinitionId) -> Starter {
+const fn half(key: StarterKey, name: &'static str, aliases: &'static [&'static str], side: Side, id: DefinitionId) -> Starter {
     st(key, name, aliases, Kind::ConnectorHalf { side }, id).of(Family::Connectors).quiet_at(Quiet::All)
 }
 
@@ -326,161 +708,267 @@ const fn pc(n: u128) -> DefinitionId {
 }
 
 /// A PLC card body (stage 3b): a head (prefix `A`, `defaults::symbols`).
-const fn card(key: &'static str, name: &'static str, aliases: &'static [&'static str], id: DefinitionId) -> Starter {
+const fn card(key: StarterKey, name: &'static str, aliases: &'static [&'static str], id: DefinitionId) -> Starter {
     st(key, name, aliases, HEAD, id).of(Family::Plc)
 }
 
 /// The catalogue, in table order (design 018 §4, then design 034 §3–§6). A definition ID is never
 /// reused or changed once it has been on `dev`.
 pub const STARTERS: &[Starter] = &[
-    st("coil", "Contactor / relay coil", &["coil", "relay", "contactor"], HEAD, def_id(1)),
-    st("no", "NO contact", &["make", "normally open", "contact"], Kind::Contact { make: true }, def_id(2)),
-    st("nc", "NC contact", &["break", "normally closed", "contact"], Kind::Contact { make: false }, def_id(3)),
-    st("power3", "Power contacts, 3-pole", &["main contacts", "contactor"], PART, def_id(4)),
-    st("mcb1", "MCB 1-pole", &["breaker", "circuit breaker"], HEAD, def_id(5)),
-    st("mcb2", "MCB 2-pole", &["breaker", "circuit breaker"], HEAD, def_id(6)),
-    st("fuse", "Fuse", &["fuse"], HEAD, def_id(7)),
-    st("psu", "Power supply", &["psu", "ac/dc"], HEAD, def_id(8)),
-    st("pbno", "Push button, NO", &["push", "button", "start"], Kind::Contact { make: true }, def_id(9)),
-    st("pbnc", "Push button, NC", &["push", "button", "stop"], Kind::Contact { make: false }, def_id(10)),
-    st("sel", "Selector switch, 2-position", &["selector", "switch"], Kind::Contact { make: true }, def_id(11)),
-    st("lamp", "Indicator lamp", &["lamp", "light", "pilot"], HEAD, def_id(12)),
-    st("motor3", "Motor, 3-phase", &["motor"], HEAD, def_id(13)),
-    st("motor1", "Motor, single-phase", &["motor"], HEAD, def_id(14)),
-    st("trafo", "Transformer", &["control transformer"], HEAD, def_id(15)),
-    st("terminal", "Terminal", &["terminal", "clamp"], Kind::Terminal, def_id(16)),
+    st(K::Coil, "Contactor / relay coil", &["coil", "relay", "contactor"], HEAD, def_id(1)),
+    st(K::No, "NO contact", &["make", "normally open", "contact"], Kind::Contact { make: true }, def_id(2)),
+    st(K::Nc, "NC contact", &["break", "normally closed", "contact"], Kind::Contact { make: false }, def_id(3)),
+    st(K::Power3, "Power contacts, 3-pole", &["main contacts", "contactor"], PART, def_id(4)),
+    st(K::Mcb1, "MCB 1-pole", &["breaker", "circuit breaker"], HEAD, def_id(5)),
+    st(K::Mcb2, "MCB 2-pole", &["breaker", "circuit breaker"], HEAD, def_id(6)),
+    st(K::Fuse, "Fuse", &["fuse"], HEAD, def_id(7)),
+    st(K::Psu, "Power supply", &["psu", "ac/dc"], HEAD, def_id(8)),
+    st(K::Pbno, "Push button, NO", &["push", "button", "start"], Kind::Contact { make: true }, def_id(9)),
+    st(K::Pbnc, "Push button, NC", &["push", "button", "stop"], Kind::Contact { make: false }, def_id(10)),
+    st(K::Sel, "Selector switch, 2-position", &["selector", "switch"], Kind::Contact { make: true }, def_id(11)),
+    st(K::Lamp, "Indicator lamp", &["lamp", "light", "pilot"], HEAD, def_id(12)),
+    st(K::Motor3, "Motor, 3-phase", &["motor"], HEAD, def_id(13)),
+    st(K::Motor1, "Motor, single-phase", &["motor"], HEAD, def_id(14)),
+    st(K::Trafo, "Transformer", &["control transformer"], HEAD, def_id(15)),
+    st(K::Terminal, "Terminal", &["terminal", "clamp"], Kind::Terminal, def_id(16)),
     // Brief 028 (design 028 §2): a protective-earth terminal; it joins a strip like `terminal`.
-    st("terminalpe", "PE terminal", &["pe terminal", "earth terminal"], Kind::Terminal, def_id(21)),
-    st("di", "PLC digital input", &["plc", "input", "di"], Kind::Channel(crate::plc::rack::CardType::Di), def_id(17)),
-    st("do", "PLC digital output", &["plc", "output", "do"], Kind::Channel(crate::plc::rack::CardType::Dq), def_id(18)),
-    st("junction", "Junction", &["junction", "dot", "tee"], Kind::Tagless, def_id(19)),
-    st("continuation", "Continuation", &["continuation", "arrow", "potential", "link"], Kind::Tagless, def_id(20)),
+    st(K::Terminalpe, "PE terminal", &["pe terminal", "earth terminal"], Kind::Terminal, def_id(21)),
+    st(K::Di, "PLC digital input", &["plc", "input", "di"], Kind::Channel(crate::plc::rack::CardType::Di), def_id(17)),
+    st(K::Do, "PLC digital output", &["plc", "output", "do"], Kind::Channel(crate::plc::rack::CardType::Dq), def_id(18)),
+    st(K::Junction, "Junction", &["junction", "dot", "tee"], Kind::Tagless, def_id(19)),
+    st(K::Continuation, "Continuation", &["continuation", "arrow", "potential", "link"], Kind::Tagless, def_id(20)),
     // ---- Brief 034 stage 1: contacts and protection (design 034 §3).
-    st("co", "Change-over contact", &["change-over", "changeover", "c/o", "spdt", "contact", "relay"], Kind::ChangeOver, cp(1)).of(Family::Contacts),
-    st("swco", "Switch, change-over", &["change-over", "switch", "toggle"], Kind::ChangeOver, cp(2)).of(Family::Contacts),
-    st("power4", "Power contacts, 4-pole", &["main contacts", "contactor", "4-pole"], PART, cp(3)).of(Family::Contacts),
-    st("rcbo2", "RCBO, 1P+N", &["rcbo", "residual current", "breaker", "protection"], HEAD, cp(4)).of(Family::Protection),
-    st("rcd2", "RCD, 2-pole", &["rcd", "rccb", "residual current", "protection"], HEAD, cp(5)).of(Family::Protection),
-    st("rcd4", "RCD, 4-pole", &["rcd", "rccb", "residual current", "protection"], HEAD, cp(6)).of(Family::Protection),
-    st("ssrin", "SSR input", &["ssr", "solid state relay", "relay"], HEAD, cp(7)).of(Family::Contacts),
-    st("ssrout", "SSR output", &["ssr", "solid state relay", "contact"], PART, cp(8)).of(Family::Contacts),
-    st("fuseterm", "Fuse terminal", &["fuse", "terminal", "fuse holder", "protection"], HEAD, cp(9)).of(Family::Protection),
-    st("fusebank4", "Fuse bank, 4-way", FUSE_BANK, HEAD, cp(10)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
-    st("fusebank6", "Fuse bank, 6-way", FUSE_BANK, HEAD, cp(11)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
-    st("fusebank8", "Fuse bank, 8-way", FUSE_BANK, HEAD, cp(12)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
-    st("fusebank10", "Fuse bank, 10-way", FUSE_BANK, HEAD, cp(13)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
-    st("fusebank12", "Fuse bank, 12-way", FUSE_BANK, HEAD, cp(14)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
+    st(K::Co, "Change-over contact", &["change-over", "changeover", "c/o", "spdt", "contact", "relay"], Kind::ChangeOver, cp(1)).of(Family::Contacts),
+    st(K::Swco, "Switch, change-over", &["change-over", "switch", "toggle"], Kind::ChangeOver, cp(2)).of(Family::Contacts),
+    st(K::Power4, "Power contacts, 4-pole", &["main contacts", "contactor", "4-pole"], PART, cp(3)).of(Family::Contacts),
+    st(K::Rcbo2, "RCBO, 1P+N", &["rcbo", "residual current", "breaker", "protection"], HEAD, cp(4)).of(Family::Protection),
+    st(K::Rcd2, "RCD, 2-pole", &["rcd", "rccb", "residual current", "protection"], HEAD, cp(5)).of(Family::Protection),
+    st(K::Rcd4, "RCD, 4-pole", &["rcd", "rccb", "residual current", "protection"], HEAD, cp(6)).of(Family::Protection),
+    st(K::Ssrin, "SSR input", &["ssr", "solid state relay", "relay"], HEAD, cp(7)).of(Family::Contacts),
+    st(K::Ssrout, "SSR output", &["ssr", "solid state relay", "contact"], PART, cp(8)).of(Family::Contacts),
+    st(K::Fuseterm, "Fuse terminal", &["fuse", "terminal", "fuse holder", "protection"], HEAD, cp(9)).of(Family::Protection),
+    st(K::Fusebank4, "Fuse bank, 4-way", FUSE_BANK, HEAD, cp(10)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
+    st(K::Fusebank6, "Fuse bank, 6-way", FUSE_BANK, HEAD, cp(11)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
+    st(K::Fusebank8, "Fuse bank, 8-way", FUSE_BANK, HEAD, cp(12)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
+    st(K::Fusebank10, "Fuse bank, 10-way", FUSE_BANK, HEAD, cp(13)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
+    st(K::Fusebank12, "Fuse bank, 12-way", FUSE_BANK, HEAD, cp(14)).of(Family::Protection).quiet_at(Quiet::AllBut(&["L+"])),
     // ---- Brief 034 stage 2: sensors and field devices (design 034 §4).
-    st("prox3", "Proximity switch, 3-wire PNP", &["proximity", "prox", "inductive", "sensor"], HEAD, sa(1)).of(Family::Sensors),
-    st("floatno", "Float switch, NO", &["float", "level", "sensor"], Kind::Contact { make: true }, sa(2)).of(Family::Sensors),
-    st("floatnc", "Float switch, NC", &["float", "level", "sensor"], Kind::Contact { make: false }, sa(3)).of(Family::Sensors),
-    st("rollerno", "Position switch with roller, NO", &["roller", "limit", "position", "sensor"], Kind::Contact { make: true }, sa(4))
+    st(K::Prox3, "Proximity switch, 3-wire PNP", &["proximity", "prox", "inductive", "sensor"], HEAD, sa(1)).of(Family::Sensors),
+    st(K::Floatno, "Float switch, NO", &["float", "level", "sensor"], Kind::Contact { make: true }, sa(2)).of(Family::Sensors),
+    st(K::Floatnc, "Float switch, NC", &["float", "level", "sensor"], Kind::Contact { make: false }, sa(3)).of(Family::Sensors),
+    st(K::Rollerno, "Position switch with roller, NO", &["roller", "limit", "position", "sensor"], Kind::Contact { make: true }, sa(4))
         .of(Family::Sensors),
-    st("rollernc", "Position switch with roller, NC", &["roller", "limit", "position", "sensor"], Kind::Contact { make: false }, sa(5))
+    st(K::Rollernc, "Position switch with roller, NC", &["roller", "limit", "position", "sensor"], Kind::Contact { make: false }, sa(5))
         .of(Family::Sensors),
-    st("interlocknc", "Interlock switch, NC", &["interlock", "guard", "safety", "door switch", "sensor"], Kind::Contact { make: false }, sa(6))
+    st(K::Interlocknc, "Interlock switch, NC", &["interlock", "guard", "safety", "door switch", "sensor"], Kind::Contact { make: false }, sa(6))
         .of(Family::Sensors),
-    st("interlockno", "Interlock switch, NO", &["interlock", "guard", "safety", "sensor"], Kind::Contact { make: true }, sa(7)).of(Family::Sensors),
-    st("valve", "Solenoid valve", &["valve", "solenoid", "actuator"], HEAD, sa(8)).of(Family::Actuators),
-    st("valve2", "Dual solenoid valve", &["valve", "solenoid", "dual", "actuator"], HEAD, sa(9)).of(Family::Actuators),
-    st("tc", "Thermocouple", &["thermocouple", "temperature", "sensor"], HEAD, sa(10)).of(Family::Sensors),
-    st("heater", "Heater", &["heater", "heating element", "heat"], HEAD, sa(11)).of(Family::Actuators),
+    st(K::Interlockno, "Interlock switch, NO", &["interlock", "guard", "safety", "sensor"], Kind::Contact { make: true }, sa(7)).of(Family::Sensors),
+    st(K::Valve, "Solenoid valve", &["valve", "solenoid", "actuator"], HEAD, sa(8)).of(Family::Actuators),
+    st(K::Valve2, "Dual solenoid valve", &["valve", "solenoid", "dual", "actuator"], HEAD, sa(9)).of(Family::Actuators),
+    st(K::Tc, "Thermocouple", &["thermocouple", "temperature", "sensor"], HEAD, sa(10)).of(Family::Sensors),
+    st(K::Heater, "Heater", &["heater", "heating element", "heat"], HEAD, sa(11)).of(Family::Actuators),
     // ---- Brief 034 stage 3a: connector bodies (design 034 §5); halves only, mating is M1 1.11.
     // Brief 044 (design 044 §3.1): the mating halves are connector halves, version 2.
-    half("socket2", "Socket, 2-pin", SOCKET, S, cn(1)),
-    half("socket3", "Socket, 3-pin", SOCKET, S, cn(2)),
-    half("socket4", "Socket, 4-pin", SOCKET, S, cn(3)),
-    half("socket6", "Socket, 6-pin", SOCKET, S, cn(4)),
-    half("socket8", "Socket, 8-pin", SOCKET, S, cn(5)),
-    half("socket12", "Socket, 12-pin", SOCKET, S, cn(6)),
-    half("plug2", "Plug, 2-pin", PLUG, P, cn(7)),
-    half("plug3", "Plug, 3-pin", PLUG, P, cn(8)),
-    half("plug4", "Plug, 4-pin", PLUG, P, cn(9)),
-    half("plug6", "Plug, 6-pin", PLUG, P, cn(10)),
-    half("plug8", "Plug, 8-pin", PLUG, P, cn(11)),
-    half("plug12", "Plug, 12-pin", PLUG, P, cn(12)),
-    half("dsub9s", "D-sub socket, 9-way", DSUB_S, S, cn(13)),
-    half("dsub15s", "D-sub socket, 15-way", DSUB_S, S, cn(14)),
-    half("dsub25s", "D-sub socket, 25-way", DSUB_S, S, cn(15)),
-    half("dsub9p", "D-sub plug, 9-way", DSUB_P, P, cn(16)),
-    half("dsub15p", "D-sub plug, 15-way", DSUB_P, P, cn(17)),
-    half("dsub25p", "D-sub plug, 25-way", DSUB_P, P, cn(18)),
-    half("m12s4", "M12 socket, 4-pin", M12_S, S, cn(19)),
-    half("m12s5", "M12 socket, 5-pin", M12_S, S, cn(20)),
-    half("m12s8", "M12 socket, 8-pin", M12_S, S, cn(21)),
-    half("m12p4", "M12 plug, 4-pin", M12_P, P, cn(22)),
-    half("m12p5", "M12 plug, 5-pin", M12_P, P, cn(23)),
-    half("m12p8", "M12 plug, 8-pin", M12_P, P, cn(24)),
-    conn("rj45", "RJ45 bulkhead", &["rj45", "ethernet", "profinet", "bulkhead", "connector"], cn(25)),
-    conn("usba", "USB-A bulkhead", USB, cn(26)),
-    conn("usbb", "USB-B bulkhead", USB, cn(27)),
+    half(K::Socket2, "Socket, 2-pin", SOCKET, S, cn(1)),
+    half(K::Socket3, "Socket, 3-pin", SOCKET, S, cn(2)),
+    half(K::Socket4, "Socket, 4-pin", SOCKET, S, cn(3)),
+    half(K::Socket6, "Socket, 6-pin", SOCKET, S, cn(4)),
+    half(K::Socket8, "Socket, 8-pin", SOCKET, S, cn(5)),
+    half(K::Socket12, "Socket, 12-pin", SOCKET, S, cn(6)),
+    half(K::Plug2, "Plug, 2-pin", PLUG, P, cn(7)),
+    half(K::Plug3, "Plug, 3-pin", PLUG, P, cn(8)),
+    half(K::Plug4, "Plug, 4-pin", PLUG, P, cn(9)),
+    half(K::Plug6, "Plug, 6-pin", PLUG, P, cn(10)),
+    half(K::Plug8, "Plug, 8-pin", PLUG, P, cn(11)),
+    half(K::Plug12, "Plug, 12-pin", PLUG, P, cn(12)),
+    half(K::Dsub9s, "D-sub socket, 9-way", DSUB_S, S, cn(13)),
+    half(K::Dsub15s, "D-sub socket, 15-way", DSUB_S, S, cn(14)),
+    half(K::Dsub25s, "D-sub socket, 25-way", DSUB_S, S, cn(15)),
+    half(K::Dsub9p, "D-sub plug, 9-way", DSUB_P, P, cn(16)),
+    half(K::Dsub15p, "D-sub plug, 15-way", DSUB_P, P, cn(17)),
+    half(K::Dsub25p, "D-sub plug, 25-way", DSUB_P, P, cn(18)),
+    half(K::M12s4, "M12 socket, 4-pin", M12_S, S, cn(19)),
+    half(K::M12s5, "M12 socket, 5-pin", M12_S, S, cn(20)),
+    half(K::M12s8, "M12 socket, 8-pin", M12_S, S, cn(21)),
+    half(K::M12p4, "M12 plug, 4-pin", M12_P, P, cn(22)),
+    half(K::M12p5, "M12 plug, 5-pin", M12_P, P, cn(23)),
+    half(K::M12p8, "M12 plug, 8-pin", M12_P, P, cn(24)),
+    conn(K::Rj45, "RJ45 bulkhead", &["rj45", "ethernet", "profinet", "bulkhead", "connector"], cn(25)),
+    conn(K::Usba, "USB-A bulkhead", USB, cn(26)),
+    conn(K::Usbb, "USB-B bulkhead", USB, cn(27)),
     // ---- Brief 044: connector pins (design 044 §3.2), drawn one by one across wires.
-    half("pinpair", "Connector pin pair", PINPAIR, Side::Both, cn(28)),
-    half("pins", "Connector socket pin", PIN_S, S, cn(29)),
-    half("pinp", "Connector plug pin", PIN_P, P, cn(30)),
+    half(K::Pinpair, "Connector pin pair", PINPAIR, Side::Both, cn(28)),
+    half(K::Pins, "Connector socket pin", PIN_S, S, cn(29)),
+    half(K::Pinp, "Connector plug pin", PIN_P, P, cn(30)),
     // ---- Brief 034 stage 3b: PLC card bodies (design 034 §6); channels join as `di`/`do`.
-    card("plccpu", "PLC CPU", &["plc", "cpu", "controller", "card"], pc(1)),
-    card("plcps", "PLC power supply", &["plc", "power", "card"], pc(2)),
-    card("plcdi", "PLC digital input card", &["plc", "di", "input", "card"], pc(3)).quiet_at(Quiet::All),
-    card("plcdq", "PLC digital output card", &["plc", "dq", "do", "output", "card"], pc(4)).quiet_at(Quiet::All),
-    card("plcai", "PLC analogue input card", &["plc", "ai", "analogue", "card"], pc(5)).quiet_at(Quiet::All),
-    card("plcao", "PLC analogue output card", &["plc", "ao", "analogue", "card"], pc(6)).quiet_at(Quiet::All),
-    card("plcrtd", "PLC RTD card", &["plc", "rtd", "temperature", "card"], pc(7)).quiet_at(Quiet::All),
-    card("plciol", "PLC IO-Link master", &["plc", "io-link", "iol", "card"], pc(8)).quiet_at(Quiet::All),
+    card(K::Plccpu, "PLC CPU", &["plc", "cpu", "controller", "card"], pc(1)),
+    card(K::Plcps, "PLC power supply", &["plc", "power", "card"], pc(2)),
+    card(K::Plcdi, "PLC digital input card", &["plc", "di", "input", "card"], pc(3)).quiet_at(Quiet::All),
+    card(K::Plcdq, "PLC digital output card", &["plc", "dq", "do", "output", "card"], pc(4)).quiet_at(Quiet::All),
+    card(K::Plcai, "PLC analogue input card", &["plc", "ai", "analogue", "card"], pc(5)).quiet_at(Quiet::All),
+    card(K::Plcao, "PLC analogue output card", &["plc", "ao", "analogue", "card"], pc(6)).quiet_at(Quiet::All),
+    card(K::Plcrtd, "PLC RTD card", &["plc", "rtd", "temperature", "card"], pc(7)).quiet_at(Quiet::All),
+    card(K::Plciol, "PLC IO-Link master", &["plc", "io-link", "iol", "card"], pc(8)).quiet_at(Quiet::All),
     // ---- Brief 036: multi-level terminals (design 036 §3.1). Geometry, points and bridges come from
     // `terminal_types`; `termfuse` shares `fuseterm`'s drawing.
-    lvl("term2.1", "Two-level terminal, level 1", TWO, mt(1)),
-    lvl("term2.2", "Two-level terminal, level 2", TWO, mt(2)),
-    lvl("term2", "Two-level terminal", TWO, mt(3)),
-    lvl("term2b.1", "Two-level terminal, bridged, level 1", TWO, mt(4)),
-    lvl("term2b.2", "Two-level terminal, bridged, level 2", TWO, mt(5)),
-    lvl("term2b", "Two-level terminal, bridged", TWO, mt(6)),
-    lvl("term3.1", "Three-level terminal, level 1", THREE, mt(7)),
-    lvl("term3.2", "Three-level terminal, level 2", THREE, mt(8)),
-    lvl("term3.3", "Three-level terminal, level 3", THREE, mt(9)),
-    lvl("term3", "Three-level terminal", THREE, mt(10)),
-    lvl("termlnpe.1", "L/N/PE terminal, level L", LNPE, mt(11)),
-    lvl("termlnpe.2", "L/N/PE terminal, level N", LNPE, mt(12)),
-    lvl("termlnpe.3", "L/N/PE terminal, level PE", LNPE, mt(13)),
-    lvl("termlnpe", "L/N/PE terminal", LNPE, mt(14)),
-    lvl("termsensor.1", "Sensor terminal, level S", SENSOR, mt(15)),
-    lvl("termsensor.2", "Sensor terminal, level +", SENSOR, mt(16)),
-    lvl("termsensor.3", "Sensor terminal, level -", SENSOR, mt(17)),
-    lvl("termsensor", "Sensor terminal", SENSOR, mt(18)),
-    lvl("termdisc", "Disconnect terminal", &["disconnect", "knife", "isolating", "terminal"], mt(19)),
-    lvl("termfuse", "Fuse terminal (strip position)", &["fuse terminal", "fuse", "terminal"], mt(20)),
+    lvl(K::Term2L1, "Two-level terminal, level 1", TWO, mt(1)),
+    lvl(K::Term2L2, "Two-level terminal, level 2", TWO, mt(2)),
+    lvl(K::Term2, "Two-level terminal", TWO, mt(3)),
+    lvl(K::Term2bL1, "Two-level terminal, bridged, level 1", TWO, mt(4)),
+    lvl(K::Term2bL2, "Two-level terminal, bridged, level 2", TWO, mt(5)),
+    lvl(K::Term2b, "Two-level terminal, bridged", TWO, mt(6)),
+    lvl(K::Term3L1, "Three-level terminal, level 1", THREE, mt(7)),
+    lvl(K::Term3L2, "Three-level terminal, level 2", THREE, mt(8)),
+    lvl(K::Term3L3, "Three-level terminal, level 3", THREE, mt(9)),
+    lvl(K::Term3, "Three-level terminal", THREE, mt(10)),
+    lvl(K::TermlnpeL1, "L/N/PE terminal, level L", LNPE, mt(11)),
+    lvl(K::TermlnpeL2, "L/N/PE terminal, level N", LNPE, mt(12)),
+    lvl(K::TermlnpeL3, "L/N/PE terminal, level PE", LNPE, mt(13)),
+    lvl(K::Termlnpe, "L/N/PE terminal", LNPE, mt(14)),
+    lvl(K::TermsensorL1, "Sensor terminal, level S", SENSOR, mt(15)),
+    lvl(K::TermsensorL2, "Sensor terminal, level +", SENSOR, mt(16)),
+    lvl(K::TermsensorL3, "Sensor terminal, level -", SENSOR, mt(17)),
+    lvl(K::Termsensor, "Sensor terminal", SENSOR, mt(18)),
+    lvl(K::Termdisc, "Disconnect terminal", &["disconnect", "knife", "isolating", "terminal"], mt(19)),
+    lvl(K::Termfuse, "Fuse terminal (strip position)", &["fuse terminal", "fuse", "terminal"], mt(20)),
     // ---- Brief 045 (design 045 §3.1): a head module (a rack of its own), a power module and a
     // communication module, as 034's card bodies.
-    card("plcim", "PLC head module", &["plc", "im", "interface", "head", "remote", "station", "card"], pc(9)),
-    card("plcpm", "PLC power module", &["plc", "pm", "power", "card"], pc(10)),
-    card("plccm", "PLC communication module", &["plc", "cm", "communication", "fieldbus", "card"], pc(11)).quiet_at(Quiet::All),
+    card(K::Plcim, "PLC head module", &["plc", "im", "interface", "head", "remote", "station", "card"], pc(9)),
+    card(K::Plcpm, "PLC power module", &["plc", "pm", "power", "card"], pc(10)),
+    card(K::Plccm, "PLC communication module", &["plc", "cm", "communication", "fieldbus", "card"], pc(11)).quiet_at(Quiet::All),
     // ---- Brief 045 (design 045 §4.1): one channel cell per card type with channels; cells side
     // by side read as the card. Every point is quiet (a spare channel is normal).
-    cell("chdi", "PLC digital input channel", &["plc", "di", "input", "channel"], CT::Di, pc(12)),
-    cell("chdq", "PLC digital output channel", &["plc", "dq", "do", "output", "channel"], CT::Dq, pc(13)),
-    cell("chai", "PLC analogue input channel", &["plc", "ai", "analogue", "channel"], CT::Ai, pc(14)),
-    cell("chao", "PLC analogue output channel", &["plc", "ao", "analogue", "channel"], CT::Ao, pc(15)),
-    cell("chrtd", "PLC RTD channel", &["plc", "rtd", "temperature", "channel"], CT::Rtd, pc(16)),
-    cell("chiol", "PLC IO-Link port", &["plc", "io-link", "iol", "port", "channel"], CT::Iol, pc(17)),
+    cell(K::Chdi, "PLC digital input channel", &["plc", "di", "input", "channel"], CT::Di, pc(12)),
+    cell(K::Chdq, "PLC digital output channel", &["plc", "dq", "do", "output", "channel"], CT::Dq, pc(13)),
+    cell(K::Chai, "PLC analogue input channel", &["plc", "ai", "analogue", "channel"], CT::Ai, pc(14)),
+    cell(K::Chao, "PLC analogue output channel", &["plc", "ao", "analogue", "channel"], CT::Ao, pc(15)),
+    cell(K::Chrtd, "PLC RTD channel", &["plc", "rtd", "temperature", "channel"], CT::Rtd, pc(16)),
+    cell(K::Chiol, "PLC IO-Link port", &["plc", "io-link", "iol", "port", "channel"], CT::Iol, pc(17)),
 ];
 
 use crate::plc::rack::CardType as CT;
 
 /// A PLC channel cell (brief 045): `Kind::Channel`, every point quiet.
-const fn cell(key: &'static str, name: &'static str, aliases: &'static [&'static str], t: CT, id: DefinitionId) -> Starter {
+const fn cell(key: StarterKey, name: &'static str, aliases: &'static [&'static str], t: CT, id: DefinitionId) -> Starter {
     st(key, name, aliases, Kind::Channel(t), id).of(Family::Plc).quiet_at(Quiet::All)
 }
 
 /// A cell's width and its points (role, x) (design 045 §4.1; brief 051, design 051 §2.2: the
 /// pack's pitch, 20 mm per single-point channel).
-pub fn cell_shape(key: &str) -> Option<(f64, &'static [(&'static str, f64)])> {
+pub fn cell_shape(key: StarterKey) -> Option<(f64, &'static [(&'static str, f64)])> {
     Some(match key {
-        "chdi" => (20.0, &[("in", 0.0)]),
-        "chdq" => (20.0, &[("out", 0.0)]),
-        "chai" | "chao" => (20.0, &[("+", -5.0), ("-", 5.0)]),
-        "chrtd" => (40.0, &[("I+", -15.0), ("S+", -5.0), ("S-", 5.0), ("I-", 15.0)]),
-        "chiol" => (30.0, &[("L+", -10.0), ("C/Q", 0.0), ("L-", 10.0)]),
-        _ => return None,
+        K::Chdi => (20.0, &[("in", 0.0)]),
+        K::Chdq => (20.0, &[("out", 0.0)]),
+        K::Chai | K::Chao => (20.0, &[("+", -5.0), ("-", 5.0)]),
+        K::Chrtd => (40.0, &[("I+", -15.0), ("S+", -5.0), ("S-", 5.0), ("I-", 15.0)]),
+        K::Chiol => (30.0, &[("L+", -10.0), ("C/Q", 0.0), ("L-", 10.0)]),
+        K::Coil
+        | K::No
+        | K::Nc
+        | K::Power3
+        | K::Mcb1
+        | K::Mcb2
+        | K::Fuse
+        | K::Psu
+        | K::Pbno
+        | K::Pbnc
+        | K::Sel
+        | K::Lamp
+        | K::Motor3
+        | K::Motor1
+        | K::Trafo
+        | K::Terminal
+        | K::Terminalpe
+        | K::Di
+        | K::Do
+        | K::Junction
+        | K::Continuation
+        | K::Co
+        | K::Swco
+        | K::Power4
+        | K::Rcbo2
+        | K::Rcd2
+        | K::Rcd4
+        | K::Ssrin
+        | K::Ssrout
+        | K::Fuseterm
+        | K::Fusebank4
+        | K::Fusebank6
+        | K::Fusebank8
+        | K::Fusebank10
+        | K::Fusebank12
+        | K::Prox3
+        | K::Floatno
+        | K::Floatnc
+        | K::Rollerno
+        | K::Rollernc
+        | K::Interlocknc
+        | K::Interlockno
+        | K::Valve
+        | K::Valve2
+        | K::Tc
+        | K::Heater
+        | K::Socket2
+        | K::Socket3
+        | K::Socket4
+        | K::Socket6
+        | K::Socket8
+        | K::Socket12
+        | K::Plug2
+        | K::Plug3
+        | K::Plug4
+        | K::Plug6
+        | K::Plug8
+        | K::Plug12
+        | K::Dsub9s
+        | K::Dsub15s
+        | K::Dsub25s
+        | K::Dsub9p
+        | K::Dsub15p
+        | K::Dsub25p
+        | K::M12s4
+        | K::M12s5
+        | K::M12s8
+        | K::M12p4
+        | K::M12p5
+        | K::M12p8
+        | K::Rj45
+        | K::Usba
+        | K::Usbb
+        | K::Pinpair
+        | K::Pins
+        | K::Pinp
+        | K::Plccpu
+        | K::Plcps
+        | K::Plcdi
+        | K::Plcdq
+        | K::Plcai
+        | K::Plcao
+        | K::Plcrtd
+        | K::Plciol
+        | K::Term2L1
+        | K::Term2L2
+        | K::Term2
+        | K::Term2bL1
+        | K::Term2bL2
+        | K::Term2b
+        | K::Term3L1
+        | K::Term3L2
+        | K::Term3L3
+        | K::Term3
+        | K::TermlnpeL1
+        | K::TermlnpeL2
+        | K::TermlnpeL3
+        | K::Termlnpe
+        | K::TermsensorL1
+        | K::TermsensorL2
+        | K::TermsensorL3
+        | K::Termsensor
+        | K::Termdisc
+        | K::Termfuse
+        | K::Plcim
+        | K::Plcpm
+        | K::Plccm => return None,
     })
 }
 
@@ -503,7 +991,7 @@ const ROLE_H: f64 = 1.5;
 /// points, its two dividers down the header band (adjacent cells draw theirs on one line), the role
 /// names under the pins of a multi-point cell, and its mark at the centre of the mark band. No
 /// bottom edge and no leads: the card's frame closes the box.
-fn cell_graphics(key: &str) -> Vec<Primitive> {
+fn cell_graphics(key: StarterKey) -> Vec<Primitive> {
     let Some((w, points)) = cell_shape(key) else { return Vec::new() };
     let h = w / 2.0;
     let div = CELL_TOP - HEADER_BAND;
@@ -520,15 +1008,121 @@ fn cell_graphics(key: &str) -> Vec<Primitive> {
     let out = |dy: f64| poly(&[(-1.5, c - 1.5 + dy), (0.0, c + 1.5 + dy), (1.5, c - 1.5 + dy)], false);
     let tilde = poly(&[(-3.0, c - 2.0), (-1.5, c - 1.0), (0.0, c - 2.0), (1.5, c - 3.0), (3.0, c - 2.0)], false);
     match key {
-        "chdi" => g.push(into(0.0)),
-        "chdq" => g.push(out(0.0)),
-        "chai" => g.extend([into(1.5), tilde]),
-        "chao" => g.extend([out(1.5), tilde]),
+        K::Chdi => g.push(into(0.0)),
+        K::Chdq => g.push(out(0.0)),
+        K::Chai => g.extend([into(1.5), tilde]),
+        K::Chao => g.extend([out(1.5), tilde]),
         // A small resistor with a slash.
-        "chrtd" => g.extend([rect((-2.0, c - 1.0), (2.0, c + 1.0)), line((-2.5, c - 1.5), (2.5, c + 1.5))]),
+        K::Chrtd => g.extend([rect((-2.0, c - 1.0), (2.0, c + 1.0)), line((-2.5, c - 1.5), (2.5, c + 1.5))]),
         // A small diamond.
-        "chiol" => g.push(poly(&[(0.0, c + 1.5), (1.5, c), (0.0, c - 1.5), (-1.5, c)], true)),
-        _ => {}
+        K::Chiol => g.push(poly(&[(0.0, c + 1.5), (1.5, c), (0.0, c - 1.5), (-1.5, c)], true)),
+        K::Coil
+        | K::No
+        | K::Nc
+        | K::Power3
+        | K::Mcb1
+        | K::Mcb2
+        | K::Fuse
+        | K::Psu
+        | K::Pbno
+        | K::Pbnc
+        | K::Sel
+        | K::Lamp
+        | K::Motor3
+        | K::Motor1
+        | K::Trafo
+        | K::Terminal
+        | K::Terminalpe
+        | K::Di
+        | K::Do
+        | K::Junction
+        | K::Continuation
+        | K::Co
+        | K::Swco
+        | K::Power4
+        | K::Rcbo2
+        | K::Rcd2
+        | K::Rcd4
+        | K::Ssrin
+        | K::Ssrout
+        | K::Fuseterm
+        | K::Fusebank4
+        | K::Fusebank6
+        | K::Fusebank8
+        | K::Fusebank10
+        | K::Fusebank12
+        | K::Prox3
+        | K::Floatno
+        | K::Floatnc
+        | K::Rollerno
+        | K::Rollernc
+        | K::Interlocknc
+        | K::Interlockno
+        | K::Valve
+        | K::Valve2
+        | K::Tc
+        | K::Heater
+        | K::Socket2
+        | K::Socket3
+        | K::Socket4
+        | K::Socket6
+        | K::Socket8
+        | K::Socket12
+        | K::Plug2
+        | K::Plug3
+        | K::Plug4
+        | K::Plug6
+        | K::Plug8
+        | K::Plug12
+        | K::Dsub9s
+        | K::Dsub15s
+        | K::Dsub25s
+        | K::Dsub9p
+        | K::Dsub15p
+        | K::Dsub25p
+        | K::M12s4
+        | K::M12s5
+        | K::M12s8
+        | K::M12p4
+        | K::M12p5
+        | K::M12p8
+        | K::Rj45
+        | K::Usba
+        | K::Usbb
+        | K::Pinpair
+        | K::Pins
+        | K::Pinp
+        | K::Plccpu
+        | K::Plcps
+        | K::Plcdi
+        | K::Plcdq
+        | K::Plcai
+        | K::Plcao
+        | K::Plcrtd
+        | K::Plciol
+        | K::Term2L1
+        | K::Term2L2
+        | K::Term2
+        | K::Term2bL1
+        | K::Term2bL2
+        | K::Term2b
+        | K::Term3L1
+        | K::Term3L2
+        | K::Term3L3
+        | K::Term3
+        | K::TermlnpeL1
+        | K::TermlnpeL2
+        | K::TermlnpeL3
+        | K::Termlnpe
+        | K::TermsensorL1
+        | K::TermsensorL2
+        | K::TermsensorL3
+        | K::Termsensor
+        | K::Termdisc
+        | K::Termfuse
+        | K::Plcim
+        | K::Plcpm
+        | K::Plccm => {}
     }
     g
 }
@@ -545,14 +1139,35 @@ const fn mt(n: u128) -> DefinitionId {
 }
 
 /// A multi-level terminal starter (brief 036): joins a strip as a level.
-const fn lvl(key: &'static str, name: &'static str, aliases: &'static [&'static str], id: DefinitionId) -> Starter {
+const fn lvl(key: StarterKey, name: &'static str, aliases: &'static [&'static str], id: DefinitionId) -> Starter {
     st(key, name, aliases, Kind::Terminal, id)
 }
 
-/// The starter symbol with key `key` (case-insensitive).
+/// The starter symbol with key `key`.
+///
+/// # Semantics
+/// [`STARTERS`] holds one row per [`StarterKey`] in variant order, checked when the crate
+/// compiles ([`KEYED_IN_ORDER`]), so the row is the one at the key's index.
+pub fn starter(key: StarterKey) -> &'static Starter {
+    &STARTERS[key as usize]
+}
+
+/// Compile-time check that row `i` of [`STARTERS`] is keyed by variant `i`, and that there is a row
+/// for every variant.
+const KEYED_IN_ORDER: () = {
+    assert!(STARTERS.len() == <StarterKey as strum::VariantArray>::VARIANTS.len(), "one STARTERS row per StarterKey");
+    let mut i = 0;
+    while i < STARTERS.len() {
+        assert!(STARTERS[i].key as usize == i, "STARTERS rows follow StarterKey's order");
+        i += 1;
+    }
+};
+const _: () = KEYED_IN_ORDER;
+
+/// The starter symbol whose key word is `key` (case-insensitive, trimmed). A delegate for the
+/// command files until they parse a [`StarterKey`] themselves (design 072 A2).
 pub fn by_key(key: &str) -> Option<&'static Starter> {
-    let k = key.trim();
-    STARTERS.iter().find(|s| s.key.eq_ignore_ascii_case(k))
+    <StarterKey as ecad_model::Word>::parse(key).map(starter)
 }
 
 /// The starter symbol an embedded definition was made from, by its origin.
@@ -590,7 +1205,13 @@ pub fn kind_of_definition(d: &Definition) -> Option<Kind> {
     let s = of_definition(d)?;
     Some(match s.kind {
         Kind::ConnectorHalf { .. } if !is_mating(d) => HEAD,
-        k => k,
+        k @ (Kind::Contact { .. }
+        | Kind::Terminal
+        | Kind::Channel(_)
+        | Kind::ChangeOver
+        | Kind::Fixed { .. }
+        | Kind::Tagless
+        | Kind::ConnectorHalf { .. }) => k,
     })
 }
 
@@ -736,7 +1357,7 @@ pub fn bridge_key_ok(d: &Definition, k: &str) -> bool {
     }
     match of_definition(d) {
         Some(s) if matches!(s.kind, Kind::ConnectorHalf { .. }) => k == SOCKET_KEY || k == PLUG_KEY,
-        Some(s) => crate::terminal_types::of_starter(s.key).is_some_and(|(t, _)| t.bridges.iter().any(|g| g.contains(&k))),
+        Some(s) => crate::terminal_types::of_starter(s.key.word()).is_some_and(|(t, _)| t.bridges.iter().any(|g| g.contains(&k))),
         None => false,
     }
 }
@@ -758,7 +1379,7 @@ pub fn search(query: &str) -> Vec<&'static Starter> {
     STARTERS
         .iter()
         .filter(|s| {
-            s.key == q
+            s.key.word() == q
                 || s.name.to_lowercase().contains(&q)
                 || (!s.family.word().is_empty() && s.family.word().contains(q.as_str()))
                 || s.aliases.iter().any(|a| a.contains(q.as_str()))
@@ -826,12 +1447,12 @@ pub fn sequence_labels(used: &BTreeSet<String>, skip: &BTreeSet<String>, suffixe
 
 /// The output labels of device `c`'s fuse bank (its head), which are not contact labels; empty
 /// when its head is not a fuse bank.
-pub fn bank_outputs(doc: &Document, c: ecad_model::ComponentId) -> BTreeSet<String> {
-    doc.representations_of(Subject::Component(c))
+pub fn bank_outputs(doc: &Document, c: ecad_model::DeviceId) -> BTreeSet<String> {
+    doc.representations_of(Subject::Device(c))
         .filter_map(|(_, r)| crate::devices::rep_starter(doc, r))
         .find(|s| s.kind == Kind::Fixed { exclusive: true })
         .filter(|s| is_fuse_bank(s))
-        .map(|s| s.labels().into_iter().filter(|l| l.bytes().all(|b| b.is_ascii_digit())).collect())
+        .map(|s| s.labels().into_iter().filter(|l| ecad_model::words::is_digits(l)).collect())
         .unwrap_or_default()
 }
 
@@ -854,7 +1475,7 @@ pub fn is_rating_key(key: &str) -> bool {
 
 /// Whether `s` is a fuse bank (its fuses take `rating.<n>`).
 pub fn is_fuse_bank(s: &Starter) -> bool {
-    ways(s.key, "fusebank").is_some()
+    s.key.fuse_bank_ways().is_some()
 }
 
 /// Check a `rating` or `rating.<n>` value set on `object` (design 034 §7.3).
@@ -870,7 +1491,7 @@ pub fn is_fuse_bank(s: &Starter) -> bool {
 /// A value the 018 rules refuse; `rating.<n>` on a device that is not a fuse bank, or for a fuse
 /// it does not have (`-F01 has no fuse 13.`).
 pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    let ObjectRef::Component(c) = object else { return Ok(value.map(str::to_string)) };
+    let ObjectRef::Device(c) = object else { return Ok(value.map(str::to_string)) };
     if !is_rating_key(key) {
         return Ok(value.map(str::to_string));
     }
@@ -895,14 +1516,14 @@ pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<
         }
         // The device's head (its one exclusive symbol), and only when that is a fuse bank.
         let bank = doc
-            .representations_of(Subject::Component(c))
+            .representations_of(Subject::Device(c))
             .filter_map(|(_, r)| crate::devices::rep_starter(doc, r))
             .find(|s| s.kind == Kind::Fixed { exclusive: true })
             .filter(|s| is_fuse_bank(s));
         let Some(bank) = bank else {
             return Err(CmdError::refused(format!("rating.{shown}{more} is for a fuse bank's fuses; {who} is not a fuse bank.")));
         };
-        let has = !long && bank.labels().iter().any(|l| l == n && l.bytes().all(|b| b.is_ascii_digit()));
+        let has = !long && bank.labels().iter().any(|l| l == n && ecad_model::words::is_digits(l));
         if !has {
             return Err(CmdError::refused(format!("{who} has no fuse {shown}{more}.")));
         }
@@ -979,13 +1600,13 @@ pub fn anchors(s: &Starter) -> Vec<Anchor> {
     let rating = a(TextRole::Rating, hi.x + ANCHOR_GAP, mid, HAlign::Left, VAlign::Middle);
     let mut out = match s.key {
         // Breakers carry their rating by the tag.
-        "rcbo2" | "rcd2" | "rcd4" => vec![
+        K::Rcbo2 | K::Rcd2 | K::Rcd4 => vec![
             tag,
             a(TextRole::Rating, lo.x - ANCHOR_GAP, mid - ANCHOR_LINE, HAlign::Right, VAlign::Top),
             a(TextRole::Description, lo.x - ANCHOR_GAP, mid - 2.0 * ANCHOR_LINE, HAlign::Right, VAlign::Top),
         ],
         // Brief 045 (design 045 §7.1): a channel cell's texts in the cell's frame.
-        _ if cell_shape(s.key).is_some() => {
+        K::Chdi | K::Chdq | K::Chai | K::Chao | K::Chrtd | K::Chiol => {
             let h = cell_shape(s.key).map_or(5.0, |(w, _)| w / 2.0);
             vec![
                 tag,
@@ -1003,19 +1624,107 @@ pub fn anchors(s: &Starter) -> Vec<Anchor> {
         }
         // Card bodies: the tag above, the description inside under the header.
         // Brief 045 (design 045 §7.2): and the caption under the body.
-        _ if s.family == Family::Plc => vec![
+        K::Plccpu | K::Plcps | K::Plcdi | K::Plcdq | K::Plcai | K::Plcao | K::Plcrtd | K::Plciol | K::Plcim | K::Plcpm | K::Plccm => vec![
             a(TextRole::Tag, lo.x, hi.y + ANCHOR_GAP, HAlign::Left, VAlign::Bottom),
             a(TextRole::Description, -13.0, 12.0, HAlign::Left, VAlign::Top),
             rating,
             a(TextRole::Caption, lo.x, lo.y - ANCHOR_GAP, HAlign::Left, VAlign::Top),
         ],
         // Brief 044 (design 044 §3.2): a pin shows its half's tag only, beside it.
-        _ if matches!(s.key, "pinpair" | "pins" | "pinp") => vec![a(TextRole::Tag, -2.5, 0.0, HAlign::Right, VAlign::Middle)],
-        _ if s.family == Family::Connectors => vec![tag, description],
-        _ => vec![tag, description, rating],
+        K::Pinpair | K::Pins | K::Pinp => vec![a(TextRole::Tag, -2.5, 0.0, HAlign::Right, VAlign::Middle)],
+        K::Socket2
+        | K::Socket3
+        | K::Socket4
+        | K::Socket6
+        | K::Socket8
+        | K::Socket12
+        | K::Plug2
+        | K::Plug3
+        | K::Plug4
+        | K::Plug6
+        | K::Plug8
+        | K::Plug12
+        | K::Dsub9s
+        | K::Dsub15s
+        | K::Dsub25s
+        | K::Dsub9p
+        | K::Dsub15p
+        | K::Dsub25p
+        | K::M12s4
+        | K::M12s5
+        | K::M12s8
+        | K::M12p4
+        | K::M12p5
+        | K::M12p8
+        | K::Rj45
+        | K::Usba
+        | K::Usbb => vec![tag, description],
+        K::Coil
+        | K::No
+        | K::Nc
+        | K::Power3
+        | K::Mcb1
+        | K::Mcb2
+        | K::Fuse
+        | K::Psu
+        | K::Pbno
+        | K::Pbnc
+        | K::Sel
+        | K::Lamp
+        | K::Motor3
+        | K::Motor1
+        | K::Trafo
+        | K::Terminal
+        | K::Terminalpe
+        | K::Di
+        | K::Do
+        | K::Junction
+        | K::Continuation
+        | K::Co
+        | K::Swco
+        | K::Power4
+        | K::Ssrin
+        | K::Ssrout
+        | K::Fuseterm
+        | K::Fusebank4
+        | K::Fusebank6
+        | K::Fusebank8
+        | K::Fusebank10
+        | K::Fusebank12
+        | K::Prox3
+        | K::Floatno
+        | K::Floatnc
+        | K::Rollerno
+        | K::Rollernc
+        | K::Interlocknc
+        | K::Interlockno
+        | K::Valve
+        | K::Valve2
+        | K::Tc
+        | K::Heater
+        | K::Term2L1
+        | K::Term2L2
+        | K::Term2
+        | K::Term2bL1
+        | K::Term2bL2
+        | K::Term2b
+        | K::Term3L1
+        | K::Term3L2
+        | K::Term3L3
+        | K::Term3
+        | K::TermlnpeL1
+        | K::TermlnpeL2
+        | K::TermlnpeL3
+        | K::Termlnpe
+        | K::TermsensorL1
+        | K::TermsensorL2
+        | K::TermsensorL3
+        | K::Termsensor
+        | K::Termdisc
+        | K::Termfuse => vec![tag, description, rating],
     };
     if is_fuse_bank(s) {
-        for t in d.terminals.iter().filter(|t| t.key.bytes().all(|b| b.is_ascii_digit())) {
+        for t in d.terminals.iter().filter(|t| ecad_model::words::is_digits(&t.key)) {
             out.push(Anchor {
                 role: TextRole::RatingOf(t.key.clone()),
                 at: p(t.at.x + 3.0, -8.0),
@@ -1062,7 +1771,7 @@ fn shifted(prims: Vec<Primitive>, dx: f64) -> Vec<Primitive> {
             Primitive::Line { a, b } => Primitive::Line { a: m(&a), b: m(&b) },
             Primitive::Polyline { vertices, closed } => Primitive::Polyline { vertices: vertices.iter().map(m).collect(), closed },
             Primitive::Circle { center, radius } => Primitive::Circle { center: m(&center), radius },
-            other => other,
+            other @ (Primitive::Arc { .. } | Primitive::Text { .. } | Primitive::Point { .. }) => other,
         })
         .collect()
 }
@@ -1166,19 +1875,123 @@ enum Connector {
 }
 
 impl Connector {
-    fn of(key: &str) -> Option<Connector> {
-        let dsub = |end: char| key.strip_prefix("dsub")?.strip_suffix(end)?.parse::<usize>().ok().filter(|n| (1..=MAX_WAYS).contains(n));
-        match key {
-            "rj45" => Some(Connector::Bulkhead(8)),
-            "usba" | "usbb" => Some(Connector::Bulkhead(4)),
-            _ => ways(key, "socket")
-                .map(Connector::Socket)
-                .or_else(|| ways(key, "plug").map(Connector::Plug))
-                .or_else(|| dsub('s').map(Connector::DsubSocket))
-                .or_else(|| dsub('p').map(Connector::DsubPlug))
-                .or_else(|| ways(key, "m12s").map(Connector::M12Socket))
-                .or_else(|| ways(key, "m12p").map(Connector::M12Plug)),
-        }
+    /// The connector body a starter draws; `None` for any other starter.
+    fn of(key: StarterKey) -> Option<Connector> {
+        Some(match key {
+            K::Rj45 => Connector::Bulkhead(8),
+            K::Usba => Connector::Bulkhead(4),
+            K::Usbb => Connector::Bulkhead(4),
+            K::Socket2 => Connector::Socket(2),
+            K::Plug2 => Connector::Plug(2),
+            K::Socket3 => Connector::Socket(3),
+            K::Plug3 => Connector::Plug(3),
+            K::Socket4 => Connector::Socket(4),
+            K::Plug4 => Connector::Plug(4),
+            K::Socket6 => Connector::Socket(6),
+            K::Plug6 => Connector::Plug(6),
+            K::Socket8 => Connector::Socket(8),
+            K::Plug8 => Connector::Plug(8),
+            K::Socket12 => Connector::Socket(12),
+            K::Plug12 => Connector::Plug(12),
+            K::Dsub9s => Connector::DsubSocket(9),
+            K::Dsub9p => Connector::DsubPlug(9),
+            K::Dsub15s => Connector::DsubSocket(15),
+            K::Dsub15p => Connector::DsubPlug(15),
+            K::Dsub25s => Connector::DsubSocket(25),
+            K::Dsub25p => Connector::DsubPlug(25),
+            K::M12s4 => Connector::M12Socket(4),
+            K::M12p4 => Connector::M12Plug(4),
+            K::M12s5 => Connector::M12Socket(5),
+            K::M12p5 => Connector::M12Plug(5),
+            K::M12s8 => Connector::M12Socket(8),
+            K::M12p8 => Connector::M12Plug(8),
+            K::Coil
+            | K::No
+            | K::Nc
+            | K::Power3
+            | K::Mcb1
+            | K::Mcb2
+            | K::Fuse
+            | K::Psu
+            | K::Pbno
+            | K::Pbnc
+            | K::Sel
+            | K::Lamp
+            | K::Motor3
+            | K::Motor1
+            | K::Trafo
+            | K::Terminal
+            | K::Terminalpe
+            | K::Di
+            | K::Do
+            | K::Junction
+            | K::Continuation
+            | K::Co
+            | K::Swco
+            | K::Power4
+            | K::Rcbo2
+            | K::Rcd2
+            | K::Rcd4
+            | K::Ssrin
+            | K::Ssrout
+            | K::Fuseterm
+            | K::Fusebank4
+            | K::Fusebank6
+            | K::Fusebank8
+            | K::Fusebank10
+            | K::Fusebank12
+            | K::Prox3
+            | K::Floatno
+            | K::Floatnc
+            | K::Rollerno
+            | K::Rollernc
+            | K::Interlocknc
+            | K::Interlockno
+            | K::Valve
+            | K::Valve2
+            | K::Tc
+            | K::Heater
+            | K::Pinpair
+            | K::Pins
+            | K::Pinp
+            | K::Plccpu
+            | K::Plcps
+            | K::Plcdi
+            | K::Plcdq
+            | K::Plcai
+            | K::Plcao
+            | K::Plcrtd
+            | K::Plciol
+            | K::Term2L1
+            | K::Term2L2
+            | K::Term2
+            | K::Term2bL1
+            | K::Term2bL2
+            | K::Term2b
+            | K::Term3L1
+            | K::Term3L2
+            | K::Term3L3
+            | K::Term3
+            | K::TermlnpeL1
+            | K::TermlnpeL2
+            | K::TermlnpeL3
+            | K::Termlnpe
+            | K::TermsensorL1
+            | K::TermsensorL2
+            | K::TermsensorL3
+            | K::Termsensor
+            | K::Termdisc
+            | K::Termfuse
+            | K::Plcim
+            | K::Plcpm
+            | K::Plccm
+            | K::Chdi
+            | K::Chdq
+            | K::Chai
+            | K::Chao
+            | K::Chrtd
+            | K::Chiol => return None,
+        })
     }
 
     fn pins(self) -> usize {
@@ -1224,13 +2037,13 @@ impl Connector {
         g.push(match self {
             Connector::DsubSocket(_) => poly(&[(-3.5, 3.5), (xn + 3.5, 3.5), (xn + 2.5, -2.5), (-2.5, -2.5)], true),
             Connector::DsubPlug(_) => poly(&[(-2.5, 2.5), (xn + 2.5, 2.5), (xn + 3.5, -3.5), (-3.5, -3.5)], true),
-            _ if self.socket() => rect((-3.5, -2.5), (xn + 3.5, 3.5)),
-            _ => rect((-3.5, -3.5), (xn + 3.5, 2.5)),
+            Connector::Socket(_) | Connector::M12Socket(_) => rect((-3.5, -2.5), (xn + 3.5, 3.5)),
+            Connector::Plug(_) | Connector::M12Plug(_) | Connector::Bulkhead(_) => rect((-3.5, -3.5), (xn + 3.5, 2.5)),
         });
         match self {
             Connector::M12Socket(_) => g.push(circle((-6.5, 0.5), 2.0)),
             Connector::M12Plug(_) => g.push(circle((-6.5, -0.5), 2.0)),
-            _ => {}
+            Connector::Socket(_) | Connector::Plug(_) | Connector::DsubSocket(_) | Connector::DsubPlug(_) | Connector::Bulkhead(_) => {}
         }
         g
     }
@@ -1239,8 +2052,8 @@ impl Connector {
         let n = self.pins();
         let y = match self {
             Connector::Bulkhead(_) => 0.0,
-            _ if self.socket() => 5.0,
-            _ => -5.0,
+            Connector::Socket(_) | Connector::DsubSocket(_) | Connector::M12Socket(_) => 5.0,
+            Connector::Plug(_) | Connector::DsubPlug(_) | Connector::M12Plug(_) => -5.0,
         };
         let mut v: Vec<TerminalDef> = (1..=n).map(|i| t(&i.to_string(), pin_x(i, PIN_PITCH), y)).collect();
         if let Connector::Bulkhead(_) = self {
@@ -1275,33 +2088,6 @@ fn card_body(points: &[(f64, f64)]) -> Vec<Primitive> {
     g
 }
 
-/// The type text of a card key.
-fn card_type(key: &str) -> Option<&'static str> {
-    Some(match key {
-        "plccpu" => "CPU",
-        "plcps" => "PS",
-        "plcdi" => "DI",
-        "plcdq" => "DQ",
-        "plcai" => "AI",
-        "plcao" => "AO",
-        "plcrtd" => "RTD",
-        "plciol" => "IOL",
-        "plcim" => "IM",
-        "plcpm" => "PM",
-        "plccm" => "CM",
-        _ => return None,
-    })
-}
-
-/// The most ways or pins a sized symbol key may name (guards the loops below; the catalogue's
-/// largest is 25).
-const MAX_WAYS: usize = 32;
-
-/// The size a sized key names after `stem` (`fusebank8` → 8), at most [`MAX_WAYS`].
-fn ways(key: &str, stem: &str) -> Option<usize> {
-    key.strip_prefix(stem)?.parse::<usize>().ok().filter(|n| (1..=MAX_WAYS).contains(n))
-}
-
 /// Pin `i`'s x (1-based) in a row of pins or fuses spaced `pitch` apart.
 fn pin_x(i: usize, pitch: f64) -> f64 {
     pitch * i.saturating_sub(1) as f64
@@ -1326,16 +2112,16 @@ fn fuse_bank(n: usize) -> Vec<Primitive> {
 }
 
 /// Graphics of the sized keys (fuse banks, connectors).
-fn sized_graphics(key: &str) -> Vec<Primitive> {
-    if let Some(n) = ways(key, "fusebank") {
+fn sized_graphics(key: StarterKey) -> Vec<Primitive> {
+    if let Some(n) = key.fuse_bank_ways() {
         return fuse_bank(n);
     }
     Connector::of(key).map(Connector::graphics).unwrap_or_default()
 }
 
 /// Terminals of the sized keys.
-fn sized_terminals(key: &str, t: &dyn Fn(&str, f64, f64) -> TerminalDef) -> Vec<TerminalDef> {
-    if let Some(n) = ways(key, "fusebank") {
+fn sized_terminals(key: StarterKey, t: &dyn Fn(&str, f64, f64) -> TerminalDef) -> Vec<TerminalDef> {
+    if let Some(n) = key.fuse_bank_ways() {
         let mut v = vec![t("L+", -10.0, 20.0), t("M", -10.0, -15.0)];
         v.extend((1..=n).map(|i| t(&i.to_string(), pin_x(i, 10.0), -15.0)));
         return v;
@@ -1376,16 +2162,16 @@ fn motor(phase: &str, leads: &[((f64, f64), (f64, f64))]) -> Vec<Primitive> {
 }
 
 /// The graphics of starter `key` (brief 036: `termfuse` draws `fuseterm`'s).
-pub(crate) fn graphics_of(key: &str) -> Vec<Primitive> {
+pub(crate) fn graphics_of(key: StarterKey) -> Vec<Primitive> {
     graphics(key)
 }
 
-fn graphics(key: &str) -> Vec<Primitive> {
+fn graphics(key: StarterKey) -> Vec<Primitive> {
     match key {
-        "coil" => vec![rect((-6.0, -3.0), (6.0, 3.0)), line((0.0, 3.0), (0.0, 10.0)), line((0.0, -3.0), (0.0, -10.0))],
-        "no" => contact_no(),
-        "nc" => contact_nc(),
-        "power3" => {
+        K::Coil => vec![rect((-6.0, -3.0), (6.0, 3.0)), line((0.0, 3.0), (0.0, 10.0)), line((0.0, -3.0), (0.0, -10.0))],
+        K::No => contact_no(),
+        K::Nc => contact_nc(),
+        K::Power3 => {
             let mut g = Vec::new();
             for x in [-10.0, 0.0, 10.0] {
                 g.extend(shifted(contact_no(), x));
@@ -1393,15 +2179,15 @@ fn graphics(key: &str) -> Vec<Primitive> {
             g.extend(dashed(-12.0, 8.0, 0.5));
             g
         }
-        "mcb1" => mcb(),
-        "mcb2" => {
+        K::Mcb1 => mcb(),
+        K::Mcb2 => {
             let mut g = mcb();
             g.extend(shifted(mcb(), 10.0));
             g.extend(dashed(-2.0, 8.0, 0.5));
             g
         }
-        "fuse" => vec![rect((-2.0, -5.0), (2.0, 5.0)), line((0.0, 10.0), (0.0, -10.0))],
-        "psu" => {
+        K::Fuse => vec![rect((-2.0, -5.0), (2.0, 5.0)), line((0.0, 10.0), (0.0, -10.0))],
+        K::Psu => {
             let mut g = vec![
                 rect((-15.0, -10.0), (15.0, 10.0)),
                 line((-15.0, -10.0), (15.0, 10.0)),
@@ -1416,34 +2202,34 @@ fn graphics(key: &str) -> Vec<Primitive> {
             }
             g
         }
-        "pbno" => {
+        K::Pbno => {
             let mut g = contact_no();
             g.extend(dashed(-8.0, -2.0, 0.5));
             g.push(poly(&[(-10.0, 3.0), (-8.0, 3.0), (-8.0, -2.0), (-10.0, -2.0)], false));
             g
         }
-        "pbnc" => {
+        K::Pbnc => {
             let mut g = contact_nc();
             g.extend(dashed(-6.0, 1.9, 0.5));
             g.push(poly(&[(-8.0, 3.0), (-6.0, 3.0), (-6.0, -2.0), (-8.0, -2.0)], false));
             g
         }
-        "sel" => {
+        K::Sel => {
             let mut g = contact_no();
             g.extend(dashed(-8.0, -2.0, 0.5));
             g.push(poly(&[(-10.0, 3.0), (-8.0, 3.0), (-8.0, -2.0), (-6.0, -2.0)], false));
             g
         }
-        "lamp" => vec![
+        K::Lamp => vec![
             circle((0.0, 0.0), 4.0),
             line((-2.83, -2.83), (2.83, 2.83)),
             line((-2.83, 2.83), (2.83, -2.83)),
             line((0.0, 4.0), (0.0, 10.0)),
             line((0.0, -4.0), (0.0, -10.0)),
         ],
-        "motor3" => motor("3~", &[((-10.0, 15.0), (-5.0, 8.66)), ((0.0, 15.0), (0.0, 10.0)), ((10.0, 15.0), (5.0, 8.66))]),
-        "motor1" => motor("1~", &[((-5.0, 15.0), (-5.0, 8.66)), ((5.0, 15.0), (5.0, 8.66))]),
-        "trafo" => {
+        K::Motor3 => motor("3~", &[((-10.0, 15.0), (-5.0, 8.66)), ((0.0, 15.0), (0.0, 10.0)), ((10.0, 15.0), (5.0, 8.66))]),
+        K::Motor1 => motor("1~", &[((-5.0, 15.0), (-5.0, 8.66)), ((5.0, 15.0), (5.0, 8.66))]),
+        K::Trafo => {
             // Where x = ±5 meets each circle of radius 6 around (0, ±4.5).
             let y = 4.5 + (36.0_f64 - 25.0).sqrt();
             vec![
@@ -1455,25 +2241,25 @@ fn graphics(key: &str) -> Vec<Primitive> {
                 line((5.0, -15.0), (5.0, -y)),
             ]
         }
-        "terminal" => vec![circle((0.0, 0.0), 1.5)],
+        K::Terminal => vec![circle((0.0, 0.0), 1.5)],
         // Our own earth mark to the right of the ring (design 028 §2).
-        "terminalpe" => vec![circle((0.0, 0.0), 1.5), line((2.5, -1.2), (2.5, 1.2)), line((3.2, -0.8), (3.2, 0.8)), line((3.9, -0.4), (3.9, 0.4))],
+        K::Terminalpe => vec![circle((0.0, 0.0), 1.5), line((2.5, -1.2), (2.5, 1.2)), line((3.2, -0.8), (3.2, 0.8)), line((3.9, -0.4), (3.9, 0.4))],
         // A filled dot (`ecad.junction-size`): concentric circles, so it reads as filled at any
         // lineweight setting (design 022 §3.1).
-        "junction" => vec![circle((0.0, 0.0), 0.5), circle((0.0, 0.0), 0.33), circle((0.0, 0.0), 0.17)],
+        K::Junction => vec![circle((0.0, 0.0), 0.5), circle((0.0, 0.0), 0.33), circle((0.0, 0.0), 0.17)],
         // An arrow pointing away from its wire (design 022 §3.2).
-        "continuation" => vec![line((0.0, 0.0), (0.0, -5.0)), poly(&[(-1.5, -3.5), (0.0, -5.0), (1.5, -3.5)], false)],
-        "di" => vec![rect((-7.5, -2.5), (7.5, 2.5)), text((-2.5, -1.25), 2.5, "DI"), line((0.0, 2.5), (0.0, 10.0))],
-        "do" => vec![rect((-7.5, -2.5), (7.5, 2.5)), text((-2.5, -1.25), 2.5, "DO"), line((0.0, -2.5), (0.0, -10.0))],
+        K::Continuation => vec![line((0.0, 0.0), (0.0, -5.0)), poly(&[(-1.5, -3.5), (0.0, -5.0), (1.5, -3.5)], false)],
+        K::Di => vec![rect((-7.5, -2.5), (7.5, 2.5)), text((-2.5, -1.25), 2.5, "DI"), line((0.0, 2.5), (0.0, 10.0))],
+        K::Do => vec![rect((-7.5, -2.5), (7.5, 2.5)), text((-2.5, -1.25), 2.5, "DO"), line((0.0, -2.5), (0.0, -10.0))],
         // ---- Brief 034 stage 1 (design 034 §3).
-        "co" => contact_co(),
-        "swco" => {
+        K::Co => contact_co(),
+        K::Swco => {
             let mut g = contact_co();
             g.extend(dashed(-8.0, 1.5, 0.5));
             g.push(line((-8.0, -2.5), (-8.0, 3.5)));
             g
         }
-        "power4" => {
+        K::Power4 => {
             let mut g = Vec::new();
             for x in [-15.0, -5.0, 5.0, 15.0] {
                 g.extend(shifted(contact_no(), x));
@@ -1481,14 +2267,14 @@ fn graphics(key: &str) -> Vec<Primitive> {
             g.extend(dashed(-17.0, 13.0, 0.5));
             g
         }
-        "rcbo2" | "rcd2" => {
-            let mut g = if key == "rcbo2" { mcb() } else { contact_no() };
+        K::Rcbo2 | K::Rcd2 => {
+            let mut g = if key == K::Rcbo2 { mcb() } else { contact_no() };
             g.extend(shifted(contact_no(), 10.0));
             g.extend(dashed(-2.0, 8.0, 0.5));
             g.extend(rcd_release(5.0, 8.0, 0.0, 8.0));
             g
         }
-        "rcd4" => {
+        K::Rcd4 => {
             let mut g = Vec::new();
             for x in [0.0, 10.0, 20.0, 30.0] {
                 g.extend(shifted(contact_no(), x));
@@ -1497,21 +2283,21 @@ fn graphics(key: &str) -> Vec<Primitive> {
             g.extend(rcd_release(15.0, 18.0, 20.0, 28.0));
             g
         }
-        "ssrin" => vec![
+        K::Ssrin => vec![
             rect((-6.0, -3.0), (6.0, 3.0)),
             line((0.0, 3.0), (0.0, 10.0)),
             line((0.0, -3.0), (0.0, -10.0)),
             poly(&[(-2.0, 1.5), (2.0, 1.5), (0.0, -1.5)], true),
             line((-2.0, -1.5), (2.0, -1.5)),
         ],
-        "ssrout" => {
+        K::Ssrout => {
             let mut g = contact_no();
             g.push(poly(&[(2.0, -1.5), (5.0, -1.5), (3.5, 1.5)], true));
             g
         }
-        "fuseterm" => vec![rect((-2.0, -5.0), (2.0, 5.0)), line((0.0, 10.0), (0.0, -10.0)), rect((-3.5, -7.5), (3.5, 7.5))],
+        K::Fuseterm => vec![rect((-2.0, -5.0), (2.0, 5.0)), line((0.0, 10.0), (0.0, -10.0)), rect((-3.5, -7.5), (3.5, 7.5))],
         // ---- Brief 034 stage 2 (design 034 §4).
-        "prox3" => vec![
+        K::Prox3 => vec![
             rect((-10.0, -5.0), (10.0, 5.0)),
             poly(&[(-7.0, 0.0), (-5.0, 2.0), (-3.0, 0.0), (-5.0, -2.0)], true),
             line((3.0, 2.5), (3.0, 1.5)),
@@ -1521,11 +2307,11 @@ fn graphics(key: &str) -> Vec<Primitive> {
             line((-5.0, -10.0), (-5.0, -5.0)),
             line((5.0, -10.0), (5.0, -5.0)),
         ],
-        "floatno" => levered(true, -4.0, 1.5, -5.5),
-        "floatnc" => levered(false, -4.0, 1.5, -5.5),
-        "rollerno" => levered(true, 3.0, 1.2, 4.2),
-        "rollernc" => levered(false, 3.0, 1.2, 4.2),
-        "interlocknc" => {
+        K::Floatno => levered(true, -4.0, 1.5, -5.5),
+        K::Floatnc => levered(false, -4.0, 1.5, -5.5),
+        K::Rollerno => levered(true, 3.0, 1.2, 4.2),
+        K::Rollernc => levered(false, 3.0, 1.2, 4.2),
+        K::Interlocknc => {
             let mut g = contact_nc();
             g.extend(dashed(-8.0, 1.9, 0.5));
             g.push(circle((-4.0, 0.5), 1.5));
@@ -1534,20 +2320,20 @@ fn graphics(key: &str) -> Vec<Primitive> {
             g.extend(key_mark());
             g
         }
-        "interlockno" => {
+        K::Interlockno => {
             let mut g = contact_no();
             g.extend(dashed(-8.0, -2.0, 0.5));
             g.extend(key_mark());
             g
         }
-        "valve" => vec![
+        K::Valve => vec![
             rect((-6.0, -3.0), (6.0, 3.0)),
             line((0.0, 3.0), (0.0, 10.0)),
             line((0.0, -3.0), (0.0, -10.0)),
             line((6.0, 0.0), (8.0, 0.0)),
             poly(&[(8.0, 3.0), (14.0, -3.0), (14.0, 3.0), (8.0, -3.0)], true),
         ],
-        "valve2" => vec![
+        K::Valve2 => vec![
             rect((-16.0, -3.0), (-4.0, 3.0)),
             rect((4.0, -3.0), (16.0, 3.0)),
             line((-10.0, 3.0), (-10.0, 10.0)),
@@ -1558,7 +2344,7 @@ fn graphics(key: &str) -> Vec<Primitive> {
             line((-4.0, 0.0), (-3.0, 0.0)),
             line((3.0, 0.0), (4.0, 0.0)),
         ],
-        "tc" => vec![
+        K::Tc => vec![
             poly(&[(-5.0, 10.0), (-5.0, 0.0), (0.0, -5.0)], false),
             poly(&[(5.0, 10.0), (5.0, 0.0), (0.0, -5.0)], false),
             line((5.5, 9.0), (5.5, 0.5)),
@@ -1566,7 +2352,7 @@ fn graphics(key: &str) -> Vec<Primitive> {
             circle((0.0, -5.0), 0.33),
             circle((0.0, -5.0), 0.17),
         ],
-        "heater" => vec![
+        K::Heater => vec![
             rect((-2.5, -6.0), (2.5, 6.0)),
             line((-2.5, -3.0), (2.5, -3.0)),
             line((-2.5, 0.0), (2.5, 0.0)),
@@ -1575,46 +2361,99 @@ fn graphics(key: &str) -> Vec<Primitive> {
             line((0.0, -6.0), (0.0, -10.0)),
         ],
         // ---- Brief 034 stage 3b (design 034 §6).
-        "plcps" => card_body(&[(-10.0, 25.0), (-5.0, 25.0), (0.0, 25.0), (-5.0, -25.0), (5.0, -25.0)]),
-        "plccm" => card_body(&[(-5.0, -25.0), (5.0, -25.0)]),
-        k if card_type(k).is_some() => card_body(&[(-5.0, 25.0), (5.0, 25.0)]),
-        k if cell_shape(k).is_some() => cell_graphics(k),
+        K::Plcps => card_body(&[(-10.0, 25.0), (-5.0, 25.0), (0.0, 25.0), (-5.0, -25.0), (5.0, -25.0)]),
+        K::Plccm => card_body(&[(-5.0, -25.0), (5.0, -25.0)]),
+        K::Plccpu | K::Plcdi | K::Plcdq | K::Plcai | K::Plcao | K::Plcrtd | K::Plciol | K::Plcim | K::Plcpm => {
+            card_body(&[(-5.0, 25.0), (5.0, 25.0)])
+        }
+        k @ (K::Chdi | K::Chdq | K::Chai | K::Chao | K::Chrtd | K::Chiol) => cell_graphics(k),
         // ---- Brief 044 (design 044 §3.2): connector pins, 034's cup and pin, no body.
-        "pinpair" => {
+        K::Pinpair => {
             let mut g = socket_pin();
             g.extend(plug_pin());
             g
         }
-        "pins" => socket_pin(),
-        "pinp" => plug_pin(),
-        _ => crate::terminal_types::graphics(key).unwrap_or_else(|| sized_graphics(key)),
+        K::Pins => socket_pin(),
+        K::Pinp => plug_pin(),
+        K::Fusebank4
+        | K::Fusebank6
+        | K::Fusebank8
+        | K::Fusebank10
+        | K::Fusebank12
+        | K::Socket2
+        | K::Socket3
+        | K::Socket4
+        | K::Socket6
+        | K::Socket8
+        | K::Socket12
+        | K::Plug2
+        | K::Plug3
+        | K::Plug4
+        | K::Plug6
+        | K::Plug8
+        | K::Plug12
+        | K::Dsub9s
+        | K::Dsub15s
+        | K::Dsub25s
+        | K::Dsub9p
+        | K::Dsub15p
+        | K::Dsub25p
+        | K::M12s4
+        | K::M12s5
+        | K::M12s8
+        | K::M12p4
+        | K::M12p5
+        | K::M12p8
+        | K::Rj45
+        | K::Usba
+        | K::Usbb
+        | K::Term2L1
+        | K::Term2L2
+        | K::Term2
+        | K::Term2bL1
+        | K::Term2bL2
+        | K::Term2b
+        | K::Term3L1
+        | K::Term3L2
+        | K::Term3L3
+        | K::Term3
+        | K::TermlnpeL1
+        | K::TermlnpeL2
+        | K::TermlnpeL3
+        | K::Termlnpe
+        | K::TermsensorL1
+        | K::TermsensorL2
+        | K::TermsensorL3
+        | K::Termsensor
+        | K::Termdisc
+        | K::Termfuse => crate::terminal_types::graphics(key.word()).unwrap_or_else(|| sized_graphics(key)),
     }
 }
 
-fn terminals(key: &str) -> Vec<TerminalDef> {
+fn terminals(key: StarterKey) -> Vec<TerminalDef> {
     let t = |k: &str, x: f64, y: f64| TerminalDef { key: k.into(), label: Some(k.into()), at: p(x, y) };
     match key {
-        "coil" => vec![t("A1", 0.0, 10.0), t("A2", 0.0, -10.0)],
-        "no" | "pbno" | "sel" | "floatno" | "rollerno" | "interlockno" => vec![t("13", 0.0, 10.0), t("14", 0.0, -10.0)],
-        "nc" | "pbnc" | "floatnc" | "rollernc" | "interlocknc" => vec![t("11", 0.0, 10.0), t("12", 0.0, -10.0)],
-        "power3" => vec![t("1", -10.0, 10.0), t("2", -10.0, -10.0), t("3", 0.0, 10.0), t("4", 0.0, -10.0), t("5", 10.0, 10.0), t("6", 10.0, -10.0)],
-        "mcb1" | "fuse" => vec![t("1", 0.0, 10.0), t("2", 0.0, -10.0)],
-        "mcb2" => vec![t("1", 0.0, 10.0), t("2", 0.0, -10.0), t("3", 10.0, 10.0), t("4", 10.0, -10.0)],
-        "psu" => {
+        K::Coil => vec![t("A1", 0.0, 10.0), t("A2", 0.0, -10.0)],
+        K::No | K::Pbno | K::Sel | K::Floatno | K::Rollerno | K::Interlockno => vec![t("13", 0.0, 10.0), t("14", 0.0, -10.0)],
+        K::Nc | K::Pbnc | K::Floatnc | K::Rollernc | K::Interlocknc => vec![t("11", 0.0, 10.0), t("12", 0.0, -10.0)],
+        K::Power3 => vec![t("1", -10.0, 10.0), t("2", -10.0, -10.0), t("3", 0.0, 10.0), t("4", 0.0, -10.0), t("5", 10.0, 10.0), t("6", 10.0, -10.0)],
+        K::Mcb1 | K::Fuse => vec![t("1", 0.0, 10.0), t("2", 0.0, -10.0)],
+        K::Mcb2 => vec![t("1", 0.0, 10.0), t("2", 0.0, -10.0), t("3", 10.0, 10.0), t("4", 10.0, -10.0)],
+        K::Psu => {
             vec![t("L", -10.0, 15.0), t("N", 0.0, 15.0), t("PE", 10.0, 15.0), t("+", -5.0, -15.0), t("-", 5.0, -15.0)]
         }
-        "lamp" => vec![t("X1", 0.0, 10.0), t("X2", 0.0, -10.0)],
-        "motor3" => vec![t("U1", -10.0, 15.0), t("V1", 0.0, 15.0), t("W1", 10.0, 15.0), t("PE", 20.0, 15.0)],
-        "motor1" => vec![t("U1", -5.0, 15.0), t("U2", 5.0, 15.0), t("PE", 20.0, 15.0)],
-        "trafo" => vec![t("1U1", -5.0, 15.0), t("1U2", 5.0, 15.0), t("2U1", -5.0, -15.0), t("2U2", 5.0, -15.0)],
-        "terminal" | "terminalpe" => vec![t("1", 0.0, 0.0)],
+        K::Lamp => vec![t("X1", 0.0, 10.0), t("X2", 0.0, -10.0)],
+        K::Motor3 => vec![t("U1", -10.0, 15.0), t("V1", 0.0, 15.0), t("W1", 10.0, 15.0), t("PE", 20.0, 15.0)],
+        K::Motor1 => vec![t("U1", -5.0, 15.0), t("U2", 5.0, 15.0), t("PE", 20.0, 15.0)],
+        K::Trafo => vec![t("1U1", -5.0, 15.0), t("1U2", 5.0, 15.0), t("2U1", -5.0, -15.0), t("2U2", 5.0, -15.0)],
+        K::Terminal | K::Terminalpe => vec![t("1", 0.0, 0.0)],
         // No label: a junction or continuation shows no connection point name.
-        "junction" | "continuation" => vec![TerminalDef { key: "1".into(), label: None, at: p(0.0, 0.0) }],
-        "di" => vec![t("I0.0", 0.0, 10.0)],
-        "do" => vec![t("Q0.0", 0.0, -10.0)],
+        K::Junction | K::Continuation => vec![TerminalDef { key: "1".into(), label: None, at: p(0.0, 0.0) }],
+        K::Di => vec![t("I0.0", 0.0, 10.0)],
+        K::Do => vec![t("Q0.0", 0.0, -10.0)],
         // ---- Brief 034 stage 1: definition order is common, NC, NO (design 034 §2.3).
-        "co" | "swco" => vec![t("11", 0.0, 10.0), t("12", 5.0, -10.0), t("14", 0.0, -10.0)],
-        "power4" => vec![
+        K::Co | K::Swco => vec![t("11", 0.0, 10.0), t("12", 5.0, -10.0), t("14", 0.0, -10.0)],
+        K::Power4 => vec![
             t("1", -15.0, 10.0),
             t("2", -15.0, -10.0),
             t("3", -5.0, 10.0),
@@ -1624,8 +2463,8 @@ fn terminals(key: &str) -> Vec<TerminalDef> {
             t("7", 15.0, 10.0),
             t("8", 15.0, -10.0),
         ],
-        "rcbo2" | "rcd2" => vec![t("1", 0.0, 10.0), t("2", 0.0, -10.0), t("N1", 10.0, 10.0), t("N2", 10.0, -10.0)],
-        "rcd4" => vec![
+        K::Rcbo2 | K::Rcd2 => vec![t("1", 0.0, 10.0), t("2", 0.0, -10.0), t("N1", 10.0, 10.0), t("N2", 10.0, -10.0)],
+        K::Rcd4 => vec![
             t("1", 0.0, 10.0),
             t("2", 0.0, -10.0),
             t("3", 10.0, 10.0),
@@ -1635,31 +2474,82 @@ fn terminals(key: &str) -> Vec<TerminalDef> {
             t("N1", 30.0, 10.0),
             t("N2", 30.0, -10.0),
         ],
-        "ssrin" => vec![t("A1", 0.0, 10.0), t("A2", 0.0, -10.0)],
-        "ssrout" | "fuseterm" | "heater" => vec![t("1", 0.0, 10.0), t("2", 0.0, -10.0)],
+        K::Ssrin => vec![t("A1", 0.0, 10.0), t("A2", 0.0, -10.0)],
+        K::Ssrout | K::Fuseterm | K::Heater => vec![t("1", 0.0, 10.0), t("2", 0.0, -10.0)],
         // ---- Brief 034 stage 2: IEC 60947-5-2's numbers (1 supply +, 3 supply −, 4 output).
-        "prox3" => vec![t("1", -5.0, 10.0), t("3", -5.0, -10.0), t("4", 5.0, -10.0)],
-        "valve" => vec![t("A1", 0.0, 10.0), t("A2", 0.0, -10.0)],
-        "valve2" => vec![t("A1", -10.0, 10.0), t("A2", -10.0, -10.0), t("B1", 10.0, 10.0), t("B2", 10.0, -10.0)],
-        "tc" => vec![t("+", -5.0, 10.0), t("-", 5.0, 10.0)],
+        K::Prox3 => vec![t("1", -5.0, 10.0), t("3", -5.0, -10.0), t("4", 5.0, -10.0)],
+        K::Valve => vec![t("A1", 0.0, 10.0), t("A2", 0.0, -10.0)],
+        K::Valve2 => vec![t("A1", -10.0, 10.0), t("A2", -10.0, -10.0), t("B1", 10.0, 10.0), t("B2", 10.0, -10.0)],
+        K::Tc => vec![t("+", -5.0, 10.0), t("-", 5.0, 10.0)],
         // ---- Brief 034 stage 3b.
-        "plcps" => vec![t("L", -10.0, 25.0), t("N", -5.0, 25.0), t("PE", 0.0, 25.0), t("L+", -5.0, -25.0), t("M", 5.0, -25.0)],
-        "plccpu" | "plcdi" | "plcdq" | "plcai" | "plcao" | "plcrtd" | "plciol" => vec![t("L+", -5.0, 25.0), t("M", 5.0, 25.0)],
+        K::Plcps => vec![t("L", -10.0, 25.0), t("N", -5.0, 25.0), t("PE", 0.0, 25.0), t("L+", -5.0, -25.0), t("M", 5.0, -25.0)],
+        K::Plccpu | K::Plcdi | K::Plcdq | K::Plcai | K::Plcao | K::Plcrtd | K::Plciol => vec![t("L+", -5.0, 25.0), t("M", 5.0, 25.0)],
         // ---- Brief 045 (design 045 §3.1).
-        "plcim" | "plcpm" => vec![t("L+", -5.0, 25.0), t("M", 5.0, 25.0)],
-        "plccm" => vec![t("P1", -5.0, -25.0), t("P2", 5.0, -25.0)],
+        K::Plcim | K::Plcpm => vec![t("L+", -5.0, 25.0), t("M", 5.0, 25.0)],
+        K::Plccm => vec![t("P1", -5.0, -25.0), t("P2", 5.0, -25.0)],
         // Brief 045 (design 045 §4.1, FP2): a cell's points are keyed by role; the pin is the
         // label given when it joins a card.
-        k if cell_shape(k).is_some() => cell_shape(k)
+        k @ (K::Chdi | K::Chdq | K::Chai | K::Chao | K::Chrtd | K::Chiol) => cell_shape(k)
             .map(|(_, pts)| {
                 pts.iter().map(|(role, x)| TerminalDef { key: format!(".{role}"), label: Some((*role).to_string()), at: p(*x, 5.0) }).collect()
             })
             .unwrap_or_default(),
         // ---- Brief 044: a pin's definition keys are its side keys.
-        "pinpair" => vec![t(SOCKET_KEY, 0.0, 5.0), t(PLUG_KEY, 0.0, -5.0)],
-        "pins" => vec![t(SOCKET_KEY, 0.0, 5.0)],
-        "pinp" => vec![t(PLUG_KEY, 0.0, -5.0)],
-        _ => crate::terminal_types::terminals(key).unwrap_or_else(|| sized_terminals(key, &t)),
+        K::Pinpair => vec![t(SOCKET_KEY, 0.0, 5.0), t(PLUG_KEY, 0.0, -5.0)],
+        K::Pins => vec![t(SOCKET_KEY, 0.0, 5.0)],
+        K::Pinp => vec![t(PLUG_KEY, 0.0, -5.0)],
+        K::Fusebank4
+        | K::Fusebank6
+        | K::Fusebank8
+        | K::Fusebank10
+        | K::Fusebank12
+        | K::Socket2
+        | K::Socket3
+        | K::Socket4
+        | K::Socket6
+        | K::Socket8
+        | K::Socket12
+        | K::Plug2
+        | K::Plug3
+        | K::Plug4
+        | K::Plug6
+        | K::Plug8
+        | K::Plug12
+        | K::Dsub9s
+        | K::Dsub15s
+        | K::Dsub25s
+        | K::Dsub9p
+        | K::Dsub15p
+        | K::Dsub25p
+        | K::M12s4
+        | K::M12s5
+        | K::M12s8
+        | K::M12p4
+        | K::M12p5
+        | K::M12p8
+        | K::Rj45
+        | K::Usba
+        | K::Usbb
+        | K::Term2L1
+        | K::Term2L2
+        | K::Term2
+        | K::Term2bL1
+        | K::Term2bL2
+        | K::Term2b
+        | K::Term3L1
+        | K::Term3L2
+        | K::Term3L3
+        | K::Term3
+        | K::TermlnpeL1
+        | K::TermlnpeL2
+        | K::TermlnpeL3
+        | K::Termlnpe
+        | K::TermsensorL1
+        | K::TermsensorL2
+        | K::TermsensorL3
+        | K::Termsensor
+        | K::Termdisc
+        | K::Termfuse => crate::terminal_types::terminals(key.word()).unwrap_or_else(|| sized_terminals(key, &t)),
     }
 }
 
@@ -1716,6 +2606,19 @@ pub fn update_available(doc: &Document, rep: ecad_model::RepresentationId) -> Op
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn starters_are_keyed_in_order() {
+        // One row per StarterKey, in variant order, and each key reads back from its word.
+        assert_eq!(STARTERS.len(), StarterKey::ALL.len());
+        for (i, (s, k)) in STARTERS.iter().zip(StarterKey::ALL).enumerate() {
+            assert_eq!(s.key, *k, "row {i}");
+            assert_eq!(starter(*k).key, *k);
+            assert_eq!(StarterKey::parse(k.word()), Some(*k));
+            assert_eq!(by_key(&k.word().to_uppercase()).map(|x| x.key), Some(*k));
+        }
+        assert!(by_key("nosuch").is_none());
+    }
 
     #[test]
     fn every_starter_is_valid_and_on_the_grid() {
@@ -1856,25 +2759,25 @@ mod tests {
     #[test]
     fn the_basic_starters_keep_their_content_hashes() {
         let want: &[(&str, &str)] = &[
-            ("coil", "a38469fe64864a4a602f678c8bb2fae900c64b75c555a3b58b65b98029437db3"),
-            ("no", "82317c626ba389fa1deb1ecbefc1457e0b958da637780813198b4969e6d4cc31"),
-            ("nc", "8861d1f37368786878b2c860ce0bec1e98f4b8fb4b264fdf6b897cd01a38717c"),
-            ("power3", "7554cf8d849ccf964912b5ceef2248e342c00351cd386f88bd00f27aff9c599b"),
-            ("mcb1", "60a708b75ab297e22e8ee0e3e5b99163660dbf7f941ca0eba4d7009095042ecb"),
-            ("mcb2", "907da0b24254cc9520f359285988b9706420730a46e626c73abf20a3434ddd73"),
-            ("fuse", "92a1eb42f8036488fa6e127903f9381488777bb1314c272c97c7fb6c565f0f93"),
-            ("psu", "7ab24232dfdaa94a6b28556544b3be0b128146f6cd314f7a2e4fef86df03bc6c"),
-            ("pbno", "6fcb99af92cd7290c81fb4e05291bef164c4354e358a959490d4b1dece901148"),
-            ("pbnc", "eb97ba69342ae1de571c128a9086531e499581436fb5cc8c0f223c98d881479f"),
-            ("sel", "ee747f4614ce340e0500223ec3f23a1463c80ef9ec42f5e425be6449dedf3023"),
-            ("lamp", "654a895a70d7a93b61a1dfd279243afcd45628a7835bc7ca7baf3419e6af3e5a"),
-            ("motor3", "74fba3648ea65faed6d0f2d6122333c8ddbe82593551300b8b39b84e2783db94"),
-            ("motor1", "97d78f1600e761449dda417ba7a0d8818d1fc0a7576bd56f5a68bd2665714dcb"),
-            ("trafo", "7546ea16e7c4b9d68527ee6e022ad642a825844ab7441c699c2200015d736016"),
-            ("terminal", "140b3e17fdb18a4889a5816b1f3aa34f9c9714643d25f518470cd800310290a7"),
-            ("terminalpe", "950f2596fe76913d2ac50cc894697b3ca80e10cfb3bcbe136dccbc61af844a3c"),
-            ("di", "691b84067c9c64dd0ab9de2a9a6bef23fb05c71a485264cf463f245ef39fc1eb"),
-            ("do", "736535bf22162769b6420f790efd350383060df36447dcee6d29cf1f86f1ff92"),
+            ("coil", "2af1b6d8286ce742810433538c9d705fd4d803259ff4302a4a335b8d791b95b0"),
+            ("no", "531a8952f3ab6faba59b2d92203e50b9a28e3ec6681b851089ad4f8a85bfa2b6"),
+            ("nc", "fb1755ecef8a01cbadc9fa1c00d3b47d6293b2598bf46e9763a108e40ec69e92"),
+            ("power3", "ddbafd55a10cf51b16178c304773cdc02a1cb104c672f708bc75f396cbc54d95"),
+            ("mcb1", "0449072e772d3becc698699b2168dbe8e85039ddc0ec60d67f28c0232cb2ce6a"),
+            ("mcb2", "577a656074a2f6685ab58cc4a12eca204a34367881c0dd37017399357f8867cf"),
+            ("fuse", "97e67e1b287d5c724cf004c2f84bcf55a24ce963ad8c0381d57014d744503766"),
+            ("psu", "ffe540113081227903544a5dd6ffd9fe7ff7a87f4b606a6eab35274c91ef87fe"),
+            ("pbno", "de7eb0aad4424b97477e5df51f974ce66c558d7e4457e56ac58d1ac54911f27e"),
+            ("pbnc", "e75283fe7b81d39d8dee2ab724a89ae120dc883a60602629cf0bca9d2ea0c4f6"),
+            ("sel", "1e9c869fcf4da31ff024f9d60f1e06168aa1757f2f2b2d4a66681e0af4ee5600"),
+            ("lamp", "43370ffbca5feb202311b0a7f9308659fab76005655b2e016d2b45c2cd6a5df0"),
+            ("motor3", "079e25164ab9a2fb0b5f1c5b867d65728ec8f152c5becd62db9cd22c7326f414"),
+            ("motor1", "24661cd6e3ad00d4433ce1c31f45107b31e31b8c39730ee9af81d968939af812"),
+            ("trafo", "b93505f2eab3aad42fbc8c2f647632effceeda5a6e1e06e634d3f53467dd92fd"),
+            ("terminal", "c5c7b47bbddcd35973ad00f1dd8906db9602290ce0b955f0fd7ee1c2bf403a1f"),
+            ("terminalpe", "d38f6429abbaf0e8e110505625b467b6531504a762e11205542230148f9f1c00"),
+            ("di", "418a6aab8d5818614ba43098c08872d64592926ca89ab42557f185476425f06a"),
+            ("do", "a7d39c8d471f7b36a469fff10c05eaa40ee4f93e921349a265a23e34cda6461f"),
             ("junction", "8a6e36eab66ded66ec4ef470682d2d5cecf536a0d1fe6c148c632154232a4868"),
             ("continuation", "7289a1f63b563b3f0ceb6959fd7fb34763daf4c1c6e56bb2366e01129ae7afaf"),
         ];
@@ -1895,7 +2798,13 @@ mod tests {
             g.iter()
                 .map(|x| match x {
                     Primitive::Line { a, b } => (a.x, a.y, b.x, b.y),
-                    _ => panic!("a dash is a line"),
+                    Primitive::Polyline { .. }
+                    | Primitive::Arc { .. }
+                    | Primitive::Circle { .. }
+                    | Primitive::Text { .. }
+                    | Primitive::Point { .. } => {
+                        panic!("a dash is a line")
+                    }
                 })
                 .collect::<Vec<_>>()
         };
@@ -1974,7 +2883,7 @@ mod tests {
 
     #[test]
     fn search_table() {
-        let keys = |q: &str| search(q).into_iter().map(|s| s.key).collect::<Vec<_>>();
+        let keys = |q: &str| search(q).into_iter().map(|s| s.key.word()).collect::<Vec<_>>();
         assert_eq!(keys("-Q"), ["mcb1", "mcb2", "rcbo2", "rcd2", "rcd4"]);
         // A bare letter is also a substring of an alias (`dq`).
         assert_eq!(keys("q"), ["mcb1", "mcb2", "rcbo2", "rcd2", "rcd4", "plcdq", "chdq"]);

@@ -9,7 +9,7 @@
 //!   changed (`super::Plc::rows_changed`).
 //! - `editable` names the fields the PLC manager (2.8) will edit, and the command that writes each.
 
-use ecad_model::{ComponentId, Document, PageId, Pt};
+use ecad_model::{DeviceId, Document, PageId, Pt};
 use serde_json::{Value, json};
 
 use super::rack::RackRef;
@@ -40,7 +40,7 @@ pub struct Target {
 /// One I/O row (design 045 §8.1).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Row {
-    pub card: ComponentId,
+    pub card: DeviceId,
     pub card_tag: String,
     pub rack: Option<String>,
     pub slot: Option<u32>,
@@ -393,7 +393,7 @@ pub fn csv_table(doc: &Document, plc: &Plc) -> Option<Table> {
 
 /// The cards a change of device `d` (its tag) or conductor `w` (its number) touches through their
 /// nets: the cards with a channel point on them.
-pub fn cards_on_nets_of(doc: &Document, plc: &Plc, d: Option<ComponentId>, w: Option<ecad_model::ConductorId>) -> Vec<ComponentId> {
+pub fn cards_on_nets_of(doc: &Document, plc: &Plc, d: Option<DeviceId>, w: Option<ecad_model::ConductorId>) -> Vec<DeviceId> {
     let conn = doc.connectivity();
     let mut nets = Vec::new();
     if let Some(d) = d {
@@ -420,7 +420,7 @@ pub fn cards_on_nets_of(doc: &Document, plc: &Plc, d: Option<ComponentId>, w: Op
 }
 
 /// The cards with a channel point on the nets of terminals `ts`.
-pub fn cards_on_nets_of_terminals(doc: &Document, plc: &Plc, ts: &[ecad_model::TerminalId]) -> Vec<ComponentId> {
+pub fn cards_on_nets_of_terminals(doc: &Document, plc: &Plc, ts: &[ecad_model::TerminalId]) -> Vec<DeviceId> {
     let conn = doc.connectivity();
     let mut out = Vec::new();
     for n in ts.iter().filter_map(|t| conn.net_of_terminal(*t)) {

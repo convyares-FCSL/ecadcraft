@@ -164,7 +164,7 @@ impl App {
     fn intent_title(&self) -> (ecad_ui::tokens::Icon, String) {
         let tool = self.cad.session.running.as_ref().map(|r| r.id.to_lowercase()).unwrap_or_default();
         if tool == "place"
-            && let Some(sym) = self.shell.tools.placing.symbol.and_then(ecad_cadcraft::symbols::by_key)
+            && let Some(sym) = self.shell.tools.placing.symbol.map(ecad_cadcraft::symbols::starter)
         {
             return (ecad_ui::tokens::Icon::Pin, sym.name.to_string());
         }

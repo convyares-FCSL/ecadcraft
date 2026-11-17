@@ -25,7 +25,7 @@ pub mod tagtable;
 use crate::CmdError;
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::{ComponentId, Document, ObjectRef, PageId, Subject};
+use ecad_model::{DeviceId, Document, ObjectRef, PageId, Subject};
 use serde_json::json;
 
 use crate::checks::{Check, Fix, Kind, Object};
@@ -61,9 +61,9 @@ pub enum PlcFix {
 
 /// The type of device `c` as a PLC card or rack: its card body's, else (a card drawn only by
 /// channel symbols) its first channel symbol's (design 045 §3.2).
-pub fn card_type_of(doc: &Document, c: ComponentId) -> Option<CardType> {
+pub fn card_type_of(doc: &Document, c: DeviceId) -> Option<CardType> {
     let mut by_channel = None;
-    for (_, r) in doc.representations_of(Subject::Component(c)) {
+    for (_, r) in doc.representations_of(Subject::Device(c)) {
         let Some(s) = crate::devices::rep_starter(doc, r) else { continue };
         if let Some(t) = CardType::of_body(s.key) {
             return Some(t);
@@ -76,12 +76,12 @@ pub fn card_type_of(doc: &Document, c: ComponentId) -> Option<CardType> {
 }
 
 /// Every racked card's block, read in one pass (for counting what a change moves).
-pub fn all_blocks(doc: &Document) -> BTreeMap<ComponentId, address::Block> {
-    let racks: BTreeSet<ComponentId> = doc
-        .components
+pub fn all_blocks(doc: &Document) -> BTreeMap<DeviceId, address::Block> {
+    let racks: BTreeSet<DeviceId> = doc
+        .devices
         .values()
         .filter_map(|x| x.properties.get(rack::RACK_KEY))
-        .filter_map(|v| ComponentId::parse(v.trim()))
+        .filter_map(|v| DeviceId::parse(v.trim()))
         .filter(|r| rack::is_rack(doc, *r))
         .collect();
     racks.into_iter().flat_map(|r| address::snapshot(doc, r)).collect()
@@ -89,14 +89,14 @@ pub fn all_blocks(doc: &Document) -> BTreeMap<ComponentId, address::Block> {
 
 /// The cards whose automatic addresses a move of `card` may shift, before it (a snapshot to compare
 /// with [`moved_cards`]).
-pub fn moved_blocks_before(doc: &Document, _card: ComponentId) -> BTreeMap<ComponentId, address::Block> {
+pub fn moved_blocks_before(doc: &Document, _card: DeviceId) -> BTreeMap<DeviceId, address::Block> {
     all_blocks(doc)
 }
 
 /// How many cards other than `card` changed address since `before`.
-pub fn moved_cards(doc: &Document, card: ComponentId, before: &BTreeMap<ComponentId, address::Block>) -> usize {
+pub fn moved_cards(doc: &Document, card: DeviceId, before: &BTreeMap<DeviceId, address::Block>) -> usize {
     let after = all_blocks(doc);
-    let keys: BTreeSet<&ComponentId> = before.keys().chain(after.keys()).collect();
+    let keys: BTreeSet<&DeviceId> = before.keys().chain(after.keys()).collect();
     keys.into_iter()
         .filter(|c| **c != card)
         .filter(|c| before.get(c).map(|b| (b.input, b.output)) != after.get(c).map(|b| (b.input, b.output)))
@@ -104,7 +104,7 @@ pub fn moved_cards(doc: &Document, card: ComponentId, before: &BTreeMap<Componen
 }
 
 /// The drawn copies of channel `i` of card `c`: the points of each symbol showing it.
-pub fn copies(doc: &Document, c: ComponentId, i: u32) -> Vec<Vec<ecad_model::TerminalId>> {
+pub fn copies(doc: &Document, c: DeviceId, i: u32) -> Vec<Vec<ecad_model::TerminalId>> {
     let mut by_rep: BTreeMap<ecad_model::RepresentationId, Vec<ecad_model::TerminalId>> = BTreeMap::new();
     let mut loose = Vec::new();
     for (t, _) in doc.terminals_of(c) {
@@ -158,7 +158,7 @@ pub fn state_word(used: bool, text: Option<&str>) -> &'static str {
 /// A rack in the kept model.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RackData {
-    pub id: ComponentId,
+    pub id: DeviceId,
     pub tag: String,
     pub ty: CardType,
     /// Its first slot and how many slots.
@@ -171,7 +171,7 @@ pub struct RackData {
 /// A card in the kept model (a device with a card body that is not a rack).
 #[derive(Debug, Clone, PartialEq)]
 pub struct CardData {
-    pub id: ComponentId,
+    pub id: DeviceId,
     pub tag: String,
     pub ty: CardType,
     pub rack: RackRef,
@@ -190,27 +190,27 @@ pub struct CardData {
 }
 
 /// The group a Checks row belongs to: a rack (its cards' slot rows) or a card (its own rows).
-type Group = ComponentId;
+type Group = DeviceId;
 
 /// The page of device `c`'s first representation.
-fn first_page(doc: &Document, c: ComponentId) -> Option<PageId> {
-    let pages: BTreeSet<PageId> = doc.representations_of(Subject::Component(c)).map(|(_, r)| r.page).collect();
+fn first_page(doc: &Document, c: DeviceId) -> Option<PageId> {
+    let pages: BTreeSet<PageId> = doc.representations_of(Subject::Device(c)).map(|(_, r)| r.page).collect();
     doc.page_order.iter().find(|p| pages.contains(p)).copied()
 }
 
 /// The extra pages a property change on component `c` redraws (design 045 §11.1): a rack's tag or
 /// slot range shows in its cards' captions.
-pub fn pages_touched(doc: &Document, kept: Option<&kept::Plc>, c: ComponentId, key: &str, after: Option<&str>) -> Vec<PageId> {
+pub fn pages_touched(doc: &Document, kept: Option<&kept::Plc>, c: DeviceId, key: &str, after: Option<&str>) -> Vec<PageId> {
     if !(key == ecad_model::tag::TAG_KEY || key.starts_with("plc.")) {
         return Vec::new();
     }
     // A rack's cards from the kept index (review of #84, 3); a walk only without the models.
-    let pages_of = |r: ComponentId| -> Vec<PageId> {
-        let cards: Vec<ComponentId> = match kept {
+    let pages_of = |r: DeviceId| -> Vec<PageId> {
+        let cards: Vec<DeviceId> = match kept {
             Some(p) => p.naming.get(&r).into_iter().flatten().copied().collect(),
             None => rack::cards_naming(doc, r).into_iter().map(|(c, _)| c).collect(),
         };
-        cards.into_iter().flat_map(|card| doc.representations_of(Subject::Component(card)).map(|(_, x)| x.page).collect::<Vec<_>>()).collect()
+        cards.into_iter().flat_map(|card| doc.representations_of(Subject::Device(card)).map(|(_, x)| x.page).collect::<Vec<_>>()).collect()
     };
     if rack::is_rack(doc, c) {
         return pages_of(c);
@@ -224,7 +224,7 @@ pub fn pages_touched(doc: &Document, kept: Option<&kept::Plc>, c: ComponentId, k
         out.extend(pages_of(r));
     }
     if key == rack::RACK_KEY
-        && let Some(r) = after.and_then(|v| ComponentId::parse(v.trim())).filter(|r| rack::is_rack(doc, *r))
+        && let Some(r) = after.and_then(|v| DeviceId::parse(v.trim())).filter(|r| rack::is_rack(doc, *r))
     {
         out.extend(pages_of(r));
     }
@@ -234,11 +234,11 @@ pub fn pages_touched(doc: &Document, kept: Option<&kept::Plc>, c: ComponentId, k
 /// Card `c`'s caption (design 045 §7.2) and whether it is shown: the registry pattern with the
 /// rack's tag and the slot, when the card is in a rack's slot; `None` otherwise. `plc.text.caption.show`
 /// is read at the card's level.
-pub fn caption(doc: &Document, c: ComponentId) -> Option<(String, bool)> {
+pub fn caption(doc: &Document, c: DeviceId) -> Option<(String, bool)> {
     let (rack::RackRef::Rack(r), Some(slot)) = (rack::rack_ref(doc, c), rack::slot_of(doc, c)) else { return None };
     let at = crate::defaults::Scope { component: Some(c), ..crate::defaults::Scope::project() };
     let pattern = crate::defaults::resolve(doc, &crate::defaults::plc::CAPTION, at).text();
-    let shown = crate::defaults::resolve(doc, &crate::defaults::plc::CAPTION_SHOW, at).word() == "on";
+    let shown = crate::defaults::resolve(doc, &crate::defaults::plc::CAPTION_SHOW, at).flag();
     let text = pattern
         .replace("{rack}", &crate::devices::tag_words(doc, r))
         .replace("{slot:02}", &format!("{slot:02}"))
@@ -249,7 +249,7 @@ pub fn caption(doc: &Document, c: ComponentId) -> Option<(String, bool)> {
 /// The caption text of representation `r` of card `c` at `pl`, when `r` shows the card's body and
 /// the card is in a slot.
 pub fn caption_text(
-    doc: &Document, c: ComponentId, rep: ecad_model::RepresentationId, r: &ecad_model::Representation, pl: &ecad_model::Placement,
+    doc: &Document, c: DeviceId, rep: ecad_model::RepresentationId, r: &ecad_model::Representation, pl: &ecad_model::Placement,
 ) -> Option<crate::devices::PageText> {
     let s = crate::devices::rep_starter(doc, r)?;
     let ty = CardType::of_body(s.key)?;
@@ -287,9 +287,9 @@ pub fn caption_text(
 /// Properties ▸ Card and ▸ Rack rows of device `c` (design 045 §2.6): a card's Rack (its tag,
 /// never the ID: FP1), Slot and Channels; a rack's Slots and First slot (registry values at object
 /// level, faint when inherited).
-pub fn props_rows(doc: &Document, c: ComponentId, rows: &mut Vec<crate::words::Row>) {
+pub fn props_rows(doc: &Document, c: DeviceId, rows: &mut Vec<crate::words::Row>) {
     let Some(ty) = card_type_of(doc, c) else { return };
-    let props = doc.components.get(&c).map(|x| &x.properties);
+    let props = doc.devices.get(&c).map(|x| &x.properties);
     let own = |k: &str| props.and_then(|p| p.get(k)).cloned();
     let row = |key: &str, label: &str, value: String, inherited: bool, choices: Vec<String>| crate::words::Row {
         key: key.into(),
@@ -329,15 +329,15 @@ pub fn props_rows(doc: &Document, c: ComponentId, rows: &mut Vec<crate::words::R
 }
 
 /// The objects Properties ▸ Card reads besides the card: its rack (its tag is shown).
-pub fn props_deps(doc: &Document, c: ComponentId) -> Option<ObjectRef> {
+pub fn props_deps(doc: &Document, c: DeviceId) -> Option<ObjectRef> {
     match rack::rack_ref(doc, c) {
-        RackRef::Rack(r) | RackRef::Missing(r) => Some(ObjectRef::Component(r)),
+        RackRef::Rack(r) | RackRef::Missing(r) => Some(ObjectRef::Device(r)),
         _ => None,
     }
 }
 
 /// The command line a Card row writes (`plcslot`), or `None` for any other key.
-pub fn edit_line(c: ComponentId, key: &str, value: Option<&str>) -> Option<String> {
+pub fn edit_line(c: DeviceId, key: &str, value: Option<&str>) -> Option<String> {
     let v = value.map(str::trim).filter(|v| !v.is_empty());
     let j = match key {
         rack::RACK_KEY => match v {
@@ -360,7 +360,7 @@ pub fn edit_line(c: ComponentId, key: &str, value: Option<&str>) -> Option<Strin
 }
 
 /// Card `c`'s channels read from the document: points, cells, net state, text and typed address.
-pub fn channel_data(doc: &Document, c: ComponentId) -> BTreeMap<u32, ChannelData> {
+pub fn channel_data(doc: &Document, c: DeviceId) -> BTreeMap<u32, ChannelData> {
     let mut out: BTreeMap<u32, ChannelData> = BTreeMap::new();
     let conn = doc.connectivity();
     for (t, term) in doc.terminals_of(c) {
@@ -376,7 +376,7 @@ pub fn channel_data(doc: &Document, c: ComponentId) -> BTreeMap<u32, ChannelData
             }
         }
     }
-    if let Some(x) = doc.components.get(&c) {
+    if let Some(x) = doc.devices.get(&c) {
         for (k, v) in x.properties.range(channels::CH_PREFIX.to_string()..) {
             if !k.starts_with(channels::CH_PREFIX) {
                 break;
@@ -405,8 +405,8 @@ pub fn channel_data(doc: &Document, c: ComponentId) -> BTreeMap<u32, ChannelData
 /// channel number, its address and its description (`Spare` for a drawn spare), at the cell's
 /// anchors. `cache` holds the racks' blocks for one page draw.
 pub fn channel_texts(
-    doc: &Document, c: ComponentId, rid: ecad_model::RepresentationId, r: &ecad_model::Representation, pl: &ecad_model::Placement,
-    kept: Option<&kept::Plc>, cache: &mut BTreeMap<ComponentId, BTreeMap<ComponentId, address::Block>>,
+    doc: &Document, c: DeviceId, rid: ecad_model::RepresentationId, r: &ecad_model::Representation, pl: &ecad_model::Placement,
+    kept: Option<&kept::Plc>, cache: &mut BTreeMap<DeviceId, BTreeMap<DeviceId, address::Block>>,
 ) -> Vec<crate::devices::PageText> {
     use crate::devices::{DerivedText, PageText, TextOf};
     use crate::symbols::TextRole;
@@ -418,12 +418,12 @@ pub fn channel_texts(
     let shown_points = crate::devices::shown_terminals(doc, c, r);
     let Some(i) = shown_points.iter().find_map(|(t, _)| channels::point_of(doc, *t)).map(|x| x.0) else { return Vec::new() };
     let at = crate::defaults::Scope { component: Some(c), ..crate::defaults::Scope::project() };
-    let on = |e: &crate::defaults::Entry| crate::defaults::resolve(doc, e, at).word() == "on";
+    let on = |e: &crate::defaults::Entry| crate::defaults::resolve(doc, e, at).flag();
     let first = channels::first_number(doc, c);
     let (auto, _) = address::of_channel(doc, c, i, kept, cache);
     let (addr, _) = address::shown(doc, c, i, auto);
     let text =
-        doc.components.get(&c).and_then(|x| x.properties.get(&channels::ch_key(i, "text"))).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+        doc.devices.get(&c).and_then(|x| x.properties.get(&channels::ch_key(i, "text"))).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
     let conn = doc.connectivity();
     let used = doc
         .terminals_of(c)
@@ -434,7 +434,7 @@ pub fn channel_texts(
         (None, false) => Some(crate::defaults::resolve(doc, &crate::defaults::plc::SPARE_TEXT, crate::defaults::Scope::project()).text()),
         (None, true) => None,
     };
-    let rotated = crate::defaults::resolve(doc, &crate::defaults::plc::ROTATION, at).word() == "90";
+    let rotated = crate::defaults::resolve(doc, &crate::defaults::plc::ROTATION, at).choice() == Some(crate::defaults::plc::CardRotation::Quarter);
     let anchors = crate::symbols::anchors(s);
     let label = crate::text_style::text_style(doc, crate::text_style::TextKind::PointLabel).height;
     // Brief 051 (design 051 §5): the two text styles of their own.
@@ -501,7 +501,7 @@ pub fn channel_texts(
 /// The one value rule of `plc.*` keys written with `setprop` (design 045 §4.6), called where 034's
 /// is: a card's rack, slot and channel count, a channel's text and typed address, and the registry's
 /// object-level entries. `None`: not a key of this brief.
-pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
+pub fn setprop_rule(doc: &Document, c: DeviceId, key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
     if let Some(r) = rack::setprop_value(doc, c, key, value) {
         return Some(r);
     }
@@ -513,7 +513,7 @@ pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&st
         let max = if key == address::START_KEY { address::MAX_BYTE } else { address::MAX_SIZE };
         return Some(match v {
             None => Ok(None),
-            Some(t) if t.len() <= 5 && t.bytes().all(|b| b.is_ascii_digit()) && t.parse::<u32>().is_ok_and(|n| n <= max) => Ok(Some(t.to_string())),
+            Some(t) if t.len() <= 5 && ecad_model::words::is_digits(t) && t.parse::<u32>().is_ok_and(|n| n <= max) => Ok(Some(t.to_string())),
             Some(_) => Err(CmdError::refused(format!("{key} is a whole number of bytes from 0 to {max}."))),
         });
     }
@@ -532,7 +532,7 @@ pub fn setprop_rule(doc: &Document, c: ComponentId, key: &str, value: Option<&st
 /// Properties ▸ Channel rows of a channel symbol (design 045 §4.7): the channel (read), its
 /// description and typed address (placeholder: the automatic one), and one pin per role.
 pub fn channel_rows(
-    doc: &Document, kept: Option<&kept::Plc>, c: ComponentId, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<crate::words::Row>,
+    doc: &Document, kept: Option<&kept::Plc>, c: DeviceId, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<crate::words::Row>,
 ) {
     let Some(r) = symbol.and_then(|s| doc.representations.get(&s)) else { return };
     if crate::devices::rep_starter(doc, r).and_then(channels::cell_type).is_none() {
@@ -552,7 +552,7 @@ pub fn channel_rows(
         proposal: None,
     };
     rows.push(row(format!("plc.channel#{i}"), "Channel", (i + first).to_string(), false, false));
-    let props = doc.components.get(&c).map(|x| &x.properties);
+    let props = doc.devices.get(&c).map(|x| &x.properties);
     let own = |k: &str| props.and_then(|p| p.get(k)).cloned();
     rows.push(row(channels::ch_key(i, "text"), "Description", own(&channels::ch_key(i, "text")).unwrap_or_default(), true, false));
     let typed = own(&channels::ch_key(i, "address"));

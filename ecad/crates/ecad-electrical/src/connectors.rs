@@ -20,7 +20,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
-    Component, ComponentId, DefinitionId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Placement, Primitive, Pt,
+    DefinitionId, Device, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Placement, Primitive, Pt,
     Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId,
 };
 
@@ -31,7 +31,7 @@ use crate::checks::{Check, Fix, Kind as CheckKind, Object};
 use crate::defaults::{self, Scope};
 use crate::locations::{BoxCache, Located};
 use crate::strips::{self, terminal_words};
-use crate::symbols::{self, Kind, PLUG_KEY, Side, Starter};
+use crate::symbols::{self, Kind, PLUG_KEY, Side, Starter, StarterKey};
 use crate::wires::{ON_WIRE, OnWire};
 
 /// Most pins a connector has (design 044 §2.3): a guard, not a preference.
@@ -55,12 +55,12 @@ pub const HALF_FIELDS: [&str; 3] = ["description", "maker", "part_number"];
 pub const IGNORE_PREFIX: &str = "ignore.";
 
 /// Whether connector `c` ignores Checks rows of `kind`.
-pub fn ignores(doc: &Document, c: ComponentId, kind: CheckKind) -> bool {
-    doc.components.get(&c).is_some_and(|x| x.properties.contains_key(&format!("{IGNORE_PREFIX}{}", kind.name())))
+pub fn ignores(doc: &Document, c: DeviceId, kind: CheckKind) -> bool {
+    doc.devices.get(&c).is_some_and(|x| x.properties.contains_key(&format!("{IGNORE_PREFIX}{}", kind.name())))
 }
 
 /// The keys of the pin starters.
-pub const PIN_KEYS: [&str; 3] = ["pinpair", "pins", "pinp"];
+pub const PIN_KEYS: [StarterKey; 3] = [StarterKey::Pinpair, StarterKey::Pins, StarterKey::Pinp];
 
 // ---------------------------------------------------------------- families (design 044 §1)
 
@@ -183,18 +183,14 @@ pub fn family_of(s: &Starter) -> Option<Family> {
     if PIN_KEYS.contains(&k) || s.family != symbols::Family::Connectors {
         return None;
     }
-    Some(if k.starts_with("dsub") {
-        Family::Dsub
-    } else if k.starts_with("m12") {
-        Family::M12
-    } else if k == "rj45" {
-        Family::Rj45
-    } else if k == "usba" {
-        Family::Usba
-    } else if k == "usbb" {
-        Family::Usbb
-    } else {
-        Family::Plain
+    use StarterKey as K;
+    Some(match k {
+        K::Dsub9s | K::Dsub15s | K::Dsub25s | K::Dsub9p | K::Dsub15p | K::Dsub25p => Family::Dsub,
+        K::M12s4 | K::M12s5 | K::M12s8 | K::M12p4 | K::M12p5 | K::M12p8 => Family::M12,
+        K::Rj45 => Family::Rj45,
+        K::Usba => Family::Usba,
+        K::Usbb => Family::Usbb,
+        _ => Family::Plain,
     })
 }
 
@@ -214,8 +210,8 @@ pub fn size_of(s: &Starter) -> Option<usize> {
 // ---------------------------------------------------------------- what is a connector
 
 /// Whether component `c` is a connector: its definition is a brief-044 half or pin.
-pub fn is_connector(doc: &Document, c: ComponentId) -> bool {
-    doc.components.get(&c).and_then(|x| x.definition).and_then(|d| doc.definitions.get(&d)).is_some_and(symbols::is_mating)
+pub fn is_connector(doc: &Document, c: DeviceId) -> bool {
+    doc.devices.get(&c).and_then(|x| x.definition).and_then(|d| doc.definitions.get(&d)).is_some_and(symbols::is_mating)
 }
 
 /// The side of terminal `t` when it is a connector pin.
@@ -243,7 +239,7 @@ pub fn rep_side(doc: &Document, r: &Representation) -> Option<Side> {
 
 /// The separator and the socket and plug side names connector `c` (or the project) uses; two
 /// equal side names count as absent (the built-ins).
-pub fn side_names(doc: &Document, c: Option<ComponentId>) -> (String, String, String) {
+pub fn side_names(doc: &Document, c: Option<DeviceId>) -> (String, String, String) {
     use crate::defaults::connectors as dc;
     let scope = c.map_or_else(Scope::project, Scope::component);
     let sep = defaults::resolve(doc, &dc::SEPARATOR, scope).text();
@@ -257,7 +253,7 @@ pub fn side_names(doc: &Document, c: Option<ComponentId>) -> (String, String, St
 }
 
 /// The tag of half `side` of connector `c` (`-X10.S`); the connector's tag for `Both`.
-pub fn half_tag(doc: &Document, c: ComponentId, side: Side) -> String {
+pub fn half_tag(doc: &Document, c: DeviceId, side: Side) -> String {
     let tag = crate::devices::tag_words(doc, c);
     let (sep, s, p) = side_names(doc, Some(c));
     match side {
@@ -282,7 +278,7 @@ pub fn pin_name(doc: &Document, t: TerminalId) -> Option<String> {
 }
 
 /// The tag a connector symbol shows in its tag block: its half's tag (a pin pair: the connector's).
-pub fn rep_tag(doc: &Document, c: ComponentId, r: &Representation) -> Option<String> {
+pub fn rep_tag(doc: &Document, c: DeviceId, r: &Representation) -> Option<String> {
     let side = rep_side(doc, r)?;
     Some(half_tag(doc, c, side))
 }
@@ -290,7 +286,7 @@ pub fn rep_tag(doc: &Document, c: ComponentId, r: &Representation) -> Option<Str
 /// Whether a pin pair's plug-side label is hidden (design 044 §5.2: a pin pair shows its pin name
 /// once, beside the socket point).
 pub fn hides_label(doc: &Document, r: &Representation, t: TerminalId) -> bool {
-    rep_half(doc, r).is_some_and(|s| s.key == "pinpair") && doc.terminals.get(&t).and_then(|x| x.key.as_deref()) == Some(PLUG_KEY)
+    rep_half(doc, r).is_some_and(|s| s.key == StarterKey::Pinpair) && doc.terminals.get(&t).and_then(|x| x.key.as_deref()) == Some(PLUG_KEY)
 }
 
 /// The run class of a connector symbol for the "once per run" tag rule (design 044 §5.2): one
@@ -308,14 +304,14 @@ pub fn run_class(doc: &Document, r: &Representation) -> Option<u64> {
 ///
 /// # Errors
 /// `-X10:3` on a connector with pin 3 on both halves, and a pin the half does not have.
-pub fn resolve(doc: &Document, text: &str) -> Option<Result<(ComponentId, Option<Side>, Option<TerminalId>), CmdError>> {
+pub fn resolve(doc: &Document, text: &str) -> Option<Result<(DeviceId, Option<Side>, Option<TerminalId>), CmdError>> {
     let text: String = text.trim().chars().take(64).collect();
     let (head, pin) = match text.split_once(':') {
         Some((h, p)) => (h.to_string(), Some(p.to_string())),
         None => (text.clone(), None),
     };
     // The connector and side: a tag as is, else a tag followed by the separator and a side name.
-    let found = doc.components.keys().copied().find_map(|c| {
+    let found = doc.devices.keys().copied().find_map(|c| {
         if !is_connector(doc, c) {
             return None;
         }
@@ -385,7 +381,7 @@ impl Drawn {
 }
 
 /// The pins drawn on connector `c`: O(its terminals).
-pub fn drawn(doc: &Document, c: ComponentId) -> Drawn {
+pub fn drawn(doc: &Document, c: DeviceId) -> Drawn {
     let mut d = Drawn::default();
     let mut first: BTreeMap<String, TerminalId> = BTreeMap::new();
     for (t, x) in doc.terminals_of(c) {
@@ -415,18 +411,18 @@ pub fn drawn(doc: &Document, c: ComponentId) -> Drawn {
 }
 
 /// Connector `c`'s typed list of pin names, when it holds a valid one.
-pub fn pin_names(doc: &Document, c: ComponentId) -> Option<Vec<String>> {
-    parse_list(doc.components.get(&c)?.properties.get(PIN_NAMES_KEY)?).ok().filter(|v| !v.is_empty())
+pub fn pin_names(doc: &Document, c: DeviceId) -> Option<Vec<String>> {
+    parse_list(doc.devices.get(&c)?.properties.get(PIN_NAMES_KEY)?).ok().filter(|v| !v.is_empty())
 }
 
 /// Connector `c`'s `pins` property, when it holds a count from 1 to [`MAX_PINS`].
-pub fn pins_prop(doc: &Document, c: ComponentId) -> Option<usize> {
-    doc.components.get(&c)?.properties.get(PINS_KEY)?.trim().parse::<usize>().ok().filter(|n| (1..=MAX_PINS).contains(n))
+pub fn pins_prop(doc: &Document, c: DeviceId) -> Option<usize> {
+    doc.devices.get(&c)?.properties.get(PINS_KEY)?.trim().parse::<usize>().ok().filter(|n| (1..=MAX_PINS).contains(n))
 }
 
 /// The whole-half symbols of connector `c`: (representation, side, starter), in ID order.
-pub fn whole_halves(doc: &Document, c: ComponentId) -> Vec<(RepresentationId, Side, &'static Starter)> {
-    doc.representations_of(Subject::Component(c))
+pub fn whole_halves(doc: &Document, c: DeviceId) -> Vec<(RepresentationId, Side, &'static Starter)> {
+    doc.representations_of(Subject::Device(c))
         .filter_map(|(rid, r)| {
             let s = rep_half(doc, r).filter(|s| !is_pin_starter(s))?;
             Some((rid, s.side()?, s))
@@ -436,7 +432,7 @@ pub fn whole_halves(doc: &Document, c: ComponentId) -> Vec<(RepresentationId, Si
 
 /// How many pins connector `c` has (design 044 §2.3): `pins`, else the largest whole half drawn,
 /// else the number of distinct pins drawn.
-pub fn pin_count(doc: &Document, c: ComponentId, d: &Drawn) -> usize {
+pub fn pin_count(doc: &Document, c: DeviceId, d: &Drawn) -> usize {
     if let Some(n) = pins_prop(doc, c) {
         return n;
     }
@@ -525,7 +521,7 @@ pub fn names_for(names: &Names, n: usize) -> Result<Vec<String>, CmdError> {
 
 /// The pins connector `c` offers, in name order: those drawn, then the ones its pin count and
 /// naming imply (numbers 1…n, or letters A…).
-fn candidates(doc: &Document, c: ComponentId, d: &Drawn) -> Vec<String> {
+fn candidates(doc: &Document, c: DeviceId, d: &Drawn) -> Vec<String> {
     // A typed list: its names in order, then any other pin drawn.
     if let Some(mut list) = pin_names(doc, c) {
         for x in &d.order {
@@ -565,7 +561,7 @@ fn candidates(doc: &Document, c: ComponentId, d: &Drawn) -> Vec<String> {
 /// # Errors
 /// A connector named by letters or a list whose pins are all drawn on that side; more than
 /// [`MAX_PINS`] pins.
-pub fn next_pin(doc: &Document, c: ComponentId, side: Side, taken: &BTreeSet<(Side, String)>) -> Result<String, CmdError> {
+pub fn next_pin(doc: &Document, c: DeviceId, side: Side, taken: &BTreeSet<(Side, String)>) -> Result<String, CmdError> {
     let d = drawn(doc, c);
     let on = |s: Side, n: &str| d.has(s, n) || taken.contains(&(s, n.to_string()));
     let free = |n: &str| match side {
@@ -624,10 +620,10 @@ pub fn where_words(doc: &Document, rid: RepresentationId) -> String {
 
 /// The representations drawing side `side` of connector `c` (a pin pair draws both), in book
 /// order (page, then ID).
-pub fn side_symbols(doc: &Document, c: ComponentId, side: Side) -> Vec<RepresentationId> {
+pub fn side_symbols(doc: &Document, c: DeviceId, side: Side) -> Vec<RepresentationId> {
     let order: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i)).collect();
     let mut v: Vec<(usize, RepresentationId)> = doc
-        .representations_of(Subject::Component(c))
+        .representations_of(Subject::Device(c))
         .filter(|(_, r)| rep_side(doc, r).is_some_and(|s| s == side || s == Side::Both))
         .map(|(rid, r)| (order.get(&r.page).copied().unwrap_or(usize::MAX), rid))
         .collect();
@@ -638,17 +634,17 @@ pub fn side_symbols(doc: &Document, c: ComponentId, side: Side) -> Vec<Represent
 /// Where go-to lands for half `side` ([`crate::reps::goto`], design 052 §4): its whole-half
 /// symbol, else its first pin symbol in book order, then top-left; `None` when the half is not
 /// drawn. Display only: it decides nothing about the half.
-pub fn half_goto(doc: &Document, c: ComponentId, side: Side) -> Option<RepresentationId> {
+pub fn half_goto(doc: &Document, c: DeviceId, side: Side) -> Option<RepresentationId> {
     crate::reps::goto(doc, c, Some(side))
 }
 
 /// The family of half `side`: its whole-half symbol's, else the connector's definition's (a
 /// pin's: none, then `Plain`).
-pub fn half_family(doc: &Document, c: ComponentId, side: Side) -> Family {
+pub fn half_family(doc: &Document, c: DeviceId, side: Side) -> Family {
     if let Some(f) = whole_halves(doc, c).into_iter().find(|(_, s, _)| *s == side).and_then(|(_, _, s)| family_of(s)) {
         return f;
     }
-    doc.components
+    doc.devices
         .get(&c)
         .and_then(|x| x.definition)
         .and_then(|d| doc.definitions.get(&d))
@@ -678,7 +674,7 @@ pub struct Shown {
 /// Fewer names than points; the definition could not be built.
 #[allow(clippy::too_many_arguments)]
 pub fn symbol_ops(
-    ids: &mut IdAllocator, page: PageId, style: Style, def: DefinitionId, starter: &Starter, c: ComponentId, names: &[String], placement: Placement,
+    ids: &mut IdAllocator, page: PageId, style: Style, def: DefinitionId, starter: &Starter, c: DeviceId, names: &[String], placement: Placement,
     ops: &mut Vec<Op>,
 ) -> Result<(RepresentationId, ItemId, Vec<Shown>), CmdError> {
     let d = starter.definition()?;
@@ -702,10 +698,10 @@ pub fn symbol_ops(
     ops.push(Op::LinkRepresentation {
         id: rep,
         rep: Representation {
-            subject: Subject::Component(c),
+            subject: Subject::Device(c),
             page,
             form: Form::Symbol,
-            role: starter.key.into(),
+            role: starter.key.to_string(),
             items: vec![item],
             connection_points: cps,
         },
@@ -713,7 +709,7 @@ pub fn symbol_ops(
     Ok((rep, item, shown))
 }
 
-/// Plan a new connector made by `starter` (its definition `def`): `CreateComponent` with its tag
+/// Plan a new connector made by `starter` (its definition `def`): `CreateDevice` with its tag
 /// (`tag`, else the next automatic one), the registry description and `pins`.
 ///
 /// # Errors
@@ -721,7 +717,7 @@ pub fn symbol_ops(
 pub fn create_ops(
     ledger: &Ledger, ids: &mut IdAllocator, high: &mut crate::devices::TagHigh, starter: &Starter, def: DefinitionId, tag: Option<String>,
     pins: Option<usize>, names: Option<&[String]>, ops: &mut Vec<Op>,
-) -> Result<(ComponentId, String), CmdError> {
+) -> Result<(DeviceId, String), CmdError> {
     let doc = ledger.document();
     let tag = match tag {
         Some(t) if ecad_model::tag::provisional(&t).is_some_and(|(_, n)| n == 0) => {
@@ -731,7 +727,7 @@ pub fn create_ops(
         Some(t) => t,
         None => high.next_auto(ledger, &crate::devices::prefix_for(doc, starter))?,
     };
-    let c: ComponentId = ids.fresh();
+    let c: DeviceId = ids.fresh();
     let mut properties = ecad_model::Properties::new();
     properties.insert(ecad_model::tag::TAG_KEY.into(), tag.clone());
     properties.insert("description".into(), defaults::resolve(doc, &defaults::connectors::DESCRIPTION, Scope::project()).text());
@@ -741,12 +737,12 @@ pub fn create_ops(
     if let Some(list) = names.filter(|l| !l.is_empty()) {
         properties.insert(PIN_NAMES_KEY.into(), list.join(","));
     }
-    ops.push(Op::CreateComponent { id: c, component: Component { properties, definition: Some(def) } });
+    ops.push(Op::CreateDevice { id: c, device: Device { properties, definition: Some(def), device_type: starter.device_type() } });
     Ok((c, tag))
 }
 
 /// The refusal for joining a device that is not a connector (design 044 §6.1).
-pub fn not_a_connector(doc: &Document, c: ComponentId) -> String {
+pub fn not_a_connector(doc: &Document, c: DeviceId) -> String {
     format!("{} is not a connector. Pick a connector, or Enter for a new one.", crate::devices::tag_words(doc, c))
 }
 
@@ -754,7 +750,7 @@ pub fn not_a_connector(doc: &Document, c: ComponentId) -> String {
 ///
 /// # Errors
 /// The half already has pins.
-pub fn check_whole_half(doc: &Document, c: ComponentId, side: Side, taken: &BTreeSet<(Side, String)>) -> Result<(), CmdError> {
+pub fn check_whole_half(doc: &Document, c: DeviceId, side: Side, taken: &BTreeSet<(Side, String)>) -> Result<(), CmdError> {
     let d = drawn(doc, c);
     let has = d.side(side).is_some_and(|m| !m.is_empty()) || taken.iter().any(|(s, _)| *s == side);
     if !has {
@@ -773,7 +769,7 @@ pub fn check_whole_half(doc: &Document, c: ComponentId, side: Side, taken: &BTre
 ///
 /// # Errors
 /// The pin is drawn on that side (either side for a pin pair).
-pub fn check_named_pin(doc: &Document, c: ComponentId, side: Side, name: &str, taken: &BTreeSet<(Side, String)>) -> Result<(), CmdError> {
+pub fn check_named_pin(doc: &Document, c: DeviceId, side: Side, name: &str, taken: &BTreeSet<(Side, String)>) -> Result<(), CmdError> {
     check_name(name)?;
     let d = drawn(doc, c);
     let sides: &[Side] = match side {
@@ -879,7 +875,7 @@ fn set_route_end(item: &mut Item, p: Pt, start: bool) {
 ///
 /// # Errors
 /// A pin count out of range, an unknown side letter, a value the rules refuse.
-pub fn setprop_value(doc: &Document, c: ComponentId, key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
+pub fn setprop_value(doc: &Document, c: DeviceId, key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
     if key == PINS_KEY {
         if !is_connector(doc, c) {
             return None;
@@ -933,9 +929,9 @@ pub fn half_key(side: Side, field: &str) -> Option<String> {
 }
 
 /// A half's own value of `field`.
-pub fn half_prop(doc: &Document, c: ComponentId, side: Side, field: &str) -> Option<String> {
+pub fn half_prop(doc: &Document, c: DeviceId, side: Side, field: &str) -> Option<String> {
     let k = half_key(side, field)?;
-    doc.components.get(&c)?.properties.get(&k).map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
+    doc.devices.get(&c)?.properties.get(&k).map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
 }
 
 // ---------------------------------------------------------------- BOM (design 044 §8)
@@ -954,7 +950,7 @@ pub struct HalfRow {
 }
 
 /// The pin count of half `side`: its whole-half size, else the connector's pin count.
-pub fn half_size(doc: &Document, c: ComponentId, side: Side, d: &Drawn) -> usize {
+pub fn half_size(doc: &Document, c: DeviceId, side: Side, d: &Drawn) -> usize {
     whole_halves(doc, c).into_iter().find(|(_, s, _)| *s == side).and_then(|(_, _, s)| size_of(s)).unwrap_or_else(|| pin_count(doc, c, d))
 }
 
@@ -970,7 +966,7 @@ pub fn default_description(doc: &Document, family: Family, side: Side, n: usize)
 
 /// One row per drawn half of connector `c` (design 044 §8.1): its half tag, own fields or the
 /// registry's description, and its location (§8.2). Empty for a connector with nothing drawn.
-pub fn half_rows(doc: &Document, c: ComponentId, _cache: &mut BoxCache) -> Vec<HalfRow> {
+pub fn half_rows(doc: &Document, c: DeviceId, _cache: &mut BoxCache) -> Vec<HalfRow> {
     if !is_connector(doc, c) {
         return Vec::new();
     }
@@ -1015,7 +1011,7 @@ fn rep_at(doc: &Document, rid: Option<RepresentationId>) -> (Option<PageId>, Opt
 }
 
 /// The Checks rows of connector `c` (design 044 §6.3); none for any other component.
-pub fn checks(doc: &Document, c: ComponentId) -> Vec<Check> {
+pub fn checks(doc: &Document, c: DeviceId) -> Vec<Check> {
     if !is_connector(doc, c) {
         return Vec::new();
     }
@@ -1053,7 +1049,7 @@ pub fn checks(doc: &Document, c: ComponentId) -> Vec<Check> {
                 kind: CheckKind::ConnectorFamily,
                 page,
                 at,
-                object: Object::Component(c),
+                object: Object::Device(c),
                 which: format!("{tag}'s halves differ: {}, {}", words(fs, Side::Socket), words(fp, Side::Plug)),
                 fix: Some(Fix::IgnoreConnector(c, CheckKind::ConnectorFamily)),
             });
@@ -1066,7 +1062,7 @@ pub fn checks(doc: &Document, c: ComponentId) -> Vec<Check> {
                 kind: CheckKind::ConnectorSize,
                 page,
                 at,
-                object: Object::Component(c),
+                object: Object::Device(c),
                 which: format!("{} has {ns} pins, {} has {np}", half_tag(doc, c, Side::Socket), half_tag(doc, c, Side::Plug)),
                 fix: Some(Fix::IgnoreConnector(c, CheckKind::ConnectorSize)),
             });
@@ -1099,7 +1095,7 @@ pub fn checks(doc: &Document, c: ComponentId) -> Vec<Check> {
                 kind: CheckKind::ConnectorLonePin,
                 page,
                 at,
-                object: Object::Component(c),
+                object: Object::Device(c),
                 which: format!(
                     "{tag}: {n} pin{} {} no mate ({}{more})",
                     if n == 1 { "" } else { "s" },
@@ -1120,7 +1116,7 @@ pub fn checks(doc: &Document, c: ComponentId) -> Vec<Check> {
                 kind: CheckKind::ConnectorOver,
                 page,
                 at,
-                object: Object::Component(c),
+                object: Object::Device(c),
                 which: format!("{tag} has pin {v} beyond its {n} pins"),
                 fix: u32::try_from(v).ok().map(|v| Fix::SetPins(c, v)),
             });
@@ -1135,14 +1131,14 @@ pub fn checks(doc: &Document, c: ComponentId) -> Vec<Check> {
 /// whole-half symbol ([`crate::reps::half_anchor`]) is a half of that side, every other connector
 /// symbol a pin of its side (a pin pair: `Both`). A pin-only half has no half member: its pins
 /// keep their mate edges.
-pub fn ref_classes(doc: &Document, c: ComponentId) -> Vec<(RepresentationId, crate::xref::Class)> {
+pub fn ref_classes(doc: &Document, c: DeviceId) -> Vec<(RepresentationId, crate::xref::Class)> {
     use crate::xref::Class;
     if !is_connector(doc, c) {
         return Vec::new();
     }
     let halves: BTreeMap<RepresentationId, Side> =
         [Side::Socket, Side::Plug].into_iter().filter_map(|s| crate::reps::half_anchor(doc, c, s).map(|r| (r, s))).collect();
-    doc.representations_of(Subject::Component(c))
+    doc.representations_of(Subject::Device(c))
         .filter_map(|(rid, r)| {
             let side = rep_side(doc, r)?;
             Some(match halves.get(&rid) {
@@ -1155,7 +1151,7 @@ pub fn ref_classes(doc: &Document, c: ComponentId) -> Vec<(RepresentationId, cra
 
 /// The edges between connector `c`'s members (design 044 §7): each half's whole-half symbol shows
 /// the other half's, and a pin whose mate is drawn only on other pages shows those.
-pub fn ref_edges(doc: &Document, c: ComponentId, list: &[(RepresentationId, crate::xref::Class)]) -> Vec<(RepresentationId, RepresentationId)> {
+pub fn ref_edges(doc: &Document, c: DeviceId, list: &[(RepresentationId, crate::xref::Class)]) -> Vec<(RepresentationId, RepresentationId)> {
     use crate::xref::Class;
     let mut out = Vec::new();
     let half = |want: Side| list.iter().find(|(_, k)| *k == Class::Half(want)).map(|(r, _)| *r);
@@ -1198,7 +1194,7 @@ pub fn ref_edges(doc: &Document, c: ComponentId, list: &[(RepresentationId, crat
 
 /// The hover line of a connector half (design 044 §7): `-X10.S (socket, 4 pins) mates with -X10.P
 /// on 102 C4.`, or `-X10.S has no plug half.`
-pub fn hover_words(doc: &Document, c: ComponentId, side: Side) -> Option<String> {
+pub fn hover_words(doc: &Document, c: DeviceId, side: Side) -> Option<String> {
     if !is_connector(doc, c) || side == Side::Both {
         return None;
     }
@@ -1230,18 +1226,18 @@ pub fn hover_words(doc: &Document, c: ComponentId, side: Side) -> Option<String>
 /// | `AddTerminal` / `RemoveTerminal` | that terminal's component |
 /// | `LinkRepresentation` / `UnlinkRepresentation` / `ModifyRepresentation` | the component shown |
 /// | `AddItem` of a symbol | the component its representation shows |
-/// | `CreateComponent` / `DeleteComponent` | that component (added / dropped) |
+/// | `CreateDevice` / `DeleteDevice` | that component (added / dropped) |
 /// | `SetProperty` of a component | that component (its naming keys) |
 /// | `EmbedDefinition` / `RemoveDefinition` | the components using it |
 /// | anything else | nothing |
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Index {
     /// Page → the connectors with a symbol there.
-    pub by_page: BTreeMap<PageId, BTreeSet<ComponentId>>,
+    pub by_page: BTreeMap<PageId, BTreeSet<DeviceId>>,
     /// Naming key → the connectors that inherit it (no own value).
-    pub inherits: BTreeMap<&'static str, BTreeSet<ComponentId>>,
+    pub inherits: BTreeMap<&'static str, BTreeSet<DeviceId>>,
     /// Each connector's pages, to take it out again.
-    pages_of: BTreeMap<ComponentId, BTreeSet<PageId>>,
+    pages_of: BTreeMap<DeviceId, BTreeSet<PageId>>,
 }
 
 /// The naming keys a connector may hold (design 044 §10).
@@ -1264,17 +1260,17 @@ impl Index {
     /// The whole index of `doc`: O(components).
     pub fn build(doc: &Document) -> Index {
         let mut idx = Index::default();
-        for c in doc.components.keys() {
+        for c in doc.devices.keys() {
             idx.set(doc, *c);
         }
         idx
     }
 
     /// The components whose entries `ops` (just applied to `doc`) could change.
-    pub fn touched(doc: &Document, ops: &[Op]) -> BTreeSet<ComponentId> {
+    pub fn touched(doc: &Document, ops: &[Op]) -> BTreeSet<DeviceId> {
         let mut out = BTreeSet::new();
-        let subject = |r: &Representation, out: &mut BTreeSet<ComponentId>| {
-            if let Subject::Component(c) = r.subject {
+        let subject = |r: &Representation, out: &mut BTreeSet<DeviceId>| {
+            if let Subject::Device(c) = r.subject {
                 out.insert(c);
             }
         };
@@ -1293,10 +1289,10 @@ impl Index {
                         subject(r, &mut out);
                     }
                 }
-                Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
+                Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
                     out.insert(*id);
                 }
-                Op::SetProperty { object: ecad_model::ObjectRef::Component(c), .. } => {
+                Op::SetProperty { object: ecad_model::ObjectRef::Device(c), .. } => {
                     out.insert(*c);
                 }
                 Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => out.extend(doc.components_using(*id)),
@@ -1307,7 +1303,7 @@ impl Index {
     }
 
     /// Recompute `touched`'s entries from `doc`.
-    pub fn update(&mut self, doc: &Document, touched: &BTreeSet<ComponentId>) {
+    pub fn update(&mut self, doc: &Document, touched: &BTreeSet<DeviceId>) {
         INDEX_WORK.with(|w| w.set(touched.len()));
         for c in touched {
             self.set(doc, *c);
@@ -1315,7 +1311,7 @@ impl Index {
     }
 
     /// Take connector `c` out, then put it back as `doc` has it.
-    fn set(&mut self, doc: &Document, c: ComponentId) {
+    fn set(&mut self, doc: &Document, c: DeviceId) {
         for p in self.pages_of.remove(&c).unwrap_or_default() {
             if let Some(set) = self.by_page.get_mut(&p) {
                 set.remove(&c);
@@ -1331,12 +1327,12 @@ impl Index {
         if !is_connector(doc, c) {
             return;
         }
-        let pages: BTreeSet<PageId> = doc.representations_of(Subject::Component(c)).map(|(_, r)| r.page).collect();
+        let pages: BTreeSet<PageId> = doc.representations_of(Subject::Device(c)).map(|(_, r)| r.page).collect();
         for p in &pages {
             self.by_page.entry(*p).or_default().insert(c);
         }
         self.pages_of.insert(c, pages);
-        let props = doc.components.get(&c).map(|x| &x.properties);
+        let props = doc.devices.get(&c).map(|x| &x.properties);
         for k in naming_keys() {
             if !props.is_some_and(|p| p.contains_key(k)) {
                 self.inherits.entry(k).or_default().insert(c);
@@ -1346,7 +1342,7 @@ impl Index {
 
     /// The connectors that inherit `key` from the project: a naming key's inheritors; for any
     /// other `connector.` key (a description), every connector.
-    pub fn inheriting(&self, key: &str) -> BTreeSet<ComponentId> {
+    pub fn inheriting(&self, key: &str) -> BTreeSet<DeviceId> {
         match self.inherits.get(key) {
             Some(s) => s.clone(),
             None if naming_keys().contains(&key) => BTreeSet::new(),
@@ -1537,7 +1533,7 @@ fn meets(p: Pt, q: Pt, r: Pt, s: Pt) -> bool {
 pub fn strip_terminal_at(doc: &Document, page: PageId, at: Pt) -> Option<TerminalId> {
     // Each terminal symbol shows its own connection point: O(representations on the page).
     doc.representations_on(page).find_map(|(_, r)| {
-        let Subject::Component(c) = r.subject else { return None };
+        let Subject::Device(c) = r.subject else { return None };
         if !strips::is_strip(doc, c) {
             return None;
         }

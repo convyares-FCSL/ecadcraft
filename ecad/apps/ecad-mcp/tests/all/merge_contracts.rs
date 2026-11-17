@@ -21,8 +21,8 @@ fn project(dir: &TempDir, name: &str) -> (Client, String, String) {
 }
 
 fn description(c: &mut Client, coil: &str) -> Option<String> {
-    let id = ecad_model::ComponentId::parse(coil).unwrap();
-    c.doc().components.get(&id).and_then(|x| x.properties.get("description").cloned())
+    let id = ecad_model::DeviceId::parse(coil).unwrap();
+    c.doc().devices.get(&id).and_then(|x| x.properties.get("description").cloned())
 }
 
 fn current(c: &mut Client) -> String {

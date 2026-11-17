@@ -15,7 +15,7 @@ use std::collections::BTreeSet;
 
 use ecad_cadcraft::device_list::DeviceEntry;
 use ecad_cadcraft::devices::PROPERTIES;
-use ecad_model::ComponentId;
+use ecad_model::DeviceId;
 use eframe::egui::{self, Rect, RichText, Stroke, pos2, vec2};
 
 use crate::lists::devices::{self as dl, DevicesSource, NOT_PLACED};
@@ -35,7 +35,7 @@ pub fn device_label(e: &DeviceEntry) -> String {
 }
 
 /// A property being edited: (device, property key, text).
-type Editing = (ComponentId, &'static str, String);
+type Editing = (DeviceId, &'static str, String);
 
 /// Board 1.03's texts.
 pub const FIND: &str = "Find a device or tag";
@@ -120,12 +120,12 @@ pub struct DevicesPanel {
     pub list: ecad_cadcraft::device_list::DeviceList,
     /// Brief 039: the rows as a table source, and the table.
     pub source: DevicesSource,
-    pub table: ecad_ui::table::Table<ComponentId>,
+    pub table: ecad_ui::table::Table<DeviceId>,
     /// The (project serial, change count) the table was brought up to.
     seen: Option<(u64, u64)>,
     /// The page selection last followed (handles), so the table follows only a new one.
     followed: Vec<ecad_cadcraft::cad::Handle>,
-    pub selected: Option<ComponentId>,
+    pub selected: Option<DeviceId>,
     editing: Option<Editing>,
     /// Board 1.03: the grouping, folded groups, groups showing every device, the lines drawn and
     /// what they were laid out from, and a note (a drop on the sheet).
@@ -137,7 +137,7 @@ pub struct DevicesPanel {
     pub note: Option<String>,
     /// A refusal of the last property edit, and, for a tag another device holds, the edit to
     /// offer as a merge.
-    pub error: Option<(String, Option<(ComponentId, String)>)>,
+    pub error: Option<(String, Option<(DeviceId, String)>)>,
     /// Brief 026: what the clash box offers with that refusal.
     pub clash: Option<Clash>,
     /// Rows laid out on the last frame (tests: virtualised).
@@ -212,7 +212,7 @@ impl DevicesPanel {
         self.followed = handles.to_vec();
         let doc = p.ledger.document();
         let Some(map) = p.active_page().and_then(|pg| p.pages.get(&pg)).map(|v| &v.map) else { return };
-        let mut devices: Vec<ComponentId> = Vec::new();
+        let mut devices: Vec<DeviceId> = Vec::new();
         for h in handles.iter().take(ecad_cadcraft::props::MAX_LOOKED_AT) {
             let rep = match map.get(*h) {
                 Some(ecad_cadcraft::project::Mapped::Item(id)) => doc.representation_of_item(id).map(|(_, r)| r.subject),
@@ -221,7 +221,7 @@ impl DevicesPanel {
                 }
                 _ => None,
             };
-            if let Some(ecad_model::Subject::Component(c)) = rep
+            if let Some(ecad_model::Subject::Device(c)) = rep
                 && self.source.contains_key(c)
                 && !devices.contains(&c)
             {
@@ -277,7 +277,7 @@ impl DevicesPanel {
         let lines = std::mem::take(&mut self.lines);
         let mut toggle: Option<String> = None;
         let mut more: Option<String> = None;
-        let mut goto: Option<ComponentId> = None;
+        let mut goto: Option<DeviceId> = None;
         ui.spacing_mut().item_spacing.y = 0.0;
         let mut drawn = 0;
         egui::ScrollArea::vertical().id_salt("ecad.devices.list").max_height(list_h).auto_shrink([false, false]).show_rows(
@@ -536,7 +536,7 @@ impl DevicesPanel {
         self.rows_drawn = self.table.rows_drawn;
         // The device's symbols, first first; empty for a device with none.
         let symbols =
-            |s: &DevicesSource, c: ComponentId| s.row(c).map(|r| r.entry.symbols.iter().map(|x| x.rep).collect::<Vec<_>>()).unwrap_or_default();
+            |s: &DevicesSource, c: DeviceId| s.row(c).map(|r| r.entry.symbols.iter().map(|x| x.rep).collect::<Vec<_>>()).unwrap_or_default();
         for e in events {
             match e {
                 TableEvent::Selected(keys) => {
@@ -578,7 +578,7 @@ impl DevicesPanel {
     /// The selected device's six properties, each a text entry (`ecad_ui::control::TextEntry`); Enter or
     /// leaving a changed field runs `setprop`, Esc puts it back. `caption` heads it with a rule and
     /// "DEVICE <tag>" (beside the table); the Project panel's section header names it instead.
-    fn editor(&mut self, ui: &mut egui::Ui, c: ComponentId, writable: bool, caption: bool, out: &mut Vec<Action>) {
+    fn editor(&mut self, ui: &mut egui::Ui, c: DeviceId, writable: bool, caption: bool, out: &mut Vec<Action>) {
         let Some(e) = self.list.entries.iter().find(|e| e.id == c).cloned() else {
             self.selected = None;
             return;
@@ -688,7 +688,7 @@ impl DevicesPanel {
     }
 
     /// The app reports a refused property edit; a tag held by another device offers the merge.
-    pub fn refused(&mut self, c: ComponentId, key: &str, value: &str, message: String) {
+    pub fn refused(&mut self, c: DeviceId, key: &str, value: &str, message: String) {
         let offer = (key == "tag" && message.contains(" is used by ")).then(|| (c, value.to_string()));
         // Brief 026: the ways are read from the refusal before it is shortened.
         self.clash = offer.as_ref().map(|_| Clash {

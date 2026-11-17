@@ -297,7 +297,7 @@ fn an_unknown_continuation_name_is_a_warning_never_a_refusal() {
     assert!(kept(&mut h).iter().any(|c| c.which == "Motor-run"), "the name is not in the table");
     let row = kept(&mut h).into_iter().find(|c| c.which == "Motor-run").unwrap();
     assert_eq!(row.severity(), ecad_cadcraft::checks::Severity::Warning);
-    assert!(matches!(row.object, ecad_cadcraft::checks::Object::Component(_)), "{r}");
+    assert!(matches!(row.object, ecad_cadcraft::checks::Object::Device(_)), "{r}");
     assert!(row.page.is_some() && row.at.is_some());
     // Names in the table are not rows: the net takes the potential.
     terminal(&mut h, (100.0, 0.0), "X2");
@@ -379,7 +379,7 @@ fn the_kept_checks_list_follows_every_edit_and_equals_a_fresh_build() {
     compare(&mut h, "delete");
     // An unrelated edit (a device property) changes no row and re-checks no net.
     let before = h.cfg(|p| p.checks().clone());
-    let lamp = h.doc().components.iter().find(|(_, c)| c.properties.get("tag").is_some_and(|t| t == "-H02")).map(|(k, _)| *k);
+    let lamp = h.doc().devices.iter().find(|(_, c)| c.properties.get("tag").is_some_and(|t| t == "-H02")).map(|(k, _)| *k);
     if let Some(lamp) = lamp {
         h.run("setprop", json!({"component": lamp.hex(), "key": "description", "value": "Spare"})).unwrap();
     }

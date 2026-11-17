@@ -7,10 +7,10 @@ const GROUP: &str = "Pages";
 const BRIEF: &str = "054";
 const G: &[Level] = &[Level::Page];
 const SP: &[Level] = &[Level::Standard, Level::Project];
-const ON_OFF: Kind = Kind::Choice(&["on", "off"]);
+const SWITCH: Kind = Kind::Flag;
 
 const fn toggle(key: &'static str, label: &'static str) -> Entry {
-    Entry { key, label, group: "Cover", brief: BRIEF, kind: ON_OFF, slot: Slot::new(), levels: SP, project: ProjectSource::Property }
+    Entry { key, label, group: "Cover", brief: BRIEF, kind: SWITCH, slot: Slot::new(), levels: SP, project: ProjectSource::Property }
 }
 
 /// The cover's block toggles (design 054 §6.4), standard and project only (Q8).
