@@ -51,8 +51,6 @@ const UNTYPED: &[&str] = &[
     "reopenbranch",
     "merge",
     "undomerge",
-    "accessory",
-    "jumper",
     "prerelease",
     "release",
     "agentaccess",
@@ -1362,4 +1360,62 @@ fn the_typed_connector_commands_still_work() {
     assert_eq!(same["changed"], json!(false), "{same}");
     let list = h.run("connector", json!({"names": ["L", "N", "PE"], "layout": "row", "family": "plain", "at": [200, 100]}));
     assert!(list.is_ok_and(|v| v["terminals"].as_array().is_some_and(|t| !t.is_empty())));
+}
+
+/// Input refusals of the accessory commands: one wording.
+#[test]
+fn the_accessory_commands_refuse_input_uniformly() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("accessory", json!({"strip": "zz"}), "`strip` must be a hex id, or null"),
+        ("accessory", json!({"strip": "1", "on": "yes"}), "`on` must be true or false, or null"),
+        ("accessory", json!({"strip": "1", "clear": "acc.start"}), "`clear` must be a list of texts, or null"),
+        ("jumper", json!({"terminals": "1"}), "`terminals` must be a list of hex ids, or null"),
+        ("jumper", json!({"strip": "1", "skip": 1}), "`skip` must be true or false, or null"),
+        ("jumper", json!({"link": 5}), "`link` must be an object, or null"),
+    ];
+    let mut h = H::new(7057);
+    for (cmd, params, says) in rows {
+        assert_eq!(h.run(cmd, params.clone()).err().as_deref(), Some(*says), "{cmd} {params}");
+    }
+}
+
+/// Rule refusals of the accessory commands keep their words.
+#[test]
+fn the_accessory_commands_keep_their_rule_words() {
+    let rows: &[(&str, Value, &str)] = &[
+        ("accessory", json!({"at": "start"}), "`strip` or `terminal` (hex id) is required"),
+        ("accessory", json!({"strip": "1", "at": "start", "add": ["end_stop"]}), "No such strip."),
+        ("accessory", json!({"terminal": "1", "at": "start", "add": ["end_stop"]}), "No such terminal."),
+        ("jumper", json!({}), "`strip` with `positions`, or `terminals`, is required"),
+        ("jumper", json!({"link": {"n": 1}}), "`strip` (hex id) is required"),
+        ("jumper", json!({"strip": "1", "positions": "1-2"}), "No such strip."),
+    ];
+    let mut h = H::new(7058);
+    for (cmd, params, says) in rows {
+        let e = h.run(cmd, params.clone()).err().unwrap_or_default();
+        assert!(e.starts_with(says), "{cmd} {params}: {e}");
+    }
+}
+
+/// The typed accessory commands still work, and answer as before.
+#[test]
+fn the_typed_accessory_commands_still_work() {
+    let mut h = H::new(7059);
+    for x in [0, 20, 40] {
+        assert!(h.run("wire", json!({"points": [[x, 0], [x, 100]]})).is_ok());
+    }
+    let f = h.run("terminals", json!({"from": [-10, 50], "to": [50, 50]})).unwrap_or(Value::Null);
+    let strip = f["strip"].clone();
+    let a = h.run("accessory", json!({"strip": strip, "at": "start", "add": ["end_stop"]})).unwrap_or_else(|e| json!(e));
+    assert_eq!((a["changed"].clone(), a["keys"][0]["items"].clone()), (json!(true), json!(["end_stop"])), "{a}");
+    let m = h.run("accessory", json!({"strip": strip, "at": "all", "on": true, "items": ["marker"]})).unwrap_or_else(|e| json!(e));
+    assert_eq!(m["keys"].as_array().map(Vec::len), Some(3), "{m}");
+    let none = h.run("accessory", json!({"strip": strip, "at": "all", "on": true, "items": null})).unwrap_or_else(|e| json!(e));
+    assert_eq!(none["keys"][0]["items"], json!([]), "{none}");
+    let l = h.run("jumper", json!({"strip": strip, "positions": "1-3"})).unwrap_or_else(|e| json!(e));
+    assert_eq!((l["link"].clone(), l["changed"].clone()), (json!(1), json!(true)), "{l}");
+    let e = h.run("jumper", json!({"link": {"strip": strip, "n": 1}, "remove": ["3"]})).unwrap_or_else(|e| json!(e));
+    assert_eq!(e["positions"], json!("1-2"), "{e}");
+    let d = h.run("jumper", json!({"link": {"strip": strip, "n": 1}, "delete": true})).unwrap_or_else(|e| json!(e));
+    assert_eq!((d["positions"].clone(), d["changed"].clone()), (Value::Null, json!(true)), "{d}");
 }
