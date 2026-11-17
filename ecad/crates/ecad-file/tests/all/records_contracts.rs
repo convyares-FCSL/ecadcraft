@@ -67,7 +67,7 @@ fn embedded_definitions_follow_the_owner_requirements() {
     for c in [f.c1, f.c2] {
         let doc = f.ledger.document();
         let (rid, rep) = doc.representations_of(Subject::Device(c)).next().map(|(i, r)| (i, r.clone())).unwrap();
-        for (w, cond) in doc.conductors.iter() {
+        for (w, cond) in doc.wires.iter() {
             for end in End::BOTH {
                 if let Some(t) = cond.end(end).filter(|t| doc.terminals[t].component == c) {
                     ops.push(Op::AttachEnd { conductor: *w, end, before: Some(t), after: None });
@@ -158,7 +158,7 @@ fn wiring_settings_and_bridges_are_written_only_when_set_and_round_trip() {
 /// read back exactly; a page without properties and default settings are written as before.
 #[test]
 fn sheet_records_round_trip_and_defaults_are_left_out() {
-    let plain = ecad_file::record::op_value(&Op::AddPage { id: PageId(1), page: Page::new("1"), index: 0 }).unwrap().to_string();
+    let plain = ecad_file::record::op_value(&Op::AddPage { id: PageId(1), page: Page::titled("1").unwrap(), index: 0 }).unwrap().to_string();
     assert!(!plain.contains("properties"), "{plain}");
     let defaults = ProjectSettings::default();
     let line = ecad_file::record::op_value(&Op::SetProjectSettings { before: defaults.clone(), after: defaults }).unwrap().to_string();
@@ -173,9 +173,10 @@ fn sheet_records_round_trip_and_defaults_are_left_out() {
     after.sheet = Some(SheetSpec::parse("A2 12x8 numbers letters").unwrap());
     after.page_number_step = Some(5);
     after.reference_style = Some(ReferenceStyle::PageColumn);
+    let page = f.ledger.document().pages[&f.page].clone();
     let ops = vec![
         Op::AddFolder { id: folder, folder: Folder { name: "Layouts".into(), parent: None }, index: 0 },
-        Op::SetProperty { object: ObjectRef::Page(f.page), key: "folder".into(), before: None, after: Some(folder.hex()) },
+        Op::ModifyPage { id: f.page, before: page.clone(), after: ecad_model::Page { folder: Some(folder), ..page } },
         Op::SetProperty { object: ObjectRef::Project, key: "title".into(), before: None, after: Some("P7".into()) },
         Op::SetProjectSettings { before, after: after.clone() },
     ];

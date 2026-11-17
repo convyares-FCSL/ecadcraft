@@ -177,7 +177,7 @@ fn comp_props(h: &mut H, c: DeviceId, prefix: &str) -> BTreeMap<String, String> 
 }
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.devices, &d.terminals, &d.conductors, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.properties, &d.settings)
+    (&d.devices, &d.terminals, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.properties, &d.settings)
 }
 
 fn textstyle_kind(v: &Value, kind: &str) -> Value {
@@ -279,7 +279,7 @@ fn tester_031_fixtures_build_and_store_no_text_keys() {
     let d = f.h.doc();
     assert!(d.properties.keys().all(|k| !k.starts_with("text.")));
     assert!(d.devices.values().all(|c| c.properties.keys().all(|k| !k.starts_with("text."))));
-    assert!(d.pages.values().all(|p| p.properties.keys().all(|k| !k.starts_with("text."))));
+    assert!(d.pages.values().all(|p| p.display.keys().all(|k| !k.starts_with("text."))));
     f.h.check();
 }
 
@@ -622,7 +622,7 @@ fn t5_levels_symbol_device_page_project_narrowest_wins() {
     // Where the keys live (FP1–FP3).
     let d = f.h.doc();
     assert_eq!(d.properties.get("text.tag.show").map(String::as_str), Some("no"));
-    assert_eq!(d.pages[&f.page].properties.get("text.tag.show").map(String::as_str), Some("yes"));
+    assert_eq!(d.pages[&f.page].display.get("text.tag.show").map(String::as_str), Some("yes"));
     assert_eq!(d.devices[&f.k1].properties.get("text.tag.show").map(String::as_str), Some("no"));
     let sym = format!("text.{}.tag.show", f.r1[1].hex());
     assert_eq!(d.devices[&f.k1].properties.get(&sym).map(String::as_str), Some("yes"), "{sym}");
@@ -683,8 +683,8 @@ fn t5_showtext_refusals() {
     refused(&mut f.h, "showtext", json!({"kind": "tag", "show": "off", "page": ghost}), "No page");
     refused(&mut f.h, "showtext", json!({"kind": "tag", "show": "off", "page": "zz"}), "");
     // A wire's representation is not a symbol.
-    let w: ecad_model::ConductorId = id(&f.h.run("wire", json!({"points": [[10, 10], [40, 10]]})).unwrap(), "conductor");
-    let wr = f.h.doc().representations_of(Subject::Conductor(w)).map(|(id, _)| id).next().unwrap();
+    let w: ecad_model::WireId = id(&f.h.run("wire", json!({"points": [[10, 10], [40, 10]]})).unwrap(), "conductor");
+    let wr = f.h.doc().representations_of(Subject::Wire(w)).map(|(id, _)| id).next().unwrap();
     refused(&mut f.h, "showtext", json!({"kind": "tag", "show": "off", "representation": wr.hex()}), "That representation is not a symbol.");
     // Two targets at once.
     refused(&mut f.h, "showtext", json!({"kind": "tag", "show": "off", "page": f.page.hex(), "component": f.k1.hex()}), "");

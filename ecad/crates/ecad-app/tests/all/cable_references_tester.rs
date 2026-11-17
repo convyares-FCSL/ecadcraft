@@ -281,10 +281,10 @@ fn tag_page(h: &mut Harness<'static, App>, page: PageId, name: &str) {
             ok(h, &format!(r#"setprop {{"component":"{}","key":"tag","value":"{name}"}}"#, c.hex()));
         }
     }
-    let wires: Vec<_> = d.conductors.iter().filter(|(_, c)| !c.properties.contains_key("tag")).map(|(k, _)| *k).collect();
+    let wires: Vec<_> = d.wires.iter().filter(|(_, c)| c.number.is_none()).map(|(k, _)| *k).collect();
     for w in wires {
         if let Some((a, _)) = ecad_model::derive::route_on_page(&d, w, page).and_then(|(_, p)| p.path_ends()) {
-            ok(h, &format!(r#"setprop {{"conductor":"{}","key":"tag","value":"W{}"}}"#, w.hex(), a.y));
+            ok(h, &format!(r#"wirenumber {{"conductor":"{}","value":"W{}"}}"#, w.hex(), a.y));
         }
     }
 }

@@ -20,8 +20,7 @@ use ecad_cadcraft::interact::{hover_lines, overlay_marks};
 use ecad_cadcraft::look::{self, MarkerEnd, Role, Shape};
 use ecad_cadcraft::views::{self, FanOnPage};
 use ecad_model::{
-    CableId, Color, ConductorId, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId, Style, Subject,
-    Transaction,
+    CableId, Color, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId, Style, Subject, Transaction, WireId,
 };
 use serde_json::{Value, json};
 
@@ -31,7 +30,7 @@ struct Fx {
     h: H,
     page: PageId,
     c1: CableId,
-    wires: [ConductorId; 4],
+    wires: [WireId; 4],
 }
 
 fn component(h: &mut H, page: PageId, line: &str, x: f64) {
@@ -55,8 +54,8 @@ fn fixture(right: bool) -> Fx {
     }
     let mut wires = Vec::new();
     for (i, y) in [0.0, 5.0, 10.0, 15.0].into_iter().enumerate() {
-        let w: ConductorId = id(&h.run("wire", json!({"points": [[0.0, y], [120.0, y]]})).unwrap(), "conductor");
-        h.run("setprop", json!({"conductor": w.hex(), "key": "tag", "value": format!("W{}", i + 1)})).unwrap();
+        let w: WireId = id(&h.run("wire", json!({"points": [[0.0, y], [120.0, y]]})).unwrap(), "conductor");
+        h.run("wirenumber", json!({"conductor": w.hex(), "value": format!("W{}", i + 1)})).unwrap();
         wires.push(w);
     }
     let c1: CableId = id(&h.run("cableslash", json!({"from": [58, -3], "to": [62, 18], "tag": "C1"})).unwrap(), "cable");
@@ -67,7 +66,7 @@ fn fixture(right: bool) -> Fx {
     Fx { h, page, c1, wires }
 }
 
-fn core(h: &mut H, w: ConductorId, core: Value) -> Result<Value, String> {
+fn core(h: &mut H, w: WireId, core: Value) -> Result<Value, String> {
     h.run("cablecore", json!({"conductor": w.hex(), "core": core}))
 }
 
@@ -327,8 +326,8 @@ fn m_hostile_core_input_is_refused() {
     let long = "é".repeat(32);
     assert_eq!(core(&mut f.h, f.wires[0], json!(long)).unwrap()["core"], json!(long));
     // A wire in no cable.
-    let loose: ConductorId = id(&f.h.run("wire", json!({"points": [[0, 60], [50, 60]]})).unwrap(), "conductor");
-    f.h.run("setprop", json!({"conductor": loose.hex(), "key": "tag", "value": "W9"})).unwrap();
+    let loose: WireId = id(&f.h.run("wire", json!({"points": [[0, 60], [50, 60]]})).unwrap(), "conductor");
+    f.h.run("wirenumber", json!({"conductor": loose.hex(), "value": "W9"})).unwrap();
     refused(&mut f.h, json!({"conductor": loose.hex(), "core": "1"}), "Wire W9 is not in a cable.");
     f.h.check();
 }
@@ -594,7 +593,7 @@ fn k_hover_and_trail_show_cores() {
     let lines = f.h.p(|p| hover_lines(p, uid, tail)).unwrap();
     assert_eq!(lines.get(1).map(String::as_str), Some("Core: 3 (W3)"), "{lines:?}");
     let doc = f.h.doc();
-    assert_eq!(ecad_cadcraft::debug::object_label(&doc, ecad_cadcraft::debug::ObjectId::Conductor(f.wires[2])), "W3 · core 3");
+    assert_eq!(ecad_cadcraft::debug::object_label(&doc, ecad_cadcraft::debug::ObjectId::Wire(f.wires[2])), "W3 · core 3");
     let snap = f.h.run("ecadinspect", json!({})).unwrap();
     assert!(snap.to_string().contains("\"core\":\"3\""), "ecadinspect shows the core");
 }
@@ -632,16 +631,17 @@ fn m_hostile_geometry_never_panics() {
     let mut wires = Vec::new();
     for i in 0..20 {
         let y = f64::from(i) * 5.0;
-        wires.push(id::<ConductorId>(&h.run("wire", json!({"points": [[0.0, y], [120.0, y]]})).unwrap(), "conductor"));
+        wires.push(id::<WireId>(&h.run("wire", json!({"points": [[0.0, y], [120.0, y]]})).unwrap(), "conductor"));
     }
-    h.run("setprop", json!({"conductor": wires[0].hex(), "key": "tag", "value": "x".repeat(1000)})).unwrap();
+    h.run("wirenumber", json!({"conductor": wires[0].hex(), "value": "x".repeat(24)})).unwrap();
     let k: CableId = id(&h.run("cableslash", json!({"from": [60, -3], "to": [60, 100]})).unwrap(), "cable");
     let cores: Vec<String> = (1..=20).map(|i| i.to_string()).collect();
     h.run("cablecore", json!({"cable": k.hex(), "cores": cores})).unwrap();
     view(&mut h, k, "fan");
     let f = fan(&mut h, page, k);
     assert_eq!((of_role(&f, Role::Bend).len(), of_role(&f, Role::Tail).len()), (40, 40));
-    let long = format!("{}…", "x".repeat(23));
+    // A wire number is at most 24 characters (design 072 §4.2): the longest is shown whole.
+    let long = "x".repeat(24);
     assert!(f.parts.iter().any(|p| matches!(&p.shape, Shape::Text { value, .. } if *value == long)));
     // Spines lie beyond every tail.
     for s in of_role(&f, Role::Spine).into_iter().map(path) {

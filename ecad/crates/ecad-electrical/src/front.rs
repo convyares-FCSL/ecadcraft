@@ -309,7 +309,7 @@ pub fn wire_rows(doc: &Document) -> Vec<(WireLine, EditedRow)> {
 fn generated_wire_lines(doc: &Document) -> Vec<WireLine> {
     let looks = crate::styles::wire::WireLooks::new(doc);
     let mut used: BTreeSet<StyleRef> = BTreeSet::new();
-    for c in doc.conductors.keys() {
+    for c in doc.wires.keys() {
         if let (Some(id), _) = looks.category(doc, *c) {
             used.insert(id);
         }
@@ -395,13 +395,13 @@ fn generated_cells(doc: &Document) -> Vec<Cell> {
 /// §6.6, design 052 FP8): each stored entry key as its code and description (`=F1 Pumps`), `?` for
 /// a key with no entry, naturally sorted, at most 200 of each.
 pub fn structure_codes(doc: &Document) -> (Vec<String>, Vec<String>) {
-    use crate::designations::{Aspect, Uses, code_of, description_property};
+    use crate::designations::{Aspect, Uses, code_of, description_of};
     let uses = Uses::of(doc);
     let list = |a: Aspect| {
         let shown: BTreeSet<String> = uses
             .keys(a)
             .take(200)
-            .map(|k| match (code_of(doc, a, k), doc.properties.get(&description_property(a, k)).filter(|d| !d.trim().is_empty())) {
+            .map(|k| match (code_of(doc, a, k), description_of(doc, a, k).filter(|d| !d.trim().is_empty())) {
                 (Some(code), Some(d)) => format!("{code} {d}"),
                 (Some(code), None) => code,
                 (None, _) => "?".to_string(),
@@ -461,7 +461,7 @@ pub fn touches(doc: &Document, ops: &[Op]) -> bool {
                 || key.starts_with(crate::revisions::PREFIX)
                 || key == crate::revisions::COLUMNS_KEY
                 || key == crate::revisions::PENDING_KEY
-                || (codes_on && (crate::designations::Aspect::of_property(key).is_some() || crate::designations::is_list_property(key)))
+                || (codes_on && crate::designations::Aspect::of_property(key).is_some())
         }
         Op::NameVersion { .. } | Op::UnnameVersion { .. } => true,
         // A text style's size changes the cover's texts; a wire category's name, colour or
@@ -474,6 +474,13 @@ pub fn touches(doc: &Document, ops: &[Op]) -> bool {
         Op::DeleteCable { .. } => doc.cables.is_empty(),
         Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Device(_), key, .. } => {
             codes_on && crate::designations::Aspect::of_property(key).is_some()
+        }
+        Op::ModifyProject { before, after } => {
+            codes_on && crate::designations::Aspect::ALL.into_iter().any(|a| crate::designations::shown_changed(before, after, a))
+        }
+        Op::ModifyPage { before, after, .. } => {
+            let ch = before.change(after);
+            codes_on && (ch.location || ch.function)
         }
         Op::CreateDevice { device: component, .. } | Op::DeleteDevice { device: component, .. } => {
             ecad_model::connectivity::continuation_key(&component.properties).is_some()
@@ -488,7 +495,7 @@ pub fn touches(doc: &Document, ops: &[Op]) -> bool {
 /// count crossed zero (the only change the wire-colour legend shows).
 #[derive(Debug, Clone, Default)]
 pub struct Uses {
-    of: std::collections::BTreeMap<ecad_model::ConductorId, Option<StyleRef>>,
+    of: std::collections::BTreeMap<ecad_model::WireId, Option<StyleRef>>,
     counts: std::collections::BTreeMap<StyleRef, usize>,
 }
 
@@ -497,21 +504,21 @@ impl Uses {
     pub fn build(doc: &Document) -> Uses {
         let looks = crate::styles::wire::WireLooks::new(doc);
         let mut u = Uses::default();
-        for c in doc.conductors.keys() {
+        for c in doc.wires.keys() {
             let k = looks.category(doc, *c).0;
             u.add(*c, k);
         }
         u
     }
 
-    fn add(&mut self, c: ecad_model::ConductorId, k: Option<StyleRef>) {
+    fn add(&mut self, c: ecad_model::WireId, k: Option<StyleRef>) {
         if let Some(k) = &k {
             *self.counts.entry(k.clone()).or_default() += 1;
         }
         self.of.insert(c, k);
     }
 
-    fn drop_one(&mut self, c: ecad_model::ConductorId) -> bool {
+    fn drop_one(&mut self, c: ecad_model::WireId) -> bool {
         let Some(Some(k)) = self.of.remove(&c) else { return false };
         let n = self.counts.entry(k.clone()).or_default();
         *n = n.saturating_sub(1);
@@ -547,19 +554,19 @@ impl Uses {
         }
         // The conductors whose category may have changed: those the ops name, the ones at the
         // terminals an end left or reached, and every conductor of their nets now.
-        let mut seeds: BTreeSet<ecad_model::ConductorId> = BTreeSet::new();
-        let mut gone: BTreeSet<ecad_model::ConductorId> = BTreeSet::new();
-        let at = |t: Option<ecad_model::TerminalId>, s: &mut BTreeSet<ecad_model::ConductorId>| {
+        let mut seeds: BTreeSet<ecad_model::WireId> = BTreeSet::new();
+        let mut gone: BTreeSet<ecad_model::WireId> = BTreeSet::new();
+        let at = |t: Option<ecad_model::TerminalId>, s: &mut BTreeSet<ecad_model::WireId>| {
             if let Some(t) = t {
                 s.extend(doc.ends_at(t).into_iter().map(|(c, _)| c));
             }
         };
         for op in ops {
             match op {
-                Op::CreateConductor { id, .. } | Op::SetProperty { object: ObjectRef::Conductor(id), .. } => {
+                Op::CreateWire { id, .. } | Op::ModifyWire { id, .. } | Op::SetProperty { object: ObjectRef::Wire(id), .. } => {
                     seeds.insert(*id);
                 }
-                Op::DeleteConductor { id, .. } => {
+                Op::DeleteWire { id, .. } => {
                     gone.insert(*id);
                 }
                 Op::AttachEnd { conductor, before, after, .. } => {
@@ -583,10 +590,10 @@ impl Uses {
             return false;
         }
         let conn = doc.connectivity();
-        let mut all: BTreeSet<ecad_model::ConductorId> = BTreeSet::new();
+        let mut all: BTreeSet<ecad_model::WireId> = BTreeSet::new();
         for c in &seeds {
             match conn.net_of_conductor(*c).and_then(|n| conn.net(n)) {
-                Some(net) => all.extend(net.conductors.iter().copied()),
+                Some(net) => all.extend(net.wires.iter().copied()),
                 None => {
                     all.insert(*c);
                 }
@@ -598,7 +605,7 @@ impl Uses {
         }
         let looks = crate::styles::wire::WireLooks::new(doc);
         for c in all {
-            if doc.conductors.contains_key(&c) {
+            if doc.wires.contains_key(&c) {
                 let k = looks.category(doc, c).0;
                 self.add(c, k);
             }

@@ -43,8 +43,8 @@ impl KindRow {
     /// Its accessible name's last word: `cover`, `terminals-graphic`.
     pub fn word(&self) -> String {
         match self.style {
-            Some(s) => format!("{}-{s}", self.kind.value()),
-            None => self.kind.value().to_string(),
+            Some(s) => format!("{}-{s}", ecad_model::Word::word(self.kind)),
+            None => ecad_model::Word::word(self.kind).to_string(),
         }
     }
 }
@@ -144,7 +144,7 @@ impl App {
         let Some(r) = pk.rows.get(row) else { return };
         let mut v = json!({"type": r.id.text()});
         if let Some(k) = kind.and_then(|k| r.kinds.get(k)) {
-            v["generated"] = json!(k.kind.value());
+            v["generated"] = json!(ecad_model::Word::word(k.kind));
             if let Some(s) = k.style {
                 v["style"] = json!(s);
             }

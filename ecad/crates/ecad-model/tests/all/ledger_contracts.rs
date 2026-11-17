@@ -1,8 +1,8 @@
 //! Contract tests for the ledger: TX-01..TX-04, UNDO-01..UNDO-03, SAVE-01/02, DOC-05..DOC-07.
 
 use ecad_model::{
-    Author, CableMember, Color, Conductor, Device, Document, End, IdAllocator, Item, ItemKind, Layer, Ledger, ModelError, Op, Page, PageId,
-    Primitive, Pt, Representation, Style, Subject, Terminal, TxKind,
+    Author, CableMember, Color, Device, Document, End, IdAllocator, Item, ItemKind, Layer, Ledger, ModelError, Op, Page, PageId, Primitive, Pt,
+    Representation, Style, Subject, Terminal, TxKind, Wire,
 };
 
 struct Fixture {
@@ -21,7 +21,7 @@ fn fixture() -> Fixture {
         .commit(
             Author::User,
             "New project",
-            vec![Op::AddPage { id: page, page: Page::new("1"), index: 0 }, Op::AddLayer { id: layer, layer: Layer { name: "0".into() } }],
+            vec![Op::AddPage { id: page, page: Page::titled("1").unwrap(), index: 0 }, Op::AddLayer { id: layer, layer: Layer { name: "0".into() } }],
         )
         .unwrap();
     Fixture { ids, ledger, page, layer }
@@ -59,7 +59,7 @@ fn every_op_inverts_to_the_previous_state() {
                 connection_points: [(term, Pt::new(1.0, 0.0))].into(),
             },
         },
-        Op::CreateConductor { id: cond, conductor: Conductor::default() },
+        Op::CreateWire { id: cond, conductor: Wire::default() },
         Op::AttachEnd { conductor: cond, end: End::B, before: None, after: Some(term) },
         Op::CreateCable { id: cable, cable: Default::default() },
         Op::AddCableMember { cable, index: 0, member: CableMember { conductor: cond, core: None } },
@@ -140,7 +140,7 @@ fn deleting_a_referenced_object_needs_explicit_detachment() {
             vec![
                 Op::CreateDevice { id: comp, device: Device::default() },
                 Op::AddTerminal { id: term, terminal: t.clone() },
-                Op::CreateConductor { id: cond, conductor: Conductor::default() },
+                Op::CreateWire { id: cond, conductor: Wire::default() },
                 Op::AttachEnd { conductor: cond, end: End::A, before: None, after: Some(term) },
             ],
         )
@@ -150,7 +150,7 @@ fn deleting_a_referenced_object_needs_explicit_detachment() {
     let mut with_detach = vec![Op::AttachEnd { conductor: cond, end: End::A, before: Some(term), after: None }];
     with_detach.extend(delete);
     f.ledger.commit(Author::User, "delete component", with_detach).unwrap();
-    assert!(f.ledger.document().conductors.contains_key(&cond), "the conductor survives with an open end");
+    assert!(f.ledger.document().wires.contains_key(&cond), "the conductor survives with an open end");
 }
 
 #[test]

@@ -24,7 +24,7 @@ use ecad_model::{
     Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId,
 };
 
-use ecad_model::{CableId, CableMember, Conductor, ConductorId, Noun};
+use ecad_model::{CableId, CableMember, Noun, Wire, WireId};
 
 use crate::CmdError;
 use crate::checks::{Check, Fix, Kind as CheckKind, Object};
@@ -823,7 +823,7 @@ pub fn land_pin(
             for op in &mut land.ops {
                 match op {
                     Op::AttachEnd { conductor, end: End::B, after, .. } if *conductor == c1 => *after = Some(keep_t),
-                    Op::CreateConductor { id, conductor } if *id == c2 => conductor.ends[0] = Some(rest_t),
+                    Op::CreateWire { id, conductor } if *id == c2 => conductor.ends[0] = Some(rest_t),
                     Op::ModifyItem { after, .. } => set_route_end(after, keep_p, false),
                     Op::AddItem { item, .. } if matches!(item.kind, ItemKind::Primitive(_)) => set_route_end(item, rest_p, true),
                     _ => {}
@@ -838,13 +838,11 @@ pub fn land_pin(
             for op in &mut land.ops {
                 match op {
                     Op::AttachEnd { conductor, end: End::B, after, .. } if *conductor == c1 && !keep_attached => *after = None,
-                    Op::CreateConductor { id, conductor } if *id == c2 => {
+                    Op::CreateWire { id, conductor } if *id == c2 => {
                         if keep_attached {
                             conductor.ends[0] = None;
                         }
-                        let number = conductor.properties.remove(ecad_model::connectivity::WIRE_NUMBER);
-                        let fixed = conductor.properties.remove(ecad_model::connectivity::WIRE_NUMBER_FIXED).is_some();
-                        dropped = number.map(|n| (n, fixed));
+                        dropped = conductor.number.take().map(|n| (n.text.to_string(), n.fixed));
                     }
                     Op::ModifyItem { after, .. } if keep_attached => set_route_end(after, pt, false),
                     Op::AddItem { item, .. } if !keep_attached && matches!(item.kind, ItemKind::Primitive(_)) => set_route_end(item, pt, true),
@@ -1430,11 +1428,11 @@ mod tests {
 pub struct Land {
     pub ops: Vec<Op>,
     /// The wire, which keeps end A and the route up to the terminal.
-    pub conductor: ConductorId,
+    pub conductor: WireId,
     /// The new second half, from the terminal to the old end B.
-    pub new: ConductorId,
+    pub new: WireId,
     /// The cable whose membership was decided, and which half keeps it.
-    pub cable: Option<(CableId, ConductorId, bool)>,
+    pub cable: Option<(CableId, WireId, bool)>,
     /// Brief 036: the stored wire number the second half of a two-point split did not keep
     /// (review M1: reported, never dropped silently), and whether it was fixed.
     pub dropped_number: Option<(String, bool)>,
@@ -1449,8 +1447,8 @@ pub struct Land {
 /// what to do instead.
 pub fn plan_land(doc: &Document, ids: &mut IdAllocator, page: PageId, on: OnWire, t: TerminalId) -> Result<Land, CmdError> {
     let c = on.conductor;
-    let cond = doc.conductors.get(&c).ok_or(CmdError::NotFound(Noun::Wire))?;
-    let pages: BTreeSet<PageId> = doc.representations_of(Subject::Conductor(c)).map(|(_, r)| r.page).collect();
+    let cond = doc.wires.get(&c).ok_or(CmdError::NotFound(Noun::Wire))?;
+    let pages: BTreeSet<PageId> = doc.representations_of(Subject::Wire(c)).map(|(_, r)| r.page).collect();
     if pages.len() > 1 {
         return Err(CmdError::refused(format!(
             "This wire is drawn on {} pages; place the terminal where the wire is drawn on one page, or on empty space and wire it.",
@@ -1493,16 +1491,15 @@ pub fn plan_land(doc: &Document, ids: &mut IdAllocator, page: PageId, on: OnWire
     ops.push(Op::ModifyItem { id: item_id, before: item.clone(), after: shortened });
     let old_b = cond.end(End::B);
     ops.push(Op::AttachEnd { conductor: c, end: End::B, before: old_b, after: Some(t) });
-    let (c2, i2, r2): (ConductorId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
-    ops.push(Op::CreateConductor { id: c2, conductor: Conductor { properties: cond.properties.clone(), ends: [Some(t), old_b] } });
+    let (c2, i2, r2): (WireId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
+    ops.push(Op::CreateWire { id: c2, conductor: Wire { ends: [Some(t), old_b], ..cond.clone() } });
     let mut second = item;
     second.kind = ItemKind::Primitive(path(&rest));
     ops.push(Op::AddItem { id: i2, item: second });
-    let role =
-        doc.representations_of(Subject::Conductor(c)).find(|(_, r)| r.page == page).map_or_else(|| "route".to_string(), |(_, r)| r.role.clone());
+    let role = doc.representations_of(Subject::Wire(c)).find(|(_, r)| r.page == page).map_or_else(|| "route".to_string(), |(_, r)| r.role.clone());
     ops.push(Op::LinkRepresentation {
         id: r2,
-        rep: Representation { subject: Subject::Conductor(c2), page, form: Form::Drawn, role, items: vec![i2], connection_points: BTreeMap::new() },
+        rep: Representation { subject: Subject::Wire(c2), page, form: Form::Drawn, role, items: vec![i2], connection_points: BTreeMap::new() },
     });
     // Cable membership (§3.1 step 3).
     let mut cable = None;

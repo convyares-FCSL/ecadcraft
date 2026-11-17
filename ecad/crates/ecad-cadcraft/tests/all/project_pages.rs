@@ -161,13 +161,13 @@ fn undo_and_redo_bring_the_page_they_change_to_the_front() {
     let spare = h.doc().page_order[2];
     h.activate(field);
     let w = h.run("wire", json!({"points": [[0, 0], [30, 0]]})).unwrap();
-    let wire: ecad_model::ConductorId = common::id(&w, "conductor");
+    let wire: ecad_model::WireId = common::id(&w, "conductor");
     let count = |h: &mut common::H| h.pv(|p, pg| pg.entities_of(p, field).len());
     let with_wire = count(&mut h);
     h.activate(spare);
     h.run("u", Value::Null).unwrap();
     assert_eq!(h.p(|p| p.active_page()), Some(field), "Field is brought to the front");
-    assert!(!h.doc().conductors.contains_key(&wire));
+    assert!(!h.doc().wires.contains_key(&wire));
     assert!(count(&mut h) < with_wire, "the wire is gone from the page shown");
     assert!(h.s.log.iter().any(|l| l == "Page 2 \"Field\" brought to the front."), "{:?}", h.s.log);
     h.run("redo", Value::Null).unwrap();

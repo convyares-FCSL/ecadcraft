@@ -21,7 +21,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::CmdError;
-use ecad_model::book::{self, Book, FOLDER_KEY, MAX_FOLDER_DEPTH, NUMBER_KEY};
+use ecad_model::book::{self, Book, MAX_FOLDER_DEPTH};
 use ecad_model::style::StyleLayer;
 use ecad_model::{Document, FolderId, ObjectRef, Op, PageId, StyleRef};
 use serde_json::{Value, json};
@@ -321,13 +321,10 @@ impl PageFix {
 /// type moved to or from such a type, such a page added or removed, a type record whose `checks`
 /// changed. Looked up in `doc` (call it on the state before and after).
 pub fn checks_changed(doc: &Document, ops: &[Op]) -> bool {
-    let off = |props: &ecad_model::Properties| !ecad_model::sheet::type_checks(doc, &ecad_model::sheet::page_type_of(doc, props));
-    let named_off = |v: &Option<String>| v.as_deref().and_then(StyleRef::parse).is_some_and(|id| !ecad_model::sheet::type_checks(doc, &id));
+    let off = |page: &ecad_model::Page| !ecad_model::sheet::type_checks(doc, &ecad_model::sheet::page_type_of(doc, page));
     ops.iter().any(|op| match op {
-        Op::SetProperty { object: ObjectRef::Page(_), key, before, after } if key == ecad_model::sheet::PAGE_TYPE_KEY => {
-            named_off(before) || named_off(after)
-        }
-        Op::AddPage { page, .. } | Op::RemovePage { page, .. } => off(&page.properties),
+        Op::ModifyPage { before, after, .. } => before.page_type != after.page_type && (off(before) || off(after)),
+        Op::AddPage { page, .. } | Op::RemovePage { page, .. } => off(page),
         Op::SetStyle { catalogue, before, after, .. } if catalogue == ptype::WORD => {
             let c = |r: &Option<ecad_model::StyleRecord>| r.as_ref().and_then(|r| r.fields.get("checks").cloned());
             c(before) != c(after)
@@ -340,9 +337,7 @@ pub fn checks_changed(doc: &Document, ops: &[Op]) -> bool {
 pub fn touches_checks(op: &Op) -> bool {
     match op {
         Op::SetProperty { object: ObjectRef::Project, key, .. } => is_start_key(key),
-        Op::SetProperty { object: ObjectRef::Page(_), key, .. } => {
-            key == FOLDER_KEY || key == NUMBER_KEY || key == ecad_model::sheet::PAGE_TYPE_KEY || key == generated::KEY
-        }
+        Op::ModifyPage { before, after, .. } => before.folder != after.folder || before.number != after.number || before.page_type != after.page_type,
         Op::AddPage { .. } | Op::RemovePage { .. } | Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => true,
         Op::SetProjectSettings { before, after } => before.page_number_step != after.page_number_step,
         Op::SetStyle { catalogue, .. } => catalogue == ptype::WORD,

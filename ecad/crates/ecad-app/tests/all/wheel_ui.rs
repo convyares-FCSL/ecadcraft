@@ -6,7 +6,7 @@ use cadcraft_engine::geom::Vec2;
 use ecad_app::App;
 use ecad_app::actions::ObjectKind;
 use ecad_app::shell::{Workspace, intent, tool_strip};
-use ecad_model::{ConductorId, DeviceId, PageId};
+use ecad_model::{DeviceId, PageId, WireId};
 use eframe::egui::{Event, Key, Modifiers, PointerButton, Pos2, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -71,7 +71,7 @@ fn pointer(h: &mut H, at: Pos2, button: PointerButton, pressed: bool) {
 struct F {
     h: H,
     k1: DeviceId,
-    wire: ConductorId,
+    wire: WireId,
     /// On `-K01`'s A2 lead, away from the wire; on its A1 (the wire's start).
     coil_at: Vec2,
     a1: Vec2,
@@ -98,7 +98,7 @@ fn fixture_with(deltas: Option<crate::mouse_tester::Deltas>) -> F {
     };
     let (a1, a2) = (pos("A1"), pos("A2"));
     let w = h.state_mut().cad.run("wire", json!({"points": [[a1.x, a1.y], [a1.x + 60.0, a1.y]]})).unwrap();
-    let wire = ConductorId(u128::from_str_radix(w["conductor"].as_str().unwrap(), 16).unwrap());
+    let wire = WireId(u128::from_str_radix(w["conductor"].as_str().unwrap(), 16).unwrap());
     let p2 = h.state_mut().cad.run("newpage", json!({"title": "Field"})).unwrap();
     let page2 = PageId(u128::from_str_radix(p2["page"].as_str().unwrap(), 16).unwrap());
     h.state_mut().show_page(page1).unwrap();
@@ -351,7 +351,7 @@ fn ctrl_k_finds_a_page_a_tag_a_symbol_and_an_action_and_runs_the_action() {
     let handles = {
         let t = h.state_mut();
         let p = t.project().unwrap().clone();
-        p.read(&mut t.cad.session, |p, _| ecad_cadcraft::checks::handles_of(p, page1, ecad_cadcraft::checks::Object::Conductor(wire))).unwrap()
+        p.read(&mut t.cad.session, |p, _| ecad_cadcraft::checks::handles_of(p, page1, ecad_cadcraft::checks::Object::Wire(wire))).unwrap()
     };
     h.state_mut().cad.session.set_selection(handles);
     keys(&mut h, Modifiers::COMMAND, Key::K);

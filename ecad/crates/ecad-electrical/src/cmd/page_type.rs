@@ -6,7 +6,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::book::{Book, NUMBER_KEY};
+use ecad_model::book::Book;
 use ecad_model::{Document, FolderId, ObjectRef, Op, PageId};
 
 use crate::error::{CmdError, msg};
@@ -108,11 +108,10 @@ pub fn plan_renumber(doc: &Document, outputs: Option<&Outputs>, scope: Option<Fo
     let overlaps = overlaps(doc, outputs).into_iter().map(|(a, b, n)| overlap_words(doc, a, b, n)).collect();
     let ops = pages
         .iter()
-        .map(|(page, n)| Op::SetProperty {
-            object: ObjectRef::Page(*page),
-            key: NUMBER_KEY.into(),
-            before: doc.pages.get(page).and_then(|x| x.properties.get(NUMBER_KEY)).cloned(),
-            after: Some(n.clone()),
+        .filter_map(|(page, n)| {
+            let before = doc.pages.get(page)?;
+            let after = ecad_model::Page { number: ecad_model::PageNo::parse(n), ..before.clone() };
+            (after != *before).then(|| Op::ModifyPage { id: *page, before: before.clone(), after })
         })
         .collect();
     Renumbered { ops, pages, overlaps }

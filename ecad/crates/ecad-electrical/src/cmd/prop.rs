@@ -336,7 +336,7 @@ pub fn value(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) 
 fn props_of(doc: &Document, o: ObjectRef) -> Option<&Properties> {
     match o {
         ObjectRef::Device(c) => doc.devices.get(&c).map(|x| &x.properties),
-        ObjectRef::Conductor(c) => doc.conductors.get(&c).map(|x| &x.properties),
+        ObjectRef::Wire(c) => doc.wires.get(&c).map(|x| &x.display),
         ObjectRef::Cable(c) => doc.cables.get(&c).map(|x| &x.properties),
         ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard => None,
     }

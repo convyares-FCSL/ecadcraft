@@ -12,7 +12,7 @@
 
 use std::fmt;
 
-use crate::id::{CableId, ConductorId, DeviceId, PageId};
+use crate::id::{CableId, DeviceId, PageId, WireId};
 
 /// Where a stored word was found.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -25,7 +25,7 @@ pub enum WordPlace {
     Standard,
     Page(PageId),
     Device(DeviceId),
-    Wire(ConductorId),
+    Wire(WireId),
     Cable(CableId),
 }
 

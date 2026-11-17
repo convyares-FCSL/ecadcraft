@@ -442,7 +442,7 @@ pub fn landings(doc: &Document, page: PageId, s: &Starter, members: &[crate::sla
 /// As [`crate::connectors::plan_land`].
 pub fn land_cell(doc: &Document, ids: &mut IdAllocator, page: PageId, on: crate::wires::OnWire, t: TerminalId) -> Result<Vec<Op>, CmdError> {
     let land = crate::connectors::plan_land(doc, ids, page, on, t)?;
-    let Some(cond) = doc.conductors.get(&land.conductor) else { return Ok(land.ops) };
+    let Some(cond) = doc.wires.get(&land.conductor) else { return Ok(land.ops) };
     if !doc.cables_of(land.conductor).is_empty() {
         return Ok(land.ops);
     }
@@ -456,7 +456,7 @@ pub fn land_cell(doc: &Document, ids: &mut IdAllocator, page: PageId, on: crate:
         .ops
         .iter()
         .filter_map(|op| match op {
-            Op::LinkRepresentation { rep, .. } if rep.subject == Subject::Conductor(new) => Some(rep.items.clone()),
+            Op::LinkRepresentation { rep, .. } if rep.subject == Subject::Wire(new) => Some(rep.items.clone()),
             _ => None,
         })
         .flatten()
@@ -468,9 +468,9 @@ pub fn land_cell(doc: &Document, ids: &mut IdAllocator, page: PageId, on: crate:
     let mut out = Vec::with_capacity(land.ops.len());
     for op in land.ops {
         match op {
-            Op::CreateConductor { id, .. } if id == new => {}
+            Op::CreateWire { id, .. } if id == new => {}
             Op::AddItem { id, .. } if new_items.contains(&id) => {}
-            Op::LinkRepresentation { rep, .. } if rep.subject == Subject::Conductor(new) => {}
+            Op::LinkRepresentation { rep, .. } if rep.subject == Subject::Wire(new) => {}
             // End A's side is the loose one: the wire keeps its own ID, now drawn along the far
             // side, its end A on the point and its end B where it was.
             Op::ModifyItem { id, before, mut after } if a_loose && id_of_route(doc, land.conductor, page) == Some(id) => {
@@ -489,7 +489,7 @@ pub fn land_cell(doc: &Document, ids: &mut IdAllocator, page: PageId, on: crate:
 }
 
 /// The item drawing wire `c`'s route on `page`.
-fn id_of_route(doc: &Document, c: ecad_model::ConductorId, page: PageId) -> Option<ItemId> {
+fn id_of_route(doc: &Document, c: ecad_model::WireId, page: PageId) -> Option<ItemId> {
     crate::wires::route_vertices(doc, c, page).map(|(id, _, _)| id)
 }
 
@@ -552,7 +552,7 @@ pub fn channel_words(doc: &Document, c: DeviceId, i: u32) -> String {
 /// 20 mm apart, or place compact di symbols.` Wires exactly one width apart give abutting cells.
 pub fn spacing_refusal(doc: &Document, s: &Starter, t: CardType, members: &[crate::slash::Crossing]) -> Option<String> {
     let (w, _) = crate::symbols::cell_shape(s.key)?;
-    let mut at: Vec<(f64, f64, ecad_model::ConductorId)> = members.iter().map(|m| (m.at.x, m.at.y, m.conductor)).collect();
+    let mut at: Vec<(f64, f64, ecad_model::WireId)> = members.iter().map(|m| (m.at.x, m.at.y, m.conductor)).collect();
     at.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
     for pair in at.windows(2) {
         let (Some(a), Some(b)) = (pair.first(), pair.get(1)) else { continue };
@@ -584,7 +584,7 @@ fn fmt_mm(v: f64) -> String {
 }
 
 /// A wire in a sentence that already says "Wires": its number, without a leading `wire `.
-fn wire_words(doc: &Document, c: ecad_model::ConductorId) -> String {
+fn wire_words(doc: &Document, c: ecad_model::WireId) -> String {
     let n = crate::slash::wire_name(doc, c);
     n.strip_prefix("wire ").map(str::to_string).unwrap_or(n)
 }

@@ -112,7 +112,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStyle
             let net = project.read(&mut s, |p, _| {
                 let doc = p.ledger.document();
                 doc.representations_on(page).find_map(|(_, r)| match r.subject {
-                    Subject::Conductor(c) => Some(c),
+                    Subject::Wire(c) => Some(c),
                     _ => None,
                 })
             })?;

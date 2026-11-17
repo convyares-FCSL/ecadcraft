@@ -123,3 +123,55 @@ cargo test -p ecad-cadcraft --test all lane_072b
 cargo test -p ecad-inspector --test all lane_072b
 cargo test -p ecad-mcp --test all lane_072b
 ```
+
+## Lane D: wires carry typed values
+
+A conductor is now a **wire** in code and files (`Wire`, ops `CreateWire`, `DeleteWire` and the
+new `ModifyWire`). A wire stores its values as fields, not free text: its size (`2.5` mm² or
+`18 AWG`), its colours as an ordered list of IEC 60757 colours (green/yellow is `GN/YE`, never one
+colour of its own), its wire number with its fixed flag, its potential, its rating inputs (basis,
+manual Iz, bundling) and its load.
+
+- Typing is lenient: `2.5 mm²`, `awg 18`, `GNYE`, `green/yellow` and `BLU` are all read. What is
+  stored is one form only; a file holding any other form, or a value out of its bounds, opens
+  read-only.
+- `setprop` on a wire takes `size`, `colours` and the rating keys; any other key (`tag`, a free
+  note) is refused: a wire has no free properties. Its number and potential still belong to its
+  net (`wirenumber`, `potential`).
+- Labels write two-colour wires with a slash: `GN/YE` (three-letter style `GRN/YEL`).
+- Projects saved before this lane do not open (no compatibility before 1.0): regenerate them.
+
+### Try it
+
+1. Draw a wire between two connection points and select it.
+2. In the wire's properties, set Cross-section to `2.5 mm²` and Colour to `GNYE`: the label shows
+   `… 2.5 GN/YE`.
+3. Type `thick` as the cross-section: it is refused with the forms it takes.
+4. Open the project in the inspector: the wire's row shows its size, colours, potential and
+   rating values, and the last transaction reads `ModifyWire`.
+
+The headless tests `lanes::lane_072d` in ecad-model, ecad-mcp and ecad-inspector cover these
+steps; nobody has tried them by hand yet.
+
+## Lane E, step 1: typed pages (design 072 §5.1)
+
+A page's title, number, folder, kind, page type, sheet and borrowed title block are fields of the
+page now, not keys in its property bag. Renaming, renumbering, moving to another folder or
+setting a page's sheet or type records one `ModifyPage`. A generated page's kind is fixed when it
+is made: a terminal plan of every strip, or of one strip.
+
+- Nothing should look different: page numbers, folders, the Pages panel, the title block and
+  references follow every change as before.
+- A file whose page holds one of the old keys (`number`, `folder`, `sheet`, `title_block`,
+  `generated`, `strip`, `page.type`) in its property bag opens read-only and names the key.
+- The inspector's Pages view shows each page's kind, page type, sheet and title block.
+
+### Try it
+
+1. Make a page, rename it from the Pages panel, set its number and sheet in its properties, and
+   move it into a folder: each is one undo step, and the title block follows.
+2. New page ▸ Terminal plan, once with no strip and once for one strip: both show their strips.
+3. Open the project in the inspector: the Pages view lists the kinds.
+
+Tests: `lanes::lane_072e` in ecad-model, ecad-file and ecad-mcp. Agent-observed only; nobody has
+tried these steps by hand yet.

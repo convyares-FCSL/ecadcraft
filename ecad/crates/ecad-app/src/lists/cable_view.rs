@@ -101,7 +101,7 @@ impl crate::App {
             let place = match open.end {
                 Some((c, end)) => {
                     let (page, at) = ecad_cadcraft::checks::conductor_place(doc, c, Some(end));
-                    (page, at, Object::Conductor(c))
+                    (page, at, Object::Wire(c))
                 }
                 None => {
                     let (page, at) =

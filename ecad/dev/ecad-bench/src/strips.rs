@@ -55,7 +55,7 @@ use std::time::Instant;
 use cadcraft_engine::Session;
 use ecad_cadcraft::ProjectHandle;
 use ecad_model::{
-    Author, CableId, CableMember, ConductorId, DeviceId, End, Item, ItemKind, ObjectRef, Op, PageId, Primitive, Pt, Representation, Subject,
+    Author, CableId, CableMember, DeviceId, End, Item, ItemKind, ObjectRef, Op, PageId, Primitive, Pt, Representation, Subject, WireId,
 };
 use serde_json::json;
 
@@ -139,8 +139,8 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
         for page in &pages {
             for i in 0..TERMINALS {
                 let x = X0 + PITCH * i as f64;
-                let (w, it, r): (ConductorId, ecad_model::ItemId, ecad_model::RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
-                ops.push(Op::CreateConductor { id: w, conductor: Default::default() });
+                let (w, it, r): (WireId, ecad_model::ItemId, ecad_model::RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
+                ops.push(Op::CreateWire { id: w, conductor: Default::default() });
                 ops.push(Op::AddItem {
                     id: it,
                     item: Item {
@@ -152,7 +152,7 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
                 ops.push(Op::LinkRepresentation {
                     id: r,
                     rep: Representation {
-                        subject: Subject::Conductor(w),
+                        subject: Subject::Wire(w),
                         page: *page,
                         form: ecad_model::Form::Drawn,
                         role: "route".into(),
@@ -181,11 +181,11 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
             let mut ops = f.ops;
             for pair in f.placed.chunks(5) {
                 let (Some(a), Some(b)) = (pair.first(), pair.get(1)) else { continue };
-                let (w, it, r): (ConductorId, ecad_model::ItemId, ecad_model::RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
+                let (w, it, r): (WireId, ecad_model::ItemId, ecad_model::RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
                 let ia = f.placed.iter().position(|x| x.0 == a.0).unwrap_or(0) as f64;
                 let (xa, xb) = (X0 + PITCH * ia, X0 + PITCH * (ia + 1.0));
                 let route = ecad_cadcraft::terminal_cmds::staple(Pt::new(xa, 100.0), Pt::new(xb, 100.0));
-                ops.push(Op::CreateConductor { id: w, conductor: Default::default() });
+                ops.push(Op::CreateWire { id: w, conductor: Default::default() });
                 ops.push(Op::AddItem {
                     id: it,
                     item: Item {
@@ -197,7 +197,7 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
                 ops.push(Op::LinkRepresentation {
                     id: r,
                     rep: Representation {
-                        subject: Subject::Conductor(w),
+                        subject: Subject::Wire(w),
                         page: *page,
                         form: ecad_model::Form::Drawn,
                         role: "route".into(),
@@ -209,7 +209,7 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
                 ops.push(Op::AttachEnd { conductor: w, end: End::B, before: None, after: Some(b.0) });
             }
             // Half the outside halves (the second halves) as two-core cables.
-            let halves: Vec<ConductorId> = f.placed.iter().take(TERMINALS / 2).map(|x| x.3).collect();
+            let halves: Vec<WireId> = f.placed.iter().take(TERMINALS / 2).map(|x| x.3).collect();
             for two in halves.chunks(2) {
                 let k: CableId = p.ids.fresh();
                 let mut cable = ecad_model::Cable::default();
@@ -464,9 +464,9 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
             .read(&mut s, |p, _| {
                 let doc = p.ledger.document();
                 doc.representations_on(page1).find_map(|(_, r)| {
-                    let Subject::Conductor(w) = r.subject else { return None };
+                    let Subject::Wire(w) = r.subject else { return None };
                     let (a, _) = ecad_model::derive::route_ends_on(doc, w, page1)?;
-                    (a.near(Pt::new(X0, 200.0), 1e-6) && doc.conductors.get(&w)?.end(End::A).is_none()).then_some(w)
+                    (a.near(Pt::new(X0, 200.0), 1e-6) && doc.wires.get(&w)?.end(End::A).is_none()).then_some(w)
                 })
             })?
             .ok_or("no wire end at the lamp")?;

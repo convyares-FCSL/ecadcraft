@@ -22,7 +22,7 @@
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
 use ecad_electrical::cmd::default::{self as rules, Given, Objects};
-use ecad_model::{ConductorId, DeviceId, Document, Op, PageId, RepresentationId};
+use ecad_model::{DeviceId, Document, Op, PageId, RepresentationId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -77,7 +77,7 @@ pub fn line(key: &str, level: Level, target: Target, value: Option<&str>) -> Str
         Target::Project => {}
         Target::Page(pg) => p["page"] = json!(pg.hex()),
         Target::Device(c) => p["component"] = json!(c.hex()),
-        Target::Conductor(c) => p["conductor"] = json!(c.hex()),
+        Target::Wire(c) => p["conductor"] = json!(c.hex()),
         Target::Symbol(r) => p["representation"] = json!(r.hex()),
     }
     match value {
@@ -105,7 +105,7 @@ pub(crate) struct SetdefaultParams {
     component: Option<DeviceId>,
     /// The object level: a wire.
     #[serde(default)]
-    conductor: Option<ConductorId>,
+    conductor: Option<WireId>,
     /// The object level: a symbol.
     #[serde(default)]
     representation: Option<RepresentationId>,
@@ -162,7 +162,7 @@ impl Command for SetdefaultParams {
                 Target::Project => Scope::project(),
                 Target::Page(pg) => Scope::page(pg),
                 Target::Device(c) => Scope::component(c),
-                Target::Conductor(c) => Scope { conductor: Some(c), ..Scope::project() },
+                Target::Wire(c) => Scope { conductor: Some(c), ..Scope::project() },
                 Target::Symbol(r) => Scope::symbol(doc, r),
             };
             let mut v = crate::cmd::text::entry_json(doc, entry, at);

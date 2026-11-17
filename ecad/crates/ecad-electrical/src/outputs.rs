@@ -19,7 +19,7 @@
 //! | `SetProperty(Page P, location)`, `AddPage` / `RemovePage` of P | conductors routed on P (their Page cell); no device row |
 //! | `SetProperty(Page P, number)` | conductors routed on P |
 //! | `SetProperty(Project, designation.<a>.<key>.code)` (a rename in the list, brief 052) | the devices, connectors and items storing that key (the one wide case, by intent) |
-//! | `CreateConductor` / `DeleteConductor` / `AttachEnd` / `SetProperty` conductor / route ops | that conductor and its net's conductors (before and after); their cables |
+//! | `CreateWire` / `DeleteWire` / `AttachEnd` / `SetProperty` conductor / route ops | that conductor and its net's conductors (before and after); their cables |
 //! | `CreateCable` / `DeleteCable` / members / `SetProperty` cable | that cable; its cores |
 //! | `SetProperty` of a continuation's `name` (brief 032) | the cables with a member attached to its old or new name group: their core chains |
 //! | `SetProjectSettings` changing the potentials table | conductors on the potentials whose row changed (potential index); with a row added or removed, also those with no potential |
@@ -35,8 +35,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::book::{LOCATION_KEY, NUMBER_KEY};
-use ecad_model::{CableId, ConductorId, DeviceId, Document, ObjectRef, Op, PageId, Pt, RepresentationId, Subject};
+use ecad_model::{CableId, DeviceId, Document, ObjectRef, Op, PageId, Pt, RepresentationId, Subject, WireId};
 use serde_json::{Value, json};
 
 use crate::bom::{self, Qty};
@@ -81,9 +80,9 @@ impl PageCx {
 
 /// Where conductor `w`'s two ends are drawn: end A at its first route's first vertex, end B at
 /// its last route's last vertex, routes in book order.
-pub fn end_points(doc: &Document, w: ConductorId, cx: &PageCx) -> [Option<(PageId, Pt)>; 2] {
+pub fn end_points(doc: &Document, w: WireId, cx: &PageCx) -> [Option<(PageId, Pt)>; 2] {
     let mut routes: Vec<(usize, Vec<Pt>, PageId)> = doc
-        .representations_of(Subject::Conductor(w))
+        .representations_of(Subject::Wire(w))
         .filter_map(|(_, r)| {
             let pts = r.items.iter().filter_map(|i| doc.items.get(i)).find_map(|i| match &i.kind {
                 ecad_model::ItemKind::Primitive(ecad_model::Primitive::Polyline { vertices, .. }) => Some(vertices.clone()),
@@ -242,7 +241,7 @@ impl EndCell {
 /// One conductor as the wire report shows it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WireRow {
-    pub conductor: ConductorId,
+    pub conductor: WireId,
     pub wire_number: Option<String>,
     pub from: EndCell,
     pub to: EndCell,
@@ -284,11 +283,11 @@ pub struct CableRow {
     pub count: crate::strips::CoreCount,
     /// The first member of each core chain (design 032 §3.2; one member per chain without
     /// continuations), in member order, for the over and twice go-tos.
-    pub members: Vec<ConductorId>,
+    pub members: Vec<WireId>,
     /// Their stored core labels, in member order.
     pub member_cores: Vec<Option<String>>,
     /// Brief 032: the last member of each core chain (its To), aligned with `members`.
-    pub tails: Vec<ConductorId>,
+    pub tails: Vec<WireId>,
     /// The devices and strips at its cores' ends in its From and To locations (design 028 §6.3).
     pub from_devices: Vec<String>,
     pub to_devices: Vec<String>,
@@ -442,7 +441,7 @@ pub struct Scope {
     devices: BTreeSet<DeviceId>,
     pages: BTreeSet<PageId>,
     route_pages: BTreeSet<PageId>,
-    conductors: BTreeSet<ConductorId>,
+    wires: BTreeSet<WireId>,
     cables: BTreeSet<CableId>,
     project_location: bool,
     /// Brief 052: entry keys of the project's list whose code changed.
@@ -472,7 +471,7 @@ impl Scope {
             && self.devices.is_empty()
             && self.pages.is_empty()
             && self.route_pages.is_empty()
-            && self.conductors.is_empty()
+            && self.wires.is_empty()
             && self.cables.is_empty()
             && self.potentials.is_empty()
             && !self.sheet
@@ -491,8 +490,8 @@ impl Scope {
             Subject::Device(c) => {
                 self.devices.insert(c);
             }
-            Subject::Conductor(w) => {
-                self.conductors.insert(w);
+            Subject::Wire(w) => {
+                self.wires.insert(w);
             }
             Subject::Cable(k) => {
                 self.cables.insert(k);
@@ -528,16 +527,26 @@ impl Scope {
                         self.cables.extend(continuation_group_cables(doc, *c));
                     }
                 }
-                Op::SetProperty { object: ObjectRef::Conductor(w), .. } => {
-                    self.conductors.insert(*w);
+                Op::SetProperty { object: ObjectRef::Wire(w), .. } | Op::ModifyWire { id: w, .. } => {
+                    self.wires.insert(*w);
                 }
                 Op::SetProperty { object: ObjectRef::Cable(k), .. } => {
                     self.cables.insert(*k);
                 }
-                Op::SetProperty { object: ObjectRef::Page(_), key, .. } if key == LOCATION_KEY => {}
-                Op::SetProperty { object: ObjectRef::Page(p), key, .. } => {
-                    if key == NUMBER_KEY {
-                        self.route_pages.insert(*p);
+                Op::SetProperty { object: ObjectRef::Page(_), .. } => {}
+                Op::ModifyProject { before, after } => {
+                    use crate::designations::{Aspect, changed_codes, default_key};
+                    // Brief 047: an item without its own location shows the project's.
+                    if default_key(before, Aspect::Location) != default_key(after, Aspect::Location) {
+                        self.project_location = true;
+                    }
+                    // Brief 052: a rename in the project's list re-keys its users' rows.
+                    for a in Aspect::ALL {
+                        for k in changed_codes(before, after, a) {
+                            // Brief 059: the cables planning an end there show its new code.
+                            self.cables.extend(crate::cables::planning(doc, &k));
+                            self.renamed.insert(k);
+                        }
                     }
                 }
                 // Brief 050a: a standard's value of a registry key reaches the same views.
@@ -545,16 +554,6 @@ impl Scope {
                     // Brief 050b: the project's or standard's wire category reaches every wire row.
                     if key == ecad_model::wiring::WIRE_CATEGORY {
                         self.all_wires = true;
-                    }
-                    // Brief 047: an item without its own location shows the project's.
-                    if key == LOCATION_KEY {
-                        self.project_location = true;
-                    }
-                    // Brief 052: a rename in the project's list re-keys its users' rows.
-                    if let Some((_, k, true)) = crate::designations::parse_list_property(key) {
-                        self.renamed.insert(k.to_string());
-                        // Brief 059: the cables planning an end there show its new code.
-                        self.cables.extend(crate::cables::planning(doc, k));
                     }
                     // Brief 036: the registry's `terminal.*` defaults reach strips the same way.
                     if key.starts_with("strip_") || key.starts_with("terminal.") {
@@ -574,8 +573,8 @@ impl Scope {
                 // and after), and every wire when it is the project's or standard's choice.
                 Op::SetStyle { catalogue, id, before, after, .. } if catalogue == "wire" => {
                     for (_, o) in crate::styles::explicit_users(doc, "wire", id) {
-                        if let ObjectRef::Conductor(c) = o {
-                            self.conductors.insert(c);
+                        if let ObjectRef::Wire(c) = o {
+                            self.wires.insert(c);
                         }
                     }
                     for r in [before, after].into_iter().flatten() {
@@ -599,7 +598,7 @@ impl Scope {
                 Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
                     self.devices.insert(terminal.component);
                     // Brief 028: a relabelled terminal (Remove + Add of one ID) renames its wires' ends.
-                    self.conductors.extend(doc.ends_at(*id).into_iter().map(|(w, _)| w));
+                    self.wires.extend(doc.ends_at(*id).into_iter().map(|(w, _)| w));
                 }
                 Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => self.subject(doc, rep.subject, rep.page),
                 Op::ModifyRepresentation { before, after, .. } => {
@@ -611,15 +610,15 @@ impl Scope {
                         self.subject(doc, r.subject, r.page);
                     }
                 }
-                Op::CreateConductor { id, .. } | Op::DeleteConductor { id, .. } | Op::AttachEnd { conductor: id, .. } => {
-                    self.conductors.insert(*id);
+                Op::CreateWire { id, .. } | Op::DeleteWire { id, .. } | Op::AttachEnd { conductor: id, .. } => {
+                    self.wires.insert(*id);
                 }
                 Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
                     self.cables.insert(*id);
                 }
                 Op::AddCableMember { cable, member, .. } | Op::RemoveCableMember { cable, member, .. } => {
                     self.cables.insert(*cable);
-                    self.conductors.insert(member.conductor);
+                    self.wires.insert(member.conductor);
                 }
                 Op::SetProjectSettings { before, after } => {
                     let rows = |w: &ecad_model::wiring::WiringSettings| -> BTreeMap<String, ecad_model::wiring::PotentialDef> {
@@ -641,6 +640,17 @@ impl Scope {
                     self.pages.insert(*id);
                     self.route_pages.insert(*id);
                 }
+                // Design 072 §5.1: a page changed in place; its number and title are where rows
+                // say they are.
+                Op::ModifyPage { id, before, after } => {
+                    if before.title != after.title || before.folder != after.folder {
+                        self.pages.insert(*id);
+                        self.route_pages.insert(*id);
+                    }
+                    if before.number != after.number {
+                        self.route_pages.insert(*id);
+                    }
+                }
                 Op::EmbedDefinition { .. }
                 | Op::RemoveDefinition { .. }
                 | Op::AddLayer { .. }
@@ -655,12 +665,12 @@ impl Scope {
         // Net mates: a wire's number and potential are its net's (brief 022).
         let conn = doc.connectivity();
         let mut mates = BTreeSet::new();
-        for w in &self.conductors {
+        for w in &self.wires {
             if let Some(net) = conn.net_of_conductor(*w).and_then(|id| conn.net(id)) {
-                mates.extend(net.conductors.iter().copied());
+                mates.extend(net.wires.iter().copied());
             }
         }
-        self.conductors.extend(mates);
+        self.wires.extend(mates);
         // Brief 052 (design 052 §8.2a): the users of a renamed entry, the one wide case.
         if !self.renamed.is_empty() {
             for (c, x) in &doc.devices {
@@ -696,7 +706,7 @@ fn continuation_group_cables(doc: &Document, c: DeviceId) -> BTreeSet<CableId> {
 
 /// 032: the members standing for `cable`'s core chains (design 032 §3.2), in member order, each
 /// with the first stored core label along its chain, and each chain's last member.
-fn chain_heads(doc: &Document, k: CableId, cab: &ecad_model::Cable) -> (Vec<ecad_model::CableMember>, Vec<ConductorId>) {
+fn chain_heads(doc: &Document, k: CableId, cab: &ecad_model::Cable) -> (Vec<ecad_model::CableMember>, Vec<WireId>) {
     let chains = crate::references::core_chains(doc, k);
     let mut heads = Vec::with_capacity(chains.len());
     let mut tails = Vec::with_capacity(chains.len());

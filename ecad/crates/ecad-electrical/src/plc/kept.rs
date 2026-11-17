@@ -198,8 +198,8 @@ impl Plc {
                     Some(Subject::Device(c)) if self.cards.contains_key(&c) => {
                         out.insert(c);
                     }
-                    Some(Subject::Conductor(w)) => {
-                        let ends = doc.conductors.get(&w).map(|x| x.ends).unwrap_or_default();
+                    Some(Subject::Wire(w)) => {
+                        let ends = doc.wires.get(&w).map(|x| x.ends).unwrap_or_default();
                         out.extend(
                             ends.iter().flatten().filter_map(|t| doc.terminals.get(t)).map(|x| x.component).filter(|c| self.cards.contains_key(c)),
                         );
@@ -254,7 +254,7 @@ impl Plc {
                 Op::ModifyDevice { id: c, before, after } if before.tag != after.tag && !self.cards.contains_key(c) => {
                     self.rows_changed.extend(iolist::cards_on_nets_of(doc, self, Some(*c), None));
                 }
-                Op::SetProperty { object: ObjectRef::Conductor(w), .. } => {
+                Op::SetProperty { object: ObjectRef::Wire(w), .. } | Op::ModifyWire { id: w, .. } => {
                     self.rows_changed.extend(iolist::cards_on_nets_of(doc, self, None, Some(*w)));
                 }
                 // Review of #84, 2: a terminal relabelled (renumber, `termlabel`) or added, on the

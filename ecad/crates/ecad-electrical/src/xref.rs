@@ -30,7 +30,7 @@
 //! | `ModifyItem` / `RemoveItem` of an item of a component's representation | that component |
 //! | the same of a conductor route | the components at the conductor's ends (a table under `auto` follows the rail its coil's wire meets) |
 //! | `LinkRepresentation` / `UnlinkRepresentation` / `ModifyRepresentation` | the component it shows, or the components at its conductor's ends |
-//! | `AttachEnd`, `CreateConductor`, `DeleteConductor` | the components at the ends before and after |
+//! | `AttachEnd`, `CreateWire`, `DeleteWire` | the components at the ends before and after |
 //! | `AddTerminal` / `RemoveTerminal` | that component (its labels) |
 //! | `CreateDevice` / `DeleteDevice` | that component |
 //! | `SetProperty` component `contacts` or `mirror` | that component |
@@ -1470,7 +1470,7 @@ impl RefIndex {
                 // Brief 049: an arrow's name group.
                 out.extend(crate::continuations::name_of(doc, c).and_then(|n| crate::continuations::group_key(doc, &n)));
             }
-            Subject::Conductor(_) => {}
+            Subject::Wire(_) => {}
         };
         for op in ops {
             match op {
@@ -1624,8 +1624,8 @@ struct Scope {
 impl Scope {
     /// Add what `ops` name, looked up in `doc` (called on the state before and after).
     fn collect(&mut self, doc: &Document, idx: &RefIndex, ops: &[Op]) {
-        let ends = |s: &mut Scope, w: ecad_model::ConductorId| {
-            if let Some(c) = doc.conductors.get(&w) {
+        let ends = |s: &mut Scope, w: ecad_model::WireId| {
+            if let Some(c) = doc.wires.get(&w) {
                 for t in c.ends.iter().flatten() {
                     if let Some(x) = doc.terminals.get(t) {
                         s.devices.insert(x.component);
@@ -1637,7 +1637,7 @@ impl Scope {
             Subject::Device(c) => {
                 s.devices.insert(c);
             }
-            Subject::Conductor(w) => ends(s, w),
+            Subject::Wire(w) => ends(s, w),
             Subject::Cable(_) => {}
         };
         let mut moved = false;
@@ -1661,7 +1661,7 @@ impl Scope {
                         }
                     }
                 }
-                Op::CreateConductor { conductor, .. } | Op::DeleteConductor { conductor, .. } => {
+                Op::CreateWire { conductor, .. } | Op::DeleteWire { conductor, .. } => {
                     for t in conductor.ends.iter().flatten() {
                         if let Some(x) = doc.terminals.get(t) {
                             self.devices.insert(x.component);
@@ -1677,10 +1677,14 @@ impl Scope {
                 Op::SetProperty { object: ObjectRef::Device(c), key, .. } if key == CONTACTS_KEY || key == MIRROR_KEY => {
                     self.devices.insert(*c);
                 }
-                Op::SetProperty { object: ObjectRef::Page(p), key, .. }
-                    if key == ecad_model::book::NUMBER_KEY || key == ecad_model::sheet::SHEET_KEY || key == ecad_model::sheet::PAGE_TYPE_KEY =>
-                {
-                    self.devices.extend(idx.devices_on(doc, *p));
+                Op::ModifyPage { id: p, before, after } => {
+                    let ch = before.change(after);
+                    if ch.number || ch.sheet || ch.page_type {
+                        self.devices.extend(idx.devices_on(doc, *p));
+                    }
+                    if ch.folder {
+                        self.moved(doc, idx, ops, &mut moved);
+                    }
                 }
                 // Brief 054 (design 054 §10.2): a page type's sheet changes its pages' grids.
                 Op::SetStyle { catalogue, .. } if catalogue == crate::styles::page::WORD => {
@@ -1689,9 +1693,6 @@ impl Scope {
                             self.devices.extend(idx.devices_on(doc, p));
                         }
                     }
-                }
-                Op::SetProperty { object: ObjectRef::Page(_), key, .. } if key == ecad_model::book::FOLDER_KEY => {
-                    self.moved(doc, idx, ops, &mut moved);
                 }
                 Op::AddPage { .. } | Op::RemovePage { .. } | Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => {
                     self.moved(doc, idx, ops, &mut moved);
@@ -1737,10 +1738,11 @@ impl Scope {
             }
             // Brief 049: what continuation arrows the op could change.
             match op {
-                Op::SetProperty { object: ObjectRef::Page(p), key, .. }
-                    if key == ecad_model::book::NUMBER_KEY || key == ecad_model::sheet::SHEET_KEY || key == ecad_model::sheet::PAGE_TYPE_KEY =>
-                {
-                    self.names.extend(crate::continuations::names_on(doc, idx, *p));
+                Op::ModifyPage { id: p, before, after } => {
+                    let ch = before.change(after);
+                    if ch.number || ch.sheet || ch.page_type {
+                        self.names.extend(crate::continuations::names_on(doc, idx, *p));
+                    }
                 }
                 Op::SetStyle { catalogue, .. } if catalogue == crate::styles::page::WORD => {
                     if let Some((pages, true)) = crate::styles::page::touched_by(doc, op) {

@@ -4,7 +4,7 @@
 
 use ecad_cadcraft::connectors;
 use ecad_cadcraft::symbols::{self, Side};
-use ecad_model::{ConductorId, DeviceId, Document, PageId, TerminalId};
+use ecad_model::{DeviceId, Document, PageId, TerminalId, WireId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -35,7 +35,7 @@ fn row(h: &mut H, extra: Value) -> Value {
 }
 
 /// Three vertical wires at x 100, 120, 140 from y 250 to y 150.
-fn three_wires(h: &mut H) -> Vec<ConductorId> {
+fn three_wires(h: &mut H) -> Vec<WireId> {
     [100.0, 120.0, 140.0].iter().map(|x| id(&h.run("wire", json!({"points": pts(&[(*x, 250.0), (*x, 150.0)])})).unwrap(), "conductor")).collect()
 }
 
@@ -117,7 +117,7 @@ fn pin_pairs_across_wires_split_them_and_keep_one_net() {
         let (s, p) = (pin(&d, c, ".s", n), pin(&d, c, ".p", n));
         assert_eq!(net(&d, s), net(&d, p), "pin {n} mates");
         // Both parts of the wire are on that net.
-        let new: ConductorId = id(&v["split"][i], "new");
+        let new: WireId = id(&v["split"][i], "new");
         assert_eq!(d.connectivity().net_of_conductor(w[i]), d.connectivity().net_of_conductor(new));
         assert_eq!(d.connectivity().net_of_conductor(w[i]), net(&d, s));
     }
