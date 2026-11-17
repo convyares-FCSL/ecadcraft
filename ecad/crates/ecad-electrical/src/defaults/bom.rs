@@ -8,6 +8,15 @@
 
 use super::{Entry, Kind, Level, ProjectSource, Slot};
 
+ecad_model::word_enum! {
+    /// Whether part lines are listed flat or under their device.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum BomLines {
+        Flat,
+        Nested,
+    }
+}
+
 const GROUP: &str = "BOM";
 const BRIEF: &str = "047";
 /// Standard and project.
@@ -23,7 +32,7 @@ pub static COLUMN_ARTICLE: Entry = entry("bom.column.article", "Article number c
 
 /// `bom.lines`: part lines merged with equal parts (`flat`) or listed under their device
 /// (`nested`, By location only).
-pub static LINES: Entry = entry("bom.lines", "Part lines", &["flat", "nested"]);
+pub static LINES: Entry = entry("bom.lines", "Part lines", <BomLines as ecad_model::Word>::WORDS);
 
 /// `bom.item.unit`: the unit of a new item when none is given.
 pub static ITEM_UNIT: Entry = entry("bom.item.unit", "Unit of a new item", &["pcs", "m"]);

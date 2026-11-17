@@ -16,6 +16,47 @@
 
 use super::{Entry, Kind, Level, ProjectSource, Slot};
 
+ecad_model::word_enum! {
+    /// Which half of a connector a symbol draws by default.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum ConnectorSide {
+        Socket,
+        Plug,
+        Both,
+    }
+}
+ecad_model::word_enum! {
+    /// The outline a connector maker draws.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum MakerShape {
+        Plain,
+        Dsub,
+        #[strum(serialize = "m12")]
+        M12,
+        #[strum(serialize = "rj45")]
+        Rj45,
+        Usba,
+        Usbb,
+    }
+}
+ecad_model::word_enum! {
+    /// How a connector maker names its pins.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum PinNaming {
+        Numbers,
+        Letters,
+        List,
+    }
+}
+ecad_model::word_enum! {
+    /// How a connector maker lays out its pins.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum MakerLayout {
+        Row,
+        Pins,
+    }
+}
+
 const GROUP: &str = "Connectors";
 const BRIEF: &str = "044";
 /// A standard (reserved), the project and the connector may override.
@@ -124,7 +165,7 @@ pub static MAKER_HALVES: Entry = Entry {
     label: "Connector: halves first offered",
     group: GROUP,
     brief: BRIEF,
-    kind: Kind::Choice(&["socket", "plug", "both"]),
+    kind: Kind::Choice(<ConnectorSide as ecad_model::Word>::WORDS),
     slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,
@@ -135,7 +176,7 @@ pub static MAKER_FAMILY: Entry = Entry {
     label: "Connector: type first offered",
     group: GROUP,
     brief: BRIEF,
-    kind: Kind::Choice(&["plain", "dsub", "m12", "rj45", "usba", "usbb"]),
+    kind: Kind::Choice(<MakerShape as ecad_model::Word>::WORDS),
     slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,
@@ -157,7 +198,7 @@ pub static MAKER_NAMES: Entry = Entry {
     label: "Connector: pin names first offered",
     group: GROUP,
     brief: BRIEF,
-    kind: Kind::Choice(&["numbers", "letters", "list"]),
+    kind: Kind::Choice(<PinNaming as ecad_model::Word>::WORDS),
     slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,
@@ -168,7 +209,7 @@ pub static MAKER_LAYOUT: Entry = Entry {
     label: "Connector: drawing first offered",
     group: GROUP,
     brief: BRIEF,
-    kind: Kind::Choice(&["row", "pins"]),
+    kind: Kind::Choice(<MakerLayout as ecad_model::Word>::WORDS),
     slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,

@@ -711,7 +711,7 @@ pub fn article_column(doc: &Document) -> bool {
 
 /// Whether part lines are listed under their device (`bom.lines = nested`).
 pub fn lines_nested(doc: &Document) -> bool {
-    defaults::resolve(doc, &defaults::bom::LINES, Scope::project()).word() == "nested"
+    defaults::resolve(doc, &defaults::bom::LINES, Scope::project()).choice() == Some(defaults::bom::BomLines::Nested)
 }
 
 /// Whether a new item's unit is metres (`bom.item.unit = m`).

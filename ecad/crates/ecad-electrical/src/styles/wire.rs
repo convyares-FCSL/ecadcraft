@@ -20,6 +20,26 @@ use ecad_model::{ConductorId, Document, StyleRef};
 use super::{Builtin, Catalogue, Field};
 use crate::defaults::{Kind, Resolved, Scope, Slot, Source};
 
+ecad_model::word_enum! {
+    /// How a wire style's line is drawn.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum LineType {
+        Continuous,
+        Dashed,
+        Dashdot,
+    }
+}
+ecad_model::word_enum! {
+    /// Which routes a wire style labels.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum RouteLabels {
+        Project,
+        Net,
+        Each,
+        None,
+    }
+}
+
 /// The registry's built-in category choice: no category.
 pub const NONE: &str = "none";
 
@@ -43,9 +63,9 @@ static FIELDS: [Field; 16] = [
     Field { key: "colour", label: "Colour", kind: TEXT24, slot: Slot::new(), over: Some(ecad_model::wiring::COLOUR) },
     Field { key: "cross_section", label: "Cross-section", kind: TEXT24, slot: Slot::new(), over: Some(ecad_model::wiring::CROSS_SECTION) },
     Field { key: "line_colour", label: "Line colour", kind: Kind::Parsed { max_chars: 16, parse: is_line_colour }, slot: Slot::new(), over: None },
-    Field { key: "line_type", label: "Line type", kind: Kind::Choice(&["continuous", "dashed", "dashdot"]), slot: Slot::new(), over: None },
+    Field { key: "line_type", label: "Line type", kind: Kind::Choice(<LineType as ecad_model::Word>::WORDS), slot: Slot::new(), over: None },
     Field { key: "line_weight", label: "Line weight", kind: Kind::Length { min: 0.13, max: 2.11 }, slot: Slot::new(), over: None },
-    Field { key: "label_rule", label: "Label rule", kind: Kind::Choice(&["project", "net", "each", "none"]), slot: Slot::new(), over: None },
+    Field { key: "label_rule", label: "Label rule", kind: Kind::Choice(<RouteLabels as ecad_model::Word>::WORDS), slot: Slot::new(), over: None },
     Field { key: "part_number", label: "Part number", kind: TEXT64, slot: Slot::new(), over: None },
     Field { key: "maker", label: "Maker", kind: TEXT64, slot: Slot::new(), over: None },
     Field { key: "description", label: "Description", kind: TEXT64, slot: Slot::new(), over: None },

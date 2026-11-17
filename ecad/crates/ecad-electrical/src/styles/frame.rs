@@ -36,7 +36,7 @@ static FIELDS: [Field; 8] = [
     Field { key: "sheet", label: "Sheet", kind: Kind::Parsed { max_chars: 48, parse: sheet_ok }, slot: Slot::new(), over: None },
     Field { key: "margins", label: "Margins", kind: Kind::Parsed { max_chars: 48, parse: margins_ok }, slot: Slot::new(), over: None },
     Field { key: "centre_marks", label: "Centre marks", kind: Kind::Choice(&["on", "off"]), slot: Slot::new(), over: None },
-    Field { key: "block", label: "Block position", kind: Kind::Choice(&["bottom_full", "bottom_right"]), slot: Slot::new(), over: None },
+    Field { key: "block", label: "Block position", kind: Kind::Choice(<BlockAt as ecad_model::Word>::WORDS), slot: Slot::new(), over: None },
 ];
 
 static BUILTINS: [Builtin; 1] = [Builtin { id: "sheet", name: "Schematic sheet", slot: Slot::new() }];
@@ -49,14 +49,16 @@ fn choices() -> Vec<&'static crate::defaults::Entry> {
 pub static CATALOGUE: Catalogue =
     Catalogue { word: "frame", plural: "Frames", one: "Frame style", fields: &FIELDS, builtins: &BUILTINS, choices, project_field: None };
 
-/// Where a frame's block sits (design 055 §1.4).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum BlockAt {
-    /// The block's left part stretches to the frame's left edge (built-ins).
-    #[default]
-    BottomFull,
-    /// The block keeps its width against the frame's bottom-right corner.
-    BottomRight,
+ecad_model::word_enum! {
+    /// Where a frame's block sits (design 055 §1.4).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+    pub enum BlockAt {
+        /// The block's left part stretches to the frame's left edge (built-ins).
+        #[default]
+        BottomFull,
+        /// The block keeps its width against the frame's bottom-right corner.
+        BottomRight,
+    }
 }
 
 /// A page frame's resolved look.
@@ -117,7 +119,11 @@ pub fn look_of(doc: &Document, id: &StyleRef) -> FrameLook {
         grid_labels: f("grid_labels").is_none_or(|r| ecad_model::words::flag(r.word()) != Some(false)),
         centre_marks: f("centre_marks").is_none_or(|r| ecad_model::words::flag(r.word()) != Some(false)),
         // Own frames are drawn for one sheet, as made (design 055 §1.4).
-        block: if id.is_builtin() && f("block").is_none_or(|r| r.word() != "bottom_right") { BlockAt::BottomFull } else { BlockAt::BottomRight },
+        block: if id.is_builtin() && f("block").and_then(|r| <BlockAt as ecad_model::Word>::parse(r.word())) != Some(BlockAt::BottomRight) {
+            BlockAt::BottomFull
+        } else {
+            BlockAt::BottomRight
+        },
         margins: f("margins").and_then(|r| parse_margins(&r.text())).unwrap_or_default(),
         zones: true,
     }

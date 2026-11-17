@@ -433,7 +433,7 @@ pub fn channel_texts(
         (None, false) => Some(crate::defaults::resolve(doc, &crate::defaults::plc::SPARE_TEXT, crate::defaults::Scope::project()).text()),
         (None, true) => None,
     };
-    let rotated = crate::defaults::resolve(doc, &crate::defaults::plc::ROTATION, at).word() == "90";
+    let rotated = crate::defaults::resolve(doc, &crate::defaults::plc::ROTATION, at).choice() == Some(crate::defaults::plc::CardRotation::Quarter);
     let anchors = crate::symbols::anchors(s);
     let label = crate::text_style::text_style(doc, crate::text_style::TextKind::PointLabel).height;
     // Brief 051 (design 051 §5): the two text styles of their own.

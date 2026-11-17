@@ -81,9 +81,15 @@ pub mod fields {
         slot: Slot::new(),
         over: None,
     };
-    pub const MATERIAL: Field = Field { key: "material", label: "Material", kind: Kind::Choice(&["cu"]), slot: Slot::new(), over: None };
-    pub const CONDUCTOR_CLASS: Field =
-        Field { key: "conductor_class", label: "Conductor class", kind: Kind::Choice(&["1", "2", "5", "6"]), slot: Slot::new(), over: None };
+    pub const MATERIAL: Field =
+        Field { key: "material", label: "Material", kind: Kind::Choice(<super::Material as ecad_model::Word>::WORDS), slot: Slot::new(), over: None };
+    pub const CONDUCTOR_CLASS: Field = Field {
+        key: "conductor_class",
+        label: "Conductor class",
+        kind: Kind::Choice(<super::ConductorClass as ecad_model::Word>::WORDS),
+        slot: Slot::new(),
+        over: None,
+    };
     pub const CROSS_SECTION: Field = Field {
         key: "cross_section",
         label: "Cross-section (mm\u{b2})",
@@ -1529,6 +1535,28 @@ impl Touch {
 }
 
 use crate::checks::{Check, Fix, Kind as CheckKind, Object};
+
+ecad_model::word_enum! {
+    /// A conductor material.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Material {
+        Cu,
+    }
+}
+ecad_model::word_enum! {
+    /// A conductor class (IEC 60228).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum ConductorClass {
+        #[strum(serialize = "1")]
+        One,
+        #[strum(serialize = "2")]
+        Two,
+        #[strum(serialize = "5")]
+        Five,
+        #[strum(serialize = "6")]
+        Six,
+    }
+}
 
 /// Whether `k` is one of lane 057's kinds.
 pub fn is_rating_kind(k: CheckKind) -> bool {

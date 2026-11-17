@@ -66,11 +66,13 @@ pub fn text_colour(value: &str) -> Option<TextColour> {
     crate::words::colour_code(t).map(|(first, _)| TextColour::Code(first))
 }
 
-/// A text weight.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Weight {
-    Regular,
-    Bold,
+ecad_model::word_enum! {
+    /// A text weight.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Weight {
+        Regular,
+        Bold,
+    }
 }
 
 impl Weight {

@@ -31,7 +31,8 @@ pub(crate) fn connector(s: &Session) -> R<Box<dyn Interactive>> {
         let n = defaults::resolve(doc, &defaults::connectors::MAKER_PINS, Scope::project()).number();
         let pins = if n.is_finite() && (1.0..=cn::MAX_PINS as f64).contains(&n) { n as usize } else { 4 };
         let names = defaults::resolve(doc, &defaults::connectors::MAKER_NAMES, Scope::project()).word().to_string();
-        let pins_layout = defaults::resolve(doc, &defaults::connectors::MAKER_LAYOUT, Scope::project()).word() == "pins";
+        let pins_layout =
+            defaults::resolve(doc, &defaults::connectors::MAKER_LAYOUT, Scope::project()).choice() == Some(defaults::connectors::MakerLayout::Pins);
         let next = p.tag_high.peek_auto(doc, &crate::devices::prefix_for(doc, crate::devices::starter("socket4")?)).unwrap_or_else(|_| "-X?".into());
         Ok((halves, family, pins, names, pins_layout, next))
     })

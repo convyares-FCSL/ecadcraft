@@ -252,6 +252,11 @@ impl Resolved<'_> {
         }
     }
 
+    /// The value of a [`Kind::Choice`] entry declared as `E::WORDS`; `None` for any other entry.
+    pub fn choice<E: ecad_model::Word>(&self) -> Option<E> {
+        E::parse(self.word())
+    }
+
     /// A word (a [`Kind::Choice`] entry); `""` otherwise.
     pub fn word(&self) -> &'static str {
         match self.value {
@@ -646,6 +651,42 @@ mod tests {
 #[cfg(test)]
 mod kind_tests {
     use super::*;
+
+    /// Design 072 A2: each choice declared as a word enum keeps the words, in the order, of the
+    /// list it replaced (the first word is the entry's fallback).
+    #[test]
+    fn choice_enums_keep_their_words() {
+        let table: &[(&str, &[&str])] = &[
+            ("connector.maker.halves", &["socket", "plug", "both"]),
+            ("connector.maker.family", &["plain", "dsub", "m12", "rj45", "usba", "usbb"]),
+            ("connector.maker.names", &["numbers", "letters", "list"]),
+            ("connector.maker.layout", &["row", "pins"]),
+            ("plc.slot.first", &["0", "1"]),
+            ("plc.channel.first", &["0", "1"]),
+            ("plc.pins", &["role", "channel"]),
+            ("plc.address.style", &["byte.bit", "iec", "percent", "slot", "none"]),
+            ("plc.text.channel.rotation", &["90", "0"]),
+            ("plc.safe.dq", &["off", "on", "hold"]),
+            ("print.continuation_numbers", &["sequence"]),
+            ("print.missing_mark", &["boxed"]),
+            ("print.contact_table_fallback", &["right_then_lift"]),
+            (crate::revisions::PENDING_KEY, &["star", "draft", "off"]),
+            ("print.colour", &["mono", "colour"]),
+            ("rating.system", &["ac1", "ac3", "dc"]),
+            ("terminal.plan.style", &["table", "graphic"]),
+            ("bom.lines", &["flat", "nested"]),
+        ];
+        for (key, want) in table {
+            let e = find(key);
+            assert!(matches!(e.map(|e| e.kind), Some(Kind::Choice(w)) if w == *want), "{key}");
+        }
+        assert_eq!(<crate::styles::frame::BlockAt as ecad_model::Word>::WORDS, ["bottom_full", "bottom_right"]);
+        assert_eq!(<crate::text_style::Weight as ecad_model::Word>::WORDS, ["regular", "bold"]);
+        assert_eq!(<crate::styles::wire::LineType as ecad_model::Word>::WORDS, ["continuous", "dashed", "dashdot"]);
+        assert_eq!(<crate::styles::wire::RouteLabels as ecad_model::Word>::WORDS, ["project", "net", "each", "none"]);
+        assert_eq!(<crate::rating::ConductorClass as ecad_model::Word>::WORDS, ["1", "2", "5", "6"]);
+        assert_eq!(<crate::rating::Material as ecad_model::Word>::WORDS, ["cu"]);
+    }
 
     fn prefix(s: &str) -> bool {
         s.chars().all(|c| c.is_ascii_uppercase())

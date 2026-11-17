@@ -19,7 +19,13 @@ pub const PROJECT_FONT: &str = "project";
 static FIELDS: [Field; 4] = [
     Field { key: "font", label: "Font", kind: Kind::Text { max_chars: 64 }, slot: Slot::new(), over: None },
     Field { key: "height", label: "Cap height", kind: Kind::Length { min: 0.5, max: 10.0 }, slot: Slot::new(), over: None },
-    Field { key: "weight", label: "Weight", kind: Kind::Choice(&["regular", "bold"]), slot: Slot::new(), over: None },
+    Field {
+        key: "weight",
+        label: "Weight",
+        kind: Kind::Choice(<crate::text_style::Weight as ecad_model::Word>::WORDS),
+        slot: Slot::new(),
+        over: None,
+    },
     Field { key: "colour", label: "Colour", kind: Kind::Parsed { max_chars: 16, parse: super::is_colour }, slot: Slot::new(), over: None },
 ];
 

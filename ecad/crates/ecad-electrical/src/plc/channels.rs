@@ -129,7 +129,7 @@ fn cells_words(t: CardType) -> String {
 /// The first channel number shown on card `c` (`plc.channel.first`, 0 or 1).
 pub fn first_number(doc: &Document, c: ComponentId) -> u32 {
     let at = Scope { component: Some(c), ..Scope::project() };
-    u32::from(defaults::resolve(doc, &defaults::plc::CHANNEL_FIRST, at).word() == "1")
+    u32::from(defaults::resolve(doc, &defaults::plc::CHANNEL_FIRST, at).choice() == Some(defaults::plc::ChannelFirst::One))
 }
 
 /// Where channel `i` of card `c` is drawn, in words (`105-C-2`, or `page 3`).
@@ -148,7 +148,7 @@ pub fn pins_for(
     doc: &Document, c: Option<ComponentId>, ty: CardType, n: u32, i: u32, roles: &[&'static str], used: &mut BTreeSet<String>,
 ) -> Vec<String> {
     let at = Scope { component: c, ..Scope::project() };
-    let by_channel = defaults::resolve(doc, &defaults::plc::PINS, at).word() == "channel";
+    let by_channel = defaults::resolve(doc, &defaults::plc::PINS, at).choice() == Some(defaults::plc::PlcPins::Channel);
     let all = ty.roles();
     let r_count = u32::try_from(all.len()).unwrap_or(1).max(1);
     let n = n.max(i.saturating_add(1));

@@ -6,6 +6,36 @@
 
 use super::{Entry, Kind, Level, ProjectSource, Slot};
 
+ecad_model::word_enum! {
+    /// How continuation sheets are numbered.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum ContinuationNumbers {
+        Sequence,
+    }
+}
+ecad_model::word_enum! {
+    /// How a missing value is marked on a print.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum MissingMark {
+        Boxed,
+    }
+}
+ecad_model::word_enum! {
+    /// Where a contact table goes when the title block is in the way.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum ContactTableFallback {
+        RightThenLift,
+    }
+}
+ecad_model::word_enum! {
+    /// Whether prints are black or in the wires' colours.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum PrintColour {
+        Mono,
+        Colour,
+    }
+}
+
 const GROUP: &str = "Print";
 const BRIEF: &str = "033";
 /// Standard and project (no command writes these project keys in v0.15).
@@ -17,10 +47,11 @@ const fn entry(key: &'static str, label: &'static str, kind: Kind) -> Entry {
 
 /// How a generated page's continuation sheets are numbered (design 033 §5.1): `sequence` is the
 /// trailing digits plus one (`400, 401`), else `N2`, `N3`.
-pub static CONTINUATION_NUMBERS: Entry = entry("print.continuation_numbers", "Continuation sheet numbers", Kind::Choice(&["sequence"]));
+pub static CONTINUATION_NUMBERS: Entry =
+    entry("print.continuation_numbers", "Continuation sheet numbers", Kind::Choice(<ContinuationNumbers as ecad_model::Word>::WORDS));
 
 /// How a missing value in a generated table is marked (design 033 §3.1): `boxed` is `?` in a box.
-pub static MISSING_MARK: Entry = entry("print.missing_mark", "Missing value mark", Kind::Choice(&["boxed"]));
+pub static MISSING_MARK: Entry = entry("print.missing_mark", "Missing value mark", Kind::Choice(<MissingMark as ecad_model::Word>::WORDS));
 
 /// `ecad.missing-box`: how far the box round a missing value is inset into its cell.
 pub static MISSING_BOX_INSET: Entry = entry("print.missing_box_inset", "Missing value box inset", Kind::Length { min: 0.0, max: 2.0 });
@@ -28,7 +59,7 @@ pub static MISSING_BOX_INSET: Entry = entry("print.missing_box_inset", "Missing 
 /// Where an automatic contact table goes when it would meet the title block (design 033 §4.1):
 /// right of its head, else lifted.
 pub static CONTACT_TABLE_FALLBACK: Entry =
-    entry("print.contact_table_fallback", "Contact table clear of the title block", Kind::Choice(&["right_then_lift"]));
+    entry("print.contact_table_fallback", "Contact table clear of the title block", Kind::Choice(<ContactTableFallback as ecad_model::Word>::WORDS));
 
 /// The room kept between an automatic contact table and the title block's top line.
 pub static CONTACT_TABLE_CLEARANCE: Entry =
@@ -89,7 +120,7 @@ pub static REVISION_PENDING: Entry = Entry {
     label: "Pending changes marker",
     group: "Revisions",
     brief: BRIEF,
-    kind: Kind::Choice(&["star", "draft", "off"]),
+    kind: Kind::Choice(<crate::revisions::PendingStyle as ecad_model::Word>::WORDS),
     slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,
@@ -117,7 +148,7 @@ pub static COLOUR: Entry = Entry {
     label: "Print colour",
     group: GROUP,
     brief: "040",
-    kind: Kind::Choice(&["mono", "colour"]),
+    kind: Kind::Choice(<PrintColour as ecad_model::Word>::WORDS),
     slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Property,
