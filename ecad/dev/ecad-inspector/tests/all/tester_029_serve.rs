@@ -447,7 +447,7 @@ fn hostile_text_comes_back_as_plain_json_strings() {
                 id: c,
                 cable: Cable { properties: props(&[("tag", X)]), members: vec![CableMember { conductor: w, core: Some(X.into()) }] },
             },
-            Op::SetProperty { object: ObjectRef::Project, key: "project.title".into(), before: None, after: Some(X.into()) },
+            Op::SetProperty { object: ObjectRef::Project, key: "project.title".parse().unwrap(), before: None, after: Some(X.into()) },
         ],
     )
     .unwrap();

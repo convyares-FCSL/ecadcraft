@@ -15,6 +15,7 @@ use crate::error::{ModelError, Result};
 use crate::geom::{Placement, Pt};
 use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, TerminalId, WireId};
 use crate::page::{PageKind, PageTitle};
+use crate::point::PointKey;
 use crate::sheet::SheetSpec;
 use crate::style::StyleRef;
 use crate::units::Radians;
@@ -486,8 +487,8 @@ impl Device {
 pub struct Terminal {
     pub component: DeviceId,
     pub label: Option<String>,
-    /// The definition terminal this one was created from (LIB-02).
-    pub key: Option<String>,
+    /// The definition terminal this one was created from (LIB-02; design 072 §2.7).
+    pub key: Option<PointKey>,
 }
 
 /// What a representation depicts.
@@ -745,7 +746,7 @@ impl ProjectSettings {
 /// A terminal of a definition, in the symbol's local frame.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TerminalDef {
-    pub key: String,
+    pub key: PointKey,
     pub label: Option<String>,
     pub at: Pt,
 }
@@ -793,7 +794,7 @@ pub struct Definition {
     /// than one of the definition's own (brief 044, FP2: a connector half bridges the side keys
     /// `.s` and `.p`; [`crate::invariant::is_placement_key`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub bridges: Vec<Vec<String>>,
+    pub bridges: Vec<Vec<PointKey>>,
     /// Where the device texts of a placed copy go (brief 048, FP1). Empty for the starters, whose
     /// anchors are catalogue code; left out of the file when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -814,8 +815,8 @@ pub struct Definition {
 
 impl Definition {
     /// The keys bridged to `key` inside the device (not `key` itself), from [`Definition::bridges`].
-    pub fn bridged_with<'a>(&'a self, key: &'a str) -> impl Iterator<Item = &'a str> + 'a {
-        self.bridges.iter().filter(move |g| g.iter().any(|k| k == key)).flat_map(|g| g.iter().map(String::as_str)).filter(move |k| *k != key)
+    pub fn bridged_with<'a>(&'a self, key: &'a PointKey) -> impl Iterator<Item = &'a PointKey> + 'a {
+        self.bridges.iter().filter(move |g| g.contains(key)).flat_map(|g| g.iter()).filter(move |k| *k != key)
     }
 }
 

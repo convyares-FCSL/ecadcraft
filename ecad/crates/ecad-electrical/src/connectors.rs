@@ -190,7 +190,7 @@ pub fn is_connector(doc: &Document, c: DeviceId) -> bool {
 /// The side of terminal `t` when it is a connector pin.
 pub fn side_of(doc: &Document, t: TerminalId) -> Option<Side> {
     let term = doc.terminals.get(&t)?;
-    let side = Side::of_key(term.key.as_deref()?)?;
+    let side = Side::of_key(term.key.as_ref()?)?;
     is_connector(doc, term.component).then_some(side)
 }
 
@@ -259,7 +259,7 @@ pub fn rep_tag(doc: &Document, c: DeviceId, r: &Representation) -> Option<String
 /// Whether a pin pair's plug-side label is hidden (design 044 §5.2: a pin pair shows its pin name
 /// once, beside the socket point).
 pub fn hides_label(doc: &Document, r: &Representation, t: TerminalId) -> bool {
-    rep_half(doc, r).is_some_and(|s| s.key == StarterKey::Pinpair) && doc.terminals.get(&t).and_then(|x| x.key.as_deref()) == Some(PLUG_KEY)
+    rep_half(doc, r).is_some_and(|s| s.key == StarterKey::Pinpair) && doc.terminals.get(&t).and_then(|x| x.key.as_ref()) == Some(&PLUG_KEY)
 }
 
 /// The run class of a connector symbol for the "once per run" tag rule (design 044 §5.2): one
@@ -306,8 +306,7 @@ pub fn resolve(doc: &Document, text: &str) -> Option<Result<(DeviceId, Option<Si
     let (c, side) = found?;
     let Some(pin) = pin else { return Some(Ok((c, side, None))) };
     let pin = pin.trim().to_string();
-    let with =
-        |want: Side| doc.terminals_of(c).find(|(_, x)| x.label.as_deref() == Some(pin.as_str()) && x.key.as_deref() == want.key()).map(|(t, _)| t);
+    let with = |want: Side| doc.terminals_of(c).find(|(_, x)| x.label.as_deref() == Some(pin.as_str()) && x.key == want.key()).map(|(t, _)| t);
     Some(match side {
         Some(s) => with(s).map(|t| (c, Some(s), Some(t))).ok_or_else(|| CmdError::refused(format!("{} has no pin {pin}.", half_tag(doc, c, s)))),
         None => match (with(Side::Socket), with(Side::Plug)) {
@@ -358,7 +357,7 @@ pub fn drawn(doc: &Document, c: DeviceId) -> Drawn {
     let mut d = Drawn::default();
     let mut first: BTreeMap<String, TerminalId> = BTreeMap::new();
     for (t, x) in doc.terminals_of(c) {
-        let (Some(label), Some(side)) = (x.label.clone(), x.key.as_deref().and_then(Side::of_key)) else { continue };
+        let (Some(label), Some(side)) = (x.label.clone(), x.key.as_ref().and_then(Side::of_key)) else { continue };
         let e = first.entry(label.clone()).or_insert(t);
         if t < *e {
             *e = t;
@@ -658,7 +657,7 @@ pub fn symbol_ops(
         let name = if pin { names.first() } else { names.get(i) }.ok_or(CmdError::refused("Not enough pin names for this symbol."))?;
         let t: TerminalId = ids.fresh();
         let key = side.key().ok_or(CmdError::refused("A connector symbol's point has no side."))?;
-        ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: Some(name.clone()), key: Some(key.to_string()) } });
+        ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: Some(name.clone()), key: Some(key) } });
         cps.insert(t, td.at);
         shown.push(Shown { side, name: name.clone(), terminal: t, local: td.at });
     }
@@ -1207,7 +1206,7 @@ pub fn ref_edges(doc: &Document, c: DeviceId, list: &[(RepresentationId, crate::
             let Some(x) = doc.terminals.get(t) else { continue };
             let other = side.other().key();
             for (m, mx) in doc.terminals_of(c) {
-                if mx.label != x.label || mx.key.as_deref() != other {
+                if mx.label != x.label || mx.key != other {
                     continue;
                 }
                 for (mr, mrep) in doc.representations_showing(m) {

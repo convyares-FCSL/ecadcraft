@@ -213,7 +213,7 @@ pub struct Device {
 pub struct Terminal {
     pub component: DeviceId,
     pub label: Option<String>,
-    pub key: Option<String>,
+    pub key: Option<m::PointKey>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -304,7 +304,7 @@ pub struct Origin {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TerminalDef {
-    pub key: String,
+    pub key: m::PointKey,
     pub label: Option<String>,
     pub at: Pt,
 }
@@ -319,7 +319,7 @@ pub struct Definition {
     /// Groups of terminal keys joined inside the device (brief 022, FP5). Left out when empty, so
     /// a definition without bridges is written, and hashed, exactly as before.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub bridges: Vec<Vec<String>>,
+    pub bridges: Vec<Vec<m::PointKey>>,
     /// Text slots (brief 048, FP1). Left out when empty, so existing hashes hold.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub texts: Vec<TextSlot>,

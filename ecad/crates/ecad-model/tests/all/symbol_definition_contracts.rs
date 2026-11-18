@@ -11,7 +11,7 @@ use ecad_model::{
 fn def(name: &str) -> Definition {
     Definition {
         name: name.into(),
-        terminals: vec![TerminalDef { key: "1".into(), label: Some("1".into()), at: Pt::new(0.0, 0.0) }],
+        terminals: vec![TerminalDef { key: "1".parse().unwrap(), label: Some("1".into()), at: Pt::new(0.0, 0.0) }],
         ..Default::default()
     }
 }
@@ -55,7 +55,7 @@ fn set_component_definition_keeps_properties() {
     l.commit(
         Author::User,
         "prop",
-        vec![Op::SetProperty { object: ObjectRef::Device(K), key: "note".into(), before: None, after: Some("-K01".into()) }],
+        vec![Op::SetProperty { object: ObjectRef::Device(K), key: "note".parse().unwrap(), before: None, after: Some("-K01".into()) }],
     )
     .expect("tag");
     l.commit(Author::User, "edit", vec![set(Some(A), Some(B))]).expect("set");
@@ -114,7 +114,7 @@ fn merged(ancestor: &Document, target: &Document, source: &Document, source_ops:
 #[test]
 fn merge_a_property_against_a_definition_change_does_not_conflict() {
     let a = base().document().clone();
-    let tag = Op::SetProperty { object: ObjectRef::Device(K), key: "note".into(), before: None, after: Some("Pump".into()) };
+    let tag = Op::SetProperty { object: ObjectRef::Device(K), key: "note".parse().unwrap(), before: None, after: Some("Pump".into()) };
     let mut t = a.clone();
     tag.apply(&mut t).expect("target");
     let mut s = a.clone();

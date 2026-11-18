@@ -750,9 +750,9 @@ fn plan_terminals(doc: &Document, req: &Request, places: &mut Places<'_>, pages:
         for (_, r) in doc.representations_of(Subject::Device(*strip)) {
             let Some(at) = places.rep_point(r) else { continue };
             let shown: Vec<TerminalId> = if r.connection_points.is_empty() {
-                let keys: BTreeSet<&str> = match doc.items.get(r.items.first().unwrap_or(&crate::id::ItemId(0))).map(|i| &i.kind) {
+                let keys: BTreeSet<&crate::point::PointKey> = match doc.items.get(r.items.first().unwrap_or(&crate::id::ItemId(0))).map(|i| &i.kind) {
                     Some(ItemKind::Symbol(s)) => {
-                        doc.definitions.get(&s.definition).map(|d| d.terminals.iter().map(|t| t.key.as_str()).collect()).unwrap_or_default()
+                        doc.definitions.get(&s.definition).map(|d| d.terminals.iter().map(|t| &t.key).collect()).unwrap_or_default()
                     }
                     _ => BTreeSet::new(),
                 };
@@ -761,7 +761,7 @@ fn plan_terminals(doc: &Document, req: &Request, places: &mut Places<'_>, pages:
                 // definition key, review M1 2.1), else the first.
                 let mut shown = Vec::new();
                 for k in keys {
-                    let mut with_key = doc.terminals_of(*strip).filter(|(_, t)| t.key.as_deref() == Some(k)).map(|(t, _)| t);
+                    let mut with_key = doc.terminals_of(*strip).filter(|(_, t)| t.key.as_ref() == Some(k)).map(|(t, _)| t);
                     let first = with_key.next();
                     let free = first.into_iter().chain(with_key).find(|t| doc.representations_showing(*t).next().is_none());
                     if let Some(t) = free.or(first) {

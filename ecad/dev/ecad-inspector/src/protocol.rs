@@ -434,7 +434,7 @@ fn device_name(d: &Document, c: DeviceId) -> String {
 fn point_name(d: &Document, t: TerminalId) -> String {
     match d.terminals.get(&t) {
         Some(term) => {
-            let own = term.label.clone().or_else(|| term.key.clone()).unwrap_or_else(|| t.short());
+            let own = term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| t.short());
             format!("{}:{own}", device_name(d, term.component))
         }
         None => format!("({})", t.short()),
@@ -575,7 +575,7 @@ fn devices(d: &Document, detail: bool) -> Vec<Value> {
             let points: Vec<Value> = d
                 .terminals_of(*id)
                 .map(|(t, term)| {
-                    let name = term.label.clone().or_else(|| term.key.clone()).unwrap_or_else(|| t.short());
+                    let name = term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| t.short());
                     let wires: Vec<String> = attached.get(&t).into_iter().flatten().map(|w| wire_name(d, *w)).collect();
                     json!({"name": name, "wires": wires})
                 })

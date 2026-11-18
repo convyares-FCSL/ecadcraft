@@ -335,7 +335,7 @@ fn a1_every_new_symbol_is_in_the_catalogue_as_designed() {
         assert!(s.name.to_lowercase().contains(e.word), "{}: name {:?} should contain {:?}", e.key, s.name, e.word);
         let d = s.definition().unwrap_or_else(|err| panic!("{}: {err}", e.key));
         // Points: keys in definition order at the design's positions, on the grid.
-        let got: Vec<(String, f64, f64)> = d.terminals.iter().map(|t| (t.key.clone(), t.at.x, t.at.y)).collect();
+        let got: Vec<(String, f64, f64)> = d.terminals.iter().map(|t| (t.key.to_string(), t.at.x, t.at.y)).collect();
         assert_eq!(got.len(), e.points.len(), "{}: points {got:?}", e.key);
         for ((gk, gx, gy), (wk, wx, wy)) in got.iter().zip(&e.points) {
             assert_eq!(gk, wk, "{}: point order {got:?}", e.key);

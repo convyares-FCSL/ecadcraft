@@ -59,6 +59,7 @@ use crate::error::{ModelError, Result};
 use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId, WireId};
 use crate::index::referrers;
 use crate::op::{ObjectRef, Op};
+use crate::point::PointKey;
 
 /// What a transaction created, modified or removed: the input of [`Document::check_touched`].
 ///
@@ -558,12 +559,12 @@ fn check_definition(id: DefinitionId, d: &Definition) -> Result<()> {
     if !d.graphics.iter().all(Primitive::is_finite) || !d.terminals.iter().all(|t| t.at.is_finite()) {
         return bad(format!("definition {id} has non-finite geometry"));
     }
-    let keys: BTreeSet<&str> = d.terminals.iter().map(|t| t.key.as_str()).collect();
+    let keys: BTreeSet<&PointKey> = d.terminals.iter().map(|t| &t.key).collect();
     if keys.len() != d.terminals.len() {
         return bad(format!("definition {id} repeats a terminal key"));
     }
     // Brief 044 (overseer condition on FP2): a bridge names keys a placement can write.
-    if let Some(k) = d.bridges.iter().flatten().find(|k| !keys.contains(k.as_str()) && !is_placement_key(k)) {
+    if let Some(k) = d.bridges.iter().flatten().find(|k| !keys.contains(k) && !is_placement_key(k)) {
         return bad(format!("definition {id} bridges key {k:?}, which it has no terminal for and no placement writes"));
     }
     // Brief 048 (FP1, FP2, FP4).
@@ -595,6 +596,6 @@ fn check_definition(id: DefinitionId, d: &Definition) -> Result<()> {
 /// A terminal key a placement writes that need not be one of the definition's own keys (brief
 /// 044, FP2): a connector side key (`.s`, `.p`) or a strip level key (`.1`, `.2`, `.1i`, brief
 /// 036). A bridge may name these; any other key it names must be one of the definition's own.
-pub fn is_placement_key(k: &str) -> bool {
-    k == ".s" || k == ".p" || (k.starts_with('.') && crate::links::level_of_key(Some(k)).is_some())
+pub fn is_placement_key(k: &PointKey) -> bool {
+    matches!(k, PointKey::Side(_)) || (matches!(k, PointKey::Level { .. }) && crate::links::level_of_key(Some(k)).is_some())
 }
