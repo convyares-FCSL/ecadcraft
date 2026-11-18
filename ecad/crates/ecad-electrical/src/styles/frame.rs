@@ -9,10 +9,15 @@
 //! The title block's texts keep their own text-style choices.
 
 use ecad_model::sheet::{Margins, parse_frame_sheet, parse_margins};
-use ecad_model::{Document, PageId, StyleRef};
+use ecad_model::style::FrameStyle;
+use ecad_model::style::frame::{FrameMargins, FrameSheet};
+use ecad_model::style::text::StyleColour;
+use ecad_model::units::Mm;
+use ecad_model::{Document, PageId, StyleRef, Word};
 
 use super::{Builtin, Catalogue, Field};
-use crate::defaults::{Kind, Slot};
+use crate::CmdError;
+use crate::defaults::{Kind, Slot, Value};
 
 /// The `sheet` field's word for "the page's own sheet".
 pub const PAGE_SHEET: &str = "page";
@@ -56,17 +61,7 @@ pub static CATALOGUE: Catalogue = Catalogue {
     project_field: None,
 };
 
-ecad_model::word_enum! {
-    /// Where a frame's block sits (design 055 §1.4).
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-    pub enum BlockAt {
-        /// The block's left part stretches to the frame's left edge (built-ins).
-        #[default]
-        BottomFull,
-        /// The block keeps its width against the frame's bottom-right corner.
-        BottomRight,
-    }
-}
+pub use ecad_model::style::frame::BlockAt;
 
 /// A page frame's resolved look.
 #[derive(Debug, Clone, PartialEq)]
@@ -134,4 +129,53 @@ pub fn look_of(doc: &Document, id: &StyleRef) -> FrameLook {
         margins: f("margins").and_then(|r| parse_margins(&r.text())).unwrap_or_default(),
         zones: true,
     }
+}
+
+/// The value of field `key` that `f` sets, if it sets one.
+pub fn get<'a>(f: &'a FrameStyle, key: &str) -> Option<Value<'a>> {
+    match key {
+        "border_weight" => f.border_weight.map(|v| Value::Length(v.0)),
+        "inner_weight" => f.inner_weight.map(|v| Value::Length(v.0)),
+        "line_colour" => f.line_colour.map(Value::Colour),
+        "grid_labels" => f.grid_labels.map(Value::Flag),
+        "sheet" => f.sheet.map(|v| match v {
+            FrameSheet::Page => Value::Text(PAGE_SHEET),
+            FrameSheet::Sheet(s) => Value::Sheet(s),
+        }),
+        "margins" => f.margins.map(|m| Value::Margins(m.0)),
+        "centre_marks" => f.centre_marks.map(Value::Flag),
+        "block" => f.block.map(|v| Value::Choice(v.word())),
+        _ => None,
+    }
+}
+
+/// Set (`Some`) or clear (`None`) field `key` of `f` from its text, as the `style` command
+/// checked it.
+///
+/// # Errors
+/// An unknown field, or text the field does not take, in words.
+pub fn set(f: &mut FrameStyle, key: &str, value: Option<&str>) -> Result<(), CmdError> {
+    let bad = |what: &str| CmdError::refused(format!("{key} takes {what}, not {:?}.", value.unwrap_or_default()));
+    let mm = |v: &str| v.trim().parse::<f64>().ok().filter(|x| x.is_finite()).map(Mm).ok_or_else(|| bad("a length"));
+    let flag = |v: &str| ecad_model::words::flag(v).ok_or_else(|| bad("yes or no"));
+    match (key, value) {
+        ("border_weight", None) => f.border_weight = None,
+        ("inner_weight", None) => f.inner_weight = None,
+        ("line_colour", None) => f.line_colour = None,
+        ("grid_labels", None) => f.grid_labels = None,
+        ("sheet", None) => f.sheet = None,
+        ("margins", None) => f.margins = None,
+        ("centre_marks", None) => f.centre_marks = None,
+        ("block", None) => f.block = None,
+        ("border_weight", Some(v)) => f.border_weight = Some(mm(v)?),
+        ("inner_weight", Some(v)) => f.inner_weight = Some(mm(v)?),
+        ("line_colour", Some(v)) => f.line_colour = Some(StyleColour::parse(v).ok_or_else(|| bad("none, a colour code or #rrggbb"))?),
+        ("grid_labels", Some(v)) => f.grid_labels = Some(flag(v)?),
+        ("sheet", Some(v)) => f.sheet = Some(FrameSheet::parse(v).ok_or_else(|| bad("page or a sheet"))?),
+        ("margins", Some(v)) => f.margins = Some(FrameMargins(parse_margins(v).ok_or_else(|| bad("four margins l,r,b,t"))?)),
+        ("centre_marks", Some(v)) => f.centre_marks = Some(flag(v)?),
+        ("block", Some(v)) => f.block = Some(Word::parse(v).ok_or_else(|| bad("bottom_full or bottom_right"))?),
+        _ => return Err(CmdError::refused(format!("Frames have no field {key:?}."))),
+    }
+    Ok(())
 }

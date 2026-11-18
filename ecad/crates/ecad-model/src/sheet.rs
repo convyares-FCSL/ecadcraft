@@ -370,11 +370,25 @@ pub fn title_block_style(doc: &Document, page: PageId) -> StyleRef {
         .unwrap_or_else(|| frame_style(doc, page))
 }
 
-/// Frame style `id`'s stored value of `key`: the project's record, else the standard's.
-pub fn frame_field<'a>(doc: &'a Document, id: &StyleRef, key: &str) -> Option<&'a str> {
+/// Frame style `id`'s value read by `get`: the project's record, else the standard's (within the
+/// bound).
+fn frame_value<T>(doc: &Document, id: &StyleRef, get: impl Fn(&crate::style::FrameStyle) -> Option<T>) -> Option<T> {
     [StyleLayer::Project, StyleLayer::Standard]
         .into_iter()
-        .find_map(|l| crate::style::bounded_record(doc, l, FRAME_CATALOGUE, id).and_then(|r| r.field(key)))
+        .find_map(|l| crate::style::bounded_record(doc, l, FRAME_CATALOGUE, id).and_then(|r| r.body.frame()).and_then(&get))
+}
+
+/// The sheet frame style `id` is drawn for, when it names one (`None` for the page's own).
+pub fn frame_spec(doc: &Document, id: &StyleRef) -> Option<SheetSpec> {
+    match frame_value(doc, id, |f| f.sheet)? {
+        crate::style::frame::FrameSheet::Sheet(s) => Some(s),
+        crate::style::frame::FrameSheet::Page => None,
+    }
+}
+
+/// Frame style `id`'s margins, when a record sets them.
+pub fn frame_margins(doc: &Document, id: &StyleRef) -> Option<Margins> {
+    frame_value(doc, id, |f| f.margins).map(|m| m.0)
 }
 
 /// Frame style `id`'s title block: the project's record's body, else the standard's. `None` for
@@ -413,13 +427,13 @@ pub fn margins_text(m: &Margins) -> String {
 /// The sheet `page`'s frame sets, if it sets one that reads.
 pub fn frame_sheet(doc: &Document, page: PageId) -> Option<SheetSpec> {
     let id = frame_style(doc, page);
-    frame_field(doc, &id, FRAME_SHEET_FIELD).and_then(parse_frame_sheet)
+    frame_spec(doc, &id)
 }
 
 /// The margins of `page`'s frame: its `margins` field when it reads, else 019's.
 pub fn margins_of(doc: &Document, page: PageId) -> Margins {
     let id = frame_style(doc, page);
-    frame_field(doc, &id, FRAME_MARGINS_FIELD).and_then(parse_margins).unwrap_or_default()
+    frame_margins(doc, &id).unwrap_or_default()
 }
 
 /// The keep-out strip at the bottom of `page`'s frame, in millimetres (design 055 §2): its own
