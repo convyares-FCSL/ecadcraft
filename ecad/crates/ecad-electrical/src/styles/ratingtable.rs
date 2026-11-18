@@ -13,8 +13,11 @@
 use ecad_model::style::StyleLayer;
 use ecad_model::{Document, StyleRef};
 
+use ecad_model::style::{RatingTable, StyleBody};
+
 use super::{Catalogue, Field};
-use crate::defaults::{Kind, Scope, Slot};
+use crate::CmdError;
+use crate::defaults::{Kind, Scope, Slot, Value};
 use crate::rating::dataset::{self, Dataset};
 
 /// The field holding the CSV rows.
@@ -58,8 +61,10 @@ pub fn chosen(doc: &Document) -> Option<StyleRef> {
 /// The stored rows of table `id`: the project's record, else the standard's; within the cap.
 pub fn rows_text<'a>(doc: &'a Document, id: &StyleRef) -> &'a str {
     for layer in [StyleLayer::Project, StyleLayer::Standard] {
-        if let Some(v) = super::record(doc, layer, ecad_model::StyleCatalogue::RatingTable, id).and_then(|r| r.fields()?.get(ROWS))
-            && v.len() <= dataset::MAX_BYTES
+        if let Some(v) = super::record(doc, layer, ecad_model::StyleCatalogue::RatingTable, id).and_then(|r| match &r.body {
+            StyleBody::RatingTable(t) => t.rows.as_ref(),
+            _ => None,
+        }) && v.as_str().len() <= dataset::MAX_BYTES
         {
             return v.as_str();
         }
@@ -94,4 +99,30 @@ pub fn read(doc: &Document, id: &StyleRef) -> Table {
 /// The project's chosen table, read.
 pub fn chosen_table(doc: &Document) -> Option<Table> {
     chosen(doc).map(|id| read(doc, &id))
+}
+
+/// The value of field `key` that `t` sets, if it sets one.
+pub fn get<'a>(t: &'a RatingTable, key: &str) -> Option<Value<'a>> {
+    match key {
+        SOURCE => t.source.as_ref().map(|v| Value::Text(v.as_str())),
+        // The rows are read by [`rows_text`], never as a field value (a table, not one value).
+        _ => None,
+    }
+}
+
+/// Set (`Some`) or clear (`None`) field `key` of `t` from its text. Rows written with CR LF line
+/// ends are stored with LF.
+///
+/// # Errors
+/// An unknown field, or text the field does not take, in words.
+pub fn set(t: &mut RatingTable, key: &str, value: Option<&str>) -> Result<(), CmdError> {
+    let bad = |e: ecad_model::text::TextError| CmdError::refused(format!("{key}: {e}"));
+    match (key, value) {
+        (SOURCE, None) => t.source = None,
+        (ROWS, None) => t.rows = None,
+        (SOURCE, Some(v)) => t.source = Some(ecad_model::text::Text::new(v).map_err(bad)?),
+        (ROWS, Some(v)) => t.rows = Some(ecad_model::text::LongText::new(&v.replace("\r\n", "\n")).map_err(bad)?),
+        _ => return Err(CmdError::refused(format!("Rating tables have no field {key:?}."))),
+    }
+    Ok(())
 }
