@@ -9,7 +9,7 @@
 use std::path::Path;
 
 use ecad_mcp::{EcadMcp, Options};
-use ecad_model::{Author, ObjectRef, Op};
+use ecad_model::{Author, Op};
 use serde_json::{Value, json};
 
 use crate::mcp_contracts::{AGENT, Client, TempDir};
@@ -68,8 +68,8 @@ fn release_records_the_issue_as_the_agent_and_prerelease_reads() {
     assert_eq!(t.label, "Issue Rev B");
     assert_eq!(t.author, Author::Agent(AGENT.into()));
     assert!(
-        t.ops.iter().any(|o| matches!(o, Op::SetProperty { object: ObjectRef::Project, key, after: Some(a), .. }
-        if key == "rev.2.released" && a == "release/Rev B")),
+        t.ops.iter().any(|o| matches!(o, Op::ModifyProject { after, .. }
+        if ecad_cadcraft::revisions::field_of(after, 2, "released").as_deref() == Some("release/Rev B"))),
         "{:?}",
         t.ops
     );

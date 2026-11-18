@@ -183,14 +183,20 @@ fn sheet_records_round_trip_and_defaults_are_left_out() {
     after.reference_style = Some(ReferenceStyle::PageColumn);
     let page = f.ledger.document().pages[&f.page].clone();
     let ops = vec![
-        Op::AddFolder { id: folder, folder: Folder { name: "Layouts".into(), parent: None }, index: 0 },
+        Op::AddFolder { id: folder, folder: Folder { name: "Layouts".into(), parent: None, start: None }, index: 0 },
         Op::ModifyPage { id: f.page, before: page.clone(), after: ecad_model::Page { folder: Some(folder), ..page } },
-        Op::SetProperty { object: ObjectRef::Project, key: "title".parse().unwrap(), before: None, after: Some("P7".into()) },
+        Op::ModifyProject {
+            before: ecad_model::Project::default(),
+            after: ecad_model::Project {
+                info: ecad_model::ProjectInfo { title: ecad_model::text::Text::new("P7").ok(), ..Default::default() },
+                ..Default::default()
+            },
+        },
         Op::SetProjectSettings { before, after: after.clone() },
     ];
     f.ledger.commit(Author::User, "Sheets", ops).unwrap();
-    let renamed = Folder { name: "Schematics".into(), parent: None };
-    let modify = Op::ModifyFolder { id: folder, before: Folder { name: "Layouts".into(), parent: None }, after: renamed.clone() };
+    let renamed = Folder { name: "Schematics".into(), parent: None, start: None };
+    let modify = Op::ModifyFolder { id: folder, before: Folder { name: "Layouts".into(), parent: None, start: None }, after: renamed.clone() };
     f.ledger.commit(Author::User, "Rename folder", vec![modify]).unwrap();
     let opened = reopened(&mut f.ledger);
     assert!(opened.report.damage.is_none());
