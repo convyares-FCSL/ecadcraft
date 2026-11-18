@@ -345,6 +345,38 @@ impl H {
         }
         self.run("wire", json!({"points": pts(points)}))
     }
+
+    /// A reference end of `cable` on `page` at `at` (its Point and its `reference` representation,
+    /// styled like the cable's first reference), applied to the project as one edit: the end a
+    /// cable gains when it is continued on another page. Until lane F step F4 no command draws a
+    /// cable on two pages (`cablecontinue` needs wires leaving the page through the reference), so
+    /// tests about what two ends say of each other (texts, zones, markers, checks) pair them so.
+    pub fn reference_end(&mut self, cable: ecad_model::CableId, page: PageId, at: (f64, f64)) -> ecad_model::RepresentationId {
+        use ecad_model::{Form, Item, Op, Primitive, Representation, Subject};
+        let doc = self.doc();
+        let style = doc
+            .representations_of(Subject::Cable(cable))
+            .filter(|(_, r)| r.role == ecad_model::derive::REFERENCE_ROLE)
+            .find_map(|(_, r)| r.items.first().and_then(|i| doc.items.get(i)).map(|i| i.style.clone()))
+            .expect("the cable has a reference to pair with");
+        let (item, rep): (ecad_model::ItemId, ecad_model::RepresentationId) = self.cfg(|p| (p.ids.fresh(), p.ids.fresh()));
+        let ops = vec![
+            Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(at.0, at.1) }) } },
+            Op::LinkRepresentation {
+                id: rep,
+                rep: Representation {
+                    subject: Subject::Cable(cable),
+                    page,
+                    form: Form::Drawn,
+                    role: ecad_model::derive::REFERENCE_ROLE.into(),
+                    items: vec![item],
+                    connection_points: Default::default(),
+                },
+            },
+        ];
+        self.project.apply_ops(&mut self.s, "Reference end", ops).unwrap();
+        rep
+    }
 }
 
 /// `place` a symbol at `at`; the command's JSON result (`component`, ...).
