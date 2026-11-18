@@ -6,11 +6,11 @@
 //!   texts, fields (a box showing one bound value), a revision table and vector logos. Coordinates
 //!   are millimetres from the block's bottom-left corner, whatever the project's length unit.
 //! - A [`Binding`] names what a field shows (`project:drawing_number`, `page:number`,
-//!   `revision:ecr`, `print:sheet`). It is written as that text. An unknown source word (a newer
-//!   file) is kept as written and draws as empty.
-//! - [`StyleBody`] keeps unknown body kinds as they were read ([`Raw`]), so a newer file's body
-//!   survives an older build's save. An unknown item kind inside a title block is read as
-//!   [`BlockItem::Unknown`] and dropped on save.
+//!   `revision:ecr`, `print:sheet`). It is written as that text. Strict (design 072 §5.4): an
+//!   unknown source word, a binding without its `source:`, a revision binding naming no revision
+//!   field, or an unknown item kind is a read error.
+//! - [`StyleBody`] keeps unknown body kinds as they were read ([`Raw`]) until lane 072 G types the
+//!   style bodies.
 //! - Bounds (house rule 12): [`TitleBlockLayout::check`] refuses a breach in words (commands);
 //!   [`TitleBlockLayout::usable`] is what drawing uses: items past [`MAX_ITEMS`] or breaking a
 //!   bound are skipped and counted, never a panic.
@@ -189,36 +189,39 @@ pub enum Newest {
     Bottom,
 }
 
-/// A binding's source.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Source {
-    Project,
-    Page,
-    Revision,
-    Print,
-    /// A source word this build does not know (a newer file): kept, drawn as empty.
-    Unknown(String),
+crate::word_enum! {
+    /// A binding's source.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum Source {
+        Project,
+        Page,
+        Revision,
+        Print,
+    }
 }
 
-impl Source {
-    /// Its word.
-    pub fn word(&self) -> &str {
-        match self {
-            Source::Project => "project",
-            Source::Page => "page",
-            Source::Revision => "revision",
-            Source::Print => "print",
-            Source::Unknown(w) => w,
+/// A revision field a binding or a revision table column names (design 072 §5.4): a built-in
+/// field or a custom one.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum RevisionColumn {
+    Field(crate::project::RevField),
+    Custom(crate::project::CustomField),
+}
+
+impl RevisionColumn {
+    /// The column `word` names (`rev`, `ecr`), if it names a revision field.
+    pub fn parse(word: &str) -> Option<RevisionColumn> {
+        match <crate::project::RevField as crate::Word>::parse(word) {
+            Some(f) => Some(RevisionColumn::Field(f)),
+            None => crate::project::CustomField::new(word).map(RevisionColumn::Custom),
         }
     }
 
-    fn of(word: &str) -> Source {
-        match word {
-            "project" => Source::Project,
-            "page" => Source::Page,
-            "revision" => Source::Revision,
-            "print" => Source::Print,
-            w => Source::Unknown(w.to_string()),
+    /// Its word.
+    pub fn word(&self) -> &str {
+        match self {
+            RevisionColumn::Field(f) => crate::Word::word(*f),
+            RevisionColumn::Custom(c) => c.as_str(),
         }
     }
 }
@@ -235,17 +238,30 @@ impl Binding {
         Binding { source, key: key.to_string() }
     }
 
-    /// Read `source:key`. A missing colon reads as an unknown source with that text.
-    pub fn parse(text: &str) -> Binding {
-        match text.split_once(':') {
-            Some((s, k)) => Binding { source: Source::of(s.trim()), key: k.trim().to_string() },
-            None => Binding { source: Source::Unknown(text.to_string()), key: String::new() },
+    /// Read `source:key`.
+    ///
+    /// # Errors
+    /// Why it does not read, in words: no colon, an unknown source word, or a revision binding
+    /// naming no revision field.
+    pub fn parse(text: &str) -> Result<Binding, String> {
+        let (s, k) = text.split_once(':').ok_or_else(|| format!("\"{text}\" is not source:key"))?;
+        let source = <Source as crate::Word>::parse(s.trim())
+            .ok_or_else(|| format!("\"{}\" is not a binding source; use one of {}", s.trim(), <Source as crate::Word>::WORDS.join(", ")))?;
+        let key = k.trim();
+        if source == Source::Revision && RevisionColumn::parse(key).is_none() {
+            return Err(format!("\"{key}\" is not a revision field"));
         }
+        Ok(Binding { source, key: key.to_string() })
+    }
+
+    /// The revision column a revision binding shows (design 072 §5.4).
+    pub fn revision_column(&self) -> Option<RevisionColumn> {
+        (self.source == Source::Revision).then(|| RevisionColumn::parse(&self.key)).flatten()
     }
 
     /// `source:key`.
     pub fn text(&self) -> String {
-        format!("{}:{}", self.source.word(), self.key)
+        format!("{}:{}", crate::Word::word(self.source), self.key)
     }
 }
 
@@ -264,7 +280,7 @@ impl Serialize for Binding {
 impl<'de> Deserialize<'de> for Binding {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let text = String::deserialize(d)?;
-        Ok(Binding::parse(&text))
+        Binding::parse(&text).map_err(serde::de::Error::custom)
     }
 }
 
@@ -310,9 +326,6 @@ pub enum BlockItem {
         #[serde(default)]
         prims: Vec<Primitive>,
     },
-    /// An item kind this build does not know (a newer file): skipped when drawing, counted.
-    #[serde(other)]
-    Unknown,
 }
 
 fn yes() -> bool {
@@ -325,7 +338,6 @@ impl BlockItem {
         match self {
             BlockItem::Line { a, b, .. } => Some(Rect::new(a.0.min(b.0), a.1.min(b.1), (a.0 - b.0).abs(), (a.1 - b.1).abs())),
             BlockItem::Text { at, .. } | BlockItem::Field { at, .. } | BlockItem::RevTable { at, .. } | BlockItem::Logo { at, .. } => Some(*at),
-            BlockItem::Unknown => None,
         }
     }
 
@@ -337,7 +349,6 @@ impl BlockItem {
             BlockItem::Field { .. } => "field",
             BlockItem::RevTable { .. } => "revision table",
             BlockItem::Logo { .. } => "logo",
-            BlockItem::Unknown => "unknown item",
         }
     }
 
@@ -396,7 +407,6 @@ impl BlockItem {
                     None
                 }
             }
-            BlockItem::Unknown => Some("An item of a kind this build does not know.".to_string()),
         }
     }
 }
@@ -634,12 +644,14 @@ mod tests {
 
     #[test]
     fn bindings_read_and_write() {
-        let b = Binding::parse("project:drawing_number");
+        let b = Binding::parse("project:drawing_number").unwrap();
         assert_eq!(b, Binding::new(Source::Project, "drawing_number"));
         assert_eq!(b.text(), "project:drawing_number");
-        let u = Binding::parse("weather:today");
-        assert_eq!(u.source, Source::Unknown("weather".into()));
-        assert_eq!(u.text(), "weather:today");
+        for bad in ["weather:today", "nocolon", "revision:Bad Name", "revision:issued"] {
+            assert!(Binding::parse(bad).is_err(), "{bad}");
+        }
+        let r = Binding::parse("revision:ecr").unwrap();
+        assert_eq!(r.revision_column().map(|c| c.word().to_string()).as_deref(), Some("ecr"));
     }
 
     #[test]
