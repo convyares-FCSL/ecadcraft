@@ -148,13 +148,10 @@ impl DeviceType {
             DeviceType::Switching(s) => s.operator_kind() != OperatorKind::Manual,
             // A contact or a thermocouple has no supply: only a powered sensor is warned about.
             DeviceType::Sensor(s) => s.output.is_powered(),
-            DeviceType::Motor(_) | DeviceType::Load(_) | DeviceType::Indicator(_) => true,
-            DeviceType::PowerSupply(_)
-            | DeviceType::TerminalStrip(_)
-            | DeviceType::Connector(_)
-            | DeviceType::PlcRack(_)
-            | DeviceType::PlcModule(_)
-            | DeviceType::General => false,
+            DeviceType::PowerSupply(_) | DeviceType::Motor(_) | DeviceType::Load(_) | DeviceType::Indicator(_) => true,
+            DeviceType::TerminalStrip(_) | DeviceType::Connector(_) | DeviceType::PlcRack(_) | DeviceType::PlcModule(_) | DeviceType::General => {
+                false
+            }
         }
     }
 
@@ -167,12 +164,8 @@ impl DeviceType {
             DeviceType::Motor(m) => (!m.is_unrated()).then(|| m.to_string()),
             DeviceType::Load(l) => (!l.is_unrated()).then(|| l.to_string()),
             DeviceType::Indicator(i) => (!i.is_unrated()).then(|| i.to_string()),
-            DeviceType::PowerSupply(_)
-            | DeviceType::TerminalStrip(_)
-            | DeviceType::Connector(_)
-            | DeviceType::PlcRack(_)
-            | DeviceType::PlcModule(_)
-            | DeviceType::General => None,
+            DeviceType::PowerSupply(p) => (!p.is_unrated()).then(|| p.to_string()),
+            DeviceType::TerminalStrip(_) | DeviceType::Connector(_) | DeviceType::PlcRack(_) | DeviceType::PlcModule(_) | DeviceType::General => None,
         }
     }
 
@@ -185,11 +178,10 @@ impl DeviceType {
             DeviceType::Motor(m) => DeviceType::Motor(m.unrated()),
             DeviceType::Load(l) => DeviceType::Load(l.unrated()),
             DeviceType::Indicator(i) => DeviceType::Indicator(i.unrated()),
+            DeviceType::PowerSupply(p) => DeviceType::PowerSupply(p.unrated()),
             // A strip's ratings are its fuse positions'.
             DeviceType::TerminalStrip(_) => DeviceType::TerminalStrip(TerminalStrip::default()),
-            DeviceType::PowerSupply(_) | DeviceType::Connector(_) | DeviceType::PlcRack(_) | DeviceType::PlcModule(_) | DeviceType::General => {
-                self.clone()
-            }
+            DeviceType::Connector(_) | DeviceType::PlcRack(_) | DeviceType::PlcModule(_) | DeviceType::General => self.clone(),
         }
     }
 
@@ -204,7 +196,8 @@ impl DeviceType {
             DeviceType::Motor(m) => m.problem(),
             DeviceType::Load(l) => l.problem(),
             DeviceType::Indicator(i) => i.problem(),
-            DeviceType::PowerSupply(_) | DeviceType::PlcRack(_) | DeviceType::PlcModule(_) | DeviceType::General => None,
+            DeviceType::PowerSupply(p) => p.problem(),
+            DeviceType::PlcRack(_) | DeviceType::PlcModule(_) | DeviceType::General => None,
         }
     }
 
@@ -214,10 +207,8 @@ impl DeviceType {
     }
 }
 
-/// A power supply, battery or transformer (group 1). Its fields come with lane B step 3.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PowerSupply {}
+pub mod power_supply;
+pub use power_supply::{PowerSupply, Psu, Transformer};
 
 pub mod protection;
 pub use protection::{Breaker, Fuse, FuseBank, FuseClass, Poles, Protection, ProtectionKind, Rcbo, Rcd, TripCurve};

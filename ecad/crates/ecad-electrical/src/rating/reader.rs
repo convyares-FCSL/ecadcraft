@@ -1,7 +1,7 @@
 //! Reading a typed rating into a group's typed fields (design 072 §2.2, "Ratings", owner decisions
 //! 2026-11-18): one reader per group (protection here, switching in [`read_switching`], sensors in
 //! [`read_sensor`], motors in [`read_motor`], loads in [`read_load`], indicators in
-//! [`read_indicator`], a strip's fuse positions in [`with_position_rating`]), used by `setprop` (the
+//! [`read_indicator`], power supplies and transformers in [`read_power_supply`], a strip's fuse positions in [`with_position_rating`]), used by `setprop` (the
 //! UI, the CLI and MCP alike) and by a symbol's default rating.
 //!
 //! # Semantics
@@ -14,8 +14,7 @@
 //! - What was read is shown back from the fields (the group's `Display`),
 //!   and reading that text again gives the same fields.
 //!
-//! This module excludes the checks on a rating (the Checks rows read only the typed fields) and
-//! the groups whose rating step is still to come (their text is kept as the note).
+//! This module excludes the checks on a rating (the Checks rows read only the typed fields).
 #![deny(clippy::wildcard_enum_match_arm)]
 
 use ecad_model::Device;
@@ -30,11 +29,13 @@ use ecad_model::units::{Amps, KiloAmps, MilliAmps};
 mod indicator;
 mod load;
 mod motor;
+mod power_supply;
 mod sensor;
 mod switching;
 pub use indicator::read_indicator;
 pub use load::read_load;
 pub use motor::read_motor;
+pub use power_supply::read_power_supply;
 pub use sensor::read_sensor;
 pub use switching::read_switching;
 
@@ -393,14 +394,20 @@ pub fn rated(t: &DeviceType, who: &str, text: Option<&str>) -> Result<(DeviceTyp
                 Read::NotARating => Ok((DeviceType::Indicator(i.unrated()), Some(note(text)?))),
             }
         }
-        // Groups whose typed rating is still to come (lane 072 B step 3), and groups with none:
-        // the text is the note.
-        DeviceType::PowerSupply(_)
-        | DeviceType::TerminalStrip(_)
-        | DeviceType::Connector(_)
-        | DeviceType::PlcRack(_)
-        | DeviceType::PlcModule(_)
-        | DeviceType::General => Ok((t.clone(), text.map(note).transpose()?)),
+        DeviceType::PowerSupply(p) => {
+            let Some(text) = text else { return Ok((DeviceType::PowerSupply(p.unrated()), None)) };
+            match read_power_supply(p, text) {
+                Read::Rating(p) => Ok((DeviceType::PowerSupply(p), None)),
+                Read::Ask(q) => Err(CmdError::refused(format!("{who}'s rating '{text}' needs {q}"))),
+                Read::Refused(m) => Err(CmdError::refused(format!("{who}'s rating '{text}': {m}."))),
+                Read::NotARating => Ok((DeviceType::PowerSupply(p.unrated()), Some(note(text)?))),
+            }
+        }
+        // Groups with no rating of their own (a strip's are its fuse positions'): the text is the
+        // note.
+        DeviceType::TerminalStrip(_) | DeviceType::Connector(_) | DeviceType::PlcRack(_) | DeviceType::PlcModule(_) | DeviceType::General => {
+            Ok((t.clone(), text.map(note).transpose()?))
+        }
     }
 }
 

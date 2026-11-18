@@ -236,6 +236,19 @@ fn an_indicator_rating_is_shown_raw_and_readable() {
     shown_raw_and_readable("072b-lamp", 81, before, after, &["indicator", "signal", "steady", "colour", "rated_voltage"], "rated_voltage");
 }
 
+/// Step 3, PowerSupply (A15): a supply's kind and typed voltages show in the readable log and the
+/// Readable row view, and the Raw view is the stored bytes.
+#[test]
+fn a_power_supply_rating_is_shown_raw_and_readable() {
+    use ecad_model::device::{PowerSupply, Transformer};
+    use ecad_model::units::{Current, RatedVoltage, VoltAmps, Volts};
+    let before = Device { device_type: DeviceType::PowerSupply(PowerSupply::Transformer(Transformer::default())), ..Device::default() };
+    let ac = |v| Some(RatedVoltage { volts: Volts(v), current: Current::Ac });
+    let t = Transformer { input: ac(400.0), output: ac(24.0), rated_power: Some(VoltAmps(250.0)) };
+    let after = Device { device_type: DeviceType::PowerSupply(PowerSupply::Transformer(t)), ..before.clone() };
+    shown_raw_and_readable("072b-trafo", 82, before, after, &["power_supply", "transformer", "input", "output", "rated_power"], "rated_power");
+}
+
 /// One device created as `before` and changed to `after`: the readable log names `log_words`,
 /// the Readable row view names `readable_word`, and the Raw view is the stored bytes.
 fn shown_raw_and_readable(name: &str, seed: u64, before: Device, after: Device, log_words: &[&str], readable_word: &str) {
