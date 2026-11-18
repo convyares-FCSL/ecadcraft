@@ -8,11 +8,28 @@ use super::super::prop::{Build, NO_SUCH_OBJECT, PropRule};
 use crate::error::CmdError;
 
 /// This lane's rows, asked before [`super::super::prop::PROP_RULES`].
-pub static RULES: &[PropRule] = &[PropRule {
-    what: "device text fields (072 B)",
-    claims: |_, o, k| matches!(o, ObjectRef::Device(_)) && TextField::of_key(k).is_some(),
-    build: Build::Record(text_value),
-}];
+pub static RULES: &[PropRule] = &[
+    PropRule {
+        what: "device text fields (072 B)",
+        claims: |_, o, k| matches!(o, ObjectRef::Device(_)) && TextField::of_key(k).is_some(),
+        build: Build::Record(text_value),
+    },
+    PropRule {
+        what: "connector fields (072 B)",
+        claims: |_, o, k| matches!(o, ObjectRef::Device(_)) && crate::connectors::is_field_key(k),
+        build: Build::Record(connector_value),
+    },
+];
+
+/// A connector's pins, pin names, half parts or ignored rows: one `ModifyDevice`.
+///
+/// # Errors
+/// [`crate::connectors::with_field`]'s refusals.
+pub fn connector_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
+    let (c, d) = device_of(doc, o)?;
+    let after = crate::connectors::with_field(d, &crate::devices::tag_words(doc, c), key, value)?;
+    Ok((after != *d).then(|| Op::ModifyDevice { id: c, before: d.clone(), after }))
+}
 
 fn device_of(doc: &Document, o: ObjectRef) -> Result<(DeviceId, &Device), CmdError> {
     match o {

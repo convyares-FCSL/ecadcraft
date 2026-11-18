@@ -24,6 +24,8 @@ use ecad_model::{
     Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId,
 };
 
+use ecad_model::Word;
+use ecad_model::device::{Connector, ConnectorCheck, DeviceType, HalfPart};
 use ecad_model::{CableId, CableMember, Noun, Wire, WireId};
 
 use crate::CmdError;
@@ -54,9 +56,26 @@ pub const HALF_FIELDS: [&str; 3] = ["description", "maker", "part_number"];
 /// 1: the Checks rows' Ignore button).
 pub const IGNORE_PREFIX: &str = "ignore.";
 
+/// Connector `c`'s own data (its type's), when it is a connector.
+pub fn connector_of(doc: &Document, c: DeviceId) -> Option<&Connector> {
+    match &doc.devices.get(&c)?.device_type {
+        DeviceType::Connector(x) => Some(x),
+        _ => None,
+    }
+}
+
+/// The ignorable Checks row of `kind`, if it is one.
+pub fn ignorable(kind: CheckKind) -> Option<ConnectorCheck> {
+    match kind {
+        CheckKind::ConnectorFamily => Some(ConnectorCheck::Family),
+        CheckKind::ConnectorSize => Some(ConnectorCheck::Size),
+        _ => None,
+    }
+}
+
 /// Whether connector `c` ignores Checks rows of `kind`.
 pub fn ignores(doc: &Document, c: DeviceId, kind: CheckKind) -> bool {
-    doc.devices.get(&c).is_some_and(|x| x.properties.contains_key(&format!("{IGNORE_PREFIX}{}", kind.name())))
+    ignorable(kind).is_some_and(|k| connector_of(doc, c).is_some_and(|x| x.ignored.contains(&k)))
 }
 
 /// The keys of the pin starters.
@@ -64,72 +83,26 @@ pub const PIN_KEYS: [StarterKey; 3] = [StarterKey::Pinpair, StarterKey::Pins, St
 
 // ---------------------------------------------------------------- families (design 044 §1)
 
-/// A connector family: both halves of one connector have one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Family {
-    Plain,
-    Dsub,
-    M12,
-    Rj45,
-    Usba,
-    Usbb,
+/// A connector family (design 044 §1): the model's word ([`ecad_model::device::ConnectorFamily`]),
+/// with the sizes and starters its halves come in ([`FamilyRules`]).
+pub use ecad_model::device::ConnectorFamily as Family;
+
+/// What a family's halves come in (design 044 §1): its sizes, its bulkhead and its whole-half
+/// starters.
+pub trait FamilyRules: Sized {
+    /// The sizes its whole halves come in; empty for a bulkhead.
+    fn sizes(self) -> &'static [usize];
+    /// The bulkhead starter of a one-piece family.
+    fn bulkhead(self) -> Option<&'static str>;
+    /// The starter key of its whole half of `side` with `n` pins (`socket4`, `dsub9p`, `m12s5`).
+    fn half_key(self, side: Side, n: usize) -> Option<String>;
+    /// The refusal for a pin count that is not one of its sizes (design 044 §6.1).
+    fn size_refusal(self) -> String;
 }
 
-impl Family {
-    pub const ALL: [Family; 6] = [Family::Plain, Family::Dsub, Family::M12, Family::Rj45, Family::Usba, Family::Usbb];
-
-    /// The JSON and registry word: `plain`, `dsub`, `m12`, `rj45`, `usba`, `usbb`.
-    pub fn word(self) -> &'static str {
-        match self {
-            Family::Plain => "plain",
-            Family::Dsub => "dsub",
-            Family::M12 => "m12",
-            Family::Rj45 => "rj45",
-            Family::Usba => "usba",
-            Family::Usbb => "usbb",
-        }
-    }
-
-    /// The prompt keyword: `Plain`, `Dsub`, `M12`, `RJ45`, `USBA`, `USBB`.
-    pub fn keyword(self) -> &'static str {
-        match self {
-            Family::Plain => "Plain",
-            Family::Dsub => "Dsub",
-            Family::M12 => "M12",
-            Family::Rj45 => "RJ45",
-            Family::Usba => "USBA",
-            Family::Usbb => "USBB",
-        }
-    }
-
-    /// The words a person reads: `D-sub`, `M12`…
-    pub fn name(self) -> &'static str {
-        match self {
-            Family::Plain => "Plain",
-            Family::Dsub => "D-sub",
-            Family::M12 => "M12",
-            Family::Rj45 => "RJ45",
-            Family::Usba => "USB-A",
-            Family::Usbb => "USB-B",
-        }
-    }
-
-    /// The family a word names (case-insensitive; `d-sub`, `sub-d` and `usb-a` too).
-    pub fn parse(text: &str) -> Option<Family> {
-        let t: String = text.trim().chars().take(16).filter(|c| *c != '-').collect::<String>().to_ascii_lowercase();
-        match t.as_str() {
-            "plain" => Some(Family::Plain),
-            "dsub" | "subd" => Some(Family::Dsub),
-            "m12" => Some(Family::M12),
-            "rj45" => Some(Family::Rj45),
-            "usba" => Some(Family::Usba),
-            "usbb" => Some(Family::Usbb),
-            _ => None,
-        }
-    }
-
+impl FamilyRules for Family {
     /// The sizes its whole halves come in; empty for a bulkhead.
-    pub fn sizes(self) -> &'static [usize] {
+    fn sizes(self) -> &'static [usize] {
         match self {
             Family::Plain => &[2, 3, 4, 6, 8, 12],
             Family::Dsub => &[9, 15, 25],
@@ -139,7 +112,7 @@ impl Family {
     }
 
     /// The bulkhead starter of a one-piece family.
-    pub fn bulkhead(self) -> Option<&'static str> {
+    fn bulkhead(self) -> Option<&'static str> {
         match self {
             Family::Rj45 => Some("rj45"),
             Family::Usba => Some("usba"),
@@ -149,7 +122,7 @@ impl Family {
     }
 
     /// The starter key of its whole half of `side` with `n` pins (`socket4`, `dsub9p`, `m12s5`).
-    pub fn half_key(self, side: Side, n: usize) -> Option<String> {
+    fn half_key(self, side: Side, n: usize) -> Option<String> {
         if !self.sizes().contains(&n) {
             return None;
         }
@@ -165,7 +138,7 @@ impl Family {
     }
 
     /// The refusal for a pin count that is not one of its sizes (design 044 §6.1).
-    pub fn size_refusal(self) -> String {
+    fn size_refusal(self) -> String {
         let sizes: Vec<String> = self.sizes().iter().map(ToString::to_string).collect();
         let list = match sizes.as_slice() {
             [] => String::new(),
@@ -412,12 +385,13 @@ pub fn drawn(doc: &Document, c: DeviceId) -> Drawn {
 
 /// Connector `c`'s typed list of pin names, when it holds a valid one.
 pub fn pin_names(doc: &Document, c: DeviceId) -> Option<Vec<String>> {
-    parse_list(doc.devices.get(&c)?.properties.get(PIN_NAMES_KEY)?).ok().filter(|v| !v.is_empty())
+    let names: Vec<String> = connector_of(doc, c)?.pin_names.iter().map(ToString::to_string).collect();
+    (!names.is_empty()).then_some(names)
 }
 
 /// Connector `c`'s `pins` property, when it holds a count from 1 to [`MAX_PINS`].
 pub fn pins_prop(doc: &Document, c: DeviceId) -> Option<usize> {
-    doc.devices.get(&c)?.properties.get(PINS_KEY)?.trim().parse::<usize>().ok().filter(|n| (1..=MAX_PINS).contains(n))
+    connector_of(doc, c)?.pins.map(|n| usize::from(n.get()))
 }
 
 /// The whole-half symbols of connector `c`: (representation, side, starter), in ID order.
@@ -644,13 +618,7 @@ pub fn half_family(doc: &Document, c: DeviceId, side: Side) -> Family {
     if let Some(f) = whole_halves(doc, c).into_iter().find(|(_, s, _)| *s == side).and_then(|(_, _, s)| family_of(s)) {
         return f;
     }
-    doc.devices
-        .get(&c)
-        .and_then(|x| x.definition)
-        .and_then(|d| doc.definitions.get(&d))
-        .and_then(symbols::of_definition)
-        .and_then(family_of)
-        .unwrap_or(Family::Plain)
+    connector_of(doc, c).map_or(Family::Plain, |x| x.family)
 }
 
 // ---------------------------------------------------------------- planning (design 044 §4)
@@ -728,22 +696,19 @@ pub fn create_ops(
         None => high.next_auto(ledger, &crate::devices::prefix_for(doc, starter))?,
     };
     let c: DeviceId = ids.fresh();
-    let mut properties = ecad_model::Properties::new();
     let description = defaults::resolve(doc, &defaults::connectors::DESCRIPTION, Scope::project()).text();
-    if let Some(n) = pins {
-        properties.insert(PINS_KEY.into(), n.to_string());
-    }
-    if let Some(list) = names.filter(|l| !l.is_empty()) {
-        properties.insert(PIN_NAMES_KEY.into(), list.join(","));
+    let mut device_type = starter.device_type();
+    if let DeviceType::Connector(x) = &mut device_type {
+        x.pins = pins.and_then(|n| u8::try_from(n).ok()).and_then(ecad_model::device::PinCount::new);
+        x.pin_names = typed_names(names.unwrap_or_default())?;
     }
     ops.push(Op::CreateDevice {
         id: c,
         device: Device {
             tag: Some(crate::devices::stored_tag(&tag)?),
             description: crate::devices::description_of(&description),
-            properties,
             definition: Some(def),
-            device_type: starter.device_type(),
+            device_type,
             ..Device::default()
         },
     });
@@ -877,50 +842,13 @@ fn set_route_end(item: &mut Item, p: Pt, start: bool) {
 
 // ---------------------------------------------------------------- properties (FP4)
 
-/// The value `setprop` stores for a connector key on component `c` (`pins`, `half.<s|p>.<field>`,
-/// the naming defaults), or `None` when `c` is not a connector or the key is not one of these.
+/// The value `setprop` stores for a connector's naming default on device `c`, or `None` when `c` is
+/// not a connector or the key is not one (its pins, pin names, halves and ignored rows are fields:
+/// [`with_field`]).
 ///
 /// # Errors
 /// A pin count out of range, an unknown side letter, a value the rules refuse.
 pub fn setprop_value(doc: &Document, c: DeviceId, key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
-    if key == PINS_KEY {
-        if !is_connector(doc, c) {
-            return None;
-        }
-        return Some(match value.map(str::trim).filter(|v| !v.is_empty()) {
-            None => Ok(None),
-            Some(v) => v
-                .parse::<usize>()
-                .ok()
-                .filter(|n| (1..=MAX_PINS).contains(n))
-                .map(|n| Some(n.to_string()))
-                .ok_or_else(|| CmdError::refused(format!("`pins` is a whole number from 1 to {MAX_PINS}."))),
-        });
-    }
-    if key == PIN_NAMES_KEY {
-        if !is_connector(doc, c) {
-            return None;
-        }
-        return Some(match value.map(str::trim).filter(|v| !v.is_empty()) {
-            None => Ok(None),
-            Some(v) => parse_list(v).map(|l| Some(l.join(","))),
-        });
-    }
-    if let Some(rest) = key.strip_prefix(HALF_PREFIX) {
-        if !is_connector(doc, c) {
-            return None;
-        }
-        let tag = crate::devices::tag_words(doc, c);
-        let (letter, field) = rest.split_once('.').unwrap_or((rest, ""));
-        if letter != "s" && letter != "p" {
-            let shown: String = letter.chars().take(8).filter(|c| !c.is_control()).collect();
-            return Some(Err(CmdError::refused(format!("{tag} has no half \"{shown}\". Use half.s.* or half.p.*."))));
-        }
-        if field.is_empty() || field.chars().count() > 32 || !field.chars().all(|c| c.is_ascii_lowercase() || c == '_') {
-            return Some(Err(CmdError::refused(format!("A half's field is a word such as {}: half.{letter}.description.", HALF_FIELDS.join(", ")))));
-        }
-        return Some(crate::devices::property_value(doc, "description", value));
-    }
     if crate::defaults::connectors::is_naming_key(key) {
         if !is_connector(doc, c) {
             return None;
@@ -935,10 +863,109 @@ pub fn half_key(side: Side, field: &str) -> Option<String> {
     Some(format!("{HALF_PREFIX}{}.{field}", side.letter()?))
 }
 
-/// A half's own value of `field`.
+/// A half's own value of `field` (one of [`HALF_FIELDS`]).
 pub fn half_prop(doc: &Document, c: DeviceId, side: Side, field: &str) -> Option<String> {
-    let k = half_key(side, field)?;
-    doc.devices.get(&c)?.properties.get(&k).map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
+    let plug = match side {
+        Side::Socket => false,
+        Side::Plug => true,
+        Side::Both => return None,
+    };
+    half_field(connector_of(doc, c)?.half(plug), field).map(str::to_string)
+}
+
+/// The value of `field` (`description`, `maker`, `part_number`) of half part `h`.
+pub fn half_field<'a>(h: &'a HalfPart, field: &str) -> Option<&'a str> {
+    match field {
+        "description" => h.description.as_ref().map(|t| t.as_str()),
+        "maker" => h.manufacturer.as_ref().map(|t| t.as_str()),
+        "part_number" => h.part_number.as_ref().map(|t| t.as_str()),
+        _ => None,
+    }
+}
+
+/// Pin names as stored: each checked ([`check_list`]) and validated text.
+///
+/// # Errors
+/// As [`check_list`].
+pub fn typed_names(names: &[String]) -> Result<Vec<ecad_model::device::PinName>, CmdError> {
+    check_list(names)?;
+    names.iter().map(|n| ecad_model::device::PinName::new(n).map_err(|e| CmdError::refused(format!("Pin name {n}: {e}")))).collect()
+}
+
+/// Whether `key` is one of a connector's own fields' `setprop` keys: `pins`, `pin_names`,
+/// `half.<s|p>.<field>`, `ignore.<row>`. (The retired `half.<s|p>.location` is the location
+/// override `location.socket` / `location.plug`: [`crate::cmd::location::aspect_property`].)
+pub fn is_field_key(key: &str) -> bool {
+    key == PINS_KEY || key == PIN_NAMES_KEY || (key.starts_with(HALF_PREFIX) && !key.ends_with(".location")) || key.starts_with(IGNORE_PREFIX)
+}
+
+/// Connector `d` (named `tag` in refusals) with the field `setprop`'s `key` names set to `value`
+/// (`None`, or blank, clears it).
+///
+/// # Errors
+/// Not a connector; a pin count out of range; a bad pin name list; an unknown side, half field or
+/// row; text a field refuses.
+pub fn with_field(d: &Device, tag: &str, key: &str, value: Option<&str>) -> Result<Device, CmdError> {
+    let mut out = d.clone();
+    let DeviceType::Connector(x) = &mut out.device_type else {
+        return Err(CmdError::refused(format!("{tag} is not a connector: `{key}` is a connector's.")));
+    };
+    let value = value.map(str::trim).filter(|v| !v.is_empty());
+    if key == PINS_KEY {
+        x.pins = match value {
+            None => None,
+            Some(v) => Some(
+                v.parse::<u8>()
+                    .ok()
+                    .filter(|n| (1..=ecad_model::device::MAX_PINS).contains(n))
+                    .and_then(ecad_model::device::PinCount::new)
+                    .ok_or_else(|| CmdError::refused(format!("`pins` is a whole number from 1 to {MAX_PINS}.")))?,
+            ),
+        };
+    } else if key == PIN_NAMES_KEY {
+        x.pin_names = match value {
+            None => Vec::new(),
+            Some(v) => typed_names(&parse_list(v)?)?,
+        };
+    } else if let Some(rest) = key.strip_prefix(HALF_PREFIX) {
+        let (letter, field) = rest.split_once('.').unwrap_or((rest, ""));
+        let plug = match letter {
+            "s" => false,
+            "p" => true,
+            _ => {
+                let shown: String = letter.chars().take(8).filter(|c| !c.is_control()).collect();
+                return Err(CmdError::refused(format!("{tag} has no half \"{shown}\". Use half.s.* or half.p.*.")));
+            }
+        };
+        let h = x.half_mut(plug);
+        let text = |max: usize| CmdError::refused(format!("`{key}` is one line of at most {max} characters, with no control or hidden characters."));
+        match field {
+            "description" => h.description = value.map(ecad_model::device::Description::new).transpose().map_err(|_| text(256))?,
+            "maker" => h.manufacturer = value.map(ecad_model::device::PartText::new).transpose().map_err(|_| text(64))?,
+            "part_number" => h.part_number = value.map(ecad_model::device::PartText::new).transpose().map_err(|_| text(64))?,
+            _ => {
+                return Err(CmdError::refused(format!("A half's field is one of {}: half.{letter}.description.", HALF_FIELDS.join(", "))));
+            }
+        }
+    } else if let Some(row) = key.strip_prefix(IGNORE_PREFIX) {
+        let words = <ConnectorCheck as ecad_model::Word>::WORDS.join(" or ");
+        let k = <ConnectorCheck as ecad_model::Word>::parse(row).ok_or_else(|| {
+            let shown: String = row.chars().take(32).filter(|c| !c.is_control()).collect();
+            CmdError::refused(format!("A connector ignores {words}, not \"{shown}\"."))
+        })?;
+        let on = match value {
+            None => false,
+            Some(v) => ecad_model::words::flag(v).ok_or_else(|| CmdError::refused(format!("`{key}` is yes or no.")))?,
+        };
+        if on {
+            x.ignored.insert(k);
+        } else {
+            x.ignored.remove(&k);
+        }
+    } else {
+        return Err(CmdError::refused(format!("`{key}` is not a connector's field.")));
+    }
+    Ok(out)
 }
 
 // ---------------------------------------------------------------- BOM (design 044 §8)
@@ -1396,9 +1423,9 @@ mod tests {
         assert_eq!(Family::Dsub.half_key(Side::Plug, 9).as_deref(), Some("dsub9p"));
         assert_eq!(Family::M12.half_key(Side::Socket, 5).as_deref(), Some("m12s5"));
         assert_eq!(Family::Plain.half_key(Side::Socket, 5), None);
-        assert_eq!(Family::parse("D-sub"), Some(Family::Dsub));
+        assert_eq!(Family::of_typed("D-sub"), Some(Family::Dsub));
         assert_eq!(Family::Dsub.size_refusal(), "A D-sub has 9, 15 or 25 pins. Pick one, or draw pin by pin with Pins.");
-        for f in Family::ALL {
+        for f in Family::ALL.iter().copied() {
             for n in f.sizes() {
                 for side in [Side::Socket, Side::Plug] {
                     let key = f.half_key(side, *n).unwrap_or_default();

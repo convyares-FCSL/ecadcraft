@@ -168,3 +168,44 @@ fn location_and_function_are_written_as_modify_device() {
     assert!(h.doc().devices[&c].location_fixed);
     assert_ne!(h.doc().devices[&c].location, o.location);
 }
+
+/// Step 3, Connector (design 072 §2.2): placing a connector stores its symbol's family; `setprop`
+/// of its pins, pin names, a half's part and an ignored row writes one `ModifyDevice` each; a bad
+/// value is refused with words.
+#[test]
+fn connector_fields_are_written_as_modify_device() {
+    use ecad_model::Op;
+    use ecad_model::device::{ConnectorCheck, ConnectorFamily, DeviceType};
+    let mut h = H::new(7204);
+    let c: DeviceId = id(&crate::common::place(&mut h, "dsub9s", (100.0, 100.0)), "component");
+    let family = |h: &mut H| match &h.doc().devices[&c].device_type {
+        DeviceType::Connector(x) => Some(x.family),
+        _ => None,
+    };
+    assert_eq!(family(&mut h), Some(ConnectorFamily::Dsub), "the symbol's family is stored");
+    for (key, value) in
+        [("pins", "8"), ("pin_names", "A,B,C"), ("half.s.maker", "Acme"), ("half.p.part_number", "PLG-9"), ("ignore.connector-size", "yes")]
+    {
+        h.run("setprop", json!({"component": c.hex(), "key": key, "value": value})).unwrap();
+        let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());
+        assert!(matches!(ops.as_slice(), [Op::ModifyDevice { .. }]), "{key}: {ops:?}");
+        assert_eq!(h.doc().devices[&c].value(key).as_deref(), Some(value), "{key}");
+    }
+    let d = h.doc().devices[&c].clone();
+    assert!(d.properties.is_empty(), "{d:?}");
+    let DeviceType::Connector(x) = &d.device_type else { panic!("{d:?}") };
+    assert!(x.ignored.contains(&ConnectorCheck::Size));
+    for (key, value, want) in [
+        ("pins", "65", "1 to 64"),
+        ("pin_names", "A,a", "twice"),
+        ("half.x.maker", "Acme", "no half"),
+        ("half.s.colour", "red", "field is one of"),
+        ("ignore.wire-colour", "yes", "connector ignores"),
+    ] {
+        let e = h.run("setprop", json!({"component": c.hex(), "key": key, "value": value})).unwrap_err();
+        assert!(e.contains(want), "{key}: {e}");
+    }
+    // Not a connector: refused.
+    let k: DeviceId = id(&crate::common::place(&mut h, "coil", (200.0, 100.0)), "component");
+    assert!(h.run("setprop", json!({"component": k.hex(), "key": "pins", "value": "4"})).is_err());
+}

@@ -74,3 +74,24 @@ fn setlocation_records_modify_device_with_fixed() {
     let mut r = reader();
     r.refused("execute", json!({"command": "setlocation", "params": {"component": id, "value": "+CP2"}}));
 }
+
+/// Step 3, Connector: `setprop` of a connector's pin count through MCP records one `ModifyDevice`
+/// as the agent, and is refused with writes off.
+#[test]
+fn setprop_of_a_connector_field_records_modify_device() {
+    let mut c = Client::new(EcadMcp::in_memory("lane072b-conn", 75, Options { write: true, agent: None }).unwrap());
+    let placed = c.exec("place", json!({"symbol": "socket4", "at": [50, 50]}));
+    let id = placed["component"].as_str().unwrap().to_string();
+    let before = c.log().len();
+    c.exec("setprop", json!({"component": id, "key": "pins", "value": "6"}));
+    let log = c.log();
+    assert_eq!(log.len(), before + 1);
+    let last = log.last().unwrap();
+    assert_eq!(last.author, Author::Agent(AGENT.into()));
+    match last.ops.as_slice() {
+        [Op::ModifyDevice { after, .. }] => assert_eq!(after.value("pins").as_deref(), Some("6")),
+        other => panic!("{other:?}"),
+    }
+    let mut r = reader();
+    r.refused("execute", json!({"command": "setprop", "params": {"component": id, "key": "pins", "value": "5"}}));
+}

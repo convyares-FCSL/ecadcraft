@@ -190,3 +190,50 @@ fn location_and_function_are_fields_with_fixed() {
     let read: Device = serde_json::from_value(json).unwrap();
     assert_eq!(read, d, "the fields round-trip");
 }
+
+/// Step 3, Connector (design 072 §2.2): a connector's family, pins, pin names, half parts and
+/// ignored rows are its type's data, strict on read and checked by the invariant; the keys are
+/// never in a device's bag and `setprop`'s keys read them.
+#[test]
+fn a_connector_s_data_is_its_type_s() {
+    use ecad_model::device::{Connector, ConnectorCheck, ConnectorFamily, PinCount, PinName};
+    let mut x = Connector::of_family(ConnectorFamily::Dsub);
+    x.pins = PinCount::new(9);
+    x.pin_names = ["L", "N", "PE"].map(|n| PinName::new(n).unwrap()).to_vec();
+    x.plug.part_number = Some(ecad_model::device::PartText::new("PLG-9").unwrap());
+    x.ignored.insert(ConnectorCheck::Family);
+    let d = Device { device_type: DeviceType::Connector(Box::new(x.clone())), ..Device::default() };
+    let json = serde_json::to_value(&d.device_type).unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!({"connector": {"family": "dsub", "pins": 9, "pin_names": ["L", "N", "PE"], "plug": {"part_number": "PLG-9"}, "ignored": ["connector-family"]}})
+    );
+    assert_eq!(serde_json::from_value::<DeviceType>(json).unwrap(), d.device_type, "round-trips");
+    for bad in [
+        serde_json::json!({"connector": {"family": "dsub9"}}),
+        serde_json::json!({"connector": {"family": "plain", "colour": "red"}}),
+        serde_json::json!({"connector": {"family": "plain", "ignored": ["wire-colour"]}}),
+        serde_json::json!({"connector": {"family": "plain", "pins": 0}}),
+    ] {
+        assert!(serde_json::from_value::<DeviceType>(bad.clone()).is_err(), "{bad}");
+    }
+    assert_eq!(d.value("pins").as_deref(), Some("9"));
+    assert_eq!(d.value("pin_names").as_deref(), Some("L,N,PE"));
+    assert_eq!(d.value("half.p.part_number").as_deref(), Some("PLG-9"));
+    assert_eq!(d.value("half.s.part_number"), None);
+    assert_eq!(d.value("ignore.connector-family").as_deref(), Some("yes"));
+    // The invariant: a name twice is refused; the keys never sit in a bag.
+    let mut ids = IdAllocator::seeded(14);
+    let mut l = Ledger::new(14);
+    let c: DeviceId = ids.fresh();
+    let mut twice = x.clone();
+    twice.pin_names.push(PinName::new("pe").unwrap());
+    let bad = Device { device_type: DeviceType::Connector(Box::new(twice)), ..Device::default() };
+    assert!(l.commit(Author::User, "twice", vec![Op::CreateDevice { id: c, device: bad }]).is_err());
+    for key in ["pins", "pin_names", "half.s.maker", "ignore.connector-size"] {
+        let mut bagged = Device::default();
+        bagged.properties.insert(key.into(), "1".into());
+        assert!(l.commit(Author::User, "bag", vec![Op::CreateDevice { id: c, device: bagged }]).is_err(), "{key}");
+    }
+    l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: d }]).unwrap();
+}
