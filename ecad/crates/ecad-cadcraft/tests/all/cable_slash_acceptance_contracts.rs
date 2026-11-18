@@ -16,7 +16,7 @@ use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Input, Session};
 use common::{H, id};
 use ecad_cadcraft::{Persistence, ProjectHandle};
-use ecad_model::{CableId, ConductorId, Document, Form, ItemId, ItemKind, ObjectRef, Op, PageId, Primitive, Pt, Subject, Transaction};
+use ecad_model::{CableId, Document, Form, ItemId, ItemKind, ObjectRef, Op, PageId, Primitive, Pt, Subject, Transaction, WireId};
 use serde_json::{Value, json};
 
 const SEED: u64 = 404;
@@ -25,13 +25,13 @@ const SEED: u64 = 404;
 struct F {
     h: H,
     page: PageId,
-    w0: ConductorId,
-    w5: ConductorId,
-    w10: ConductorId,
+    w0: WireId,
+    w5: WireId,
+    w10: WireId,
     plain: ItemId,
 }
 
-fn wire(h: &mut H, pts: &[(f64, f64)]) -> ConductorId {
+fn wire(h: &mut H, pts: &[(f64, f64)]) -> WireId {
     let p: Vec<Value> = pts.iter().map(|(x, y)| json!([x, y])).collect();
     // Brief 032: these fixtures stack wires on one another on purpose; they stay separate wires.
     id(&h.run("wire", json!({ "points": p, "join": false })).unwrap(), "conductor")
@@ -64,17 +64,17 @@ fn hexes(v: &Value, key: &str) -> Vec<String> {
     v[key].as_array().map(|a| a.iter().map(|x| x.as_str().unwrap().to_string()).collect()).unwrap_or_default()
 }
 
-fn members(d: &Document, k: CableId) -> Vec<ConductorId> {
+fn members(d: &Document, k: CableId) -> Vec<WireId> {
     d.cables[&k].members.iter().map(|m| m.conductor).collect()
 }
 
 /// Every conductor with its ends and the items of its representations, for "unchanged" checks.
 fn conductors_snapshot(d: &Document) -> Vec<String> {
-    d.conductors
+    d.wires
         .iter()
         .map(|(c, x)| {
             let reps: Vec<String> = d
-                .representations_of(Subject::Conductor(*c))
+                .representations_of(Subject::Wire(*c))
                 .map(|(rid, r)| format!("{rid:?} {r:?} {:?}", r.items.iter().map(|i| &d.items[i]).collect::<Vec<_>>()))
                 .collect();
             format!("{c:?} {x:?} {reps:?}")
@@ -117,10 +117,6 @@ fn ring_centres(e: &[cadcraft_engine::doc::Entity]) -> Vec<(i64, i64)> {
     out.sort();
     out.dedup();
     out
-}
-
-fn short(hex: &str) -> &str {
-    &hex[..8]
 }
 
 // ------------------------------------------------------------------ AC1, AC4
@@ -173,7 +169,7 @@ fn ac1_one_transaction_with_members_in_crossing_order_and_conductors_unchanged()
                     other => panic!("slash is a line: {other:?}"),
                 }
                 // O4: the same style as a new wire.
-                let wire_item = d.representations_of(Subject::Conductor(f.w0)).next().unwrap().1.items[0];
+                let wire_item = d.representations_of(Subject::Wire(f.w0)).next().unwrap().1.items[0];
                 assert_eq!(it.style, d.items[&wire_item].style, "slash in the wire style (O4)");
             }
             other => panic!("op 4 is AddItem: {other:?}"),
@@ -198,7 +194,7 @@ fn ac1_one_transaction_with_members_in_crossing_order_and_conductors_unchanged()
 fn ac1_n_parallel_wires_give_one_cable_of_exactly_n() {
     for n in [1usize, 2, 7] {
         let mut h = H::new(SEED + n as u64);
-        let ws: Vec<ConductorId> = (0..n).map(|i| wire(&mut h, &[(0.0, i as f64 * 3.0), (50.0, i as f64 * 3.0)])).collect();
+        let ws: Vec<WireId> = (0..n).map(|i| wire(&mut h, &[(0.0, i as f64 * 3.0), (50.0, i as f64 * 3.0)])).collect();
         // A wire elsewhere that the slash does not reach.
         let other = wire(&mut h, &[(100.0, 0.0), (150.0, 0.0)]);
         let r = slash(&mut h, (25.0, -1.0), (25.0, n as f64 * 3.0)).unwrap();
@@ -222,8 +218,10 @@ fn ac4_the_echo_reports_ignored_lines() {
     let d = f.h.doc();
     let k = *d.cables.keys().next().unwrap();
     assert!(log.contains(&format!("Cable {} created with 3 wires: ", k.hex())), "{log}");
+    // A wire is named by its number (design 072 §4.2).
     for w in [f.w0, f.w5, f.w10] {
-        assert!(log.contains(&format!("wire {}", short(&w.hex()))), "{log}");
+        let n = d.wires[&w].number_text().unwrap().to_string();
+        assert!(log.contains(&n), "{n} in {log}");
     }
     assert!(log.contains("1 object that is not a wire was ignored."), "{log}");
     assert!(!log.contains("touched at its end"), "{log}");
@@ -233,8 +231,8 @@ fn ac4_the_echo_reports_ignored_lines() {
 #[test]
 fn ac4_wire_names_use_tags_and_are_capped_at_five() {
     let mut h = H::new(SEED);
-    let ws: Vec<ConductorId> = (0..7).map(|i| wire(&mut h, &[(0.0, i as f64), (10.0, i as f64)])).collect();
-    h.run("setprop", json!({"conductor": ws[0].hex(), "key": "tag", "value": "W1"})).unwrap();
+    let ws: Vec<WireId> = (0..7).map(|i| wire(&mut h, &[(0.0, i as f64), (10.0, i as f64)])).collect();
+    h.run("wirenumber", json!({"conductor": ws[0].hex(), "value": "W1"})).unwrap();
     h.s.start("cableslash").unwrap();
     click(&mut h, 5.0, -1.0);
     click(&mut h, 5.0, 7.0);
@@ -398,7 +396,7 @@ fn ac5_refusals_leave_the_head_unchanged_with_a_clear_message() {
         ),
         // Design §5.4 names an untagged wire `wire <8 hex>…` after "Wire"; the implementation drops
         // the doubled word ("Wire c4516ba9… is already in cable 5d80fc29…"). Either reads clearly.
-        ("W5 already in a cable", (40.0, 3.0), (40.0, 7.0), format!("{}… is already in cable ", short(&w5))),
+        ("W5 already in a cable", (40.0, 3.0), (40.0, 7.0), format!("Wire {} is already in cable ", f.h.doc().wires[&f.w5].number_text().unwrap())),
     ];
     for (what, from, to, msg) in cases {
         let before = f.h.doc();
@@ -426,7 +424,7 @@ fn ac5_refusals_leave_the_head_unchanged_with_a_clear_message() {
     assert_eq!(f.h.head(), head);
     assert!(f.h.doc().cables.values().all(|c| !c.members.iter().any(|m| m.conductor == free)));
     // With tags, the names are the tags (design §5.4).
-    f.h.run("setprop", json!({"conductor": w5, "key": "tag", "value": "W5"})).unwrap();
+    f.h.run("wirenumber", json!({"conductor": w5, "value": "W5"})).unwrap();
     f.h.run("setprop", json!({"cable": k.hex(), "key": "tag", "value": "C1"})).unwrap();
     let e = slash(&mut f.h, (40.0, 3.0), (40.0, 7.0)).unwrap_err();
     assert!(e.contains("Wire W5 is already in cable -C01; a wire can be in only one cable. Nothing was created."), "{e}");
@@ -901,7 +899,7 @@ fn ac8_hostile_typed_points_and_huge_valid_coordinates() {
 /// transaction to keep the run short: the ops of one real `wire` are copied with fresh IDs and
 /// moved up by 1 each, committed to the ledger, saved, and the project reopened so its pages are
 /// projected from the history like any opened project. Returns the wires bottom to top.
-fn bulk_wires(n: usize) -> (H, Vec<ConductorId>) {
+fn bulk_wires(n: usize) -> (H, Vec<WireId>) {
     use ecad_model::{Author, RepresentationId};
     let mut h = H::new(SEED);
     let first = wire(&mut h, &[(0.0, 0.0), (1.0, 0.0)]);
@@ -911,23 +909,23 @@ fn bulk_wires(n: usize) -> (H, Vec<ConductorId>) {
     for i in 1..=n {
         let y = i as f64;
         let base = (0xABCD_u128 << 64) + 4 * i as u128;
-        let (c, it, r) = (ConductorId::from(base), ItemId::from(base + 1), RepresentationId::from(base + 2));
+        let (c, it, r) = (WireId::from(base), ItemId::from(base + 1), RepresentationId::from(base + 2));
         ws.push(c);
         for op in &template {
             ops.push(match op.clone() {
-                Op::CreateConductor { conductor, .. } => Op::CreateConductor { id: c, conductor },
+                Op::CreateWire { conductor, .. } => Op::CreateWire { id: c, conductor },
                 Op::AddItem { mut item, .. } => {
                     item.kind = ItemKind::Primitive(Primitive::Line { a: Pt::new(0.0, y), b: Pt::new(1.0, y) });
                     Op::AddItem { id: it, item }
                 }
                 Op::LinkRepresentation { mut rep, .. } => {
-                    rep.subject = Subject::Conductor(c);
+                    rep.subject = Subject::Wire(c);
                     rep.items = vec![it];
                     Op::LinkRepresentation { id: r, rep }
                 }
                 // Since 022 a new wire records its `wire_number`; the copies stay unnumbered,
                 // which these cap tests do not need.
-                Op::SetProperty { object: ObjectRef::Conductor(_), ref key, .. } if key == ecad_model::connectivity::WIRE_NUMBER => continue,
+                Op::SetProperty { object: ObjectRef::Wire(_), ref key, .. } if key == ecad_model::connectivity::WIRE_NUMBER => continue,
                 other => panic!("unexpected op in a wire transaction: {other:?}"),
             });
         }
@@ -940,7 +938,7 @@ fn bulk_wires(n: usize) -> (H, Vec<ConductorId>) {
     let mut s = Session::empty();
     let project = ProjectHandle::open_from(&mut s, "Big", medium, 5).unwrap();
     let mut h = H { s, project, trail: Vec::new() };
-    assert_eq!(h.doc().conductors.len(), n + 1);
+    assert_eq!(h.doc().wires.len(), n + 1);
     h.check();
     (h, ws)
 }
@@ -999,10 +997,10 @@ fn scope5_debugger_trail_slash_cable_conductors() {
     let d = f.h.doc();
     let rep = d.representations_of(Subject::Cable(k)).next().unwrap().0;
     let related = used_by(&d, ObjectId::Cable(k));
-    assert_eq!(related, vec![ObjectId::Conductor(f.w10), ObjectId::Conductor(f.w5), ObjectId::Conductor(f.w0), ObjectId::Representation(rep)]);
+    assert_eq!(related, vec![ObjectId::Wire(f.w10), ObjectId::Wire(f.w5), ObjectId::Wire(f.w0), ObjectId::Representation(rep)]);
     // Each conductor lists the cable.
     for w in [f.w0, f.w5, f.w10] {
-        assert!(used_by(&d, ObjectId::Conductor(w)).contains(&ObjectId::Cable(k)));
+        assert!(used_by(&d, ObjectId::Wire(w)).contains(&ObjectId::Cable(k)));
     }
     let _ = Pt::new(0.0, 0.0);
 }
@@ -1035,7 +1033,7 @@ fn r2_near_tolerance_crossings_order_by_id_and_are_deterministic() {
         let mut runs = Vec::new();
         for _ in 0..3 {
             let mut h = H::new(SEED);
-            let ws: Vec<ConductorId> = ys.iter().map(|y| wire(&mut h, &[(0.0, *y), (10.0, *y)])).collect();
+            let ws: Vec<WireId> = ys.iter().map(|y| wire(&mut h, &[(0.0, *y), (10.0, *y)])).collect();
             let up = slash_members(&mut h, (5.0, 0.0), (5.0, 10.0)).unwrap();
             h.run("u", Value::Null).unwrap();
             let down = slash_members(&mut h, (5.0, 10.0), (5.0, 0.0)).unwrap();

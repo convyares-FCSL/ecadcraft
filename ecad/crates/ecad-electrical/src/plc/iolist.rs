@@ -393,7 +393,7 @@ pub fn csv_table(doc: &Document, plc: &Plc) -> Option<Table> {
 
 /// The cards a change of device `d` (its tag) or conductor `w` (its number) touches through their
 /// nets: the cards with a channel point on them.
-pub fn cards_on_nets_of(doc: &Document, plc: &Plc, d: Option<DeviceId>, w: Option<ecad_model::ConductorId>) -> Vec<DeviceId> {
+pub fn cards_on_nets_of(doc: &Document, plc: &Plc, d: Option<DeviceId>, w: Option<ecad_model::WireId>) -> Vec<DeviceId> {
     let conn = doc.connectivity();
     let mut nets = Vec::new();
     if let Some(d) = d {

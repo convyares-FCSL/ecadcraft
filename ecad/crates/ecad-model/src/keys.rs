@@ -229,10 +229,8 @@ pub const LOCATION: PropKey = PropKey(crate::book::LOCATION_KEY);
 /// remove lines.
 #[rustfmt::skip]
 pub const KEYS: &[KeySpec] = &[
-    KeySpec { key: TAG, area: Area::Identity, holders: &[Holder::Device, Holder::Wire, Holder::Cable], value: ValueSpec::Ruled },
+    KeySpec { key: TAG, area: Area::Identity, holders: DEVICE_CABLE, value: ValueSpec::Ruled },
     KeySpec { key: TAG_FIXED, area: Area::Identity, holders: DEVICE_CABLE, value: ValueSpec::Flag },
-    KeySpec { key: WIRE_NUMBER, area: Area::Identity, holders: &[Holder::Wire], value: ValueSpec::Ruled },
-    KeySpec { key: WIRE_NUMBER_FIXED, area: Area::Identity, holders: &[Holder::Wire], value: ValueSpec::Flag },
     KeySpec { key: NUMBERING_PROVISIONAL, area: Area::Numbering, holders: &[Holder::Project], value: ValueSpec::Flag },
     KeySpec { key: FUNCTION, area: Area::Designation, holders: &[Holder::Page, Holder::Project, Holder::Device], value: ValueSpec::Ruled },
     KeySpec { key: LOCATION, area: Area::Designation, holders: &[Holder::Page, Holder::Project, Holder::Device], value: ValueSpec::Ruled },
@@ -259,7 +257,39 @@ pub const RESERVED: &[PropKey] = &[
     PropKey(crate::sheet::GENERATED_KEY),
     PropKey(crate::page::STRIP_KEY),
     PropKey(crate::sheet::PAGE_TYPE_KEY),
+    // Lane D: a wire's number and its fixed flag are `Wire.number` (design 072 §4.2).
+    WIRE_NUMBER,
+    WIRE_NUMBER_FIXED,
 ];
+
+/// Keys that became struct fields on one holder only (design 072 §5.3): a page's and the
+/// project's location and function are ids now; a device's stay in its bag until lane B moves them.
+#[rustfmt::skip]
+pub const RESERVED_ON: &[(Holder, PropKey)] = &[
+    (Holder::Page, LOCATION),
+    (Holder::Page, FUNCTION),
+    (Holder::Project, LOCATION),
+    (Holder::Project, FUNCTION),
+    // Design 072 §5.3: the project's info.
+    (Holder::Project, PropKey("title")),
+    (Holder::Project, PropKey("drawing_number")),
+    (Holder::Project, PropKey("customer")),
+    (Holder::Project, PropKey("site")),
+    (Holder::Project, PropKey("status")),
+    (Holder::Project, PropKey("cover.notes")),
+];
+
+/// Key prefixes that became struct fields on one holder: the project's location and function
+/// lists (`designation.l.<id>.code`) and revision rows (`rev.<n>.<field>`), design 072 §5.3.
+pub const RESERVED_PREFIXES: &[(Holder, &str)] = &[(Holder::Project, "designation."), (Holder::Project, crate::project::REVISIONS_KEY)];
+
+/// Whether `key` became a struct field on `holder` ([`RESERVED`], [`RESERVED_ON`],
+/// [`RESERVED_PREFIXES`]).
+pub fn is_reserved_on(holder: Holder, key: &str) -> bool {
+    is_reserved(key)
+        || RESERVED_ON.iter().any(|(h, k)| *h == holder && k.0 == key)
+        || RESERVED_PREFIXES.iter().any(|(h, p)| *h == holder && key.starts_with(p))
+}
 
 /// The fixed key `key`, if it is one.
 pub fn spec(key: &str) -> Option<&'static KeySpec> {

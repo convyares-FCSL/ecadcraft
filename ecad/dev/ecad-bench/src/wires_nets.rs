@@ -84,10 +84,10 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredWires
             let dense = doc
                 .page_order
                 .iter()
-                .max_by_key(|pg| doc.representations_on(**pg).filter(|(_, r)| matches!(r.subject, ecad_model::Subject::Conductor(_))).count())
+                .max_by_key(|pg| doc.representations_on(**pg).filter(|(_, r)| matches!(r.subject, ecad_model::Subject::Wire(_))).count())
                 .copied();
             let Some(page) = dense else { return (Vec::new(), Vec::new(), 0) };
-            let routes = doc.representations_on(page).filter(|(_, r)| matches!(r.subject, ecad_model::Subject::Conductor(_))).count();
+            let routes = doc.representations_on(page).filter(|(_, r)| matches!(r.subject, ecad_model::Subject::Wire(_))).count();
             let mut each_doc = doc.clone();
             each_doc.settings.wiring.label_rule = Some(ecad_model::wiring::LABEL_RULE_EACH.into());
             let (mut a, mut b) = (Vec::new(), Vec::new());

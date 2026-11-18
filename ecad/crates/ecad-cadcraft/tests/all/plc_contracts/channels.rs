@@ -142,11 +142,11 @@ fn f_a_cell_ends_a_loose_wire_at_its_point() {
     h.run("wire", json!({"points": pts(&[(100.0, 250.0), (100.0, 150.0)])})).unwrap();
     h.run("wire", json!({"points": pts(&[(120.0, 150.0), (120.0, 250.0)])})).unwrap();
     h.run("wire", json!({"points": pts(&[(140.0, 250.0), (140.0, 150.0)])})).unwrap();
-    let wires = h.doc().conductors.len();
+    let wires = h.doc().wires.len();
     let v = h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [155.0, 200.0]})).unwrap();
     assert_eq!(v["message"], "Placed -A01 channels 0–2 on 3 wires (pins 1–3).", "{v}");
     let d = h.doc();
-    assert_eq!(d.conductors.len(), wires + 1, "only the lamp-to-lamp wire is split in two");
+    assert_eq!(d.wires.len(), wires + 1, "only the lamp-to-lamp wire is split in two");
     let page = d.page_order[0];
     let mut cells: Vec<(String, TerminalId)> =
         d.terminals_of(di).filter_map(|(t, x)| x.key.as_ref().filter(|k| k.starts_with('.')).map(|k| (k.clone(), t))).collect();
@@ -155,14 +155,14 @@ fn f_a_cell_ends_a_loose_wire_at_its_point() {
     assert_eq!(ends, [1, 1, 2], "{cells:?}");
     for (_, t) in cells.iter().take(2) {
         let (c, _) = d.ends_at(*t)[0];
-        let wire = &d.conductors[&c];
+        let wire = &d.wires[&c];
         assert!(wire.ends.iter().all(Option::is_some), "the kept half runs from the lamp to the point: {wire:?}");
         let (_, _, route) = ecad_cadcraft::wires::route_vertices(&d, c, page).unwrap();
         assert!(route.iter().all(|q| q.y >= 200.0 - 1e-9), "nothing past the point, into the cell: {route:?}");
     }
     same_as_built(&mut h);
     h.cmdline("u");
-    assert_eq!(h.doc().conductors.len(), wires);
+    assert_eq!(h.doc().wires.len(), wires);
     same_as_built(&mut h);
 }
 

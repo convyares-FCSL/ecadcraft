@@ -34,8 +34,8 @@ use std::sync::Arc;
 use cadcraft_engine::doc::{Drawing, Handle};
 use ecad_inspect::Event;
 use ecad_model::{
-    CableId, ConductorId, DefinitionId, DeviceId, Document, ItemId, ItemKind, LayerId, Ledger, Op, PageId, ProjectId, RepresentationId, Subject,
-    TerminalId, Transaction, TxId, TxKind,
+    CableId, DefinitionId, DeviceId, Document, ItemId, ItemKind, LayerId, Ledger, Op, PageId, ProjectId, RepresentationId, Subject, TerminalId,
+    Transaction, TxId, TxKind, WireId,
 };
 use serde_json::{Value, json};
 
@@ -58,7 +58,7 @@ pub enum ObjectId {
     Device(DeviceId),
     Terminal(TerminalId),
     Representation(RepresentationId),
-    Conductor(ConductorId),
+    Wire(WireId),
     Cable(CableId),
     Definition(DefinitionId),
     /// The project settings (one per project).
@@ -75,7 +75,7 @@ impl ObjectId {
             ObjectId::Device(_) => "component",
             ObjectId::Terminal(_) => "terminal",
             ObjectId::Representation(_) => "representation",
-            ObjectId::Conductor(_) => "conductor",
+            ObjectId::Wire(_) => "conductor",
             ObjectId::Cable(_) => "cable",
             ObjectId::Definition(_) => "definition",
             ObjectId::Settings => "settings",
@@ -91,7 +91,7 @@ impl ObjectId {
             ObjectId::Device(i) => i.short(),
             ObjectId::Terminal(i) => i.short(),
             ObjectId::Representation(i) => i.short(),
-            ObjectId::Conductor(i) => i.short(),
+            ObjectId::Wire(i) => i.short(),
             ObjectId::Cable(i) => i.short(),
             ObjectId::Definition(i) => i.short(),
             ObjectId::Settings => "settings".into(),
@@ -107,7 +107,7 @@ impl ObjectId {
             ObjectId::Device(i) => i.hex(),
             ObjectId::Terminal(i) => i.hex(),
             ObjectId::Representation(i) => i.hex(),
-            ObjectId::Conductor(i) => i.hex(),
+            ObjectId::Wire(i) => i.hex(),
             ObjectId::Cable(i) => i.hex(),
             ObjectId::Definition(i) => i.hex(),
             ObjectId::Settings => String::new(),
@@ -125,7 +125,7 @@ impl From<Subject> for ObjectId {
     fn from(s: Subject) -> Self {
         match s {
             Subject::Device(c) => ObjectId::Device(c),
-            Subject::Conductor(c) => ObjectId::Conductor(c),
+            Subject::Wire(c) => ObjectId::Wire(c),
             Subject::Cable(c) => ObjectId::Cable(c),
         }
     }
@@ -907,8 +907,9 @@ pub fn op_view(op: &Op) -> OpView {
         Op::LinkRepresentation { rep, .. } => (None, val(rep)),
         Op::ModifyRepresentation { before, after, .. } => (val(before), val(after)),
         Op::UnlinkRepresentation { rep, .. } => (val(rep), None),
-        Op::CreateConductor { conductor, .. } => (None, val(conductor)),
-        Op::DeleteConductor { conductor, .. } => (val(conductor), None),
+        Op::CreateWire { conductor, .. } => (None, val(conductor)),
+        Op::DeleteWire { conductor, .. } => (val(conductor), None),
+        Op::ModifyWire { before, after, .. } => (val(before), val(after)),
         Op::AttachEnd { end, before, after, .. } => (val(&json!({"end": end, "terminal": before})), val(&json!({"end": end, "terminal": after}))),
         Op::CreateCable { cable, .. } => (None, val(cable)),
         Op::DeleteCable { cable, .. } => (val(cable), None),
@@ -928,6 +929,7 @@ pub fn op_view(op: &Op) -> OpView {
             val(&json!({"layer": layer, "catalogue": catalogue, "id": id, "record": after})),
         ),
         Op::SetStandard { before, after } => (val(before), val(after)),
+        Op::ModifyProject { before, after } => (val(before), val(after)),
     };
     OpView { name: op.name(), targets: op_targets(op), before, after }
 }
@@ -994,31 +996,32 @@ pub fn op_targets(op: &Op) -> Vec<ObjectId> {
             rep_refs(before, &mut out);
             rep_refs(after, &mut out);
         }
-        Op::CreateConductor { id, conductor } | Op::DeleteConductor { id, conductor } => {
-            out.push(ObjectId::Conductor(*id));
+        Op::CreateWire { id, conductor } | Op::DeleteWire { id, conductor } => {
+            out.push(ObjectId::Wire(*id));
             out.extend(conductor.ends.iter().flatten().map(|t| ObjectId::Terminal(*t)));
         }
+        Op::ModifyWire { id, .. } => out.push(ObjectId::Wire(*id)),
         Op::AttachEnd { conductor, before, after, .. } => {
-            out.push(ObjectId::Conductor(*conductor));
+            out.push(ObjectId::Wire(*conductor));
             out.extend(before.iter().chain(after.iter()).map(|t| ObjectId::Terminal(*t)));
         }
         Op::CreateCable { id, cable } | Op::DeleteCable { id, cable } => {
             out.push(ObjectId::Cable(*id));
-            out.extend(cable.members.iter().map(|m| ObjectId::Conductor(m.conductor)));
+            out.extend(cable.members.iter().map(|m| ObjectId::Wire(m.conductor)));
         }
         Op::AddCableMember { cable, member, .. } | Op::RemoveCableMember { cable, member, .. } => {
             out.push(ObjectId::Cable(*cable));
-            out.push(ObjectId::Conductor(member.conductor));
+            out.push(ObjectId::Wire(member.conductor));
         }
         Op::SetProperty { object, .. } => out.push(match object {
             ecad_model::ObjectRef::Device(c) => ObjectId::Device(*c),
-            ecad_model::ObjectRef::Conductor(c) => ObjectId::Conductor(*c),
+            ecad_model::ObjectRef::Wire(c) => ObjectId::Wire(*c),
             ecad_model::ObjectRef::Cable(c) => ObjectId::Cable(*c),
             ecad_model::ObjectRef::Page(p) => ObjectId::Page(*p),
             ecad_model::ObjectRef::Project | ecad_model::ObjectRef::Standard => ObjectId::Settings,
         }),
         Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => out.push(ObjectId::Definition(*id)),
-        Op::SetProjectSettings { .. } => out.push(ObjectId::Settings),
+        Op::SetProjectSettings { .. } | Op::ModifyProject { .. } => out.push(ObjectId::Settings),
         Op::NameVersion { .. } | Op::UnnameVersion { .. } => {}
         // Folders (brief 019) are not among the debugger's objects yet.
         Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => {}
@@ -1078,13 +1081,13 @@ pub fn resolve(doc: &Document, mapped: Mapped) -> Resolved {
     }
     r.subject = match mapped {
         Mapped::Fan(k) => Some(Subject::Cable(k)),
-        Mapped::Label(c) => Some(Subject::Conductor(c)),
+        Mapped::Label(c) => Some(Subject::Wire(c)),
         Mapped::Link(c, _) => Some(Subject::Device(c)),
         _ => r.representation.and_then(|id| doc.representations.get(&id)).map(|rep| rep.subject),
     };
     r.terminals = match r.subject {
         Some(Subject::Device(c)) => doc.terminals.iter().filter(|(_, t)| t.component == c).map(|(id, _)| *id).collect(),
-        Some(Subject::Conductor(c)) => doc.conductors.get(&c).map(|x| x.ends.iter().flatten().copied().collect()).unwrap_or_default(),
+        Some(Subject::Wire(c)) => doc.wires.get(&c).map(|x| x.ends.iter().flatten().copied().collect()).unwrap_or_default(),
         _ => Vec::new(),
     };
     r.ids.extend(r.item.map(ObjectId::Item));
@@ -1108,7 +1111,7 @@ pub fn object_json(doc: &Document, id: ObjectId) -> Option<Value> {
         ObjectId::Device(i) => doc.devices.get(&i).and_then(val),
         ObjectId::Terminal(i) => doc.terminals.get(&i).and_then(val),
         ObjectId::Representation(i) => doc.representations.get(&i).and_then(val),
-        ObjectId::Conductor(i) => doc.conductors.get(&i).and_then(val),
+        ObjectId::Wire(i) => doc.wires.get(&i).and_then(val),
         ObjectId::Cable(i) => doc.cables.get(&i).and_then(val),
         ObjectId::Definition(i) => doc.definitions.get(&i).and_then(val),
         ObjectId::Settings => val(&doc.settings),
@@ -1144,19 +1147,19 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
         ObjectId::Device(c) => {
             doc.terminals.iter().filter(|(_, t)| t.component == c).map(|(i, _)| ObjectId::Terminal(*i)).chain(reps_of(Subject::Device(c))).collect()
         }
-        ObjectId::Terminal(t) => doc.conductors.iter().filter(|(_, c)| c.ends.contains(&Some(t))).map(|(i, _)| ObjectId::Conductor(*i)).collect(),
-        ObjectId::Conductor(c) => doc
+        ObjectId::Terminal(t) => doc.wires.iter().filter(|(_, c)| c.ends.contains(&Some(t))).map(|(i, _)| ObjectId::Wire(*i)).collect(),
+        ObjectId::Wire(c) => doc
             .cables
             .iter()
             .filter(|(_, k)| k.members.iter().any(|m| m.conductor == c))
             .map(|(i, _)| ObjectId::Cable(*i))
-            .chain(reps_of(Subject::Conductor(c)))
+            .chain(reps_of(Subject::Wire(c)))
             .collect(),
         ObjectId::Cable(c) => doc
             .cables
             .get(&c)
             .into_iter()
-            .flat_map(|k| k.members.iter().map(|m| ObjectId::Conductor(m.conductor)))
+            .flat_map(|k| k.members.iter().map(|m| ObjectId::Wire(m.conductor)))
             .chain(reps_of(Subject::Cable(c)))
             .collect(),
         ObjectId::Page(p) => doc.representations.iter().filter(|(_, r)| r.page == p).map(|(i, _)| ObjectId::Representation(*i)).collect(),
@@ -1181,7 +1184,7 @@ fn tag(p: &ecad_model::Properties) -> Option<String> {
 fn subject_label(doc: &Document, s: Subject) -> String {
     let t = match s {
         Subject::Device(c) => doc.devices.get(&c).and_then(|x| tag(&x.properties)),
-        Subject::Conductor(c) => doc.conductors.get(&c).and_then(|x| tag(&x.properties)),
+        Subject::Wire(c) => doc.wires.get(&c).and_then(|x| x.number_text()).map(str::to_string),
         Subject::Cable(c) => doc.cables.get(&c).and_then(|x| tag(&x.properties)),
     };
     t.unwrap_or_else(|| format!("untagged {}", ObjectId::from(s).kind()))
@@ -1198,7 +1201,7 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
         }),
         ObjectId::Device(c) => subject_label(doc, Subject::Device(c)),
         // A member of a cable shows its core (design 009 §8): `W3 · core 1`.
-        ObjectId::Conductor(c) => {
+        ObjectId::Wire(c) => {
             let core = doc.cables_of(c).first().and_then(|k| doc.cables.get(k)).and_then(|k| {
                 k.members
                     .iter()
@@ -1206,8 +1209,8 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
                     .and_then(|m| m.core.as_deref().filter(|x| !x.trim().is_empty()).map(|x| crate::words::shorten(x, crate::words::MAX_CORE_CHARS)))
             });
             match core {
-                Some(core) => format!("{} · core {core}", subject_label(doc, Subject::Conductor(c))),
-                None => subject_label(doc, Subject::Conductor(c)),
+                Some(core) => format!("{} · core {core}", subject_label(doc, Subject::Wire(c))),
+                None => subject_label(doc, Subject::Wire(c)),
             }
         }
         ObjectId::Cable(c) => subject_label(doc, Subject::Cable(c)),
@@ -1235,7 +1238,7 @@ pub fn objects(doc: &Document) -> Vec<ObjectId> {
     out.extend(doc.layers.keys().map(|i| ObjectId::Layer(*i)));
     out.extend(doc.devices.keys().map(|i| ObjectId::Device(*i)));
     out.extend(doc.terminals.keys().map(|i| ObjectId::Terminal(*i)));
-    out.extend(doc.conductors.keys().map(|i| ObjectId::Conductor(*i)));
+    out.extend(doc.wires.keys().map(|i| ObjectId::Wire(*i)));
     out.extend(doc.cables.keys().map(|i| ObjectId::Cable(*i)));
     out.extend(doc.representations.keys().map(|i| ObjectId::Representation(*i)));
     out.extend(doc.items.keys().map(|i| ObjectId::Item(*i)));

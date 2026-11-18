@@ -8,7 +8,7 @@ use serde_json::json;
 use crate::common::H;
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.devices, &d.terminals, &d.conductors, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.properties)
+    (&d.devices, &d.terminals, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.properties)
 }
 
 /// Two pages, two tagged coils, a wire between their first connection points and a cable that is
@@ -29,7 +29,7 @@ fn the_builder_makes_pages_devices_a_wire_and_a_cable() {
     assert_eq!(doc.page_order.len(), 2);
     assert_eq!(added, vec![doc.page_order[1]]);
     assert!(doc.devices.contains_key(&k1) && doc.devices.contains_key(&k2));
-    assert!(doc.conductors[&wire].ends.iter().all(Option::is_some), "both ends attached to the coils");
+    assert!(doc.wires[&wire].ends.iter().all(Option::is_some), "both ends attached to the coils");
     assert!(doc.cables[&cable].members.is_empty(), "a cable made by `cablenew` is not drawn");
     assert_eq!(doc.representations_of(Subject::Device(k1)).count(), 1);
 }

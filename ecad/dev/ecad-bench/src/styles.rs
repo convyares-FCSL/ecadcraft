@@ -100,8 +100,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStyle
         out.style_tag_ms = median(&mut style);
         out.textstyle_ms = median(&mut text);
         out.propredraw_ms = median(&mut prop);
-        // 050b's rows, when the build has wire categories.
-        if ecad_cadcraft::styles::catalogue("wire").is_some() {
+        // 050b's rows.
+        {
             let (mut cat, mut pot) = (Vec::new(), Vec::new());
             let mut wire = Vec::new();
             for i in 0..runs.max(1) {
@@ -112,7 +112,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStyle
             let net = project.read(&mut s, |p, _| {
                 let doc = p.ledger.document();
                 doc.representations_on(page).find_map(|(_, r)| match r.subject {
-                    Subject::Conductor(c) => Some(c),
+                    Subject::Wire(c) => Some(c),
                     _ => None,
                 })
             })?;

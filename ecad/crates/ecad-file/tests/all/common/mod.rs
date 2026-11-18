@@ -74,7 +74,7 @@ impl Fixture {
                     style: style(self.layer),
                     kind: ItemKind::Symbol(SymbolInstance {
                         definition: def,
-                        placement: Placement { origin: at, rotation, mirror: false, scale: 1.0 },
+                        placement: Placement { origin: at, rotation: ecad_model::units::Radians(rotation), mirror: false, scale: 1.0 },
                     }),
                 },
             },
@@ -146,7 +146,7 @@ pub fn fixture() -> Fixture {
                 kind: ItemKind::Primitive(Primitive::Text {
                     at: Pt::new(-2.5, 1e21),
                     height: 2.5,
-                    rotation: std::f64::consts::FRAC_PI_2,
+                    rotation: ecad_model::units::Radians(std::f64::consts::FRAC_PI_2),
                     value: "K1 \"quoted\" \\ tab\t ünï 😀".into(),
                     halign: Default::default(),
                     valign: Default::default(),
@@ -165,11 +165,11 @@ pub fn fixture() -> Fixture {
     f.c2 = c2;
     f.c3 = c3;
     f.t = vec![t1[0], t1[1], t2[0], t2[1], t3[0], t3[1]];
-    let (w, route, rep): (ConductorId, ItemId, RepresentationId) = (f.ids.fresh(), f.ids.fresh(), f.ids.fresh());
+    let (w, route, rep): (WireId, ItemId, RepresentationId) = (f.ids.fresh(), f.ids.fresh(), f.ids.fresh());
     f.commit(
         "WIRE",
         vec![
-            Op::CreateConductor { id: w, conductor: Conductor::default() },
+            Op::CreateWire { id: w, conductor: Wire::default() },
             Op::AddItem {
                 id: route,
                 item: Item {
@@ -184,7 +184,7 @@ pub fn fixture() -> Fixture {
             Op::LinkRepresentation {
                 id: rep,
                 rep: Representation {
-                    subject: Subject::Conductor(w),
+                    subject: Subject::Wire(w),
                     page,
                     form: Form::Drawn,
                     role: "route".into(),

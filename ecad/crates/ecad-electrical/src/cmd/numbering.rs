@@ -6,7 +6,7 @@
 use std::collections::BTreeSet;
 
 use ecad_model::numbering::{self, Kind, Request, Scope};
-use ecad_model::{CableId, ConductorId, DeviceId, Document, FolderId, Noun, PageId, TerminalId};
+use ecad_model::{CableId, DeviceId, Document, FolderId, Noun, PageId, TerminalId, WireId};
 
 use crate::error::CmdError;
 
@@ -90,8 +90,8 @@ pub fn scope(doc: &Document, input: &RenumberInput, max_objects: usize) -> Resul
                         devices.insert(DeviceId(n));
                     } else if doc.cables.contains_key(&CableId(n)) {
                         cables.insert(CableId(n));
-                    } else if doc.conductors.contains_key(&ConductorId(n)) {
-                        conductors.insert(ConductorId(n));
+                    } else if doc.wires.contains_key(&WireId(n)) {
+                        conductors.insert(WireId(n));
                     } else {
                         return Err(CmdError::refused(format!("{t} in `objects` is not a device, cable or wire.")));
                     }

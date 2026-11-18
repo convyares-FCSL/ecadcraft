@@ -109,3 +109,162 @@ fn a_page_record_is_strict() {
     let good: Page = serde_json::from_str(r#"{"title":"p","number":"7","kind":{"generated":"iolist"}}"#).unwrap();
     assert_eq!(good.kind.generated_kind(), Some(GenKind::IoList));
 }
+
+// ---------------------------------------------------------------- step 2: the project's lists
+
+fn location(ids: &mut IdAllocator, code: &str) -> ecad_model::Location {
+    ecad_model::Location::new(ids.fresh(), ecad_model::ListCode::new(code).unwrap())
+}
+
+/// A9 (design 072 §5.3): `ModifyProject` applies, inverts, undoes and replays; a project that is
+/// not as recorded, or a list with a code twice, an id twice or a code without its sign, is
+/// refused and leaves the document as it was.
+#[test]
+fn modify_project_applies_inverts_and_refuses() {
+    let (mut ledger, page, mut ids) = one_page();
+    let cp1 = location(&mut ids, "+CP1");
+    let f1 = ecad_model::Function::new(ids.fresh(), ecad_model::ListCode::new("=F1").unwrap());
+    let after = ecad_model::Project { locations: vec![cp1.clone()], functions: vec![f1], location: Some(cp1.id), ..Default::default() };
+    let op = Op::ModifyProject { before: ecad_model::Project::default(), after: after.clone() };
+    assert_eq!(op.inverse(), Op::ModifyProject { before: after.clone(), after: ecad_model::Project::default() });
+    ledger.commit(Author::User, "lists", vec![op]).unwrap();
+    assert_eq!(ledger.document().project, after);
+    // A page refers to the entry by id.
+    let mut p = ledger.document().pages[&page].clone();
+    p.location = Some(cp1.id);
+    let before_page = ledger.document().pages[&page].clone();
+    ledger.commit(Author::User, "page", vec![Op::ModifyPage { id: page, before: before_page, after: p }]).unwrap();
+    ledger.undo(Author::User).unwrap();
+    ledger.undo(Author::User).unwrap();
+    assert!(ledger.document().project.is_empty());
+    ledger.redo(Author::User).unwrap();
+    assert!(ledger.replay_matches().unwrap());
+
+    let snapshot = ledger.document().clone();
+    let now = snapshot.project.clone();
+    let with = |l: Vec<ecad_model::Location>| ecad_model::Project { locations: l, ..now.clone() };
+    let cases: Vec<(&str, Op)> = vec![
+        ("before differs", Op::ModifyProject { before: ecad_model::Project::default(), after: now.clone() }),
+        ("a code twice", Op::ModifyProject { before: now.clone(), after: with(vec![cp1.clone(), location(&mut ids, "+cp1")]) }),
+        ("an id twice", Op::ModifyProject { before: now.clone(), after: with(vec![cp1.clone(), cp1.clone()]) }),
+        ("no sign", Op::ModifyProject { before: now.clone(), after: with(vec![location(&mut ids, "CP2")]) }),
+    ];
+    for (what, op) in cases {
+        let e = ledger.commit(Author::User, what, vec![op]).unwrap_err();
+        assert!(matches!(e, ModelError::Precondition(_) | ModelError::Invariant(_)), "{what}: {e:?}");
+        assert_eq!(ledger.document(), &snapshot, "{what}");
+    }
+}
+
+/// A3: a page's and the project's location and function, and the old list keys, are fields now;
+/// a device still holds its own until lane B moves them.
+#[test]
+fn the_lists_old_keys_are_reserved() {
+    let (mut ledger, page, _) = one_page();
+    let refused = [
+        (ObjectRef::Page(page), "location"),
+        (ObjectRef::Page(page), "function"),
+        (ObjectRef::Project, "location"),
+        (ObjectRef::Project, "function"),
+        (ObjectRef::Project, "designation.l.0123.code"),
+        (ObjectRef::Project, "designation.f.0123.description"),
+    ];
+    for (object, key) in refused {
+        let op = Op::SetProperty { object, key: key.into(), before: None, after: Some("x".into()) };
+        let e = ledger.commit(Author::User, key, vec![op]).unwrap_err();
+        assert!(matches!(e, ModelError::Precondition(_)), "{key} on {object:?}: {e:?}");
+    }
+    assert!(keys::is_reserved_on(keys::Holder::Page, "location"));
+    assert!(!keys::is_reserved_on(keys::Holder::Device, "location"), "a device's location is lane B's");
+}
+
+/// A4: a project record with an unknown field, a code over 16 characters, a hidden character or a
+/// malformed id does not read; a full one round-trips.
+#[test]
+fn a_project_record_is_strict() {
+    let id = "0000000000000000000000000000000a";
+    let bad = [
+        format!(r#"{{"locations":[{{"id":"{id}","code":"+CP1","colour":"red"}}]}}"#),
+        format!(r#"{{"locations":[{{"id":"{id}","code":"+ABCDEFGHIJKLMNOPQ"}}]}}"#),
+        format!("{{\"functions\":[{{\"id\":\"{id}\",\"code\":\"=F\u{202E}1\"}}]}}"),
+        r#"{"locations":[{"id":"xyz","code":"+CP1"}]}"#.to_string(),
+        r#"{"sites":[]}"#.to_string(),
+    ];
+    for text in &bad {
+        assert!(serde_json::from_str::<ecad_model::Project>(text).is_err(), "{text}");
+    }
+    let text = format!(r#"{{"locations":[{{"id":"{id}","code":"+CP1","tag":"P1","descriptions":["Main","Left"]}}],"location":"{id}"}}"#);
+    let p: ecad_model::Project = serde_json::from_str(&text).unwrap();
+    assert_eq!(p.locations[0].descriptions.len(), 2);
+    assert_eq!(serde_json::to_string(&p).unwrap(), text);
+}
+
+// ---------------------------------------------------------------- step 2b: revision rows
+
+fn row(rev: &str, issued: bool) -> ecad_model::Revision {
+    ecad_model::Revision {
+        rev: ecad_model::Rev::new(rev).ok(),
+        description: ecad_model::RevValue::new("Issue").ok(),
+        issued: issued.then(|| ecad_model::RevValue::new(&format!("Rev {rev}")).unwrap()),
+        ..Default::default()
+    }
+}
+
+/// A4: a revision row with an unknown field, a bad custom field name, an over-long rev or a hidden
+/// character does not read; a full one round-trips.
+#[test]
+fn a_revision_record_is_strict() {
+    let bad = [
+        r#"{"rev":"A","colour":"red"}"#,
+        r#"{"rev":"A","custom":{"Bad Name":"x"}}"#,
+        r#"{"rev":"A","custom":{"issued":"x"}}"#,
+        r#"{"rev":"ABCDEFGHI"}"#,
+        "{\"description\":\"a\u{202E}b\"}",
+    ];
+    for text in bad {
+        assert!(serde_json::from_str::<ecad_model::Revision>(text).is_err(), "{text}");
+    }
+    let text = r#"{"rev":"A","date":"2026-11-17","custom":{"ecr":"ECR-1"},"issued":"Rev A","released":"release/Rev A"}"#;
+    let r: ecad_model::Revision = serde_json::from_str(text).unwrap();
+    assert_eq!(serde_json::to_string(&r).unwrap(), text);
+}
+
+/// I22: only the last revision row may be unissued; Restore (a filter refusing `rev.`) keeps the
+/// rows as they are now, and accepting it restores them.
+#[test]
+fn revision_rows_are_ordered_and_kept_by_restore() {
+    let (mut ledger, _, _) = one_page();
+    let ok = ecad_model::Project { revisions: vec![row("A", true), row("B", false)], ..Default::default() };
+    ledger.commit(Author::User, "rows", vec![Op::ModifyProject { before: Default::default(), after: ok.clone() }]).unwrap();
+    let bad = ecad_model::Project { revisions: vec![row("A", false), row("B", true)], ..Default::default() };
+    let e = ledger.commit(Author::User, "bad", vec![Op::ModifyProject { before: ok.clone(), after: bad }]).unwrap_err();
+    assert!(matches!(e, ModelError::Invariant(_)), "{e:?}");
+
+    let past = ecad_model::Document::default();
+    let live = ledger.document().clone();
+    let keep = ecad_model::diff::ops_between(&live, &past, &|k| !k.starts_with(ecad_model::project::REVISIONS_KEY));
+    assert!(keep.iter().all(|o| !matches!(o, Op::ModifyProject { .. })), "rows kept: {keep:?}");
+    let all = ecad_model::diff::ops_between(&live, &past, &|_| true);
+    assert!(all.iter().any(|o| matches!(o, Op::ModifyProject { after, .. } if after.revisions.is_empty())), "{all:?}");
+}
+
+// ---------------------------------------------------------------- step 2c: project info
+
+/// A3, A4: the info keys are fields of the project now; an info record with an unknown field, a
+/// line break in a one-line field or a hidden character does not read; notes keep their lines.
+#[test]
+fn the_project_info_is_reserved_and_strict() {
+    let (mut ledger, _, _) = one_page();
+    for key in ["title", "drawing_number", "customer", "site", "status", "cover.notes"] {
+        let op = Op::SetProperty { object: ObjectRef::Project, key: key.into(), before: None, after: Some("x".into()) };
+        assert!(matches!(ledger.commit(Author::User, key, vec![op]).unwrap_err(), ModelError::Precondition(_)), "{key}");
+        assert!(<ecad_model::InfoField as Word>::parse(key).is_some(), "{key} names an info field");
+    }
+    for text in [r#"{"title":"P","company":"X"}"#, r#"{"title":"a\nb"}"#, "{\"customer\":\"a\u{202E}b\"}"] {
+        assert!(serde_json::from_str::<ecad_model::ProjectInfo>(text).is_err(), "{text}");
+    }
+    let text = r#"{"title":"Plant","drawing_number":"D-1","notes":"one\ntwo"}"#;
+    let info: ecad_model::ProjectInfo = serde_json::from_str(text).unwrap();
+    assert_eq!(info.get(ecad_model::InfoField::Notes), Some("one\ntwo"));
+    assert_eq!(serde_json::to_string(&info).unwrap(), text);
+}

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use ecad_cadcraft::checks::{Checks, Kind};
 use ecad_cadcraft::release::{self, Step};
-use ecad_model::{CableId, ConductorId, ObjectRef, Op, PageId};
+use ecad_model::{CableId, ObjectRef, Op, PageId, WireId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id};
@@ -36,7 +36,7 @@ fn fixture(name: &str) -> F {
     let supply = h.first_page();
     h.run("renamepage", json!({"page": supply.hex(), "title": "Supply"})).unwrap();
     for y in [0.0, 5.0, 10.0] {
-        let _: ConductorId = id(&h.run("wire", json!({"points": [[60.0, y], [120.0, y]]})).unwrap(), "conductor");
+        let _: WireId = id(&h.run("wire", json!({"points": [[60.0, y], [120.0, y]]})).unwrap(), "conductor");
     }
     let c1: CableId = id(&h.run("cableslash", json!({"from": [88, -3], "to": [92, 18], "tag": "C1"})).unwrap(), "cable");
     // Brief 057 (owner rule): the fixture's cores run over loose wires on purpose; ticked Not
@@ -190,8 +190,8 @@ fn release_issues_saves_and_writes_a_stamped_folder() {
     });
     assert_eq!(label, "Issue Rev B");
     assert!(
-        ops.iter().any(|o| matches!(o, Op::SetProperty { object: ObjectRef::Project, key, after: Some(a), .. }
-        if key == "rev.2.released" && a == "release/Rev B")),
+        ops.iter().any(|o| matches!(o, Op::ModifyProject { after, .. }
+        if ecad_cadcraft::revisions::field_of(after, 2, "released").as_deref() == Some("release/Rev B"))),
         "{ops:?}"
     );
     assert!(f.h.p(|p| !p.unsaved()), "saved");
@@ -229,7 +229,7 @@ fn release_issues_saves_and_writes_a_stamped_folder() {
     let e = f.h.run("u", Value::Null).unwrap_err();
     assert!(e.contains("Undo the issue? This removes the release mark. Its release folder stays on disk."), "{e}");
     f.h.run("undoissue", json!({})).unwrap();
-    assert!(!f.h.doc().properties.contains_key("rev.2.released"));
+    assert!(!ecad_cadcraft::revisions::field_of(&f.h.doc().project, 2, "released").is_some());
     assert!(out.join("release.json").exists());
     let _ = std::fs::remove_dir_all(&f.dir);
 }
@@ -440,7 +440,7 @@ fn reopening_a_revision_shows_it_in_its_title_block() {
         let doc = f.h.p(|p| p.revision_view.as_ref().unwrap().doc.clone());
         let shown = ecad_cadcraft::revisions::issued(&doc);
         assert_eq!(shown.iter().map(|r| r.rev().to_string()).collect::<Vec<_>>(), ["B", "A"], "{cmd}");
-        assert_eq!(doc.conductors.len() + 1, f.h.doc().conductors.len(), "{cmd}: as it was");
+        assert_eq!(doc.wires.len() + 1, f.h.doc().wires.len(), "{cmd}: as it was");
         let frame = ecad_cadcraft::frame::FrameInput::of(&doc, f.supply, &ecad_model::book::Book::of(&doc));
         assert_eq!(frame.rev, "B", "{cmd}");
         assert_eq!(frame.revisions.first().map(|r| r[0].as_str()), Some("B"), "{cmd}");
@@ -467,14 +467,11 @@ fn a_release_never_lands_on_the_project_or_a_foreign_folder() {
         // Write FP1 past the commands, as a hostile file could hold it.
         f.h.cfg(|p| {
             let doc = p.ledger.document();
-            let before = doc.properties.get("rev.1.released").cloned();
-            p.ledger
-                .commit(
-                    ecad_model::Author::User,
-                    "hostile",
-                    vec![Op::SetProperty { object: ObjectRef::Project, key: "rev.1.released".into(), before, after: Some(v.into()) }],
-                )
-                .unwrap();
+            let after = ecad_cadcraft::revisions::with_field(&doc.project, 1, "released", Some(v)).unwrap();
+            let ops: Vec<Op> = ecad_cadcraft::revisions::modify(&doc.project, after).into_iter().collect();
+            if !ops.is_empty() {
+                p.ledger.commit(ecad_model::Author::User, "hostile", ops).unwrap();
+            }
         });
         let pre = f.h.run("prerelease", json!({"rev": "A"})).unwrap();
         assert_eq!(pre["folder"], json!(folder(&f, "A").to_string_lossy()), "FP1 {v:?}");

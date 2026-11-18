@@ -26,7 +26,7 @@ use cadcraft_engine::Session;
 use ecad_cadcraft::xref::{self, RefIndex};
 use ecad_cadcraft::{Persistence, ProjectHandle};
 use ecad_inspect::EventKind;
-use ecad_model::{ConductorId, DeviceId, PageId, RepresentationId};
+use ecad_model::{DeviceId, PageId, RepresentationId, WireId};
 use serde_json::{Value, json};
 
 struct Rng(u64);
@@ -50,7 +50,7 @@ struct X {
     pages: Vec<PageId>,
     k1: DeviceId,
     coil: RepresentationId,
-    a2: ConductorId,
+    a2: WireId,
 }
 
 fn rep(v: &Value) -> RepresentationId {
@@ -65,7 +65,7 @@ fn fixture(seed: u64) -> X {
     h.run("pageprops", json!({"page": p100.hex(), "number": "100", "title": "Supply"})).unwrap();
     let coil = h.run("place", json!({"symbol": "coil", "at": [75, 180]})).unwrap();
     let k1: DeviceId = id(&coil, "component");
-    let a2: ConductorId = id(&h.run("wire", json!({"points": pts(&[(75.0, 170.0), (75.0, 150.0)])})).unwrap(), "conductor");
+    let a2: WireId = id(&h.run("wire", json!({"points": pts(&[(75.0, 170.0), (75.0, 150.0)])})).unwrap(), "conductor");
     h.run("wire", json!({"points": pts(&[(40.0, 150.0), (200.0, 150.0)])})).unwrap();
     h.run("place", json!({"symbol": "power3", "at": [125, 180], "device": k1.hex()})).unwrap();
     let p105: PageId = id(&h.run("newpage", json!({"title": "Motor control", "number": "105"})).unwrap(), "page");

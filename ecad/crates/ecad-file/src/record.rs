@@ -65,8 +65,9 @@ pub const OP_NAMES: &[&str] = &[
     "LinkRepresentation",
     "ModifyRepresentation",
     "UnlinkRepresentation",
-    "CreateConductor",
-    "DeleteConductor",
+    "CreateWire",
+    "DeleteWire",
+    "ModifyWire",
     "AttachEnd",
     "CreateCable",
     "DeleteCable",
@@ -83,6 +84,7 @@ pub const OP_NAMES: &[&str] = &[
     "ModifyFolder",
     "SetStyle",
     "SetStandard",
+    "ModifyProject",
 ];
 
 /// Why a record could not be decoded (§20.6).

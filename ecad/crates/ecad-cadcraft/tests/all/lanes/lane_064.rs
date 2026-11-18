@@ -57,6 +57,8 @@ fn the_tree_feed_follows_its_update_map() {
     let rekinded = Page { kind: ecad_model::page::PageKind::TerminalStrip { strip: ecad_model::DeviceId(9) }, ..page.clone() };
     let resheeted = Page { sheet: ecad_model::SheetSpec::parse("A3").ok(), ..page.clone() };
     let (p, f) = (PageId(1), FolderId(4));
+    let mut retitled_project = ecad_model::project::Project::default();
+    retitled_project.info.title = ecad_model::project::InfoText::new("Plant").ok();
     let folder = Folder { name: "A".into(), parent: None };
     let cases: Vec<(&str, Vec<Op>, bool)> = vec![
         ("page added", vec![Op::AddPage { id: p, page: page.clone(), index: 0 }], true),
@@ -77,6 +79,7 @@ fn the_tree_feed_follows_its_update_map() {
         ("page kind", vec![Op::ModifyPage { id: p, before: page.clone(), after: rekinded }], false),
         ("page sheet", vec![Op::ModifyPage { id: p, before: page.clone(), after: resheeted }], false),
         ("a page property", vec![Op::SetProperty { object: ObjectRef::Page(p), key: "note".into(), before: None, after: Some("x".into()) }], false),
+        ("project info", vec![Op::ModifyProject { before: Default::default(), after: retitled_project.clone() }], false),
         ("a version named", vec![Op::NameVersion { name: "v".into(), at: 1, description: None }], false),
         ("nothing", vec![], false),
     ];

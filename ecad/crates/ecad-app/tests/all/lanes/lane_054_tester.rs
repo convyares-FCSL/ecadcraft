@@ -146,9 +146,12 @@ fn ac13_each_settings_control_writes_one_setstyle() {
     assert_eq!(head(&mut h), head0 + 1, "one transaction");
     let d = doc(&mut h);
     let last = run(&mut h, "steps", json!({"limit": 1}));
-    assert!(last.to_string().contains("SetStyle") || d.styles.get("page").is_some_and(|m| !m.is_empty()), "a page record: {last}");
+    assert!(
+        last.to_string().contains("SetStyle") || d.styles.get(&ecad_model::StyleCatalogue::Page).is_some_and(|m| !m.is_empty()),
+        "a page record: {last}"
+    );
     run(&mut h, "u", json!({}));
-    assert_eq!(doc(&mut h).styles.get("page").map(|m| m.len()).unwrap_or(0), 0, "one u");
+    assert_eq!(doc(&mut h).styles.get(&ecad_model::StyleCatalogue::Page).map(|m| m.len()).unwrap_or(0), 0, "one u");
     assert!(missing.is_empty(), "§5.2 element names missing: {missing:?}");
 }
 

@@ -14,7 +14,8 @@ use ecad_electrical::cmd::terminal::{self as rules, Bridge, TerminalsInput};
 pub use ecad_electrical::cmd::terminal::{
     BRIDGE_STANDOFF, Fence, FenceKind, MAX_FENCE, definition_for, land_level, level_symbol, on_wire_of, plan_fence, plan_fence_typed, staple,
 };
-use ecad_model::{CableId, ConductorId, DeviceId, Document, End, Noun, Op, PageId, Placement, Pt, Style, TerminalId};
+use ecad_model::units::{Degrees, Radians};
+use ecad_model::{CableId, DeviceId, Document, End, Noun, Op, PageId, Placement, Pt, Style, TerminalId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -97,7 +98,7 @@ fn land_words(doc: &Document, t: TerminalId, land: &Land) -> String {
 pub(crate) fn landing_point(doc: &Document, page: PageId, at: Pt) -> Option<OnWire> {
     let on = crate::wires::wire_at(doc, page, at, ON_WIRE, None)?;
     let (_, _, v) = crate::wires::route_vertices(doc, on.conductor, page)?;
-    let cond = doc.conductors.get(&on.conductor)?;
+    let cond = doc.wires.get(&on.conductor)?;
     for (end, p) in [(End::A, v.first()), (End::B, v.last())] {
         if p.is_some_and(|p| p.near(on.at, ON_WIRE)) && cond.end(end).is_none() {
             return None;
@@ -199,7 +200,7 @@ impl Command for TerminalsParams {
 }
 
 /// The net number of conductor `w`, else its name.
-fn wire_words(doc: &Document, w: ConductorId) -> String {
+fn wire_words(doc: &Document, w: WireId) -> String {
     let conn = doc.connectivity();
     conn.net_of_conductor(w)
         .and_then(|n| conn.net(n))
@@ -212,7 +213,7 @@ fn wire_words(doc: &Document, w: ConductorId) -> String {
 /// (or the strip tagged `tag`, or a new strip) at the next position of its type that lacks its
 /// level, or at `position`; on a wire it lands there. One transaction.
 pub(crate) fn place_level(
-    s: &mut Session, params: &crate::cmd::device::PlaceParams, starter: &'static crate::symbols::Starter, at: Pt, degrees: f64, mirror: bool,
+    s: &mut Session, params: &crate::cmd::device::PlaceParams, starter: &'static crate::symbols::Starter, at: Pt, degrees: Degrees, mirror: bool,
 ) -> cadcraft_engine::Result<Value> {
     let (ty, level) = tt::of_starter(ecad_model::Word::word(starter.key)).ok_or_else(|| err("That symbol is not a terminal level."))?;
     let device = params.device_id()?;
@@ -248,7 +249,7 @@ pub(crate) fn place_level(
         };
         let landing = landing_point(doc, page, at);
         let origin = landing.map_or(at, |on| on.at);
-        let placement = Placement { origin, rotation: degrees.to_radians(), mirror, scale: 1.0 };
+        let placement = Placement { origin, rotation: Radians::from(degrees), mirror, scale: 1.0 };
         let shown = level_symbol(&mut p.ids, page, style, def, starter, c, &position, placement, &mut ops)?;
         let land = match landing {
             Some(on) => Some(land_level(doc, &mut p.ids, page, on, &shown, placement)?),
@@ -598,7 +599,7 @@ impl Command for CablecoresParams {
             p.outputs();
             let o = p.outputs.as_ref().ok_or(CmdError::refused("The reports could not be built."))?;
             let row = o.cable_row(k).cloned().ok_or(CmdError::refused("no such cable"))?;
-            let wire = |w: ConductorId| o.wire(w).cloned();
+            let wire = |w: WireId| o.wire(w).cloned();
             let doc = p.ledger.document();
             let style = doc.settings.reference_style();
             let o_chain = |i: usize| o.chain_ends(&row, i, style);

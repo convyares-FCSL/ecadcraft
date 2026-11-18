@@ -335,10 +335,11 @@ impl Project {
             && let Some((rev, n)) = crate::revisions::issue_in(&crate::revisions::inverse(&ops))
             && !std::mem::take(&mut self.confirm_issue_undo)
         {
-            let date = self.ledger.document().properties.get(&crate::revisions::key(n, "date")).cloned();
+            let row = crate::revisions::list(self.ledger.document()).into_iter().find(|r| r.n == n);
+            let date = row.as_ref().map(|r| r.get("date").to_string()).filter(|d| !d.is_empty());
             let mut q = crate::cmd::sheet::issue_undo_question(&rev, date.as_deref().unwrap_or_default());
             // Brief 027 (design 027 §5.2, Q10): undo never deletes files.
-            if self.ledger.document().properties.contains_key(&crate::revisions::key(n, crate::revisions::RELEASED)) {
+            if row.as_ref().is_some_and(|r| r.released.is_some()) {
                 q.push_str(" Its release folder stays on disk.");
             }
             self.issue_undo_question = Some(q.clone());

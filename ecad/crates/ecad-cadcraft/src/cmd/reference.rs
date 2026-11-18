@@ -8,7 +8,7 @@
 use cadcraft_engine::Session;
 use ecad_electrical::CmdError;
 use ecad_electrical::cmd::reference as rules;
-use ecad_model::{CableId, ConductorId, End, RepresentationId};
+use ecad_model::{CableId, End, RepresentationId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -80,7 +80,7 @@ pub(crate) struct CablecontinueParams {
     toward: Point,
     /// The members that continue, in order (default every one that can).
     #[serde(default)]
-    members: Option<Vec<ConductorId>>,
+    members: Option<Vec<WireId>>,
 }
 
 impl Command for CablecontinueParams {

@@ -129,7 +129,7 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
             ecad_model::ItemKind::Symbol(s) if s.placement.origin.is_finite() && s.placement.rotation.is_finite() => Some(Placed {
                 x: s.placement.origin.x,
                 y: s.placement.origin.y,
-                rotation: s.placement.rotation.rem_euclid(360.0),
+                rotation: ecad_model::units::Degrees::from(s.placement.rotation).0.rem_euclid(360.0),
                 mirror: s.placement.mirror,
             }),
             _ => None,
@@ -180,10 +180,10 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
             d.connections.push(ConnRow { pin, wire: "not connected".into(), others: String::new() });
             continue;
         };
-        deps.extend(net.conductors.iter().take(MAX_ROWS).map(|w| ObjectRef::Conductor(*w)));
+        deps.extend(net.wires.iter().take(MAX_ROWS).map(|w| ObjectRef::Wire(*w)));
         let wire = match ecad_model::wiring::net_number(doc, net) {
             Some(n) => format!("wire {n}"),
-            None if net.conductors.is_empty() => "not connected".into(),
+            None if net.wires.is_empty() => "not connected".into(),
             None => "wire".into(),
         };
         let mut others = Vec::new();

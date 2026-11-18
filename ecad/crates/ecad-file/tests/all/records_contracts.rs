@@ -67,7 +67,7 @@ fn embedded_definitions_follow_the_owner_requirements() {
     for c in [f.c1, f.c2] {
         let doc = f.ledger.document();
         let (rid, rep) = doc.representations_of(Subject::Device(c)).next().map(|(i, r)| (i, r.clone())).unwrap();
-        for (w, cond) in doc.conductors.iter() {
+        for (w, cond) in doc.wires.iter() {
             for end in End::BOTH {
                 if let Some(t) = cond.end(end).filter(|t| doc.terminals[t].component == c) {
                     ops.push(Op::AttachEnd { conductor: *w, end, before: Some(t), after: None });
@@ -177,7 +177,13 @@ fn sheet_records_round_trip_and_defaults_are_left_out() {
     let ops = vec![
         Op::AddFolder { id: folder, folder: Folder { name: "Layouts".into(), parent: None }, index: 0 },
         Op::ModifyPage { id: f.page, before: page.clone(), after: ecad_model::Page { folder: Some(folder), ..page } },
-        Op::SetProperty { object: ObjectRef::Project, key: "title".into(), before: None, after: Some("P7".into()) },
+        Op::ModifyProject {
+            before: ecad_model::Project::default(),
+            after: ecad_model::Project {
+                info: ecad_model::ProjectInfo { title: ecad_model::text::Text::new("P7").ok(), ..Default::default() },
+                ..Default::default()
+            },
+        },
         Op::SetProjectSettings { before, after: after.clone() },
     ];
     f.ledger.commit(Author::User, "Sheets", ops).unwrap();

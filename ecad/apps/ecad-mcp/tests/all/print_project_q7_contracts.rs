@@ -119,7 +119,9 @@ fn ac10_revision_columns_and_custom_fields() {
     c.exec("revision", json!({"description": "First", "drawn": "CVA", "fields": {"ecr": "ECR-1"}}));
     let last = last_by_agent(&mut c);
     assert!(
-        last.ops.iter().any(|o| matches!(o, Op::SetProperty { key, after: Some(v), .. } if key == "rev.1.ecr" && v == "ECR-1")),
+        last.ops
+            .iter()
+            .any(|o| matches!(o, Op::ModifyProject { after, .. } if ecad_cadcraft::revisions::field_of(after, 1, "ecr").as_deref() == Some("ECR-1"))),
         "{:?}",
         last.ops
     );
@@ -150,7 +152,7 @@ fn ac10_revision_columns_and_custom_fields() {
     c.exec("projectprops", json!({"revision_columns": null}));
     let (texts, _) = frame_texts(&mut c);
     assert!(texts.contains(&"Checked".to_string()) && texts.contains(&"ECR-1".to_string()), "{texts:?}");
-    assert_eq!(c.doc().properties.get("rev.1.ecr").map(String::as_str), Some("ECR-1"));
+    assert_eq!(ecad_cadcraft::revisions::field_of(&c.doc().project, 1, "ecr").as_deref(), Some("ECR-1"));
     // The revision list page shows the columns, then Version.
     c.exec("projectprops", json!({"revision_columns": "rev, ecr:ECR, description"}));
     let list = c.exec("newpage", json!({"generated": "revisions"}));

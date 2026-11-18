@@ -311,7 +311,7 @@ fn objects_of(ops: &[ecad_model::Op]) -> BTreeSet<Obj> {
     let mut out = BTreeSet::new();
     out.extend(t.pages.iter().chain(&t.page_properties).map(|x| Obj::Page(*x)));
     out.extend(t.devices.iter().map(|x| Obj::Device(*x)));
-    out.extend(t.conductors.iter().map(|x| Obj::Conductor(*x)));
+    out.extend(t.wires.iter().map(|x| Obj::Wire(*x)));
     out.extend(t.cables.iter().map(|x| Obj::Cable(*x)));
     out.extend(t.representations.iter().map(|x| Obj::Representation(*x)));
     out.extend(t.items.iter().map(|x| Obj::Item(*x)));
@@ -339,7 +339,7 @@ fn edit_rule(doc: &Document, obj: Obj, key: &str, value: &str) -> Result<String,
         Obj::Device(c) if crate::cmd::device::is_device_property(ecad_model::ObjectRef::Device(c), key) => {
             crate::devices::property_value(doc, key, Some(value))?
         }
-        Obj::Conductor(c) => match ecad_electrical::cmd::wire::setprop_rule(doc, ecad_model::ObjectRef::Conductor(c), key, Some(value))? {
+        Obj::Wire(c) => match ecad_electrical::cmd::wire::setprop_rule(doc, ecad_model::ObjectRef::Wire(c), key, Some(value))? {
             Some(v) => v,
             None => crate::devices::property_value(doc, "", Some(value))?,
         },
@@ -396,10 +396,10 @@ pub fn plan(p: &mut Project, prep: &Prepared, choices: &BTreeMap<String, Choice>
             let Some((_, rest)) = rest.split_once('.') else { continue };
             let Some((cat, id)) = rest.split_once('.') else { continue };
             if let Some(sid) = ecad_model::StyleRef::parse(id).filter(ecad_model::StyleRef::is_builtin)
-                && let Some(catalogue) = crate::styles::catalogue(cat)
+                && let Some(cat) = <ecad_model::StyleCatalogue as ecad_model::Word>::parse(cat)
             {
                 let name = crate::styles::name(target, cat, &sid);
-                c.what = format!("{} \"{name}\" · changed on both", catalogue.one);
+                c.what = format!("{} \"{name}\" · changed on both", crate::styles::catalogue(cat).one);
             }
         }
         plan

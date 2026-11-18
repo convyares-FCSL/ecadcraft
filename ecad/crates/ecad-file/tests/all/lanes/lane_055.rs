@@ -63,7 +63,13 @@ fn ledger() -> Ledger {
     l.commit(
         Author::Agent("tester".into()),
         "New title block",
-        vec![Op::SetStyle { layer: StyleLayer::Project, catalogue: "frame".into(), id: StyleRef::Own(0x55), before: None, after: Some(rec.clone()) }],
+        vec![Op::SetStyle {
+            layer: StyleLayer::Project,
+            catalogue: ecad_model::StyleCatalogue::Frame,
+            id: StyleRef::Own(0x55),
+            before: None,
+            after: Some(rec.clone()),
+        }],
     )
     .unwrap();
     let mut moved = rec.clone();
@@ -73,7 +79,13 @@ fn ledger() -> Ledger {
     l.commit(
         Author::User,
         "Title block A3 Northfield",
-        vec![Op::SetStyle { layer: StyleLayer::Project, catalogue: "frame".into(), id: StyleRef::Own(0x55), before: Some(rec), after: Some(moved) }],
+        vec![Op::SetStyle {
+            layer: StyleLayer::Project,
+            catalogue: ecad_model::StyleCatalogue::Frame,
+            id: StyleRef::Own(0x55),
+            before: Some(rec),
+            after: Some(moved),
+        }],
     )
     .unwrap();
     l
@@ -106,7 +118,7 @@ fn the_op_record_carries_the_body_and_reads_it_back() {
     assert_eq!(ecad_file::record::decode_tx(&v).unwrap().ops, tx.ops);
     let plain = Op::SetStyle {
         layer: StyleLayer::Project,
-        catalogue: "text".into(),
+        catalogue: ecad_model::StyleCatalogue::Text,
         id: StyleRef::Own(1),
         before: None,
         after: Some(StyleRecord::new("Tag", Default::default())),

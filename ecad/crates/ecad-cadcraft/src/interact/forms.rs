@@ -8,7 +8,7 @@ use cadcraft_engine::doc::color::{Color as CColor, Rgb};
 use cadcraft_engine::doc::{Entity, EntityKind, Handle};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, EngineError, Input, Interactive, Prompt, Session, Step};
-use ecad_model::{CableId, ConductorId, DeviceId, End, Placement, Primitive, Pt, Subject};
+use ecad_model::{CableId, DeviceId, End, Placement, Primitive, Pt, Subject, WireId};
 use serde_json::{Value, json};
 
 use super::{
@@ -413,8 +413,9 @@ impl Wire {
                 s.echo("New wires: category auto (from their potential).");
                 return Ok(Step::Continue);
             }
-            let id = read(s, |p, _| crate::styles::find(p.ledger.document(), "wire", &choice).map_err(String::from)).map_err(other)?;
-            let name = read(s, |p, _| Ok(crate::styles::name(p.ledger.document(), "wire", &id))).unwrap_or_default();
+            let id = read(s, |p, _| crate::styles::find(p.ledger.document(), ecad_model::StyleCatalogue::Wire, &choice).map_err(String::from))
+                .map_err(other)?;
+            let name = read(s, |p, _| Ok(crate::styles::name(p.ledger.document(), ecad_model::StyleCatalogue::Wire, &id))).unwrap_or_default();
             self.category = Some(id.text());
             s.echo(format!("New wires: category {name}."));
             return Ok(Step::Continue);
@@ -520,9 +521,10 @@ impl Interactive for Wire {
         if self.asking_category {
             let names = read(s, |p, _| {
                 let doc = p.ledger.document();
-                Ok(crate::styles::catalogue("wire")
-                    .map(|c| crate::styles::rows(doc, c).into_iter().map(|r| r.name).collect::<Vec<_>>())
-                    .unwrap_or_default())
+                Ok(crate::styles::rows(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire))
+                    .into_iter()
+                    .map(|r| r.name)
+                    .collect::<Vec<_>>())
             })
             .unwrap_or_default();
             let mut p = Prompt::new(format!("Category for new wires [auto/{}]", names.join("/")), Accept::TEXT);
@@ -619,11 +621,11 @@ const NO_TERMINAL: &str = "No connection point there. Move onto a connection poi
 struct Link {
     connect: bool,
     /// Connect: the wire end chosen, waiting for its terminal.
-    end: Option<(ConductorId, End, Pt)>,
+    end: Option<(WireId, End, Pt)>,
 }
 
 /// A picked wire's end nearer to `p` (A on a tie), its position and whether it is attached.
-fn wire_end(s: &Session, p: Vec2) -> Result<(ConductorId, End, Pt, bool), String> {
+fn wire_end(s: &Session, p: Vec2) -> Result<(WireId, End, Pt, bool), String> {
     let h = pick(s, p).ok_or(NOT_WIRE)?;
     read(s, |proj, page| {
         let doc = proj.ledger.document();
@@ -636,12 +638,12 @@ fn wire_end(s: &Session, p: Vec2) -> Result<(ConductorId, End, Pt, bool), String
             _ => return Err(NOT_WIRE.into()),
         };
         let Some((_, rep)) = doc.representation_of_item(i) else { return Err(NOT_WIRE.into()) };
-        let Subject::Conductor(w) = rep.subject else { return Err(NOT_WIRE.into()) };
+        let Subject::Wire(w) = rep.subject else { return Err(NOT_WIRE.into()) };
         let (_, route) = ecad_model::derive::route_on_page(doc, w, page).ok_or(NOT_WIRE)?;
         let (a, b) = route.path_ends().ok_or(NOT_WIRE)?;
         let q = pt(p);
         let (end, at) = if q.dist(a) <= q.dist(b) { (End::A, a) } else { (End::B, b) };
-        let attached = doc.conductors.get(&w).and_then(|c| c.end(end)).is_some();
+        let attached = doc.wires.get(&w).and_then(|c| c.end(end)).is_some();
         Ok((w, end, at, attached))
     })
 }
@@ -906,7 +908,7 @@ impl CableSlash {
             let doc = p.ledger.document();
             let found = slash::crossings(doc, page, from, to, p.tolerance);
             let blocked = slash::blocked(doc, &found.members);
-            let blocking: BTreeSet<ConductorId> = blocked.iter().map(|(m, _)| m.conductor).collect();
+            let blocking: BTreeSet<WireId> = blocked.iter().map(|(m, _)| m.conductor).collect();
             let (n, others) = (found.members.len(), found.ignored.len());
             let (text, refused) = if n > slash::MAX_CABLE_MEMBERS {
                 (format!("-> refused: more than {} wires", slash::MAX_CABLE_MEMBERS), true)
@@ -968,7 +970,7 @@ impl CableSlash {
         let (members, ignored, touched) = (ids("conductors"), ids("ignored").len(), ids("touched").len());
         let cable = u128::from_str_radix(&hex_of(&r, "cable"), 16).unwrap_or_default();
         let lines = read(s, |p, _| {
-            let members: Vec<ConductorId> = members.iter().map(|c| ConductorId::from(*c)).collect();
+            let members: Vec<WireId> = members.iter().map(|c| WireId::from(*c)).collect();
             Ok(slash::created_lines(p.ledger.document(), cable.into(), &members, ignored, touched))
         })
         .unwrap_or_else(|_| vec![format!("Cable {} created.", hex_of(&r, "cable"))]);
@@ -1131,7 +1133,7 @@ pub(super) fn cable_named(doc: &ecad_model::Document, m: Mapped) -> Result<Cable
         },
         Mapped::Item(i) => match doc.representation_of_item(i).map(|(_, r)| r.subject) {
             Some(Subject::Cable(k)) => Ok(k),
-            Some(Subject::Conductor(w)) => doc.cables_of(w).first().copied().ok_or(WIRE_NOT_IN_CABLE),
+            Some(Subject::Wire(w)) => doc.cables_of(w).first().copied().ok_or(WIRE_NOT_IN_CABLE),
             _ => Err(NOT_A_CABLE),
         },
         Mapped::Label(w) => doc.cables_of(w).first().copied().ok_or(WIRE_NOT_IN_CABLE),
@@ -1254,7 +1256,7 @@ pub(crate) fn cablecore(s: &Session) -> R<Box<dyn Interactive>> {
 /// The wire picked and its current label, while the text prompt is shown.
 #[derive(Default)]
 struct CableCore {
-    picked: Option<(ConductorId, String, Option<String>)>,
+    picked: Option<(WireId, String, Option<String>)>,
 }
 
 const CORE_NOTHING: &str = "Nothing there. Click a wire in a cable.";
@@ -1264,14 +1266,14 @@ const CORE_NOT_WIRE: &str = "That is not a wire in a cable.";
 impl CableCore {
     /// The member a pick names (design 009 §5.1 step 2): a route, a fan tail or bend, or a core
     /// label; anything else is refused in words.
-    fn member(s: &Session, h: Handle) -> R<(ConductorId, String, Option<String>)> {
+    fn member(s: &Session, h: Handle) -> R<(WireId, String, Option<String>)> {
         read(s, |p, page| {
             let map = &p.pages.get(&page).ok_or(CORE_NOT_WIRE)?.map;
             let doc = p.ledger.document();
             let w = match map.get(h) {
                 Some(Mapped::Fan(_)) => map.core_of(h).ok_or(CORE_IS_CABLE)?,
                 Some(Mapped::Item(i)) => match doc.representation_of_item(i).map(|(_, r)| r.subject) {
-                    Some(Subject::Conductor(w)) => w,
+                    Some(Subject::Wire(w)) => w,
                     Some(Subject::Cable(_)) => return Err(CORE_IS_CABLE.into()),
                     _ => return Err(CORE_NOT_WIRE.into()),
                 },
@@ -1331,7 +1333,7 @@ impl CableCore {
                     .and_then(Value::as_array)
                     .into_iter()
                     .flatten()
-                    .filter_map(|v| v.as_str().and_then(ConductorId::parse))
+                    .filter_map(|v| v.as_str().and_then(WireId::parse))
                     .filter_map(|d| read(s, |p, _| Ok(slash::wire_name(p.ledger.document(), d))).ok())
                     .collect();
                 if let (false, Some(c)) = (dups.is_empty(), r.get("core").and_then(Value::as_str)) {

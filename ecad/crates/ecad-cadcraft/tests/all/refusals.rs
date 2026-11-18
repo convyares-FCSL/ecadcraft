@@ -6,11 +6,11 @@ use crate::common;
 use cadcraft_engine::doc::Space;
 use common::{H, id, pts};
 use ecad_inspect::EventKind;
-use ecad_model::{ConductorId, DeviceId};
+use ecad_model::{DeviceId, WireId};
 use serde_json::{Value, json};
 
 /// A small project: a drawn component with a terminal, a placed symbol, a wire between them.
-fn fixture() -> (H, DeviceId, DeviceId, ConductorId) {
+fn fixture() -> (H, DeviceId, DeviceId, WireId) {
     let mut h = H::new(77);
     h.cmdline("line 0,0 40,0 40,20 0,20 c");
     let first = h.first_page();
@@ -18,7 +18,7 @@ fn fixture() -> (H, DeviceId, DeviceId, ConductorId) {
     let c1: DeviceId = id(&h.run("convertcomponent", json!({"handles": lines.iter().map(|x| x.hex()).collect::<Vec<_>>()})).unwrap(), "component");
     h.run("addterminal", json!({"handle": lines[1].hex(), "at": [40, 10]})).unwrap();
     let c2: DeviceId = id(&h.run("place", json!({"at": [100, 0]})).unwrap(), "component");
-    let w: ConductorId = id(&h.run("wire", json!({"points": pts(&[(40.0, 10.0), (100.0, 10.0)])})).unwrap(), "conductor");
+    let w: WireId = id(&h.run("wire", json!({"points": pts(&[(40.0, 10.0), (100.0, 10.0)])})).unwrap(), "conductor");
     (h, c1, c2, w)
 }
 
@@ -121,7 +121,7 @@ fn connecting_to_a_deleted_terminal_fails_cleanly() {
     let r = h.run("connect", json!({"conductor": w.hex(), "end": "A", "terminal": t.hex()}));
     assert!(r.is_err());
     unchanged(&mut h, &b, "connect to a deleted terminal");
-    assert_eq!(h.doc().conductors[&w].ends[0], None, "deleting the component detached the wire explicitly");
+    assert_eq!(h.doc().wires[&w].ends[0], None, "deleting the component detached the wire explicitly");
 }
 
 #[cfg(feature = "fault-injection")]

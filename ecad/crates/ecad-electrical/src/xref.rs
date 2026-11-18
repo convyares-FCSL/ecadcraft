@@ -30,7 +30,7 @@
 //! | `ModifyItem` / `RemoveItem` of an item of a component's representation | that component |
 //! | the same of a conductor route | the components at the conductor's ends (a table under `auto` follows the rail its coil's wire meets) |
 //! | `LinkRepresentation` / `UnlinkRepresentation` / `ModifyRepresentation` | the component it shows, or the components at its conductor's ends |
-//! | `AttachEnd`, `CreateConductor`, `DeleteConductor` | the components at the ends before and after |
+//! | `AttachEnd`, `CreateWire`, `DeleteWire` | the components at the ends before and after |
 //! | `AddTerminal` / `RemoveTerminal` | that component (its labels) |
 //! | `CreateDevice` / `DeleteDevice` | that component |
 //! | `SetProperty` component `contacts` or `mirror` | that component |
@@ -1470,7 +1470,7 @@ impl RefIndex {
                 // Brief 049: an arrow's name group.
                 out.extend(crate::continuations::name_of(doc, c).and_then(|n| crate::continuations::group_key(doc, &n)));
             }
-            Subject::Conductor(_) => {}
+            Subject::Wire(_) => {}
         };
         for op in ops {
             match op {
@@ -1624,8 +1624,8 @@ struct Scope {
 impl Scope {
     /// Add what `ops` name, looked up in `doc` (called on the state before and after).
     fn collect(&mut self, doc: &Document, idx: &RefIndex, ops: &[Op]) {
-        let ends = |s: &mut Scope, w: ecad_model::ConductorId| {
-            if let Some(c) = doc.conductors.get(&w) {
+        let ends = |s: &mut Scope, w: ecad_model::WireId| {
+            if let Some(c) = doc.wires.get(&w) {
                 for t in c.ends.iter().flatten() {
                     if let Some(x) = doc.terminals.get(t) {
                         s.devices.insert(x.component);
@@ -1637,7 +1637,7 @@ impl Scope {
             Subject::Device(c) => {
                 s.devices.insert(c);
             }
-            Subject::Conductor(w) => ends(s, w),
+            Subject::Wire(w) => ends(s, w),
             Subject::Cable(_) => {}
         };
         let mut moved = false;
@@ -1661,7 +1661,7 @@ impl Scope {
                         }
                     }
                 }
-                Op::CreateConductor { conductor, .. } | Op::DeleteConductor { conductor, .. } => {
+                Op::CreateWire { conductor, .. } | Op::DeleteWire { conductor, .. } => {
                     for t in conductor.ends.iter().flatten() {
                         if let Some(x) = doc.terminals.get(t) {
                             self.devices.insert(x.component);
@@ -1687,7 +1687,7 @@ impl Scope {
                     }
                 }
                 // Brief 054 (design 054 §10.2): a page type's sheet changes its pages' grids.
-                Op::SetStyle { catalogue, .. } if catalogue == crate::styles::page::WORD => {
+                Op::SetStyle { catalogue, .. } if *catalogue == ecad_model::StyleCatalogue::Page => {
                     if let Some((pages, true)) = crate::styles::page::touched_by(doc, op) {
                         for p in pages {
                             self.devices.extend(idx.devices_on(doc, p));
@@ -1706,7 +1706,7 @@ impl Scope {
                 }
                 // Brief 050a: a change of the text style the table text uses (its height, weight).
                 Op::SetStyle { catalogue, id, .. }
-                    if catalogue == "text"
+                    if *catalogue == ecad_model::StyleCatalogue::Text
                         && *id == crate::text_style::style_of(doc, crate::text_style::TextKind::Table, crate::defaults::Scope::project()) =>
                 {
                     self.wide = true;
@@ -1744,7 +1744,7 @@ impl Scope {
                         self.names.extend(crate::continuations::names_on(doc, idx, *p));
                     }
                 }
-                Op::SetStyle { catalogue, .. } if catalogue == crate::styles::page::WORD => {
+                Op::SetStyle { catalogue, .. } if *catalogue == ecad_model::StyleCatalogue::Page => {
                     if let Some((pages, true)) = crate::styles::page::touched_by(doc, op) {
                         for p in pages {
                             self.names.extend(crate::continuations::names_on(doc, idx, p));
@@ -1759,7 +1759,7 @@ impl Scope {
                 Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if crate::continuations::is_wide_key(key) => {
                     self.arrows_wide = true;
                 }
-                Op::SetStyle { catalogue, id, .. } if crate::continuations::is_wide_style(doc, catalogue, id) => {
+                Op::SetStyle { catalogue, id, .. } if crate::continuations::is_wide_style(doc, *catalogue, id) => {
                     self.arrows_wide = true;
                 }
                 _ => {}

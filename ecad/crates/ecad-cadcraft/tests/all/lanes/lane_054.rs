@@ -285,7 +285,7 @@ fn hostile_types_and_starts_read_as_absent_with_their_rows() {
                 "hostile",
                 vec![ecad_model::Op::SetStyle {
                     layer: ecad_model::StyleLayer::Project,
-                    catalogue: "page".into(),
+                    catalogue: ecad_model::StyleCatalogue::Page,
                     id: StyleRef::Builtin("schematic".into()),
                     before: None,
                     after: Some(r),
@@ -311,7 +311,7 @@ fn cover_notes_are_written_one_per_line_and_bounded() {
     let head = h.head();
     h.run("projectprops", json!({"props": {"cover.notes": "a\n\n b \n"}})).unwrap();
     assert_eq!(h.head(), head + 1);
-    assert_eq!(h.doc().properties.get("cover.notes").map(String::as_str), Some("a\nb"));
+    assert_eq!(ecad_cadcraft::frames::project_text(&h.doc(), "cover.notes").as_deref(), Some("a\nb"));
     let many: Vec<String> = (0..41).map(|i| format!("note {i}")).collect();
     let e = h.run("projectprops", json!({"props": {"cover.notes": many.join("\n")}})).unwrap_err();
     assert!(e.contains("The cover takes up to 40 notes of 400 characters."), "{e}");
@@ -436,13 +436,13 @@ fn wire_categories_in_use_cross_zero_only() {
     let d0 = h.doc();
     let mut uses = ecad_cadcraft::front::Uses::build(&d0);
     let last = |h: &mut H| h.p(|p| p.ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default());
-    let w: ecad_model::ConductorId = id(&h.run("wire", json!({"points": [[0, 0], [60, 0]]})).unwrap(), "conductor");
+    let w: ecad_model::WireId = id(&h.run("wire", json!({"points": [[0, 0], [60, 0]]})).unwrap(), "conductor");
     let ops = last(&mut h);
     uses.update(&h.doc(), &ops);
     h.run("category", json!({"conductor": w.hex(), "value": "dc24"})).unwrap();
     let ops = last(&mut h);
     assert!(uses.update(&h.doc(), &ops), "the first 24 V DC wire");
-    let w2: ecad_model::ConductorId = id(&h.run("wire", json!({"points": [[0, 20], [60, 20]]})).unwrap(), "conductor");
+    let w2: ecad_model::WireId = id(&h.run("wire", json!({"points": [[0, 20], [60, 20]]})).unwrap(), "conductor");
     let ops = last(&mut h);
     uses.update(&h.doc(), &ops);
     h.run("category", json!({"conductor": w2.hex(), "value": "dc24"})).unwrap();
@@ -464,7 +464,7 @@ fn a_plain_page_gets_no_checks_numbering_or_references() {
         ecad_cadcraft::checks::all(&d, 0.01).into_iter().filter(|c| c.page == Some(p)).count()
     };
     assert!(on_page(&mut h, first) > 0, "a schematic page is checked");
-    let numbered = |h: &mut H| h.doc().conductors.values().any(|c| c.properties.contains_key(ecad_model::connectivity::WIRE_NUMBER));
+    let numbered = |h: &mut H| h.doc().wires.values().any(|c| c.number.is_some());
     // A Plain page: drawn the same, checked and numbered not at all.
     let plain = page(&mut h, json!({"type": "plain"}));
     assert_eq!(ty(&mut h, plain), "plain");
@@ -476,9 +476,9 @@ fn a_plain_page_gets_no_checks_numbering_or_references() {
     assert_eq!(on_page(&mut h, plain), 0, "no Checks row on a Plain page");
     let d = h.doc();
     let on_plain: Vec<_> =
-        d.conductors.iter().filter(|(c, _)| d.representations_of(ecad_model::Subject::Conductor(**c)).all(|(_, r)| r.page == plain)).collect();
+        d.wires.iter().filter(|(c, _)| d.representations_of(ecad_model::Subject::Wire(**c)).all(|(_, r)| r.page == plain)).collect();
     assert!(!on_plain.is_empty());
-    assert!(on_plain.iter().all(|(_, c)| !c.properties.contains_key(ecad_model::connectivity::WIRE_NUMBER)), "no wire number on a Plain page");
+    assert!(on_plain.iter().all(|(_, c)| !c.number.is_some()), "no wire number on a Plain page");
     let _ = before_numbered;
     // A coil there is in no reference group: the device has no head.
     h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap();

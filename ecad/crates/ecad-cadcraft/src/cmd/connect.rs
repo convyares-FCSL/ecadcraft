@@ -6,7 +6,7 @@
 
 use cadcraft_engine::Session;
 use ecad_electrical::cmd::connect as rules;
-use ecad_model::{ConductorId, End, TerminalId};
+use ecad_model::{End, TerminalId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -43,7 +43,7 @@ impl From<EndParam> for End {
 #[serde(deny_unknown_fields)]
 pub(crate) struct ConnectParams {
     /// The wire.
-    conductor: ConductorId,
+    conductor: WireId,
     /// Which end of it.
     end: EndParam,
     /// The connection point, shown on the active page.
@@ -65,7 +65,7 @@ impl Command for ConnectParams {
 #[serde(deny_unknown_fields)]
 pub(crate) struct DisconnectParams {
     /// The wire.
-    conductor: ConductorId,
+    conductor: WireId,
     /// Which end of it.
     end: EndParam,
 }

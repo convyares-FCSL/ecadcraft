@@ -7,7 +7,7 @@
 
 use ecad_cadcraft::Persistence;
 use ecad_cadcraft::outputs::{Group, Outputs};
-use ecad_model::{CableId, ConductorId, DeviceId, Document, PageId, TerminalId, tag};
+use ecad_model::{CableId, DeviceId, Document, PageId, TerminalId, WireId, tag};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -17,7 +17,7 @@ struct T {
     h: H,
     page: PageId,
     k2: DeviceId,
-    wires: [ConductorId; 4],
+    wires: [WireId; 4],
     cable: CableId,
 }
 
@@ -42,7 +42,7 @@ fn fixture(seed: u64) -> T {
     let mut wires = Vec::new();
     for r in &routes {
         let v = h.run("wire", json!({"points": pts(r)})).unwrap();
-        wires.push(id::<ConductorId>(&v, "conductor"));
+        wires.push(id::<WireId>(&v, "conductor"));
     }
     let v = h.run("cableslash", json!({"from": [90, 120], "to": [260, 120], "tag": "-W01"})).unwrap();
     let cable: CableId = id(&v, "cable");
@@ -85,7 +85,7 @@ fn reads(h: &mut H, cable: CableId) -> Value {
 }
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.devices, &d.terminals, &d.conductors, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items)
+    (&d.devices, &d.terminals, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items)
 }
 
 /// AC 10 (design K): every new property (`terminals`, `cores`, `part_number.pe`, `maker.pe`, page

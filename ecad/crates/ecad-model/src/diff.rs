@@ -12,17 +12,18 @@
 //!   removed and added again.
 //! - Pages and folders keep the longest run already in the target's order; only the others move.
 //! - Named versions are never touched (they are history). `keep_project_key` says which project
-//!   properties are compared (Restore leaves `rev.*` as it is now).
+//!   properties are compared (Restore leaves the revision rows as they are now: the filter is
+//!   asked about [`crate::project::REVISIONS_KEY`]).
 //!
 //! Excluded: version names; the derived index and nets (rebuilt by applying the ops).
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::doc::{Document, End, Properties};
+use crate::doc::{Document, End, Properties, Wire};
 use crate::id::{FolderId, PageId};
 use crate::invariant::Touched;
 use crate::op::{ObjectRef, Op};
-use crate::style::{StyleCatalogues, StyleLayer, StyleRef};
+use crate::style::{StyleCatalogue, StyleCatalogues, StyleLayer, StyleRef};
 
 /// `SetProperty` ops turning `a` into `b` on `object`, for the keys `keep` accepts.
 fn props(object: ObjectRef, a: &Properties, b: &Properties, keep: &dyn Fn(&str) -> bool, out: &mut Vec<Op>) {
@@ -100,18 +101,23 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
         }
     }
     // Conductors: properties and ends change in place.
-    for id in ids(&from.conductors, &to.conductors, scope.map(|s| &s.conductors)) {
-        match (from.conductors.get(&id), to.conductors.get(&id)) {
+    for id in ids(&from.wires, &to.wires, scope.map(|s| &s.wires)) {
+        match (from.wires.get(&id), to.wires.get(&id)) {
             (Some(a), Some(b)) => {
-                props(ObjectRef::Conductor(id), &a.properties, &b.properties, &all, &mut changes);
+                props(ObjectRef::Wire(id), &a.display, &b.display, &all, &mut changes);
+                let values = Wire { ends: a.ends, display: a.display.clone(), ..b.clone() };
+                let before = Wire { display: a.display.clone(), ..a.clone() };
+                if values != before {
+                    changes.push(Op::ModifyWire { id, before, after: values });
+                }
                 for end in End::BOTH {
                     if a.end(end) != b.end(end) {
                         changes.push(Op::AttachEnd { conductor: id, end, before: a.end(end), after: b.end(end) });
                     }
                 }
             }
-            (Some(a), None) => removes.push(Op::DeleteConductor { id, conductor: a.clone() }),
-            (None, Some(b)) => adds.push(Op::CreateConductor { id, conductor: b.clone() }),
+            (Some(a), None) => removes.push(Op::DeleteWire { id, conductor: a.clone() }),
+            (None, Some(b)) => adds.push(Op::CreateWire { id, conductor: b.clone() }),
             (None, None) => {}
         }
     }
@@ -251,6 +257,14 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
     // The project.
     if project {
         props(ObjectRef::Project, &from.properties, &to.properties, keep_project_key, &mut changes);
+        // Revision rows are history: kept as they are now unless the filter accepts them.
+        let mut target = to.project.clone();
+        if !keep_project_key(crate::project::REVISIONS_KEY) {
+            target.revisions = from.project.revisions.clone();
+        }
+        if from.project != target {
+            changes.push(Op::ModifyProject { before: from.project.clone(), after: target });
+        }
         if from.settings != to.settings {
             changes.push(Op::SetProjectSettings { before: from.settings.clone(), after: to.settings.clone() });
         }
@@ -270,14 +284,14 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
 
 /// `SetStyle` ops turning `a`'s records into `b`'s, for `layer`.
 fn style_records(layer: StyleLayer, a: &StyleCatalogues, b: &StyleCatalogues, out: &mut Vec<Op>) {
-    let cats: BTreeSet<&String> = a.keys().chain(b.keys()).collect();
+    let cats: BTreeSet<StyleCatalogue> = a.keys().chain(b.keys()).copied().collect();
     for cat in cats {
-        let (ra, rb) = (a.get(cat), b.get(cat));
+        let (ra, rb) = (a.get(&cat), b.get(&cat));
         let ids: BTreeSet<&StyleRef> = ra.into_iter().flat_map(|m| m.keys()).chain(rb.into_iter().flat_map(|m| m.keys())).collect();
         for id in ids {
             let (before, after) = (ra.and_then(|m| m.get(id)).cloned(), rb.and_then(|m| m.get(id)).cloned());
             if before != after {
-                out.push(Op::SetStyle { layer, catalogue: cat.clone(), id: id.clone(), before, after });
+                out.push(Op::SetStyle { layer, catalogue: cat, id: id.clone(), before, after });
             }
         }
     }
@@ -323,7 +337,7 @@ pub fn objects(ops: &[Op]) -> BTreeMap<(&'static str, u128), usize> {
             }
             Op::AddTerminal { id, .. } | Op::RemoveTerminal { id, .. } => ("terminal", id.0),
             Op::LinkRepresentation { id, .. } | Op::ModifyRepresentation { id, .. } | Op::UnlinkRepresentation { id, .. } => ("representation", id.0),
-            Op::CreateConductor { id, .. } | Op::DeleteConductor { id, .. } | Op::AttachEnd { conductor: id, .. } => ("conductor", id.0),
+            Op::CreateWire { id, .. } | Op::DeleteWire { id, .. } | Op::ModifyWire { id, .. } | Op::AttachEnd { conductor: id, .. } => ("wire", id.0),
             Op::CreateCable { id, .. }
             | Op::DeleteCable { id, .. }
             | Op::AddCableMember { cable: id, .. }
@@ -332,7 +346,7 @@ pub fn objects(ops: &[Op]) -> BTreeMap<(&'static str, u128), usize> {
             Op::AddFolder { id, .. } | Op::RemoveFolder { id, .. } | Op::ModifyFolder { id, .. } => ("folder", id.0),
             Op::SetProperty { object, .. } => match object {
                 ObjectRef::Device(c) => ("device", c.0),
-                ObjectRef::Conductor(c) => ("conductor", c.0),
+                ObjectRef::Wire(c) => ("wire", c.0),
                 ObjectRef::Cable(c) => ("cable", c.0),
                 ObjectRef::Page(c) => ("page", c.0),
                 ObjectRef::Project => ("project", 0),
@@ -344,6 +358,7 @@ pub fn objects(ops: &[Op]) -> BTreeMap<(&'static str, u128), usize> {
                 StyleRef::Builtin(w) => ("style", w.bytes().fold(0u128, |h, b| h.wrapping_mul(31).wrapping_add(u128::from(b)))),
             },
             Op::SetProjectSettings { .. } => ("settings", 0),
+            Op::ModifyProject { .. } => ("project", 0),
             Op::NameVersion { .. } | Op::UnnameVersion { .. } => continue,
         };
         *out.entry(key).or_insert(0) += 1;

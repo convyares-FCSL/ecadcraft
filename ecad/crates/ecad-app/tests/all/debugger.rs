@@ -163,13 +163,13 @@ is not counted as a change until the project has a file."
     //    and after (the terminal).
     ok(&mut t, r#"wire {"points":[[60,0],[90,0]]}"#);
     let route = |d: &ecad_model::Document| {
-        let (c, _) = d.conductors.iter().next().unwrap();
+        let (c, _) = d.wires.iter().next().unwrap();
         vec![ecad_model::derive::route_on_page(d, *c, d.page_order[0]).unwrap().0]
     };
     select_ecad(&mut t, route);
     frame(&mut t, &ctx);
     t.debugger.follow_selection(0);
-    assert!(t.debugger.focus().iter().any(|i| matches!(i, ObjectId::Conductor(_))));
+    assert!(t.debugger.focus().iter().any(|i| matches!(i, ObjectId::Wire(_))));
     let touching = t.debugger.touching();
     assert!(touching.contains(&3), "{touching:?}");
     t.debugger.select_tx(Some(3));
@@ -223,7 +223,7 @@ is not counted as a change until the project has a file."
     // History at seq 2 (before the wire) is rebuilt from the copy; the live project is unchanged.
     t.debugger.show_at(2);
     let h = t.debugger.historical().unwrap();
-    assert!(h.doc.as_ref().unwrap().conductors.is_empty());
+    assert!(h.doc.as_ref().unwrap().wires.is_empty());
     let p = t.project().unwrap().clone();
     assert_eq!(p.read(&mut t.cad.session, |p, _| p.ledger.head()).unwrap(), 5);
     every_view(&mut t, &ctx);

@@ -435,7 +435,7 @@ fn prim_sane(p: &Primitive) -> bool {
         Primitive::Polyline { vertices, .. } => vertices.len() <= 10_000 && vertices.iter().all(pt),
         Primitive::Arc { center, radius, start, end } => pt(center) && n(*radius) && n(*start) && n(*end),
         Primitive::Circle { center, radius } => pt(center) && n(*radius),
-        Primitive::Text { at, height, rotation, value, .. } => pt(at) && n(*height) && n(*rotation) && value.chars().count() <= MAX_BODY_TEXT,
+        Primitive::Text { at, height, rotation, value, .. } => pt(at) && n(*height) && n(rotation.0) && value.chars().count() <= MAX_BODY_TEXT,
         Primitive::Point { at } => pt(at),
     }
 }

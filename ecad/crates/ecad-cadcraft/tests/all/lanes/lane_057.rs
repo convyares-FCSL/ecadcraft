@@ -6,7 +6,7 @@
 
 use ecad_cadcraft::rating::dataset::{self, Insulation};
 use ecad_cadcraft::rating::{self, parse};
-use ecad_model::{CableId, ConductorId, DeviceId};
+use ecad_model::{CableId, DeviceId, WireId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -40,7 +40,7 @@ fn place(h: &mut H, symbol: &str, at: [f64; 2], tag: &str) -> DeviceId {
     id(&h.run("place", json!({"symbol": symbol, "at": at, "tag": tag})).unwrap_or_else(|e| panic!("place {symbol}: {e}")), "component")
 }
 
-fn wire(h: &mut H, points: &[(f64, f64)]) -> ConductorId {
+fn wire(h: &mut H, points: &[(f64, f64)]) -> WireId {
     id(&h.run("wire", json!({"points": pts(points)})).unwrap_or_else(|e| panic!("wire {points:?}: {e}")), "conductor")
 }
 
@@ -58,8 +58,8 @@ fn ratings(h: &mut H, p: Value) -> Value {
 struct Fx {
     h: H,
     q01: DeviceId,
-    l2: ConductorId,
-    core: ConductorId,
+    l2: WireId,
+    core: WireId,
     w01: CableId,
 }
 
@@ -411,9 +411,9 @@ fn fp8_rows_at_the_cap_are_kept_and_one_over_is_refused_or_ignored() {
     use ecad_cadcraft::styles::{self, ratingtable};
     use ecad_model::style::{StyleLayer, StyleRecord, StyleRef};
     let cap = dataset::MAX_BYTES;
-    assert_eq!(styles::field_cap(ratingtable::WORD, ratingtable::ROWS), cap);
-    assert_eq!(styles::field_cap(ratingtable::WORD, ratingtable::SOURCE), ecad_model::style::MAX_FIELD_CHARS);
-    assert_eq!(styles::field_cap("wire", "rows"), ecad_model::style::MAX_FIELD_CHARS);
+    assert_eq!(styles::field_cap(ecad_model::StyleCatalogue::RatingTable, ratingtable::ROWS), cap);
+    assert_eq!(styles::field_cap(ecad_model::StyleCatalogue::RatingTable, ratingtable::SOURCE), ecad_model::style::MAX_FIELD_CHARS);
+    assert_eq!(styles::field_cap(ecad_model::StyleCatalogue::Wire, "rows"), ecad_model::style::MAX_FIELD_CHARS);
     let mut f = fixture();
     // At the cap: written, read back, used.
     let t = f.h.run("ratingtable", json!({"name": "Big (synthetic)", "csv": padded(cap)})).unwrap();
@@ -430,7 +430,7 @@ fn fp8_rows_at_the_cap_are_kept_and_one_over_is_refused_or_ignored() {
     assert_eq!(f.h.head(), head);
     // One over in a file made elsewhere: ignored with a Checks row, never a crash.
     let doc = f.h.doc();
-    let before = styles::record(&doc, StyleLayer::Project, ratingtable::WORD, &id).cloned();
+    let before = styles::record(&doc, StyleLayer::Project, ecad_model::StyleCatalogue::RatingTable, &id).cloned();
     let mut rec: StyleRecord = before.clone().unwrap();
     rec.fields.insert(ratingtable::ROWS.into(), padded(cap + 1));
     f.h.cfg(|p| {
@@ -439,7 +439,7 @@ fn fp8_rows_at_the_cap_are_kept_and_one_over_is_refused_or_ignored() {
             "hostile rows",
             vec![ecad_model::Op::SetStyle {
                 layer: StyleLayer::Project,
-                catalogue: ratingtable::WORD.into(),
+                catalogue: ecad_model::StyleCatalogue::RatingTable,
                 id: id.clone(),
                 before,
                 after: Some(rec),
@@ -490,7 +490,7 @@ fn f1_a_location_temperature_is_set_by_rating_and_rechecks_only_the_wires_there(
     touch.collect(&after, &ops);
     assert!(!touch.all_results);
     let changed = k.update(&after, &touch);
-    assert_eq!(changed.into_iter().collect::<Vec<_>>(), vec![rating::RatedSubject::Conductor(f.l2)]);
+    assert_eq!(changed.into_iter().collect::<Vec<_>>(), vec![rating::RatedSubject::Wire(f.l2)]);
     assert_eq!(k.retraced, 0);
     // A device's own location reaches its wires only.
     let mut k = rating::Kept::build(&after);
@@ -501,9 +501,9 @@ fn f1_a_location_temperature_is_set_by_rating_and_rechecks_only_the_wires_there(
     touch.collect(&after, &ops);
     touch.collect(&later, &ops);
     assert!(!touch.all_results);
-    let on_q01: Vec<ConductorId> = later.terminals_of(f.q01).flat_map(|(t, _)| later.ends_at(t)).map(|(w, _)| w).collect();
+    let on_q01: Vec<WireId> = later.terminals_of(f.q01).flat_map(|(t, _)| later.ends_at(t)).map(|(w, _)| w).collect();
     for s in k.update(&later, &touch) {
-        assert!(matches!(s, rating::RatedSubject::Conductor(c) if on_q01.contains(&c)), "{s:?}");
+        assert!(matches!(s, rating::RatedSubject::Wire(c) if on_q01.contains(&c)), "{s:?}");
     }
     // A box temperature a file holds out of range: a row, not silence.
     let rows = checks_of(&mut f.h, "rating-bad-value");
@@ -556,7 +556,7 @@ fn f6_the_trace_bound_is_said_in_words() {
     let mut f = fixture();
     rate_category(&mut f.h);
     let doc = f.h.doc();
-    let mut r = rating::rating_of(&doc, rating::RatedSubject::Conductor(f.l2));
+    let mut r = rating::rating_of(&doc, rating::RatedSubject::Wire(f.l2));
     r.issues = vec![rating::Issue::NoDevice(true)];
     let rows = rating::rows(&doc, &r);
     assert_eq!(rows.len(), 1);
@@ -602,7 +602,7 @@ fn a_location_temperature_follows_the_entry_when_its_code_is_renamed() {
     rate_category(&mut f.h);
     let _ = cab1(&mut f.h);
     f.h.run("rating", json!({"location": "+CAB1", "temperature": 44})).unwrap();
-    let panel = |h: &mut H, w: ConductorId| {
+    let panel = |h: &mut H, w: WireId| {
         let r = ratings(h, json!({"wire": w.hex()}));
         r["factors"].as_array().unwrap().iter().find(|x| x["name"] == "panel").cloned().unwrap()
     };

@@ -25,8 +25,10 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::style::{self as ms, MAX_FIELD_CHARS, MAX_FIELDS_PER_STYLE, MAX_STYLES_PER_CATALOGUE, StyleLayer, StyleRecord, StyleRef};
-use ecad_model::{Document, ObjectRef, Op, PageId, Properties, Subject};
+use ecad_model::style::{
+    self as ms, MAX_FIELD_CHARS, MAX_FIELDS_PER_STYLE, MAX_STYLES_PER_CATALOGUE, StyleCatalogue, StyleLayer, StyleRecord, StyleRef,
+};
+use ecad_model::{Document, ObjectRef, Op, PageId, Properties, Subject, Word};
 
 use crate::CmdError;
 use crate::defaults::{self, Kind, Resolved, Scope, Slot, Source, Value};
@@ -92,8 +94,8 @@ pub type ProjectField = for<'a> fn(&'a Document, &StyleRef, &str) -> Option<Valu
 /// One kind of style.
 #[derive(Debug)]
 pub struct Catalogue {
-    /// The catalogue word: `text`, `location`, `frame`.
-    pub word: &'static str,
+    /// Which catalogue it is (its stored word: `text`, `location`, `frame`, …).
+    pub catalogue: StyleCatalogue,
     /// Its table's name: `Text styles`.
     pub plural: &'static str,
     /// One of its styles in words: `Text style`.
@@ -133,21 +135,28 @@ pub static CATALOGUES: &[&Catalogue] = &[
     &ratingtable::CATALOGUE,
 ];
 
-/// The catalogue with this word.
-pub fn catalogue(word: &str) -> Option<&'static Catalogue> {
-    CATALOGUES.iter().copied().find(|c| c.word == word)
+/// The catalogue's description.
+pub fn catalogue(c: StyleCatalogue) -> &'static Catalogue {
+    match c {
+        StyleCatalogue::Text => &text::CATALOGUE,
+        StyleCatalogue::Location => &location::CATALOGUE,
+        StyleCatalogue::Frame => &frame::CATALOGUE,
+        StyleCatalogue::Wire => &wire::CATALOGUE,
+        StyleCatalogue::Page => &page::CATALOGUE,
+        StyleCatalogue::Cable => &cable::CATALOGUE,
+        StyleCatalogue::RatingTable => &ratingtable::CATALOGUE,
+    }
 }
 
 /// The records `layer` holds for `catalogue` in `doc`, at most [`MAX_STYLES_PER_CATALOGUE`] in ID
 /// order (the bound's excess is ignored here and reported by Checks).
-pub fn records<'a>(doc: &'a Document, layer: StyleLayer, catalogue: &str) -> impl Iterator<Item = (&'a StyleRef, &'a StyleRecord)> + 'a {
-    let cat = catalogue.to_string();
-    ms::layer_of(doc, layer).and_then(move |c| c.get(&cat)).into_iter().flat_map(|m| m.iter()).take(MAX_STYLES_PER_CATALOGUE)
+pub fn records<'a>(doc: &'a Document, layer: StyleLayer, catalogue: StyleCatalogue) -> impl Iterator<Item = (&'a StyleRef, &'a StyleRecord)> + 'a {
+    ms::layer_of(doc, layer).and_then(move |c| c.get(&catalogue)).into_iter().flat_map(|m| m.iter()).take(MAX_STYLES_PER_CATALOGUE)
 }
 
 /// The record `layer` holds for `(catalogue, id)`, within the bound.
-pub fn record<'a>(doc: &'a Document, layer: StyleLayer, catalogue: &str, id: &StyleRef) -> Option<&'a StyleRecord> {
-    let map = ms::layer_of(doc, layer)?.get(catalogue)?;
+pub fn record<'a>(doc: &'a Document, layer: StyleLayer, catalogue: StyleCatalogue, id: &StyleRef) -> Option<&'a StyleRecord> {
+    let map = ms::layer_of(doc, layer)?.get(&catalogue)?;
     let r = map.get(id)?;
     // Past the bound only: the rank costs at most the bound.
     if map.len() > MAX_STYLES_PER_CATALOGUE && map.range(..id).take(MAX_STYLES_PER_CATALOGUE).count() >= MAX_STYLES_PER_CATALOGUE {
@@ -159,16 +168,16 @@ pub fn record<'a>(doc: &'a Document, layer: StyleLayer, catalogue: &str, id: &St
 /// The longest value field `key` of `catalogue` may hold: [`MAX_FIELD_CHARS`], except a rating
 /// table's rows (brief 057, FP8), which hold a CSV data set of at most
 /// [`crate::rating::dataset::MAX_BYTES`]. Guard: it keeps every stored value bounded.
-pub fn field_cap(catalogue: &str, key: &str) -> usize {
+pub fn field_cap(catalogue: StyleCatalogue, key: &str) -> usize {
     match (catalogue, key) {
-        (ratingtable::WORD, ratingtable::ROWS) => crate::rating::dataset::MAX_BYTES,
+        (StyleCatalogue::RatingTable, ratingtable::ROWS) => crate::rating::dataset::MAX_BYTES,
         _ => MAX_FIELD_CHARS,
     }
 }
 
 /// A record's stored value of `key`, within the bounds (at most [`MAX_FIELDS_PER_STYLE`] fields,
 /// values of at most [`field_cap`] characters).
-fn stored<'a>(r: &'a StyleRecord, catalogue: &str, key: &str) -> Option<&'a str> {
+fn stored<'a>(r: &'a StyleRecord, catalogue: StyleCatalogue, key: &str) -> Option<&'a str> {
     let v = r.fields.get(key)?;
     if r.fields.len() > MAX_FIELDS_PER_STYLE
         && r.fields.keys().take_while(|k| k.as_str() < key).take(MAX_FIELDS_PER_STYLE).count() >= MAX_FIELDS_PER_STYLE
@@ -180,8 +189,8 @@ fn stored<'a>(r: &'a StyleRecord, catalogue: &str, key: &str) -> Option<&'a str>
 
 /// Whether `id` names a style of `catalogue` in `doc`: a built-in one, or a record in the project
 /// or the standard (within the bound).
-pub fn exists(doc: &Document, catalogue: &str, id: &StyleRef) -> bool {
-    self::catalogue(catalogue).is_some_and(|c| c.builtin(id).is_some())
+pub fn exists(doc: &Document, catalogue: StyleCatalogue, id: &StyleRef) -> bool {
+    self::catalogue(catalogue).builtin(id).is_some()
         || record(doc, StyleLayer::Project, catalogue, id).is_some()
         || record(doc, StyleLayer::Standard, catalogue, id).is_some()
 }
@@ -197,10 +206,10 @@ pub fn field<'a>(doc: &'a Document, cat: &Catalogue, id: &StyleRef, f: &Field, o
     if let Some(value) = cat.project_field.and_then(|read| read(doc, id, f.key)).filter(|v| defaults::accepts(f.kind, v)) {
         return Resolved { value, from: Source::Project };
     }
-    if let Some(value) = record(doc, StyleLayer::Project, cat.word, id).and_then(|r| stored(r, cat.word, f.key)).and_then(parse) {
+    if let Some(value) = record(doc, StyleLayer::Project, cat.catalogue, id).and_then(|r| stored(r, cat.catalogue, f.key)).and_then(parse) {
         return Resolved { value, from: Source::Project };
     }
-    if let Some(value) = record(doc, StyleLayer::Standard, cat.word, id).and_then(|r| stored(r, cat.word, f.key)).and_then(parse) {
+    if let Some(value) = record(doc, StyleLayer::Standard, cat.catalogue, id).and_then(|r| stored(r, cat.catalogue, f.key)).and_then(parse) {
         return Resolved { value, from: Source::Standard };
     }
     if let Some(value) = cat.builtin(id).and_then(|b| b.value(f.key)) {
@@ -210,8 +219,8 @@ pub fn field<'a>(doc: &'a Document, cat: &Catalogue, id: &StyleRef, f: &Field, o
 }
 
 /// [`field`] by catalogue word and field key; the field's built-in for an unknown one.
-pub fn field_of<'a>(doc: &'a Document, catalogue: &str, id: &StyleRef, key: &str, over: Option<&'a Properties>) -> Option<Resolved<'a>> {
-    let c = self::catalogue(catalogue)?;
+pub fn field_of<'a>(doc: &'a Document, catalogue: StyleCatalogue, id: &StyleRef, key: &str, over: Option<&'a Properties>) -> Option<Resolved<'a>> {
+    let c = self::catalogue(catalogue);
     let f = c.field(key)?;
     Some(field(doc, c, id, f, over))
 }
@@ -276,12 +285,12 @@ fn shown_name(n: &str) -> String {
 
 /// The name of style `id` in `catalogue`: the project record's, the standard's, the built-in's,
 /// else its ID.
-pub fn name(doc: &Document, catalogue: &str, id: &StyleRef) -> String {
+pub fn name(doc: &Document, catalogue: StyleCatalogue, id: &StyleRef) -> String {
     let named = |l| record(doc, l, catalogue, id).map(|r| r.name.as_str()).filter(|n| !n.trim().is_empty());
     if let Some(n) = named(StyleLayer::Project).or_else(|| named(StyleLayer::Standard)) {
         return shown_name(n);
     }
-    match self::catalogue(catalogue).and_then(|c| c.builtin(id)) {
+    match self::catalogue(catalogue).builtin(id) {
         Some(b) => b.name.to_string(),
         None => id.text(),
     }
@@ -291,7 +300,7 @@ pub fn name(doc: &Document, catalogue: &str, id: &StyleRef) -> String {
 /// standard's own, then the project's own, each group by name. An own style the standard holds is
 /// listed once, as the standard's, also when the project overrides fields of it.
 pub fn rows(doc: &Document, cat: &Catalogue) -> Vec<Row> {
-    let has = |l, id: &StyleRef| record(doc, l, cat.word, id).is_some();
+    let has = |l, id: &StyleRef| record(doc, l, cat.catalogue, id).is_some();
     let mut out: Vec<Row> = cat
         .builtins
         .iter()
@@ -302,9 +311,9 @@ pub fn rows(doc: &Document, cat: &Catalogue) -> Vec<Row> {
         })
         .collect();
     let own = |l: StyleLayer, layer: Layer, skip: &dyn Fn(&StyleRef) -> bool| -> Vec<Row> {
-        let mut v: Vec<Row> = records(doc, l, cat.word)
+        let mut v: Vec<Row> = records(doc, l, cat.catalogue)
             .filter(|(id, _)| cat.builtin(id).is_none() && !skip(id))
-            .map(|(id, _)| Row { name: name(doc, cat.word, id), id: id.clone(), layer, overridden: false })
+            .map(|(id, _)| Row { name: name(doc, cat.catalogue, id), id: id.clone(), layer, overridden: false })
             .collect();
         v.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()).then(a.id.cmp(&b.id)));
         v
@@ -319,12 +328,12 @@ pub fn rows(doc: &Document, cat: &Catalogue) -> Vec<Row> {
 ///
 /// # Errors
 /// In words: no such style, or the name is shared and the ID is needed.
-pub fn find(doc: &Document, catalogue: &str, text: &str) -> Result<StyleRef, CmdError> {
+pub fn find(doc: &Document, catalogue: StyleCatalogue, text: &str) -> Result<StyleRef, CmdError> {
     let t = text.trim();
     if let Some(id) = StyleRef::parse(t).filter(|id| exists(doc, catalogue, id)) {
         return Ok(id);
     }
-    let cat = self::catalogue(catalogue).ok_or_else(|| CmdError::refused(format!("No catalogue {catalogue:?}; the catalogues are {}.", words())))?;
+    let cat = self::catalogue(catalogue);
     let hits: Vec<Row> = rows(doc, cat).into_iter().filter(|r| r.name.eq_ignore_ascii_case(t)).collect();
     match hits.as_slice() {
         [one] => Ok(one.id.clone()),
@@ -339,7 +348,7 @@ fn ids(rows: &[Row]) -> String {
 
 /// The catalogue words, for messages.
 pub fn words() -> String {
-    CATALOGUES.iter().map(|c| c.word).collect::<Vec<_>>().join(", ")
+    CATALOGUES.iter().map(|c| c.catalogue.word()).collect::<Vec<_>>().join(", ")
 }
 
 /// How many objects use a style (design 050 §2.5).
@@ -355,12 +364,12 @@ pub struct Count {
 /// implicit ones are counted from the resolved choices, one pass over the kind of object the
 /// catalogue styles. Asked for one style at a time (a selected row, a consequence line), never per
 /// frame.
-pub fn users(doc: &Document, catalogue: &str, id: &StyleRef) -> Count {
-    let Some(cat) = self::catalogue(catalogue) else { return Count::default() };
+pub fn users(doc: &Document, catalogue: StyleCatalogue, id: &StyleRef) -> Count {
+    let cat = self::catalogue(catalogue);
     let value = id.text();
     let mut c = Count::default();
     // Brief 057: a cable's `cable_type` is a plain cable property (cables have no registry level).
-    if cat.word == cable::WORD {
+    if cat.catalogue == StyleCatalogue::Cable {
         c.explicit = cable::users(doc, id).len();
     }
     for entry in (cat.choices)() {
@@ -375,24 +384,26 @@ pub fn users(doc: &Document, catalogue: &str, id: &StyleRef) -> Count {
 fn implicit(doc: &Document, cat: &Catalogue, entry: &defaults::Entry, id: &StyleRef) -> usize {
     let project = chosen(doc, entry, Scope::project());
     let own = |p: &Properties| p.get(entry.key).is_some_and(|v| entry.parse_in(doc, v).is_some());
-    match cat.word {
-        "frame" => doc.pages.iter().filter(|(_, p)| !own(&p.display)).filter(|_| project == *id).count(),
+    match cat.catalogue {
+        ecad_model::StyleCatalogue::Frame => doc.pages.iter().filter(|(_, p)| !own(&p.display)).filter(|_| project == *id).count(),
         // Brief 054: pages with no own type whose generated kind (or none) gives `id`.
-        "page" => doc
+        ecad_model::StyleCatalogue::Page => doc
             .pages
             .values()
-            .filter(|p| !p.page_type.as_ref().is_some_and(|t| crate::styles::exists(doc, "page", t)))
+            .filter(|p| !p.page_type.as_ref().is_some_and(|t| crate::styles::exists(doc, ecad_model::StyleCatalogue::Page, t)))
             .filter(|p| ecad_model::sheet::page_type_of(doc, p) == *id)
             .count(),
-        "location" if project == *id => doc.devices.iter().filter(|(c, x)| crate::locations::is_box(doc, **c) && !own(&x.properties)).count(),
-        // 050b: conductors whose resolved category is `id` and that have none of their own.
-        "wire" => {
-            let looks = wire::WireLooks::new(doc);
-            doc.conductors.iter().filter(|(_, x)| !own(&x.properties)).filter(|(c, _)| looks.category(doc, **c).0.as_ref() == Some(id)).count()
+        ecad_model::StyleCatalogue::Location if project == *id => {
+            doc.devices.iter().filter(|(c, x)| crate::locations::is_box(doc, **c) && !own(&x.properties)).count()
         }
-        "text" if project == *id => match text::noun(entry.key) {
+        // 050b: conductors whose resolved category is `id` and that have none of their own.
+        ecad_model::StyleCatalogue::Wire => {
+            let looks = wire::WireLooks::new(doc);
+            doc.wires.iter().filter(|(_, x)| !own(&x.display)).filter(|(c, _)| looks.category(doc, **c).0.as_ref() == Some(id)).count()
+        }
+        ecad_model::StyleCatalogue::Text if project == *id => match text::noun(entry.key) {
             text::Noun::Devices => doc.devices.values().filter(|x| !own(&x.properties)).count(),
-            text::Noun::Wires => doc.conductors.values().filter(|x| !own(&x.properties)).count(),
+            text::Noun::Wires => doc.wires.values().filter(|x| !own(&x.display)).count(),
             text::Noun::Pages => doc.pages.len(),
         },
         _ => 0,
@@ -400,8 +411,8 @@ fn implicit(doc: &Document, cat: &Catalogue, entry: &defaults::Entry, id: &Style
 }
 
 /// The explicit users of `id` (any choice key of `catalogue`), through the index.
-pub fn explicit_users(doc: &Document, catalogue: &str, id: &StyleRef) -> Vec<(&'static str, ObjectRef)> {
-    let Some(cat) = self::catalogue(catalogue) else { return Vec::new() };
+pub fn explicit_users(doc: &Document, catalogue: StyleCatalogue, id: &StyleRef) -> Vec<(&'static str, ObjectRef)> {
+    let cat = self::catalogue(catalogue);
     let value = id.text();
     let mut out = Vec::new();
     for entry in (cat.choices)() {
@@ -414,7 +425,7 @@ pub fn explicit_users(doc: &Document, catalogue: &str, id: &StyleRef) -> Vec<(&'
 fn pages_of(doc: &Document, o: ObjectRef, out: &mut BTreeSet<PageId>) {
     match o {
         ObjectRef::Device(c) => out.extend(doc.representations_of(Subject::Device(c)).map(|(_, r)| r.page)),
-        ObjectRef::Conductor(c) => out.extend(doc.representations_of(Subject::Conductor(c)).map(|(_, r)| r.page)),
+        ObjectRef::Wire(c) => out.extend(doc.representations_of(Subject::Wire(c)).map(|(_, r)| r.page)),
         ObjectRef::Cable(c) => out.extend(doc.representations_of(Subject::Cable(c)).map(|(_, r)| r.page)),
         ObjectRef::Page(p) => {
             out.insert(p);
@@ -430,7 +441,7 @@ pub fn pages_touched(doc: &Document, op: &Op) -> Option<BTreeSet<PageId>> {
         // The header shows on the Standards screen only.
         Op::SetStandard { .. } => Some(BTreeSet::new()),
         Op::SetStyle { catalogue, id, .. } => {
-            let Some(cat) = self::catalogue(catalogue) else { return Some(BTreeSet::new()) };
+            let cat = self::catalogue(*catalogue);
             // Brief 054 (design 054 §10.2): a page type reaches its pages only.
             if let Some((pages, _)) = page::touched_by(doc, op) {
                 return Some(pages.into_iter().collect());
@@ -440,12 +451,12 @@ pub fn pages_touched(doc: &Document, op: &Op) -> Option<BTreeSet<PageId>> {
                 return None;
             }
             // A text style a location style labels with reaches every box.
-            if cat.word == "text" && location::labels_with(doc, id) {
+            if cat.catalogue == ecad_model::StyleCatalogue::Text && location::labels_with(doc, id) {
                 return None;
             }
             // 050b: a category that is (or becomes, or was) a potential's default reaches every
             // net of that potential, on any page (there is no potential index): every page.
-            if cat.word == "wire" {
+            if cat.catalogue == ecad_model::StyleCatalogue::Wire {
                 let names_potential = |r: &Option<StyleRecord>| r.as_ref().is_some_and(|r| r.fields.contains_key("potential"));
                 let (before, after) = match op {
                     Op::SetStyle { before, after, .. } => (before, after),
@@ -458,7 +469,7 @@ pub fn pages_touched(doc: &Document, op: &Op) -> Option<BTreeSet<PageId>> {
                 }
             }
             let mut out = BTreeSet::new();
-            for (_, o) in explicit_users(doc, catalogue, id) {
+            for (_, o) in explicit_users(doc, *catalogue, id) {
                 pages_of(doc, o, &mut out);
             }
             Some(out)
@@ -480,22 +491,25 @@ pub fn check_record(doc: &Document, cat: &Catalogue, id: &StyleRef, layer: Style
     if r.fields.len() > MAX_FIELDS_PER_STYLE {
         return Err(CmdError::refused(format!("A style holds at most {MAX_FIELDS_PER_STYLE} fields.")));
     }
-    if let Some((k, _)) = r.fields.iter().find(|(k, v)| v.chars().nth(field_cap(cat.word, k)).is_some()) {
-        return Err(CmdError::refused(format!("{k} is at most {} characters.", field_cap(cat.word, k))));
+    if let Some((k, _)) = r.fields.iter().find(|(k, v)| v.chars().nth(field_cap(cat.catalogue, k)).is_some()) {
+        return Err(CmdError::refused(format!("{k} is at most {} characters.", field_cap(cat.catalogue, k))));
     }
     // Brief 057 (design 057 §3.1): a rating's reference temperature is below the conductor's
     // maximum.
-    if let Some(why) = crate::rating::check_style(cat.word, r) {
+    if let Some(why) = crate::rating::check_style(cat.catalogue, r) {
         return Err(CmdError::refused(why));
     }
     // 050b (design 050 §5.4): one category per potential.
-    if cat.word == "wire"
+    if cat.catalogue == ecad_model::StyleCatalogue::Wire
         && let Some(p) = r.fields.get("potential").map(|p| p.trim()).filter(|p| !p.is_empty())
         && let Some(other) = wire::WireLooks::new(doc).for_potential(p).filter(|o| *o != id)
     {
-        return Err(CmdError::refused(format!("{} is already the default for {p}; clear it there first.", name(doc, "wire", other))));
+        return Err(CmdError::refused(format!(
+            "{} is already the default for {p}; clear it there first.",
+            name(doc, ecad_model::StyleCatalogue::Wire, other)
+        )));
     }
-    let held = ms::layer_of(doc, layer).and_then(|c| c.get(cat.word));
+    let held = ms::layer_of(doc, layer).and_then(|c| c.get(&cat.catalogue));
     if held.is_some_and(|m| !m.contains_key(id) && m.len() >= MAX_STYLES_PER_CATALOGUE) {
         return Err(CmdError::refused(format!("{} holds at most {MAX_STYLES_PER_CATALOGUE} styles per layer.", cat.plural)));
     }
@@ -545,26 +559,29 @@ mod tests {
     #[test]
     fn every_builtin_value_is_valid_for_its_field() {
         for c in CATALOGUES {
-            assert!(ms::is_word(c.word), "{}", c.word);
+            assert!(ms::is_word(c.catalogue.word()), "{}", c.catalogue);
             for f in c.fields {
                 // 050b (design 050 §5.3): an empty built-in is "no value" (potential, part number).
                 let empty = matches!(f.builtin(), Value::Text(""));
-                assert!(empty || defaults::accepts(f.kind, &f.builtin()), "{}.{} built-in", c.word, f.key);
+                assert!(empty || defaults::accepts(f.kind, &f.builtin()), "{}.{} built-in", c.catalogue, f.key);
             }
             for b in c.builtins {
                 assert!(ms::is_word(b.id), "{}", b.id);
                 for (k, v) in b.values() {
                     let f = c.field(k);
-                    assert!(f.is_some(), "{}.{} names no field {k}", c.word, b.id);
-                    assert!(f.is_some_and(|f| defaults::accepts(f.kind, v)), "{}.{}.{k}", c.word, b.id);
+                    assert!(f.is_some(), "{}.{} names no field {k}", c.catalogue, b.id);
+                    assert!(f.is_some_and(|f| defaults::accepts(f.kind, v)), "{}.{}.{k}", c.catalogue, b.id);
                 }
             }
             for e in (c.choices)() {
-                assert!(matches!(e.kind, Kind::Style(w) if w == c.word), "{}", e.key);
+                assert!(matches!(e.kind, Kind::Style(w) if w == c.catalogue), "{}", e.key);
                 // 050b: the category choice's built-in is `none`, no category.
                 let b = StyleRef::parse(&builtin_word(e));
                 // 057: no cable type and no rating table, either.
-                let none = matches!(c.word, "wire" | "cable" | "ratingtable") && builtin_word(e) == wire::NONE;
+                let none = matches!(
+                    c.catalogue,
+                    ecad_model::StyleCatalogue::Wire | ecad_model::StyleCatalogue::Cable | ecad_model::StyleCatalogue::RatingTable
+                ) && builtin_word(e) == wire::NONE;
                 assert!(none || b.as_ref().is_some_and(|b| c.builtin(b).is_some()), "{}: built-in names no built-in style", e.key);
             }
         }

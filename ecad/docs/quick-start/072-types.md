@@ -79,6 +79,23 @@ The project's own tag prefixes are stored by symbol, `starter:coil` for a built-
 The headless test `lanes::lane_072a::a_project_symbol_with_its_own_prefix_opens_writable`
 (ecad-cadcraft) runs these steps; nobody has tried them by hand yet.
 
+## Rotations (A2: F6, F7)
+
+- Every command parameter named `rotation` takes degrees, now also the symbol builder's text
+  slots (`symbolnew`/`symboledit` `slots[].rotation`), which took radians before. Files are
+  unchanged: stored angles stay radians, now typed as such.
+- The inspector's Layout tab now selects the right rotation segment for a turned symbol (it read
+  the stored radians as degrees).
+
+### Try it
+
+1. Place a coil, turn it a quarter turn (the rotate key while placing, or `place {"at": [100, 0],
+   "rotation": 90}`), select it: the Layout tab shows 90°.
+2. In the symbol builder, add a text slot and turn it: it turns a quarter turn per click, as before.
+
+The headless test `lanes::lane_072a::a_slot_rotation_is_given_in_degrees_and_stored_in_radians`
+(ecad-cadcraft) covers the slot input; nobody has tried these steps by hand yet.
+
 ## Lane B: devices have a type
 
 What changed for someone using the app:
@@ -108,6 +125,35 @@ cargo test -p ecad-cadcraft --test all lane_072b
 cargo test -p ecad-inspector --test all lane_072b
 cargo test -p ecad-mcp --test all lane_072b
 ```
+
+## Lane D: wires carry typed values
+
+A conductor is now a **wire** in code and files (`Wire`, ops `CreateWire`, `DeleteWire` and the
+new `ModifyWire`). A wire stores its values as fields, not free text: its size (`2.5` mm² or
+`18 AWG`), its colours as an ordered list of IEC 60757 colours (green/yellow is `GN/YE`, never one
+colour of its own), its wire number with its fixed flag, its potential, its rating inputs (basis,
+manual Iz, bundling) and its load.
+
+- Typing is lenient: `2.5 mm²`, `awg 18`, `GNYE`, `green/yellow` and `BLU` are all read. What is
+  stored is one form only; a file holding any other form, or a value out of its bounds, opens
+  read-only.
+- `setprop` on a wire takes `size`, `colours` and the rating keys; any other key (`tag`, a free
+  note) is refused: a wire has no free properties. Its number and potential still belong to its
+  net (`wirenumber`, `potential`).
+- Labels write two-colour wires with a slash: `GN/YE` (three-letter style `GRN/YEL`).
+- Projects saved before this lane do not open (no compatibility before 1.0): regenerate them.
+
+### Try it
+
+1. Draw a wire between two connection points and select it.
+2. In the wire's properties, set Cross-section to `2.5 mm²` and Colour to `GNYE`: the label shows
+   `… 2.5 GN/YE`.
+3. Type `thick` as the cross-section: it is refused with the forms it takes.
+4. Open the project in the inspector: the wire's row shows its size, colours, potential and
+   rating values, and the last transaction reads `ModifyWire`.
+
+The headless tests `lanes::lane_072d` in ecad-model, ecad-mcp and ecad-inspector cover these
+steps; nobody has tried them by hand yet.
 
 ## Lane E, step 1: typed pages (design 072 §5.1)
 

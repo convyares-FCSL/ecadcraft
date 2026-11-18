@@ -98,8 +98,9 @@ fn designations_now(h: &mut H) -> Value {
 // ------------------------------------------------------------------------------------ focus 1
 
 /// A project as v0.2.0 wrote it: a coil with `location +CP1` and `function =F1` stored as codes, a
-/// contact with role `main`, a connector with the retired `half.s.location`, a box `+FIELD`, a page
-/// and the project at `+CP1`. Built with raw ops, saved and reopened.
+/// contact with role `main`, a connector with the retired `half.s.location` and a box `+FIELD`
+/// (a page's and the project's location are ids since design 072 §5.3). Built with raw ops, saved
+/// and reopened.
 fn old_project(dir: &TempDir) -> (H, DeviceId, DeviceId, DeviceId, PageId, Document) {
     let mut h = H::new(0x52_7001);
     let p1 = h.first_page();
@@ -127,8 +128,6 @@ fn old_project(dir: &TempDir) -> (H, DeviceId, DeviceId, DeviceId, PageId, Docum
             set(ObjectRef::Device(k), "function", None, "=F1"),
             set(ObjectRef::Device(x), "half.s.location", None, "+CP2"),
             set(ObjectRef::Device(bx), "location", box_before, "+FIELD"),
-            set(ObjectRef::Page(p1), "location", None, "+CP1"),
-            set(ObjectRef::Project, "location", None, "+CP1"),
             Op::ModifyRepresentation { id: no_rep, before, after },
         ];
         p.ledger.commit(Author::User, "as v0.2.0 wrote it", ops).unwrap();
@@ -237,8 +236,8 @@ fn a_merge_moves_every_user_and_undo_redo_are_exact() {
     assert_eq!(after.devices[&u.k].properties.get("location"), Some(&k1));
     assert_eq!(after.devices[&u.x].properties.get("location.plug"), Some(&k1), "the override follows");
     assert_eq!(after.devices[&u.bx].properties.get("location"), Some(&k1), "the box follows");
-    assert_eq!(after.pages[&u.p1].display.get("location"), Some(&k1), "the page follows");
-    assert_eq!(after.properties.get("location"), Some(&k1), "the project default follows");
+    assert_eq!(designations::page_key(&after.pages[&u.p1], Aspect::Location), Some(k1.clone()), "the page follows");
+    assert_eq!(designations::default_key(&after.project, Aspect::Location), Some(k1.clone()), "the project default follows");
     // No stored value anywhere still names the removed key.
     let old = key(&before, Aspect::Location, "+CP01");
     let dangling = after.devices.values().flat_map(|c| c.properties.values()).chain(after.pages.values().flat_map(|p| p.display.values()));
@@ -284,7 +283,7 @@ fn the_use_index_follows_undo_redo_and_equals_a_reopen() {
     let d = h.doc();
     let k1 = key(&d, Aspect::Location, "+CP1");
     assert_eq!(d.devices[&u.x].properties.get("location.plug"), Some(&k1));
-    assert_eq!(d.properties.get("location"), Some(&k1));
+    assert_eq!(designations::default_key(&d.project, Aspect::Location), Some(k1.clone()));
     // A new device on +CP1, then undo both steps (a SetProperty and a CreateDevice undone).
     let q = place(h, "coil", (150.0, 150.0));
     h.run("setlocation", json!({"component": q.hex(), "value": "+CP1"})).unwrap();

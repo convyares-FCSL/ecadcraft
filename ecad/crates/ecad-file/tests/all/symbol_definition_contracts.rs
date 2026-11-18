@@ -9,8 +9,20 @@ use ecad_model::*;
 fn symbol() -> Definition {
     let mut d = coil(3.0);
     d.texts = vec![
-        TextSlot { text: "tag".into(), at: Pt::new(-6.0, 0.0), h: TextHAlign::Right, v: TextVAlign::Middle, rotation: 0.0 },
-        TextSlot { text: "rating".into(), at: Pt::new(6.0, -2.5), h: TextHAlign::Left, v: TextVAlign::Top, rotation: -0.0 },
+        TextSlot {
+            text: "tag".into(),
+            at: Pt::new(-6.0, 0.0),
+            h: TextHAlign::Right,
+            v: TextVAlign::Middle,
+            rotation: ecad_model::units::Radians(0.0),
+        },
+        TextSlot {
+            text: "rating".into(),
+            at: Pt::new(6.0, -2.5),
+            h: TextHAlign::Left,
+            v: TextVAlign::Top,
+            rotation: ecad_model::units::Radians(-0.0),
+        },
     ];
     d.defaults =
         [("key", "float1"), ("prefix", "B"), ("description", "Float switch"), ("join", "device")].map(|(k, v)| (k.to_string(), v.to_string())).into();
@@ -75,7 +87,7 @@ fn a_project_symbol_and_set_component_definition_round_trip() {
     // A slot turned by -0.0 is one turned by 0.0: same record, same hash (it was written once
     // and failed the content-hash check on read).
     let mut zero = symbol();
-    zero.texts[1].rotation = 0.0;
+    zero.texts[1].rotation = ecad_model::units::Radians(0.0);
     assert_eq!(ecad_file::definition_hash(&zero).unwrap(), ecad_file::definition_hash(&symbol()).unwrap());
     assert_eq!(opened.ledger.document().devices[&c].definition, Some(id));
 }
