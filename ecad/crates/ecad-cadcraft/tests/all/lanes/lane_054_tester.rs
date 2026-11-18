@@ -257,7 +257,7 @@ fn ac3_a_folder_start_numbers_its_first_page() {
     let (mut h, _) = pages(0x54_0304, 2);
     let f = folder(&mut h, "Schematic");
     one_tx(&mut h, "folderprops", json!({"folder": f.hex(), "start": "100"}));
-    assert_eq!(h.doc().properties.get(&format!("folder.{}.start", f.hex())).map(String::as_str), Some("100"), "FP7 key");
+    assert_eq!(h.doc().folders[&f].start.as_ref().map(ecad_model::PageNo::as_str), Some("100"), "Folder.start (design 072 §5.2)");
     let a = new_page(&mut h, json!({"type": "schematic", "folder": f.hex()}));
     assert_eq!(number(&mut h, a), "100");
     let b = new_page(&mut h, json!({"type": "schematic", "after": a.hex()}));
@@ -291,15 +291,14 @@ fn ac5_folder_start_refusals_clear_and_delete() {
         assert!(m.contains("A start number is 1 to 6 digits."), "{bad:?}: {m}");
     }
     refused(&mut h, "folderprops", json!({"folder": "0000000000000000000000000000beef", "start": "100"}));
-    let key = format!("folder.{}.start", f.hex());
     h.run("folderprops", json!({"folder": f.hex(), "start": "100"})).unwrap();
     one_tx(&mut h, "folderprops", json!({"folder": f.hex(), "start": null}));
-    assert!(!h.doc().properties.contains_key(&key), "null clears");
+    assert!(h.doc().folders[&f].start.is_none(), "null clears");
     h.run("folderprops", json!({"folder": f.hex(), "start": "100"})).unwrap();
     let (_, tx) = one_tx(&mut h, "deletefolder", json!({"folder": f.hex()}));
-    assert!(!h.doc().properties.contains_key(&key), "deletefolder clears the start in the same transaction: {:?}", tx.ops);
+    assert!(!h.doc().folders.contains_key(&f), "deletefolder takes the start with the folder: {:?}", tx.ops);
     undo(&mut h);
-    assert_eq!(h.doc().properties.get(&key).map(String::as_str), Some("100"), "one u brings folder and start back");
+    assert_eq!(h.doc().folders[&f].start.as_ref().map(ecad_model::PageNo::as_str), Some("100"), "one u brings folder and start back");
 }
 
 /// AC5 (the owner's flow), §4.4: pages 1–50; folders Schematic (100) and Terminal (300); 40 pages
@@ -812,35 +811,29 @@ fn map_the_cover_follows_only_its_keys() {
 // ------------------------------------------------------------------------ AC15: hostile
 
 /// AC15, §9: hostile stored values read as absent or cut, each with its Checks row, never a panic:
-/// a type record with `holds: x` and `sheet: A0 999x999`; a `folder.<id>.start` of
-/// `99999999999` and one naming no folder; a `page.type` naming nothing (1 MB of notes: the 054b test below).
+/// a type record with `holds: x` and `sheet: A0 999x999`; a folder start of `99999999999` (a start
+/// naming no folder cannot be stored since design 072 §5.2); a `page.type` naming nothing (1 MB of notes: the 054b test below).
 #[test]
 fn ac15_hostile_values_read_as_absent_with_checks_rows() {
-    use ecad_model::{ObjectRef, Op};
+    use ecad_model::Op;
     let (mut h, cover, sch) = with_cover(0x54_1501);
     let f = folder(&mut h, "Field");
     let ghost = h.doc().pages[&sch].clone();
     let ghost =
         Op::ModifyPage { id: sch, before: ghost.clone(), after: ecad_model::Page { page_type: Some(ecad_model::StyleRef::Own(0xdead)), ..ghost } };
-    inject(
-        &mut h,
-        vec![
-            Op::SetProperty { object: ObjectRef::Project, key: format!("folder.{}.start", f.hex()), before: None, after: Some("99999999999".into()) },
-            Op::SetProperty {
-                object: ObjectRef::Project,
-                key: "folder.0000000000000000000000000000beef.start".into(),
-                before: None,
-                after: Some("100".into()),
-            },
-            ghost,
-        ],
-    );
+    let start = {
+        let before = h.doc().folders[&f].clone();
+        let after = ecad_model::Folder { start: ecad_model::PageNo::parse("99999999999"), ..before.clone() };
+        assert!(after.start.is_some(), "a page number too long for a start");
+        Op::ModifyFolder { id: f, before, after }
+    };
+    inject(&mut h, vec![start, ghost]);
     assert_eq!(type_of(&mut h, sch), "schematic", "a page.type naming nothing falls to rule 3");
     let _ = gen_texts(&mut h, cover);
     for kind in ["folder-start-unknown", "page-type-unknown"] {
         assert!(!checks_of(&mut h, kind).is_empty(), "{kind} row");
     }
-    assert_eq!(checks_of(&mut h, "folder-start-unknown").len(), 2, "both start keys");
+    assert_eq!(checks_of(&mut h, "folder-start-unknown").len(), 1, "the folder's start");
     // Renumber with a hostile start never panics and never writes a 11-digit number.
     h.run("renumberpages", json!({})).unwrap();
     assert!(numbers(&mut h).iter().all(|n| n.len() <= 6), "{:?}", numbers(&mut h));

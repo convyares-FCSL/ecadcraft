@@ -141,7 +141,7 @@ pub(crate) fn base() -> Base {
     let cable = ids.fresh();
     let cable_v = Cable { members: vec![CableMember { conductor: wire, core: None }], ..Cable::default() };
     let folder = ids.fresh();
-    let folder_v = Folder { name: "F".into(), parent: None };
+    let folder_v = Folder { name: "F".into(), parent: None, start: None };
     ledger
         .commit(
             Author::User,
@@ -249,9 +249,9 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
         Op::NameVersion { name: "w".into(), at: 2, description: None },
         Op::UnnameVersion { name: "v".into(), at: 1, description: None },
         Op::SetDeviceDefinition { id: b.comp, before: Some(b.def), after: None },
-        Op::AddFolder { id: b.ids.fresh(), folder: Folder { name: "G".into(), parent: Some(b.folder) }, index: 1 },
+        Op::AddFolder { id: b.ids.fresh(), folder: Folder { name: "G".into(), parent: Some(b.folder), start: None }, index: 1 },
         Op::RemoveFolder { id: b.folder, folder: b.folder_v.clone(), index: 0 },
-        Op::ModifyFolder { id: b.folder, before: b.folder_v.clone(), after: Folder { name: "Renamed".into(), parent: None } },
+        Op::ModifyFolder { id: b.folder, before: b.folder_v.clone(), after: Folder { name: "Renamed".into(), parent: None, start: None } },
         Op::ModifyPage { id: b.page, before: b.page_v.clone(), after: Page { number: ecad_model::PageNo::parse("9"), ..b.page_v.clone() } },
         Op::SetStyle {
             layer: StyleLayer::Project,
@@ -321,8 +321,8 @@ fn failing(b: &mut Base) -> Vec<Op> {
         Op::AddFolder { id: b.folder, folder: b.folder_v.clone(), index: 0 },
         Op::AddFolder { id: b.ids.fresh(), folder: b.folder_v.clone(), index: 5 },
         Op::RemoveFolder { id: b.folder, folder: b.folder_v.clone(), index: 1 },
-        Op::RemoveFolder { id: b.folder, folder: Folder { name: "other".into(), parent: None }, index: 0 },
-        Op::ModifyFolder { id: b.folder, before: Folder { name: "other".into(), parent: None }, after: b.folder_v.clone() },
+        Op::RemoveFolder { id: b.folder, folder: Folder { name: "other".into(), parent: None, start: None }, index: 0 },
+        Op::ModifyFolder { id: b.folder, before: Folder { name: "other".into(), parent: None, start: None }, after: b.folder_v.clone() },
         // Lane 072 E: a page not as recorded.
         Op::ModifyPage { id: b.page, before: Page::titled("other").unwrap(), after: b.page_v.clone() },
         // The project has no standard, so a Standard-layer style and a header change both fail.

@@ -59,7 +59,7 @@ fn the_tree_feed_follows_its_update_map() {
     let (p, f) = (PageId(1), FolderId(4));
     let mut retitled_project = ecad_model::project::Project::default();
     retitled_project.info.title = ecad_model::project::InfoText::new("Plant").ok();
-    let folder = Folder { name: "A".into(), parent: None };
+    let folder = Folder { name: "A".into(), parent: None, start: None };
     let cases: Vec<(&str, Vec<Op>, bool)> = vec![
         ("page added", vec![Op::AddPage { id: p, page: page.clone(), index: 0 }], true),
         ("page removed", vec![Op::RemovePage { id: p, page: page.clone(), index: 0 }], true),
@@ -69,7 +69,11 @@ fn the_tree_feed_follows_its_update_map() {
         ("page refiled", vec![Op::ModifyPage { id: p, before: page.clone(), after: refiled }], true),
         ("page display choice", vec![Op::ModifyPage { id: p, before: page.clone(), after: restyled }], false),
         ("folder added", vec![Op::AddFolder { id: f, folder: folder.clone(), index: 0 }], true),
-        ("folder renamed", vec![Op::ModifyFolder { id: f, before: folder.clone(), after: Folder { name: "B".into(), parent: None } }], true),
+        (
+            "folder renamed",
+            vec![Op::ModifyFolder { id: f, before: folder.clone(), after: Folder { name: "B".into(), parent: None, start: None } }],
+            true,
+        ),
         ("folder removed", vec![Op::RemoveFolder { id: f, folder: folder.clone(), index: 0 }], true),
         (
             "folder moved",

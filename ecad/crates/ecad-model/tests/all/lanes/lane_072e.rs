@@ -268,3 +268,25 @@ fn the_project_info_is_reserved_and_strict() {
     assert_eq!(info.get(ecad_model::InfoField::Notes), Some("one\ntwo"));
     assert_eq!(serde_json::to_string(&info).unwrap(), text);
 }
+
+// ---------------------------------------------------------------- step 3: Folder.start
+
+/// Design 072 §5.2 (A3, A4, A9): a folder's start number is its own field, changed by
+/// `ModifyFolder`; the old `folder.<id>.start` keys are reserved; the record is strict.
+#[test]
+fn a_folder_start_is_its_own_field() {
+    let (mut ledger, _, mut ids) = one_page();
+    let f: ecad_model::FolderId = ids.fresh();
+    let folder = ecad_model::Folder::new("Schematic", None);
+    ledger.commit(Author::User, "folder", vec![Op::AddFolder { id: f, folder: folder.clone(), index: 0 }]).unwrap();
+    let after = ecad_model::Folder { start: PageNo::parse("100"), ..folder.clone() };
+    ledger.commit(Author::User, "start", vec![Op::ModifyFolder { id: f, before: folder, after: after.clone() }]).unwrap();
+    assert_eq!(ledger.document().folders[&f], after);
+    let key = format!("folder.{}.start", f.hex());
+    let op = Op::SetProperty { object: ObjectRef::Project, key: key.clone(), before: None, after: Some("100".into()) };
+    assert!(matches!(ledger.commit(Author::User, "old key", vec![op]).unwrap_err(), ModelError::Precondition(_)));
+    assert!(serde_json::from_str::<ecad_model::Folder>(r#"{"name":"A","parent":null,"begin":"1"}"#).is_err());
+    let text = serde_json::to_string(&after).unwrap();
+    assert!(text.contains("\"start\":\"100\""), "{text}");
+    assert_eq!(serde_json::from_str::<ecad_model::Folder>(&text).unwrap(), after);
+}
