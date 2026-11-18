@@ -226,6 +226,17 @@ impl RevisionColumn {
     }
 }
 
+/// Why a binding does not read (design 072 §5.4).
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum BindingError {
+    #[error("\"{0}\" is not source:key")]
+    NoSource(String),
+    #[error("\"{0}\" is not a binding source; use project, page, revision or print")]
+    Source(String),
+    #[error("\"{0}\" is not a revision field")]
+    RevisionField(String),
+}
+
 /// What a field shows: a source and a key, written `source:key`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Binding {
@@ -241,15 +252,14 @@ impl Binding {
     /// Read `source:key`.
     ///
     /// # Errors
-    /// Why it does not read, in words: no colon, an unknown source word, or a revision binding
-    /// naming no revision field.
-    pub fn parse(text: &str) -> Result<Binding, String> {
-        let (s, k) = text.split_once(':').ok_or_else(|| format!("\"{text}\" is not source:key"))?;
-        let source = <Source as crate::Word>::parse(s.trim())
-            .ok_or_else(|| format!("\"{}\" is not a binding source; use one of {}", s.trim(), <Source as crate::Word>::WORDS.join(", ")))?;
+    /// [`BindingError`]: no colon, an unknown source word, or a revision binding naming no
+    /// revision field.
+    pub fn parse(text: &str) -> Result<Binding, BindingError> {
+        let (s, k) = text.split_once(':').ok_or_else(|| BindingError::NoSource(text.to_string()))?;
+        let source = <Source as crate::Word>::parse(s.trim()).ok_or_else(|| BindingError::Source(s.trim().to_string()))?;
         let key = k.trim();
         if source == Source::Revision && RevisionColumn::parse(key).is_none() {
-            return Err(format!("\"{key}\" is not a revision field"));
+            return Err(BindingError::RevisionField(key.to_string()));
         }
         Ok(Binding { source, key: key.to_string() })
     }
