@@ -32,6 +32,7 @@
 {"command":"setprop","params":{"component":"$g1.component","key":"description","value":"Power supply 24 V DC"}}
 {"command":"setprop","params":{"component":"$g1.component","key":"maker","value":"Generic"}}
 {"command":"setprop","params":{"component":"$g1.component","key":"part_number","value":"PSU-24V-5A"}}
+{"command":"setprop","params":{"component":"$g1.component","key":"rating","value":"230 V AC / 24 V DC, 5 A, 120 W"}}
 
 // ---------------------------------------------------------------- page 2: Motor control
 {"command":"newpage","params":{"title":"Motor control"}}
