@@ -185,6 +185,30 @@ operates them, so they are one **Switching** group with an `operator` (owner, 20
 - `DeviceType` offers `as_supply()`, `as_load()`, `as_protects()`, `as_switching()`, … (exhaustive,
   no `_`), so a check asks for the trait it needs and never names a group it doesn't care about.
 
+**Ratings (owner decisions, 2026-11-18; a deviation from the table's `rating_text`).** Today's free
+`rating` text on every device becomes typed data:
+
+- **Typed fields are the truth.** Each group with a rating holds it as several typed fields on its
+  struct (a breaker: rated current, curve, breaking capacity, poles; an RCD: residual; a fuse bank:
+  a rating per output; a contactor: AC-3 rating and coil voltage; a motor: rated power; a power
+  supply: its output). There is no `rating_text` and no stored display string.
+- **One common note.** `Device.rating_note: Option<Text<64>>` holds only text that does not read as
+  the group's typed values ("see datasheet", a vendor code). It is a note, never a second copy of
+  the rating.
+- **Parsed at the edge, never guessed.** One reader per group, in `ecad-electrical`, used by the
+  UI, the CLI, MCP and the symbol defaults (`DEFINITION_DEFAULT_KEYS`) alike. `setprop rating "B16"`
+  on a breaker stores curve B and 16 A. Ambiguous input (a bare `16` on a breaker) is refused with a
+  typed error naming what is missing ("curve?"). Text that is no rating at all goes to the note with
+  the typed fields left empty, so nothing people type today is lost. Every way in shows what was
+  read ("curve B, 16 A") in the command's result.
+- **Shown from the fields.** Text slots and symbols show the typed fields when set, else the note.
+- **Checks read only the typed fields.** A device whose group has rating fields, all empty, gets a
+  "no rating" warning even when it has a note.
+- **The part sets the rating (decided, waiting on a parts library).** When the part number's library
+  entry carries a rating, it fills the fields; a value typed on the device is an override, and a
+  check reports an override that differs from the part. Not built until a parts library with ratings
+  exists (backlog); until then the typed fields are stored plainly.
+
 ### 2.3 Where a device's type comes from
 
 The symbol declares it (`Definition.device_type`, with default data); placing a symbol as a new
