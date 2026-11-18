@@ -468,6 +468,13 @@ fn project(d: &Document) -> Value {
     json!({
         "properties": props,
         "info": d.project.info,
+        // Design 072 §5.2 (A15): each folder with its place and start number.
+        "folders": d.folder_order.iter().filter_map(|id| d.folders.get(id).map(|f| json!({
+            "id": id.to_string(),
+            "name": f.name,
+            "parent": f.parent.and_then(|p| d.folders.get(&p)).map(|p| p.name.clone()),
+            "start": f.start,
+        }))).collect::<Vec<_>>(),
         "locations": locations,
         "functions": functions,
         "location": d.project.location.map(|l| location_code(d, l)),
