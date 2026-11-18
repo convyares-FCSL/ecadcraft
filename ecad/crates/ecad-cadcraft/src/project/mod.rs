@@ -1296,6 +1296,11 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
             // default); a description is drawn on no page.
             Op::ModifyProject { before, after } => {
                 use crate::designations::{Aspect, changed_codes, default_key, page_key};
+                // Design 072 §5.3: the info and the revision rows are drawn in every page's frame,
+                // as the project properties they were.
+                if before.info != after.info || before.revisions != after.revisions {
+                    return None;
+                }
                 for a in Aspect::ALL {
                     // A new default is drawn on every page that sets none.
                     if default_key(before, a) != default_key(after, a) {

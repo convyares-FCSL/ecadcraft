@@ -541,8 +541,11 @@ pages, boxes and cable ends refer by id, so renaming a code is one edit.
 `Project.location`/`Project.function` (ids), a holder the design did not list. `Revisions` holds
 only the rows (`Project.revisions: Vec<Revision>`): the table's columns, marker and custom column
 width stay registry values, because they have a standard level (as `print.frame.style`). The info
-has no `notes` other than the cover's (`cover.notes`). `Document.properties` stays the project's
-display bag until lane E's last step renames it to `Project.display`. The "Symbol tied to multiple
+has no `notes` other than the cover's (`cover.notes`). The project-level settings bag stays outside
+`Project`: `Project` holds typed project data and changes through `ModifyProject`; the bag holds
+project-level setting overrides and changes through `SetProperty` (one writer each). It is renamed
+`Document.properties` → `Document.display` with the 073 crate rename, when no lane is in flight
+(overseer, 2026-11-18). The "Symbol tied to multiple
 locations" check is lane F's (it needs boxes and the devices' fixed flags).
 
 ### 5.4 Title block

@@ -35,6 +35,8 @@ pub fn touches(op: &Op) -> bool {
         Op::SetStyle { .. } | Op::SetStandard { .. } => true,
         Op::SetProjectSettings { before, after } => before.sheet != after.sheet || before.length_unit != after.length_unit,
         Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard | ObjectRef::Page(_), .. } => true,
+        // Design 072 §5.3: the info, the revision rows and the lists the block shows.
+        Op::ModifyProject { .. } => true,
         Op::AddPage { .. } | Op::RemovePage { .. } | Op::ModifyPage { .. } => true,
         Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => true,
         _ => false,
