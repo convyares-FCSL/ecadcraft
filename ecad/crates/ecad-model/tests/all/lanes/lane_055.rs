@@ -3,7 +3,7 @@
 
 use ecad_model::sheet::{self, Margins, SheetSpec};
 use ecad_model::style::{StyleLayer, StyleRecord, StyleRef};
-use ecad_model::title_block::{Binding, BlockItem, MAX_ITEMS, Rect, Source, StyleBody, TextLook, TitleBlockLayout};
+use ecad_model::title_block::{Binding, BlockItem, MAX_ITEMS, Rect, StyleBody, TextLook, TitleBlockLayout};
 use std::collections::BTreeMap;
 
 use ecad_model::merge::{self, Inputs, Scope};
@@ -13,7 +13,7 @@ use ecad_model::{Author, Document, Ledger, Op, PageId, Primitive, Pt};
 fn field(x: f64) -> BlockItem {
     BlockItem::Field {
         at: Rect::new(x, 1.0, 10.0, 5.0),
-        bind: Binding::new(Source::Page, "number"),
+        bind: Binding::Page(ecad_model::title_block::PageField::Number),
         label: None,
         look: TextLook::default(),
         if_empty: Default::default(),

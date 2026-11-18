@@ -152,16 +152,15 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                     let mut i = binds.iter().position(|x| *x == b.text()).unwrap_or(usize::MAX);
                     let r = ecad_ui::control::Select::new(&mut i, &options, SOURCE).placeholder(&current).show(ui);
                     if r.changed() {
+                        // The entry after the palette's bindings asks for a project key of one's own.
                         pick = match binds.get(i) {
-                            Some(bt) => Binding::parse(bt).ok(),
-                            None if i == binds.len() => Some(Binding::new(ecad_model::title_block::Source::Project, "")),
+                            Some(bt) => Binding::parse(bt).ok().map(Some),
+                            None if i == binds.len() => Some(None),
                             None => None,
                         };
                     }
-                    if let Some(nb) = pick {
-                        if nb.key.is_empty() {
-                            ed.project_key = Some(String::new());
-                        } else {
+                    if let Some(choice) = pick {
+                        if let Some(nb) = choice {
                             d.step();
                             for i in &sel {
                                 if let Some(BlockItem::Field { bind: x, .. }) = d.now.layout.items.get_mut(*i) {
@@ -169,6 +168,8 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                                 }
                             }
                             acts.push(Act::Resample);
+                        } else {
+                            ed.project_key = Some(String::new());
                         }
                     }
                 });
@@ -473,21 +474,16 @@ pub fn make_field(d: &mut Draft, i: usize) {
         .trim()
         .to_lowercase()
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '_' })
         .collect::<String>()
         .trim_matches('_')
         .chars()
         .take(bind::MAX_KEY_CHARS)
         .collect();
     let key = if key.is_empty() { "field".to_string() } else { key };
+    let Some(key) = ecad_model::title_block::ProjectKey::new(&key) else { return };
     if let Some(x) = d.now.layout.items.get_mut(i) {
-        *x = BlockItem::Field {
-            at,
-            bind: Binding::new(ecad_model::title_block::Source::Project, &key),
-            label: Some(text),
-            look,
-            if_empty: IfEmpty::Blank,
-        };
+        *x = BlockItem::Field { at, bind: Binding::Project(key), label: Some(text), look, if_empty: IfEmpty::Blank };
     }
 }
 
