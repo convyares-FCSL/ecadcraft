@@ -153,7 +153,6 @@ fn the_layout_tab_reads_the_placement_and_sets_the_texts_and_contact_table() {
 }
 
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn the_checks_tab_switches_between_this_page_and_the_project() {
     let (mut h, dir, _one) = harness(None);
     select_coil(&mut h, RightTab::Checks);
@@ -164,7 +163,9 @@ fn the_checks_tab_switches_between_this_page_and_the_project() {
     // This page: the cards of this page's checks, the rest under Elsewhere.
     for r in &rows {
         let label = ecad_app::checks_panel::row_label(r);
-        assert!(h.query_by_label(&label).is_some(), "{label} (on this page: {})", r.check.page == page);
+        // `query_all`: until lane F step F4 the demo's three -W01 lines ending loose at its reference
+        // give three cards with the same words.
+        assert!(h.query_all_by_label(&label).next().is_some(), "{label} (on this page: {})", r.check.page == page);
     }
     if rows.iter().any(|r| r.check.page != page) {
         assert!(h.query_by_label(right::ELSEWHERE).is_some());

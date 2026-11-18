@@ -392,7 +392,6 @@ fn k_hostile_values() {
 /// Check E: cable reference commits are scoped per cable, cable ops included (brief 025 made
 /// them per cable); the index's cable groups follow.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn e_cable_groups_are_kept_on_the_index() {
     let (mut h, _, _, _) = common::small_project(SEED);
     let p1 = h.first_page();
@@ -402,7 +401,9 @@ fn e_cable_groups_are_kept_on_the_index() {
     let k: ecad_model::CableId = id(&slash, "cable");
     h.run("cableref", json!({"cable": k.hex(), "at": [60, 52]})).unwrap();
     let p2: PageId = id(&h.run("newpage", json!({"title": "2"})).unwrap(), "page");
-    h.run("cablecontinue", json!({"cable": k.hex(), "at": [10, 50], "toward": [60, 50]})).unwrap();
+    // The other end on page 2, written as `cablecontinue` writes it (`H::reference_end`): a
+    // continuation needs wires leaving the page through the reference (lane F step F4).
+    h.reference_end(k, p2, (10.0, 50.0));
     let _ = (p1, p2);
     let members: Vec<RepresentationId> = h.p(|p| p.xref.members(Group::Cable(k)).collect());
     assert_eq!(members.len(), 2);
