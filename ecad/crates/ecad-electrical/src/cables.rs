@@ -223,7 +223,7 @@ fn valid(doc: &Document, field: CableField, v: &str) -> bool {
         CableField::Cores => crate::strips::parse_cores(v).is_ok(),
         CableField::EndLocation(_) => designations::code_of(doc, Aspect::Location, v.trim()).is_some(),
         CableField::EndFunction(_) => designations::code_of(doc, Aspect::Function, v.trim()).is_some(),
-        CableField::CableType => StyleRef::parse(v).is_some_and(|id| styles::exists(doc, cable::WORD, &id)),
+        CableField::CableType => StyleRef::parse(v).is_some_and(|id| styles::exists(doc, ecad_model::StyleCatalogue::Cable, &id)),
         CableField::Tag => !v.trim().is_empty(),
     }
 }
@@ -509,7 +509,7 @@ pub fn value_checks(doc: &Document, k: CableId, drawn: bool) -> Vec<Check> {
 /// The notation a cable type gives `type` (`H07RN-F 4G1.5`): its name when it carries a core
 /// notation, else its cores and cross-section (`4G1.5`).
 pub fn type_notation(doc: &Document, id: &StyleRef) -> Option<String> {
-    let name = styles::name(doc, cable::WORD, id);
+    let name = styles::name(doc, ecad_model::StyleCatalogue::Cable, id);
     if crate::strips::offer_from_type(&name).is_some() {
         return Some(name);
     }

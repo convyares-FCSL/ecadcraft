@@ -255,7 +255,7 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
         Op::ModifyPage { id: b.page, before: b.page_v.clone(), after: Page { number: ecad_model::PageNo::parse("9"), ..b.page_v.clone() } },
         Op::SetStyle {
             layer: StyleLayer::Project,
-            catalogue: "line".into(),
+            catalogue: ecad_model::StyleCatalogue::Wire,
             id: StyleRef::Builtin("thin".into()),
             before: None,
             after: Some(record()),
@@ -328,14 +328,14 @@ fn failing(b: &mut Base) -> Vec<Op> {
         // The project has no standard, so a Standard-layer style and a header change both fail.
         Op::SetStyle {
             layer: StyleLayer::Standard,
-            catalogue: "line".into(),
+            catalogue: ecad_model::StyleCatalogue::Wire,
             id: StyleRef::Builtin("thin".into()),
             before: None,
             after: Some(record()),
         },
         Op::SetStyle {
             layer: StyleLayer::Project,
-            catalogue: "line".into(),
+            catalogue: ecad_model::StyleCatalogue::Wire,
             id: StyleRef::Builtin("thin".into()),
             before: Some(record()),
             after: None,

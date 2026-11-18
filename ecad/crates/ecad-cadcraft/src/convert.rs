@@ -8,6 +8,7 @@ use cadcraft_engine::doc::{
     Arc as CArc, Circle, Common, Entity, EntityKind, HAlign, Handle, Insert, Line, Lineweight, LwPolyline, Point as CPoint, Text, VAlign,
 };
 use cadcraft_engine::geom::{PolyVertex, Vec2, Vec3};
+use ecad_model::units::Radians;
 use ecad_model::{
     Color, DefinitionId, Document, Item, ItemKind, LayerId, PageId, Placement, Primitive, Pt, Style, SymbolInstance, TextHAlign, TextVAlign,
 };
@@ -87,7 +88,7 @@ pub fn kind_for_primitive(p: &Primitive) -> EntityKind {
                 align_pt: (!left).then(|| v3(*at)),
                 height: *height,
                 value: value.clone(),
-                rotation: *rotation,
+                rotation: rotation.0,
                 width_factor: 1.0,
                 oblique: 0.0,
                 style: crate::text_style::PLACEHOLDER_STYLE.into(),
@@ -144,7 +145,7 @@ fn kind_for_symbol(s: &SymbolInstance) -> EntityKind {
         block: block_name(s.definition),
         insert: v3(s.placement.origin),
         scale: Vec3::new(sx, s.placement.scale, 1.0),
-        rotation: s.placement.rotation,
+        rotation: s.placement.rotation.0,
         attribs: Vec::new(),
         clip: None,
         cols: 1,
@@ -204,7 +205,7 @@ pub(crate) fn primitive_from(kind: &EntityKind) -> Option<Primitive> {
                 VAlign::Top => TextVAlign::Top,
             };
             let at = t.align_pt.filter(|_| !(halign == TextHAlign::Left && valign == TextVAlign::Baseline)).unwrap_or(t.insert);
-            Primitive::Text { at: pt(at), height: t.height, rotation: t.rotation, value: t.value.clone(), halign, valign }
+            Primitive::Text { at: pt(at), height: t.height, rotation: Radians(t.rotation), value: t.value.clone(), halign, valign }
         }
         EntityKind::Point(p) => Primitive::Point { at: pt(p.p) },
         _ => return None,
@@ -215,7 +216,7 @@ fn symbol_from(kind: &EntityKind) -> Option<SymbolInstance> {
     let EntityKind::Insert(i) = kind else { return None };
     let definition = definition_of_block(&i.block)?;
     let scale = i.scale.y;
-    Some(SymbolInstance { definition, placement: Placement { origin: pt(i.insert), rotation: i.rotation, mirror: i.scale.x < 0.0, scale } })
+    Some(SymbolInstance { definition, placement: Placement { origin: pt(i.insert), rotation: Radians(i.rotation), mirror: i.scale.x < 0.0, scale } })
 }
 
 /// Why an entity cannot be recorded.

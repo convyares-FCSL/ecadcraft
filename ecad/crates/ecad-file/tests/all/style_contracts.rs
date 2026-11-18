@@ -47,7 +47,7 @@ fn styled() -> Ledger {
             Op::SetProperty { object: ObjectRef::Standard, key: "tags.coil.prefix".into(), before: None, after: Some("K".into()) },
             Op::SetStyle {
                 layer: StyleLayer::Standard,
-                catalogue: "text".into(),
+                catalogue: ecad_model::StyleCatalogue::Text,
                 id: StyleRef::Builtin("tag".into()),
                 before: None,
                 after: Some(rec("", &[("colour", "RD")])),
@@ -60,7 +60,7 @@ fn styled() -> Ledger {
         "New text style Tag large",
         vec![Op::SetStyle {
             layer: StyleLayer::Project,
-            catalogue: "text".into(),
+            catalogue: ecad_model::StyleCatalogue::Text,
             id: StyleRef::Own(0xabc),
             before: None,
             after: Some(rec("Tag large", &[("height", "5"), ("weight", "bold")])),

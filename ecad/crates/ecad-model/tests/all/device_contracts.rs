@@ -35,7 +35,10 @@ fn symbol(fx: &Fx, definition: DefinitionId, at: Pt) -> Item {
     Item {
         page: fx.page,
         style: Style { layer: fx.layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 },
-        kind: ItemKind::Symbol(SymbolInstance { definition, placement: Placement { origin: at, rotation: 0.0, mirror: false, scale: 1.0 } }),
+        kind: ItemKind::Symbol(SymbolInstance {
+            definition,
+            placement: Placement { origin: at, rotation: ecad_model::units::Radians(0.0), mirror: false, scale: 1.0 },
+        }),
     }
 }
 

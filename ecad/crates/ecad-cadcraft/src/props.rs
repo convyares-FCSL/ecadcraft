@@ -11,6 +11,7 @@
 //! Excluded: editing several kinds at once, cable members and cores (read only here), free
 //! project properties (Project Properties holds them).
 
+use ecad_model::Word;
 use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -811,7 +812,7 @@ fn wiring_rows(doc: &Document, w: WireId) -> (Vec<Row>, Vec<Row>) {
     let look = crate::styles::wire::wire_look(doc, w);
     let cat_value =
         |v: &Option<(String, crate::defaults::Source)>| v.as_ref().filter(|x| x.1 != crate::defaults::Source::Object).map(|x| x.0.clone());
-    let cat_name = look.category.as_ref().map(|id| crate::styles::name(doc, "wire", id));
+    let cat_name = look.category.as_ref().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id));
     let (cs_default, colour_default) = (cat_value(&look.cross_section), cat_value(&look.colour));
     let wire = doc.wires.get(&w);
     let own_size = wire.and_then(|x| x.size).map(|s| s.to_string());
@@ -974,7 +975,7 @@ enum TextsAt {
 
 /// The words a Texts row shows for a stored visibility.
 fn shown_words(w: &str) -> &'static str {
-    crate::text_style::Shown::from_word(w).label()
+    <crate::text_style::Shown as ecad_model::Word>::parse(w).unwrap_or_default().label()
 }
 
 /// The Texts rows of a device, a symbol or a page: one per kind of §5.1, `Default (…)` when the
@@ -1030,7 +1031,7 @@ fn showtext_line(target: &Target, key: &str, value: Option<&str>) -> Option<Stri
         Some((rep, kind)) if rep.len() == 32 => (ecad_model::RepresentationId::parse(rep), kind),
         _ => (None, rest),
     };
-    crate::text_style::TextKind::from_word(kind)?;
+    <crate::text_style::TextKind as ecad_model::Word>::parse(kind)?;
     let show = value.and_then(crate::text_style::Shown::from_input).map_or(serde_json::Value::Null, |s| serde_json::json!(s.word()));
     let mut j = serde_json::json!({"kind": kind, "show": show});
     match (rep, target) {

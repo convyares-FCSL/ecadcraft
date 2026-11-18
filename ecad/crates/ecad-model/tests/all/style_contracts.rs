@@ -23,7 +23,7 @@ fn tag() -> StyleRef {
 }
 
 fn set_style(layer: StyleLayer, id: StyleRef, before: Option<StyleRecord>, after: Option<StyleRecord>) -> Op {
-    Op::SetStyle { layer, catalogue: "text".into(), id, before, after }
+    Op::SetStyle { layer, catalogue: ecad_model::StyleCatalogue::Text, id, before, after }
 }
 
 /// Every new op applied and inverted gives back the document exactly.
@@ -41,7 +41,7 @@ fn each_op_inverts_exactly() {
     let doc = l.document().clone();
     assert_eq!(doc.standard.as_ref().map(|s| s.header.name.as_str()), Some("House"));
     assert_eq!(doc.standard.as_ref().and_then(|s| s.values.get("tags.coil.prefix")).map(String::as_str), Some("K"));
-    assert!(doc.styles.get("text").is_some_and(|m| m.contains_key(&StyleRef::Own(7))));
+    assert!(doc.styles.get(&ecad_model::StyleCatalogue::Text).is_some_and(|m| m.contains_key(&StyleRef::Own(7))));
     l.undo(Author::User).unwrap();
     assert_eq!(*l.document(), empty, "undo restores the empty document");
     l.redo(Author::User).unwrap();
@@ -90,11 +90,17 @@ fn a_stale_before_is_refused() {
     assert!(e.to_string().contains("differs"), "{e}");
 }
 
+/// Design 072 F1: the catalogue is typed, so an unknown catalogue word in a stored op is a read
+/// error, not a record of an unknown catalogue.
 #[test]
-fn a_bad_catalogue_word_breaks_the_invariant() {
-    let mut l = Ledger::new(50);
-    let op = Op::SetStyle { layer: StyleLayer::Project, catalogue: "Bad Word".into(), id: tag(), before: None, after: Some(rec("", &[])) };
-    assert!(l.commit(Author::User, "x", vec![op]).is_err());
+fn an_unknown_catalogue_word_is_a_read_error() {
+    let op =
+        Op::SetStyle { layer: StyleLayer::Project, catalogue: ecad_model::StyleCatalogue::Text, id: tag(), before: None, after: Some(rec("", &[])) };
+    let text = serde_json::to_string(&op).unwrap();
+    assert!(serde_json::from_str::<Op>(&text).is_ok(), "{text}");
+    let bad = text.replace("\"text\"", "\"line\"");
+    assert_ne!(bad, text);
+    assert!(serde_json::from_str::<Op>(&bad).is_err(), "{bad}");
 }
 
 #[test]
@@ -217,8 +223,14 @@ fn style_records_merge_as_units() {
     let mut m = t.clone();
     m.commit(Author::User, "merge", plan.ops).unwrap();
     let d = m.document();
-    assert_eq!(d.styles.get("text").and_then(|x| x.get(&big)).and_then(|r| r.fields.get("height")).map(String::as_str), Some("7"));
-    assert_eq!(d.styles.get("text").and_then(|x| x.get(&tag())).and_then(|r| r.fields.get("colour")).map(String::as_str), Some("BU"));
+    assert_eq!(
+        d.styles.get(&ecad_model::StyleCatalogue::Text).and_then(|x| x.get(&big)).and_then(|r| r.fields.get("height")).map(String::as_str),
+        Some("7")
+    );
+    assert_eq!(
+        d.styles.get(&ecad_model::StyleCatalogue::Text).and_then(|x| x.get(&tag())).and_then(|r| r.fields.get("colour")).map(String::as_str),
+        Some("BU")
+    );
     let values = &d.standard.as_ref().unwrap().values;
     assert_eq!((values.get("x.one").map(String::as_str), values.get("x.two").map(String::as_str)), (Some("1"), Some("2")));
     assert!(d.check().is_ok());
@@ -293,7 +305,7 @@ fn a_standard_removed_on_one_side_and_changed_on_the_other_is_one_conflict() {
     let keep = BTreeMap::from([("project/standard".to_string(), Choice::Target)]);
     let d = merged(&base, style(), remove(), &keep).1.unwrap();
     let st = d.standard.as_ref().unwrap();
-    assert!(st.styles.get("text").is_some_and(|m| m.contains_key(&tag())), "{st:?}");
+    assert!(st.styles.get(&ecad_model::StyleCatalogue::Text).is_some_and(|m| m.contains_key(&tag())), "{st:?}");
     let drop = BTreeMap::from([("project/standard".to_string(), Choice::Source)]);
     assert!(merged(&base, style(), remove(), &drop).1.unwrap().standard.is_none());
 

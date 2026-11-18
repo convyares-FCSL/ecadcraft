@@ -56,16 +56,26 @@ impl StyleLayer {
 crate::word_enum! {
     /// A style catalogue (design 050 §2, design 072 F1, F2): which kind of style a record or a
     /// reference is. One variant per catalogue; a later catalogue adds one.
+    ///
+    /// The variants are in their words' order, so a map keyed by catalogue ([`StyleCatalogues`])
+    /// is written in the same order as when it was keyed by the word: same file bytes.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub enum StyleCatalogue {
-        Text,
-        Location,
-        Frame,
-        Wire,
-        Page,
         Cable,
+        Frame,
+        Location,
+        Page,
         #[strum(serialize = "ratingtable")]
         RatingTable,
+        Text,
+        Wire,
+    }
+}
+
+impl fmt::Display for StyleCatalogue {
+    /// Its stored word.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(crate::words::Word::word(*self))
     }
 }
 
@@ -203,8 +213,8 @@ impl StyleRecord {
     }
 }
 
-/// A layer's style records: catalogue word → style → record.
-pub type StyleCatalogues = BTreeMap<String, BTreeMap<StyleRef, StyleRecord>>;
+/// A layer's style records: catalogue → style → record.
+pub type StyleCatalogues = BTreeMap<StyleCatalogue, BTreeMap<StyleRef, StyleRecord>>;
 
 /// Where a standard came from (reserved for 2.1, `.ecadlib`; always `None` in 050).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -248,14 +258,14 @@ impl Standard {
 }
 
 /// The record `layer` holds for `(catalogue, id)` in `doc`, if any.
-pub fn record<'a>(doc: &'a crate::Document, layer: StyleLayer, catalogue: &str, id: &StyleRef) -> Option<&'a StyleRecord> {
-    layer_of(doc, layer)?.get(catalogue)?.get(id)
+pub fn record<'a>(doc: &'a crate::Document, layer: StyleLayer, catalogue: StyleCatalogue, id: &StyleRef) -> Option<&'a StyleRecord> {
+    layer_of(doc, layer)?.get(&catalogue)?.get(id)
 }
 
 /// The record `layer` holds for `(catalogue, id)`, within [`MAX_STYLES_PER_CATALOGUE`]: past the
 /// bound a record counts as absent (by ID order). The rank costs at most the bound.
-pub fn bounded_record<'a>(doc: &'a crate::Document, layer: StyleLayer, catalogue: &str, id: &StyleRef) -> Option<&'a StyleRecord> {
-    let map = layer_of(doc, layer)?.get(catalogue)?;
+pub fn bounded_record<'a>(doc: &'a crate::Document, layer: StyleLayer, catalogue: StyleCatalogue, id: &StyleRef) -> Option<&'a StyleRecord> {
+    let map = layer_of(doc, layer)?.get(&catalogue)?;
     let r = map.get(id)?;
     if map.len() > MAX_STYLES_PER_CATALOGUE && map.range(..id).take(MAX_STYLES_PER_CATALOGUE).count() >= MAX_STYLES_PER_CATALOGUE {
         return None;
@@ -273,14 +283,14 @@ pub fn layer_of(doc: &crate::Document, layer: StyleLayer) -> Option<&StyleCatalo
 
 /// Write `after` as the record of `(catalogue, id)` in `cats`, removing it (and an emptied
 /// catalogue) for `None`. Returns the record it replaced.
-pub(crate) fn put(cats: &mut StyleCatalogues, catalogue: &str, id: &StyleRef, after: Option<&StyleRecord>) -> Option<StyleRecord> {
+pub(crate) fn put(cats: &mut StyleCatalogues, catalogue: StyleCatalogue, id: &StyleRef, after: Option<&StyleRecord>) -> Option<StyleRecord> {
     match after {
-        Some(r) => cats.entry(catalogue.to_string()).or_default().insert(id.clone(), r.clone()),
+        Some(r) => cats.entry(catalogue).or_default().insert(id.clone(), r.clone()),
         None => {
-            let inner = cats.get_mut(catalogue)?;
+            let inner = cats.get_mut(&catalogue)?;
             let old = inner.remove(id);
             if inner.is_empty() {
-                cats.remove(catalogue);
+                cats.remove(&catalogue);
             }
             old
         }

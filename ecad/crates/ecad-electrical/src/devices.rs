@@ -1011,7 +1011,7 @@ pub(crate) fn placed_box(def: &Definition, pl: &Placement) -> Option<(Pt, Pt)> {
 
 /// Whether a placement's terminal axis is vertical (rotation near 0° or 180°).
 pub(crate) fn vertical(pl: &Placement) -> bool {
-    let q = pl.rotation.rem_euclid(std::f64::consts::PI);
+    let q = pl.rotation.0.rem_euclid(std::f64::consts::PI);
     q < std::f64::consts::FRAC_PI_4 || q > 3.0 * std::f64::consts::FRAC_PI_4
 }
 

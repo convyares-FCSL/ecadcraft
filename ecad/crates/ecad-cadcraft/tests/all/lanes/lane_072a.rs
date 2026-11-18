@@ -122,3 +122,20 @@ fn a_project_symbol_with_its_own_prefix_opens_writable() {
     let float = h.cfg(|p| ecad_cadcraft::defaults::symbols::prefix(p.ledger.document(), "float1"));
     assert_eq!(float, "BL");
 }
+
+/// Lane 072 A2 (design 072 F6, F7): a symbol's text slot takes its rotation in degrees, like every
+/// other command, and stores it in radians.
+#[test]
+fn a_slot_rotation_is_given_in_degrees_and_stored_in_radians() {
+    let mut h = H::new(0x72_aa);
+    let symbol = json!({
+        "name": "Turned", "key": "turned1",
+        "graphics": [{"kind": "polyline", "vertices": [[-2.5, -7.5], [2.5, -7.5], [2.5, 7.5], [-2.5, 7.5]], "closed": true}],
+        "points": [{"key": 1, "label": null, "at": [0, 5]}, {"key": 2, "label": null, "at": [0, -5]}],
+        "slots": [{"text": "tag", "at": [-4, 0], "h": "right", "v": "middle", "rotation": 90}],
+        "defaults": {"prefix": "B", "join": "device"},
+    });
+    h.run("symbolnew", symbol).unwrap();
+    let turns = h.cfg(|p| p.ledger.document().definitions.values().flat_map(|d| d.texts.iter().map(|t| t.rotation)).collect::<Vec<_>>());
+    assert_eq!(turns, [ecad_model::units::Radians(std::f64::consts::FRAC_PI_2)]);
+}

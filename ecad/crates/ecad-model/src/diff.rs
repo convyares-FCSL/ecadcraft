@@ -22,7 +22,7 @@ use crate::doc::{Document, End, Properties, Wire};
 use crate::id::{FolderId, PageId};
 use crate::invariant::Touched;
 use crate::op::{ObjectRef, Op};
-use crate::style::{StyleCatalogues, StyleLayer, StyleRef};
+use crate::style::{StyleCatalogue, StyleCatalogues, StyleLayer, StyleRef};
 
 /// `SetProperty` ops turning `a` into `b` on `object`, for the keys `keep` accepts.
 fn props(object: ObjectRef, a: &Properties, b: &Properties, keep: &dyn Fn(&str) -> bool, out: &mut Vec<Op>) {
@@ -278,14 +278,14 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
 
 /// `SetStyle` ops turning `a`'s records into `b`'s, for `layer`.
 fn style_records(layer: StyleLayer, a: &StyleCatalogues, b: &StyleCatalogues, out: &mut Vec<Op>) {
-    let cats: BTreeSet<&String> = a.keys().chain(b.keys()).collect();
+    let cats: BTreeSet<StyleCatalogue> = a.keys().chain(b.keys()).copied().collect();
     for cat in cats {
-        let (ra, rb) = (a.get(cat), b.get(cat));
+        let (ra, rb) = (a.get(&cat), b.get(&cat));
         let ids: BTreeSet<&StyleRef> = ra.into_iter().flat_map(|m| m.keys()).chain(rb.into_iter().flat_map(|m| m.keys())).collect();
         for id in ids {
             let (before, after) = (ra.and_then(|m| m.get(id)).cloned(), rb.and_then(|m| m.get(id)).cloned());
             if before != after {
-                out.push(Op::SetStyle { layer, catalogue: cat.clone(), id: id.clone(), before, after });
+                out.push(Op::SetStyle { layer, catalogue: cat, id: id.clone(), before, after });
             }
         }
     }

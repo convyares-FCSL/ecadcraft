@@ -192,3 +192,20 @@ is made: a terminal plan of every strip, or of one strip.
 
 Tests: `lanes::lane_072e` in ecad-model, ecad-file and ecad-mcp. Agent-observed only; nobody has
 tried these steps by hand yet.
+
+## Rotations (A2: F6, F7)
+
+- Every command parameter named `rotation` takes degrees, now also the symbol builder's text
+  slots (`symbolnew`/`symboledit` `slots[].rotation`), which took radians before. Files are
+  unchanged: stored angles stay radians, now typed as such.
+- The inspector's Layout tab now selects the right rotation segment for a turned symbol (it read
+  the stored radians as degrees).
+
+### Try it
+
+1. Place a coil, turn it a quarter turn (the rotate key while placing, or `place {"at": [100, 0],
+   "rotation": 90}`), select it: the Layout tab shows 90°.
+2. In the symbol builder, add a text slot and turn it: it turns a quarter turn per click, as before.
+
+The headless test `lanes::lane_072a::a_slot_rotation_is_given_in_degrees_and_stored_in_radians`
+(ecad-cadcraft) covers the slot input; nobody has tried these steps by hand yet.
