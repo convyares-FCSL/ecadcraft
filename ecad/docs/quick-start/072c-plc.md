@@ -41,8 +41,8 @@ The new `setprop` keys: `plc.signal`, `plc.safety_rated`, `plc.ex_i`, `plc.calib
 `plc.ch.<i>.text|address|tag|safe` work as before but write the fields.
 
 Channel points (step 3b): place `di` or `do` on a DI or DQ card. The point's key is `.0.in` (or
-`.0.out`), as for `chdi`; the label still shows `I0.0`. A point keyed `I1.3` in a hand-made file is
-a plain point name, not channel 11.
+`.0.out`), as for `chdi`; the label still shows `I0.0`. A card point keyed `I1.3` (the old form) is unknown:
+a file holding one opens read-only (design 045 FP2 is withdrawn: no compatibility before v1).
 
 ## Checked
 
