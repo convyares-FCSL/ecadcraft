@@ -156,7 +156,7 @@ pub fn plan_delete(doc: &Document, doomed: Doomed) -> Result<Deleted, CmdError> 
                 return Err(CmdError::refused("This wire is not drawn as one line between its two points; erase the lines it runs along instead."));
             }
             for cable in doc.cables_of(c) {
-                if let Some((i, m)) = doc.cables.get(&cable).and_then(|k| k.members.iter().enumerate().find(|(_, m)| m.wire() == Some(c))) {
+                if let Some((i, m)) = doc.cables.get(&cable).and_then(|k| k.cores.iter().enumerate().find(|(_, m)| m.wire() == Some(c))) {
                     ops.push(Op::RemoveCableMember { cable, index: i, member: m.clone() });
                 }
             }
@@ -186,12 +186,12 @@ pub fn plan_delete(doc: &Document, doomed: Doomed) -> Result<Deleted, CmdError> 
         }
         Doomed::Cable(k) => {
             let cable = doc.cables.get(&k).ok_or(CmdError::refused("no such cable"))?;
-            for (index, member) in cable.members.iter().enumerate().rev() {
+            for (index, member) in cable.cores.iter().enumerate().rev() {
                 ops.push(Op::RemoveCableMember { cable: k, index, member: member.clone() });
             }
             ops.extend(remove_representations(doc, Subject::Cable(k)));
-            ops.push(Op::DeleteCable { id: k, cable: ecad_model::Cable { members: Vec::new(), ..cable.clone() } });
-            let kept = cable.members.len();
+            ops.push(Op::DeleteCable { id: k, cable: ecad_model::Cable { cores: Vec::new(), ..cable.clone() } });
+            let kept = cable.cores.len();
             let message = format!("Cable {} deleted; its {} kept.", k.hex(), kept_words(kept));
             Ok(Deleted { ops, released: 0, kept: Some(kept), message: Some(message) })
         }

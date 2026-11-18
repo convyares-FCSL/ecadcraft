@@ -410,7 +410,7 @@ pub fn holder_words_of(doc: &Document, h: Holder) -> String {
     match h {
         Holder::Device(c) => holder_words(doc, c),
         Holder::Cable(k) => {
-            let n = doc.cables.get(&k).map_or(0, |c| c.members.len());
+            let n = doc.cables.get(&k).map_or(0, |c| c.cores.len());
             format!("{} (cable, {n} wire{})", cable_tag_of(doc, k).unwrap_or("(no tag)"), if n == 1 { "" } else { "s" })
         }
     }

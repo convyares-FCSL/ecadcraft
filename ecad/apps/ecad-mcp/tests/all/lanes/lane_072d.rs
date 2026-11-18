@@ -132,7 +132,7 @@ fn cableslash_across_a_loose_line_puts_the_core_on_the_line() {
     assert_eq!(v["lines"], json!([route.hex()]), "{v}");
     assert_eq!(v["conductors"], json!([]), "{v}");
     let cable = c.doc().cables_tagged("-W72")[0];
-    assert_eq!(c.doc().cables[&cable].members.len(), 1);
+    assert_eq!(c.doc().cables[&cable].cores.len(), 1);
 
     let mut r = reader();
     let before = r.log();

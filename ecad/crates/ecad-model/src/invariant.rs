@@ -610,7 +610,7 @@ impl Document {
     /// I18.
     fn check_cable(&self, id: CableId, c: &Cable) -> Result<()> {
         let mut seen = BTreeSet::new();
-        for m in &c.members {
+        for m in &c.cores {
             match m.position {
                 crate::doc::CorePosition::Unplaced => continue,
                 crate::doc::CorePosition::Wire(w) if !self.wires.contains_key(&w) => {

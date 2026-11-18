@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::doc::{Cable, CableMember, Definition, Device, Document, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal, Wire};
+use crate::doc::{Cable, Core, Definition, Device, Document, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal, Wire};
 use crate::error::{ModelError, Result};
 use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, TerminalId, WireId};
 use crate::index::Delta;
@@ -177,12 +177,12 @@ pub enum Op {
     AddCableMember {
         cable: CableId,
         index: usize,
-        member: CableMember,
+        member: Core,
     },
     RemoveCableMember {
         cable: CableId,
         index: usize,
-        member: CableMember,
+        member: Core,
     },
     SetProperty {
         object: ObjectRef,
@@ -554,21 +554,21 @@ impl Op {
             }
             Op::AddCableMember { cable, index, member } => {
                 let c = doc.cables.get_mut(cable).ok_or_else(|| pre(format!("cable {cable} does not exist")))?;
-                if *index > c.members.len() {
+                if *index > c.cores.len() {
                     return Err(pre(format!("cable {cable} member index {index} is past the end")));
                 }
-                c.members.insert(*index, member.clone());
+                c.cores.insert(*index, member.clone());
                 doc.index.cable_member(*cable, member, Delta::Add);
             }
             Op::RemoveCableMember { cable, index, member } => {
                 let c = doc.cables.get_mut(cable).ok_or_else(|| pre(format!("cable {cable} does not exist")))?;
-                match c.members.get(*index) {
+                match c.cores.get(*index) {
                     Some(cur) if !checked || cur == member => {}
                     _ => {
                         return Err(pre(format!("cable {cable} member {index} differs from the recorded value")));
                     }
                 }
-                let old = c.members.remove(*index);
+                let old = c.cores.remove(*index);
                 doc.index.cable_member(*cable, &old, Delta::Remove);
             }
             Op::SetProperty { object, key, before, after } => {

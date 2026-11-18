@@ -919,7 +919,7 @@ fn cable_section(doc: &Document, k: CableId) -> Section {
         cores.inherited = true;
     }
     rows.push(cores);
-    let members = cable.map_or(0, |c| c.members.len());
+    let members = cable.map_or(0, |c| c.cores.len());
     let used = match count.spare_text() {
         Some(s) => format!("{} / {s}", count.used()),
         None => format!("{members} / ? (set the cable's cores or type to count spares)"),

@@ -12,7 +12,7 @@
 //! document lookups.
 #![deny(clippy::wildcard_enum_match_arm)]
 
-use crate::doc::{Cable, CableMember, Definition, Device, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal, Wire};
+use crate::doc::{Cable, Core, Definition, Device, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal, Wire};
 use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, TerminalId, WireId};
 use crate::keys::{Area, area_of};
 use crate::op::{ObjectRef, Op};
@@ -90,8 +90,8 @@ pub enum Effect<'a> {
     Member {
         cable: CableId,
         index: usize,
-        before: Option<&'a CableMember>,
-        after: Option<&'a CableMember>,
+        before: Option<&'a Core>,
+        after: Option<&'a Core>,
     },
     Prop {
         object: ObjectRef,

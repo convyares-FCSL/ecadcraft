@@ -2,7 +2,7 @@
 //! line and the checks say so; reading never works a core's place out, so a stored place the line
 //! no longer gives (a file made elsewhere) is reported, not changed.
 
-use ecad_model::{Author, CableId, CableMember, CorePosition, Op, RouteId, TerminalId};
+use ecad_model::{Author, CableId, Core, CorePosition, Op, Purpose, RouteId, TerminalId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id};
@@ -25,7 +25,7 @@ fn slashed(h: &mut H) -> (TerminalId, RouteId, CableId) {
 fn a_core_landed_at_one_end_is_reported_until_the_other_end_lands() {
     let mut h = H::new(0x72_dc);
     let (a, route, k) = slashed(&mut h);
-    assert_eq!(h.doc().cables[&k].members[0].position, CorePosition::Route { route, landed: Some(a) });
+    assert_eq!(h.doc().cables[&k].cores[0].position, CorePosition::Route { route, landed: Some(a) });
     let found = rows(&mut h, "core-one-end");
     assert_eq!(found.len(), 1, "{found:?}");
     assert_eq!(found[0]["text"], json!("Core landed at one end only"));
@@ -37,7 +37,7 @@ fn a_core_landed_at_one_end_is_reported_until_the_other_end_lands() {
     // The other end lands: the command moves the core onto the wire and the row goes.
     h.points_at(&[(120.0, 0.0)]);
     h.run("wire", json!({"points": [[60, 0], [120, 0]]})).unwrap();
-    assert!(h.doc().cables[&k].members[0].wire().is_some());
+    assert!(h.doc().cables[&k].cores[0].wire().is_some());
     assert!(rows(&mut h, "core-one-end").is_empty());
     h.check();
 }
@@ -49,16 +49,47 @@ fn a_stored_place_the_line_no_longer_gives_is_reported_not_changed() {
     // A file made elsewhere: the core says no end has landed, though one has.
     let stale = CorePosition::Route { route, landed: None };
     h.cfg(|p| {
-        let old = p.ledger.document().cables[&k].members[0].clone();
-        let new = CableMember { position: stale, ..old.clone() };
+        let old = p.ledger.document().cables[&k].cores[0].clone();
+        let new = Core { position: stale, ..old.clone() };
         let ops = vec![Op::RemoveCableMember { cable: k, index: 0, member: old }, Op::AddCableMember { cable: k, index: 0, member: new }];
         p.ledger.commit(Author::User, "a file made elsewhere", ops).unwrap();
     });
-    assert_eq!(h.doc().cables[&k].members[0].position, stale, "nothing moved it back");
+    assert_eq!(h.doc().cables[&k].cores[0].position, stale, "nothing moved it back");
     let found = rows(&mut h, "core-place-stale");
     assert_eq!(found.len(), 1, "{found:?}");
     assert_eq!(found[0]["severity"], json!("error"));
     assert!(found[0]["which"].as_str().unwrap_or_default().contains("its line is landed at"), "{}", found[0]);
     assert!(rows(&mut h, "core-one-end").is_empty(), "a stale core is reported once");
+    h.check();
+}
+
+#[test]
+fn ticking_not_used_stores_the_cores_purpose_not_a_property() {
+    // Design 072 §4.5 (c1): Not used is the stored core's purpose, apart from where it is.
+    let mut h = H::new(0x72_de);
+    let (_, _, k) = slashed(&mut h);
+    h.points_at(&[(120.0, 0.0)]);
+    h.run("wire", json!({"points": [[60, 0], [120, 0]]})).unwrap();
+    h.run("setprop", json!({"cable": k.hex(), "key": "cores", "value": "2"})).unwrap();
+    let open = rows(&mut h, "core-open");
+    assert_eq!(open.len(), 1, "core 2 is offered and on no line: {open:?}");
+
+    h.run("setprop", json!({"cable": k.hex(), "key": "unused.2", "value": "yes"})).unwrap();
+    let cab = &h.doc().cables[&k];
+    assert!(!cab.properties.keys().any(|key| key.starts_with("unused.")), "nothing stored under the key word");
+    let two = cab.cores.iter().find(|m| m.label_str() == Some("2")).expect("core 2 stored");
+    assert_eq!((two.purpose, two.position), (Purpose::Spare, CorePosition::Unplaced));
+    assert!(cab.cores[0].wire().is_some() && cab.cores[0].purpose == Purpose::InUse, "the placed core is untouched");
+    assert!(rows(&mut h, "core-open").is_empty());
+    h.check();
+
+    // Ticking it again changes nothing; unticking takes the unplaced core away again.
+    let again = h.run("setprop", json!({"cable": k.hex(), "key": "unused.2", "value": "yes"})).unwrap();
+    assert_eq!(again["changed"], json!(false));
+    h.run("setprop", json!({"cable": k.hex(), "key": "unused.2", "value": null})).unwrap();
+    assert!(h.doc().cables[&k].cores.iter().all(|m| m.label_str() != Some("2")));
+    assert_eq!(rows(&mut h, "core-open").len(), 1);
+    // A core the cable does not have is refused.
+    assert!(h.run("setprop", json!({"cable": k.hex(), "key": "unused.9", "value": "yes"})).is_err());
     h.check();
 }

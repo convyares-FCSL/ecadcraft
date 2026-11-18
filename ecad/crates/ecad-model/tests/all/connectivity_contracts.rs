@@ -215,7 +215,10 @@ fn a_cable_core_runs_its_net_through() {
         id: cable,
         cable: ecad_model::Cable {
             properties: BTreeMap::new(),
-            members: vec![ecad_model::CableMember::on_wire(core1, Some("1".into())), ecad_model::CableMember::on_wire(core2, Some("2".into()))],
+            cores: vec![
+                ecad_model::Core::on_wire(core1, ecad_model::CoreLabel::new("1").ok()),
+                ecad_model::Core::on_wire(core2, ecad_model::CoreLabel::new("2").ok()),
+            ],
         },
     }]);
     let field = p.loose(x[0]);

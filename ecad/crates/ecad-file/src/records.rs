@@ -296,9 +296,39 @@ pub struct Wire {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct CableMember {
+pub struct Core {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<m::CoreLabel>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colours: Option<m::wire::Colours>,
+    pub purpose: Purpose,
     pub position: CorePosition,
-    pub core: Option<String>,
+}
+
+/// What a cable core is for, as written.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Purpose {
+    InUse,
+    Spare,
+}
+
+impl From<m::Purpose> for Purpose {
+    fn from(p: m::Purpose) -> Self {
+        match p {
+            m::Purpose::InUse => Purpose::InUse,
+            m::Purpose::Spare => Purpose::Spare,
+        }
+    }
+}
+
+impl From<Purpose> for m::Purpose {
+    fn from(p: Purpose) -> Self {
+        match p {
+            Purpose::InUse => m::Purpose::InUse,
+            Purpose::Spare => m::Purpose::Spare,
+        }
+    }
 }
 
 /// Where a cable core is (owner ruling, 2026-11-18): stored as written.
@@ -338,7 +368,7 @@ impl From<CorePosition> for m::CorePosition {
 #[serde(deny_unknown_fields)]
 pub struct Cable {
     pub properties: BTreeMap<String, String>,
-    pub members: Vec<CableMember>,
+    pub cores: Vec<Core>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -858,12 +888,12 @@ pub enum Op {
     AddCableMember {
         cable: CableId,
         index: u64,
-        member: CableMember,
+        member: Core,
     },
     RemoveCableMember {
         cable: CableId,
         index: u64,
-        member: CableMember,
+        member: Core,
     },
     SetProperty {
         object: ObjectRef,
@@ -1108,15 +1138,15 @@ impl From<Route> for m::Route {
     }
 }
 
-impl From<&m::CableMember> for CableMember {
-    fn from(c: &m::CableMember) -> Self {
-        CableMember { position: c.position.into(), core: c.core.clone() }
+impl From<&m::Core> for Core {
+    fn from(c: &m::Core) -> Self {
+        Core { label: c.label.clone(), colours: c.colours.clone(), purpose: c.purpose.into(), position: c.position.into() }
     }
 }
 
 impl From<&m::Cable> for Cable {
     fn from(c: &m::Cable) -> Self {
-        Cable { properties: c.properties.clone(), members: c.members.iter().map(Into::into).collect() }
+        Cable { properties: c.properties.clone(), cores: c.cores.iter().map(Into::into).collect() }
     }
 }
 
@@ -1425,15 +1455,15 @@ impl From<Wire> for m::Wire {
     }
 }
 
-impl From<CableMember> for m::CableMember {
-    fn from(c: CableMember) -> Self {
-        m::CableMember { position: c.position.into(), core: c.core }
+impl From<Core> for m::Core {
+    fn from(c: Core) -> Self {
+        m::Core { label: c.label, colours: c.colours, purpose: c.purpose.into(), position: c.position.into() }
     }
 }
 
 impl From<Cable> for m::Cable {
     fn from(c: Cable) -> Self {
-        m::Cable { properties: c.properties, members: c.members.into_iter().map(Into::into).collect() }
+        m::Cable { properties: c.properties, cores: c.cores.into_iter().map(Into::into).collect() }
     }
 }
 

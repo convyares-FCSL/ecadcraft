@@ -20,7 +20,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::doc::{Cable, CableMember, Device, Document, End, Folder, Item, ItemKind, Page, Representation, Subject, Terminal, Wire};
+use crate::doc::{Cable, Core, Device, Document, End, Folder, Item, ItemKind, Page, Representation, Subject, Terminal, Wire};
 use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, NetId, PageId, RepresentationId, RouteId, TerminalId, WireId};
 use crate::op::ObjectRef;
 
@@ -296,7 +296,7 @@ impl Index {
     }
 
     pub(crate) fn cable(&mut self, id: CableId, c: &Cable, delta: Delta) {
-        for m in &c.members {
+        for m in &c.cores {
             self.cable_member(id, m, delta);
         }
         if let Some(t) = c.properties.get(crate::tag::TAG_KEY) {
@@ -310,7 +310,7 @@ impl Index {
         bump(&mut self.cable_tags, crate::tag::key(tag), id, delta);
     }
 
-    pub(crate) fn cable_member(&mut self, id: CableId, m: &CableMember, delta: Delta) {
+    pub(crate) fn cable_member(&mut self, id: CableId, m: &Core, delta: Delta) {
         if let Some(w) = m.wire() {
             bump(&mut self.conductor_cables, w, id, delta);
         }

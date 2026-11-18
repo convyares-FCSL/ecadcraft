@@ -90,7 +90,7 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
     // Cables: members are compared whole; a cable whose members differ is removed and added.
     for id in ids(&from.cables, &to.cables, scope.map(|s| &s.cables)) {
         match (from.cables.get(&id), to.cables.get(&id)) {
-            (Some(a), Some(b)) if a.members == b.members => props(ObjectRef::Cable(id), &a.properties, &b.properties, &all, &mut changes),
+            (Some(a), Some(b)) if a.cores == b.cores => props(ObjectRef::Cable(id), &a.properties, &b.properties, &all, &mut changes),
             (Some(a), Some(b)) => {
                 removes.push(Op::DeleteCable { id, cable: a.clone() });
                 adds.push(Op::CreateCable { id, cable: b.clone() });

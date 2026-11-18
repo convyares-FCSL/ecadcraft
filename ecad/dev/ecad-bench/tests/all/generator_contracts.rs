@@ -43,8 +43,8 @@ fn check_shape(g: &Generated, doc: &Document) {
 
     let per_pair = t.wires / t.devices;
     for cable in doc.cables.values() {
-        assert_eq!(cable.members.len(), per_pair);
-        let cores: Vec<_> = cable.members.iter().map(|m| m.core.clone()).collect();
+        assert_eq!(cable.cores.len(), per_pair);
+        let cores: Vec<_> = cable.cores.iter().map(|m| m.label_str().map(str::to_string)).collect();
         let want: Vec<_> = (1..=per_pair).map(|i| Some(i.to_string())).collect();
         assert_eq!(cores, want, "core labels 1, 2, …");
     }
@@ -69,7 +69,7 @@ fn check_shape(g: &Generated, doc: &Document) {
         }
         // Drawn on the first page by its routes; on the next page one stub each, a route with
         // free ends (cross-page wires form in lane F).
-        let members = &doc.cables.get(&c.cable).unwrap().members;
+        let members = &doc.cables.get(&c.cable).unwrap().cores;
         for m in members {
             let w = doc.wires.get(&m.wire().expect("a core on a wire")).expect("its wire");
             let drawn = doc.routes_at(w.ends[0]).any(|r| doc.routes.get(&r).is_some_and(|x| x.page == c.from));

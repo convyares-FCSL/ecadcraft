@@ -28,8 +28,8 @@ use ecad_cadcraft::references::{diagnostics, markers_on_page, plan_continue};
 use ecad_cadcraft::{HandleMap, Persistence, ProjectHandle, project_page};
 use ecad_model::derive::{cable_references, nets};
 use ecad_model::{
-    CableId, CableMember, Document, Form, Item, ItemId, ItemKind, Op, Page, PageId, Primitive, Pt, Representation, RepresentationId, Subject,
-    TerminalId, WireId,
+    CableId, Core, Document, Form, Item, ItemId, ItemKind, Op, Page, PageId, Primitive, Pt, Representation, RepresentationId, Subject, TerminalId,
+    WireId,
 };
 use serde_json::{Value, json};
 
@@ -321,7 +321,7 @@ fn ac1_two_page_cable_has_the_nets_of_the_one_page_circuit() {
     // The cable and its member list are the ones made by the slash on Supply.
     let doc = r.h.doc();
     assert_eq!(doc.cables.len(), 1);
-    let members: Vec<WireId> = doc.cables[&r.c1].members.iter().filter_map(|m| m.wire()).collect();
+    let members: Vec<WireId> = doc.cables[&r.c1].cores.iter().filter_map(|m| m.wire()).collect();
     assert_eq!(members, r.w.to_vec());
 }
 
@@ -818,7 +818,7 @@ fn ac6_hostile_documents_never_panic() {
             "missing member conductor",
             Box::new(move |d| {
                 if let Some(c) = d.cables.get_mut(&cable) {
-                    c.members.push(CableMember { position: ecad_model::CorePosition::Wire(WireId::from(88)), ..c.members[0].clone() });
+                    c.cores.push(Core { position: ecad_model::CorePosition::Wire(WireId::from(88)), ..c.cores[0].clone() });
                 }
             }),
         ),
@@ -857,7 +857,7 @@ fn ac6_hostile_documents_never_panic() {
             "a cable with no members",
             Box::new(move |d| {
                 if let Some(c) = d.cables.get_mut(&cable) {
-                    c.members.clear();
+                    c.cores.clear();
                 }
             }),
         ),

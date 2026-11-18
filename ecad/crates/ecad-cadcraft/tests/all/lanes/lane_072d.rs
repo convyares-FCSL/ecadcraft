@@ -24,7 +24,7 @@ fn point(h: &mut H, at: (f64, f64)) -> TerminalId {
 /// The only member's position of cable `k`.
 fn core_position(h: &mut H, k: CableId) -> CorePosition {
     let doc = h.doc();
-    let members = &doc.cables[&k].members;
+    let members = &doc.cables[&k].cores;
     assert_eq!(members.len(), 1, "one core: {members:?}");
     members[0].position
 }

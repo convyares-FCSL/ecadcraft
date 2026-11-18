@@ -4,9 +4,9 @@
 use std::collections::BTreeSet;
 
 use ecad_model::{
-    Author, Cable, CableMember, Color, Definition, Device, Document, End, Folder, Form, IdAllocator, Item, ItemKind, Layer, LayerId, Ledger,
-    LengthUnit, ModelError, ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation, StandardHeader, Style,
-    StyleLayer, StyleRecord, StyleRef, Subject, SymbolInstance, Terminal, TerminalDef, Touched, Wire,
+    Author, Cable, Color, Core, Definition, Device, Document, End, Folder, Form, IdAllocator, Item, ItemKind, Layer, LayerId, Ledger, LengthUnit,
+    ModelError, ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation, StandardHeader, Style, StyleLayer,
+    StyleRecord, StyleRef, Subject, SymbolInstance, Terminal, TerminalDef, Touched, Wire,
 };
 
 /// Every `Op` variant's name, read from `Op` itself (brief 060): serde's derived `Deserialize`
@@ -151,7 +151,7 @@ pub(crate) fn base() -> Base {
         connection_points: Default::default(),
     };
     let cable = ids.fresh();
-    let cable_v = Cable { members: vec![CableMember::on_wire(wire, None)], ..Cable::default() };
+    let cable_v = Cable { cores: vec![Core::on_wire(wire, None)], ..Cable::default() };
     let folder = ids.fresh();
     let folder_v = Folder { name: "F".into(), parent: None, start: None };
     let route_v = ecad_model::Route::new(
@@ -277,8 +277,8 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
         Op::RemoveRoute { id: b.route, route: b.route_v.clone() },
         Op::CreateCable { id: b.ids.fresh(), cable: b.cable_v.clone() },
         Op::DeleteCable { id: b.cable, cable: b.cable_v.clone() },
-        Op::AddCableMember { cable: b.cable, index: 1, member: CableMember::on_wire(b.wire2, Some("2".into())) },
-        Op::RemoveCableMember { cable: b.cable, index: 0, member: CableMember::on_wire(b.wire, None) },
+        Op::AddCableMember { cable: b.cable, index: 1, member: Core::on_wire(b.wire2, ecad_model::CoreLabel::new("2").ok()) },
+        Op::RemoveCableMember { cable: b.cable, index: 0, member: Core::on_wire(b.wire, None) },
         Op::SetProperty { object: ObjectRef::Device(b.comp), key: "note".parse().unwrap(), before: Some("K1".into()), after: None },
         Op::EmbedDefinition { id: b.ids.fresh(), definition: b.def_v.clone() },
         Op::RemoveDefinition { id: b.def, definition: b.def_v.clone() },
@@ -354,8 +354,8 @@ fn failing(b: &mut Base) -> Vec<Op> {
         },
         Op::CreateCable { id: b.cable, cable: Cable::default() },
         Op::DeleteCable { id: b.ids.fresh(), cable: b.cable_v.clone() },
-        Op::AddCableMember { cable: b.cable, index: 5, member: CableMember::on_wire(b.wire2, None) },
-        Op::RemoveCableMember { cable: b.cable, index: 0, member: CableMember::on_wire(b.wire2, None) },
+        Op::AddCableMember { cable: b.cable, index: 5, member: Core::on_wire(b.wire2, None) },
+        Op::RemoveCableMember { cable: b.cable, index: 0, member: Core::on_wire(b.wire2, None) },
         Op::SetProperty { object: ObjectRef::Device(b.comp), key: "note".parse().unwrap(), before: None, after: None },
         Op::SetProperty { object: ObjectRef::Device(missing_comp), key: "note".parse().unwrap(), before: None, after: None },
         Op::EmbedDefinition { id: b.def, definition: b.def_v.clone() },
@@ -463,7 +463,7 @@ fn an_intermediate_state_that_breaks_an_invariant_still_commits() {
     // missing terminal.
     let ops = vec![
         Op::RemoveTerminal { id: b.term, terminal: b.term_v.clone() },
-        Op::RemoveCableMember { cable: b.cable, index: 0, member: CableMember::on_wire(b.wire, None) },
+        Op::RemoveCableMember { cable: b.cable, index: 0, member: Core::on_wire(b.wire, None) },
         Op::DeleteWire { id: b.wire, wire: b.wire_v.clone() },
         // The route landing on it is freed too (design 072 F31).
         Op::ModifyRoute {
@@ -488,7 +488,7 @@ fn a_later_op_sees_what_an_earlier_op_created() {
         Op::CreateDevice { id: comp, device: Device::default() },
         Op::AddTerminal { id: term, terminal: Terminal { component: comp, label: None, key: None, accepts: Default::default() } },
         Op::CreateWire { id: wire, wire: Wire::new(b.ids.fresh(), b.ids.fresh(), term, b.term3) },
-        Op::AddCableMember { cable: b.cable, index: 1, member: CableMember::on_wire(wire, None) },
+        Op::AddCableMember { cable: b.cable, index: 1, member: Core::on_wire(wire, None) },
     ];
     b.ledger.commit(Author::User, "chain", ops).unwrap();
     let doc = b.ledger.document();
@@ -553,7 +553,7 @@ fn queries_answer_from_the_index_as_a_scan_would() {
 fn undo_and_redo_use_the_kept_stacks_and_restore_state() {
     let mut b = base();
     let s2 = b.ledger.document().clone();
-    let ops = vec![Op::AddCableMember { cable: b.cable, index: 1, member: CableMember::on_wire(b.wire2, None) }];
+    let ops = vec![Op::AddCableMember { cable: b.cable, index: 1, member: Core::on_wire(b.wire2, None) }];
     b.ledger.commit(Author::User, "join", ops).unwrap();
     assert_eq!(b.ledger.undo_label(), Some("join"));
     b.ledger.undo(Author::User).unwrap();
@@ -901,9 +901,9 @@ impl Gen {
             30 => {
                 let mut members = Vec::new();
                 for _ in 0..self.rng.below(3) {
-                    members.push(CableMember::on_wire(self.cond(), None));
+                    members.push(Core::on_wire(self.cond(), None));
                 }
-                Op::CreateCable { id: fresh_in!(self, cables), cable: Cable { members, ..Cable::default() } }
+                Op::CreateCable { id: fresh_in!(self, cables), cable: Cable { cores: members, ..Cable::default() } }
             }
             31 => match self.rng.pick_key(&doc.cables) {
                 Some(id) => Op::DeleteCable { id, cable: doc.cables.get(&id).cloned().unwrap_or_default() },
@@ -911,18 +911,18 @@ impl Gen {
             },
             32..=33 => match self.rng.pick_key(&doc.cables) {
                 Some(cable) => {
-                    let len = doc.cables.get(&cable).map_or(0, |c| c.members.len());
+                    let len = doc.cables.get(&cable).map_or(0, |c| c.cores.len());
                     let index = self.rng.below(len + 1 + usize::from(spoil));
-                    Op::AddCableMember { cable, index, member: CableMember::on_wire(self.cond(), None) }
+                    Op::AddCableMember { cable, index, member: Core::on_wire(self.cond(), None) }
                 }
                 None => Op::CreateCable { id: fresh_in!(self, cables), cable: Cable::default() },
             },
             34 => {
-                let found = doc.cables.iter().filter(|(_, c)| !c.members.is_empty()).map(|(id, c)| (*id, c.members.clone())).nth(self.rng.below(2));
+                let found = doc.cables.iter().filter(|(_, c)| !c.cores.is_empty()).map(|(id, c)| (*id, c.cores.clone())).nth(self.rng.below(2));
                 match found {
                     Some((cable, members)) => {
                         let index = self.rng.below(members.len());
-                        let member = members.get(index).cloned().unwrap_or(CableMember::on_wire(self.cond(), None));
+                        let member = members.get(index).cloned().unwrap_or(Core::on_wire(self.cond(), None));
                         let index = index + usize::from(spoil);
                         Op::RemoveCableMember { cable, index, member }
                     }
@@ -1177,7 +1177,7 @@ fn a_panic_inside_the_preview_closure_leaves_document_indexes_and_log_unchanged(
         Op::CreateWire { id: b.ids.fresh(), wire: Wire::new(b.ids.fresh(), b.ids.fresh(), b.term3, b.term) },
         Op::AddItem { id: b.ids.fresh(), item: line(b.page, b.layer, 1.0) },
         Op::ModifyItem { id: b.item, before: b.item_v.clone(), after: line(b.page, b.layer, 7.0) },
-        Op::AddCableMember { cable: b.cable, index: 1, member: CableMember::on_wire(b.wire2, None) },
+        Op::AddCableMember { cable: b.cable, index: 1, member: Core::on_wire(b.wire2, None) },
         Op::SetProperty { object: ObjectRef::Device(b.comp), key: "note".parse().unwrap(), before: Some("K1".into()), after: Some("K2".into()) },
         Op::AddPage { id: b.ids.fresh(), page: Page::titled("2").unwrap(), index: 1 },
     ];

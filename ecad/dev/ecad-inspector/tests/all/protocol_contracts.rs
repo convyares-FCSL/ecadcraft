@@ -96,7 +96,7 @@ fn every_op_answers_in_shape_on_the_rich_fixture() {
         (json!({"op": "cables"}), |o| {
             assert_eq!(o["total"], 1);
             assert_eq!(o["rows"][0]["tag"], "-W1");
-            assert_eq!(o["rows"][0]["members"], json!([{"wire": "101", "core": "1"}]));
+            assert_eq!(o["rows"][0]["members"], json!([{"wire": "101", "core": "1", "purpose": "in use", "colours": null}]));
         }),
         (json!({"op": "branches"}), |o| {
             assert_eq!(o["total"], 2);

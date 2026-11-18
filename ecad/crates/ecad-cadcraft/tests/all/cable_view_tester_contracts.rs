@@ -797,7 +797,7 @@ fn ac3_fans_of_one_two_and_twenty_wires() {
     assert_eq!(tails(&mut h, page, twenty).len(), 40);
     // A fan cable left with one wire is drawn traditional on the page (design 009 §4.1): its
     // route is drawn, no panic.
-    let members: Vec<WireId> = h.doc().cables[&two].members.iter().filter_map(|m| m.wire()).collect();
+    let members: Vec<WireId> = h.doc().cables[&two].cores.iter().filter_map(|m| m.wire()).collect();
     h.run("ecaddelete", json!({"conductor": members[1].hex()})).unwrap();
     h.check();
     assert_eq!(view_of(&mut h, two), "fan");
@@ -908,7 +908,7 @@ fn ac3_hostile_coordinates_never_panic() {
     eprintln!("tiny wire accepted: {}", tiny.is_ok());
     if let Ok(r) = h.run("cableslash", json!({"from": [20, -1], "to": [20, 5]})) {
         let k: CableId = id(&r, "cable");
-        let n = h.doc().cables[&k].members.len();
+        let n = h.doc().cables[&k].cores.len();
         let r = h.run("cableview", json!({"cable": k.hex(), "view": "fan"}));
         h.check();
         eprintln!("tiny-reference cable of {n}: {r:?}, fan paths {:?}", fan_paths(&mut h, page));
@@ -931,11 +931,11 @@ fn ac3_a_fan_that_cannot_be_drawn_stays_traditional_and_says_so() {
     };
     let r = h.run("cableslash", json!({"from": [20, -3], "to": [20, 13]})).unwrap();
     let k: CableId = id(&r, "cable");
-    if h.doc().cables[&k].members.len() != 3 {
+    if h.doc().cables[&k].cores.len() != 3 {
         eprintln!("the slash does not take the overflowing wire: {r}; the fallback is not reachable from outside");
         return;
     }
-    assert_eq!(h.doc().cables[&k].members[1].wire(), Some(id::<WireId>(&huge, "conductor")), "the reference");
+    assert_eq!(h.doc().cables[&k].cores[1].wire(), Some(id::<WireId>(&huge, "conductor")), "the reference");
     let r = h.run("cableview", json!({"cable": k.hex(), "view": "fan"})).unwrap();
     assert_eq!(r["view"], "fan", "{r}");
     h.check();
@@ -1187,7 +1187,7 @@ fn the_fan_follows_route_edits_made_in_traditional_view() {
     eprintln!("connect: {joined:?}");
     let doc = g.h.doc();
     assert_eq!(doc.routes[&line].ends[1], ecad_model::RouteEnd::Point(to), "the moved end is on the point");
-    assert_eq!(doc.cables[&g.c1].members.len(), 3, "the core stays in the cable");
+    assert_eq!(doc.cables[&g.c1].cores.len(), 3, "the core stays in the cable");
     set(&mut g.h, g.c1, "fan");
     let end = Pt::new(60.0, 6.0);
     let paths = fan_paths(&mut g.h, g.page);

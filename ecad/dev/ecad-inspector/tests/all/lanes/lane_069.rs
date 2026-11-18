@@ -9,8 +9,8 @@ use std::time::Duration;
 
 use ecad_inspector::source::{FileSource, Source, VerifyState};
 use ecad_model::{
-    Author, Cable, CableMember, Color, Definition, Device, Folder, Form, IdAllocator, Item, ItemKind, Layer, LayerId, Ledger, LengthUnit, ObjectRef,
-    Op, Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation, StandardHeader, Style, StyleLayer, StyleRecord, StyleRef, Subject,
+    Author, Cable, Color, Core, Definition, Device, Folder, Form, IdAllocator, Item, ItemKind, Layer, LayerId, Ledger, LengthUnit, ObjectRef, Op,
+    Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation, StandardHeader, Style, StyleLayer, StyleRecord, StyleRef, Subject,
     SymbolInstance, Terminal, TerminalDef, Wire,
 };
 use serde_json::{Value, json};
@@ -124,7 +124,7 @@ fn every_op_ledger() -> Ledger {
         connection_points: Default::default(),
     };
     let cable: ecad_model::CableId = ids.fresh();
-    let cable_v = Cable { members: vec![CableMember::on_wire(wire, None)], ..Cable::default() };
+    let cable_v = Cable { cores: vec![Core::on_wire(wire, None)], ..Cable::default() };
     let folder: ecad_model::FolderId = ids.fresh();
     let folder_v = Folder { name: "F".into(), parent: None, start: None };
     let route_v = ecad_model::Route::new(
@@ -205,8 +205,8 @@ fn every_op_ledger() -> Ledger {
         Op::RemoveRoute { id: route, route: route_v.clone() },
         Op::CreateCable { id: ids.fresh(), cable: cable_v.clone() },
         Op::DeleteCable { id: cable, cable: cable_v.clone() },
-        Op::AddCableMember { cable, index: 1, member: CableMember::on_wire(wire2, Some("2".into())) },
-        Op::RemoveCableMember { cable, index: 0, member: CableMember::on_wire(wire, None) },
+        Op::AddCableMember { cable, index: 1, member: Core::on_wire(wire2, ecad_model::CoreLabel::new("2").ok()) },
+        Op::RemoveCableMember { cable, index: 0, member: Core::on_wire(wire, None) },
         Op::SetProperty { object: ObjectRef::Device(comp), key: "note".parse().unwrap(), before: Some("K1".into()), after: None },
         Op::EmbedDefinition { id: ids.fresh(), definition: def_v.clone() },
         Op::RemoveDefinition { id: def, definition: def_v.clone() },

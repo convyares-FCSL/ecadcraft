@@ -54,7 +54,7 @@ use std::time::Instant;
 
 use cadcraft_engine::Session;
 use ecad_cadcraft::ProjectHandle;
-use ecad_model::{Author, CableId, CableMember, CorePosition, DeviceId, ObjectRef, Op, PageId, Pt, RouteEnd, RouteId, Subject, TerminalId};
+use ecad_model::{Author, CableId, Core, CorePosition, DeviceId, ObjectRef, Op, PageId, Pt, RouteEnd, RouteId, Subject, TerminalId};
 use serde_json::json;
 
 use crate::measure::{median, path_text, remove};
@@ -185,7 +185,7 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
                 cable.properties.insert("tag".into(), format!("-W9{serial:04}"));
                 ops.push(Op::CreateCable { id: k, cable });
                 for (index, (route, landed)) in two.iter().enumerate() {
-                    let member = CableMember { position: CorePosition::Route { route: *route, landed: Some(*landed) }, core: None };
+                    let member = Core { position: CorePosition::Route { route: *route, landed: Some(*landed) }, ..Core::unplaced(None) };
                     ops.push(Op::AddCableMember { cable: k, index, member });
                 }
             }

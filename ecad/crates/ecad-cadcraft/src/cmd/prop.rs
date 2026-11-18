@@ -143,6 +143,14 @@ impl Command for SetpropParams {
                     }
                     Ok(record_answer(p, object, &key, changed))
                 }
+                Build::Ops(_) => {
+                    let ops = rules::plan_ops(doc, object, &key, typed.as_deref())?;
+                    let changed = !ops.is_empty();
+                    if changed {
+                        p.apply_edit(pg, "setprop", "Set property", ops)?;
+                    }
+                    Ok(record_answer(p, object, &key, changed))
+                }
             }
         })
     }

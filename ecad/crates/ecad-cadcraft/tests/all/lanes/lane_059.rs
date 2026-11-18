@@ -53,7 +53,7 @@ fn cablenew_makes_a_cable_that_is_not_drawn_in_one_transaction() {
     assert_eq!(r["tag"], json!("-W01"), "{r}");
     let (label, ops) = last_tx(&mut h);
     assert_eq!(label, "Create cable");
-    assert!(matches!(ops.as_slice(), [Op::CreateCable { cable, .. }] if cable.members.is_empty()), "{ops:?}");
+    assert!(matches!(ops.as_slice(), [Op::CreateCable { cable, .. }] if cable.cores.is_empty()), "{ops:?}");
     let doc = h.doc();
     assert!(!cable_cmds::is_drawn(&doc, k));
     let rows = checks_of(&mut h, "cable-not-drawn");
@@ -188,7 +188,8 @@ fn slashing_onto_a_cable_not_drawn_assigns_its_cores_in_order() {
     let (label, _) = last_tx(&mut h);
     assert_eq!(label, "Cable slash");
     let doc = h.doc();
-    let members: Vec<(WireId, Option<String>)> = doc.cables[&k].members.iter().filter_map(|m| Some((m.wire()?, m.core.clone()))).collect();
+    let members: Vec<(WireId, Option<String>)> =
+        doc.cables[&k].cores.iter().filter_map(|m| Some((m.wire()?, m.label_str().map(str::to_string)))).collect();
     assert_eq!(members, vec![(ws[0], Some("1".into())), (ws[1], Some("2".into())), (ws[2], Some("3".into()))]);
     assert!(checks_of(&mut h, "cable-not-drawn").is_empty());
     let open = checks_of(&mut h, "core-open");
@@ -293,7 +294,7 @@ fn a_cable_not_drawn_survives_join_and_the_report_lists_it() {
     let doc2 = h.doc();
     let ops = ecad_model::merge::join_cables(&doc2, k, w).unwrap();
     assert!(matches!(ops.last(), Some(Op::DeleteCable { id, .. }) if *id == k));
-    assert!(doc.cables[&k].members.is_empty());
+    assert!(doc.cables[&k].cores.is_empty());
 }
 
 #[test]
@@ -331,7 +332,8 @@ fn the_slash_tool_picks_a_cable_by_its_cable_keyword() {
     h.cmdline("-5,25");
     h.cmdline("500,25");
     let doc = h.doc();
-    let members: Vec<(WireId, Option<String>)> = doc.cables[&k].members.iter().filter_map(|m| Some((m.wire()?, m.core.clone()))).collect();
+    let members: Vec<(WireId, Option<String>)> =
+        doc.cables[&k].cores.iter().filter_map(|m| Some((m.wire()?, m.label_str().map(str::to_string)))).collect();
     assert_eq!(members, vec![(ws[0], Some("1".into())), (ws[1], Some("2".into()))]);
     assert_eq!(doc.cables.len(), 1, "no new cable");
     // `New` (the default) makes a new cable with the next free tag.

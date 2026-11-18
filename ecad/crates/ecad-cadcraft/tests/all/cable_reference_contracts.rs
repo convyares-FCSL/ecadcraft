@@ -24,7 +24,7 @@ use ecad_cadcraft::references::markers_on_page;
 use ecad_cadcraft::{Mapped, ProjectHandle};
 use ecad_model::derive::{cable_references, nets};
 use ecad_model::{
-    Cable, CableId, CableMember, Color, Document, Form, Item, ItemId, ItemKind, Layer, LayerId, Op, Page, PageId, Primitive, Pt, Representation,
+    Cable, CableId, Color, Core, Document, Form, Item, ItemId, ItemKind, Layer, LayerId, Op, Page, PageId, Primitive, Pt, Representation,
     RepresentationId, Style, Subject, TerminalId, WireId,
 };
 use serde_json::{Value, json};
@@ -655,7 +655,7 @@ fn hostile_documents_derive_without_panicking() {
     doc.pages.insert(page, Page::titled("1").unwrap());
     doc.page_order.push(page);
     doc.layers.insert(layer, Layer { name: "0".into() });
-    doc.cables.insert(cable, Cable { properties: Default::default(), members: Vec::<CableMember>::new() });
+    doc.cables.insert(cable, Cable { properties: Default::default(), cores: Vec::<Core>::new() });
     let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     for (i, x) in [0.0, 50.0, 100.0, 150.0, f64::NAN].into_iter().enumerate() {
         let item = ItemId::from(100 + i as u128);
@@ -694,7 +694,7 @@ fn hostile_documents_derive_without_panicking() {
     two.pages.insert(lost_page, Page::titled("lost").unwrap());
     two.page_order.push(page);
     two.layers.insert(layer, Layer { name: "0".into() });
-    two.cables.insert(cable, Cable { properties: Default::default(), members: Vec::new() });
+    two.cables.insert(cable, Cable { properties: Default::default(), cores: Vec::new() });
     for (i, pg) in [page, lost_page].into_iter().enumerate() {
         let item = ItemId::from(300 + i as u128);
         two.items.insert(item, Item { page: pg, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(10.0, 0.0) }) });
@@ -733,7 +733,7 @@ fn twenty_thousand_references_of_one_cable_stay_bounded_and_fast() {
     doc.pages.insert(page, Page::titled("1").unwrap());
     doc.page_order.push(page);
     doc.layers.insert(layer, Layer { name: "0".into() });
-    doc.cables.insert(cable, Cable { properties: Default::default(), members: Vec::new() });
+    doc.cables.insert(cable, Cable { properties: Default::default(), cores: Vec::new() });
     let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     let n: usize = 20_000;
     for i in 0..n {
@@ -847,7 +847,7 @@ fn a_ten_thousand_wire_cable_continues_in_bounded_time() {
         let (lines, made) = crate::common::wired_lines(&mut p.ids, supply, style.clone(), n, |i| (Pt::new(0.0, i as f64), Pt::new(60.0, i as f64)));
         ops.extend(lines);
         for (i, (c, _, _)) in made.into_iter().enumerate() {
-            ops.push(Op::AddCableMember { cable, index: i, member: CableMember::on_wire(c, None) });
+            ops.push(Op::AddCableMember { cable, index: i, member: Core::on_wire(c, None) });
         }
         let (it, r): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
         ops.push(Op::AddItem { id: it, item: Item { page: supply, style, kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(65.0, 0.0) }) } });
@@ -913,7 +913,7 @@ fn assert_flag_away(h: &mut H, page: PageId, cable: CableId, u: Pt) {
     let along = |p: Pt| (p.x - m.at.x) * u.x + (p.y - m.at.y) * u.y;
     // The wires leave the point the other way.
     let routes: Vec<Pt> = doc.cables[&cable]
-        .members
+        .cores
         .iter()
         .filter_map(|x| x.wire().and_then(|w| crate::common::wire_line(&doc, w, page)).and_then(|(_, p)| p.path_ends()))
         .map(|(a, b)| if a.dist(m.at) <= b.dist(m.at) { b } else { a })

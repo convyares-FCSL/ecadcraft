@@ -294,13 +294,13 @@ fn a_swap_by_renumber_keeps_wires_and_cores() {
     // Exchange their places: 3 right by 50, 4 left by 50 (wires follow).
     t.h.run("move", json!({"handles": [h3.hex()], "delta": [60, 0]})).unwrap();
     t.h.run("move", json!({"handles": [h4.hex()], "delta": [-60, 0]})).unwrap();
-    let members_before = t.h.doc().cables[&t.cable].members.clone();
+    let members_before = t.h.doc().cables[&t.cable].cores.clone();
     let ends: Vec<_> = terms.iter().map(|x| t.h.doc().ends_at(*x)).collect();
     t.h.run("renumber", json!({"kind": "terminals"})).unwrap();
     assert_eq!(labels(&mut t.h, &terms), ["1", "2", "4", "3"]);
     let d = t.h.doc();
     assert_eq!(terms.iter().map(|x| d.ends_at(*x)).collect::<Vec<_>>(), ends, "wires stay attached");
-    assert_eq!(d.cables[&t.cable].members, members_before, "cores unchanged");
+    assert_eq!(d.cables[&t.cable].cores, members_before, "cores unchanged");
     let plan = t.h.run("stripplan", json!({})).unwrap();
     let rows = plan["strips"][0]["rows"].as_array().unwrap();
     assert_eq!(rows[2]["terminal"], json!(terms[3].hex()), "row 3 is the moved terminal: {plan}");

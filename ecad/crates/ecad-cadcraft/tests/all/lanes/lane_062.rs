@@ -30,7 +30,7 @@ fn the_builder_makes_pages_devices_a_wire_and_a_cable() {
     assert_eq!(added, vec![doc.page_order[1]]);
     assert!(doc.devices.contains_key(&k1) && doc.devices.contains_key(&k2));
     assert!(doc.wires.contains_key(&wire), "the wire between the coils");
-    assert!(doc.cables[&cable].members.is_empty(), "a cable made by `cablenew` is not drawn");
+    assert!(doc.cables[&cable].cores.is_empty(), "a cable made by `cablenew` is not drawn");
     assert_eq!(doc.representations_of(Subject::Device(k1)).count(), 1);
 }
 

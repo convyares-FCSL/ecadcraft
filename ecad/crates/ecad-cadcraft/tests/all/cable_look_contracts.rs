@@ -78,7 +78,7 @@ fn core(h: &mut H, w: WireId, core: Value) -> Result<Value, String> {
 }
 
 fn cores(h: &mut H, k: CableId) -> Vec<Option<String>> {
-    h.doc().cables[&k].members.iter().map(|m| m.core.clone()).collect()
+    h.doc().cables[&k].cores.iter().map(|m| m.label_str().map(str::to_string)).collect()
 }
 
 fn last_tx(h: &mut H) -> Transaction {
@@ -187,7 +187,7 @@ fn b_json_core_label_is_one_transaction_of_two_existing_ops() {
     assert_eq!(f.h.head(), head + 1);
     let t = last_tx(&mut f.h);
     assert_eq!(t.label, "Core label");
-    let member = |core: Option<&str>| ecad_model::CableMember::on_wire(f.wires[0], core.map(str::to_string));
+    let member = |core: Option<&str>| ecad_model::Core::on_wire(f.wires[0], core.and_then(|c| ecad_model::CoreLabel::new(c).ok()));
     assert_eq!(
         t.ops,
         vec![
@@ -197,7 +197,7 @@ fn b_json_core_label_is_one_transaction_of_two_existing_ops() {
     );
     let after = f.h.doc();
     let mut expect = before.clone();
-    expect.cables.get_mut(&f.c1).unwrap().members[0].core = Some("1".into());
+    expect.cables.get_mut(&f.c1).unwrap().cores[0].label = ecad_model::CoreLabel::new("1").ok();
     assert_eq!(after, expect, "only the core changed");
     // The same value again: no transaction.
     let r = core(&mut f.h, f.wires[0], json!("1")).unwrap();
@@ -602,7 +602,7 @@ fn k_hover_and_trail_show_cores() {
     let doc = f.h.doc();
     assert_eq!(ecad_cadcraft::debug::object_label(&doc, ecad_cadcraft::debug::ObjectId::Wire(f.wires[2])), "W3 · core 3");
     let snap = f.h.run("ecadinspect", json!({})).unwrap();
-    assert!(snap.to_string().contains("\"core\":\"3\""), "ecadinspect shows the core");
+    assert!(snap.to_string().contains("\"label\":\"3\""), "ecadinspect shows the core");
 }
 
 /// Check L: computed drawing cannot be edited; the reference point can be moved.

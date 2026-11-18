@@ -31,8 +31,14 @@ fn core_positions_come_back_from_the_snapshot_and_the_log() {
     let mut f = fixture();
     let (r, k): (RouteId, CableId) = (f.ids.fresh(), f.ids.fresh());
     let loose = Route::new(f.page, vec![Pt::new(0.0, 0.0), Pt::new(40.0, 0.0)], [RouteEnd::Free, RouteEnd::Free]);
-    let on_line = CableMember { position: CorePosition::Route { route: r, landed: None }, core: Some("1".into()) };
-    let spare = CableMember { position: CorePosition::Unplaced, core: Some("2".into()) };
+    // Design 072 §4.5 (c1): a core's label, colours and purpose come back as written too.
+    let on_line = Core { position: CorePosition::Route { route: r, landed: None }, ..Core::unplaced(CoreLabel::new("1").ok()) };
+    let spare = Core {
+        label: CoreLabel::new("2").ok(),
+        colours: ecad_model::wire::Colours::parse("BN"),
+        purpose: Purpose::Spare,
+        position: CorePosition::Unplaced,
+    };
     f.ledger
         .commit(
             Author::User,

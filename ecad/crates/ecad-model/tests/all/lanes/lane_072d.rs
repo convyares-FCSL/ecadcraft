@@ -384,7 +384,7 @@ fn a_point_cut_out_of_a_chain_joins_its_neighbours() {
 
 /// The core of cable `k`, as stored.
 fn core_of(l: &Ledger, k: ecad_model::CableId) -> Vec<ecad_model::CorePosition> {
-    l.document().cables.get(&k).map(|c| c.members.iter().map(|m| m.position).collect()).unwrap_or_default()
+    l.document().cables.get(&k).map(|c| c.cores.iter().map(|m| m.position).collect()).unwrap_or_default()
 }
 
 #[test]
@@ -392,7 +392,7 @@ fn a_core_on_a_loose_line_moves_onto_the_wire_when_the_second_end_lands() {
     // Owner ruling, 2026-11-18: a loose line carries no wire; a core on it sits on the route with
     // its landed end; the command landing the second end moves it onto the wire, in the same
     // transaction, and one undo takes both back.
-    use ecad_model::{Cable, CableId, CableMember, CorePosition, RouteEnd, RouteId};
+    use ecad_model::{Cable, CableId, Core, CorePosition, RouteEnd, RouteId};
     let mut ids = IdAllocator::seeded(43);
     let mut l = Ledger::new(43);
     let (p, a, b) = page_with_points(&mut l, &mut ids);
@@ -400,7 +400,8 @@ fn a_core_on_a_loose_line_moves_onto_the_wire_when_the_second_end_lands() {
     let loose = route(p, &[(0.0, 0.0), (5.0, 0.0)], RouteEnd::Point(a), RouteEnd::Free);
     l.commit(Author::User, "loose", vec![Op::AddRoute { id: r, route: loose.clone() }]).unwrap();
     assert!(wires(&l).is_empty(), "a loose line carries no wire");
-    let on_line = CableMember { position: CorePosition::Route { route: r, landed: Some(a) }, core: Some("1".into()) };
+    let on_line =
+        Core { position: CorePosition::Route { route: r, landed: Some(a) }, ..ecad_model::Core::unplaced(ecad_model::CoreLabel::new("1").ok()) };
     l.commit(
         Author::User,
         "slash",
@@ -413,7 +414,7 @@ fn a_core_on_a_loose_line_moves_onto_the_wire_when_the_second_end_lands() {
     l.commit(Author::User, "land", vec![Op::ModifyRoute { id: r, before: loose.clone(), after: landed.clone() }]).unwrap();
     let w = *l.document().wires.keys().next().unwrap();
     assert_eq!(core_of(&l, k), vec![CorePosition::Wire(w)]);
-    assert_eq!(l.document().cables.get(&k).unwrap().members[0].core.as_deref(), Some("1"));
+    assert_eq!(l.document().cables.get(&k).unwrap().cores[0].label_str(), Some("1"));
     assert_eq!(l.document().cables_of(w), vec![k]);
     assert!(l.document().cables_on_route(r).is_empty());
     l.document().check_index().unwrap();
@@ -430,20 +431,20 @@ fn a_core_on_a_loose_line_moves_onto_the_wire_when_the_second_end_lands() {
     let free = ecad_model::Route { ends: [RouteEnd::Free, RouteEnd::Free], ..loose.clone() };
     l.commit(Author::User, "free", vec![Op::ModifyRoute { id: r, before: loose, after: free.clone() }]).unwrap();
     assert_eq!(core_of(&l, k), vec![CorePosition::Route { route: r, landed: None }]);
-    // Erasing the line: the core leaves the cable.
+    // Erasing the line: the labelled core is one of the cable's core set and stays, unplaced.
     l.commit(Author::User, "erase", vec![Op::RemoveRoute { id: r, route: free }]).unwrap();
-    assert!(core_of(&l, k).is_empty());
+    assert_eq!(core_of(&l, k), vec![CorePosition::Unplaced]);
     l.document().check_index().unwrap();
 }
 
 #[test]
 fn a_core_must_sit_on_something_that_exists_and_once() {
-    use ecad_model::{Cable, CableId, CableMember, CorePosition, RouteId};
+    use ecad_model::{Cable, CableId, Core, CorePosition, RouteId};
     let mut ids = IdAllocator::seeded(44);
     let mut l = Ledger::new(44);
     let (_, a, _) = page_with_points(&mut l, &mut ids);
     let (k, r): (CableId, RouteId) = (ids.fresh(), ids.fresh());
-    let missing = CableMember { position: CorePosition::Route { route: r, landed: Some(a) }, core: None };
+    let missing = Core { position: CorePosition::Route { route: r, landed: Some(a) }, ..ecad_model::Core::unplaced(None) };
     let refused = l.commit(
         Author::User,
         "bad",
@@ -451,7 +452,7 @@ fn a_core_must_sit_on_something_that_exists_and_once() {
     );
     assert!(refused.is_err(), "a core on a route that does not exist is refused");
     // Unplaced cores are allowed, any number of them.
-    let unplaced = CableMember { position: CorePosition::Unplaced, core: None };
+    let unplaced = Core { position: CorePosition::Unplaced, ..ecad_model::Core::unplaced(None) };
     l.commit(
         Author::User,
         "spare",
@@ -617,4 +618,54 @@ fn a_point_accepting_more_than_two_fans_out_and_one_accepting_two_chains() {
         assert_eq!(ecad_model::wire_order::accepts(doc, a), n as usize);
         assert!(doc.ends_at(a).len() <= n as usize, "never more than it accepts here");
     }
+}
+
+#[test]
+fn a_cores_purpose_is_kept_apart_from_its_position() {
+    // Design 072 §4.5 (c1): moving a core from its line to the wire keeps its purpose and colours;
+    // erasing a line keeps a labelled or spare core unplaced and drops an unlabelled in-use one.
+    use ecad_model::{Cable, CableId, Core, CoreLabel, CorePosition, Purpose, RouteEnd, RouteId};
+    let mut ids = IdAllocator::seeded(46);
+    let mut l = Ledger::new(46);
+    let (p, a, b) = page_with_points(&mut l, &mut ids);
+    let (r, r2, k): (RouteId, RouteId, CableId) = (ids.fresh(), ids.fresh(), ids.fresh());
+    let loose = route(p, &[(0.0, 0.0), (5.0, 0.0)], RouteEnd::Point(a), RouteEnd::Free);
+    let other = route(p, &[(0.0, 9.0), (5.0, 9.0)], RouteEnd::Free, RouteEnd::Free);
+    let spare =
+        Core { label: None, colours: Colours::parse("BU"), purpose: Purpose::Spare, position: CorePosition::Route { route: r, landed: Some(a) } };
+    let plain = Core { position: CorePosition::Route { route: r2, landed: None }, ..Core::unplaced(None) };
+    l.commit(
+        Author::User,
+        "slash",
+        vec![
+            Op::AddRoute { id: r, route: loose.clone() },
+            Op::AddRoute { id: r2, route: other.clone() },
+            Op::CreateCable { id: k, cable: Cable::default() },
+            Op::AddCableMember { cable: k, index: 0, member: spare.clone() },
+            Op::AddCableMember { cable: k, index: 1, member: plain },
+        ],
+    )
+    .unwrap();
+    let landed = ecad_model::Route { ends: [RouteEnd::Point(a), RouteEnd::Point(b)], ..loose.clone() };
+    l.commit(Author::User, "land", vec![Op::ModifyRoute { id: r, before: loose, after: landed.clone() }]).unwrap();
+    let w = *l.document().wires.keys().next().unwrap();
+    let cores = l.document().cables.get(&k).unwrap().cores.clone();
+    assert_eq!(cores[0], Core { position: CorePosition::Wire(w), ..spare.clone() }, "purpose and colours ride along");
+    // Erase both lines: the spare core stays unplaced, the unlabelled in-use core goes.
+    l.commit(Author::User, "erase", vec![Op::RemoveRoute { id: r, route: landed }, Op::RemoveRoute { id: r2, route: other }]).unwrap();
+    let cores = l.document().cables.get(&k).unwrap().cores.clone();
+    assert_eq!(cores, vec![Core { position: CorePosition::Unplaced, ..spare }]);
+    l.document().check_index().unwrap();
+    l.undo(Author::User).unwrap();
+    assert_eq!(l.document().cables.get(&k).unwrap().cores.len(), 2, "one undo brings both back");
+    // Strict reads: a purpose word ECAD does not know, or a label with spaces at its ends, is refused.
+    for (bad, why) in [
+        (r#"{"label":null,"colours":null,"purpose":"unused","position":"unplaced"}"#, "purpose"),
+        (r#"{"label":" 1","colours":null,"purpose":"spare","position":"unplaced"}"#, "label"),
+    ] {
+        assert!(serde_json::from_str::<Core>(bad).is_err(), "{why}: {bad}");
+    }
+    let good: Core = serde_json::from_str(r#"{"label":"PE","colours":"GN/YE","purpose":"spare","position":"unplaced"}"#).unwrap();
+    assert_eq!(good.label, CoreLabel::new("PE").ok());
+    assert!(good.is_spare());
 }

@@ -29,8 +29,8 @@ use ecad_cadcraft::look::{self, MarkerEnd, Role, Shape};
 use ecad_cadcraft::views::{self, FanOnPage, Settings};
 use ecad_cadcraft::{Persistence, Project, ProjectHandle};
 use ecad_model::{
-    CableId, CableMember, Color, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId, Style, Subject,
-    Transaction, WireId,
+    CableId, Color, Core, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId, Style, Subject, Transaction,
+    WireId,
 };
 use serde_json::{Value, json};
 
@@ -115,7 +115,7 @@ fn last_tx(h: &mut H) -> Transaction {
 }
 
 fn cores(h: &mut H, k: CableId) -> Vec<Option<String>> {
-    h.doc().cables[&k].members.iter().map(|m| m.core.clone()).collect()
+    h.doc().cables[&k].cores.iter().map(|m| m.label_str().map(str::to_string)).collect()
 }
 
 fn view(h: &mut H, k: CableId, v: &str) {
@@ -219,10 +219,14 @@ fn reference_end(h: &mut H, page: PageId, cable: CableId, at: Pt, n: u128) -> (I
 /// Store `core` on member `index` of `cable` with the design §5.3 pair, bypassing `cablecore`'s
 /// validation (a label stored "by another route", design §4.5).
 fn store_core_raw(h: &mut H, cable: CableId, index: usize, core: Option<&str>) {
-    let m = h.doc().cables[&cable].members[index].clone();
+    let m = h.doc().cables[&cable].cores[index].clone();
     let ops = vec![
         Op::RemoveCableMember { cable, index, member: m.clone() },
-        Op::AddCableMember { cable, index, member: CableMember { position: m.position, core: core.map(str::to_string) } },
+        Op::AddCableMember {
+            cable,
+            index,
+            member: Core { position: m.position, ..Core::unplaced(core.and_then(|c| ecad_model::CoreLabel::new(c).ok())) },
+        },
     ];
     h.project.apply_ops(&mut h.s, "Core label", ops).unwrap();
     h.check();
@@ -703,15 +707,16 @@ fn ac2_moving_and_extra_references() {
 
 // --------------------------------------------------------------------------- AC6 hostile
 
-/// AC6: labels stored by another route (bypassing `cablecore`): 1000 characters, control
-/// characters, only spaces, empty cable tag and wire tag, a 1000-character designation. Both
-/// views draw them shortened or not at all, never panic, and the projection stays consistent.
+/// AC6: labels stored by another route (bypassing `cablecore`): the longest a core label holds
+/// (32 characters, design 072 §4.5: longer or control characters no longer store), only spaces,
+/// empty cable tag and wire tag, a 1000-character designation. Both views draw them whole,
+/// shortened or not at all, never panic, and the projection stays consistent.
 #[test]
 fn ac6_long_and_empty_labels_draw_safely_in_both_views() {
     let mut f = fixture(true, true);
-    let long = "L".repeat(1000);
+    let long = "L".repeat(ecad_model::MAX_CORE_LABEL);
     store_core_raw(&mut f.h, f.c1, 0, Some(&long));
-    store_core_raw(&mut f.h, f.c1, 1, Some("a\nb\u{7}"));
+    store_core_raw(&mut f.h, f.c1, 1, Some(&"ü".repeat(ecad_model::MAX_CORE_LABEL)));
     store_core_raw(&mut f.h, f.c1, 2, Some("   "));
     store_core_raw(&mut f.h, f.c1, 3, Some(""));
     f.h.run("setprop", json!({"cable": f.c1.hex(), "key": "tag", "value": ""})).ok();
@@ -719,14 +724,14 @@ fn ac6_long_and_empty_labels_draw_safely_in_both_views() {
     f.h.run("wirenumber", json!({"conductor": f.wires[1].hex(), "value": ""})).ok();
     f.h.run("wirenumber", json!({"conductor": f.wires[2].hex(), "value": "T".repeat(24)})).unwrap();
     f.h.check();
-    let shown32 = format!("{}…", "L".repeat(31));
+    let shown32 = "L".repeat(32);
     let shown24 = |c: &str| format!("{}…", c.repeat(23));
     for fan_view in [false, true] {
         view(&mut f.h, f.c1, if fan_view { "fan" } else { "traditional" });
         f.h.check();
         let texts: Vec<String> = layer_texts(&mut f.h, f.page).into_iter().map(|t| t.2).collect();
-        assert!(texts.contains(&shown32), "1000-char core shortened to 32: {texts:?}");
-        assert!(texts.iter().any(|t| t == "a?b?"), "control characters drawn as ?: {texts:?}");
+        assert!(texts.contains(&shown32), "a 32-character core drawn whole: {texts:?}");
+        assert!(texts.contains(&"ü".repeat(32)), "32 scalar values drawn whole: {texts:?}");
         assert!(texts.iter().all(|t| !t.trim().is_empty()), "blank labels draw nothing: {texts:?}");
         assert!(texts.iter().all(|t| t.chars().count() <= 32), "{texts:?}");
         assert!(texts.iter().all(|t| !t.chars().any(char::is_control)), "{texts:?}");
@@ -895,7 +900,7 @@ fn ac6_twenty_core_cable_at_a_tight_pitch() {
             ws.push(w);
         }
         let k: CableId = id(&h.run("cableslash", json!({"from": p(40.0, -2.0), "to": p(40.0, 21.0)})).unwrap(), "cable");
-        assert_eq!(h.doc().cables[&k].members.len(), 20);
+        assert_eq!(h.doc().cables[&k].cores.len(), 20);
         let head = h.head();
         let labels: Vec<String> = (1..=20).map(|i| i.to_string()).collect();
         h.run("cablecore", json!({"cable": k.hex(), "cores": labels})).unwrap();

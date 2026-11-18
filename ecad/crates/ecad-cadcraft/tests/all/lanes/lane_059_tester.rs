@@ -301,7 +301,7 @@ fn r3_reducing_cores_below_those_assigned_is_refused_naming_them() {
     let k = new_cable(&mut h, json!({"cores": "BN,BK,GY,GNYE"}));
     slash_across(&mut h, (-5.0, 25.0), (25.0, 25.0), Some(k)).unwrap();
     let doc = h.doc();
-    let labels: Vec<Option<String>> = doc.cables[&k].members.iter().map(|m| m.core.clone()).collect();
+    let labels: Vec<Option<String>> = doc.cables[&k].cores.iter().map(|m| m.label_str().map(str::to_string)).collect();
     assert_eq!(labels, vec![Some("BN".into()), Some("BK".into()), Some("GY".into())]);
     // A list without GY, or with too few: refused, naming the cores in use.
     for (cores, words) in
@@ -415,7 +415,8 @@ fn r6_assign_follows_the_crossing_order_and_the_core_labels() {
     let r = slash_across(&mut h, (25.0, 25.0), (-5.0, 25.0), Some(k)).unwrap();
     assert_eq!(r["assigned"], json!(true), "{r}");
     let doc = h.doc();
-    let members: Vec<(WireId, Option<String>)> = doc.cables[&k].members.iter().filter_map(|m| Some((m.wire()?, m.core.clone()))).collect();
+    let members: Vec<(WireId, Option<String>)> =
+        doc.cables[&k].cores.iter().filter_map(|m| Some((m.wire()?, m.label_str().map(str::to_string)))).collect();
     assert_eq!(members, vec![(ws[2], Some("BN".into())), (ws[1], Some("BK".into())), (ws[0], Some("GY".into()))]);
     // The spare core reads "not assigned".
     let open = checks_of(&mut h, "core-open");
@@ -440,7 +441,7 @@ fn r6_cableadd_onto_a_cable_not_drawn_takes_its_free_cores_in_order() {
     let k = new_cable(&mut h, json!({"cores": "3G"}));
     h.run("cableadd", json!({"conductors": [ws[0].hex(), ws[1].hex()], "cable": k.hex()})).unwrap();
     let doc = h.doc();
-    let labels: Vec<Option<String>> = doc.cables[&k].members.iter().map(|m| m.core.clone()).collect();
+    let labels: Vec<Option<String>> = doc.cables[&k].cores.iter().map(|m| m.label_str().map(str::to_string)).collect();
     assert_eq!(labels, vec![Some("1".into()), Some("2".into())]);
     assert!(checks_of(&mut h, "cable-not-drawn").is_empty());
 }
@@ -721,7 +722,7 @@ fn r8_every_command_is_one_transaction_with_exact_undo_and_redo() {
         assert_eq!(h.head(), head + 1, "{cmd}: one transaction");
         states.push(h.doc());
     }
-    assert_eq!(h.doc().cables[&k].members.iter().filter_map(|m| m.wire()).collect::<Vec<_>>(), ws);
+    assert_eq!(h.doc().cables[&k].cores.iter().filter_map(|m| m.wire()).collect::<Vec<_>>(), ws);
     // Undo all the way back, each step exact; then redo all, each step exact.
     for i in (0..states.len() - 1).rev() {
         h.run("u", json!({})).unwrap();
@@ -919,7 +920,8 @@ fn f3_the_slash_tool_assigns_a_picked_cable_not_drawn_in_crossing_order() {
     assert_eq!(label, "Cable slash");
     assert_eq!(ops.iter().filter(|o| matches!(o, Op::AddCableMember { .. })).count(), 3);
     let doc = h.doc();
-    let members: Vec<(WireId, Option<String>)> = doc.cables[&k].members.iter().filter_map(|m| Some((m.wire()?, m.core.clone()))).collect();
+    let members: Vec<(WireId, Option<String>)> =
+        doc.cables[&k].cores.iter().filter_map(|m| Some((m.wire()?, m.label_str().map(str::to_string)))).collect();
     assert_eq!(members, vec![(ws[2], Some("BN".into())), (ws[1], Some("BK".into())), (ws[0], Some("GY".into()))]);
     h.run("u", json!({})).unwrap();
     assert!(!cable_cmds::is_drawn(&h.doc(), k), "one undo: not drawn again");

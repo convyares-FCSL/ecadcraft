@@ -227,7 +227,7 @@ pub fn trace_subject(doc: &Document, s: RatedSubject) -> Found {
         RatedSubject::Cable(k) => {
             let mut all = Found::default();
             let Some(cable) = doc.cables.get(&k) else { return all };
-            for w in cable.members.iter().filter_map(|m| m.wire()) {
+            for w in cable.cores.iter().filter_map(|m| m.wire()) {
                 let f = trace_nets(doc, conn.net_of_conductor(w));
                 all.bounded |= f.bounded;
                 all.path.extend(f.path);

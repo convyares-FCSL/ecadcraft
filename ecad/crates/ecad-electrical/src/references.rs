@@ -290,7 +290,7 @@ pub fn check_reference(doc: &Document, page: PageId, cable: CableId) -> Result<(
     if refs.len() >= MAX_REFERENCES_PER_CABLE {
         return Err(CmdError::refused(already_continues(doc, cable)));
     }
-    if !c.members.iter().any(|m| crate::cables::member_pages(doc, m).contains(&page)) {
+    if !c.cores.iter().any(|m| crate::cables::member_pages(doc, m).contains(&page)) {
         return Err(CmdError::refused(no_wires_here(doc, cable)));
     }
     Ok(())
@@ -374,9 +374,9 @@ pub fn plan_continue(
         ecad_model::ItemKind::Primitive(ecad_model::Primitive::Point { at }) if at.is_finite() => Some(*at),
         _ => None,
     });
-    let in_cable: BTreeSet<WireId> = c.members.iter().filter_map(|m| m.wire()).collect();
+    let in_cable: BTreeSet<WireId> = c.cores.iter().filter_map(|m| m.wire()).collect();
     let candidates: Vec<WireId> = match members {
-        None => c.members.iter().filter_map(|m| m.wire()).collect(),
+        None => c.cores.iter().filter_map(|m| m.wire()).collect(),
         Some(list) => {
             if list.len() > crate::slash::MAX_CABLE_MEMBERS {
                 return Err(CmdError::refused(too_many_members()));
@@ -686,7 +686,7 @@ impl Snapshot {
         if scope.is_some() {
             let with_refs: BTreeSet<CableId> = refs.iter().map(|r| r.cable).collect();
             for k in with_refs {
-                let list = doc.cables.get(&k).map(|c| c.members.as_slice()).unwrap_or_default();
+                let list = doc.cables.get(&k).map(|c| c.cores.as_slice()).unwrap_or_default();
                 let state: MemberState = list
                     .iter()
                     .map(|m| {
@@ -775,7 +775,7 @@ pub fn hover_lines(doc: &Document, reference: RepresentationId) -> Option<Vec<St
             // says `… and N more`.
             let shown: BTreeSet<ecad_model::TerminalId> =
                 ecad_model::derive::terminal_positions(doc, o.page).into_iter().map(|(t, _, _)| t).collect();
-            let members = doc.cables.get(&r.cable).map(|c| c.members.as_slice()).unwrap_or_default();
+            let members = doc.cables.get(&r.cable).map(|c| c.cores.as_slice()).unwrap_or_default();
             for m in members.iter().filter(|m| crate::cables::member_pages(doc, m).contains(&o.page)) {
                 if lines.len() > crate::words::MAX_HOVER_LINES {
                     break;
@@ -860,7 +860,7 @@ fn continuation_groups(doc: &Document, members: &[WireId]) -> BTreeMap<String, V
 /// stored; cost proportional to the cable's members, each visited once (a cycle ends).
 pub fn core_chains(doc: &Document, cable: CableId) -> Vec<Vec<WireId>> {
     let Some(c) = doc.cables.get(&cable) else { return Vec::new() };
-    let members: Vec<WireId> = c.members.iter().take(crate::slash::MAX_CABLE_MEMBERS).filter_map(|m| m.wire()).collect();
+    let members: Vec<WireId> = c.cores.iter().take(crate::slash::MAX_CABLE_MEMBERS).filter_map(|m| m.wire()).collect();
     let n = members.len();
     let mut next: Vec<Vec<usize>> = vec![Vec::new(); n];
     for g in continuation_groups(doc, &members).values() {
@@ -958,15 +958,16 @@ pub fn plan_slash_continue(doc: &Document, page: PageId, cable: CableId, crossed
     if doc.representations_of(Subject::Cable(cable)).any(|(_, r)| r.page == page && r.role == "slash") {
         return Err(CmdError::refused(format!("{tag} already has a slash on this page.")));
     }
-    if c.members.len().saturating_add(crossed.len()) > crate::slash::MAX_CABLE_MEMBERS {
+    if c.cores.len().saturating_add(crossed.len()) > crate::slash::MAX_CABLE_MEMBERS {
         return Err(CmdError::refused(crate::slash::too_many()));
     }
-    let members: Vec<WireId> = c.members.iter().filter_map(|m| m.wire()).collect();
+    let members: Vec<WireId> = c.cores.iter().filter_map(|m| m.wire()).collect();
     let groups = continuation_groups(doc, &members);
     let chains = core_chains(doc, cable);
     let chain_of = |w: WireId| chains.iter().position(|ch| ch.contains(&w));
     let drawn_here = |ch: &Vec<WireId>| ch.iter().any(|w| crate::wires::wire_pages(doc, *w).contains(&page));
-    let label_of = |ch: &Vec<WireId>| ch.iter().find_map(|w| c.members.iter().find(|m| m.wire() == Some(*w)).and_then(|m| m.core.clone()));
+    let label_of =
+        |ch: &Vec<WireId>| ch.iter().find_map(|w| c.cores.iter().find(|m| m.wire() == Some(*w)).and_then(|m| m.label_str().map(str::to_string)));
     let mut out: Vec<Continued> = Vec::new();
     let mut used: BTreeMap<usize, WireId> = BTreeMap::new();
     let mut not: Vec<String> = Vec::new();
@@ -1018,7 +1019,7 @@ pub fn plan_slash_continue(doc: &Document, page: PageId, cable: CableId, crossed
 /// where they continue, not by `cablecontinue`.
 pub fn cores_end_on_continuations(doc: &Document, cable: CableId, members: Option<&[WireId]>) -> bool {
     let Some(c) = doc.cables.get(&cable) else { return false };
-    let all: Vec<WireId> = c.members.iter().filter_map(|m| m.wire()).collect();
+    let all: Vec<WireId> = c.cores.iter().filter_map(|m| m.wire()).collect();
     let list = members.unwrap_or(&all);
     !list.is_empty()
         && list.iter().all(|w| doc.wires.contains_key(w))
@@ -1052,11 +1053,11 @@ pub fn slash_erase_followups(doc: &Document, erased: &[(RepresentationId, Repres
         if !kept {
             continue;
         }
-        let only_there = |m: &ecad_model::CableMember| {
+        let only_there = |m: &ecad_model::Core| {
             let on = crate::cables::member_pages(doc, m);
             !on.is_empty() && on.iter().all(|p| pages.contains(p))
         };
-        for (index, m) in c.members.iter().enumerate().rev() {
+        for (index, m) in c.cores.iter().enumerate().rev() {
             if only_there(m) {
                 ops.push(Op::RemoveCableMember { cable: k, index, member: m.clone() });
             }

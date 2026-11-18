@@ -16,7 +16,7 @@ use crate::slash::MAX_CABLE_MEMBERS;
 use crate::styles::{self, cable};
 
 /// The pages a cable core is drawn on: its wire's pages, or its line's page while it has no wire.
-pub fn member_pages(doc: &Document, m: &ecad_model::CableMember) -> BTreeSet<PageId> {
+pub fn member_pages(doc: &Document, m: &ecad_model::Core) -> BTreeSet<PageId> {
     match m.position {
         ecad_model::CorePosition::Wire(w) => crate::wires::wire_pages(doc, w),
         ecad_model::CorePosition::Route { route, .. } => doc.routes.get(&route).map(|r| r.page).into_iter().collect(),
@@ -264,7 +264,7 @@ pub fn bad_values(doc: &Document, k: CableId) -> Vec<(CableField, String)> {
 
 /// Whether cable `k` is drawn: it has a member or a representation (FD1).
 pub fn is_drawn(doc: &Document, k: CableId) -> bool {
-    doc.cables.get(&k).is_some_and(|c| !c.members.is_empty()) || doc.representations_of(Subject::Cable(k)).next().is_some()
+    doc.cables.get(&k).is_some_and(|c| !c.cores.is_empty()) || doc.representations_of(Subject::Cable(k)).next().is_some()
 }
 
 /// The cables not drawn yet, in tag order. O(cables): the pickers build it once when opened.
@@ -368,7 +368,7 @@ pub fn drawn_pages(doc: &Document, k: CableId) -> Vec<(PageId, String)> {
     if out.is_empty()
         && let Some(c) = doc.cables.get(&k)
     {
-        for m in c.members.iter().take(MAX_CABLE_MEMBERS) {
+        for m in c.cores.iter().take(MAX_CABLE_MEMBERS) {
             for p in member_pages(doc, m) {
                 out.entry(p).or_insert_with(|| crate::references::page_number(doc, p));
             }
@@ -440,7 +440,7 @@ pub struct OffPlan {
 /// function that the devices at that end do not have. The two ends differing from each other is
 /// normal and never raises; an end with no plan, or with no device drawn there, raises nothing.
 pub fn off_plan(doc: &Document, k: CableId) -> Vec<OffPlan> {
-    if doc.cables.get(&k).is_none_or(|c| c.members.is_empty()) {
+    if doc.cables.get(&k).is_none_or(|c| c.cores.is_empty()) {
         return Vec::new();
     }
     let ends = drawn_ends(doc, k);

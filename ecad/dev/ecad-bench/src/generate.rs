@@ -28,7 +28,7 @@
 use std::collections::BTreeMap;
 
 use ecad_model::{
-    Author, Cable, CableId, CableMember, Color, ConductorId, Definition, DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId,
+    Author, Cable, CableId, Color, ConductorId, Core, Definition, DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId,
     ItemKind, Layer, LayerId, Ledger, LengthUnit, NetId, ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectId, ProjectSettings, Pt,
     Representation, RepresentationId, Route, RouteEnd, RouteId, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId, Transaction, TxId,
     TxKind, Wire, WireId,
@@ -464,7 +464,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             value.properties.insert("tag".into(), tag.clone());
             let mut ops = vec![Op::CreateCable { id: cable, cable: value }];
             for (index, w) in members.iter().enumerate() {
-                ops.push(Op::AddCableMember { cable, index, member: CableMember::on_wire(*w, Some((index + 1).to_string())) });
+                ops.push(Op::AddCableMember { cable, index, member: Core::on_wire(*w, ecad_model::CoreLabel::new(&(index + 1).to_string()).ok()) });
             }
             ops.push(Op::AddItem {
                 id: item,

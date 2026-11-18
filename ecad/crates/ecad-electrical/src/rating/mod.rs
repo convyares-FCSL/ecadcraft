@@ -396,7 +396,7 @@ impl Touch {
                 }
                 Op::CreateCable { id, cable } | Op::DeleteCable { id, cable } => {
                     self.retrace.insert(RatedSubject::Cable(*id));
-                    for m in &cable.members {
+                    for m in &cable.cores {
                         self.retrace.extend(m.wire().map(RatedSubject::Wire));
                     }
                 }

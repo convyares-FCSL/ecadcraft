@@ -163,7 +163,7 @@ fn fill(doc: &Document, v: &Value) -> Value {
                 "<supply>" => Value::String(supply(doc).hex()),
                 "<field>" => Value::String(field(doc).hex()),
                 "<c1>" => Value::String(c1().hex()),
-                "<w0>" => Value::String(doc.cables[&c1()].members[0].wire().map(|w| w.hex()).unwrap_or_default()),
+                "<w0>" => Value::String(doc.cables[&c1()].cores[0].wire().map(|w| w.hex()).unwrap_or_default()),
                 "<ref supply>" => Value::String(reference(supply(doc))),
                 "<ref field>" => Value::String(reference(field(doc))),
                 _ => v.clone(),

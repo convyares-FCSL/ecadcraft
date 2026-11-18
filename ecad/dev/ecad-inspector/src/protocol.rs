@@ -644,8 +644,8 @@ fn wires(d: &Document) -> Vec<Value> {
     let mut in_cable: BTreeMap<WireId, (String, Option<String>)> = BTreeMap::new();
     for (id, k) in &d.cables {
         let tag = k.properties.get(ecad_model::tag::TAG_KEY).cloned().unwrap_or_else(|| format!("({})", id.short()));
-        for w in k.members.iter().filter_map(|m| m.wire()) {
-            in_cable.insert(w, (tag.clone(), k.members.iter().find(|m| m.wire() == Some(w)).and_then(|m| m.core.clone())));
+        for w in k.cores.iter().filter_map(|m| m.wire()) {
+            in_cable.insert(w, (tag.clone(), k.cores.iter().find(|m| m.wire() == Some(w)).and_then(|m| m.label_str().map(str::to_string))));
         }
     }
     d.wires
@@ -690,9 +690,20 @@ fn cables(d: &Document) -> Vec<Value> {
     d.cables
         .iter()
         .map(|(id, k)| {
-            let members: Vec<Value> = k.members.iter().map(|m| json!({"wire": core_place(d, m.position), "core": m.core})).collect();
+            let members: Vec<Value> = k
+                .cores
+                .iter()
+                .map(|m| {
+                    json!({
+                        "wire": core_place(d, m.position),
+                        "core": m.label_str(),
+                        "purpose": if m.is_spare() { "spare" } else { "in use" },
+                        "colours": m.colours.as_ref().map(ToString::to_string),
+                    })
+                })
+                .collect();
             let mut ends: [BTreeSet<String>; 2] = [BTreeSet::new(), BTreeSet::new()];
-            for m in &k.members {
+            for m in &k.cores {
                 if let Some(w) = m.wire().and_then(|w| d.wires.get(&w)) {
                     for (side, t) in ends.iter_mut().zip(w.ends.iter()) {
                         if let Some(term) = d.terminals.get(t) {

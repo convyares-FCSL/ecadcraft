@@ -63,7 +63,7 @@ fn slash(h: &mut H, from: (f64, f64), to: (f64, f64)) -> Result<Value, String> {
 }
 
 fn members(h: &mut H, k: CableId) -> Vec<WireId> {
-    h.doc().cables[&k].members.iter().filter_map(|m| m.wire()).collect()
+    h.doc().cables[&k].cores.iter().filter_map(|m| m.wire()).collect()
 }
 
 fn history(h: &mut H) -> Vec<Transaction> {
@@ -101,7 +101,7 @@ fn a_slash_makes_one_cable_of_the_wires_it_crosses_in_one_transaction() {
     let d = f.h.doc();
     let cable = &d.cables[&k];
     assert_eq!(members(&mut f.h, k), vec![f.w0, f.w5, f.w10], "crossing order from the first point");
-    assert!(cable.members.iter().all(|m| m.core.is_none()), "no core designations");
+    assert!(cable.cores.iter().all(|m| m.label.is_none()), "no core designations");
     // Brief 026: an automatic tag when none is given, and nothing else.
     assert!(cable.properties.keys().all(|k| k == "tag") && cable.properties["tag"].starts_with("-W"), "an automatic tag");
     assert_eq!(r["conductors"], json!([f.w0.hex(), f.w5.hex(), f.w10.hex()]));
@@ -463,7 +463,7 @@ fn the_drawing_shows_the_cable_and_hover_lists_its_wires() {
     let before = f.h.p(|p| hover_lines(p, uid, slash_handle)).unwrap();
     let line = f.h.route_of(f.page, f.w5);
     f.h.run("move", json!({"handles": [w5.hex()], "delta": [0, 50]})).unwrap();
-    let positions: Vec<CorePosition> = f.h.doc().cables[&k].members.iter().map(|m| m.position).collect();
+    let positions: Vec<CorePosition> = f.h.doc().cables[&k].cores.iter().map(|m| m.position).collect();
     assert_eq!(
         positions,
         vec![CorePosition::Wire(f.w0), CorePosition::Route { route: line, landed: None }, CorePosition::Wire(f.w10)],

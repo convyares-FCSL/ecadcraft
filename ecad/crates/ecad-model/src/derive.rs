@@ -423,7 +423,7 @@ fn references_from(doc: &Document, refs: Vec<(RepresentationId, &Representation)
         if here.contains_key(&(cable, r.page)) {
             continue;
         }
-        let members = doc.cables.get(&cable).map(|c| c.members.as_slice()).unwrap_or_default();
+        let members = doc.cables.get(&cable).map(|c| c.cores.as_slice()).unwrap_or_default();
         let ends: Vec<(Pt, Pt)> = members
             .iter()
             .filter_map(|m| m.wire())
