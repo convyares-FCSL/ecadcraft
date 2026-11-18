@@ -3,7 +3,7 @@
 //! Table-driven where the cases share a shape.
 
 use ecad_model::book::Book;
-use ecad_model::{Author, Folder, FolderId, IdAllocator, Ledger, ModelError, ObjectRef, Op, Page, PageId};
+use ecad_model::{Author, Folder, FolderId, IdAllocator, Ledger, ModelError, Op, Page, PageId};
 
 struct F {
     ids: IdAllocator,
@@ -21,7 +21,7 @@ fn fixture() -> F {
 }
 
 fn folder(name: &str, parent: Option<FolderId>) -> Folder {
-    Folder { name: name.into(), parent }
+    Folder::new(name, parent)
 }
 
 /// A `ModifyPage` of `page` (as `f` holds it) with `change` applied.
@@ -44,13 +44,19 @@ fn page_and_project_properties_set_and_undo() {
             "props",
             vec![
                 Op::ModifyPage { id: p, before, after },
-                Op::SetProperty { object: ObjectRef::Project, key: "title".into(), before: None, after: Some("P7".into()) },
+                Op::ModifyProject {
+                    before: ecad_model::Project::default(),
+                    after: ecad_model::Project {
+                        info: ecad_model::ProjectInfo { title: ecad_model::text::Text::new("P7").ok(), ..Default::default() },
+                        ..Default::default()
+                    },
+                },
             ],
         )
         .unwrap();
     let doc = f.ledger.document();
     assert_eq!(doc.pages[&p].number.as_ref().map(ecad_model::PageNo::as_str), Some("100"));
-    assert_eq!(doc.properties.get("title").map(String::as_str), Some("P7"));
+    assert_eq!(doc.project.info.title.as_ref().map(ecad_model::text::Text::as_str), Some("P7"));
     assert_eq!(Book::of(doc).number(doc, p), "100");
     assert_eq!(Book::of(doc).number(doc, f.pages[1]), "2", "unnumbered pages show their position");
     f.ledger.undo(Author::User).unwrap();

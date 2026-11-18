@@ -16,6 +16,15 @@ fn hex(v: &Value, key: &str) -> String {
 }
 
 fn sets(ops: &[Op], key: &str) -> bool {
+    // Design 072 §5.3: a revision row's field (`rev.<n>.<field>`) is set through `ModifyProject`.
+    if let Some((n, field)) = key.strip_prefix("rev.").and_then(|r| r.split_once('.')) {
+        let n: u32 = n.parse().unwrap_or(0);
+        return ops.iter().any(|o| {
+            matches!(o, Op::ModifyProject { before, after }
+                if ecad_cadcraft::revisions::field_of(after, n, field).is_some()
+                    && ecad_cadcraft::revisions::field_of(before, n, field) != ecad_cadcraft::revisions::field_of(after, n, field))
+        });
+    }
     ops.iter().any(|o| matches!(o, Op::SetProperty { key: k, .. } if k == key))
 }
 

@@ -517,7 +517,7 @@ fn ac10_revision_columns_and_custom_fields() {
     assert_eq!(label, "Project properties");
     assert!(sets(&ops, "revisions.columns"), "{ops:?}");
     h.run("revision", json!({"fields": {"ecr": "ECR-1"}})).unwrap();
-    assert_eq!(h.doc().properties.get("rev.1.ecr").map(String::as_str), Some("ECR-1"));
+    assert_eq!(ecad_cadcraft::revisions::field_of(&h.doc().project, 1, "ecr").as_deref(), Some("ECR-1"));
     issue(&mut h, "First issue", "2026-11-10");
     let texts = frame_texts(&mut h, page);
     assert!(texts.iter().any(|t| t == "ECR") && texts.iter().any(|t| t == "ECR-1"), "{texts:?}");
@@ -543,7 +543,7 @@ fn ac10_revision_columns_and_custom_fields() {
     h.run("projectprops", json!({"revision_columns": "rev@100, date@100, description, drawn@100"})).unwrap();
     // A field removed from the columns keeps its stored value.
     h.run("projectprops", json!({"revision_columns": null})).unwrap();
-    assert_eq!(h.doc().properties.get("rev.1.ecr").map(String::as_str), Some("ECR-1"));
+    assert_eq!(ecad_cadcraft::revisions::field_of(&h.doc().project, 1, "ecr").as_deref(), Some("ECR-1"));
     h.activate(page);
     let texts = frame_texts(&mut h, page);
     // Brief 055 (FP5): the built-in columns now hold ECR, so its value shows again.

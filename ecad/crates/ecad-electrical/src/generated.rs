@@ -307,6 +307,8 @@ pub fn touches(ops: &[Op], kind: GenKind) -> bool {
         // Brief 054b: the cover's own map is `crate::front::touches`, which needs the document.
         (GenKind::Revisions, Op::SetProperty { object: ObjectRef::Project, .. }) => true,
         (GenKind::Revisions, Op::NameVersion { .. } | Op::UnnameVersion { .. }) => true,
+        // Design 072 §5.3: the revision rows and the project's info are the project's own data.
+        (GenKind::Revisions, Op::ModifyProject { before, after }) => before.revisions != after.revisions || before.info != after.info,
         _ => false,
     })
 }
