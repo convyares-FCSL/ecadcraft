@@ -171,7 +171,7 @@ shown back from them:
 - Text that is no rating at all (`see datasheet`) is kept as the device's rating note, and the
   device gets the Checks warning **no-rating**, because the checks read only the typed fields.
 - A fuse bank takes `rating.<n>` per fuse (`rating.3` `6.3 A T`); its own `rating` is refused.
-- Other groups (indicators, power supplies) keep what you type
+- Other groups (power supplies) keep what you type
   as the note until their own step; a symbol's default rating is read the same way when it is
   placed, and a symbol whose default rating does not read for its group cannot be saved.
 - A file whose device holds `rating` among its properties, or a protective device holding
@@ -284,6 +284,26 @@ and the warning goes), then `3` (refused, asks W or kW). Nobody has tried it by 
 
 Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector (`…load…`),
 and `rating::reader::load` in ecad-electrical (automated, not tried by hand).
+
+### Lane B, step 3: indicators' ratings are typed
+
+A lamp is an **indicator**. It is created **steady** with no colour. Its rating is its colour
+(red, yellow, green, blue or white, in any IEC 60757 form: `red`, `RD`, `RED`), how it signals
+(`steady`, `flashing`, `rotating`, `audible`, `meter`), its rated voltage with AC or DC, and its
+power.
+
+- `RD flashing 24VDC 2W` reads as **red, flashing, 24 V DC, 2 W**. Without a signal word the lamp
+  keeps its own.
+- Asked, never guessed: `24 V` (AC or DC?) and a bare `24` (V or W?). Refused: a current (`0.1 A`),
+  and a colour that no indicator has (`black`). Other text (`LED`, `amber`) is kept as the note.
+- An unrated lamp now gets the Checks warning **no-rating** (the demo's lamps too).
+
+To try it: place an indicator lamp (Checks shows "no rating"), type `RD 24VDC 2W` as its rating
+(shown as `red, 24 V DC, 2 W`, and the warning goes), then `24 V` (refused, asks AC or DC).
+Nobody has tried it by hand yet.
+
+Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector
+(`…indicator…`), and `rating::reader::indicator` in ecad-electrical (automated, not tried by hand).
 
 ## Lane D: wires carry typed values
 

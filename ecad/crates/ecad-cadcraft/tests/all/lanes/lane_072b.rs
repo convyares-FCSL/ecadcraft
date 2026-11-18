@@ -472,3 +472,44 @@ fn a_load_rating_is_read_into_typed_fields() {
     assert!(h.doc().devices[&v].rating_note.is_some());
     assert!(no_rating(&mut h));
 }
+
+/// Step 3, Indicator (design 072 §2.2 row 7, "Ratings"): a lamp is created steady with no colour;
+/// `setprop rating` reads its colour, signal, rated voltage and power into typed fields; a voltage
+/// without AC or DC is asked, a current refused, and other text kept as the note; an unrated lamp
+/// is warned about.
+#[test]
+fn an_indicator_rating_is_read_into_typed_fields() {
+    use ecad_model::Op;
+    use ecad_model::device::{DeviceType, Indicator, IndicatorColour, SignalType};
+    use ecad_model::units::{Current, RatedVoltage, Volts, Watts};
+    let mut h = H::new(7211);
+    let no_rating = |h: &mut H| h.run("checks", json!({})).unwrap().to_string().contains("no-rating");
+    let p: DeviceId = id(&crate::common::place(&mut h, "lamp", (100.0, 100.0)), "component");
+    assert_eq!(h.doc().devices[&p].device_type, DeviceType::Indicator(Indicator::empty(SignalType::Steady)));
+    assert!(no_rating(&mut h));
+    let r = h.run("setprop", json!({"component": p.hex(), "key": "rating", "value": "RD flashing 24VDC 2W"})).unwrap();
+    assert_eq!(r["message"], json!("Read: red, flashing, 24 V DC, 2 W."), "{r}");
+    assert_eq!(r["value"], json!("red, flashing, 24 V DC, 2 W"));
+    let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());
+    assert!(matches!(ops.as_slice(), [Op::ModifyDevice { .. }]), "{ops:?}");
+    let want = Indicator {
+        colour: Some(IndicatorColour::Red),
+        rated_voltage: Some(RatedVoltage { volts: Volts(24.0), current: Current::Dc }),
+        power: Some(Watts(2.0)),
+        ..Indicator::empty(SignalType::Flashing)
+    };
+    assert_eq!(h.doc().devices[&p].device_type, DeviceType::Indicator(want));
+    assert!(h.doc().devices[&p].properties.is_empty());
+    assert!(!no_rating(&mut h));
+    // Ambiguous text is asked, never guessed; a current is refused; other text is the note.
+    let err = h.run("setprop", json!({"component": p.hex(), "key": "rating", "value": "24 V"})).unwrap_err();
+    assert!(err.contains("AC or DC"), "{err}");
+    let err = h.run("setprop", json!({"component": p.hex(), "key": "rating", "value": "black"})).unwrap_err();
+    assert!(err.contains("red, yellow, green, blue or white"), "{err}");
+    let err = h.run("setprop", json!({"component": p.hex(), "key": "rating", "value": "0.1 A"})).unwrap_err();
+    assert!(err.contains("no current"), "{err}");
+    let r = h.run("setprop", json!({"component": p.hex(), "key": "rating", "value": "LED"})).unwrap();
+    assert_eq!(r["value"], json!("LED"), "{r}");
+    assert!(h.doc().devices[&p].rating_note.is_some());
+    assert!(no_rating(&mut h));
+}

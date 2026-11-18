@@ -637,6 +637,12 @@ impl Starter {
             use ecad_model::device::{Motor, Phases};
             return DeviceType::Motor(Motor::empty(if self.key == K::Motor1 { Phases::Single } else { Phases::Three }));
         }
+        // An indicator's signal is a starter default, stored when it is created (design 072 §2.2): a
+        // lamp is steady. Its colour starts empty.
+        if let DeviceType::Indicator(_) = t {
+            use ecad_model::device::{Indicator, SignalType};
+            return DeviceType::Indicator(Indicator::empty(SignalType::Steady));
+        }
         // A connector's family is its symbol's (a pin's: plain).
         if let DeviceType::Connector(_) = t {
             return DeviceType::Connector(Box::new(ecad_model::device::Connector::of_family(crate::connectors::family_of(self).unwrap_or_default())));
@@ -2845,7 +2851,7 @@ mod tests {
             ("pbno", "54a6cb04eb6478b224d693bf85cceb231ac06242f72f7a781dfe2c7d643e8ec2"),
             ("pbnc", "5e0403a445f7a49f5473931d6570baf1dd138341cce9c16324073bb13f613f57"),
             ("sel", "6e5f96694929a0f5cfadcbd5dc0f6369f31e5a4c6ad5271786974417a8a10619"),
-            ("lamp", "43370ffbca5feb202311b0a7f9308659fab76005655b2e016d2b45c2cd6a5df0"),
+            ("lamp", "b482bd48b086c90024ce09e579a6aaa442e8e4335709d2d22d99392e983253a6"),
             ("motor3", "0b9ef31129c1c87535c7cb4cfe3a5614dd2997d2ad73fa31c8a5e0f8fd1defd7"),
             ("motor1", "922fed0ffb4dbb4dc3521a05dcd9484801c994406e27ab2db4804d4a365b820d"),
             ("trafo", "b93505f2eab3aad42fbc8c2f647632effceeda5a6e1e06e634d3f53467dd92fd"),

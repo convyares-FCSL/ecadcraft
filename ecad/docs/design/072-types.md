@@ -171,7 +171,7 @@ operates them, so they are one **Switching** group with an `operator` (owner, 20
 | 4 | `Sensor` | B (converting a variable to a signal) | `prox3`, `floatno/nc`, `rollerno/nc`, `interlockno/nc`, `tc` | `sensing` (Proximity, Float, Limit, Interlock, Temperature…), `output` (Contact, Pnp, Npn, Analogue { range }), supply `RatedVoltage` | `Senses::signal()` (what a PLC input must accept: the "sensor on the wrong channel type" check), `Load::demand()` |
 | 5 | `Motor` | M (mechanical energy) | `motor1`, `motor3` | `phases`, `rated_power`, `rated_current`, `power_factor`, `efficiency`, `starting` (Direct, StarDelta, Soft, Vfd) | `Load::demand()`, `full_load_current()`, `starting_current()` (protection and cable sizing) |
 | 6 | `Load` | E (heat, light as energy), MB (valves, solenoids, brakes), other consumers | `heater`, `valve`, `valve2` | `rated_power: Watts` | `Load::demand()` |
-| 7 | `Indicator` | P (presenting information: lamps, beacons, buzzers, meters) | `lamp` | `colour: Option<IndicatorColour>`, `signal: SignalType` (Steady, Flashing, Rotating, Audible, Meter), `power` | `Signals::signal()`, `colour()`; `Load::demand()` |
+| 7 | `Indicator` | P (presenting information: lamps, beacons, buzzers, meters) | `lamp` | `colour: Option<IndicatorColour>`, `signal: SignalType` (Steady, Flashing, Rotating, Audible, Meter), `rated_voltage: RatedVoltage` (with AC/DC), `power: Watts` | `Signals::signal()`, `colour()`; `Load::demand()` |
 | 8 | `TerminalStrip` | X (connecting: DIN-rail terminals) | `terminal`, `terminalpe`, `term2…`, `term3…`, `termlnpe…`, `termsensor…`, `termdisc`, `termfuse` | levels (label, fuse rating), jumpers, accessories, PE part (§2.5) | `Connects::points()`, `jumpered(position)`, `Bom` lines per terminal type and accessory |
 | 9 | `Connector` | X (plugs, sockets, bulkheads) | `socket*`, `plug*`, `dsub*`, `m12*`, `rj45`, `usba`, `usbb`, `pinpair`, `pins`, `pinp` | `family`, `pins`, `pin_names`, `halves` (part per half), `mating`, ignored checks | `Connects::points()`, `mates_with(other)`, `pin_map()` |
 | 10 | `PlcRack` | K (processing signals): a PLC station | today's CPU and head-module cards | §3 | `Addressed::address_space()`, `modules(doc)`, `io_count(doc)` |
@@ -180,6 +180,12 @@ operates them, so they are one **Switching** group with an `operator` (owner, 20
 
 - **QA and QB → Protection**; a fuse *position* in a strip (`termfuse`) stays the strip's.
 - Contactors are `Switching` (they switch but don't protect).
+- **Indicator (overseer rulings, 2026-11-18).** The signal is a starter default stored when the
+  device is created (a lamp: `Steady`), never read from the symbol later; the colour starts
+  empty. The rating reader reads colour (`red`, `RD`) and signal (`flashing`) into their fields.
+  A lamp is bought by its voltage, so it has a typed `rated_voltage` (AC or DC) beside its power:
+  `24 V DC 2 W` reads in full. Checking it against its circuit's voltage is later work. (A motor
+  still refuses a voltage; listed for the end-gate review.)
 - Catalogue products (an IVP4 versus an IVP6) are part-library data, never variants.
 - A group is added only when a symbol needs fields or a calculation no group has.
 - `DeviceType` offers `as_supply()`, `as_load()`, `as_protects()`, `as_switching()`, … (exhaustive,

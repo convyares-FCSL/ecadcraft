@@ -220,6 +220,22 @@ fn a_load_rating_is_shown_raw_and_readable() {
     shown_raw_and_readable("072b-load", 80, before, after, &["load", "rated_power"], "rated_power");
 }
 
+/// Step 3, Indicator (A15): an indicator's signal and typed colour and voltage show in the readable
+/// log and the Readable row view, and the Raw view is the stored bytes.
+#[test]
+fn an_indicator_rating_is_shown_raw_and_readable() {
+    use ecad_model::device::{Indicator, IndicatorColour, SignalType};
+    use ecad_model::units::{Current, RatedVoltage, Volts};
+    let before = Device { device_type: DeviceType::Indicator(Indicator::empty(SignalType::Steady)), ..Device::default() };
+    let i = Indicator {
+        colour: Some(IndicatorColour::Red),
+        rated_voltage: Some(RatedVoltage { volts: Volts(24.0), current: Current::Dc }),
+        ..Indicator::empty(SignalType::Steady)
+    };
+    let after = Device { device_type: DeviceType::Indicator(i), ..before.clone() };
+    shown_raw_and_readable("072b-lamp", 81, before, after, &["indicator", "signal", "steady", "colour", "rated_voltage"], "rated_voltage");
+}
+
 /// One device created as `before` and changed to `after`: the readable log names `log_words`,
 /// the Readable row view names `readable_word`, and the Raw view is the stored bytes.
 fn shown_raw_and_readable(name: &str, seed: u64, before: Device, after: Device, log_words: &[&str], readable_word: &str) {

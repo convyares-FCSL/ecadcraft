@@ -1,8 +1,8 @@
 //! Reading a typed rating into a group's typed fields (design 072 §2.2, "Ratings", owner decisions
 //! 2026-11-18): one reader per group (protection here, switching in [`read_switching`], sensors in
-//! [`read_sensor`], motors in [`read_motor`], loads in [`read_load`], a strip's fuse positions in
-//! [`with_position_rating`]), used by `setprop` (the UI, the CLI and MCP alike) and by a symbol's
-//! default rating.
+//! [`read_sensor`], motors in [`read_motor`], loads in [`read_load`], indicators in
+//! [`read_indicator`], a strip's fuse positions in [`with_position_rating`]), used by `setprop` (the
+//! UI, the CLI and MCP alike) and by a symbol's default rating.
 //!
 //! # Semantics
 //! - Text that reads as the group's rating fills its fields: `B16` on an MCB is curve B, 16 A.
@@ -27,10 +27,12 @@ use ecad_model::device::{Breaker, Fuse, FuseClass, Poles, Protection, Protection
 use ecad_model::device::{DeviceType, Load, RatingNote};
 use ecad_model::units::{Amps, KiloAmps, MilliAmps};
 
+mod indicator;
 mod load;
 mod motor;
 mod sensor;
 mod switching;
+pub use indicator::read_indicator;
 pub use load::read_load;
 pub use motor::read_motor;
 pub use sensor::read_sensor;
@@ -382,10 +384,18 @@ pub fn rated(t: &DeviceType, who: &str, text: Option<&str>) -> Result<(DeviceTyp
                 Read::NotARating => Ok((DeviceType::Load(Load::default()), Some(note(text)?))),
             }
         }
+        DeviceType::Indicator(i) => {
+            let Some(text) = text else { return Ok((DeviceType::Indicator(i.unrated()), None)) };
+            match read_indicator(i, text) {
+                Read::Rating(i) => Ok((DeviceType::Indicator(i), None)),
+                Read::Ask(q) => Err(CmdError::refused(format!("{who}'s rating '{text}' needs {q}"))),
+                Read::Refused(m) => Err(CmdError::refused(format!("{who}'s rating '{text}': {m}."))),
+                Read::NotARating => Ok((DeviceType::Indicator(i.unrated()), Some(note(text)?))),
+            }
+        }
         // Groups whose typed rating is still to come (lane 072 B step 3), and groups with none:
         // the text is the note.
         DeviceType::PowerSupply(_)
-        | DeviceType::Indicator(_)
         | DeviceType::TerminalStrip(_)
         | DeviceType::Connector(_)
         | DeviceType::PlcRack(_)
