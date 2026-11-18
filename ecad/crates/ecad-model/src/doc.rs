@@ -17,8 +17,8 @@ use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, Libr
 use crate::page::{PageKind, PageTitle};
 use crate::sheet::SheetSpec;
 use crate::style::StyleRef;
-pub use crate::wire::{End, Wire};
 use crate::units::Radians;
+pub use crate::wire::{End, Wire};
 
 /// Optional, free-form properties. A missing key is `Unset` (principle P7); an empty string is a
 /// confirmed empty value.
