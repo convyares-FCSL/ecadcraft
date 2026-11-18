@@ -140,3 +140,25 @@ fn setprop_of_a_switching_rating_records_modify_device() {
     let mut r = reader();
     r.refused("execute", json!({"command": "setprop", "params": {"component": id, "key": "rating", "value": "24 V DC"}}));
 }
+
+/// Step 3, Sensor: `setprop rating` on a PNP sensor through MCP records one `ModifyDevice` with
+/// the typed supply as the agent, answers what it read, and is refused with writes off.
+#[test]
+fn setprop_of_a_sensor_rating_records_modify_device() {
+    let mut c = Client::new(EcadMcp::in_memory("lane072b-sensor", 78, Options { write: true, agent: None }).unwrap());
+    let placed = c.exec("place", json!({"symbol": "prox3", "at": [50, 50]}));
+    let id = placed["component"].as_str().unwrap().to_string();
+    let before = c.log().len();
+    let r = c.exec("setprop", json!({"component": id, "key": "rating", "value": "24 V DC"}));
+    assert_eq!(r["message"], json!("Read: 24 V DC."), "{r}");
+    let log = c.log();
+    assert_eq!(log.len(), before + 1);
+    let last = log.last().unwrap();
+    assert_eq!(last.author, Author::Agent(AGENT.into()));
+    match last.ops.as_slice() {
+        [Op::ModifyDevice { after, .. }] => assert_eq!(after.value("rating").as_deref(), Some("24 V DC")),
+        other => panic!("{other:?}"),
+    }
+    let mut r = reader();
+    r.refused("execute", json!({"command": "setprop", "params": {"component": id, "key": "rating", "value": "24 V DC"}}));
+}

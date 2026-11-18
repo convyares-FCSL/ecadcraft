@@ -617,6 +617,21 @@ impl Starter {
             };
             return DeviceType::Switching(kind.empty());
         }
+        // What a sensor senses and outputs is its symbol's (design 072 §2.2).
+        if let DeviceType::Sensor(_) = t {
+            use ecad_model::device::{Output as O, Sensing as S, Sensor};
+            let known = [
+                (&[K::Prox3][..], S::Proximity, O::Pnp),
+                (&[K::Floatno, K::Floatnc][..], S::Float, O::Contact),
+                (&[K::Rollerno, K::Rollernc][..], S::Limit, O::Contact),
+                (&[K::Interlockno, K::Interlocknc][..], S::Interlock, O::Contact),
+                (&[K::Tc][..], S::Temperature, O::Thermocouple),
+            ];
+            if let Some((_, sensing, output)) = known.iter().find(|(keys, _, _)| keys.contains(&self.key)) {
+                return DeviceType::Sensor(Sensor::empty(*sensing, *output));
+            }
+            return t;
+        }
         // A connector's family is its symbol's (a pin's: plain).
         if let DeviceType::Connector(_) = t {
             return DeviceType::Connector(Box::new(ecad_model::device::Connector::of_family(crate::connectors::family_of(self).unwrap_or_default())));

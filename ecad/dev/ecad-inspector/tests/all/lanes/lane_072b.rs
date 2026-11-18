@@ -162,10 +162,6 @@ fn a_protective_rating_is_shown() {
 fn a_switching_rating_is_shown_raw_and_readable() {
     use ecad_model::device::{Control, Operator, OperatorKind, Switching};
     use ecad_model::units::{Amps, Current, RatedVoltage, Volts};
-    let dir = TempDir::new("072b-switching");
-    let mut l = history();
-    let mut ids = IdAllocator::seeded(77);
-    let c: DeviceId = ids.fresh();
     let before = Device { device_type: DeviceType::Switching(OperatorKind::Coil.empty()), ..Device::default() };
     let k = Switching {
         operator: Operator::Coil(Control { voltage: Some(RatedVoltage { volts: Volts(24.0), current: Current::Dc }), power: None }),
@@ -173,11 +169,33 @@ fn a_switching_rating_is_shown_raw_and_readable() {
         ac3_power: None,
     };
     let after = Device { device_type: DeviceType::Switching(k), ..before.clone() };
+    shown_raw_and_readable("072b-switching", 77, before, after, &["switching", "operator", "coil", "voltage", "dc", "ac3_current"], "ac3_current");
+}
+
+/// Step 3, Sensor (A15): a sensor's kind and typed supply show in the readable log and the
+/// Readable row view, and the Raw view is the stored bytes.
+#[test]
+fn a_sensor_rating_is_shown_raw_and_readable() {
+    use ecad_model::device::{Output, Sensing, Sensor};
+    use ecad_model::units::{Current, RatedVoltage, Volts};
+    let before = Device { device_type: DeviceType::Sensor(Sensor::empty(Sensing::Proximity, Output::Pnp)), ..Device::default() };
+    let b = Sensor { supply: Some(RatedVoltage { volts: Volts(24.0), current: Current::Dc }), ..Sensor::empty(Sensing::Proximity, Output::Pnp) };
+    let after = Device { device_type: DeviceType::Sensor(b), ..before.clone() };
+    shown_raw_and_readable("072b-sensor", 78, before, after, &["sensor", "sensing", "proximity", "pnp", "supply", "dc"], "supply");
+}
+
+/// One device created as `before` and changed to `after`: the readable log names `log_words`,
+/// the Readable row view names `readable_word`, and the Raw view is the stored bytes.
+fn shown_raw_and_readable(name: &str, seed: u64, before: Device, after: Device, log_words: &[&str], readable_word: &str) {
+    let dir = TempDir::new(name);
+    let mut l = history();
+    let mut ids = IdAllocator::seeded(seed);
+    let c: DeviceId = ids.fresh();
     l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: before.clone() }]).unwrap();
     l.commit(Author::User, "rating", vec![Op::ModifyDevice { id: c, before, after }]).unwrap();
     let path = written(&dir, &l);
     let log = run(&[path.to_str().unwrap(), "log", "main", "--last", "1"]).unwrap();
-    for want in ["ModifyDevice", "switching", "operator", "coil", "voltage", "dc", "ac3_current"] {
+    for want in std::iter::once(&"ModifyDevice").chain(log_words) {
         assert!(log.contains(want), "{want} in the readable log: {log}");
     }
     let f = FileSource::from_path(&path);
@@ -188,7 +206,7 @@ fn a_switching_rating_is_shown_raw_and_readable() {
     let key = rows.last().and_then(|r| r["key"].as_str()).unwrap().to_string();
     let readable = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "readable"}));
     let text = readable["ok"]["decoded"].to_string();
-    assert!(text.contains("ModifyDevice") && text.contains("ac3_current"), "{text}");
+    assert!(text.contains("ModifyDevice") && text.contains(readable_word), "{text}");
     let raw = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "raw"}));
     let r = f.store().unwrap().reader().unwrap();
     let mut bytes = None;
