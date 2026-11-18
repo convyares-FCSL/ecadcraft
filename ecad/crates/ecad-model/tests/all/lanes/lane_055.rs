@@ -80,7 +80,6 @@ fn every_bound_refuses_in_words_and_is_skipped_when_drawing() {
             },
             "2 000 at most",
         ),
-        (TitleBlockLayout { size: (180.0, 40.0), items: vec![BlockItem::Unknown] }, "does not know"),
     ];
     for (l, want) in cases {
         let e = l.check().unwrap_err();

@@ -40,7 +40,6 @@ pub fn known(b: &Binding) -> bool {
         Source::Page => PAGE_KEYS.contains(&b.key.as_str()),
         Source::Revision => crate::revisions::FIELDS.contains(&b.key.as_str()) || crate::revisions::is_custom_field(&b.key),
         Source::Print => PRINT_KEYS.contains(&b.key.as_str()),
-        Source::Unknown(_) => false,
     }
 }
 
@@ -99,7 +98,6 @@ pub fn value(input: &FrameInput, b: &Binding) -> Option<String> {
         Source::Revision if k == "rev" => input.rev.clone(),
         Source::Revision => input.newest.get(k).cloned().unwrap_or_default(),
         Source::Print => super::sheet_name(&input.sheet),
-        Source::Unknown(_) => return None,
     })
 }
 
@@ -145,9 +143,9 @@ pub fn name(b: &Binding) -> String {
 
 /// The source chip the palette and the name tag show: `project`, `page`, `revision`, `people`
 /// (drawn, checked, approved), `print`.
-pub fn chip(b: &Binding) -> &str {
-    match (&b.source, b.key.as_str()) {
+pub fn chip(b: &Binding) -> &'static str {
+    match (b.source, b.key.as_str()) {
         (Source::Revision, "drawn" | "checked" | "approved") => "people",
-        (s, _) => s.word(),
+        (s, _) => ecad_model::Word::word(s),
     }
 }
