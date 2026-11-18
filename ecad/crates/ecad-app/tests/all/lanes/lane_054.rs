@@ -75,7 +75,7 @@ fn the_new_page_picker_adds_a_typed_page_after_the_open_one() {
     click(&mut h, "ecad.newpage.type.front");
     click(&mut h, "ecad.newpage.kind.cover");
     let d = doc(&mut h);
-    assert!(d.pages.values().any(|p| p.properties.get("generated").map(String::as_str) == Some("cover")));
+    assert!(d.pages.values().any(|p| p.kind.generated_kind() == Some(ecad_model::GenKind::Cover)));
 }
 
 /// Brief 054b: the board 1.16 project (a pump station's cover) and the screenshots of design 054
@@ -152,7 +152,7 @@ fn the_cover_and_its_page_tab_with_the_board_screenshots() {
     h.run_steps(2);
     click(&mut h, ecad_app::shell::table_editor::SAVE);
     assert_eq!(head(&mut h), before + 1, "Save is one transaction");
-    let notes = doc(&mut h).properties.get("cover.notes").cloned().unwrap_or_default();
+    let notes = ecad_cadcraft::frames::project_text(&doc(&mut h), "cover.notes").unwrap_or_default();
     assert!(notes.starts_with("Line colours") && notes.ends_with("Fifth note"), "{notes}");
     ok(&mut h, "u");
     // The symbol legend's editor: generated rows, hide and relabel.
@@ -180,11 +180,11 @@ fn the_cover_and_its_page_tab_with_the_board_screenshots() {
     let before = head(&mut h);
     click(&mut h, "ecad.page.front.contents");
     assert_eq!(head(&mut h), before + 1);
-    assert!(doc(&mut h).pages.values().any(|p| p.properties.get("generated").map(String::as_str) == Some("contents")));
+    assert!(doc(&mut h).pages.values().any(|p| p.kind.generated_kind() == Some(ecad_model::GenKind::Contents)));
     h.run_steps(3);
     click(&mut h, "ecad.page.front.contents");
     assert_eq!(head(&mut h), before + 2);
-    assert!(!doc(&mut h).pages.values().any(|p| p.properties.get("generated").map(String::as_str) == Some("contents")));
+    assert!(!doc(&mut h).pages.values().any(|p| p.kind.generated_kind() == Some(ecad_model::GenKind::Contents)));
     // A block toggle: one setdefault.
     click(&mut h, "ecad.page.block.structure_codes");
     assert_eq!(head(&mut h), before + 3);

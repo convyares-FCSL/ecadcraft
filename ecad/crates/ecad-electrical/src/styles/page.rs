@@ -25,9 +25,6 @@ use super::{Builtin, Catalogue, Field};
 use crate::defaults::{Kind, Slot};
 use crate::generated::GenKind;
 
-/// The catalogue word.
-pub const WORD: &str = "page";
-
 fn is_sheet(s: &str) -> bool {
     s.trim().eq_ignore_ascii_case(PROJECT_SHEET) || SheetSpec::parse(s).is_ok()
 }
@@ -73,8 +70,15 @@ fn choices() -> Vec<&'static crate::defaults::Entry> {
 }
 
 /// The page type catalogue.
-pub static CATALOGUE: Catalogue =
-    Catalogue { word: WORD, plural: "Page types", one: "Page type", fields: &FIELDS, builtins: &BUILTINS, choices, project_field: None };
+pub static CATALOGUE: Catalogue = Catalogue {
+    catalogue: ecad_model::StyleCatalogue::Page,
+    plural: "Page types",
+    one: "Page type",
+    fields: &FIELDS,
+    builtins: &BUILTINS,
+    choices,
+    project_field: None,
+};
 
 /// The built-in Cover sheet type (ID `front`, kept: old files store it).
 pub const FRONT: &str = "front";
@@ -132,7 +136,7 @@ pub struct TypeLook {
 }
 
 fn field<'a>(doc: &'a Document, id: &StyleRef, key: &str) -> Option<crate::defaults::Resolved<'a>> {
-    super::field_of(doc, WORD, id, key, None)
+    super::field_of(doc, ecad_model::StyleCatalogue::Page, id, key, None)
 }
 
 /// What type `id` brings (design 054 §2.1, §3). Never fails: a malformed field falls through.
@@ -142,12 +146,12 @@ pub fn look_of(doc: &Document, id: &StyleRef) -> TypeLook {
         .map(|r| r.text())
         .filter(|t| !t.trim().eq_ignore_ascii_case(PROJECT_SHEET))
         .and_then(|t| StyleRef::parse(&t))
-        .filter(|f| super::exists(doc, "frame", f));
+        .filter(|f| super::exists(doc, ecad_model::StyleCatalogue::Frame, f));
     let title_block = field(doc, id, "title_block")
         .map(|r| r.text())
         .filter(|t| !t.trim().eq_ignore_ascii_case(OWN_BLOCK))
         .and_then(|t| StyleRef::parse(&t))
-        .filter(|f| super::exists(doc, "frame", f));
+        .filter(|f| super::exists(doc, ecad_model::StyleCatalogue::Frame, f));
     let zones = field(doc, id, "zones").is_none_or(|r| ecad_model::words::flag(r.word()) != Some(false));
     let holds = Holds::of_word(field(doc, id, "holds").map_or("none", |r| r.word()));
     let checks = msheet::type_checks(doc, id);
@@ -157,14 +161,15 @@ pub fn look_of(doc: &Document, id: &StyleRef) -> TypeLook {
 /// The type of `page` (design 054 §2.3).
 pub fn type_of(doc: &Document, page: PageId) -> StyleRef {
     match doc.pages.get(&page) {
-        Some(p) => msheet::page_type_of(doc, &p.properties),
+        Some(p) => msheet::page_type_of(doc, p),
         None => StyleRef::Builtin(SCHEMATIC.to_string()),
     }
 }
 
 /// The type a page of generated kind `kind` (or a drawn page, `None`) has with no `page.type`.
 pub fn derived(kind: Option<GenKind>) -> StyleRef {
-    StyleRef::Builtin(msheet::derived_page_type(kind.map(GenKind::value)).to_string())
+    let kind = kind.map_or(ecad_model::PageKind::Schematic, ecad_model::PageKind::generated);
+    StyleRef::Builtin(msheet::derived_page_type(kind).to_string())
 }
 
 /// The frame style `page` is drawn with: `ecad_model::sheet::frame_style`, the one resolver (the
@@ -215,14 +220,14 @@ pub fn ordered(doc: &Document) -> Vec<super::Row> {
 pub fn counts(doc: &Document) -> std::collections::BTreeMap<StyleRef, usize> {
     let mut out = std::collections::BTreeMap::new();
     for p in doc.pages.values() {
-        *out.entry(msheet::page_type_of(doc, &p.properties)).or_insert(0) += 1;
+        *out.entry(msheet::page_type_of(doc, p)).or_insert(0) += 1;
     }
     out
 }
 
 /// The pages of type `id`, in page order.
 pub fn pages_of(doc: &Document, id: &StyleRef) -> Vec<PageId> {
-    doc.page_order.iter().copied().filter(|p| doc.pages.get(p).is_some_and(|x| msheet::page_type_of(doc, &x.properties) == *id)).collect()
+    doc.page_order.iter().copied().filter(|p| doc.pages.get(p).is_some_and(|x| msheet::page_type_of(doc, x) == *id)).collect()
 }
 
 /// The pages a `SetStyle` of catalogue `page` reaches (design 054 §10.2), worked out on the
@@ -231,7 +236,7 @@ pub fn pages_of(doc: &Document, id: &StyleRef) -> Vec<PageId> {
 /// references to items on them). `None` for any other op. One pass over the pages.
 pub fn touched_by(doc: &Document, op: &ecad_model::Op) -> Option<(Vec<PageId>, bool)> {
     let ecad_model::Op::SetStyle { catalogue, id, before, after, .. } = op else { return None };
-    if catalogue != WORD {
+    if *catalogue != ecad_model::StyleCatalogue::Page {
         return None;
     }
     let text = id.text();
@@ -239,11 +244,7 @@ pub fn touched_by(doc: &Document, op: &ecad_model::Op) -> Option<(Vec<PageId>, b
         .page_order
         .iter()
         .copied()
-        .filter(|p| {
-            doc.pages.get(p).is_some_and(|x| {
-                x.properties.get(msheet::PAGE_TYPE_KEY).is_some_and(|v| v.trim() == text) || msheet::page_type_of(doc, &x.properties) == *id
-            })
-        })
+        .filter(|p| doc.pages.get(p).is_some_and(|x| x.page_type.as_ref().is_some_and(|v| v.text() == text) || msheet::page_type_of(doc, x) == *id))
         .collect();
     let sheet = |r: &Option<ecad_model::StyleRecord>| r.as_ref().and_then(|r| r.fields.get("sheet").cloned());
     // A new or removed record can also make a `page.type` start or stop naming a type.
@@ -263,11 +264,11 @@ pub fn kind_refusal(kind: GenKind) -> String {
 /// The refusal for a generated-only type with no `generated` (design 054 §4.2).
 pub fn generated_refusal(doc: &Document, id: &StyleRef) -> String {
     let pos = look_of(doc, id).holds;
-    let list: Vec<String> = kinds(pos).iter().map(|k| format!("\"{}\"", k.value())).collect();
+    let list: Vec<String> = kinds(pos).iter().map(|k| format!("\"{}\"", ecad_model::Word::word(*k))).collect();
     let words = match list.as_slice() {
         [] => String::new(),
         [one] => one.clone(),
         [rest @ .., last] => format!("{} or {last}", rest.join(", ")),
     };
-    format!("A {} page is generated: give generated: {words}.", super::name(doc, WORD, id))
+    format!("A {} page is generated: give generated: {words}.", super::name(doc, ecad_model::StyleCatalogue::Page, id))
 }

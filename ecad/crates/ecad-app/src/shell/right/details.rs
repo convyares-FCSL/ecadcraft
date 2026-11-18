@@ -129,7 +129,7 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
             ecad_model::ItemKind::Symbol(s) if s.placement.origin.is_finite() && s.placement.rotation.is_finite() => Some(Placed {
                 x: s.placement.origin.x,
                 y: s.placement.origin.y,
-                rotation: s.placement.rotation.rem_euclid(360.0),
+                rotation: ecad_model::units::Degrees::from(s.placement.rotation).0.rem_euclid(360.0),
                 mirror: s.placement.mirror,
             }),
             _ => None,
@@ -211,6 +211,6 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
 /// The page a symbol is on (for the header of a page).
 pub fn page_words(doc: &Document, page: PageId) -> (String, String) {
     let number = ecad_model::book::page_number(doc, page);
-    let title = doc.pages.get(&page).map(|p| p.title.clone()).unwrap_or_default();
+    let title = doc.pages.get(&page).map(|p| p.title.to_string()).unwrap_or_default();
     (number, title)
 }

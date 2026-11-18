@@ -112,8 +112,8 @@ pub mod fields {
 
 /// A refusal of a wire category or cable type record whose reference temperature is not below its
 /// maximum (design 057 §3.1); `None` for every other record.
-pub fn check_style(catalogue: &str, r: &ecad_model::style::StyleRecord) -> Option<String> {
-    if catalogue != wire::CATALOGUE.word && catalogue != cable::WORD {
+pub fn check_style(catalogue: ecad_model::StyleCatalogue, r: &ecad_model::style::StyleRecord) -> Option<String> {
+    if catalogue != wire::CATALOGUE.catalogue && catalogue != ecad_model::StyleCatalogue::Cable {
         return None;
     }
     let num = |k: &str| r.fields.get(k).and_then(|v| v.trim().parse::<f64>().ok()).filter(|x| x.is_finite());
@@ -249,7 +249,7 @@ pub struct Touch {
     pub retrace: BTreeSet<RatedSubject>,
     pub nets: BTreeSet<NetKey>,
     pub devices: BTreeSet<DeviceId>,
-    pub styles: BTreeSet<(String, StyleRef)>,
+    pub styles: BTreeSet<(ecad_model::StyleCatalogue, StyleRef)>,
     /// Locations whose temperature changed: `at[location]` (D1).
     pub locations: BTreeSet<String>,
     /// Location boxes to read again.
@@ -319,24 +319,24 @@ impl Touch {
                     }
                 }
                 Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => {
-                    // Brief 052: a location entry's code changed (or the entry came or went): the
-                    // rows naming it are worded again.
-                    if let Some((crate::designations::Aspect::Location, k, true)) = crate::designations::parse_list_property(key) {
-                        self.locations.insert(k.to_string());
-                    }
                     if key.starts_with("rating.") || key.starts_with("wire.") {
                         self.all_results = true;
                         self.table |= key == defaults::rating::TABLE.key;
                     }
                 }
+                // Brief 052: a location entry's code changed (or the entry came or went): the rows
+                // naming it are worded again.
+                Op::ModifyProject { before, after } => {
+                    self.locations.extend(crate::designations::changed_codes(before, after, crate::designations::Aspect::Location));
+                }
                 Op::SetStyle { catalogue, id, .. } => {
-                    if catalogue == ratingtable::WORD {
+                    if *catalogue == ecad_model::StyleCatalogue::RatingTable {
                         self.all_results = true;
                         self.table = true;
-                    } else if catalogue == wire::CATALOGUE.word || catalogue == cable::WORD {
-                        self.styles.insert((catalogue.clone(), id.clone()));
+                    } else if *catalogue == wire::CATALOGUE.catalogue || *catalogue == ecad_model::StyleCatalogue::Cable {
+                        self.styles.insert((*catalogue, id.clone()));
                         // A category naming a potential reaches every wire of it.
-                        if catalogue == wire::CATALOGUE.word {
+                        if *catalogue == wire::CATALOGUE.catalogue {
                             self.all_results = true;
                         }
                     }
@@ -666,7 +666,7 @@ impl Kept {
             results.extend(self.results.iter().filter(|(_, r)| r.device.as_ref().is_some_and(|d| d.how == How::Named)).map(|(s, _)| *s));
         }
         for (cat, id) in &touch.styles {
-            if cat == cable::WORD {
+            if *cat == ecad_model::StyleCatalogue::Cable {
                 results.extend(cable::users(doc, id).into_iter().map(RatedSubject::Cable));
             }
         }
@@ -921,8 +921,8 @@ pub fn rows(doc: &Document, r: &Rating) -> Vec<Check> {
 /// Whether a subject's category or cable type has a rated current (the **Use Datasheet** fix).
 fn has_datasheet(doc: &Document, s: RatedSubject) -> bool {
     match s {
-        RatedSubject::Wire(c) => sheet(doc, "wire", wire::WireLooks::new(doc).category(doc, c).0.as_ref()).rated.is_some(),
-        RatedSubject::Cable(k) => sheet(doc, cable::WORD, cable::of(doc, k).as_ref()).rated.is_some(),
+        RatedSubject::Wire(c) => sheet(doc, ecad_model::StyleCatalogue::Wire, wire::WireLooks::new(doc).category(doc, c).0.as_ref()).rated.is_some(),
+        RatedSubject::Cable(k) => sheet(doc, ecad_model::StyleCatalogue::Cable, cable::of(doc, k).as_ref()).rated.is_some(),
     }
 }
 
@@ -957,14 +957,14 @@ pub fn summary_rows(doc: &Document, k: &Kept) -> Vec<Check> {
         row(
             CheckKind::RatingNoData,
             format!("{} no rating data", plural(no_data, "protected wire or cable has", "protected wires and cables have")),
-            Some(Fix::OpenStandards("wire")),
+            Some(Fix::OpenStandards(ecad_model::StyleCatalogue::Wire)),
         );
     }
     if t.assumed > 0 {
         row(
             CheckKind::RatingAssumed,
             format!("{} no cable type; Cu, 70 \u{b0}C, class 5 assumed", plural(t.assumed, "cable has", "cables have")),
-            Some(Fix::OpenStandards(cable::WORD)),
+            Some(Fix::OpenStandards(ecad_model::StyleCatalogue::Cable)),
         );
     }
     if t.no_current > 0 {
@@ -1004,7 +1004,14 @@ pub fn summary_rows(doc: &Document, k: &Kept) -> Vec<Check> {
             Issue::NoData(w) => (CheckKind::RatingTableOdd, w.clone()),
             _ => continue,
         };
-        out.push(Check { kind, page: None, at: None, object: Object::None, which, fix: Some(Fix::OpenStandards(ratingtable::WORD)) });
+        out.push(Check {
+            kind,
+            page: None,
+            at: None,
+            object: Object::None,
+            which,
+            fix: Some(Fix::OpenStandards(ecad_model::StyleCatalogue::RatingTable)),
+        });
     }
     out
 }

@@ -15,7 +15,7 @@ impl App {
         let Some(p) = self.project.clone() else { return };
         let found = p.read(&mut self.cad.session, |p, _| {
             let page = page.or_else(|| p.active_page())?;
-            Some((page, p.ledger.document().pages.get(&page)?.title.clone()))
+            Some((page, p.ledger.document().pages.get(&page)?.title.to_string()))
         });
         match found {
             Ok(Some((page, title))) => self.name_box = Some(NameBox { kind: NameBoxKind::Rename(page), text: title, error: None, focused: false }),

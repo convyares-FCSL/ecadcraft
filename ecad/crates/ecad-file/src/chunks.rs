@@ -19,8 +19,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
     Cable, CableId, Definition, DefinitionId, Device, DeviceId, Document, Folder, FolderId, Item, ItemId, Layer, LayerId, ObjectRef, Op, Page,
-    PageId, ProjectSettings, Representation, RepresentationId, Route, RouteId, Standard, StyleCatalogues, Terminal, TerminalId, Touched, Wire,
-    WireId,
+    PageId, Project, ProjectSettings, Representation, RepresentationId, Route, RouteId, Standard, StyleCatalogues, Terminal, TerminalId, Touched,
+    Wire, WireId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -160,7 +160,7 @@ impl Dirty {
         add("definition", t.definitions.iter().map(|i| i.0).collect());
         for op in ops {
             match op {
-                Op::AddPage { id, .. } | Op::RemovePage { id, .. } => {
+                Op::AddPage { id, .. } | Op::RemovePage { id, .. } | Op::ModifyPage { id, .. } => {
                     self.pages.insert(*id);
                 }
                 Op::SetProperty { object: ObjectRef::Page(id), .. } => {
@@ -219,6 +219,9 @@ struct ProjectChunkRef<'a> {
     settings: &'a ProjectSettings,
     versions: &'a BTreeMap<String, u64>,
     properties: &'a BTreeMap<String, String>,
+    /// Design 072 §5.3: left out while empty.
+    #[serde(skip_serializing_if = "Project::is_empty")]
+    project: &'a Project,
     folders: &'a BTreeMap<FolderId, Folder>,
     folder_order: &'a Vec<FolderId>,
     /// Brief 050a (FP1, FP2): left out while empty, so older chunks keep their hashes.
@@ -235,6 +238,8 @@ struct ProjectChunk {
     settings: ProjectSettings,
     versions: BTreeMap<String, u64>,
     properties: BTreeMap<String, String>,
+    #[serde(default)]
+    project: Project,
     folders: BTreeMap<FolderId, Folder>,
     folder_order: Vec<FolderId>,
     #[serde(default)]
@@ -325,6 +330,7 @@ fn project_chunk(doc: &Document) -> Result<NewChunk, FileError> {
         settings: &doc.settings,
         versions: &doc.versions,
         properties: &doc.properties,
+        project: &doc.project,
         folders: &doc.folders,
         folder_order: &doc.folder_order,
         standard: &doc.standard,
@@ -417,7 +423,8 @@ enum Parsed {
     Meta(ModelMeta),
     // Boxed: the project chunk holds the standard and the style records (brief 050a).
     Project(Box<ProjectChunk>),
-    Page(PageId, PageChunk),
+    // Boxed: a page carries its typed fields (design 072 §5.1).
+    Page(PageId, Box<PageChunk>),
     Layer(BTreeMap<LayerId, Layer>),
     Device(BTreeMap<DeviceId, Device>),
     Terminal(BTreeMap<TerminalId, Terminal>),
@@ -464,7 +471,7 @@ fn parse_chunk(set: &ChunkSet, key: &str, body: &[u8]) -> Result<Parsed, FileErr
         if let Some((r, _)) = p.representations.iter().find(|(_, r)| r.page != id) {
             return Err(FileError::OnAnotherPage { what: "representation", id: r.to_string(), page: id.to_string() });
         }
-        return Ok(Parsed::Page(id, p));
+        return Ok(Parsed::Page(id, Box::new(p)));
     }
     let Some((kind, b)) = key.strip_prefix("model:").and_then(|r| r.split_once(':')) else {
         return Err(FileError::ChunkKey(key.to_string()));
@@ -559,6 +566,7 @@ fn merge_parsed(parsed: Vec<Result<Parsed, FileError>>) -> Result<(Document, Opt
                 doc.settings = p.settings;
                 doc.versions = p.versions;
                 doc.properties = p.properties;
+                doc.project = p.project;
                 doc.folders = p.folders;
                 doc.folder_order = p.folder_order;
                 doc.standard = p.standard;

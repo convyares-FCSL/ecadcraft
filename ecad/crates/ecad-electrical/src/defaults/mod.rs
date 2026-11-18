@@ -89,7 +89,7 @@ pub enum Kind {
     Parsed { max_chars: usize, parse: fn(&str) -> bool },
     /// A style of this catalogue (brief 050a, design 050 §2.4): its ID, a built-in word or
     /// `#<32 hex>`. A stored ID naming no style of the catalogue counts as absent.
-    Style(&'static str),
+    Style(ecad_model::StyleCatalogue),
 }
 
 /// A value of an entry: its built-in, or a stored value that parsed.
@@ -102,8 +102,31 @@ pub enum Value<'a> {
     Choice(&'static str),
     /// A [`Kind::Flag`] entry's switch.
     Flag(bool),
-    /// A [`Kind::Text`] or [`Kind::Parsed`] value.
+    /// A [`Kind::Text`] or [`Kind::Parsed`] value, or a [`Kind::Style`] value naming a built-in
+    /// style by its word.
     Text(&'a str),
+    /// A [`Kind::Style`] value naming an own style (a standard's or the project's) by its ID
+    /// (design 072 §5.1): held as the ID, so a value read from a typed field needs no stored text.
+    OwnStyle(u128),
+}
+
+impl Value<'_> {
+    /// The style a [`Kind::Style`] value names: a built-in word or an own style's ID.
+    pub fn style(&self) -> Option<ecad_model::StyleRef> {
+        match *self {
+            Value::Text(t) => ecad_model::StyleRef::builtin(t),
+            Value::OwnStyle(id) => Some(ecad_model::StyleRef::Own(id)),
+            Value::Length(_) | Value::Number(_) | Value::Choice(_) | Value::Flag(_) => None,
+        }
+    }
+
+    /// The value a style reference is as a [`Kind::Style`] value.
+    pub fn of_style(id: &ecad_model::StyleRef) -> Value<'_> {
+        match id {
+            ecad_model::StyleRef::Builtin(w) => Value::Text(w.as_str()),
+            ecad_model::StyleRef::Own(n) => Value::OwnStyle(*n),
+        }
+    }
 }
 
 /// A level that may override an entry's built-in.
@@ -260,6 +283,7 @@ impl Resolved<'_> {
             Value::Choice(w) => w.to_string(),
             Value::Flag(b) => ecad_model::words::flag_word(b).to_string(),
             Value::Text(t) => t.to_string(),
+            Value::OwnStyle(id) => ecad_model::StyleRef::Own(id).text(),
         }
     }
 }
@@ -310,6 +334,7 @@ pub fn accepts(kind: Kind, value: &Value<'_>) -> bool {
             (Kind::Choice(words), Value::Choice(w)) => words.contains(w),
             (Kind::Flag, Value::Flag(_)) => true,
             (Kind::Text { .. } | Kind::Parsed { .. } | Kind::Style(_), Value::Text(t)) => parse_value(kind, t) == Some(Value::Text(t)),
+            (Kind::Style(_), Value::OwnStyle(_)) => true,
             _ => false,
         }
     }
@@ -342,7 +367,10 @@ pub fn parse_value(kind: Kind, stored: &str) -> Option<Value<'_>> {
         Kind::Flag => [true, false].into_iter().find(|b| ecad_model::words::flag_word(*b) == stored).map(Value::Flag),
         Kind::Text { max_chars } => plain_text(s, max_chars).then_some(Value::Text(s)),
         Kind::Parsed { max_chars, parse } => (plain_text(s, max_chars) && parse(s)).then_some(Value::Text(s)),
-        Kind::Style(_) => ecad_model::StyleRef::parse(s).is_some().then_some(Value::Text(s)),
+        Kind::Style(_) => match ecad_model::StyleRef::parse(s)? {
+            ecad_model::StyleRef::Builtin(_) => Some(Value::Text(s)),
+            ecad_model::StyleRef::Own(id) => Some(Value::OwnStyle(id)),
+        },
     }
 }
 
@@ -365,7 +393,7 @@ pub fn parse_input(kind: Kind, typed: &str) -> Option<Value<'_>> {
 pub fn parse_value_in<'a>(doc: &Document, kind: Kind, stored: &'a str) -> Option<Value<'a>> {
     let v = parse_value(kind, stored)?;
     match (kind, v) {
-        (Kind::Style(cat), Value::Text(t)) => ecad_model::StyleRef::parse(t).filter(|id| crate::styles::exists(doc, cat, id)).map(|_| v),
+        (Kind::Style(cat), _) => v.style().filter(|id| crate::styles::exists(doc, cat, id)).map(|_| v),
         _ => Some(v),
     }
 }
@@ -437,7 +465,7 @@ pub fn resolve<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Resolved<'a> 
         }
     }
     if entry.allows(Level::Page)
-        && let Some(value) = at.page.and_then(|p| doc.pages.get(&p)).and_then(|p| stored(&p.properties, entry.key))
+        && let Some(value) = at.page.and_then(|p| doc.pages.get(&p)).and_then(|p| page_value(doc, entry, p))
     {
         return Resolved { value, from: Source::Page };
     }
@@ -456,6 +484,16 @@ pub fn resolve<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Resolved<'a> 
         return Resolved { value, from: Source::Standard };
     }
     Resolved { value: entry.builtin(), from: Source::Builtin }
+}
+
+/// `entry`'s value stored on `page`: its display bag, or for the page type the page's field
+/// (design 072 §5.1), read with the same rule as `ecad_model::sheet::page_type_of` (a type that
+/// does not exist reads as absent), so the two never disagree.
+fn page_value<'a>(doc: &Document, entry: &Entry, page: &'a ecad_model::Page) -> Option<Value<'a>> {
+    if entry.key == ecad_model::sheet::PAGE_TYPE_KEY {
+        return page.page_type.as_ref().filter(|id| ecad_model::sheet::page_type_exists(doc, id)).map(Value::of_style);
+    }
+    page.display.get(entry.key).and_then(|v| entry.parse_in(doc, v.as_str()))
 }
 
 /// The standard's valid value of `entry`, if the project has a standard that sets one (brief
@@ -484,7 +522,7 @@ pub fn chain<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Vec<(Source, Op
     if entry.allows(Level::Project) || project.is_some() {
         out.push((Source::Project, project.filter(|_| entry.allows(Level::Project))));
     }
-    let page = at.page.and_then(|p| doc.pages.get(&p)).and_then(|p| stored(&p.properties, entry.key));
+    let page = at.page.and_then(|p| doc.pages.get(&p)).and_then(|p| page_value(doc, entry, p));
     if entry.allows(Level::Page) || page.is_some() {
         out.push((Source::Page, page.filter(|_| entry.allows(Level::Page))));
     }
@@ -609,10 +647,10 @@ mod tests {
         // A hostile page value under a good project value: the project wins.
         let mut doc = Document::default();
         let page = PageId(7);
-        doc.pages.insert(page, Page::new("p"));
+        doc.pages.insert(page, Page::titled("p").unwrap());
         doc.properties.insert(show.key.into(), "no".into());
         if let Some(p) = doc.pages.get_mut(&page) {
-            p.properties.insert(show.key.into(), "sideways".into());
+            p.display.insert(show.key.into(), "sideways".into());
         }
         assert_eq!(resolve(&doc, show, Scope::page(page)), Resolved { value: Value::Choice("no"), from: Source::Project });
     }
@@ -624,13 +662,13 @@ mod tests {
         let page = PageId(1);
         let comp = DeviceId(2);
         let rep = RepresentationId(3);
-        doc.pages.insert(page, Page::new("p"));
+        doc.pages.insert(page, Page::titled("p").unwrap());
         doc.devices.insert(comp, Device::default());
         let at = Scope { page: Some(page), component: Some(comp), rep: Some(rep), conductor: None };
         assert_eq!(resolve(&doc, show, at).from, Source::Builtin);
         doc.properties.insert(show.key.into(), "no".into());
         assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("no"), from: Source::Project });
-        doc.pages.get_mut(&page).map(|p| p.properties.insert(show.key.into(), "yes".into()));
+        doc.pages.get_mut(&page).map(|p| p.display.insert(show.key.into(), "yes".into()));
         assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("yes"), from: Source::Page });
         doc.devices.get_mut(&comp).map(|c| c.properties.insert(show.key.into(), "no".into()));
         assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("no"), from: Source::Object });
@@ -640,7 +678,7 @@ mod tests {
         assert_eq!(resolve(&doc, show, Scope::project()).from, Source::Project);
         // An entry that does not allow the page level ignores a page value.
         let h = &text::RUN_ALIGN;
-        doc.pages.get_mut(&page).map(|p| p.properties.insert(h.key.into(), "4".into()));
+        doc.pages.get_mut(&page).map(|p| p.display.insert(h.key.into(), "4".into()));
         assert_eq!(resolve(&doc, h, at).from, Source::Builtin);
     }
 
@@ -771,8 +809,8 @@ mod kind_tests {
         doc.properties.insert(PAGE_ONLY.key.into(), "5".into());
         assert_eq!(resolve(&doc, &PAGE_ONLY, Scope::project()).from, Source::Builtin);
         let page = PageId(9);
-        doc.pages.insert(page, ecad_model::Page::new("p"));
-        doc.pages.get_mut(&page).map(|p| p.properties.insert(PAGE_ONLY.key.into(), "5".into()));
+        doc.pages.insert(page, ecad_model::Page::titled("p").unwrap());
+        doc.pages.get_mut(&page).map(|p| p.display.insert(PAGE_ONLY.key.into(), "5".into()));
         assert_eq!(resolve(&doc, &PAGE_ONLY, Scope::page(page)), Resolved { value: Value::Length(5.0), from: Source::Page });
     }
 

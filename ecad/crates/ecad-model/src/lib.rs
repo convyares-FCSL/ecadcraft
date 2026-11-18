@@ -43,7 +43,9 @@ pub mod links;
 pub mod merge;
 pub mod numbering;
 pub mod op;
+pub mod page;
 pub mod prefix;
+pub mod project;
 pub mod route;
 pub mod sheet;
 pub mod strict;
@@ -69,12 +71,16 @@ pub use doc::{
 pub use error::{ModelError, Noun, ParseError, Parsed, Result};
 pub use geom::{Placement, Pt};
 pub use id::{
-    CableId, ConductorId, DefinitionId, DeviceId, FolderId, IdAllocator, ItemId, LayerId, LibraryId, NetId, PageId, ProjectId, RepresentationId,
-    RouteId, StandardId, TerminalId, TxId, WireId,
+    CableId, ConductorId, DefinitionId, DeviceId, FolderId, FunctionId, IdAllocator, ItemId, LayerId, LibraryId, LocationId, NetId, PageId,
+    ProjectId, RepresentationId, RouteId, StandardId, TerminalId, TxId, WireId,
 };
 pub use invariant::Touched;
 pub use ledger::{Author, Base, BranchPoint, Check, History, Ledger, StepPoint, Transaction, TxKind};
 pub use op::{ObjectRef, Op};
+pub use page::{GenKind, PageKind, PageTitle};
+pub use project::{
+    CustomField, Function, InfoField, ListCode, ListDescription, ListEntry, Location, Project, ProjectInfo, Rev, RevField, RevValue, Revision,
+};
 pub use route::{Route, RouteEnd};
 pub use sheet::{GridLabels, PageColumn, PageRow, SheetSpec};
 pub use style::{Standard, StandardHeader, StyleCatalogue, StyleCatalogues, StyleLayer, StyleRecord, StyleRef};

@@ -50,6 +50,7 @@ struct TxRaw {
 pub const OP_NAMES: &[&str] = &[
     "AddPage",
     "RemovePage",
+    "ModifyPage",
     "AddLayer",
     "RemoveLayer",
     "AddItem",
@@ -85,6 +86,7 @@ pub const OP_NAMES: &[&str] = &[
     "ModifyFolder",
     "SetStyle",
     "SetStandard",
+    "ModifyProject",
 ];
 
 /// Why a record could not be decoded (§20.6).
@@ -317,7 +319,7 @@ mod tests {
             label: "v0 page".into(),
             kind: m::TxKind::Edit,
             time_ms: None,
-            ops: vec![m::Op::AddPage { id: m::PageId(9), page: m::Page::new("1"), index: 0 }],
+            ops: vec![m::Op::AddPage { id: m::PageId(9), page: m::Page::titled("1").unwrap(), index: 0 }],
         };
         let mut v = tx_value(&tx, &[0; 32]).unwrap();
         let op = v["ops"][0].as_object_mut().unwrap();
@@ -327,7 +329,7 @@ mod tests {
         page.insert("name".into(), title);
         let back = decode_tx(&v).unwrap();
         let m::Op::AddPage { page, .. } = &back.ops[0] else { panic!("not AddPage") };
-        assert_eq!(page.title, "1");
+        assert_eq!(page.title.as_str(), "1");
     }
 
     #[test]

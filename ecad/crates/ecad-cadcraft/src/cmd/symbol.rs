@@ -11,6 +11,7 @@
 //! Not here: the builder's drawing, drafts and the review drawer (048b); "update available" in
 //! Properties and Devices (048c).
 
+use ecad_model::units::{Degrees, Radians};
 use std::collections::BTreeSet;
 
 use cadcraft_engine::doc::Handle;
@@ -48,7 +49,7 @@ pub fn specs() -> Vec<CommandSpec> {
             .params(
                 "{name, key, graphics: [{kind: line|polyline|arc|circle|text|point, …} as in the file record], points: [{key, label?, at: [x,y]}], \
 slots?: [{text: tag|description|rating|rating.<label>|part_number|maker|article_number|function|location, at: [x,y], h?: left|center|right, \
-v?: baseline|bottom|middle|top, rotation?: radians}], defaults?: {prefix, description?, rating?, join?: device|part, aliases?, family?}, \
+v?: baseline|bottom|middle|top, rotation?: degrees}], defaults?: {prefix, description?, rating?, join?: device|part, aliases?, family?}, \
 bridges?: [[key…]], from?: definition id} (design 048 §9.1: embeds version 1 of a project symbol; one transaction)",
             )
             .noundo(),
@@ -145,9 +146,9 @@ struct SlotParam {
     /// Vertical alignment (default baseline).
     #[serde(default)]
     v: Option<VParam>,
-    /// Radians, counter-clockwise.
+    /// Degrees, counter-clockwise.
     #[serde(default)]
-    rotation: Option<f64>,
+    rotation: Option<Degrees>,
 }
 
 /// The content fields every builder command takes, as read.
@@ -195,7 +196,7 @@ impl ContentFields {
                 Some(VParam::Middle) => TextVAlign::Middle,
                 Some(VParam::Top) => TextVAlign::Top,
             },
-            rotation: s.rotation.unwrap_or(0.0),
+            rotation: s.rotation.map(Radians::from).unwrap_or_default(),
         });
         rules::content(ContentInput {
             name: self.name,
@@ -558,7 +559,7 @@ pub(crate) fn place_project_key(s: &mut Session, params: &crate::cmd::device::Pl
     if !(at.x.abs() <= crate::interact::MAX_COORD && at.y.abs() <= crate::interact::MAX_COORD) {
         return Err(err(crate::interact::OUT_OF_RANGE));
     }
-    let degrees = params.rotation.unwrap_or(0.0);
+    let degrees = params.rotation.unwrap_or_default();
     let mirror = params.mirror.unwrap_or(false);
     let device = params.device_id()?;
     // Pack re-run, bug 2: a typed tag names the new device, as for a built-in symbol.
@@ -573,7 +574,7 @@ pub(crate) fn place_project_key(s: &mut Session, params: &crate::cmd::device::Pl
         // A typed tag a device already holds is that device (a tag is an identity), as `place`
         // does for built-in symbols; devices and cables share one namespace (brief 026).
         let (device, tag) = ecad_electrical::cmd::place::project_target(doc, device, tag.as_deref())?;
-        let pl = Placement { origin: at, rotation: degrees.to_radians(), mirror, scale: 1.0 };
+        let pl = Placement { origin: at, rotation: Radians::from(degrees), mirror, scale: 1.0 };
         let style = plain_style(p);
         let mut plan = rules::plan_place(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, id, &def, pl, device, tag)?;
         let label = if device.is_some() { format!("Add symbol to {}", plan.tag) } else { "Place symbol".to_string() };

@@ -217,7 +217,7 @@ pub enum Action {
     NextFreeCore(ecad_model::WireId),
     ShowCables,
     /// Brief 050a: **Go to** Settings ▸ Standards at a style catalogue (`text`, `wire`…).
-    OpenStandards(&'static str),
+    OpenStandards(ecad_model::StyleCatalogue),
     /// Brief 057: a rating row's fix (Show rating, Use a size, Use Datasheet, Clear Protected by,
     /// Choose a table, Show the rated wires).
     RatingFix(ecad_cadcraft::checks::Fix),
@@ -1263,8 +1263,8 @@ impl ProjectPanel {
                     out.push(if self.has_folders() { Action::NewPageIn(self.target_folder()) } else { Action::New });
                     ui.close();
                 }
-                for k in ecad_cadcraft::generated::GenKind::ALL {
-                    let b = ui.button(k.title()).on_hover_text(format!("ecad.project.newpage.{}", k.value()));
+                for &k in <ecad_cadcraft::generated::GenKind as ecad_model::Word>::ALL {
+                    let b = ui.button(k.title()).on_hover_text(format!("ecad.project.newpage.{}", ecad_model::Word::word(k)));
                     if b.clicked() {
                         out.push(Action::NewGenerated(k));
                         ui.close();

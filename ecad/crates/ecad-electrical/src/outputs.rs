@@ -35,7 +35,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::book::{LOCATION_KEY, NUMBER_KEY};
 use ecad_model::{CableId, DeviceId, Document, ObjectRef, Op, PageId, Pt, RepresentationId, Subject, WireId};
 use serde_json::{Value, json};
 
@@ -531,10 +530,20 @@ impl Scope {
                 Op::SetProperty { object: ObjectRef::Cable(k), .. } => {
                     self.cables.insert(*k);
                 }
-                Op::SetProperty { object: ObjectRef::Page(_), key, .. } if key == LOCATION_KEY => {}
-                Op::SetProperty { object: ObjectRef::Page(p), key, .. } => {
-                    if key == NUMBER_KEY {
-                        self.route_pages.insert(*p);
+                Op::SetProperty { object: ObjectRef::Page(_), .. } => {}
+                Op::ModifyProject { before, after } => {
+                    use crate::designations::{Aspect, changed_codes, default_key};
+                    // Brief 047: an item without its own location shows the project's.
+                    if default_key(before, Aspect::Location) != default_key(after, Aspect::Location) {
+                        self.project_location = true;
+                    }
+                    // Brief 052: a rename in the project's list re-keys its users' rows.
+                    for a in Aspect::ALL {
+                        for k in changed_codes(before, after, a) {
+                            // Brief 059: the cables planning an end there show its new code.
+                            self.cables.extend(crate::cables::planning(doc, &k));
+                            self.renamed.insert(k);
+                        }
                     }
                 }
                 // Brief 050a: a standard's value of a registry key reaches the same views.
@@ -542,16 +551,6 @@ impl Scope {
                     // Brief 050b: the project's or standard's wire category reaches every wire row.
                     if key == ecad_model::wiring::WIRE_CATEGORY {
                         self.all_wires = true;
-                    }
-                    // Brief 047: an item without its own location shows the project's.
-                    if key == LOCATION_KEY {
-                        self.project_location = true;
-                    }
-                    // Brief 052: a rename in the project's list re-keys its users' rows.
-                    if let Some((_, k, true)) = crate::designations::parse_list_property(key) {
-                        self.renamed.insert(k.to_string());
-                        // Brief 059: the cables planning an end there show its new code.
-                        self.cables.extend(crate::cables::planning(doc, k));
                     }
                     // Brief 036: the registry's `terminal.*` defaults reach strips the same way.
                     if key.starts_with("strip_") || key.starts_with("terminal.") {
@@ -569,8 +568,8 @@ impl Scope {
                 // Brief 050b (design 050 §10): a wire category reaches the rows of the conductors
                 // resolving to it: its explicit users, the wires of the potentials it names (before
                 // and after), and every wire when it is the project's or standard's choice.
-                Op::SetStyle { catalogue, id, before, after, .. } if catalogue == "wire" => {
-                    for (_, o) in crate::styles::explicit_users(doc, "wire", id) {
+                Op::SetStyle { catalogue, id, before, after, .. } if *catalogue == ecad_model::StyleCatalogue::Wire => {
+                    for (_, o) in crate::styles::explicit_users(doc, ecad_model::StyleCatalogue::Wire, id) {
                         if let ObjectRef::Wire(c) = o {
                             self.wires.insert(c);
                         }
@@ -580,7 +579,7 @@ impl Scope {
                             self.potentials.insert(pot.trim().to_lowercase());
                         }
                     }
-                    if let Some(r) = crate::styles::field_of(doc, "wire", id, "potential", None) {
+                    if let Some(r) = crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, id, "potential", None) {
                         self.potentials.insert(r.text().trim().to_lowercase());
                     }
                     if crate::styles::chosen(doc, &crate::defaults::styles::WIRE_CATEGORY, crate::defaults::Scope::project()) == *id {
@@ -588,7 +587,7 @@ impl Scope {
                     }
                 }
                 // Brief 059 (design 059 §8): a cable type's cores, shield and gland reach its users' rows.
-                Op::SetStyle { catalogue, id, .. } if catalogue == crate::styles::cable::WORD => {
+                Op::SetStyle { catalogue, id, .. } if *catalogue == ecad_model::StyleCatalogue::Cable => {
                     self.cables.extend(crate::styles::cable::users(doc, id));
                 }
                 // Other style records and the standard header change no report row.
@@ -649,6 +648,17 @@ impl Scope {
                 Op::AddPage { id, .. } | Op::RemovePage { id, .. } => {
                     self.pages.insert(*id);
                     self.route_pages.insert(*id);
+                }
+                // Design 072 §5.1: a page changed in place; its number and title are where rows
+                // say they are.
+                Op::ModifyPage { id, before, after } => {
+                    if before.title != after.title || before.folder != after.folder {
+                        self.pages.insert(*id);
+                        self.route_pages.insert(*id);
+                    }
+                    if before.number != after.number {
+                        self.route_pages.insert(*id);
+                    }
                 }
                 Op::EmbedDefinition { .. }
                 | Op::RemoveDefinition { .. }

@@ -372,7 +372,7 @@ fn registry_defaults_apply() {
     let s = f.h.run("styles", json!({"catalogue": "text"})).unwrap();
     let row = s["styles"].as_array().unwrap().iter().find(|r| r["id"] == "continuation_caption").cloned();
     assert!(row.is_some_and(|r| r["fields"]["height"]["value"] == 2.5 && r["fields"]["weight"]["value"] == "regular"), "{s}");
-    assert!(ecad_cadcraft::text_style::TextKind::from_word("continuation_caption").is_some());
+    assert!(<ecad_cadcraft::text_style::TextKind as ecad_model::Word>::parse("continuation_caption").is_some());
 }
 
 /// Check 13: a name with many arrows keeps implicit edges (no m² storage) and stays equal to a
@@ -443,16 +443,16 @@ fn xrefs_on_a_name_of(m: usize) {
     let pages: Vec<PageId> = (0..100u128).map(|i| PageId(0x100 + i)).collect();
     let mut setup = vec![Op::AddLayer { id: LayerId(1), layer: ecad_model::Layer { name: "0".into() } }];
     for (i, p) in pages.iter().enumerate() {
-        setup.push(Op::AddPage { id: *p, page: ecad_model::Page::new(format!("{}", 100 + i)), index: i });
+        setup.push(Op::AddPage { id: *p, page: ecad_model::Page::titled(format!("{}", 100 + i)).unwrap(), index: i });
     }
     ledger.commit(ecad_model::Author::User, "pages", setup).unwrap();
     let mut ids = IdAllocator::seeded(0x49_15);
     let style = Style { layer: LayerId(1), color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
-    let starter = ecad_cadcraft::wires::continuation_starter().unwrap();
+    let starter = ecad_cadcraft::wires::continuation_starter();
     let mut props = ecad_model::Properties::new();
     props.insert("kind".into(), "continuation".into());
     props.insert("name".into(), "BIG".into());
-    let pl = Placement { origin: Pt::new(20.125, 60.0), rotation: 0.0, mirror: false, scale: 1.0 };
+    let pl = Placement { origin: Pt::new(20.125, 60.0), rotation: ecad_model::units::Radians(0.0), mirror: false, scale: 1.0 };
     let t = ecad_cadcraft::wires::plan_tagless(ledger.document(), &mut ids, pages[0], style, starter, pl, props).unwrap();
     ledger.commit(ecad_model::Author::User, "first", t.ops.clone()).unwrap();
     // The other arrows: the first one's ops with fresh IDs, place and page, in one transaction

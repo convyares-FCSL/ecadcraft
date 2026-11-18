@@ -20,7 +20,7 @@ impl P {
     fn new() -> Self {
         let mut p = P { ledger: Ledger::new(7), ids: IdAllocator::seeded(11) };
         let page: PageId = p.ids.fresh();
-        p.commit(vec![Op::AddPage { id: page, page: Page::new("1"), index: 0 }]);
+        p.commit(vec![Op::AddPage { id: page, page: Page::titled("1").unwrap(), index: 0 }]);
         p
     }
 
@@ -485,7 +485,7 @@ fn unrelated_ops_change_no_net_and_number_nothing() {
     let d = p.doc().devices[&c].clone();
     let tag = Op::ModifyDevice { id: c, before: d.clone(), after: d.with_tag(Some("-K1")) };
     let page: PageId = p.ids.fresh();
-    let ops = vec![tag, Op::AddPage { id: page, page: Page::new("2"), index: 1 }];
+    let ops = vec![tag, Op::AddPage { id: page, page: Page::titled("2").unwrap(), index: 1 }];
     let head = p.ledger.head();
     p.commit(ops.clone());
     let tx = &p.ledger.log()[head as usize];

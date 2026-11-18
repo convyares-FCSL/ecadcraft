@@ -6,8 +6,8 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::book::{Book, NUMBER_KEY};
-use ecad_model::{Document, FolderId, ObjectRef, Op, PageId};
+use ecad_model::book::Book;
+use ecad_model::{Document, Folder, FolderId, Op, PageId, PageNo};
 
 use crate::error::{CmdError, msg};
 use crate::outputs::kept::Outputs;
@@ -48,24 +48,21 @@ pub struct FolderStart {
 /// # Errors
 /// No such folder (a start key whose folder is gone may only be cleared).
 pub fn plan_folderprops(doc: &Document, folder: FolderId, start: Option<Option<String>>) -> Result<FolderStart, CmdError> {
-    let key = start_key(folder);
-    // A start key whose folder is gone (a hostile or merged file) may only be cleared.
-    let gone = !doc.folders.contains_key(&folder) && doc.properties.contains_key(&key) && start == Some(None);
-    let name = match doc.folders.get(&folder) {
-        Some(f) => f.name.clone(),
-        None if gone => String::from("(gone)"),
-        None => return Err(CmdError::refused(msg::NO_SUCH_FOLDER)),
+    let old = doc.folders.get(&folder).ok_or(CmdError::refused(msg::NO_SUCH_FOLDER))?;
+    let before = old.start.as_ref().map(|s| s.as_str().to_string());
+    let write = match start {
+        None => None,
+        Some(after) => {
+            let stored = match after.as_deref() {
+                Some(t) => Some(PageNo::parse(t).ok_or(CmdError::refused(BAD_START))?),
+                None => None,
+            };
+            let now = Folder { start: stored, ..old.clone() };
+            let ops = if now == *old { Vec::new() } else { vec![Op::ModifyFolder { id: folder, before: old.clone(), after: now }] };
+            Some((after, ops))
+        }
     };
-    let before = doc.properties.get(&key).cloned();
-    let write = start.map(|after| {
-        let ops = if before == after {
-            Vec::new()
-        } else {
-            vec![Op::SetProperty { object: ObjectRef::Project, key, before: before.clone(), after: after.clone() }]
-        };
-        (after, ops)
-    });
-    Ok(FolderStart { name, before, write })
+    Ok(FolderStart { name: old.name.clone(), before, write })
 }
 
 /// The echo of a folder's new start number.
@@ -108,11 +105,10 @@ pub fn plan_renumber(doc: &Document, outputs: Option<&Outputs>, scope: Option<Fo
     let overlaps = overlaps(doc, outputs).into_iter().map(|(a, b, n)| overlap_words(doc, a, b, n)).collect();
     let ops = pages
         .iter()
-        .map(|(page, n)| Op::SetProperty {
-            object: ObjectRef::Page(*page),
-            key: NUMBER_KEY.into(),
-            before: doc.pages.get(page).and_then(|x| x.properties.get(NUMBER_KEY)).cloned(),
-            after: Some(n.clone()),
+        .filter_map(|(page, n)| {
+            let before = doc.pages.get(page)?;
+            let after = ecad_model::Page { number: ecad_model::PageNo::parse(n), ..before.clone() };
+            (after != *before).then(|| Op::ModifyPage { id: *page, before: before.clone(), after })
         })
         .collect();
     Renumbered { ops, pages, overlaps }

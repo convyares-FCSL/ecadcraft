@@ -78,7 +78,7 @@ fn choices() -> Vec<&'static crate::defaults::Entry> {
 
 /// The text style catalogue.
 pub static CATALOGUE: Catalogue = Catalogue {
-    word: "text",
+    catalogue: ecad_model::StyleCatalogue::Text,
     plural: "Text styles",
     one: "Text style",
     fields: &FIELDS,

@@ -409,8 +409,9 @@ impl Wire {
                 s.echo("New wires: category auto (from their potential).");
                 return Ok(Step::Continue);
             }
-            let id = read(s, |p, _| crate::styles::find(p.ledger.document(), "wire", &choice).map_err(String::from)).map_err(other)?;
-            let name = read(s, |p, _| Ok(crate::styles::name(p.ledger.document(), "wire", &id))).unwrap_or_default();
+            let id = read(s, |p, _| crate::styles::find(p.ledger.document(), ecad_model::StyleCatalogue::Wire, &choice).map_err(String::from))
+                .map_err(other)?;
+            let name = read(s, |p, _| Ok(crate::styles::name(p.ledger.document(), ecad_model::StyleCatalogue::Wire, &id))).unwrap_or_default();
             self.category = Some(id.text());
             s.echo(format!("New wires: category {name}."));
             return Ok(Step::Continue);
@@ -516,9 +517,10 @@ impl Interactive for Wire {
         if self.asking_category {
             let names = read(s, |p, _| {
                 let doc = p.ledger.document();
-                Ok(crate::styles::catalogue("wire")
-                    .map(|c| crate::styles::rows(doc, c).into_iter().map(|r| r.name).collect::<Vec<_>>())
-                    .unwrap_or_default())
+                Ok(crate::styles::rows(doc, crate::styles::catalogue(ecad_model::StyleCatalogue::Wire))
+                    .into_iter()
+                    .map(|r| r.name)
+                    .collect::<Vec<_>>())
             })
             .unwrap_or_default();
             let mut p = Prompt::new(format!("Category for new wires [auto/{}]", names.join("/")), Accept::TEXT);

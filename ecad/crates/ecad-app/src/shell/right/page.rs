@@ -107,13 +107,13 @@ fn read(t: &mut App, page: PageId) -> Option<PageView> {
             page,
             at: p.change_count(),
             kind,
-            title: doc.pages.get(&page).map(|x| x.title.clone()).unwrap_or_default(),
+            title: doc.pages.get(&page).map(|x| x.title.to_string()).unwrap_or_default(),
             number: book.number(doc, page),
-            type_name: ecad_cadcraft::styles::name(doc, ecad_cadcraft::styles::page::WORD, &ty),
+            type_name: ecad_cadcraft::styles::name(doc, ecad_model::StyleCatalogue::Page, &ty),
             type_id: ty.text(),
             title_block: crate::settings::pages::title_block_words(&sheet),
             blocks: Block::ALL.iter().map(|b| (*b, b.on(doc))).collect(),
-            notes: doc.properties.get(ecad_cadcraft::front::NOTES_KEY).cloned().unwrap_or_default(),
+            notes: ecad_cadcraft::frames::project_text(doc, ecad_cadcraft::front::NOTES_KEY).unwrap_or_default(),
             wire_rows: if kind == GenKind::Cover { ecad_cadcraft::front::wire_rows(doc).into_iter().map(|(_, r)| r).collect() } else { Vec::new() },
             legend_rows: if kind == GenKind::Cover {
                 ecad_cadcraft::front::legend_rows(doc).into_iter().map(|(_, r)| r).collect()
@@ -215,7 +215,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, v: &PageView, writable: bool, full: 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let on = !row.pages.is_empty();
                         if row.kind != GenKind::Cover {
-                            let name = format!("ecad.page.front.{}", row.kind.value());
+                            let name = format!("ecad.page.front.{}", ecad_model::Word::word(row.kind));
                             if crate::settings::pages::switch(ui, on, writable, &name).clicked() {
                                 todo.push(Do::Front(row.kind, !on));
                             }
@@ -379,7 +379,7 @@ fn act(t: &mut App, v: &PageView, d: Do) {
             r
         }
         Do::Front(kind, true) => {
-            let mut p = json!({"type": "front", "generated": kind.value()});
+            let mut p = json!({"type": "front", "generated": ecad_model::Word::word(kind)});
             if let Some(a) = v.last_front {
                 p["after"] = json!(a.hex());
             }

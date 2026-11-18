@@ -204,8 +204,10 @@ fn missing_and_duplicate_entries_are_listed() {
     if let Some(c) = d.devices.get_mut(&k) {
         c.properties.insert("location".into(), "+CP1".into());
     }
-    d.properties.insert(designations::code_property(Aspect::Function, "aa"), "=F1".into());
-    d.properties.insert(designations::code_property(Aspect::Function, "bb"), "=f1".into());
+    // Design 072 §5.3: the ops refuse a code twice (I22); a hand-built document still shows it.
+    for (id, code) in [(0xaa, "=F1"), (0xbb, "=f1")] {
+        d.project.functions.push(ecad_model::Function::new(ecad_model::FunctionId(id), ecad_model::ListCode::new(code).unwrap()));
+    }
     d.rebuild_index();
     assert_eq!(code(&d, k), None, "a v0.2.0 code shows ?");
     assert!(locations::resolve(&d, k).missing());

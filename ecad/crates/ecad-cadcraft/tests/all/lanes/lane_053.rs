@@ -36,18 +36,17 @@ fn ops_that_read_no_reference_touch_no_cable() {
     use ecad_model::{CableId, Device, DeviceId, ObjectRef, Op};
     let doc = ecad_model::Document::default();
     let touched = |ops: Vec<Op>| ecad_cadcraft::references::cables_touched(&doc, &ops);
-    let style = |catalogue: &str| Op::SetStyle {
+    let style = |catalogue: ecad_model::StyleCatalogue| Op::SetStyle {
         layer: StyleLayer::Project,
-        catalogue: catalogue.into(),
+        catalogue,
         id: StyleRef::builtin("tag").unwrap(),
         before: None,
         after: Some(StyleRecord::default()),
     };
-    for catalogue in ["text", "wire", "location"] {
+    for catalogue in [ecad_model::StyleCatalogue::Text, ecad_model::StyleCatalogue::Wire, ecad_model::StyleCatalogue::Location] {
         assert_eq!(touched(vec![style(catalogue)]), Some(Default::default()), "a {catalogue} style");
     }
-    assert_eq!(touched(vec![style("frame")]), None, "a frame style reaches every cable");
-    assert_eq!(touched(vec![style("page-type")]), None, "an unknown catalogue reaches every cable");
+    assert_eq!(touched(vec![style(ecad_model::StyleCatalogue::Frame)]), None, "a frame style reaches every cable");
     assert_eq!(touched(vec![Op::SetStandard { before: None, after: None }]), None, "a standard reaches every cable");
     let gone = Op::DeleteDevice { id: DeviceId(7), device: Device::default() };
     assert_eq!(touched(vec![gone]), Some(Default::default()), "a deleted component");

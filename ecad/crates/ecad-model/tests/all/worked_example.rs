@@ -18,7 +18,7 @@ fn worked_example_replays_and_undoes() {
     l.commit(
         Author::User,
         "New project",
-        vec![Op::AddPage { id: p1, page: Page::new("1"), index: 0 }, Op::AddLayer { id: layer, layer: Layer { name: "0".into() } }],
+        vec![Op::AddPage { id: p1, page: Page::titled("1").unwrap(), index: 0 }, Op::AddLayer { id: layer, layer: Layer { name: "0".into() } }],
     )
     .unwrap();
     let line = |a: (f64, f64), b: (f64, f64)| Item {

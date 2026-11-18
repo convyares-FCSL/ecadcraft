@@ -279,7 +279,7 @@ fn tester_031_fixtures_build_and_store_no_text_keys() {
     let d = f.h.doc();
     assert!(d.properties.keys().all(|k| !k.starts_with("text.")));
     assert!(d.devices.values().all(|c| c.properties.keys().all(|k| !k.starts_with("text."))));
-    assert!(d.pages.values().all(|p| p.properties.keys().all(|k| !k.starts_with("text."))));
+    assert!(d.pages.values().all(|p| p.display.keys().all(|k| !k.starts_with("text."))));
     f.h.check();
 }
 
@@ -479,7 +479,11 @@ fn t3_font_fallback_never_refuses_and_keeps_the_stored_name() {
 /// The project's record of the tag text style's `field` (brief 050a).
 fn tag_field(h: &mut H, field: &str) -> Option<String> {
     let d = h.doc();
-    d.styles.get("text").and_then(|m| m.get(&ecad_model::StyleRef::Builtin("tag".into()))).and_then(|r| r.fields.get(field)).cloned()
+    d.styles
+        .get(&ecad_model::StyleCatalogue::Text)
+        .and_then(|m| m.get(&ecad_model::StyleRef::Builtin("tag".into())))
+        .and_then(|r| r.fields.get(field))
+        .cloned()
 }
 
 /// T4 (AC 1): `textstyle {kind: tag, height: 3, weight: regular}` is one transaction; the open
@@ -493,7 +497,10 @@ fn t4_one_transaction_per_change_and_the_page_redraws() {
     assert_eq!(last_label(&mut f.h), "Text styles");
     // Brief 050a: one record of the tag's text style, at project level.
     let ops = last_ops(&mut f.h);
-    assert!(ops.iter().all(|o| matches!(o, Op::SetStyle { catalogue, id, .. } if catalogue == "text" && id.text() == "tag")), "{ops:?}");
+    assert!(
+        ops.iter().all(|o| matches!(o, Op::SetStyle { catalogue, id, .. } if *catalogue == ecad_model::StyleCatalogue::Text && id.text() == "tag")),
+        "{ops:?}"
+    );
     assert_eq!(tag_field(&mut f.h, "height").map(|s| s.parse::<f64>().ok()), Some(Some(3.0)));
     assert_eq!(tag_field(&mut f.h, "weight").as_deref(), Some("regular"));
     let tag = textstyle_kind(&v, "tag");
@@ -622,7 +629,7 @@ fn t5_levels_symbol_device_page_project_narrowest_wins() {
     // Where the keys live (FP1–FP3).
     let d = f.h.doc();
     assert_eq!(d.properties.get("text.tag.show").map(String::as_str), Some("no"));
-    assert_eq!(d.pages[&f.page].properties.get("text.tag.show").map(String::as_str), Some("yes"));
+    assert_eq!(d.pages[&f.page].display.get("text.tag.show").map(String::as_str), Some("yes"));
     assert_eq!(d.devices[&f.k1].properties.get("text.tag.show").map(String::as_str), Some("no"));
     let sym = format!("text.{}.tag.show", f.r1[1].hex());
     assert_eq!(d.devices[&f.k1].properties.get(&sym).map(String::as_str), Some("yes"), "{sym}");

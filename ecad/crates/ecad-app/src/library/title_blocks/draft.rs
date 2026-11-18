@@ -159,7 +159,6 @@ pub fn move_item(item: &mut BlockItem, dx: f64, dy: f64) {
             *b = (b.0 + dx, b.1 + dy);
         }
         BlockItem::Text { at, .. } | BlockItem::Field { at, .. } | BlockItem::RevTable { at, .. } | BlockItem::Logo { at, .. } => r(at),
-        BlockItem::Unknown => {}
     }
 }
 

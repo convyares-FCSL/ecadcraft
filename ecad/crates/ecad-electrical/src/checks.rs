@@ -442,7 +442,7 @@ pub enum Fix {
     /// (`partline set for`).
     DropMissingFor(DeviceId, u8),
     /// Brief 050a: **Go to** Settings ▸ Standards at this catalogue (`text`, `wire`…).
-    OpenStandards(&'static str),
+    OpenStandards(ecad_model::StyleCatalogue),
     /// Brief 054 (design 054 §9): a page type or folder start row's fix.
     Page(crate::page_types::PageFix),
     /// Brief 057: **Show rating**: select the subject in Project ▸ Wires or Cables, Rating unfolded.
@@ -1563,34 +1563,44 @@ impl Scope {
                 }
                 // Brief 033 (review of #64, 1): a page's sheet moves its frame, so the devices on it
                 // are checked again for a table over the title block.
-                Op::SetProperty { object: ObjectRef::Page(p), key, .. } if key == ecad_model::sheet::SHEET_KEY => {
+                // Design 072 §5.1: a page changed in place; its sheet moves its frame (as below), its
+                // function or location is a context for the devices on it.
+                Op::ModifyPage { id: p, before, after } => {
+                    let ch = before.change(after);
                     self.relocate = true;
-                    for (_, r) in doc.representations_on(*p) {
-                        if let Subject::Device(c) = r.subject {
-                            self.devices.insert(c);
+                    if ch.sheet {
+                        for (_, r) in doc.representations_on(*p) {
+                            if let Subject::Device(c) = r.subject {
+                                self.devices.insert(c);
+                            }
                         }
+                    }
+                    if ch.location || ch.function {
+                        self.devices_on(doc, *p);
                     }
                 }
                 // Brief 052 (design 052 §6): a page's function or location is a context for the
                 // devices on it; the project's for every device (rare); the list's codes for the
                 // objects storing that entry, and the duplicate rows.
-                Op::SetProperty { object: ObjectRef::Page(p), key, .. } if crate::designations::Aspect::of_property(key).is_some() => {
-                    self.relocate = true;
-                    self.devices_on(doc, *p);
-                }
-                Op::SetProperty { object: ObjectRef::Project, key, .. } if crate::designations::Aspect::of_property(key).is_some() => {
-                    self.relocate = true;
-                    self.devices.extend(doc.devices.keys().copied());
-                }
-                Op::SetProperty { object: ObjectRef::Project, key, .. } if crate::designations::is_list_property(key) => {
-                    self.relocate = true;
-                    self.designations = true;
-                    if let Some((_, entry, true)) = crate::designations::parse_list_property(key) {
-                        // Brief 059: the cables planning an end there (their rows name its code).
-                        self.cables.extend(crate::cables::planning(doc, entry));
-                        for (c, x) in &doc.devices {
-                            if x.properties.iter().any(|(k, v)| crate::designations::Aspect::of_property(k).is_some() && v == entry) {
-                                self.devices.insert(*c);
+                Op::ModifyProject { before, after } => {
+                    use crate::designations::{Aspect, changed_codes, default_key};
+                    for a in Aspect::ALL {
+                        if default_key(before, a) != default_key(after, a) {
+                            self.relocate = true;
+                            self.devices.extend(doc.devices.keys().copied());
+                        }
+                        let changed = changed_codes(before, after, a);
+                        if !changed.is_empty() {
+                            self.relocate = true;
+                            self.designations = true;
+                        }
+                        for entry in &changed {
+                            // Brief 059: the cables planning an end there (their rows name its code).
+                            self.cables.extend(crate::cables::planning(doc, entry));
+                            for (c, x) in &doc.devices {
+                                if x.properties.iter().any(|(k, v)| Aspect::of_property(k).is_some() && v == entry) {
+                                    self.devices.insert(*c);
+                                }
                             }
                         }
                     }
@@ -1613,7 +1623,7 @@ impl Scope {
                 }
                 Op::AddLayer { .. } | Op::RemoveLayer { .. } | Op::NameVersion { .. } | Op::UnnameVersion { .. } => {}
                 // Brief 059 (design 059 §8): a cable type's cores and gland reach its users' rows.
-                Op::SetStyle { catalogue, id, .. } if catalogue == crate::styles::cable::WORD => {
+                Op::SetStyle { catalogue, id, .. } if *catalogue == ecad_model::StyleCatalogue::Cable => {
                     self.cables.extend(crate::styles::cable::users(doc, id));
                 }
                 // Brief 050a: style records and the standard reach only the style rows (above).

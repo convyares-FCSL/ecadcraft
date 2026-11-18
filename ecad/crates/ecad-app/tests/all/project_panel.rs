@@ -212,7 +212,7 @@ pub(crate) fn active(h: &mut Harness<'static, App>) -> Option<PageId> {
 
 fn titles(h: &mut Harness<'static, App>) -> Vec<String> {
     let d = doc(h);
-    d.page_order.iter().map(|p| d.pages[p].title.clone()).collect()
+    d.page_order.iter().map(|p| d.pages[p].title.to_string()).collect()
 }
 
 /// The one page window's title.
@@ -404,10 +404,7 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     assert_eq!(head(&mut h), before + 1, "one transaction");
     let (label, ops) = last_ops(&mut h);
     assert_eq!(label, "Rename page");
-    assert!(
-        matches!(ops.as_slice(), [Op::RemovePage { id: a, .. }, Op::AddPage { id: b, page, index: 2 }] if a == b && *a == spare && page.title == "Spare 2"),
-        "{ops:?}"
-    );
+    assert!(matches!(ops.as_slice(), [Op::ModifyPage { id, after, .. }] if *id == spare && after.title == "Spare 2"), "{ops:?}");
     assert!(h.query_by_label("Page 3: Spare 2").is_some());
     ok(&mut h, "u");
     h.run_steps(2);
@@ -669,7 +666,7 @@ fn five_hundred_pages_cost_only_the_visible_rows() {
     );
     // Scroll to page 250 (cursor there, as End/PgDn would) and show it.
     let p250 = doc(&mut h).page_order[249];
-    let label250 = project_panel::row_label("250", &doc(&mut h).pages[&p250].title);
+    let label250 = project_panel::row_label("250", doc(&mut h).pages[&p250].title.as_str());
     h.state_mut().show_page(p250).unwrap();
     h.run_steps(4);
     assert!(h.query_by_label(&label250).is_some(), "page 250's row is scrolled into view");

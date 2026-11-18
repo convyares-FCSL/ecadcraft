@@ -25,12 +25,12 @@ fn every_built_in_style_value_is_valid_for_its_field() {
     for c in styles::CATALOGUES {
         for f in c.fields {
             let v = f.builtin();
-            assert!(matches!(v, Value::Text("")) || defaults::accepts(f.kind, &v), "{}.{}: {v:?}", c.word, f.key);
+            assert!(matches!(v, Value::Text("")) || defaults::accepts(f.kind, &v), "{}.{}: {v:?}", c.catalogue, f.key);
         }
         for b in c.builtins {
             for (k, v) in b.values() {
-                let f = c.field(k).unwrap_or_else(|| panic!("{}.{} names no field {k}", c.word, b.id));
-                assert!(matches!(v, Value::Text("")) || defaults::accepts(f.kind, v), "{}.{}.{k}: {v:?}", c.word, b.id);
+                let f = c.field(k).unwrap_or_else(|| panic!("{}.{} names no field {k}", c.catalogue, b.id));
+                assert!(matches!(v, Value::Text("")) || defaults::accepts(f.kind, v), "{}.{}.{k}: {v:?}", c.catalogue, b.id);
             }
         }
     }

@@ -825,7 +825,7 @@ fn ac6_hostile_documents_never_panic() {
             "page in no order",
             Box::new(move |d| {
                 let lost = PageId::from(99);
-                d.pages.insert(lost, Page::new("lost"));
+                d.pages.insert(lost, Page::titled("lost").unwrap());
                 add_ref(d, 9, Pt::new(0.0, 0.0), lost, Subject::Cable(cable));
             }),
         ),
@@ -857,7 +857,7 @@ fn ac6_hostile_documents_never_panic() {
             "empty title, all pages unordered",
             Box::new(move |d| {
                 for p in d.pages.values_mut() {
-                    p.title = String::new();
+                    p.title = ecad_model::PageTitle::new("-").unwrap();
                 }
                 d.page_order.clear();
             }),

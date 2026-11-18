@@ -31,8 +31,8 @@ fn location_and_list_commands_through_execute() {
     let (label, ops) = last_by_agent(&mut c);
     assert_eq!(label, "Set location +CP1");
     assert!(
-        ops.iter().any(|o| matches!(o, Op::SetProperty { object: ObjectRef::Project, key, .. } if key.starts_with("designation.l."))),
-        "entry added"
+        ops.iter().any(|o| matches!(o, Op::ModifyProject { after, .. } if after.locations.iter().any(|e| e.code == "+CP1"))),
+        "entry added (design 072 §5.3)"
     );
     assert!(ops.iter().any(|o| matches!(o, Op::SetProperty { object: ObjectRef::Device(_), key, .. } if key == "location")));
     c.exec("setfunction", json!({"component": k, "value": "=F1"}));

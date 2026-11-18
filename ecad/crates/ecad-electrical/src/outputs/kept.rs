@@ -173,16 +173,14 @@ impl Outputs {
             Op::AddPage { .. } | Op::RemovePage { .. } => true,
             // Brief 046 (review): a page's style or sheet changes its sheet count on the document
             // alone, so the count before cannot be compared.
-            Op::SetProperty { object: ObjectRef::Page(_), key, .. } => {
-                key == ecad_model::book::NUMBER_KEY
-                    || key == crate::generated::KEY
-                    || key == crate::defaults::strip_pages::STYLE.key
-                    || key == ecad_model::sheet::SHEET_KEY
+            Op::ModifyPage { before, after, .. } => {
+                before.number != after.number
+                    || before.sheet != after.sheet
+                    || before.display.get(crate::defaults::strip_pages::STYLE.key) != after.display.get(crate::defaults::strip_pages::STYLE.key)
             }
-            Op::SetProperty { object: ObjectRef::Project, key, .. } => {
-                (key.starts_with(crate::revisions::PREFIX) && key.ends_with(crate::revisions::ISSUED))
-                    || key == crate::defaults::strip_pages::STYLE.key
-            }
+            Op::SetProperty { object: ObjectRef::Page(_), key, .. } => key == crate::defaults::strip_pages::STYLE.key,
+            Op::SetProperty { object: ObjectRef::Project, key, .. } => key == crate::defaults::strip_pages::STYLE.key,
+            Op::ModifyProject { before, after } => crate::revisions::issue_changed(before, after),
             Op::SetProperty { object: ObjectRef::Standard, key, .. } => key == crate::defaults::strip_pages::STYLE.key,
             Op::SetProjectSettings { before, after } => before.sheet != after.sheet,
             _ => false,
@@ -264,7 +262,6 @@ impl Outputs {
         for op in ops {
             let p = match op {
                 Op::AddPage { id, .. } | Op::RemovePage { id, .. } => *id,
-                Op::SetProperty { object: ObjectRef::Page(p), key, .. } if key == crate::generated::KEY => *p,
                 _ => continue,
             };
             if needs_outputs(doc, p) {
@@ -290,7 +287,7 @@ impl Outputs {
             scope.wires.extend(self.wires.keys().copied());
         }
         if scope.sheet {
-            let own = |p: &PageId| doc.pages.get(p).is_some_and(|x| x.properties.contains_key(ecad_model::sheet::SHEET_KEY));
+            let own = |p: &PageId| doc.pages.get(p).is_some_and(|x| x.sheet.is_some());
             scope.route_pages.extend(doc.page_order.iter().filter(|p| !own(p)).copied());
         }
         if scope.project_location {
@@ -644,7 +641,7 @@ impl Outputs {
         let shown = |k: Option<String>| k.map(|k| (crate::designations::code_of(doc, crate::designations::Aspect::Location, &k), k));
         let location = match shown(clean(props.get(LOCATION_KEY))) {
             Some((value, key)) => Located { value, source: Source::Device, key: Some(key) },
-            None => match shown(clean(doc.properties.get(LOCATION_KEY))) {
+            None => match shown(crate::designations::default_key(&doc.project, crate::designations::Aspect::Location)) {
                 Some((value, key)) => Located { value, source: Source::Project, key: Some(key) },
                 None => Located { value: None, source: Source::None, key: None },
             },
@@ -824,13 +821,14 @@ impl Outputs {
         let colour_own = look.colour.as_ref().is_some_and(|v| v.1 == crate::defaults::Source::Object);
         let cross_section_own = look.cross_section.as_ref().is_some_and(|v| v.1 == crate::defaults::Source::Object);
         let category = look.category.clone().map(|id| {
-            let n = crate::styles::name(doc, "wire", &id);
+            let n = crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, &id);
             (id, n)
         });
         let part = look.category.as_ref().and_then(|id| {
-            let f = |k: &str| crate::styles::field_of(doc, "wire", id, k, None).and_then(|r| crate::styles::wire::filled(&r));
+            let f =
+                |k: &str| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, id, k, None).and_then(|r| crate::styles::wire::filled(&r));
             let pn = f("part_number")?;
-            let allowance = crate::styles::field_of(doc, "wire", id, "allowance", None).map_or(0.0, |r| r.number());
+            let allowance = crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, id, "allowance", None).map_or(0.0, |r| r.number());
             Some((pn, f("maker"), f("description"), allowance))
         });
         let cable = doc

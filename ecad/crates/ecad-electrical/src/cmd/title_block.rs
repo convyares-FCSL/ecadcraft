@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 
 use ecad_model::sheet::{FRAME_CATALOGUE, FRAME_SHEET_FIELD, SheetSpec};
 use ecad_model::style::{StyleLayer, StyleRecord, StyleRef, is_name};
-use ecad_model::title_block::{BlockItem, StyleBody, TitleBlockLayout};
+use ecad_model::title_block::{StyleBody, TitleBlockLayout};
 use ecad_model::{Document, IdAllocator, Op};
 
 use crate::cmd::style::{FieldInput, STANDARD_FIRST, STYLE_NEEDS_NAME, fields};
@@ -54,12 +54,9 @@ pub fn layer_of(doc: &Document, id: &StyleRef) -> Option<StyleLayer> {
 /// A body, checked against design 055 §1.3.
 ///
 /// # Errors
-/// A bound broken, or an item of a kind this build does not know.
+/// A bound broken (an unknown item kind does not read: design 072 §5.4).
 pub fn check_body(l: TitleBlockLayout) -> Result<TitleBlockLayout, CmdError> {
     l.check().map_err(CmdError::refused)?;
-    if l.items.iter().any(|i| matches!(i, BlockItem::Unknown)) {
-        return Err(CmdError::refused("The body holds an item of a kind this build does not know."));
-    }
     Ok(l)
 }
 
@@ -117,7 +114,7 @@ pub fn plan_edit(doc: &Document, id: &StyleRef, edit: FrameEdit) -> Result<EditP
     let ops = if before.as_ref() == Some(&after) {
         Vec::new()
     } else {
-        vec![Op::SetStyle { layer, catalogue: FRAME_CATALOGUE.into(), id: id.clone(), before, after: Some(after) }]
+        vec![Op::SetStyle { layer, catalogue: FRAME_CATALOGUE, id: id.clone(), before, after: Some(after) }]
     };
     Ok(EditPlan { ops, label: format!("Title block {name}") })
 }
@@ -209,6 +206,6 @@ pub fn plan_new(doc: &Document, ids: &mut IdAllocator, new: NewFrame<'_>) -> Res
     rec.body = Some(StyleBody::title_block(new.layout));
     let id = StyleRef::Own(ids.fresh::<u128>());
     styles::check_record(doc, cat, &id, new.layer, &rec)?;
-    let ops = vec![Op::SetStyle { layer: new.layer, catalogue: FRAME_CATALOGUE.into(), id: id.clone(), before: None, after: Some(rec) }];
+    let ops = vec![Op::SetStyle { layer: new.layer, catalogue: FRAME_CATALOGUE, id: id.clone(), before: None, after: Some(rec) }];
     Ok((ops, id))
 }

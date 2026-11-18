@@ -13,7 +13,7 @@ fn old_touched(ops: &[Op]) -> Touched {
     let mut t = Touched::default();
     for op in ops {
         match op {
-            Op::AddPage { id, .. } | Op::RemovePage { id, .. } => {
+            Op::AddPage { id, .. } | Op::RemovePage { id, .. } | Op::ModifyPage { id, .. } => {
                 t.page_order = true;
                 t.pages.insert(*id);
             }
@@ -71,6 +71,7 @@ fn old_touched(ops: &[Op]) -> Touched {
                 t.folders.insert(*id);
             }
             Op::SetStyle { .. } | Op::SetStandard { .. } => t.styles = true,
+            Op::ModifyProject { .. } => t.project = true,
         }
     }
     t

@@ -14,7 +14,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use ecad_model::{Base, Document, History, Ledger, ModelError, ObjectRef, Op, ProjectId, Transaction, TxId, TxKind};
+use ecad_model::{Base, Document, History, Ledger, ModelError, Op, ProjectId, Transaction, TxId, TxKind, Word};
 use serde_json::{Value, json};
 
 use super::chunks::{self, ChunkSet, Dirty, ModelMeta};
@@ -2124,21 +2124,22 @@ fn merge_record(seq: u64, chain: Hash, row: &MergeRow) -> VersionRecord {
 
 fn issues(tx: &Transaction, name: &str) -> bool {
     tx.ops.iter().any(|op| {
-        matches!(op, Op::SetProperty { object: ObjectRef::Project, key, after: Some(v), .. }
-            if key.starts_with("rev.") && key.ends_with(".issued") && v == name)
+        matches!(op, Op::ModifyProject { before, after }
+        if after.revisions.iter().enumerate().any(|(i, r)| {
+            r.issued.as_ref().is_some_and(|v| v == name) && before.revisions.get(i).is_none_or(|b| b.issued.is_none())
+        }))
     })
 }
 
 /// The revision row (`rev.<n>.*`) whose `issued` is `name`, in `doc`, as release data.
 fn revision_of(doc: &Document, name: &str) -> Option<Release> {
-    let key = doc.properties.iter().find(|(k, v)| k.starts_with("rev.") && k.ends_with(".issued") && *v == name)?.0;
-    let prefix = key.strip_suffix("issued")?;
-    let fields = doc
-        .properties
-        .range(prefix.to_string()..)
-        .take_while(|(k, _)| k.starts_with(prefix))
-        .filter_map(|(k, v)| k.strip_prefix(prefix).filter(|f| *f != "issued").map(|f| (f.to_string(), v.clone())))
-        .collect();
+    let row = doc.project.revisions.iter().find(|r| r.issued.as_ref().is_some_and(|v| v == name))?;
+    let mut fields: BTreeMap<String, String> =
+        <ecad_model::RevField as Word>::ALL.iter().filter_map(|f| row.field(*f).map(|v| (Word::word(*f).to_string(), v.to_string()))).collect();
+    fields.extend(row.custom.iter().map(|(k, v)| (k.as_str().to_string(), v.to_string())));
+    if let Some(r) = &row.released {
+        fields.insert("released".into(), r.to_string());
+    }
     Some(Release { fields, assets: Vec::new(), extra: BTreeMap::new() })
 }
 

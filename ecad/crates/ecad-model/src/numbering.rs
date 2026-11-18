@@ -987,7 +987,7 @@ mod tests {
         let mut d = Document::default();
         for i in 0..3u128 {
             let p = PageId(1000 + i);
-            d.pages.insert(p, Page::new(format!("P{i}")));
+            d.pages.insert(p, Page::titled(format!("P{i}")).unwrap());
             d.page_order.push(p);
         }
         let style = Style { layer: LayerId(1), color: crate::doc::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
@@ -1004,7 +1004,7 @@ mod tests {
                     style: style.clone(),
                     kind: ItemKind::Symbol(SymbolInstance {
                         definition: DefinitionId(9),
-                        placement: Placement { origin: Pt::new(*x, *y), rotation: 0.0, mirror: false, scale: 1.0 },
+                        placement: Placement { origin: Pt::new(*x, *y), rotation: crate::units::Radians(0.0), mirror: false, scale: 1.0 },
                     }),
                 },
             );

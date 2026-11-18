@@ -11,6 +11,7 @@
 //! Excluded: editing several kinds at once, cable members and cores (read only here), free
 //! project properties (Project Properties holds them).
 
+use ecad_model::Word;
 use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -68,6 +69,9 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
     };
     for op in ops {
         match op {
+            Op::ModifyPage { id, .. } => {
+                out.insert(ObjectRef::Page(*id));
+            }
             Op::SetProperty { object, .. } => {
                 out.insert(*object);
                 // A location box's own location is what its page's devices inherit (brief 024).
@@ -155,7 +159,9 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
             | Op::AddFolder { .. }
             | Op::RemoveFolder { .. }
             | Op::ModifyFolder { .. }
-            | Op::SetProjectSettings { .. } => return None,
+            | Op::SetProjectSettings { .. }
+            // Design 072 §5.3: a code renamed in the project's list shows on every object storing it.
+            | Op::ModifyProject { .. } => return None,
         }
     }
     Some(out)
@@ -377,19 +383,21 @@ pub fn sheet_choices(doc: &Document) -> Vec<String> {
 fn page_section(doc: &Document, page: PageId) -> Section {
     let book = Book::of(doc);
     let pg = doc.pages.get(&page);
-    let prop = |k: &str| pg.and_then(|x| x.properties.get(k)).cloned();
     let number = book.number(doc, page);
-    let mut rows = vec![Row::rw(NUMBER_KEY, "Number", number.clone()), Row::rw("title", "Title", pg.map(|x| x.title.clone()).unwrap_or_default())];
+    let mut rows =
+        vec![Row::rw(NUMBER_KEY, "Number", number.clone()), Row::rw("title", "Title", pg.map(|x| x.title.to_string()).unwrap_or_default())];
     let folder = ecad_model::book::folder_of(doc, page).filter(|f| doc.folders.contains_key(f));
     let path = crate::revisions::folder_path(doc, folder);
     rows.push(Row::ro("folder", "Folder", if path.is_empty() { "(top level)".into() } else { path }));
     for (key, label) in [(FUNCTION_KEY, "Function"), (LOCATION_KEY, "Location")] {
-        // Brief 052: stored as entry keys, shown as codes.
+        // Brief 052: stored as entry keys, shown as codes (design 072 §5.3: page and project fields).
         let shown = |v: Option<String>| v.map(|v| crate::designations::display(doc, key, &v));
-        let mut r = match shown(prop(key)) {
+        let a = crate::designations::Aspect::of_property(key);
+        let own = a.and_then(|a| pg.and_then(|x| crate::designations::page_key(x, a)));
+        let mut r = match shown(own) {
             Some(v) => Row::rw(key, label, v),
             None => {
-                let inherited = shown(doc.properties.get(key).cloned());
+                let inherited = shown(a.and_then(|a| crate::designations::default_key(&doc.project, a)));
                 let mut r = Row::rw(key, label, inherited.as_ref().map(|v| format!("{v} (project)")).unwrap_or_default());
                 r.inherited = inherited.is_some();
                 r
@@ -401,8 +409,8 @@ fn page_section(doc: &Document, page: PageId) -> Section {
     let mut sheet = Row::rw(
         ecad_model::sheet::SHEET_KEY,
         "Sheet",
-        match prop(ecad_model::sheet::SHEET_KEY) {
-            Some(t) => t,
+        match pg.and_then(|x| x.sheet) {
+            Some(t) => t.text(),
             None => format!("Project ({})", doc.settings.sheet().summary()),
         },
     );
@@ -818,7 +826,7 @@ fn wiring_rows(doc: &Document, w: WireId) -> (Vec<Row>, Vec<Row>) {
     let look = crate::styles::wire::wire_look(doc, w);
     let cat_value =
         |v: &Option<(String, crate::defaults::Source)>| v.as_ref().filter(|x| x.1 != crate::defaults::Source::Object).map(|x| x.0.clone());
-    let cat_name = look.category.as_ref().map(|id| crate::styles::name(doc, "wire", id));
+    let cat_name = look.category.as_ref().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id));
     let (cs_default, colour_default) = (cat_value(&look.cross_section), cat_value(&look.colour));
     let wire = doc.wires.get(&w);
     let own_size = wire.and_then(|x| x.size).map(|s| s.to_string());
@@ -981,7 +989,7 @@ enum TextsAt {
 
 /// The words a Texts row shows for a stored visibility.
 fn shown_words(w: &str) -> &'static str {
-    crate::text_style::Shown::from_word(w).label()
+    <crate::text_style::Shown as ecad_model::Word>::parse(w).unwrap_or_default().label()
 }
 
 /// The Texts rows of a device, a symbol or a page: one per kind of §5.1, `Default (…)` when the
@@ -1012,7 +1020,7 @@ fn text_rows(doc: &Document, at: TextsAt, rows: &mut Vec<Row>) {
                 (key, own, crate::defaults::resolve(doc, entry, scope).word())
             }
             TextsAt::Page(p) => {
-                let own = doc.pages.get(&p).and_then(|x| x.properties.get(entry.key)).cloned();
+                let own = doc.pages.get(&p).and_then(|x| x.display.get(entry.key)).cloned();
                 (entry.key.to_string(), own, crate::defaults::resolve(doc, entry, crate::defaults::Scope::project()).word())
             }
         };
@@ -1037,7 +1045,7 @@ fn showtext_line(target: &Target, key: &str, value: Option<&str>) -> Option<Stri
         Some((rep, kind)) if rep.len() == 32 => (ecad_model::RepresentationId::parse(rep), kind),
         _ => (None, rest),
     };
-    crate::text_style::TextKind::from_word(kind)?;
+    <crate::text_style::TextKind as ecad_model::Word>::parse(kind)?;
     let show = value.and_then(crate::text_style::Shown::from_input).map_or(serde_json::Value::Null, |s| serde_json::json!(s.word()));
     let mut j = serde_json::json!({"kind": kind, "show": show});
     match (rep, target) {

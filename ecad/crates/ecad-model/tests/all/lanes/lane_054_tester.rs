@@ -8,22 +8,35 @@
 
 use ecad_model::sheet::{SheetSpec, sheet_of};
 use ecad_model::style::{StandardHeader, StyleLayer, StyleRecord, StyleRef};
-use ecad_model::{Author, IdAllocator, Ledger, ObjectRef, Op, Page, PageId, StandardId};
+use ecad_model::{Author, IdAllocator, Ledger, Op, Page, PageId, StandardId, Word};
 
 fn rec(fields: &[(&str, &str)]) -> StyleRecord {
     StyleRecord { fields: fields.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(), ..Default::default() }
 }
 
 fn set_type(layer: StyleLayer, id: StyleRef, before: Option<StyleRecord>, after: Option<StyleRecord>) -> Op {
-    Op::SetStyle { layer, catalogue: "page".into(), id, before, after }
+    Op::SetStyle { layer, catalogue: ecad_model::StyleCatalogue::Page, id, before, after }
 }
 
 fn b(w: &str) -> StyleRef {
     StyleRef::Builtin(w.into())
 }
 
-fn set_page(page: PageId, key: &str, after: &str) -> Op {
-    Op::SetProperty { object: ObjectRef::Page(page), key: key.into(), before: None, after: Some(after.into()) }
+/// `page` with the field the old page key `key` named set to `value` (design 072 §5.1).
+fn with(mut page: Page, key: &str, value: &str) -> Page {
+    match key {
+        "sheet" => page.sheet = SheetSpec::parse(value).ok(),
+        "page.type" => page.page_type = StyleRef::parse(value),
+        "generated" => page.kind = ecad_model::PageKind::Generated(ecad_model::GenKind::parse(value).unwrap()),
+        other => panic!("not a page field: {other}"),
+    }
+    page
+}
+
+/// A `ModifyPage` of `page` (as `l` holds it) setting `key`'s field to `after`.
+fn set_page(l: &Ledger, page: PageId, key: &str, after: &str) -> Op {
+    let before = l.document().pages[&page].clone();
+    Op::ModifyPage { id: page, before: before.clone(), after: with(before, key, after) }
 }
 
 /// Pages: plain, cover, revisions, contents, BOM, terminals, and one with its own A1 sheet.
@@ -31,11 +44,12 @@ fn fixture() -> (Ledger, Vec<PageId>) {
     let mut ids = IdAllocator::seeded(54);
     let mut l = Ledger::new(54);
     let pages: Vec<PageId> = (0..7).map(|_| ids.fresh()).collect();
-    let mut ops: Vec<Op> = pages.iter().enumerate().map(|(i, p)| Op::AddPage { id: *p, page: Page::new(format!("{i}")), index: i }).collect();
+    let mut made: Vec<Page> = (0..7).map(|i| Page::titled(format!("{i}")).unwrap()).collect();
     for (i, g) in [(1, "cover"), (2, "revisions"), (3, "contents"), (4, "bom-location"), (5, "terminals")] {
-        ops.push(set_page(pages[i], "generated", g));
+        made[i] = with(made[i].clone(), "generated", g);
     }
-    ops.push(set_page(pages[6], "sheet", "A1"));
+    made[6] = with(made[6].clone(), "sheet", "A1");
+    let ops: Vec<Op> = pages.iter().zip(made).enumerate().map(|(i, (p, page))| Op::AddPage { id: *p, page, index: i }).collect();
     l.commit(Author::User, "pages", ops).unwrap();
     (l, pages)
 }
@@ -75,7 +89,7 @@ fn fp3_records_reach_their_derived_types_and_the_own_sheet_wins() {
         assert!(s[i].starts_with(w), "page {i}: {w}, got {}", s[i]);
     }
     // The page's own sheet wins: page 6 is a schematic page with its own A1 (not A0).
-    l.commit(Author::User, "own", vec![set_page(p[0], "sheet", "A3")]).unwrap();
+    l.commit(Author::User, "own", vec![set_page(&l, p[0], "sheet", "A3")]).unwrap();
     assert!(sheet_of(l.document(), p[0]).text().starts_with("A3"));
 }
 
@@ -91,19 +105,14 @@ fn fp3_page_type_property_and_own_types() {
         vec![
             set_type(StyleLayer::Project, own.clone(), None, Some(StyleRecord { name: "Wide".into(), ..rec(&[("sheet", "A0"), ("holds", "none")]) })),
             set_type(StyleLayer::Project, b("network"), None, Some(rec(&[("sheet", "A2")]))),
-            set_page(p[0], "page.type", &own.text()),
-            set_page(p[4], "page.type", "#0000000000000000000000000000dead"),
+            set_page(&l, p[0], "page.type", &own.text()),
+            set_page(&l, p[4], "page.type", "#0000000000000000000000000000dead"),
         ],
     )
     .unwrap();
     assert!(sheet_of(l.document(), p[0]).text().starts_with("A0"), "the own type's sheet");
     assert!(sheet_of(l.document(), p[4]).text().starts_with("A3"), "a page.type naming nothing: derived (report, no record)");
-    l.commit(
-        Author::User,
-        "net",
-        vec![Op::SetProperty { object: ObjectRef::Page(p[0]), key: "page.type".into(), before: Some(own.text()), after: Some("network".into()) }],
-    )
-    .unwrap();
+    l.commit(Author::User, "net", vec![set_page(&l, p[0], "page.type", "network")]).unwrap();
     assert!(sheet_of(l.document(), p[0]).text().starts_with("A2"), "a built-in named by page.type");
 }
 

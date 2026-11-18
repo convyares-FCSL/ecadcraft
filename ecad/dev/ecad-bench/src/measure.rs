@@ -337,7 +337,7 @@ fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
     let comp: DeviceId = ids.fresh();
     let hub: TerminalId = ids.fresh();
     let mut ops = vec![
-        Op::AddPage { id: page, page: Page::new("1"), index: 0 },
+        Op::AddPage { id: page, page: Page::titled("1").map_err(|e| e.to_string())?, index: 0 },
         Op::CreateDevice { id: comp, device: Device::default() },
         Op::AddTerminal { id: hub, terminal: Terminal { component: comp, label: None, key: None } },
     ];
@@ -790,7 +790,7 @@ fn add_coils(ledger: &mut ecad_model::Ledger) -> Result<(Vec<ecad_model::Represe
     let mut ids = IdAllocator::seeded(EDIT_SEED ^ 0x025);
     let mut high = TagHigh::default();
     let starter = |k: &str| ecad_cadcraft::symbols::by_key(k).ok_or_else(|| format!("no starter {k}"));
-    let place = |pt: (f64, f64)| Placement { origin: Pt::new(pt.0, pt.1), rotation: 0.0, mirror: false, scale: 1.0 };
+    let place = |pt: (f64, f64)| Placement { origin: Pt::new(pt.0, pt.1), rotation: ecad_model::units::Radians(0.0), mirror: false, scale: 1.0 };
     let mut coils = Vec::with_capacity(wanted);
     for i in 0..wanted {
         let ka = match i {

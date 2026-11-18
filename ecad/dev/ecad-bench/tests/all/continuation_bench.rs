@@ -61,7 +61,7 @@ fn pages(n: usize) -> Document {
     Op::AddLayer { id: layer, layer: ecad_model::Layer { name: "0".into() } }.apply(&mut doc).unwrap();
     for i in 0..n {
         let id = PageId(0x1000 + i as u128);
-        Op::AddPage { id, page: ecad_model::Page::new(format!("{}", 100 + i)), index: i }.apply(&mut doc).unwrap();
+        Op::AddPage { id, page: ecad_model::Page::titled(format!("{}", 100 + i)).unwrap(), index: i }.apply(&mut doc).unwrap();
     }
     doc
 }
@@ -75,8 +75,8 @@ fn arrow(doc: &mut Document, ids: &mut IdAllocator, page: PageId, at: Pt, name: 
         props.insert("caption".into(), c.into());
     }
     let style = Style { layer: ecad_model::LayerId(1), color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
-    let starter = ecad_cadcraft::wires::continuation_starter().unwrap();
-    let pl = Placement { origin: at, rotation: 0.0, mirror: false, scale: 1.0 };
+    let starter = ecad_cadcraft::wires::continuation_starter();
+    let pl = Placement { origin: at, rotation: ecad_model::units::Radians(0.0), mirror: false, scale: 1.0 };
     let t = ecad_cadcraft::wires::plan_tagless(doc, ids, page, style, starter, pl, props).unwrap();
     for op in &t.ops {
         op.apply(doc).unwrap();
