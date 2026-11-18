@@ -11,7 +11,9 @@ use ecad_model::style::{StandardHeader, StyleLayer, StyleRecord, StyleRef};
 use ecad_model::{Author, IdAllocator, Ledger, Op, Page, PageId, StandardId, Word};
 
 fn rec(fields: &[(&str, &str)]) -> StyleRecord {
-    StyleRecord { fields: fields.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(), ..Default::default() }
+    // A page type's fields, as a file holds them.
+    let body: serde_json::Map<String, serde_json::Value> = fields.iter().map(|(k, v)| (k.to_string(), serde_json::json!(v))).collect();
+    StyleRecord::new("", ecad_model::style::StyleBody::Page(serde_json::from_value(serde_json::Value::Object(body)).unwrap()))
 }
 
 fn set_type(layer: StyleLayer, id: StyleRef, before: Option<StyleRecord>, after: Option<StyleRecord>) -> Op {
@@ -103,7 +105,12 @@ fn fp3_page_type_property_and_own_types() {
         Author::User,
         "own",
         vec![
-            set_type(StyleLayer::Project, own.clone(), None, Some(StyleRecord { name: "Wide".into(), ..rec(&[("sheet", "A0"), ("holds", "none")]) })),
+            set_type(
+                StyleLayer::Project,
+                own.clone(),
+                None,
+                Some(StyleRecord { name: ecad_model::style::StyleName::new("Wide").ok(), ..rec(&[("sheet", "A0"), ("holds", "none")]) }),
+            ),
             set_type(StyleLayer::Project, b("network"), None, Some(rec(&[("sheet", "A2")]))),
             set_page(&l, p[0], "page.type", &own.text()),
             set_page(&l, p[4], "page.type", "#0000000000000000000000000000dead"),
@@ -121,7 +128,12 @@ fn fp3_page_type_property_and_own_types() {
 #[test]
 fn fp3_project_then_standard_record_and_malformed_values_fall_through() {
     let (mut l, p) = fixture();
-    let header = StandardHeader { id: StandardId(0x54), name: "House".into(), based_on: "iec".into(), origin: None };
+    let header = StandardHeader {
+        id: StandardId(0x54),
+        name: ecad_model::style::StyleName::new("House").unwrap(),
+        based_on: ecad_model::style::BasedOn::Iec,
+        origin: None,
+    };
     l.commit(
         Author::User,
         "std",
@@ -134,14 +146,12 @@ fn fp3_project_then_standard_record_and_malformed_values_fall_through() {
     assert!(sheet_of(l.document(), p[0]).text().starts_with("A1"), "the standard's record");
     l.commit(Author::User, "proj", vec![set_type(StyleLayer::Project, b("schematic"), None, Some(rec(&[("sheet", "A2")])))]).unwrap();
     assert!(sheet_of(l.document(), p[0]).text().starts_with("A2"), "the project's record over the standard's");
+    // Design 072 §8: a sheet past the limits, or not a sheet, does not read (the file opens
+    // read-only), so it can never reach a page.
     let long = "x".repeat(10_000);
-    let mut before = Some(rec(&[("sheet", "A2")]));
     for bad in ["A0 999x999", "A9", long.as_str(), "", "1e308x1e308"] {
-        let after = Some(rec(&[("sheet", bad)]));
-        l.commit(Author::User, "bad", vec![set_type(StyleLayer::Project, b("schematic"), before.clone(), after.clone())]).unwrap();
-        before = after;
-        let got = sheet_of(l.document(), p[0]).text();
-        assert!(got.starts_with("A1"), "{bad:.20}: skipped, the standard's A1 next; got {got}");
+        let v = serde_json::json!({ "sheet": bad });
+        assert!(serde_json::from_value::<ecad_model::style::PageType>(v).is_err(), "{bad:.20}");
     }
     // A valid sheet in the record, never above the limits of 019.
     let s = sheet_of(l.document(), p[0]);

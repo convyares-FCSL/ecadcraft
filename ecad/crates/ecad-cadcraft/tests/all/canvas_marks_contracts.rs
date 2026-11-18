@@ -151,17 +151,12 @@ fn an_unknown_code_draws_in_ink_and_raises_one_information_check() {
     let e = h.run("setprop", json!({"conductor": w.hex(), "key": "colours", "value": "PURPLISH"})).unwrap_err();
     assert!(e.contains("not a colour list"), "{e}");
     h.run("setprop", json!({"conductor": w.hex(), "key": "colours", "value": null})).unwrap();
-    // A wire category's colour is still text (lane G types it): an unknown one draws in ink.
-    h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colour": "PURPLISH"}})).unwrap();
-    h.run("category", json!({"conductor": w.hex(), "value": "dc24"})).unwrap();
-    let page = h.first_page();
+    // Design 072 §8: a wire type's colours are typed too, so an unknown one is refused there as
+    // well, and no wire can hold an unknown colour.
+    let e = h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colours": "PURPLISH"}})).unwrap_err();
+    assert!(e.contains("colours"), "{e}");
     let doc = h.doc();
-    let routes = h.p(|p| look::coloured_routes(&doc, page, p.pages.get(&page).map(|v| &v.map), &PAPER));
-    assert!(routes.iter().all(|r| r.conductor != w), "drawn in ink");
-    let rows: Vec<_> = ecad_cadcraft::checks::all(&doc, 0.01).into_iter().filter(|c| c.kind == Kind::UnknownColour).collect();
-    assert_eq!(rows.len(), 1, "{rows:?}");
-    assert_eq!(rows[0].severity(), ecad_cadcraft::checks::Severity::Info);
-    assert!(rows[0].which.ends_with("PURPLISH"), "{}", rows[0].which);
+    assert!(ecad_cadcraft::checks::all(&doc, 0.01).iter().all(|c| c.kind != Kind::UnknownColour));
 }
 
 /// AC 3: with every marker kind the page can show, neither print (mono or colour) nor the raster

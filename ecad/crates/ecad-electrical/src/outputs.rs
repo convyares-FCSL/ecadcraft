@@ -48,8 +48,8 @@ pub mod kept;
 pub const DEFAULT_LIMIT: usize = 500;
 pub const MAX_LIMIT: usize = 5000;
 
-fn clean(v: Option<&String>) -> Option<String> {
-    v.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+fn clean(v: Option<impl AsRef<str>>) -> Option<String> {
+    v.map(|s| s.as_ref().trim().to_string()).filter(|s| !s.is_empty())
 }
 
 /// Each page's position in the book and shown number, worked out once per build or update
@@ -575,8 +575,8 @@ impl Scope {
                         }
                     }
                     for r in [before, after].into_iter().flatten() {
-                        if let Some(pot) = r.fields.get("potential") {
-                            self.potentials.insert(pot.trim().to_lowercase());
+                        if let Some(pot) = r.body.wire().and_then(|w| w.potential.as_ref()) {
+                            self.potentials.insert(pot.as_str().to_lowercase());
                         }
                     }
                     if let Some(r) = crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, id, "potential", None) {
@@ -683,7 +683,7 @@ impl Scope {
         // Brief 052 (design 052 §8.2a): the users of a renamed entry, the one wide case.
         if !self.renamed.is_empty() {
             for (c, x) in &doc.devices {
-                if x.properties.iter().any(|(k, v)| crate::designations::Aspect::of_property(k).is_some() && self.renamed.contains(v)) {
+                if crate::designations::device_keys(x).iter().any(|(_, v)| self.renamed.contains(v)) {
                     self.devices.insert(*c);
                 }
             }

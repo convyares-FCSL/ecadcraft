@@ -434,7 +434,7 @@ fn device_name(d: &Document, c: DeviceId) -> String {
 fn point_name(d: &Document, t: TerminalId) -> String {
     match d.terminals.get(&t) {
         Some(term) => {
-            let own = term.label.clone().or_else(|| term.key.clone()).unwrap_or_else(|| t.short());
+            let own = term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| t.short());
             format!("{}:{own}", device_name(d, term.component))
         }
         None => format!("({})", t.short()),
@@ -582,7 +582,7 @@ fn devices(d: &Document, detail: bool) -> Vec<Value> {
             let points: Vec<Value> = d
                 .terminals_of(*id)
                 .map(|(t, term)| {
-                    let name = term.label.clone().or_else(|| term.key.clone()).unwrap_or_else(|| t.short());
+                    let name = term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| t.short());
                     let wires: Vec<String> = attached.get(&t).into_iter().flatten().map(|w| wire_name(d, *w)).collect();
                     // Design 072 F38 (A15): how many conductors it accepts.
                     json!({"name": name, "wires": wires, "accepts": term.accepts.get()})
@@ -594,13 +594,19 @@ fn devices(d: &Document, detail: bool) -> Vec<Value> {
                 "id": id.to_string(),
                 "tag": tag,
                 "duplicate": tag.as_ref().is_some_and(|t| tags.get(t).copied().unwrap_or(0) > 1),
-                "function": c.properties.get(ecad_model::book::FUNCTION_KEY),
-                "location": c.properties.get(ecad_model::book::LOCATION_KEY),
+                "function": c.function.map(|f| function_code(d, f)),
+                "function_fixed": c.function_fixed,
+                "location": c.location.map(|l| location_code(d, l)),
+                "location_fixed": c.location_fixed,
                 "definition": c.definition.and_then(|def| d.definitions.get(&def)).map(|def| def.name.clone()),
                 "pages": pages,
                 "points": points,
             });
             if detail {
+                // Design 072 §2.1: the device's text fields, then what is left in its bag.
+                for f in ecad_model::TextField::ALL {
+                    row[f.key()] = json!(c.text(f));
+                }
                 row["properties"] = json!(c.properties);
             }
             (tag.unwrap_or_default().to_string(), row)

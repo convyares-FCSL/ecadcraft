@@ -57,7 +57,7 @@ fn a09_style_changes_patch_the_standards_tables_and_rebuild_none() {
 fn b_a_category_change_patches_and_rebuilds_none() {
     let mut h = shown_standards();
     let (rebuilds, patches) = counters(&h);
-    ok(&mut h, r#"setstyle {"catalogue":"wire","id":"dc24","fields":{"colour":"RD"}}"#);
+    ok(&mut h, r#"setstyle {"catalogue":"wire","id":"dc24","fields":{"colours":"RD"}}"#);
     h.run_steps(2);
     assert_eq!(counters(&h), (rebuilds, patches + 1));
     let c = crate::mouse_tester::doc(&mut h).wires.keys().next().copied().unwrap();

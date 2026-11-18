@@ -153,13 +153,20 @@ fn wiring_settings_and_bridges_are_written_only_when_set_and_round_trip() {
     assert!(line.contains("\"page-column\"") && line.contains("\"three-letter\""), "{line}");
     f.ledger.commit(Author::User, "Wire settings", vec![op]).unwrap();
 
-    let bare = ecad_model::Definition { name: "t".into(), origin: None, graphics: vec![], terminals: vec![], bridges: vec![], ..Default::default() };
+    let bare = ecad_model::Definition {
+        name: "t".parse().unwrap(),
+        origin: None,
+        graphics: vec![],
+        terminals: vec![],
+        bridges: vec![],
+        ..Default::default()
+    };
     // Brief 044 (FP2, invariant I7): a bridge names keys the definition has terminals for.
     let points = ["1", "2"]
         .iter()
-        .map(|k| ecad_model::TerminalDef { key: (*k).into(), label: None, at: ecad_model::Pt::new(0.0, 0.0), accepts: Default::default() })
+        .map(|k| ecad_model::TerminalDef { key: k.parse().unwrap(), label: None, at: ecad_model::Pt::new(0.0, 0.0), accepts: Default::default() })
         .collect();
-    let bridged = ecad_model::Definition { terminals: points, bridges: vec![vec!["1".into(), "2".into()]], ..bare.clone() };
+    let bridged = ecad_model::Definition { terminals: points, bridges: vec![vec!["1".parse().unwrap(), "2".parse().unwrap()]], ..bare.clone() };
     let bare_line = serde_json::to_string(&ecad_file::records::Definition::from(&bare)).unwrap();
     assert!(!bare_line.contains("bridges"), "{bare_line}");
     assert_ne!(ecad_file::definition_hash(&bare).unwrap(), ecad_file::definition_hash(&bridged).unwrap());

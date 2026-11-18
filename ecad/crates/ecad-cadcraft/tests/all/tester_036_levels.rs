@@ -49,7 +49,7 @@ fn label(d: &Document, t: TerminalId) -> String {
 }
 
 fn key(d: &Document, t: TerminalId) -> String {
-    d.terminals.get(&t).and_then(|x| x.key.clone()).unwrap_or_default()
+    d.terminals.get(&t).and_then(|x| x.key.as_ref()).map(ToString::to_string).unwrap_or_default()
 }
 
 /// A strip's terminals by position label, then level key.
@@ -57,7 +57,7 @@ fn positions(d: &Document, strip: DeviceId) -> BTreeMap<String, BTreeMap<String,
     let mut out: BTreeMap<String, BTreeMap<String, TerminalId>> = BTreeMap::new();
     for (tid, t) in &d.terminals {
         if t.component == strip {
-            out.entry(t.label.clone().unwrap_or_default()).or_default().insert(t.key.clone().unwrap_or_default(), *tid);
+            out.entry(t.label.clone().unwrap_or_default()).or_default().insert(t.key.as_ref().map(ToString::to_string).unwrap_or_default(), *tid);
         }
     }
     out
@@ -844,7 +844,8 @@ fn relabel_raw(h: &mut H, t: TerminalId, new_label: Option<&str>, new_key: Optio
         after.label = Some(l.to_string());
     }
     if let Some(k) = new_key {
-        after.key = Some(k.to_string());
+        // A text that is no key cannot be stored: the point is left without one.
+        after.key = k.parse().ok();
     }
     h.cfg(|p| {
         p.ledger.commit(Author::User, "hand-made", vec![Op::RemoveTerminal { id: t, terminal: before }, Op::AddTerminal { id: t, terminal: after }])

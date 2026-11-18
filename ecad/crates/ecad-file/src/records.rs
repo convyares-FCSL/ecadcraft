@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 use ecad_model as m;
 use ecad_model::{
-    CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, RouteId, StandardId, TerminalId, TxId, WireId,
+    CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, RouteId, TerminalId, TxId, WireId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -193,6 +193,17 @@ pub struct Device {
     /// Design 072 §2.1: validated on read (1 to 40 characters, no hidden character).
     pub tag: Option<m::tag::Tag>,
     pub tag_fixed: bool,
+    /// Design 072 §2.1: the text fields, validated on read.
+    pub description: Option<m::device::Description>,
+    pub part_number: Option<m::device::PartText>,
+    pub manufacturer: Option<m::device::PartText>,
+    pub article_number: Option<m::device::PartText>,
+    pub type_text: Option<m::device::PartText>,
+    /// Design 072 §6.3: ids of the project's lists, and whether each was set by hand.
+    pub location: Option<m::LocationId>,
+    pub location_fixed: bool,
+    pub function: Option<m::FunctionId>,
+    pub function_fixed: bool,
     pub properties: BTreeMap<String, String>,
     pub definition: Option<DefinitionId>,
     /// What the device is (design 072 F15): the model's own type, whose words and fields are
@@ -205,7 +216,7 @@ pub struct Device {
 pub struct Terminal {
     pub component: DeviceId,
     pub label: Option<String>,
-    pub key: Option<String>,
+    pub key: Option<m::PointKey>,
     /// Design 072 F38: how many conductors it accepts, 1 to 64; left out at two.
     #[serde(default, skip_serializing_if = "m::Accepts::is_two")]
     pub accepts: m::Accepts,
@@ -342,7 +353,7 @@ pub struct Origin {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TerminalDef {
-    pub key: String,
+    pub key: m::PointKey,
     pub label: Option<String>,
     pub at: Pt,
     /// Design 072 F38: how many conductors the point accepts, 1 to 64; left out at two, so a
@@ -361,7 +372,7 @@ pub struct Definition {
     /// Groups of terminal keys joined inside the device (brief 022, FP5). Left out when empty, so
     /// a definition without bridges is written, and hashed, exactly as before.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub bridges: Vec<Vec<String>>,
+    pub bridges: Vec<Vec<m::PointKey>>,
     /// Text slots (brief 048, FP1). Left out when empty, so existing hashes hold.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub texts: Vec<TextSlot>,
@@ -930,37 +941,11 @@ pub enum StyleLayer {
     Project,
 }
 
-/// A style record (brief 050a, FP2): its name (left out while empty, as for an override of a
-/// built-in style) and the fields it sets (left out while empty).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct StyleRecord {
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub name: String,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub fields: BTreeMap<String, String>,
-    /// Brief 055 (FP1): a frame's title block, left out while absent.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub body: Option<m::title_block::StyleBody>,
-}
+/// A style record (brief 050a, design 072 §8): the model's strict record, its typed body as is.
+pub type StyleRecord = m::StyleRecord;
 
-/// A standard's header (brief 050a, FP1). `origin` is reserved for 2.1 and left out while absent.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct StandardHeader {
-    pub id: StandardId,
-    pub name: String,
-    pub based_on: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub origin: Option<StandardOrigin>,
-}
-
-/// Where a standard came from (reserved for 2.1).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct StandardOrigin {
-    pub library: LibraryId,
-}
+/// A standard's header (brief 050a, FP1): the model's strict record.
+pub type StandardHeader = m::StandardHeader;
 
 fn layer(l: m::StyleLayer) -> StyleLayer {
     match l {
@@ -973,35 +958,6 @@ fn mlayer(l: StyleLayer) -> m::StyleLayer {
     match l {
         StyleLayer::Standard => m::StyleLayer::Standard,
         StyleLayer::Project => m::StyleLayer::Project,
-    }
-}
-
-impl From<&m::StyleRecord> for StyleRecord {
-    fn from(r: &m::StyleRecord) -> Self {
-        StyleRecord { name: r.name.clone(), fields: r.fields.clone(), body: r.body.clone() }
-    }
-}
-
-impl From<StyleRecord> for m::StyleRecord {
-    fn from(r: StyleRecord) -> Self {
-        m::StyleRecord { name: r.name, fields: r.fields, body: r.body }
-    }
-}
-
-impl From<&m::StandardHeader> for StandardHeader {
-    fn from(h: &m::StandardHeader) -> Self {
-        StandardHeader {
-            id: h.id,
-            name: h.name.clone(),
-            based_on: h.based_on.clone(),
-            origin: h.origin.as_ref().map(|o| StandardOrigin { library: o.library }),
-        }
-    }
-}
-
-impl From<StandardHeader> for m::StandardHeader {
-    fn from(h: StandardHeader) -> Self {
-        m::StandardHeader { id: h.id, name: h.name, based_on: h.based_on, origin: h.origin.map(|o| m::style::StandardOrigin { library: o.library }) }
     }
 }
 
@@ -1068,6 +1024,15 @@ impl From<&m::Device> for Device {
         Device {
             tag: c.tag.clone(),
             tag_fixed: c.tag_fixed,
+            description: c.description.clone(),
+            part_number: c.part_number.clone(),
+            manufacturer: c.manufacturer.clone(),
+            article_number: c.article_number.clone(),
+            type_text: c.type_text.clone(),
+            location: c.location,
+            location_fixed: c.location_fixed,
+            function: c.function,
+            function_fixed: c.function_fixed,
             properties: c.properties.clone(),
             definition: c.definition,
             device_type: c.device_type.clone(),
@@ -1302,16 +1267,10 @@ impl From<&m::Op> for Op {
             m::Op::AddFolder { id, folder, index } => Op::AddFolder { id: *id, folder: folder.into(), index: ix(*index) },
             m::Op::RemoveFolder { id, folder, index } => Op::RemoveFolder { id: *id, folder: folder.into(), index: ix(*index) },
             m::Op::ModifyFolder { id, before, after } => Op::ModifyFolder { id: *id, before: before.into(), after: after.into() },
-            m::Op::SetStyle { layer: l, catalogue, id, before, after } => Op::SetStyle {
-                layer: layer(*l),
-                catalogue: *catalogue,
-                id: id.clone(),
-                before: before.as_ref().map(Into::into),
-                after: after.as_ref().map(Into::into),
-            },
-            m::Op::SetStandard { before, after } => {
-                Op::SetStandard { before: before.as_ref().map(Into::into), after: after.as_ref().map(Into::into) }
+            m::Op::SetStyle { layer: l, catalogue, id, before, after } => {
+                Op::SetStyle { layer: layer(*l), catalogue: *catalogue, id: id.clone(), before: before.clone(), after: after.clone() }
             }
+            m::Op::SetStandard { before, after } => Op::SetStandard { before: before.clone(), after: after.clone() },
             m::Op::ModifyProject { before, after } => Op::ModifyProject { before: before.clone(), after: after.clone() },
         }
     }
@@ -1401,7 +1360,22 @@ impl From<Item> for m::Item {
 
 impl From<Device> for m::Device {
     fn from(c: Device) -> Self {
-        m::Device { tag: c.tag, tag_fixed: c.tag_fixed, properties: c.properties, definition: c.definition, device_type: c.device_type }
+        m::Device {
+            tag: c.tag,
+            tag_fixed: c.tag_fixed,
+            description: c.description,
+            part_number: c.part_number,
+            manufacturer: c.manufacturer,
+            article_number: c.article_number,
+            type_text: c.type_text,
+            location: c.location,
+            location_fixed: c.location_fixed,
+            function: c.function,
+            function_fixed: c.function_fixed,
+            properties: c.properties,
+            definition: c.definition,
+            device_type: c.device_type,
+        }
     }
 }
 
@@ -1558,10 +1532,8 @@ impl TryFrom<Op> for m::Op {
             Op::AddFolder { id, folder, index: i } => m::Op::AddFolder { id, folder: folder.into(), index: index(i)? },
             Op::RemoveFolder { id, folder, index: i } => m::Op::RemoveFolder { id, folder: folder.into(), index: index(i)? },
             Op::ModifyFolder { id, before, after } => m::Op::ModifyFolder { id, before: before.into(), after: after.into() },
-            Op::SetStyle { layer: l, catalogue, id, before, after } => {
-                m::Op::SetStyle { layer: mlayer(l), catalogue, id, before: before.map(Into::into), after: after.map(Into::into) }
-            }
-            Op::SetStandard { before, after } => m::Op::SetStandard { before: before.map(Into::into), after: after.map(Into::into) },
+            Op::SetStyle { layer: l, catalogue, id, before, after } => m::Op::SetStyle { layer: mlayer(l), catalogue, id, before, after },
+            Op::SetStandard { before, after } => m::Op::SetStandard { before, after },
             Op::ModifyProject { before, after } => m::Op::ModifyProject { before, after },
         })
     }

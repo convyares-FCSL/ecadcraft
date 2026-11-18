@@ -38,7 +38,7 @@ fn last_label(h: &mut H) -> String {
 }
 
 fn description(h: &mut H, c: ecad_model::DeviceId) -> Option<String> {
-    doc(h).devices.get(&c).and_then(|x| x.properties.get("description").cloned())
+    doc(h).devices.get(&c).and_then(|x| x.get("description").map(str::to_string))
 }
 
 #[test]

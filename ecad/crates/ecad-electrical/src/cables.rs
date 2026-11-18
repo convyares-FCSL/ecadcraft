@@ -520,7 +520,7 @@ pub fn type_notation(doc: &Document, id: &StyleRef) -> Option<String> {
         return Some(name);
     }
     let cores = cable::type_text(doc, id, cable::TYPE_CORES)?;
-    let size = cable::type_text(doc, id, "cross_section").unwrap_or_default();
+    let size = cable::type_text(doc, id, "size").unwrap_or_default();
     Some(format!("{cores}{size}"))
 }
 

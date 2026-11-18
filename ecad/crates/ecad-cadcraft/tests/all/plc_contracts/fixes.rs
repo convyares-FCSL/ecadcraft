@@ -51,8 +51,8 @@ fn fp1_make_them_one_re_points_the_cards_too() {
     let ops = h.cfg(|p| ecad_cadcraft::devices::plan_merge(&d, &mut p.ids, cpu, k)).unwrap();
     for c in &cards {
         let repointed = ops.iter().any(|op| {
-            matches!(op, ecad_model::Op::SetProperty { object: ecad_model::ObjectRef::Device(x), key, after, .. }
-                if x == c && key == "plc.rack" && after.as_deref() == Some(k.hex().as_str()))
+            matches!(op, ecad_model::Op::ModifyDevice { id, after, .. }
+                if id == c && matches!(&after.device_type, ecad_model::DeviceType::PlcModule(m) if m.rack == Some(k)))
         });
         assert!(repointed, "card re-pointed in the merge's ops");
     }
@@ -140,7 +140,6 @@ fn review_3_kept_model_paths_walk_no_project() {
     h.cfg(|p| {
         p.outputs();
     });
-    let scans = ecad_cadcraft::plc::rack::scans();
     // A channel's text (its page with cells redrawn) and a card's channel count (its rack's pages).
     // Run straight on the session: the harness's own check projects pages without the kept model.
     h.s.execute("plcchannel", &json!({"card": di.hex(), "channel": 0, "text": "Pump"})).unwrap();
@@ -153,7 +152,7 @@ fn review_3_kept_model_paths_walk_no_project() {
     let v = h.pv(|p, _| ecad_cadcraft::props::view(p, Some(page), &[handle]));
     let row = v.sections.iter().flat_map(|s| s.rows.iter()).find(|r| r.label == "Address").cloned().expect("an Address row");
     assert!(row.value.starts_with("I0."), "{}", row.value);
-    assert_eq!(ecad_cadcraft::plc::rack::scans(), scans, "no whole-project walk with the kept model");
+    // A station's modules come from the index (design 072 §3): no walk to count.
     h.check();
 }
 

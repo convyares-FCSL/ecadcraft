@@ -236,7 +236,7 @@ pub fn detail(doc: &Document, cat: &Catalogue, id: &StyleRef) -> Detail {
         .iter()
         .map(|f| {
             let r = styles::field(doc, cat, id, f, None);
-            let at = |l| styles::record(doc, l, cat.catalogue, id).and_then(|rec| rec.fields.get(f.key)).cloned();
+            let at = |l| styles::record(doc, l, cat.catalogue, id).and_then(|rec| styles::record_text(rec, f.key));
             let builtin = cat.builtin(id).and_then(|b| b.value(f.key)).unwrap_or_else(|| f.builtin());
             FieldDetail {
                 key: f.key,

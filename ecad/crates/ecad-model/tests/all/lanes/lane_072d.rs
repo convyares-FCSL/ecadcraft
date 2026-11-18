@@ -152,7 +152,7 @@ fn modify_wire_changes_values_undoes_and_never_moves_the_ends() {
 fn page_with_points(l: &mut Ledger, ids: &mut IdAllocator) -> (ecad_model::PageId, TerminalId, TerminalId) {
     use ecad_model::{Device, DeviceId, Page, PageId, Terminal};
     let (p, d, a, b): (PageId, DeviceId, TerminalId, TerminalId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
-    let t = |label: &str| Terminal { component: d, label: Some(label.into()), key: Some(label.into()), accepts: Default::default() };
+    let t = |label: &str| Terminal { component: d, label: Some(label.into()), key: Some(label.parse().unwrap()), accepts: Default::default() };
     l.commit(
         Author::User,
         "setup",
@@ -574,7 +574,7 @@ fn accepts_is_one_to_sixty_four_and_anything_else_is_a_read_error() {
 fn page_with_bar(l: &mut Ledger, ids: &mut IdAllocator, n: u64) -> (ecad_model::PageId, TerminalId, TerminalId) {
     use ecad_model::{Accepts, Device, DeviceId, Page, PageId, Terminal};
     let (p, d, a, b): (PageId, DeviceId, TerminalId, TerminalId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
-    let t = |label: &str, accepts| Terminal { component: d, label: Some(label.into()), key: Some(label.into()), accepts };
+    let t = |label: &str, accepts| Terminal { component: d, label: Some(label.into()), key: Some(label.parse().unwrap()), accepts };
     l.commit(
         Author::User,
         "setup",

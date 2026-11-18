@@ -134,7 +134,7 @@ fn scenario_s1_to_s16() {
     assert_eq!(after.devices[&c2b].definition, after.devices[&c2].definition, "same embedded definition");
     let keys_b: Vec<_> = after.terminals_of(c2b).map(|(_, t)| t.key.clone()).collect();
     assert_eq!(keys_b.len(), 2);
-    assert!(keys_b.contains(&Some("A1".into())) && keys_b.contains(&Some("A2".into())));
+    assert!(keys_b.contains(&Some(ecad_model::PointKey::def("A1"))) && keys_b.contains(&Some(ecad_model::PointKey::def("A2"))));
 
     // S9: ERASE w1's line removes its route, and the wire goes with it (design 072 §4.4); erasing
     // r2's line leaves t2 with no route.

@@ -82,14 +82,14 @@ fn every_op_ledger() -> Ledger {
     let def_v = Definition {
         name: "K".into(),
         graphics: vec![Primitive::Circle { center: Pt::new(0.0, 0.0), radius: 2.0 }],
-        terminals: vec![TerminalDef { key: "1".into(), label: None, at: Pt::new(0.0, 2.0), accepts: Default::default() }],
+        terminals: vec![TerminalDef { key: "1".parse().unwrap(), label: None, at: Pt::new(0.0, 2.0), accepts: Default::default() }],
         ..Default::default()
     };
     let comp: ecad_model::DeviceId = ids.fresh();
     let mut comp_v = Device { definition: Some(def), ..Device::default() };
-    comp_v.properties.insert("maker".into(), "K1".into());
+    comp_v.properties.insert("note".into(), "K1".into());
     let term: ecad_model::TerminalId = ids.fresh();
-    let term_v = Terminal { component: comp, label: Some("1".into()), key: Some("1".into()), accepts: Default::default() };
+    let term_v = Terminal { component: comp, label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() };
     // More connection points of the device, for the wires' other ends.
     let (term2, term3, term4): (ecad_model::TerminalId, ecad_model::TerminalId, ecad_model::TerminalId) = (ids.fresh(), ids.fresh(), ids.fresh());
     let point = |label: &str| Terminal { component: comp, label: Some(label.into()), key: None, accepts: Default::default() };
@@ -161,7 +161,12 @@ fn every_op_ledger() -> Ledger {
     let moved = line(page, layer, 7.0);
     let mut rep_after = rep_wire_v.clone();
     rep_after.role = "moved".into();
-    let header = StandardHeader { id: ids.fresh(), name: "S".into(), based_on: "iec".into(), origin: None };
+    let header = StandardHeader {
+        id: ids.fresh(),
+        name: ecad_model::style::StyleName::new("S").unwrap(),
+        based_on: ecad_model::style::BasedOn::Iec,
+        origin: None,
+    };
     let ops = vec![
         Op::AddPage { id: ids.fresh(), page: Page::titled("2").unwrap(), index: 1 },
         Op::RemovePage { id: page, page: page_v.clone(), index: 0 },
@@ -202,7 +207,7 @@ fn every_op_ledger() -> Ledger {
         Op::DeleteCable { id: cable, cable: cable_v.clone() },
         Op::AddCableMember { cable, index: 1, member: CableMember::on_wire(wire2, Some("2".into())) },
         Op::RemoveCableMember { cable, index: 0, member: CableMember::on_wire(wire, None) },
-        Op::SetProperty { object: ObjectRef::Device(comp), key: "maker".into(), before: Some("K1".into()), after: None },
+        Op::SetProperty { object: ObjectRef::Device(comp), key: "note".parse().unwrap(), before: Some("K1".into()), after: None },
         Op::EmbedDefinition { id: ids.fresh(), definition: def_v.clone() },
         Op::RemoveDefinition { id: def, definition: def_v.clone() },
         Op::SetProjectSettings {
@@ -220,7 +225,7 @@ fn every_op_ledger() -> Ledger {
             catalogue: ecad_model::StyleCatalogue::Wire,
             id: StyleRef::Builtin("thin".into()),
             before: None,
-            after: Some(StyleRecord { name: "Thin".into(), ..StyleRecord::default() }),
+            after: Some(StyleRecord::new("Thin", ecad_model::style::StyleBody::empty(ecad_model::StyleCatalogue::Wire))),
         },
         Op::SetStandard { before: None, after: Some(header) },
         // Lane 072 E (A15): the project's lists changed.

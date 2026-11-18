@@ -161,7 +161,7 @@ fn r1_type_cores_length_maker_and_part_come_from_the_type_and_are_overridden_per
     let ty = synth_type(
         &mut h,
         "Synth Flex",
-        json!({"cores": "4G", "cross_section": "1.5", "maker": "Synthmaker", "part_number": "SYN-0004", "description": "Synthetic four core", "shield": "overall"}),
+        json!({"cores": "4G", "size": "1.5", "maker": "Synthmaker", "part_number": "SYN-0004", "description": "Synthetic four core", "shield": "overall"}),
     );
     let k = new_cable(&mut h, json!({"cable_type": ty, "length": 12.5}));
     let doc = h.doc();
@@ -381,7 +381,7 @@ fn r4_an_end_drawn_off_its_planned_function_warns() {
 #[test]
 fn r5_not_drawn_is_info_and_a_warning_in_the_release_check() {
     let mut h = H::new(59_501);
-    let ty = synth_type(&mut h, "Synth Four", json!({"cores": "4G", "cross_section": "1.5"}));
+    let ty = synth_type(&mut h, "Synth Four", json!({"cores": "4G", "size": "1.5"}));
     let k = new_cable(&mut h, json!({"cable_type": ty}));
     let rows = checks_of(&mut h, "cable-not-drawn");
     assert_eq!(rows.len(), 1, "{rows:?}");
@@ -988,7 +988,7 @@ fn f3_more_wires_than_free_cores_at_the_tool_is_refused_and_writes_nothing() {
 #[test]
 fn f4_glands_default_from_the_cable_type_and_are_overridden_per_end() {
     let mut h = H::new(59_907);
-    let ty = synth_type(&mut h, "Synth Gland", json!({"cores": "3G", "cross_section": "1.5", "gland": "M20"}));
+    let ty = synth_type(&mut h, "Synth Gland", json!({"cores": "3G", "size": "1.5", "gland": "M20"}));
     let k = new_cable(&mut h, json!({"cable_type": ty}));
     let doc = h.doc();
     for s in Side::BOTH {

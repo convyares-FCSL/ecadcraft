@@ -252,16 +252,14 @@ pub(crate) fn place_level(
                     Some(t) => t,
                     None => p.tag_high.next_auto(&p.ledger, &crate::devices::prefix_for(doc, starter))?,
                 };
-                let mut properties = ecad_model::Properties::new();
-                properties.insert("description".into(), "Terminal".into());
                 ops.push(Op::CreateDevice {
                     id: c,
                     device: ecad_model::Device {
                         tag: Some(crate::devices::stored_tag(&t)?),
-                        tag_fixed: false,
-                        properties,
+                        description: crate::devices::description_of("Terminal"),
                         definition: Some(def),
                         device_type: starter.device_type(),
+                        ..ecad_model::Device::default()
                     },
                 });
                 (c, t)
@@ -279,7 +277,7 @@ pub(crate) fn place_level(
             ops.extend(l.ops.clone());
         }
         // Brief 052d (design 052 §5.3): the place proposes for the strip.
-        let proposed = crate::draw::proposals::plan_place(p, modes, c, page, origin, None).map_err(CmdError::refused)?;
+        let proposed = crate::draw::proposals::plan_place(p, &ops, modes, c, page, origin, None).map_err(CmdError::refused)?;
         ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", "Place terminal level", ops)?;
         p.last_placed = Some((starter.key.to_string(), c));

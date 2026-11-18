@@ -64,7 +64,7 @@ fn every_op_inverts_to_the_previous_state() {
         Op::CreateWire { id: cond, wire: Wire::new(f.ids.fresh(), f.ids.fresh(), term2, term) },
         Op::CreateCable { id: cable, cable: Default::default() },
         Op::AddCableMember { cable, index: 0, member: CableMember::on_wire(cond, None) },
-        Op::SetProperty { object: ecad_model::ObjectRef::Device(comp), key: "maker".into(), before: None, after: Some("-K1".into()) },
+        Op::SetProperty { object: ecad_model::ObjectRef::Device(comp), key: "note".parse().unwrap(), before: None, after: Some("-K1".into()) },
     ];
     let before = f.ledger.document().clone();
     let after = f.ledger.preview(&ops).unwrap();
@@ -276,8 +276,8 @@ fn definitions_with_non_finite_geometry_or_repeated_keys_are_refused() {
         origin: None,
         graphics: vec![Primitive::Line { a: Pt::new(0.0, 0.0), b: at }],
         terminals: vec![
-            ecad_model::TerminalDef { key: "A1".into(), label: None, at, accepts: Default::default() },
-            ecad_model::TerminalDef { key: key2.into(), label: None, at: Pt::new(0.0, 1.0), accepts: Default::default() },
+            ecad_model::TerminalDef { key: "A1".parse().unwrap(), label: None, at, accepts: Default::default() },
+            ecad_model::TerminalDef { key: key2.parse().unwrap(), label: None, at: Pt::new(0.0, 1.0), accepts: Default::default() },
         ],
         ..Default::default()
     };
@@ -295,8 +295,14 @@ fn definitions_with_non_finite_geometry_or_repeated_keys_are_refused() {
 #[test]
 fn a_symbol_must_show_its_components_own_definition() {
     let mut f = fixture();
-    let good =
-        ecad_model::Definition { bridges: Vec::new(), name: "d".into(), origin: None, graphics: vec![], terminals: vec![], ..Default::default() };
+    let good = ecad_model::Definition {
+        bridges: Vec::new(),
+        name: "d".parse().unwrap(),
+        origin: None,
+        graphics: vec![],
+        terminals: vec![],
+        ..Default::default()
+    };
     let (d1, d2, c, i, r) = (f.ids.fresh(), f.ids.fresh(), f.ids.fresh(), f.ids.fresh(), f.ids.fresh());
     let item = Item {
         page: f.page,

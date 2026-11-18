@@ -22,7 +22,7 @@ fn project(dir: &TempDir, name: &str) -> (Client, String, String) {
 
 fn description(c: &mut Client, coil: &str) -> Option<String> {
     let id = ecad_model::DeviceId::parse(coil).unwrap();
-    c.doc().devices.get(&id).and_then(|x| x.properties.get("description").cloned())
+    c.doc().devices.get(&id).and_then(|x| x.get("description").map(str::to_string))
 }
 
 fn current(c: &mut Client) -> String {

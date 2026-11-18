@@ -27,11 +27,12 @@ fn setprop_on_several_connectors_through_mcp_refuses_what_one_refuses() {
     assert_eq!(log.len(), before + 1, "one transaction for both");
     let last = log.last().unwrap();
     assert_eq!(last.author, Author::Agent(AGENT.into()));
-    let set: Vec<&str> = last
+    // Lane 072 B: a connector's pin count is a field of its type.
+    let set: Vec<String> = last
         .ops
         .iter()
         .filter_map(|o| match o {
-            Op::SetProperty { key, after, .. } if key == "pins" => after.as_deref(),
+            Op::ModifyDevice { after, .. } => after.value("pins"),
             _ => None,
         })
         .collect();

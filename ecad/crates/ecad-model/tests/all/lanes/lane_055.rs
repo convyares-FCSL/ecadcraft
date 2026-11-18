@@ -2,8 +2,10 @@
 //! through its frame, and the frame record as one merge unit.
 
 use ecad_model::sheet::{self, Margins, SheetSpec};
+use ecad_model::style::frame::{FrameMargins, FrameSheet};
+use ecad_model::style::{FrameStyle, StyleBody};
 use ecad_model::style::{StyleLayer, StyleRecord, StyleRef};
-use ecad_model::title_block::{Binding, BlockItem, MAX_ITEMS, Rect, StyleBody, TextLook, TitleBlockLayout};
+use ecad_model::title_block::{Binding, BlockItem, MAX_ITEMS, Rect, TextLook, TitleBlockLayout};
 use std::collections::BTreeMap;
 
 use ecad_model::merge::{self, Inputs, Scope};
@@ -104,9 +106,14 @@ fn doc_with_page() -> (Document, PageId) {
 }
 
 fn frame(sheet: &str, margins: &str, h: f64) -> StyleRecord {
-    let mut r = StyleRecord::new("A2 frame", [("sheet".to_string(), sheet.to_string()), ("margins".to_string(), margins.to_string())].into());
-    r.body = Some(StyleBody::title_block(TitleBlockLayout::blank(180.0, h)));
-    r
+    // Design 072 §8: a value that does not read cannot be stored; it is absent.
+    let style = FrameStyle {
+        sheet: FrameSheet::parse(sheet),
+        margins: sheet::parse_margins(margins).map(FrameMargins),
+        title_block: Some(TitleBlockLayout::blank(180.0, h)),
+        ..FrameStyle::default()
+    };
+    StyleRecord::new("A2 frame", StyleBody::Frame(style))
 }
 
 /// A page's sheet, margins and keep-out come through its frame (FP4): frame, page, project, A3.
@@ -165,9 +172,8 @@ fn run_merge(a: &Document, t: &Document, s: &Document, scope: &Scope) -> merge::
 #[test]
 fn a_frame_record_is_one_merge_unit() {
     let rec = |x: f64| {
-        let mut r = StyleRecord::new("A3 Northfield", Default::default());
-        r.body = Some(StyleBody::title_block(TitleBlockLayout { size: (180.0, 40.0), items: vec![field(x)] }));
-        r
+        let title_block = Some(TitleBlockLayout { size: (180.0, 40.0), items: vec![field(x)] });
+        StyleRecord::new("A3 Northfield", StyleBody::Frame(FrameStyle { title_block, ..FrameStyle::default() }))
     };
     let set = |id: u128, before: Option<StyleRecord>, after: StyleRecord| Op::SetStyle {
         layer: StyleLayer::Project,

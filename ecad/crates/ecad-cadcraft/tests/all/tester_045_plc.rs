@@ -40,7 +40,7 @@ pub(crate) fn num(v: &Value) -> Option<u64> {
 }
 
 pub(crate) fn prop(d: &Document, c: DeviceId, k: &str) -> Option<String> {
-    d.devices.get(&c).and_then(|x| x.value(k))
+    crate::common::plc_value(d, c, k)
 }
 
 pub(crate) fn tag(d: &Document, c: DeviceId) -> String {
@@ -56,8 +56,8 @@ pub(crate) fn by_tag(d: &Document, t: &str) -> DeviceId {
 pub(crate) fn channel_points(d: &Document, card: DeviceId) -> BTreeMap<String, (String, TerminalId)> {
     d.terminals
         .iter()
-        .filter(|(_, t)| t.component == card && t.key.as_deref().is_some_and(|k| k.starts_with('.')))
-        .map(|(id, t)| (t.key.clone().unwrap_or_default(), (t.label.clone().unwrap_or_default(), *id)))
+        .filter(|(_, t)| t.component == card && t.key.as_ref().map(ToString::to_string).as_deref().is_some_and(|k| k.starts_with('.')))
+        .map(|(id, t)| (t.key.as_ref().map(ToString::to_string).unwrap_or_default(), (t.label.clone().unwrap_or_default(), *id)))
         .collect()
 }
 
@@ -204,7 +204,12 @@ pub(crate) fn raw(h: &mut H, ops: Vec<Op>) {
 }
 
 pub(crate) fn raw_setprop(h: &mut H, c: DeviceId, key: &str, value: Option<&str>) {
-    let before = prop(&h.doc(), c, key);
+    let d = h.doc();
+    if ecad_model::keys::is_reserved_on(ecad_model::keys::Holder::Device, key) {
+        raw(h, vec![crate::common::plc_raw(&d, c, key, value)]);
+        return;
+    }
+    let before = d.devices.get(&c).and_then(|x| x.properties.get(key).cloned());
     raw(h, vec![Op::SetProperty { object: ObjectRef::Device(c), key: key.into(), before, after: value.map(str::to_string) }]);
 }
 
@@ -217,7 +222,8 @@ pub(crate) fn rekey_raw(h: &mut H, t: TerminalId, new_label: Option<&str>, new_k
         after.label = Some(l.to_string());
     }
     if let Some(k) = new_key {
-        after.key = Some(k.to_string());
+        // A text that is no key cannot be stored: the point is left without one.
+        after.key = k.parse().ok();
     }
     raw(h, vec![Op::RemoveTerminal { id: t, terminal: before }, Op::AddTerminal { id: t, terminal: after }]);
 }

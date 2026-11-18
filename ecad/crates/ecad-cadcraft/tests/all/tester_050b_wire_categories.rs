@@ -26,17 +26,19 @@ use crate::common::{H, id, pts, tmp_dir};
 
 /// The ten built-in categories of §5.2: id, name, potential, colour, cross-section, line colour,
 /// line weight.
-const BUILTIN: [(&str, &str, &str, &str, &str, &str, f64); 10] = [
+const BUILTIN: [(&str, &str, &str, &str, &str, &str, f64); 12] = [
     ("l", "Power L", "L", "BN", "2.5", "ink", 0.6),
     ("l1", "Power L1", "L1", "BN", "2.5", "ink", 0.6),
     ("l2", "Power L2", "L2", "BK", "2.5", "ink", 0.6),
     ("l3", "Power L3", "L3", "GY", "2.5", "ink", 0.6),
     ("n", "Neutral", "N", "BU", "2.5", "ink", 0.6),
-    ("pe", "Protective earth", "PE", "GNYE", "2.5", "wire", 0.25),
+    ("pe", "Protective earth", "PE", "GN/YE", "2.5", "wire", 0.25),
+    ("ac230_l", "230 V AC L", "", "BN", "1.5", "wire", 0.25),
+    ("ac230_n", "230 V AC N", "", "BU", "1.5", "wire", 0.25),
     ("dc24", "24 V DC", "24V", "BU", "0.5", "wire", 0.25),
     ("dc0", "0 V DC", "0V", "BU", "0.5", "wire", 0.25),
-    ("signal", "Signal", "", "none", "0.5", "ink", 0.25),
-    ("analogue", "Analogue", "", "none", "0.5", "ink", 0.25),
+    ("signal", "Signal", "", "", "0.5", "ink", 0.25),
+    ("analogue", "Analogue", "", "", "0.5", "ink", 0.25),
 ];
 
 /// A horizontal wire at height `y` on the active page, with an optional potential.
@@ -90,13 +92,13 @@ fn look_category(h: &mut H, c: WireId) -> Option<String> {
 
 // ------------------------------------------------------------------ b11: the built-ins
 
-/// §12.11, §5.2: the ten categories; a 24V wire is labelled `24V-01 0.5 BU`, drawn blue, and its
+/// §12.11, §5.2 (and design 072 F37's two 230 V types): the twelve wire types; a 24V wire is labelled `24V-01 0.5 BU`, drawn blue, and its
 /// wire-report row shows Category "24 V DC".
 #[test]
-fn b11_ten_built_in_categories_and_a_24v_wire_is_dc24() {
+fn b11_twelve_built_in_wire_types_and_a_24v_wire_is_dc24() {
     let mut h = H::new(0x50b_1101);
     let rows = styles(&mut h, "wire");
-    assert_eq!(rows.len(), 10, "{rows:?}");
+    assert_eq!(rows.len(), 12, "{rows:?}");
     let mut part_numbers = Vec::new();
     for (id, name, pot, colour, xs, line, weight) in BUILTIN {
         let r = rows.iter().find(|r| s(&r["id"]) == id).unwrap_or_else(|| panic!("category {id}"));
@@ -105,8 +107,8 @@ fn b11_ten_built_in_categories_and_a_24v_wire_is_dc24() {
         if p != pot {
             part_numbers.push((id, format!("potential {p:?}")));
         }
-        assert_eq!(field_text(r, "colour"), colour, "{id}");
-        assert_eq!(field_text(r, "cross_section"), xs, "{id}");
+        assert_eq!(field_text(r, "colours"), colour, "{id}");
+        assert_eq!(field_text(r, "size"), xs, "{id}");
         assert_eq!(field_text(r, "line_colour"), line, "{id}");
         assert!((field_num(r, "line_weight") - weight).abs() < 1e-9, "{id}");
         assert_eq!(field_text(r, "line_type"), "continuous", "{id}");
@@ -169,7 +171,7 @@ fn b12_a_category_colour_reaches_every_user_but_an_overridden_one() {
     let b = wire_at(&mut h, 40.0, Some("24V"));
     let own = wire_at(&mut h, 60.0, Some("24V"));
     h.run("setprop", json!({"conductor": own.hex(), "key": "colours", "value": "VT"})).unwrap();
-    let (_, tx) = one_tx(&mut h, "setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colour": "RD"}}));
+    let (_, tx) = one_tx(&mut h, "setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colours": "RD"}}));
     assert_eq!(op_names(&tx), ["SetStyle"], "a category is a style record, no new op");
     for w in [a, b] {
         assert!(label(&mut h, page, w).is_some_and(|t| t.ends_with(" RD")), "{:?}", label(&mut h, page, w));
@@ -317,7 +319,11 @@ fn b14_two_defaults_for_one_potential() {
     h.run("setstyle", json!({"catalogue": "wire", "new": true, "name": "Second 24", "copy_of": "signal", "fields": {"potential": "47V"}})).unwrap();
     let mut tx = last_tx_json(&mut h);
     undo(&mut h);
-    let rec = find_obj_mut(&mut tx, "fields").and_then(|m| m.get_mut("fields")).and_then(Value::as_object_mut).expect("the record's fields");
+    let rec = find_obj_mut(&mut tx, "body")
+        .and_then(|m| m.get_mut("body"))
+        .and_then(|b| b.get_mut("wire"))
+        .and_then(Value::as_object_mut)
+        .expect("the record's wire type");
     rec.insert("potential".into(), json!("24V"));
     let ops = decoded_ops(&tx);
     inject(&mut h, ops);
@@ -487,7 +493,7 @@ fn b18_category_records_and_choices_round_trip() {
     h.points_at(&[(0.0, 20.0), (60.0, 20.0)]);
     h.trail = vec![h.doc()];
     let a: WireId = id(&h.run("wire", json!({"points": pts(&[(0.0, 20.0), (60.0, 20.0)]), "potential": "24V"})).unwrap(), "conductor");
-    h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colour": "RD", "part_number": "W-05", "allowance": 2}})).unwrap();
+    h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colours": "RD", "part_number": "W-05", "allowance": 2}})).unwrap();
     let ac = own_id(
         &h.run("setstyle", json!({"catalogue": "wire", "new": true, "name": "48 V AC", "copy_of": "signal", "fields": {"potential": "48V"}}))
             .unwrap(),
@@ -561,7 +567,7 @@ fn b_hostile_category_input_never_panics() {
         ("category", json!({"conductor": "zz", "value": "dc24"})),
         ("category", json!({"conductors": (0..10_000).map(|_| w.hex()).collect::<Vec<_>>(), "value": "nope"})),
         ("category", json!({"value": "dc24"})),
-        ("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colour": long}})),
+        ("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colours": long}})),
         ("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"line_weight": "NaN"}})),
         ("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"line_weight": 1e308}})),
         ("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"line_colour": "PURPLISH"}})),

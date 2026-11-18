@@ -432,8 +432,7 @@ fn codes(doc: &Document, key: &str) -> Vec<String> {
 /// be empty), Vertices and Devices inside.
 fn box_section(doc: &Document, b: DeviceId) -> Section {
     let shape = doc.representations_of(Subject::Device(b)).find_map(|(rid, r)| crate::locations::box_of_rep(doc, rid, r));
-    let shown =
-        |key: &str| doc.devices.get(&b).and_then(|c| c.properties.get(key)).map(|v| crate::designations::display(doc, key, v)).unwrap_or_default();
+    let shown = |key: &str| doc.devices.get(&b).and_then(|c| c.value(key)).map(|v| crate::designations::display(doc, key, &v)).unwrap_or_default();
     let location = shown(LOCATION_KEY);
     let mut rows = Vec::new();
     for (key, label) in [(FUNCTION_KEY, "Function"), (LOCATION_KEY, "Location")] {

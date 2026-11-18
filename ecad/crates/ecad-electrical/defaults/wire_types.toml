@@ -1,0 +1,101 @@
+# Wire types (design 072 §4.6, F36, F37): the `wire` catalogue's built-in data, read as typed
+# records (`ecad_model::style::WireType`), so a misspelt key or a value of the wrong form fails the
+# `wire_types_data_reads` test instead of being ignored.
+#
+# [defaults] is what a field takes when no layer and no built-in type sets it. [types.<id>] are the
+# built-in types' values (their names and table order are in `src/styles/wire.rs`). Sizes are mm²
+# (`2.5`) or AWG (`18 AWG`); colours are 2-letter codes in order (`GN/YE` is one two-colour wire);
+# lengths are millimetres, allowances metres, temperatures °C, currents A.
+
+[defaults]
+line_colour = "wire"
+line_type = "continuous"
+line_weight = 0.25
+label_rule = "project"
+allowance = 0.0
+
+[defaults.rating]
+rated_at = 30.0
+max_temperature = 70.0
+material = "cu"
+conductor_class = "5"
+
+[types.l]
+potential = "L"
+colours = "BN"
+size = "2.5"
+line_colour = "ink"
+line_weight = 0.6
+
+[types.l1]
+potential = "L1"
+colours = "BN"
+size = "2.5"
+line_colour = "ink"
+line_weight = 0.6
+
+[types.l2]
+potential = "L2"
+colours = "BK"
+size = "2.5"
+line_colour = "ink"
+line_weight = 0.6
+
+[types.l3]
+potential = "L3"
+colours = "GY"
+size = "2.5"
+line_colour = "ink"
+line_weight = 0.6
+
+[types.n]
+potential = "N"
+colours = "BU"
+size = "2.5"
+line_colour = "ink"
+line_weight = 0.6
+
+[types.pe]
+potential = "PE"
+colours = "GN/YE"
+size = "2.5"
+line_colour = "wire"
+line_weight = 0.25
+
+# Single-phase 230 V control wiring: smaller than the power types, no potential of their own (L and
+# N already have theirs), chosen per wire.
+[types.ac230_l]
+colours = "BN"
+size = "1.5"
+line_colour = "wire"
+line_weight = 0.25
+
+[types.ac230_n]
+colours = "BU"
+size = "1.5"
+line_colour = "wire"
+line_weight = 0.25
+
+[types.dc24]
+potential = "24V"
+colours = "BU"
+size = "0.5"
+line_colour = "wire"
+line_weight = 0.25
+
+[types.dc0]
+potential = "0V"
+colours = "BU"
+size = "0.5"
+line_colour = "wire"
+line_weight = 0.25
+
+[types.signal]
+size = "0.5"
+line_colour = "ink"
+line_weight = 0.25
+
+[types.analogue]
+size = "0.5"
+line_colour = "ink"
+line_weight = 0.25

@@ -216,7 +216,7 @@ pub enum Temp {
 pub fn box_temp(doc: &Document, c: DeviceId) -> Option<BoxTemp> {
     let x = doc.devices.get(&c).filter(|x| crate::locations::is_box_component(x))?;
     let v = x.properties.get(TEMPERATURE)?;
-    let location = x.properties.text(ecad_model::keys::LOCATION).map(|l| l.trim().to_string()).unwrap_or_default();
+    let location = crate::designations::device_key(x, crate::designations::Aspect::Location).unwrap_or_default();
     Some(BoxTemp { location, temp: parse::ambient(v).map_or_else(|| Temp::Unread(v.chars().take(32).collect()), Temp::Read) })
 }
 
@@ -376,7 +376,7 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
             let sh = sheet(doc, ecad_model::StyleCatalogue::Cable, ty.as_ref());
             let from_type = ty
                 .as_ref()
-                .and_then(|id| styles::field_of(doc, ecad_model::StyleCatalogue::Cable, id, "cross_section", None))
+                .and_then(|id| styles::field_of(doc, ecad_model::StyleCatalogue::Cable, id, "size", None))
                 .and_then(|r| parse::cross_section(&r.text()));
             let size = from_type.or_else(|| props.and_then(|p| p.get("type")).and_then(|t| crate::strips::notation_size(t)));
             (sh, size, ty.is_none())

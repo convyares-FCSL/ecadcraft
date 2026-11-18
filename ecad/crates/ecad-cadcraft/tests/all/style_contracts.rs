@@ -252,7 +252,10 @@ fn a_style_change_marks_only_the_pages_of_its_users() {
         catalogue: ecad_model::StyleCatalogue::Text,
         id,
         before: None,
-        after: Some(StyleRecord { name: String::new(), fields: [("height".to_string(), "4".to_string())].into(), body: None }),
+        after: Some(StyleRecord::new(
+            "",
+            ecad_model::style::StyleBody::Text(ecad_model::style::TextStyle { height: Some(ecad_model::units::Mm(4.0)), ..Default::default() }),
+        )),
     };
     // Nobody uses it: no page.
     assert_eq!(styles::pages_touched(&doc, &set(large.clone())), Some(Default::default()));
@@ -280,16 +283,16 @@ fn a_hostile_style_document_opens_draws_and_reports() {
                 catalogue: ecad_model::StyleCatalogue::Text,
                 id: StyleRef::Own(i + 1),
                 before: None,
-                after: Some(StyleRecord { name: format!("S{i}"), fields: Default::default(), body: None }),
+                after: Some(StyleRecord::new(format!("S{i}"), ecad_model::style::StyleBody::empty(ecad_model::StyleCatalogue::Text))),
             });
         }
-        let fields = (0..100).map(|i| (format!("f{i}"), "x".repeat(300))).collect();
+        // Design 072 §8: a record holds only its catalogue's fields; a long name is still possible.
         ops.push(Op::SetStyle {
             layer: StyleLayer::Project,
             catalogue: ecad_model::StyleCatalogue::Location,
             id: StyleRef::Own(9),
             before: None,
-            after: Some(StyleRecord { name: long.clone(), fields, body: None }),
+            after: Some(StyleRecord::new(long.clone(), ecad_model::style::StyleBody::empty(ecad_model::StyleCatalogue::Location))),
         });
         ops.push(Op::SetProperty {
             object: ObjectRef::Device(k1),
@@ -335,7 +338,7 @@ fn a_24v_wire_takes_the_24_v_dc_category() {
     let (mut h, page, _) = fixture();
     let v = h.run("styles", json!({"catalogue": "wire"})).unwrap();
     let ids: Vec<&str> = v["styles"].as_array().unwrap().iter().map(|s| s["id"].as_str().unwrap()).collect();
-    assert_eq!(ids, ["l", "l1", "l2", "l3", "n", "pe", "dc24", "dc0", "signal", "analogue"]);
+    assert_eq!(ids, ["l", "l1", "l2", "l3", "n", "pe", "ac230_l", "ac230_n", "dc24", "dc0", "signal", "analogue"]);
     let w = wire(&mut h, 150.0, Some("24V"));
     h.run("renumberwires", json!({})).unwrap();
     let label = label_of(&mut h, page, w).unwrap();
@@ -357,7 +360,7 @@ fn a_category_change_reaches_its_wires_but_not_an_own_colour() {
     let a = wire(&mut h, 150.0, Some("24V"));
     let b = wire(&mut h, 170.0, Some("24V"));
     h.run("setprop", json!({"conductor": b.hex(), "key": "colours", "value": "WH"})).unwrap();
-    h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colour": "RD"}})).unwrap();
+    h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colours": "RD"}})).unwrap();
     let doc = h.doc();
     assert_eq!(ecad_cadcraft::look::conductor_colour(&doc, a).as_deref(), Some("RD"));
     assert_eq!(ecad_cadcraft::look::conductor_colour(&doc, b).as_deref(), Some("WH"), "its own colour stays");

@@ -161,7 +161,7 @@ fn conductor_at(h: &mut H, component: DeviceId, label: &str) -> WireId {
     let d = h.doc();
     let t = d
         .terminals_of(component)
-        .find(|(_, t)| t.label.as_deref() == Some(label) || t.key.as_deref() == Some(label))
+        .find(|(_, t)| t.label.as_deref() == Some(label) || t.key.as_ref().map(ToString::to_string).as_deref() == Some(label))
         .map(|(i, _)| i)
         .unwrap_or_else(|| panic!("no pin {label}"));
     d.wires.iter().find(|(_, c)| c.ends.contains(&t)).map(|(i, _)| *i).unwrap_or_else(|| panic!("no conductor at {label}"))
@@ -192,7 +192,7 @@ fn fixture(seed: u64) -> R {
     let category = own_id(
         &h.run(
             "setstyle",
-            json!({"catalogue": "wire", "new": true, "name": "Synth power", "fields": {"cross_section": 2.5, "rated_current": 33, "rated_at": 20, "max_temperature": 80}}),
+            json!({"catalogue": "wire", "new": true, "name": "Synth power", "fields": {"size": 2.5, "rated_current": 33, "rated_at": 20, "max_temperature": 80}}),
         )
         .unwrap(),
     );
@@ -207,7 +207,7 @@ fn box_temp(h: &mut H, cab: DeviceId, v: &str) {
         return;
     }
     // Fix round: `rating {location, temperature}` writes it on the location's boxes.
-    let loc = h.doc().devices.get(&cab).and_then(|c| c.properties.get(ecad_model::book::LOCATION_KEY).cloned()).unwrap_or_default();
+    let loc = h.doc().devices.get(&cab).and_then(|c| c.value(ecad_model::book::LOCATION_KEY)).unwrap_or_default();
     let t = v.trim().parse::<f64>().map_or_else(|_| json!(v), |n| json!(n));
     if h.run("rating", json!({"location": loc, "temperature": t})).is_ok() {
         return;
@@ -454,11 +454,8 @@ fn t03_missing_table_data_says_what_is_missing() {
     assert!(rows.iter().any(|r| r.contains("no grouping factor for 5 circuits, E")), "{rows:?}");
     // A cable type with class 2: no resistance row → no volt drop.
     let ct = own_id(
-        &h.run(
-            "setstyle",
-            json!({"catalogue": "cable", "new": true, "name": "Synth class 2", "fields": {"cross_section": 1.5, "conductor_class": "2"}}),
-        )
-        .unwrap(),
+        &h.run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth class 2", "fields": {"size": 1.5, "conductor_class": "2"}}))
+            .unwrap(),
     );
     h.run("rating", json!({"cable": "-W01", "grouped": 2, "cable_type": ct})).unwrap();
     let rows = rows_text(&mut h, "rating-no-table");
@@ -570,7 +567,7 @@ fn v02_volt_drop_over_the_limit_names_the_next_size() {
     let ct = own_id(
         &h.run(
             "setstyle",
-            json!({"catalogue": "cable", "new": true, "name": "Synth sensor 0.75", "fields": {"cross_section": 0.75, "conductor_class": "5", "max_temperature": 70}}),
+            json!({"catalogue": "cable", "new": true, "name": "Synth sensor 0.75", "fields": {"size": 0.75, "conductor_class": "5", "max_temperature": 70}}),
         )
         .unwrap(),
     );
@@ -592,7 +589,7 @@ fn v02_volt_drop_over_the_limit_names_the_next_size() {
         refused(&mut h, "rating", json!({"cable": "-W12", "vd_limit": bad}));
     }
     // Above 16 mm²: not computed.
-    let big = own_id(&h.run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth 25", "fields": {"cross_section": 25}})).unwrap());
+    let big = own_id(&h.run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth 25", "fields": {"size": 25}})).unwrap());
     h.run("rating", json!({"cable": "-W12", "cable_type": big})).unwrap();
     let r = cable_r(&mut h, "-W12");
     let why = format!("{r} {:?}", rows_text(&mut h, "rating-no-table"));

@@ -1258,7 +1258,7 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
         ObjectId::Cable(c) => subject_label(doc, Subject::Cable(c)),
         ObjectId::Route(r) => subject_label(doc, Subject::Route(r)),
         ObjectId::Terminal(i) => doc.terminals.get(&i).map_or_else(String::new, |t| {
-            let name = t.label.clone().or_else(|| t.key.clone()).unwrap_or_else(|| i.short());
+            let name = t.label.clone().or_else(|| t.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| i.short());
             format!("{}:{name}", subject_label(doc, Subject::Device(t.component)))
         }),
         ObjectId::Representation(i) => doc.representations.get(&i).map_or_else(String::new, |r| {

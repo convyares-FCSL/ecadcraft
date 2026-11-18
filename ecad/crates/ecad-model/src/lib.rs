@@ -44,6 +44,8 @@ pub mod merge;
 pub mod numbering;
 pub mod op;
 pub mod page;
+pub mod plc;
+pub mod point;
 pub mod prefix;
 pub mod project;
 pub mod route;
@@ -62,7 +64,7 @@ pub mod words;
 
 pub use book::PageNo;
 pub use connectivity::{Connectivity, NetData, NetKey, Node};
-pub use device::{DeviceGroup, DeviceType};
+pub use device::{DeviceGroup, DeviceType, TextField};
 pub use doc::{
     Accepts, Cable, CableMember, Color, ContactMirror, ContentHash, CorePosition, DEFINITION_DEFAULT_KEYS, Definition, Device, Document, End, Folder,
     Form, Item, ItemKind, Layer, LengthUnit, Origin, Page, Primitive, ProjectSettings, Properties, ReferenceStyle, Representation, Style, Subject,
@@ -78,6 +80,7 @@ pub use invariant::Touched;
 pub use ledger::{Author, Base, BranchPoint, Check, History, Ledger, StepPoint, Transaction, TxKind};
 pub use op::{ObjectRef, Op};
 pub use page::{GenKind, PageKind, PageTitle};
+pub use point::{ChannelRole, LevelIo, PointKey};
 pub use project::{
     CustomField, Function, InfoField, ListCode, ListDescription, ListEntry, Location, Project, ProjectInfo, Rev, RevField, RevValue, Revision,
 };
