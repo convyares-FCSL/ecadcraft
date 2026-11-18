@@ -131,7 +131,7 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
     cprops.insert("tag".into(), "-W1".into());
     let cable_op = Op::CreateCable {
         id: cable,
-        cable: Cable { properties: cprops, cores: vec![Core::on_wire(w1, ecad_model::CoreLabel::new("1").ok())], shield: None },
+        cable: Cable { properties: cprops, cores: vec![Core::on_wire(w1, ecad_model::CoreLabel::new("1").ok())], ..Default::default() },
     };
     l.commit(Author::User, "Cable", vec![cable_op]).unwrap();
     for i in 0..20 {

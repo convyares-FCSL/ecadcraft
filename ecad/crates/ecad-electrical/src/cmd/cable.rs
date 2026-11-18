@@ -216,13 +216,7 @@ fn placed(m: &ecad_model::Core) -> bool {
 /// The cores cable `k`'s members use, by label (their matched or stored labels, else their place).
 fn cores_in_use(doc: &Document, k: CableId) -> Vec<String> {
     let Some(cab) = doc.cables.get(&k) else { return Vec::new() };
-    let count = crate::strips::count_cores(cable::offer(doc, k), &cab.cores);
-    cab.cores
-        .iter()
-        .enumerate()
-        .filter(|(_, m)| placed(m))
-        .map(|(i, m)| count.matched.get(i).cloned().flatten().or_else(|| m.label_str().map(str::to_string)).unwrap_or_else(|| (i + 1).to_string()))
-        .collect()
+    cab.cores.iter().enumerate().filter(|(_, m)| placed(m)).map(|(i, m)| m.label_str().map_or_else(|| (i + 1).to_string(), str::to_string)).collect()
 }
 
 /// Q6: a new offer (from `props`) must hold every core cable `k`'s members use.
@@ -232,10 +226,11 @@ fn check_offer(doc: &Document, k: CableId, props: &Properties) -> Result<(), Cmd
         return Ok(());
     }
     let Some((offer, _, text)) = cable::offer_of_props(doc, props) else { return Ok(()) };
-    let count = crate::strips::count_cores(Some((offer.clone(), crate::strips::OfferSource::Cores, text.clone())), &cab.cores);
-    let lacks_label =
-        cab.cores.iter().filter(|m| placed(m)).any(|m| m.label_str().is_some_and(|l| !offer.iter().any(|o| o.eq_ignore_ascii_case(l.trim()))));
-    if count.over.is_empty() && !lacks_label {
+    // Counted as the offer's write would leave the cores (unlabelled ones take free labels).
+    let mut synced = ecad_model::Cable { properties: props.clone(), ..cab.clone() };
+    cable::sync_offered_cores(doc, &cab.properties, &mut synced);
+    let count = crate::strips::count_cores(Some((offer.clone(), crate::strips::OfferSource::Cores, text.clone())), &synced.cores);
+    if count.over.is_empty() {
         return Ok(());
     }
     let tag = crate::cables::cable_title(doc, k);

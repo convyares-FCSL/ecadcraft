@@ -371,6 +371,10 @@ pub struct Cable {
     pub cores: Vec<Core>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shield: Option<m::style::cable::Shield>,
+    #[serde(default, skip_serializing_if = "m::wire::CircuitInputs::is_empty")]
+    pub rating: m::wire::CircuitInputs,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub load: Option<m::units::Amps>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1143,7 +1147,7 @@ impl From<&m::Core> for Core {
 
 impl From<&m::Cable> for Cable {
     fn from(c: &m::Cable) -> Self {
-        Cable { properties: c.properties.clone(), cores: c.cores.iter().map(Into::into).collect(), shield: c.shield }
+        Cable { properties: c.properties.clone(), cores: c.cores.iter().map(Into::into).collect(), shield: c.shield, rating: c.rating, load: c.load }
     }
 }
 
@@ -1459,7 +1463,7 @@ impl From<Core> for m::Core {
 
 impl From<Cable> for m::Cable {
     fn from(c: Cable) -> Self {
-        m::Cable { properties: c.properties, cores: c.cores.into_iter().map(Into::into).collect(), shield: c.shield }
+        m::Cable { properties: c.properties, cores: c.cores.into_iter().map(Into::into).collect(), shield: c.shield, rating: c.rating, load: c.load }
     }
 }
 

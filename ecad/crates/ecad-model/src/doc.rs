@@ -715,6 +715,12 @@ pub struct Cable {
     /// The cable's own shield; `None` takes its cable type's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shield: Option<crate::style::cable::Shield>,
+    /// The cable's own rating inputs (design 057 §6.1, 072 §4.5); each overrides the project's.
+    #[serde(default, skip_serializing_if = "crate::wire::CircuitInputs::is_empty")]
+    pub rating: crate::wire::CircuitInputs,
+    /// The design current typed for the cable (`load`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub load: Option<crate::units::Amps>,
 }
 
 /// SHA-256 of a definition's canonical form (proposal §20.10), as 64 lower-case hex digits.

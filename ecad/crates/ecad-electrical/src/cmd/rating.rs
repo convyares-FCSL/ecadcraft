@@ -4,7 +4,8 @@
 //! JSON.
 
 use ecad_model::style::{StyleLayer, StyleRecord, StyleRef, is_name};
-use ecad_model::units::Amps;
+use ecad_model::units::{Amps, Celsius, Percent, Volts};
+use ecad_model::wire::{InstallMethod, SupplySystem};
 use ecad_model::{CableId, DeviceId, Document, IdAllocator, ObjectRef, Op, Wire, WireId, Word};
 
 use crate::error::CmdError;
@@ -174,13 +175,12 @@ pub fn item_ops(doc: &Document, item: &RatingItem) -> Result<(Vec<Op>, Vec<Rated
                 }
             }
             RatedSubject::Cable(k) => {
-                let props = doc.cables.get(k).map(|x| &x.properties);
-                for (_, key, after) in &sets {
-                    let before = props.and_then(|p| p.get(*key)).cloned();
-                    if before != *after {
-                        ops.push(Op::SetProperty { object: s.object(), key: (*key).to_string(), before, after: after.clone() });
-                    }
+                let Some(cab) = doc.cables.get(k) else { continue };
+                let mut after = cab.clone();
+                for (key, _, value) in &sets {
+                    set_cable(&mut after, key, value.as_deref());
                 }
+                ops.extend(Op::modify_cable(*k, cab, after));
             }
         }
     }
@@ -199,6 +199,31 @@ pub fn set_wire(w: &mut Wire, key: &str, value: Option<&str>) {
             match value {
                 Some(v) => w.display.insert(rating::PROTECTED_BY.into(), v.to_string()),
                 None => w.display.remove(rating::PROTECTED_BY),
+            };
+        }
+        _ => {}
+    }
+}
+
+/// Set a cable's input `key` (a JSON key of [`KEYS`] for cables) to `value`, already checked by
+/// [`check_value`] (`None` clears it): a field, or the cable type and `protected_by` properties.
+pub fn set_cable(c: &mut ecad_model::Cable, key: &str, value: Option<&str>) {
+    let r = &mut c.rating;
+    match key {
+        "basis" => r.basis = value.and_then(Basis::parse),
+        "manual" => r.manual = value.and_then(parse::current).map(Amps),
+        "method" => r.method = value.and_then(InstallMethod::parse),
+        "ambient" => r.ambient = value.and_then(parse::ambient).map(Celsius),
+        "grouped" => r.grouped = value.and_then(parse::count).and_then(|n| u8::try_from(n).ok()),
+        "voltage" => r.voltage = value.and_then(parse::voltage).map(Volts),
+        "system" => r.system = value.and_then(SupplySystem::parse),
+        "vd_limit" => r.vd_limit = value.and_then(parse::percent).map(Percent),
+        "load" => c.load = value.and_then(parse::current).map(Amps),
+        "protected_by" | "cable_type" => {
+            let prop = if key == "cable_type" { cable::CABLE_TYPE } else { rating::PROTECTED_BY };
+            match value {
+                Some(v) => c.properties.insert(prop.into(), v.to_string()),
+                None => c.properties.remove(prop),
             };
         }
         _ => {}

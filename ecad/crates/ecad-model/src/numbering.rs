@@ -703,6 +703,15 @@ fn plan_tags(
                             ops.push(Op::ModifyDevice { id: c, before: d.clone(), after });
                         }
                     }
+                    ObjectRef::Cable(k) => {
+                        let stale = it.stale_flag.is_some();
+                        Op::edit_cable(doc, ops, k, |c| {
+                            c.properties.insert(TAG_KEY.into(), new.clone());
+                            if stale {
+                                c.properties.remove(FIXED_KEY);
+                            }
+                        });
+                    }
                     object => {
                         ops.push(Op::SetProperty { object, key: TAG_KEY.into(), before, after: Some(new.clone()) });
                         if let Some(f) = &it.stale_flag {

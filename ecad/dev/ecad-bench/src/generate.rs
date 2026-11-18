@@ -29,9 +29,9 @@ use std::collections::BTreeMap;
 
 use ecad_model::{
     Author, Cable, CableId, Color, ConductorId, Core, Definition, DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId,
-    ItemKind, Layer, LayerId, Ledger, LengthUnit, NetId, ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectId, ProjectSettings, Pt,
-    Representation, RepresentationId, Route, RouteEnd, RouteId, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId, Transaction, TxId,
-    TxKind, Wire, WireId,
+    ItemKind, Layer, LayerId, Ledger, LengthUnit, NetId, Op, Page, PageId, Placement, Primitive, ProjectId, ProjectSettings, Pt, Representation,
+    RepresentationId, Route, RouteEnd, RouteId, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId, Transaction, TxId, TxKind, Wire,
+    WireId,
 };
 
 /// The role brief 010 gives a cable reference end: its own constant, so the generated references
@@ -231,8 +231,11 @@ fn renamed_wire(w: WireId, wire: &Wire, name: &str) -> Op {
     Op::ModifyWire { id: w, before: wire.clone(), after: Wire { number, ..wire.clone() } }
 }
 
-fn renamed(object: ObjectRef, tag: &str) -> Op {
-    Op::SetProperty { object, key: "tag".into(), before: Some(tag.into()), after: Some(format!("{tag} (old name)")) }
+/// The op renaming cable `k` (value `cable`, tagged `tag`): a cable is written whole.
+fn renamed_cable(k: CableId, cable: &Cable, tag: &str) -> Op {
+    let mut after = cable.clone();
+    after.properties.insert("tag".into(), format!("{tag} (old name)"));
+    Op::ModifyCable { id: k, before: cable.clone(), after }
 }
 
 fn drawn(subject: Subject, page: PageId, role: &str, items: Vec<ItemId>) -> Representation {
@@ -464,13 +467,14 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             value.properties.insert("tag".into(), tag.clone());
             value.cores =
                 members.iter().enumerate().map(|(index, w)| Core::on_wire(*w, ecad_model::CoreLabel::new(&(index + 1).to_string()).ok())).collect();
+            let rename = renamed_cable(cable, &value, &tag);
             let mut ops = vec![Op::CreateCable { id: cable, cable: value }];
             ops.push(Op::AddItem {
                 id: item,
                 item: Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Line { a: from, b: to }) },
             });
             ops.push(Op::LinkRepresentation { id: rep, rep: drawn(Subject::Cable(cable), page, "slash", vec![item]) });
-            b.step("Cable slash", ops, "Rename", vec![renamed(ObjectRef::Cable(cable), &tag)])?;
+            b.step("Cable slash", ops, "Rename", vec![rename])?;
             if c == 0 {
                 first_cable = Some((cable, members, Pt::new(x + PITCH / 4.0, lowest - 6.0)));
             }

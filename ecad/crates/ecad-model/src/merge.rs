@@ -841,6 +841,10 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                     shield: field(ctx, obj, "shield", format!("{what} · shield"), &a.shield, &t.shield, &s.shield, &|x| {
                         x.map_or_else(|| "(none)".to_string(), |v| crate::words::Word::word(v).to_string())
                     }),
+                    rating: field(ctx, obj, "rating", format!("{what} · rating inputs"), &a.rating, &t.rating, &s.rating, &|x| format!("{x:?}")),
+                    load: field(ctx, obj, "load", format!("{what} · load"), &a.load, &t.load, &s.load, &|x| {
+                        x.map_or_else(|| "(none)".to_string(), |v| v.to_string())
+                    }),
                 });
                 set(&mut m.cables, id, v);
             }

@@ -614,11 +614,8 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
             Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
                 out.insert(*id);
             }
-            // Brief 053: a cable's property (its type, tag) is that cable's alone, so only its
+            // Brief 053: a cable's fields (its type, tag) are that cable's alone, so only its
             // reference ends may read differently (before, every cable: `spagetype`).
-            Op::SetProperty { object: ecad_model::ObjectRef::Cable(k), .. } => {
-                out.insert(*k);
-            }
             Op::ModifyCable { id, .. } => {
                 out.insert(*id);
             }

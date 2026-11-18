@@ -552,15 +552,17 @@ impl CoreCount {
     }
 }
 
-/// Match `members` to `offer` (§6.2): by label first, then the rest in member order. An unplaced
-/// core (a spare one stored only for its purpose, design 072 §4.5) is on no line: it is not
-/// counted against the offer and its `matched` is `None`.
+/// Count a cable's stored cores against `offer` (§6.2, design 072 §4.5: read as stored, never
+/// matched by order). A placed core counts as the offered core of its label; a placed core with
+/// no label, a label the offer lacks, or a label an earlier core has is over. The spare cores are
+/// the stored cores on no line, in core order.
 pub fn count_cores(offer: Option<(Vec<String>, OfferSource, String)>, members: &[Core]) -> CoreCount {
     let placed = |m: &Core| m.position != ecad_model::CorePosition::Unplaced;
+    let label = |m: &Core| m.label_str().map(str::trim).filter(|l| !l.is_empty()).map(str::to_string);
     let mut twice = Vec::new();
     let mut labels: BTreeSet<String> = BTreeSet::new();
     for (i, m) in members.iter().enumerate().filter(|(_, m)| placed(m)) {
-        if let Some(l) = m.label_str().map(str::trim).filter(|l| !l.is_empty())
+        if let Some(l) = label(m)
             && !labels.insert(l.to_ascii_uppercase())
         {
             twice.push(i);
@@ -569,37 +571,17 @@ pub fn count_cores(offer: Option<(Vec<String>, OfferSource, String)>, members: &
     let Some((offer, source, text)) = offer else {
         return CoreCount { matched: vec![None; members.len()], twice, ..CoreCount::default() };
     };
-    let mut free: Vec<Option<&String>> = offer.iter().map(Some).collect();
+    let mut seen: BTreeSet<String> = BTreeSet::new();
     let mut matched: Vec<Option<String>> = vec![None; members.len()];
-    let mut done: Vec<bool> = members.iter().map(|m| !placed(m)).collect();
-    for (i, m) in members.iter().enumerate().filter(|(_, m)| placed(m)) {
-        let Some(l) = m.label_str().map(str::trim) else { continue };
-        if let Some(slot) = free.iter_mut().find(|s| s.is_some_and(|c| c.eq_ignore_ascii_case(l)))
-            && let Some(c) = slot.take()
-        {
-            if let Some(x) = matched.get_mut(i) {
-                *x = Some(c.clone());
-            }
-            if let Some(d) = done.get_mut(i) {
-                *d = true;
-            }
-        }
-    }
     let mut over = Vec::new();
-    for i in 0..members.len() {
-        if done.get(i).copied().unwrap_or(true) {
-            continue;
-        }
-        match free.iter_mut().find(|s| s.is_some()).and_then(Option::take) {
-            Some(c) => {
-                if let Some(x) = matched.get_mut(i) {
-                    *x = Some(c.clone());
-                }
-            }
-            None => over.push(i),
+    for (i, m) in members.iter().enumerate().filter(|(_, m)| placed(m)) {
+        let hit = label(m).and_then(|l| offer.iter().find(|o| o.eq_ignore_ascii_case(&l))).filter(|o| seen.insert(o.to_ascii_uppercase()));
+        match (hit, matched.get_mut(i)) {
+            (Some(o), Some(x)) => *x = Some(o.clone()),
+            _ => over.push(i),
         }
     }
-    let spare = free.into_iter().flatten().cloned().collect();
+    let spare = members.iter().filter(|m| !placed(m)).filter_map(label).collect();
     CoreCount { offer: Some(offer), source: Some(source), offer_text: Some(text), matched, spare, over, twice }
 }
 
@@ -1848,20 +1830,21 @@ mod tests {
     }
 
     #[test]
-    fn members_meet_the_offer_by_label_then_in_order() {
+    fn stored_cores_meet_the_offer_by_label() {
         let m = |core: Option<&str>| Core::on_wire(WireId(1), core.and_then(|c| ecad_model::CoreLabel::new(c).ok()));
+        let free = |core: &str| Core::unplaced(ecad_model::CoreLabel::new(core).ok());
         let offer = |t: &str| Some((parse_cores(t).unwrap(), OfferSource::Cores, t.to_string()));
-        let c = count_cores(offer("7G"), &[m(None), m(None), m(Some("3")), m(None), m(None)]);
+        let c = count_cores(offer("7G"), &[m(Some("1")), m(Some("2")), m(Some("3")), m(Some("4")), m(Some("5")), free("6"), free(GNYE)]);
         assert_eq!(c.used(), 5);
         assert_eq!(c.spare, ["6", GNYE]);
         assert_eq!(c.spare_text().as_deref(), Some("2 (6, GNYE)"));
-        assert_eq!(c.matched[0].as_deref(), Some("1"));
         assert_eq!(c.matched[2].as_deref(), Some("3"));
-        assert_eq!(c.matched[3].as_deref(), Some("4"));
-        let c = count_cores(offer("3"), &[m(Some("1")), m(Some("1")), m(None), m(None)]);
+        assert_eq!(c.matched[5], None, "an unplaced core is on no line");
+        // No order-based matching: an unlabelled placed core is over, never given a free label.
+        let c = count_cores(offer("3"), &[m(Some("1")), m(Some("1")), m(None), free("2")]);
         assert_eq!(c.twice, [1]);
-        assert_eq!(c.over, [3]);
-        assert!(c.spare.is_empty());
+        assert_eq!(c.over, [1, 2]);
+        assert_eq!(c.spare, ["2"]);
         let c = count_cores(None, &[m(None), m(None)]);
         assert_eq!(c.used(), 2);
         assert_eq!(c.spare_text(), None);

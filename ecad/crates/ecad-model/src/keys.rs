@@ -297,6 +297,8 @@ pub const RESERVED_ON: &[(Holder, PropKey)] = &[
     (Holder::Project, PropKey("cover.notes")),
     // Lane 072 D: a cable's own shield (design 072 §4.5).
     (Holder::Cable, PropKey("shield")),
+    // Lane 072 D: a cable's design current is its field (design 072 §4.5).
+    (Holder::Cable, PropKey("load")),
 ];
 
 /// Key prefixes that became struct fields on one holder: the project's location and function
@@ -312,6 +314,8 @@ pub const RESERVED_PREFIXES: &[(Holder, &str)] = &[
     (Holder::Device, "plc.ch."),
     // Lane 072 D: a core's Not used is its purpose (design 072 §4.5).
     (Holder::Cable, "unused."),
+    // Lane 072 D: a cable's rating inputs are its fields (design 072 §4.5).
+    (Holder::Cable, "rating."),
 ];
 
 /// Whether `key` became a struct field on `holder` ([`RESERVED`], [`RESERVED_ON`],

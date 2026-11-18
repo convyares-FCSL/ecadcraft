@@ -1535,6 +1535,8 @@ impl Scope {
                         node(self, Node::Terminal(t));
                     }
                 }
+                // A cable is written whole (`ModifyCable`); `SetProperty` on one is refused.
+                Op::SetProperty { object: ObjectRef::Cable(_), .. } => {}
                 Op::SetProperty { object: ObjectRef::Wire(c), .. } => {
                     node(self, Node::Wire(*c));
                     self.wires.insert(*c);
@@ -1544,18 +1546,12 @@ impl Scope {
                     self.wires.insert(*c);
                     self.numbers.extend([before, after].into_iter().filter_map(|w| w.number_text().map(str::to_string)));
                 }
-                Op::SetProperty { object: ObjectRef::Cable(k), .. }
-                | Op::CreateCable { id: k, .. }
-                | Op::DeleteCable { id: k, .. }
-                | Op::ModifyCable { id: k, .. } => {
+                Op::CreateCable { id: k, .. } | Op::DeleteCable { id: k, .. } | Op::ModifyCable { id: k, .. } => {
                     // Brief 027: a new or deleted cable, or its tag (the orphan row's words).
                     self.cable_references.insert(*k);
                     // Brief 026: the cable's own rows, and every holder of the tags it had or has.
                     self.cables.insert(*k);
                     match op {
-                        Op::SetProperty { key, before, after, .. } if key == ecad_model::tag::TAG_KEY => {
-                            self.tag_holders(doc, [before, after].into_iter().flatten().map(String::as_str));
-                        }
                         Op::CreateCable { cable, .. } | Op::DeleteCable { cable, .. } => {
                             self.tag_holders(doc, cable.properties.get(ecad_model::tag::TAG_KEY).map(String::as_str));
                         }

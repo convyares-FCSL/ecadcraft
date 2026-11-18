@@ -286,6 +286,39 @@ impl Op {
         (before != &after).then(|| Op::ModifyCable { id, before: before.clone(), after })
     }
 
+    /// Edit cable `id` within `ops` (design 072 §4.5: a cable is written whole): `edit` changes the
+    /// `after` of the `ModifyCable` that `ops` already holds for it, or of a new one from `doc`'s
+    /// cable. A `ModifyCable` left unchanged is dropped; nothing when the cable is not there.
+    pub fn edit_cable(doc: &Document, ops: &mut Vec<Op>, id: CableId, edit: impl FnOnce(&mut Cable)) {
+        let at = ops.iter().position(|o| matches!(o, Op::ModifyCable { id: k, .. } if *k == id));
+        match at {
+            Some(i) => {
+                if let Some(Op::ModifyCable { before, after, .. }) = ops.get_mut(i) {
+                    edit(after);
+                    if before == after {
+                        ops.remove(i);
+                    }
+                }
+            }
+            None => {
+                let Some(cab) = doc.cables.get(&id) else { return };
+                let mut after = cab.clone();
+                edit(&mut after);
+                ops.extend(Op::modify_cable(id, cab, after));
+            }
+        }
+    }
+
+    /// Set property `key` of cable `id` to `value` within `ops` ([`Op::edit_cable`]).
+    pub fn set_cable_property(doc: &Document, ops: &mut Vec<Op>, id: CableId, key: &str, value: Option<String>) {
+        Op::edit_cable(doc, ops, id, |c| {
+            match value {
+                Some(v) => c.properties.insert(key.to_string(), v),
+                None => c.properties.remove(key),
+            };
+        });
+    }
+
     /// The op that undoes this one.
     pub fn inverse(&self) -> Op {
         match self.clone() {
@@ -571,14 +604,14 @@ impl Op {
                 if reserved {
                     return Err(pre(format!("property {key} is a field now (design 072); its object's Modify op changes it")));
                 }
-                // Design 072 §4.5: a cable's offered cores are stored cores; only ModifyCable writes them.
-                if matches!(object, ObjectRef::Cable(_)) && key == CABLE_CORES_KEY {
-                    return Err(pre(format!("property {key} of a cable is written with its cores; ModifyCable changes it")));
+                // Design 072 §4.5: a cable is written whole; only ModifyCable changes it.
+                if matches!(object, ObjectRef::Cable(_)) {
+                    return Err(pre(format!("property {key} of a cable is written with the cable; ModifyCable changes it")));
                 }
                 let props = match object {
                     ObjectRef::Device(id) => doc.devices.get_mut(id).map(|c| &mut c.properties),
                     ObjectRef::Wire(id) => doc.wires.get_mut(id).map(|c| &mut c.display),
-                    ObjectRef::Cable(id) => doc.cables.get_mut(id).map(|c| &mut c.properties),
+                    ObjectRef::Cable(_) => None,
                     ObjectRef::Page(id) => doc.pages.get_mut(id).map(|p| &mut p.display),
                     ObjectRef::Project => Some(&mut doc.properties),
                     ObjectRef::Standard => doc.standard.as_mut().map(|s| &mut s.values),
@@ -609,16 +642,6 @@ impl Op {
                         if let Some(k) = now {
                             doc.index.continuation(*id, k, Delta::Add);
                         }
-                    }
-                }
-                if let ObjectRef::Cable(id) = object
-                    && key == crate::tag::TAG_KEY
-                {
-                    if let Some(old) = &old {
-                        doc.index.cable_tag(*id, old, Delta::Remove);
-                    }
-                    if let Some(new) = after {
-                        doc.index.cable_tag(*id, new, Delta::Add);
                     }
                 }
                 // A style choice is indexed (brief 050a): the style's explicit users.

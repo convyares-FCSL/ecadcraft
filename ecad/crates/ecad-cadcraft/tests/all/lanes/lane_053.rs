@@ -33,7 +33,7 @@ fn a_bom_page_lays_its_table_out_once_per_draw() {
 #[test]
 fn ops_that_read_no_reference_touch_no_cable() {
     use ecad_model::style::{StyleLayer, StyleRecord, StyleRef};
-    use ecad_model::{CableId, Device, DeviceId, ObjectRef, Op};
+    use ecad_model::{CableId, Device, DeviceId, Op};
     let doc = ecad_model::Document::default();
     let touched = |ops: Vec<Op>| ecad_cadcraft::references::cables_touched(&doc, &ops);
     let style = |catalogue: ecad_model::StyleCatalogue| Op::SetStyle {
@@ -51,7 +51,9 @@ fn ops_that_read_no_reference_touch_no_cable() {
     let gone = Op::DeleteDevice { id: DeviceId(7), device: Device::default() };
     assert_eq!(touched(vec![gone]), Some(Default::default()), "a deleted component");
     let k = CableId(9);
-    let typed = Op::SetProperty { object: ObjectRef::Cable(k), key: "type".into(), before: None, after: Some("5G1.5".into()) };
+    let mut typed_cable = ecad_model::Cable::default();
+    typed_cable.properties.insert("type".into(), "5G1.5".into());
+    let typed = Op::ModifyCable { id: k, before: ecad_model::Cable::default(), after: typed_cable };
     assert_eq!(touched(vec![typed]), Some([k].into()), "a cable's own property");
 }
 

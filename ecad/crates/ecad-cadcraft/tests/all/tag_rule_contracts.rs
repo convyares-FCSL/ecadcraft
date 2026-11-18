@@ -14,7 +14,7 @@ const PROJECT: ProjectId = ProjectId(0x0029_0000_0000_0000_0000_0000_0000_0007);
 fn cable(tag: &str) -> Cable {
     let mut properties = ecad_model::doc::Properties::new();
     properties.insert("tag".into(), tag.into());
-    Cable { properties, cores: Vec::new(), shield: None }
+    Cable { properties, cores: Vec::new(), ..Default::default() }
 }
 
 #[test]

@@ -329,10 +329,12 @@ fn core_rows_of_the_checks_list() {
     assert_eq!(twice[0].which, "-W01: core 1 is used by two wires");
     assert_eq!(twice[0].fix, Some(Fix::NextFreeCore(t.wires[1])));
     assert_eq!(ecad_cadcraft::strips::next_free_label(&t.h.doc(), t.cable).as_deref(), Some("2"));
+    // Design 072 §4.5 (lane D c3): the offer labels the two unlabelled cores 2 and 3 and stores
+    // 4 and 5 on no line; the core used twice is over, so the first stored free core is 4.
     t.h.run("setprop", json!({"cable": t.cable.hex(), "key": "cores", "value": "5X"})).unwrap();
-    assert_eq!(ecad_cadcraft::strips::next_free_label(&t.h.doc(), t.cable).as_deref(), Some("5"));
+    assert_eq!(ecad_cadcraft::strips::next_free_label(&t.h.doc(), t.cable).as_deref(), Some("4"));
     t.h.run("setprop", json!({"cable": t.cable.hex(), "key": "cores", "value": "4X"})).unwrap();
-    assert_eq!(ecad_cadcraft::strips::next_free_label(&t.h.doc(), t.cable).as_deref(), Some("2"), "none spare: the next number");
+    assert_eq!(ecad_cadcraft::strips::next_free_label(&t.h.doc(), t.cable).as_deref(), Some("4"), "core 5 went with the offer; 4 is still free");
     let e = t.h.run("setprop", json!({"cable": t.cable.hex(), "key": "cores", "value": "7Q"})).unwrap_err();
     assert!(e.contains("Write 7, 7G, 5X, 4x2x0.25 (pairs), or BN,BK,GY,BU,GNYE."), "{e}");
 }

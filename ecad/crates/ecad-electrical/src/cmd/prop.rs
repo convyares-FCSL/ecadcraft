@@ -28,9 +28,6 @@ pub type Check = fn(&Document, ObjectRef, &str, Option<&str>) -> Result<Option<S
 /// whole record (`None`: unchanged), or the refusal.
 pub type Plan = fn(&Document, ObjectRef, &str, Option<&str>) -> Result<Option<Op>, CmdError>;
 
-/// A row's plan writing several ops on one object (`[]`: unchanged), or the refusal.
-pub type OpsPlan = fn(&Document, ObjectRef, &str, Option<&str>) -> Result<Vec<Op>, CmdError>;
-
 /// How a row of [`PROP_RULES`] builds the change.
 #[derive(Clone, Copy)]
 pub enum Build {
@@ -50,9 +47,6 @@ pub enum Build {
     Value(Check),
     /// A key that is a struct field (design 072): one `Modify*` op per object ([`plan_record`]).
     Record(Plan),
-    /// A key that sets typed data through several ops on one object (072 D: a cable core's
-    /// purpose, until `ModifyCable` takes it) ([`plan_ops`]).
-    Ops(OpsPlan),
 }
 
 /// One row of [`PROP_RULES`].
@@ -131,16 +125,6 @@ pub static PROP_RULES: &[PropRule] = &[
         build: Build::Value(bom_value),
     },
     PropRule { what: "strip accessories, or free text (brief 030)", claims: |_, o, _| is_component(o), build: Build::Value(accessory_value) },
-    PropRule {
-        what: "cable cores (brief 028)",
-        claims: |_, o, k| matches!(o, ObjectRef::Cable(_)) && k == crate::strips::CORES_KEY,
-        build: Build::Ops(cores_ops),
-    },
-    PropRule {
-        what: "cable core not used (brief 057)",
-        claims: |_, o, k| matches!(o, ObjectRef::Cable(_)) && k.starts_with(crate::styles::cable::UNUSED_PREFIX),
-        build: Build::Ops(unused_ops),
-    },
     FREE_TEXT,
 ];
 
@@ -156,20 +140,7 @@ pub fn rule_for(doc: &Document, object: ObjectRef, key: &str) -> &'static PropRu
 pub fn plan_record(doc: &Document, object: ObjectRef, key: &str, typed: Option<&str>) -> Result<Option<Op>, CmdError> {
     match rule_for(doc, object, key).build {
         Build::Record(plan) => plan(doc, object, key, typed),
-        Build::Aspect | Build::Tag | Build::Fixed | Build::Device(_) | Build::Value(_) | Build::Ops(_) => {
-            Err(CmdError::input("that property is set through its own rule"))
-        }
-    }
-}
-
-/// `setprop` of an `Ops` row on one object: its ops, empty when unchanged.
-///
-/// # Errors
-/// The row's refusal; a row of another kind.
-pub fn plan_ops(doc: &Document, object: ObjectRef, key: &str, typed: Option<&str>) -> Result<Vec<Op>, CmdError> {
-    match rule_for(doc, object, key).build {
-        Build::Ops(plan) => plan(doc, object, key, typed),
-        Build::Aspect | Build::Tag | Build::Fixed | Build::Device(_) | Build::Value(_) | Build::Record(_) => {
+        Build::Aspect | Build::Tag | Build::Fixed | Build::Device(_) | Build::Value(_) => {
             Err(CmdError::input("that property is set through its own rule"))
         }
     }
@@ -284,27 +255,6 @@ fn accessory_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>)
     Ok(rule.unwrap_or_else(|| value.map(str::to_string)))
 }
 
-/// `setprop cores` on a cable: one ModifyCable writing the offer and the cores it offers
-/// (design 072 §4.5).
-fn cores_ops(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Vec<Op>, CmdError> {
-    let ObjectRef::Cable(k) = o else { return Err(CmdError::input("that property is set through its own rule")) };
-    let cab = doc.cables.get(&k).ok_or_else(|| CmdError::refused("No cable with that ID."))?;
-    let mut after = cab.clone();
-    match crate::strips::cores_value(value)? {
-        Some(v) => after.properties.insert(key.to_string(), v),
-        None => after.properties.remove(key),
-    };
-    crate::styles::cable::sync_offered_cores(doc, &cab.properties, &mut after);
-    Ok(Op::modify_cable(k, cab, after).into_iter().collect())
-}
-
-fn unused_ops(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Vec<Op>, CmdError> {
-    match o {
-        ObjectRef::Cable(k) => crate::styles::cable::unused_ops(doc, k, key, value),
-        _ => Err(CmdError::input("that property is set through its own rule")),
-    }
-}
-
 // ---------------------------------------------------------------- the key
 
 /// Refuse a key `setprop` never writes: `text.` keys are written by the text commands only
@@ -354,7 +304,7 @@ pub fn value(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) 
         // A device's tag is a device property too: merging into the device that holds it reads it
         // here ([`plan_device`]).
         Build::Tag => device_value,
-        Build::Fixed | Build::Aspect | Build::Record(_) | Build::Ops(_) => return Err(CmdError::input("that property is set through its own rule")),
+        Build::Fixed | Build::Aspect | Build::Record(_) => return Err(CmdError::input("that property is set through its own rule")),
     };
     if let ObjectRef::Device(c) = object {
         crate::bom::refuse_on_item(doc, c, key, value)?;
@@ -421,10 +371,6 @@ pub fn plan_many(doc: &Document, cs: &[DeviceId], key: &str, typed: Option<&str>
                 continue;
             }
             Build::Record(plan) => {
-                ops.extend(plan(doc, o, &key, typed)?);
-                continue;
-            }
-            Build::Ops(plan) => {
                 ops.extend(plan(doc, o, &key, typed)?);
                 continue;
             }
@@ -550,8 +496,8 @@ fn fixed_of(doc: &Document, o: ObjectRef) -> bool {
     }
 }
 
-/// The op giving `o` tag `tag` and fixed flag `fixed`: one `ModifyDevice` on a device, the
-/// properties' `SetProperty` ops on a cable.
+/// The op giving `o` tag `tag` and fixed flag `fixed`: one `ModifyDevice` on a device, one
+/// `ModifyCable` on a cable.
 fn write_tag(doc: &Document, o: ObjectRef, tag: Option<String>, fixed: bool) -> Vec<Op> {
     match o {
         ObjectRef::Device(c) => {
@@ -559,18 +505,14 @@ fn write_tag(doc: &Document, o: ObjectRef, tag: Option<String>, fixed: bool) -> 
             let after = ecad_model::Device { tag_fixed: fixed, ..d.with_tag(tag.as_deref()) };
             if after == *d { Vec::new() } else { vec![Op::ModifyDevice { id: c, before: d.clone(), after }] }
         }
-        _ => {
-            let Some(props) = props_of(doc, o) else { return Vec::new() };
+        ObjectRef::Cable(k) => {
             let mut ops = Vec::new();
-            ops.extend(set(o, TAG_KEY, props.get(TAG_KEY), tag));
-            ops.extend(set(o, FIXED_KEY, props.get(FIXED_KEY), fixed.then(|| ecad_model::words::flag_word(true).to_string())));
+            Op::set_cable_property(doc, &mut ops, k, TAG_KEY, tag);
+            Op::set_cable_property(doc, &mut ops, k, FIXED_KEY, fixed.then(|| ecad_model::words::flag_word(true).to_string()));
             ops
         }
+        ObjectRef::Wire(_) | ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard => Vec::new(),
     }
-}
-
-fn set(o: ObjectRef, key: &str, before: Option<&String>, after: Option<String>) -> Option<Op> {
-    (before != after.as_ref()).then(|| Op::SetProperty { object: o, key: key.into(), before: before.cloned(), after })
 }
 
 /// The ops writing `tag` on `o` and its fixed flag (`fixed`; a provisional tag is never fixed).

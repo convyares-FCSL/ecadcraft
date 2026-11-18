@@ -92,6 +92,12 @@ fn the_shield_is_the_cables_field() {
         assert!(e.contains("Shield is none, overall, pairs or overall+pairs") || e.contains("control or invisible"), "{e}");
         assert_eq!(h.head(), head);
     }
-    assert!(h.run("setprop", json!({"cable": k.hex(), "key": "shield", "value": "overall"})).is_err(), "shield is not a property");
+    // Lane D c3: `setprop shield` writes the field, in one ModifyCable; never a property.
+    h.run("setprop", json!({"cable": k.hex(), "key": "shield", "value": "overall"})).unwrap();
+    assert_eq!(h.doc().cables[&k].shield, Some(Shield::Overall));
+    assert!(!h.doc().cables[&k].properties.contains_key("shield"));
+    let head = h.head();
+    assert!(h.run("setprop", json!({"cable": k.hex(), "key": "shield", "value": "tartan"})).is_err());
+    assert_eq!(h.head(), head);
     h.check();
 }
