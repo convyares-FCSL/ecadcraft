@@ -94,3 +94,26 @@ fn a_text_style_reads_its_typed_fields_only() {
     assert_eq!(StyleColour::parse("none"), Some(StyleColour::None));
     assert_eq!(StyleColour::parse("blu").map(|c| c.to_string()).as_deref(), Some("BU"));
 }
+
+/// Location styles (design 072 §8): typed line, colours and label style; strict read.
+#[test]
+fn a_location_style_reads_its_typed_fields_only() {
+    use ecad_model::style::LocationStyle;
+    use ecad_model::style::text::StyleColour;
+    use ecad_model::style::wire::LineType;
+    let l = LocationStyle {
+        line_type: Some(LineType::Dashdot),
+        line_weight: Some(Mm(0.5)),
+        line_colour: StyleColour::parse("RD"),
+        label_style: StyleRef::parse("tag"),
+        fill: Some(StyleColour::None),
+    };
+    let v = serde_json::to_value(StyleRecord::new("Panel", StyleBody::Location(l.clone()))).unwrap();
+    assert_eq!(v["body"]["location"]["label_style"], "tag");
+    assert_eq!(serde_json::from_value::<StyleRecord>(v.clone()).unwrap().body, StyleBody::Location(l));
+    for (k, bad) in [("line_type", serde_json::json!("wavy")), ("label_style", serde_json::json!("Tag!")), ("glow", serde_json::json!(1))] {
+        let mut w = v.clone();
+        w["body"]["location"][k] = bad;
+        assert!(serde_json::from_value::<StyleRecord>(w).is_err(), "{k}");
+    }
+}

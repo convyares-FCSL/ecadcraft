@@ -201,9 +201,8 @@ pub fn record_text(r: &StyleRecord, key: &str) -> Option<String> {
     match &r.body {
         StyleBody::Wire(w) => wire::get(w, key).map(|value| Resolved { value, from: Source::Project }.text()),
         StyleBody::Text(t) => text::get(t, key).map(|value| Resolved { value, from: Source::Project }.text()),
-        StyleBody::Cable(_) | StyleBody::Frame(_) | StyleBody::Location(_) | StyleBody::Page(_) | StyleBody::RatingTable(_) => {
-            r.field(key).map(str::to_string)
-        }
+        StyleBody::Location(l) => location::get(l, key).map(|value| Resolved { value, from: Source::Project }.text()),
+        StyleBody::Cable(_) | StyleBody::Frame(_) | StyleBody::Page(_) | StyleBody::RatingTable(_) => r.field(key).map(str::to_string),
     }
 }
 
@@ -213,7 +212,11 @@ fn record_value<'a>(doc: &'a Document, r: &'a StyleRecord, cat: &Catalogue, f: &
     match &r.body {
         StyleBody::Wire(w) => wire::get(w, f.key).filter(|v| in_range(f.kind, v)),
         StyleBody::Text(t) => text::get(t, f.key).filter(|v| in_range(f.kind, v)),
-        StyleBody::Cable(_) | StyleBody::Frame(_) | StyleBody::Location(_) | StyleBody::Page(_) | StyleBody::RatingTable(_) => {
+        // A label style naming no text style counts as absent.
+        StyleBody::Location(l) => {
+            location::get(l, f.key).filter(|v| in_range(f.kind, v) && v.style().is_none_or(|id| exists(doc, StyleCatalogue::Text, &id)))
+        }
+        StyleBody::Cable(_) | StyleBody::Frame(_) | StyleBody::Page(_) | StyleBody::RatingTable(_) => {
             stored(r, cat.catalogue, f.key).and_then(|s| defaults::parse_value_in(doc, f.kind, s))
         }
     }
@@ -568,7 +571,8 @@ pub fn with_fields(
         match &mut r.body {
             StyleBody::Wire(w) => wire::set(w, k, v.as_deref())?,
             StyleBody::Text(t) => text::set(t, k, v.as_deref())?,
-            StyleBody::Cable(p) | StyleBody::Location(p) | StyleBody::Page(p) | StyleBody::RatingTable(p) => set_text(p, k, v.as_deref()),
+            StyleBody::Location(l) => location::set(l, k, v.as_deref())?,
+            StyleBody::Cable(p) | StyleBody::Page(p) | StyleBody::RatingTable(p) => set_text(p, k, v.as_deref()),
             StyleBody::Frame(f) => set_text(&mut f.fields, k, v.as_deref()),
         }
     }
