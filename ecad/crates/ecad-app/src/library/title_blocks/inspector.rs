@@ -80,7 +80,7 @@ fn sources() -> Vec<(&'static str, Vec<(&'static str, String)>)> {
                 _ => "Print",
             };
             for (b, _) in f {
-                let name = bind::name(&Binding::parse(b));
+                let name = Binding::parse(b).map(|x| bind::name(&x)).unwrap_or_default();
                 match groups.iter_mut().find(|g| g.0 == group) {
                     Some(g) => g.1.push((*b, name)),
                     None => groups.push((group, vec![(*b, name)])),
@@ -120,7 +120,6 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
         BlockItem::Line { .. } => ("Line".to_string(), "Line"),
         BlockItem::RevTable { .. } => ("Revision table".to_string(), "Table"),
         BlockItem::Logo { name, .. } => (if name.is_empty() { "Logo".to_string() } else { name.clone() }, "Logo"),
-        BlockItem::Unknown => ("Unknown item".to_string(), "Item"),
     };
     let title = if sel.len() > 1 { format!("{} items", sel.len()) } else { title };
     ui.label(RichText::new(title).font(ecad_ui::fonts::font(ui.ctx(), ecad_ui::tokens::ui_type::OBJECT)).color(c32(s.text)));
@@ -154,7 +153,7 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                     let r = ecad_ui::control::Select::new(&mut i, &options, SOURCE).placeholder(&current).show(ui);
                     if r.changed() {
                         pick = match binds.get(i) {
-                            Some(bt) => Some(Binding::parse(bt)),
+                            Some(bt) => Binding::parse(bt).ok(),
                             None if i == binds.len() => Some(Binding::new(ecad_model::title_block::Source::Project, "")),
                             None => None,
                         };
@@ -442,7 +441,7 @@ fn num(ui: &mut egui::Ui, v: &mut f64, name: &str) {
 fn set_rect(item: &mut BlockItem, r: ecad_model::title_block::Rect) {
     match item {
         BlockItem::Text { at, .. } | BlockItem::Field { at, .. } | BlockItem::RevTable { at, .. } | BlockItem::Logo { at, .. } => *at = r,
-        BlockItem::Line { .. } | BlockItem::Unknown => {}
+        BlockItem::Line { .. } => {}
     }
 }
 
