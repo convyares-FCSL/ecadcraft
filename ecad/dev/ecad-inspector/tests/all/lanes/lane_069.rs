@@ -144,7 +144,12 @@ fn every_op_ledger() -> Ledger {
     let moved = line(page, layer, 7.0);
     let mut rep_after = rep_wire_v.clone();
     rep_after.role = "moved".into();
-    let header = StandardHeader { id: ids.fresh(), name: "S".into(), based_on: "iec".into(), origin: None };
+    let header = StandardHeader {
+        id: ids.fresh(),
+        name: ecad_model::style::StyleName::new("S").unwrap(),
+        based_on: ecad_model::style::BasedOn::Iec,
+        origin: None,
+    };
     let ops = vec![
         Op::AddPage { id: ids.fresh(), page: Page::titled("2").unwrap(), index: 1 },
         Op::RemovePage { id: page, page: page_v.clone(), index: 0 },

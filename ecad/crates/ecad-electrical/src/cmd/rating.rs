@@ -373,8 +373,8 @@ pub fn plan_table(doc: &Document, ids: &mut IdAllocator, w: &TableWrite) -> Resu
     let id = existing.clone().unwrap_or_else(|| StyleRef::Own(ids.fresh::<u128>()));
     let before = styles::record(doc, w.layer, cat.catalogue, &id).cloned();
     let mut rec = before.clone().unwrap_or_else(|| StyleRecord::new(w.name.clone(), ecad_model::style::StyleBody::empty(cat.catalogue)));
-    if rec.name.is_empty() && existing.is_none() {
-        rec.name = w.name.clone();
+    if rec.name.is_none() && existing.is_none() {
+        rec.name = ecad_model::style::StyleName::new(&w.name).ok();
     }
     let mut set = vec![(ratingtable::ROWS.to_string(), Some(w.csv.clone()))];
     if let Some(src) = &w.source {

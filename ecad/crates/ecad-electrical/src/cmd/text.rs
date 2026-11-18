@@ -225,7 +225,7 @@ fn style_ops(doc: &Document, style: &StyleFields, ops: &mut Vec<Op>) {
     for (id, fields) in style {
         let before = ecad_model::style::record(doc, StyleLayer::Project, ecad_model::StyleCatalogue::Text, id).cloned();
         let Ok(rec) = crate::styles::with_fields(ecad_model::StyleCatalogue::Text, before.as_ref(), None, fields) else { continue };
-        let after = (!rec.name.is_empty() || !rec.body.is_empty() || !id.is_builtin()).then_some(rec);
+        let after = (rec.name.is_some() || !rec.body.is_empty() || !id.is_builtin()).then_some(rec);
         if after != before {
             ops.push(Op::SetStyle { layer: StyleLayer::Project, catalogue: ecad_model::StyleCatalogue::Text, id: id.clone(), before, after });
         }

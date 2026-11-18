@@ -41,7 +41,7 @@ fn the_header_makes_a_standard_and_the_status_bar_names_it() {
     assert_eq!(head(&mut h), before, "nothing written while typing");
     click(&mut h, standards::HEADER_CONFIRM);
     assert_eq!(head(&mut h), before + 1, "one transaction");
-    assert_eq!(doc(&mut h).standard.map(|s| s.header.name), Some("House".into()));
+    assert_eq!(doc(&mut h).standard.map(|s| s.header.name.to_string()).as_deref(), Some("House"));
     assert_eq!(h.state_mut().standard_words(), "Standard: House");
     assert!(h.query_by_label(standards::BACK_TO_IEC).is_some() && h.query_by_label(standards::RENAME).is_some());
     // Back to IEC says its consequence first, then goes on the confirm.

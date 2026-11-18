@@ -1062,7 +1062,9 @@ fn a08_a_hostile_style_file_opens_draws_and_reports() {
     for i in 0..2000u32 {
         ops.extend(decoded_ops(&make(format!("#{:032x}", 0xbad0_0000u64 + u64::from(i)), "text", format!("S{i}"), json!({"height": 3.0}))));
     }
-    ops.extend(decoded_ops(&make(format!("#{:032x}", 0xfeed_0002u64), "text", "N".repeat(10_000), json!({"height": 1e308}))));
+    ops.extend(decoded_ops(&make(format!("#{:032x}", 0xfeed_0002u64), "text", "Huge".into(), json!({"height": 1e308}))));
+    // Design 072 §9.4: a name past 64 characters does not read.
+    assert!(ecad_file::record::decode_tx(&make(format!("#{:032x}", 0xfeed_0003u64), "text", "N".repeat(10_000), json!({}))).is_err());
     // Design 072 §8 (strict words): unknown fields are a read error, not kept and listed.
     let many: serde_json::Map<String, Value> = (0..100).map(|i| (format!("f{i}"), json!("x"))).collect();
     assert!(ecad_file::record::decode_tx(&make(format!("#{:032x}", 0xfeed_0001u64), "text", "Many".into(), Value::Object(many))).is_err());

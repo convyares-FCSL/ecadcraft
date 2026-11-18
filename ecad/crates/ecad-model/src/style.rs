@@ -196,20 +196,29 @@ impl<'de> Deserialize<'de> for StyleRef {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StyleRecord {
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub name: String,
+    /// Its name: an own style's label; none for an override of a built-in style.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<StyleName>,
     pub body: StyleBody,
 }
 
+/// A style or standard name: 1–64 characters, one line, no hidden character (design 072 §9.4).
+pub type StyleName = crate::text::Text<MAX_NAME_CHARS>;
+
 impl StyleRecord {
-    /// A record with `name` and `body`.
-    pub fn new(name: impl Into<String>, body: StyleBody) -> StyleRecord {
-        StyleRecord { name: name.into(), body }
+    /// A record with `name` (none when empty or not a valid name) and `body`.
+    pub fn new(name: impl AsRef<str>, body: StyleBody) -> StyleRecord {
+        StyleRecord { name: StyleName::new(name.as_ref()).ok(), body }
     }
 
     /// An unnamed record of `catalogue` that sets nothing.
     pub fn empty(catalogue: StyleCatalogue) -> StyleRecord {
-        StyleRecord { name: String::new(), body: StyleBody::empty(catalogue) }
+        StyleRecord { name: None, body: StyleBody::empty(catalogue) }
+    }
+
+    /// Its name's text, empty when it has none.
+    pub fn name_str(&self) -> &str {
+        self.name.as_ref().map_or("", |n| n.as_str())
     }
 
     /// Which catalogue its body belongs to.
@@ -375,25 +384,33 @@ pub type StyleCatalogues = BTreeMap<StyleCatalogue, BTreeMap<StyleRef, StyleReco
 
 /// Where a standard came from (reserved for 2.1, `.ecadlib`; always `None` in 050).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StandardOrigin {
     pub library: LibraryId,
 }
 
 /// A standard's header (design 050 §2.3): changed as one unit by [`crate::Op::SetStandard`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StandardHeader {
     /// Kept when a project copies the standard, so 2.1 can match it with a library's.
     pub id: StandardId,
     /// A label, 1–64 characters.
-    pub name: String,
-    /// The built-in it starts from: `iec` (the only one in 050).
-    pub based_on: String,
+    pub name: StyleName,
+    /// The built-in it starts from.
+    pub based_on: BasedOn,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin: Option<StandardOrigin>,
 }
 
-/// The built-in base every standard starts from in 050.
-pub const BASED_ON_IEC: &str = "iec";
+crate::word_enum! {
+    /// The built-in base a standard starts from (only IEC in 050).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+    pub enum BasedOn {
+        #[default]
+        Iec,
+    }
+}
 
 /// A project's copy of a standard (design 050 §2.3, FP1).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
