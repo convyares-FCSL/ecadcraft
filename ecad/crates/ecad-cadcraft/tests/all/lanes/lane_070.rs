@@ -1652,7 +1652,7 @@ fn setprop_on_one_and_on_several_refuse_alike_for_each_rule() {
         ("contact table mirror (brief 025)", [&coil, &coil2], "mirror", "maybe"),
         ("strip offer (brief 028)", [&strip, &strip2], "terminals", "lots"),
         ("PE row part (brief 028)", [&coil, &coil2], "part_number.pe", &long),
-        ("connector (brief 044)", [&socket, &socket2], "pins", "99"),
+        ("connector fields (072 B)", [&socket, &socket2], "pins", "99"),
         ("strip terminal defaults (brief 036)", [&strip, &strip2], "terminal.level.separator", "abcd"),
         ("level label (brief 036)", [&strip, &strip2], "term_label.1", &long),
         ("PLC card (brief 045)", [&card, &card2], "plc.addr.start", "x"),

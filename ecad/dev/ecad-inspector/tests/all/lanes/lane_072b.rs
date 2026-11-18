@@ -107,3 +107,25 @@ fn a_device_s_location_and_function_are_shown() {
     let text = rows["ok"].to_string();
     assert!(text.contains("\"location\":\"+CP1\"") && text.contains("\"location_fixed\":true") && text.contains("\"function\":\"=F1\""), "{text}");
 }
+
+/// Step 3, Connector (A15): a connector's family, pins and half parts show in the readable log.
+#[test]
+fn a_connector_s_data_is_shown() {
+    use ecad_model::device::{Connector, ConnectorFamily, PartText, PinCount};
+    let dir = TempDir::new("072b-conn");
+    let mut l = history();
+    let mut ids = IdAllocator::seeded(75);
+    let c: DeviceId = ids.fresh();
+    let before = Device { device_type: DeviceType::Connector(Box::new(Connector::of_family(ConnectorFamily::M12))), ..Device::default() };
+    let mut x = Connector::of_family(ConnectorFamily::M12);
+    x.pins = PinCount::new(5);
+    x.socket.manufacturer = Some(PartText::new("Acme").unwrap());
+    let after = Device { device_type: DeviceType::Connector(Box::new(x)), ..before.clone() };
+    l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: before.clone() }]).unwrap();
+    l.commit(Author::User, "pins", vec![Op::ModifyDevice { id: c, before, after }]).unwrap();
+    let path = written(&dir, &l);
+    let log = run(&[path.to_str().unwrap(), "log", "main", "--last", "1"]).unwrap();
+    for want in ["ModifyDevice", "connector", "m12", "pins", "Acme"] {
+        assert!(log.contains(want), "{want} in the readable log: {log}");
+    }
+}

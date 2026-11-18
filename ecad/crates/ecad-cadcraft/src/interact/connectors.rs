@@ -5,14 +5,14 @@
 use cadcraft_engine::doc::{Entity, EntityKind};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
-use ecad_model::{DeviceId, Pt};
+use ecad_model::{DeviceId, Pt, Word};
 use serde_json::{Value, json};
 
 use super::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
 use super::{
     ATTACHED_ACI, OUT_OF_RANGE, REFUSE_ACI, RING_PX, can_start, in_range, line_kind, pixel, preview_entity, preview_text, pt, read, ring_kind, v2,
 };
-use crate::connectors::{self as cn, Family};
+use crate::connectors::{self as cn, Family, FamilyRules};
 use crate::defaults::{self, Scope};
 use crate::symbols::Side;
 
@@ -27,7 +27,7 @@ pub(crate) fn connector(s: &Session) -> R<Box<dyn Interactive>> {
             "plug" => Side::Plug,
             _ => Side::Both,
         };
-        let family = Family::parse(defaults::resolve(doc, &defaults::connectors::MAKER_FAMILY, Scope::project()).word()).unwrap_or(Family::Plain);
+        let family = Family::of_typed(defaults::resolve(doc, &defaults::connectors::MAKER_FAMILY, Scope::project()).word()).unwrap_or(Family::Plain);
         let n = defaults::resolve(doc, &defaults::connectors::MAKER_PINS, Scope::project()).number();
         let pins = if n.is_finite() && (1.0..=cn::MAX_PINS as f64).contains(&n) { n as usize } else { 4 };
         let names = defaults::resolve(doc, &defaults::connectors::MAKER_NAMES, Scope::project()).word().to_string();
@@ -171,7 +171,7 @@ impl PlaceConnector {
     }
 
     fn choose_type(&mut self, text: &str) -> R<Step> {
-        self.family = Family::parse(text).ok_or_else(|| other(format!("Type one of {}.", TYPE_WORDS.join(", "))))?;
+        self.family = Family::of_typed(text).ok_or_else(|| other(format!("Type one of {}.", TYPE_WORDS.join(", "))))?;
         if self.bulkhead() {
             self.pins_layout = false;
             self.stage = Stage::Point;
