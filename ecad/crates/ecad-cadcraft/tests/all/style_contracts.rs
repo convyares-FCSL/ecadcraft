@@ -286,13 +286,13 @@ fn a_hostile_style_document_opens_draws_and_reports() {
                 after: Some(StyleRecord::new(format!("S{i}"), ecad_model::style::StyleBody::empty(ecad_model::StyleCatalogue::Text))),
             });
         }
-        let fields = (0..100).map(|i| (format!("f{i}"), "x".repeat(300))).collect();
+        // Design 072 §8: a record holds only its catalogue's fields; a long name is still possible.
         ops.push(Op::SetStyle {
             layer: StyleLayer::Project,
             catalogue: ecad_model::StyleCatalogue::Location,
             id: StyleRef::Own(9),
             before: None,
-            after: Some(StyleRecord::new(long.clone(), ecad_model::style::StyleBody::Location(fields))),
+            after: Some(StyleRecord::new(long.clone(), ecad_model::style::StyleBody::empty(ecad_model::StyleCatalogue::Location))),
         });
         ops.push(Op::SetProperty {
             object: ObjectRef::Device(k1),

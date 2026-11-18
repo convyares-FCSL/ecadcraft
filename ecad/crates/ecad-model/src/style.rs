@@ -18,9 +18,11 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::doc::Properties;
 use crate::id::{LibraryId, StandardId};
 
+pub mod location;
 pub mod text;
 pub mod wire;
 
+pub use location::LocationStyle;
 pub use text::{StyleColour, TextStyle};
 pub use wire::WireType;
 
@@ -223,18 +225,18 @@ impl StyleRecord {
     /// The fields of a catalogue not typed yet (lane G works through them).
     pub fn fields(&self) -> Option<&Properties> {
         match &self.body {
-            StyleBody::Cable(p) | StyleBody::Location(p) | StyleBody::Page(p) | StyleBody::RatingTable(p) => Some(p),
+            StyleBody::Cable(p) | StyleBody::Page(p) | StyleBody::RatingTable(p) => Some(p),
             StyleBody::Frame(f) => Some(&f.fields),
-            StyleBody::Text(_) | StyleBody::Wire(_) => None,
+            StyleBody::Location(_) | StyleBody::Text(_) | StyleBody::Wire(_) => None,
         }
     }
 
     /// [`StyleRecord::fields`], to change.
     pub fn fields_mut(&mut self) -> Option<&mut Properties> {
         match &mut self.body {
-            StyleBody::Cable(p) | StyleBody::Location(p) | StyleBody::Page(p) | StyleBody::RatingTable(p) => Some(p),
+            StyleBody::Cable(p) | StyleBody::Page(p) | StyleBody::RatingTable(p) => Some(p),
             StyleBody::Frame(f) => Some(&mut f.fields),
-            StyleBody::Text(_) | StyleBody::Wire(_) => None,
+            StyleBody::Location(_) | StyleBody::Text(_) | StyleBody::Wire(_) => None,
         }
     }
 
@@ -260,7 +262,7 @@ impl StyleRecord {
 pub enum StyleBody {
     Cable(Properties),
     Frame(FrameFields),
-    Location(Properties),
+    Location(LocationStyle),
     Page(Properties),
     #[serde(rename = "ratingtable")]
     RatingTable(Properties),
@@ -274,7 +276,7 @@ impl StyleBody {
         match catalogue {
             StyleCatalogue::Cable => StyleBody::Cable(Properties::new()),
             StyleCatalogue::Frame => StyleBody::Frame(FrameFields::default()),
-            StyleCatalogue::Location => StyleBody::Location(Properties::new()),
+            StyleCatalogue::Location => StyleBody::Location(LocationStyle::default()),
             StyleCatalogue::Page => StyleBody::Page(Properties::new()),
             StyleCatalogue::RatingTable => StyleBody::RatingTable(Properties::new()),
             StyleCatalogue::Text => StyleBody::Text(TextStyle::default()),
@@ -298,9 +300,8 @@ impl StyleBody {
     /// The fields it sets, as `(key, stored text)`: for messages and the inspector.
     pub fn entries(&self) -> Vec<(String, String)> {
         match self {
-            StyleBody::Cable(p) | StyleBody::Location(p) | StyleBody::Page(p) | StyleBody::RatingTable(p) => {
-                p.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
-            }
+            StyleBody::Cable(p) | StyleBody::Page(p) | StyleBody::RatingTable(p) => p.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+            StyleBody::Location(l) => l.entries().into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
             StyleBody::Text(t) => t.entries().into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
             StyleBody::Frame(f) => f.fields.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
             StyleBody::Wire(w) => w.entries().into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
@@ -310,7 +311,8 @@ impl StyleBody {
     /// Whether it sets nothing.
     pub fn is_empty(&self) -> bool {
         match self {
-            StyleBody::Cable(p) | StyleBody::Location(p) | StyleBody::Page(p) | StyleBody::RatingTable(p) => p.is_empty(),
+            StyleBody::Cable(p) | StyleBody::Page(p) | StyleBody::RatingTable(p) => p.is_empty(),
+            StyleBody::Location(l) => *l == LocationStyle::default(),
             StyleBody::Text(t) => *t == TextStyle::default(),
             StyleBody::Frame(f) => f.fields.is_empty() && f.title_block.is_none(),
             StyleBody::Wire(w) => *w == WireType::default(),
