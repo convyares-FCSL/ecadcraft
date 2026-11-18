@@ -212,9 +212,8 @@ fn record_value<'a>(doc: &'a Document, r: &'a StyleRecord, cat: &Catalogue, f: &
             location::get(l, f.key).filter(|v| in_range(f.kind, v) && v.style().is_none_or(|id| exists(doc, StyleCatalogue::Text, &id)))
         }
         StyleBody::RatingTable(t) => ratingtable::get(t, f.key),
-        StyleBody::Cable(_) | StyleBody::Frame(_) | StyleBody::Page(_) => {
-            stored(r, cat.catalogue, f.key).and_then(|s| defaults::parse_value_in(doc, f.kind, s))
-        }
+        StyleBody::Page(t) => page::get(t, f.key),
+        StyleBody::Cable(_) | StyleBody::Frame(_) => stored(r, cat.catalogue, f.key).and_then(|s| defaults::parse_value_in(doc, f.kind, s)),
     }
 }
 
@@ -569,7 +568,8 @@ pub fn with_fields(
             StyleBody::Text(t) => text::set(t, k, v.as_deref())?,
             StyleBody::Location(l) => location::set(l, k, v.as_deref())?,
             StyleBody::RatingTable(t) => ratingtable::set(t, k, v.as_deref())?,
-            StyleBody::Cable(p) | StyleBody::Page(p) => set_text(p, k, v.as_deref()),
+            StyleBody::Page(t) => page::set(t, k, v.as_deref())?,
+            StyleBody::Cable(p) => set_text(p, k, v.as_deref()),
             StyleBody::Frame(f) => set_text(&mut f.fields, k, v.as_deref()),
         }
     }

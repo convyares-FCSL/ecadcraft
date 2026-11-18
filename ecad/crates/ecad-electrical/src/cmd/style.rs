@@ -131,6 +131,7 @@ fn field_value(doc: &Document, f: &styles::Field, v: FieldInput) -> Result<Optio
         defaults::Value::Size(s) => s.to_string(),
         defaults::Value::Colours(c) => c.to_string(),
         defaults::Value::Colour(c) => c.to_string(),
+        defaults::Value::Sheet(s) => s.text(),
     }))
 }
 
