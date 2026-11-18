@@ -3,9 +3,8 @@
 //! # Semantics
 //! - [`Wire`] holds what a wire is in fields: its two ends, its size, its colours (an ordered list
 //!   of [`ConductorColour`]s, `GN/YE`), its wire number with its fixed flag, its potential, its
-//!   rating inputs ([`CircuitInputs`]) and its load. Only display choices and defaults-registry
-//!   values (its wire category until lane D's wire-type step, its label's text choices) stay in
-//!   [`Wire::display`].
+//!   rating inputs ([`CircuitInputs`]), its load and its own wire type ([`StyleRef`]). Only display
+//!   choices (its label's text choices) stay in [`Wire::display`].
 //! - Every value is checked when it is made ([`WireSize::parse`], [`Colours::parse`],
 //!   [`CircuitInputs`]'s bounds) and again when it is read from a file: a stored value out of its
 //!   bounds, in another form than the stored one, or an unknown word is a read error.
@@ -22,6 +21,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::colour::{ColourWords, ConductorColour};
 use crate::doc::Properties;
 use crate::id::{ConductorId, DeviceId, NetId, TerminalId};
+use crate::style::StyleRef;
 use crate::text::Text;
 use crate::units::{Amps, Celsius, Mm2, Percent, Volts};
 use crate::words::{is_digits, uint};
@@ -64,6 +64,10 @@ pub struct Wire {
     /// The person reordered this net by hand: the rewrite keeps its order.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub order_fixed: bool,
+    /// Its own wire type (a style of catalogue `wire`, design 072 §4.6), over the one its net's
+    /// potential or the registry gives.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wire_type: Option<StyleRef>,
     /// Its own size, over its wire type's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size: Option<WireSize>,
@@ -99,6 +103,7 @@ impl Wire {
             net_order: 1,
             ends: [a, b],
             order_fixed: false,
+            wire_type: None,
             size: None,
             colours: None,
             number: None,
@@ -170,6 +175,7 @@ impl Wire {
             }
         }
         out.extend(self.potential.as_ref().map(|p| ("potential", p.to_string())));
+        out.extend(self.wire_type.as_ref().map(|t| ("wire type", t.text())));
         out.extend(self.size.map(|s| ("size", s.to_string())));
         out.extend(self.colours.as_ref().map(|c| ("colours", c.to_string())));
         out.extend(self.rating.values());

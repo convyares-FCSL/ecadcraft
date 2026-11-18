@@ -188,6 +188,17 @@ fn props_of(doc: &Document, o: ObjectRef) -> Option<&ecad_model::Properties> {
 pub fn rewrite_users(doc: &Document, cat: &Catalogue, id: &StyleRef, to: &StyleRef) -> Vec<Op> {
     let mut out = Vec::new();
     let mut put = |o: ObjectRef, key: &str| {
+        // Design 072 §4.6: a wire's own type is its field.
+        if let ObjectRef::Wire(w) = o
+            && key == ecad_model::wiring::WIRE_CATEGORY
+        {
+            if let Some(before) = doc.wires.get(&w).filter(|x| x.wire_type.as_ref() == Some(id)) {
+                let mut after = before.clone();
+                after.wire_type = Some(to.clone());
+                out.push(Op::ModifyWire { id: w, before: before.clone(), after });
+            }
+            return;
+        }
         let before = props_of(doc, o).and_then(|p| p.get(key)).cloned();
         if before.as_deref().and_then(StyleRef::parse).as_ref() == Some(id) {
             match o {

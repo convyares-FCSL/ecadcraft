@@ -35,6 +35,11 @@ pub static RULES: &[PropRule] = &[
         claims: |_, o, k| is_wire(o) && rating_key(k).is_some(),
         build: Build::Record(wire_rating),
     },
+    PropRule {
+        what: "wire type (072 §4.6)",
+        claims: |_, o, k| is_wire(o) && k == ecad_model::wiring::WIRE_CATEGORY,
+        build: Build::Record(wire_type),
+    },
     PropRule { what: "wire display choices and registry values (072 §9.2)", claims: |_, o, _| is_wire(o), build: Build::Value(wire_display) },
     PropRule {
         what: "cable values, cores and Not used (059, 072 D)",
@@ -149,6 +154,23 @@ pub fn wire_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) 
     Ok(modify(c, w, after))
 }
 
+/// A wire's own wire type (design 072 §4.6): a style reference of catalogue `wire`, or nothing
+/// to clear it. A reference to a type that does not exist is kept and shown as a check row.
+///
+/// # Errors
+/// A value that is not a style reference (a built-in word or `#` and 32 hex digits).
+pub fn wire_type(doc: &Document, o: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
+    let (c, w) = wire_of(doc, o)?;
+    let mut after = w.clone();
+    after.wire_type = match value.map(str::trim).filter(|v| !v.is_empty()) {
+        None => None,
+        Some(v) => {
+            Some(ecad_model::StyleRef::parse(v).ok_or_else(|| CmdError::refused(format!("{:?} is not a wire type's ID.", crate::cables::clip(v))))?)
+        }
+    };
+    Ok(modify(c, w, after))
+}
+
 /// A wire's rating input, checked as `rating` checks it.
 ///
 /// # Errors
@@ -165,8 +187,8 @@ pub fn wire_rating(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>)
     Ok(modify(c, w, after))
 }
 
-/// A wire's display choice or defaults-registry value (`wire.category`): checked by its registry
-/// entry; any other key is refused.
+/// A wire's display choice or defaults-registry value: checked by its registry entry; any other
+/// key is refused.
 ///
 /// # Errors
 /// [`no_such_key`]; a value the entry does not take.

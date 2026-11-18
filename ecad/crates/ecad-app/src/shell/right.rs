@@ -641,8 +641,8 @@ fn style_row(
             (Some(n), _) => n,
             (None, _) => "None".into(),
         };
-        let own = doc.wires.get(&c).and_then(|x| x.display.get(e.key));
-        let dangling = own.filter(|v| e.parse_in(doc, v).is_none()).map(|_| "Not found: drawn without a category".to_string());
+        let own = doc.wires.get(&c).and_then(|x| x.wire_type.as_ref());
+        let dangling = own.filter(|t| !styles::exists(doc, cat, t)).map(|_| "Not found: drawn without a category".to_string());
         let _ = r;
         return (value, list, dangling);
     }

@@ -49,7 +49,8 @@ pub fn touches(op: &Op) -> bool {
         Op::SetProperty { key, .. } => is_choice_key(key),
         // A deleted object takes its choices with it.
         Op::DeleteDevice { device: component, .. } => component.properties.keys().any(|k| is_choice_key(k)),
-        Op::DeleteWire { wire, .. } => wire.display.keys().any(|k| is_choice_key(k)),
+        Op::DeleteWire { wire, .. } => wire.wire_type.is_some() || wire.display.keys().any(|k| is_choice_key(k)),
+        Op::ModifyWire { before, after, .. } => before.wire_type != after.wire_type || before.display != after.display,
         Op::RemovePage { page, .. } => page.page_type.is_some() || page.display.keys().any(|k| is_choice_key(k)),
         Op::ModifyPage { before, after, .. } => before.page_type != after.page_type,
         // Brief 054: the page type and folder rows.

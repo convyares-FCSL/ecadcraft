@@ -467,7 +467,6 @@ pub fn number_of(doc: &Document, c: WireId) -> Option<String> {
 /// # Errors
 /// No such wire.
 pub fn category_ops(doc: &Document, conductors: &[WireId], value: Option<&StyleRef>) -> Result<(Vec<Op>, Option<String>), CmdError> {
-    let key = wiring::WIRE_CATEGORY;
     let pot = value
         .and_then(|id| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, id, "potential", None))
         .and_then(|r| crate::styles::wire::filled(&r));
@@ -477,10 +476,7 @@ pub fn category_ops(doc: &Document, conductors: &[WireId], value: Option<&StyleR
     for c in conductors {
         let cond = doc.wires.get(c).ok_or(CmdError::NotFound(Noun::Wire))?;
         let mut after = cond.clone();
-        match value {
-            Some(v) => after.display.insert(key.into(), v.text()),
-            None => after.display.remove(key),
-        };
+        after.wire_type = value.cloned();
         if let Some(p) = &pot {
             let net_pot = conn.net_of_conductor(*c).and_then(|id| conn.net(id)).and_then(|n| wiring::net_potential(doc, n).name);
             match net_pot {

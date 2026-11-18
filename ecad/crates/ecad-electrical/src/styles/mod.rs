@@ -404,7 +404,11 @@ fn implicit(doc: &Document, cat: &Catalogue, entry: &defaults::Entry, id: &Style
         // 050b: conductors whose resolved category is `id` and that have none of their own.
         ecad_model::StyleCatalogue::Wire => {
             let looks = wire::WireLooks::new(doc);
-            doc.wires.iter().filter(|(_, x)| !own(&x.display)).filter(|(c, _)| looks.category(doc, **c).0.as_ref() == Some(id)).count()
+            doc.wires
+                .iter()
+                .filter(|(_, x)| !x.wire_type.as_ref().is_some_and(|t| exists(doc, ecad_model::StyleCatalogue::Wire, t)))
+                .filter(|(c, _)| looks.category(doc, **c).0.as_ref() == Some(id))
+                .count()
         }
         ecad_model::StyleCatalogue::Text if project == *id => match text::noun(entry.key) {
             text::Noun::Devices => doc.devices.values().filter(|x| !own(&x.properties)).count(),

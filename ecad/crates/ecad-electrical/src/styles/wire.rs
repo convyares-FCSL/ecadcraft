@@ -9,7 +9,7 @@
 //! the fields (labels, input rules), not their storage.
 //!
 //! # A wire's type (design 050 §5.3)
-//! Its own `wire.category`, else the type whose `potential` is its net's potential, else the
+//! Its own `wire_type`, else the type whose `potential` is its net's potential, else the
 //! registry's `wire.category` (project, then standard), else none (today's look of a wire with no
 //! potential). Its colours and size are its own when it has them (022 FP3, "overridden"), else the
 //! type's. A cable core takes no type colour: its core is its colour.
@@ -354,7 +354,7 @@ impl WireLooks {
     /// The category of conductor `c` and where it came from (design 050 §5.3).
     pub fn category(&self, doc: &Document, c: WireId) -> (Option<StyleRef>, CategoryFrom) {
         let e = &crate::defaults::styles::WIRE_CATEGORY;
-        let own = doc.wires.get(&c).and_then(|x| x.display.get(e.key)).and_then(|v| StyleRef::parse(v));
+        let own = doc.wires.get(&c).and_then(|x| x.wire_type.clone());
         if let Some(id) = own.filter(|id| super::exists(doc, ecad_model::StyleCatalogue::Wire, id)) {
             return (Some(id), CategoryFrom::Own);
         }

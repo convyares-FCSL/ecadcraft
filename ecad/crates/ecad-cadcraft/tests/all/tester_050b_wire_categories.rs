@@ -13,7 +13,7 @@ use cadcraft_engine::doc::color::Color;
 use cadcraft_engine::doc::{EntityKind, Lineweight};
 use ecad_cadcraft::{look, printbook, wires};
 use ecad_drawing_style::sheet::PAPER;
-use ecad_model::{ObjectRef, Op, PageId, WireId};
+use ecad_model::{Op, PageId, WireId};
 use serde_json::{Value, json};
 
 use super::tester_050a_style::{
@@ -220,7 +220,7 @@ fn b13_category_on_a_conductor_and_the_potential_rule() {
     assert_eq!(net_potential(&mut h, b), "24V", "joined into the 24V net");
     let (_, tx) = one_tx(&mut h, "category", json!({"conductor": a.hex(), "value": "signal"}));
     assert!(
-        matches!(tx.ops.as_slice(), [Op::ModifyWire { id, after, .. }] if *id == a && after.display.get("wire.category").map(String::as_str) == Some("signal")),
+        matches!(tx.ops.as_slice(), [Op::ModifyWire { id, after, .. }] if *id == a && after.wire_type.as_ref().map(ecad_model::StyleRef::text).as_deref() == Some("signal")),
         "{:?}",
         tx.ops
     );
@@ -272,7 +272,7 @@ fn b13_wire_with_a_category_and_the_prompt_keyword() {
     h.points_at(&[(0.0, 20.0), (60.0, 20.0)]);
     let (v, _) = one_tx(&mut h, "wire", json!({"points": pts(&[(0.0, 20.0), (60.0, 20.0)]), "category": "dc24"}));
     let w: WireId = id(&v, "conductor");
-    assert_eq!(h.doc().wires[&w].display.get("wire.category").map(String::as_str), Some("dc24"));
+    assert_eq!(h.doc().wires[&w].wire_type.as_ref().map(ecad_model::StyleRef::text).as_deref(), Some("dc24"));
     assert_eq!(net_potential(&mut h, w), "24V", "no potential before: the category's is written");
     refused(&mut h, "wire", json!({"points": pts(&[(0.0, 40.0), (60.0, 40.0)]), "category": "nope"}));
     // The typed command: the prompt names the keyword.
@@ -288,7 +288,7 @@ fn b13_wire_with_a_category_and_the_prompt_keyword() {
     h.cmdline("60,80");
     h.cmdline("");
     let d = h.doc();
-    let last = d.wires.iter().find(|(_, c)| c.display.get("wire.category").map(String::as_str) == Some("signal"));
+    let last = d.wires.iter().find(|(_, c)| c.wire_type.as_ref().map(ecad_model::StyleRef::text).as_deref() == Some("signal"));
     assert!(last.is_some(), "the typed wire took the category");
 }
 
@@ -537,16 +537,22 @@ fn b_label_rule_none_draws_no_label() {
 }
 
 /// §5.7: a `wire.category` naming no category draws without one and Checks says
+/// The op giving wire `w` its own wire type `v` (design 072 §4.6).
+fn typed(h: &mut H, w: WireId, v: &str) -> Op {
+    let before = h.doc().wires[&w].clone();
+    let mut after = before.clone();
+    after.wire_type = ecad_model::StyleRef::parse(v);
+    Op::ModifyWire { id: w, before, after }
+}
+
 /// `category-unknown` (Info) with a go-to the conductor.
 #[test]
 fn b_an_unknown_category_draws_without_one_and_is_reported() {
     let mut h = H::new(0x50b_1902);
     let page = h.first_page();
     let w = wire_at(&mut h, 20.0, None);
-    inject(
-        &mut h,
-        vec![Op::SetProperty { object: ObjectRef::Wire(w), key: "wire.category".into(), before: None, after: Some(format!("#{}", "d".repeat(32))) }],
-    );
+    let op = typed(&mut h, w, &format!("#{}", "d".repeat(32)));
+    inject(&mut h, vec![op]);
     assert_eq!(look_category(&mut h, w), None);
     assert_eq!(route_colour(&mut h, page, w), None);
     let rows = checks_of(&mut h, "category-unknown");
@@ -578,9 +584,10 @@ fn b_hostile_category_input_never_panics() {
         refused(&mut h, cmd, params);
     }
     // Hostile stored values fall through.
-    for v in ["", "\u{7}", "box", "#zz", long.as_str()] {
-        let before = h.doc().wires[&w].display.get("wire.category").cloned();
-        inject(&mut h, vec![Op::SetProperty { object: ObjectRef::Wire(w), key: "wire.category".into(), before, after: Some(v.to_string()) }]);
+    // Design 072 §4.6: a stored wire type is a style reference; only references to no type remain.
+    for v in ["box", "#eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"] {
+        let op = typed(&mut h, w, v);
+        inject(&mut h, vec![op]);
         assert_eq!(look_category(&mut h, w).as_deref(), Some("dc24"), "{v:.20}: falls to the potential's category");
     }
     let _ = rows_of(h.run("styles", json!({"catalogue": "wire", "users": true})).unwrap());

@@ -107,7 +107,8 @@ pub struct PotentialDef {
     pub legacy_cross_section: Option<String>,
 }
 
-/// The conductor property naming its wire category (brief 050b, FP5).
+/// The defaults-registry key choosing the wire type (brief 050b, FP5) for the project or the
+/// standard. A wire's own type is its field [`crate::wire::Wire::wire_type`] (design 072 §4.6).
 pub const WIRE_CATEGORY: &str = "wire.category";
 
 /// A colour as labels write it in `words`: a known colour (any form, any case) in those words;

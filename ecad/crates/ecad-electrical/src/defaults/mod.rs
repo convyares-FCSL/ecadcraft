@@ -498,7 +498,7 @@ pub fn resolve<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Resolved<'a> 
                 return Resolved { value, from: Source::Object };
             }
         }
-        if let Some(value) = at.conductor.and_then(|c| doc.wires.get(&c)).and_then(|c| stored(&c.display, entry.key)) {
+        if let Some(value) = at.conductor.and_then(|c| doc.wires.get(&c)).and_then(|c| wire_value(doc, entry, c)) {
             return Resolved { value, from: Source::Object };
         }
     }
@@ -532,6 +532,15 @@ fn page_value<'a>(doc: &Document, entry: &Entry, page: &'a ecad_model::Page) -> 
         return page.page_type.as_ref().filter(|id| ecad_model::sheet::page_type_exists(doc, id)).map(Value::of_style);
     }
     page.display.get(entry.key).and_then(|v| entry.parse_in(doc, v.as_str()))
+}
+
+/// `entry`'s value stored on wire `w`: its display bag, or for the wire type its field (design
+/// 072 §4.6); a type that does not exist reads as absent.
+fn wire_value<'a>(doc: &Document, entry: &Entry, w: &'a ecad_model::Wire) -> Option<Value<'a>> {
+    if entry.key == ecad_model::wiring::WIRE_CATEGORY {
+        return w.wire_type.as_ref().filter(|id| crate::styles::exists(doc, ecad_model::StyleCatalogue::Wire, id)).map(Value::of_style);
+    }
+    w.display.get(entry.key).and_then(|v| entry.parse_in(doc, v.as_str()))
 }
 
 /// The standard's valid value of `entry`, if the project has a standard that sets one (brief
@@ -568,7 +577,7 @@ pub fn chain<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Vec<(Source, Op
     let symbol = component.zip(at.rep).and_then(|(c, rep)| stored(&c.properties, &symbol_key(entry.key, rep)));
     let object = component
         .and_then(|c| stored(&c.properties, entry.key))
-        .or_else(|| at.conductor.and_then(|c| doc.wires.get(&c)).and_then(|c| stored(&c.display, entry.key)));
+        .or_else(|| at.conductor.and_then(|c| doc.wires.get(&c)).and_then(|c| wire_value(doc, entry, c)));
     if entry.allows(Level::Object) || object.is_some() {
         out.push((Source::Object, object.filter(|_| entry.allows(Level::Object))));
     }
@@ -621,7 +630,7 @@ pub fn users(doc: &Document, entry: &Entry) -> usize {
     let own = |props: &ecad_model::Properties| entry.allows(Level::Object) && props.get(entry.key).is_some_and(|v| entry.parse(v.as_str()).is_some());
     match users_noun(entry) {
         "devices" => doc.devices.values().filter(|c| !own(&c.properties)).count(),
-        "wires" => doc.wires.values().filter(|c| !own(&c.display)).count(),
+        "wires" => doc.wires.values().filter(|c| !(entry.allows(Level::Object) && wire_value(doc, entry, c).is_some())).count(),
         _ => doc.pages.len(),
     }
 }
