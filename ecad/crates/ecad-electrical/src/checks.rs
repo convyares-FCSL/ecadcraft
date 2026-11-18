@@ -141,6 +141,8 @@ check_kinds! {
     DrawnAway = "drawn-away", Warning, "End drawn away from its connection point";
     SinglePoint = "single-point", Warning, "Net with a single connection point";
     Unconnected = "unconnected", Info, "Connection point not connected";
+    /// A connection point with more wires than it accepts (design 072 §4.4, F38, A17).
+    OverCount = "over-count", Error, "Connection point has more wires than it accepts";
     LonelyContinuation = "lonely-continuation", Info, "Continuation without partner";
     MixedPotentials = "mixed-potentials", Info, "Mixed potentials in one net";
     Unnumbered = "unnumbered", Info, "Unnumbered nets", count;
@@ -1058,22 +1060,31 @@ fn is_quiet_point(doc: &Document, t: TerminalId) -> bool {
     })
 }
 
-/// The checks of connection point `t`: a device point with nothing attached.
+/// The checks of connection point `t`: more wires than it accepts (design 072 §4.4: `-X1:3 takes
+/// 2 conductors; 3 are connected`); a device point with nothing attached.
 pub fn terminal_checks(doc: &Document, t: TerminalId) -> Vec<Check> {
     let Some(term) = doc.terminals.get(&t) else { return Vec::new() };
+    let mut out = Vec::new();
+    let (wired, takes) = (doc.ends_at(t).len(), ecad_model::wire_order::accepts(doc, t));
+    if wired > takes {
+        let (page, at) = terminal_place(doc, t);
+        let which = format!("{} takes {takes} conductors; {wired} are connected", wires::point_words(doc, t));
+        out.push(Check { kind: Kind::OverCount, page, at, object: Object::Terminal(t), which, fix: None });
+    }
     if matches!(kind_of(doc, term.component), Some(JUNCTION | CONTINUATION)) || doc.has_ends(t) || doc.routes_at(t).next().is_some() {
-        return Vec::new();
+        return out;
     }
     // Bridged inside its device to an attached point: connected.
     let conn = doc.connectivity();
     if conn.net_of_terminal(t).and_then(|id| conn.net(id)).is_some_and(|n| !n.wires.is_empty()) {
-        return Vec::new();
+        return out;
     }
     if is_quiet_point(doc, t) {
-        return Vec::new();
+        return out;
     }
     let (page, at) = terminal_place(doc, t);
-    vec![Check { kind: Kind::Unconnected, page, at, object: Object::Terminal(t), which: wires::point_words(doc, t), fix: None }]
+    out.push(Check { kind: Kind::Unconnected, page, at, object: Object::Terminal(t), which: wires::point_words(doc, t), fix: None });
+    out
 }
 
 /// The checks of component `c`: a continuation with no partner.

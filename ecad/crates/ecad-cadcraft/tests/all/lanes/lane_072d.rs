@@ -173,3 +173,28 @@ fn cablecontinue_across_two_pages_gives_one_wire_and_one_net() {
     assert!(no_wire_yet(&mut c.h).is_empty());
     c.h.check();
 }
+
+/// Design 072 §4.4 (F38, A17): a connection point with more wires than it accepts is an error row
+/// naming the point and both counts; it goes when a wire is taken away.
+#[test]
+fn a_point_with_more_wires_than_it_accepts_is_an_error() {
+    let mut h = H::new(SEED ^ 0x0c);
+    let pts = h.points_at(&[(0.0, 0.0), (60.0, 0.0), (0.0, 60.0), (60.0, 60.0)]);
+    let over = |h: &mut H| -> Vec<Value> {
+        let v = h.run("checks", json!({"kinds": ["over-count"]})).unwrap();
+        v["checks"].as_array().cloned().unwrap_or_default()
+    };
+    h.run("wire", json!({"points": [[0, 0], [60, 0]]})).unwrap();
+    h.run("wire", json!({"points": [[0, 0], [0, 60]]})).unwrap();
+    assert!(over(&mut h).is_empty(), "two wires at a point that takes two");
+    h.run("wire", json!({"points": [[0, 0], [60, 60]]})).unwrap();
+    assert_eq!(h.doc().ends_at(pts[0]).len(), 3);
+    let rows = over(&mut h);
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0]["object"], json!({"terminal": pts[0].hex()}));
+    assert_eq!(rows[0]["severity"], json!("error"), "{:?}", rows[0]);
+    assert!(rows[0].to_string().contains("takes 2 conductors; 3 are connected"), "{:?}", rows[0]);
+    h.cmdline("u");
+    assert!(over(&mut h).is_empty(), "the row goes with the third wire");
+    h.check();
+}

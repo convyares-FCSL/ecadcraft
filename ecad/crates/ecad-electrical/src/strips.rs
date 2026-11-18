@@ -1649,10 +1649,7 @@ pub fn terminal_hover(doc: &Document, c: DeviceId, here: RepresentationId) -> Ve
     let Some(r) = doc.representations.get(&here) else { return lines };
     let pe = rep_is_pe(doc, r);
     let location = crate::locations::resolve(doc, c).value;
-    let conn = doc.connectivity();
-    let number = |w: WireId| {
-        conn.net_of_conductor(w).and_then(|n| conn.net(n)).and_then(|n| ecad_model::wiring::net_number(doc, n)).unwrap_or_else(|| "?".into())
-    };
+    let number = |w: WireId| ecad_model::wiring::wire_number(doc, w).unwrap_or_else(|| "?".into());
     let mine: BTreeSet<TerminalId> = doc.terminals_of(c).map(|(t, _)| t).collect();
     for (t, _) in crate::devices::shown_terminals(doc, c, r) {
         // Brief 036: the type, and the level of a multi-level position.

@@ -711,14 +711,11 @@ fn wire_lines(doc: &Document, w: Option<WireId>, route: Option<RouteId>, page: P
     {
         for (at, landed) in line.end_points().into_iter().flatten().zip(line.ends) {
             match landed {
-                RouteEnd::On { .. } => lines.push("Open end: lands on another wire (a T).".into()),
+                RouteEnd::On { .. } => lines.push("End joins another line (a T).".into()),
                 RouteEnd::Free => {
                     if let Some(on) = crate::wires::route_at(doc, page, at, crate::wires::ON_WIRE, Some(r)) {
-                        let conn = doc.connectivity();
                         let number = crate::wires::wire_of_route(doc, on.route)
-                            .and_then(|w| conn.net_of_conductor(w))
-                            .and_then(|n| conn.net(n))
-                            .and_then(|n| ecad_model::wiring::net_number(doc, n))
+                            .and_then(|w| ecad_model::wiring::wire_number(doc, w))
                             .unwrap_or_else(|| "?".into());
                         lines.push(format!("Open end: looks connected to {number}; Join Wires joins them."));
                     }

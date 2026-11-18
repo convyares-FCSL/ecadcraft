@@ -177,3 +177,28 @@ fn core_positions_are_shown_raw_and_readable() {
     let raw = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "raw"}));
     assert!(raw["ok"]["hex"].as_str().is_some_and(|h| !h.is_empty()), "the raw row");
 }
+
+#[test]
+fn number_by_and_its_settings_op_are_shown_raw_and_readable() {
+    // Design 072 F40 (A15): `wiring.number_by` in the Project view and in the settings op.
+    let dir = TempDir::new("072d-number-by");
+    let mut l = history();
+    let before = l.document().settings.clone();
+    let mut after = before.clone();
+    after.wiring.number_by = ecad_model::wiring::NumberBy::Conductor;
+    l.commit(Author::User, "number by", vec![Op::SetProjectSettings { before, after }]).unwrap();
+    let path = written(&dir, &l);
+    let f = FileSource::from_path(&path);
+    assert!(matches!(f.wait_verified(Duration::from_secs(60)), VerifyState::Done { .. }));
+    let s = Some(&f as &dyn Source);
+    let pr = ask(s, serde_json::json!({"op": "project"}));
+    assert_eq!(pr["ok"]["number_by"], "conductor", "{pr}");
+    let rows = ask(s, serde_json::json!({"op": "rows", "table": "transactions", "count": 1000}));
+    let rows = rows["ok"]["rows"].as_array().cloned().unwrap_or_default();
+    let key = rows.last().and_then(|r| r["key"].as_str()).unwrap().to_string();
+    let readable = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "readable"}));
+    let text = readable["ok"]["decoded"].to_string();
+    assert!(text.contains("SetProjectSettings") && text.contains("number_by") && text.contains("conductor"), "{text}");
+    let raw = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "raw"}));
+    assert!(raw["ok"]["hex"].as_str().is_some_and(|h| !h.is_empty()));
+}

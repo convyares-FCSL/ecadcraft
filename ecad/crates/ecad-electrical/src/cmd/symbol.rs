@@ -390,11 +390,7 @@ fn mm(d: f64) -> String {
 
 /// A wire as people read it: its net's number (`24V-05`), else its tag, else its short ID.
 fn wire_number(doc: &Document, c: WireId) -> String {
-    let conn = doc.connectivity();
-    conn.net_of_conductor(c)
-        .and_then(|n| conn.net(n))
-        .and_then(|n| ecad_model::wiring::net_number(doc, n))
-        .unwrap_or_else(|| crate::slash::wire_name(doc, c))
+    ecad_model::wiring::wire_number(doc, c).unwrap_or_else(|| crate::slash::wire_name(doc, c))
 }
 
 fn wire_words(doc: &Document, t: TerminalId) -> String {

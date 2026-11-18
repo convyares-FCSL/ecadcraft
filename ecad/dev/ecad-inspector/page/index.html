@@ -381,7 +381,7 @@ const views = {
     const folders = (pr.folders || []).map((f) => `<tr><td>${esc(f.name)}</td><td>${esc(f.parent)}</td><td>${esc(f.start)}</td><td class="mono">${esc(f.id)}</td></tr>`).join("");
     const counts = Object.entries(pr.counts).map(([k, v]) => `<tr><th>${esc(k.replace(/_/g, " "))}</th><td>${esc(v)}</td></tr>`).join("");
     const o = info.open || {};
-    return `<div class="grid"><div><h2>Project</h2><table>${info}${props}<tr><th>reference style</th><td>${esc(pr.reference_style)}</td></tr>
+    return `<div class="grid"><div><h2>Project</h2><table>${info}${props}<tr><th>reference style</th><td>${esc(pr.reference_style)}</td></tr><tr><th>wire numbers by</th><td>${esc(pr.number_by)}</td></tr>
       <tr><th>location</th><td>${esc(pr.location)}</td></tr><tr><th>function</th><td>${esc(pr.function)}</td></tr>
       <tr><th>opened branch</th><td>${esc(o.branch)} at ${esc(o.verified_seq)} (snapshot ${esc(o.snapshot_seq)}, tail ${esc(o.tail)})</td></tr></table></div>
       <div><h2>Counts</h2><table>${counts}</table></div></div>
