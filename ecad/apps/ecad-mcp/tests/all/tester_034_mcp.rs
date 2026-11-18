@@ -8,7 +8,7 @@
 
 use ecad_cadcraft::symbols::{self, STARTER_LIBRARY};
 use ecad_mcp::{EcadMcp, Options, policy};
-use ecad_model::{DeviceId, ObjectRef, Op};
+use ecad_model::{DeviceId, Op};
 use serde_json::{Value, json};
 
 use crate::common::assert_one_by_agent;
@@ -85,10 +85,6 @@ fn embeds(ops: &[Op]) -> Vec<&Op> {
     ops.iter().filter(|o| matches!(o, Op::EmbedDefinition { .. })).collect()
 }
 
-fn sets(ops: &[Op], key: &str, value: &str) -> bool {
-    ops.iter().any(|o| matches!(o, Op::SetProperty { object: ObjectRef::Device(_), key: k, after: Some(a), .. } if k == key && a == value))
-}
-
 /// AC 7, §12 items 1–4.
 #[test]
 fn every_family_places_by_the_agent_then_refused_with_writes_off() {
@@ -151,14 +147,24 @@ fn every_family_places_by_the_agent_then_refused_with_writes_off() {
         // §12 item 3: ratings.
         let n = c.log().len();
         c.exec("setprop", json!({"component": fb.hex(), "key": "rating.3", "value": "2A"}));
-        assert!(sets(&assert_one_by_agent(&mut c, n, "rating.3").ops, "rating.3", "2A"));
+        assert!(
+            assert_one_by_agent(&mut c, n, "rating.3")
+                .ops
+                .iter()
+                .any(|o| matches!(o, Op::ModifyDevice { after, .. } if after.value("rating.3").as_deref() == Some("2 A")))
+        );
         let n = c.log().len();
         let m = c.refused("execute", json!({"command": "setprop", "params": {"component": fb.hex(), "key": "rating.13", "value": "2A"}}));
         assert!(m.contains(&format!("{fb_tag} has no fuse 13.")), "{m}");
         assert_eq!(c.log().len(), n, "refused: head unchanged");
         let n = c.log().len();
         c.exec("setprop", json!({"component": rcbo.hex(), "key": "rating", "value": "13A C 30mA"}));
-        assert!(sets(&assert_one_by_agent(&mut c, n, "rating").ops, "rating", "13A C 30mA"));
+        assert!(
+            assert_one_by_agent(&mut c, n, "rating")
+                .ops
+                .iter()
+                .any(|o| matches!(o, Op::ModifyDevice { after, .. } if after.value("rating").as_deref() == Some("curve C, 13 A, 30 mA")))
+        );
 
         // §12 item 5: hostile input, each an error, nothing recorded.
         let n = c.log().len();

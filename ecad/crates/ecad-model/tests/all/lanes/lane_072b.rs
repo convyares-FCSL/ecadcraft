@@ -237,3 +237,56 @@ fn a_connector_s_data_is_its_type_s() {
     }
     l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: d }]).unwrap();
 }
+
+/// Step 3, Protection (design 072 §2.2, "Ratings"): a protective device's rating is typed fields
+/// per kind, shown from them; the note is separate; a bad value or a rating in a bag is refused.
+#[test]
+fn a_protective_device_s_rating_is_typed() {
+    use ecad_model::device::{Breaker, Fuse, FuseBank, Protection, RatingNote, TripCurve};
+    use ecad_model::units::{Amps, KiloAmps};
+    let mcb = Protection::Mcb(Breaker { rated_current: Some(Amps(16.0)), curve: Some(TripCurve::B), breaking: Some(KiloAmps(6.0)), poles: None });
+    let d = Device { device_type: DeviceType::Protection(mcb.clone()), ..Device::default() };
+    let json = serde_json::to_value(&d.device_type).unwrap();
+    assert_eq!(json, serde_json::json!({"protection": {"mcb": {"rated_current": 16.0, "curve": "b", "breaking": 6.0}}}));
+    assert_eq!(serde_json::from_value::<DeviceType>(json).unwrap(), d.device_type, "round-trips");
+    assert_eq!(d.value("rating").as_deref(), Some("curve B, 16 A, 6 kA"));
+    assert!(!d.has_no_rating());
+    for bad in [
+        serde_json::json!({"protection": {"mcb": {"curve": "x"}}}),
+        serde_json::json!({"protection": {"fuse": {"curve": "b"}}}),
+        serde_json::json!({"protection": {"breaker": {}}}),
+        serde_json::json!({"protection": {"rcd": {"residual": "30"}}}),
+    ] {
+        assert!(serde_json::from_value::<DeviceType>(bad.clone()).is_err(), "{bad}");
+    }
+    // A note is shown when nothing is typed, and is not a rating.
+    let noted = Device {
+        device_type: DeviceType::Protection(Protection::Mcb(Breaker::default())),
+        rating_note: Some(RatingNote::new("see datasheet").unwrap()),
+        ..Device::default()
+    };
+    assert_eq!(noted.value("rating").as_deref(), Some("see datasheet"));
+    assert!(noted.has_no_rating());
+    // A general device has no rating fields: its note is all it has, and no warning.
+    let general = Device { rating_note: Some(RatingNote::new("24 V").unwrap()), ..Device::default() };
+    assert!(!general.has_no_rating());
+    // A fuse bank's output: `rating.<n>`.
+    let mut bank = FuseBank::default();
+    bank.outputs.insert(3, Fuse { rated_current: Some(Amps(4.0)), ..Fuse::default() });
+    let b = Device { device_type: DeviceType::Protection(Protection::FuseBank(bank)), ..Device::default() };
+    assert_eq!(b.value("rating.3").as_deref(), Some("4 A"));
+    assert_eq!(b.value("rating.2"), None);
+    // The invariant: out of range, or a rating in a bag, is refused.
+    let mut ids = IdAllocator::seeded(15);
+    let mut l = Ledger::new(15);
+    let c: DeviceId = ids.fresh();
+    let wild = Protection::Fuse(Fuse { rated_current: Some(Amps(-1.0)), ..Fuse::default() });
+    let bad = Device { device_type: DeviceType::Protection(wild), ..Device::default() };
+    assert!(l.commit(Author::User, "wild", vec![Op::CreateDevice { id: c, device: bad }]).is_err());
+    for key in ["rating", "rating.3"] {
+        let mut bagged = Device { device_type: DeviceType::Protection(Protection::default()), ..Device::default() };
+        bagged.properties.insert(key.into(), "4 A".into());
+        assert!(l.commit(Author::User, "bag", vec![Op::CreateDevice { id: c, device: bagged }]).is_err(), "{key}");
+    }
+    l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: d }]).unwrap();
+}

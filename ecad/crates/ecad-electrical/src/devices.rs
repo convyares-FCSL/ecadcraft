@@ -1354,7 +1354,7 @@ fn slot_texts(
     use crate::text_style::fonts::width_in;
     use crate::text_style::{TextKind, text_style};
     let device = doc.devices.get(&c);
-    let prop = |k: &str| device.and_then(|d| d.get(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+    let prop = |k: &str| device.and_then(|d| d.value(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
     let (h, v) = (|a: HAlign| a, |a: VAlign| a);
     let mut out = Vec::new();
     for (i, slot) in def.texts.iter().enumerate().take(usize::from(u8::MAX)) {

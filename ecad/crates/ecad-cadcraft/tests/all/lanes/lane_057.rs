@@ -179,7 +179,7 @@ fn c1_c2_datasheet_pass_then_under_then_undo() {
     let panel = r["factors"].as_array().unwrap().iter().find(|f| f["name"] == "panel").cloned().unwrap();
     assert_eq!(panel["factor"], json!(0.87));
     assert!(checks_of(&mut f.h, "rating-under").is_empty());
-    setprop(&mut f.h, "component", f.q01.hex(), "rating", json!("20 A"));
+    setprop(&mut f.h, "component", f.q01.hex(), "rating", json!("C20"));
     let under = texts(&checks_of(&mut f.h, "rating-under"));
     assert_eq!(under.len(), 1, "{under:?}");
     assert!(under[0].ends_with("carries 18.8 A; -Q01 is 20 A"), "{under:?}");
@@ -362,8 +362,8 @@ fn c11_two_devices_and_the_bound() {
     rate_category(&mut f.h);
     // A second MCB feeding the same net as -Q01's load side.
     let q02 = place(&mut f.h, "mcb1", [80.0, 100.0], "-Q02");
-    setprop(&mut f.h, "component", q02.hex(), "rating", json!("10 A"));
-    setprop(&mut f.h, "component", f.q01.hex(), "rating", json!("6 A"));
+    setprop(&mut f.h, "component", q02.hex(), "rating", json!("C10"));
+    setprop(&mut f.h, "component", f.q01.hex(), "rating", json!("C6"));
     wire(&mut f.h, &[(80.0, 90.0), (50.0, 90.0)]);
     let r = ratings(&mut f.h, json!({"wire": f.l2.hex()}));
     assert_eq!(r["device"]["tag"], json!("-Q02"), "{r}");
@@ -378,7 +378,7 @@ fn c16_update_map_rechecks_only_what_a_device_protects() {
     let doc = f.h.doc();
     let mut k = rating::Kept::build(&doc);
     let before = doc.clone();
-    setprop(&mut f.h, "component", f.q01.hex(), "rating", json!("20 A"));
+    setprop(&mut f.h, "component", f.q01.hex(), "rating", json!("C20"));
     let after = f.h.doc();
     let ops: Vec<ecad_model::Op> = f.h.p(|p| p.ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default());
     let mut touch = rating::Touch::default();
@@ -529,7 +529,7 @@ fn f1_a_location_temperature_is_set_by_rating_and_rechecks_only_the_wires_there(
 fn f2_near_the_device_rating_the_row_shows_the_extra_digit() {
     let mut f = fixture();
     f.h.run("rating", json!({"wire": f.l2.hex(), "basis": "manual", "manual": "21.5985"})).unwrap();
-    setprop(&mut f.h, "component", f.q01.hex(), "rating", json!("21.6 A"));
+    setprop(&mut f.h, "component", f.q01.hex(), "rating", json!("C21.6"));
     let under = texts(&checks_of(&mut f.h, "rating-under"));
     assert!(under.len() == 1 && under[0].ends_with("carries 21.60 A; -Q01 is 21.6 A"), "{under:?}");
 }

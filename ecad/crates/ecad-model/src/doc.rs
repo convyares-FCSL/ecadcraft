@@ -336,6 +336,8 @@ pub struct Device {
     pub function: Option<crate::id::FunctionId>,
     /// Whether the function was set by hand, as [`Device::location_fixed`].
     pub function_fixed: bool,
+    /// Its rating note: text that did not read as its group's typed rating (design 072 §2.2).
+    pub rating_note: Option<crate::device::RatingNote>,
     pub properties: Properties,
     /// The embedded definition its symbol representations use, if any.
     pub definition: Option<DefinitionId>,
@@ -370,6 +372,14 @@ impl Device {
         bare(self) == bare(other)
     }
 
+    /// Whether `other` differs from this device in its rating only (its note, and the typed rating
+    /// fields of the same kind of device): what a view that reads a device's rating, not its
+    /// points, scopes to the device alone.
+    pub fn only_rating_differs(&self, other: &Device) -> bool {
+        let bare = |d: &Device| Device { rating_note: None, device_type: d.device_type.unrated(), ..d.clone() };
+        bare(self) == bare(other)
+    }
+
     /// Whether `other` differs from this device in its location and function (and their `fixed`
     /// flags) only: what a view that reads neither can skip.
     pub fn only_place_differs(&self, other: &Device) -> bool {
@@ -390,8 +400,27 @@ impl Device {
                 DeviceType::Connector(x) => x.value(key),
                 _ => None,
             },
-            _ => self.get(key).map(str::to_string),
+            crate::device::RATING_KEY => self.rating_shown(),
+            _ => match (&self.device_type, key.strip_prefix(crate::device::RATING_OF_PREFIX)) {
+                (DeviceType::Protection(crate::device::Protection::FuseBank(b)), Some(n)) => {
+                    let n = n.parse::<u8>().ok()?;
+                    b.outputs.get(&n).map(ToString::to_string).filter(|t| !t.is_empty())
+                }
+                _ => self.get(key).map(str::to_string),
+            },
         }
+    }
+
+    /// Its rating as shown (design 072 §2.2): its typed rating fields when one is set, else its
+    /// note. Nothing stores this text.
+    pub fn rating_shown(&self) -> Option<String> {
+        self.device_type.rating().or_else(|| self.rating_note.as_ref().map(ToString::to_string))
+    }
+
+    /// Whether its group has typed rating fields and none is set (the Checks row "no rating",
+    /// whatever its note says).
+    pub fn has_no_rating(&self) -> bool {
+        self.device_type.has_rating_fields() && self.device_type.rating().is_none()
     }
 
     /// The text `setprop`'s key `key` names on this device: its tag, a text field

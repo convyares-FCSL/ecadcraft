@@ -204,6 +204,8 @@ pub struct Device {
     pub location_fixed: bool,
     pub function: Option<m::FunctionId>,
     pub function_fixed: bool,
+    /// Design 072 §2.2: text that did not read as the group's typed rating.
+    pub rating_note: Option<m::device::RatingNote>,
     pub properties: BTreeMap<String, String>,
     pub definition: Option<DefinitionId>,
     /// What the device is (design 072 F15): the model's own type, whose words and fields are
@@ -1025,6 +1027,7 @@ impl From<&m::Device> for Device {
             location_fixed: c.location_fixed,
             function: c.function,
             function_fixed: c.function_fixed,
+            rating_note: c.rating_note.clone(),
             properties: c.properties.clone(),
             definition: c.definition,
             device_type: c.device_type.clone(),
@@ -1346,6 +1349,7 @@ impl From<Device> for m::Device {
             location_fixed: c.location_fixed,
             function: c.function,
             function_fixed: c.function_fixed,
+            rating_note: c.rating_note,
             properties: c.properties,
             definition: c.definition,
             device_type: c.device_type,

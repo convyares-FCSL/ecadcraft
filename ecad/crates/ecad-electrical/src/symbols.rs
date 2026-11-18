@@ -577,7 +577,7 @@ impl Starter {
             origin: None,
             graphics: graphics(self.key),
             terminals: terminals(self.key),
-            device_type: DeviceType::of_group(self.key.device_group()),
+            device_type: self.device_type(),
             ..Default::default()
         };
         let content_hash =
@@ -589,6 +589,22 @@ impl Starter {
     /// What a device this starter begins is: the type its definition declares (design 072 §2.3).
     pub fn device_type(&self) -> DeviceType {
         let t = DeviceType::of_group(self.key.device_group());
+        // A protective device's kind is its symbol's (design 072 §2.2).
+        if let DeviceType::Protection(_) = t {
+            use ecad_model::device::ProtectionKind as P;
+            let kind = if self.key.fuse_bank_ways().is_some() {
+                P::FuseBank
+            } else if matches!(self.key, K::Mcb1 | K::Mcb2) {
+                P::Mcb
+            } else if self.key == K::Rcbo2 {
+                P::Rcbo
+            } else if matches!(self.key, K::Rcd2 | K::Rcd4) {
+                P::Rcd
+            } else {
+                P::Fuse
+            };
+            return DeviceType::Protection(kind.empty());
+        }
         // A connector's family is its symbol's (a pin's: plain).
         if let DeviceType::Connector(_) = t {
             return DeviceType::Connector(Box::new(ecad_model::device::Connector::of_family(crate::connectors::family_of(self).unwrap_or_default())));
@@ -1507,11 +1523,7 @@ pub fn bank_outputs(doc: &Document, c: ecad_model::DeviceId) -> BTreeSet<String>
 
 // ---------------------------------------------------------------- ratings (design 034 §7.3)
 
-/// A device's rating as written on the drawing (`13A C 30mA`, `6.3A T`, `K`).
-pub const RATING_KEY: &str = "rating";
-
-/// A fuse bank's fuse rating: `rating.<n>`, `<n>` one of its fuse outputs.
-pub const RATING_OF_PREFIX: &str = "rating.";
+pub use ecad_model::device::{RATING_KEY, RATING_OF_PREFIX};
 
 /// Most characters of `<n>` in `rating.<n>` that are read; longer is refused without parsing it
 /// (a hostile key cannot make a lookup or a message long).
@@ -1527,18 +1539,16 @@ pub fn is_fuse_bank(s: &Starter) -> bool {
     s.key.fuse_bank_ways().is_some()
 }
 
-/// Check a `rating` or `rating.<n>` value set on `object` (design 034 §7.3).
+/// Check a `rating.<n>` value set on `object` that is not a protective device (design 034 §7.3;
+/// a device's own rating and a fuse bank's fuses are typed fields, `cmd::props::b`).
 ///
 /// # Semantics
-/// `rating` on a device follows the 018 §6.1 value rules (at most 200 characters, no control
-/// characters, trimmed; empty or `None` clears). `rating.<n>` follows them too, and only on a
-/// device whose head is a fuse bank, with `<n>` one of its fuse outputs; clearing it is always
-/// allowed, whatever the device now is. Any other key, or an
-/// object that is not a device: no opinion, the value comes back unchanged.
+/// `rating.<p>` on a terminal strip is a fuse position's rating and follows the 018 §6.1 value
+/// rules; on any other device it is refused, and clearing it is always allowed. Any other key, or
+/// an object that is not a device: no opinion, the value comes back unchanged.
 ///
 /// # Errors
-/// A value the 018 rules refuse; `rating.<n>` on a device that is not a fuse bank, or for a fuse
-/// it does not have (`-F01 has no fuse 13.`).
+/// A value the 018 rules refuse; `rating.<n>` on a device that is not a strip's fuse position.
 pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     let ObjectRef::Device(c) = object else { return Ok(value.map(str::to_string)) };
     if !is_rating_key(key) {
@@ -1563,19 +1573,7 @@ pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<
             }
             return crate::devices::property_value(doc, key, value);
         }
-        // The device's head (its one exclusive symbol), and only when that is a fuse bank.
-        let bank = doc
-            .representations_of(Subject::Device(c))
-            .filter_map(|(_, r)| crate::devices::rep_starter(doc, r))
-            .find(|s| s.kind == Kind::Fixed { exclusive: true })
-            .filter(|s| is_fuse_bank(s));
-        let Some(bank) = bank else {
-            return Err(CmdError::refused(format!("rating.{shown}{more} is for a fuse bank's fuses; {who} is not a fuse bank.")));
-        };
-        let has = !long && bank.labels().iter().any(|l| l == n && ecad_model::words::is_digits(l));
-        if !has {
-            return Err(CmdError::refused(format!("{who} has no fuse {shown}{more}.")));
-        }
+        return Err(CmdError::refused(format!("rating.{shown}{more} is for a fuse bank's fuses; {who} is not a fuse bank.")));
     }
     crate::devices::property_value(doc, key, value)
 }
@@ -2818,9 +2816,9 @@ mod tests {
             ("no", "531a8952f3ab6faba59b2d92203e50b9a28e3ec6681b851089ad4f8a85bfa2b6"),
             ("nc", "fb1755ecef8a01cbadc9fa1c00d3b47d6293b2598bf46e9763a108e40ec69e92"),
             ("power3", "ddbafd55a10cf51b16178c304773cdc02a1cb104c672f708bc75f396cbc54d95"),
-            ("mcb1", "0449072e772d3becc698699b2168dbe8e85039ddc0ec60d67f28c0232cb2ce6a"),
-            ("mcb2", "577a656074a2f6685ab58cc4a12eca204a34367881c0dd37017399357f8867cf"),
-            ("fuse", "97e67e1b287d5c724cf004c2f84bcf55a24ce963ad8c0381d57014d744503766"),
+            ("mcb1", "d9339a17cfac13020ac09867d8356da9f2792728f1c7ef0f196c3776e3140955"),
+            ("mcb2", "e9c6ab730790271ae429ab8e9f3b12066bf8ec3172d0502f36efb1bdcd514aaf"),
+            ("fuse", "d208fae68200735acbf282e68dbf577de3152319d63ff52a2ad4f0705cc3c374"),
             ("psu", "ffe540113081227903544a5dd6ffd9fe7ff7a87f4b606a6eab35274c91ef87fe"),
             ("pbno", "de7eb0aad4424b97477e5df51f974ce66c558d7e4457e56ac58d1ac54911f27e"),
             ("pbnc", "e75283fe7b81d39d8dee2ab724a89ae120dc883a60602629cf0bca9d2ea0c4f6"),
