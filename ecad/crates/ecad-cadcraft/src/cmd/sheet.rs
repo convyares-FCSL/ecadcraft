@@ -508,10 +508,16 @@ pub fn project_json(doc: &Document) -> Value {
         // project).
         let v = match crate::designations::Aspect::of_property(k) {
             Some(a) => crate::designations::default_key(&doc.project, a).map(|v| crate::designations::display(doc, k, &v)),
-            None => doc.properties.get(k).cloned(),
+            None => crate::frames::project_text(doc, k),
         };
         fields.insert(k.into(), v.map_or(Value::Null, Value::String));
     }
+    // The site and the cover's notes are written as free properties and stored as the project's
+    // info (design 072 §5.3): reported with the free ones.
+    let written_free = [ecad_model::InfoField::Site, ecad_model::InfoField::Notes];
+    let info = written_free
+        .into_iter()
+        .filter_map(|f| doc.project.info.get(f).map(|v| (ecad_model::Word::word(f).to_string(), Value::String(v.to_string()))));
     let free: Map<String, Value> = doc
         .properties
         .iter()
@@ -523,6 +529,7 @@ pub fn project_json(doc: &Document) -> Value {
                 && !k.starts_with("revisions.")
         })
         .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+        .chain(info)
         .collect();
     let revs: Vec<Value> = revisions::list(doc)
         .iter()

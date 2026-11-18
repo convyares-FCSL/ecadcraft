@@ -35,6 +35,25 @@ pub const TABLE_ROWS: usize = 7;
 /// Project property keys the title block shows.
 pub const TITLE: &str = "title";
 
+/// The text project property `key` holds: a field of the project's info (design 072 §5.3:
+/// `title`, `drawing_number`, `customer`, `site`, `status`, `cover.notes`), else the free
+/// property. The one reader of both.
+pub fn project_text(doc: &Document, key: &str) -> Option<String> {
+    match <ecad_model::InfoField as ecad_model::Word>::parse(key) {
+        Some(f) => doc.project.info.get(f).map(str::to_string),
+        None => doc.properties.get(key).cloned(),
+    }
+}
+
+/// `project` with info field `f` set to `value` (`None` or blank clears it).
+///
+/// # Errors
+/// A value the field cannot hold, in words.
+pub fn with_info(project: &ecad_model::Project, f: ecad_model::InfoField, value: Option<&str>) -> Result<ecad_model::Project, crate::CmdError> {
+    let info = project.info.with(f, value).map_err(|e| crate::CmdError::refused(format!("{} is refused: {e}.", ecad_model::Word::word(f))))?;
+    Ok(ecad_model::Project { info, ..project.clone() })
+}
+
 pub const CUSTOMER: &str = "customer";
 
 pub const DRAWING_NUMBER: &str = "drawing_number";
@@ -186,7 +205,7 @@ impl FrameInput {
     /// What `page`'s frame shows in `doc` (`book`: its book order), with its text looks `text`
     /// ([`FrameText::with`], or [`FrameText::sizes`] for a rule that only reads the layout).
     pub fn with(doc: &Document, page: PageId, book: &Book, text: FrameText) -> FrameInput {
-        let prop = |k: &str| doc.properties.get(k).cloned().unwrap_or_default();
+        let prop = |k: &str| project_text(doc, k).unwrap_or_default();
         let issued = crate::revisions::issued(doc);
         let rev_columns = crate::revisions::columns(doc);
         let next_page = book.next(page);
@@ -292,7 +311,9 @@ pub fn touches(ops: &[Op], page: PageId, shown: &FrameInput) -> bool {
         Op::SetStandard { before, after } => before != after,
         // Brief 052 (design 052 §8.2a, tester 052 finding 1): a rename in the project's list
         // reaches the title block when it shows the entry's old code.
-        // Design 072 §5.3: the project's default, or a code it shows renamed.
+        // Design 072 §5.3: an issue (the Rev box and the table), the project's default, or a code
+        // it shows renamed.
+        Op::ModifyProject { before, after } if crate::revisions::issue_changed(before, after) || before.info != after.info => true,
         Op::ModifyProject { before, after } => crate::designations::Aspect::ALL.into_iter().any(|a| {
             let field = match a {
                 crate::designations::Aspect::Function => &shown.function,
@@ -311,7 +332,6 @@ pub fn touches(ops: &[Op], page: PageId, shown: &FrameInput) -> bool {
                 // Brief 033 (design 033 §9.1).
                 || key == crate::revisions::COLUMNS_KEY
                 || key == crate::revisions::PENDING_KEY
-                || (key.starts_with(crate::revisions::PREFIX) && key.ends_with(".issued"))
         }
         Op::SetProperty { object: ObjectRef::Page(p), .. } => *p == page,
         // Design 072 §5.1: a page changed in place; a folder move changes the book order (Next,

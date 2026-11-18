@@ -7,7 +7,7 @@ use ecad_cadcraft::frame::{self, FrameInput};
 use ecad_cadcraft::title_block::{dxf, house};
 use ecad_model::book::Book;
 use ecad_model::sheet::{self, SheetSpec};
-use ecad_model::title_block::{Binding, BlockItem, IfEmpty, Rect, Source, TextLook, TitleBlockLayout};
+use ecad_model::title_block::{Binding, BlockItem, IfEmpty, Rect, TextLook, TitleBlockLayout};
 use ecad_model::{PageId, Primitive, Pt};
 use serde_json::{Value, json};
 
@@ -195,19 +195,23 @@ fn sheets_resolve_frame_then_page_then_project() {
     assert_eq!(sheet::own_sheet(&h.doc(), page).width, 594);
 }
 
-/// Checks: an unknown binding is counted; a value too long for its box is cut and listed.
+/// Checks: a binding its source does not have is refused (design 072 §5.4: it does not read); a
+/// value too long for its box is cut and listed.
 #[test]
 fn unknown_bindings_and_cut_values_are_listed() {
     let mut h = H::new(0x0556);
     let id = new_frame(&mut h, "A3");
     let mut body = body_of(&mut h, &id);
-    body["items"].as_array_mut().unwrap().push(json!({"kind": "field", "at": {"x": 2, "y": 2, "w": 40, "h": 8}, "bind": "weather:today"}));
-    h.run("titleblock", json!({"id": id, "body": body})).unwrap();
+    let good = body.clone();
+    body["items"].as_array_mut().unwrap().push(json!({"kind": "field", "at": {"x": 2, "y": 2, "w": 40, "h": 8}, "bind": "print:weather"}));
+    let e = h.run("titleblock", json!({"id": id, "body": body})).unwrap_err();
+    assert!(e.contains("weather"), "{e}");
+    h.run("titleblock", json!({"id": id, "body": good})).unwrap();
     h.run("setdefault", json!({"key": "print.frame.style", "level": "project", "value": id})).unwrap();
     h.run("projectprops", json!({"drawing_number": "X".repeat(120)})).unwrap();
     let v = h.run("checks", json!({"kinds": ["title-binding-unknown", "title-value-cut"]})).unwrap();
     let s = v.to_string();
-    assert!(s.contains("has 1 field this build cannot fill."), "{s}");
+    assert!(!s.contains("cannot fill"), "{s}");
     assert!(s.contains("Drawing no. is cut in the title block on 1 page."), "{s}");
 }
 
@@ -221,7 +225,7 @@ fn hostile_bodies_draw_and_are_refused_by_commands() {
     let mut input = FrameInput::of(&doc, page, &Book::of(&doc));
     let field = |x: f64| BlockItem::Field {
         at: Rect::new(x, 1.0, 10.0, 5.0),
-        bind: Binding::new(Source::Unknown("x".into()), "y"),
+        bind: Binding::Print(ecad_model::title_block::PrintField::Sheet),
         label: Some("é".repeat(10_000)),
         look: TextLook::default(),
         if_empty: IfEmpty::Text("t".repeat(100)),
@@ -233,7 +237,6 @@ fn hostile_bodies_draw_and_are_refused_by_commands() {
         name: String::new(),
         prims: vec![Primitive::Circle { center: Pt::new(f64::NAN, 0.0), radius: 1.0 }; 5000],
     });
-    items.push(BlockItem::Unknown);
     let l = TitleBlockLayout { size: (f64::NAN, 1e308), items };
     assert!(l.check().is_err());
     input.block.layout = std::sync::Arc::new(l);
@@ -251,7 +254,8 @@ fn hostile_bodies_draw_and_are_refused_by_commands() {
             "longer than 256",
         ),
         (json!({"size": [100, 40], "items": [{"kind": "rev_table", "at": {"x": 0, "y": 0, "w": 10, "h": 5}, "rows": 30}]}), "1 to 20 rows"),
-        (json!({"size": [100, 40], "items": [{"kind": "hologram"}]}), "does not know"),
+        (json!({"size": [100, 40], "items": [{"kind": "hologram"}]}), "does not read"),
+        (json!({"size": [100, 40], "items": [{"kind": "field", "at": {"x": 0, "y": 0, "w": 10, "h": 5}, "bind": "weather:today"}]}), "weather"),
         (json!({"size": "big"}), "does not read as a title block"),
     ] {
         let e = h.run("titleblock", json!({"id": id, "body": body})).unwrap_err();

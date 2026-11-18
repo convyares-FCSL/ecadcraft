@@ -66,7 +66,7 @@ fn verify(path: &str) {
 fn restorable(d: &Document) -> Document {
     let mut d = d.clone();
     d.versions.clear();
-    d.properties.retain(|k, _| !k.starts_with("rev."));
+    d.project.revisions.clear();
     d
 }
 
@@ -253,18 +253,15 @@ fn restore_is_one_undoable_step_that_keeps_versions_and_revision_fields() {
     h.run("issuerevision", json!({"rev": "A", "description": "first issue", "drawn": "CV"})).unwrap();
     wire(&mut h, 30.0);
     let live = h.doc();
-    let rev_keys: Vec<(String, String)> =
-        live.properties.iter().filter(|(k, _)| k.starts_with("rev.")).map(|(k, v)| (k.clone(), v.clone())).collect();
-    assert!(!rev_keys.is_empty(), "Rev A wrote rev.* fields");
+    let rev_keys = live.project.revisions.clone();
+    assert!(!rev_keys.is_empty(), "Rev A wrote a revision row");
     let log_len = h.p(|p| p.ledger.full_log().unwrap().len());
     let r = h.run("restore", json!({"version": "Before"})).unwrap();
     assert!(r["objects"].as_u64().unwrap() >= 3, "{r}");
     let after = h.doc();
     assert_eq!(restorable(&after), restorable(&before), "the state equals the version's");
     assert_eq!(after.versions, live.versions, "version names untouched (Before and Rev A)");
-    let rev_after: Vec<(String, String)> =
-        after.properties.iter().filter(|(k, _)| k.starts_with("rev.")).map(|(k, v)| (k.clone(), v.clone())).collect();
-    assert_eq!(rev_after, rev_keys, "rev.* untouched");
+    assert_eq!(after.project.revisions, rev_keys, "revision rows untouched");
     assert_eq!(h.p(|p| p.ledger.full_log().unwrap().len()), log_len + 1, "one transaction, history intact");
     h.run("u", Value::Null).unwrap();
     assert_eq!(h.doc(), live, "undo brings everything back");

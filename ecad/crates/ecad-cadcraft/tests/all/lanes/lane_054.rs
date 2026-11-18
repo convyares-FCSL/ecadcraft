@@ -214,15 +214,16 @@ fn folder_start_numbers_are_checked_and_go_with_their_folder() {
     assert_eq!(e, "`start` must be text, or null");
     h.run("folderprops", json!({"folder": f.hex(), "start": "300"})).unwrap();
     assert_eq!(h.run("folderprops", json!({"folder": f.hex()})).unwrap()["start"], "300");
-    let key = ecad_cadcraft::page_types::start_key(f);
+    // Design 072 §5.2: the start is the folder's own field, so it goes with the folder.
+    let start = |h: &mut H| ecad_cadcraft::page_types::start_of(&h.doc(), f);
     let head = h.head();
     h.run("deletefolder", json!({"folder": f.hex()})).unwrap();
     assert_eq!(h.head(), head + 1, "one transaction");
-    assert!(!h.doc().properties.contains_key(&key), "deletefolder clears the start");
+    assert!(!h.doc().folders.contains_key(&f) && start(&mut h).is_none(), "deletefolder takes the start with it");
     h.run("u", Value::Null).unwrap();
-    assert_eq!(h.doc().properties.get(&key).map(String::as_str), Some("300"));
+    assert_eq!(start(&mut h).as_deref(), Some("300"));
     h.run("folderprops", json!({"folder": f.hex(), "start": null})).unwrap();
-    assert!(!h.doc().properties.contains_key(&key));
+    assert!(start(&mut h).is_none());
 }
 
 #[test]
@@ -255,21 +256,7 @@ fn hostile_types_and_starts_read_as_absent_with_their_rows() {
         let d = p.ledger.document();
         let before = d.pages[&p1].clone();
         let after = ecad_model::Page { page_type: Some(ecad_model::StyleRef::Own(0xff)), ..before.clone() };
-        p.ledger
-            .commit(
-                ecad_model::Author::User,
-                "hostile",
-                vec![
-                    ecad_model::Op::ModifyPage { id: p1, before, after },
-                    ecad_model::Op::SetProperty {
-                        object: ecad_model::ObjectRef::Project,
-                        key: "folder.0000000000000000000000000000beef.start".into(),
-                        before: None,
-                        after: Some("99999999999".into()),
-                    },
-                ],
-            )
-            .unwrap();
+        p.ledger.commit(ecad_model::Author::User, "hostile", vec![ecad_model::Op::ModifyPage { id: p1, before, after }]).unwrap();
     });
     assert_eq!(ty(&mut h, p1), "schematic");
     h.run("setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"holds": "x", "sheet": "A0 999x999"}})).unwrap_err();
@@ -298,7 +285,8 @@ fn hostile_types_and_starts_read_as_absent_with_their_rows() {
     assert_eq!((look.holds, look.zones, look.sheet), (ptype::Holds::None, true, None));
     assert_eq!(sheet_of(&d, p1), d.settings.sheet());
     let rows = kinds(&mut h);
-    for k in [Kind::PageTypeUnknown, Kind::PageTypeField, Kind::FolderStartUnknown] {
+    // A hostile folder start: lane_054_tester's AC15 (a start naming no folder cannot be stored).
+    for k in [Kind::PageTypeUnknown, Kind::PageTypeField] {
         assert!(rows.iter().any(|(x, _)| *x == k), "{k:?}: {rows:?}");
     }
     assert!(h.run("renumberpages", json!({})).is_ok());
@@ -311,7 +299,7 @@ fn cover_notes_are_written_one_per_line_and_bounded() {
     let head = h.head();
     h.run("projectprops", json!({"props": {"cover.notes": "a\n\n b \n"}})).unwrap();
     assert_eq!(h.head(), head + 1);
-    assert_eq!(h.doc().properties.get("cover.notes").map(String::as_str), Some("a\nb"));
+    assert_eq!(ecad_cadcraft::frames::project_text(&h.doc(), "cover.notes").as_deref(), Some("a\nb"));
     let many: Vec<String> = (0..41).map(|i| format!("note {i}")).collect();
     let e = h.run("projectprops", json!({"props": {"cover.notes": many.join("\n")}})).unwrap_err();
     assert!(e.contains("The cover takes up to 40 notes of 400 characters."), "{e}");

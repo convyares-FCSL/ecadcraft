@@ -3,7 +3,7 @@
 //! palette, whose rows are dragged onto the block.
 
 use ecad_cadcraft::styles::Layer;
-use ecad_model::title_block::{Align, Binding, BlockItem, IfEmpty, Ink, Newest, Rect as BRect, Source, TextLook, TitleBlockLayout};
+use ecad_model::title_block::{Align, Binding, BlockItem, IfEmpty, Ink, Newest, Rect as BRect, TextLook, TitleBlockLayout};
 use ecad_ui::tokens::{space, ui_type};
 use eframe::egui::{self, Align2, Color32, Rect, Sense, Stroke, pos2, vec2};
 use serde_json::json;
@@ -90,18 +90,18 @@ impl PaletteRow {
             Drops::Fields(f) => f
                 .iter()
                 .enumerate()
-                .map(|(i, (b, label))| {
+                .filter_map(|(i, (b, label))| {
                     let x = at.0 + (FIELD_SIZE.0 + 2.0) * i as f64;
-                    let bind = Binding::parse(b);
-                    let red = bind.source == Source::Project && bind.key == "status";
+                    let bind = Binding::parse(b).ok()?;
+                    let red = matches!(&bind, Binding::Project(k) if k.as_str() == "status");
                     let look = TextLook { size: 2.5, bold: red, align: Align::Left, colour: if red { Ink::Red } else { Ink::Ink } };
-                    BlockItem::Field {
+                    Some(BlockItem::Field {
                         at: BRect::new(x, at.1 - FIELD_SIZE.1, FIELD_SIZE.0, FIELD_SIZE.1),
                         bind,
                         label: Some((*label).to_string()),
                         look,
                         if_empty: IfEmpty::Blank,
-                    }
+                    })
                 })
                 .collect(),
             Drops::Table => vec![BlockItem::RevTable {
@@ -333,11 +333,11 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, drafts_key: &str, wr
             }
             if ok && valid {
                 let k = key.trim().to_string();
-                if let Some(d) = ed.draft.as_mut() {
+                if let (Some(d), Some(pk)) = (ed.draft.as_mut(), ecad_model::title_block::ProjectKey::new(&k)) {
                     let at = super::canvas::free_place(&d.now.layout, FIELD_SIZE);
                     d.add(BlockItem::Field {
                         at: BRect::new(at.0, at.1 - FIELD_SIZE.1, FIELD_SIZE.0, FIELD_SIZE.1),
-                        bind: Binding::new(Source::Project, &k),
+                        bind: Binding::Project(pk),
                         label: Some(k.replace('_', " ")),
                         look: TextLook::default(),
                         if_empty: IfEmpty::Blank,

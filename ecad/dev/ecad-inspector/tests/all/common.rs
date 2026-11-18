@@ -134,14 +134,23 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
         l.commit(Author::User, "LINE", vec![Op::AddItem { id, item: Item { page: p1, style, kind } }]).unwrap();
     }
     let at = l.head();
-    let set = |k: &str, v: &str| Op::SetProperty { object: ObjectRef::Project, key: k.into(), before: None, after: Some(v.into()) };
     l.commit(
         Author::User,
         "Issue A",
         vec![
-            set("rev.1.rev", "A"),
-            set("rev.1.description", "First issue"),
-            set("rev.1.issued", "Rev A"),
+            ecad_model::Op::ModifyProject {
+                before: ecad_model::Project::default(),
+                after: ecad_model::Project {
+                    revisions: vec![ecad_model::Revision {
+                        rev: ecad_model::Rev::new("A").ok(),
+                        description: ecad_model::RevValue::new("First issue").ok(),
+                        drawn: ecad_model::RevValue::new("CV").ok(),
+                        issued: ecad_model::RevValue::new("Rev A").ok(),
+                        ..ecad_model::Revision::default()
+                    }],
+                    ..ecad_model::Project::default()
+                },
+            },
             Op::NameVersion { name: "Rev A".into(), at, description: None },
         ],
     )

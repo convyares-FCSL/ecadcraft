@@ -30,7 +30,7 @@ use ecad_cadcraft::styles::{self, Layer};
 use ecad_cadcraft::title_block_cmds;
 use ecad_model::book::Book;
 use ecad_model::sheet;
-use ecad_model::title_block::{Binding, BlockItem, Source, TitleBlockLayout};
+use ecad_model::title_block::{Binding, BlockItem, TitleBlockLayout};
 use ecad_model::{PageId, StyleRef};
 use eframe::egui::{self, Rect};
 use serde_json::{Value, json};
@@ -120,15 +120,15 @@ pub struct Sample {
 }
 
 impl Sample {
-    /// The value binding `b` shows on the sample page; `None` when it cannot be filled.
-    pub fn value(&self, b: &Binding) -> Option<String> {
-        if !ecad_cadcraft::title_block::bind::known(b) {
-            return None;
-        }
-        match &b.source {
-            Source::Project => Some(self.props.get(&b.key).cloned().unwrap_or_default()),
-            Source::Revision if b.key != "rev" => Some(self.newest.get(&b.key).cloned().unwrap_or_default()),
-            _ => ecad_cadcraft::title_block::bind::value(&self.input, b),
+    /// The value binding `b` shows on the sample page.
+    pub fn value(&self, b: &Binding) -> String {
+        use ecad_model::project::RevField;
+        use ecad_model::title_block::RevisionColumn;
+        match b {
+            Binding::Project(k) => self.props.get(k.as_str()).cloned().unwrap_or_default(),
+            Binding::Revision(RevisionColumn::Field(RevField::Rev)) => ecad_cadcraft::title_block::bind::value(&self.input, b),
+            Binding::Revision(c) => self.newest.get(c.word()).cloned().unwrap_or_default(),
+            Binding::Page(_) | Binding::Print(_) => ecad_cadcraft::title_block::bind::value(&self.input, b),
         }
     }
 }

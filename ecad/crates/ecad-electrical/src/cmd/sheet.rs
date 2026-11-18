@@ -152,7 +152,7 @@ pub fn new_folder(doc: &Document, ids: &mut IdAllocator, name: &str, parent: Opt
     }
     let id: FolderId = ids.fresh();
     let index = doc.folder_order.len();
-    Ok((id, Op::AddFolder { id, folder: Folder { name: name.to_string(), parent }, index }))
+    Ok((id, Op::AddFolder { id, folder: Folder::new(name, parent), index }))
 }
 
 /// `renamefolder`: the op renaming `folder` to `name`; `None` when it already has that name.
@@ -165,7 +165,7 @@ pub fn rename_folder(doc: &Document, f: FolderId, name: &str) -> Result<Option<O
         return Ok(None);
     }
     check_sibling_name(doc, old.parent, name, Some(f))?;
-    let after = Folder { name: name.to_string(), parent: old.parent };
+    let after = Folder { name: name.to_string(), ..old.clone() };
     Ok(Some(Op::ModifyFolder { id: f, before: old, after }))
 }
 
@@ -213,7 +213,7 @@ pub fn move_folder(doc: &Document, f: FolderId, parent: Option<FolderId>, index:
     if to == from && parent == old.parent {
         return Ok(Vec::new());
     }
-    let after = Folder { name: old.name.clone(), parent };
+    let after = Folder { parent, ..old.clone() };
     Ok(vec![Op::RemoveFolder { id: f, folder: old, index: from }, Op::AddFolder { id: f, folder: after, index: to }])
 }
 
@@ -246,13 +246,11 @@ pub fn delete_folder(doc: &Document, f: FolderId) -> Result<DeletedFolder, CmdEr
         if check_sibling_name(doc, old.parent, &before.name, Some(f)).is_err() {
             return Err(CmdError::refused(format!("Rename sub-folder \"{}\" first: its new place already has a folder of that name.", before.name)));
         }
-        let after = Folder { name: before.name.clone(), parent: old.parent };
+        let after = Folder { parent: old.parent, ..before.clone() };
         ops.push(Op::ModifyFolder { id: sub, before, after });
     }
     let index = doc.folder_order.iter().position(|x| *x == f).ok_or(CmdError::refused(msg::NO_SUCH_FOLDER))?;
     ops.push(Op::RemoveFolder { id: f, folder: old.clone(), index });
-    // Brief 054 (design 054 §4.3): its start number goes with it.
-    ops.extend(set(ObjectRef::Project, Some(&doc.properties), &crate::page_types::start_key(f), None));
     let to = match old.parent.and_then(|x| doc.folders.get(&x)) {
         Some(x) => format!("\"{}\"", x.name),
         None => "the top level".into(),
@@ -797,7 +795,15 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
             (None, _) => value(doc, k, v.as_deref())?,
         };
         let Some(a) = aspect else {
-            ops.extend(set(ObjectRef::Project, Some(&doc.properties), k, after));
+            // Design 072 §5.3: the title, drawing number, customer and status are the project's info.
+            let f =
+                <ecad_model::InfoField as ecad_model::Word>::parse(k).ok_or_else(|| CmdError::refused(format!("\"{k}\" is not a project field.")))?;
+            let before = pending.project(doc).clone();
+            let now = crate::frames::with_info(&before, f, after.as_deref())?;
+            if now != before {
+                ops.push(Op::ModifyProject { before, after: now.clone() });
+                pending.set_project(now);
+            }
             continue;
         };
         // Design 072 §5.3: the project's own function and location are fields of the project.
@@ -825,6 +831,16 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
         }
         check_free_key(doc, k)?;
         let v = free_value(doc, k, v.as_deref())?;
+        // Design 072 §5.3: the site and the cover's notes are the project's info.
+        if let Some(f) = <ecad_model::InfoField as ecad_model::Word>::parse(k) {
+            let before = pending.project(doc).clone();
+            let now = crate::frames::with_info(&before, f, v.as_deref())?;
+            if now != before {
+                ops.push(Op::ModifyProject { before, after: now.clone() });
+                pending.set_project(now);
+            }
+            continue;
+        }
         ops.extend(set(ObjectRef::Project, Some(&doc.properties), k, v));
     }
     // Brief 026 (design §5.1): Provisional tags until Finalise, as `numbering` writes it.
@@ -920,7 +936,7 @@ pub struct RevisionFields {
 /// that is not a field name.
 pub fn revision_ops(doc: &Document, f: &RevisionFields) -> Result<Vec<Op>, CmdError> {
     let n = revisions::pending_n(doc);
-    let mut ops = Vec::new();
+    let mut project = doc.project.clone();
     let mut given = false;
     for (field, v) in &f.standard {
         given = true;
@@ -931,7 +947,7 @@ pub fn revision_ops(doc: &Document, f: &RevisionFields) -> Result<Vec<Op>, CmdEr
             }
             other => value(doc, field, other)?,
         };
-        ops.extend(set(ObjectRef::Project, Some(&doc.properties), &revisions::key(n, field), v));
+        project = revisions::with_field(&project, n, field, v.as_deref())?;
     }
     // Brief 033 (design 033 §7.2): custom fields, `fields: {ecr: "ECR-114"}`, on the pending row
     // only; an issued row never changes.
@@ -961,19 +977,14 @@ pub fn revision_ops(doc: &Document, f: &RevisionFields) -> Result<Vec<Op>, CmdEr
             other => value(doc, field, other.as_deref())?,
         };
         given = true;
-        ops.extend(set(ObjectRef::Project, Some(&doc.properties), &revisions::key(n, field), t));
+        project = revisions::with_field(&project, n, field, t.as_deref())?;
     }
     let row_exists = revisions::pending(doc).is_some();
     let rev_given = f.standard.iter().any(|(k, v)| *k == "rev" && v.is_some());
-    if given && !row_exists && !rev_given {
-        ops.push(Op::SetProperty {
-            object: ObjectRef::Project,
-            key: revisions::key(n, "rev"),
-            before: None,
-            after: Some(revisions::pending_rev(doc)),
-        });
+    if given && !row_exists && !rev_given && revisions::rows(&project).len() >= n as usize {
+        project = revisions::with_field(&project, n, "rev", Some(&revisions::pending_rev(doc)))?;
     }
-    Ok(ops)
+    Ok(revisions::modify(&doc.project, project).into_iter().collect())
 }
 
 /// What issuing the pending revision records (design 019 §7.2): the remaining field writes,
@@ -1020,13 +1031,15 @@ pub fn plan_issue(
         return Err(CmdError::refused(format!("Rev {rev} was issued before; choose another.")));
     }
     let mut date = row.get("date").to_string();
+    let mut project = doc.project.clone();
     if date.is_empty() {
         date = today().unwrap_or_default();
         if !date.is_empty() {
-            ops.push(Op::SetProperty { object: ObjectRef::Project, key: revisions::key(n, "date"), before: None, after: Some(date.clone()) });
+            project = revisions::with_field(&project, n, "date", Some(&date))?;
         }
     }
-    ops.push(Op::SetProperty { object: ObjectRef::Project, key: revisions::key(n, revisions::ISSUED), before: None, after: Some(name.clone()) });
+    project = revisions::with_field(&project, n, revisions::ISSUED, Some(&name))?;
+    ops.extend(revisions::modify(&doc.project, project));
     ops.push(Op::NameVersion { name, at: head, description: None });
     Ok(IssuePlan { ops, rev, n, date, head })
 }
