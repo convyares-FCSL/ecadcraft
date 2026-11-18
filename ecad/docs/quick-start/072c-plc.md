@@ -40,6 +40,10 @@ The new `setprop` keys: `plc.signal`, `plc.safety_rated`, `plc.ex_i`, `plc.calib
 `plc.address.style`. `plc.rack`, `plc.slot`, `plc.channels`, `plc.addr.start`, `plc.addr.size` and
 `plc.ch.<i>.text|address|tag|safe` work as before but write the fields.
 
+Channel points (step 3b): place `di` or `do` on a DI or DQ card. The point's key is `.0.in` (or
+`.0.out`), as for `chdi`; the label still shows `I0.0`. A point keyed `I1.3` in a hand-made file is
+a plain point name, not channel 11.
+
 ## Checked
 
 Automated (agent-run): `lane_072c` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector. Not

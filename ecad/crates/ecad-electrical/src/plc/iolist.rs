@@ -51,7 +51,7 @@ pub struct Row {
     pub address: Option<String>,
     pub address_out: Option<String>,
     pub typed: bool,
-    pub pins: Vec<(&'static str, String)>,
+    pub pins: Vec<(ecad_model::ChannelRole, String)>,
     pub text: Option<String>,
     pub state: &'static str,
     pub drawn: bool,
@@ -126,7 +126,7 @@ pub fn rows_of(doc: &Document, plc: &Plc, card: &CardData) -> Vec<Row> {
         let ch = card.chans.get(&i);
         let (address, typed) = plc.address_of(doc, card.id, i);
         let address_out = (card.ty == super::rack::CardType::Iol).then(|| plc.automatic(doc, card.id, i, true)).flatten();
-        let pins: Vec<(&'static str, String)> = ch.map(|c| c.points.iter().map(|(r, _, p)| (*r, p.clone())).collect()).unwrap_or_default();
+        let pins: Vec<(ecad_model::ChannelRole, String)> = ch.map(|c| c.points.iter().map(|(r, _, p)| (*r, p.clone())).collect()).unwrap_or_default();
         let (place, page, at) = match ch.and_then(|c| c.cells.first()).and_then(|(rid, _, _)| doc.representations.get(rid)) {
             Some(r) => {
                 let (p, a) = rep_place(doc, r);
@@ -204,11 +204,11 @@ pub fn rows_of(doc: &Document, plc: &Plc, card: &CardData) -> Vec<Row> {
 }
 
 /// `+:1 -:5` (one column for the CSV and the page).
-pub fn pins_words(pins: &[(&'static str, String)]) -> String {
+pub fn pins_words(pins: &[(ecad_model::ChannelRole, String)]) -> String {
     if pins.len() == 1 {
         return pins.first().map(|(_, p)| p.clone()).unwrap_or_default();
     }
-    pins.iter().map(|(r, p)| format!("{r}:{p}")).collect::<Vec<_>>().join(" ")
+    pins.iter().map(|(r, p)| format!("{}:{p}", ecad_model::Word::word(*r))).collect::<Vec<_>>().join(" ")
 }
 
 /// `-S03:14, -K01:A1`.

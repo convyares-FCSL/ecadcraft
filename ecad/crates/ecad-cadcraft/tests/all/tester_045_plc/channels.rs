@@ -213,50 +213,34 @@ fn h_compact_symbols_follow_fp7() {
     assert_eq!(pin(&d, card, 0, "in").as_deref(), Some("1"));
 }
 
-// ------------------------------------------------------------------------------- FP2: old keys
+// ------------------------------------------------------------------------------- FP2: di and do
 
-/// FP2: an old `di` terminal (key and label `I1.3`, no leading `.`) reads as channel 11 of its
-/// card: the next `di` skips it, a new channel 11 is refused as taken, and the label stays as
-/// stored; a hand-made file opens.
+/// Design 072 §3: `di` and `do` key their point by role (`.in`, `.out`) and join a card as
+/// channels (`.0.in`); a key in the old `I1.3` form is a plain point name, not a channel: nothing
+/// reads a channel number out of its text.
 #[test]
-fn fp2_old_di_keys_read_as_a_times_8_plus_b() {
+fn fp2_di_and_do_are_channels_and_old_keys_are_plain_names() {
     let (mut p, c) = with_cards(0x7045_5e001);
     let a04 = c["-A04"];
     p.h.activate(p.analogue);
-    // Channels 0 and 1 by `di`, then rewritten by hand to the old form I0.0 and I1.3.
     p.h.run("place", json!({"symbol": "di", "at": [100, 200], "device": a04.hex()})).unwrap();
     p.h.run("place", json!({"symbol": "di", "at": [120, 200], "device": a04.hex()})).unwrap();
     let pts = channel_points(&p.h.doc(), a04);
-    rekey_raw(&mut p.h, pts[".0.in"].1, Some("I0.0"), Some("I0.0"));
+    assert!(pts.contains_key(".0.in") && pts.contains_key(".1.in"), "{:?}", pts.keys().collect::<Vec<_>>());
     rekey_raw(&mut p.h, pts[".1.in"].1, Some("I1.3"), Some("I1.3"));
     let mut h = reload(p.h, "old di", 0x7045_5e101);
     read_everything(&mut h);
     let d = h.doc();
     let a04 = by_tag(&d, "-A04");
-    let labels: Vec<String> = d.terminals.values().filter(|t| t.component == a04).filter_map(|t| t.label.clone()).collect();
-    assert!(labels.contains(&"I1.3".to_string()), "the label stays as stored: {labels:?}");
-    // Next free channel: 1 (0 and 11 are drawn).
+    let pts = channel_points(&d, a04);
+    assert!(!pts.contains_key(".11.in") && !pts.contains_key(".1.in"), "I1.3 is no channel: {:?}", pts.keys().collect::<Vec<_>>());
+    // Channel 1 is free again; channel 11 was never drawn.
     h.run("place", json!({"symbol": "di", "at": [140, 200], "device": a04.hex()})).unwrap();
     assert!(channel_points(&h.doc(), a04).contains_key(".1.in"), "channel 1 is the lowest free one");
-    refused(&mut h, "place", json!({"symbol": "chdi", "at": [160, 200], "device": a04.hex(), "channel": 11}), &["Channel 11 of -A04 is drawn on"]);
+    h.run("place", json!({"symbol": "chdi", "at": [160, 200], "device": a04.hex(), "channel": 11})).unwrap();
     let old_do = h.run("place", json!({"symbol": "do", "at": [180, 200], "device": by_tag(&d, "-A07").hex()})).unwrap();
     assert!(old_do["terminals"].to_string().contains(".0.out"), "{old_do}");
     h.check();
-}
-
-/// FP2: an old `do` key `Q2.7` reads as channel 23: on a 16-channel DQ that is `channel-over`.
-#[test]
-fn fp2_old_do_key_beyond_the_count_is_channel_over() {
-    let (mut p, c) = with_cards(0x7045_5e002);
-    let a07 = c["-A07"];
-    p.h.activate(p.outputs);
-    p.h.run("place", json!({"symbol": "do", "at": [300, 200], "device": a07.hex()})).unwrap();
-    let t = channel_points(&p.h.doc(), a07)[".0.out"].1;
-    rekey_raw(&mut p.h, t, Some("Q2.7"), Some("Q2.7"));
-    let mut h = reload(p.h, "old do", 0x7045_5e102);
-    let rows = checks_of(&mut h, "channel-over");
-    assert_eq!(rows.len(), 1, "{rows:?}");
-    assert!(rows[0].to_string().contains("-A07 has channel 23 drawn; it has 16 channels"), "{}", rows[0]);
 }
 
 // ------------------------------------------------------------------------------- K, §4.6 (AC 4)

@@ -109,7 +109,7 @@ pub(crate) fn place_channel(
             "representation": cell.representation.hex(),
             "item": cell.item.hex(),
             "symbol": starter.key,
-            "terminals": cell.terminals.iter().map(|(r, t, pin, _)| json!({"role": r, "label": pin, "key": key(j.index, r), "terminal": t.hex()})).collect::<Vec<_>>(),
+            "terminals": cell.terminals.iter().map(|(r, t, pin, _)| json!({"role": r, "label": pin, "key": key(j.index, *r), "terminal": t.hex()})).collect::<Vec<_>>(),
             "message": message,
         });
         crate::draw::proposals::finish_place(p, pg, card, !new, &proposed, &mut v);

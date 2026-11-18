@@ -121,7 +121,7 @@ pub fn copies(doc: &Document, c: DeviceId, i: u32) -> Vec<Vec<ecad_model::Termin
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ChannelData {
     /// (role, terminal, pin), roles in cell order; a role twice when the channel is drawn twice.
-    pub points: Vec<(&'static str, ecad_model::TerminalId, String)>,
+    pub points: Vec<(ecad_model::ChannelRole, ecad_model::TerminalId, String)>,
     /// The symbols drawing it: (representation, page, the symbol's card type).
     pub cells: Vec<(ecad_model::RepresentationId, PageId, Option<CardType>)>,
     /// A point is on a net with another connection point.
@@ -416,7 +416,7 @@ pub fn channel_data(doc: &Document, c: DeviceId) -> BTreeMap<u32, ChannelData> {
         }
     }
     for ch in out.values_mut() {
-        ch.points.sort_by_key(|(r, t, _)| (channels::ROLES.iter().position(|x| x == r), *t));
+        ch.points.sort_by_key(|(r, t, _)| (*r, *t));
     }
     out
 }
@@ -566,7 +566,13 @@ pub fn channel_rows(
     rows.push(row(channels::ch_key(i, "address"), "Address", typed.unwrap_or(auto), true, inherited));
     for (t, _) in &shown {
         if let (Some((_, role)), Some(term)) = (channels::point_of(doc, *t), doc.terminals.get(t)) {
-            rows.push(row(format!("plc.pin#{i}#{role}"), &format!("Pin {role}"), term.label.clone().unwrap_or_default(), true, false));
+            rows.push(row(
+                format!("plc.pin#{i}#{}", ecad_model::Word::word(role)),
+                &format!("Pin {}", ecad_model::Word::word(role)),
+                term.label.clone().unwrap_or_default(),
+                true,
+                false,
+            ));
         }
     }
 }

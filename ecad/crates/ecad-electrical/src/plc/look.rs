@@ -221,7 +221,7 @@ fn name_block(doc: &Document, c: DeviceId) -> Vec<(String, TextKind)> {
 /// The type text: the card's own description, else `DI 16`.
 pub fn type_text(doc: &Document, c: DeviceId) -> String {
     let Some(ty) = super::card_type_of(doc, c) else { return String::new() };
-    let builtin = crate::symbols::by_key(ty.body()).map(|s| s.name);
+    let builtin = ty.body().map(crate::symbols::starter).map(|s| s.name);
     let desc = doc.devices.get(&c).and_then(|x| x.description.as_ref()).map(|v| v.as_str()).filter(|v| !v.is_empty() && Some(*v) != builtin);
     match desc {
         Some(d) => d.to_string(),
