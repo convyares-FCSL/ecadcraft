@@ -100,8 +100,19 @@ fn list_commands_through_mcp_record_modify_project_by_the_agent() {
     assert_eq!(d.project.function.and_then(|f| d.project.function(f)).map(|e| e.code.to_string()).as_deref(), Some("=F1"));
     assert!(!d.properties.contains_key("function"));
 
+    // Step 2c: the title and the site are the project's info.
+    c.exec("projectprops", json!({"title": "Plant", "props": {"site": "North"}}));
+    let last = c.log().last().cloned().unwrap();
+    assert_eq!(last.author, agent);
+    assert!(last.ops.iter().all(|o| matches!(o, Op::ModifyProject { .. })), "{:?}", last.ops);
+    let d = c.doc();
+    assert_eq!(d.project.info.get(ecad_model::InfoField::Title), Some("Plant"));
+    assert_eq!(d.project.info.get(ecad_model::InfoField::Site), Some("North"));
+    assert!(!d.properties.contains_key("title") && !d.properties.contains_key("site"));
+
     let mut r = reader();
     for (cmd, params) in [
+        ("projectprops", json!({"title": "Other"})),
         ("designationadd", json!({"aspect": "function", "code": "=F9"})),
         ("pageprops", json!({"page": page.hex(), "location": "+CP8"})),
         ("projectprops", json!({"location": "+CP9"})),

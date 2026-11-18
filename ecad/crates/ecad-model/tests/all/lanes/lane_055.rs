@@ -5,7 +5,7 @@ use ecad_model::sheet::{self, Margins, SheetSpec};
 use ecad_model::style::frame::{FrameMargins, FrameSheet};
 use ecad_model::style::{FrameStyle, StyleBody};
 use ecad_model::style::{StyleLayer, StyleRecord, StyleRef};
-use ecad_model::title_block::{Binding, BlockItem, MAX_ITEMS, Rect, Source, TextLook, TitleBlockLayout};
+use ecad_model::title_block::{Binding, BlockItem, MAX_ITEMS, Rect, TextLook, TitleBlockLayout};
 use std::collections::BTreeMap;
 
 use ecad_model::merge::{self, Inputs, Scope};
@@ -15,7 +15,7 @@ use ecad_model::{Author, Document, Ledger, Op, PageId, Primitive, Pt};
 fn field(x: f64) -> BlockItem {
     BlockItem::Field {
         at: Rect::new(x, 1.0, 10.0, 5.0),
-        bind: Binding::new(Source::Page, "number"),
+        bind: Binding::Page(ecad_model::title_block::PageField::Number),
         label: None,
         look: TextLook::default(),
         if_empty: Default::default(),
@@ -82,7 +82,6 @@ fn every_bound_refuses_in_words_and_is_skipped_when_drawing() {
             },
             "2 000 at most",
         ),
-        (TitleBlockLayout { size: (180.0, 40.0), items: vec![BlockItem::Unknown] }, "does not know"),
     ];
     for (l, want) in cases {
         let e = l.check().unwrap_err();

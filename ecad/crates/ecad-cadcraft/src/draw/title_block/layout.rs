@@ -209,7 +209,6 @@ pub fn block(pen: &mut Pen, input: &FrameInput, layout: &TitleBlockLayout, origi
             }
             BlockItem::RevTable { at: r, rows, header, newest } => rev_table(pen, input, *r, origin, *rows, *header, *newest),
             BlockItem::Logo { at: r, prims, .. } => logo(pen, input, *r, origin, prims),
-            BlockItem::Unknown => {}
         }
     }
     drawn

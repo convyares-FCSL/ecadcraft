@@ -611,7 +611,7 @@ const SYMBOL_KINDS: [TextKind; 4] = [TextKind::Tag, TextKind::PointLabel, TextKi
 fn shown(e: &Entry, r: &defaults::Resolved<'_>) -> String {
     if e.key.ends_with(".show") {
         use ecad_cadcraft::text_style::Shown;
-        return match Shown::from_word(r.word()) {
+        return match <Shown as ecad_model::Word>::parse(r.word()).unwrap_or_default() {
             Shown::Off => "Hidden".into(),
             Shown::First => "Shown on the first of each run".into(),
             Shown::On => "Shown on the page".into(),

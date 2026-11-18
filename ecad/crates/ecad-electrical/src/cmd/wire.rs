@@ -412,7 +412,7 @@ pub fn wirenumber(
             sense.map_err(|why| CmdError::refused(format!("The nets can't be merged: {why}.")))?;
             let name = wires::valid_name(&v)
                 .map_err(|_| CmdError::refused(format!("The nets can't be merged: {v} is not a continuation name ({}).", wires::NAME_RULE)))?;
-            let starter = wires::continuation_starter().ok_or(CmdError::refused("the continuation symbol is missing"))?;
+            let starter = wires::continuation_starter();
             let mut ops = wiring::write_ops(doc, &net, &v, true);
             let mut continuations = Vec::new();
             for n in [&net, &other] {
@@ -680,7 +680,7 @@ pub fn junction_at(doc: &Document, ids: &mut IdAllocator, style: Style, page: Pa
     let loose = wires::loose_ends_at(doc, page, at, ON_WIRE);
     let through = wires::interior_wire_at(doc, page, at);
     if through.is_none() && loose.len() >= 2 {
-        let starter = wires::junction_starter().ok_or(CmdError::refused("the junction symbol is missing"))?;
+        let starter = wires::junction_starter();
         let mut props = ecad_model::Properties::new();
         props.insert(KIND.into(), JUNCTION.into());
         let snapped = loose

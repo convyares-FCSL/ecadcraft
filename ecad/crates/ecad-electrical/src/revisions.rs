@@ -1,31 +1,32 @@
-//! Project revisions (brief 019, design 019 §7.2, decision FP4): a list of text fields kept as
-//! project properties `rev.<n>.<field>`, `n` = 1, 2… in issue order.
+//! Project revisions (brief 019, design 019 §7.2, decision FP4; design 072 §5.3): the project's
+//! revision rows ([`ecad_model::Revision`]), `n` = 1, 2… in issue order, changed through
+//! `ModifyProject`.
 //!
 //! # Semantics
 //! - Fields: [`FIELDS`] and `issued` (the version name, set only by issuing).
 //! - The row with the highest `n` and no `issued` is the **pending** revision; issued rows never
 //!   change (the commands refuse it), except that undoing an issue removes its `issued` key.
-//! - Issuing writes the pending row's remaining fields, `issued = "Rev <rev>"` and
-//!   `NameVersion { "Rev <rev>", head }` in one transaction, so `Ledger::state_at(at)` reopens the
+//! - Issuing writes the pending row's remaining fields, `issued = "Rev <rev>"` (`ModifyProject`)
+//!   and `NameVersion { "Rev <rev>", head }` in one transaction, so `Ledger::state_at(at)` reopens the
 //!   project exactly as it was issued.
 //!
 //! This module reads and plans; the commands commit (`ecad_cadcraft::cmd::sheet`).
 
 use crate::CmdError;
 use ecad_model::book::MAX_FOLDER_DEPTH;
-use ecad_model::{Document, FolderId, ObjectRef, Op};
+use ecad_model::{Document, FolderId, ObjectRef, Op, Project, RevField, RevValue, Word};
 
 /// The editable fields of a revision, in table order.
 pub const FIELDS: [&str; 6] = ["rev", "date", "description", "drawn", "checked", "approved"];
-/// The key prefix of revision properties.
-pub const PREFIX: &str = "rev.";
+/// The old key prefix of revision properties (reserved on the project).
+pub const PREFIX: &str = ecad_model::project::REVISIONS_KEY;
 /// The field set by issuing.
 pub const ISSUED: &str = "issued";
 /// The field set by issuing through a release (brief 027, FP1): the release folder, relative to
 /// the project file's folder (absolute on another drive). Unknown to older builds, which skip it.
 pub const RELEASED: &str = "released";
 /// Most revisions a project may hold (a bound on hostile files).
-pub const MAX_REVISIONS: u32 = 10_000;
+pub const MAX_REVISIONS: usize = ecad_model::project::MAX_REVISIONS;
 /// Rev text: 1 to 8 characters `0-9 A-Z a-z`.
 pub const MAX_REV_CHARS: usize = 8;
 /// The fields issuing needs (owner answer Q7).
@@ -60,9 +61,87 @@ impl Revision {
         self.get("rev")
     }
 
-    /// The key of `field` for this row.
-    pub fn key(&self, field: &str) -> String {
-        key(self.n, field)
+    /// The view of model row `r`, row number `n`.
+    fn of(n: u32, r: &ecad_model::Revision) -> Revision {
+        let mut fields: [String; 6] = Default::default();
+        for (slot, f) in fields.iter_mut().zip(RevField::ALL) {
+            *slot = r.field(*f).unwrap_or_default().to_string();
+        }
+        Revision {
+            n,
+            fields,
+            extra: r.custom.iter().map(|(k, v)| (k.as_str().to_string(), v.to_string())).collect(),
+            issued: r.issued.as_ref().map(ToString::to_string),
+            released: r.released.as_ref().map(ToString::to_string),
+        }
+    }
+}
+
+/// `project` with field `field` of row `n` (from 1) set to `value` (`None` clears it); row
+/// `len + 1` is made by its first field. `field` is a built-in field, a custom one, `issued` or
+/// `released`.
+///
+/// # Errors
+/// No such row, a field name that is none, or a value the field cannot hold.
+pub fn with_field(project: &Project, n: u32, field: &str, value: Option<&str>) -> Result<Project, CmdError> {
+    let mut p = project.clone();
+    let i = usize::try_from(n).ok().and_then(|n| n.checked_sub(1)).ok_or_else(|| CmdError::refused("Revision rows start at 1."))?;
+    if i == p.revisions.len() {
+        if p.revisions.len() >= MAX_REVISIONS {
+            return Err(CmdError::refused(format!("A project holds at most {MAX_REVISIONS} revisions.")));
+        }
+        p.revisions.push(ecad_model::Revision::default());
+    }
+    let row = p.revisions.get_mut(i).ok_or_else(|| CmdError::refused(format!("There is no revision row {n}.")))?;
+    let text = |v: &str| RevValue::new(v).map_err(|e| CmdError::refused(format!("\"{v}\" is refused: {e}.")));
+    let value = value.map(str::trim).filter(|v| !v.is_empty());
+    if field == ISSUED {
+        row.issued = value.map(text).transpose()?;
+    } else if field == RELEASED {
+        row.released =
+            value.map(|v| ecad_model::text::Text::new(v).map_err(|e| CmdError::refused(format!("That folder is refused: {e}.")))).transpose()?;
+    } else if field == "rev" {
+        row.rev = value.map(|v| ecad_model::Rev::new(v).map_err(|e| CmdError::refused(format!("\"{v}\" is not a rev: {e}.")))).transpose()?;
+    } else if let Some(f) = RevField::parse(field) {
+        row.set_field(f, value.map(text).transpose()?);
+    } else {
+        let name = ecad_model::CustomField::new(field)
+            .ok_or_else(|| CmdError::refused(format!("\"{field}\" is not a field name. Use 1 to 20 letters, digits or _.")))?;
+        match value {
+            Some(v) => {
+                row.custom.insert(name, text(v)?);
+            }
+            None => {
+                row.custom.remove(&name);
+            }
+        }
+    }
+    // A row emptied by clearing its last field is no row (the pending row only).
+    if i + 1 == p.revisions.len() && p.revisions.last().is_some_and(ecad_model::Revision::is_empty) {
+        p.revisions.pop();
+    }
+    Ok(p)
+}
+
+/// Whether a `ModifyProject` from `before` to `after` issued a row or took an issue back (what the
+/// title block's Rev box and the issued-revision lists show).
+pub fn issue_changed(before: &Project, after: &Project) -> bool {
+    let issued = |p: &Project| p.revisions.iter().map(|r| r.issued.clone()).collect::<Vec<_>>();
+    issued(before) != issued(after)
+}
+
+/// The `ModifyProject` from `before` to `after`, if they differ.
+pub fn modify(before: &Project, after: Project) -> Option<Op> {
+    (*before != after).then(|| Op::ModifyProject { before: before.clone(), after })
+}
+
+/// Set the release folder of row `n` in the last `ModifyProject` of `ops` (the issue's) to
+/// `folder`. Nothing when `ops` hold none.
+pub fn set_released(ops: &mut [Op], n: u32, folder: &str) {
+    let Some(Op::ModifyProject { after, .. }) = ops.iter_mut().rev().find(|o| matches!(o, Op::ModifyProject { .. })) else { return };
+    let i = usize::try_from(n).ok().and_then(|n| n.checked_sub(1));
+    if let (Some(row), Ok(t)) = (i.and_then(|i| after.revisions.get_mut(i)), ecad_model::text::Text::new(folder)) {
+        row.released = Some(t);
     }
 }
 
@@ -243,14 +322,17 @@ impl PendingStyle {
 /// Most undo-stack entries the pending walk reads; more count as pending.
 pub const MAX_PENDING_WALK: usize = 10_000;
 
-/// Whether `ops` only fill in the pending row `pending` (`rev.<n>.*`) or set the revision
-/// table's own settings: not a drawing change (design 033 §6.1).
+/// Whether `ops` only fill in the pending row `pending` or set the revision table's own
+/// settings: not a drawing change (design 033 §6.1).
 fn fills_pending_row(ops: &[Op], pending: u32) -> bool {
+    let at = usize::try_from(pending).ok().and_then(|n| n.checked_sub(1));
     ops.iter().all(|op| match op {
-        Op::SetProperty { object: ObjectRef::Project, key, .. } => {
-            key == COLUMNS_KEY
-                || key == PENDING_KEY
-                || key.strip_prefix(PREFIX).and_then(|r| r.split_once('.')).and_then(|(n, _)| n.parse::<u32>().ok()) == Some(pending)
+        Op::SetProperty { object: ObjectRef::Project, key, .. } => key == COLUMNS_KEY || key == PENDING_KEY,
+        Op::ModifyProject { before, after } => {
+            let rows = |p: &Project| -> Vec<ecad_model::Revision> {
+                p.revisions.iter().enumerate().filter(|(i, _)| Some(*i) != at).map(|(_, r)| r.clone()).collect()
+            };
+            Project { revisions: Vec::new(), ..before.clone() } == Project { revisions: Vec::new(), ..after.clone() } && rows(before) == rows(after)
         }
         _ => false,
     })
@@ -294,31 +376,24 @@ pub fn rev_box(doc: &Document, pending: bool) -> String {
     }
 }
 
-/// `rev.<n>.<field>`.
-pub fn key(n: u32, field: &str) -> String {
-    format!("{PREFIX}{n}.{field}")
+/// The value of `field` (built-in, custom, `issued` or `released`) on row `n` of `project`, if set.
+pub fn field_of(project: &Project, n: u32, field: &str) -> Option<String> {
+    let r = rows(project).into_iter().find(|r| r.n == n)?;
+    match field {
+        ISSUED => r.issued,
+        RELEASED => r.released,
+        f => Some(r.get(f).to_string()).filter(|v| !v.is_empty()),
+    }
 }
 
-/// Every revision row, by `n` ascending. Reads only the `rev.` properties, once each: linear in
-/// their number.
+/// Every revision row of `project`, by `n` ascending.
+pub fn rows(project: &Project) -> Vec<Revision> {
+    project.revisions.iter().zip(1u32..).map(|(r, n)| Revision::of(n, r)).collect()
+}
+
+/// Every revision row, by `n` ascending.
 pub fn list(doc: &Document) -> Vec<Revision> {
-    let mut rows: std::collections::BTreeMap<u32, Revision> = std::collections::BTreeMap::new();
-    for (k, v) in doc.properties.range(PREFIX.to_string()..) {
-        let Some(rest) = k.strip_prefix(PREFIX) else { break };
-        let Some((n, field)) = rest.split_once('.') else { continue };
-        let Some(n) = n.parse::<u32>().ok().filter(|n| (1..=MAX_REVISIONS).contains(n)) else { continue };
-        let row = rows.entry(n).or_insert_with(|| Revision { n, ..Revision::default() });
-        if field == ISSUED {
-            row.issued = Some(v.clone());
-        } else if field == RELEASED {
-            row.released = Some(v.clone());
-        } else if let Some(slot) = FIELDS.iter().position(|f| *f == field).and_then(|j| row.fields.get_mut(j)) {
-            *slot = v.clone();
-        } else if is_custom_field(field) {
-            row.extra.insert(field.to_string(), v.clone());
-        }
-    }
-    rows.into_values().collect()
+    rows(&doc.project)
 }
 
 /// The issued revisions, newest first.
@@ -404,14 +479,12 @@ pub fn check_rev(doc: &Document, rev: &str) -> Result<(), CmdError> {
 
 /// The ops that set the pending row's `field` to `value` (`None` clears), creating the row on its
 /// first field. Nothing when it already holds that value.
-pub fn set_pending_ops(doc: &Document, field: &str, value: Option<String>) -> Vec<Op> {
-    let n = pending_n(doc);
-    let k = key(n, field);
-    let before = doc.properties.get(&k).cloned();
-    if before == value {
-        return Vec::new();
-    }
-    vec![Op::SetProperty { object: ObjectRef::Project, key: k, before, after: value }]
+///
+/// # Errors
+/// As [`with_field`].
+pub fn set_pending_ops(doc: &Document, field: &str, value: Option<String>) -> Result<Vec<Op>, CmdError> {
+    let after = with_field(&doc.project, pending_n(doc), field, value.as_deref())?;
+    Ok(modify(&doc.project, after).into_iter().collect())
 }
 
 /// The version name of an issued rev.
@@ -424,15 +497,16 @@ pub fn inverse(ops: &[Op]) -> Vec<Op> {
     ops.iter().rev().map(Op::inverse).collect()
 }
 
-/// When the transaction `ops` issues a revision: the rev it issued and its row number.
+/// When the transaction `ops` issues a revision: the rev it issued and its row number (a
+/// `ModifyProject` giving a row its `issued`).
 pub fn issue_in(ops: &[Op]) -> Option<(String, u32)> {
     ops.iter().find_map(|op| {
-        let Op::SetProperty { object: ObjectRef::Project, key, after: Some(v), .. } = op else { return None };
-        let (n, field) = key.strip_prefix(PREFIX)?.split_once('.')?;
-        if field != ISSUED {
-            return None;
-        }
-        Some((v.strip_prefix("Rev ").unwrap_or(v).to_string(), n.parse().ok()?))
+        let Op::ModifyProject { before, after } = op else { return None };
+        after.revisions.iter().zip(1u32..).find_map(|(r, n)| {
+            let was = usize::try_from(n).ok().and_then(|n| before.revisions.get(n - 1)).and_then(|b| b.issued.as_ref());
+            let v = r.issued.as_ref().filter(|_| was.is_none())?;
+            Some((v.as_str().strip_prefix("Rev ").unwrap_or(v.as_str()).to_string(), n))
+        })
     })
 }
 

@@ -31,7 +31,7 @@ pub fn is_old_text_key(key: &str, field: &str) -> bool {
     key.strip_prefix("text.")
         .and_then(|r| r.strip_suffix(field))
         .and_then(|r| r.strip_suffix('.'))
-        .is_some_and(|kind| crate::text_style::TextKind::from_word(kind).is_some())
+        .is_some_and(|kind| <crate::text_style::TextKind as ecad_model::Word>::parse(kind).is_some())
 }
 
 /// Whether `key` is any of 031's old text keys.

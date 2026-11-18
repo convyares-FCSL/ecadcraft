@@ -508,10 +508,16 @@ pub fn project_json(doc: &Document) -> Value {
         // project).
         let v = match crate::designations::Aspect::of_property(k) {
             Some(a) => crate::designations::default_key(&doc.project, a).map(|v| crate::designations::display(doc, k, &v)),
-            None => doc.properties.get(k).cloned(),
+            None => crate::frames::project_text(doc, k),
         };
         fields.insert(k.into(), v.map_or(Value::Null, Value::String));
     }
+    // The site and the cover's notes are written as free properties and stored as the project's
+    // info (design 072 §5.3): reported with the free ones.
+    let written_free = [ecad_model::InfoField::Site, ecad_model::InfoField::Notes];
+    let info = written_free
+        .into_iter()
+        .filter_map(|f| doc.project.info.get(f).map(|v| (ecad_model::Word::word(f).to_string(), Value::String(v.to_string()))));
     let free: Map<String, Value> = doc
         .properties
         .iter()
@@ -523,6 +529,7 @@ pub fn project_json(doc: &Document) -> Value {
                 && !k.starts_with("revisions.")
         })
         .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+        .chain(info)
         .collect();
     let revs: Vec<Value> = revisions::list(doc)
         .iter()
@@ -555,7 +562,7 @@ pub fn project_json(doc: &Document) -> Value {
     // Brief 033: the tag style, the revision columns and the pending marker.
     let style = crate::defaults::print::tag_style(doc);
     v["tag_dash"] = json!(style.dash);
-    v["tag_case"] = json!(if style.case == ecad_model::tag::Case::Typed { "typed" } else { "upper" });
+    v["tag_case"] = json!(ecad_model::Word::word(style.case));
     let cols = revisions::columns(doc);
     v["revision_columns"] = json!(cols.iter().map(|c| json!({"field": c.field, "header": c.header, "width": c.width})).collect::<Vec<_>>());
     v["revision_columns_stored"] = json!(doc.properties.get(revisions::COLUMNS_KEY));
@@ -714,11 +721,13 @@ impl Command for ProjectpropsParams {
             revision_columns: self.revision_columns,
             revision_pending: self.revision_pending.flatten(),
             tag_dash: self.tag_dash.flatten(),
-            tag_case: self.tag_case.flatten(),
+            tag_case: None,
             mode: Default::default(),
         };
+        let case_word = self.tag_case.flatten();
         on_project(s, |p, pg, _| {
             change.mode = rules::proposal_mode(proposal.as_deref())?;
+            change.tag_case = case_word.as_deref().map(rules::tag_case).transpose()?;
             let plan = rules::project_props(p.ledger.document(), &mut p.ids, &change)?;
             if plan.ops.is_empty() {
                 let mut v = project_json(p.ledger.document());

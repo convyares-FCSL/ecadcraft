@@ -931,16 +931,9 @@ pub fn issued_state(p: &Project, rev: &str) -> Result<(Named, u64, Document), St
     let mut then = state_at(p, &pt)?;
     let live = p.ledger.document();
     let upto = revisions::list(live).into_iter().find(|r| r.issued.as_deref() == Some(n.name.as_str())).map_or(0, |r| r.n);
-    for r in revisions::list(live).into_iter().filter(|r| r.n <= upto && r.issued.is_some()) {
-        for (f, v) in revisions::FIELDS.iter().zip(r.fields.iter()) {
-            if !v.is_empty() {
-                then.properties.insert(r.key(f), v.clone());
-            }
-        }
-        if let Some(i) = &r.issued {
-            then.properties.insert(r.key(revisions::ISSUED), i.clone());
-        }
-    }
+    // Design 072 §5.3: the issued rows up to it, as they are now.
+    let upto = usize::try_from(upto).unwrap_or(usize::MAX);
+    then.project.revisions = live.project.revisions.iter().take(upto).filter(|r| r.issued.is_some()).cloned().collect();
     Ok((n.clone(), n.seq, then))
 }
 

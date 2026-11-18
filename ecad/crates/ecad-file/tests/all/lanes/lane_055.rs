@@ -39,7 +39,7 @@ fn layout() -> TitleBlockLayout {
             BlockItem::Text { at: Rect::new(1.0, 1.0, 40.0, 5.0), text: "IF IN DOUBT, ASK".into(), look: TextLook::default() },
             BlockItem::Field {
                 at: Rect::new(60.0, 21.0, 60.0, 12.5),
-                bind: Binding::new(Source::Project, "status"),
+                bind: Binding::Project(ecad_model::title_block::ProjectKey::new("status").unwrap()),
                 label: Some("Status".into()),
                 look: red,
                 if_empty: IfEmpty::Text("n/a".into()),
@@ -144,20 +144,32 @@ fn the_op_record_carries_the_body_and_reads_it_back() {
 fn an_unknown_body_field_is_refused_and_title_block_items_read() {
     let l = ledger();
     let tx = l.full_log().unwrap().into_iter().next().unwrap();
-    let mut v = ecad_file::record::tx_value(&tx, &[0u8; 32]).unwrap();
-    let mut stamped = v.clone();
+    let v0 = ecad_file::record::tx_value(&tx, &[0u8; 32]).unwrap();
+    // Design 072 §8: an unknown field in a frame body is refused.
+    let mut stamped = v0.clone();
     stamped["ops"][0]["after"]["body"]["frame"]["stamp"] = serde_json::json!({"text": "DRAFT"});
     assert!(ecad_file::record::decode_tx(&stamped).is_err(), "an unknown body field is refused");
-    let block = &mut v["ops"][0]["after"]["body"]["frame"]["title_block"]["items"];
-    block.as_array_mut().unwrap().push(serde_json::json!({"kind": "hologram", "glow": 3}));
-    block.as_array_mut().unwrap().push(serde_json::json!({
-        "kind": "field", "at": {"x": 1, "y": 1, "w": 10, "h": 5}, "bind": "weather:today"
-    }));
-    let mut t = ecad_file::record::decode_tx(&v).unwrap();
+    // Design 072 §5.4: an unknown item kind, an unknown binding source or a revision binding
+    // naming no revision field inside a title block does not read (the project opens read-only).
+    let items = |extra: serde_json::Value| {
+        let mut v = v0.clone();
+        v["ops"][0]["after"]["body"]["frame"]["title_block"]["items"].as_array_mut().unwrap().push(extra);
+        v
+    };
+    let field = |bind: &str| serde_json::json!({"kind": "field", "at": {"x": 1, "y": 1, "w": 10, "h": 5}, "bind": bind});
+    for (bad, word) in [
+        (items(serde_json::json!({"kind": "hologram", "glow": 3})), "hologram"),
+        (items(field("weather:today")), "weather"),
+        (items(field("revision:Not A Field")), "Not A Field"),
+    ] {
+        let e = ecad_file::record::decode_tx(&bad).unwrap_err();
+        assert!(format!("{e:?}").contains(word), "{word}: {e:?}");
+    }
+    let mut t = ecad_file::record::decode_tx(&v0).unwrap();
     let Op::SetStyle { after: Some(r), .. } = &mut t.ops[0] else { panic!("{:?}", t.ops) };
     let l2 = frame_block(r).unwrap();
-    assert!(l2.items.contains(&BlockItem::Unknown));
-    assert!(l2.bindings().any(|b| b.source == Source::Unknown("weather".into())));
+    assert!(l2.bindings().all(|b| b.source() != Source::Revision || b.revision_column().is_some()));
+    let _ = BlockItem::Line { a: (0.0, 0.0), b: (1.0, 1.0), weight: Default::default() };
     // It writes back (canonical form) and reads again.
     let back = ecad_file::record::tx_value(&t, &[0u8; 32]).unwrap();
     assert!(ecad_file::record::decode_tx(&back).is_ok());
