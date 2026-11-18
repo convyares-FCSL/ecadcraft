@@ -415,7 +415,8 @@ fn a_standard_switch_redraws_the_frame() {
 /// frame choice and a frame's sheet, margins or block height; a frame's weight changes none.
 #[test]
 fn the_update_maps_follow_frame_choices_and_frame_geometry() {
-    use ecad_cadcraft::{device_list, references};
+    use crate::common::{applied, devices_touched};
+    use ecad_cadcraft::references;
     use ecad_model::{ObjectRef, Op};
     let mut h = H::new(0x055B);
     let page = h.first_page();
@@ -431,7 +432,8 @@ fn the_update_maps_follow_frame_choices_and_frame_geometry() {
     let choice = |object| Op::SetProperty { object, key: "print.frame.style".into(), before: None, after: Some(id.clone()) };
     // The project's frame: every cable, every place.
     assert_eq!(references::cables_touched(&doc, &[choice(ObjectRef::Project)]), None);
-    assert!(device_list::devices_touched(&doc, &[choice(ObjectRef::Project)]).pages);
+    let ops = [choice(ObjectRef::Project)];
+    assert!(devices_touched(&doc, &applied(&doc, &ops), &ops).pages);
     // A page's frame or borrowed block: that page's cables and devices.
     let borrowed = {
         let before = doc.pages[&page].clone();
@@ -441,7 +443,8 @@ fn the_update_maps_follow_frame_choices_and_frame_geometry() {
     let frame = Op::SetProperty { object: ObjectRef::Page(page), key: "print.frame.style".into(), before: None, after: Some(id.clone()) };
     for (key, op) in [("print.frame.style", frame), ("title_block", borrowed)] {
         assert!(references::cables_touched(&doc, std::slice::from_ref(&op)).is_some_and(|s| s.contains(&c1)), "{key}");
-        assert!(device_list::devices_touched(&doc, &[op]).devices.contains(&coil), "{key}");
+        let ops = [op];
+        assert!(devices_touched(&doc, &applied(&doc, &ops), &ops).devices.contains(&coil), "{key}");
     }
     // A frame record: its sheet reaches its pages; its weight reaches nothing.
     let own = ecad_model::StyleRef::parse(&id).unwrap();

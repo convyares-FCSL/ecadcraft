@@ -11,6 +11,24 @@ use ecad_model::{DeviceId, Document, ItemKind, PageId, Pt, TerminalId, WireId};
 use serde_json::{Value, json};
 use std::path::PathBuf;
 
+/// `doc` with `ops` applied (they must apply).
+pub fn applied(doc: &Document, ops: &[ecad_model::Op]) -> Document {
+    let mut d = doc.clone();
+    for op in ops {
+        op.apply(&mut d).unwrap();
+    }
+    d
+}
+
+/// What `ops`, taking `before` to `after`, could change in the Devices list: the Devices feed's
+/// touch through the views' pipeline (design 064 §4.1).
+pub fn devices_touched(before: &Document, after: &Document, ops: &[ecad_model::Op]) -> ecad_cadcraft::device_list::DeviceTouch {
+    let metrics = std::sync::Arc::new(ecad_electrical::text_style::fonts::FixedWidth);
+    let mut views = ecad_electrical::derived::Views::new(ecad_electrical::derived::EngineInputs { metrics });
+    let pending = views.begin(before, ops);
+    views.finish(after, ops, pending).devices
+}
+
 pub struct H {
     pub s: Session,
     /// The project, reachable only through the handle's lock boundary.

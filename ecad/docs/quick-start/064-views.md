@@ -16,5 +16,10 @@ Progress (automated checks only, not owner-tried):
   (design 072 §12.3).
 - Step 3, first feed: the Pages tree feed (`TreeFeed`) decides when the Pages panel reads its list
   again. To try it: rename a page, move one into a folder, and undo; the Pages panel follows each
-  change. Changing only a page's display settings leaves it alone. The Devices and Properties
-  feeds follow once lane 072 B has moved device data into fields.
+  change. Changing only a page's display settings leaves it alone.
+- Step 3, second feed: the Devices feed (`DevicesFeed`) decides which rows of the Devices list
+  are read again. To try it: open the Devices tab, change a device's description, renumber the
+  page it is on, and move a page before it in the Pages list; its row (description, then its
+  `/page.column`) follows each change, and undo puts it back. Renaming another page or editing
+  a wire leaves the list alone. The Properties feed follows once lane 072 B has moved each
+  group's data into fields.

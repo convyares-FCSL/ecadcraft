@@ -1372,6 +1372,7 @@ version = "0.3.0-dev"
 dependencies = [
  "cadcraft-engine",
  "ecad-cadcraft",
+ "ecad-electrical",
  "ecad-file",
  "ecad-model",
  "ecad-store",
