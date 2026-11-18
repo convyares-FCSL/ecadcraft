@@ -7,10 +7,12 @@
 //! Pure data and rules: no egui, no project lock. The rules themselves are the commands'
 //! ([`symbol_cmds::problems`]), so the builder and the JSON form refuse in the same words.
 
+use ecad_model::units::Degrees;
+use ecad_model::units::Radians;
 use std::collections::BTreeMap;
 
 use ecad_cadcraft::symbol_cmds::{self, Content, POINT_GRID_MM};
-use ecad_model::{Document, Primitive, Pt, TerminalDef, TextHAlign, TextSlot, TextVAlign};
+use ecad_model::{Document, PointKey, Primitive, Pt, TerminalDef, TextHAlign, TextSlot, TextVAlign};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -323,8 +325,11 @@ impl Draft {
     }
 
     /// The key the next point gets: the lowest number not used yet.
-    pub fn next_point_key(&self) -> String {
-        (1..).map(|n: u32| n.to_string()).find(|k| !self.shape.points.iter().any(|p| p.key == *k)).unwrap_or_default()
+    pub fn next_point_key(&self) -> PointKey {
+        (1..)
+            .map(|n: u32| PointKey::Def(n.to_string()))
+            .find(|k| !self.shape.points.iter().any(|p| p.key == *k))
+            .unwrap_or_else(|| PointKey::def("1"))
     }
 
     /// Why a point cannot go at `at` (design 048 §3.3 step 3), if it cannot; `except` is a point
@@ -387,7 +392,7 @@ impl Draft {
             return Err(format!("The symbol has too many text slots ({} at most).", symbol_cmds::MAX_SLOTS));
         }
         self.step();
-        self.shape.slots.push(TextSlot { text: text.to_string(), at, h: TextHAlign::Left, v: TextVAlign::Baseline, rotation: 0.0 });
+        self.shape.slots.push(TextSlot { text: text.to_string(), at, h: TextHAlign::Left, v: TextVAlign::Baseline, rotation: Radians(0.0) });
         Ok(self.shape.slots.len() - 1)
     }
 
@@ -399,8 +404,8 @@ impl Draft {
         self.step();
         if let Some(s) = self.shape.slots.get_mut(i) {
             let quarter = std::f64::consts::FRAC_PI_2;
-            let r = s.rotation + quarter;
-            s.rotation = if r >= 2.0 * std::f64::consts::PI - 1e-9 { 0.0 } else { r };
+            let r = s.rotation.0 + quarter;
+            s.rotation = Radians(if r >= 2.0 * std::f64::consts::PI - 1e-9 { 0.0 } else { r });
         }
     }
 
@@ -609,8 +614,12 @@ impl Draft {
     pub fn params(&self) -> Value {
         let graphics: Vec<ecad_file::records::Primitive> = self.shape.graphics.iter().map(ecad_file::records::Primitive::from).collect();
         let points: Vec<Value> = self.shape.points.iter().map(|p| json!({"key": p.key, "label": p.label, "at": [p.at.x, p.at.y]})).collect();
-        let slots: Vec<Value> =
-            self.shape.slots.iter().map(|s| json!({"text": s.text, "at": [s.at.x, s.at.y], "h": s.h, "v": s.v, "rotation": s.rotation})).collect();
+        let slots: Vec<Value> = self
+            .shape
+            .slots
+            .iter()
+            .map(|s| json!({"text": s.text, "at": [s.at.x, s.at.y], "h": s.h, "v": s.v, "rotation": Degrees::from(s.rotation).0}))
+            .collect();
         json!({
             "name": self.name.trim(), "key": self.key.trim(), "graphics": graphics, "points": points, "slots": slots,
             "defaults": self.defaults(),
@@ -742,7 +751,7 @@ mod tests {
         let text = Primitive::Text {
             at: Pt::new(12.0, 0.0),
             height: 2.5,
-            rotation: 0.0,
+            rotation: Radians(0.0),
             value: "-LS1".into(),
             halign: TextHAlign::Left,
             valign: TextVAlign::Baseline,

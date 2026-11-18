@@ -6,7 +6,6 @@
 use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::book::LOCATION_KEY;
 use ecad_model::{CableId, DeviceId, Document, End, ObjectRef, Op, PageId, Pt, Subject, TerminalId, WireId};
 
 use super::*;
@@ -641,9 +640,9 @@ impl Outputs {
         let props = &comp.properties;
         // Brief 052: stored values are entry keys of the project's list; shown by their codes.
         let shown = |k: Option<String>| k.map(|k| (crate::designations::code_of(doc, crate::designations::Aspect::Location, &k), k));
-        let location = match shown(clean(props.get(LOCATION_KEY))) {
+        let location = match shown(crate::designations::device_key(comp, crate::designations::Aspect::Location)) {
             Some((value, key)) => Located { value, source: Source::Device, key: Some(key) },
-            None => match shown(clean(doc.properties.get(LOCATION_KEY))) {
+            None => match shown(crate::designations::default_key(&doc.project, crate::designations::Aspect::Location)) {
                 Some((value, key)) => Located { value, source: Source::Project, key: Some(key) },
                 None => Located { value: None, source: Source::None, key: None },
             },
@@ -665,10 +664,10 @@ impl Outputs {
             item: true,
             tag: String::new(),
             location: location.value,
-            description: clean(props.get("description")),
-            maker: clean(props.get("maker")),
-            part_number: clean(props.get("part_number")),
-            article_number: clean(props.get(bom::ARTICLE_KEY)),
+            description: clean(comp.description.as_ref().map(|t| t.as_str())),
+            maker: clean(comp.manufacturer.as_ref().map(|t| t.as_str())),
+            part_number: clean(comp.part_number.as_ref().map(|t| t.as_str())),
+            article_number: clean(comp.article_number.as_ref().map(|t| t.as_str())),
             qty,
             metres,
             kit: None,
@@ -707,16 +706,15 @@ impl Outputs {
             return;
         }
         let Some(comp) = doc.devices.get(&c) else { return };
-        let props = &comp.properties;
         let location = locations::resolve_with(doc, c, cache);
         let goto = crate::reps::goto(doc, c, None).and_then(|rid| doc.representations.get(&rid).map(|r| (rid, r.page, locations::anchor(doc, r))));
         let row = DeviceRow {
             component: c,
-            tag: props.get(ecad_model::tag::TAG_KEY).cloned().unwrap_or_default(),
-            description: clean(props.get("description")),
-            maker: clean(props.get("maker")),
-            part_number: clean(props.get("part_number")),
-            article_number: clean(props.get(bom::ARTICLE_KEY)),
+            tag: comp.tag().unwrap_or_default().to_string(),
+            description: clean(comp.description.as_ref().map(|t| t.as_str())),
+            maker: clean(comp.manufacturer.as_ref().map(|t| t.as_str())),
+            part_number: clean(comp.part_number.as_ref().map(|t| t.as_str())),
+            article_number: clean(comp.article_number.as_ref().map(|t| t.as_str())),
             location,
             function: locations::resolve_function(doc, c),
             goto,
@@ -836,13 +834,14 @@ impl Outputs {
         let colour_own = look.colour.as_ref().is_some_and(|v| v.1 == crate::defaults::Source::Object);
         let cross_section_own = look.cross_section.as_ref().is_some_and(|v| v.1 == crate::defaults::Source::Object);
         let category = look.category.clone().map(|id| {
-            let n = crate::styles::name(doc, "wire", &id);
+            let n = crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, &id);
             (id, n)
         });
         let part = look.category.as_ref().and_then(|id| {
-            let f = |k: &str| crate::styles::field_of(doc, "wire", id, k, None).and_then(|r| crate::styles::wire::filled(&r));
+            let f =
+                |k: &str| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, id, k, None).and_then(|r| crate::styles::wire::filled(&r));
             let pn = f("part_number")?;
-            let allowance = crate::styles::field_of(doc, "wire", id, "allowance", None).map_or(0.0, |r| r.number());
+            let allowance = crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, id, "allowance", None).map_or(0.0, |r| r.number());
             Some((pn, f("maker"), f("description"), allowance))
         });
         let cable = doc

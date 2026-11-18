@@ -1044,11 +1044,11 @@ impl Strips {
         let mut changed = false;
         for c in which {
             let Some(old) = self.strips.get(c) else { continue };
-            let Some(props) = doc.devices.get(c).map(|x| &x.properties) else { continue };
-            let mut acc = crate::accessories::strip_acc(doc, props, &old.rows);
+            let Some(strip) = doc.devices.get(c) else { continue };
+            let mut acc = crate::accessories::strip_acc(doc, &strip.properties, &old.rows);
             // Brief 036: a project part or description default reaches the type rows too.
             let mut d = old.clone();
-            acc.inherits.extend(d.refresh_types(doc, props));
+            acc.inherits.extend(d.refresh_types(doc, strip));
             // The level label keys a strip inherits are not this pass's (they rebuild the strip).
             acc.inherits.extend(old.acc.inherits.iter().filter(|k| crate::defaults::terminals::is_label_key(k)).cloned());
             if acc == old.acc && d.types == old.types {
@@ -1219,14 +1219,15 @@ fn far_cell(doc: &Document, o: &Outputs, w: WireId, far: End, cx: &PageCx) -> (O
     (cell.text(doc.settings.reference_style()), comp)
 }
 
-fn clean(v: Option<&String>) -> Option<String> {
-    v.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+fn clean(v: Option<impl AsRef<str>>) -> Option<String> {
+    v.map(|s| s.as_ref().trim().to_string()).filter(|s| !s.is_empty())
 }
 
 /// One strip's data on `doc`.
 fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripData {
     use crate::terminal_types as tt;
-    let props = doc.devices.get(&c).map(|x| x.properties.clone()).unwrap_or_default();
+    let strip = doc.devices.get(&c).cloned().unwrap_or_default();
+    let props = &strip.properties;
     let device = o.device(c);
     let location = match device {
         Some(d) => d.location.value.clone(),
@@ -1234,14 +1235,14 @@ fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripDat
     };
     let mut d = StripData {
         component: c,
-        tag: props.get(ecad_model::tag::TAG_KEY).cloned().unwrap_or_else(|| "?".into()),
+        tag: doc.devices.get(&c).and_then(|d| d.tag()).unwrap_or("?").to_string(),
         location: location.clone(),
         offer: props.get(OFFER_KEY).and_then(|v| parse_offer(v).ok()),
-        part_number: clean(props.get("part_number")),
-        maker: clean(props.get("maker")),
+        part_number: clean(strip.part_number.as_ref()),
+        maker: clean(strip.manufacturer.as_ref()),
         part_number_pe: clean(props.get(PE_PART_KEY)),
         maker_pe: clean(props.get(PE_MAKER_KEY)),
-        description: clean(props.get("description")),
+        description: clean(strip.description.as_ref()),
         drawn: 0,
         drawn_pe: 0,
         spare: 0,
@@ -1421,7 +1422,11 @@ fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripDat
                 row.internal_bridge = ty
                     .bridges
                     .iter()
-                    .position(|g| g.iter().any(|key| ecad_model::links::level_of_key(Some(key)).is_some_and(|(m, _)| m == n)))
+                    .position(|g| {
+                        g.iter()
+                            .filter_map(|key| key.parse::<ecad_model::PointKey>().ok())
+                            .any(|key| ecad_model::links::level_of_key(Some(&key)).is_some_and(|(m, _)| m == n))
+                    })
                     .map(|i| i + 1);
                 row.place = page.zip(at).and_then(|(p, a)| {
                     let grid = grids.entry(p).or_insert_with(|| ecad_model::sheet::Grid::of(doc, p));
@@ -1533,7 +1538,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripDat
         if dn + sp == 0 {
             continue;
         }
-        d.types.push(type_parts(doc, &props, ty, dn, sp, &mut inherits));
+        d.types.push(type_parts(doc, &strip, ty, dn, sp, &mut inherits));
     }
     // Each row's position index.
     let mut n = 0usize;
@@ -1546,7 +1551,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripDat
     // Links naming levels their positions lack (`level-missing`, §8).
     let count_of: BTreeMap<&str, u32> = positions.iter().map(|p| (p.label.as_str(), p.ty.count())).collect();
     let order: Vec<String> = positions.iter().map(|p| p.label.clone()).collect();
-    for (n, p) in ecad_model::links::of(&props) {
+    for (n, p) in ecad_model::links::of(props) {
         let mut items = Vec::new();
         for item in &p.0 {
             let Some(sp) = item.span() else { continue };
@@ -1569,7 +1574,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripDat
         }
     }
     d.rows = rows;
-    d.acc = crate::accessories::strip_acc(doc, &props, &d.rows);
+    d.acc = crate::accessories::strip_acc(doc, props, &d.rows);
     d.acc.inherits.extend(inherits);
     d.finish();
     d
@@ -1581,27 +1586,28 @@ pub fn type_key(t: &crate::terminal_types::TermType, field: &str) -> String {
     if t.code == "ft" { field.to_string() } else { format!("{field}.{}", t.code) }
 }
 
-/// One type's BOM part data on a strip with `props`: the strip's value, else the project's
-/// `strip_<code>_<field>` (recorded in `inherits`), else the registry's description.
+/// One type's BOM part data on `strip`: the strip's value, else the project's
+/// `strip_<code>_<field>` (recorded in `inherits`), else the registry's description. A
+/// feed-through's part is the strip's own fields ([`type_key`] is then the field's key).
 fn type_parts(
-    doc: &Document, props: &ecad_model::Properties, ty: &'static crate::terminal_types::TermType, drawn: usize, spare: usize,
+    doc: &Document, strip: &ecad_model::Device, ty: &'static crate::terminal_types::TermType, drawn: usize, spare: usize,
     inherits: &mut BTreeSet<String>,
 ) -> TypeCount {
     let mut get = |field: &str| -> Option<String> {
-        if let Some(v) = clean(props.get(&type_key(ty, field))) {
+        if let Some(v) = clean(strip.get(&type_key(ty, field))) {
             return Some(v);
         }
         let pk = format!("strip_{}_{field}", ty.code);
         inherits.insert(pk.clone());
         clean(doc.properties.get(&pk))
     };
-    let own_part = clean(props.get(&type_key(ty, "part_number"))).is_some();
+    let own_part = clean(strip.get(&type_key(ty, "part_number"))).is_some();
     let part_number = get("part_number");
     let maker = get("maker");
     // Brief 047 (design 047 §5): a strip's own part number never shows the project's article number.
     let article_number =
-        if own_part || part_number.is_none() { clean(props.get(&type_key(ty, crate::bom::ARTICLE_KEY))) } else { get(crate::bom::ARTICLE_KEY) };
-    let own_description = get("description").or_else(|| if ty.code == "ft" { clean(props.get("description")) } else { None });
+        if own_part || part_number.is_none() { clean(strip.get(&type_key(ty, crate::bom::ARTICLE_KEY))) } else { get(crate::bom::ARTICLE_KEY) };
+    let own_description = get("description").or_else(|| if ty.code == "ft" { clean(strip.description.as_ref()) } else { None });
     let description = own_description.unwrap_or_else(|| {
         let e = crate::defaults::terminals::description_entry(ty.code);
         if let Some(e) = e {
@@ -1620,10 +1626,10 @@ impl StripData {
     }
 
     /// Recompute its part data per type (a project default changed, §11.1).
-    fn refresh_types(&mut self, doc: &Document, props: &ecad_model::Properties) -> BTreeSet<String> {
+    fn refresh_types(&mut self, doc: &Document, strip: &ecad_model::Device) -> BTreeSet<String> {
         let mut inherits = BTreeSet::new();
         for t in &mut self.types {
-            *t = type_parts(doc, props, t.ty, t.drawn, t.spare, &mut inherits);
+            *t = type_parts(doc, strip, t.ty, t.drawn, t.spare, &mut inherits);
         }
         inherits
     }

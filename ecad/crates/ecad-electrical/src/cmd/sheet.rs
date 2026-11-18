@@ -388,7 +388,7 @@ pub fn new_page_type(
     let page_type = crate::page_types::newpage_type(doc, ty, kind.generated)?;
     // A page with no kind is titled after its type (design 054 §4.2).
     let title = match (&page_type, kind.generated) {
-        (Some(t), None) => Some(crate::styles::name(doc, crate::styles::page::WORD, t)),
+        (Some(t), None) => Some(crate::styles::name(doc, ecad_model::StyleCatalogue::Page, t)),
         _ => None,
     };
     Ok((page_type, title))
@@ -540,16 +540,14 @@ pub fn page_props(
             Some(t) => Some(pending.store(doc, ids, a, t, &mut ops)?),
             None => None,
         };
-        let old = old.display.get(key).cloned();
+        let old = designations::page_key(&old, a);
         if let Some(k) = stored.as_ref().filter(|k| old.as_ref() != Some(*k)) {
             let code = code_with(doc, &pending, a, k);
             let spots = proposals::spots_on_page(doc, a, page);
-            absorb(&mut proposed, proposals::plan_change(doc, a, &spots, old.as_deref(), k, &code, &change.mode));
+            let x = proposals::plan_change(doc, &proposed.ops, a, &spots, old.as_deref(), k, &code, &change.mode);
+            absorb(&mut proposed, x);
         }
-        match stored {
-            Some(k) => now.display.insert(key.to_string(), k),
-            None => now.display.remove(key),
-        };
+        now = designations::with_page_key(&now, a, stored.as_deref());
     }
     if let Some(v) = &change.sheet {
         let v = v.as_ref().map(|t| t.trim()).filter(|t| !t.is_empty() && !t.eq_ignore_ascii_case("project"));
@@ -576,7 +574,7 @@ pub fn page_props(
 /// A key written by another command, a reserved key, or not 1 to 40 characters a-z, 0-9 or _.
 pub fn check_free_key(doc: &Document, key: &str) -> Result<(), CmdError> {
     // Brief 052: the project's list of functions and locations changes through its commands.
-    if designations::is_list_property(key) {
+    if ecad_model::keys::is_reserved_on(ecad_model::keys::Holder::Project, key) && key.starts_with("designation.") {
         return Err(CmdError::refused(
             "Functions and locations are changed with `designationadd`, `designationedit`, `designationmerge` and `designationremove`.",
         ));
@@ -664,7 +662,7 @@ pub struct ProjectChange {
     pub revision_columns: Option<Option<String>>,
     pub revision_pending: Option<String>,
     pub tag_dash: Option<bool>,
-    pub tag_case: Option<String>,
+    pub tag_case: Option<Case>,
     /// What a new function or location proposes for the device symbols.
     pub mode: Mode,
 }
@@ -707,6 +705,14 @@ pub fn tag_settings(
     Ok(())
 }
 
+/// `projectprops`' `tag_case` word: `upper` or `typed`.
+///
+/// # Errors
+/// Any other word.
+pub fn tag_case(word: &str) -> Result<Case, CmdError> {
+    <Case as ecad_model::Word>::parse(word).ok_or(CmdError::refused("`tag_case` must be \"upper\" or \"typed\""))
+}
+
 /// The ops of `tag_dash` and `tag_case` in `projectprops` (design 033 §8.4): the settings, and
 /// one `SetProperty(tag)` per component or cable tag whose stored text changes (a new dash, or
 /// back to upper case). The echo in words. Tags are identities by `tag::key`, which ignores the
@@ -718,23 +724,15 @@ pub fn tag_settings(
 /// # Errors
 /// A bad case word, or (never expected: the key ignores what changes) two different tags
 /// rewritten to the same text.
-pub fn tag_style_ops(doc: &Document, dash: Option<bool>, case: Option<&str>) -> Result<(Vec<Op>, Option<String>), CmdError> {
-    let case = match case {
-        Some(w) => Some(match w.trim() {
-            "upper" => Case::Upper,
-            "typed" => Case::Typed,
-            _ => return Err(CmdError::refused("`tag_case` must be \"upper\" or \"typed\"")),
-        }),
-        None => None,
-    };
+pub fn tag_style_ops(doc: &Document, dash: Option<bool>, case: Option<Case>) -> Result<(Vec<Op>, Option<String>), CmdError> {
     let before = crate::defaults::print::tag_style(doc);
     let after = tag::Style { dash: dash.unwrap_or(before.dash), case: case.unwrap_or(before.case), ..before };
     let mut ops = Vec::new();
     if let Some(d) = dash {
-        ops.extend(set(ObjectRef::Project, Some(&doc.properties), DASH_KEY, Some(if d { "yes" } else { "no" }.to_string())));
+        ops.extend(set(ObjectRef::Project, Some(&doc.properties), DASH_KEY, Some(ecad_model::words::flag_word(d).to_string())));
     }
     if let Some(c) = case {
-        ops.extend(set(ObjectRef::Project, Some(&doc.properties), CASE_KEY, Some(if c == Case::Typed { "typed" } else { "upper" }.to_string())));
+        ops.extend(set(ObjectRef::Project, Some(&doc.properties), CASE_KEY, Some(ecad_model::Word::word(c).to_string())));
     }
     let rewrite = after.dash != before.dash || (after.case == Case::Upper && before.case == Case::Typed);
     let mut n = 0usize;
@@ -743,8 +741,8 @@ pub fn tag_style_ops(doc: &Document, dash: Option<bool>, case: Option<&str>) -> 
         let objects = doc
             .devices
             .iter()
-            .filter_map(|(id, c)| c.properties.get(TAG_KEY).map(|t| (ObjectRef::Device(*id), t)))
-            .chain(doc.cables.iter().filter_map(|(id, c)| c.properties.get(TAG_KEY).map(|t| (ObjectRef::Cable(*id), t))));
+            .filter_map(|(id, c)| c.tag().map(|t| (ObjectRef::Device(*id), t)))
+            .chain(doc.cables.iter().filter_map(|(id, c)| c.properties.get(TAG_KEY).map(|t| (ObjectRef::Cable(*id), t.as_str()))));
         for (object, old) in objects {
             let new = tag::restyle(old, after);
             if let Some(k) = seen.get(&new)
@@ -753,8 +751,15 @@ pub fn tag_style_ops(doc: &Document, dash: Option<bool>, case: Option<&str>) -> 
                 return Err(CmdError::refused(format!("Changing the tag style would make two tags {new}; nothing was changed.")));
             }
             seen.insert(new.clone(), tag::key(old));
-            if new != *old {
-                ops.push(Op::SetProperty { object, key: TAG_KEY.into(), before: Some(old.clone()), after: Some(new) });
+            if new != old {
+                match object {
+                    ObjectRef::Device(c) => {
+                        if let Some(d) = doc.devices.get(&c) {
+                            ops.push(Op::ModifyDevice { id: c, before: d.clone(), after: d.with_tag(Some(&new)) });
+                        }
+                    }
+                    _ => ops.push(Op::SetProperty { object, key: TAG_KEY.into(), before: Some(old.to_string()), after: Some(new) }),
+                }
                 n += 1;
             }
         }
@@ -791,14 +796,24 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
             (Some(_), None) => None,
             (None, _) => value(doc, k, v.as_deref())?,
         };
-        if let (Some(a), Some(key)) = (aspect, after.as_ref())
-            && doc.properties.get(*k) != Some(key)
-        {
+        let Some(a) = aspect else {
+            ops.extend(set(ObjectRef::Project, Some(&doc.properties), k, after));
+            continue;
+        };
+        // Design 072 §5.3: the project's own function and location are fields of the project.
+        let old = designations::default_key(&doc.project, a);
+        if let Some(key) = after.as_ref().filter(|key| old.as_ref() != Some(*key)) {
             let code = code_with(doc, &pending, a, key);
             let spots = proposals::spots_of_project(doc, a);
-            absorb(&mut proposed, proposals::plan_change(doc, a, &spots, doc.properties.get(*k).map(String::as_str), key, &code, &change.mode));
+            let x = proposals::plan_change(doc, &proposed.ops, a, &spots, old.as_deref(), key, &code, &change.mode);
+            absorb(&mut proposed, x);
         }
-        ops.extend(set(ObjectRef::Project, Some(&doc.properties), k, after));
+        let before = pending.project(doc).clone();
+        let now = designations::with_default_key(&before, a, after.as_deref());
+        if now != before {
+            ops.push(Op::ModifyProject { before, after: now.clone() });
+            pending.set_project(now);
+        }
     }
     ops.extend(proposed.ops.iter().cloned());
     for (k, v) in &change.props {
@@ -873,7 +888,7 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
         ops.extend(set(ObjectRef::Project, Some(&doc.properties), revisions::PENDING_KEY, Some(w.to_string())));
     }
     // Brief 033 (design 033 §8.4): the tag style, and its rewrite of the stored tags.
-    let (tag_ops, message) = tag_style_ops(doc, change.tag_dash, change.tag_case.as_deref())?;
+    let (tag_ops, message) = tag_style_ops(doc, change.tag_dash, change.tag_case)?;
     ops.extend(tag_ops);
     Ok(PropsPlan { ops, proposed, message })
 }

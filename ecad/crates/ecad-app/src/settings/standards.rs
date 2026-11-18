@@ -59,13 +59,13 @@ pub const HEADER_CONFIRM: &str = "ecad.standards.header.confirm";
 /// catalogue word, the tab's accessible name and the table's id. 042's
 /// `ecad.standards.text_styles` names the text styles' tab until the phase-end tidy-up.
 #[rustfmt::skip]
-pub const CATALOGUES: &[(&str, &str, &str)] = &[
-    ("text", CATALOGUE_STYLES, "standards.text"),
-    ("location", "ecad.standards.catalogue.location", "standards.location"),
-    ("frame", "ecad.standards.catalogue.frame", "standards.frame"),
-    ("wire", "ecad.standards.catalogue.wire", "standards.wire"),
-    ("cable", "ecad.standards.catalogue.cable", "standards.cable"),
-    ("ratingtable", "ecad.standards.catalogue.ratingtable", "standards.ratingtable"),
+pub const CATALOGUES: &[(ecad_model::StyleCatalogue, &str, &str)] = &[
+    (ecad_model::StyleCatalogue::Text, CATALOGUE_STYLES, "standards.text"),
+    (ecad_model::StyleCatalogue::Location, "ecad.standards.catalogue.location", "standards.location"),
+    (ecad_model::StyleCatalogue::Frame, "ecad.standards.catalogue.frame", "standards.frame"),
+    (ecad_model::StyleCatalogue::Wire, "ecad.standards.catalogue.wire", "standards.wire"),
+    (ecad_model::StyleCatalogue::Cable, "ecad.standards.catalogue.cable", "standards.cable"),
+    (ecad_model::StyleCatalogue::RatingTable, "ecad.standards.catalogue.ratingtable", "standards.ratingtable"),
 ];
 
 /// What the standard header is doing (design 050 §7.1).
@@ -120,7 +120,7 @@ impl Default for StandardsView {
         table.empty = "No project is open.";
         let cats = CATALOGUES
             .iter()
-            .filter_map(|(w, _, id)| ecad_cadcraft::styles::catalogue(w).map(|c| (c, *id)))
+            .map(|(w, _, id)| (ecad_cadcraft::styles::catalogue(*w), *id))
             .map(|(c, id)| {
                 let mut tb = Table::new(id, c.plural);
                 tb.empty = "No project is open.";
@@ -311,9 +311,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
     ui.painter().vline(list.right() - 0.5, list.y_range(), line);
     let mut tabs: Vec<(String, &str)> = vec![("All defaults".into(), CATALOGUE_DEFAULTS)];
     for (w, name, _) in CATALOGUES {
-        if let Some(c) = ecad_cadcraft::styles::catalogue(w) {
-            tabs.push((c.plural.to_string(), name));
-        }
+        tabs.push((ecad_cadcraft::styles::catalogue(*w).plural.to_string(), name));
     }
     let defaults_n = ecad_cadcraft::defaults::all().count();
     let mut choose = None;
@@ -688,7 +686,14 @@ fn style_detail_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
     let Some(i) = catalogue.checked_sub(1) else { return };
     // Brief 057 (design 057 §5.3): cable types and rating tables have no built-in style to start
     // from; rating tables show their rows, Import CSV… and Export CSV.
-    if let Some(word) = t.settings.standards.cats.get(i).map(|c| c.0.catalogue.word).filter(|w| matches!(*w, "cable" | "ratingtable")) {
+    if let Some(word) = t
+        .settings
+        .standards
+        .cats
+        .get(i)
+        .map(|c| c.0.catalogue.catalogue)
+        .filter(|w| matches!(w, ecad_model::StyleCatalogue::Cable | ecad_model::StyleCatalogue::RatingTable))
+    {
         let focus =
             t.settings.standards.style_focus.and_then(|row| t.settings.standards.cats.get(i).and_then(|c| c.0.row(row)).map(|r| r.id.clone()));
         if crate::lists::rating::catalogue_ui(t, ui, writable, word, focus) {
@@ -717,7 +722,7 @@ fn style_detail_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
         tb.update(src, Changed::Keys(vec![row]));
     }
     // Brief 055 (design 055 §0.3): a frame's block is edited in Library ▸ Title blocks.
-    if cat.word == "frame" && ui.button("Edit in Library").widget_info_named(EDIT_IN_LIBRARY).clicked() {
+    if cat.catalogue == ecad_model::StyleCatalogue::Frame && ui.button("Edit in Library").widget_info_named(EDIT_IN_LIBRARY).clicked() {
         t.open_title_blocks(None);
         t.tb_refresh();
         t.tb_open(&id.text());

@@ -202,7 +202,11 @@ impl App {
                     .filter_map(|(n, (term, at))| {
                         let tm = doc.terminals.get(term)?;
                         Some(ecad_model::TerminalDef {
-                            key: tm.key.clone().or_else(|| tm.label.clone()).unwrap_or_else(|| (n + 1).to_string()),
+                            key: tm
+                                .key
+                                .clone()
+                                .or_else(|| tm.label.clone().map(ecad_model::PointKey::Def))
+                                .unwrap_or_else(|| ecad_model::PointKey::Def((n + 1).to_string())),
                             label: tm.label.clone(),
                             at: ecad_model::Pt::new(at.x - o.x, at.y - o.y),
                         })

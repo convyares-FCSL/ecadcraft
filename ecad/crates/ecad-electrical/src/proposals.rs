@@ -126,12 +126,13 @@ fn context(doc: &Document, a: Aspect, s: &Spot, extra: &[LocBox], cache: &mut lo
 
 /// Plan the proposals for the devices at `spots` (each device once; its first spot decides), with
 /// `modes` per aspect (function, location) and `extra` planned boxes. `stored` overrides a
-/// device's stored key per aspect (a device created in the same ops has none; `None` reads `doc`).
+/// device's stored key per aspect. `base` are the caller's planned ops the proposal's follow (a
+/// device created there is read from them).
 ///
 /// # Errors
 /// A typed code that is not valid.
 pub fn plan(
-    doc: &Document, ids: &mut IdAllocator, spots: &[Spot], modes: &[Mode; 2], extra: &[LocBox], pending: &mut Pending,
+    doc: &Document, base: &[Op], ids: &mut IdAllocator, spots: &[Spot], modes: &[Mode; 2], extra: &[LocBox], pending: &mut Pending,
 ) -> Result<Planned, CmdError> {
     let mut out = Planned::default();
     let mut cache = locations::BoxCache::default();
@@ -142,7 +143,7 @@ pub fn plan(
         }
         for (i, a) in Aspect::ALL.into_iter().enumerate() {
             let mode = modes.get(i).cloned().unwrap_or_default();
-            let stored = doc.devices.get(&s.device).and_then(|x| x.properties.get(a.property())).cloned();
+            let stored = crate::devices::planned_device(doc, &[base, &out.ops].concat(), s.device).and_then(|x| designations::device_key(&x, a));
             let (key, code) = match &mode {
                 Mode::Keep => continue,
                 Mode::Value(t) => {
@@ -174,7 +175,11 @@ pub fn plan(
                 }
             }
             if set {
-                out.ops.push(Op::SetProperty { object: ObjectRef::Device(s.device), key: a.property().into(), before: stored, after: Some(key) });
+                // A typed code is set by hand (fixed); a context's is not (design 072 §6.3).
+                let fixed = matches!(mode, Mode::Value(_));
+                crate::devices::edit_planned_on(doc, base, &mut out.ops, s.device, |d| {
+                    *d = designations::with_device_key(d, a, Some(&key), fixed);
+                });
                 out.set.push((s.device, a, code));
             }
         }
@@ -195,7 +200,10 @@ fn all_in(doc: &Document, a: Aspect, c: DeviceId, key: &str, extra: &[LocBox], c
 /// or the project's value changed; design 052 §5.6): an unset device takes `new_key`; a device at
 /// `old_key` is a conflict (moved with [`Mode::Move`]); a device with any other value is not
 /// listed. [`Mode::Keep`] proposes nothing.
-pub fn plan_change(doc: &Document, a: Aspect, candidates: &[Spot], old_key: Option<&str>, new_key: &str, new_code: &str, mode: &Mode) -> Planned {
+/// `base` are the caller's planned ops these follow.
+pub fn plan_change(
+    doc: &Document, base: &[Op], a: Aspect, candidates: &[Spot], old_key: Option<&str>, new_key: &str, new_code: &str, mode: &Mode,
+) -> Planned {
     let mut out = Planned::default();
     if *mode == Mode::Keep {
         return out;
@@ -205,7 +213,7 @@ pub fn plan_change(doc: &Document, a: Aspect, candidates: &[Spot], old_key: Opti
         if !seen.insert(s.device) {
             continue;
         }
-        let stored = doc.devices.get(&s.device).and_then(|x| x.properties.get(a.property())).cloned();
+        let stored = crate::devices::planned_device(doc, base, s.device).and_then(|x| designations::device_key(&x, a));
         let set = match stored.as_deref() {
             None => true,
             Some(k) if k == new_key => false,
@@ -227,11 +235,8 @@ pub fn plan_change(doc: &Document, a: Aspect, candidates: &[Spot], old_key: Opti
             Some(_) => false,
         };
         if set {
-            out.ops.push(Op::SetProperty {
-                object: ObjectRef::Device(s.device),
-                key: a.property().into(),
-                before: stored,
-                after: Some(new_key.to_string()),
+            crate::devices::edit_planned_on(doc, base, &mut out.ops, s.device, |d| {
+                *d = designations::with_device_key(d, a, Some(new_key), false);
             });
             out.set.push((s.device, a, new_code.to_string()));
         }
@@ -258,7 +263,7 @@ pub fn spots_on_page(doc: &Document, a: Aspect, page: PageId) -> Vec<Spot> {
 /// Every device symbol whose context for aspect `a` falls back to the project (no box carrying
 /// `a`, no page value): what the project's value proposes for. The one project-wide case.
 pub fn spots_of_project(doc: &Document, a: Aspect) -> Vec<Spot> {
-    doc.pages.iter().filter(|(_, pg)| !pg.display.contains_key(a.property())).flat_map(|(p, _)| spots_on_page(doc, a, *p)).collect()
+    doc.pages.iter().filter(|(_, pg)| crate::designations::page_key(pg, a).is_none()).flat_map(|(p, _)| spots_on_page(doc, a, *p)).collect()
 }
 
 /// A device symbol a CADCraft edit moves, with its contexts before the edit (function, location).
@@ -337,7 +342,7 @@ pub fn after_move(doc: &Document, ids: &mut IdAllocator, moved: &[Moved]) -> Res
         if let Some(x) = modes.get_mut(i) {
             *x = Mode::Propose;
         }
-        let p = plan(doc, ids, &spots, &modes, &[], &mut pending)?;
+        let p = plan(doc, &out.ops, ids, &spots, &modes, &[], &mut pending)?;
         out.ops.extend(p.ops);
         out.set.extend(p.set);
         out.conflicts.extend(p.conflicts);
@@ -509,7 +514,8 @@ pub fn still_valid(doc: &Document, conflicts: &[Conflict]) -> Vec<Conflict> {
         .iter()
         .filter(|c| {
             let Some(comp) = doc.devices.get(&c.component) else { return false };
-            designations::code_of(doc, c.aspect, &c.to_key).is_some() && comp.properties.get(c.aspect.property()) != Some(&c.to_key)
+            designations::code_of(doc, c.aspect, &c.to_key).is_some()
+                && designations::device_key(comp, c.aspect).as_deref() != Some(c.to_key.as_str())
         })
         .cloned()
         .collect()
@@ -517,16 +523,9 @@ pub fn still_valid(doc: &Document, conflicts: &[Conflict]) -> Vec<Conflict> {
 
 /// The ops moving `conflicts` to their proposals (the answer **Move**).
 pub fn move_ops(doc: &Document, conflicts: &[Conflict]) -> Vec<Op> {
-    conflicts
-        .iter()
-        .filter_map(|c| {
-            let before = doc.devices.get(&c.component)?.properties.get(c.aspect.property()).cloned();
-            (before.as_deref() != Some(c.to_key.as_str())).then(|| Op::SetProperty {
-                object: ObjectRef::Device(c.component),
-                key: c.aspect.property().into(),
-                before,
-                after: Some(c.to_key.clone()),
-            })
-        })
-        .collect()
+    let mut ops = Vec::new();
+    for c in conflicts {
+        crate::devices::edit_planned(doc, &mut ops, c.component, |d| *d = designations::with_device_key(d, c.aspect, Some(&c.to_key), false));
+    }
+    ops
 }

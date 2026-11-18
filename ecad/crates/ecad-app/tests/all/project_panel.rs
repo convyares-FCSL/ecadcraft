@@ -836,7 +836,7 @@ fn devices_tab_edits_a_property_in_one_transaction() {
     assert_eq!(head(&mut h), before + 1, "one transaction");
     let (label, ops) = last_ops(&mut h);
     assert_eq!(label, "Set property");
-    assert!(matches!(ops.as_slice(), [Op::SetProperty { key, after: Some(v), .. }] if key == "description" && v == "Main contactor"), "{ops:?}");
+    assert!(matches!(ops.as_slice(), [Op::ModifyDevice { after, .. }] if after.get("description") == Some("Main contactor")), "{ops:?}");
     assert!(h.query_by_label("Device -K01: Main contactor").is_some(), "the list follows");
     assert!(h.state().cad.cmd.buffer.is_empty() && h.state().cad.session.running.is_none(), "Enter stayed in the field");
     ok(&mut h, "u");

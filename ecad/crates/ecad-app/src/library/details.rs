@@ -3,6 +3,7 @@
 //! its connection points and text slots as rows; what it still needs before it can be placed,
 //! with a button for each; Save, Save as new, Cancel.
 
+use ecad_model::units::Degrees;
 use ecad_ui::tokens::space;
 use eframe::egui::{self, Color32, RichText};
 
@@ -184,7 +185,7 @@ pub fn show(ui: &mut egui::Ui, b: &mut Builder, info: &Info) -> Vec<Act> {
         let name = format!("library.details.points.row.{}", p.key);
         let r = ui.horizontal(|ui| {
             let chosen = b.selected == Some(Picked::Point(i));
-            if ui.selectable_label(chosen, RichText::new(&p.key).monospace()).clicked() {
+            if ui.selectable_label(chosen, RichText::new(p.key.to_string()).monospace()).clicked() {
                 b.selected = Some(Picked::Point(i));
             }
             let mut label = p.label.clone().unwrap_or_default();
@@ -212,7 +213,7 @@ pub fn show(ui: &mut egui::Ui, b: &mut Builder, info: &Info) -> Vec<Act> {
             if ui.selectable_label(chosen, draft::slot_label(&sl.text)).clicked() {
                 b.selected = Some(Picked::Slot(i));
             }
-            let turn = if sl.rotation.abs() > 1e-9 { format!(", {}°", (sl.rotation.to_degrees()).round()) } else { String::new() };
+            let turn = if sl.rotation.0.abs() > 1e-9 { format!(", {}°", Degrees::from(sl.rotation).0.round()) } else { String::new() };
             ui.label(RichText::new(format!("{}, {}{turn}", draft::fmt_mm(sl.at.x), draft::fmt_mm(sl.at.y))).small().color(c32(s.text_3)));
             if ui.add(ecad_ui::prim::IconButton::new(ecad_ui::tokens::Icon::Delete, "Remove the slot")).clicked() {
                 delete = Some(Picked::Slot(i));

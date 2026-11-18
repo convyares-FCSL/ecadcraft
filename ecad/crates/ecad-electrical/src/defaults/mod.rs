@@ -89,7 +89,7 @@ pub enum Kind {
     Parsed { max_chars: usize, parse: fn(&str) -> bool },
     /// A style of this catalogue (brief 050a, design 050 §2.4): its ID, a built-in word or
     /// `#<32 hex>`. A stored ID naming no style of the catalogue counts as absent.
-    Style(&'static str),
+    Style(ecad_model::StyleCatalogue),
 }
 
 /// A value of an entry: its built-in, or a stored value that parsed.
@@ -566,7 +566,7 @@ pub fn users(doc: &Document, entry: &Entry) -> usize {
         return doc
             .devices
             .values()
-            .filter_map(|c| c.properties.get(ecad_model::tag::TAG_KEY))
+            .filter_map(|c| c.tag())
             .filter(|t| {
                 let t = t.trim_start_matches('-').to_ascii_uppercase();
                 t.strip_prefix(px.as_str()).is_some_and(|rest| rest.chars().next().is_some_and(|c| c.is_ascii_digit() || c == '?'))

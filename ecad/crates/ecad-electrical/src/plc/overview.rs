@@ -267,8 +267,8 @@ pub fn description(doc: &Document, card: &CardData) -> Option<String> {
     let builtin = crate::symbols::by_key(card.ty.body()).map(|s| s.name);
     doc.devices
         .get(&card.id)
-        .and_then(|x| x.properties.get("description"))
-        .map(|v| v.trim())
+        .and_then(|x| x.description.as_ref())
+        .map(|v| v.as_str())
         .filter(|v| !v.is_empty() && Some(*v) != builtin)
         .map(str::to_string)
 }
@@ -277,8 +277,7 @@ pub fn description(doc: &Document, card: &CardData) -> Option<String> {
 pub fn what_words(doc: &Document, card: &CardData) -> String {
     // The body's own name, which placing a card writes as its description, is not the user's.
     let builtin = crate::symbols::by_key(card.ty.body()).map(|s| s.name);
-    let desc =
-        doc.devices.get(&card.id).and_then(|x| x.properties.get("description")).map(|v| v.trim()).filter(|v| !v.is_empty() && Some(*v) != builtin);
+    let desc = doc.devices.get(&card.id).and_then(|x| x.description.as_ref()).map(|v| v.as_str()).filter(|v| !v.is_empty() && Some(*v) != builtin);
     match desc {
         Some(d) => d.to_string(),
         None if card.ty.has_channels() => format!("{} {}", card.ty.code(), card.channels),
@@ -400,8 +399,8 @@ pub fn rack_tiles(doc: &Document, plc: &Plc, rack: &RackData) -> Vec<Tile> {
         title: doc
             .devices
             .get(&rack.id)
-            .and_then(|x| x.properties.get("description"))
-            .map(|v| v.trim().to_string())
+            .and_then(|x| x.description.as_ref())
+            .map(|v| v.to_string())
             .filter(|v| !v.is_empty() && crate::symbols::by_key(rack.ty.body()).is_none_or(|s| s.name != v))
             .unwrap_or_else(|| type_name(rack.ty).to_string()),
     }];

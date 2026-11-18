@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use ecad_model::{Device, DeviceId, Document, IdAllocator, ObjectRef, Op, Properties};
+use ecad_model::{Device, DeviceId, Document, IdAllocator, ObjectRef, Op, Properties, TextField};
 
 use crate::bom::*;
 use crate::designations::{Aspect, Pending};
@@ -211,7 +211,7 @@ pub fn plan_bomitem(doc: &Document, ids: &mut IdAllocator, change: ItemChange) -
                 .filter(|c| is_item_component(c))
                 .ok_or_else(|| CmdError::refused(format!("{} is not an item.", item.hex())))?;
             if delete {
-                let words = item_words(doc, &comp.properties);
+                let words = item_words(doc, comp);
                 let ops = vec![Op::DeleteDevice { id: item, device: comp.clone() }];
                 return Ok(ItemPlan { ops, item, label: "Delete item", message: Some(format!("Deleted item {words}.")) });
             }
@@ -226,7 +226,9 @@ pub fn plan_bomitem(doc: &Document, ids: &mut IdAllocator, change: ItemChange) -
                 None => props.get(QTY_KEY).cloned(),
             };
             let mut ops = Vec::new();
+            let mut sets = Vec::new();
             let mut pending = Pending::default();
+            let mut typed = comp.clone();
             for key in ITEM_FIELDS {
                 let Some(v) = fields.get(key) else { continue };
                 let after = match (key, v.as_deref().map(str::trim).filter(|t| !t.is_empty())) {
@@ -234,11 +236,25 @@ pub fn plan_bomitem(doc: &Document, ids: &mut IdAllocator, change: ItemChange) -
                     ("location", Some(t)) => Some(pending.store(doc, ids, Aspect::Location, t, &mut ops)?),
                     _ => item_value(doc, key, v.as_deref(), metres, qty.as_deref())?,
                 };
+                if let Some(f) = TextField::of_key(key) {
+                    typed = super::props::b::with_text(&typed, f, after.as_deref())?;
+                    continue;
+                }
+                if key == "location" {
+                    // Design 072 §6.3: a typed location is a field, set by hand.
+                    typed = crate::designations::with_device_key(&typed, Aspect::Location, after.as_deref(), true);
+                    continue;
+                }
                 let before = props.get(key).cloned();
                 if before != after {
-                    ops.push(Op::SetProperty { object: ObjectRef::Device(item), key: key.to_string(), before, after });
+                    sets.push(Op::SetProperty { object: ObjectRef::Device(item), key: key.to_string(), before, after });
                 }
             }
+            // The fields first: a `ModifyDevice` records the whole device as it is before.
+            if typed != *comp {
+                ops.push(Op::ModifyDevice { id: item, before: comp.clone(), after: typed });
+            }
+            ops.extend(sets);
             let message = (!ops.is_empty()).then(|| "Edited the item.".to_string());
             Ok(ItemPlan { ops, item, label: "Edit item", message })
         }
@@ -275,12 +291,16 @@ pub fn plan_bomitem(doc: &Document, ids: &mut IdAllocator, change: ItemChange) -
                     props.insert(key.to_string(), x);
                 }
             }
-            let words = item_words(doc, &props);
+            let mut device = Device::default();
+            for (k, v) in props {
+                device.set_value(&k, Some(&v)).map_err(|e| match TextField::of_key(&k) {
+                    Some(f) => super::props::b::text_refusal(f, e),
+                    None => CmdError::refused(e.to_string()),
+                })?;
+            }
+            let words = item_words(doc, &device);
             let item: DeviceId = ids.fresh();
-            ops.push(Op::CreateDevice {
-                id: item,
-                device: Device { properties: props, definition: None, device_type: ecad_model::DeviceType::General },
-            });
+            ops.push(Op::CreateDevice { id: item, device });
             Ok(ItemPlan { ops, item, label: "Add item", message: Some(format!("Added item {words}.")) })
         }
     }
@@ -319,6 +339,17 @@ pub fn plan_article(doc: &Document, part_number: &str, maker: Option<&str>, arti
     let mut ops = Vec::new();
     for (object, key, what) in &targets {
         *counts.entry(what).or_default() += 1;
+        // A device's main article number is its field (lane 072 B): one `ModifyDevice`, first.
+        if let ObjectRef::Device(c) = object
+            && let Some(f) = TextField::of_key(key)
+            && let Some(d) = doc.devices.get(c)
+        {
+            let typed = super::props::b::with_text(d, f, after.as_deref())?;
+            if typed != *d {
+                ops.insert(0, Op::ModifyDevice { id: *c, before: d.clone(), after: typed });
+            }
+            continue;
+        }
         let before = match object {
             ObjectRef::Device(c) => doc.devices.get(c).and_then(|x| x.properties.get(key)).cloned(),
             _ => doc.properties.get(key).cloned(),

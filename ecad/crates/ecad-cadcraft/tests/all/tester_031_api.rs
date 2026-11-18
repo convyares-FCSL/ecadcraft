@@ -43,7 +43,7 @@ fn doc_with(props: &[(&str, &str)]) -> Document {
     for (kind, r) in records {
         ops.push(Op::SetStyle {
             layer: ecad_model::StyleLayer::Project,
-            catalogue: "text".into(),
+            catalogue: ecad_model::StyleCatalogue::Text,
             id: ecad_model::StyleRef::Builtin(kind),
             before: None,
             after: Some(r),

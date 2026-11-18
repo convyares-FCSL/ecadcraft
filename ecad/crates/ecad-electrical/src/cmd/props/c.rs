@@ -72,7 +72,7 @@ fn is_field_key(k: &str) -> bool {
     MODULE_KEYS.contains(&k)
         || STATION_KEYS.contains(&k)
         || channels::parse_ch_key(k).is_some()
-        || (k.starts_with("plc.") && ecad_model::keys::is_reserved(k))
+        || (k.starts_with("plc.") && ecad_model::keys::is_reserved_on(ecad_model::keys::Holder::Device, k))
 }
 
 /// The refusal of a module's or station's key on another device.

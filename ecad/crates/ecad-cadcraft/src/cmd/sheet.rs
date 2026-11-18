@@ -347,8 +347,9 @@ pub(crate) fn new_page_ops_at(
 /// The page's properties as `pageprops` reports them.
 pub fn page_json(doc: &Document, book: &Book, page: PageId, outputs: Option<&crate::outputs::Outputs>) -> Value {
     let pg = doc.pages.get(&page);
-    let prop = |k: &str| pg.and_then(|x| x.display.get(k)).cloned();
-    let project = |k: &str| doc.properties.get(k).cloned();
+    use crate::designations::{Aspect, default_key, page_key};
+    let prop = |k: &str| Aspect::of_property(k).and_then(|a| pg.and_then(|x| page_key(x, a)));
+    let project = |k: &str| Aspect::of_property(k).and_then(|a| default_key(&doc.project, a));
     let folder = book::folder_of(doc, page).filter(|f| doc.folders.contains_key(f));
     json!({
         "page": page.hex(),
@@ -503,8 +504,13 @@ fn style_word(s: ReferenceStyle) -> &'static str {
 pub fn project_json(doc: &Document) -> Value {
     let mut fields = Map::new();
     for k in PROJECT_KEYS {
-        // Brief 052: the function and location show their codes.
-        fields.insert(k.into(), doc.properties.get(k).map_or(Value::Null, |v| Value::String(crate::designations::display(doc, k, v))));
+        // Brief 052: the function and location show their codes (design 072 §5.3: fields of the
+        // project).
+        let v = match crate::designations::Aspect::of_property(k) {
+            Some(a) => crate::designations::default_key(&doc.project, a).map(|v| crate::designations::display(doc, k, &v)),
+            None => doc.properties.get(k).cloned(),
+        };
+        fields.insert(k.into(), v.map_or(Value::Null, Value::String));
     }
     let free: Map<String, Value> = doc
         .properties
@@ -515,7 +521,6 @@ pub fn project_json(doc: &Document) -> Value {
                 && !k.starts_with("numbering.")
                 && !k.starts_with("tags.")
                 && !k.starts_with("revisions.")
-                && !crate::designations::is_list_property(k)
         })
         .map(|(k, v)| (k.clone(), Value::String(v.clone())))
         .collect();
@@ -550,7 +555,7 @@ pub fn project_json(doc: &Document) -> Value {
     // Brief 033: the tag style, the revision columns and the pending marker.
     let style = crate::defaults::print::tag_style(doc);
     v["tag_dash"] = json!(style.dash);
-    v["tag_case"] = json!(if style.case == ecad_model::tag::Case::Typed { "typed" } else { "upper" });
+    v["tag_case"] = json!(ecad_model::Word::word(style.case));
     let cols = revisions::columns(doc);
     v["revision_columns"] = json!(cols.iter().map(|c| json!({"field": c.field, "header": c.header, "width": c.width})).collect::<Vec<_>>());
     v["revision_columns_stored"] = json!(doc.properties.get(revisions::COLUMNS_KEY));
@@ -709,11 +714,13 @@ impl Command for ProjectpropsParams {
             revision_columns: self.revision_columns,
             revision_pending: self.revision_pending.flatten(),
             tag_dash: self.tag_dash.flatten(),
-            tag_case: self.tag_case.flatten(),
+            tag_case: None,
             mode: Default::default(),
         };
+        let case_word = self.tag_case.flatten();
         on_project(s, |p, pg, _| {
             change.mode = rules::proposal_mode(proposal.as_deref())?;
+            change.tag_case = case_word.as_deref().map(rules::tag_case).transpose()?;
             let plan = rules::project_props(p.ledger.document(), &mut p.ids, &change)?;
             if plan.ops.is_empty() {
                 let mut v = project_json(p.ledger.document());

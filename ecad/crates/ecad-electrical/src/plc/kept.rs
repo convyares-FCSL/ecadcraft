@@ -112,8 +112,8 @@ impl Plc {
             return;
         }
         let r = rack::rack_ref(doc, c);
-        let props = doc.devices.get(&c).map(|x| &x.properties);
-        let text = |k: &str| props.and_then(|p| p.get(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+        let device = doc.devices.get(&c);
+        let text = |k: &str| device.and_then(|d| d.get(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
         if let RackRef::Rack(x) | RackRef::Missing(x) = r {
             self.naming.entry(x).or_default().insert(c);
             groups.insert(x);
@@ -155,13 +155,13 @@ impl Plc {
                 Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } => {
                     out.insert(*id);
                 }
-                // Design 072 §3: a station's or module's own fields; a station's cards read it.
+                // Design 072: a device's tag, type, or a station's or module's own fields (§3).
                 Op::ModifyDevice { id, .. } => {
                     out.insert(*id);
                     out.extend(self.naming.get(id).into_iter().flatten().copied());
                 }
                 Op::SetProperty { object: ObjectRef::Device(c), key, .. } => {
-                    if key.starts_with("plc.") || key == ecad_model::tag::TAG_KEY || key == "part_number" || key == "maker" {
+                    if key.starts_with("plc.") || key == ecad_model::tag::TAG_KEY {
                         if self.cards.contains_key(c) || self.racks.contains_key(c) || key.starts_with("plc.") {
                             out.insert(*c);
                         }
@@ -251,7 +251,7 @@ impl Plc {
         // the cards on its nets.
         for op in ops {
             match op {
-                Op::SetProperty { object: ObjectRef::Device(c), key, .. } if key == ecad_model::tag::TAG_KEY && !self.cards.contains_key(c) => {
+                Op::ModifyDevice { id: c, before, after } if before.tag != after.tag && !self.cards.contains_key(c) => {
                     self.rows_changed.extend(iolist::cards_on_nets_of(doc, self, Some(*c), None));
                 }
                 Op::SetProperty { object: ObjectRef::Wire(w), .. } | Op::ModifyWire { id: w, .. } => {

@@ -26,6 +26,7 @@ pub mod tagtable;
 pub mod types;
 
 use crate::CmdError;
+use ecad_model::units::Degrees;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{DeviceId, Document, ObjectRef, PageId, Subject};
@@ -459,7 +460,7 @@ pub fn channel_texts(
     let addr_h = crate::text_style::text_style(doc, crate::text_style::TextKind::Address).height;
     let desc_h = crate::text_style::text_style(doc, crate::text_style::TextKind::ChannelText).height;
     // Brief 051 (design 051 §2.7): a cell at 180° keeps its texts upright and in their bands.
-    let upside = pl.rotation.is_finite() && (pl.rotation.to_degrees().rem_euclid(360.0) - 180.0).abs() < 0.5;
+    let upside = pl.rotation.is_finite() && (Degrees::from(pl.rotation).0.rem_euclid(360.0) - 180.0).abs() < 0.5;
     let mut out = Vec::new();
     let mut push = |role: TextRole, of: TextOf, value: String, height: f64, shown: bool, horizontal: bool| {
         let Some(a) = anchors.iter().find(|x| x.role == role) else { return };

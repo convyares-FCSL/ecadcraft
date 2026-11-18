@@ -40,6 +40,10 @@ pub struct Page {
     pub sheet: Option<SheetSpec>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title_block: Option<m::StyleRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<m::LocationId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub function: Option<m::FunctionId>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub display: BTreeMap<String, String>,
 }
@@ -128,7 +132,7 @@ pub enum Primitive {
     Text {
         at: Pt,
         height: f64,
-        rotation: f64,
+        rotation: m::units::Radians,
         value: String,
         #[serde(default, skip_serializing_if = "is_left")]
         halign: m::TextHAlign,
@@ -152,8 +156,8 @@ fn is_baseline(v: &m::TextVAlign) -> bool {
 #[serde(deny_unknown_fields)]
 pub struct Placement {
     pub origin: Pt,
-    /// Radians, counter-clockwise.
-    pub rotation: f64,
+    /// Counter-clockwise.
+    pub rotation: m::units::Radians,
     pub mirror: bool,
     pub scale: f64,
 }
@@ -183,6 +187,20 @@ pub struct Item {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Device {
+    /// Design 072 §2.1: validated on read (1 to 40 characters, no hidden character).
+    pub tag: Option<m::tag::Tag>,
+    pub tag_fixed: bool,
+    /// Design 072 §2.1: the text fields, validated on read.
+    pub description: Option<m::device::Description>,
+    pub part_number: Option<m::device::PartText>,
+    pub manufacturer: Option<m::device::PartText>,
+    pub article_number: Option<m::device::PartText>,
+    pub type_text: Option<m::device::PartText>,
+    /// Design 072 §6.3: ids of the project's lists, and whether each was set by hand.
+    pub location: Option<m::LocationId>,
+    pub location_fixed: bool,
+    pub function: Option<m::FunctionId>,
+    pub function_fixed: bool,
     pub properties: BTreeMap<String, String>,
     pub definition: Option<DefinitionId>,
     /// What the device is (design 072 F15): the model's own type, whose words and fields are
@@ -195,7 +213,7 @@ pub struct Device {
 pub struct Terminal {
     pub component: DeviceId,
     pub label: Option<String>,
-    pub key: Option<String>,
+    pub key: Option<m::PointKey>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -286,7 +304,7 @@ pub struct Origin {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TerminalDef {
-    pub key: String,
+    pub key: m::PointKey,
     pub label: Option<String>,
     pub at: Pt,
 }
@@ -301,7 +319,7 @@ pub struct Definition {
     /// Groups of terminal keys joined inside the device (brief 022, FP5). Left out when empty, so
     /// a definition without bridges is written, and hashed, exactly as before.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub bridges: Vec<Vec<String>>,
+    pub bridges: Vec<Vec<m::PointKey>>,
     /// Text slots (brief 048, FP1). Left out when empty, so existing hashes hold.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub texts: Vec<TextSlot>,
@@ -327,13 +345,13 @@ pub struct TextSlot {
     #[serde(default, skip_serializing_if = "is_baseline")]
     pub v: m::TextVAlign,
     #[serde(default, skip_serializing_if = "is_zero")]
-    pub rotation: f64,
+    pub rotation: m::units::Radians,
 }
 
-fn is_zero(x: &f64) -> bool {
+fn is_zero(x: &m::units::Radians) -> bool {
     // -0.0 too: the canonical form does not keep its sign, so writing it would give a content hash
     // that the read-back value (0.0, left out) does not match.
-    *x == 0.0
+    x.0 == 0.0
 }
 
 fn origin(o: &m::Origin) -> Origin {
@@ -832,7 +850,7 @@ pub enum Op {
     /// Brief 050a (FP3): one whole style record; `null` is no record.
     SetStyle {
         layer: StyleLayer,
-        catalogue: String,
+        catalogue: m::StyleCatalogue,
         id: m::StyleRef,
         before: Option<StyleRecord>,
         after: Option<StyleRecord>,
@@ -841,6 +859,11 @@ pub enum Op {
     SetStandard {
         before: Option<StandardHeader>,
         after: Option<StandardHeader>,
+    },
+    /// Design 072 §5.3: the project's own data, the model's strict record.
+    ModifyProject {
+        before: m::Project,
+        after: m::Project,
     },
 }
 
@@ -987,7 +1010,22 @@ impl From<&m::Item> for Item {
 
 impl From<&m::Device> for Device {
     fn from(c: &m::Device) -> Self {
-        Device { properties: c.properties.clone(), definition: c.definition, device_type: c.device_type.clone() }
+        Device {
+            tag: c.tag.clone(),
+            tag_fixed: c.tag_fixed,
+            description: c.description.clone(),
+            part_number: c.part_number.clone(),
+            manufacturer: c.manufacturer.clone(),
+            article_number: c.article_number.clone(),
+            type_text: c.type_text.clone(),
+            location: c.location,
+            location_fixed: c.location_fixed,
+            function: c.function,
+            function_fixed: c.function_fixed,
+            properties: c.properties.clone(),
+            definition: c.definition,
+            device_type: c.device_type.clone(),
+        }
     }
 }
 
@@ -1077,6 +1115,8 @@ impl From<&m::Page> for Page {
             page_type: p.page_type.clone(),
             sheet: p.sheet.as_ref().map(SheetSpec::from),
             title_block: p.title_block.clone(),
+            location: p.location,
+            function: p.function,
             display: p.display.clone(),
         }
     }
@@ -1092,6 +1132,8 @@ impl From<Page> for m::Page {
             page_type: p.page_type,
             sheet: p.sheet.map(m::SheetSpec::from),
             title_block: p.title_block,
+            location: p.location,
+            function: p.function,
             display: p.display,
         }
     }
@@ -1192,7 +1234,7 @@ impl From<&m::Op> for Op {
             m::Op::ModifyFolder { id, before, after } => Op::ModifyFolder { id: *id, before: before.into(), after: after.into() },
             m::Op::SetStyle { layer: l, catalogue, id, before, after } => Op::SetStyle {
                 layer: layer(*l),
-                catalogue: catalogue.clone(),
+                catalogue: *catalogue,
                 id: id.clone(),
                 before: before.as_ref().map(Into::into),
                 after: after.as_ref().map(Into::into),
@@ -1200,6 +1242,7 @@ impl From<&m::Op> for Op {
             m::Op::SetStandard { before, after } => {
                 Op::SetStandard { before: before.as_ref().map(Into::into), after: after.as_ref().map(Into::into) }
             }
+            m::Op::ModifyProject { before, after } => Op::ModifyProject { before: before.clone(), after: after.clone() },
         }
     }
 }
@@ -1288,7 +1331,22 @@ impl From<Item> for m::Item {
 
 impl From<Device> for m::Device {
     fn from(c: Device) -> Self {
-        m::Device { properties: c.properties, definition: c.definition, device_type: c.device_type }
+        m::Device {
+            tag: c.tag,
+            tag_fixed: c.tag_fixed,
+            description: c.description,
+            part_number: c.part_number,
+            manufacturer: c.manufacturer,
+            article_number: c.article_number,
+            type_text: c.type_text,
+            location: c.location,
+            location_fixed: c.location_fixed,
+            function: c.function,
+            function_fixed: c.function_fixed,
+            properties: c.properties,
+            definition: c.definition,
+            device_type: c.device_type,
+        }
     }
 }
 
@@ -1449,6 +1507,7 @@ impl TryFrom<Op> for m::Op {
                 m::Op::SetStyle { layer: mlayer(l), catalogue, id, before: before.map(Into::into), after: after.map(Into::into) }
             }
             Op::SetStandard { before, after } => m::Op::SetStandard { before: before.map(Into::into), after: after.map(Into::into) },
+            Op::ModifyProject { before, after } => m::Op::ModifyProject { before, after },
         })
     }
 }

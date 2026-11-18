@@ -440,7 +440,7 @@ pub enum Fix {
     /// (`partline set for`).
     DropMissingFor(DeviceId, u8),
     /// Brief 050a: **Go to** Settings ▸ Standards at this catalogue (`text`, `wire`…).
-    OpenStandards(&'static str),
+    OpenStandards(ecad_model::StyleCatalogue),
     /// Brief 054 (design 054 §9): a page type or folder start row's fix.
     Page(crate::page_types::PageFix),
     /// Brief 057: **Show rating**: select the subject in Project ▸ Wires or Cables, Rating unfolded.
@@ -1029,7 +1029,7 @@ fn is_quiet_point(doc: &Document, t: TerminalId) -> bool {
             .iter()
             .filter(|(x, _)| *x == t)
             .filter_map(|(_, at)| def.terminals.iter().find(|td| td.at.near(*at, 1e-9)))
-            .any(|td| crate::symbols::is_quiet(s, &td.key))
+            .any(|td| crate::symbols::is_quiet(s, &td.key.to_string()))
     })
 }
 
@@ -1147,9 +1147,9 @@ fn designation_checks(places: &mut Places<'_>, c: DeviceId, out: &mut Vec<Check>
     } else {
         crate::reps::goto_place_in(places, c).map_or((None, None), |(p, a)| (Some(p), a))
     };
-    for (k, v) in &comp.properties {
-        let Some(a) = Aspect::of_property(k) else { continue };
-        if d::code_of(doc, a, v).is_none() {
+    for (k, v) in d::device_keys(comp) {
+        let Some(a) = Aspect::of_property(&k) else { continue };
+        if d::code_of(doc, a, &v).is_none() {
             out.push(Check {
                 kind: Kind::DesignationMissing,
                 page,
@@ -1415,7 +1415,7 @@ impl Scope {
                     }
                 }
                 Op::CreateDevice { id, device } | Op::DeleteDevice { id, device } => {
-                    self.tag_holders(doc, device.properties.get(ecad_model::tag::TAG_KEY));
+                    self.tag_holders(doc, device.tag());
                     self.component(doc, *id, device.properties.get(NAME).map(String::as_str));
                     for (t, _) in doc.terminals_of(*id) {
                         node(self, Node::Terminal(t));
@@ -1423,11 +1423,26 @@ impl Scope {
                 }
                 Op::ModifyDevice { id, before, after } => {
                     for device in [before, after] {
-                        self.tag_holders(doc, device.properties.get(ecad_model::tag::TAG_KEY));
+                        self.tag_holders(doc, device.tag());
                         self.component(doc, *id, device.properties.get(NAME).map(String::as_str));
                     }
                     for (t, _) in doc.terminals_of(*id) {
                         node(self, Node::Terminal(t));
+                    }
+                    // Design 072 §6.3: a device's location and function are fields; a box's are
+                    // contexts for the devices on its pages, a device's are where the cables at its
+                    // points are drawn (as the `SetProperty` arm below).
+                    if before.location != after.location || before.function != after.function {
+                        if crate::locations::is_box(doc, *id) {
+                            for p in doc.representations_of(Subject::Device(*id)).map(|(_, r)| r.page).collect::<Vec<_>>() {
+                                self.devices_on(doc, p);
+                            }
+                        }
+                        for (t, _) in doc.terminals_of(*id) {
+                            for (w, _) in doc.ends_at(t) {
+                                self.cables.extend(doc.cables_of(w));
+                            }
+                        }
                     }
                 }
                 Op::SetProperty { object: ObjectRef::Device(c), key, before, after } => {
@@ -1439,7 +1454,7 @@ impl Scope {
                         }
                     }
                     if key == ecad_model::tag::TAG_KEY {
-                        self.tag_holders(doc, [before, after].into_iter().flatten());
+                        self.tag_holders(doc, [before, after].into_iter().flatten().map(String::as_str));
                     }
                     // Brief 059 (design 059 §8): a device's location or function is where the
                     // cables at its points are drawn (`cable-end-off-plan`).
@@ -1479,10 +1494,10 @@ impl Scope {
                     self.cables.insert(*k);
                     match op {
                         Op::SetProperty { key, before, after, .. } if key == ecad_model::tag::TAG_KEY => {
-                            self.tag_holders(doc, [before, after].into_iter().flatten());
+                            self.tag_holders(doc, [before, after].into_iter().flatten().map(String::as_str));
                         }
                         Op::CreateCable { cable, .. } | Op::DeleteCable { cable, .. } => {
-                            self.tag_holders(doc, cable.properties.get(ecad_model::tag::TAG_KEY));
+                            self.tag_holders(doc, cable.properties.get(ecad_model::tag::TAG_KEY).map(String::as_str));
                         }
                         _ => {}
                     }
@@ -1544,30 +1559,32 @@ impl Scope {
                             }
                         }
                     }
-                    if ch.display.iter().any(|k| crate::designations::Aspect::of_property(k).is_some()) {
+                    if ch.location || ch.function {
                         self.devices_on(doc, *p);
                     }
                 }
                 // Brief 052 (design 052 §6): a page's function or location is a context for the
                 // devices on it; the project's for every device (rare); the list's codes for the
                 // objects storing that entry, and the duplicate rows.
-                Op::SetProperty { object: ObjectRef::Page(p), key, .. } if crate::designations::Aspect::of_property(key).is_some() => {
-                    self.relocate = true;
-                    self.devices_on(doc, *p);
-                }
-                Op::SetProperty { object: ObjectRef::Project, key, .. } if crate::designations::Aspect::of_property(key).is_some() => {
-                    self.relocate = true;
-                    self.devices.extend(doc.devices.keys().copied());
-                }
-                Op::SetProperty { object: ObjectRef::Project, key, .. } if crate::designations::is_list_property(key) => {
-                    self.relocate = true;
-                    self.designations = true;
-                    if let Some((_, entry, true)) = crate::designations::parse_list_property(key) {
-                        // Brief 059: the cables planning an end there (their rows name its code).
-                        self.cables.extend(crate::cables::planning(doc, entry));
-                        for (c, x) in &doc.devices {
-                            if x.properties.iter().any(|(k, v)| crate::designations::Aspect::of_property(k).is_some() && v == entry) {
-                                self.devices.insert(*c);
+                Op::ModifyProject { before, after } => {
+                    use crate::designations::{Aspect, changed_codes, default_key};
+                    for a in Aspect::ALL {
+                        if default_key(before, a) != default_key(after, a) {
+                            self.relocate = true;
+                            self.devices.extend(doc.devices.keys().copied());
+                        }
+                        let changed = changed_codes(before, after, a);
+                        if !changed.is_empty() {
+                            self.relocate = true;
+                            self.designations = true;
+                        }
+                        for entry in &changed {
+                            // Brief 059: the cables planning an end there (their rows name its code).
+                            self.cables.extend(crate::cables::planning(doc, entry));
+                            for (c, x) in &doc.devices {
+                                if crate::designations::device_keys(x).iter().any(|(_, v)| v == entry) {
+                                    self.devices.insert(*c);
+                                }
                             }
                         }
                     }
@@ -1590,7 +1607,7 @@ impl Scope {
                 }
                 Op::AddLayer { .. } | Op::RemoveLayer { .. } | Op::NameVersion { .. } | Op::UnnameVersion { .. } => {}
                 // Brief 059 (design 059 §8): a cable type's cores and gland reach its users' rows.
-                Op::SetStyle { catalogue, id, .. } if catalogue == crate::styles::cable::WORD => {
+                Op::SetStyle { catalogue, id, .. } if *catalogue == ecad_model::StyleCatalogue::Cable => {
                     self.cables.extend(crate::styles::cable::users(doc, id));
                 }
                 // Brief 050a: style records and the standard reach only the style rows (above).
@@ -1611,7 +1628,7 @@ impl Scope {
     }
 
     /// Every device and cable holding one of `tags` (a shared tag's rows on both sides).
-    fn tag_holders<'t>(&mut self, doc: &Document, tags: impl IntoIterator<Item = &'t String>) {
+    fn tag_holders<'t>(&mut self, doc: &Document, tags: impl IntoIterator<Item = &'t str>) {
         for t in tags {
             self.devices.extend(doc.components_tagged(t));
             self.cables.extend(doc.cables_tagged(t));

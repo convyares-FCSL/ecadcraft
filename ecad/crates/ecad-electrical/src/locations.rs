@@ -25,11 +25,10 @@
 //!
 //! This module records nothing; [`plan_box`] and [`plan_from_item`] only build ops.
 
-use ecad_model::keys::PropsExt;
 use std::collections::BTreeMap;
 
 use crate::CmdError;
-use ecad_model::book::{FUNCTION_KEY, LOCATION_KEY};
+use ecad_model::book::LOCATION_KEY;
 use ecad_model::connectivity::KIND;
 use ecad_model::{
     Color, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Layer, LayerId, Op, PageId, Primitive, Pt, Representation,
@@ -93,7 +92,7 @@ pub fn is_box_component(c: &Device) -> bool {
 /// A device in the sense of locations and the BOM (design 024 §6.1): a component with a tag and
 /// no `kind`.
 pub fn is_device(doc: &Document, c: DeviceId) -> bool {
-    doc.devices.get(&c).is_some_and(|x| x.properties.contains_key(ecad_model::tag::TAG_KEY) && !x.properties.contains_key(KIND))
+    doc.devices.get(&c).is_some_and(|x| x.tag.is_some() && !x.properties.contains_key(KIND))
 }
 
 /// The box representation `r` (`rid`) stands for, if it is one with a drawable outline.
@@ -112,8 +111,8 @@ pub fn box_of_rep(doc: &Document, rid: RepresentationId, r: &Representation) -> 
         return None;
     }
     let (lo, hi) = bounds(&vertices);
-    let location_key = comp.properties.text(ecad_model::keys::LOCATION).map(str::to_string);
-    let function_key = comp.properties.text(ecad_model::keys::FUNCTION).map(str::to_string);
+    let location_key = designations::device_key(comp, Aspect::Location);
+    let function_key = designations::device_key(comp, Aspect::Function);
     Some(LocBox {
         component: c,
         rep: rid,
@@ -383,11 +382,11 @@ pub fn context_in(doc: &Document, a: Aspect, page: PageId, at: Option<Pt>, boxes
     {
         return Located::of(doc, a, k, Source::Box { component: b.component, page });
     }
-    if let Some(k) = doc.pages.get(&page).and_then(|p| p.display.get(a.property())) {
-        return Located::of(doc, a, k, Source::Page(page));
+    if let Some(k) = doc.pages.get(&page).and_then(|p| designations::page_key(p, a)) {
+        return Located::of(doc, a, &k, Source::Page(page));
     }
-    if let Some(k) = doc.properties.get(a.property()) {
-        return Located::of(doc, a, k, Source::Project);
+    if let Some(k) = designations::default_key(&doc.project, a) {
+        return Located::of(doc, a, &k, Source::Project);
     }
     Located::none()
 }
@@ -426,10 +425,10 @@ pub fn shared_context(doc: &Document, c: DeviceId, a: Aspect) -> Option<String> 
     shared.and_then(|s| s.value)
 }
 
-/// Device `c`'s stored value of aspect `a` (design 052 §5.1): its own property, else none.
+/// Device `c`'s stored value of aspect `a` (design 052 §5.1): its own field, else none.
 pub fn resolve_in(doc: &Document, c: DeviceId, a: Aspect) -> Located {
-    match doc.devices.get(&c).and_then(|x| x.properties.get(a.property())) {
-        Some(k) => Located::of(doc, a, k, Source::Device),
+    match doc.devices.get(&c).and_then(|x| designations::device_key(x, a)) {
+        Some(k) => Located::of(doc, a, &k, Source::Device),
         None => Located::none(),
     }
 }
@@ -526,11 +525,11 @@ pub fn label_of(b: &LocBox) -> (String, Pt) {
     (if text.is_empty() { "+?".into() } else { text }, Pt::new(tl.x + LABEL_INSET, tl.y - LABEL_INSET))
 }
 
-/// The style of a box with `props` on layer `layer`: dash-dot when it carries a function (design
-/// 052 §5.8, `ecad.function-box.linetype`), else dashed.
-fn box_style_for(layer: LayerId, props: &ecad_model::Properties) -> Style {
+/// The style of box `b` on layer `layer`: dash-dot when it carries a function (design 052 §5.8,
+/// `ecad.function-box.linetype`), else dashed.
+fn box_style_for(layer: LayerId, b: &Device) -> Style {
     let mut s = box_style(layer);
-    if props.contains_key(FUNCTION_KEY) {
+    if b.function.is_some() {
         s.linetype = FUNCTION_LINETYPE.into();
     }
     s
@@ -592,24 +591,24 @@ pub struct Planned {
     pub added: Option<String>,
 }
 
-/// A box's properties for `values` typed per aspect (design 052 FP9): at least one of function
-/// and location, each stored as an entry key ([`designations::Pending`]).
-fn box_props(
+/// A new box for `values` typed per aspect (design 052 FP9): at least one of function and
+/// location, each stored as an entry's id ([`designations::Pending`]), typed so fixed.
+fn new_box(
     doc: &Document, ids: &mut IdAllocator, values: &[(Aspect, &str)], pending: &mut designations::Pending, ops: &mut Vec<Op>,
-) -> Result<ecad_model::Properties, CmdError> {
-    let mut props = ecad_model::Properties::new();
-    props.insert(KIND.into(), KIND_VALUE.into());
+) -> Result<Device, CmdError> {
+    let mut b = Device::default();
+    b.properties.insert(KIND.into(), KIND_VALUE.into());
     for (a, text) in values {
         if text.trim().is_empty() {
             continue;
         }
         let key = pending.store(doc, ids, *a, text, ops)?;
-        props.insert(a.property().into(), key);
+        b = designations::with_device_key(&b, *a, Some(&key), true);
     }
-    if !props.contains_key(LOCATION_KEY) && !props.contains_key(FUNCTION_KEY) {
+    if b.location.is_none() && b.function.is_none() {
         return Err(CmdError::refused(NO_VALUE));
     }
-    Ok(props)
+    Ok(b)
 }
 
 /// Refusal of a box with neither a function nor a location (design 052 §5.8).
@@ -637,17 +636,14 @@ pub fn plan_box_with(doc: &Document, ids: &mut IdAllocator, page: PageId, values
     check_outline(&vertices)?;
     let mut pending = designations::Pending::default();
     let mut list_ops = Vec::new();
-    let props = box_props(doc, ids, values, &mut pending, &mut list_ops)?;
+    let device = new_box(doc, ids, values, &mut pending, &mut list_ops)?;
     let (layer, mut ops) = layer_ops(doc, ids);
     ops.extend(list_ops);
     let component: DeviceId = ids.fresh();
     let item: ItemId = ids.fresh();
     let rep: RepresentationId = ids.fresh();
-    let style = box_style_for(layer, &props);
-    ops.push(Op::CreateDevice {
-        id: component,
-        device: Device { properties: props, definition: None, device_type: ecad_model::DeviceType::General },
-    });
+    let style = box_style_for(layer, &device);
+    ops.push(Op::CreateDevice { id: component, device });
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Polyline { vertices, closed: true }) } });
     ops.push(Op::LinkRepresentation {
         id: rep,
@@ -694,16 +690,13 @@ pub fn plan_from_item_with(doc: &Document, ids: &mut IdAllocator, item: ItemId, 
     check_outline(&vertices)?;
     let mut pending = designations::Pending::default();
     let mut list_ops = Vec::new();
-    let props = box_props(doc, ids, values, &mut pending, &mut list_ops)?;
+    let device = new_box(doc, ids, values, &mut pending, &mut list_ops)?;
     let (layer, mut ops) = layer_ops(doc, ids);
     ops.extend(list_ops);
     let component: DeviceId = ids.fresh();
     let rep: RepresentationId = ids.fresh();
-    let after = Item { style: box_style_for(layer, &props), ..it.clone() };
-    ops.push(Op::CreateDevice {
-        id: component,
-        device: Device { properties: props, definition: None, device_type: ecad_model::DeviceType::General },
-    });
+    let after = Item { style: box_style_for(layer, &device), ..it.clone() };
+    ops.push(Op::CreateDevice { id: component, device });
     if after != *it {
         ops.push(Op::ModifyItem { id: item, before: it.clone(), after });
     }
@@ -728,7 +721,7 @@ pub fn planned_box(doc: &Document, p: &Planned) -> Option<LocBox> {
     let mut page = None;
     for op in &p.ops {
         match op {
-            Op::CreateDevice { id, device: component } if *id == p.component => props = Some(component.properties.clone()),
+            Op::CreateDevice { id, device } if *id == p.component => props = Some(device.clone()),
             Op::AddItem { id, item } | Op::ModifyItem { id, after: item, .. } if *id == p.item => {
                 page = Some(item.page);
                 if let ItemKind::Primitive(Primitive::Polyline { vertices: v, .. }) = &item.kind {
@@ -744,16 +737,14 @@ pub fn planned_box(doc: &Document, p: &Planned) -> Option<LocBox> {
         _ => None,
     })?;
     let (lo, hi) = bounds(&vertices);
-    let location_key = props.text(ecad_model::keys::LOCATION).map(str::to_string);
-    let function_key = props.text(ecad_model::keys::FUNCTION).map(str::to_string);
+    let location_key = designations::device_key(&props, Aspect::Location);
+    let function_key = designations::device_key(&props, Aspect::Function);
     // A code the box adds to the list is in the ops, not in `doc` yet.
     let code = |a: Aspect, k: &Option<String>| {
         k.as_ref().and_then(|k| {
             designations::code_of(doc, a, k).or_else(|| {
                 p.ops.iter().find_map(|op| match op {
-                    Op::SetProperty { object: ecad_model::ObjectRef::Project, key, after, .. } if *key == designations::code_property(a, k) => {
-                        after.clone()
-                    }
+                    Op::ModifyProject { after, .. } => designations::code_in_project(after, a, k),
                     _ => None,
                 })
             })
@@ -810,7 +801,11 @@ pub fn inside_counts(doc: &Document, b: &LocBox) -> (usize, usize) {
         }
         n += 1;
         if b.location_key.is_some()
-            && doc.devices.get(&c).and_then(|x| x.properties.get(LOCATION_KEY)).is_some_and(|own| Some(own) != b.location_key.as_ref())
+            && doc
+                .devices
+                .get(&c)
+                .and_then(|x| designations::device_key(x, Aspect::Location))
+                .is_some_and(|own| Some(&own) != b.location_key.as_ref())
         {
             keeps += 1;
         }

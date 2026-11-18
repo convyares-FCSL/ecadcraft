@@ -7,6 +7,7 @@
 //!
 //! The draft is drawn and edited here; nothing reaches the project until Save.
 
+use ecad_model::units::Radians;
 use ecad_model::{Primitive, Pt, TextHAlign, TextVAlign};
 use ecad_ui::tokens::{Icon, size, space};
 use eframe::egui::{self, Align2, Color32, Key, Pos2, Rect, Shape, Stroke, pos2, vec2};
@@ -255,7 +256,7 @@ impl Builder {
             Tool::Text => "Text: click where it starts, then type.".into(),
             Tool::Point => match &self.entry {
                 Some((Entry::Label(i), _)) => {
-                    let key = self.draft.shape.points.get(*i).map_or(String::new(), |p| p.key.clone());
+                    let key = self.draft.shape.points.get(*i).map_or(String::new(), |p| p.key.to_string());
                     format!("Adds point {key}. Label? (Enter keeps none)")
                 }
                 _ => format!(
@@ -424,7 +425,7 @@ impl Builder {
             Entry::Text(at) if !text.trim().is_empty() => self.draft.add_graphic(Primitive::Text {
                 at,
                 height: TEXT_MM,
-                rotation: 0.0,
+                rotation: Radians(0.0),
                 value: text.trim().chars().take(200).collect(),
                 halign: TextHAlign::Left,
                 valign: TextVAlign::Baseline,
@@ -693,7 +694,7 @@ fn paint_prim(p: &egui::Painter, b: &Builder, rect: Rect, g: &Primitive, stroke:
             p.add(Shape::line(arc_points(*center, *radius, *start, *end).into_iter().map(s).collect(), stroke));
         }
         Primitive::Text { at, height, rotation, value, halign, valign } => {
-            let _ = paint_text(p, s(*at), value, (*height as f32) * b.scale * 1.25, *rotation, *halign, *valign, stroke.color);
+            let _ = paint_text(p, s(*at), value, (*height as f32) * b.scale * 1.25, rotation.0, *halign, *valign, stroke.color);
         }
         Primitive::Point { at } => {
             p.circle_filled(s(*at), stroke.width.max(1.5), stroke.color);
@@ -813,7 +814,7 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_drawing
             b.to_screen(rect, s.at),
             &draft::slot_sample(&s.text, &b.draft.prefix),
             (h as f32) * b.scale * 1.25,
-            s.rotation,
+            s.rotation.0,
             s.h,
             s.v,
             ink2,

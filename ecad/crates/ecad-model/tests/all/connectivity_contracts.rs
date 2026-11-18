@@ -48,7 +48,10 @@ impl P {
         let mut ts = Vec::new();
         for k in 1..=n {
             let t: TerminalId = self.ids.fresh();
-            ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: Some(k.to_string()), key: Some(k.to_string()) } });
+            ops.push(Op::AddTerminal {
+                id: t,
+                terminal: Terminal { component: c, label: Some(k.to_string()), key: Some(k.to_string().parse().unwrap()) },
+            });
             ts.push(t);
         }
         self.commit(ops);
@@ -164,8 +167,8 @@ fn nets_join_through_attachments_continuations_and_bridges_only() {
         name: "bridged".into(),
         origin: None,
         graphics: vec![],
-        terminals: ["1", "2", "3"].iter().map(|k| TerminalDef { key: (*k).into(), label: None, at: ecad_model::Pt::new(0.0, 0.0) }).collect(),
-        bridges: vec![vec!["1".into(), "2".into()]],
+        terminals: ["1", "2", "3"].iter().map(|k| TerminalDef { key: k.parse().unwrap(), label: None, at: ecad_model::Pt::new(0.0, 0.0) }).collect(),
+        bridges: vec![vec!["1".parse().unwrap(), "2".parse().unwrap()]],
         ..Default::default()
     };
     p.commit(vec![Op::EmbedDefinition { id: def, definition }]);
@@ -457,7 +460,8 @@ fn unrelated_ops_change_no_net_and_number_nothing() {
     let (c, k) = p.device(2);
     p.wire(Some(k[0]), Some(k[1]));
     let before = p.doc().connectivity().clone();
-    let tag = Op::SetProperty { object: ObjectRef::Device(c), key: "tag".into(), before: None, after: Some("-K1".into()) };
+    let d = p.doc().devices[&c].clone();
+    let tag = Op::ModifyDevice { id: c, before: d.clone(), after: d.with_tag(Some("-K1")) };
     let page: PageId = p.ids.fresh();
     let ops = vec![tag, Op::AddPage { id: page, page: Page::titled("2").unwrap(), index: 1 }];
     let head = p.ledger.head();

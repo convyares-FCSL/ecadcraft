@@ -929,6 +929,7 @@ pub fn op_view(op: &Op) -> OpView {
             val(&json!({"layer": layer, "catalogue": catalogue, "id": id, "record": after})),
         ),
         Op::SetStandard { before, after } => (val(before), val(after)),
+        Op::ModifyProject { before, after } => (val(before), val(after)),
     };
     OpView { name: op.name(), targets: op_targets(op), before, after }
 }
@@ -1020,7 +1021,7 @@ pub fn op_targets(op: &Op) -> Vec<ObjectId> {
             ecad_model::ObjectRef::Project | ecad_model::ObjectRef::Standard => ObjectId::Settings,
         }),
         Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => out.push(ObjectId::Definition(*id)),
-        Op::SetProjectSettings { .. } => out.push(ObjectId::Settings),
+        Op::SetProjectSettings { .. } | Op::ModifyProject { .. } => out.push(ObjectId::Settings),
         Op::NameVersion { .. } | Op::UnnameVersion { .. } => {}
         // Folders (brief 019) are not among the debugger's objects yet.
         Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => {}
@@ -1182,7 +1183,7 @@ fn tag(p: &ecad_model::Properties) -> Option<String> {
 
 fn subject_label(doc: &Document, s: Subject) -> String {
     let t = match s {
-        Subject::Device(c) => doc.devices.get(&c).and_then(|x| tag(&x.properties)),
+        Subject::Device(c) => doc.devices.get(&c).and_then(|x| x.tag().map(str::to_string)),
         Subject::Wire(c) => doc.wires.get(&c).and_then(|x| x.number_text()).map(str::to_string),
         Subject::Cable(c) => doc.cables.get(&c).and_then(|x| tag(&x.properties)),
     };
@@ -1214,7 +1215,7 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
         }
         ObjectId::Cable(c) => subject_label(doc, Subject::Cable(c)),
         ObjectId::Terminal(i) => doc.terminals.get(&i).map_or_else(String::new, |t| {
-            let name = t.label.clone().or_else(|| t.key.clone()).unwrap_or_else(|| i.short());
+            let name = t.label.clone().or_else(|| t.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| i.short());
             format!("{}:{name}", subject_label(doc, Subject::Device(t.component)))
         }),
         ObjectId::Representation(i) => doc.representations.get(&i).map_or_else(String::new, |r| {

@@ -15,11 +15,13 @@
 //! Every write (the commands, in ecad-cadcraft's `cmd::plc`) is one transaction.
 
 use crate::CmdError;
+use ecad_model::Word;
+use ecad_model::units::Radians;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
-    DefinitionId, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Placement, Pt, Representation, RepresentationId,
-    Style, Subject, SymbolInstance, Terminal, TerminalId,
+    ChannelRole, DefinitionId, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Placement, PointKey, Pt,
+    Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId,
 };
 
 use super::card_type_of;
@@ -43,22 +45,26 @@ pub const MAX_INDEX: u32 = 9_999;
 /// Every role a channel point may have (design 045 §4.1).
 pub const ROLES: [&str; 11] = ["in", "out", "+", "-", "I+", "S+", "S-", "I-", "L+", "C/Q", "L-"];
 
-/// A channel point's key: `.<i>.<role>`.
-pub fn key(i: u32, role: &str) -> String {
-    format!(".{i}.{role}")
+/// A channel point's key: `.<i>.<role>`; `None` for an index over [`MAX_INDEX`] or a role not
+/// in [`ROLES`].
+pub fn key(i: u32, role: &str) -> Option<PointKey> {
+    let index = u16::try_from(i).ok().filter(|n| u32::from(*n) <= MAX_INDEX)?;
+    Some(PointKey::Channel { index, role: ChannelRole::exact(role)? })
 }
 
-/// The channel index and role of a key `.<i>.<role>`; `None` for anything else (`.3`, `.-1.in`,
-/// `.3.nope`, `.99999.in`).
-pub fn parse_key(k: &str) -> Option<(u32, &'static str)> {
-    let rest = k.strip_prefix('.')?;
-    let (i, role) = rest.split_once('.')?;
-    if i.len() > 4 || !ecad_model::words::is_digits(i) {
-        return None;
+/// The channel index and role of a channel key; `None` for any other key.
+pub fn parse_key(k: &PointKey) -> Option<(u32, &'static str)> {
+    let (i, role) = k.channel()?;
+    Some((u32::from(i), role.word()))
+}
+
+/// The role a channel symbol's definition point has: its role key (`.in`), or an old `di`/`do`
+/// key's.
+fn def_role(k: &PointKey) -> Option<&'static str> {
+    match k {
+        PointKey::Role(r) => Some(r.word()),
+        _ => parse_legacy(k.as_def()?).map(|x| x.1),
     }
-    let i: u32 = i.parse().ok().filter(|n| *n <= MAX_INDEX)?;
-    let role = ROLES.into_iter().find(|r| *r == role)?;
-    Some((i, role))
 }
 
 /// An old `di`/`do` key (`I<a>.<b>`, `Q<a>.<b>`): channel `a × 8 + b`, role `in`/`out`.
@@ -79,8 +85,8 @@ pub fn parse_legacy(k: &str) -> Option<(u32, &'static str)> {
 
 /// The channel and role of terminal `t` of a card: from its key, or an old `di`/`do` key.
 pub fn point_of(doc: &Document, t: TerminalId) -> Option<(u32, &'static str)> {
-    let k = doc.terminals.get(&t)?.key.as_deref()?;
-    parse_key(k).or_else(|| parse_legacy(k))
+    let k = doc.terminals.get(&t)?.key.as_ref()?;
+    parse_key(k).or_else(|| parse_legacy(k.as_def()?))
 }
 
 /// The channel points of card `c`: index → (role, terminal, pin), roles in their cell order.
@@ -109,11 +115,7 @@ pub fn cell_type(s: &Starter) -> Option<CardType> {
 pub fn roles_of(s: &Starter) -> Vec<&'static str> {
     let Some(t) = cell_type(s) else { return Vec::new() };
     let Ok(def) = s.definition() else { return Vec::new() };
-    def.terminals
-        .iter()
-        .filter_map(|td| td.key.strip_prefix('.').and_then(|r| ROLES.into_iter().find(|x| *x == r)).or_else(|| parse_legacy(&td.key).map(|x| x.1)))
-        .filter(|r| t.roles().contains(r))
-        .collect()
+    def.terminals.iter().filter_map(|td| def_role(&td.key)).filter(|r| t.roles().contains(r)).collect()
 }
 
 /// `chdi`, `di` for a DI card: the symbols that draw its channels.
@@ -267,11 +269,18 @@ pub fn plan_cell(
         let at = def
             .terminals
             .iter()
-            .find(|td| td.key.strip_prefix('.') == Some(*role) || parse_legacy(&td.key).is_some_and(|x| x.1 == *role))
+            .find(|td| def_role(&td.key) == Some(*role))
             .map(|td| td.at)
             .ok_or(CmdError::refused("The channel symbol has no point for that role."))?;
         let t: TerminalId = ids.fresh();
-        ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: card, label: Some(pin.clone()), key: Some(key(j.index, role)) } });
+        ops.push(Op::AddTerminal {
+            id: t,
+            terminal: Terminal {
+                component: card,
+                label: Some(pin.clone()),
+                key: Some(key(j.index, role).ok_or(CmdError::refused("That channel has no such point."))?),
+            },
+        });
         cps.insert(t, at);
         terminals.push((*role, t, pin.clone(), at));
     }
@@ -303,12 +312,17 @@ pub fn new_card_ops(
         None => high.next_auto(ledger, &crate::devices::prefix_for(doc, s))?,
     };
     let c: DeviceId = ids.fresh();
-    let mut properties = ecad_model::Properties::new();
-    properties.insert(ecad_model::tag::TAG_KEY.into(), tag.clone());
     let name = crate::symbols::by_key(t.body()).map_or("PLC card", |b| b.name);
-    properties.insert("description".into(), name.into());
-    let device_type = super::types::new_type(doc, &s.device_type());
-    ops.push(Op::CreateDevice { id: c, device: ecad_model::Device { properties, definition: Some(def), device_type } });
+    ops.push(Op::CreateDevice {
+        id: c,
+        device: ecad_model::Device {
+            tag: Some(crate::devices::stored_tag(&tag)?),
+            description: crate::devices::description_of(name),
+            definition: Some(def),
+            device_type: super::types::new_type(doc, &s.device_type()),
+            ..ecad_model::Device::default()
+        },
+    });
     Ok((c, tag))
 }
 
@@ -343,13 +357,13 @@ pub fn first_point(s: &Starter, pl: &Placement) -> Option<Pt> {
 /// wire, the first being the one the cell is placed by.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Landing {
-    pub rotation: f64,
+    pub rotation: Radians,
     pub points: Vec<(&'static str, crate::slash::Crossing)>,
 }
 
 /// The local place of point `role` in a channel symbol's definition terminals.
 pub fn role_at(terms: &[ecad_model::TerminalDef], role: &str) -> Option<Pt> {
-    terms.iter().find(|td| td.key.strip_prefix('.') == Some(role) || parse_legacy(&td.key).is_some_and(|x| x.1 == role)).map(|td| td.at)
+    terms.iter().find(|td| def_role(&td.key) == Some(role)).map(|td| td.at)
 }
 
 /// The role `word` names among channel symbol `s`'s points (case ignored).
@@ -395,7 +409,7 @@ const POINT_MATCH: f64 = 0.5;
 pub fn landings(doc: &Document, page: PageId, s: &Starter, members: &[crate::slash::Crossing], role: Option<&'static str>) -> Vec<Landing> {
     let roles = roles_of(s);
     let terms = s.definition().map(|d| d.terminals.clone()).unwrap_or_default();
-    let rotation = |m: &crate::slash::Crossing| if runs_down(doc, page, m) { std::f64::consts::PI } else { 0.0 };
+    let rotation = |m: &crate::slash::Crossing| if runs_down(doc, page, m) { Radians(std::f64::consts::PI) } else { Radians(0.0) };
     let n = roles.len();
     if role.is_none() && n > 1 && members.len().is_multiple_of(n) {
         let groups: Option<Vec<Landing>> = members
@@ -631,12 +645,14 @@ mod tests {
 
     #[test]
     fn keys_parse_only_their_own_form() {
-        assert_eq!(parse_key(".3.in"), Some((3, "in")));
-        assert_eq!(parse_key(".0.+"), Some((0, "+")));
-        assert_eq!(parse_key(".2.C/Q"), Some((2, "C/Q")));
+        let parse = |k: &str| k.parse::<PointKey>().ok().and_then(|k| parse_key(&k));
+        assert_eq!(parse(".3.in"), Some((3, "in")));
+        assert_eq!(parse(".0.+"), Some((0, "+")));
+        assert_eq!(parse(".2.C/Q"), Some((2, "C/Q")));
         for bad in [".3", ".-1.in", ".3.nope", ".99999.in", "3.in", "..in", ".3.in.x", ""] {
-            assert_eq!(parse_key(bad), None, "{bad}");
+            assert_eq!(parse(bad), None, "{bad}");
         }
+        assert_eq!(key(3, "in").map(|k| k.to_string()).as_deref(), Some(".3.in"));
         assert_eq!(parse_legacy("I1.3"), Some((11, "in")));
         assert_eq!(parse_legacy("Q0.0"), Some((0, "out")));
         for bad in ["I1.8", "I.3", "X1.1", "I99999.1", "I1.", "I1.33"] {

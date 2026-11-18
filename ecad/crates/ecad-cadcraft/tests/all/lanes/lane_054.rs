@@ -285,7 +285,7 @@ fn hostile_types_and_starts_read_as_absent_with_their_rows() {
                 "hostile",
                 vec![ecad_model::Op::SetStyle {
                     layer: ecad_model::StyleLayer::Project,
-                    catalogue: "page".into(),
+                    catalogue: ecad_model::StyleCatalogue::Page,
                     id: StyleRef::Builtin("schematic".into()),
                     before: None,
                     after: Some(r),
@@ -545,7 +545,7 @@ fn structure_codes_show_the_052_codes_and_follow_a_rename() {
     let c = h.doc().devices.keys().copied().next().unwrap();
     h.run("setlocation", json!({"component": c.hex(), "value": "+CP1"})).unwrap();
     h.run("setdefault", json!({"key": "front.cover.structure_codes", "level": "project", "value": "on"})).unwrap();
-    let key = h.doc().devices.get(&c).and_then(|x| x.properties.get("location").cloned()).unwrap();
+    let key = h.doc().devices.get(&c).and_then(|x| x.value("location")).unwrap();
     assert_ne!(key, "+CP1", "052 stores the entry key");
     let t = cover_texts(&mut h, cover);
     assert!(t.iter().any(|x| x == "+CP1"), "{t:?}");

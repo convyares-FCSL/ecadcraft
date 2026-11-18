@@ -29,21 +29,17 @@ fn coil(h: &mut H, at: [f64; 2], tag: Option<&str>) -> Result<DeviceId, String> 
 }
 
 fn tag_of(h: &mut H, c: DeviceId) -> Option<String> {
-    h.doc().devices.get(&c).and_then(|x| x.properties.get("tag").cloned())
+    h.doc().devices.get(&c).and_then(|x| x.tag().map(str::to_string))
 }
 
 fn fixed(h: &mut H, c: DeviceId) -> bool {
-    h.doc().devices.get(&c).is_some_and(|x| x.properties.get("tag_fixed").is_some_and(|v| v == "yes"))
+    h.doc().devices.get(&c).is_some_and(|x| x.tag_fixed)
 }
 
 /// The tags of the fixed devices among `cs`.
 fn fixed_tags(h: &mut H, cs: &[DeviceId]) -> BTreeMap<DeviceId, Option<String>> {
     let doc = h.doc();
-    cs.iter()
-        .filter_map(|c| {
-            doc.devices.get(c).filter(|x| x.properties.get("tag_fixed").is_some_and(|v| v == "yes")).map(|x| (*c, x.properties.get("tag").cloned()))
-        })
-        .collect()
+    cs.iter().filter_map(|c| doc.devices.get(c).filter(|x| x.tag_fixed).map(|x| (*c, x.tag().map(str::to_string)))).collect()
 }
 
 fn erase_device(h: &mut H, page: PageId, c: DeviceId) {
@@ -71,7 +67,7 @@ fn assert_unique(h: &mut H, step: &str) -> BTreeMap<String, ObjectRef> {
 
 fn k_numbers(h: &mut H) -> BTreeSet<u64> {
     let doc = h.doc();
-    doc.devices.values().filter_map(|c| c.properties.get("tag")).filter_map(|t| tag::parse(t)).filter(|(p, _)| p == "K").map(|(_, n)| n).collect()
+    doc.devices.values().filter_map(|c| c.tag()).filter_map(tag::parse).filter(|(p, _)| p == "K").map(|(_, n)| n).collect()
 }
 
 /// A small, seeded generator (no dependency).
@@ -522,7 +518,7 @@ fn issue_with_finalise_writes_nothing_when_the_issue_is_refused_and_undoes_in_tw
         let at = p.ledger.document().versions.values().copied().max().unwrap_or(0);
         p.ledger.state_at(at).unwrap()
     });
-    assert_eq!(rev_doc.devices[&k].properties.get("tag").map(String::as_str), Some("-K01"), "the revision point holds the finalised tag");
+    assert_eq!(rev_doc.devices[&k].tag(), Some("-K01"), "the revision point holds the finalised tag");
     // A rev issued before: refused before Finalise writes.
     let at = cell(&mut h, page, 3, 1);
     let k2 = coil(&mut h, at, None).unwrap();
@@ -630,7 +626,7 @@ fn old_cable_tags_are_kept_at_reopen_and_still_count() {
     assert_eq!(t4, "-W04", "-W01…-W03 were given before the old tags were typed");
     let doc = h2.doc();
     let mut seen = BTreeSet::new();
-    for t in doc.devices.values().filter_map(|c| c.properties.get("tag")).chain(doc.cables.values().filter_map(|c| c.properties.get("tag"))) {
+    for t in doc.devices.values().filter_map(|c| c.tag()).chain(doc.cables.values().filter_map(|c| c.properties.get("tag").map(String::as_str))) {
         if t != "W0" {
             assert!(seen.insert(tag::key(t)), "duplicate {t}");
         }

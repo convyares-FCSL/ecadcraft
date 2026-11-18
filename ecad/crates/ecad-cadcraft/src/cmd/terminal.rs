@@ -14,6 +14,7 @@ use ecad_electrical::cmd::terminal::{self as rules, Bridge, TerminalsInput};
 pub use ecad_electrical::cmd::terminal::{
     BRIDGE_STANDOFF, Fence, FenceKind, MAX_FENCE, definition_for, land_level, level_symbol, on_wire_of, plan_fence, plan_fence_typed, staple,
 };
+use ecad_model::units::{Degrees, Radians};
 use ecad_model::{CableId, DeviceId, Document, End, Noun, Op, PageId, Placement, Pt, Style, TerminalId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -212,7 +213,7 @@ fn wire_words(doc: &Document, w: WireId) -> String {
 /// (or the strip tagged `tag`, or a new strip) at the next position of its type that lacks its
 /// level, or at `position`; on a wire it lands there. One transaction.
 pub(crate) fn place_level(
-    s: &mut Session, params: &crate::cmd::device::PlaceParams, starter: &'static crate::symbols::Starter, at: Pt, degrees: f64, mirror: bool,
+    s: &mut Session, params: &crate::cmd::device::PlaceParams, starter: &'static crate::symbols::Starter, at: Pt, degrees: Degrees, mirror: bool,
 ) -> cadcraft_engine::Result<Value> {
     let (ty, level) = tt::of_starter(ecad_model::Word::word(starter.key)).ok_or_else(|| err("That symbol is not a terminal level."))?;
     let device = params.device_id()?;
@@ -236,19 +237,22 @@ pub(crate) fn place_level(
                     Some(t) => t,
                     None => p.tag_high.next_auto(&p.ledger, &crate::devices::prefix_for(doc, starter))?,
                 };
-                let mut properties = ecad_model::Properties::new();
-                properties.insert(ecad_model::tag::TAG_KEY.into(), t.clone());
-                properties.insert("description".into(), "Terminal".into());
                 ops.push(Op::CreateDevice {
                     id: c,
-                    device: ecad_model::Device { properties, definition: Some(def), device_type: starter.device_type() },
+                    device: ecad_model::Device {
+                        tag: Some(crate::devices::stored_tag(&t)?),
+                        description: crate::devices::description_of("Terminal"),
+                        definition: Some(def),
+                        device_type: starter.device_type(),
+                        ..ecad_model::Device::default()
+                    },
                 });
                 (c, t)
             }
         };
         let landing = landing_point(doc, page, at);
         let origin = landing.map_or(at, |on| on.at);
-        let placement = Placement { origin, rotation: degrees.to_radians(), mirror, scale: 1.0 };
+        let placement = Placement { origin, rotation: Radians::from(degrees), mirror, scale: 1.0 };
         let shown = level_symbol(&mut p.ids, page, style, def, starter, c, &position, placement, &mut ops)?;
         let land = match landing {
             Some(on) => Some(land_level(doc, &mut p.ids, page, on, &shown, placement)?),
@@ -258,7 +262,7 @@ pub(crate) fn place_level(
             ops.extend(l.ops.clone());
         }
         // Brief 052d (design 052 §5.3): the place proposes for the strip.
-        let proposed = crate::draw::proposals::plan_place(p, modes, c, page, origin, None).map_err(CmdError::refused)?;
+        let proposed = crate::draw::proposals::plan_place(p, &ops, modes, c, page, origin, None).map_err(CmdError::refused)?;
         ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", "Place terminal level", ops)?;
         p.last_placed = Some((starter.key.to_string(), c));

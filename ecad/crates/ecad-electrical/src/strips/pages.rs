@@ -323,7 +323,8 @@ impl StripPages {
                 Op::SetProperty { object: ObjectRef::Cable(k), .. } => {
                     self.last_changed.extend(self.by_cable.get(k).into_iter().flatten().copied());
                 }
-                Op::SetProperty { object: ObjectRef::Device(d), .. } => {
+                // A far device's tag or description (design 072: its fields) shows in the strip's rows.
+                Op::SetProperty { object: ObjectRef::Device(d), .. } | Op::ModifyDevice { id: d, .. } => {
                     self.last_changed.extend(self.by_far.get(d).into_iter().flatten().copied());
                 }
                 _ => {}

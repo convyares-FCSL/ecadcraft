@@ -4,11 +4,12 @@
 //! to commit and what to report; the engine crate's shims read the parameters, commit and answer
 //! in JSON.
 
+use ecad_model::units::{Degrees, Radians};
 use std::collections::BTreeSet;
 
-use ecad_model::{DeviceId, Document, IdAllocator, Ledger, Noun, ObjectRef, Op, PageId, Placement, Pt, Style, Terminal, TerminalId, WireId};
+use ecad_model::{DeviceId, Document, IdAllocator, Ledger, Noun, Op, PageId, Placement, Pt, Style, Terminal, TerminalId, WireId};
 
-use crate::connectors::{self as cn, Family, Names, Shown};
+use crate::connectors::{self as cn, Family, FamilyRules, Names, Shown};
 use crate::defaults::{self, Scope};
 use crate::devices::TagHigh;
 use crate::error::CmdError;
@@ -104,8 +105,8 @@ pub fn halves(doc: &Document, halves: Option<&str>) -> Result<Side, CmdError> {
 /// A word that names no family.
 pub fn family(doc: &Document, family: Option<&str>) -> Result<Family, CmdError> {
     match family {
-        None => Ok(Family::parse(defaults::resolve(doc, &defaults::connectors::MAKER_FAMILY, Scope::project()).word()).unwrap_or(Family::Plain)),
-        Some(w) => Family::parse(w).ok_or(CmdError::input("`family` is plain, dsub, m12, rj45, usba or usbb")),
+        None => Ok(Family::of_typed(defaults::resolve(doc, &defaults::connectors::MAKER_FAMILY, Scope::project()).word()).unwrap_or(Family::Plain)),
+        Some(w) => Family::of_typed(w).ok_or(CmdError::input("`family` is plain, dsub, m12, rj45, usba or usbb")),
     }
 }
 
@@ -188,7 +189,7 @@ pub struct ConnectorInput {
     /// The wire one pin lands on.
     pub wire: Option<WireId>,
     /// 0, 90, 180 or 270.
-    pub degrees: f64,
+    pub degrees: Degrees,
     /// A row's halves swapped.
     pub swap: bool,
     /// The first pin's name.
@@ -315,10 +316,10 @@ fn wire_point(doc: &Document, page: PageId, w: WireId) -> Option<Pt> {
 /// A bulkhead (RJ45, USB): 034's one-piece symbol, a new device, as Find Symbol places it.
 #[allow(clippy::too_many_arguments)]
 fn place_bulkhead(
-    ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, key: &str, at: Pt, degrees: f64,
+    ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, key: &str, at: Pt, degrees: Degrees,
 ) -> Result<Made, CmdError> {
     let starter = crate::devices::starter(key)?;
-    let placement = Placement { origin: at, rotation: degrees.to_radians(), mirror: false, scale: 1.0 };
+    let placement = Placement { origin: at, rotation: Radians::from(degrees), mirror: false, scale: 1.0 };
     let plan = crate::devices::plan_place(ledger, ids, high, page, style, starter, placement, crate::devices::Target::New(None))?;
     Ok(Made { component: plan.component, tag: plan.tag, new: true, shown: Vec::new(), splits: Vec::new(), dropped: Vec::new(), ops: plan.ops })
 }
@@ -347,7 +348,7 @@ struct Row<'a> {
     pins: Option<usize>,
     names: &'a Names,
     at: Pt,
-    degrees: f64,
+    degrees: Degrees,
     swap: bool,
 }
 
@@ -381,7 +382,7 @@ fn place_row(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: P
         Some(c) if !matches!(names, Names::List(_)) => join_names(doc, c, n),
         _ => cn::names_for(names, n)?,
     };
-    let rot = r.degrees.to_radians();
+    let rot = Radians::from(r.degrees);
     let (sin, cos) = rot.sin_cos();
     let up = if swap { -5.0 } else { 5.0 };
     let mut ops = Vec::new();
@@ -393,7 +394,7 @@ fn place_row(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: P
         let def = super::terminal::definition_for(doc, ids, starter, &mut ops)?;
         let origin = if side == Side::Socket && halves == Side::Both { Pt::new(at.x - sin * up, at.y + cos * up) } else { at };
         let placement = if swap {
-            Placement { origin, rotation: rot + std::f64::consts::PI, mirror: true, scale: 1.0 }
+            Placement { origin, rotation: Radians(rot.0 + std::f64::consts::PI), mirror: true, scale: 1.0 }
         } else {
             Placement { origin, rotation: rot, mirror: false, scale: 1.0 }
         };
@@ -414,11 +415,11 @@ fn place_row(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: P
 }
 
 /// The rotation of a pin symbol on a wire segment: its points along the wire.
-pub fn along_wire(doc: &Document, page: PageId, on: &crate::wires::OnWire) -> f64 {
-    let Some((_, _, v)) = crate::wires::route_vertices(doc, on.conductor, page) else { return 0.0 };
+pub fn along_wire(doc: &Document, page: PageId, on: &crate::wires::OnWire) -> Radians {
+    let Some((_, _, v)) = crate::wires::route_vertices(doc, on.conductor, page) else { return Radians(0.0) };
     match (v.get(on.segment), v.get(on.segment + 1)) {
-        (Some(a), Some(b)) if (b.x - a.x).abs() > (b.y - a.y).abs() => std::f64::consts::FRAC_PI_2,
-        _ => 0.0,
+        (Some(a), Some(b)) if (b.x - a.x).abs() > (b.y - a.y).abs() => Radians(std::f64::consts::FRAC_PI_2),
+        _ => Radians(0.0),
     }
 }
 
@@ -630,8 +631,12 @@ pub fn plan_pinlabel(doc: &Document, input: PinlabelInput) -> Result<Pinlabel, C
         && list.contains(&old)
     {
         let after: Vec<String> = list.iter().map(|n| if *n == old { to.clone() } else { n.clone() }).collect();
-        let before = doc.devices.get(&c).and_then(|x| x.properties.get(cn::PIN_NAMES_KEY)).cloned();
-        ops.push(Op::SetProperty { object: ObjectRef::Device(c), key: cn::PIN_NAMES_KEY.into(), before, after: Some(after.join(",")) });
+        let names = cn::typed_names(&after)?;
+        crate::devices::edit_planned(doc, &mut ops, c, |d| {
+            if let ecad_model::DeviceType::Connector(x) = &mut d.device_type {
+                x.pin_names = names;
+            }
+        });
     }
     let label = format!("Rename pin {tag}:{old}");
     Ok(Pinlabel::Renamed { component: c, tag, from: old, to, ops, label })

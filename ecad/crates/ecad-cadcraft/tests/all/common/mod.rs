@@ -338,7 +338,8 @@ pub fn plc_view(doc: &Document, c: DeviceId) -> std::collections::BTreeMap<Strin
     out
 }
 
-/// A device's value of `setprop` key `k` ([`plc_view`]); `plc.channels` is a module's count.
+/// A device's value of `setprop` key `k` ([`plc_view`], else [`ecad_model::Device::value`]);
+/// `plc.channels` is a module's count.
 pub fn plc_value(doc: &Document, c: DeviceId, k: &str) -> Option<String> {
     if k == "plc.channels" {
         return match &doc.devices.get(&c)?.device_type {
@@ -346,7 +347,7 @@ pub fn plc_value(doc: &Document, c: DeviceId, k: &str) -> Option<String> {
             _ => None,
         };
     }
-    plc_view(doc, c).remove(k)
+    plc_view(doc, c).remove(k).or_else(|| doc.devices.get(&c)?.value(k))
 }
 
 /// A hand-made op setting a PLC module's field named by `setprop` key `k` (as a file or a merge

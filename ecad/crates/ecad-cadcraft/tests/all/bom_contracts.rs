@@ -263,7 +263,7 @@ fn fuse_inserts_count_per_fuse_and_uncovered_fuses_are_checked() {
     assert!(bom(&mut f.h, json!({})).iter().any(|r| r["part_number"] == "FU-5T" && r["tags"] == "-X05"), "the strip's terminals use it");
     let v = f.h.run("article", json!({"part_number": "FU-5T", "article_number": "A-0400"})).unwrap();
     assert_eq!(v["message"], "Set A-0400 on 2 parts (1 line, 1 strip part).", "{v}");
-    assert_eq!(f.h.doc().devices[&f.x05].properties.get("article_number").map(String::as_str), Some("A-0400"));
+    assert_eq!(f.h.doc().devices[&f.x05].get("article_number"), Some("A-0400"));
     same_as_built(&mut f.h);
 }
 

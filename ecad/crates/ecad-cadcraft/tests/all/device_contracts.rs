@@ -181,8 +181,11 @@ fn c_renaming_the_tag_updates_every_symbol_in_one_undoable_transaction() {
     let r = f.h.run("setprop", json!({"component": f.k1.hex(), "key": "tag", "value": "k5"})).unwrap();
     assert_eq!(r["value"], json!("-K05"));
     let ops = last_ops(&mut f.h);
-    // Brief 026: typing a tag fixes it, in the same transaction.
-    assert!(matches!(ops.as_slice(), [Op::SetProperty { key, .. }, Op::SetProperty { key: f, .. }] if key == "tag" && f == "tag_fixed"), "{ops:?}");
+    // Brief 026: typing a tag fixes it, in the same transaction (one ModifyDevice, design 072).
+    assert!(
+        matches!(ops.as_slice(), [Op::ModifyDevice { before, after, .. }] if before.tag() == Some("-K01") && after.tag() == Some("-K05") && after.tag_fixed),
+        "{ops:?}"
+    );
     assert_eq!(f.h.p(|p| p.ledger.log().last().unwrap().label.clone()), "Set tag");
     assert_eq!(tag_texts(&mut f.h, f.p2), ["-K05", "-K05"]);
     f.h.activate(f.p1);
@@ -290,7 +293,7 @@ fn e_save_and_reopen_keep_tags_devices_and_embedded_definitions() {
     assert_eq!(doc, live, "tags, properties, the three symbols of -K01 and their labels");
     assert!(h2.p(|p| p.ledger.replay_matches().unwrap()));
     assert!(doc.definitions.values().all(|d| d.origin.is_some()));
-    assert_eq!(doc.devices[&f.k1].properties["maker"], "Acme");
+    assert_eq!(doc.devices[&f.k1].get("maker").unwrap(), "Acme");
     h2.check();
     drop(h2);
     let _ = std::fs::remove_dir_all(&dir);
@@ -337,7 +340,7 @@ fn d_merging_a_device_whose_symbol_shows_no_connection_points_is_refused_clearly
     doc.representations.get_mut(&rid).unwrap().connection_points.clear();
     let ts: Vec<TerminalId> = doc.terminals_of(k2).map(|(t, _)| t).collect();
     for t in ts {
-        doc.terminals.get_mut(&t).unwrap().key = Some(format!("old-{}", t.short()));
+        doc.terminals.get_mut(&t).unwrap().key = Some(ecad_model::PointKey::Def(format!("old-{}", t.short())));
     }
     let mut ids = ecad_model::IdAllocator::seeded(5);
     let e = devices::plan_merge(&doc, &mut ids, k2, f.k1).unwrap_err().to_string();
@@ -404,7 +407,7 @@ fn g_a_typed_tag_that_exists_offers_to_add_the_symbol_to_that_device() {
     typed(&mut h, "");
     typed(&mut h, "120,0");
     typed(&mut h, "");
-    assert!(h.doc().devices.values().any(|c| c.properties.get("tag").map(String::as_str) == Some("-SR07")));
+    assert!(h.doc().devices.values().any(|c| c.tag() == Some("-SR07")));
 }
 
 #[test]
@@ -469,8 +472,8 @@ fn h_refusals_say_why_and_write_nothing() {
         let e = f.h.run("place", params.clone()).unwrap_err();
         assert!(e.contains(want), "{params}: {e}");
     }
-    let e = f.h.run("setprop", json!({"component": f.k1.hex(), "key": "maker", "value": "m".repeat(201)})).unwrap_err();
-    assert!(e.contains("at most 200 characters"), "{e}");
+    let e = f.h.run("setprop", json!({"component": f.k1.hex(), "key": "maker", "value": "m".repeat(65)})).unwrap_err();
+    assert!(e.contains("at most 64 characters"), "{e}");
     assert_eq!(f.h.head(), head);
     // Nine contacts at most.
     for i in 0..7 {
@@ -551,7 +554,7 @@ fn i_moving_a_contact_moves_its_terminals_and_copying_a_device_gives_the_next_ta
     let ch = f.h.handle_of(f.p1, coil);
     f.h.run("copy", json!({"handles": [ch.hex()], "delta": [0, 60]})).unwrap();
     let doc = f.h.doc();
-    let tags: Vec<&str> = doc.devices.values().filter_map(|c| c.properties.get("tag").map(String::as_str)).collect();
+    let tags: Vec<&str> = doc.devices.values().filter_map(|c| c.tag()).collect();
     assert!(tags.contains(&"-K02"), "the copy is a new device with the next tag: {tags:?}");
     f.h.check();
 }
@@ -637,7 +640,7 @@ fn a_tag_deleted_before_the_snapshot_is_not_given_again_after_reopening() {
     assert_eq!(h2.p(|p| devices::next_tag_preview(p, coil)).as_deref(), Some("-K06"));
     let placed = place(&mut h2, "coil", [400.0, 0.0]);
     let c: DeviceId = id(&placed, "component");
-    let tag = h2.p(|p| p.ledger.document().devices[&c].properties.get("tag").cloned());
+    let tag = h2.p(|p| p.ledger.document().devices[&c].tag().map(str::to_string));
     assert_eq!(tag.as_deref(), Some("-K06"));
     drop(h2);
     let _ = std::fs::remove_dir_all(&dir);

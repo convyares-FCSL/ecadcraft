@@ -82,14 +82,14 @@ fn every_op_ledger() -> Ledger {
     let def_v = Definition {
         name: "K".into(),
         graphics: vec![Primitive::Circle { center: Pt::new(0.0, 0.0), radius: 2.0 }],
-        terminals: vec![TerminalDef { key: "1".into(), label: None, at: Pt::new(0.0, 2.0) }],
+        terminals: vec![TerminalDef { key: "1".parse().unwrap(), label: None, at: Pt::new(0.0, 2.0) }],
         ..Default::default()
     };
     let comp: ecad_model::DeviceId = ids.fresh();
     let mut comp_v = Device { definition: Some(def), ..Device::default() };
-    comp_v.properties.insert("tag".into(), "K1".into());
+    comp_v.properties.insert("note".into(), "K1".into());
     let term: ecad_model::TerminalId = ids.fresh();
-    let term_v = Terminal { component: comp, label: Some("1".into()), key: Some("1".into()) };
+    let term_v = Terminal { component: comp, label: Some("1".into()), key: Some("1".parse().unwrap()) };
     let sym: ecad_model::ItemId = ids.fresh();
     let sym_v = Item { page, style: style(layer), kind: ItemKind::Symbol(SymbolInstance { definition: def, placement: Placement::default() }) };
     let item: ecad_model::ItemId = ids.fresh();
@@ -179,7 +179,7 @@ fn every_op_ledger() -> Ledger {
         Op::DeleteCable { id: cable, cable: cable_v.clone() },
         Op::AddCableMember { cable, index: 1, member: CableMember { conductor: wire2, core: Some("2".into()) } },
         Op::RemoveCableMember { cable, index: 0, member: CableMember { conductor: wire, core: None } },
-        Op::SetProperty { object: ObjectRef::Device(comp), key: "tag".into(), before: Some("K1".into()), after: None },
+        Op::SetProperty { object: ObjectRef::Device(comp), key: "note".parse().unwrap(), before: Some("K1".into()), after: None },
         Op::EmbedDefinition { id: ids.fresh(), definition: def_v.clone() },
         Op::RemoveDefinition { id: def, definition: def_v.clone() },
         Op::SetProjectSettings {
@@ -194,12 +194,20 @@ fn every_op_ledger() -> Ledger {
         Op::ModifyFolder { id: folder, before: folder_v.clone(), after: Folder { name: "Renamed".into(), parent: None } },
         Op::SetStyle {
             layer: StyleLayer::Project,
-            catalogue: "line".into(),
+            catalogue: ecad_model::StyleCatalogue::Wire,
             id: StyleRef::Builtin("thin".into()),
             before: None,
             after: Some(StyleRecord { name: "Thin".into(), ..StyleRecord::default() }),
         },
         Op::SetStandard { before: None, after: Some(header) },
+        // Lane 072 E (A15): the project's lists changed.
+        Op::ModifyProject {
+            before: ecad_model::Project::default(),
+            after: ecad_model::Project {
+                locations: vec![ecad_model::Location::new(ids.fresh(), ecad_model::ListCode::new("+CP1").unwrap())],
+                ..ecad_model::Project::default()
+            },
+        },
     ];
     for op in ops {
         let name = op.name();
