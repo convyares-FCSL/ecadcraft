@@ -437,3 +437,38 @@ fn a_motor_rating_is_read_into_typed_fields() {
     assert!(h.doc().devices[&m].rating_note.is_some());
     assert!(no_rating(&mut h));
 }
+
+/// Step 3, Load (design 072 §2.2 row 6, "Ratings"): heaters and valves are loads; `setprop rating`
+/// reads the rated power into its typed field; a bare number is asked, a voltage refused, and other
+/// text kept as the note; an unrated load is warned about.
+#[test]
+fn a_load_rating_is_read_into_typed_fields() {
+    use ecad_model::Op;
+    use ecad_model::device::{DeviceType, Load};
+    use ecad_model::units::Watts;
+    let mut h = H::new(7210);
+    let no_rating = |h: &mut H| h.run("checks", json!({})).unwrap().to_string().contains("no-rating");
+    let v: DeviceId = id(&crate::common::place(&mut h, "valve", (200.0, 100.0)), "component");
+    assert_eq!(h.doc().devices[&v].device_type, DeviceType::Load(Load::default()));
+    let e: DeviceId = id(&crate::common::place(&mut h, "heater", (100.0, 100.0)), "component");
+    assert!(no_rating(&mut h));
+    let r = h.run("setprop", json!({"component": e.hex(), "key": "rating", "value": "3000 W"})).unwrap();
+    assert_eq!(r["message"], json!("Read: 3 kW."), "{r}");
+    assert_eq!(r["value"], json!("3 kW"));
+    let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());
+    assert!(matches!(ops.as_slice(), [Op::ModifyDevice { .. }]), "{ops:?}");
+    assert_eq!(h.doc().devices[&e].device_type, DeviceType::Load(Load { rated_power: Some(Watts(3000.0)) }));
+    assert!(h.doc().devices[&e].properties.is_empty());
+    let r = h.run("setprop", json!({"component": v.hex(), "key": "rating", "value": "5W"})).unwrap();
+    assert_eq!(r["value"], json!("5 W"), "{r}");
+    assert!(!no_rating(&mut h));
+    // Ambiguous text is asked, never guessed; a voltage is refused; other text is the note.
+    let err = h.run("setprop", json!({"component": v.hex(), "key": "rating", "value": "5"})).unwrap_err();
+    assert!(err.contains("W or kW"), "{err}");
+    let err = h.run("setprop", json!({"component": v.hex(), "key": "rating", "value": "24 V DC"})).unwrap_err();
+    assert!(err.contains("no voltage"), "{err}");
+    let r = h.run("setprop", json!({"component": v.hex(), "key": "rating", "value": "see datasheet"})).unwrap();
+    assert_eq!(r["value"], json!("see datasheet"), "{r}");
+    assert!(h.doc().devices[&v].rating_note.is_some());
+    assert!(no_rating(&mut h));
+}

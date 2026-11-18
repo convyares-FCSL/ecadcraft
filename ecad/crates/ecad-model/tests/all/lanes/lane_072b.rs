@@ -487,3 +487,36 @@ fn a_motor_s_rating_is_typed() {
     let c: DeviceId = ids.fresh();
     l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: d }]).unwrap();
 }
+
+/// Step 3, Load (design 072 §2.2 row 6, "Ratings"): a load's rated power is a typed field, shown
+/// from it; a load without it has no rating; a power out of range is refused.
+#[test]
+fn a_load_s_rating_is_typed() {
+    use ecad_model::device::{Load, RatingNote};
+    use ecad_model::units::Watts;
+    let d = Device { device_type: DeviceType::Load(Load { rated_power: Some(Watts(3000.0)) }), ..Device::default() };
+    let json = serde_json::to_value(&d.device_type).unwrap();
+    assert_eq!(json, serde_json::json!({"load": {"rated_power": 3000.0}}));
+    assert_eq!(serde_json::from_value::<DeviceType>(json).unwrap(), d.device_type, "round-trips");
+    assert_eq!(serde_json::to_value(DeviceType::Load(Load::default())).unwrap(), serde_json::json!({"load": {}}));
+    assert_eq!(d.value("rating").as_deref(), Some("3 kW"));
+    assert!(!d.has_no_rating());
+    for bad in [serde_json::json!({"load": {"voltage": 24.0}}), serde_json::json!({"load": {"rated_power": "3 kW"}})] {
+        assert!(serde_json::from_value::<DeviceType>(bad.clone()).is_err(), "{bad}");
+    }
+    // An unrated load has no rating, also with a note.
+    let unrated =
+        Device { device_type: DeviceType::Load(Load::default()), rating_note: Some(RatingNote::new("see datasheet").unwrap()), ..Device::default() };
+    assert!(unrated.has_no_rating());
+    assert_eq!(unrated.value("rating").as_deref(), Some("see datasheet"));
+    // The invariant: a power out of range or not a number is refused.
+    let mut ids = IdAllocator::seeded(17);
+    let mut l = Ledger::new(17);
+    for wild in [Load { rated_power: Some(Watts(0.0)) }, Load { rated_power: Some(Watts(f64::NAN)) }] {
+        let c: DeviceId = ids.fresh();
+        let bad = Device { device_type: DeviceType::Load(wild), ..Device::default() };
+        assert!(l.commit(Author::User, "wild", vec![Op::CreateDevice { id: c, device: bad }]).is_err());
+    }
+    let c: DeviceId = ids.fresh();
+    l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: d }]).unwrap();
+}

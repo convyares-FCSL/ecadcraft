@@ -209,6 +209,17 @@ fn a_motor_rating_is_shown_raw_and_readable() {
     shown_raw_and_readable("072b-motor", 79, before, after, &["motor", "phases", "three", "rated_power", "star_delta"], "rated_power");
 }
 
+/// Step 3, Load (A15): a load's typed power shows in the readable log and the Readable row view,
+/// and the Raw view is the stored bytes.
+#[test]
+fn a_load_rating_is_shown_raw_and_readable() {
+    use ecad_model::device::Load;
+    use ecad_model::units::Watts;
+    let before = Device { device_type: DeviceType::Load(Load::default()), ..Device::default() };
+    let after = Device { device_type: DeviceType::Load(Load { rated_power: Some(Watts(3000.0)) }), ..before.clone() };
+    shown_raw_and_readable("072b-load", 80, before, after, &["load", "rated_power"], "rated_power");
+}
+
 /// One device created as `before` and changed to `after`: the readable log names `log_words`,
 /// the Readable row view names `readable_word`, and the Raw view is the stored bytes.
 fn shown_raw_and_readable(name: &str, seed: u64, before: Device, after: Device, log_words: &[&str], readable_word: &str) {
