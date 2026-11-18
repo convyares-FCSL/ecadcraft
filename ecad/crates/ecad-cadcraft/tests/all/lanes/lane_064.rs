@@ -478,3 +478,38 @@ fn a_drawing_commit_runs_the_frame_map_and_leaves_the_frame() {
     assert_eq!(h.head(), head + 1, "the line is a drawing commit");
     assert_eq!(h.p(|p| p.frame_builds), builds, "a line is not on the frame's map");
 }
+
+/// Step 4: a command refused by the ledger at commit (its op's `before` is stale) leaves the
+/// kept frame and its flag as they were, and records nothing; the same op made valid then
+/// reaches the frame's map.
+#[test]
+fn a_refused_commit_leaves_the_frame_and_its_flag() {
+    let b = ecad_cadcraft::test_support::ProjectBuilder::new(648).page().build();
+    let mut h = crate::common::H::from_built(b);
+    let page = h.first_page();
+    h.activate(page);
+    let shown = |h: &mut crate::common::H| h.cfg(|p| p.views_mut().frame().shown().map(|(p, i)| (p, i.clone())));
+    let before = shown(&mut h);
+    assert!(before.as_ref().is_some_and(|(p, _)| *p == page), "the page's frame is kept");
+    assert!(!h.p(|p| p.frame_is_stale()));
+    let head = h.head();
+    let builds = h.p(|p| p.frame_builds);
+    let project = h.doc().project.clone();
+    let titled = |t: &str| {
+        let mut p = project.clone();
+        p.info.title = ecad_model::project::InfoText::new(t).ok();
+        p
+    };
+    // The project's title is not "Stale", so the ledger refuses the op at commit.
+    let stale = ecad_model::Op::ModifyProject { before: titled("Stale"), after: titled("Panel 7") };
+    let r = h.project.apply_ops(&mut h.s, "refused", vec![stale]);
+    assert!(r.is_err(), "{r:?}");
+    assert_eq!(h.head(), head, "nothing recorded");
+    assert!(!h.p(|p| p.frame_is_stale()), "the flag is unchanged");
+    assert_eq!(shown(&mut h), before, "the kept frame is unchanged");
+    assert_eq!(h.p(|p| p.frame_builds), builds);
+    // The same change from the real project is on the map: the frame is worked out again.
+    let valid = ecad_model::Op::ModifyProject { before: project.clone(), after: titled("Panel 7") };
+    h.project.apply_ops(&mut h.s, "valid", vec![valid]).unwrap();
+    assert_eq!(h.p(|p| p.frame_builds), builds + 1, "a title change is on the frame's map");
+}

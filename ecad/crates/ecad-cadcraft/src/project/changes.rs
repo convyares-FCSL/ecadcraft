@@ -44,6 +44,12 @@ impl Project {
         &mut self.derived
     }
 
+    /// Whether the kept frame is marked to be drawn again (tests of the frame's map only).
+    #[cfg(feature = "test-support")]
+    pub fn frame_is_stale(&self) -> bool {
+        self.frame_stale
+    }
+
     /// Number of the last change the project went through (a transaction, an undo or redo, a view
     /// switch); 0 before the first. Cheap: callers compare it every frame.
     pub fn change_count(&self) -> u64 {
