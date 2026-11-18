@@ -63,7 +63,7 @@ fn every_op_inverts_to_the_previous_state() {
         Op::AttachEnd { conductor: cond, end: End::B, before: None, after: Some(term) },
         Op::CreateCable { id: cable, cable: Default::default() },
         Op::AddCableMember { cable, index: 0, member: CableMember { conductor: cond, core: None } },
-        Op::SetProperty { object: ecad_model::ObjectRef::Device(comp), key: "tag".into(), before: None, after: Some("-K1".into()) },
+        Op::SetProperty { object: ecad_model::ObjectRef::Device(comp), key: "note".into(), before: None, after: Some("-K1".into()) },
     ];
     let before = f.ledger.document().clone();
     let after = f.ledger.preview(&ops).unwrap();

@@ -199,3 +199,72 @@ pub struct PlcRack {}
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlcModule {}
+
+/// A device's description (design 072 §2.1).
+pub type Description = crate::text::Text<256>;
+
+/// A part's number, maker, article number or type text (design 072 §2.1).
+pub type PartText = crate::text::Text<64>;
+
+/// The `setprop` key of a device's description.
+pub const DESCRIPTION_KEY: &str = "description";
+/// The `setprop` key of a device's part number.
+pub const PART_NUMBER_KEY: &str = "part_number";
+/// The `setprop` key of a device's maker (its `manufacturer` field).
+pub const MAKER_KEY: &str = "maker";
+/// The `setprop` key of a device's article number.
+pub const ARTICLE_KEY: &str = "article_number";
+/// The `setprop` key of a device's type text (a strip's type notation reads it).
+pub const TYPE_KEY: &str = "type";
+
+/// One of a device's text fields ([`crate::Device`]), named by the `setprop` key that routes to it
+/// (design 072 §10).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum TextField {
+    Description,
+    PartNumber,
+    Manufacturer,
+    ArticleNumber,
+    TypeText,
+}
+
+impl TextField {
+    /// Every text field, in the device's order.
+    pub const ALL: [TextField; 5] =
+        [TextField::Description, TextField::PartNumber, TextField::Manufacturer, TextField::ArticleNumber, TextField::TypeText];
+
+    /// The `setprop` key that names it.
+    pub fn key(self) -> &'static str {
+        match self {
+            TextField::Description => DESCRIPTION_KEY,
+            TextField::PartNumber => PART_NUMBER_KEY,
+            TextField::Manufacturer => MAKER_KEY,
+            TextField::ArticleNumber => ARTICLE_KEY,
+            TextField::TypeText => TYPE_KEY,
+        }
+    }
+
+    /// The field `key` names, if it names one.
+    pub fn of_key(key: &str) -> Option<TextField> {
+        TextField::ALL.into_iter().find(|f| f.key() == key)
+    }
+
+    /// The most characters it holds.
+    pub fn max_chars(self) -> usize {
+        match self {
+            TextField::Description => Description::MAX,
+            TextField::PartNumber | TextField::Manufacturer | TextField::ArticleNumber | TextField::TypeText => PartText::MAX,
+        }
+    }
+
+    /// Its name in messages and the inspector.
+    pub fn label(self) -> &'static str {
+        match self {
+            TextField::Description => "description",
+            TextField::PartNumber => "part number",
+            TextField::Manufacturer => "maker",
+            TextField::ArticleNumber => "article number",
+            TextField::TypeText => "type",
+        }
+    }
+}

@@ -269,7 +269,8 @@ pub fn plan_temperature(doc: &Document, typed: &str, after: Option<&str>) -> Res
             .devices
             .iter()
             .filter(|(_, x)| {
-                crate::locations::is_box_component(x) && x.properties.get(ecad_model::book::LOCATION_KEY).is_some_and(|l| l.trim() == e.key)
+                crate::locations::is_box_component(x)
+                    && crate::designations::device_key(x, crate::designations::Aspect::Location).is_some_and(|l| l == e.key)
             })
             .map(|(c, _)| *c)
             .collect(),

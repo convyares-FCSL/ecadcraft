@@ -108,3 +108,63 @@ fn a_project_prefix_follows_a_renamed_symbol_key() {
     // Nothing names a project symbol that is not there: the open check finds nothing.
     assert!(ecad_electrical::words_check::check(&h.doc()).is_empty());
 }
+
+/// Step 2b (design 072 §2.1): a device's description, part number, maker, article number and type
+/// text are written as one `ModifyDevice` (`setprop`, `article`, `bomitem`), never into its bag.
+#[test]
+fn text_fields_are_written_as_modify_device() {
+    use ecad_model::{Op, TextField};
+    let mut h = H::new(7202);
+    let c: DeviceId = id(&crate::common::place(&mut h, "coil", (100.0, 100.0)), "component");
+    let placed = h.doc().devices[&c].clone();
+    assert_eq!(placed.text(TextField::Description), Some("Contactor / relay coil"), "placing writes the symbol's name as the description");
+    for f in TextField::ALL {
+        h.run("setprop", json!({"component": c.hex(), "key": f.key(), "value": format!("v-{}", f.key())})).unwrap();
+        let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());
+        assert!(matches!(ops.as_slice(), [Op::ModifyDevice { .. }]), "{}: {ops:?}", f.key());
+    }
+    let d = h.doc().devices[&c].clone();
+    assert!(TextField::ALL.iter().all(|f| d.text(*f).is_some()) && d.properties.is_empty(), "{d:?}");
+    // `article` writes the device's article number on every part with that part number.
+    h.run("article", json!({"part_number": "v-part_number", "article_number": "A-77"})).unwrap();
+    assert_eq!(h.doc().devices[&c].text(TextField::ArticleNumber), Some("A-77"));
+    // An item's description is a field too, and can't be cleared.
+    let item: DeviceId = id(&h.run("bomitem", json!({"description": "Trunking", "qty": "2"})).unwrap(), "item");
+    assert_eq!(h.doc().devices[&item].text(TextField::Description), Some("Trunking"));
+    h.run("bomitem", json!({"item": item.hex(), "set": {"maker": "Lapp"}})).unwrap();
+    assert_eq!(h.doc().devices[&item].text(TextField::Manufacturer), Some("Lapp"));
+    assert!(h.run("setprop", json!({"component": item.hex(), "key": "description", "value": null})).is_err());
+    // Too long for the field: refused with its bound.
+    let e = h.run("setprop", json!({"component": c.hex(), "key": "part_number", "value": "9".repeat(65)})).unwrap_err();
+    assert!(e.contains("at most 64"), "{e}");
+}
+
+/// Step 2c (design 072 §6.3): a typed location or function is written as one `ModifyDevice`
+/// with `fixed` set; a box's proposal for an unset device writes it unfixed; the bag holds neither.
+#[test]
+fn location_and_function_are_written_as_modify_device() {
+    use ecad_model::Op;
+    let mut h = H::new(7203);
+    let c: DeviceId = id(&crate::common::place(&mut h, "coil", (100.0, 160.0)), "component");
+    for key in ["location", "function"] {
+        let value = if key == "location" { "+CP1" } else { "=F1" };
+        h.run("setprop", json!({"component": c.hex(), "key": key, "value": value})).unwrap();
+        let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());
+        assert!(matches!(ops.as_slice(), [Op::ModifyProject { .. }, Op::ModifyDevice { .. }]), "{key}: {ops:?}");
+    }
+    let d = h.doc().devices[&c].clone();
+    assert!(d.location.is_some() && d.location_fixed && d.function.is_some() && d.function_fixed, "{d:?}");
+    assert!(!d.properties.contains_key("location") && !d.properties.contains_key("function"), "{d:?}");
+    // Clearing clears the flag too.
+    h.run("setprop", json!({"component": c.hex(), "key": "function", "value": null})).unwrap();
+    let d = h.doc().devices[&c].clone();
+    assert_eq!((d.function, d.function_fixed), (None, false));
+    // A box drawn around an unset device proposes its value: set, not fixed.
+    let other: DeviceId = id(&crate::common::place(&mut h, "lamp", (100.0, 100.0)), "component");
+    h.run("locationbox", json!({"location": "+CP2", "corners": [[20, 60], [200, 220]]})).unwrap();
+    let o = h.doc().devices[&other].clone();
+    assert!(o.location.is_some() && !o.location_fixed, "{o:?}");
+    // The device typed +CP1 keeps it (fixed) and is asked about, not moved.
+    assert!(h.doc().devices[&c].location_fixed);
+    assert_ne!(h.doc().devices[&c].location, o.location);
+}

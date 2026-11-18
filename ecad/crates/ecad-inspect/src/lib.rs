@@ -160,7 +160,7 @@ pub struct LiveFacts {
 fn label_of(doc: &Document, s: Subject) -> String {
     let tag = |p: &ecad_model::Properties| p.get("tag").cloned();
     match s {
-        Subject::Device(c) => doc.devices.get(&c).and_then(|x| tag(&x.properties)).unwrap_or_else(|| "untagged device".into()),
+        Subject::Device(c) => doc.devices.get(&c).and_then(|x| x.tag().map(str::to_string)).unwrap_or_else(|| "untagged device".into()),
         Subject::Wire(c) => doc.wires.get(&c).and_then(|x| x.number_text().map(|n| format!("wire {n}"))).unwrap_or_else(|| "unnumbered wire".into()),
         Subject::Cable(c) => doc.cables.get(&c).and_then(|x| tag(&x.properties)).unwrap_or_else(|| "untagged cable".into()),
     }

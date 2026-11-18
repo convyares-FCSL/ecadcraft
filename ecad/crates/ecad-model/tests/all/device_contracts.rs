@@ -3,8 +3,8 @@
 
 use ecad_model::derive::terminal_positions;
 use ecad_model::{
-    Author, Color, Definition, DefinitionId, Device, DeviceId, IdAllocator, Item, ItemId, ItemKind, Layer, Ledger, ObjectRef, Op, Page, PageId,
-    Placement, Primitive, Pt, Representation, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId,
+    Author, Color, Definition, DefinitionId, Device, DeviceId, IdAllocator, Item, ItemId, ItemKind, Layer, Ledger, Op, Page, PageId, Placement,
+    Primitive, Pt, Representation, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId,
 };
 
 struct Fx {
@@ -46,8 +46,6 @@ fn fixture() -> Fx {
     let mut ids = IdAllocator::seeded(18);
     let mut l = Ledger::new(18);
     let (page, layer, coil, contact, k1) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
-    let mut props = ecad_model::Properties::new();
-    props.insert("tag".into(), "-K01".into());
     l.commit(
         Author::User,
         "setup",
@@ -56,7 +54,7 @@ fn fixture() -> Fx {
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
             Op::EmbedDefinition { id: coil, definition: def("coil", ["A1", "A2"]) },
             Op::EmbedDefinition { id: contact, definition: def("no", ["13", "14"]) },
-            Op::CreateDevice { id: k1, device: Device { properties: props, definition: Some(coil), device_type: Default::default() } },
+            Op::CreateDevice { id: k1, device: Device { definition: Some(coil), ..Device::default() }.with_tag(Some("-K01")) },
         ],
     )
     .unwrap();
@@ -162,12 +160,8 @@ fn the_tag_index_finds_one_tag_however_it_is_written() {
         assert_eq!(fx.l.document().components_tagged(written), vec![fx.k1], "{written}");
     }
     assert!(fx.l.document().components_tagged("-K10").is_empty());
-    let rename = |before: &str, after: &str| Op::SetProperty {
-        object: ObjectRef::Device(fx.k1),
-        key: "tag".into(),
-        before: Some(before.into()),
-        after: Some(after.into()),
-    };
+    let k1 = fx.l.document().devices[&fx.k1].clone();
+    let rename = |before: &str, after: &str| Op::ModifyDevice { id: fx.k1, before: k1.with_tag(Some(before)), after: k1.with_tag(Some(after)) };
     fx.l.commit(Author::User, "Set tag", vec![rename("-K01", "-K05")]).unwrap();
     let doc = fx.l.document();
     assert!(doc.components_tagged("-K1").is_empty());

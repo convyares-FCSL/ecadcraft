@@ -101,6 +101,11 @@ fn designations_now(h: &mut H) -> Value {
 /// contact with role `main`, a connector with the retired `half.s.location` and a box `+FIELD`
 /// (a page's and the project's location are ids since design 072 §5.3). Built with raw ops, saved
 /// and reopened.
+/// List ids an old project's devices hold with no entry in the list.
+const OLD_CP1: u128 = 0xc1;
+const OLD_F1: u128 = 0xf1;
+const OLD_FIELD: u128 = 0xfe;
+
 fn old_project(dir: &TempDir) -> (H, DeviceId, DeviceId, DeviceId, PageId, Document) {
     let mut h = H::new(0x52_7001);
     let p1 = h.first_page();
@@ -122,12 +127,16 @@ fn old_project(dir: &TempDir) -> (H, DeviceId, DeviceId, DeviceId, PageId, Docum
         after.role = "main".into();
         let set =
             |o: ObjectRef, key: &str, before: Option<String>, v: &str| Op::SetProperty { object: o, key: key.into(), before, after: Some(v.into()) };
-        let box_before = d.devices[&bx].properties.get("location").cloned();
+        // Design 072 §6.3: a device stores list ids; these name no entry (a removed one).
+        let gone = |d: &ecad_model::Device, l: u128, f: Option<u128>| ecad_model::Device {
+            location: Some(ecad_model::LocationId(l)),
+            function: f.map(ecad_model::FunctionId).or(d.function),
+            ..d.clone()
+        };
         let ops = vec![
-            set(ObjectRef::Device(k), "location", None, "+CP1"),
-            set(ObjectRef::Device(k), "function", None, "=F1"),
+            Op::ModifyDevice { id: k, before: d.devices[&k].clone(), after: gone(&d.devices[&k], OLD_CP1, Some(OLD_F1)) },
             set(ObjectRef::Device(x), "half.s.location", None, "+CP2"),
-            set(ObjectRef::Device(bx), "location", box_before, "+FIELD"),
+            Op::ModifyDevice { id: bx, before: d.devices[&bx].clone(), after: gone(&d.devices[&bx], OLD_FIELD, None) },
             Op::ModifyRepresentation { id: no_rep, before, after },
         ];
         p.ledger.commit(Author::User, "as v0.2.0 wrote it", ops).unwrap();
@@ -163,8 +172,9 @@ fn an_old_project_opens_unchanged_and_flags_its_old_codes() {
     // The list's `missing` names every old value.
     let v = designations_now(&mut h);
     let lm: Vec<&str> = v["locations"]["missing"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
-    assert!(lm.contains(&"+CP1") && lm.contains(&"+FIELD"), "{v}");
-    assert_eq!(v["functions"]["missing"], json!(["=F1"]), "{v}");
+    let hex = |n: u128| format!("{n:032x}");
+    assert!(lm.contains(&hex(OLD_CP1).as_str()) && lm.contains(&hex(OLD_FIELD).as_str()), "{v}");
+    assert_eq!(v["functions"]["missing"], json!([hex(OLD_F1)]), "{v}");
     // The tag and the head are kept: the contact (role `main`) is a contact, the coil the head.
     let tags = ecad_cadcraft::devices::tag_words(&d, k);
     assert_eq!(tags, "-K01");
@@ -233,9 +243,9 @@ fn a_merge_moves_every_user_and_undo_redo_are_exact() {
     let after = h.doc();
     let k1 = key(&after, Aspect::Location, "+CP1");
     assert!(designations::find(&after, Aspect::Location, "+CP01").is_none());
-    assert_eq!(after.devices[&u.k].properties.get("location"), Some(&k1));
+    assert_eq!(after.devices[&u.k].value("location"), Some(k1.clone()));
     assert_eq!(after.devices[&u.x].properties.get("location.plug"), Some(&k1), "the override follows");
-    assert_eq!(after.devices[&u.bx].properties.get("location"), Some(&k1), "the box follows");
+    assert_eq!(after.devices[&u.bx].value("location"), Some(k1.clone()), "the box follows");
     assert_eq!(designations::page_key(&after.pages[&u.p1], Aspect::Location), Some(k1.clone()), "the page follows");
     assert_eq!(designations::default_key(&after.project, Aspect::Location), Some(k1.clone()), "the project default follows");
     // No stored value anywhere still names the removed key.

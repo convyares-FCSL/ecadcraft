@@ -2,7 +2,8 @@
 //! before [`super::prop::PROP_RULES`], so lanes moving keys into struct fields never edit the
 //! shared table. The phase-end tidy-up folds them into it.
 
+pub mod b;
 pub mod d;
 
 /// The lanes' row tables, in brief order.
-pub static LANES: &[(&str, &[super::prop::PropRule])] = &[("072d", d::RULES)];
+pub static LANES: &[(&str, &[super::prop::PropRule])] = &[("072b", b::RULES), ("072d", d::RULES)];

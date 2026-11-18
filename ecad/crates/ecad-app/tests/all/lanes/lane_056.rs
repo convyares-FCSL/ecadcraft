@@ -242,8 +242,8 @@ fn the_card_editor_edits_type_id_rack_slot_parts_and_start() {
     }
     assert_eq!(head_of(&mut h), before + 4);
     let d = doc(&mut h);
+    assert_eq!(d.devices[&a03].get("part_number"), Some("DQ16-R-2B"));
     let p = &d.devices[&a03].properties;
-    assert_eq!(p.get("part_number").map(String::as_str), Some("DQ16-R-2B"));
     assert_eq!(p.get("plc.slot").map(String::as_str), Some("7"));
     // An accessory (the front connector) as a part line.
     ok(

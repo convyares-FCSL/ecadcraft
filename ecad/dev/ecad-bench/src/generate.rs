@@ -356,8 +356,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             if comp_no == 1 {
                 ops.push(Op::EmbedDefinition { id: definition, definition: def.clone() });
             }
-            let mut component = Device { definition: Some(definition), ..Device::default() };
-            component.properties.insert("tag".into(), format!("-K{comp_no}"));
+            let component = Device { definition: Some(definition), ..Device::default() }.with_tag(Some(&format!("-K{comp_no}")));
             ops.push(Op::CreateDevice { id: c, device: component });
             let mut keyed = Vec::new();
             for td in &def.terminals {

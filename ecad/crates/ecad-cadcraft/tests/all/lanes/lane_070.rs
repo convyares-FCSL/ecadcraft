@@ -1646,7 +1646,7 @@ fn setprop_on_one_and_on_several_refuse_alike_for_each_rule() {
     // (row, the two devices, key, a value its rule refuses)
     let rows: &[(&str, [&Value; 2], &str, &str)] = &[
         ("tag fixed (design 026)", [&coil, &coil2], "tag_fixed", "maybe"),
-        ("device property (design 018)", [&coil, &coil2], "description", &long),
+        ("device text fields (072 B)", [&coil, &coil2], "description", &long),
         ("wire, junction or continuation (briefs 022, 049)", [&coil, &coil2], "caption", "Up"),
         ("contacts (brief 025)", [&coil, &coil2], "contacts", "??"),
         ("contact table mirror (brief 025)", [&coil, &coil2], "mirror", "maybe"),
@@ -1669,8 +1669,10 @@ fn setprop_on_one_and_on_several_refuse_alike_for_each_rule() {
         assert!(single.is_some(), "{what}: {key} {value} is refused");
         assert_eq!(single, many, "{what}: one and several differ");
     }
+    let lanes = ecad_electrical::cmd::props::LANES.iter().flat_map(|(_, rows)| rows.iter());
+    let all: Vec<&str> = PROP_RULES.iter().chain(lanes).map(|r| r.what).collect();
     for (what, ..) in rows {
-        assert!(PROP_RULES.iter().any(|r| r.what == *what), "{what}");
+        assert!(all.contains(what), "{what}");
     }
 }
 
