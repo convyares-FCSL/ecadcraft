@@ -206,7 +206,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, v: &PageView, writable: bool, full: 
             }
         });
     }
-    if ecad_cadcraft::styles::page::Holds::of_kind(v.kind) == ecad_cadcraft::styles::page::Holds::Front {
+    if ecad_cadcraft::styles::page::holds_of_kind(v.kind) == ecad_cadcraft::styles::page::Holds::Front {
         widgets::section(ui, &mut folded, full, "page.front", "Generated pages", "in the Book", false, |ui| {
             for row in &v.front {
                 ui.horizontal(|ui| {

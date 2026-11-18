@@ -139,6 +139,7 @@ fn value_json(r: &defaults::Resolved<'_>) -> Value {
         defaults::Value::Size(s) => json!(s.to_string()),
         defaults::Value::Colours(c) => json!(c.to_string()),
         defaults::Value::Colour(c) => json!(c.to_string()),
+        defaults::Value::Sheet(s) => json!(s.text()),
     }
 }
 

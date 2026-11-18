@@ -132,3 +132,26 @@ fn a_rating_table_reads_its_typed_fields_only() {
         assert!(serde_json::from_value::<StyleRecord>(w).is_err(), "{k}");
     }
 }
+
+/// Page types (design 072 §8): typed sheet, frame, title block, switches and holds; strict read.
+#[test]
+fn a_page_type_reads_its_typed_fields_only() {
+    use ecad_model::style::PageType;
+    use ecad_model::style::page::{Holds, TypeBlock, TypeFrame, TypeSheet};
+    let t = PageType {
+        sheet: TypeSheet::parse("A2"),
+        frame: TypeFrame::parse("project"),
+        title_block: TypeBlock::parse("frame"),
+        zones: Some(false),
+        checks: Some(true),
+        holds: Some(Holds::Report),
+    };
+    let v = serde_json::to_value(StyleRecord::new("Wide", StyleBody::Page(t.clone()))).unwrap();
+    assert_eq!(v["body"]["page"]["frame"], "project");
+    assert_eq!(serde_json::from_value::<StyleRecord>(v.clone()).unwrap().body, StyleBody::Page(t));
+    for (k, bad) in [("zones", serde_json::json!("maybe")), ("holds", serde_json::json!("x")), ("title_block", serde_json::json!("Big!"))] {
+        let mut w = v.clone();
+        w["body"]["page"][k] = bad;
+        assert!(serde_json::from_value::<StyleRecord>(w).is_err(), "{k}");
+    }
+}

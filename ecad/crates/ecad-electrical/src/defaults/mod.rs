@@ -114,6 +114,8 @@ pub enum Value<'a> {
     Colours(&'a ecad_model::wire::Colours),
     /// A typed style field's colour (design 072 §8): a text, location or frame style's.
     Colour(ecad_model::style::StyleColour),
+    /// A typed style field's sheet (design 072 §8): a page type's or a frame style's own sheet.
+    Sheet(ecad_model::sheet::SheetSpec),
 }
 
 impl Value<'_> {
@@ -122,7 +124,14 @@ impl Value<'_> {
         match *self {
             Value::Text(t) => ecad_model::StyleRef::builtin(t),
             Value::OwnStyle(id) => Some(ecad_model::StyleRef::Own(id)),
-            Value::Length(_) | Value::Number(_) | Value::Choice(_) | Value::Flag(_) | Value::Size(_) | Value::Colours(_) | Value::Colour(_) => None,
+            Value::Length(_)
+            | Value::Number(_)
+            | Value::Choice(_)
+            | Value::Flag(_)
+            | Value::Size(_)
+            | Value::Colours(_)
+            | Value::Colour(_)
+            | Value::Sheet(_) => None,
         }
     }
 
@@ -293,6 +302,7 @@ impl Resolved<'_> {
             Value::Size(s) => s.to_string(),
             Value::Colours(c) => c.to_string(),
             Value::Colour(c) => c.to_string(),
+            Value::Sheet(s) => s.text(),
         }
     }
 }
@@ -345,7 +355,7 @@ pub fn accepts(kind: Kind, value: &Value<'_>) -> bool {
             (Kind::Text { .. } | Kind::Parsed { .. } | Kind::Style(_), Value::Text(t)) => parse_value(kind, t) == Some(Value::Text(t)),
             (Kind::Style(_), Value::OwnStyle(_)) => true,
             // A typed style field read back (design 072 §8): its text must pass the field's rule.
-            (Kind::Parsed { parse, .. }, Value::Size(_) | Value::Colours(_) | Value::Colour(_) | Value::Number(_)) => {
+            (Kind::Parsed { parse, .. }, Value::Size(_) | Value::Colours(_) | Value::Colour(_) | Value::Sheet(_) | Value::Number(_)) => {
                 parse(&Resolved { value: *value, from: Source::Builtin }.text())
             }
             _ => false,

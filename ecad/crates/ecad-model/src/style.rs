@@ -19,11 +19,13 @@ use crate::doc::Properties;
 use crate::id::{LibraryId, StandardId};
 
 pub mod location;
+pub mod page;
 pub mod rating;
 pub mod text;
 pub mod wire;
 
 pub use location::LocationStyle;
+pub use page::PageType;
 pub use rating::RatingTable;
 pub use text::{StyleColour, TextStyle};
 pub use wire::WireType;
@@ -227,18 +229,18 @@ impl StyleRecord {
     /// The fields of a catalogue not typed yet (lane G works through them).
     pub fn fields(&self) -> Option<&Properties> {
         match &self.body {
-            StyleBody::Cable(p) | StyleBody::Page(p) => Some(p),
+            StyleBody::Cable(p) => Some(p),
             StyleBody::Frame(f) => Some(&f.fields),
-            StyleBody::Location(_) | StyleBody::RatingTable(_) | StyleBody::Text(_) | StyleBody::Wire(_) => None,
+            StyleBody::Location(_) | StyleBody::Page(_) | StyleBody::RatingTable(_) | StyleBody::Text(_) | StyleBody::Wire(_) => None,
         }
     }
 
     /// [`StyleRecord::fields`], to change.
     pub fn fields_mut(&mut self) -> Option<&mut Properties> {
         match &mut self.body {
-            StyleBody::Cable(p) | StyleBody::Page(p) => Some(p),
+            StyleBody::Cable(p) => Some(p),
             StyleBody::Frame(f) => Some(&mut f.fields),
-            StyleBody::Location(_) | StyleBody::RatingTable(_) | StyleBody::Text(_) | StyleBody::Wire(_) => None,
+            StyleBody::Location(_) | StyleBody::Page(_) | StyleBody::RatingTable(_) | StyleBody::Text(_) | StyleBody::Wire(_) => None,
         }
     }
 
@@ -265,7 +267,7 @@ pub enum StyleBody {
     Cable(Properties),
     Frame(FrameFields),
     Location(LocationStyle),
-    Page(Properties),
+    Page(PageType),
     #[serde(rename = "ratingtable")]
     RatingTable(RatingTable),
     Text(TextStyle),
@@ -279,7 +281,7 @@ impl StyleBody {
             StyleCatalogue::Cable => StyleBody::Cable(Properties::new()),
             StyleCatalogue::Frame => StyleBody::Frame(FrameFields::default()),
             StyleCatalogue::Location => StyleBody::Location(LocationStyle::default()),
-            StyleCatalogue::Page => StyleBody::Page(Properties::new()),
+            StyleCatalogue::Page => StyleBody::Page(PageType::default()),
             StyleCatalogue::RatingTable => StyleBody::RatingTable(RatingTable::default()),
             StyleCatalogue::Text => StyleBody::Text(TextStyle::default()),
             StyleCatalogue::Wire => StyleBody::Wire(WireType::default()),
@@ -302,7 +304,8 @@ impl StyleBody {
     /// The fields it sets, as `(key, stored text)`: for messages and the inspector.
     pub fn entries(&self) -> Vec<(String, String)> {
         match self {
-            StyleBody::Cable(p) | StyleBody::Page(p) => p.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+            StyleBody::Cable(p) => p.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+            StyleBody::Page(p) => p.entries().into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
             StyleBody::RatingTable(r) => r.entries().into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
             StyleBody::Location(l) => l.entries().into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
             StyleBody::Text(t) => t.entries().into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
@@ -314,7 +317,8 @@ impl StyleBody {
     /// Whether it sets nothing.
     pub fn is_empty(&self) -> bool {
         match self {
-            StyleBody::Cable(p) | StyleBody::Page(p) => p.is_empty(),
+            StyleBody::Cable(p) => p.is_empty(),
+            StyleBody::Page(p) => *p == PageType::default(),
             StyleBody::RatingTable(r) => *r == RatingTable::default(),
             StyleBody::Location(l) => *l == LocationStyle::default(),
             StyleBody::Text(t) => *t == TextStyle::default(),
@@ -326,6 +330,19 @@ impl StyleBody {
     /// The stored text of field `key`, if the body sets it.
     pub fn entry(&self, key: &str) -> Option<String> {
         self.entries().into_iter().find(|(k, _)| k == key).map(|(_, v)| v)
+    }
+
+    /// Its page type, if it is one.
+    pub fn page(&self) -> Option<&PageType> {
+        match self {
+            StyleBody::Page(p) => Some(p),
+            StyleBody::Cable(_)
+            | StyleBody::Frame(_)
+            | StyleBody::Location(_)
+            | StyleBody::RatingTable(_)
+            | StyleBody::Text(_)
+            | StyleBody::Wire(_) => None,
+        }
     }
 
     /// Its text style, if it is one.

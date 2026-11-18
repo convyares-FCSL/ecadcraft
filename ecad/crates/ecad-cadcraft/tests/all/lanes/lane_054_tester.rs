@@ -527,28 +527,13 @@ fn fp3_a_malformed_type_sheet_reads_as_absent() {
     let (mut h, p) = pages(0x54_0603, 1);
     refused(&mut h, "setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"sheet": "A0 999x999"}}));
     refused(&mut h, "setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"holds": "x"}}));
+    // Design 072 §8: a malformed value in a file is a read error (the project opens read-only),
+    // so the pages keep their sheet.
     for bad in ["A0 999x999", "A9", &"x".repeat(10_000), "-1x-1", "nan"] {
-        let sch = ecad_model::style::StyleRef::builtin("schematic").unwrap();
-        let before = h.doc().styles.get(&ecad_model::StyleCatalogue::Page).and_then(|m| m.get(&sch)).cloned();
-        inject(
-            &mut h,
-            vec![ecad_model::Op::SetStyle {
-                layer: ecad_model::style::StyleLayer::Project,
-                catalogue: ecad_model::StyleCatalogue::Page,
-                id: ecad_model::style::StyleRef::builtin("schematic").unwrap(),
-                before,
-                after: Some(ecad_model::style::StyleRecord::new(
-                    "",
-                    ecad_model::style::StyleBody::Page(
-                        [("sheet".to_string(), bad.to_string()), ("holds".to_string(), "x".to_string())].into_iter().collect(),
-                    ),
-                )),
-            }],
-        );
-        assert!(sheet_text(&mut h, p[0]).starts_with("A3"), "{bad:.20}: falls through");
-        let rows = checks_of(&mut h, "page-type-field");
-        assert!(!rows.is_empty(), "{bad:.20}: reported");
+        let hostile = json!({"name": "", "body": {"page": {"sheet": bad, "holds": "x"}}});
+        assert!(serde_json::from_value::<ecad_model::style::StyleRecord>(hostile).is_err(), "{bad:.20}");
     }
+    assert!(sheet_text(&mut h, p[0]).starts_with("A3"));
 }
 
 /// FP3 round trip: a type's sheet survives save and reopen (v2 file), and every page resolves the
