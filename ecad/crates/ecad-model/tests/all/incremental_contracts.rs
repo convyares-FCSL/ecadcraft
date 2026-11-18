@@ -195,7 +195,12 @@ pub(crate) fn base() -> Base {
 }
 
 fn header(b: &mut Base) -> StandardHeader {
-    StandardHeader { id: b.ids.fresh(), name: "S".into(), based_on: "iec".into(), origin: None }
+    StandardHeader {
+        id: b.ids.fresh(),
+        name: ecad_model::style::StyleName::new("S").unwrap(),
+        based_on: ecad_model::style::BasedOn::Iec,
+        origin: None,
+    }
 }
 
 fn record() -> StyleRecord {

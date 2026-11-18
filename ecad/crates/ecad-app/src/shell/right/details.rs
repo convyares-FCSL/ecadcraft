@@ -108,7 +108,7 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
     let props = doc.devices.get(&c).map(|x| &x.properties);
     d.tag = ecad_cadcraft::devices::tag_words(doc, c);
     d.description = props.and_then(|p| p.get("description")).cloned().unwrap_or_default();
-    d.standard = doc.standard.as_ref().map_or_else(|| "IEC".to_string(), |s| s.header.name.clone());
+    d.standard = doc.standard.as_ref().map_or_else(|| "IEC".to_string(), |s| s.header.name.to_string());
     let dev = xref::device(doc, c);
     let mut places = xref::Places::new(doc);
     let place_of = |places: &mut xref::Places<'_>, r: &ecad_model::Representation| places.text(r.page, xref::anchor(doc, r));

@@ -11,7 +11,12 @@ use ecad_model::tag::HighWater;
 use ecad_model::{Author, Device, DeviceId, Document, Ledger, ObjectRef, Op, StandardId};
 
 fn header(name: &str) -> StandardHeader {
-    StandardHeader { id: StandardId(0x50), name: name.into(), based_on: "iec".into(), origin: None }
+    StandardHeader {
+        id: StandardId(0x50),
+        name: ecad_model::style::StyleName::new(name).unwrap(),
+        based_on: ecad_model::style::BasedOn::Iec,
+        origin: None,
+    }
 }
 
 fn rec(name: &str, fields: &[(&str, &str)]) -> StyleRecord {

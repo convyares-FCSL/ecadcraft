@@ -407,8 +407,18 @@ fn references_follow_the_frames_sheet() {
 #[test]
 fn a_standard_switch_redraws_the_frame() {
     let page = PageId(0);
-    let a = ecad_model::StandardHeader { id: ecad_model::StandardId(1), name: "A".into(), based_on: "iec".into(), origin: None };
-    let b = ecad_model::StandardHeader { id: ecad_model::StandardId(2), name: "B".into(), based_on: "iec".into(), origin: None };
+    let a = ecad_model::StandardHeader {
+        id: ecad_model::StandardId(1),
+        name: ecad_model::style::StyleName::new("A").unwrap(),
+        based_on: ecad_model::style::BasedOn::Iec,
+        origin: None,
+    };
+    let b = ecad_model::StandardHeader {
+        id: ecad_model::StandardId(2),
+        name: ecad_model::style::StyleName::new("B").unwrap(),
+        based_on: ecad_model::style::BasedOn::Iec,
+        origin: None,
+    };
     let doc = ecad_model::Document::default();
     let shown = FrameInput::of(&doc, page, &Book::of(&doc));
     let op = ecad_model::Op::SetStandard { before: Some(a), after: Some(b) };

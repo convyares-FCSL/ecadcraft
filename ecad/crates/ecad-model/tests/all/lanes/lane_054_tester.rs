@@ -105,7 +105,12 @@ fn fp3_page_type_property_and_own_types() {
         Author::User,
         "own",
         vec![
-            set_type(StyleLayer::Project, own.clone(), None, Some(StyleRecord { name: "Wide".into(), ..rec(&[("sheet", "A0"), ("holds", "none")]) })),
+            set_type(
+                StyleLayer::Project,
+                own.clone(),
+                None,
+                Some(StyleRecord { name: ecad_model::style::StyleName::new("Wide").ok(), ..rec(&[("sheet", "A0"), ("holds", "none")]) }),
+            ),
             set_type(StyleLayer::Project, b("network"), None, Some(rec(&[("sheet", "A2")]))),
             set_page(&l, p[0], "page.type", &own.text()),
             set_page(&l, p[4], "page.type", "#0000000000000000000000000000dead"),
@@ -123,7 +128,12 @@ fn fp3_page_type_property_and_own_types() {
 #[test]
 fn fp3_project_then_standard_record_and_malformed_values_fall_through() {
     let (mut l, p) = fixture();
-    let header = StandardHeader { id: StandardId(0x54), name: "House".into(), based_on: "iec".into(), origin: None };
+    let header = StandardHeader {
+        id: StandardId(0x54),
+        name: ecad_model::style::StyleName::new("House").unwrap(),
+        based_on: ecad_model::style::BasedOn::Iec,
+        origin: None,
+    };
     l.commit(
         Author::User,
         "std",

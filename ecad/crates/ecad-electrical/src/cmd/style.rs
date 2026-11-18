@@ -6,7 +6,7 @@
 
 use std::collections::BTreeMap;
 
-use ecad_model::style::{BASED_ON_IEC, MAX_STYLES_PER_CATALOGUE, is_name};
+use ecad_model::style::{BasedOn, MAX_STYLES_PER_CATALOGUE, StyleName, is_name};
 use ecad_model::{Document, IdAllocator, ObjectRef, Op, Standard, StandardHeader, StandardId, StyleLayer, StyleRef};
 
 use crate::defaults::{self, Entry, Kind};
@@ -268,6 +268,10 @@ fn clear_standard(doc: &Document) -> Vec<Op> {
 }
 
 /// A standard name as given, checked.
+fn standard_text(name: &str) -> Result<StyleName, CmdError> {
+    StyleName::new(name).map_err(|e| CmdError::refused(format!("A standard's name: {e}.")))
+}
+
 fn standard_name(name: &str) -> Result<&str, CmdError> {
     Some(name.trim()).filter(|n| is_name(n)).ok_or(CmdError::refused(NEEDS_NAME))
 }
@@ -289,7 +293,7 @@ pub fn plan_standard(doc: &Document, ids: &mut IdAllocator, change: StandardChan
                 )));
             }
             let id: StandardId = ids.fresh();
-            let header = StandardHeader { id, name: name.to_string(), based_on: BASED_ON_IEC.into(), origin: None };
+            let header = StandardHeader { id, name: standard_text(name)?, based_on: BasedOn::Iec, origin: None };
             plan(
                 vec![Op::SetStandard { before: None, after: Some(header) }],
                 format!("Make standard {name}"),
@@ -299,10 +303,10 @@ pub fn plan_standard(doc: &Document, ids: &mut IdAllocator, change: StandardChan
         StandardChange::Rename(name) => {
             let name = standard_name(&name)?;
             let cur = doc.standard.as_ref().ok_or(CmdError::refused(STANDARD_FIRST))?;
-            if cur.header.name == name {
+            if cur.header.name.as_str() == name {
                 return Ok(None);
             }
-            let after = StandardHeader { name: name.to_string(), ..cur.header.clone() };
+            let after = StandardHeader { name: standard_text(name)?, ..cur.header.clone() };
             plan(
                 vec![Op::SetStandard { before: Some(cur.header.clone()), after: Some(after) }],
                 format!("Rename standard {name}"),
@@ -459,7 +463,7 @@ pub fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue, edit: 
         return Err(CmdError::input("Give `fields` to set, `rename`, or `new: true`."));
     }
     // A rename goes to the layer holding the style's name.
-    let name_layer = if styles::record(doc, StyleLayer::Standard, cat.catalogue, &id).is_some_and(|r| !r.name.is_empty()) {
+    let name_layer = if styles::record(doc, StyleLayer::Standard, cat.catalogue, &id).is_some_and(|r| r.name.is_some()) {
         StyleLayer::Standard
     } else {
         StyleLayer::Project
@@ -475,7 +479,7 @@ pub fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue, edit: 
         let rec = styles::with_fields(cat.catalogue, before.as_ref(), n, &f)?;
         // A built-in's override with nothing left is no record; an own style keeps its named
         // record.
-        let keep = !rec.body.is_empty() || !rec.name.is_empty();
+        let keep = !rec.body.is_empty() || rec.name.is_some();
         let after = keep.then_some(rec);
         if let Some(r) = &after {
             styles::check_record(doc, cat, &id, l, r)?;

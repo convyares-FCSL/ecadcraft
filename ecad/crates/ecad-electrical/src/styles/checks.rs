@@ -234,7 +234,7 @@ pub fn rows(doc: &Document) -> Vec<Check> {
         for (cat, styles) in layer_cats {
             let mut bad = styles.len().saturating_sub(MAX_STYLES_PER_CATALOGUE);
             for r in styles.values().take(MAX_STYLES_PER_CATALOGUE) {
-                let named_badly = !r.name.is_empty() && !is_name(&r.name);
+                let named_badly = r.name.as_ref().is_some_and(|n| !is_name(n.as_str()));
                 // Design 072 §8: a record's fields are typed and bounded by their types.
                 bad += usize::from(named_badly);
             }

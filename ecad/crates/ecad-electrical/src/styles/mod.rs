@@ -291,7 +291,7 @@ fn shown_name(n: &str) -> String {
 /// The name of style `id` in `catalogue`: the project record's, the standard's, the built-in's,
 /// else its ID.
 pub fn name(doc: &Document, catalogue: StyleCatalogue, id: &StyleRef) -> String {
-    let named = |l| record(doc, l, catalogue, id).map(|r| r.name.as_str()).filter(|n| !n.trim().is_empty());
+    let named = |l| record(doc, l, catalogue, id).and_then(|r| r.name.as_ref()).map(|n| n.as_str());
     if let Some(n) = named(StyleLayer::Project).or_else(|| named(StyleLayer::Standard)) {
         return shown_name(n);
     }
@@ -490,7 +490,7 @@ pub fn pages_touched(doc: &Document, op: &Op) -> Option<BTreeSet<PageId>> {
 /// # Errors
 /// The bound it breaks, in words.
 pub fn check_record(doc: &Document, cat: &Catalogue, id: &StyleRef, layer: StyleLayer, r: &StyleRecord) -> Result<(), CmdError> {
-    if !r.name.is_empty() && !ms::is_name(&r.name) {
+    if r.name.as_ref().is_some_and(|n| !ms::is_name(n.as_str())) {
         return Err(CmdError::refused("A style needs a name (1 to 64 characters, no control characters)."));
     }
     if r.catalogue() != cat.catalogue {
@@ -527,7 +527,7 @@ pub fn with_fields(
 ) -> Result<StyleRecord, CmdError> {
     let mut r = before.cloned().unwrap_or_else(|| StyleRecord::empty(catalogue));
     if let Some(n) = name {
-        r.name = n.to_string();
+        r.name = Some(ms::StyleName::new(n).map_err(|e| CmdError::refused(format!("A style's name: {e}.")))?);
     }
     for (k, v) in fields {
         match &mut r.body {

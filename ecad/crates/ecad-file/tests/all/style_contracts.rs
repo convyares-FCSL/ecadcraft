@@ -29,7 +29,12 @@ impl Drop for TempDir {
 }
 
 fn header(name: &str) -> StandardHeader {
-    StandardHeader { id: StandardId(0x50a), name: name.into(), based_on: "iec".into(), origin: None }
+    StandardHeader {
+        id: StandardId(0x50a),
+        name: ecad_model::style::StyleName::new(name).unwrap(),
+        based_on: ecad_model::style::BasedOn::Iec,
+        origin: None,
+    }
 }
 
 fn rec(name: &str, fields: &[(&str, &str)]) -> StyleRecord {
