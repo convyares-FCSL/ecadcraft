@@ -179,9 +179,6 @@ pub struct Project {
     /// The general reference index (brief 025): built on open and branch switch, kept per commit
     /// from the ops ([`crate::xref::Watch`]).
     pub xref: crate::xref::RefIndex,
-    /// Brief 044 (design 044 §11.1): the connector index, built on open and branch switch, kept
-    /// per commit from the ops ([`crate::connectors::Index`]).
-    pub connectors: crate::connectors::Index,
     /// What the last commit's [`crate::xref::Watch`] derived after it, with the state it was
     /// derived for (head and last transaction ID): the next commit's "before" while unchanged.
     xref_shown: Option<((u64, u128), crate::xref::Shown)>,
@@ -1321,7 +1318,7 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
             }
             // Brief 044 (design 044 §11.1): a connector naming or description default is drawn by
             // the connectors that inherit it: their pages. The maker's answers are drawn nowhere.
-            // Their pages come from the connector index after the commit (`Project::finish_watch`).
+            // Their pages come from the connector index view after the commit (`ConnectorsView`).
             Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } if key.starts_with("connector.") => {}
             // Brief 030: strip accessory defaults are drawn nowhere (the plan page is a generated
             // page, kept by its own rule).

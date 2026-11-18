@@ -18,6 +18,7 @@
 #![deny(clippy::wildcard_enum_match_arm)]
 
 mod changes;
+mod connectors;
 mod devices;
 mod tree;
 
@@ -28,6 +29,7 @@ use ecad_model::view::{DerivedView, NoteCx, Outcome, Phase};
 use ecad_model::{Document, Op};
 
 pub use changes::Changes;
+pub use connectors::{ConnectorsScope, ConnectorsView};
 pub use devices::{DevicesFeed, DevicesScope};
 pub use tree::{TreeFeed, TreeScope};
 
@@ -90,6 +92,7 @@ impl<V> Lazy<V> {
 /// Each kept view's scope, noted on the document before the ops ([`Views::begin`]).
 #[derive(Debug, Default)]
 pub struct Pending {
+    connectors: ConnectorsScope,
     tree: TreeScope,
     devices: DevicesScope,
 }
@@ -103,6 +106,8 @@ pub struct Detached {}
 #[derive(Debug)]
 pub struct Views {
     inputs: EngineInputs,
+    // Stage 1: indexes that depend only on the document.
+    connectors: ConnectorsView,
     // Stage 4: feeds for the change log.
     tree: TreeFeed,
     devices: DevicesFeed,
@@ -111,7 +116,7 @@ pub struct Views {
 impl Views {
     /// No view built yet; [`Views::rebuild`] builds the kept ones.
     pub fn new(inputs: EngineInputs) -> Self {
-        Views { inputs, tree: TreeFeed, devices: DevicesFeed::default() }
+        Views { inputs, connectors: ConnectorsView::default(), tree: TreeFeed, devices: DevicesFeed::default() }
     }
 
     /// The engine's inputs the views are built with.
@@ -119,11 +124,17 @@ impl Views {
         &self.inputs
     }
 
+    /// The kept connector index (design 044 §11.1).
+    pub fn connectors(&self) -> &crate::connectors::Index {
+        self.connectors.index()
+    }
+
     /// Before phase: every kept view notes `ops` on the document before them. Changes nothing.
     pub fn begin(&self, before: &Document, ops: &[Op]) -> Pending {
         let effects = Effects::of(ops);
         let cx = NoteCx { doc: before, phase: Phase::Before, effects: &effects };
         let mut pending = Pending::default();
+        note_view::<_, Inputs<'_>>(&self.connectors, &cx, &mut pending.connectors);
         note_view::<_, Inputs<'_>>(&self.tree, &cx, &mut pending.tree);
         note_view::<_, Inputs<'_>>(&self.devices, &cx, &mut pending.devices);
         pending
@@ -132,28 +143,36 @@ impl Views {
     /// After phase on the committed transaction's ops, then update every kept view, stage by
     /// stage, and merge their outcomes.
     pub fn finish(&mut self, after: &Document, tx_ops: &[Op], pending: Pending) -> Changes {
-        let Pending { mut tree, mut devices } = pending;
+        let Pending { mut connectors, mut tree, mut devices } = pending;
         let effects = Effects::of(tx_ops);
         let cx = NoteCx { doc: after, phase: Phase::After, effects: &effects };
+        note_view::<_, Inputs<'_>>(&self.connectors, &cx, &mut connectors);
         note_view::<_, Inputs<'_>>(&self.tree, &cx, &mut tree);
         note_view::<_, Inputs<'_>>(&self.devices, &cx, &mut devices);
         let inputs = Inputs { engine: &self.inputs };
         let mut changes = Changes::default();
+        // Stage 1: the indexes.
+        merge(&mut changes, self.connectors.update(after, connectors, &inputs));
         // Stage 4: the feeds, merged in field order.
         merge(&mut changes, self.tree.update(after, tree, &inputs));
         merge(&mut changes, self.devices.update(after, devices, &inputs));
         changes.devices = self.devices.take();
+        if ecad_model::ledger::verify_mode() {
+            changes.problems.extend(self.verify(after));
+        }
         changes
     }
 
     /// Verify mode: every kept view against a fresh build; one line per disagreement (the view
     /// is rebuilt).
-    pub fn verify(&mut self, _doc: &Document) -> Vec<String> {
-        Vec::new()
+    pub fn verify(&mut self, doc: &Document) -> Vec<String> {
+        self.connectors.check(doc).into_iter().collect()
     }
 
     /// Open, reload, branch switch: rebuild every kept view from `doc`.
-    pub fn rebuild(&mut self, _doc: &Document) {}
+    pub fn rebuild(&mut self, doc: &Document) {
+        self.connectors = ConnectorsView::build(doc);
+    }
 
     /// The views of another document state (an issued or finalised revision), built with the
     /// same engine inputs.

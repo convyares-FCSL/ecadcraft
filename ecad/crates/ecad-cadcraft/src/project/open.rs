@@ -41,7 +41,6 @@ impl Project {
         let id: ProjectId = ids.fresh();
         // The reference index is built once on open (brief 025).
         let xref = crate::xref::RefIndex::build(ledger.document());
-        let connectors = crate::connectors::Index::build(ledger.document());
         let derived = views_for(ledger.document());
         let project = Arc::new(Mutex::new(Project {
             name: name.to_string(),
@@ -83,7 +82,6 @@ impl Project {
             wire_potential: None,
             checks: None,
             xref,
-            connectors,
             outputs: None,
             open_reports: false,
             #[cfg(not(target_arch = "wasm32"))]
@@ -144,7 +142,6 @@ impl Project {
         let baseline = ledger.head();
         // The reference index is built once on open (brief 025).
         let xref = crate::xref::RefIndex::build(ledger.document());
-        let connectors = crate::connectors::Index::build(ledger.document());
         let derived = views_for(ledger.document());
         let project = Arc::new(Mutex::new(Project {
             name: name.to_string(),
@@ -186,7 +183,6 @@ impl Project {
             wire_potential: None,
             checks: None,
             xref,
-            connectors,
             outputs: None,
             open_reports: false,
             #[cfg(not(target_arch = "wasm32"))]
@@ -286,7 +282,6 @@ impl Project {
         let summary = summary.join("\n");
         // The reference index is built once on open (brief 025).
         let xref = crate::xref::RefIndex::build(ledger.document());
-        let connectors = crate::connectors::Index::build(ledger.document());
         let derived = views_for(ledger.document());
         let project = Arc::new(Mutex::new(Project {
             name: file_stem(&path),
@@ -328,7 +323,6 @@ impl Project {
             wire_potential: None,
             checks: None,
             xref,
-            connectors,
             outputs: None,
             open_reports: false,
             #[cfg(not(target_arch = "wasm32"))]
