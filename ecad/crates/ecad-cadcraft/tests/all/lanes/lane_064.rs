@@ -306,9 +306,30 @@ fn the_connectors_view_reaches_the_change_log() {
     let n = h.p(|p| p.change_count());
     h.run("setdefault", json!({"key": ecad_cadcraft::defaults::connectors::SIDE_SOCKET.key, "value": "B"})).unwrap();
     let pages = h.p(|p| p.changes_since(n));
-    assert!(pages.as_ref().is_none_or(|p| p.contains(&page)), "{pages:?}");
+    assert!(pages.as_ref().is_some_and(|p| p.contains(&page)), "the inheriting connector's page, not every page: {pages:?}");
     let inh = h.p(|p| p.connectors().inheriting(ecad_cadcraft::defaults::connectors::SIDE_SOCKET.key));
     assert!(inh.contains(&a));
+}
+
+/// Step 5 (tester note 1): in verify mode, a kept view out of step with the document (forced here
+/// by emptying the views) is reported once as an `IndexRebuilt` event through `Changes.problems`
+/// and rebuilt in the same commit; the next commit finds nothing wrong.
+#[test]
+fn a_view_out_of_step_is_reported_and_rebuilt() {
+    use ecad_inspect::EventKind;
+    use serde_json::json;
+    let mut h = crate::common::H::new(6453);
+    h.run("connector", json!({"halves": "both", "family": "plain", "pins": 4, "layout": "row", "at": [50, 50]})).unwrap();
+    assert!(ecad_model::ledger::verify_mode(), "tests run in verify mode");
+    h.cfg(|p| p.views_mut().rebuild(&Document::default()));
+    assert!(h.p(|p| p.connectors().is_empty()), "the kept index is out of step");
+    h.run("wire", json!({"points": crate::common::pts(&[(300.0, 300.0), (350.0, 300.0)])})).unwrap();
+    let events: Vec<_> = h.p(|p| p.events.events().filter(|e| e.kind == EventKind::IndexRebuilt).cloned().collect());
+    assert_eq!(events.len(), 1, "{events:?}");
+    assert!(events[0].message.contains("connector index"), "{events:?}");
+    assert_eq!(h.p(|p| p.connectors().clone()), h.p(|p| connectors::Index::build(p.ledger.document())));
+    h.run("wire", json!({"points": crate::common::pts(&[(300.0, 320.0), (350.0, 320.0)])})).unwrap();
+    assert_eq!(h.p(|p| p.events.count(EventKind::IndexRebuilt)), 1, "nothing more to repair");
 }
 
 // ---------------------------------------------------------------- step 4: the frame

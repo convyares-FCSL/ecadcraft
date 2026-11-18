@@ -38,6 +38,12 @@ impl Project {
         self.derived.connectors()
     }
 
+    /// The derived views, to put a kept view out of step on purpose (tests of verify mode only).
+    #[cfg(feature = "test-support")]
+    pub fn views_mut(&mut self) -> &mut ecad_electrical::derived::Views {
+        &mut self.derived
+    }
+
     /// Number of the last change the project went through (a transaction, an undo or redo, a view
     /// switch); 0 before the first. Cheap: callers compare it every frame.
     pub fn change_count(&self) -> u64 {
