@@ -334,6 +334,12 @@ check_kinds! {
     /// Brief 059 (design 059 §6): a cable built in Project ▸ Cables that is not in the drawing yet
     /// (Info; Warning in the release check).
     CableNotDrawn = "cable-not-drawn", Info, "Cable not in the drawing yet";
+    /// A core on a line with one end landed (owner rule, 2026-11-18): it moves onto a wire when
+    /// the other end lands.
+    CoreOneEnd = "core-one-end", Warning, "Core landed at one end only";
+    /// A core's stored place is not where the drawing puts it (a file made elsewhere): reading never
+    /// works it out, so it is reported (owner rule, 2026-11-18).
+    CorePlaceStale = "core-place-stale", Error, "Core's stored place disagrees with the drawing";
     /// Brief 059: a drawn cable end differs from that end's planned location.
     CableEndOffPlan = "cable-end-off-plan", Warning, "Cable end drawn away from its plan";
     /// Brief 059 (059d): a drawn cable end with no gland size.
@@ -1292,6 +1298,7 @@ pub fn cable_checks_in(places: &mut Places<'_>, k: ecad_model::CableId) -> Vec<C
         });
     }
     out.extend(crate::cables::value_checks(doc, k, drawn));
+    core_place_checks(doc, k, &mut out);
     // Brief 057 (owner rule, board 2.06): every core is connected at both ends or ticked Not used.
     let open = if drawn { crate::styles::cable::open_cores(doc, k) } else { Vec::new() };
     if !open.is_empty() {
@@ -1341,6 +1348,33 @@ pub fn cable_checks_in(places: &mut Places<'_>, k: ecad_model::CableId) -> Vec<C
         out.push(Check { kind: Kind::DuplicateTag, page, at, object: Object::Cable(k), which: format!("A cable and a device share {t}"), fix: None });
     }
     out
+}
+
+/// The rows of cable `k`'s cores on lines (owner rule, 2026-11-18): a core whose line has one end
+/// landed, and a core whose stored place is not the one its line now gives
+/// ([`ecad_model::wire_order::core_position`]). Reads only the cable's own cores and their lines.
+fn core_place_checks(doc: &Document, k: ecad_model::CableId, out: &mut Vec<Check>) {
+    let Some(cable) = doc.cables.get(&k) else { return };
+    let name = crate::cables::cable_title(doc, k);
+    for (i, m) in cable.members.iter().enumerate() {
+        let ecad_model::CorePosition::Route { route, landed } = m.position else { continue };
+        let core = m.core.clone().unwrap_or_else(|| (i + 1).to_string());
+        let (page, at) = route_place(doc, route, None);
+        let found = ecad_model::wire_order::core_position(doc, route);
+        if found != m.position {
+            let now = match found {
+                ecad_model::CorePosition::Wire(_) => "its line now carries a wire".to_string(),
+                ecad_model::CorePosition::Route { landed: None, .. } => "its line has no end landed".to_string(),
+                ecad_model::CorePosition::Route { landed: Some(t), .. } => format!("its line is landed at {}", wires::point_words(doc, t)),
+                ecad_model::CorePosition::Unplaced => "its line is gone".to_string(),
+            };
+            let which = format!("{name} core {core}: stored on a line, but {now}.");
+            out.push(Check { kind: Kind::CorePlaceStale, page, at, object: Object::Cable(k), which, fix: None });
+        } else if let Some(t) = landed {
+            let which = format!("{name} core {core} is landed at {} only.", wires::point_words(doc, t));
+            out.push(Check { kind: Kind::CoreOneEnd, page, at, object: Object::Cable(k), which, fix: None });
+        }
+    }
 }
 
 /// The connection points `route` lands on, and those of each route it ends on (a T, one level).
@@ -1543,6 +1577,8 @@ impl Scope {
                 // their nets as they were lose their rows (design 072 §4.2).
                 Op::AddRoute { id, route } | Op::RemoveRoute { id, route } => {
                     self.routes.insert(*id);
+                    // The cables with a core on it: their core rows (owner rule, 2026-11-18).
+                    self.cables.extend(doc.cables_on_route(*id));
                     for t in route_points(doc, route) {
                         self.terminals.insert(t);
                         node(self, Node::Terminal(t));
@@ -1550,6 +1586,7 @@ impl Scope {
                 }
                 Op::ModifyRoute { id, before, after } => {
                     self.routes.insert(*id);
+                    self.cables.extend(doc.cables_on_route(*id));
                     for t in route_points(doc, before).into_iter().chain(route_points(doc, after)) {
                         self.terminals.insert(t);
                         node(self, Node::Terminal(t));

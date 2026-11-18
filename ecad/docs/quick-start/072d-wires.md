@@ -54,5 +54,11 @@ What changed for someone using the app:
    such symbol. A project file from an earlier build that holds a junction opens read-only, and
    the message names the word `junction` in setting `kind`.
 
+9. Draw a line from a device's point into free space and slash it into a cable. Checks lists
+   **Core landed at one end only** for the cable (`-W01 core 1 is landed at -K01:2 only.`).
+   Draw on from the line's free end to a second point: the core moves onto the new wire and the
+   row goes. A file whose stored core place disagrees with its line reports **Core's stored
+   place disagrees with the drawing** (an error) and is not changed.
+
 Not yet tried by the owner. Checked by the headless tests named in the lane's tests
 (`lanes::lane_072d`, ecad-model, ecad-file, ecad-inspector, ecad-cadcraft, ecad-mcp, ecad-app).

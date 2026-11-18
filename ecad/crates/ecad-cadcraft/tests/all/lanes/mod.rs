@@ -25,6 +25,7 @@ mod lane_072a;
 mod lane_072b;
 mod lane_072c;
 mod lane_072d;
+mod lane_072d_cores;
 mod lane_072d_junction;
 mod lane_072d_terminals;
 mod lane_072d_tester;
