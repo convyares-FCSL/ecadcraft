@@ -100,7 +100,7 @@ fn a_terminal_on_a_wire_splits_it_and_undo_restores_it() {
     let nets: std::collections::BTreeSet<_> = [a, b, term].iter().flat_map(|x| doc.ends_at(*x)).map(|(w, _)| doc.wires[&w].net).collect();
     assert_eq!(nets.len(), 1, "one net");
     // The cable keeps a member on the net (design 072 §4.4: the rewrite keeps memberships).
-    assert!(!doc.cables[&t.cable].members.is_empty());
+    assert!(!doc.cables[&t.cable].cores.is_empty());
     assert_eq!(t.h.p(|p| p.ledger.log().last().unwrap().label.clone()), "Place terminal");
     same_as_built(&mut t.h);
     let plan = strip_plan(&mut t.h);
@@ -145,7 +145,7 @@ fn place_terminals_bridges_cores_and_the_plan() {
     for (i, x) in v["terminals"].as_array().unwrap().iter().enumerate() {
         // `new` is the route from the terminal on (design 072 §4.3); the wire it carries.
         let new = ecad_cadcraft::wires::wire_of_route(&doc, id(x, "new"));
-        assert!(new.is_some() && doc.cables[&t.cable].members.iter().any(|m| m.wire() == new), "member {i}");
+        assert!(new.is_some() && doc.cables[&t.cable].cores.iter().any(|m| m.wire() == new), "member {i}");
     }
     same_as_built(&mut t.h);
     // C: a bridge between 3 and 4.
@@ -186,7 +186,7 @@ fn place_terminals_bridges_cores_and_the_plan() {
     let w5: WireId = id(&w5, "conductor");
     t.h.run("cableadd", json!({"cable": t.cable.hex(), "conductors": [w5.hex()]})).unwrap();
     let doc = t.h.doc();
-    assert_eq!(doc.cables[&t.cable].members.iter().find(|m| m.wire() == Some(w5)).unwrap().core.as_deref(), Some("5"));
+    assert_eq!(doc.cables[&t.cable].cores.iter().find(|m| m.wire() == Some(w5)).unwrap().label_str(), Some("5"));
     let cores = t.h.run("cablecores", json!({"cable": t.cable.hex()})).unwrap();
     assert_eq!(cores["offer"], "7G");
     assert_eq!(cores["source"], "type");

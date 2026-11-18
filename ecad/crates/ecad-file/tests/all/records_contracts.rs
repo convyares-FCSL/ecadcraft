@@ -83,7 +83,7 @@ fn embedded_definitions_follow_the_owner_requirements() {
         for (w, wire) in doc.wires.iter() {
             if wire.ends.iter().any(|t| doc.terminals[t].component == c) && !ops.iter().any(|o| matches!(o, Op::DeleteWire { id, .. } if id == w)) {
                 for (cable, cv) in doc.cables.iter() {
-                    for (index, member) in cv.members.iter().enumerate().rev().filter(|(_, m)| m.wire() == Some(*w)) {
+                    for (index, member) in cv.cores.iter().enumerate().rev().filter(|(_, m)| m.wire() == Some(*w)) {
                         ops.push(Op::RemoveCableMember { cable: *cable, index, member: member.clone() });
                     }
                 }

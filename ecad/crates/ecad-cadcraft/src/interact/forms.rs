@@ -1293,7 +1293,7 @@ impl CableCore {
                 _ => return Err(CORE_NOT_WIRE.into()),
             };
             let k = doc.cables_of(w).first().copied().ok_or(WIRE_NOT_IN_CABLE)?;
-            let core = doc.cables.get(&k).and_then(|c| c.members.iter().find(|m| m.wire() == Some(w))).and_then(|m| m.core.clone());
+            let core = doc.cables.get(&k).and_then(|c| c.cores.iter().find(|m| m.wire() == Some(w))).and_then(|m| m.label_str().map(str::to_string));
             Ok((w, slash::wire_name(doc, w), core))
         })
         .map_err(other)

@@ -28,6 +28,9 @@ pub type Check = fn(&Document, ObjectRef, &str, Option<&str>) -> Result<Option<S
 /// whole record (`None`: unchanged), or the refusal.
 pub type Plan = fn(&Document, ObjectRef, &str, Option<&str>) -> Result<Option<Op>, CmdError>;
 
+/// A row's plan writing several ops on one object (`[]`: unchanged), or the refusal.
+pub type OpsPlan = fn(&Document, ObjectRef, &str, Option<&str>) -> Result<Vec<Op>, CmdError>;
+
 /// How a row of [`PROP_RULES`] builds the change.
 #[derive(Clone, Copy)]
 pub enum Build {
@@ -47,6 +50,9 @@ pub enum Build {
     Value(Check),
     /// A key that is a struct field (design 072): one `Modify*` op per object ([`plan_record`]).
     Record(Plan),
+    /// A key that sets typed data through several ops on one object (072 D: a cable core's
+    /// purpose, until `ModifyCable` takes it) ([`plan_ops`]).
+    Ops(OpsPlan),
 }
 
 /// One row of [`PROP_RULES`].
@@ -133,7 +139,7 @@ pub static PROP_RULES: &[PropRule] = &[
     PropRule {
         what: "cable core not used (brief 057)",
         claims: |_, o, k| matches!(o, ObjectRef::Cable(_)) && k.starts_with(crate::styles::cable::UNUSED_PREFIX),
-        build: Build::Value(unused_value),
+        build: Build::Ops(unused_ops),
     },
     FREE_TEXT,
 ];
@@ -150,7 +156,20 @@ pub fn rule_for(doc: &Document, object: ObjectRef, key: &str) -> &'static PropRu
 pub fn plan_record(doc: &Document, object: ObjectRef, key: &str, typed: Option<&str>) -> Result<Option<Op>, CmdError> {
     match rule_for(doc, object, key).build {
         Build::Record(plan) => plan(doc, object, key, typed),
-        Build::Aspect | Build::Tag | Build::Fixed | Build::Device(_) | Build::Value(_) => {
+        Build::Aspect | Build::Tag | Build::Fixed | Build::Device(_) | Build::Value(_) | Build::Ops(_) => {
+            Err(CmdError::input("that property is set through its own rule"))
+        }
+    }
+}
+
+/// `setprop` of an `Ops` row on one object: its ops, empty when unchanged.
+///
+/// # Errors
+/// The row's refusal; a row of another kind.
+pub fn plan_ops(doc: &Document, object: ObjectRef, key: &str, typed: Option<&str>) -> Result<Vec<Op>, CmdError> {
+    match rule_for(doc, object, key).build {
+        Build::Ops(plan) => plan(doc, object, key, typed),
+        Build::Aspect | Build::Tag | Build::Fixed | Build::Device(_) | Build::Value(_) | Build::Record(_) => {
             Err(CmdError::input("that property is set through its own rule"))
         }
     }
@@ -269,10 +288,10 @@ fn cores_value(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Resu
     crate::strips::cores_value(value)
 }
 
-fn unused_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
+fn unused_ops(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Vec<Op>, CmdError> {
     match o {
-        ObjectRef::Cable(k) => crate::styles::cable::unused_value(doc, k, key, value),
-        _ => Ok(value.map(str::to_string)),
+        ObjectRef::Cable(k) => crate::styles::cable::unused_ops(doc, k, key, value),
+        _ => Err(CmdError::input("that property is set through its own rule")),
     }
 }
 
@@ -325,7 +344,7 @@ pub fn value(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) 
         // A device's tag is a device property too: merging into the device that holds it reads it
         // here ([`plan_device`]).
         Build::Tag => device_value,
-        Build::Fixed | Build::Aspect | Build::Record(_) => return Err(CmdError::input("that property is set through its own rule")),
+        Build::Fixed | Build::Aspect | Build::Record(_) | Build::Ops(_) => return Err(CmdError::input("that property is set through its own rule")),
     };
     if let ObjectRef::Device(c) = object {
         crate::bom::refuse_on_item(doc, c, key, value)?;
@@ -392,6 +411,10 @@ pub fn plan_many(doc: &Document, cs: &[DeviceId], key: &str, typed: Option<&str>
                 continue;
             }
             Build::Record(plan) => {
+                ops.extend(plan(doc, o, &key, typed)?);
+                continue;
+            }
+            Build::Ops(plan) => {
                 ops.extend(plan(doc, o, &key, typed)?);
                 continue;
             }
@@ -671,7 +694,7 @@ pub fn plan_tag(doc: &Document, tag_high: &mut TagHigh, o: ObjectRef, typed: Opt
 /// The echo after two cables became one (with the merged document): `-W2 is now part of -W1
 /// (5 wires).`
 pub fn merged_cable_words(doc: &Document, before: Option<&str>, tag: &str, into: CableId) -> String {
-    let n = doc.cables.get(&into).map_or(0, |c| c.members.len());
+    let n = doc.cables.get(&into).map_or(0, |c| c.cores.len());
     format!("{} is now part of {tag} ({}).", before.unwrap_or("The cable"), plural(n, "wire", "wires"))
 }
 

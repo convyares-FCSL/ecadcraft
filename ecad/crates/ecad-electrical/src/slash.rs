@@ -309,7 +309,7 @@ pub fn member_crossing_points_where(doc: &Document, page: PageId, tol: f64, show
             if !shown(item) || !(from.is_finite() && to.is_finite()) || from.near(to, tol) {
                 continue;
             }
-            for m in &cable.members {
+            for m in &cable.cores {
                 let mut meets = Meets::default();
                 for prim in by_conductor.get(&m.position).into_iter().flatten() {
                     meet_route(&mut meets, prim, from, to, tol);
@@ -344,7 +344,7 @@ pub fn member_crossings_with<'p>(
         if !(from.is_finite() && to.is_finite()) || from.near(to, tol) {
             continue;
         }
-        for m in &c.members {
+        for m in &c.cores {
             let prims = prims(m.position);
             let mut meets = Meets::default();
             for prim in prims {

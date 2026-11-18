@@ -119,11 +119,15 @@ fn the_demo_nets_and_wire_numbers() {
     // Brief 052: -K01's function =PUMP is stored, and no box, page or project says =PUMP.
     // Brief 059: -W01 has no gland size at either end (Info).
     // Until lane F step F4 -W01 is not continued on page 3: its reference on page 2 is an orphan,
-    // and its three lines end loose there (an open end and no wire yet, each).
+    // and its three lines end loose there (an open end and no wire yet, each), each core landed at
+    // one end only (step c).
     assert_eq!(
         checks,
         [
             "CoreOpen 2/E3 -W01 core GNYE is not assigned: slash or add a wire, or tick Not used.",
+            "CoreOneEnd 2/E3 -W01 core 1 is landed at -K01:2 only.",
+            "CoreOneEnd 2/E3 -W01 core 2 is landed at -K01:4 only.",
+            "CoreOneEnd 2/E3 -W01 core 3 is landed at -K01:6 only.",
             "OpenEnd 2/E3 a wire with no connection point",
             "OpenEnd 2/E3 a wire with no connection point",
             "OpenEnd 2/E3 a wire with no connection point",

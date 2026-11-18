@@ -91,7 +91,7 @@ fn a_cable_is_made_by_two_clicks_from_the_ecad_tab() {
     assert_eq!(head(&mut h), before + 1, "one transaction");
     let d = doc(&mut h);
     assert_eq!(d.cables.len(), 1);
-    assert_eq!(d.cables.values().next().unwrap().members.len(), 3);
+    assert_eq!(d.cables.values().next().unwrap().cores.len(), 3);
     let dots = h
         .state()
         .cad

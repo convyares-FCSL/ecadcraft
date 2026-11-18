@@ -1020,7 +1020,7 @@ pub fn op_targets(op: &Op) -> Vec<ObjectId> {
         }
         Op::CreateCable { id, cable } | Op::DeleteCable { id, cable } => {
             out.push(ObjectId::Cable(*id));
-            out.extend(cable.members.iter().filter_map(member_object));
+            out.extend(cable.cores.iter().filter_map(member_object));
         }
         Op::AddCableMember { cable, member, .. } | Op::RemoveCableMember { cable, member, .. } => {
             out.push(ObjectId::Cable(*cable));
@@ -1047,7 +1047,7 @@ pub fn op_targets(op: &Op) -> Vec<ObjectId> {
 }
 
 /// The object a cable member stands on: its wire, or its loose line while it has no wire.
-fn member_object(m: &ecad_model::CableMember) -> Option<ObjectId> {
+fn member_object(m: &ecad_model::Core) -> Option<ObjectId> {
     m.wire().map(ObjectId::Wire).or_else(|| m.route().map(ObjectId::Route))
 }
 
@@ -1181,13 +1181,13 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
         ObjectId::Wire(c) => doc
             .cables
             .iter()
-            .filter(|(_, k)| k.members.iter().any(|m| m.wire() == Some(c)))
+            .filter(|(_, k)| k.cores.iter().any(|m| m.wire() == Some(c)))
             .map(|(i, _)| ObjectId::Cable(*i))
             .chain(reps_of(Subject::Wire(c)))
             .chain(crate::wires::routes_of_wire(doc, c).into_iter().map(ObjectId::Route))
             .collect(),
         ObjectId::Cable(c) => {
-            doc.cables.get(&c).into_iter().flat_map(|k| k.members.iter().filter_map(member_object)).chain(reps_of(Subject::Cable(c))).collect()
+            doc.cables.get(&c).into_iter().flat_map(|k| k.cores.iter().filter_map(member_object)).chain(reps_of(Subject::Cable(c))).collect()
         }
         ObjectId::Route(r) => doc
             .routes
@@ -1245,10 +1245,10 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
         // A member of a cable shows its core (design 009 §8): `W3 · core 1`.
         ObjectId::Wire(c) => {
             let core = doc.cables_of(c).first().and_then(|k| doc.cables.get(k)).and_then(|k| {
-                k.members
+                k.cores
                     .iter()
                     .find(|m| m.wire() == Some(c))
-                    .and_then(|m| m.core.as_deref().filter(|x| !x.trim().is_empty()).map(|x| crate::words::shorten(x, crate::words::MAX_CORE_CHARS)))
+                    .and_then(|m| m.label_str().filter(|x| !x.trim().is_empty()).map(|x| crate::words::shorten(x, crate::words::MAX_CORE_CHARS)))
             });
             match core {
                 Some(core) => format!("{} · core {core}", subject_label(doc, Subject::Wire(c))),

@@ -45,7 +45,7 @@ pub mod pages;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::derive::Place;
-use ecad_model::{CableId, CableMember, DeviceId, Document, End, PageId, Pt, RepresentationId, Subject, TerminalId, WireId};
+use ecad_model::{CableId, Core, DeviceId, Document, End, PageId, Pt, RepresentationId, Subject, TerminalId, WireId};
 
 use crate::CmdError;
 use crate::outputs::PageCx;
@@ -552,12 +552,15 @@ impl CoreCount {
     }
 }
 
-/// Match `members` to `offer` (§6.2): by label first, then the rest in member order.
-pub fn count_cores(offer: Option<(Vec<String>, OfferSource, String)>, members: &[CableMember]) -> CoreCount {
+/// Match `members` to `offer` (§6.2): by label first, then the rest in member order. An unplaced
+/// core (a spare one stored only for its purpose, design 072 §4.5) is on no line: it is not
+/// counted against the offer and its `matched` is `None`.
+pub fn count_cores(offer: Option<(Vec<String>, OfferSource, String)>, members: &[Core]) -> CoreCount {
+    let placed = |m: &Core| m.position != ecad_model::CorePosition::Unplaced;
     let mut twice = Vec::new();
     let mut labels: BTreeSet<String> = BTreeSet::new();
-    for (i, m) in members.iter().enumerate() {
-        if let Some(l) = m.core.as_deref().map(str::trim).filter(|l| !l.is_empty())
+    for (i, m) in members.iter().enumerate().filter(|(_, m)| placed(m)) {
+        if let Some(l) = m.label_str().map(str::trim).filter(|l| !l.is_empty())
             && !labels.insert(l.to_ascii_uppercase())
         {
             twice.push(i);
@@ -568,9 +571,9 @@ pub fn count_cores(offer: Option<(Vec<String>, OfferSource, String)>, members: &
     };
     let mut free: Vec<Option<&String>> = offer.iter().map(Some).collect();
     let mut matched: Vec<Option<String>> = vec![None; members.len()];
-    let mut done = vec![false; members.len()];
-    for (i, m) in members.iter().enumerate() {
-        let Some(l) = m.core.as_deref().map(str::trim) else { continue };
+    let mut done: Vec<bool> = members.iter().map(|m| !placed(m)).collect();
+    for (i, m) in members.iter().enumerate().filter(|(_, m)| placed(m)) {
+        let Some(l) = m.label_str().map(str::trim) else { continue };
         if let Some(slot) = free.iter_mut().find(|s| s.is_some_and(|c| c.eq_ignore_ascii_case(l)))
             && let Some(c) = slot.take()
         {
@@ -603,7 +606,7 @@ pub fn count_cores(offer: Option<(Vec<String>, OfferSource, String)>, members: &
 /// A cable's core count on `doc`.
 pub fn cable_cores(doc: &Document, k: CableId) -> Option<CoreCount> {
     let cab = doc.cables.get(&k)?;
-    Some(count_cores(crate::styles::cable::offer(doc, k), &cab.members))
+    Some(count_cores(crate::styles::cable::offer(doc, k), &cab.cores))
 }
 
 /// The label `cablecore` gives a member whose label another member has (the `core-twice` fix):
@@ -611,11 +614,11 @@ pub fn cable_cores(doc: &Document, k: CableId) -> Option<CoreCount> {
 /// numeric label.
 pub fn next_free_label(doc: &Document, k: CableId) -> Option<String> {
     let cab = doc.cables.get(&k)?;
-    let count = count_cores(crate::styles::cable::offer(doc, k), &cab.members);
+    let count = count_cores(crate::styles::cable::offer(doc, k), &cab.cores);
     if let Some(c) = count.next_free() {
         return Some(c);
     }
-    let high = cab.members.iter().filter_map(|m| m.core.as_deref()?.trim().parse::<u64>().ok()).filter(|n| *n < 1_000_000).max().unwrap_or(0);
+    let high = cab.cores.iter().filter_map(|m| m.label_str()?.trim().parse::<u64>().ok()).filter(|n| *n < 1_000_000).max().unwrap_or(0);
     Some((high + 1).to_string())
 }
 
@@ -1013,7 +1016,7 @@ impl Strips {
         for k in scope.cables {
             out.extend(self.by_cable.get(k).into_iter().flatten().copied());
             if let Some(cab) = doc.cables.get(k) {
-                wires.extend(cab.members.iter().filter_map(|m| m.wire()));
+                wires.extend(cab.cores.iter().filter_map(|m| m.wire()));
             }
         }
         for w in &wires {
@@ -1311,7 +1314,8 @@ fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripDat
                 let tag = doc.cables.get(&k).and_then(|x| clean(x.properties.get("tag")));
                 (k, tag)
             });
-            let core = cable.as_ref().and_then(|(k, _)| doc.cables.get(k)?.members.iter().find(|m| m.wire() == Some(w))?.core.clone());
+            let core =
+                cable.as_ref().and_then(|(k, _)| doc.cables.get(k)?.cores.iter().find(|m| m.wire() == Some(w))?.label_str().map(str::to_string));
             let cell = SideCell { conductor: w, target, wire: o.wire(w).and_then(|r| r.wire_number.clone()), cable, core, far };
             // §5.2: cable core → outside; far device's location against the strip's; geometry.
             let inside = match side {
@@ -1695,8 +1699,8 @@ pub fn terminal_hover(doc: &Document, c: DeviceId, here: RepresentationId) -> Ve
                     let core = doc
                         .cables
                         .get(&k)
-                        .and_then(|x| x.members.iter().find(|m| m.wire() == Some(w)))
-                        .and_then(|m| m.core.clone())
+                        .and_then(|x| x.cores.iter().find(|m| m.wire() == Some(w)))
+                        .and_then(|m| m.label_str().map(str::to_string))
                         .unwrap_or_else(|| "?".into());
                     lines.push(format!("outside  {} core {core} \u{2192} {target}", crate::slash::cable_name(doc, k)));
                 }
@@ -1724,7 +1728,7 @@ pub fn terminal_hover(doc: &Document, c: DeviceId, here: RepresentationId) -> Ve
 /// A cable's hover line: `-W01  7G1.5: 5 used, 2 spare (6, GNYE)`; `None` with no offer.
 pub fn cable_hover(doc: &Document, k: CableId) -> Option<String> {
     let cab = doc.cables.get(&k)?;
-    let count = count_cores(crate::styles::cable::offer(doc, k), &cab.members);
+    let count = count_cores(crate::styles::cable::offer(doc, k), &cab.cores);
     let named = cab.properties.get("type").cloned().or_else(|| count.offer_text.clone())?;
     count.offer.as_ref()?;
     let spare = if count.spare.is_empty() { "0 spare".to_string() } else { format!("{} spare ({})", count.spare.len(), count.spare.join(", ")) };
@@ -1845,7 +1849,7 @@ mod tests {
 
     #[test]
     fn members_meet_the_offer_by_label_then_in_order() {
-        let m = |core: Option<&str>| CableMember::on_wire(WireId(1), core.map(str::to_string));
+        let m = |core: Option<&str>| Core::on_wire(WireId(1), core.and_then(|c| ecad_model::CoreLabel::new(c).ok()));
         let offer = |t: &str| Some((parse_cores(t).unwrap(), OfferSource::Cores, t.to_string()));
         let c = count_cores(offer("7G"), &[m(None), m(None), m(Some("3")), m(None), m(None)]);
         assert_eq!(c.used(), 5);

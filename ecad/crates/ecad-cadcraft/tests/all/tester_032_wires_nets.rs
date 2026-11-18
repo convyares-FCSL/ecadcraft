@@ -478,7 +478,7 @@ fn t14_cablecontinue_on_cores_ending_on_continuations_says_slash_there() {
 fn t13_a_cable_continued_on_a_second_page() {
     let mut f = w04(0x7032_0130);
     let doc = f.h.doc();
-    let labels: Vec<Option<String>> = doc.cables[&f.cable].members.iter().map(|m| m.core.clone()).collect();
+    let labels: Vec<Option<String>> = doc.cables[&f.cable].cores.iter().map(|m| m.label_str().map(str::to_string)).collect();
     let cables_before = doc.cables.len();
     // Offer exactly three cores, the page-1 labels (or 1,2,3 when the slash gave none).
     let offer: Vec<String> = labels.iter().enumerate().map(|(i, l)| l.clone().unwrap_or_else(|| (i + 1).to_string())).collect();
@@ -516,10 +516,10 @@ fn t13_a_cable_continued_on_a_second_page() {
     let doc = f.h.doc();
     assert_eq!(doc.cables.len(), cables_before, "one cable");
     let k = &doc.cables[&f.cable];
-    assert_eq!(k.members.len(), 6);
+    assert_eq!(k.cores.len(), 6);
     for (i, w) in f.w2.iter().enumerate() {
-        let m = k.members.iter().find(|m| m.wire() == Some(*w)).expect("member");
-        assert_eq!(m.core, labels[i], "page-2 member takes its chain's core label");
+        let m = k.cores.iter().find(|m| m.wire() == Some(*w)).expect("member");
+        assert_eq!(m.label_str().map(str::to_string), labels[i], "page-2 member takes its chain's core label");
     }
     let pages: Vec<PageId> = slash_reps(&doc, f.cable).into_iter().map(|(_, p)| p).collect();
     assert!(pages.contains(&f.p1) && pages.contains(&f.p2), "{pages:?}");
@@ -555,7 +555,7 @@ fn t13_a_cable_continued_on_a_second_page() {
     f.h.run("erase", json!({"handles": [handle.hex()]})).unwrap();
     let doc = f.h.doc();
     assert!(doc.cables.contains_key(&f.cable), "the cable stays");
-    let members: Vec<_> = doc.cables[&f.cable].members.iter().filter_map(|m| m.wire()).collect();
+    let members: Vec<_> = doc.cables[&f.cable].cores.iter().filter_map(|m| m.wire()).collect();
     assert_eq!(members, f.w1, "page 1's three members are left");
     assert_eq!(slash_reps(&doc, f.cable).len(), 1);
     same_outputs_as_built(&mut f.h);
@@ -568,7 +568,7 @@ fn t13_a_cable_continued_on_a_second_page() {
     f.h.run("erase", json!({"handles": [handle.hex()]})).unwrap();
     let d = f.h.doc();
     assert!(slash_reps(&d, f.cable).is_empty());
-    let members: Vec<_> = d.cables[&f.cable].members.iter().filter_map(|m| m.wire()).collect();
+    let members: Vec<_> = d.cables[&f.cable].cores.iter().filter_map(|m| m.wire()).collect();
     assert_eq!(members, f.w1, "the cable and its page-1 members stay");
 }
 
@@ -578,7 +578,7 @@ fn t13b_continue_by_cable_id() {
     let mut f = w04(0x7032_0131);
     let r = f.h.run("cableslash", json!({"from": [90, 70], "to": [150, 70], "cable": f.cable.hex()})).unwrap();
     assert_eq!(r["continued"], json!(true), "{r}");
-    assert_eq!(f.h.doc().cables[&f.cable].members.len(), 6);
+    assert_eq!(f.h.doc().cables[&f.cable].cores.len(), 6);
 }
 
 /// §3.3 refusals, each tested; nothing written.

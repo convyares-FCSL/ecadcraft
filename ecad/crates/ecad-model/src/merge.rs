@@ -37,7 +37,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::diff;
 use crate::doc::{
-    Cable, CableMember, CorePosition, Device, Document, End, Folder, Form, Item, ItemKind, Page, Properties, Representation, Subject, Terminal, Wire,
+    Cable, Core, CorePosition, Device, Document, End, Folder, Form, Item, ItemKind, Page, Properties, Representation, Subject, Terminal, Wire,
 };
 use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, TerminalId, WireId};
 use crate::invariant::Touched;
@@ -837,7 +837,7 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
             Obj::Cable(id) => {
                 let v = object(ctx, obj, &what, a.cables.get(&id), t.cables.get(&id), s.cables.get(&id), |ctx, a, t, s| Cable {
                     properties: merge_props(ctx, obj, &what, &a.properties, &t.properties, &s.properties, &all),
-                    members: merge_members(&a.members, &t.members, &s.members),
+                    cores: merge_members(&a.cores, &t.cores, &s.cores),
                 });
                 set(&mut m.cables, id, v);
             }
@@ -1207,23 +1207,44 @@ fn keep_devices(ctx: &mut Ctx<'_, '_>, m: &mut Document) -> BTreeSet<Obj> {
     out
 }
 
-/// Cable members: adds and removes from both sides combine (design §5.1); a member's core is
-/// the side that changed it (the target's when both did).
-fn merge_members(a: &[CableMember], t: &[CableMember], s: &[CableMember]) -> Vec<CableMember> {
-    fn has(l: &[CableMember], c: CorePosition) -> Option<&CableMember> {
-        l.iter().find(|m| m.position == c)
+/// The cores on a line that went: each stays unplaced or goes ([`Core::off_line`]), in place.
+fn off_line(cores: &mut Vec<Core>, gone: impl Fn(&Core) -> bool) {
+    let mut out: Vec<Core> = Vec::with_capacity(cores.len());
+    for c in cores.drain(..) {
+        if !gone(&c) {
+            out.push(c);
+        } else if let Some(k) = c.off_line(&out) {
+            out.push(k);
+        }
     }
-    let mut out: Vec<CableMember> = Vec::new();
+    *cores = out;
+}
+
+/// Cable cores: adds and removes from both sides combine (design §5.1). A core is the same core
+/// on both sides when it is on the same line, or, unplaced, has the same label. Each of its fields
+/// is the side that changed it (the target's when both did).
+fn merge_members(a: &[Core], t: &[Core], s: &[Core]) -> Vec<Core> {
+    fn has<'a>(l: &'a [Core], c: &Core) -> Option<&'a Core> {
+        l.iter().find(|m| m.position == c.position && (c.position != CorePosition::Unplaced || m.label == c.label))
+    }
+    fn field<T: PartialEq + Clone>(am: Option<&Core>, m: &Core, sm: Option<&Core>, f: fn(&Core) -> &T) -> T {
+        pick(am.map(f), Some(f(m)), sm.map(f)).flatten().unwrap_or_else(|| f(m).clone())
+    }
+    let mut out: Vec<Core> = Vec::new();
     for m in t {
-        let (am, sm) = (has(a, m.position), has(s, m.position));
+        let (am, sm) = (has(a, m), has(s, m));
         if am.is_some() && sm.is_none() {
             continue; // removed by the source
         }
-        let core = pick(am.map(|x| &x.core), Some(&m.core), sm.map(|x| &x.core)).flatten().unwrap_or_else(|| m.core.clone());
-        out.push(CableMember { position: m.position, core });
+        out.push(Core {
+            label: field(am, m, sm, |x| &x.label),
+            colours: field(am, m, sm, |x| &x.colours),
+            purpose: field(am, m, sm, |x| &x.purpose),
+            position: m.position,
+        });
     }
     for m in s {
-        if has(t, m.position).is_none() && has(a, m.position).is_none() {
+        if has(t, m).is_none() && has(a, m).is_none() {
             out.push(m.clone()); // added by the source
         }
     }
@@ -1320,7 +1341,7 @@ fn refs(m: &Document, obj: Obj) -> Vec<(Obj, Use)> {
         }
         Obj::Cable(c) => {
             if let Some(c) = m.cables.get(&c) {
-                out.extend(c.members.iter().filter_map(|x| match x.position {
+                out.extend(c.cores.iter().filter_map(|x| match x.position {
                     CorePosition::Wire(w) => Some((Obj::Wire(w), Use::Member)),
                     CorePosition::Route { route, .. } => Some((Obj::Route(route), Use::Member)),
                     CorePosition::Unplaced => None,
@@ -1366,7 +1387,7 @@ fn users_of(m: &Document, y: Obj) -> Vec<Obj> {
         }
         Obj::Route(x) => {
             all.extend(m.routes.iter().filter(|(_, r)| r.ends.iter().any(|e| e.route() == Some(x))).map(|(k, _)| Obj::Route(*k)));
-            all.extend(m.cables.iter().filter(|(_, c)| c.members.iter().any(|mm| mm.route() == Some(x))).map(|(k, _)| Obj::Cable(*k)));
+            all.extend(m.cables.iter().filter(|(_, c)| c.cores.iter().any(|mm| mm.route() == Some(x))).map(|(k, _)| Obj::Cable(*k)));
             all.extend(m.representations.iter().filter(|(_, r)| r.subject == Subject::Route(x)).map(|(k, _)| Obj::Representation(*k)));
         }
         Obj::Device(c) => {
@@ -1374,7 +1395,7 @@ fn users_of(m: &Document, y: Obj) -> Vec<Obj> {
             all.extend(m.representations.iter().filter(|(_, r)| r.subject == Subject::Device(c)).map(|(k, _)| Obj::Representation(*k)));
         }
         Obj::Wire(c) => {
-            all.extend(m.cables.iter().filter(|(_, x)| x.members.iter().any(|mm| mm.wire() == Some(c))).map(|(k, _)| Obj::Cable(*k)));
+            all.extend(m.cables.iter().filter(|(_, x)| x.cores.iter().any(|mm| mm.wire() == Some(c))).map(|(k, _)| Obj::Cable(*k)));
             all.extend(m.representations.iter().filter(|(_, r)| r.subject == Subject::Wire(c)).map(|(k, _)| Obj::Representation(*k)));
         }
         Obj::Cable(c) => {
@@ -1418,8 +1439,8 @@ fn drop_use(m: &mut Document, x: Obj, y: Obj, how: Use, check: &mut BTreeSet<Obj
             }
         }
         (Obj::Cable(c), Use::Member) => match (m.cables.get_mut(&c), y) {
-            (Some(c), Obj::Wire(w)) => c.members.retain(|mm| mm.wire() != Some(w)),
-            (Some(c), Obj::Route(r)) => c.members.retain(|mm| mm.route() != Some(r)),
+            (Some(c), Obj::Wire(w)) => off_line(&mut c.cores, |mm| mm.wire() == Some(w)),
+            (Some(c), Obj::Route(r)) => off_line(&mut c.cores, |mm| mm.route() == Some(r)),
             _ => {}
         },
         (Obj::Page(p), Use::PageFolder) => {
@@ -1800,12 +1821,14 @@ pub fn join_cables(doc: &Document, from: CableId, into: CableId) -> Result<Vec<O
     let a = doc.cables.get(&from).ok_or(crate::ParseError::NotFound(crate::Noun::Cable))?;
     let b = doc.cables.get(&into).ok_or(crate::ParseError::NotFound(crate::Noun::Cable))?;
     let mut ops = Vec::new();
-    for (i, mem) in a.members.iter().enumerate().rev() {
+    for (i, mem) in a.cores.iter().enumerate().rev() {
         ops.push(Op::RemoveCableMember { cable: from, index: i, member: mem.clone() });
     }
-    let mut n = b.members.len();
-    for mem in &a.members {
-        if b.members.iter().any(|x| x.position == mem.position) {
+    let mut n = b.cores.len();
+    for mem in &a.cores {
+        // A line in both stays once; an unplaced core joins only when `into` has no core of its label.
+        let unplaced_dup = mem.position == CorePosition::Unplaced && b.cores.iter().any(|x| x.label == mem.label);
+        if unplaced_dup || (mem.position != CorePosition::Unplaced && b.cores.iter().any(|x| x.position == mem.position)) {
             continue;
         }
         ops.push(Op::AddCableMember { cable: into, index: n, member: mem.clone() });
@@ -1816,7 +1839,7 @@ pub fn join_cables(doc: &Document, from: CableId, into: CableId) -> Result<Vec<O
         ops.push(Op::LinkRepresentation { id: rid, rep: crate::doc::Representation { subject: Subject::Cable(into), ..r.clone() } });
     }
     let mut empty = a.clone();
-    empty.members.clear();
+    empty.cores.clear();
     ops.push(Op::DeleteCable { id: from, cable: empty });
     Ok(ops)
 }

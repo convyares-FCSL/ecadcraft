@@ -491,7 +491,7 @@ fn fans_of_many_shapes_draw_sensibly() {
     let rl: WireId = id(&wire_pp(&mut h, json!([[60, 305], [0, 305]])).unwrap(), "conductor");
     wire_pp(&mut h, json!([[0, 310], [30, 310], [30, 320], [60, 320]])).unwrap();
     let odd: CableId = id(&h.run("cableslash", json!({"from": [10, 295], "to": [10, 315]})).unwrap(), "cable");
-    assert_eq!(h.doc().cables[&odd].members[1].wire(), Some(rl), "the right-to-left wire is the reference");
+    assert_eq!(h.doc().cables[&odd].cores[1].wire(), Some(rl), "the right-to-left wire is the reference");
     view(&mut h, odd, "fan");
     let doc = h.doc();
     let FanOnPage::Drawn(fan) = views::fan_on_page(&doc, page, odd, 1e-6) else { panic!("drawn") };
@@ -502,7 +502,7 @@ fn fans_of_many_shapes_draw_sensibly() {
         assert!(tails.iter().any(|t| t.last().is_some_and(|q| q.near(e, 1e-9))), "{e:?} in {tails:?}");
     }
     // A cable left with one wire is drawn traditional on the page (design 009 §4.1).
-    let members: Vec<WireId> = h.doc().cables[&two].members.iter().filter_map(|m| m.wire()).collect();
+    let members: Vec<WireId> = h.doc().cables[&two].cores.iter().filter_map(|m| m.wire()).collect();
     h.run("ecaddelete", json!({"conductor": members[0].hex()})).unwrap();
     let doc = h.doc();
     assert_eq!(views::fan_on_page(&doc, page, two, 1e-6), FanOnPage::TooFew);

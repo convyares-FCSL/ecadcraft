@@ -832,8 +832,8 @@ impl Outputs {
             .filter_map(|k| {
                 let cab = doc.cables.get(&k)?;
                 let tag = cab.properties.text(ecad_model::keys::TAG).map(str::to_string).unwrap_or_else(|| "?".into());
-                let i = cab.members.iter().position(|m| m.wire() == Some(w))?;
-                let core = cab.members.get(i).and_then(|m| m.core.clone()).unwrap_or_else(|| (i + 1).to_string());
+                let i = cab.cores.iter().position(|m| m.wire() == Some(w))?;
+                let core = cab.cores.get(i).and_then(|m| m.label_str().map(str::to_string)).unwrap_or_else(|| (i + 1).to_string());
                 Some(format!("{tag} core {core}"))
             })
             .collect::<Vec<_>>()
@@ -902,7 +902,7 @@ impl Outputs {
         let mut missing = false;
         // Brief 028: the devices at the cores' ends, per location.
         let mut at_loc: BTreeMap<String, BTreeSet<((String, u64, String), DeviceId)>> = BTreeMap::new();
-        for m in &cab.members {
+        for m in &cab.cores {
             let Some(cond) = m.wire().and_then(|w| doc.wires.get(&w)) else { continue };
             for t in &cond.ends {
                 let Some(c) = doc.terminals.get(t).map(|x| x.component) else { continue };
@@ -963,7 +963,7 @@ impl Outputs {
                 go,
                 count: crate::strips::count_cores(crate::styles::cable::offer(doc, k), &heads),
                 members: heads.iter().filter_map(|m| m.wire()).collect(),
-                member_cores: heads.iter().map(|m| m.core.clone()).collect(),
+                member_cores: heads.iter().map(|m| m.label_str().map(str::to_string)).collect(),
                 tails,
                 from_devices,
                 to_devices,

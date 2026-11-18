@@ -702,9 +702,9 @@ fn label_box(doc: &Document, cable: CableId, trunk: &[Pt], tol: f64, measure: &d
 fn slash_labels(doc: &Document, idx: &PageIndex<'_>, cable: CableId, tol: f64) -> Vec<Part> {
     let Some(c) = doc.cables.get(&cable) else { return Vec::new() };
     let core_of: BTreeMap<CorePosition, String> = c
-        .members
+        .cores
         .iter()
-        .filter_map(|m| m.core.as_deref().filter(|x| !x.trim().is_empty()).map(|x| (key(m.position), shorten(x, MAX_CORE_CHARS))))
+        .filter_map(|m| m.label_str().filter(|x| !x.trim().is_empty()).map(|x| (key(m.position), shorten(x, MAX_CORE_CHARS))))
         .collect();
     if core_of.is_empty() {
         return Vec::new();
@@ -758,12 +758,12 @@ fn cable_unfiltered(doc: &Document, idx: &PageIndex<'_>, cable: CableId, fan: bo
     let Some(c) = doc.cables.get(&cable) else { return CableDrawing::default() };
     let mut seen = BTreeSet::new();
     let mut members: Vec<Member> = Vec::new();
-    for m in &c.members {
+    for m in &c.cores {
         if !seen.insert(key(m.position)) {
             continue;
         }
         if let Some(path) = idx.route(m.position).and_then(path_of) {
-            members.push(Member { position: m.position, route: idx.route_id(m.position), core: m.core.clone(), path });
+            members.push(Member { position: m.position, route: idx.route_id(m.position), core: m.label_str().map(str::to_string), path });
         }
     }
     let markers = markers_of(doc, idx, cable, measure);
@@ -983,14 +983,14 @@ pub fn fan_ends(doc: &Document, page: PageId, cable: CableId, tol: f64, measure:
     let Some(c) = doc.cables.get(&cable) else { return Vec::new() };
     let mut seen = BTreeSet::new();
     let members: Vec<Member> = c
-        .members
+        .cores
         .iter()
         .filter(|m| seen.insert(key(m.position)))
         .filter_map(|m| {
             idx.route(m.position).and_then(path_of).map(|path| Member {
                 position: m.position,
                 route: idx.route_id(m.position),
-                core: m.core.clone(),
+                core: m.label_str().map(str::to_string),
                 path,
             })
         })

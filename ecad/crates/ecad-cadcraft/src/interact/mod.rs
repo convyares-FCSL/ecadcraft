@@ -544,7 +544,7 @@ fn with_drawings(doc: &Document, k: CableId, mut lines: Vec<String>) -> Vec<Stri
     if refs.is_empty() {
         return lines;
     }
-    let members = doc.cables.get(&k).map(|c| c.members.as_slice()).unwrap_or_default();
+    let members = doc.cables.get(&k).map(|c| c.cores.as_slice()).unwrap_or_default();
     let member_pages: std::collections::BTreeSet<PageId> = members.iter().flat_map(|m| crate::cables::member_pages(doc, m)).collect();
     let mut pages: Vec<PageId> = Vec::new();
     for p in &doc.page_order {
@@ -620,12 +620,12 @@ fn terminal_lines(doc: &Document, t: TerminalId) -> Vec<String> {
 
 /// The core label of member `w` of cable `k`, when it has one that is not blank, as drawn.
 fn core_of(doc: &Document, k: CableId, w: WireId) -> Option<String> {
-    member_core(doc.cables.get(&k)?.members.iter().find(|m| m.wire() == Some(w))?)
+    member_core(doc.cables.get(&k)?.cores.iter().find(|m| m.wire() == Some(w))?)
 }
 
 /// A member's core label, shortened for a hover; `None` when it has none.
-fn member_core(m: &ecad_model::CableMember) -> Option<String> {
-    let core = m.core.as_deref()?;
+fn member_core(m: &ecad_model::Core) -> Option<String> {
+    let core = m.label_str()?;
     (!core.trim().is_empty()).then(|| crate::words::shorten(core, crate::words::MAX_CORE_CHARS))
 }
 
@@ -652,7 +652,7 @@ fn cable_lines(doc: &Document, page: PageId, k: CableId) -> Vec<String> {
     if let Some(line) = crate::strips::cable_hover(doc, k) {
         lines.insert(1, line);
     }
-    let members = cable.map(|x| x.members.as_slice()).unwrap_or_default();
+    let members = cable.map(|x| x.cores.as_slice()).unwrap_or_default();
     if members.is_empty() {
         lines.push("Wires: none".into());
     } else {

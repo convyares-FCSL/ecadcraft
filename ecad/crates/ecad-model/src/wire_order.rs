@@ -29,7 +29,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::doc::{CableMember, CorePosition, Document, Wire};
+use crate::doc::{Core, CorePosition, Document, Wire};
 use crate::geom::Pt;
 use crate::id::{ConductorId, IdAllocator, NetId, RouteId, TerminalId, WireId};
 use crate::op::Op;
@@ -247,8 +247,8 @@ pub fn core_position(doc: &Document, r: RouteId) -> CorePosition {
 /// The cores pass, run in the same transaction after [`rewrite`] (owner ruling, 2026-11-18): every
 /// core on a route that `ops` added, changed or removed moves to where it now belongs: onto the
 /// wire the route carries once both its ends have landed, or kept on the route with its landed end
-/// brought up to date. A core whose route is gone is removed from its cable. The command makes the
-/// move; reading a file never does.
+/// brought up to date. A core whose route is gone stays unplaced or goes ([`Core::off_line`]). The
+/// command makes the move; reading a file never does.
 pub fn cores(doc: &Document, ops: &[Op]) -> Vec<Op> {
     let mut routes: BTreeSet<RouteId> = BTreeSet::new();
     for op in ops {
@@ -262,8 +262,8 @@ pub fn cores(doc: &Document, ops: &[Op]) -> Vec<Op> {
     let mut out = Vec::new();
     for cable in cables {
         let Some(c) = doc.cables.get(&cable) else { continue };
-        let mut members = c.members.clone();
-        let moving: Vec<(usize, CableMember, CorePosition)> = members
+        let mut members = c.cores.clone();
+        let moving: Vec<(usize, Core, CorePosition)> = members
             .iter()
             .enumerate()
             .filter_map(|(i, m)| {
@@ -277,11 +277,17 @@ pub fn cores(doc: &Document, ops: &[Op]) -> Vec<Op> {
             members.remove(*index);
         }
         for (index, m, to) in moving {
-            if to == CorePosition::Unplaced || members.iter().any(|x| x.position == to) {
+            let member = if to == CorePosition::Unplaced {
+                match m.off_line(&members) {
+                    Some(k) => k,
+                    None => continue,
+                }
+            } else if members.iter().any(|x| x.position == to) {
                 continue;
-            }
+            } else {
+                Core { position: to, ..m }
+            };
             let at = index.min(members.len());
-            let member = CableMember { position: to, ..m };
             members.insert(at, member.clone());
             out.push(Op::AddCableMember { cable, index: at, member });
         }
@@ -662,10 +668,10 @@ impl<'a> Rewrite<'a> {
             }
         }
         // 5. Every other wire of the nets touched goes; a cable member's place in its cable goes to
-        //    the wire made in its place, else the member is removed.
+        //    the wire made in its place, else it stays unplaced or goes (`Core::off_line`).
         let mut moved_in: BTreeSet<(crate::id::CableId, WireId)> = BTreeSet::new();
         // Per cable: (index, member, where it goes), applied together so indices stay right.
-        let mut per_cable: BTreeMap<crate::id::CableId, Vec<(usize, CableMember, Option<CorePosition>)>> = BTreeMap::new();
+        let mut per_cable: BTreeMap<crate::id::CableId, Vec<(usize, Core, Option<CorePosition>)>> = BTreeMap::new();
         for ws in old.values() {
             for (id, w) in ws {
                 if kept.contains(id) {
@@ -673,8 +679,8 @@ impl<'a> Rewrite<'a> {
                 }
                 for cable in doc.cables_of(*id) {
                     let Some(c) = doc.cables.get(&cable) else { continue };
-                    let Some(index) = c.members.iter().position(|m| m.wire() == Some(*id)) else { continue };
-                    let Some(member) = c.members.get(index).cloned() else { continue };
+                    let Some(index) = c.cores.iter().position(|m| m.wire() == Some(*id)) else { continue };
+                    let Some(member) = c.cores.get(index).cloned() else { continue };
                     // A split wire's core goes to the piece the cable's slash crosses, else to the
                     // wire made in its place.
                     let crossed = pieces.get(id).and_then(|ps| {
@@ -694,19 +700,22 @@ impl<'a> Rewrite<'a> {
         let mut members: Vec<Op> = Vec::new();
         for (cable, mut changes) in per_cable {
             let Some(c) = doc.cables.get(&cable) else { continue };
-            let mut list = c.members.clone();
+            let mut list = c.cores.clone();
             changes.sort_by_key(|(i, _, _)| *i);
             for (index, m, _) in changes.iter().rev() {
                 members.push(Op::RemoveCableMember { cable, index: *index, member: m.clone() });
                 list.remove(*index);
             }
             for (index, m, to) in changes {
-                let Some(to) = to else { continue };
-                if list.iter().any(|x| x.position == to) {
-                    continue;
-                }
+                let member = match to {
+                    Some(to) if list.iter().any(|x| x.position == to) => continue,
+                    Some(to) => Core { position: to, ..m },
+                    None => match m.off_line(&list) {
+                        Some(k) => k,
+                        None => continue,
+                    },
+                };
                 let at = index.min(list.len());
-                let member = CableMember { position: to, ..m };
                 list.insert(at, member.clone());
                 members.push(Op::AddCableMember { cable, index: at, member });
             }

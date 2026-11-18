@@ -868,7 +868,12 @@ fn terminal_place(doc: &Document, t: TerminalId) -> (Option<PageId>, Option<Pt>)
 /// A conductor's words: its cable and core, or its net's number.
 fn conductor_words(doc: &Document, c: WireId) -> String {
     if let Some(k) = doc.cables_of(c).first() {
-        let core = doc.cables.get(k).and_then(|x| x.members.iter().find(|m| m.wire() == Some(c))).and_then(|m| m.core.clone()).unwrap_or_default();
+        let core = doc
+            .cables
+            .get(k)
+            .and_then(|x| x.cores.iter().find(|m| m.wire() == Some(c)))
+            .and_then(|m| m.label_str().map(str::to_string))
+            .unwrap_or_default();
         return format!("{} {core}", crate::references::cable_words(doc, *k)).trim().to_string();
     }
     let conn = doc.connectivity();
@@ -1317,23 +1322,6 @@ pub fn cable_checks_in(places: &mut Places<'_>, k: ecad_model::CableId) -> Vec<C
             });
         }
     }
-    // Tester re-check 2, item 4: `unused.` keys a file made elsewhere holds that ECAD does not read.
-    let (bad, n) = crate::styles::cable::bad_unused(doc, k);
-    if n > 0 {
-        let (page, at) = ecad_model::numbering::rep_anchor(doc, Subject::Cable(k)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
-        let name = crate::cables::cable_title(doc, k);
-        let more = if n > bad.len() { format!(" (and {} more)", n - bad.len()) } else { String::new() };
-        for (key, v) in &bad {
-            out.push(Check {
-                kind: Kind::RatingBadValue,
-                page,
-                at,
-                object: Object::Cable(k),
-                which: format!("{name} has {key} '{v}', which ECAD does not read{more}"),
-                fix: None,
-            });
-        }
-    }
     let Some(t) = crate::devices::cable_tag_of(doc, k) else { return out };
     if !ecad_model::tag::is_provisional(t) && doc.cables_tagged(t).len() < 2 && doc.components_tagged(t).is_empty() {
         return out;
@@ -1356,9 +1344,17 @@ pub fn cable_checks_in(places: &mut Places<'_>, k: ecad_model::CableId) -> Vec<C
 fn core_place_checks(doc: &Document, k: ecad_model::CableId, out: &mut Vec<Check>) {
     let Some(cable) = doc.cables.get(&k) else { return };
     let name = crate::cables::cable_title(doc, k);
-    for (i, m) in cable.members.iter().enumerate() {
+    for (i, m) in cable.cores.iter().enumerate() {
+        let core = m.label_str().map(str::to_string).unwrap_or_else(|| (i + 1).to_string());
+        if let ecad_model::CorePosition::Wire(w) = m.position {
+            if let Some(now) = wire_core_stale(doc, w) {
+                let (page, at) = if doc.wires.contains_key(&w) { conductor_place(doc, w, None) } else { (None, None) };
+                let which = format!("{name} core {core}: stored on a wire, but {now}.");
+                out.push(Check { kind: Kind::CorePlaceStale, page, at, object: Object::Cable(k), which, fix: None });
+            }
+            continue;
+        }
         let ecad_model::CorePosition::Route { route, landed } = m.position else { continue };
-        let core = m.core.clone().unwrap_or_else(|| (i + 1).to_string());
         let (page, at) = route_place(doc, route, None);
         let found = ecad_model::wire_order::core_position(doc, route);
         if found != m.position {
@@ -1375,6 +1371,17 @@ fn core_place_checks(doc: &Document, k: ecad_model::CableId, out: &mut Vec<Check
             out.push(Check { kind: Kind::CoreOneEnd, page, at, object: Object::Cable(k), which, fix: None });
         }
     }
+}
+
+/// Why a core stored on wire `w` is stale, in words: the wire is gone, or lines land at its ends
+/// but none of them carries it. `None` when it holds (a wire with no line at its ends, made by a
+/// command that draws none, is not judged).
+fn wire_core_stale(doc: &Document, w: WireId) -> Option<&'static str> {
+    let Some(wire) = doc.wires.get(&w) else { return Some("its wire is gone") };
+    let mut lines = wire.ends.iter().flat_map(|t| doc.routes_at(*t)).peekable();
+    lines.peek()?;
+    let carried = lines.any(|r| ecad_model::wire_order::wire_of_route(doc, r) == Some(w));
+    (!carried).then_some("no line carries that wire now")
 }
 
 /// The connection points `route` lands on, and those of each route it ends on (a T, one level).
@@ -1557,7 +1564,7 @@ impl Scope {
                     }
                     // A cable's tag and cores are part of its members' words.
                     if let Some(cable) = doc.cables.get(k) {
-                        self.wires.extend(cable.members.iter().filter_map(|m| m.wire()));
+                        self.wires.extend(cable.cores.iter().filter_map(|m| m.wire()));
                     }
                     if let Op::AddCableMember { member, .. } | Op::RemoveCableMember { member, .. } = op {
                         self.wires.extend(member.wire());

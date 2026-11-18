@@ -710,14 +710,14 @@ fn continuation_group_cables(doc: &Document, c: DeviceId) -> BTreeSet<CableId> {
 
 /// 032: the members standing for `cable`'s core chains (design 032 §3.2), in member order, each
 /// with the first stored core label along its chain, and each chain's last member.
-fn chain_heads(doc: &Document, k: CableId, cab: &ecad_model::Cable) -> (Vec<ecad_model::CableMember>, Vec<WireId>) {
+fn chain_heads(doc: &Document, k: CableId, cab: &ecad_model::Cable) -> (Vec<ecad_model::Core>, Vec<WireId>) {
     let chains = crate::references::core_chains(doc, k);
     let mut heads = Vec::with_capacity(chains.len());
     let mut tails = Vec::with_capacity(chains.len());
     for ch in &chains {
         let (Some(first), Some(last)) = (ch.first(), ch.last()) else { continue };
-        let core = ch.iter().find_map(|w| cab.members.iter().find(|m| m.wire() == Some(*w)).and_then(|m| m.core.clone()));
-        heads.push(ecad_model::CableMember::on_wire(*first, core));
+        let core = ch.iter().find_map(|w| cab.cores.iter().find(|m| m.wire() == Some(*w)).and_then(|m| m.label.clone()));
+        heads.push(ecad_model::Core::on_wire(*first, core));
         tails.push(*last);
     }
     (heads, tails)

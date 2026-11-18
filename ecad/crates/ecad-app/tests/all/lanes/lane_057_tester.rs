@@ -94,7 +94,7 @@ fn core_fixes_go_to_the_cable_and_tick_not_used_in_one_transaction() {
     assert_eq!(head(&mut h), before + 1, "one transaction");
     assert_eq!(core_rows(&mut h).len(), n - 1, "the row goes");
     let d = doc(&mut h);
-    assert_eq!(d.cables[&w90].properties.get(&format!("unused.{}", open.label)).map(String::as_str), Some("yes"));
+    assert!(d.cables[&w90].cores.iter().any(|m| m.label_str() == Some(open.label.as_str()) && m.is_spare()), "the core is stored Spare");
     ok(&mut h, "u");
     assert_eq!(core_rows(&mut h).len(), n, "one undo brings it back");
     let _ = std::fs::remove_dir_all(&dir);

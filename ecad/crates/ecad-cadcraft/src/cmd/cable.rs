@@ -25,7 +25,7 @@ use ecad_electrical::CmdError;
 use ecad_electrical::cmd::cable::{self as rules, CableInput, EndInput};
 pub use ecad_electrical::cmd::cable::{BadReason, Drawn, assign_cores, bad_value, cable_named, check_remove, drawn, edit_ops};
 use ecad_model::{
-    CableId, CableMember, CorePosition, Document, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Representation, RepresentationId, Subject,
+    CableId, Core, CorePosition, Document, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Representation, RepresentationId, Subject,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -270,7 +270,11 @@ pub(crate) fn run_slash_assign(
     let (item, rep): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
     let mut ops = Vec::new();
     for (index, (m, core)) in found.members.iter().zip(cores.iter()).enumerate() {
-        ops.push(Op::AddCableMember { cable: k, index, member: CableMember { position: m.position, core: core.clone() } });
+        ops.push(Op::AddCableMember {
+            cable: k,
+            index,
+            member: Core { position: m.position, ..Core::unplaced(core.as_deref().and_then(|c| ecad_model::CoreLabel::new(c).ok())) },
+        });
     }
     let style = crate::cmd::plain_style(p);
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Line { a: from, b: to }) } });
@@ -302,7 +306,7 @@ pub(crate) fn run_slash_assign(
 /// Board 2.06's **Add a core** (design 059 §3): cable `k`'s offer plus one core (`4G` → `5G`,
 /// `7X` → `8X`; a list gains the next number), or its member count plus one with no offer.
 pub fn next_offer(doc: &Document, k: CableId) -> String {
-    let members = doc.cables.get(&k).map_or(0, |c| c.members.len());
+    let members = doc.cables.get(&k).map_or(0, |c| c.cores.len());
     let Some((cores, _, text)) = cable::offer(doc, k) else { return (members + 1).to_string() };
     let t = text.trim();
     let digits: String = t.chars().take_while(char::is_ascii_digit).collect();

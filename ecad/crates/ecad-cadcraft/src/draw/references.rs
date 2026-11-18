@@ -34,11 +34,15 @@ pub(crate) fn run_slash_continue(
         return Err(crate::slash::already_in_cable(doc, &blocked, "Nothing was created."));
     }
     let plan = crate::references::plan_slash_continue(doc, page, cable, &crossed)?;
-    let start = doc.cables.get(&cable).map_or(0, |c| c.members.len());
+    let start = doc.cables.get(&cable).map_or(0, |c| c.cores.len());
     let (item, rep): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
     let mut ops = Vec::new();
     for (i, w) in plan.iter().enumerate() {
-        ops.push(Op::AddCableMember { cable, index: start + i, member: ecad_model::CableMember::on_wire(w.conductor, w.core.clone()) });
+        ops.push(Op::AddCableMember {
+            cable,
+            index: start + i,
+            member: ecad_model::Core::on_wire(w.conductor, w.core.as_deref().and_then(|c| ecad_model::CoreLabel::new(c).ok())),
+        });
     }
     let style = crate::cmd::plain_style(p);
     ops.push(Op::AddItem {

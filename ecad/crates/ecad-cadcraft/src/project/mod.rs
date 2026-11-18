@@ -1293,7 +1293,7 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
             Op::SetProperty { object: ecad_model::ObjectRef::Cable(k), .. } => {
                 out.extend(doc.representations_of(Subject::Cable(*k)).map(|(_, r)| r.page));
                 if let Some(cable) = doc.cables.get(k) {
-                    for m in &cable.members {
+                    for m in &cable.cores {
                         out.extend(crate::cables::member_pages(doc, m));
                     }
                 }

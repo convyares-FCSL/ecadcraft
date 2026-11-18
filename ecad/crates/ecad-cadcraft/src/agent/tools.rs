@@ -213,7 +213,7 @@ fn project(st: &mut Host<'_>, limit: u64) -> Result<Value, String> {
             let terminals: Vec<Value> = doc.terminals_of(*id).map(|(t, term)| json!({"id": t.hex(), "label": term.label})).collect();
             json!({"id": id.hex(), "properties": c.properties, "terminals": terminals})
         });
-        let cable_of = |c| doc.cables.iter().find(|(_, k)| k.members.iter().any(|m| m.wire() == Some(c))).map(|(id, _)| id.hex());
+        let cable_of = |c| doc.cables.iter().find(|(_, k)| k.cores.iter().any(|m| m.wire() == Some(c))).map(|(id, _)| id.hex());
         let conductors = doc.wires.iter().map(|(id, c)| {
             json!({
                 "id": id.hex(),
@@ -225,9 +225,9 @@ fn project(st: &mut Host<'_>, limit: u64) -> Result<Value, String> {
         });
         let cables = doc.cables.iter().map(|(id, c)| {
             let members: Vec<Value> = c
-                .members
+                .cores
                 .iter()
-                .map(|m| json!({"conductor": m.wire().map(|w| w.hex()), "line": m.route().map(|r| r.hex()), "core": m.core}))
+                .map(|m| json!({"conductor": m.wire().map(|w| w.hex()), "line": m.route().map(|r| r.hex()), "core": m.label_str(), "spare": m.is_spare()}))
                 .collect();
             json!({"id": id.hex(), "properties": c.properties, "members": members})
         });

@@ -167,7 +167,7 @@ fn the_cable_is_drawn_end_to_end_in_its_core_colours() {
     assert!(h.state().reports.as_ref().unwrap().cables.cores.is_unused(gnye), "ticked");
     assert_eq!(open_rows(&mut h), 0, "a ticked core is no error");
     let d = doc(&mut h);
-    assert_eq!(d.cables[&w01].properties.get("unused.GNYE").map(String::as_str), Some("yes"));
+    assert!(d.cables[&w01].cores.iter().any(|m| m.label_str() == Some("GNYE") && m.is_spare()), "the core is stored Spare");
     if let Some(out) = crate::project_panel::shots() {
         let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("057-cable-view-v2-ticked.png"));
     }

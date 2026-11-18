@@ -2,8 +2,8 @@
 
 use ecad_model::derive::{mismatches, nets};
 use ecad_model::{
-    Author, CableMember, Color, Device, End, Form, IdAllocator, Item, ItemKind, Layer, Ledger, Op, Page, Primitive, Pt, Representation, Route,
-    RouteEnd, Style, Subject, Terminal, TerminalId, WireId,
+    Author, Color, Core, Device, End, Form, IdAllocator, Item, ItemKind, Layer, Ledger, Op, Page, Primitive, Pt, Representation, Route, RouteEnd,
+    Style, Subject, Terminal, TerminalId, WireId,
 };
 
 fn style(layer: ecad_model::LayerId) -> Style {
@@ -135,7 +135,7 @@ fn worked_example_replays_and_undoes() {
     let k1 = ids.fresh();
     let mut ops = vec![Op::CreateCable { id: k1, cable: Default::default() }];
     for (n, w) in wires.iter().enumerate() {
-        ops.push(Op::AddCableMember { cable: k1, index: n, member: CableMember::on_wire(*w, None) });
+        ops.push(Op::AddCableMember { cable: k1, index: n, member: Core::on_wire(*w, None) });
     }
     l.commit(Author::User, "Group as cable", ops).unwrap();
     let conductors_before: Vec<_> = l.document().wires.clone().into_iter().collect();

@@ -627,17 +627,72 @@ impl CorePosition {
     }
 }
 
-/// One core of a cable: where it is and its label.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CableMember {
-    pub position: CorePosition,
-    pub core: Option<String>,
+/// What a cable core is for (owner ruling, 2026-11-18): stored apart from where it is, never
+/// worked out from its position.
+///
+/// # Semantics
+/// - `InUse`: the core is meant to carry a conductor. One left [`CorePosition::Unplaced`] is an
+///   open core (a check).
+/// - `Spare`: the core is ticked **Not used**; it may stay unplaced.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Purpose {
+    #[default]
+    InUse,
+    Spare,
 }
 
-impl CableMember {
-    /// A core on wire `w`.
-    pub fn on_wire(w: WireId, core: Option<String>) -> Self {
-        CableMember { position: CorePosition::Wire(w), core }
+/// The longest core label.
+pub const MAX_CORE_LABEL: usize = 32;
+
+/// A core's label: `1`, `BN`, `GNYE`.
+pub type CoreLabel = crate::text::Text<MAX_CORE_LABEL>;
+
+/// One core of a cable (design 072 §4.5): the cable's cores are its whole core set, so a core the
+/// cable offers but no line carries yet is stored, [`CorePosition::Unplaced`].
+///
+/// # Semantics
+/// `colours`, when set, are the core's own; `None` takes them from the cable type by core order.
+/// `purpose` and `position` are independent: a spare core may sit on a line, an in-use core may be
+/// unplaced.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Core {
+    pub label: Option<CoreLabel>,
+    pub colours: Option<crate::wire::Colours>,
+    pub purpose: Purpose,
+    pub position: CorePosition,
+}
+
+impl Core {
+    /// An in-use core on wire `w`.
+    pub fn on_wire(w: WireId, label: Option<CoreLabel>) -> Self {
+        Core { label, colours: None, purpose: Purpose::InUse, position: CorePosition::Wire(w) }
+    }
+
+    /// An in-use core on no line yet.
+    pub fn unplaced(label: Option<CoreLabel>) -> Self {
+        Core { label, colours: None, purpose: Purpose::InUse, position: CorePosition::Unplaced }
+    }
+
+    /// The label's text, when it has one.
+    pub fn label_str(&self) -> Option<&str> {
+        self.label.as_ref().map(CoreLabel::as_str)
+    }
+
+    /// Whether the core is ticked Not used.
+    pub fn is_spare(&self) -> bool {
+        self.purpose == Purpose::Spare
+    }
+
+    /// The core once its line is gone (a write rule, never a read): a labelled or spare core is one
+    /// of the cable's core set and stays, unplaced; an unlabelled in-use core was only that line's
+    /// membership and goes. `None` too when `others` already hold an unplaced core of that label.
+    pub fn off_line(&self, others: &[Core]) -> Option<Core> {
+        if self.label.is_none() && !self.is_spare() {
+            return None;
+        }
+        let taken = self.label.is_some() && others.iter().any(|o| o.position == CorePosition::Unplaced && o.label == self.label);
+        (!taken).then(|| Core { position: CorePosition::Unplaced, ..self.clone() })
     }
 
     /// The wire this core is, when it is one.
@@ -655,7 +710,8 @@ impl CableMember {
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Cable {
     pub properties: Properties,
-    pub members: Vec<CableMember>,
+    /// The whole core set, in core order (design 072 §4.5).
+    pub cores: Vec<Core>,
 }
 
 /// SHA-256 of a definition's canonical form (proposal §20.10), as 64 lower-case hex digits.

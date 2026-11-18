@@ -126,7 +126,7 @@ fn record_and_definition_hashes_are_pinned() {
         ("d2", "0fcefba53f430d7f0e8467eb0eddb6166605310dee1a02896b16543e6ca99682"),
         // Design 072 F14, F20 (lanes B, C, D, E, G) and lane D F2c: device, wire, page and project records, wires drawn as routes,
         // cable cores with their position.
-        ("head", "d6361d159a08bd059c578335c347ba8ac531af55ac8809a3d6101288209d8290"),
+        ("head", "d30416bfc508a5d6442ccd91695af414d4ec4964c5fdf8d8714a3bc4a7db11f6"),
     ];
     for ((name, h), (wname, w)) in got.iter().chain(std::iter::once(&head)).zip(want) {
         assert_eq!((*name, h.as_str()), (wname, w), "a pinned hash changed");

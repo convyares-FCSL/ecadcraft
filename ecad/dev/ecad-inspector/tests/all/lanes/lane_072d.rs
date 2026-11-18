@@ -140,15 +140,16 @@ fn routes_and_their_ops_are_shown_raw_and_readable() {
 #[test]
 fn core_positions_are_shown_raw_and_readable() {
     // Owner ruling, 2026-11-18: a core on a loose line, with its landed end, and an unplaced core.
-    use ecad_model::{Cable, CableId, CableMember, CorePosition, PageId, Pt, Route, RouteEnd, RouteId};
+    use ecad_model::{Cable, CableId, Core, CorePosition, PageId, Pt, Route, RouteEnd, RouteId};
     let dir = TempDir::new("072d-cores");
     let mut l = history();
     let page: PageId = *l.document().page_order.first().unwrap();
     let mut ids = IdAllocator::seeded(74);
     let (d, t, r, k): (DeviceId, TerminalId, RouteId, CableId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
     let loose = Route::new(page, vec![Pt::new(0.0, 0.0), Pt::new(40.0, 0.0)], [RouteEnd::Point(t), RouteEnd::Free]);
-    let on_line = CableMember { position: CorePosition::Route { route: r, landed: Some(t) }, core: Some("1".into()) };
-    let spare = CableMember { position: CorePosition::Unplaced, core: Some("2".into()) };
+    let on_line =
+        Core { position: CorePosition::Route { route: r, landed: Some(t) }, ..ecad_model::Core::unplaced(ecad_model::CoreLabel::new("1").ok()) };
+    let spare = Core { position: CorePosition::Unplaced, ..ecad_model::Core::unplaced(ecad_model::CoreLabel::new("2").ok()) };
     l.commit(
         Author::User,
         "slash",
@@ -229,4 +230,40 @@ fn accepts_is_shown_raw_readable_and_on_the_device_row() {
     assert!(raw["ok"]["hex"].as_str().is_some_and(|h| !h.is_empty()));
     let devices = ask(s, serde_json::json!({"op": "devices", "detail": true, "count": 1000}));
     assert!(devices.to_string().contains(r#""accepts":12"#), "{devices}");
+}
+
+#[test]
+fn a_cores_label_colours_and_purpose_are_shown_raw_readable_and_on_the_cable_row() {
+    // Design 072 §4.5 (c1): a core's purpose is stored apart from its position.
+    use ecad_model::{Cable, CableId, Core, CoreLabel, Purpose};
+    let dir = TempDir::new("072d-purpose");
+    let mut l = history();
+    let mut ids = IdAllocator::seeded(75);
+    let k: CableId = ids.fresh();
+    let spare = Core { label: CoreLabel::new("GNYE").ok(), colours: Colours::parse("GN/YE"), purpose: Purpose::Spare, ..Core::unplaced(None) };
+    l.commit(
+        Author::User,
+        "unused",
+        vec![Op::CreateCable { id: k, cable: Cable::default() }, Op::AddCableMember { cable: k, index: 0, member: spare }],
+    )
+    .unwrap();
+    let path = written(&dir, &l);
+    let f = FileSource::from_path(&path);
+    assert!(matches!(f.wait_verified(Duration::from_secs(60)), VerifyState::Done { .. }));
+    let s = Some(&f as &dyn Source);
+    let rows = ask(s, serde_json::json!({"op": "rows", "table": "transactions", "count": 1000}));
+    let rows = rows["ok"]["rows"].as_array().cloned().unwrap_or_default();
+    let key = rows.last().and_then(|r| r["key"].as_str().map(str::to_string)).unwrap();
+    let readable = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "readable"}));
+    let text = readable["ok"]["decoded"].to_string();
+    for want in ["AddCableMember", "label", "GNYE", "colours", "GN/YE", "purpose", "spare", "unplaced"] {
+        assert!(text.contains(want), "{want} in the readable records: {text}");
+    }
+    let raw = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "raw"}));
+    assert!(raw["ok"]["hex"].as_str().is_some_and(|h| !h.is_empty()), "the raw row");
+    let cables = ask(s, serde_json::json!({"op": "cables"}));
+    let member = &cables["ok"]["rows"][0]["members"][0];
+    assert_eq!(member["core"], "GNYE");
+    assert_eq!(member["purpose"], "spare");
+    assert_eq!(member["colours"], "GN/YE");
 }

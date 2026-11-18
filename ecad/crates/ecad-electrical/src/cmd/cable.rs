@@ -210,23 +210,23 @@ pub fn cable_named(doc: &Document, text: &str) -> Result<CableId, CmdError> {
 /// The cores cable `k`'s members use, by label (their matched or stored labels, else their place).
 fn cores_in_use(doc: &Document, k: CableId) -> Vec<String> {
     let Some(cab) = doc.cables.get(&k) else { return Vec::new() };
-    let count = crate::strips::count_cores(cable::offer(doc, k), &cab.members);
-    cab.members
+    let count = crate::strips::count_cores(cable::offer(doc, k), &cab.cores);
+    cab.cores
         .iter()
         .enumerate()
-        .map(|(i, m)| count.matched.get(i).cloned().flatten().or_else(|| m.core.clone()).unwrap_or_else(|| (i + 1).to_string()))
+        .map(|(i, m)| count.matched.get(i).cloned().flatten().or_else(|| m.label_str().map(str::to_string)).unwrap_or_else(|| (i + 1).to_string()))
         .collect()
 }
 
 /// Q6: a new offer (from `props`) must hold every core cable `k`'s members use.
 fn check_offer(doc: &Document, k: CableId, props: &Properties) -> Result<(), CmdError> {
     let Some(cab) = doc.cables.get(&k) else { return Ok(()) };
-    if cab.members.is_empty() {
+    if cab.cores.is_empty() {
         return Ok(());
     }
     let Some((offer, _, text)) = cable::offer_of_props(doc, props) else { return Ok(()) };
-    let count = crate::strips::count_cores(Some((offer.clone(), crate::strips::OfferSource::Cores, text.clone())), &cab.members);
-    let lacks_label = cab.members.iter().any(|m| m.core.as_deref().is_some_and(|l| !offer.iter().any(|o| o.eq_ignore_ascii_case(l.trim()))));
+    let count = crate::strips::count_cores(Some((offer.clone(), crate::strips::OfferSource::Cores, text.clone())), &cab.cores);
+    let lacks_label = cab.cores.iter().any(|m| m.label_str().is_some_and(|l| !offer.iter().any(|o| o.eq_ignore_ascii_case(l.trim()))));
     if count.over.is_empty() && !lacks_label {
         return Ok(());
     }
@@ -304,7 +304,7 @@ pub fn plan_new(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, fiel
     let tag = crate::devices::new_cable_tag(ledger, high, typed_tag.as_deref())?;
     props.insert(CableField::Tag.key().to_string(), tag.clone());
     let id: CableId = ids.fresh();
-    ops.push(Op::CreateCable { id, cable: ecad_model::Cable { properties: props, members: Vec::new() } });
+    ops.push(Op::CreateCable { id, cable: ecad_model::Cable { properties: props, cores: Vec::new() } });
     Ok(NewCable { id, tag, ops, added: pending.words() })
 }
 
@@ -425,7 +425,7 @@ pub fn check_remove(doc: &Document, k: CableId) -> Result<(), CmdError> {
 pub fn assign_cores(doc: &Document, k: CableId, n: usize) -> Result<Vec<Option<String>>, CmdError> {
     let Some(count) = crate::strips::cable_cores(doc, k) else { return Err(no_cable(&k.hex())) };
     if count.offer.is_none() {
-        let start = doc.cables.get(&k).map_or(0, |c| c.members.len());
+        let start = doc.cables.get(&k).map_or(0, |c| c.cores.len());
         return Ok((0..n).map(|i| Some((start + i + 1).to_string())).collect());
     }
     if n > count.spare.len() {

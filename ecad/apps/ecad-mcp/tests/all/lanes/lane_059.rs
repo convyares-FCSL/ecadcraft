@@ -43,7 +43,7 @@ fn the_cable_manager_commands_are_agent_transactions_and_refused_with_writes_off
             c.exec("wire", json!({"points": [[x, 0], [x, 50]]}));
         }
         let (v, ops) = one_by_agent(&mut c, "cablenew", json!({"cores": "3G", "to": {"gland": "M20"}}), "Create cable");
-        assert!(matches!(ops.as_slice(), [Op::CreateCable { cable, .. }] if cable.members.is_empty()), "{ops:?}");
+        assert!(matches!(ops.as_slice(), [Op::CreateCable { cable, .. }] if cable.cores.is_empty()), "{ops:?}");
         let k = v["cable"].as_str().unwrap().to_string();
         let (_, ops) = one_by_agent(&mut c, "cableedit", json!({"cable": k, "set": {"length": 12}}), "Edit cable");
         assert_eq!(ops.len(), 1, "{ops:?}");
@@ -70,7 +70,7 @@ fn the_cable_manager_commands_are_agent_transactions_and_refused_with_writes_off
     let doc = c.doc();
     let w09 =
         doc.cables.values().find(|x| x.properties.get("tag").map(String::as_str) == Some("-W09")).expect("FD1: the cable not drawn round-trips");
-    assert!(w09.members.is_empty());
+    assert!(w09.cores.is_empty());
     assert!(w09.properties.contains_key("end.from.location"));
     let log = c.log();
     for (cmd, params) in [

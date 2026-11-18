@@ -280,7 +280,7 @@ fn a_cable_continues_through_continuations_by_its_tag() {
     assert_eq!(r["cable"], json!(f.cable.hex()));
     let doc = f.h.doc();
     assert_eq!(doc.cables.len(), before, "no new cable");
-    let members: Vec<WireId> = doc.cables[&f.cable].members.iter().filter_map(|m| m.wire()).collect();
+    let members: Vec<WireId> = doc.cables[&f.cable].cores.iter().filter_map(|m| m.wire()).collect();
     assert_eq!(members.len(), 6);
     let cores = r["cores"].as_array().unwrap();
     assert_eq!(cores.len(), 3);
@@ -311,7 +311,7 @@ fn a_cable_continues_through_continuations_by_its_tag() {
     f.h.run("erase", json!({"handles": [handle.hex()]})).unwrap();
     let doc = f.h.doc();
     assert!(!doc.representations.contains_key(&rep));
-    let left: Vec<WireId> = doc.cables[&f.cable].members.iter().filter_map(|m| m.wire()).collect();
+    let left: Vec<WireId> = doc.cables[&f.cable].cores.iter().filter_map(|m| m.wire()).collect();
     assert_eq!(left, f.first);
     let _ = f.p100;
 }

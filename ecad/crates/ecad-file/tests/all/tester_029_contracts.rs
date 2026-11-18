@@ -603,7 +603,7 @@ mod fp1 {
     fn cable(tag: &str) -> Cable {
         let mut properties = ecad_model::doc::Properties::new();
         properties.insert("tag".into(), tag.into());
-        Cable { properties, members: Vec::new() }
+        Cable { properties, cores: Vec::new() }
     }
 
     /// Main creates `-W01` and `-W02` and saves; a branch forked there deletes `-W02`, then 20
