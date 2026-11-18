@@ -876,12 +876,9 @@ pub const MAX_POINTS_SHOWN: usize = 6;
 pub fn point_words(doc: &Document, t: TerminalId) -> String {
     let Some(term) = doc.terminals.get(&t) else { return "?".into() };
     let c = term.component;
-    match kind_of(doc, c) {
-        Some(CONTINUATION) => {
-            let name = doc.devices.get(&c).and_then(|x| x.properties.get(NAME)).cloned().unwrap_or_default();
-            return format!("\u{2192}{name}");
-        }
-        _ => {}
+    if kind_of(doc, c) == Some(CONTINUATION) {
+        let name = doc.devices.get(&c).and_then(|x| x.properties.get(NAME)).cloned().unwrap_or_default();
+        return format!("\u{2192}{name}");
     }
     let label = term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| "?".into());
     match crate::devices::tag_of(doc, c) {
