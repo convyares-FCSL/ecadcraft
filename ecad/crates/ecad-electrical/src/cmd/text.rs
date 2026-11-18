@@ -4,6 +4,7 @@
 //! function reads the document and returns the ops to commit and what to report; measuring and
 //! listing the texts drawn on a page is the engine crate's.
 
+use ecad_model::Word;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
@@ -46,7 +47,7 @@ fn unknown_kind(word: &str) -> CmdError {
 /// A word that is no kind.
 pub fn kind(word: &str) -> Result<TextKind, CmdError> {
     let w = word.trim().to_ascii_lowercase();
-    TextKind::from_word(&w).ok_or_else(|| unknown_kind(&w))
+    <TextKind as ecad_model::Word>::parse(&w).ok_or_else(|| unknown_kind(&w))
 }
 
 /// The kind a call may name: `None` when it names none.

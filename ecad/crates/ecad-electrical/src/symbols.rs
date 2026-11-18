@@ -1166,8 +1166,8 @@ const KEYED_IN_ORDER: () = {
 };
 const _: () = KEYED_IN_ORDER;
 
-/// The starter symbol whose key word is `key` (case-insensitive, trimmed). A delegate for the
-/// command files until they parse a [`StarterKey`] themselves (design 072 A2).
+/// The starter symbol a key word names (case-insensitive, trimmed): for a word someone typed or a
+/// file holds. Code that knows which starter it means uses [`starter`] with its [`StarterKey`].
 pub fn by_key(key: &str) -> Option<&'static Starter> {
     <StarterKey as ecad_model::Word>::parse(key).map(starter)
 }

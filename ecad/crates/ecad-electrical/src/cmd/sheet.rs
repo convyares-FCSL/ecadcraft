@@ -152,7 +152,7 @@ pub fn new_folder(doc: &Document, ids: &mut IdAllocator, name: &str, parent: Opt
     }
     let id: FolderId = ids.fresh();
     let index = doc.folder_order.len();
-    Ok((id, Op::AddFolder { id, folder: Folder { name: name.to_string(), parent }, index }))
+    Ok((id, Op::AddFolder { id, folder: Folder::new(name, parent), index }))
 }
 
 /// `renamefolder`: the op renaming `folder` to `name`; `None` when it already has that name.
@@ -165,7 +165,7 @@ pub fn rename_folder(doc: &Document, f: FolderId, name: &str) -> Result<Option<O
         return Ok(None);
     }
     check_sibling_name(doc, old.parent, name, Some(f))?;
-    let after = Folder { name: name.to_string(), parent: old.parent };
+    let after = Folder { name: name.to_string(), ..old.clone() };
     Ok(Some(Op::ModifyFolder { id: f, before: old, after }))
 }
 
@@ -213,7 +213,7 @@ pub fn move_folder(doc: &Document, f: FolderId, parent: Option<FolderId>, index:
     if to == from && parent == old.parent {
         return Ok(Vec::new());
     }
-    let after = Folder { name: old.name.clone(), parent };
+    let after = Folder { parent, ..old.clone() };
     Ok(vec![Op::RemoveFolder { id: f, folder: old, index: from }, Op::AddFolder { id: f, folder: after, index: to }])
 }
 
@@ -246,13 +246,11 @@ pub fn delete_folder(doc: &Document, f: FolderId) -> Result<DeletedFolder, CmdEr
         if check_sibling_name(doc, old.parent, &before.name, Some(f)).is_err() {
             return Err(CmdError::refused(format!("Rename sub-folder \"{}\" first: its new place already has a folder of that name.", before.name)));
         }
-        let after = Folder { name: before.name.clone(), parent: old.parent };
+        let after = Folder { parent: old.parent, ..before.clone() };
         ops.push(Op::ModifyFolder { id: sub, before, after });
     }
     let index = doc.folder_order.iter().position(|x| *x == f).ok_or(CmdError::refused(msg::NO_SUCH_FOLDER))?;
     ops.push(Op::RemoveFolder { id: f, folder: old.clone(), index });
-    // Brief 054 (design 054 §4.3): its start number goes with it.
-    ops.extend(set(ObjectRef::Project, Some(&doc.properties), &crate::page_types::start_key(f), None));
     let to = match old.parent.and_then(|x| doc.folders.get(&x)) {
         Some(x) => format!("\"{}\"", x.name),
         None => "the top level".into(),
@@ -661,7 +659,7 @@ pub struct ProjectChange {
     pub revision_columns: Option<Option<String>>,
     pub revision_pending: Option<String>,
     pub tag_dash: Option<bool>,
-    pub tag_case: Option<String>,
+    pub tag_case: Option<Case>,
     /// What a new function or location proposes for the device symbols.
     pub mode: Mode,
 }
@@ -704,6 +702,14 @@ pub fn tag_settings(
     Ok(())
 }
 
+/// `projectprops`' `tag_case` word: `upper` or `typed`.
+///
+/// # Errors
+/// Any other word.
+pub fn tag_case(word: &str) -> Result<Case, CmdError> {
+    <Case as ecad_model::Word>::parse(word).ok_or(CmdError::refused("`tag_case` must be \"upper\" or \"typed\""))
+}
+
 /// The ops of `tag_dash` and `tag_case` in `projectprops` (design 033 §8.4): the settings, and
 /// one `SetProperty(tag)` per component or cable tag whose stored text changes (a new dash, or
 /// back to upper case). The echo in words. Tags are identities by `tag::key`, which ignores the
@@ -715,23 +721,15 @@ pub fn tag_settings(
 /// # Errors
 /// A bad case word, or (never expected: the key ignores what changes) two different tags
 /// rewritten to the same text.
-pub fn tag_style_ops(doc: &Document, dash: Option<bool>, case: Option<&str>) -> Result<(Vec<Op>, Option<String>), CmdError> {
-    let case = match case {
-        Some(w) => Some(match w.trim() {
-            "upper" => Case::Upper,
-            "typed" => Case::Typed,
-            _ => return Err(CmdError::refused("`tag_case` must be \"upper\" or \"typed\"")),
-        }),
-        None => None,
-    };
+pub fn tag_style_ops(doc: &Document, dash: Option<bool>, case: Option<Case>) -> Result<(Vec<Op>, Option<String>), CmdError> {
     let before = crate::defaults::print::tag_style(doc);
     let after = tag::Style { dash: dash.unwrap_or(before.dash), case: case.unwrap_or(before.case), ..before };
     let mut ops = Vec::new();
     if let Some(d) = dash {
-        ops.extend(set(ObjectRef::Project, Some(&doc.properties), DASH_KEY, Some(if d { "yes" } else { "no" }.to_string())));
+        ops.extend(set(ObjectRef::Project, Some(&doc.properties), DASH_KEY, Some(ecad_model::words::flag_word(d).to_string())));
     }
     if let Some(c) = case {
-        ops.extend(set(ObjectRef::Project, Some(&doc.properties), CASE_KEY, Some(if c == Case::Typed { "typed" } else { "upper" }.to_string())));
+        ops.extend(set(ObjectRef::Project, Some(&doc.properties), CASE_KEY, Some(ecad_model::Word::word(c).to_string())));
     }
     let rewrite = after.dash != before.dash || (after.case == Case::Upper && before.case == Case::Typed);
     let mut n = 0usize;
@@ -789,7 +787,15 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
             (None, _) => value(doc, k, v.as_deref())?,
         };
         let Some(a) = aspect else {
-            ops.extend(set(ObjectRef::Project, Some(&doc.properties), k, after));
+            // Design 072 §5.3: the title, drawing number, customer and status are the project's info.
+            let f =
+                <ecad_model::InfoField as ecad_model::Word>::parse(k).ok_or_else(|| CmdError::refused(format!("\"{k}\" is not a project field.")))?;
+            let before = pending.project(doc).clone();
+            let now = crate::frames::with_info(&before, f, after.as_deref())?;
+            if now != before {
+                ops.push(Op::ModifyProject { before, after: now.clone() });
+                pending.set_project(now);
+            }
             continue;
         };
         // Design 072 §5.3: the project's own function and location are fields of the project.
@@ -816,6 +822,16 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
         }
         check_free_key(doc, k)?;
         let v = free_value(doc, k, v.as_deref())?;
+        // Design 072 §5.3: the site and the cover's notes are the project's info.
+        if let Some(f) = <ecad_model::InfoField as ecad_model::Word>::parse(k) {
+            let before = pending.project(doc).clone();
+            let now = crate::frames::with_info(&before, f, v.as_deref())?;
+            if now != before {
+                ops.push(Op::ModifyProject { before, after: now.clone() });
+                pending.set_project(now);
+            }
+            continue;
+        }
         ops.extend(set(ObjectRef::Project, Some(&doc.properties), k, v));
     }
     // Brief 026 (design §5.1): Provisional tags until Finalise, as `numbering` writes it.
@@ -879,7 +895,7 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
         ops.extend(set(ObjectRef::Project, Some(&doc.properties), revisions::PENDING_KEY, Some(w.to_string())));
     }
     // Brief 033 (design 033 §8.4): the tag style, and its rewrite of the stored tags.
-    let (tag_ops, message) = tag_style_ops(doc, change.tag_dash, change.tag_case.as_deref())?;
+    let (tag_ops, message) = tag_style_ops(doc, change.tag_dash, change.tag_case)?;
     ops.extend(tag_ops);
     Ok(PropsPlan { ops, proposed, message })
 }
@@ -911,7 +927,7 @@ pub struct RevisionFields {
 /// that is not a field name.
 pub fn revision_ops(doc: &Document, f: &RevisionFields) -> Result<Vec<Op>, CmdError> {
     let n = revisions::pending_n(doc);
-    let mut ops = Vec::new();
+    let mut project = doc.project.clone();
     let mut given = false;
     for (field, v) in &f.standard {
         given = true;
@@ -922,7 +938,7 @@ pub fn revision_ops(doc: &Document, f: &RevisionFields) -> Result<Vec<Op>, CmdEr
             }
             other => value(doc, field, other)?,
         };
-        ops.extend(set(ObjectRef::Project, Some(&doc.properties), &revisions::key(n, field), v));
+        project = revisions::with_field(&project, n, field, v.as_deref())?;
     }
     // Brief 033 (design 033 §7.2): custom fields, `fields: {ecr: "ECR-114"}`, on the pending row
     // only; an issued row never changes.
@@ -952,19 +968,14 @@ pub fn revision_ops(doc: &Document, f: &RevisionFields) -> Result<Vec<Op>, CmdEr
             other => value(doc, field, other.as_deref())?,
         };
         given = true;
-        ops.extend(set(ObjectRef::Project, Some(&doc.properties), &revisions::key(n, field), t));
+        project = revisions::with_field(&project, n, field, t.as_deref())?;
     }
     let row_exists = revisions::pending(doc).is_some();
     let rev_given = f.standard.iter().any(|(k, v)| *k == "rev" && v.is_some());
-    if given && !row_exists && !rev_given {
-        ops.push(Op::SetProperty {
-            object: ObjectRef::Project,
-            key: revisions::key(n, "rev"),
-            before: None,
-            after: Some(revisions::pending_rev(doc)),
-        });
+    if given && !row_exists && !rev_given && revisions::rows(&project).len() >= n as usize {
+        project = revisions::with_field(&project, n, "rev", Some(&revisions::pending_rev(doc)))?;
     }
-    Ok(ops)
+    Ok(revisions::modify(&doc.project, project).into_iter().collect())
 }
 
 /// What issuing the pending revision records (design 019 §7.2): the remaining field writes,
@@ -1011,13 +1022,15 @@ pub fn plan_issue(
         return Err(CmdError::refused(format!("Rev {rev} was issued before; choose another.")));
     }
     let mut date = row.get("date").to_string();
+    let mut project = doc.project.clone();
     if date.is_empty() {
         date = today().unwrap_or_default();
         if !date.is_empty() {
-            ops.push(Op::SetProperty { object: ObjectRef::Project, key: revisions::key(n, "date"), before: None, after: Some(date.clone()) });
+            project = revisions::with_field(&project, n, "date", Some(&date))?;
         }
     }
-    ops.push(Op::SetProperty { object: ObjectRef::Project, key: revisions::key(n, revisions::ISSUED), before: None, after: Some(name.clone()) });
+    project = revisions::with_field(&project, n, revisions::ISSUED, Some(&name))?;
+    ops.extend(revisions::modify(&doc.project, project));
     ops.push(Op::NameVersion { name, at: head, description: None });
     Ok(IssuePlan { ops, rev, n, date, head })
 }

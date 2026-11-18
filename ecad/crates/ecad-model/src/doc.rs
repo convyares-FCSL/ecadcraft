@@ -130,13 +130,25 @@ pub struct PageChange<'a> {
 }
 
 /// A folder of pages (brief 019, decision FP3): a name and a place in the tree. Pages name their
-/// folder in their `folder` property; sibling order is the relative order in
+/// folder in their `folder` field; sibling order is the relative order in
 /// [`Document::folder_order`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Folder {
     pub name: String,
     /// The folder it is in; `None` at the top level.
     pub parent: Option<FolderId>,
+    /// The number its pages are renumbered from (brief 054, FP7; design 072 §5.2); `None` keeps
+    /// the run of the folder above. Left out of records while unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start: Option<PageNo>,
+}
+
+impl Folder {
+    /// A folder named `name` in `parent`, with no start number.
+    pub fn new(name: impl Into<String>, parent: Option<FolderId>) -> Folder {
+        Folder { name: name.into(), parent, start: None }
+    }
 }
 
 /// A layer. References use [`LayerId`]; the name is a property (DOC-02).

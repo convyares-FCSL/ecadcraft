@@ -8,6 +8,7 @@
 
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::cmd::text::{self as rules, KindRow, ShowLevel, ShowTarget, TextStyleInput};
+use ecad_model::Word;
 use ecad_model::{DeviceId, Document, PageId, RepresentationId, TerminalId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;

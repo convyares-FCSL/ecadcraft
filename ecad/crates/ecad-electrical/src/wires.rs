@@ -70,13 +70,13 @@ pub const LABEL_DERIVED: &str = "The wire label is derived; change the number wi
 pub const NAME_RULE: &str = "A continuation name is 1 to 16 letters, digits or + - / . _";
 
 /// The starter of a junction.
-pub fn junction_starter() -> Option<&'static Starter> {
-    symbols::by_key(JUNCTION)
+pub fn junction_starter() -> &'static Starter {
+    symbols::starter(symbols::StarterKey::Junction)
 }
 
 /// The starter of a continuation.
-pub fn continuation_starter() -> Option<&'static Starter> {
-    symbols::by_key(CONTINUATION)
+pub fn continuation_starter() -> &'static Starter {
+    symbols::starter(symbols::StarterKey::Continuation)
 }
 
 /// What a tagless component is (`junction`, `continuation`), from its `kind` property.
@@ -565,7 +565,7 @@ pub fn plan_junction(doc: &Document, ids: &mut IdAllocator, page: PageId, style:
     if on.at.near(first, ON_WIRE) || on.at.near(last, ON_WIRE) {
         return Err(CmdError::refused("Click on a wire, not its end: an end can attach to a connection point."));
     }
-    let starter = junction_starter().ok_or(CmdError::refused("the junction symbol is missing"))?;
+    let starter = junction_starter();
     let mut props = ecad_model::Properties::new();
     props.insert(KIND.into(), JUNCTION.into());
     let placement = Placement { origin: on.at, rotation: Radians(0.0), mirror: false, scale: 1.0 };
@@ -939,7 +939,7 @@ pub fn has_fixed_number(doc: &Document, c: WireId) -> bool {
 
 /// A junction made at `at` (no wire split): it attaches the open ends there.
 fn junction_here(doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, at: Pt) -> Result<Tagless, CmdError> {
-    let starter = junction_starter().ok_or(CmdError::refused("the junction symbol is missing"))?;
+    let starter = junction_starter();
     let mut props = ecad_model::Properties::new();
     props.insert(KIND.into(), JUNCTION.into());
     plan_tagless(doc, ids, page, style, starter, Placement { origin: at, rotation: Radians(0.0), mirror: false, scale: 1.0 }, props)

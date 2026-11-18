@@ -11,6 +11,7 @@
 //! Excluded: editing several kinds at once, cable members and cores (read only here), free
 //! project properties (Project Properties holds them).
 
+use ecad_model::Word;
 use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -978,7 +979,7 @@ enum TextsAt {
 
 /// The words a Texts row shows for a stored visibility.
 fn shown_words(w: &str) -> &'static str {
-    crate::text_style::Shown::from_word(w).label()
+    <crate::text_style::Shown as ecad_model::Word>::parse(w).unwrap_or_default().label()
 }
 
 /// The Texts rows of a device, a symbol or a page: one per kind of §5.1, `Default (…)` when the
@@ -1034,7 +1035,7 @@ fn showtext_line(target: &Target, key: &str, value: Option<&str>) -> Option<Stri
         Some((rep, kind)) if rep.len() == 32 => (ecad_model::RepresentationId::parse(rep), kind),
         _ => (None, rest),
     };
-    crate::text_style::TextKind::from_word(kind)?;
+    <crate::text_style::TextKind as ecad_model::Word>::parse(kind)?;
     let show = value.and_then(crate::text_style::Shown::from_input).map_or(serde_json::Value::Null, |s| serde_json::json!(s.word()));
     let mut j = serde_json::json!({"kind": kind, "show": show});
     match (rep, target) {
