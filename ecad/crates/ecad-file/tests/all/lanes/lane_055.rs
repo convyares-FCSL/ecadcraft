@@ -38,7 +38,7 @@ fn layout() -> TitleBlockLayout {
             BlockItem::Text { at: Rect::new(1.0, 1.0, 40.0, 5.0), text: "IF IN DOUBT, ASK".into(), look: TextLook::default() },
             BlockItem::Field {
                 at: Rect::new(60.0, 21.0, 60.0, 12.5),
-                bind: Binding::new(Source::Project, "status"),
+                bind: Binding::Project(ecad_model::title_block::ProjectKey::new("status").unwrap()),
                 label: Some("Status".into()),
                 look: red,
                 if_empty: IfEmpty::Text("n/a".into()),
@@ -159,7 +159,7 @@ fn a_newer_body_opens_and_keeps_what_it_does_not_know() {
     let Op::SetStyle { after: Some(r), .. } = &t.ops[0] else { panic!("{:?}", t.ops) };
     let body = r.body.as_ref().unwrap();
     assert!(body.other.contains_key("stamp"), "the unknown kind is kept");
-    assert!(body.title_block.as_ref().unwrap().bindings().all(|b| b.source != Source::Revision || b.revision_column().is_some()));
+    assert!(body.title_block.as_ref().unwrap().bindings().all(|b| b.source() != Source::Revision || b.revision_column().is_some()));
     let _ = BlockItem::Line { a: (0.0, 0.0), b: (1.0, 1.0), weight: Default::default() };
     // It writes back (canonical form) and reads again.
     let back = ecad_file::record::tx_value(&t, &[0u8; 32]).unwrap();
