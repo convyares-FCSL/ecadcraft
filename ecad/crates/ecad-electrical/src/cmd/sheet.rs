@@ -544,7 +544,8 @@ pub fn page_props(
         if let Some(k) = stored.as_ref().filter(|k| old.as_ref() != Some(*k)) {
             let code = code_with(doc, &pending, a, k);
             let spots = proposals::spots_on_page(doc, a, page);
-            absorb(&mut proposed, proposals::plan_change(doc, a, &spots, old.as_deref(), k, &code, &change.mode));
+            let x = proposals::plan_change(doc, &proposed.ops, a, &spots, old.as_deref(), k, &code, &change.mode);
+            absorb(&mut proposed, x);
         }
         now = designations::with_page_key(&now, a, stored.as_deref());
     }
@@ -804,7 +805,8 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
         if let Some(key) = after.as_ref().filter(|key| old.as_ref() != Some(*key)) {
             let code = code_with(doc, &pending, a, key);
             let spots = proposals::spots_of_project(doc, a);
-            absorb(&mut proposed, proposals::plan_change(doc, a, &spots, old.as_deref(), key, &code, &change.mode));
+            let x = proposals::plan_change(doc, &proposed.ops, a, &spots, old.as_deref(), key, &code, &change.mode);
+            absorb(&mut proposed, x);
         }
         let before = pending.project(doc).clone();
         let now = designations::with_default_key(&before, a, after.as_deref());

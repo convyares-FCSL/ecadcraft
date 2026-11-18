@@ -115,6 +115,23 @@ To try it: select a device, type a maker and a part number in the Properties pan
 and redo: both come back as one step each. The headless tests below cover it; nobody has tried
 it by hand yet.
 
+### Lane B, step 2c: a device's location and function, and whether they are fixed
+
+A device's location and function are fields that point at the project's lists, each with a
+**fixed** flag (design 072 §6.3). What sets the value decides the flag:
+
+- Typing a location or function (Properties panel, `setlocation`, `setfunction`, `setprop`) sets
+  it **fixed**.
+- Taking a box's, page's or the project's value (a proposal, or **Move** in the conflicts card)
+  sets it **not fixed**.
+- A file whose device holds `location` or `function` among its properties opens read-only.
+- Nothing looks different yet; lane F's box rule (a box rewrites only unfixed devices) uses the
+  flag.
+
+To try it: type a location on a device, then draw a location box around another, unset device;
+open the inspector's devices view: the first shows `"location_fixed": true`, the second `false`.
+Nobody has tried it by hand yet.
+
 The headless tests (automated, not tried by hand):
 
 ```sh

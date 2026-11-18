@@ -313,6 +313,15 @@ pub struct Device {
     pub article_number: Option<crate::device::PartText>,
     /// Its type text (`type`): a terminal strip's type notation reads it.
     pub type_text: Option<crate::device::PartText>,
+    /// Its location (an entry of the project's list, design 072 §6.3); `None` has none.
+    pub location: Option<crate::id::LocationId>,
+    /// Whether the location was set by hand (typed, or a box drawn around it) and is kept when a
+    /// box around it changes; `false` when it came from its page or a box (design 072 §6.3).
+    pub location_fixed: bool,
+    /// Its function (an entry of the project's list); `None` has none.
+    pub function: Option<crate::id::FunctionId>,
+    /// Whether the function was set by hand, as [`Device::location_fixed`].
+    pub function_fixed: bool,
     pub properties: Properties,
     /// The embedded definition its symbol representations use, if any.
     pub definition: Option<DefinitionId>,
@@ -347,11 +356,22 @@ impl Device {
         bare(self) == bare(other)
     }
 
+    /// Whether `other` differs from this device in its location and function (and their `fixed`
+    /// flags) only: what a view that reads neither can skip.
+    pub fn only_place_differs(&self, other: &Device) -> bool {
+        let bare = |d: &Device| Device { location: None, location_fixed: false, function: None, function_fixed: false, ..d.clone() };
+        bare(self) == bare(other)
+    }
+
     /// The value `setprop`'s key `key` names on this device (design 072 §10: the key stays a
     /// string and routes to the field): a typed field as its stored text, else the property.
     pub fn value(&self, key: &str) -> Option<String> {
         match key {
             crate::tag::FIXED_KEY => self.tag_fixed.then(|| crate::words::flag_word(true).to_string()),
+            crate::book::LOCATION_KEY => self.location.map(crate::id::LocationId::hex),
+            crate::book::FUNCTION_KEY => self.function.map(crate::id::FunctionId::hex),
+            crate::book::LOCATION_FIXED_KEY => self.location_fixed.then(|| crate::words::flag_word(true).to_string()),
+            crate::book::FUNCTION_FIXED_KEY => self.function_fixed.then(|| crate::words::flag_word(true).to_string()),
             _ => self.get(key).map(str::to_string),
         }
     }
@@ -409,13 +429,29 @@ impl Device {
         Ok(d)
     }
 
-    /// Set the value `setprop`'s key `key` names: a text field, else the property bag (the tag and
-    /// its flag have their own rules and are not set here). Used where a bag of values (a
+    /// Set the value `setprop`'s key `key` names: a text field, the location or function (an
+    /// entry's 32-hex id, fixed), else the property bag (the tag and its flag have their own rules
+    /// and are not set here). Used where a bag of values (a
     /// symbol's defaults, an item's columns) becomes a device.
     ///
     /// # Errors
     /// As [`Device::set_text`].
     pub fn set_value(&mut self, key: &str, value: Option<&str>) -> std::result::Result<(), crate::text::TextError> {
+        // A location or function given as an entry's id (32 hex): set by hand, so fixed.
+        let id = || value.and_then(|v| u128::from_str_radix(v.trim(), 16).ok().filter(|_| v.trim().len() == 32));
+        match key {
+            crate::book::LOCATION_KEY => {
+                self.location = id().map(crate::id::LocationId);
+                self.location_fixed = self.location.is_some();
+                return Ok(());
+            }
+            crate::book::FUNCTION_KEY => {
+                self.function = id().map(crate::id::FunctionId);
+                self.function_fixed = self.function.is_some();
+                return Ok(());
+            }
+            _ => {}
+        }
         match crate::TextField::of_key(key) {
             Some(f) => self.set_text(f, value),
             None => {

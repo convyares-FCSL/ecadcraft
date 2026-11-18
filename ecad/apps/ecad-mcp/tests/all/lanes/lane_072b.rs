@@ -53,3 +53,24 @@ fn setprop_of_a_text_field_records_modify_device() {
     let mut r = reader();
     r.refused("execute", json!({"command": "setprop", "params": {"component": id, "key": "description", "value": "x"}}));
 }
+
+/// Step 2c (design 072 §6.3): `setlocation` through MCP records one `ModifyDevice` (with the new
+/// list entry) as the agent, the location fixed, and is refused with writes off.
+#[test]
+fn setlocation_records_modify_device_with_fixed() {
+    let mut c = Client::new(EcadMcp::in_memory("lane072b-loc", 74, Options { write: true, agent: None }).unwrap());
+    let placed = c.exec("place", json!({"symbol": "coil", "at": [50, 50]}));
+    let id = placed["component"].as_str().unwrap().to_string();
+    let before = c.log().len();
+    c.exec("setlocation", json!({"component": id, "value": "+CP1"}));
+    let log = c.log();
+    assert_eq!(log.len(), before + 1);
+    let last = log.last().unwrap();
+    assert_eq!(last.author, Author::Agent(AGENT.into()));
+    match last.ops.as_slice() {
+        [Op::ModifyProject { .. }, Op::ModifyDevice { after, .. }] => assert!(after.location.is_some() && after.location_fixed, "{after:?}"),
+        other => panic!("{other:?}"),
+    }
+    let mut r = reader();
+    r.refused("execute", json!({"command": "setlocation", "params": {"component": id, "value": "+CP2"}}));
+}

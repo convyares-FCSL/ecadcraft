@@ -663,6 +663,46 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                         tag_fixed: field(ctx, obj, tag::FIXED_KEY, format!("{what} · tag fixed"), &a.tag_fixed, &t.tag_fixed, &s.tag_fixed, &|v| {
                             crate::words::flag_word(*v).into()
                         }),
+                        location: field(
+                            ctx,
+                            obj,
+                            crate::book::LOCATION_KEY,
+                            format!("{what} · location"),
+                            &a.location,
+                            &t.location,
+                            &s.location,
+                            &|x| x.map_or_else(|| "(none)".to_string(), crate::id::LocationId::short),
+                        ),
+                        location_fixed: field(
+                            ctx,
+                            obj,
+                            crate::book::LOCATION_FIXED_KEY,
+                            format!("{what} · location fixed"),
+                            &a.location_fixed,
+                            &t.location_fixed,
+                            &s.location_fixed,
+                            &|v| crate::words::flag_word(*v).into(),
+                        ),
+                        function: field(
+                            ctx,
+                            obj,
+                            crate::book::FUNCTION_KEY,
+                            format!("{what} · function"),
+                            &a.function,
+                            &t.function,
+                            &s.function,
+                            &|x| x.map_or_else(|| "(none)".to_string(), crate::id::FunctionId::short),
+                        ),
+                        function_fixed: field(
+                            ctx,
+                            obj,
+                            crate::book::FUNCTION_FIXED_KEY,
+                            format!("{what} · function fixed"),
+                            &a.function_fixed,
+                            &t.function_fixed,
+                            &s.function_fixed,
+                            &|v| crate::words::flag_word(*v).into(),
+                        ),
                         properties: merge_props(ctx, obj, &what, &a.properties, &t.properties, &s.properties, &all),
                         definition: field(ctx, obj, "definition", format!("{what} · symbol"), &a.definition, &t.definition, &s.definition, &|d| {
                             d.map_or_else(|| "(none)".into(), |d| name_of(&docs, Obj::Definition(d)))

@@ -6,7 +6,6 @@
 use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::book::LOCATION_KEY;
 use ecad_model::{CableId, DeviceId, Document, End, ObjectRef, Op, PageId, Pt, Subject, TerminalId, WireId};
 
 use super::*;
@@ -641,7 +640,7 @@ impl Outputs {
         let props = &comp.properties;
         // Brief 052: stored values are entry keys of the project's list; shown by their codes.
         let shown = |k: Option<String>| k.map(|k| (crate::designations::code_of(doc, crate::designations::Aspect::Location, &k), k));
-        let location = match shown(clean(props.get(LOCATION_KEY))) {
+        let location = match shown(crate::designations::device_key(comp, crate::designations::Aspect::Location)) {
             Some((value, key)) => Located { value, source: Source::Device, key: Some(key) },
             None => match shown(crate::designations::default_key(&doc.project, crate::designations::Aspect::Location)) {
                 Some((value, key)) => Located { value, source: Source::Project, key: Some(key) },

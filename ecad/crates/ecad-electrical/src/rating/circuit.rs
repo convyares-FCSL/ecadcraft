@@ -216,7 +216,7 @@ pub enum Temp {
 pub fn box_temp(doc: &Document, c: DeviceId) -> Option<BoxTemp> {
     let x = doc.devices.get(&c).filter(|x| crate::locations::is_box_component(x))?;
     let v = x.properties.get(TEMPERATURE)?;
-    let location = x.properties.text(ecad_model::keys::LOCATION).map(|l| l.trim().to_string()).unwrap_or_default();
+    let location = crate::designations::device_key(x, crate::designations::Aspect::Location).unwrap_or_default();
     Some(BoxTemp { location, temp: parse::ambient(v).map_or_else(|| Temp::Unread(v.chars().take(32).collect()), Temp::Read) })
 }
 

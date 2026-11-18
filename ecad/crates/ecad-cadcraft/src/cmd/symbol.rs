@@ -578,7 +578,7 @@ pub(crate) fn place_project_key(s: &mut Session, params: &crate::cmd::device::Pl
         let mut plan = rules::plan_place(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, id, &def, pl, device, tag)?;
         let label = if device.is_some() { format!("Add symbol to {}", plan.tag) } else { "Place symbol".to_string() };
         // Brief 052d (design 052 §5.3): the place proposes.
-        let proposed = crate::draw::proposals::plan_place(p, modes, plan.component, page, at, None).map_err(CmdError::refused)?;
+        let proposed = crate::draw::proposals::plan_place(p, &plan.ops, modes, plan.component, page, at, None).map_err(CmdError::refused)?;
         plan.ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", &label, plan.ops)?;
         let doc = p.ledger.document();

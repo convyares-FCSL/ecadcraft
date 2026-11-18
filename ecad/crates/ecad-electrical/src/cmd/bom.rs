@@ -240,6 +240,11 @@ pub fn plan_bomitem(doc: &Document, ids: &mut IdAllocator, change: ItemChange) -
                     typed = super::props::b::with_text(&typed, f, after.as_deref())?;
                     continue;
                 }
+                if key == "location" {
+                    // Design 072 §6.3: a typed location is a field, set by hand.
+                    typed = crate::designations::with_device_key(&typed, Aspect::Location, after.as_deref(), true);
+                    continue;
+                }
                 let before = props.get(key).cloned();
                 if before != after {
                     sets.push(Op::SetProperty { object: ObjectRef::Device(item), key: key.to_string(), before, after });

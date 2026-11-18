@@ -4,7 +4,7 @@
 //! writes off; `designations` reads with writes off.
 
 use ecad_mcp::policy;
-use ecad_model::{Author, ObjectRef, Op};
+use ecad_model::{Author, Op};
 use serde_json::{Value, json};
 
 use crate::common::writer;
@@ -34,7 +34,7 @@ fn location_and_list_commands_through_execute() {
         ops.iter().any(|o| matches!(o, Op::ModifyProject { after, .. } if after.locations.iter().any(|e| e.code == "+CP1"))),
         "entry added (design 072 §5.3)"
     );
-    assert!(ops.iter().any(|o| matches!(o, Op::SetProperty { object: ObjectRef::Device(_), key, .. } if key == "location")));
+    assert!(ops.iter().any(|o| matches!(o, Op::ModifyDevice { after, .. } if after.location.is_some() && after.location_fixed)));
     c.exec("setfunction", json!({"component": k, "value": "=F1"}));
     assert_eq!(last_by_agent(&mut c).0, "Set function =F1");
     c.exec("designationadd", json!({"aspect": "location", "code": "+CP2", "description": "Field"}));
@@ -66,12 +66,15 @@ fn proposals_through_execute() {
     let n = hex(&c.exec("place", json!({"symbol": "coil", "at": [75, 180]})), "component");
     let (label, ops) = last_by_agent(&mut c);
     assert_eq!(label, "Place symbol");
-    assert!(ops.iter().any(|o| matches!(o, Op::SetProperty { object: ObjectRef::Device(_), key, .. } if key == "location")), "{ops:?}");
+    assert!(ops.iter().any(|o| matches!(o, Op::ModifyDevice { after, .. } if after.location.is_some() && !after.location_fixed)), "{ops:?}");
     // Joining -K (at +CP2) inside the box: `move` moves it, `keep` for function proposes nothing.
     let v = c.exec("place", json!({"symbol": "no", "at": [120, 160], "device": k, "location": "move", "function": "keep"}));
     assert_eq!(v["location"]["conflicts"][0]["proposed"], "+CP1", "{v}");
     let (_, ops) = last_by_agent(&mut c);
-    assert!(ops.iter().any(|o| matches!(o, Op::SetProperty { key, .. } if key == "location")), "moved in the same transaction");
+    assert!(
+        ops.iter().any(|o| matches!(o, Op::ModifyDevice { after, .. } if after.location.is_some() && !after.location_fixed)),
+        "moved in the same transaction"
+    );
     // A function box around them: unset devices take =F1; the result carries each aspect.
     let v = c.exec("functionbox", json!({"function": "=F1", "corners": [[10, 90], [260, 230]]}));
     assert_eq!(last_by_agent(&mut c).0, "Function box =F1");

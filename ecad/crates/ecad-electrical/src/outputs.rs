@@ -674,7 +674,7 @@ impl Scope {
         // Brief 052 (design 052 §8.2a): the users of a renamed entry, the one wide case.
         if !self.renamed.is_empty() {
             for (c, x) in &doc.devices {
-                if x.properties.iter().any(|(k, v)| crate::designations::Aspect::of_property(k).is_some() && self.renamed.contains(v)) {
+                if crate::designations::device_keys(x).iter().any(|(_, v)| self.renamed.contains(v)) {
                     self.devices.insert(*c);
                 }
             }

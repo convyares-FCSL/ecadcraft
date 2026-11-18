@@ -175,7 +175,7 @@ fn the_lists_old_keys_are_reserved() {
         assert!(matches!(e, ModelError::Precondition(_)), "{key} on {object:?}: {e:?}");
     }
     assert!(keys::is_reserved_on(keys::Holder::Page, "location"));
-    assert!(!keys::is_reserved_on(keys::Holder::Device, "location"), "a device's location is lane B's");
+    assert!(keys::is_reserved_on(keys::Holder::Device, "location"), "a device's location is a field (lane B)");
 }
 
 /// A4: a project record with an unknown field, a code over 16 characters, a hidden character or a

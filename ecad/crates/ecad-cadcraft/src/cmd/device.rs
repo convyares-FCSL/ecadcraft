@@ -214,7 +214,7 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
         };
         // Brief 052d (design 052 §5.3): the context here proposes a function and a location; an
         // unset device takes it in this transaction, a device with another value is asked about.
-        let proposed = crate::draw::proposals::plan_place(p, modes, plan.component, page, origin, None).map_err(CmdError::refused)?;
+        let proposed = crate::draw::proposals::plan_place(p, &plan.ops, modes, plan.component, page, origin, None).map_err(CmdError::refused)?;
         plan.ops.extend(proposed.ops.iter().cloned());
         let label = if land.is_some() { "Place terminal".to_string() } else { plan.label.clone() };
         p.apply_edit(pg, "place", &label, plan.ops.clone())?;

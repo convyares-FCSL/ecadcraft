@@ -770,7 +770,8 @@ pub fn item_words(doc: &Document, item: &Device) -> String {
     let metres = props.get(UNIT_KEY).is_some_and(|u| parse_unit(u).unwrap_or(false));
     let q = props.get(QTY_KEY).and_then(|q| parse_qty(q, metres).ok()).unwrap_or(Qty::ONE);
     let unit = if metres { " m" } else { "" };
-    match props.get("location").map(|l| crate::designations::display(doc, "location", l)) {
+    let location = crate::designations::device_key(item, crate::designations::Aspect::Location);
+    match location.map(|l| crate::designations::display(doc, "location", &l)) {
         Some(l) => format!("{d}, {q}{unit} in {l}"),
         None => format!("{d}, {q}{unit}"),
     }

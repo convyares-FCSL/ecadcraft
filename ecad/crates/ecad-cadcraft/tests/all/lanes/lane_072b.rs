@@ -138,3 +138,33 @@ fn text_fields_are_written_as_modify_device() {
     let e = h.run("setprop", json!({"component": c.hex(), "key": "part_number", "value": "9".repeat(65)})).unwrap_err();
     assert!(e.contains("at most 64"), "{e}");
 }
+
+/// Step 2c (design 072 §6.3): a typed location or function is written as one `ModifyDevice`
+/// with `fixed` set; a box's proposal for an unset device writes it unfixed; the bag holds neither.
+#[test]
+fn location_and_function_are_written_as_modify_device() {
+    use ecad_model::Op;
+    let mut h = H::new(7203);
+    let c: DeviceId = id(&crate::common::place(&mut h, "coil", (100.0, 160.0)), "component");
+    for key in ["location", "function"] {
+        let value = if key == "location" { "+CP1" } else { "=F1" };
+        h.run("setprop", json!({"component": c.hex(), "key": key, "value": value})).unwrap();
+        let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());
+        assert!(matches!(ops.as_slice(), [Op::ModifyProject { .. }, Op::ModifyDevice { .. }]), "{key}: {ops:?}");
+    }
+    let d = h.doc().devices[&c].clone();
+    assert!(d.location.is_some() && d.location_fixed && d.function.is_some() && d.function_fixed, "{d:?}");
+    assert!(!d.properties.contains_key("location") && !d.properties.contains_key("function"), "{d:?}");
+    // Clearing clears the flag too.
+    h.run("setprop", json!({"component": c.hex(), "key": "function", "value": null})).unwrap();
+    let d = h.doc().devices[&c].clone();
+    assert_eq!((d.function, d.function_fixed), (None, false));
+    // A box drawn around an unset device proposes its value: set, not fixed.
+    let other: DeviceId = id(&crate::common::place(&mut h, "lamp", (100.0, 100.0)), "component");
+    h.run("locationbox", json!({"location": "+CP2", "corners": [[20, 60], [200, 220]]})).unwrap();
+    let o = h.doc().devices[&other].clone();
+    assert!(o.location.is_some() && !o.location_fixed, "{o:?}");
+    // The device typed +CP1 keeps it (fixed) and is asked about, not moved.
+    assert!(h.doc().devices[&c].location_fixed);
+    assert_ne!(h.doc().devices[&c].location, o.location);
+}

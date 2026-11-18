@@ -44,6 +44,61 @@ pub fn description_of(name: &str) -> Option<ecad_model::device::Description> {
     ecad_model::device::Description::new(name).ok()
 }
 
+/// Device `id` as the planned `ops` (not committed) leave it on `doc`: created, modified or
+/// deleted there, or its properties set; `None` when it does not exist.
+pub fn planned_device(doc: &Document, ops: &[Op], id: DeviceId) -> Option<Device> {
+    planned_device_on(doc, &[], ops, id)
+}
+
+/// [`planned_device`] after `base` and then `ops`.
+fn planned_device_on(doc: &Document, base: &[Op], ops: &[Op], id: DeviceId) -> Option<Device> {
+    let mut d = doc.devices.get(&id).cloned();
+    for op in base.iter().chain(ops) {
+        match op {
+            Op::CreateDevice { id: x, device } | Op::ModifyDevice { id: x, after: device, .. } if *x == id => d = Some(device.clone()),
+            Op::DeleteDevice { id: x, .. } if *x == id => d = None,
+            Op::SetProperty { object: ecad_model::ObjectRef::Device(x), key, after, .. } if *x == id => {
+                if let Some(d) = d.as_mut() {
+                    match after {
+                        Some(v) => d.properties.insert(key.clone(), v.clone()),
+                        None => d.properties.remove(key),
+                    };
+                }
+            }
+            _ => {}
+        }
+    }
+    d
+}
+
+/// Change device `id`'s typed fields with `f` within the planned `ops` (design 072: one
+/// `ModifyDevice` records the whole device): folded into the `CreateDevice` or `ModifyDevice` of
+/// it already in `ops` when no property op on it follows that one, else a new `ModifyDevice`.
+/// Returns whether anything changed (`false` also when the device does not exist).
+pub fn edit_planned(doc: &Document, ops: &mut Vec<Op>, id: DeviceId, f: impl FnOnce(&mut Device)) -> bool {
+    edit_planned_on(doc, &[], ops, id, f)
+}
+
+/// [`edit_planned`] for ops that will follow `base` (planned by the caller, such as the ops
+/// creating the device): the device is read after `base`, and only `ops` are changed.
+pub fn edit_planned_on(doc: &Document, base: &[Op], ops: &mut Vec<Op>, id: DeviceId, f: impl FnOnce(&mut Device)) -> bool {
+    let Some(before) = planned_device_on(doc, base, ops, id) else { return false };
+    let mut after = before.clone();
+    f(&mut after);
+    if after == before {
+        return false;
+    }
+    let touches = |op: &Op| match op {
+        Op::CreateDevice { id: x, .. } | Op::ModifyDevice { id: x, .. } | Op::DeleteDevice { id: x, .. } => *x == id,
+        Op::SetProperty { object: ecad_model::ObjectRef::Device(x), .. } => *x == id,
+        _ => false,
+    };
+    match ops.iter_mut().rev().find(|op| touches(op)) {
+        Some(Op::CreateDevice { device, .. } | Op::ModifyDevice { after: device, .. }) => *device = after,
+        _ => ops.push(Op::ModifyDevice { id, before, after }),
+    }
+    true
+}
 /// After device `c`'s symbol is swapped for `definition` (a `SetDeviceDefinition` already in the
 /// plan), the op giving it the type that symbol declares (design 072 §2.3): `None` while the group
 /// stays, so the data the device has is kept.
@@ -1542,7 +1597,6 @@ pub const MAX_ALSO: usize = 4;
 /// `m` measures the page's texts (the C wrapper `hover_lines` passes CADCraft's fonts).
 pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId, m: &dyn TextMetrics) -> Vec<String> {
     let device = doc.devices.get(&c).cloned().unwrap_or_default();
-    let props = device.properties.clone();
     let get = |k: &str| device.value(k).unwrap_or_else(|| "?".into());
     let head = match device.tag() {
         // Brief 026 (design §9): `(fixed)` or `(provisional)` after the tag.
@@ -1576,7 +1630,7 @@ pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId,
             words.push_str(&format!("; this symbol is inside {}", ctx.text()));
         }
     }
-    if loc.key.is_some() || props.contains_key("function") {
+    if loc.key.is_some() || device.function.is_some() {
         let function = crate::locations::resolve_function(doc, c);
         let function = if function.key.is_some() { function.text() } else { String::new() };
         lines.push(format!("Location: {words}   Function: {function}"));

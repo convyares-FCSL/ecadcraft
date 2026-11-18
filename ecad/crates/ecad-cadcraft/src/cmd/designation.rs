@@ -89,6 +89,7 @@ pub fn rows_changed_since(ledger: &ecad_model::Ledger, seen: usize) -> bool {
     }
     log.get(seen..).unwrap_or_default().iter().flat_map(|tx| tx.ops.iter()).any(|op| match op {
         Op::SetProperty { key, .. } => Aspect::of_property(key).is_some(),
+        Op::ModifyDevice { before, after, .. } => before.location != after.location || before.function != after.function,
         Op::CreateDevice { .. } | Op::DeleteDevice { .. } | Op::AddPage { .. } | Op::RemovePage { .. } | Op::ModifyProject { .. } => true,
         Op::ModifyPage { before, after, .. } => {
             let ch = before.change(after);

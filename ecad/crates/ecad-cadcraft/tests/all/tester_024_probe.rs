@@ -63,7 +63,7 @@ fn boxes(doc: &Document) -> Vec<(DeviceId, PageId, ItemId, usize)> {
 
 /// Each device's own `location` property.
 fn own(doc: &Document) -> BTreeMap<DeviceId, Option<String>> {
-    devices(doc).into_iter().map(|c| (c, doc.devices[&c].properties.get("location").cloned())).collect()
+    devices(doc).into_iter().map(|c| (c, doc.devices[&c].value("location"))).collect()
 }
 
 /// The page of a component's first representation.
