@@ -206,6 +206,9 @@ pub struct Terminal {
     pub component: DeviceId,
     pub label: Option<String>,
     pub key: Option<String>,
+    /// Design 072 F38: how many conductors it accepts, 1 to 64; left out at two.
+    #[serde(default, skip_serializing_if = "m::Accepts::is_two")]
+    pub accepts: m::Accepts,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -342,6 +345,10 @@ pub struct TerminalDef {
     pub key: String,
     pub label: Option<String>,
     pub at: Pt,
+    /// Design 072 F38: how many conductors the point accepts, 1 to 64; left out at two, so a
+    /// definition without it is written, and hashed, exactly as before.
+    #[serde(default, skip_serializing_if = "m::Accepts::is_two")]
+    pub accepts: m::Accepts,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1070,7 +1077,7 @@ impl From<&m::Device> for Device {
 
 impl From<&m::Terminal> for Terminal {
     fn from(t: &m::Terminal) -> Self {
-        Terminal { component: t.component, label: t.label.clone(), key: t.key.clone() }
+        Terminal { component: t.component, label: t.label.clone(), key: t.key.clone(), accepts: t.accepts }
     }
 }
 
@@ -1154,7 +1161,11 @@ impl From<&m::Definition> for Definition {
             name: d.name.clone(),
             origin: d.origin.as_ref().map(origin),
             graphics: d.graphics.iter().map(Into::into).collect(),
-            terminals: d.terminals.iter().map(|t| TerminalDef { key: t.key.clone(), label: t.label.clone(), at: pt(t.at) }).collect(),
+            terminals: d
+                .terminals
+                .iter()
+                .map(|t| TerminalDef { key: t.key.clone(), label: t.label.clone(), at: pt(t.at), accepts: t.accepts })
+                .collect(),
             bridges: d.bridges.clone(),
             texts: d.texts.iter().map(|t| TextSlot { text: t.text.clone(), at: pt(t.at), h: t.h, v: t.v, rotation: t.rotation }).collect(),
             defaults: d.defaults.clone(),
@@ -1396,7 +1407,7 @@ impl From<Device> for m::Device {
 
 impl From<Terminal> for m::Terminal {
     fn from(t: Terminal) -> Self {
-        m::Terminal { component: t.component, label: t.label, key: t.key }
+        m::Terminal { component: t.component, label: t.label, key: t.key, accepts: t.accepts }
     }
 }
 
@@ -1458,7 +1469,7 @@ impl From<Definition> for m::Definition {
             name: d.name,
             origin: d.origin.map(morigin),
             graphics: d.graphics.into_iter().map(Into::into).collect(),
-            terminals: d.terminals.into_iter().map(|t| m::TerminalDef { key: t.key, label: t.label, at: mpt(t.at) }).collect(),
+            terminals: d.terminals.into_iter().map(|t| m::TerminalDef { key: t.key, label: t.label, at: mpt(t.at), accepts: t.accepts }).collect(),
             bridges: d.bridges,
             texts: d.texts.into_iter().map(|t| m::TextSlot { text: t.text, at: mpt(t.at), h: t.h, v: t.v, rotation: t.rotation }).collect(),
             defaults: d.defaults,

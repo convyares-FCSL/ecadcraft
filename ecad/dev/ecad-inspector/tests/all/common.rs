@@ -99,7 +99,10 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
         let mut ts = Vec::new();
         for p in points {
             let t: TerminalId = ids.fresh();
-            ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: Some((*p).into()), key: None } });
+            ops.push(Op::AddTerminal {
+                id: t,
+                terminal: Terminal { component: c, label: Some((*p).into()), key: None, accepts: Default::default() },
+            });
             ts.push(t);
         }
         (ops, ts)

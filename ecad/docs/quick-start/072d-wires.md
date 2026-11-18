@@ -20,6 +20,12 @@ What changed for someone using the app:
   One per net is how it was: every wire of a net shows the net's number. One per wire gives
   each wire its own number, in the net's wire order; the first wire keeps the net's number. The
   switch renumbers every wire in the same edit, and one undo takes both back. Fixed numbers stay.
+- **Connection points accept a number of wires** (two unless the symbol says more, for PE bars
+  and earth studs). A T near a point that takes more than two joins from that point (a star);
+  otherwise the chain goes on from the far end. A point with more wires than it accepts is an
+  error in Checks (**Connection point has more wires than it accepts**, e.g. `-X1:3 takes 2
+  conductors; 3 are connected`). No built-in symbol takes more than two yet, and the symbol
+  builder cannot set it yet.
 - A wire across two pages through a cable reference does not form yet (lane F, step F4 brings
   it back through named points on both pages).
 
@@ -36,7 +42,10 @@ What changed for someone using the app:
 5. Draw a third device and a line from one of its points onto the middle of the first line: the
    wire list shows a second wire, from the new point to the nearer end.
 
-6. Open **Project Settings**. Under Wires, **Wire numbers**, pick **One per wire** and press
+6. Draw two more lines from the first device's point to two new points (three wires on one
+   point). Checks lists **Connection point has more wires than it accepts** for it; erase one
+   line and the row goes.
+7. Open **Project Settings**. Under Wires, **Wire numbers**, pick **One per wire** and press
    OK. The two wires of the net from step 5 now show different numbers on the page and in the
    wire list; the first keeps the old one. Undo: both show the net's number again.
 

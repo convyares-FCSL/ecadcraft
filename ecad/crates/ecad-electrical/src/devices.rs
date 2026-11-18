@@ -553,7 +553,10 @@ pub fn plan_place(
             });
             for td in &def.terminals {
                 let tid: TerminalId = ids.fresh();
-                ops.push(Op::AddTerminal { id: tid, terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()) } });
+                ops.push(Op::AddTerminal {
+                    id: tid,
+                    terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
+                });
                 terminals.push((td.key.clone(), td.label.clone().unwrap_or_else(|| td.key.clone()), tid));
             }
             ops.push(Op::AddItem { id: item, item: instance });
@@ -578,7 +581,10 @@ pub fn plan_place(
             let mut cps = BTreeMap::new();
             for (td, label) in def.terminals.iter().zip(&labels) {
                 let tid: TerminalId = ids.fresh();
-                ops.push(Op::AddTerminal { id: tid, terminal: Terminal { component: c, label: Some(label.clone()), key: Some(label.clone()) } });
+                ops.push(Op::AddTerminal {
+                    id: tid,
+                    terminal: Terminal { component: c, label: Some(label.clone()), key: Some(label.clone()), accepts: td.accepts },
+                });
                 cps.insert(tid, td.at);
                 terminals.push((td.key.clone(), label.clone(), tid));
             }
@@ -677,7 +683,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
                map: &mut BTreeMap<TerminalId, TerminalId>|
      -> TerminalId {
         let nt: TerminalId = ids.fresh();
-        ops.push(Op::AddTerminal { id: nt, terminal: Terminal { component: into, label, key: Some(name) } });
+        ops.push(Op::AddTerminal { id: nt, terminal: Terminal { component: into, label, key: Some(name), accepts: Default::default() } });
         map.insert(old, nt);
         nt
     };

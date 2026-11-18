@@ -290,8 +290,14 @@ pub fn plan_toposition(
     let mut chooser = tt::Chooser::new(doc, Some(strip));
     let pos = chooser.choose(doc, Some(strip), ty, Some(1), position)?;
     let (tin, tout): (TerminalId, TerminalId) = (ids.fresh(), ids.fresh());
-    ops.push(Op::AddTerminal { id: tin, terminal: Terminal { component: strip, label: Some(pos.clone()), key: Some(".1i".into()) } });
-    ops.push(Op::AddTerminal { id: tout, terminal: Terminal { component: strip, label: Some(pos.clone()), key: Some(".1o".into()) } });
+    ops.push(Op::AddTerminal {
+        id: tin,
+        terminal: Terminal { component: strip, label: Some(pos.clone()), key: Some(".1i".into()), accepts: Default::default() },
+    });
+    ops.push(Op::AddTerminal {
+        id: tout,
+        terminal: Terminal { component: strip, label: Some(pos.clone()), key: Some(".1o".into()), accepts: Default::default() },
+    });
     // The device's points by key: `1` → in, `2` → out.
     let old: Vec<(TerminalId, Terminal)> = doc.terminals_of(device).map(|(t, x)| (t, x.clone())).collect();
     let mut moved = std::collections::BTreeMap::new();

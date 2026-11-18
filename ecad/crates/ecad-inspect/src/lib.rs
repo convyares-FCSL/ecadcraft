@@ -355,7 +355,7 @@ mod tests {
         let (k, a, b, c): (DeviceId, TerminalId, TerminalId, TerminalId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
         let (w1, w2, net, c1, c2): (WireId, WireId, NetId, ConductorId, ConductorId) =
             (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
-        let point = |label: &str| Terminal { component: k, label: Some(label.into()), key: None };
+        let point = |label: &str| Terminal { component: k, label: Some(label.into()), key: None, accepts: Default::default() };
         let number = |n: &str| ecad_model::text::Text::new(n).ok().map(|text| ecad_model::wire::WireNumber { text, fixed: true });
         let ops = vec![
             Op::CreateDevice { id: k, device: Device::default().with_tag(Some("-K1")) },

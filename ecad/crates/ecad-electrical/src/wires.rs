@@ -719,7 +719,7 @@ pub fn plan_tagless(
         id: component,
         device: Device { properties: props, definition: Some(definition), device_type: s.device_type(), ..Device::default() },
     });
-    ops.push(Op::AddTerminal { id: terminal, terminal: Terminal { component, label: None, key: Some("1".into()) } });
+    ops.push(Op::AddTerminal { id: terminal, terminal: Terminal { component, label: None, key: Some("1".into()), accepts: Default::default() } });
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition, placement }) } });
     ops.push(Op::LinkRepresentation {
         id: representation,

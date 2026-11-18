@@ -812,7 +812,7 @@ pub fn graphics(key: &str) -> Option<Vec<Primitive>> {
 /// The connection points of a new starter (`None` for any other key).
 pub fn terminals(key: &str) -> Option<Vec<TerminalDef>> {
     let (t, n) = of_starter(key).filter(|(t, _)| !t.legacy())?;
-    let d = |k: String, x: f64, y: f64| TerminalDef { key: k, label: None, at: p(x, y) };
+    let d = |k: String, x: f64, y: f64| TerminalDef { key: k, label: None, at: p(x, y), accepts: Default::default() };
     Some(match (t.breaks, n) {
         (true, _) => vec![d(".1i".into(), 0.0, 10.0), d(".1o".into(), 0.0, -10.0)],
         (false, Some(_)) => vec![d(t.level_keys(n.unwrap_or(1)).into_iter().next().unwrap_or_default(), 0.0, 0.0)],

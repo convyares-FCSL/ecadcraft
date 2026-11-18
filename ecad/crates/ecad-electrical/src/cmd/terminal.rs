@@ -53,7 +53,10 @@ fn terminal_symbol(
 ) -> TerminalId {
     let (t, item, rep): (TerminalId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
     let key = if first { "1".to_string() } else { label.to_string() };
-    ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: strip, label: Some(label.to_string()), key: Some(key) } });
+    ops.push(Op::AddTerminal {
+        id: t,
+        terminal: Terminal { component: strip, label: Some(label.to_string()), key: Some(key), accepts: Default::default() },
+    });
     let placement = Placement { origin: at, rotation: Radians(0.0), mirror: false, scale: 1.0 };
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition: def, placement }) } });
     let mut cps = BTreeMap::new();
@@ -216,7 +219,10 @@ pub fn level_symbol(
     let mut out = Vec::new();
     for td in &d.terminals {
         let t: TerminalId = ids.fresh();
-        ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: strip, label: Some(position.to_string()), key: Some(td.key.clone()) } });
+        ops.push(Op::AddTerminal {
+            id: t,
+            terminal: Terminal { component: strip, label: Some(position.to_string()), key: Some(td.key.clone()), accepts: td.accepts },
+        });
         cps.insert(t, td.at);
         out.push((td.key.clone(), t, td.at));
     }

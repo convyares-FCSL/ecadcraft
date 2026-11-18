@@ -164,7 +164,7 @@ function render() {
     const ts = termsOf(c);
     if (!match([c, ...ts.map(([t]) => t)])) continue;
     const reps = Object.entries(d.representations).filter(([, r]) => r.subject.Device === c);
-    h += `<tr><td>${name(c)}</td><td>${esc(JSON.stringify(comp.properties))}</td><td>${ts.map(([t]) => name(t)).join("<br>")}</td>
+    h += `<tr><td>${name(c)}</td><td>${esc(JSON.stringify(comp.properties))}</td><td>${ts.map(([t, x]) => `${name(t)}${x.accepts !== undefined && x.accepts !== 2 ? ` (takes ${esc(x.accepts)})` : ""}`).join("<br>")}</td>
       <td>${reps.map(([r, rep]) => `${name(r)} ${esc(rep.form)} on ${name(rep.page)}`).join("<br>") || '<span class="warn">not shown</span>'}</td></tr>`;
   }
   h += `</table></div><h2>Wires</h2><div class="wrap"><table><tr><th>Wire</th><th>End A</th><th>End B</th><th>Net</th><th>Order</th><th>Conductor</th><th>Cables</th></tr>`;
@@ -398,7 +398,7 @@ const views = {
     return `<h2>Devices</h2>` + (await paged("devices", "devices", { detail: true }, ["Tag", "Function", "Location", "Definition", "Pages", "Connection points", "Properties"],
       (r) => `<tr><td>${esc(r.tag ?? "(no tag)")}${r.duplicate ? ' <span class="pill bad">duplicate</span>' : ""}</td><td>${esc(r.function)}</td><td>${esc(r.location)}</td>
         <td>${esc(r.definition)}</td><td>${join(r.pages)}</td>
-        <td>${r.points.map((p) => `${esc(p.name)}${p.wires.length ? ` → ${join(p.wires)}` : ""}`).join("<br>")}</td>
+        <td>${r.points.map((p) => `${esc(p.name)}${p.accepts !== 2 ? ` (takes ${esc(p.accepts)})` : ""}${p.wires.length ? ` → ${join(p.wires)}` : ""}`).join("<br>")}</td>
         <td class="mono">${esc(JSON.stringify(r.properties))}</td></tr>`));
   },
   async wiring() {

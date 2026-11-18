@@ -8,7 +8,7 @@ fn def(bridges: &[&[&str]]) -> Definition {
         name: "test".into(),
         origin: None,
         graphics: Vec::new(),
-        terminals: vec![TerminalDef { key: "1".into(), label: Some("1".into()), at: Pt::new(0.0, 0.0) }],
+        terminals: vec![TerminalDef { key: "1".into(), label: Some("1".into()), at: Pt::new(0.0, 0.0), accepts: Default::default() }],
         bridges: bridges.iter().map(|g| g.iter().map(|k| k.to_string()).collect()).collect(),
         ..Default::default()
     }

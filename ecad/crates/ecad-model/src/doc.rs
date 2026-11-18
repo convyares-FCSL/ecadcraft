@@ -364,6 +364,57 @@ impl Device {
     }
 }
 
+/// How many conductors a connection point accepts (design 072 §2.7, §4.4, F38): 1 to
+/// [`Accepts::MAX`]; two unless its symbol says more (PE bars, earth studs). The wire order chains
+/// through a point that accepts two and fans out (a star) from one that accepts more; a point
+/// with more wires than it accepts is a Checks error. Any other number is a read error.
+///
+/// # Example
+/// ```
+/// use ecad_model::Accepts;
+/// assert_eq!(Accepts::default().get(), 2);
+/// assert_eq!(Accepts::new(6).map(Accepts::get), Some(6));
+/// assert!(Accepts::new(0).is_none() && Accepts::new(1000).is_none());
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(transparent)]
+pub struct Accepts(u8);
+
+impl Accepts {
+    /// The most conductors a point may accept.
+    pub const MAX: u8 = 64;
+    /// The usual point: two conductors, one in and one out.
+    pub const TWO: Accepts = Accepts(2);
+
+    /// `n` conductors, when 1 to [`Accepts::MAX`].
+    pub fn new(n: u64) -> Option<Accepts> {
+        u8::try_from(n).ok().filter(|n| (1..=Self::MAX).contains(n)).map(Accepts)
+    }
+
+    /// How many.
+    pub fn get(self) -> usize {
+        usize::from(self.0)
+    }
+
+    /// Whether it is the usual two (left out of the file).
+    pub fn is_two(&self) -> bool {
+        *self == Self::TWO
+    }
+}
+
+impl Default for Accepts {
+    fn default() -> Self {
+        Self::TWO
+    }
+}
+
+impl<'de> Deserialize<'de> for Accepts {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Self, D::Error> {
+        let n = u64::deserialize(d)?;
+        Accepts::new(n).ok_or_else(|| serde::de::Error::custom(format!("a connection point accepts 1 to {} conductors, not {n}", Accepts::MAX)))
+    }
+}
+
 /// A terminal of a component.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Terminal {
@@ -371,6 +422,9 @@ pub struct Terminal {
     pub label: Option<String>,
     /// The definition terminal this one was created from (LIB-02).
     pub key: Option<String>,
+    /// How many conductors it accepts, copied from its definition terminal when it is made.
+    #[serde(default, skip_serializing_if = "Accepts::is_two")]
+    pub accepts: Accepts,
 }
 
 /// What a representation depicts.
@@ -685,6 +739,10 @@ pub struct TerminalDef {
     pub key: String,
     pub label: Option<String>,
     pub at: Pt,
+    /// How many conductors the point accepts (design 072 F38); copied to each [`Terminal`] made
+    /// from it.
+    #[serde(default, skip_serializing_if = "Accepts::is_two")]
+    pub accepts: Accepts,
 }
 
 /// Where a device text of a placed copy goes, in the symbol's frame (brief 048, FP1; proposal

@@ -304,7 +304,10 @@ impl H {
             let mut out = Vec::new();
             for (i, (x, y)) in at.iter().enumerate() {
                 let t: TerminalId = p.ids.fresh();
-                ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: device, label: Some((i + 1).to_string()), key: None } });
+                ops.push(Op::AddTerminal {
+                    id: t,
+                    terminal: Terminal { component: device, label: Some((i + 1).to_string()), key: None, accepts: Default::default() },
+                });
                 cps.insert(t, Pt::new(*x, *y));
                 out.push(t);
             }
@@ -395,7 +398,10 @@ pub fn wired_lines(
         let (a, b) = line(i);
         let (ta, tb): (TerminalId, TerminalId) = (ids.fresh(), ids.fresh());
         for (t, at, k) in [(ta, a, 2 * i), (tb, b, 2 * i + 1)] {
-            ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: device, label: Some(k.to_string()), key: None } });
+            ops.push(Op::AddTerminal {
+                id: t,
+                terminal: Terminal { component: device, label: Some(k.to_string()), key: None, accepts: Default::default() },
+            });
             cps.insert(t, at);
         }
         let (r, item, add) = ecad_cadcraft::wires::add_route(ids, page, style.clone(), vec![a, b], [RouteEnd::Point(ta), RouteEnd::Point(tb)]);

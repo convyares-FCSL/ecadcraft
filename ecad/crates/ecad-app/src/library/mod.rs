@@ -205,6 +205,7 @@ impl App {
                             key: tm.key.clone().or_else(|| tm.label.clone()).unwrap_or_else(|| (n + 1).to_string()),
                             label: tm.label.clone(),
                             at: ecad_model::Pt::new(at.x - o.x, at.y - o.y),
+                            accepts: Default::default(),
                         })
                     })
                     .collect();

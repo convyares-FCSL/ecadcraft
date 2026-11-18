@@ -48,8 +48,8 @@ fn every_op_inverts_to_the_previous_state() {
     let ops = vec![
         Op::AddItem { id: item, item: line(&f, (0.0, 0.0), (1.0, 0.0)) },
         Op::CreateDevice { id: comp, device: Device::default() },
-        Op::AddTerminal { id: term, terminal: Terminal { component: comp, label: None, key: None } },
-        Op::AddTerminal { id: term2, terminal: Terminal { component: comp, label: None, key: None } },
+        Op::AddTerminal { id: term, terminal: Terminal { component: comp, label: None, key: None, accepts: Default::default() } },
+        Op::AddTerminal { id: term2, terminal: Terminal { component: comp, label: None, key: None, accepts: Default::default() } },
         Op::LinkRepresentation {
             id: rep,
             rep: Representation {
@@ -134,7 +134,7 @@ fn deleting_a_referenced_object_needs_explicit_detachment() {
     let (term, term2) = (f.ids.fresh(), f.ids.fresh());
     let cond = f.ids.fresh();
     let cable = f.ids.fresh();
-    let t = Terminal { component: comp, label: None, key: None };
+    let t = Terminal { component: comp, label: None, key: None, accepts: Default::default() };
     let wire = Wire::new(f.ids.fresh(), f.ids.fresh(), term, term2);
     let member = CableMember::on_wire(cond, None);
     f.ledger
@@ -276,8 +276,8 @@ fn definitions_with_non_finite_geometry_or_repeated_keys_are_refused() {
         origin: None,
         graphics: vec![Primitive::Line { a: Pt::new(0.0, 0.0), b: at }],
         terminals: vec![
-            ecad_model::TerminalDef { key: "A1".into(), label: None, at },
-            ecad_model::TerminalDef { key: key2.into(), label: None, at: Pt::new(0.0, 1.0) },
+            ecad_model::TerminalDef { key: "A1".into(), label: None, at, accepts: Default::default() },
+            ecad_model::TerminalDef { key: key2.into(), label: None, at: Pt::new(0.0, 1.0), accepts: Default::default() },
         ],
         ..Default::default()
     };

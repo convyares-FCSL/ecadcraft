@@ -155,8 +155,8 @@ fn coil() -> Definition {
         origin: None,
         graphics: vec![Primitive::Polyline { vertices: r.iter().map(|(x, y)| Pt::new(*x, *y)).collect(), closed: true }],
         terminals: vec![
-            TerminalDef { key: "A1".into(), label: Some("A1".into()), at: Pt::new(0.0, 10.0) },
-            TerminalDef { key: "A2".into(), label: Some("A2".into()), at: Pt::new(0.0, -10.0) },
+            TerminalDef { key: "A1".into(), label: Some("A1".into()), at: Pt::new(0.0, 10.0), accepts: Default::default() },
+            TerminalDef { key: "A2".into(), label: Some("A2".into()), at: Pt::new(0.0, -10.0), accepts: Default::default() },
         ],
         ..Default::default()
     }
@@ -377,7 +377,10 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             let mut keyed = Vec::new();
             for td in &def.terminals {
                 let t: TerminalId = ids.fresh();
-                ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()) } });
+                ops.push(Op::AddTerminal {
+                    id: t,
+                    terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
+                });
                 keyed.push(t);
             }
             let origin = Pt::new(PITCH * i as f64 + PITCH / 2.0, ROW_Y);

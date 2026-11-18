@@ -339,13 +339,13 @@ fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
     let mut ops = vec![
         Op::AddPage { id: page, page: Page::titled("1").map_err(|e| e.to_string())?, index: 0 },
         Op::CreateDevice { id: comp, device: Device::default() },
-        Op::AddTerminal { id: hub, terminal: Terminal { component: comp, label: None, key: None } },
+        Op::AddTerminal { id: hub, terminal: Terminal { component: comp, label: None, key: None, accepts: Default::default() } },
     ];
     let mut leaves = Vec::with_capacity(wires);
     let net: NetId = ids.fresh();
     for i in 0..wires {
         let (t, c, k): (TerminalId, WireId, ConductorId) = (ids.fresh(), ids.fresh(), ids.fresh());
-        ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: comp, label: None, key: None } });
+        ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: comp, label: None, key: None, accepts: Default::default() } });
         let order = u16::try_from(i + 1).unwrap_or(u16::MAX);
         let wire = Wire { potential: ecad_model::text::Text::new("0V").ok(), net_order: order, ..Wire::new(net, k, hub, t) };
         ops.push(Op::CreateWire { id: c, wire });

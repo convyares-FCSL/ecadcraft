@@ -26,7 +26,7 @@ fn a_wires_values_and_its_modify_op_are_shown_raw_and_readable() {
         potential: Text::new("24V").ok(),
         ..Wire::new(net, conductor, a, b)
     };
-    let point = |label: &str| Terminal { component: k, label: Some(label.into()), key: None };
+    let point = |label: &str| Terminal { component: k, label: Some(label.into()), key: None, accepts: Default::default() };
     l.commit(
         Author::User,
         "wire",
@@ -154,7 +154,10 @@ fn core_positions_are_shown_raw_and_readable() {
         "slash",
         vec![
             Op::CreateDevice { id: d, device: Device::default() },
-            Op::AddTerminal { id: t, terminal: Terminal { component: d, label: Some("1".into()), key: Some("1".into()) } },
+            Op::AddTerminal {
+                id: t,
+                terminal: Terminal { component: d, label: Some("1".into()), key: Some("1".into()), accepts: Default::default() },
+            },
             Op::AddRoute { id: r, route: loose },
             Op::CreateCable { id: k, cable: Cable::default() },
             Op::AddCableMember { cable: k, index: 0, member: on_line },
@@ -201,4 +204,29 @@ fn number_by_and_its_settings_op_are_shown_raw_and_readable() {
     assert!(text.contains("SetProjectSettings") && text.contains("number_by") && text.contains("conductor"), "{text}");
     let raw = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "raw"}));
     assert!(raw["ok"]["hex"].as_str().is_some_and(|h| !h.is_empty()));
+}
+
+#[test]
+fn accepts_is_shown_raw_readable_and_on_the_device_row() {
+    // Design 072 F38 (A15): a point's `accepts` in the AddTerminal op and the Devices view.
+    let dir = TempDir::new("072d-accepts");
+    let mut l = history();
+    let mut ids = IdAllocator::seeded(74);
+    let (d, t): (DeviceId, TerminalId) = (ids.fresh(), ids.fresh());
+    let bar = Terminal { component: d, label: Some("PE".into()), key: Some("PE".into()), accepts: ecad_model::Accepts::new(12).unwrap() };
+    l.commit(Author::User, "bar", vec![Op::CreateDevice { id: d, device: Device::default() }, Op::AddTerminal { id: t, terminal: bar }]).unwrap();
+    let path = written(&dir, &l);
+    let f = FileSource::from_path(&path);
+    assert!(matches!(f.wait_verified(Duration::from_secs(60)), VerifyState::Done { .. }));
+    let s = Some(&f as &dyn Source);
+    let rows = ask(s, serde_json::json!({"op": "rows", "table": "transactions", "count": 1000}));
+    let rows = rows["ok"]["rows"].as_array().cloned().unwrap_or_default();
+    let key = rows.last().and_then(|r| r["key"].as_str()).unwrap().to_string();
+    let readable = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "readable"}));
+    let text = readable["ok"]["decoded"].to_string();
+    assert!(text.contains("AddTerminal") && text.contains("accepts") && text.contains("12"), "{text}");
+    let raw = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "raw"}));
+    assert!(raw["ok"]["hex"].as_str().is_some_and(|h| !h.is_empty()));
+    let devices = ask(s, serde_json::json!({"op": "devices", "detail": true, "count": 1000}));
+    assert!(devices.to_string().contains(r#""accepts":12"#), "{devices}");
 }
