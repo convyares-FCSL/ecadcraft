@@ -9,7 +9,7 @@
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::cmd::text::{self as rules, KindRow, ShowLevel, ShowTarget, TextStyleInput};
 use ecad_model::Word;
-use ecad_model::{ComponentId, ConductorId, Document, PageId, RepresentationId, TerminalId};
+use ecad_model::{DeviceId, Document, PageId, RepresentationId, TerminalId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
@@ -198,6 +198,7 @@ fn value_json(r: &Resolved<'_>) -> Value {
         defaults::Value::Choice(w) => json!(w),
         defaults::Value::Flag(b) => json!(ecad_model::words::flag_word(b)),
         defaults::Value::Text(t) => json!(t),
+        defaults::Value::OwnStyle(id) => json!(ecad_model::StyleRef::Own(id).text()),
     }
 }
 
@@ -243,7 +244,7 @@ pub(crate) struct DefaultsParams {
     page: Option<PageId>,
     /// Resolve for this device.
     #[serde(default)]
-    component: Option<ComponentId>,
+    component: Option<DeviceId>,
     /// Resolve for this symbol (wins over `component` and `page`).
     #[serde(default)]
     representation: Option<RepresentationId>,
@@ -302,10 +303,10 @@ pub(crate) struct ShowtextParams {
     representation: Option<RepresentationId>,
     /// A device.
     #[serde(default)]
-    component: Option<ComponentId>,
+    component: Option<DeviceId>,
     /// A wire.
     #[serde(default)]
-    conductor: Option<ConductorId>,
+    conductor: Option<WireId>,
     /// A page.
     #[serde(default)]
     page: Option<PageId>,
@@ -328,7 +329,7 @@ impl Command for ShowtextParams {
             let target = match level {
                 ShowLevel::Symbol(r, _) => json!(r.hex()),
                 ShowLevel::Device(c) => json!(c.hex()),
-                ShowLevel::Conductor(c) => json!(c.hex()),
+                ShowLevel::Wire(c) => json!(c.hex()),
                 ShowLevel::Page(pg) => json!(pg.hex()),
                 ShowLevel::Project => Value::Null,
             };
@@ -398,7 +399,7 @@ pub fn pagetexts_json(doc: &Document, page: PageId) -> Value {
             let w = width_in(look.fonts_for(kind), TextStyle { height: d.height, ..style }, &d.value);
             let (lo, hi) = text_box(w, d.height, d.at, d.halign, d.valign);
             let component = doc.representations.get(&d.rep).and_then(|r| match r.subject {
-                ecad_model::Subject::Component(c) => Some(c.hex()),
+                ecad_model::Subject::Device(c) => Some(c.hex()),
                 _ => None,
             });
             let weight = match style.weight {

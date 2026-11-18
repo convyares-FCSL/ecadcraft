@@ -19,7 +19,7 @@ use cadcraft_engine::ext::MarkShape;
 use cadcraft_engine::geom::Vec2;
 use common::{H, id};
 use ecad_cadcraft::interact::{self, NOT_OWNED, OUT_OF_RANGE};
-use ecad_model::{ComponentId, ConductorId, Document, End, PageId, TerminalId, Transaction};
+use ecad_model::{DeviceId, Document, End, PageId, TerminalId, Transaction, WireId};
 use serde_json::{Value, json};
 
 const SEED: u64 = 8;
@@ -96,9 +96,9 @@ fn terminal_at(d: &Document, page: PageId, x: f64, y: f64) -> TerminalId {
 }
 
 /// The one conductor (IDs do not follow creation order, so scenes needing one have only one).
-fn only_conductor(d: &Document) -> ConductorId {
-    assert_eq!(d.conductors.len(), 1);
-    *d.conductors.keys().next().expect("a conductor")
+fn only_conductor(d: &Document) -> WireId {
+    assert_eq!(d.wires.len(), 1);
+    *d.wires.keys().next().expect("a conductor")
 }
 
 /// The quick-start scene with one more loose wire, connected and disconnected, built either by
@@ -106,7 +106,7 @@ fn only_conductor(d: &Document) -> ConductorId {
 fn scene(h: &mut H, by_prompts: bool) {
     let lines = rectangle(h);
     let pg = page(h);
-    // Convert to Component, by "Select objects" (nothing selected first).
+    // Convert to Device, by "Select objects" (nothing selected first).
     if by_prompts {
         start(h, "convertcomponent");
         assert_eq!(prompt(h), "Select objects to convert to a component:");
@@ -180,11 +180,11 @@ fn scene(h: &mut H, by_prompts: bool) {
         h.run("wire", json!({"points": [[40.0, 10.0], [70.0, 10.0], [70.0, 0.0], [a1.x, a1.y]]})).unwrap();
     }
     let d = h.doc();
-    assert!(d.conductors[&only_conductor(&d)].ends.iter().all(Option::is_some), "both ends attached");
+    assert!(d.wires[&only_conductor(&d)].ends.iter().all(Option::is_some), "both ends attached");
     // A loose wire, typed (both ways the same JSON), then Connect and Disconnect.
     h.run("wire", json!({"points": [[0.0, 30.0], [20.0, 30.0]]})).unwrap();
     let d = h.doc();
-    let loose = *d.conductors.iter().find(|(_, c)| c.ends.iter().all(Option::is_none)).unwrap().0;
+    let loose = *d.wires.iter().find(|(_, c)| c.ends.iter().all(Option::is_none)).unwrap().0;
     let t2 = terminal_at(&d, pg, 0.0, 10.0);
     if by_prompts {
         start(h, "connect");
@@ -360,11 +360,11 @@ fn esc_at_every_prompt_drops_only_the_pending_input_and_undo_takes_one_object() 
     assert_eq!(h.head(), two.0 + 1, "undo appends one transaction");
 }
 
-fn only_component_drawn(d: &Document) -> ComponentId {
+fn only_component_drawn(d: &Document) -> DeviceId {
     *d.representations
         .values()
         .find_map(|r| match (r.form, r.subject) {
-            (ecad_model::Form::Drawn, ecad_model::Subject::Component(c)) => Some(c),
+            (ecad_model::Form::Drawn, ecad_model::Subject::Device(c)) => Some(c),
             _ => None,
         })
         .as_ref()
@@ -415,11 +415,11 @@ fn capture_is_within_the_aperture_only_and_the_preview_says_so_first() {
         }
         let d = h.doc();
         let w = only_conductor(&d);
-        assert_eq!(d.conductors[&w].end(End::B).is_some(), attaches, "{pixels} px");
+        assert_eq!(d.wires[&w].end(End::B).is_some(), attaches, "{pixels} px");
         let route = ecad_model::derive::route_on_page(&d, w, page(&mut h)).unwrap().1;
         let end = route.path_ends().unwrap().1;
         if attaches {
-            let t = d.conductors[&w].end(End::B).unwrap();
+            let t = d.wires[&w].end(End::B).unwrap();
             let at = ecad_model::derive::terminal_positions(&d, page(&mut h)).into_iter().find(|x| x.0 == t).unwrap().2;
             assert_eq!(end, at, "the end is the terminal's point exactly");
         }
@@ -444,7 +444,7 @@ fn typed_points_are_literal() {
     typed(&mut h, &near);
     typed(&mut h, "");
     let d = h.doc();
-    assert!(d.conductors[&only_conductor(&d)].end(End::B).is_none());
+    assert!(d.wires[&only_conductor(&d)].end(End::B).is_none());
 }
 
 #[test]
@@ -560,22 +560,22 @@ fn the_overlay_marks_terminals_and_wire_ends_and_hover_names_them() {
     // Hover: the coil, the terminal marker and the wire.
     let pg = page(&mut h);
     let d = h.doc();
-    let coil = d.components.iter().find(|(_, c)| c.definition.is_some()).map(|(c, _)| *c).unwrap();
+    let coil = d.devices.iter().find(|(_, c)| c.definition.is_some()).map(|(c, _)| *c).unwrap();
     let item = h.symbol_item(coil);
     let coil_handle = h.handle_of(pg, item);
     let lines = h.p(|p| interact::hover_lines(p, uid, coil_handle)).unwrap();
-    assert_eq!(lines[0], "Component (no tag)");
+    assert_eq!(lines[0], "Device (no tag)");
     assert_eq!(lines[1], format!("id {}", coil.hex()));
     assert_eq!(lines[2], "Connection points: 2");
     assert!(lines.iter().any(|l| l == "  A1 — 1 wire end"), "{lines:?}");
-    let w = d.conductors.iter().find(|(_, c)| c.ends.iter().all(Option::is_some)).map(|(w, _)| *w).unwrap();
+    let w = d.wires.iter().find(|(_, c)| c.ends.iter().all(Option::is_some)).map(|(w, _)| *w).unwrap();
     let wh = h.route_handle(pg, w);
     let lines = h.p(|p| interact::hover_lines(p, uid, wh)).unwrap();
-    assert_eq!(lines[0], "Wire (no tag)");
+    assert_eq!(lines[0], "Wire 01", "a wire is named by its number");
     assert!(lines[2].starts_with("End A: connection point 1 of "), "{lines:?}");
     assert!(lines[3].starts_with("End B: connection point A1 of "), "{lines:?}");
     let drawn = only_component_drawn(&d);
-    let (rid, rep) = d.representations_of(ecad_model::Subject::Component(drawn)).next().unwrap();
+    let (rid, rep) = d.representations_of(ecad_model::Subject::Device(drawn)).next().unwrap();
     let t = *rep.connection_points.keys().next().unwrap();
     let marker = h.p(|p| p.pages[&pg].map.marker(rid, t)).unwrap();
     let lines = h.p(|p| interact::hover_lines(p, uid, marker)).unwrap();
@@ -597,7 +597,7 @@ fn default_terminal_names_are_the_smallest_unused_number() {
     let mut h = new_h();
     let lines = rectangle(&mut h);
     let hs: Vec<String> = lines.iter().map(|x| x.hex()).collect();
-    let c: ComponentId = id(&h.run("convertcomponent", json!({ "handles": hs })).unwrap(), "component");
+    let c: DeviceId = id(&h.run("convertcomponent", json!({ "handles": hs })).unwrap(), "component");
     let right = line_at(&mut h, 40.0, 0.0, 40.0, 20.0);
     for (at, label) in [([40, 2], "2"), ([40, 4], "A")] {
         h.run("addterminal", json!({"handle": right.hex(), "at": at, "label": label})).unwrap();

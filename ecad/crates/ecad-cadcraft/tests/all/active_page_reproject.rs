@@ -5,12 +5,12 @@
 //! out again without counting) are not counted; `H::check` then proves the skipped page is still
 //! what a fresh projection draws.
 
-use ecad_model::{ComponentId, PageId};
+use ecad_model::{DeviceId, PageId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
 
-fn place(h: &mut H, symbol: &str, at: [f64; 2]) -> ComponentId {
+fn place(h: &mut H, symbol: &str, at: [f64; 2]) -> DeviceId {
     id(&h.run("place", json!({"symbol": symbol, "at": at})).unwrap(), "component")
 }
 
@@ -52,7 +52,7 @@ fn a_shown_generated_page_redraws_when_its_content_changes() {
         h.run("wire", json!({"points": pts(&[(x, 270.0), (x, 160.0)])})).unwrap();
     }
     let v = h.run("terminals", json!({"from": [310, 200], "to": [340, 200]})).unwrap();
-    let strip: ComponentId = id(&v, "strip");
+    let strip: DeviceId = id(&v, "strip");
     let far = place(&mut h, "coil", [100.0, 260.0]);
     let plan: PageId = id(&h.run("newpage", json!({"generated": "terminals"})).unwrap(), "page");
     h.activate(plan);

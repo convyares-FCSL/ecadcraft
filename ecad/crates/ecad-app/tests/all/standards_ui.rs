@@ -200,7 +200,7 @@ fn keys_do_not_reach_the_page_under_settings() {
     let (mut h, _) = fixture(None);
     let sel = selection(&h);
     assert!(!sel.is_empty());
-    let devices = doc(&mut h).components.len();
+    let devices = doc(&mut h).devices.len();
     let before = head(&mut h);
     let main = h.state().shell.slots.map(|s| s.main.center()).unwrap();
     h.state_mut().open_settings(Section::Developer);
@@ -213,7 +213,7 @@ fn keys_do_not_reach_the_page_under_settings() {
     h.key_press(Key::W);
     h.run_steps(3);
     assert!(h.state().shell.settings_open, "still in Settings");
-    assert_eq!((head(&mut h), doc(&mut h).components.len()), (before, devices), "Del erased nothing");
+    assert_eq!((head(&mut h), doc(&mut h).devices.len()), (before, devices), "Del erased nothing");
     assert!(h.state().cad.session.running.is_none(), "W started no tool");
     assert_eq!(selection(&h), sel, "the selection is kept");
     // The same keys with Settings closed do reach the page (the test is not vacuous).

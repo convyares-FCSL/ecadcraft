@@ -9,8 +9,8 @@
 use std::collections::BTreeMap;
 
 use ecad_model::{
-    CableId, Component, ComponentId, Conductor, ConductorId, Document, End, Form, IdAllocator, ItemId, Op, PageId, ProjectSettings, Pt,
-    Representation, RepresentationId, Subject, Terminal, TerminalId,
+    CableId, Device, DeviceId, Document, End, Form, IdAllocator, ItemId, Op, PageId, ProjectSettings, Pt, Representation, RepresentationId, Subject,
+    Terminal, TerminalId, Wire, WireId,
 };
 
 use crate::devices;
@@ -74,8 +74,8 @@ pub fn apply_tag_settings(after: &mut ProjectSettings, settings: TagSettings) {
 /// What `ecaddelete` deletes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Doomed {
-    Conductor(ConductorId),
-    Component(ComponentId),
+    Wire(WireId),
+    Device(DeviceId),
     Cable(CableId),
 }
 
@@ -123,8 +123,8 @@ fn kept_words(n: usize) -> String {
 pub fn plan_delete(doc: &Document, doomed: Doomed) -> Result<Deleted, CmdError> {
     let mut ops = Vec::new();
     match doomed {
-        Doomed::Conductor(c) => {
-            let conductor = doc.conductors.get(&c).ok_or(CmdError::refused("no such conductor"))?;
+        Doomed::Wire(c) => {
+            let conductor = doc.wires.get(&c).ok_or(CmdError::refused("no such conductor"))?;
             for end in End::BOTH {
                 if let Some(t) = conductor.end(end) {
                     ops.push(Op::AttachEnd { conductor: c, end, before: Some(t), after: None });
@@ -135,25 +135,25 @@ pub fn plan_delete(doc: &Document, doomed: Doomed) -> Result<Deleted, CmdError> 
                     ops.push(Op::RemoveCableMember { cable, index: i, member: m.clone() });
                 }
             }
-            ops.extend(remove_representations(doc, Subject::Conductor(c)));
-            ops.push(Op::DeleteConductor { id: c, conductor: Conductor { ends: [None, None], ..conductor.clone() } });
+            ops.extend(remove_representations(doc, Subject::Wire(c)));
+            ops.push(Op::DeleteWire { id: c, conductor: Wire { ends: [None, None], ..conductor.clone() } });
             Ok(Deleted { ops, released: 0, kept: None, message: None })
         }
-        Doomed::Component(c) => {
-            let component = doc.components.get(&c).ok_or(CmdError::refused("no such component"))?;
+        Doomed::Device(c) => {
+            let component = doc.devices.get(&c).ok_or(CmdError::refused("no such component"))?;
             for (t, _) in doc.terminals_of(c) {
                 for (w, end) in doc.ends_at(t) {
                     ops.push(Op::AttachEnd { conductor: w, end, before: Some(t), after: None });
                 }
             }
-            ops.extend(remove_representations(doc, Subject::Component(c)));
+            ops.extend(remove_representations(doc, Subject::Device(c)));
             for (t, term) in doc.terminals_of(c) {
                 ops.push(Op::RemoveTerminal { id: t, terminal: term.clone() });
             }
             // Brief 045 (design 045 §2.2, FP1): a rack's cards leave it in the same transaction.
             let (released_ops, released) = if crate::plc::rack::is_rack(doc, c) { crate::plc::rack::release_cards(doc, c) } else { (Vec::new(), 0) };
             ops.extend(released_ops);
-            ops.push(Op::DeleteComponent { id: c, component: component.clone() });
+            ops.push(Op::DeleteDevice { id: c, device: component.clone() });
             let message = (released > 0).then(|| format!("Deleted {}; {}", devices::tag_words(doc, c), crate::plc::rack::released_words(released)));
             Ok(Deleted { ops, released, kept: None, message })
         }
@@ -176,7 +176,7 @@ pub fn plan_delete(doc: &Document, doomed: Doomed) -> Result<Deleted, CmdError> 
 /// A component made of drawn geometry ([`plan_convert`]).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Converted {
-    pub component: ComponentId,
+    pub component: DeviceId,
     pub representation: RepresentationId,
     pub ops: Vec<Op>,
 }
@@ -184,13 +184,13 @@ pub struct Converted {
 /// `convertcomponent` (experiment 004): plain geometry `items` on `page` become one new component,
 /// drawn.
 pub fn plan_convert(ids: &mut IdAllocator, page: PageId, items: Vec<ItemId>) -> Converted {
-    let (component, representation): (ComponentId, RepresentationId) = (ids.fresh(), ids.fresh());
+    let (component, representation): (DeviceId, RepresentationId) = (ids.fresh(), ids.fresh());
     let ops = vec![
-        Op::CreateComponent { id: component, component: Component::default() },
+        Op::CreateDevice { id: component, device: Device::default() },
         Op::LinkRepresentation {
             id: representation,
             rep: Representation {
-                subject: Subject::Component(component),
+                subject: Subject::Device(component),
                 page,
                 form: Form::Drawn,
                 role: "drawn".into(),
@@ -214,7 +214,7 @@ pub fn plan_addterminal(
     doc: &Document, ids: &mut IdAllocator, item: ItemId, at: Pt, label: Option<String>,
 ) -> Result<(TerminalId, Vec<Op>), CmdError> {
     let (rid, r) = doc.representation_of_item(item).ok_or(CmdError::refused(NOT_A_COMPONENTS_ITEM))?;
-    let Subject::Component(c) = r.subject else { return Err(CmdError::refused(NOT_A_COMPONENTS_ITEM)) };
+    let Subject::Device(c) = r.subject else { return Err(CmdError::refused(NOT_A_COMPONENTS_ITEM)) };
     if r.form != Form::Drawn {
         return Err(CmdError::refused("connection points of placed symbols come from their definition"));
     }

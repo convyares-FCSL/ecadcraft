@@ -21,6 +21,7 @@ pub mod page_type;
 pub mod place;
 pub mod plc;
 pub mod prop;
+pub mod props;
 pub mod rating;
 pub mod reference;
 pub mod sheet;

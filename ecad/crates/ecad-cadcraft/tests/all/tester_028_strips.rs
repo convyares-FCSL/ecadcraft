@@ -7,7 +7,7 @@
 
 use ecad_cadcraft::Persistence;
 use ecad_cadcraft::outputs::{Group, Outputs};
-use ecad_model::{CableId, ComponentId, ConductorId, Document, PageId, TerminalId, tag};
+use ecad_model::{CableId, DeviceId, Document, PageId, TerminalId, WireId, tag};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -16,8 +16,8 @@ use crate::common::{place, reopen, tmp_dir};
 struct T {
     h: H,
     page: PageId,
-    k2: ComponentId,
-    wires: [ConductorId; 4],
+    k2: DeviceId,
+    wires: [WireId; 4],
     cable: CableId,
 }
 
@@ -27,8 +27,8 @@ fn fixture(seed: u64) -> T {
     let page = h.first_page();
     h.run("locationbox", json!({"location": "+CP1", "corners": [[20, 150], [400, 280]]})).unwrap();
     h.run("locationbox", json!({"location": "+FIELD", "corners": [[20, 20], [400, 140]]})).unwrap();
-    let k1: ComponentId = id(&place(&mut h, "coil", (100.0, 220.0)), "component");
-    let k2: ComponentId = id(&place(&mut h, "coil", (150.0, 220.0)), "component");
+    let k1: DeviceId = id(&place(&mut h, "coil", (100.0, 220.0)), "component");
+    let k2: DeviceId = id(&place(&mut h, "coil", (150.0, 220.0)), "component");
     h.run("place", json!({"symbol": "no", "at": [200, 220], "device": k1.hex()})).unwrap();
     h.run("place", json!({"symbol": "no", "at": [250, 220], "device": k2.hex()})).unwrap();
     place(&mut h, "motor3", (110.0, 50.0));
@@ -42,7 +42,7 @@ fn fixture(seed: u64) -> T {
     let mut wires = Vec::new();
     for r in &routes {
         let v = h.run("wire", json!({"points": pts(r)})).unwrap();
-        wires.push(id::<ConductorId>(&v, "conductor"));
+        wires.push(id::<WireId>(&v, "conductor"));
     }
     let v = h.run("cableslash", json!({"from": [90, 120], "to": [260, 120], "tag": "-W01"})).unwrap();
     let cable: CableId = id(&v, "cable");
@@ -61,7 +61,7 @@ fn same_as_built(h: &mut H) {
     assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location));
 }
 
-fn fence(h: &mut H, y: f64) -> (ComponentId, Vec<TerminalId>) {
+fn fence(h: &mut H, y: f64) -> (DeviceId, Vec<TerminalId>) {
     let v = h.run("terminals", json!({"from": [90, y], "to": [260, y]})).unwrap();
     let terms = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
     (id(&v, "strip"), terms)
@@ -85,7 +85,7 @@ fn reads(h: &mut H, cable: CableId) -> Value {
 }
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.components, &d.terminals, &d.conductors, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items)
+    (&d.devices, &d.terminals, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items)
 }
 
 /// AC 10 (design K): every new property (`terminals`, `cores`, `part_number.pe`, `maker.pe`, page
@@ -156,7 +156,7 @@ fn undo_and_redo_of_every_strip_write_are_exact() {
     t.h.cfg(|p| {
         p.outputs();
     });
-    let x1: ComponentId = id(&place(&mut t.h, "terminal", (100.0, 170.0)), "component");
+    let x1: DeviceId = id(&place(&mut t.h, "terminal", (100.0, 170.0)), "component");
     let steps: Vec<(&str, Value)> = vec![
         ("terminals", json!({"strip": x1.hex(), "from": [140, 170], "to": [260, 170]})),
         ("terminals", json!({"strip": x1.hex(), "pe": true, "from": [90, 190], "to": [160, 190]})),
@@ -227,8 +227,8 @@ fn terminal_renumber_with_fixed_and_provisional_strip_tags() {
     assert_eq!(labels(&mut t.h, &a), ["21", "22", "23", "24"]);
     assert_eq!(labels(&mut t.h, &b), ["21", "22", "23", "24"]);
     let d = t.h.doc();
-    assert_eq!(d.components[&x1].properties.get("tag").map(String::as_str), Some("-X01"));
-    assert_eq!(d.components[&x1].properties.get("tag_fixed").map(String::as_str), Some("yes"));
+    assert_eq!(d.devices[&x1].properties.get("tag").map(String::as_str), Some("-X01"));
+    assert_eq!(d.devices[&x1].properties.get("tag_fixed").map(String::as_str), Some("yes"));
     // One strip by selection; the other keeps its labels.
     t.h.run("renumber", json!({"kind": "terminals", "scope": "selection", "strips": [x2.hex()]})).unwrap();
     assert_eq!(labels(&mut t.h, &a), ["21", "22", "23", "24"]);
@@ -258,15 +258,15 @@ fn provisional_strip_tags_from_place_terminals_and_finalise() {
         t.h.run("wire", json!({"points": pts(&[(x, 270.0), (x, 160.0)])})).unwrap();
     }
     let v = t.h.run("terminals", json!({"from": [310, 200], "to": [350, 200]})).unwrap();
-    let x3: ComponentId = id(&v, "strip");
+    let x3: DeviceId = id(&v, "strip");
     let c: Vec<TerminalId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
-    let tag3 = t.h.doc().components[&x3].properties.get("tag").cloned().unwrap_or_default();
+    let tag3 = t.h.doc().devices[&x3].properties.get("tag").cloned().unwrap_or_default();
     assert!(tag::is_provisional(&tag3), "a strip placed in provisional mode: {tag3}");
     t.h.run("renumber", json!({"kind": "terminals", "scope": "selection", "strips": [c[0].hex()], "start": 5})).unwrap();
     assert_eq!(labels(&mut t.h, &c), ["5", "6", "7"]);
     t.h.run("finalise", json!({})).unwrap();
     assert_eq!(labels(&mut t.h, &c), ["5", "6", "7"], "Finalise does not touch terminal labels");
-    let tag3 = t.h.doc().components[&x3].properties.get("tag").cloned().unwrap_or_default();
+    let tag3 = t.h.doc().devices[&x3].properties.get("tag").cloned().unwrap_or_default();
     assert!(!tag::is_provisional(&tag3), "{tag3}");
     // Undo the finalise and the renumber, redo both.
     t.h.cmdline("u");
@@ -287,10 +287,7 @@ fn a_swap_by_renumber_keeps_wires_and_cores() {
     let (x1, terms) = fence(&mut t.h, 170.0);
     let doc = t.h.doc();
     let item_of = |d: &Document, term: TerminalId| {
-        d.representations_of(ecad_model::Subject::Component(x1))
-            .find(|(_, r)| r.connection_points.contains_key(&term))
-            .map(|(_, r)| r.items[0])
-            .unwrap()
+        d.representations_of(ecad_model::Subject::Device(x1)).find(|(_, r)| r.connection_points.contains_key(&term)).map(|(_, r)| r.items[0]).unwrap()
     };
     let (i3, i4) = (item_of(&doc, terms[2]), item_of(&doc, terms[3]));
     let (h3, h4) = (t.h.handle_of(t.page, i3), t.h.handle_of(t.page, i4));
@@ -324,8 +321,8 @@ fn generated_pages_and_strips_follow_only_related_edits() {
         t.h.run("wire", json!({"points": pts(&[(x, 270.0), (x, 160.0)])})).unwrap();
     }
     let v = t.h.run("terminals", json!({"from": [310, 200], "to": [340, 200]})).unwrap();
-    let x2: ComponentId = id(&v, "strip");
-    let far: ComponentId = id(&place(&mut t.h, "coil", (370.0, 260.0)), "component");
+    let x2: DeviceId = id(&v, "strip");
+    let far: DeviceId = id(&place(&mut t.h, "coil", (370.0, 260.0)), "component");
     t.h.cfg(|p| {
         p.outputs();
     });
@@ -365,7 +362,7 @@ fn generated_pages_and_strips_follow_only_related_edits() {
 #[test]
 fn the_cable_schedule_page_follows_only_cable_edits() {
     let mut t = fixture(0x7028_0007);
-    let far: ComponentId = id(&place(&mut t.h, "coil", (370.0, 260.0)), "component");
+    let far: DeviceId = id(&place(&mut t.h, "coil", (370.0, 260.0)), "component");
     t.h.cfg(|p| {
         p.outputs();
     });
@@ -392,17 +389,17 @@ fn the_cable_schedule_page_follows_only_cable_edits() {
 fn an_old_project_opens_unchanged_and_shows_its_strips() {
     let dir = tmp_dir("old");
     let mut h = H::new(0x7028_0008);
-    let x1: ComponentId = id(&place(&mut h, "terminal", (300.0, 250.0)), "component");
+    let x1: DeviceId = id(&place(&mut h, "terminal", (300.0, 250.0)), "component");
     h.run("place", json!({"symbol": "terminal", "at": [310, 250], "device": x1.hex()})).unwrap();
-    let k: ComponentId = id(&place(&mut h, "coil", (300.0, 200.0)), "component");
+    let k: DeviceId = id(&place(&mut h, "coil", (300.0, 200.0)), "component");
     let _ = k;
     h.cfg(|p| p.persistence = Persistence::File);
     let path = dir.join("old 018.ecad").display().to_string();
     h.run("saveas", json!({"path": path})).unwrap();
     let d = h.doc();
     for key in ["cores", "terminals", "part_number.pe", "maker.pe", "strip", "generated"] {
-        assert!(d.components.values().all(|c| !c.properties.contains_key(key)), "an 018-style project stores no {key}");
-        assert!(d.pages.values().all(|p| !p.properties.contains_key(key)), "an 018-style project stores no page {key}");
+        assert!(d.devices.values().all(|c| !c.properties.contains_key(key)), "an 018-style project stores no {key}");
+        assert!(d.pages.values().all(|p| !p.display.contains_key(key)), "an 018-style project stores no page {key}");
     }
     let bytes = std::fs::read(&path).unwrap();
     let head = h.head();

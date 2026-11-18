@@ -21,8 +21,8 @@ use cadcraft_engine::doc::{Drawing, Entity, Handle};
 use cadcraft_engine::ext::{Provenance, Source};
 use ecad_model::derive::{route_on_page, terminal_position, terminal_positions};
 use ecad_model::{
-    Component, ComponentId, Conductor, ConductorId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Pt, Representation,
-    RepresentationId, Subject, Terminal, TerminalId,
+    Device, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Pt, Representation, RepresentationId, Subject,
+    Terminal, TerminalId, Wire, WireId,
 };
 
 use crate::convert::{ECAD_PREFIX, MARKER_LAYER, item_from, marker_entity, marker_position};
@@ -127,31 +127,31 @@ pub(crate) fn terminal_at(doc: &Document, page: PageId, at: Pt, tol: f64) -> Opt
 /// - `attached`: conductors whose ends the ops attach or detach.
 ///
 /// Op kinds a translation does not produce make the scope the whole document, which is exactly
-/// the earlier behaviour: `AddPage`, `RemovePage`, `AddLayer`, `RemoveLayer`, `DeleteComponent`,
-/// `RemoveTerminal`, `DeleteConductor`, the cable ops, `SetProperty`, `RemoveDefinition`,
-/// `SetProjectSettings`, `NameVersion`, `UnnameVersion`, and `CreateComponent`, `AddTerminal` or
+/// the earlier behaviour: `AddPage`, `RemovePage`, `AddLayer`, `RemoveLayer`, `DeleteDevice`,
+/// `RemoveTerminal`, `DeleteWire`, the cable ops, `SetProperty`, `RemoveDefinition`,
+/// `SetProjectSettings`, `NameVersion`, `UnnameVersion`, and `CreateDevice`, `AddTerminal` or
 /// `EmbedDefinition` of an ID the document already has.
 #[derive(Debug, Default)]
 struct Scope {
     terminals: BTreeSet<TerminalId>,
-    routes: BTreeSet<ConductorId>,
-    attached: BTreeSet<ConductorId>,
+    routes: BTreeSet<WireId>,
+    attached: BTreeSet<WireId>,
 }
 
 impl Scope {
     fn of(doc: &Document, page: PageId, ops: &[Op]) -> Scope {
         let mut s = Scope::default();
-        let mut components: BTreeSet<ComponentId> = BTreeSet::new();
+        let mut devices: BTreeSet<DeviceId> = BTreeSet::new();
         let mut note = |r: &Representation, s: &mut Scope| {
             if r.page != page {
                 return;
             }
             match r.subject {
-                Subject::Component(c) => {
-                    components.insert(c);
+                Subject::Device(c) => {
+                    devices.insert(c);
                     s.terminals.extend(r.connection_points.keys().copied());
                 }
-                Subject::Conductor(c) => {
+                Subject::Wire(c) => {
                     s.routes.insert(c);
                 }
                 Subject::Cable(_) => {}
@@ -171,27 +171,27 @@ impl Scope {
                     note(before, &mut s);
                     note(after, &mut s);
                 }
-                Op::CreateConductor { id, .. } => {
+                Op::CreateWire { id, .. } => {
                     s.routes.insert(*id);
                 }
                 Op::AttachEnd { conductor, .. } => {
                     s.attached.insert(*conductor);
                 }
                 // New objects; a definition the document lacks cannot be shown by anything in it.
-                Op::CreateComponent { id, .. } if !doc.components.contains_key(id) => {}
+                Op::CreateDevice { id, .. } if !doc.devices.contains_key(id) => {}
                 Op::AddTerminal { id, .. } if !doc.terminals.contains_key(id) => {}
                 Op::EmbedDefinition { id, .. } if !doc.definitions.contains_key(id) => {}
                 _ => return Scope::everything(doc),
             }
         }
-        for c in components {
+        for c in devices {
             s.terminals.extend(doc.terminals_of(c).map(|(t, _)| t));
         }
         s
     }
 
     fn everything(doc: &Document) -> Scope {
-        Scope { terminals: doc.terminals.keys().copied().collect(), routes: doc.conductors.keys().copied().collect(), attached: BTreeSet::new() }
+        Scope { terminals: doc.terminals.keys().copied().collect(), routes: doc.wires.keys().copied().collect(), attached: BTreeSet::new() }
     }
 }
 
@@ -200,7 +200,7 @@ impl Scope {
 struct Earlier {
     positions: BTreeMap<TerminalId, Option<Pt>>,
     /// Route item and its path ends, `None` when the conductor has no route on the page.
-    routes: BTreeMap<ConductorId, Option<(ItemId, Option<(Pt, Pt)>)>>,
+    routes: BTreeMap<WireId, Option<(ItemId, Option<(Pt, Pt)>)>>,
 }
 
 pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
@@ -260,7 +260,7 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     // round a labelled cable moves, copies or erases the rest, and the parts are drawn again from
     // the document. An edit of nothing but such parts is refused (brief 009 review S2).
     let prov: HashMap<Handle, (Source, u32)> = cx.provenance.iter().map(|p| (p.new, (p.source, p.batch))).collect();
-    // Conductor labels (brief 022) are left out the same way: drawn again from the document.
+    // Wire labels (brief 022) are left out the same way: drawn again from the document.
     // Device cross-references (brief 025) too.
     let drawn = |map: &HandleMap, h: Handle| {
         matches!(map.get(h), Some(Mapped::Fan(k)) if !map.is_fan(k)) || matches!(map.get(h), Some(Mapped::Label(_) | Mapped::Xref(_)))
@@ -334,7 +334,7 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     }
     // Reference texts erased (brief 010): each erases its reference, after the loop.
     let mut erased_refs: Vec<RepresentationId> = Vec::new();
-    let mut erased_links: BTreeSet<(ecad_model::ComponentId, u32)> = BTreeSet::new();
+    let mut erased_links: BTreeSet<(ecad_model::DeviceId, u32)> = BTreeSet::new();
     for (h, _) in &removed {
         match cx.map.get(*h) {
             Some(Mapped::Item(id)) => {
@@ -376,14 +376,14 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     // Erasing a reference's text erases the reference (design 010 §9): its point goes too, unless
     // it was erased with it, and the emptied representation is removed below.
     for (c, n) in erased_links {
-        let props = cx.ledger.document().components.get(&c).map(|x| x.properties.clone()).unwrap_or_default();
+        let props = cx.ledger.document().devices.get(&c).map(|x| x.properties.clone()).unwrap_or_default();
         let key = ecad_model::links::key(n);
         if let Some(v) = props.get(&key) {
             t.notes.push(format!("Deleted link {} {v}.", crate::devices::tag_words(cx.ledger.document(), c)));
         }
         for k in std::iter::once(key.clone()).chain(crate::accessories::FIELDS.iter().map(|f| format!("{key}.{f}"))) {
             if let Some(before) = props.get(&k).cloned() {
-                t.ops.push(Op::SetProperty { object: ecad_model::ObjectRef::Component(c), key: k, before: Some(before), after: None });
+                t.ops.push(Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key: k, before: Some(before), after: None });
             }
         }
     }
@@ -452,7 +452,7 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     // are dropped.
     let added: Vec<Handle> = added_handles.into_iter().filter(|h| !skipped.contains(h)).collect();
     let mut batches: BTreeMap<u32, Vec<(Handle, Source)>> = BTreeMap::new();
-    let mut fresh_conductor_ends: Vec<(ConductorId, End)> = Vec::new();
+    let mut fresh_conductor_ends: Vec<(WireId, End)> = Vec::new();
     // Removing a meaningful object while creating new ones without provenance is a replacement
     // (BREAK, JOIN, EXPLODE, TRIM that re-creates…): what the new objects mean is undecided (L1).
     // Changing one in place while creating new ones is the same split (BREAK and TRIM keep the
@@ -518,8 +518,8 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
 
 /// One copy operation's new entities (§11.1).
 fn copy_batch(
-    cx: &mut Ctx<'_>, after: &HashMap<Handle, &Arc<Entity>>, batch: &[(Handle, Source)], t: &mut Translation,
-    fresh_ends: &mut Vec<(ConductorId, End)>, counts: &mut [usize; 4],
+    cx: &mut Ctx<'_>, after: &HashMap<Handle, &Arc<Entity>>, batch: &[(Handle, Source)], t: &mut Translation, fresh_ends: &mut Vec<(WireId, End)>,
+    counts: &mut [usize; 4],
 ) -> Result<(), String> {
     // Resolve sources against the live document or the clipboard snapshot.
     let mut src_doc: Option<&Document> = None;
@@ -552,7 +552,7 @@ fn copy_batch(
 
     // Whole component representations: independent copies.
     for (rid, r) in sdoc.representations.iter().filter(|(_, r)| r.page == cx.page) {
-        let Subject::Component(src_comp) = r.subject else { continue };
+        let Subject::Device(src_comp) = r.subject else { continue };
         let item_handles: Vec<Handle> = r.items.iter().filter_map(|i| smap.item(*i)).collect();
         let marker_handles: Vec<(TerminalId, Handle)> =
             r.connection_points.keys().filter_map(|tm| smap.marker(*rid, *tm).map(|h| (*tm, h))).collect();
@@ -563,14 +563,14 @@ fn copy_batch(
         if !all_copied || item_handles.is_empty() {
             continue;
         }
-        let comp = sdoc.components.get(&src_comp).cloned().ok_or("source component missing")?;
+        let comp = sdoc.devices.get(&src_comp).cloned().ok_or("source component missing")?;
         if let Some(def) = comp.definition
             && !cx.ledger.document().definitions.contains_key(&def)
         {
             let d = sdoc.definitions.get(&def).cloned().ok_or("source definition missing")?;
             t.ops.push(Op::EmbedDefinition { id: def, definition: d });
         }
-        let new_comp: ComponentId = cx.ids.fresh();
+        let new_comp: DeviceId = cx.ids.fresh();
         // A copied device gets the next tag of its prefix (design 018 §3.3).
         let mut comp = comp;
         if comp.properties.contains_key(ecad_model::tag::TAG_KEY) {
@@ -579,7 +579,7 @@ fn copy_batch(
                 None => comp.properties.remove(ecad_model::tag::TAG_KEY),
             };
         }
-        t.ops.push(Op::CreateComponent { id: new_comp, component: Component { ..comp } });
+        t.ops.push(Op::CreateDevice { id: new_comp, device: Device { ..comp } });
         for (src_t, term) in sdoc.terminals_of(src_comp) {
             let nt: TerminalId = cx.ids.fresh();
             term_map.insert(src_t, nt);
@@ -615,7 +615,7 @@ fn copy_batch(
         }
         // Brief 031 (FP5): the copy keeps its symbol's own text keys, under the new representation.
         for op in t.ops.iter_mut().rev() {
-            if let Op::CreateComponent { id, component } = op
+            if let Op::CreateDevice { id, device: component } = op
                 && *id == new_comp
             {
                 crate::text_style::copy_symbol_keys(&mut component.properties, *rid, new_rep);
@@ -625,7 +625,7 @@ fn copy_batch(
         t.ops.push(Op::LinkRepresentation {
             id: new_rep,
             rep: Representation {
-                subject: Subject::Component(new_comp),
+                subject: Subject::Device(new_comp),
                 page: cx.page,
                 form: r.form,
                 role: r.role.clone(),
@@ -638,14 +638,14 @@ fn copy_batch(
 
     // Whole conductor routes: new conductors; ends follow copied terminals, else are resolved later.
     for (_, r) in sdoc.representations.iter().filter(|(_, r)| r.page == cx.page) {
-        let Subject::Conductor(src_c) = r.subject else { continue };
+        let Subject::Wire(src_c) = r.subject else { continue };
         let handles: Vec<Handle> = r.items.iter().filter_map(|i| smap.item(*i)).collect();
         if handles.is_empty() || handles.len() != r.items.len() || !handles.iter().all(|h| by_source.contains_key(h)) {
             continue;
         }
-        let c = sdoc.conductors.get(&src_c).cloned().ok_or("source conductor missing")?;
-        let new_c: ConductorId = cx.ids.fresh();
-        t.ops.push(Op::CreateConductor { id: new_c, conductor: Conductor { properties: c.properties.clone(), ends: [None, None] } });
+        let c = sdoc.wires.get(&src_c).cloned().ok_or("source conductor missing")?;
+        let new_c: WireId = cx.ids.fresh();
+        t.ops.push(Op::CreateWire { id: new_c, conductor: Wire { ends: [None, None], ..c.clone() } });
         let new_rep: RepresentationId = cx.ids.fresh();
         let mut items = Vec::new();
         for sh in &handles {
@@ -661,7 +661,7 @@ fn copy_batch(
         t.ops.push(Op::LinkRepresentation {
             id: new_rep,
             rep: Representation {
-                subject: Subject::Conductor(new_c),
+                subject: Subject::Wire(new_c),
                 page: cx.page,
                 form: Form::Drawn,
                 role: r.role.clone(),
@@ -710,7 +710,7 @@ fn copy_batch(
 /// after the ops, so the policy gives it nothing to do. Positions are worked out per terminal,
 /// only for the scope's terminals; the page's terminal positions, which a moved route end is
 /// matched against (M3), are listed at most once per edit.
-fn movement(cx: &mut Ctx<'_>, t: &mut Translation, fresh_ends: &[(ConductorId, End)]) -> Result<(), String> {
+fn movement(cx: &mut Ctx<'_>, t: &mut Translation, fresh_ends: &[(WireId, End)]) -> Result<(), String> {
     let (page, tol) = (cx.page, cx.tol);
     // Before the ops: what they could move, and where it is now.
     let doc = cx.ledger.document();
@@ -755,9 +755,9 @@ fn movement(cx: &mut Ctx<'_>, t: &mut Translation, fresh_ends: &[(ConductorId, E
 type Moves = (BTreeMap<ItemId, (Item, Item)>, Vec<Op>, Vec<String>);
 
 /// The movement policy on the proposed document, for the conductors `scope` names.
-fn moved(proposed: &Document, page: PageId, tol: f64, scope: &Scope, earlier: &Earlier, fresh_ends: &[(ConductorId, End)]) -> Moves {
+fn moved(proposed: &Document, page: PageId, tol: f64, scope: &Scope, earlier: &Earlier, fresh_ends: &[(WireId, End)]) -> Moves {
     let eps = 1e-9;
-    let mut candidates: BTreeSet<ConductorId> = scope.routes.union(&scope.attached).copied().collect();
+    let mut candidates: BTreeSet<WireId> = scope.routes.union(&scope.attached).copied().collect();
     candidates.extend(fresh_ends.iter().map(|(c, _)| *c));
     for term in &scope.terminals {
         candidates.extend(proposed.ends_at(*term).into_iter().map(|(c, _)| c));
@@ -767,7 +767,7 @@ fn moved(proposed: &Document, page: PageId, tol: f64, scope: &Scope, earlier: &E
     let mut attach: Vec<Op> = Vec::new();
     let mut notes: Vec<String> = Vec::new();
     for cid in &candidates {
-        let Some(c) = proposed.conductors.get(cid) else { continue };
+        let Some(c) = proposed.wires.get(cid) else { continue };
         let Some((route_id, prim)) = route_on_page(proposed, *cid, page) else { continue };
         let Some((new_a, new_b)) = prim.path_ends() else { continue };
         // A conductor outside the scope's routes kept its route item and path.

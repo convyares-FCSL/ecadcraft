@@ -20,7 +20,7 @@ use ecad_cadcraft::text_style::{self, TextKind};
 use ecad_cadcraft::{Persistence, printbook};
 use ecad_drawing_style::sheet::PAPER;
 use ecad_model::Word;
-use ecad_model::{Author, ComponentId, ObjectRef, Op, PageId, Transaction};
+use ecad_model::{Author, DeviceId, ObjectRef, Op, PageId, Transaction};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -161,11 +161,11 @@ pub(crate) fn texts_on(h: &mut H, page: PageId, text: &str) -> Vec<std::sync::Ar
     h.pv(|p, pg| pg.entities_of(p, page)).into_iter().filter(|e| matches!(&e.kind, EntityKind::Text(t) if t.value == text)).collect()
 }
 
-pub(crate) fn tag(h: &mut H, c: ComponentId) -> String {
+pub(crate) fn tag(h: &mut H, c: DeviceId) -> String {
     ecad_cadcraft::devices::tag_words(&h.doc(), c)
 }
 
-pub(crate) fn coil(h: &mut H, x: f64) -> ComponentId {
+pub(crate) fn coil(h: &mut H, x: f64) -> DeviceId {
     id(&h.run("place", json!({"symbol": "coil", "at": [x, 100]})).unwrap(), "component")
 }
 
@@ -504,8 +504,8 @@ fn res_field_and_choice_resolution_order() {
         own_id(&h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "Mid", "copy_of": "tag", "fields": {"height": 4.5}})).unwrap());
     let small =
         own_id(&h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "Small", "copy_of": "tag", "fields": {"height": 1.5}})).unwrap());
-    let at = |c: ComponentId| Scope { page: Some(page), component: Some(c), ..Scope::project() };
-    let height = |h: &mut H, c: ComponentId| text_style::text_style_at(&h.doc(), TextKind::Tag, at(c)).height;
+    let at = |c: DeviceId| Scope { page: Some(page), component: Some(c), ..Scope::project() };
+    let height = |h: &mut H, c: DeviceId| text_style::text_style_at(&h.doc(), TextKind::Tag, at(c)).height;
     let e = defaults::find("text.tag.style").unwrap();
     h.run("setdefault", json!({"key": e.key, "level": "standard", "value": big})).unwrap();
     assert_eq!((height(&mut h, k1), defaults::resolve(&h.doc(), e, at(k1)).from), (6.0, Source::Standard));
@@ -570,13 +570,13 @@ fn ids_a_dangling_reference_falls_through_and_is_reported() {
     let mut h = H::new(0x50a_0205);
     let page = h.first_page();
     let k = coil(&mut h, 100.0);
-    let b: ComponentId = id(&h.run("locationbox", json!({"location": "+CP1", "corners": [[80, 80], [140, 140]]})).unwrap(), "component");
+    let b: DeviceId = id(&h.run("locationbox", json!({"location": "+CP1", "corners": [[80, 80], [140, 140]]})).unwrap(), "component");
     let ghost = format!("#{}", "a".repeat(32));
     inject(
         &mut h,
         vec![
-            Op::SetProperty { object: ObjectRef::Component(k), key: "text.tag.style".into(), before: None, after: Some(ghost.clone()) },
-            Op::SetProperty { object: ObjectRef::Component(b), key: "location.style".into(), before: None, after: Some(ghost.clone()) },
+            Op::SetProperty { object: ObjectRef::Device(k), key: "text.tag.style".into(), before: None, after: Some(ghost.clone()) },
+            Op::SetProperty { object: ObjectRef::Device(b), key: "location.style".into(), before: None, after: Some(ghost.clone()) },
             Op::SetProperty { object: ObjectRef::Page(page), key: "print.frame.style".into(), before: None, after: Some(ghost.clone()) },
         ],
     );
@@ -686,7 +686,7 @@ fn a04_own_style_object_choice_and_delete_with_a_replacement() {
     assert_eq!(field_text(&r, "weight"), "bold", "copy_of copies every field of tag");
     let (_, tx) = one_tx(&mut h, "setdefault", json!({"key": "text.tag.style", "level": "object", "component": k1.hex(), "value": "Tag large"}));
     assert!(
-        matches!(tx.ops.as_slice(), [Op::SetProperty { object: ObjectRef::Component(c), key, after: Some(a), .. }] if *c == k1 && key == "text.tag.style" && *a == large),
+        matches!(tx.ops.as_slice(), [Op::SetProperty { object: ObjectRef::Device(c), key, after: Some(a), .. }] if *c == k1 && key == "text.tag.style" && *a == large),
         "{:?}",
         tx.ops
     );
@@ -714,7 +714,7 @@ fn a04_own_style_object_choice_and_delete_with_a_replacement() {
     let names = op_names(&tx);
     assert!(names.contains(&"SetStyle") && names.contains(&"SetProperty"), "{names:?}");
     let d = h.doc();
-    assert_eq!(d.components[&k1].properties.get("text.tag.style").map(String::as_str), Some("tag"), "the user moved to the replacement");
+    assert_eq!(d.devices[&k1].properties.get("text.tag.style").map(String::as_str), Some("tag"), "the user moved to the replacement");
     assert!(near(text_style::text_style_at(&d, TextKind::Tag, at(k1)).height, 2.5), "K1 is back to normal");
     assert!(styles(&mut h, "text").iter().all(|r| s(&r["id"]) != large));
     undo(&mut h);
@@ -734,7 +734,7 @@ fn ids_rename_keeps_the_id_and_the_users() {
     assert_eq!(op_names(&tx), ["SetStyle"], "a rename touches no user");
     let r = style_row(&mut h, "text", &large);
     assert_eq!(s(&r["name"]), "Tag huge");
-    assert_eq!(h.doc().components[&k].properties.get("text.tag.style"), Some(&large));
+    assert_eq!(h.doc().devices[&k].properties.get("text.tag.style"), Some(&large));
     // Built-in IDs are words; an own style's ID is the same after save and reopen.
     let dir = tmp_dir("ids");
     let mut h = save_and_reopen(h, &dir, "ids.ecad", 0x50a_0403);
@@ -756,10 +756,10 @@ fn a05_promote_a_style_and_a_value() {
     h.run("setdefault", json!({"key": "text.tag.style", "level": "object", "component": k.hex(), "value": large})).unwrap();
     refused(&mut h, "promote", json!({"catalogue": "text", "id": large}));
     h.run("standard", json!({"new": "House"})).unwrap();
-    let props = h.doc().components[&k].properties.clone();
+    let props = h.doc().devices[&k].properties.clone();
     let (_, tx) = one_tx(&mut h, "promote", json!({"catalogue": "text", "id": large}));
     assert_eq!(op_names(&tx), ["SetStyle", "SetStyle"], "project Some→None, then standard None→Some");
-    assert_eq!(h.doc().components[&k].properties, props, "no reference changes");
+    assert_eq!(h.doc().devices[&k].properties, props, "no reference changes");
     let r = style_row(&mut h, "text", &large);
     assert_eq!(s(&r["layer"]), "standard");
     assert!(near(field_num(&r, "height"), 5.0) && field(&r, "height").1 == "standard");
@@ -854,7 +854,7 @@ fn a06_back_to_iec_is_one_transaction_and_undo_restores_it() {
     assert!(v.to_string().contains('1') && v.to_string().contains('2'), "the result says how many values and styles went: {v}");
     let d = h.doc();
     assert!(d.standard.is_none());
-    assert_eq!(d.components[&k].properties.get("text.tag.style").map(String::as_str), Some("tag"));
+    assert_eq!(d.devices[&k].properties.get("text.tag.style").map(String::as_str), Some("tag"));
     assert_eq!(s(&h.run("standard", json!({})).unwrap()["name"]), "IEC (built in)");
     undo(&mut h);
     assert!(h.doc() == before, "undo restores the standard, its values, its records and the user");
@@ -928,7 +928,7 @@ fn a07_box_style_changes_every_box_and_a_page_frame_style_one_page() {
 
 /// A session exercising every new op: standard new/rename, Standard-level values, standard and
 /// project records (built-in overrides and own styles), object/page choices, delete, promote.
-fn exercised(seed: u64) -> (H, ComponentId) {
+fn exercised(seed: u64) -> (H, DeviceId) {
     let mut h = with_standard(seed);
     let page = h.first_page();
     let k = coil(&mut h, 100.0);
@@ -1060,7 +1060,7 @@ fn a08_a_hostile_style_file_opens_draws_and_reports() {
     ops.extend(make(format!("#{:032x}", 0xfeed_0002u64), "text", "N".repeat(10_000), json!({"height": "1e308"})));
     ops.extend(make(format!("#{:032x}", 0xfeed_0004u64), "text", "Unknown field".into(), json!({"height": "3", "wobble": "on"})));
     ops.push(Op::SetProperty {
-        object: ObjectRef::Component(k),
+        object: ObjectRef::Device(k),
         key: "text.tag.style".into(),
         before: None,
         after: Some(format!("#{}", "c".repeat(32))),
@@ -1196,7 +1196,7 @@ fn a04_an_objects_own_text_style_sets_its_font_too() {
         &h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "Tag mono", "copy_of": "tag", "fields": {"font": "Plex Mono"}})).unwrap(),
     );
     h.run("setdefault", json!({"key": "text.tag.style", "level": "object", "component": k1.hex(), "value": mono})).unwrap();
-    let style_of = |h: &mut H, c: ComponentId| {
+    let style_of = |h: &mut H, c: DeviceId| {
         let t = tag(h, c);
         texts_on(h, page, &t).first().map(|e| if let EntityKind::Text(x) = &e.kind { x.style.clone() } else { String::new() }).unwrap_or_default()
     };
@@ -1216,8 +1216,7 @@ fn a04_an_objects_own_text_style_sets_its_font_too() {
 fn a04_a_conductors_own_wire_label_style_draws() {
     let mut h = H::new(0x50a_0413);
     let page = h.first_page();
-    let w: ecad_model::ConductorId =
-        id(&h.run("wire", json!({"points": pts(&[(0.0, 50.0), (60.0, 50.0)]), "potential": "24V"})).unwrap(), "conductor");
+    let w: ecad_model::WireId = id(&h.run("wire", json!({"points": pts(&[(0.0, 50.0), (60.0, 50.0)]), "potential": "24V"})).unwrap(), "conductor");
     let big = own_id(
         &h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "Label big", "copy_of": "wire_label", "fields": {"height": 3}})).unwrap(),
     );

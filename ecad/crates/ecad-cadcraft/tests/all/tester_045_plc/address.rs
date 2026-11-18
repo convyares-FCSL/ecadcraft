@@ -6,14 +6,14 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::ComponentId;
+use ecad_model::DeviceId;
 use serde_json::{Value, json};
 
 use super::*;
 
 /// Fixture P with check F's fence on `-A03` and every channel of every card drawn (rest), so each
 /// card's addresses are on a page.
-fn all_drawn(seed: u64) -> (P, BTreeMap<&'static str, ComponentId>) {
+fn all_drawn(seed: u64) -> (P, BTreeMap<&'static str, DeviceId>) {
     let (mut p, c) = with_cards(seed);
     fence_inputs(&mut p, c["-A03"]);
     p.h.run("plcchannels", json!({"card": c["-A03"].hex(), "rest": true})).unwrap();

@@ -4,7 +4,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::{ComponentId, Document, ObjectRef, Op};
+use ecad_model::{DeviceId, Document, ObjectRef, Op};
 
 use crate::continuations::{self as k, CAPTION_KEY};
 use crate::error::CmdError;
@@ -40,7 +40,7 @@ pub struct Contcaption {
 /// # Errors
 /// No arrow named, a caption the rule refuses, or an object that is not a continuation arrow
 /// (named).
-pub fn plan_contcaption(doc: &Document, arrows: &[ComponentId], caption: Option<&str>) -> Result<Contcaption, CmdError> {
+pub fn plan_contcaption(doc: &Document, arrows: &[DeviceId], caption: Option<&str>) -> Result<Contcaption, CmdError> {
     if arrows.is_empty() {
         return Err(CmdError::refused("Name at least one continuation arrow in `continuations`."));
     }
@@ -53,9 +53,9 @@ pub fn plan_contcaption(doc: &Document, arrows: &[ComponentId], caption: Option<
         }
         // Refuses anything that is not a continuation arrow, naming it.
         k::caption_value(doc, *c, caption.as_deref())?;
-        let before = doc.components.get(c).and_then(|x| x.properties.get(CAPTION_KEY)).cloned();
+        let before = doc.devices.get(c).and_then(|x| x.properties.get(CAPTION_KEY)).cloned();
         if before != caption {
-            ops.push(Op::SetProperty { object: ObjectRef::Component(*c), key: CAPTION_KEY.into(), before, after: caption.clone() });
+            ops.push(Op::SetProperty { object: ObjectRef::Device(*c), key: CAPTION_KEY.into(), before, after: caption.clone() });
         }
     }
     let (changed, unchanged) = (ops.len(), seen.len() - ops.len());

@@ -18,7 +18,6 @@
 //! This module only computes; it stores nothing and draws nothing (the drawing is
 //! `ecad-cadcraft`'s).
 
-use crate::keys::PropsExt;
 use serde::{Deserialize, Serialize};
 
 use crate::doc::{Document, LengthUnit};
@@ -270,7 +269,7 @@ pub fn frame_exists(doc: &Document, id: &StyleRef) -> bool {
 
 /// `page`'s page type (design 054 §2.3), when the page exists.
 fn type_of_page(doc: &Document, page: PageId) -> Option<StyleRef> {
-    doc.pages.get(&page).map(|p| page_type_of(doc, &p.properties))
+    doc.pages.get(&page).map(|p| page_type_of(doc, p))
 }
 
 /// Page type `id`'s stored value of `key`: the project's record, else the standard's (within the
@@ -326,16 +325,16 @@ pub fn page_checks(doc: &Document, page: PageId) -> bool {
 
 /// The pages whose type has checks and references off: one pass over the pages.
 pub fn checks_off_pages(doc: &Document) -> std::collections::BTreeSet<PageId> {
-    doc.pages.iter().filter(|(_, p)| !type_checks(doc, &page_type_of(doc, &p.properties))).map(|(id, _)| *id).collect()
+    doc.pages.iter().filter(|(_, p)| !type_checks(doc, &page_type_of(doc, p))).map(|(id, _)| *id).collect()
 }
 
 /// Whether `ops` can change which pages have checks and references off: a page's type or kind, a
 /// page added, a page type record.
 pub fn checks_pages_touched(ops: &[crate::op::Op]) -> bool {
-    use crate::op::{ObjectRef, Op};
+    use crate::op::Op;
     ops.iter().any(|op| match op {
-        Op::SetProperty { object: ObjectRef::Page(_), key, .. } => key == PAGE_TYPE_KEY,
-        Op::AddPage { page, .. } => page.properties.contains_key(PAGE_TYPE_KEY),
+        Op::ModifyPage { before, after, .. } => before.page_type != after.page_type,
+        Op::AddPage { page, .. } => page.page_type.is_some(),
         Op::SetStyle { catalogue, .. } => *catalogue == PAGE_CATALOGUE,
         _ => false,
     })
@@ -362,7 +361,7 @@ pub const TITLE_BLOCK_KEY: &str = "title_block";
 /// it names a frame style that exists. The one frame resolver: `ecad-cadcraft` asks it too.
 pub fn frame_style(doc: &Document, page: PageId) -> StyleRef {
     let pick = |v: Option<&String>| v.and_then(|t| StyleRef::parse(t)).filter(|id| frame_exists(doc, id));
-    pick(doc.pages.get(&page).and_then(|p| p.properties.get(FRAME_STYLE_KEY)))
+    pick(doc.pages.get(&page).and_then(|p| p.display.get(FRAME_STYLE_KEY)))
         .or_else(|| page_type_frame(doc, page).filter(|id| frame_exists(doc, id)))
         .or_else(|| pick(doc.properties.get(FRAME_STYLE_KEY)))
         .or_else(|| pick(doc.standard.as_ref().and_then(|s| s.values.get(FRAME_STYLE_KEY))))
@@ -375,7 +374,7 @@ pub fn frame_style(doc: &Document, page: PageId) -> StyleRef {
 /// built-in, or a frame without one) draws the house block.
 pub fn title_block_style(doc: &Document, page: PageId) -> StyleRef {
     let named = |id: Option<StyleRef>| id.filter(|id| frame_exists(doc, id));
-    named(doc.pages.get(&page).and_then(|p| p.properties.text(crate::keys::TITLE_BLOCK)).and_then(StyleRef::parse))
+    named(doc.pages.get(&page).and_then(|p| p.title_block.clone()))
         .or_else(|| named(page_type_title_block(doc, page)))
         .unwrap_or_else(|| frame_style(doc, page))
 }
@@ -447,45 +446,42 @@ pub fn keep_out(doc: &Document, page: PageId) -> f64 {
 pub fn own_sheet(doc: &Document, page: PageId) -> SheetSpec {
     doc.pages
         .get(&page)
-        .and_then(|p| p.properties.text(crate::keys::SHEET))
-        .and_then(|t| SheetSpec::parse(t).ok())
+        .and_then(|p| p.sheet)
+        .filter(|s| s.check().is_ok())
         .or_else(|| page_type_sheet(doc, page).filter(|s| s.check().is_ok()))
         .unwrap_or_else(|| doc.settings.sheet())
 }
 
 // ---------------------------------------------------------------- page types (brief 054, FP3)
 
-/// The page property naming a page's type (brief 054, FP2): a style ID of catalogue
-/// [`PAGE_CATALOGUE`].
+/// The style-choice key a page's type is indexed under (brief 054, FP2; the field is
+/// [`crate::Page::page_type`]), and the registry entry's key.
 pub const PAGE_TYPE_KEY: &str = "page.type";
 /// The style catalogue of page types (brief 054, FP1).
 pub const PAGE_CATALOGUE: StyleCatalogue = StyleCatalogue::Page;
-/// The page property holding a generated page's kind (brief 024, FP1).
+/// The old page property of a generated page's kind; now [`crate::Page::kind`] (a reserved key).
 pub const GENERATED_KEY: &str = "generated";
 /// The six built-in page types (design 054 §2.2), in table order.
 pub const BUILTIN_PAGE_TYPES: [&str; 7] = ["front", "schematic", "network", "singleline", "panel", "report", "plain"];
-/// The generated kinds of the Front sheet type; every other known kind is a Report's.
-const FRONT_KINDS: [&str; 3] = ["cover", "revisions", "contents"];
-const REPORT_KINDS: [&str; 5] = ["bom-location", "terminals", "cables", "plcrack", "iolist"];
 /// The value a type's `sheet` field holds to take the project's sheet.
 pub const PROJECT_SHEET: &str = "project";
 
-/// The type a page with no (usable) `page.type` has (design 054 §2.3, rules 2 and 3): a front
-/// kind is `front`, any other known generated kind `report`, anything else `schematic`.
-pub fn derived_page_type(generated: Option<&str>) -> &'static str {
-    match generated.map(str::trim) {
-        Some(g) if FRONT_KINDS.contains(&g) => "front",
-        Some(g) if REPORT_KINDS.contains(&g) => "report",
-        _ => "schematic",
+/// The type a page with no (usable) page type has (design 054 §2.3, rules 2 and 3): a front
+/// kind is `front`, any other generated kind `report`, a drawn page `schematic`.
+pub fn derived_page_type(kind: crate::PageKind) -> &'static str {
+    match kind.generated_kind() {
+        Some(g) if g.is_front() => "front",
+        Some(_) => "report",
+        None => "schematic",
     }
 }
 
-/// The page type of a page with these properties (design 054 §2.3): its own `page.type` when that
-/// names a type that exists (a built-in one, or a record in the project or the standard), else
+/// The page type of `page` (design 054 §2.3): its own page type when that names a type that
+/// exists (a built-in one, or a record in the project or the standard), else
 /// [`derived_page_type`]. Reads stored records only.
-pub fn page_type_of(doc: &Document, props: &crate::Properties) -> crate::StyleRef {
-    let own = props.get(PAGE_TYPE_KEY).and_then(|t| crate::StyleRef::parse(t)).filter(|id| page_type_exists(doc, id));
-    own.unwrap_or_else(|| crate::StyleRef::Builtin(derived_page_type(props.text(crate::keys::GENERATED)).to_string()))
+pub fn page_type_of(doc: &Document, page: &crate::Page) -> crate::StyleRef {
+    let own = page.page_type.clone().filter(|id| page_type_exists(doc, id));
+    own.unwrap_or_else(|| crate::StyleRef::Builtin(derived_page_type(page.kind).to_string()))
 }
 
 /// Whether `id` names a page type: a built-in one, or a record (within the bound) in the project

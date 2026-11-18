@@ -212,7 +212,7 @@ pub(crate) fn active(h: &mut Harness<'static, App>) -> Option<PageId> {
 
 fn titles(h: &mut Harness<'static, App>) -> Vec<String> {
     let d = doc(h);
-    d.page_order.iter().map(|p| d.pages[p].title.clone()).collect()
+    d.page_order.iter().map(|p| d.pages[p].title.to_string()).collect()
 }
 
 /// The one page window's title.
@@ -403,10 +403,7 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     assert_eq!(head(&mut h), before + 1, "one transaction");
     let (label, ops) = last_ops(&mut h);
     assert_eq!(label, "Rename page");
-    assert!(
-        matches!(ops.as_slice(), [Op::RemovePage { id: a, .. }, Op::AddPage { id: b, page, index: 2 }] if a == b && *a == spare && page.title == "Spare 2"),
-        "{ops:?}"
-    );
+    assert!(matches!(ops.as_slice(), [Op::ModifyPage { id, after, .. }] if *id == spare && after.title == "Spare 2"), "{ops:?}");
     assert!(h.query_by_label("Page 3: Spare 2").is_some());
     ok(&mut h, "u");
     h.run_steps(2);
@@ -667,7 +664,7 @@ fn five_hundred_pages_cost_only_the_visible_rows() {
     );
     // Scroll to page 250 (cursor there, as End/PgDn would) and show it.
     let p250 = doc(&mut h).page_order[249];
-    let label250 = project_panel::row_label("250", &doc(&mut h).pages[&p250].title);
+    let label250 = project_panel::row_label("250", doc(&mut h).pages[&p250].title.as_str());
     h.state_mut().show_page(p250).unwrap();
     h.run_steps(4);
     assert!(h.query_by_label(&label250).is_some(), "page 250's row is scrolled into view");
@@ -740,7 +737,7 @@ fn a_read_only_project_lists_and_switches_but_writes_nothing() {
 // ---------------------------------------------------------------- Devices tab (after brief 018)
 
 /// A coil `-K01` on page 1 and its NO contact on page 2 (column A), page 1 shown, Devices tab open.
-pub(crate) fn devices_fixture(h: &mut Harness<'static, App>) -> (ecad_model::ComponentId, PageId, PageId) {
+pub(crate) fn devices_fixture(h: &mut Harness<'static, App>) -> (ecad_model::DeviceId, PageId, PageId) {
     h.state_mut().cad.session.viewport_px = (1280.0, 800.0);
     let t = h.state_mut();
     let page1 = {
@@ -762,7 +759,7 @@ pub(crate) fn devices_fixture(h: &mut Harness<'static, App>) -> (ecad_model::Com
     h.state_mut().set_workspace(ecad_app::shell::Workspace::Lists);
     h.state_mut().shell.lists = ecad_app::shell::ListsView::Devices;
     h.run_steps(3);
-    let c = ecad_model::ComponentId(u128::from_str_radix(&coil, 16).unwrap());
+    let c = ecad_model::DeviceId(u128::from_str_radix(&coil, 16).unwrap());
     (c, page1, page2)
 }
 
@@ -794,7 +791,7 @@ fn devices_tab_goes_to_a_symbol_and_filters() {
     let p = t.project().unwrap().clone();
     let mapped = p.read(&mut t.cad.session, |p, _| {
         let doc = p.ledger.document();
-        let rep = doc.representations_of(ecad_model::Subject::Component(coil)).find(|(_, r)| r.page == page1).unwrap().0;
+        let rep = doc.representations_of(ecad_model::Subject::Device(coil)).find(|(_, r)| r.page == page1).unwrap().0;
         ecad_cadcraft::device_list::symbol_target(p, rep).unwrap().2
     });
     assert_eq!(selected, mapped.unwrap(), "exactly the coil's drawing is selected");
@@ -851,7 +848,7 @@ fn devices_tab_edits_a_property_in_one_transaction() {
     // taken; the merge joins the contact to -K01 in one step.
     ok(&mut h, r#"place {"symbol":"no","at":[0,40]}"#);
     h.run_steps(2);
-    let other = doc(&mut h).components.keys().copied().find(|c| *c != coil).unwrap();
+    let other = doc(&mut h).devices.keys().copied().find(|c| *c != coil).unwrap();
     let before = head(&mut h);
     h.state_mut().panel_action(project_panel::Action::SetDeviceProperty { component: other, key: "tag", value: "K01".into(), conflict: None });
     h.run_steps(2);

@@ -236,12 +236,12 @@ fn row_json(doc: &Document, r: &numbering::Row) -> Value {
 /// A row's Desc: the device's description, `Cable, 3 wires`, or the net's potential.
 fn desc(doc: &Document, o: ObjectRef) -> String {
     match o {
-        ObjectRef::Component(c) => devices::description(doc, c),
+        ObjectRef::Device(c) => devices::description(doc, c),
         ObjectRef::Cable(k) => {
             let n = doc.cables.get(&k).map_or(0, |c| c.members.len());
             format!("Cable, {}", plural(n, "wire", "wires"))
         }
-        ObjectRef::Conductor(w) => {
+        ObjectRef::Wire(w) => {
             let conn = doc.connectivity();
             conn.net_of_conductor(w).and_then(|id| conn.net(id)).and_then(|n| ecad_model::wiring::net_potential(doc, n).name).unwrap_or_default()
         }
@@ -472,7 +472,7 @@ pub fn provisional_items(doc: &Document) -> Provisional {
     // nets with no number yet (an Info row), never a reason to stop an issue.
     let on = numbering::provisional_on(doc);
     for (_, n) in doc.connectivity().nets().filter(|_| on) {
-        if n.conductors.is_empty() || !n.numbers.is_empty() {
+        if n.wires.is_empty() || !n.numbers.is_empty() {
             continue;
         }
         let pot = ecad_model::wiring::net_potential(doc, n);

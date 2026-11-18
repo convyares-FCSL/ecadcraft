@@ -385,22 +385,25 @@ fn implicit(doc: &Document, cat: &Catalogue, entry: &defaults::Entry, id: &Style
     let project = chosen(doc, entry, Scope::project());
     let own = |p: &Properties| p.get(entry.key).is_some_and(|v| entry.parse_in(doc, v).is_some());
     match cat.catalogue {
-        ecad_model::StyleCatalogue::Frame => doc.pages.iter().filter(|(_, p)| !own(&p.properties)).filter(|_| project == *id).count(),
+        ecad_model::StyleCatalogue::Frame => doc.pages.iter().filter(|(_, p)| !own(&p.display)).filter(|_| project == *id).count(),
         // Brief 054: pages with no own type whose generated kind (or none) gives `id`.
-        ecad_model::StyleCatalogue::Page => {
-            doc.pages.values().filter(|p| !own(&p.properties)).filter(|p| ecad_model::sheet::page_type_of(doc, &p.properties) == *id).count()
-        }
+        ecad_model::StyleCatalogue::Page => doc
+            .pages
+            .values()
+            .filter(|p| !p.page_type.as_ref().is_some_and(|t| crate::styles::exists(doc, ecad_model::StyleCatalogue::Page, t)))
+            .filter(|p| ecad_model::sheet::page_type_of(doc, p) == *id)
+            .count(),
         ecad_model::StyleCatalogue::Location if project == *id => {
-            doc.components.iter().filter(|(c, x)| crate::locations::is_box(doc, **c) && !own(&x.properties)).count()
+            doc.devices.iter().filter(|(c, x)| crate::locations::is_box(doc, **c) && !own(&x.properties)).count()
         }
         // 050b: conductors whose resolved category is `id` and that have none of their own.
         ecad_model::StyleCatalogue::Wire => {
             let looks = wire::WireLooks::new(doc);
-            doc.conductors.iter().filter(|(_, x)| !own(&x.properties)).filter(|(c, _)| looks.category(doc, **c).0.as_ref() == Some(id)).count()
+            doc.wires.iter().filter(|(_, x)| !own(&x.display)).filter(|(c, _)| looks.category(doc, **c).0.as_ref() == Some(id)).count()
         }
         ecad_model::StyleCatalogue::Text if project == *id => match text::noun(entry.key) {
-            text::Noun::Devices => doc.components.values().filter(|x| !own(&x.properties)).count(),
-            text::Noun::Wires => doc.conductors.values().filter(|x| !own(&x.properties)).count(),
+            text::Noun::Devices => doc.devices.values().filter(|x| !own(&x.properties)).count(),
+            text::Noun::Wires => doc.wires.values().filter(|x| !own(&x.display)).count(),
             text::Noun::Pages => doc.pages.len(),
         },
         _ => 0,
@@ -421,8 +424,8 @@ pub fn explicit_users(doc: &Document, catalogue: StyleCatalogue, id: &StyleRef) 
 /// The pages an object is drawn on.
 fn pages_of(doc: &Document, o: ObjectRef, out: &mut BTreeSet<PageId>) {
     match o {
-        ObjectRef::Component(c) => out.extend(doc.representations_of(Subject::Component(c)).map(|(_, r)| r.page)),
-        ObjectRef::Conductor(c) => out.extend(doc.representations_of(Subject::Conductor(c)).map(|(_, r)| r.page)),
+        ObjectRef::Device(c) => out.extend(doc.representations_of(Subject::Device(c)).map(|(_, r)| r.page)),
+        ObjectRef::Wire(c) => out.extend(doc.representations_of(Subject::Wire(c)).map(|(_, r)| r.page)),
         ObjectRef::Cable(c) => out.extend(doc.representations_of(Subject::Cable(c)).map(|(_, r)| r.page)),
         ObjectRef::Page(p) => {
             out.insert(p);

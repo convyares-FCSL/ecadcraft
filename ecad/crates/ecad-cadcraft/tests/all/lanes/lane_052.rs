@@ -5,7 +5,7 @@ use crate::common::{H, id};
 
 use ecad_cadcraft::reps::{self, RepType, View};
 use ecad_cadcraft::{connectors, locations, xref};
-use ecad_model::{ComponentId, Document, PageId, RepresentationId, Subject};
+use ecad_model::{DeviceId, Document, PageId, RepresentationId, Subject};
 use serde_json::{Value, json};
 
 const SEED: u64 = 52;
@@ -39,12 +39,12 @@ fn roles_are_starter_keys_and_never_main() {
     let p1 = h.first_page();
     h.run("pageprops", json!({"page": p1.hex(), "number": "100"})).unwrap();
     let coil = h.run("place", json!({"symbol": "coil", "at": [75, 180]})).unwrap();
-    let k1: ComponentId = id(&coil, "component");
+    let k1: DeviceId = id(&coil, "component");
     page(&mut h, "105");
     let no = h.run("place", json!({"symbol": "no", "at": [100, 150], "device": k1.hex()})).unwrap();
     // A connector, a pin of it, a power pole set, an MCB.
     let pins = h.run("place", json!({"symbol": "pins", "at": [10, 10]})).unwrap();
-    let x = id::<ComponentId>(&pins, "component");
+    let x = id::<DeviceId>(&pins, "component");
     h.run("place", json!({"symbol": "pinp", "device": x.hex(), "at": [30, 10]})).unwrap();
     h.run("place", json!({"symbol": "power3", "at": [125, 180], "device": k1.hex()})).unwrap();
     h.run("place", json!({"symbol": "mcb1", "at": [250, 150]})).unwrap();
@@ -93,7 +93,7 @@ fn a_coil_placed_after_its_contacts_is_the_head() {
     let p1 = h.first_page();
     h.run("pageprops", json!({"page": p1.hex(), "number": "100"})).unwrap();
     let first = h.run("place", json!({"symbol": "no", "at": [100, 150]})).unwrap();
-    let k: ComponentId = id(&first, "component");
+    let k: DeviceId = id(&first, "component");
     let c2 = h.run("place", json!({"symbol": "nc", "at": [150, 150], "device": k.hex()})).unwrap();
     let c3 = h.run("place", json!({"symbol": "no", "at": [200, 150], "device": k.hex()})).unwrap();
     let p3 = page(&mut h, "103");
@@ -127,13 +127,13 @@ fn a_coil_placed_after_its_contacts_is_the_head() {
 fn renumber_orders_a_device_by_its_head() {
     let mut h = H::new(SEED);
     // Page 1: X's contact at the left, Y's coil to its right. Page 2: X's coil.
-    let x = id::<ComponentId>(&h.run("place", json!({"symbol": "no", "at": [50, 150], "tag": "-K09"})).unwrap(), "component");
-    let y = id::<ComponentId>(&h.run("place", json!({"symbol": "coil", "at": [250, 150], "tag": "-K08"})).unwrap(), "component");
+    let x = id::<DeviceId>(&h.run("place", json!({"symbol": "no", "at": [50, 150], "tag": "-K09"})).unwrap(), "component");
+    let y = id::<DeviceId>(&h.run("place", json!({"symbol": "coil", "at": [250, 150], "tag": "-K08"})).unwrap(), "component");
     page(&mut h, "2");
     h.run("place", json!({"symbol": "coil", "at": [50, 150], "device": x.hex()})).unwrap();
     h.run("renumber", json!({"kind": "devices", "scope": "all", "start": 1})).unwrap();
     let d = h.doc();
-    let tag = |c: ComponentId| d.components[&c].properties.get("tag").cloned().unwrap_or_default();
+    let tag = |c: DeviceId| d.devices[&c].properties.get("tag").cloned().unwrap_or_default();
     assert_eq!(tag(y), "-K01", "Y's coil is on page 1");
     assert_eq!(tag(x), "-K02", "X is numbered by its coil on page 2, not its contact on page 1");
 }
@@ -145,7 +145,7 @@ fn of_two_heads_the_first_in_book_order_is_the_head() {
     let mut h = H::new(SEED);
     let p1 = h.first_page();
     let a = h.run("place", json!({"symbol": "coil", "at": [75, 180]})).unwrap();
-    let k: ComponentId = id(&a, "component");
+    let k: DeviceId = id(&a, "component");
     let no = rep(&h.run("place", json!({"symbol": "no", "at": [150, 150], "device": k.hex()})).unwrap());
     let p2 = page(&mut h, "2");
     let b = h.run("place", json!({"symbol": "coil", "at": [75, 180]})).unwrap();
@@ -153,7 +153,7 @@ fn of_two_heads_the_first_in_book_order_is_the_head() {
     let mut d = h.doc();
     // Give the second coil to device k, as an edited file or a branch merge could.
     if let Some(r) = d.representations.get_mut(&b) {
-        r.subject = Subject::Component(k);
+        r.subject = Subject::Device(k);
     }
     d.rebuild_index();
     assert_eq!(reps::heads(&d, k), vec![a, b]);
@@ -175,7 +175,7 @@ fn a_pin_only_half_has_no_half_member() {
     let mut h = H::new(SEED);
     let p1 = h.first_page();
     let s = h.run("place", json!({"symbol": "pins", "at": [10, 10]})).unwrap();
-    let x: ComponentId = id(&s, "component");
+    let x: DeviceId = id(&s, "component");
     let p2 = page(&mut h, "2");
     let p = h.run("place", json!({"symbol": "pinp", "device": x.hex(), "at": [30, 10]})).unwrap();
     let (s, p) = (rep(&s), rep(&p));
@@ -197,7 +197,7 @@ fn a_stored_main_role_means_nothing() {
     let mut h = H::new(SEED);
     let p1 = h.first_page();
     let first = h.run("place", json!({"symbol": "no", "at": [50, 150]})).unwrap();
-    let k: ComponentId = id(&first, "component");
+    let k: DeviceId = id(&first, "component");
     h.run("setprop", json!({"component": k.hex(), "key": "tag", "value": "-K05"})).unwrap();
     h.run("place", json!({"symbol": "coil", "at": [200, 150], "device": k.hex()})).unwrap();
     h.run("place", json!({"symbol": "coil", "at": [120, 150], "tag": "-K04"})).unwrap();
@@ -224,7 +224,7 @@ fn a_stored_main_role_means_nothing() {
     let high = ecad_model::tag::HighWater::new();
     let plan = |d: &Document| ecad_model::numbering::plan_ranked(d, &req, &high, &|r| reps::numbering_rank(d, r)).unwrap().ops;
     assert_eq!(format!("{:?}", plan(&plain)), format!("{:?}", plan(&edited)));
-    assert_eq!(ecad_model::numbering::rep_anchor(&plain, Subject::Component(k)), ecad_model::numbering::rep_anchor(&edited, Subject::Component(k)));
+    assert_eq!(ecad_model::numbering::rep_anchor(&plain, Subject::Device(k)), ecad_model::numbering::rep_anchor(&edited, Subject::Device(k)));
 }
 
 /// Review of #105, 2: go-to, the head and numbering share one drawing order (book, zone column
@@ -234,23 +234,23 @@ fn a_stored_main_role_means_nothing() {
 fn go_to_and_numbering_share_one_drawing_order() {
     let mut h = H::new(SEED);
     let a = h.run("place", json!({"symbol": "no", "at": [300, 200]})).unwrap();
-    let k: ComponentId = id(&a, "component");
+    let k: DeviceId = id(&a, "component");
     let b = rep(&h.run("place", json!({"symbol": "no", "at": [50, 100], "device": k.hex()})).unwrap());
     let d = h.doc();
     assert_eq!(reps::head(&d, k), None, "two contacts, no head");
     assert_eq!(reps::goto(&d, k, None), Some(b), "B is in the first zone column");
-    let anchor = ecad_model::numbering::rep_anchor(&d, Subject::Component(k)).map(|(p, _)| p);
+    let anchor = ecad_model::numbering::rep_anchor(&d, Subject::Device(k)).map(|(p, _)| p);
     assert_eq!(reps::goto_place(&d, k).map(|(p, _)| p), anchor);
     let mut places = ecad_model::numbering::Places::new(&d);
     assert_eq!(reps::goto_in(&mut places, k, None), Some(b), "a shared Places gives the same answer");
     assert_eq!(reps::goto(&d, k, None), Some(b));
     // Two heads on one page: the head is the one numbering would anchor at.
     let c1 = h.run("place", json!({"symbol": "coil", "at": [300, 200]})).unwrap();
-    let q: ComponentId = id(&c1, "component");
+    let q: DeviceId = id(&c1, "component");
     let c2 = h.run("place", json!({"symbol": "coil", "at": [50, 100]})).unwrap();
     let mut d = h.doc();
     if let Some(r) = d.representations.get_mut(&rep(&c2)) {
-        r.subject = Subject::Component(q);
+        r.subject = Subject::Device(q);
     }
     d.rebuild_index();
     assert_eq!(reps::head(&d, q), Some(rep(&c2)));

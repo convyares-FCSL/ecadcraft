@@ -16,6 +16,15 @@ fn hex(v: &Value, key: &str) -> String {
 }
 
 fn sets(ops: &[Op], key: &str) -> bool {
+    // Design 072 §5.3: a revision row's field (`rev.<n>.<field>`) is set through `ModifyProject`.
+    if let Some((n, field)) = key.strip_prefix("rev.").and_then(|r| r.split_once('.')) {
+        let n: u32 = n.parse().unwrap_or(0);
+        return ops.iter().any(|o| {
+            matches!(o, Op::ModifyProject { before, after }
+                if ecad_cadcraft::revisions::field_of(after, n, field).is_some()
+                    && ecad_cadcraft::revisions::field_of(before, n, field) != ecad_cadcraft::revisions::field_of(after, n, field))
+        });
+    }
     ops.iter().any(|o| matches!(o, Op::SetProperty { key: k, .. } if k == key))
 }
 
@@ -92,7 +101,7 @@ fn print_and_project_writes_by_the_agent_then_refused_with_writes_off() {
             }
         }
         let d = c.doc();
-        assert!(d.components.values().filter_map(|x| x.properties.get("tag")).all(|t| !t.starts_with('-')), "tags without the dash");
+        assert!(d.devices.values().filter_map(|x| x.properties.get("tag")).all(|t| !t.starts_with('-')), "tags without the dash");
         // `u` takes back the case setting in one step.
         let n = c.log().len();
         c.exec("u", Value::Null);

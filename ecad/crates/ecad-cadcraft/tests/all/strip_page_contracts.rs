@@ -11,7 +11,7 @@ use ecad_cadcraft::frame::Part;
 use ecad_cadcraft::generated;
 use ecad_cadcraft::outputs::Outputs;
 use ecad_cadcraft::strip_page::{self, StripPages};
-use ecad_model::{CableId, ComponentId, PageId, TerminalId};
+use ecad_model::{CableId, DeviceId, PageId, TerminalId};
 use serde_json::{Value, json};
 
 use crate::common::place;
@@ -21,10 +21,10 @@ use crate::common::{H, id, pts};
 struct G {
     h: H,
     schematic: PageId,
-    x1: ComponentId,
+    x1: DeviceId,
     cable: CableId,
     terms: Vec<TerminalId>,
-    m1: ComponentId,
+    m1: DeviceId,
 }
 
 fn fixture(seed: u64) -> G {
@@ -32,16 +32,16 @@ fn fixture(seed: u64) -> G {
     let schematic = h.first_page();
     h.run("locationbox", json!({"location": "+CP1", "corners": [[20, 150], [400, 280]]})).unwrap();
     h.run("locationbox", json!({"location": "+FIELD", "corners": [[20, 20], [400, 140]]})).unwrap();
-    let k1: ComponentId = id(&place(&mut h, "coil", (100.0, 220.0)), "component");
-    let k2: ComponentId = id(&place(&mut h, "coil", (150.0, 220.0)), "component");
+    let k1: DeviceId = id(&place(&mut h, "coil", (100.0, 220.0)), "component");
+    let k2: DeviceId = id(&place(&mut h, "coil", (150.0, 220.0)), "component");
     h.run("place", json!({"symbol": "no", "at": [200, 220], "device": k1.hex()})).unwrap();
     h.run("place", json!({"symbol": "no", "at": [250, 220], "device": k2.hex()})).unwrap();
-    let m1: ComponentId = id(&place(&mut h, "motor3", (110.0, 50.0)), "component");
+    let m1: DeviceId = id(&place(&mut h, "motor3", (110.0, 50.0)), "component");
     h.run("setprop", json!({"component": m1.hex(), "key": "description", "value": "Pump"})).unwrap();
-    let s1: ComponentId = id(&place(&mut h, "pbno", (250.0, 60.0)), "component");
+    let s1: DeviceId = id(&place(&mut h, "pbno", (250.0, 60.0)), "component");
     // Brief 052: the boxes only propose; the devices store the location of the box they are in.
-    h.run("setlocation", json!({"components": [k1.hex(), k2.hex()], "value": "+CP1"})).unwrap();
-    h.run("setlocation", json!({"components": [m1.hex(), s1.hex()], "value": "+FIELD"})).unwrap();
+    h.run("setlocation", json!({"devices": [k1.hex(), k2.hex()], "value": "+CP1"})).unwrap();
+    h.run("setlocation", json!({"devices": [m1.hex(), s1.hex()], "value": "+FIELD"})).unwrap();
     for r in [
         vec![(100.0, 210.0), (100.0, 65.0)],
         vec![(150.0, 210.0), (150.0, 100.0), (110.0, 100.0), (110.0, 65.0)],
@@ -54,7 +54,7 @@ fn fixture(seed: u64) -> G {
     let cable: CableId = id(&v, "cable");
     h.run("setprop", json!({"cable": cable.hex(), "key": "type", "value": "YSLY-JZ 7G1.5"})).unwrap();
     let v = h.run("terminals", json!({"from": [90, 170], "to": [260, 170]})).unwrap();
-    let x1: ComponentId = id(&v, "strip");
+    let x1: DeviceId = id(&v, "strip");
     h.run("setlocation", json!({"component": x1.hex(), "value": "+CP1"})).unwrap();
     let terms: Vec<TerminalId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
     // A PE and a fuse position on wires of their own.
@@ -237,9 +237,9 @@ fn the_shown_strip_page_redraws_only_for_its_strip() {
     let mut g = fixture(0x46_05);
     let page = strip_page(&mut g);
     // An edit no strip shows.
-    let other: ComponentId = id(&g.h.run("newpage", json!({"title": "P2"})).unwrap(), "page");
+    let other: DeviceId = id(&g.h.run("newpage", json!({"title": "P2"})).unwrap(), "page");
     let _ = other;
-    let m2: ComponentId = id(&place(&mut g.h, "coil", (100.0, 200.0)), "component");
+    let m2: DeviceId = id(&place(&mut g.h, "coil", (100.0, 200.0)), "component");
     g.h.activate(page);
     let (n, named) = counted(&mut g.h, "setprop", json!({"component": m2.hex(), "key": "maker", "value": "Acme"}));
     assert_eq!(n, 0, "an edit no strip shows projected the strip page {n} time(s)");
@@ -340,7 +340,7 @@ fn empty_and_hostile_states_draw_without_crashing() {
     let _ = parts(&mut g.h, page);
     // The page's `strip` names a device that is then deleted.
     let mut doc = g.h.doc();
-    doc.components.remove(&g.x1);
+    doc.devices.remove(&g.x1);
     let p = generated::parts_of(&doc, page, None);
     assert!(texts(&p).iter().any(|(t, _)| t == "?"), "a flagged `?`");
 }

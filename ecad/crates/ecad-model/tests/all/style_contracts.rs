@@ -8,7 +8,7 @@ use ecad_model::diff::ops_between;
 use ecad_model::merge::{self, Choice, Inputs, Scope};
 use ecad_model::style::{StandardHeader, StyleLayer, StyleRecord, StyleRef};
 use ecad_model::tag::HighWater;
-use ecad_model::{Author, Component, ComponentId, Document, Ledger, ObjectRef, Op, StandardId};
+use ecad_model::{Author, Device, DeviceId, Document, Ledger, ObjectRef, Op, StandardId};
 
 fn header(name: &str) -> StandardHeader {
     StandardHeader { id: StandardId(0x50), name: name.into(), based_on: "iec".into(), origin: None }
@@ -106,17 +106,17 @@ fn an_unknown_catalogue_word_is_a_read_error() {
 #[test]
 fn style_choices_are_indexed_and_kept() {
     let mut l = Ledger::new(50);
-    let c = ComponentId(9);
-    l.commit(Author::User, "c", vec![Op::CreateComponent { id: c, component: Component::default() }]).unwrap();
+    let c = DeviceId(9);
+    l.commit(Author::User, "c", vec![Op::CreateDevice { id: c, device: Device::default() }]).unwrap();
     let own = StyleRef::Own(7).text();
     let set = |before: Option<&str>, after: Option<&str>| Op::SetProperty {
-        object: ObjectRef::Component(c),
+        object: ObjectRef::Device(c),
         key: "text.tag.style".into(),
         before: before.map(str::to_string),
         after: after.map(str::to_string),
     };
     l.commit(Author::User, "choose", vec![set(None, Some(&own))]).unwrap();
-    assert_eq!(l.document().style_users("text.tag.style", &own).collect::<Vec<_>>(), vec![ObjectRef::Component(c)]);
+    assert_eq!(l.document().style_users("text.tag.style", &own).collect::<Vec<_>>(), vec![ObjectRef::Device(c)]);
     assert!(l.document().check_index().is_ok());
     l.commit(Author::User, "other", vec![set(Some(&own), Some("tag"))]).unwrap();
     assert_eq!(l.document().style_users("text.tag.style", &own).count(), 0);
@@ -125,8 +125,8 @@ fn style_choices_are_indexed_and_kept() {
     assert_eq!(l.document().style_users("text.tag.style", &own).count(), 1);
     assert!(l.document().check_index().is_ok());
     // A deleted device takes its choice with it.
-    let comp = l.document().components.get(&c).cloned().unwrap();
-    l.commit(Author::User, "delete", vec![Op::DeleteComponent { id: c, component: comp }]).unwrap();
+    let comp = l.document().devices.get(&c).cloned().unwrap();
+    l.commit(Author::User, "delete", vec![Op::DeleteDevice { id: c, device: comp }]).unwrap();
     assert_eq!(l.document().style_users_of(&own).count(), 0);
     assert!(l.document().check_index().is_ok());
 }

@@ -6,11 +6,11 @@
 //!   texts, fields (a box showing one bound value), a revision table and vector logos. Coordinates
 //!   are millimetres from the block's bottom-left corner, whatever the project's length unit.
 //! - A [`Binding`] names what a field shows (`project:drawing_number`, `page:number`,
-//!   `revision:ecr`, `print:sheet`). It is written as that text. An unknown source word (a newer
-//!   file) is kept as written and draws as empty.
-//! - [`StyleBody`] keeps unknown body kinds as they were read ([`Raw`]), so a newer file's body
-//!   survives an older build's save. An unknown item kind inside a title block is read as
-//!   [`BlockItem::Unknown`] and dropped on save.
+//!   `revision:ecr`, `print:sheet`). It is written as that text. Strict (design 072 §5.4): an
+//!   unknown source word, a binding without its `source:`, a revision binding naming no revision
+//!   field, or an unknown item kind is a read error.
+//! - [`StyleBody`] keeps unknown body kinds as they were read ([`Raw`]) until lane 072 G types the
+//!   style bodies.
 //! - Bounds (house rule 12): [`TitleBlockLayout::check`] refuses a breach in words (commands);
 //!   [`TitleBlockLayout::usable`] is what drawing uses: items past [`MAX_ITEMS`] or breaking a
 //!   bound are skipped and counted, never a panic.
@@ -189,63 +189,167 @@ pub enum Newest {
     Bottom,
 }
 
-/// A binding's source.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Source {
-    Project,
-    Page,
-    Revision,
-    Print,
-    /// A source word this build does not know (a newer file): kept, drawn as empty.
-    Unknown(String),
+crate::word_enum! {
+    /// A binding's source.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum Source {
+        Project,
+        Page,
+        Revision,
+        Print,
+    }
 }
 
-impl Source {
+/// A revision field a binding or a revision table column names (design 072 §5.4): a built-in
+/// field or a custom one.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum RevisionColumn {
+    Field(crate::project::RevField),
+    Custom(crate::project::CustomField),
+}
+
+impl RevisionColumn {
+    /// The column `word` names (`rev`, `ecr`), if it names a revision field.
+    pub fn parse(word: &str) -> Option<RevisionColumn> {
+        match <crate::project::RevField as crate::Word>::parse(word) {
+            Some(f) => Some(RevisionColumn::Field(f)),
+            None => crate::project::CustomField::new(word).map(RevisionColumn::Custom),
+        }
+    }
+
     /// Its word.
     pub fn word(&self) -> &str {
         match self {
-            Source::Project => "project",
-            Source::Page => "page",
-            Source::Revision => "revision",
-            Source::Print => "print",
-            Source::Unknown(w) => w,
-        }
-    }
-
-    fn of(word: &str) -> Source {
-        match word {
-            "project" => Source::Project,
-            "page" => Source::Page,
-            "revision" => Source::Revision,
-            "print" => Source::Print,
-            w => Source::Unknown(w.to_string()),
+            RevisionColumn::Field(f) => crate::Word::word(*f),
+            RevisionColumn::Custom(c) => c.as_str(),
         }
     }
 }
 
-/// What a field shows: a source and a key, written `source:key`.
+/// Why a binding does not read (design 072 §5.4).
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum BindingError {
+    #[error("\"{0}\" is not source:key")]
+    NoSource(String),
+    #[error("\"{0}\" is not a binding source; use project, page, revision or print")]
+    Source(String),
+    #[error("\"{key}\" is not a {of} key")]
+    Key { of: &'static str, key: String },
+}
+
+crate::word_enum! {
+    /// A page value a field shows (design 055 §7).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum PageField {
+        Title,
+        Number,
+        Next,
+        Total,
+        Function,
+        Location,
+    }
+}
+
+crate::word_enum! {
+    /// A print value a field shows.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum PrintField {
+        Sheet,
+    }
+}
+
+/// Longest project key a field may name, in characters (design 055 §4.3).
+pub const MAX_PROJECT_KEY: usize = 32;
+
+/// A project key a field shows (`title`, `drawing_number`, `company`, any project property):
+/// 1 to [`MAX_PROJECT_KEY`] characters of `a-z 0-9 _ .`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Binding {
-    pub source: Source,
-    pub key: String,
+pub struct ProjectKey(Box<str>);
+
+impl ProjectKey {
+    /// `key`, if a field may name it.
+    pub fn new(key: &str) -> Option<ProjectKey> {
+        let ok = !key.is_empty() && key.len() <= MAX_PROJECT_KEY && key.bytes().all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'_' | b'.'));
+        ok.then(|| ProjectKey(key.into()))
+    }
+
+    /// The key of a field of the project's info (its words are keys by construction).
+    pub fn of_info(f: crate::project::InfoField) -> ProjectKey {
+        ProjectKey(crate::Word::word(f).into())
+    }
+
+    /// The key.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// What a field shows (design 072 §5.4): each source with its own typed key, written
+/// `source:key`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Binding {
+    Project(ProjectKey),
+    Page(PageField),
+    Revision(RevisionColumn),
+    Print(PrintField),
 }
 
 impl Binding {
-    pub fn new(source: Source, key: &str) -> Binding {
-        Binding { source, key: key.to_string() }
+    /// The binding of `key` under `source`.
+    ///
+    /// # Errors
+    /// [`BindingError::Key`] when `key` is not a key of `source`.
+    pub fn of(source: Source, key: &str) -> Result<Binding, BindingError> {
+        let bad = || BindingError::Key { of: crate::Word::word(source), key: key.to_string() };
+        Ok(match source {
+            Source::Project => Binding::Project(ProjectKey::new(key).ok_or_else(bad)?),
+            Source::Page => Binding::Page(<PageField as crate::Word>::parse(key).ok_or_else(bad)?),
+            Source::Revision => Binding::Revision(RevisionColumn::parse(key).ok_or_else(bad)?),
+            Source::Print => Binding::Print(<PrintField as crate::Word>::parse(key).ok_or_else(bad)?),
+        })
     }
 
-    /// Read `source:key`. A missing colon reads as an unknown source with that text.
-    pub fn parse(text: &str) -> Binding {
-        match text.split_once(':') {
-            Some((s, k)) => Binding { source: Source::of(s.trim()), key: k.trim().to_string() },
-            None => Binding { source: Source::Unknown(text.to_string()), key: String::new() },
+    /// Read `source:key`.
+    ///
+    /// # Errors
+    /// [`BindingError`]: no colon, an unknown source word, or a key its source does not have.
+    pub fn parse(text: &str) -> Result<Binding, BindingError> {
+        let (s, k) = text.split_once(':').ok_or_else(|| BindingError::NoSource(text.to_string()))?;
+        let source = <Source as crate::Word>::parse(s.trim()).ok_or_else(|| BindingError::Source(s.trim().to_string()))?;
+        Binding::of(source, k.trim())
+    }
+
+    /// Its source.
+    pub fn source(&self) -> Source {
+        match self {
+            Binding::Project(_) => Source::Project,
+            Binding::Page(_) => Source::Page,
+            Binding::Revision(_) => Source::Revision,
+            Binding::Print(_) => Source::Print,
+        }
+    }
+
+    /// Its key's word (`drawing_number`, `number`, `ecr`, `sheet`).
+    pub fn key(&self) -> &str {
+        match self {
+            Binding::Project(k) => k.as_str(),
+            Binding::Page(f) => crate::Word::word(*f),
+            Binding::Revision(c) => c.word(),
+            Binding::Print(f) => crate::Word::word(*f),
+        }
+    }
+
+    /// The revision column a revision binding shows.
+    pub fn revision_column(&self) -> Option<&RevisionColumn> {
+        match self {
+            Binding::Revision(c) => Some(c),
+            Binding::Project(_) | Binding::Page(_) | Binding::Print(_) => None,
         }
     }
 
     /// `source:key`.
     pub fn text(&self) -> String {
-        format!("{}:{}", self.source.word(), self.key)
+        format!("{}:{}", crate::Word::word(self.source()), self.key())
     }
 }
 
@@ -264,7 +368,7 @@ impl Serialize for Binding {
 impl<'de> Deserialize<'de> for Binding {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let text = String::deserialize(d)?;
-        Ok(Binding::parse(&text))
+        Binding::parse(&text).map_err(serde::de::Error::custom)
     }
 }
 
@@ -310,9 +414,6 @@ pub enum BlockItem {
         #[serde(default)]
         prims: Vec<Primitive>,
     },
-    /// An item kind this build does not know (a newer file): skipped when drawing, counted.
-    #[serde(other)]
-    Unknown,
 }
 
 fn yes() -> bool {
@@ -325,7 +426,6 @@ impl BlockItem {
         match self {
             BlockItem::Line { a, b, .. } => Some(Rect::new(a.0.min(b.0), a.1.min(b.1), (a.0 - b.0).abs(), (a.1 - b.1).abs())),
             BlockItem::Text { at, .. } | BlockItem::Field { at, .. } | BlockItem::RevTable { at, .. } | BlockItem::Logo { at, .. } => Some(*at),
-            BlockItem::Unknown => None,
         }
     }
 
@@ -337,7 +437,6 @@ impl BlockItem {
             BlockItem::Field { .. } => "field",
             BlockItem::RevTable { .. } => "revision table",
             BlockItem::Logo { .. } => "logo",
-            BlockItem::Unknown => "unknown item",
         }
     }
 
@@ -364,7 +463,7 @@ impl BlockItem {
             BlockItem::Field { at, bind, label, look, if_empty } => {
                 if !at.sane() {
                     Some(box_words())
-                } else if long(&bind.key) || bind.key.is_empty() || label.as_deref().is_some_and(long) {
+                } else if long(bind.key()) || bind.key().is_empty() || label.as_deref().is_some_and(long) {
                     Some(format!("A field's key must be 1 to {MAX_BODY_TEXT} characters, and its label at most {MAX_BODY_TEXT}."))
                 } else if !look_ok(look) {
                     Some(size_words())
@@ -396,7 +495,6 @@ impl BlockItem {
                     None
                 }
             }
-            BlockItem::Unknown => Some("An item of a kind this build does not know.".to_string()),
         }
     }
 }
@@ -634,12 +732,16 @@ mod tests {
 
     #[test]
     fn bindings_read_and_write() {
-        let b = Binding::parse("project:drawing_number");
-        assert_eq!(b, Binding::new(Source::Project, "drawing_number"));
+        let b = Binding::parse("project:drawing_number").unwrap();
+        assert_eq!(b, Binding::Project(ProjectKey::new("drawing_number").unwrap()));
         assert_eq!(b.text(), "project:drawing_number");
-        let u = Binding::parse("weather:today");
-        assert_eq!(u.source, Source::Unknown("weather".into()));
-        assert_eq!(u.text(), "weather:today");
+        assert_eq!(Binding::parse("page:number").unwrap(), Binding::Page(PageField::Number));
+        assert_eq!(Binding::parse("print:sheet").unwrap(), Binding::Print(PrintField::Sheet));
+        for bad in ["weather:today", "nocolon", "revision:Bad Name", "revision:issued", "page:weather", "print:x", "project:Bad"] {
+            assert!(Binding::parse(bad).is_err(), "{bad}");
+        }
+        let r = Binding::parse("revision:ecr").unwrap();
+        assert_eq!(r.revision_column().map(|c| c.word().to_string()).as_deref(), Some("ecr"));
     }
 
     #[test]

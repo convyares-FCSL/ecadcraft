@@ -1,7 +1,7 @@
 //! Brief 045c (design 045 §8, §13 N–Q): the I/O list as `iolist`, the generated page and the
 //! release CSV; the update map of its rows.
 
-use ecad_model::{ComponentId, PageId};
+use ecad_model::{DeviceId, PageId};
 use serde_json::{Value, json};
 
 use super::{placed, prop};
@@ -10,8 +10,8 @@ use crate::common::{H, id, pts};
 /// A CPU, a DI card wired to eight lamps through a fence, an AI card and a DQ card.
 struct F {
     h: H,
-    di: ComponentId,
-    lamps: Vec<ComponentId>,
+    di: DeviceId,
+    lamps: Vec<DeviceId>,
 }
 
 fn fixture(seed: u64) -> F {

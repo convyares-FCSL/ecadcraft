@@ -10,7 +10,7 @@
 
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::cmd::continuation as rules;
-use ecad_model::ComponentId;
+use ecad_model::DeviceId;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -38,7 +38,7 @@ pub(crate) fn specs() -> Vec<CommandSpec> {
 #[serde(deny_unknown_fields)]
 pub(crate) struct ContcaptionParams {
     /// The continuation arrows (1 to 2000).
-    continuations: Bounded<ComponentId, 0, MAX_ARROWS>,
+    continuations: Bounded<DeviceId, 0, MAX_ARROWS>,
     /// The caption, or null to remove it.
     #[serde(deserialize_with = "nullable")]
     #[schemars(required, with = "OrNull<String>")]

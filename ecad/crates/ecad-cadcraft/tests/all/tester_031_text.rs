@@ -16,7 +16,7 @@ use cadcraft_engine::Input;
 use cadcraft_engine::doc::{Common, EntityKind, HAlign, Lineweight, Text, VAlign};
 use cadcraft_engine::geom::Vec2;
 use ecad_cadcraft::Persistence;
-use ecad_model::{Author, ComponentId, Document, ItemId, ObjectRef, Op, PageId, RepresentationId, Subject, TerminalId};
+use ecad_model::{Author, DeviceId, Document, ItemId, ObjectRef, Op, PageId, RepresentationId, Subject, TerminalId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -25,7 +25,7 @@ use crate::common::{place, reopen, tmp_dir};
 // ---------------------------------------------------------------------------------------------
 // Helpers
 
-fn place_on(h: &mut H, symbol: &str, at: (f64, f64), device: ComponentId) -> Value {
+fn place_on(h: &mut H, symbol: &str, at: (f64, f64), device: DeviceId) -> Value {
     h.run("place", json!({"symbol": symbol, "at": [at.0, at.1], "device": device.hex()})).unwrap()
 }
 
@@ -172,12 +172,12 @@ fn project_prop(h: &mut H, key: &str) -> Option<String> {
     h.doc().properties.get(key).cloned()
 }
 
-fn comp_props(h: &mut H, c: ComponentId, prefix: &str) -> BTreeMap<String, String> {
-    h.doc().components[&c].properties.iter().filter(|(k, _)| k.starts_with(prefix)).map(|(k, v)| (k.clone(), v.clone())).collect()
+fn comp_props(h: &mut H, c: DeviceId, prefix: &str) -> BTreeMap<String, String> {
+    h.doc().devices[&c].properties.iter().filter(|(k, _)| k.starts_with(prefix)).map(|(k, v)| (k.clone(), v.clone())).collect()
 }
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.components, &d.terminals, &d.conductors, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.properties, &d.settings)
+    (&d.devices, &d.terminals, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.properties, &d.settings)
 }
 
 fn textstyle_kind(v: &Value, kind: &str) -> Value {
@@ -186,7 +186,7 @@ fn textstyle_kind(v: &Value, kind: &str) -> Value {
 
 /// A strip of terminals on vertical wires at `xs` crossing the line y = `y`; returns the strip
 /// and its terminals (added to `strip` when given).
-fn strip_at(h: &mut H, xs: &[f64], y: f64, strip: Option<ComponentId>) -> (ComponentId, Vec<TerminalId>) {
+fn strip_at(h: &mut H, xs: &[f64], y: f64, strip: Option<DeviceId>) -> (DeviceId, Vec<TerminalId>) {
     for x in xs {
         h.run("wire", json!({"points": pts(&[(*x, y + 30.0), (*x, y - 30.0)])})).unwrap();
     }
@@ -242,8 +242,8 @@ struct C {
     h: H,
     page: PageId,
     other: PageId,
-    k1: ComponentId,
-    k2: ComponentId,
+    k1: DeviceId,
+    k2: DeviceId,
     /// K1's coil, first contact, second contact.
     r1: [RepresentationId; 3],
     r2: RepresentationId,
@@ -253,14 +253,14 @@ fn fixture_c(seed: u64) -> C {
     let mut h = H::new(seed);
     let page = h.first_page();
     let c = place(&mut h, "coil", (100.0, 200.0));
-    let k1: ComponentId = id(&c, "component");
+    let k1: DeviceId = id(&c, "component");
     let rc = rep_of(&mut h, &c);
     let n1 = place_on(&mut h, "no", (150.0, 200.0), k1);
     let rn1 = rep_of(&mut h, &n1);
     let n2 = place_on(&mut h, "no", (200.0, 200.0), k1);
     let rn2 = rep_of(&mut h, &n2);
     let c2 = place(&mut h, "coil", (250.0, 200.0));
-    let k2: ComponentId = id(&c2, "component");
+    let k2: DeviceId = id(&c2, "component");
     let r2 = rep_of(&mut h, &c2);
     let other = second_page(&mut h);
     C { h, page, other, k1, k2, r1: [rc, rn1, rn2], r2 }
@@ -278,8 +278,8 @@ fn tester_031_fixtures_build_and_store_no_text_keys() {
     assert_eq!(t.len(), 3);
     let d = f.h.doc();
     assert!(d.properties.keys().all(|k| !k.starts_with("text.")));
-    assert!(d.components.values().all(|c| c.properties.keys().all(|k| !k.starts_with("text."))));
-    assert!(d.pages.values().all(|p| p.properties.keys().all(|k| !k.starts_with("text."))));
+    assert!(d.devices.values().all(|c| c.properties.keys().all(|k| !k.starts_with("text."))));
+    assert!(d.pages.values().all(|p| p.display.keys().all(|k| !k.starts_with("text."))));
     f.h.check();
 }
 
@@ -629,10 +629,10 @@ fn t5_levels_symbol_device_page_project_narrowest_wins() {
     // Where the keys live (FP1–FP3).
     let d = f.h.doc();
     assert_eq!(d.properties.get("text.tag.show").map(String::as_str), Some("no"));
-    assert_eq!(d.pages[&f.page].properties.get("text.tag.show").map(String::as_str), Some("yes"));
-    assert_eq!(d.components[&f.k1].properties.get("text.tag.show").map(String::as_str), Some("no"));
+    assert_eq!(d.pages[&f.page].display.get("text.tag.show").map(String::as_str), Some("yes"));
+    assert_eq!(d.devices[&f.k1].properties.get("text.tag.show").map(String::as_str), Some("no"));
     let sym = format!("text.{}.tag.show", f.r1[1].hex());
-    assert_eq!(d.components[&f.k1].properties.get(&sym).map(String::as_str), Some("yes"), "{sym}");
+    assert_eq!(d.devices[&f.k1].properties.get(&sym).map(String::as_str), Some("yes"), "{sym}");
     // `null` removes the symbol's value: back to the device's off.
     one_tx(&mut f.h, "showtext", json!({"kind": "tag", "show": null, "representation": f.r1[1].hex()}));
     assert!(shown_reps(&mut f.h, f.page, "-K01").is_empty());
@@ -690,8 +690,8 @@ fn t5_showtext_refusals() {
     refused(&mut f.h, "showtext", json!({"kind": "tag", "show": "off", "page": ghost}), "No page");
     refused(&mut f.h, "showtext", json!({"kind": "tag", "show": "off", "page": "zz"}), "");
     // A wire's representation is not a symbol.
-    let w: ecad_model::ConductorId = id(&f.h.run("wire", json!({"points": [[10, 10], [40, 10]]})).unwrap(), "conductor");
-    let wr = f.h.doc().representations_of(Subject::Conductor(w)).map(|(id, _)| id).next().unwrap();
+    let w: ecad_model::WireId = id(&f.h.run("wire", json!({"points": [[10, 10], [40, 10]]})).unwrap(), "conductor");
+    let wr = f.h.doc().representations_of(Subject::Wire(w)).map(|(id, _)| id).next().unwrap();
     refused(&mut f.h, "showtext", json!({"kind": "tag", "show": "off", "representation": wr.hex()}), "That representation is not a symbol.");
     // Two targets at once.
     refused(&mut f.h, "showtext", json!({"kind": "tag", "show": "off", "page": f.page.hex(), "component": f.k1.hex()}), "");
@@ -732,8 +732,8 @@ fn t6_runs_once_per_run_symbol_override_and_another_device_splits() {
     let (s1, _) = strip_at(&mut h, &[100.0], 60.0, None);
     let (s2, _) = strip_at(&mut h, &[110.0], 60.0, None);
     strip_at(&mut h, &[120.0], 60.0, Some(s1));
-    let tag1 = h.doc().components[&s1].properties.get("tag").cloned().unwrap();
-    let tag2 = h.doc().components[&s2].properties.get("tag").cloned().unwrap();
+    let tag1 = h.doc().devices[&s1].properties.get("tag").cloned().unwrap();
+    let tag2 = h.doc().devices[&s2].properties.get("tag").cloned().unwrap();
     let rows = texts(&mut h, page);
     let on_line = |t: &str| rows.iter().filter(|r| r["kind"] == "tag" && r["value"] == t && shown(r) && (at(r).1 - 60.0).abs() < 15.0).count();
     assert_eq!(on_line(&tag1), 2, "{tag1} split by {tag2}: {rows:?}");
@@ -765,19 +765,19 @@ fn t6_plc_channels_in_a_row_show_the_tag_once() {
     let mut h = H::new(0x7031_0603);
     let page = h.first_page();
     let first = place(&mut h, "di", (100.0, 150.0));
-    let a: ComponentId = id(&first, "component");
+    let a: DeviceId = id(&first, "component");
     place_on(&mut h, "di", (120.0, 150.0), a);
     place_on(&mut h, "di", (140.0, 150.0), a);
-    let tag = h.doc().components[&a].properties.get("tag").cloned().unwrap();
+    let tag = h.doc().devices[&a].properties.get("tag").cloned().unwrap();
     let rows = texts(&mut h, page);
     let s = shown_tags(&rows, &tag);
     assert_eq!(s.len(), 1, "{rows:?}");
     assert_eq!(s[0]["representation"], rep_of(&mut h, &first).hex(), "the leftmost");
     // A coil keeps its tag on every symbol (tag `on`).
     let k = place(&mut h, "coil", (100.0, 60.0));
-    let k1: ComponentId = id(&k, "component");
+    let k1: DeviceId = id(&k, "component");
     place_on(&mut h, "no", (115.0, 60.0), k1);
-    let kt = h.doc().components[&k1].properties.get("tag").cloned().unwrap();
+    let kt = h.doc().devices[&k1].properties.get("tag").cloned().unwrap();
     assert_eq!(shown_tags(&texts(&mut h, page), &kt).len(), 2);
     h.check();
 }
@@ -821,7 +821,7 @@ fn t8_print_has_no_hidden_text() {
     let xs: Vec<f64> = (0..10).map(|i| 100.0 + 10.0 * f64::from(i)).collect();
     strip_at(&mut h, &xs, 150.0, None);
     let k = place(&mut h, "coil", (60.0, 200.0));
-    let k1: ComponentId = id(&k, "component");
+    let k1: DeviceId = id(&k, "component");
     one_tx(&mut h, "showtext", json!({"kind": "tag", "show": "off", "component": k1.hex()}));
     let doc = h.doc();
     let (d, _) = ecad_cadcraft::printbook::build(&doc, &[page], &BTreeSet::new(), 1e-6, None).unwrap();
@@ -1027,7 +1027,7 @@ fn t10_a_moved_tag_keeps_its_place_through_move_rotate_renumber_save() {
     let r4 = row_of(&texts(&mut h2, page), rep, "tag").clone();
     assert_eq!(r4["moved"], json!(false));
     assert!(!near(bx(&r4).0, (155.0, 215.0)));
-    assert!(h2.doc().components.values().all(|c| !c.properties.contains_key(&key)));
+    assert!(h2.doc().devices.values().all(|c| !c.properties.contains_key(&key)));
     h2.check();
     h2.close_all();
     drop(h2);
@@ -1101,7 +1101,7 @@ fn t10_symbol_keys_follow_delete_erase_and_merge() {
     // Merge a lone contact device into -K01 (rename its tag): its symbol keys move to the
     // survivor. (-K02 has a coil, as -K01 does, so it cannot merge.)
     let k3 = place(&mut f.h, "no", (200.0, 150.0));
-    let k3_id: ComponentId = id(&k3, "component");
+    let k3_id: DeviceId = id(&k3, "component");
     let r3 = rep_of(&mut f.h, &k3);
     f.h.run("movetext", json!({"representation": r3.hex(), "kind": "tag", "to": [30, 30]})).unwrap();
     let k3_at = comp_props(&mut f.h, k3_id, &format!("text.{}.tag.at", r3.hex()));
@@ -1109,33 +1109,33 @@ fn t10_symbol_keys_follow_delete_erase_and_merge() {
     let moved_before = comp_props(&mut f.h, f.k1, "text.").keys().filter(|k| k.ends_with(".tag.at")).count();
     f.h.run("setprop", json!({"component": k3_id.hex(), "key": "tag", "value": "-K01", "conflict": "merge"})).unwrap();
     let doc = f.h.doc();
-    assert!(!doc.components.contains_key(&k3_id), "merged away");
+    assert!(!doc.devices.contains_key(&k3_id), "merged away");
     // The symbol may get a new representation ID on merge; every `text.<rep>.` key lives on the
     // component that owns <rep>, and -K01 gained the moved tag.
-    for (cid, c) in &doc.components {
+    for (cid, c) in &doc.devices {
         for k in c.properties.keys().filter(|k| k.starts_with("text.") && k.split('.').count() > 3) {
             let rep_hex = k.split('.').nth(1).unwrap_or_default();
             let owner = doc.representations.iter().find(|(id, _)| id.hex() == rep_hex).map(|(_, r)| r.subject);
-            assert_eq!(owner, Some(Subject::Component(*cid)), "{k} on {}", cid.hex());
+            assert_eq!(owner, Some(Subject::Device(*cid)), "{k} on {}", cid.hex());
         }
     }
     let moved_after = comp_props(&mut f.h, f.k1, "text.").keys().filter(|k| k.ends_with(".tag.at")).count();
     assert_eq!(moved_after, moved_before + 1, "{:?}", comp_props(&mut f.h, f.k1, "text."));
-    let owner = Subject::Component(f.k1);
+    let owner = Subject::Device(f.k1);
     // Delete the device: every text.<rep>.* key goes.
-    let Subject::Component(c) = owner else { panic!("a symbol of a component") };
+    let Subject::Device(c) = owner else { panic!("a symbol of a component") };
     one_tx(&mut f.h, "devicedelete", json!({"component": c.hex()}));
     let doc = f.h.doc();
-    assert!(!doc.components.contains_key(&f.k1));
+    assert!(!doc.devices.contains_key(&f.k1));
     // No orphan: every `text.<rep>.` key left names a symbol its component owns (-K02's stays).
-    for (cid, c) in &doc.components {
+    for (cid, c) in &doc.devices {
         for k in c.properties.keys().filter(|k| k.starts_with("text.") && k.split('.').count() > 3) {
             let rep_hex = k.split('.').nth(1).unwrap_or_default();
             let owner = doc.representations.iter().find(|(id, _)| id.hex() == rep_hex).map(|(_, r)| r.subject);
-            assert_eq!(owner, Some(Subject::Component(*cid)), "{k} on {}", cid.hex());
+            assert_eq!(owner, Some(Subject::Device(*cid)), "{k} on {}", cid.hex());
         }
     }
-    assert!(doc.components[&f.k2].properties.contains_key(&format!("text.{}.tag.at", f.r2.hex())), "-K02's moved tag stays");
+    assert!(doc.devices[&f.k2].properties.contains_key(&format!("text.{}.tag.at", f.r2.hex())), "-K02's moved tag stays");
     f.h.check();
 }
 
@@ -1281,12 +1281,12 @@ fn t14_update_maps_name_only_the_pages_that_change() {
     let mut h = H::new(0x7031_1401);
     let p1 = h.first_page();
     let c = place(&mut h, "coil", (100.0, 200.0));
-    let k1: ComponentId = id(&c, "component");
+    let k1: DeviceId = id(&c, "component");
     let p2: PageId = id(&h.run("newpage", json!({"title": "P2"})).unwrap(), "page");
     place_on(&mut h, "no", (100.0, 200.0), k1);
     let p3: PageId = id(&h.run("newpage", json!({"title": "P3"})).unwrap(), "page");
     let c2 = place(&mut h, "coil", (100.0, 200.0));
-    let k2: ComponentId = id(&c2, "component");
+    let k2: DeviceId = id(&c2, "component");
     h.activate(p1);
     let changed = |h: &mut H, cmd: &str, params: Value| {
         let n = h.p(|p| p.change_count());
@@ -1321,10 +1321,10 @@ fn t15_hostile_text_keys_draw_the_automatic_place() {
     let key = format!("text.{rep}.tag.at");
     let long = "7".repeat(10_000);
     for value in ["a,b,ZZ", "1e999,0,LT", "NaN,NaN,LT", "1,2", "1,2,3,4", "", ",,", "1,2,QQ", long.as_str()] {
-        let before = f.h.doc().components[&f.k1].properties.get(&key).cloned();
+        let before = f.h.doc().devices[&f.k1].properties.get(&key).cloned();
         inject(
             &mut f.h,
-            vec![Op::SetProperty { object: ObjectRef::Component(f.k1), key: key.clone(), before, after: Some(value.to_string()) }],
+            vec![Op::SetProperty { object: ObjectRef::Device(f.k1), key: key.clone(), before, after: Some(value.to_string()) }],
             f.page,
             f.other,
         );
@@ -1344,10 +1344,8 @@ fn t15_hostile_text_keys_draw_the_automatic_place() {
         ("text.".to_string(), "on".to_string()),
         ("text.tag.show".to_string(), "\u{0}".to_string()),
     ];
-    let ops: Vec<Op> = odd
-        .iter()
-        .map(|(k, v)| Op::SetProperty { object: ObjectRef::Component(f.k1), key: k.clone(), before: None, after: Some(v.clone()) })
-        .collect();
+    let ops: Vec<Op> =
+        odd.iter().map(|(k, v)| Op::SetProperty { object: ObjectRef::Device(f.k1), key: k.clone(), before: None, after: Some(v.clone()) }).collect();
     inject(&mut f.h, ops, f.page, f.other);
     let rows = texts_raw(&mut f.h, f.page);
     assert!(shown(row_of(&rows, f.r1[0], "tag")), "hostile values are absent: {rows:?}");
@@ -1480,7 +1478,7 @@ fn text_keys_are_refused_by_the_property_commands() {
     refused(&mut f.h, "pageprops", json!({"page": f.page.hex(), "props": {"text.tag.show": "off"}}), s);
     refused(&mut f.h, "setprop", json!({"component": f.k1.hex(), "key": "text.tag.show", "value": "off"}), s);
     refused(&mut f.h, "setprop", json!({"component": f.k1.hex(), "key": format!("text.{}.tag.at", f.r1[0].hex()), "value": "1,1,LT"}), s);
-    refused(&mut f.h, "setprop", json!({"components": [f.k1.hex(), f.k2.hex()], "key": "text.tag.show", "value": "off"}), s);
+    refused(&mut f.h, "setprop", json!({"devices": [f.k1.hex(), f.k2.hex()], "key": "text.tag.show", "value": "off"}), s);
     // Keys that only start alike are not reserved by this rule.
     f.h.run("setprop", json!({"component": f.k1.hex(), "key": "textile", "value": "cotton"})).unwrap();
 }

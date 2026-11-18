@@ -4,7 +4,7 @@
 use cadcraft_engine::doc::Handle;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
 use ecad_model::Word;
-use ecad_model::{ComponentId, Form, PageId, RepresentationId, Subject};
+use ecad_model::{DeviceId, Form, PageId, RepresentationId, Subject};
 use serde_json::json;
 
 use super::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
@@ -42,8 +42,8 @@ struct ShowText {
 /// What a click named: a derived text (its symbol or box, what it is, whether it is shown) or a
 /// symbol.
 enum Picked {
-    Text { rep: RepresentationId, of: TextOf, component: Option<ComponentId>, symbol: bool, shown: bool, page: PageId },
-    Symbol { rep: RepresentationId, component: ComponentId, page: PageId, tag_hidden: bool },
+    Text { rep: RepresentationId, of: TextOf, component: Option<DeviceId>, symbol: bool, shown: bool, page: PageId },
+    Symbol { rep: RepresentationId, component: DeviceId, page: PageId, tag_hidden: bool },
 }
 
 impl ShowText {
@@ -55,7 +55,7 @@ impl ShowText {
             if let Some((rep, of)) = map.tag_text_of(h) {
                 let r = doc.representations.get(&rep).ok_or(PICK_A_TEXT)?;
                 let component = match r.subject {
-                    Subject::Component(c) => Some(c),
+                    Subject::Device(c) => Some(c),
                     _ => None,
                 };
                 let shown = texts().iter().find(|t| t.text.rep == rep && t.text.of == of).is_none_or(|t| t.shown);
@@ -64,7 +64,7 @@ impl ShowText {
             match map.get(h) {
                 Some(Mapped::Item(i)) => match doc.representation_of_item(i) {
                     Some((rep, r)) => match r.subject {
-                        Subject::Component(c) if r.form == Form::Symbol => {
+                        Subject::Device(c) if r.form == Form::Symbol => {
                             let tag_hidden = texts().iter().any(|t| t.text.rep == rep && t.text.of == TextOf::Tag && !t.shown);
                             Ok(Picked::Symbol { rep, component: c, page, tag_hidden })
                         }
@@ -133,7 +133,7 @@ impl ShowText {
 }
 
 /// The echo after a change (design 031 §5.5): `Tag -X01 hidden on this symbol.`…
-fn echo(doc: &ecad_model::Document, v: &serde_json::Value, kind: TextKind, show: &str, component: Option<ComponentId>) -> String {
+fn echo(doc: &ecad_model::Document, v: &serde_json::Value, kind: TextKind, show: &str, component: Option<DeviceId>) -> String {
     let what = crate::cmd::text::kind_words(kind);
     let mut what = what.to_string();
     if let Some(first) = what.get(..1) {
@@ -230,7 +230,7 @@ impl MoveText {
                     let what = match of {
                         TextOf::Terminal(_) => "Label".to_string(),
                         _ => match r.subject {
-                            Subject::Component(c) => format!("Tag {}", crate::devices::tag_words(doc, c)),
+                            Subject::Device(c) => format!("Tag {}", crate::devices::tag_words(doc, c)),
                             _ => "Tag".to_string(),
                         },
                     };

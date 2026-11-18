@@ -114,7 +114,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     click(&mut h, "ecad.projectprops.ok");
     assert_eq!(head(&mut h), before + 1, "OK is one transaction");
     assert!(h.state().project_props.is_none());
-    assert_eq!(doc(&mut h).properties.get("customer").map(String::as_str), Some("ACME"));
+    assert_eq!(ecad_cadcraft::frames::project_text(&doc(&mut h), "customer").as_deref(), Some("ACME"));
     crate::project_panel::project_menu(&mut h, project_panel::PROJECT_INFO);
     click(&mut h, "ecad.projectprops.cancel");
     assert_eq!(head(&mut h), before + 1, "Cancel writes nothing");
@@ -175,7 +175,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     let coil_items: Vec<_> = {
         let d = doc(&mut h);
         let c = d.components_tagged("-K01")[0];
-        d.representations_of(ecad_model::Subject::Component(c)).flat_map(|(_, r)| r.items.clone()).collect()
+        d.representations_of(ecad_model::Subject::Device(c)).flat_map(|(_, r)| r.items.clone()).collect()
     };
     let handles: Vec<_> = {
         let t = h.state_mut();

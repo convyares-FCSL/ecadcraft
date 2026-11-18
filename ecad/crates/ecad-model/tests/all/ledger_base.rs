@@ -29,7 +29,7 @@ impl History for Store {
 }
 
 fn page(n: u128) -> Op {
-    Op::AddPage { id: PageId(n), page: Page::new(n.to_string()), index: 0 }
+    Op::AddPage { id: PageId(n), page: Page::titled(n.to_string()).unwrap(), index: 0 }
 }
 
 /// Ten pages added one by one, two undone, one redone, then one more edit and one undo.

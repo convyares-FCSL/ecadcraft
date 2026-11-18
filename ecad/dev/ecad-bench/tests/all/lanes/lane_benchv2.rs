@@ -8,15 +8,15 @@ use ecad_bench::generate::{Generated, Tier, Variant, generate};
 use ecad_file::disk::DiskProjectV2;
 use ecad_model::Document;
 
-const TINY: Tier = Tier { name: "tiny", pages: 3, components: 9, wires: 18, cables: 6 };
+const TINY: Tier = Tier { name: "tiny", pages: 3, devices: 9, wires: 18, cables: 6 };
 
 /// What the equivalence compares: pages, components, conductors, history entries, and the
 /// document itself.
 #[derive(Debug, PartialEq)]
 struct Shape {
     pages: usize,
-    components: usize,
-    conductors: usize,
+    devices: usize,
+    wires: usize,
     history: u64,
     document: Document,
 }
@@ -31,7 +31,7 @@ fn shape(path: &Path) -> Shape {
     let o = DiskProjectV2::open(path, 3, "lane_benchv2").unwrap();
     assert!(o.report.damage.is_none(), "{:?}", o.report.damage);
     let doc = o.ledger.document().clone();
-    Shape { pages: doc.pages.len(), components: doc.components.len(), conductors: doc.conductors.len(), history: o.ledger.head(), document: doc }
+    Shape { pages: doc.pages.len(), devices: doc.devices.len(), wires: doc.wires.len(), history: o.ledger.head(), document: doc }
 }
 
 /// Written straight to the project file, as the bench does.
@@ -48,7 +48,7 @@ fn a_project_written_straight_to_the_file_matches_the_generated_one() {
         let g = generate(TINY, variant).unwrap();
         let s = shape(&direct(&g, &d));
         let doc = g.ledger.document();
-        assert_eq!((s.pages, s.components, s.conductors), (doc.pages.len(), doc.components.len(), doc.conductors.len()), "{}", variant.name());
+        assert_eq!((s.pages, s.devices, s.wires), (doc.pages.len(), doc.devices.len(), doc.wires.len()), "{}", variant.name());
         assert_eq!(s.history, g.ledger.head(), "{}: history entries", variant.name());
         assert!(&s.document == doc, "{}: the documents differ", variant.name());
     }

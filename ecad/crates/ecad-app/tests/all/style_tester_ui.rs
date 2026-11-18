@@ -58,7 +58,7 @@ fn b_a_category_change_patches_and_rebuilds_none() {
     ok(&mut h, r#"setstyle {"catalogue":"wire","id":"dc24","fields":{"colour":"RD"}}"#);
     h.run_steps(2);
     assert_eq!(counters(&h), (rebuilds, patches + 1));
-    let c = crate::mouse_tester::doc(&mut h).conductors.keys().next().copied().unwrap();
+    let c = crate::mouse_tester::doc(&mut h).wires.keys().next().copied().unwrap();
     ok(&mut h, &format!(r#"category {{"conductor":"{}","value":"signal"}}"#, c.hex()));
     h.run_steps(2);
     assert_eq!(counters(&h).0, rebuilds);

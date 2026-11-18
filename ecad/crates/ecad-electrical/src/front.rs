@@ -47,7 +47,7 @@ const LEGEND_COLUMNS: usize = 5;
 
 /// The cover's notes as stored, cut to the bounds: (notes, whether anything was cut).
 pub fn notes(doc: &Document) -> (Vec<String>, bool) {
-    let Some(text) = doc.properties.get(NOTES_KEY) else { return (Vec::new(), false) };
+    let Some(text) = crate::frames::project_text(doc, NOTES_KEY) else { return (Vec::new(), false) };
     let mut cut = false;
     let mut out = Vec::new();
     for line in text.lines() {
@@ -309,7 +309,7 @@ pub fn wire_rows(doc: &Document) -> Vec<(WireLine, EditedRow)> {
 fn generated_wire_lines(doc: &Document) -> Vec<WireLine> {
     let looks = crate::styles::wire::WireLooks::new(doc);
     let mut used: BTreeSet<StyleRef> = BTreeSet::new();
-    for c in doc.conductors.keys() {
+    for c in doc.wires.keys() {
         if let (Some(id), _) = looks.category(doc, *c) {
             used.insert(id);
         }
@@ -399,13 +399,13 @@ fn generated_cells(doc: &Document) -> Vec<Cell> {
 /// §6.6, design 052 FP8): each stored entry key as its code and description (`=F1 Pumps`), `?` for
 /// a key with no entry, naturally sorted, at most 200 of each.
 pub fn structure_codes(doc: &Document) -> (Vec<String>, Vec<String>) {
-    use crate::designations::{Aspect, Uses, code_of, description_property};
+    use crate::designations::{Aspect, Uses, code_of, description_of};
     let uses = Uses::of(doc);
     let list = |a: Aspect| {
         let shown: BTreeSet<String> = uses
             .keys(a)
             .take(200)
-            .map(|k| match (code_of(doc, a, k), doc.properties.get(&description_property(a, k)).filter(|d| !d.trim().is_empty())) {
+            .map(|k| match (code_of(doc, a, k), description_of(doc, a, k).filter(|d| !d.trim().is_empty())) {
                 (Some(code), Some(d)) => format!("{code} {d}"),
                 (Some(code), None) => code,
                 (None, _) => "?".to_string(),
@@ -460,12 +460,11 @@ pub fn touches(doc: &Document, ops: &[Op]) -> bool {
     let codes_on = Block::StructureCodes.on(doc);
     ops.iter().any(|op| match op {
         Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => {
-            matches!(key.as_str(), crate::frames::TITLE | crate::frames::CUSTOMER | "site" | NOTES_KEY | WIRE_ROWS_KEY | LEGEND_ROWS_KEY)
+            matches!(key.as_str(), WIRE_ROWS_KEY | LEGEND_ROWS_KEY)
                 || key.starts_with("front.cover.")
-                || key.starts_with(crate::revisions::PREFIX)
                 || key == crate::revisions::COLUMNS_KEY
                 || key == crate::revisions::PENDING_KEY
-                || (codes_on && (crate::designations::Aspect::of_property(key).is_some() || crate::designations::is_list_property(key)))
+                || (codes_on && crate::designations::Aspect::of_property(key).is_some())
         }
         Op::NameVersion { .. } | Op::UnnameVersion { .. } => true,
         // A text style's size changes the cover's texts; a wire category's name, colour or
@@ -473,13 +472,23 @@ pub fn touches(doc: &Document, ops: &[Op]) -> bool {
         Op::SetStyle { catalogue, .. } => *catalogue == ecad_model::StyleCatalogue::Text || *catalogue == ecad_model::StyleCatalogue::Wire,
         // A definition in use redrawn or renamed (048's Edit symbol), or a device re-pointed.
         Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => !doc.items_using(*id).is_empty(),
-        Op::SetComponentDefinition { .. } => true,
+        Op::SetDeviceDefinition { .. } => true,
         Op::CreateCable { .. } => doc.cables.len() == 1,
         Op::DeleteCable { .. } => doc.cables.is_empty(),
-        Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Component(_), key, .. } => {
+        Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Device(_), key, .. } => {
             codes_on && crate::designations::Aspect::of_property(key).is_some()
         }
-        Op::CreateComponent { component, .. } | Op::DeleteComponent { component, .. } => {
+        // Design 072 §5.3: the revision rows, or a code the cover shows.
+        Op::ModifyProject { before, after } => {
+            before.revisions != after.revisions
+                || before.info != after.info
+                || (codes_on && crate::designations::Aspect::ALL.into_iter().any(|a| crate::designations::shown_changed(before, after, a)))
+        }
+        Op::ModifyPage { before, after, .. } => {
+            let ch = before.change(after);
+            codes_on && (ch.location || ch.function)
+        }
+        Op::CreateDevice { device: component, .. } | Op::DeleteDevice { device: component, .. } => {
             ecad_model::connectivity::continuation_key(&component.properties).is_some()
         }
         _ => false,
@@ -492,7 +501,7 @@ pub fn touches(doc: &Document, ops: &[Op]) -> bool {
 /// count crossed zero (the only change the wire-colour legend shows).
 #[derive(Debug, Clone, Default)]
 pub struct Uses {
-    of: std::collections::BTreeMap<ecad_model::ConductorId, Option<StyleRef>>,
+    of: std::collections::BTreeMap<ecad_model::WireId, Option<StyleRef>>,
     counts: std::collections::BTreeMap<StyleRef, usize>,
 }
 
@@ -501,21 +510,21 @@ impl Uses {
     pub fn build(doc: &Document) -> Uses {
         let looks = crate::styles::wire::WireLooks::new(doc);
         let mut u = Uses::default();
-        for c in doc.conductors.keys() {
+        for c in doc.wires.keys() {
             let k = looks.category(doc, *c).0;
             u.add(*c, k);
         }
         u
     }
 
-    fn add(&mut self, c: ecad_model::ConductorId, k: Option<StyleRef>) {
+    fn add(&mut self, c: ecad_model::WireId, k: Option<StyleRef>) {
         if let Some(k) = &k {
             *self.counts.entry(k.clone()).or_default() += 1;
         }
         self.of.insert(c, k);
     }
 
-    fn drop_one(&mut self, c: ecad_model::ConductorId) -> bool {
+    fn drop_one(&mut self, c: ecad_model::WireId) -> bool {
         let Some(Some(k)) = self.of.remove(&c) else { return false };
         let n = self.counts.entry(k.clone()).or_default();
         *n = n.saturating_sub(1);
@@ -539,7 +548,7 @@ impl Uses {
             Op::SetStyle { catalogue, .. } => *catalogue == ecad_model::StyleCatalogue::Wire,
             Op::SetProjectSettings { before, after } => before.wiring.potentials != after.wiring.potentials,
             Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => key == crate::defaults::styles::WIRE_CATEGORY.key,
-            Op::CreateComponent { component, .. } | Op::DeleteComponent { component, .. } => {
+            Op::CreateDevice { device: component, .. } | Op::DeleteDevice { device: component, .. } => {
                 ecad_model::connectivity::continuation_key(&component.properties).is_some()
             }
             _ => false,
@@ -551,19 +560,19 @@ impl Uses {
         }
         // The conductors whose category may have changed: those the ops name, the ones at the
         // terminals an end left or reached, and every conductor of their nets now.
-        let mut seeds: BTreeSet<ecad_model::ConductorId> = BTreeSet::new();
-        let mut gone: BTreeSet<ecad_model::ConductorId> = BTreeSet::new();
-        let at = |t: Option<ecad_model::TerminalId>, s: &mut BTreeSet<ecad_model::ConductorId>| {
+        let mut seeds: BTreeSet<ecad_model::WireId> = BTreeSet::new();
+        let mut gone: BTreeSet<ecad_model::WireId> = BTreeSet::new();
+        let at = |t: Option<ecad_model::TerminalId>, s: &mut BTreeSet<ecad_model::WireId>| {
             if let Some(t) = t {
                 s.extend(doc.ends_at(t).into_iter().map(|(c, _)| c));
             }
         };
         for op in ops {
             match op {
-                Op::CreateConductor { id, .. } | Op::SetProperty { object: ObjectRef::Conductor(id), .. } => {
+                Op::CreateWire { id, .. } | Op::ModifyWire { id, .. } | Op::SetProperty { object: ObjectRef::Wire(id), .. } => {
                     seeds.insert(*id);
                 }
-                Op::DeleteConductor { id, .. } => {
+                Op::DeleteWire { id, .. } => {
                     gone.insert(*id);
                 }
                 Op::AttachEnd { conductor, before, after, .. } => {
@@ -571,7 +580,7 @@ impl Uses {
                     at(*before, &mut seeds);
                     at(*after, &mut seeds);
                 }
-                Op::SetProperty { object: ObjectRef::Component(c), key, .. }
+                Op::SetProperty { object: ObjectRef::Device(c), key, .. }
                     if key == ecad_model::connectivity::POTENTIAL
                         || key == ecad_model::connectivity::NAME
                         || key == ecad_model::connectivity::KIND =>
@@ -587,10 +596,10 @@ impl Uses {
             return false;
         }
         let conn = doc.connectivity();
-        let mut all: BTreeSet<ecad_model::ConductorId> = BTreeSet::new();
+        let mut all: BTreeSet<ecad_model::WireId> = BTreeSet::new();
         for c in &seeds {
             match conn.net_of_conductor(*c).and_then(|n| conn.net(n)) {
-                Some(net) => all.extend(net.conductors.iter().copied()),
+                Some(net) => all.extend(net.wires.iter().copied()),
                 None => {
                     all.insert(*c);
                 }
@@ -602,7 +611,7 @@ impl Uses {
         }
         let looks = crate::styles::wire::WireLooks::new(doc);
         for c in all {
-            if doc.conductors.contains_key(&c) {
+            if doc.wires.contains_key(&c) {
                 let k = looks.category(doc, c).0;
                 self.add(c, k);
             }

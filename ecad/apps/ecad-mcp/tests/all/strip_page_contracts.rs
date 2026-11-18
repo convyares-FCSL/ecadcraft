@@ -18,7 +18,7 @@ fn a_strip_page_by_the_agent_then_refused_with_writes_off() {
     assert_eq!(log.len(), n + 1, "one transaction");
     assert_eq!(log.last().map(|t| t.author.clone()), Some(Author::Agent(AGENT.into())));
     let d = c.doc();
-    assert_eq!(d.pages[&page].properties.get("terminal.plan.style").map(String::as_str), Some("graphic"));
+    assert_eq!(d.pages[&page].display.get("terminal.plan.style").map(String::as_str), Some("graphic"));
     assert_eq!(d.pages[&page].title, "Terminal strips");
     // Back to the table at page level: one more transaction by the agent.
     let v = c.exec("setdefault", json!({"key": "terminal.plan.style", "level": "page", "page": page.hex(), "value": "table"}));

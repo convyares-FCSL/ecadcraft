@@ -931,16 +931,9 @@ pub fn issued_state(p: &Project, rev: &str) -> Result<(Named, u64, Document), St
     let mut then = state_at(p, &pt)?;
     let live = p.ledger.document();
     let upto = revisions::list(live).into_iter().find(|r| r.issued.as_deref() == Some(n.name.as_str())).map_or(0, |r| r.n);
-    for r in revisions::list(live).into_iter().filter(|r| r.n <= upto && r.issued.is_some()) {
-        for (f, v) in revisions::FIELDS.iter().zip(r.fields.iter()) {
-            if !v.is_empty() {
-                then.properties.insert(r.key(f), v.clone());
-            }
-        }
-        if let Some(i) = &r.issued {
-            then.properties.insert(r.key(revisions::ISSUED), i.clone());
-        }
-    }
+    // Design 072 §5.3: the issued rows up to it, as they are now.
+    let upto = usize::try_from(upto).unwrap_or(usize::MAX);
+    then.project.revisions = live.project.revisions.iter().take(upto).filter(|r| r.issued.is_some()).cloned().collect();
     Ok((n.clone(), n.seq, then))
 }
 
@@ -1177,14 +1170,14 @@ fn chunk_summary(p: &Project, pt: &Point, prev: &Named) -> Vec<String> {
     }
     // Devices by tag, from the differing component chunks only (design 020 §8.3: at most three
     // named changes).
-    let comp: Vec<&String> = model.iter().copied().filter(|k| k.starts_with("model:component:")).collect();
+    let comp: Vec<&String> = model.iter().copied().filter(|k| k.starts_with("model:device:")).collect();
     let named = if comp.is_empty() || comp.len() > 8 { None } else { device_changes(&r, &a, &b, &comp) };
     match named {
         Some(lines) => out.extend(lines),
         None if !comp.is_empty() => out.push("devices changed".into()),
         None => {}
     }
-    if model.iter().any(|k| !k.starts_with("model:component:")) {
+    if model.iter().any(|k| !k.starts_with("model:device:")) {
         out.push("wiring changed".into());
     }
     out
@@ -1195,20 +1188,20 @@ fn chunk_summary(p: &Project, pt: &Point, prev: &Named) -> Vec<String> {
 fn device_changes(
     r: &ecad_file::Reader, a: &ecad_file::schema::VersionRecord, b: &ecad_file::schema::VersionRecord, keys: &[&String],
 ) -> Option<Vec<String>> {
-    use ecad_file::chunks::{ChunkSet, components_of};
-    let load = |v: &ecad_file::schema::VersionRecord| -> Option<BTreeMap<ecad_model::ComponentId, ecad_model::Component>> {
+    use ecad_file::chunks::{ChunkSet, devices_of};
+    let load = |v: &ecad_file::schema::VersionRecord| -> Option<BTreeMap<ecad_model::DeviceId, ecad_model::Device>> {
         let set = ChunkSet::from_record(&v.chunks).ok()?;
         let mut out = BTreeMap::new();
         for k in keys {
             let Some(h) = v.chunks.get(*k) else { continue };
             let hash = ecad_file::chain::parse_hex(h)?;
             let body = r.chunk_body(&hash).ok()?;
-            out.extend(components_of(&set, k, &body).ok()?);
+            out.extend(devices_of(&set, k, &body).ok()?);
         }
         Some(out)
     };
     let (ca, cb) = (load(a)?, load(b)?);
-    let tag = |c: &ecad_model::Component| c.properties.get(ecad_model::tag::TAG_KEY).cloned().unwrap_or_else(|| "a device".into());
+    let tag = |c: &ecad_model::Device| c.properties.get(ecad_model::tag::TAG_KEY).cloned().unwrap_or_else(|| "a device".into());
     let mut lines: Vec<String> = Vec::new();
     for (id, c) in &cb {
         match ca.get(id) {

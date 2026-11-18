@@ -28,7 +28,7 @@ use std::time::Instant;
 
 use cadcraft_engine::Session;
 use ecad_cadcraft::ProjectHandle;
-use ecad_model::{Author, ComponentId, PageId, Placement, Pt};
+use ecad_model::{Author, DeviceId, PageId, Placement, Pt};
 use serde_json::json;
 
 use crate::measure::{median, path_text, remove};
@@ -108,7 +108,7 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
                 at(0),
                 ecad_cadcraft::devices::Target::New(None),
             )?;
-            let rack: ComponentId = plan.component;
+            let rack: DeviceId = plan.component;
             ops.extend(plan.ops);
             p.ledger.commit(Author::User, "bench rack", std::mem::take(&mut ops)).map_err(|e| e.to_string())?;
             for i in 0..CARDS {
@@ -305,11 +305,11 @@ fn measure_056(project: &ProjectHandle, s: &mut Session, runs: usize, out: &mut 
 }
 
 /// Brief 051's rows (design 051 §9.4), on the project as [`measure`] left it.
-fn measure_051(project: &ProjectHandle, s: &mut Session, runs: usize, rack: ecad_model::ComponentId, out: &mut MeasuredPlc) -> Result<(), String> {
+fn measure_051(project: &ProjectHandle, s: &mut Session, runs: usize, rack: ecad_model::DeviceId, out: &mut MeasuredPlc) -> Result<(), String> {
     // A fenced card kept on the page shown (setup, not timed).
     let v = run(s, "plcchannels", json!({"type": "DI", "from": [895.0, 200.0], "to": [1215.0, 200.0]}))?;
-    let card = v.get("card").and_then(|c| c.as_str()).and_then(ecad_model::ComponentId::parse).ok_or("no fenced card")?;
-    let page = project.read(s, |p, _| p.ledger.document().representations_of(ecad_model::Subject::Component(card)).next().map(|(_, r)| r.page))?;
+    let card = v.get("card").and_then(|c| c.as_str()).and_then(ecad_model::DeviceId::parse).ok_or("no fenced card")?;
+    let page = project.read(s, |p, _| p.ledger.document().representations_of(ecad_model::Subject::Device(card)).next().map(|(_, r)| r.page))?;
     let page = page.ok_or("the fenced card is on no page")?;
     let frames = |project: &ProjectHandle, s: &mut Session| -> Result<f64, String> {
         project.read(s, |p, _| {

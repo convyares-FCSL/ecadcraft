@@ -156,7 +156,7 @@ pub(crate) fn log_len(h: &mut H) -> usize {
 pub(crate) fn conductors(h: &mut H) -> usize {
     let t = h.state_mut();
     let p = t.project().unwrap().clone();
-    p.read(&mut t.cad.session, |p, _| p.ledger.document().conductors.len()).unwrap()
+    p.read(&mut t.cad.session, |p, _| p.ledger.document().wires.len()).unwrap()
 }
 
 /// A person's edit, through the ECAD command field.
@@ -400,7 +400,7 @@ fn a_second_writer_reads_until_the_first_says_bye() {
     let mut b = server(port, true, "second");
     let e = b.exec_refused(&mut h, "wire", wire(5.0));
     assert_eq!(e, agent::not_writer("first"));
-    assert!(b.ok(&mut h, "ecad_project", json!({}))["components"]["count"].is_number());
+    assert!(b.ok(&mut h, "ecad_project", json!({}))["devices"]["count"].is_number());
     a.bye(&mut h);
     b.exec(&mut h, "wire", wire(5.0));
     assert_eq!(conductors(&mut h), 2);
