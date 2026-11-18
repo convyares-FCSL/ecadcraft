@@ -183,11 +183,11 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
                 cable.properties.insert("type".into(), "YSLY-JZ 7G1.5".into());
                 serial += 1;
                 cable.properties.insert("tag".into(), format!("-W9{serial:04}"));
+                cable.cores = two
+                    .iter()
+                    .map(|(route, landed)| Core { position: CorePosition::Route { route: *route, landed: Some(*landed) }, ..Core::unplaced(None) })
+                    .collect();
                 ops.push(Op::CreateCable { id: k, cable });
-                for (index, (route, landed)) in two.iter().enumerate() {
-                    let member = Core { position: CorePosition::Route { route: *route, landed: Some(*landed) }, ..Core::unplaced(None) };
-                    ops.push(Op::AddCableMember { cable: k, index, member });
-                }
             }
             p.ledger.commit(Author::User, "bench strip", ops).map_err(|e| e.to_string())?;
         }

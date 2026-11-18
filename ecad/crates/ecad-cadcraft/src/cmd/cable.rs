@@ -24,9 +24,7 @@ use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
 use ecad_electrical::cmd::cable::{self as rules, CableInput, EndInput};
 pub use ecad_electrical::cmd::cable::{BadReason, Drawn, assign_cores, bad_value, cable_named, check_remove, drawn, edit_ops};
-use ecad_model::{
-    CableId, Core, CorePosition, Document, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Representation, RepresentationId, Subject,
-};
+use ecad_model::{CableId, CorePosition, Document, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Representation, RepresentationId, Subject};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -269,12 +267,13 @@ pub(crate) fn run_slash_assign(
     let cores = assign_cores(doc, k, found.members.len())?;
     let (item, rep): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
     let mut ops = Vec::new();
-    for (index, (m, core)) in found.members.iter().zip(cores.iter()).enumerate() {
-        ops.push(Op::AddCableMember {
-            cable: k,
-            index,
-            member: Core { position: m.position, ..Core::unplaced(core.as_deref().and_then(|c| ecad_model::CoreLabel::new(c).ok())) },
-        });
+    // Design 072 §4.5: each crossed line takes its core, the stored unplaced one of that label.
+    if let Some(before) = doc.cables.get(&k) {
+        let mut after = before.clone();
+        for (m, core) in found.members.iter().zip(cores.iter()) {
+            ecad_electrical::styles::cable::place_core(&mut after, core.as_deref().and_then(|c| ecad_model::CoreLabel::new(c).ok()), m.position);
+        }
+        ops.extend(Op::modify_cable(k, before, after));
     }
     let style = crate::cmd::plain_style(p);
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Line { a: from, b: to }) } });

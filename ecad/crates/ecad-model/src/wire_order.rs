@@ -29,7 +29,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::doc::{Core, CorePosition, Document, Wire};
+use crate::doc::{Cable, Core, CorePosition, Document, Wire};
 use crate::geom::Pt;
 use crate::id::{ConductorId, IdAllocator, NetId, RouteId, TerminalId, WireId};
 use crate::op::Op;
@@ -272,8 +272,7 @@ pub fn cores(doc: &Document, ops: &[Op]) -> Vec<Op> {
             })
             .collect();
         // Take them out from the back, then put each back in its place where it now belongs.
-        for (index, m, _) in moving.iter().rev() {
-            out.push(Op::RemoveCableMember { cable, index: *index, member: m.clone() });
+        for (index, _, _) in moving.iter().rev() {
             members.remove(*index);
         }
         for (index, m, to) in moving {
@@ -288,9 +287,9 @@ pub fn cores(doc: &Document, ops: &[Op]) -> Vec<Op> {
                 Core { position: to, ..m }
             };
             let at = index.min(members.len());
-            members.insert(at, member.clone());
-            out.push(Op::AddCableMember { cable, index: at, member });
+            members.insert(at, member);
         }
+        out.extend(Op::modify_cable(cable, c, Cable { cores: members, ..c.clone() }));
     }
     out
 }
@@ -702,8 +701,7 @@ impl<'a> Rewrite<'a> {
             let Some(c) = doc.cables.get(&cable) else { continue };
             let mut list = c.cores.clone();
             changes.sort_by_key(|(i, _, _)| *i);
-            for (index, m, _) in changes.iter().rev() {
-                members.push(Op::RemoveCableMember { cable, index: *index, member: m.clone() });
+            for (index, _, _) in changes.iter().rev() {
                 list.remove(*index);
             }
             for (index, m, to) in changes {
@@ -716,9 +714,9 @@ impl<'a> Rewrite<'a> {
                     },
                 };
                 let at = index.min(list.len());
-                list.insert(at, member.clone());
-                members.push(Op::AddCableMember { cable, index: at, member });
+                list.insert(at, member);
             }
+            members.extend(Op::modify_cable(cable, c, Cable { cores: list, ..c.clone() }));
         }
         let mut out = modifies;
         out.extend(creates);

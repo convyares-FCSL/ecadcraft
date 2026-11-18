@@ -123,11 +123,12 @@ fn an_open_end_on_the_new_wire_joins_it() {
     assert_eq!(h.doc().routes.len(), 1);
 }
 
-/// §12 item 9: `join: false` (or `junction: false`) leaves both ends free; Checks lists Looks
-/// connected with Join and two Open end rows; `join` and `junction` that disagree are refused.
+/// §12 item 9: `join: false` leaves both ends free; Checks lists Looks connected with Join and two
+/// Open end rows; the old name `junction` is refused (lane 072 D).
 #[test]
 fn join_false_leaves_the_ends_open() {
-    for key in ["join", "junction"] {
+    {
+        let key = "join";
         let mut h = H::new(0x32_09);
         terminal(&mut h, (0.0, 0.0), "X1");
         terminal(&mut h, (50.0, -20.0), "X1");
@@ -145,7 +146,7 @@ fn join_false_leaves_the_ends_open() {
     }
     let mut h = H::new(0x32_19);
     let m = wire_r(&mut h, &[(0.0, 0.0), (5.0, 0.0)], json!({"join": true, "junction": false})).unwrap_err();
-    assert!(m.contains("`join` and `junction` disagree; give only `join`"), "{m}");
+    assert!(m.contains("`junction` is not a parameter"), "{m}");
 }
 
 /// §12 items 11 and 12: `joinwires` merges ends that meet; nothing to join is refused.

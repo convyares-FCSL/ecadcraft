@@ -291,11 +291,12 @@ fn t08_reverse_tee_splits_the_new_wire() {
     undo_is_one_step(&mut h, &before);
 }
 
-/// §12 9: `join: false` (and its old name `junction: false`) leaves both ends free; Checks lists
-/// Looks connected with the Join fix; `join` and `junction` disagreeing is refused.
+/// §12 9: `join: false` leaves both ends free; Checks lists Looks connected with the Join fix;
+/// the old name `junction` is gone (lane 072 D) and refused.
 #[test]
 fn t09_join_false_and_junction_false_and_their_disagreement() {
-    for key in ["join", "junction"] {
+    {
+        let key = "join";
         let mut h = H::new(0x7032_0009);
         let (_, _, p1) = terminal(&mut h, (0.0, 0.0), "X1");
         let (_, _, p2) = terminal(&mut h, (50.0, -40.0), "X2");
@@ -317,11 +318,8 @@ fn t09_join_false_and_junction_false_and_their_disagreement() {
     wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({}));
     let head = h.head();
     let m = h.run("wire", wire_json(&[(50.0, 0.0), (50.0, -20.0)], json!({"join": true, "junction": false}))).unwrap_err();
-    assert!(m.contains("`join` and `junction` disagree"), "{m}");
+    assert!(m.contains("`junction` is not a parameter"), "{m}");
     assert_eq!(h.head(), head);
-    // Both given and the same is fine.
-    let r = wire(&mut h, &[(50.0, 0.0), (50.0, -20.0)], json!({"join": true, "junction": true}));
-    assert_eq!(r["created"], json!(false), "{r}");
     // A non-boolean `join` is refused, not read as true.
     let m = h.run("wire", wire_json(&[(200.0, 0.0), (250.0, 0.0)], json!({"join": "no"}))).unwrap_err();
     assert!(!m.is_empty());
@@ -511,7 +509,17 @@ fn t13_a_cable_continued_on_a_second_page() {
     let tx = last_tx(&mut f.h);
     assert_eq!(tx.label, "Cable slash");
     assert!(!tx.ops.iter().any(|o| matches!(o, Op::CreateCable { .. })), "no new cable: {:?}", tx.ops);
-    assert_eq!(tx.ops.iter().filter(|o| matches!(o, Op::AddCableMember { .. })).count(), 3);
+    // One ModifyCable for the cable, placing three more cores on wires.
+    let placed = |c: &ecad_model::Cable| c.cores.iter().filter(|m| m.wire().is_some()).count() as isize;
+    let added: Vec<isize> = tx
+        .ops
+        .iter()
+        .filter_map(|o| match o {
+            Op::ModifyCable { id, before, after } if *id == f.cable => Some(placed(after) - placed(before)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(added, vec![3], "{:?}", tx.ops);
     assert!(tx.ops.iter().any(|o| matches!(o, Op::LinkRepresentation { .. })));
     let doc = f.h.doc();
     assert_eq!(doc.cables.len(), cables_before, "one cable");

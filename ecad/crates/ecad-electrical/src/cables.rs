@@ -8,8 +8,6 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{CableId, Document, ItemKind, PageId, Primitive, StyleRef, Subject};
 
-use serde::Deserialize;
-
 use crate::checks::{Check, Fix, Kind, Object};
 use crate::designations::{self, Aspect};
 use crate::slash::MAX_CABLE_MEMBERS;
@@ -134,37 +132,8 @@ impl CableField {
     }
 }
 
-/// A cable's shield (design 059 §2.1); the serde words are the stored words.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-pub enum Shield {
-    #[serde(rename = "none")]
-    None,
-    #[serde(rename = "overall")]
-    Overall,
-    #[serde(rename = "pairs")]
-    Pairs,
-    #[serde(rename = "overall+pairs")]
-    Both,
-}
-
-impl Shield {
-    pub const ALL: [Shield; 4] = [Shield::None, Shield::Overall, Shield::Pairs, Shield::Both];
-
-    /// The stored word.
-    pub fn word(self) -> &'static str {
-        match self {
-            Shield::None => "none",
-            Shield::Overall => "overall",
-            Shield::Pairs => "pairs",
-            Shield::Both => "overall+pairs",
-        }
-    }
-
-    /// The word a stored value names (case-insensitive).
-    pub fn parse(text: &str) -> Option<Shield> {
-        Shield::ALL.into_iter().find(|s| s.word().eq_ignore_ascii_case(text.trim()))
-    }
-}
+/// A cable's shield (design 059 §2.1): the model's, stored as a field (design 072 §4.5).
+pub use ecad_model::style::cable::Shield;
 
 /// Where a shown value comes from (design 059 §2.2): the hint `set here`, `from type`,
 /// `from notation`.
@@ -218,7 +187,11 @@ fn text_ok(t: &str, max: usize) -> bool {
 /// A stored value of cable `k` that ECAD reads: its property for `field`, when within bounds.
 /// Entry keys (planned ends) and the cable type are given as stored; tags as stored.
 pub fn read(doc: &Document, k: CableId, field: CableField) -> Option<String> {
-    let v = doc.cables.get(&k)?.properties.get(field.key())?;
+    let c = doc.cables.get(&k)?;
+    if field == CableField::Shield {
+        return c.shield.map(|s| ecad_model::words::Word::word(s).to_string());
+    }
+    let v = c.properties.get(field.key())?;
     valid(doc, field, v).then(|| v.trim().to_string())
 }
 
@@ -227,7 +200,7 @@ fn valid(doc: &Document, field: CableField, v: &str) -> bool {
     match field {
         CableField::Length => length_of(v).is_some(),
         CableField::Gland(_) => cable::is_gland(v),
-        CableField::Shield => Shield::parse(v).is_some(),
+        CableField::Shield => <Shield as ecad_model::words::Word>::parse(v).is_some(),
         CableField::Maker | CableField::PartNumber | CableField::Description | CableField::Type => text_ok(v, MAX_TEXT),
         CableField::Cores => crate::strips::parse_cores(v).is_ok(),
         CableField::EndLocation(_) => designations::code_of(doc, Aspect::Location, v.trim()).is_some(),
@@ -244,7 +217,6 @@ pub fn bad_values(doc: &Document, k: CableId) -> Vec<(CableField, String)> {
         CableField::Length,
         CableField::Gland(Side::From),
         CableField::Gland(Side::To),
-        CableField::Shield,
         CableField::Maker,
         CableField::PartNumber,
         CableField::Description,
@@ -262,9 +234,11 @@ pub fn bad_values(doc: &Document, k: CableId) -> Vec<(CableField, String)> {
         .collect()
 }
 
-/// Whether cable `k` is drawn: it has a member or a representation (FD1).
+/// Whether cable `k` is drawn: a core on a line, or a representation (FD1). Its stored unplaced
+/// cores (design 072 §4.5) do not draw it.
 pub fn is_drawn(doc: &Document, k: CableId) -> bool {
-    doc.cables.get(&k).is_some_and(|c| !c.cores.is_empty()) || doc.representations_of(Subject::Cable(k)).next().is_some()
+    doc.cables.get(&k).is_some_and(|c| c.cores.iter().any(|m| m.position != ecad_model::CorePosition::Unplaced))
+        || doc.representations_of(Subject::Cable(k)).next().is_some()
 }
 
 /// The cables not drawn yet, in tag order. O(cables): the pickers build it once when opened.
@@ -318,9 +292,13 @@ pub fn gland(doc: &Document, k: CableId, side: Side) -> Option<(String, Source)>
     own_or_type(doc, k, CableField::Gland(side), cable::TYPE_GLAND).filter(|(g, _)| cable::is_gland(g))
 }
 
-/// Cable `k`'s shield: its own, else its cable type's.
+/// Cable `k`'s shield: its own field, else its cable type's.
 pub fn shield(doc: &Document, k: CableId) -> Option<(Shield, Source)> {
-    own_or_type(doc, k, CableField::Shield, cable::TYPE_SHIELD).and_then(|(w, s)| Shield::parse(&w).map(|x| (x, s)))
+    if let Some(s) = doc.cables.get(&k)?.shield {
+        return Some((s, Source::Here));
+    }
+    let id = type_of(doc, k)?;
+    cable::type_text(doc, &id, cable::TYPE_SHIELD).and_then(|w| <Shield as ecad_model::words::Word>::parse(&w)).map(|s| (s, Source::Type))
 }
 
 /// Cable `k`'s maker, part number or description: its own, else its cable type's (Q8).
@@ -440,7 +418,7 @@ pub struct OffPlan {
 /// function that the devices at that end do not have. The two ends differing from each other is
 /// normal and never raises; an end with no plan, or with no device drawn there, raises nothing.
 pub fn off_plan(doc: &Document, k: CableId) -> Vec<OffPlan> {
-    if doc.cables.get(&k).is_none_or(|c| c.cores.is_empty()) {
+    if doc.cables.get(&k).is_none_or(|c| c.cores.iter().all(|m| m.position == ecad_model::CorePosition::Unplaced)) {
         return Vec::new();
     }
     let ends = drawn_ends(doc, k);

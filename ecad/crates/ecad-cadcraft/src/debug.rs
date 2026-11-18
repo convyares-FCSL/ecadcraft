@@ -921,8 +921,7 @@ pub fn op_view(op: &Op) -> OpView {
         Op::ModifyRoute { before, after, .. } => (val(before), val(after)),
         Op::CreateCable { cable, .. } => (None, val(cable)),
         Op::DeleteCable { cable, .. } => (val(cable), None),
-        Op::AddCableMember { index, member, .. } => (None, val(&json!({"index": index, "member": member}))),
-        Op::RemoveCableMember { index, member, .. } => (val(&json!({"index": index, "member": member})), None),
+        Op::ModifyCable { before, after, .. } => (val(before), val(after)),
         Op::SetProperty { key, before, after, .. } => (val(&json!({ key.as_str(): before })), val(&json!({ key.as_str(): after }))),
         Op::EmbedDefinition { definition, .. } => (None, val(definition)),
         Op::RemoveDefinition { definition, .. } => (val(definition), None),
@@ -1022,9 +1021,9 @@ pub fn op_targets(op: &Op) -> Vec<ObjectId> {
             out.push(ObjectId::Cable(*id));
             out.extend(cable.cores.iter().filter_map(member_object));
         }
-        Op::AddCableMember { cable, member, .. } | Op::RemoveCableMember { cable, member, .. } => {
-            out.push(ObjectId::Cable(*cable));
-            out.extend(member_object(member));
+        Op::ModifyCable { id, before, after } => {
+            out.push(ObjectId::Cable(*id));
+            out.extend(before.cores.iter().chain(&after.cores).filter_map(member_object));
         }
         Op::SetProperty { object, .. } => out.push(match object {
             ecad_model::ObjectRef::Device(c) => ObjectId::Device(*c),

@@ -320,7 +320,7 @@ impl StripPages {
                 Op::SetProperty { object: ObjectRef::Project, key, .. } if entries::is_layout_key(key) => layout = true,
                 Op::SetProperty { object: ObjectRef::Project, key, .. } if key == entries::STYLE.key => self.style_changed = true,
                 Op::SetProjectSettings { before, after } if before.sheet != after.sheet => layout = true,
-                Op::SetProperty { object: ObjectRef::Cable(k), .. } => {
+                Op::SetProperty { object: ObjectRef::Cable(k), .. } | Op::ModifyCable { id: k, .. } => {
                     self.last_changed.extend(self.by_cable.get(k).into_iter().flatten().copied());
                 }
                 // A far device's tag or description (design 072: its fields) shows in the strip's rows.

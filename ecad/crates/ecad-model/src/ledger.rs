@@ -1418,8 +1418,7 @@ mod tests {
                 Op::AddTerminal { id: TerminalId(5), terminal: Terminal { component: c, label: None, key: None, accepts: Default::default() } },
                 Op::AddTerminal { id: TerminalId(10), terminal: Terminal { component: c, label: None, key: None, accepts: Default::default() } },
                 Op::CreateWire { id: w, wire: Wire::new(NetId(14), ConductorId(15), TerminalId(4), TerminalId(10)) },
-                Op::CreateCable { id: CableId(7), cable: Cable::default() },
-                Op::AddCableMember { cable: CableId(7), index: 0, member: Core::on_wire(w, None) },
+                Op::CreateCable { id: CableId(7), cable: Cable { cores: vec![Core::on_wire(w, None)], ..Cable::default() } },
             ],
         )
         .unwrap();
@@ -1430,7 +1429,11 @@ mod tests {
     fn three_ops() -> Vec<Op> {
         vec![
             Op::CreateWire { id: WireId(11), wire: Wire::new(NetId(12), ConductorId(13), TerminalId(4), TerminalId(5)) },
-            Op::RemoveCableMember { cable: CableId(7), index: 0, member: Core::on_wire(WireId(6), None) },
+            Op::ModifyCable {
+                id: CableId(7),
+                before: Cable { cores: vec![Core::on_wire(WireId(6), None)], ..Cable::default() },
+                after: Cable::default(),
+            },
             Op::AddPage { id: PageId(8), page: Page::titled("2").unwrap(), index: 1 },
         ]
     }

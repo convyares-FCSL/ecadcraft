@@ -970,7 +970,10 @@ impl Outputs {
                 drawn: crate::cables::is_drawn(doc, k),
                 planned: crate::cables::Side::BOTH.map(|side| crate::cables::plan_words(doc, k, side)),
                 glands: crate::cables::Side::BOTH.map(|side| crate::cables::gland(doc, k, side).map(|(g, _)| g)),
-                shield: crate::cables::shield(doc, k).map(|(w, _)| w).filter(|w| *w != crate::cables::Shield::None).map(|w| w.word().to_string()),
+                shield: crate::cables::shield(doc, k)
+                    .map(|(w, _)| w)
+                    .filter(|w| *w != crate::cables::Shield::None)
+                    .map(|w| ecad_model::words::Word::word(w).to_string()),
             },
         );
     }

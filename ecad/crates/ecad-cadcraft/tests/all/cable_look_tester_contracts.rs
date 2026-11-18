@@ -216,18 +216,17 @@ fn reference_end(h: &mut H, page: PageId, cable: CableId, at: Pt, n: u128) -> (I
     (item, rep)
 }
 
-/// Store `core` on member `index` of `cable` with the design §5.3 pair, bypassing `cablecore`'s
+/// Store `core` on member `index` of `cable` with one ModifyCable, bypassing `cablecore`'s
 /// validation (a label stored "by another route", design §4.5).
 fn store_core_raw(h: &mut H, cable: CableId, index: usize, core: Option<&str>) {
-    let m = h.doc().cables[&cable].cores[index].clone();
-    let ops = vec![
-        Op::RemoveCableMember { cable, index, member: m.clone() },
-        Op::AddCableMember {
-            cable,
-            index,
-            member: Core { position: m.position, ..Core::unplaced(core.and_then(|c| ecad_model::CoreLabel::new(c).ok())) },
-        },
-    ];
+    let before = h.doc().cables[&cable].clone();
+    let mut after = before.clone();
+    let m = &mut after.cores[index];
+    *m = Core { position: m.position, ..Core::unplaced(core.and_then(|c| ecad_model::CoreLabel::new(c).ok())) };
+    let ops: Vec<Op> = Op::modify_cable(cable, &before, after).into_iter().collect();
+    if ops.is_empty() {
+        return;
+    }
     h.project.apply_ops(&mut h.s, "Core label", ops).unwrap();
     h.check();
 }
@@ -905,7 +904,7 @@ fn ac6_twenty_core_cable_at_a_tight_pitch() {
         let labels: Vec<String> = (1..=20).map(|i| i.to_string()).collect();
         h.run("cablecore", json!({"cable": k.hex(), "cores": labels})).unwrap();
         assert_eq!(h.head(), head + 1, "one transaction for 20 labels");
-        assert_eq!(last_tx(&mut h).ops.len(), 40);
+        assert!(matches!(last_tx(&mut h).ops.as_slice(), [Op::ModifyCable { .. }]), "one ModifyCable for 20 labels");
         view(&mut h, k, "fan");
         h.check();
         let d = fan(&mut h, page, k);

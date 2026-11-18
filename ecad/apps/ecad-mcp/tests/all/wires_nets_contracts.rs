@@ -87,7 +87,7 @@ fn pack(c: &mut Client) -> String {
     k
 }
 
-/// `cableslash` continuing a cable: one `Cable slash` transaction with `AddCableMember` and
+/// `cableslash` continuing a cable: one `Cable slash` transaction with `ModifyCable` and
 /// `LinkRepresentation`, no `CreateCable`; `cablecontinue` on it before is refused with §3.4's
 /// words and records nothing.
 #[test]
@@ -102,7 +102,17 @@ fn cableslash_continuing_and_cablecontinue_through_execute() {
     assert_eq!(r["continued"], json!(true), "{r}");
     let t = last(&mut c);
     assert_eq!(t.label, "Cable slash");
-    assert_eq!(t.ops.iter().filter(|o| matches!(o, Op::AddCableMember { .. })).count(), 3);
+    // One ModifyCable for the cable, placing three more cores on wires.
+    let placed = |c: &ecad_model::Cable| c.cores.iter().filter(|m| m.wire().is_some()).count() as isize;
+    let added: Vec<isize> = t
+        .ops
+        .iter()
+        .filter_map(|o| match o {
+            Op::ModifyCable { before, after, .. } => Some(placed(after) - placed(before)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(added, vec![3], "{:?}", t.ops);
     assert!(t.ops.iter().any(|o| matches!(o, Op::LinkRepresentation { .. })));
     assert!(!t.ops.iter().any(|o| matches!(o, Op::CreateCable { .. })));
 }

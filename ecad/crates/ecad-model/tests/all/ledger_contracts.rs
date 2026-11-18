@@ -63,7 +63,11 @@ fn every_op_inverts_to_the_previous_state() {
         },
         Op::CreateWire { id: cond, wire: Wire::new(f.ids.fresh(), f.ids.fresh(), term2, term) },
         Op::CreateCable { id: cable, cable: Default::default() },
-        Op::AddCableMember { cable, index: 0, member: Core::on_wire(cond, None) },
+        Op::ModifyCable {
+            id: cable,
+            before: Default::default(),
+            after: ecad_model::Cable { cores: vec![Core::on_wire(cond, None)], ..Default::default() },
+        },
         Op::SetProperty { object: ecad_model::ObjectRef::Device(comp), key: "note".parse().unwrap(), before: None, after: Some("-K1".into()) },
     ];
     let before = f.ledger.document().clone();
@@ -136,7 +140,7 @@ fn deleting_a_referenced_object_needs_explicit_detachment() {
     let cable = f.ids.fresh();
     let t = Terminal { component: comp, label: None, key: None, accepts: Default::default() };
     let wire = Wire::new(f.ids.fresh(), f.ids.fresh(), term, term2);
-    let member = Core::on_wire(cond, None);
+    let with_member = ecad_model::Cable { cores: vec![Core::on_wire(cond, None)], ..Default::default() };
     f.ledger
         .commit(
             Author::User,
@@ -146,8 +150,7 @@ fn deleting_a_referenced_object_needs_explicit_detachment() {
                 Op::AddTerminal { id: term, terminal: t.clone() },
                 Op::AddTerminal { id: term2, terminal: t.clone() },
                 Op::CreateWire { id: cond, wire: wire.clone() },
-                Op::CreateCable { id: cable, cable: Default::default() },
-                Op::AddCableMember { cable, index: 0, member: member.clone() },
+                Op::CreateCable { id: cable, cable: with_member.clone() },
             ],
         )
         .unwrap();
@@ -162,7 +165,7 @@ fn deleting_a_referenced_object_needs_explicit_detachment() {
     assert!(f.ledger.document().cables[&cable].cores.is_empty());
     f.ledger.undo(Author::User).unwrap();
     assert!(f.ledger.document().wires.contains_key(&cond));
-    let mut with_detach = vec![Op::RemoveCableMember { cable, index: 0, member }];
+    let mut with_detach = vec![Op::ModifyCable { id: cable, before: with_member, after: Default::default() }];
     with_detach.extend(delete);
     f.ledger.commit(Author::User, "delete wire", with_detach).unwrap();
     assert!(!f.ledger.document().wires.contains_key(&cond));

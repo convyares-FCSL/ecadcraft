@@ -156,6 +156,40 @@ pub fn offer_of_props(doc: &Document, props: &ecad_model::Properties) -> Option<
     crate::strips::cable_offer(props)
 }
 
+/// Store the cores `after`'s offer names (design 072 §4.5, a write rule): every offered core no
+/// core of the cable is (by label, or counted as it by [`crate::strips::count_cores`]) becomes an
+/// unplaced in-use core, and an unplaced core the old offer
+/// (`before`'s properties) named and the new one does not goes. Placed cores never change. Run by
+/// the commands that set `cores`, `type` or `cable_type`; reading never does it. Labels compare
+/// without case.
+pub fn sync_offered_cores(doc: &Document, before: &ecad_model::Properties, after: &mut ecad_model::Cable) {
+    let labels = |props: &ecad_model::Properties| -> Vec<String> { offer_of_props(doc, props).map(|(o, _, _)| o).unwrap_or_default() };
+    let (old, new) = (labels(before), labels(&after.properties));
+    let named = |list: &[String], l: &str| list.iter().any(|x| x.eq_ignore_ascii_case(l.trim()));
+    after.cores.retain(|m| m.position != ecad_model::CorePosition::Unplaced || m.label_str().is_none_or(|l| !named(&old, l) || named(&new, l)));
+    let free = crate::strips::count_cores(offer_of_props(doc, &after.properties), &after.cores).spare;
+    for l in free.iter().take(crate::slash::MAX_CABLE_MEMBERS) {
+        let has = after.cores.iter().any(|m| m.label_str().is_some_and(|x| x.trim().eq_ignore_ascii_case(l)));
+        if !has && let Ok(label) = ecad_model::CoreLabel::new(l) {
+            after.cores.push(ecad_model::Core::unplaced(Some(label)));
+        }
+    }
+}
+
+/// Place a core of `cable` at `position` (design 072 §4.5, a write rule): the first unplaced in-use
+/// core labelled `label` moves there; with none (or no label), a new in-use core labelled `label`
+/// is added at the end.
+pub fn place_core(cable: &mut ecad_model::Cable, label: Option<ecad_model::CoreLabel>, position: ecad_model::CorePosition) {
+    let free = |m: &ecad_model::Core| m.position == ecad_model::CorePosition::Unplaced && !m.is_spare();
+    let at = label
+        .as_ref()
+        .and_then(|l| cable.cores.iter().position(|m| free(m) && m.label_str().is_some_and(|x| x.trim().eq_ignore_ascii_case(l.as_str().trim()))));
+    match at.and_then(|i| cable.cores.get_mut(i)) {
+        Some(m) => m.position = position,
+        None => cable.cores.push(ecad_model::Core { position, ..ecad_model::Core::unplaced(label) }),
+    }
+}
+
 /// The core colours of cable `k`, in core order, from its cable type: the type's own list, else
 /// its scheme's colours for the cable's core offer (design 072 F37); empty when neither gives any.
 pub fn core_colours(doc: &Document, k: CableId) -> Vec<String> {
@@ -259,20 +293,23 @@ pub fn unused_ops(doc: &Document, k: CableId, key: &str, value: Option<&str>) ->
         }
     }
     let purpose = if tick { Purpose::Spare } else { Purpose::InUse };
-    Ok(match stored.and_then(|i| cab.cores.get(i).map(|m| (i, m))) {
-        Some((_, m)) if m.purpose == purpose => Vec::new(),
-        Some((index, m)) if !tick && m.position == CorePosition::Unplaced => {
-            vec![Op::RemoveCableMember { cable: k, index, member: m.clone() }]
+    let offered = offer(doc, k).is_some_and(|(o, _, _)| o.iter().any(|x| x.eq_ignore_ascii_case(label)));
+    let mut after = cab.clone();
+    match stored {
+        Some(i) if after.cores.get(i).is_some_and(|m| m.purpose == purpose) => return Ok(Vec::new()),
+        // An unplaced core stored only for its tick goes; an offered one stays, in use again.
+        Some(i) if !tick && !offered && after.cores.get(i).is_some_and(|m| m.position == CorePosition::Unplaced) => {
+            after.cores.remove(i);
         }
-        Some((index, m)) => vec![
-            Op::RemoveCableMember { cable: k, index, member: m.clone() },
-            Op::AddCableMember { cable: k, index, member: Core { purpose, ..m.clone() } },
-        ],
-        None if tick => {
-            vec![Op::AddCableMember { cable: k, index: cab.cores.len(), member: Core { purpose, ..Core::unplaced(Some(text)) } }]
+        Some(i) => {
+            if let Some(m) = after.cores.get_mut(i) {
+                m.purpose = purpose;
+            }
         }
-        None => Vec::new(),
-    })
+        None if tick => after.cores.push(Core { purpose, ..Core::unplaced(Some(text)) }),
+        None => return Ok(Vec::new()),
+    }
+    Ok(Op::modify_cable(k, cab, after).into_iter().collect())
 }
 
 /// An offered core no member uses (neither a wire nor a loose line, design 072 §4.2) and not

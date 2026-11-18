@@ -605,8 +605,10 @@ impl Scope {
                 Op::CreateWire { id, .. } | Op::DeleteWire { id, .. } => {
                     self.wires.insert(*id);
                 }
-                Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
+                // A cable is made or deleted with its cores (design 072 §4.5): their wires' rows.
+                Op::CreateCable { id, cable } | Op::DeleteCable { id, cable } => {
                     self.cables.insert(*id);
+                    self.wires.extend(cable.cores.iter().filter_map(|m| m.wire()));
                 }
                 // Design 072 §4.3: a route moved, added or removed moves where the wires at the
                 // points it lands on are drawn.
@@ -620,9 +622,9 @@ impl Scope {
                         self.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
                     }
                 }
-                Op::AddCableMember { cable, member, .. } | Op::RemoveCableMember { cable, member, .. } => {
-                    self.cables.insert(*cable);
-                    self.wires.extend(member.wire());
+                Op::ModifyCable { id, before, after } => {
+                    self.cables.insert(*id);
+                    self.wires.extend(before.cores.iter().chain(&after.cores).filter_map(|m| m.wire()));
                 }
                 Op::SetProjectSettings { before, after } => {
                     let rows = |w: &ecad_model::wiring::WiringSettings| -> BTreeMap<String, ecad_model::wiring::PotentialDef> {

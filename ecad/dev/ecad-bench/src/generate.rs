@@ -462,10 +462,9 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             let tag = format!("-W{cable_no}");
             let mut value = Cable::default();
             value.properties.insert("tag".into(), tag.clone());
+            value.cores =
+                members.iter().enumerate().map(|(index, w)| Core::on_wire(*w, ecad_model::CoreLabel::new(&(index + 1).to_string()).ok())).collect();
             let mut ops = vec![Op::CreateCable { id: cable, cable: value }];
-            for (index, w) in members.iter().enumerate() {
-                ops.push(Op::AddCableMember { cable, index, member: Core::on_wire(*w, ecad_model::CoreLabel::new(&(index + 1).to_string()).ok()) });
-            }
             ops.push(Op::AddItem {
                 id: item,
                 item: Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Line { a: from, b: to }) },

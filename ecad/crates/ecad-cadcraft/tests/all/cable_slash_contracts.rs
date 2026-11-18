@@ -96,7 +96,8 @@ fn a_slash_makes_one_cable_of_the_wires_it_crosses_in_one_transaction() {
     let tx = f.h.p(|p| p.ledger.log().last().cloned().unwrap());
     assert_eq!(tx.label, "Cable slash");
     let names: Vec<&str> = tx.ops.iter().map(Op::name).collect();
-    assert_eq!(names, ["CreateCable", "AddCableMember", "AddCableMember", "AddCableMember", "AddItem", "LinkRepresentation"]);
+    assert_eq!(names, ["CreateCable", "AddItem", "LinkRepresentation"]);
+    assert!(matches!(&tx.ops[0], Op::CreateCable { cable, .. } if cable.cores.len() == 3), "the new cable carries its three cores");
     let k: CableId = id(&r, "cable");
     let d = f.h.doc();
     let cable = &d.cables[&k];
@@ -419,8 +420,9 @@ fn erasing_the_slash_keeps_the_cable_and_deleting_the_cable_keeps_the_wires() {
     }
     let tx = f.h.p(|p| p.ledger.log().last().cloned().unwrap());
     let names: Vec<&str> = tx.ops.iter().map(Op::name).collect();
-    assert_eq!(names[..3], ["RemoveCableMember"; 3]);
+    assert!(!names.contains(&"ModifyCable"), "{names:?}");
     assert_eq!(names.last(), Some(&"DeleteCable"));
+    assert!(matches!(tx.ops.last(), Some(Op::DeleteCable { cable, .. }) if cable.cores.len() == 3), "the cable goes with its cores");
     f.h.cmdline("u");
     assert!(f.h.doc() == before, "undo brings the cable and its slash back");
     // Deleting a member keeps the cable (P7, Q4).

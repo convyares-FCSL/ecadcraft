@@ -133,10 +133,8 @@ fn worked_example_replays_and_undoes() {
 
     // 4. Cable.
     let k1 = ids.fresh();
-    let mut ops = vec![Op::CreateCable { id: k1, cable: Default::default() }];
-    for (n, w) in wires.iter().enumerate() {
-        ops.push(Op::AddCableMember { cable: k1, index: n, member: Core::on_wire(*w, None) });
-    }
+    let cores = wires.iter().map(|w| Core::on_wire(*w, None)).collect();
+    let ops = vec![Op::CreateCable { id: k1, cable: ecad_model::Cable { cores, ..Default::default() } }];
     l.commit(Author::User, "Group as cable", ops).unwrap();
     let conductors_before: Vec<_> = l.document().wires.clone().into_iter().collect();
 

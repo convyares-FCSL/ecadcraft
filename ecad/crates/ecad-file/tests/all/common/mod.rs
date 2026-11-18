@@ -200,10 +200,7 @@ pub fn fixture() -> Fixture {
     let cable: CableId = f.ids.fresh();
     f.commit(
         "Cable",
-        vec![
-            Op::CreateCable { id: cable, cable: Cable::default() },
-            Op::AddCableMember { cable, index: 0, member: Core::on_wire(w, ecad_model::CoreLabel::new("1").ok()) },
-        ],
+        vec![Op::CreateCable { id: cable, cable: Cable { cores: vec![Core::on_wire(w, ecad_model::CoreLabel::new("1").ok())], ..Cable::default() } }],
     );
     // Keys whose UTF-8 and UTF-16 orders differ (U+FF5E sorts before U+1F600 in UTF-8 only).
     for (key, value) in [("note", "-K1"), ("\u{FF5E}wave", "w"), ("\u{1F600}smile", "s"), ("Bezeichnung-ä", "ä")] {

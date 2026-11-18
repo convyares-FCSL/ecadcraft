@@ -655,7 +655,7 @@ fn hostile_documents_derive_without_panicking() {
     doc.pages.insert(page, Page::titled("1").unwrap());
     doc.page_order.push(page);
     doc.layers.insert(layer, Layer { name: "0".into() });
-    doc.cables.insert(cable, Cable { properties: Default::default(), cores: Vec::<Core>::new() });
+    doc.cables.insert(cable, Cable { properties: Default::default(), cores: Vec::<Core>::new(), shield: None });
     let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     for (i, x) in [0.0, 50.0, 100.0, 150.0, f64::NAN].into_iter().enumerate() {
         let item = ItemId::from(100 + i as u128);
@@ -694,7 +694,7 @@ fn hostile_documents_derive_without_panicking() {
     two.pages.insert(lost_page, Page::titled("lost").unwrap());
     two.page_order.push(page);
     two.layers.insert(layer, Layer { name: "0".into() });
-    two.cables.insert(cable, Cable { properties: Default::default(), cores: Vec::new() });
+    two.cables.insert(cable, Cable { properties: Default::default(), cores: Vec::new(), shield: None });
     for (i, pg) in [page, lost_page].into_iter().enumerate() {
         let item = ItemId::from(300 + i as u128);
         two.items.insert(item, Item { page: pg, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(10.0, 0.0) }) });
@@ -733,7 +733,7 @@ fn twenty_thousand_references_of_one_cable_stay_bounded_and_fast() {
     doc.pages.insert(page, Page::titled("1").unwrap());
     doc.page_order.push(page);
     doc.layers.insert(layer, Layer { name: "0".into() });
-    doc.cables.insert(cable, Cable { properties: Default::default(), cores: Vec::new() });
+    doc.cables.insert(cable, Cable { properties: Default::default(), cores: Vec::new(), shield: None });
     let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     let n: usize = 20_000;
     for i in 0..n {
@@ -843,12 +843,9 @@ fn a_ten_thousand_wire_cable_continues_in_bounded_time() {
     let ops = h.cfg(|p| {
         let style = Style { layer: p.default_layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
         let cable: CableId = p.ids.fresh();
-        let mut ops = vec![Op::CreateCable { id: cable, cable: Cable::default() }];
-        let (lines, made) = crate::common::wired_lines(&mut p.ids, supply, style.clone(), n, |i| (Pt::new(0.0, i as f64), Pt::new(60.0, i as f64)));
-        ops.extend(lines);
-        for (i, (c, _, _)) in made.into_iter().enumerate() {
-            ops.push(Op::AddCableMember { cable, index: i, member: Core::on_wire(c, None) });
-        }
+        let (mut ops, made) = crate::common::wired_lines(&mut p.ids, supply, style.clone(), n, |i| (Pt::new(0.0, i as f64), Pt::new(60.0, i as f64)));
+        let cores = made.into_iter().map(|(c, _, _)| Core::on_wire(c, None)).collect();
+        ops.push(Op::CreateCable { id: cable, cable: Cable { cores, ..Cable::default() } });
         let (it, r): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
         ops.push(Op::AddItem { id: it, item: Item { page: supply, style, kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(65.0, 0.0) }) } });
         ops.push(Op::LinkRepresentation {

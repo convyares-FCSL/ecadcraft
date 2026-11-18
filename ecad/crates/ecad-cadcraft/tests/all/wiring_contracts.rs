@@ -68,7 +68,7 @@ fn a_tee_needs_a_junction_and_a_crossing_never_connects() {
     let main = wire(&mut h, &[(0.0, 0.0), (60.0, 0.0)], json!({}));
     let page = h.first_page();
     let main_line = h.route_of(page, main);
-    let tee = line(&mut h, &[(30.0, 30.0), (30.0, 0.0)], json!({"junction": false}));
+    let tee = line(&mut h, &[(30.0, 30.0), (30.0, 0.0)], json!({"join": false}));
     let doc = h.doc();
     assert_eq!(doc.wires.len(), 1, "a T without a landing is not connected");
     assert_eq!(doc.routes[&tee].ends[1], ecad_model::RouteEnd::Free);
@@ -96,7 +96,7 @@ fn a_tee_needs_a_junction_and_a_crossing_never_connects() {
     h.cmdline("redo");
     // A crossing: nothing joins.
     let wires = h.doc().wires.len();
-    let v = line(&mut h, &[(45.0, 20.0), (45.0, -20.0)], json!({"junction": false}));
+    let v = line(&mut h, &[(45.0, 20.0), (45.0, -20.0)], json!({"join": false}));
     let doc = h.doc();
     assert_eq!(doc.wires.len(), wires);
     assert!(doc.routes[&v].ends.iter().all(|e| *e == ecad_model::RouteEnd::Free));
@@ -202,7 +202,7 @@ fn each_seeded_fault_appears_once_where_it_is() {
     // Loose wire, and a T onto it with no junction (looks connected).
     let loose = line(&mut h, &[(50.0, 0.0), (50.0, 30.0)], json!({}));
     terminal(&mut h, (70.0, 15.0), "X4");
-    let tee = line(&mut h, &[(70.0, 15.0), (50.0, 15.0)], json!({"junction": false}));
+    let tee = line(&mut h, &[(70.0, 15.0), (50.0, 15.0)], json!({"join": false}));
     // Unconnected device points.
     h.run("place", json!({"symbol": "lamp", "at": [200, 100], "tag": "H9"})).unwrap();
     // Two points an old wire joins (below).
@@ -373,7 +373,7 @@ fn the_kept_checks_list_follows_every_edit_and_equals_a_fresh_build() {
         ("place", json!({"symbol": "terminal", "at": [0, 0], "tag": "X1"})),
         ("place", json!({"symbol": "terminal", "at": [40, 0], "tag": "X1"})),
         ("wire", json!({"points": [[0, 0], [40, 0]]})),
-        ("wire", json!({"points": [[20, 30], [20, 0]], "junction": false})),
+        ("wire", json!({"points": [[20, 30], [20, 0]], "join": false})),
         ("joinwires", json!({"at": [20, 0]})),
         ("wire", json!({"points": [[100, 0], [100, 40]], "potential": "24V"})),
         ("place", json!({"symbol": "continuation", "at": [100, 40], "name": "24V"})),

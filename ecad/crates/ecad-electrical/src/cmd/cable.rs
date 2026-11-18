@@ -10,8 +10,9 @@
 //!
 //! Excludes: the pickers and the UI (the Cables tab).
 
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::VecDeque;
 
+use ecad_model::words::Word;
 use ecad_model::{CableId, Document, IdAllocator, Ledger, ObjectRef, Op, PageId, Properties, StyleRef};
 
 use crate::cables::{CableField, MAX_LENGTH, MAX_TEXT, MAX_WORDS, MIN_LENGTH, Shield, Side, clip, drawn_pages, is_drawn, length_of, type_notation};
@@ -176,7 +177,7 @@ fn checked(
         CableField::Gland(_) if t.chars().count() > cable::MAX_GLAND_CHARS => Err(bad(BadReason::TooLong(cable::MAX_GLAND_CHARS))),
         CableField::Gland(_) if !cable::is_gland(&t) || ecad_model::text::has_hidden(&t) => Err(bad(BadReason::NotAWord)),
         CableField::Gland(_) => Ok(Some(t)),
-        CableField::Shield => Shield::parse(&t).map(|s| Some(s.word().to_string())).ok_or_else(|| bad(BadReason::NotAWord)),
+        CableField::Shield => <Shield as Word>::parse(&t).map(|s| Some(s.word().to_string())).ok_or_else(|| bad(BadReason::NotAWord)),
         CableField::Maker | CableField::PartNumber | CableField::Description | CableField::Type => {
             if t.chars().count() > MAX_TEXT {
                 return Err(bad(BadReason::TooLong(MAX_TEXT)));
@@ -207,6 +208,11 @@ pub fn cable_named(doc: &Document, text: &str) -> Result<CableId, CmdError> {
     crate::references::cable_tagged(doc, t).ok_or_else(|| no_cable(&t.chars().take(32).collect::<String>()))
 }
 
+/// Whether core `m` is on a line: a stored unplaced core (design 072 §4.5) is offered, not in use.
+fn placed(m: &ecad_model::Core) -> bool {
+    m.position != ecad_model::CorePosition::Unplaced
+}
+
 /// The cores cable `k`'s members use, by label (their matched or stored labels, else their place).
 fn cores_in_use(doc: &Document, k: CableId) -> Vec<String> {
     let Some(cab) = doc.cables.get(&k) else { return Vec::new() };
@@ -214,6 +220,7 @@ fn cores_in_use(doc: &Document, k: CableId) -> Vec<String> {
     cab.cores
         .iter()
         .enumerate()
+        .filter(|(_, m)| placed(m))
         .map(|(i, m)| count.matched.get(i).cloned().flatten().or_else(|| m.label_str().map(str::to_string)).unwrap_or_else(|| (i + 1).to_string()))
         .collect()
 }
@@ -221,12 +228,13 @@ fn cores_in_use(doc: &Document, k: CableId) -> Vec<String> {
 /// Q6: a new offer (from `props`) must hold every core cable `k`'s members use.
 fn check_offer(doc: &Document, k: CableId, props: &Properties) -> Result<(), CmdError> {
     let Some(cab) = doc.cables.get(&k) else { return Ok(()) };
-    if cab.cores.is_empty() {
+    if !cab.cores.iter().any(placed) {
         return Ok(());
     }
     let Some((offer, _, text)) = cable::offer_of_props(doc, props) else { return Ok(()) };
     let count = crate::strips::count_cores(Some((offer.clone(), crate::strips::OfferSource::Cores, text.clone())), &cab.cores);
-    let lacks_label = cab.cores.iter().any(|m| m.label_str().is_some_and(|l| !offer.iter().any(|o| o.eq_ignore_ascii_case(l.trim()))));
+    let lacks_label =
+        cab.cores.iter().filter(|m| placed(m)).any(|m| m.label_str().is_some_and(|l| !offer.iter().any(|o| o.eq_ignore_ascii_case(l.trim()))));
     if count.over.is_empty() && !lacks_label {
         return Ok(());
     }
@@ -257,6 +265,13 @@ fn refuse_taken(doc: &Document, typed: &str, except: Option<CableId>) -> Result<
         }
         None => Ok(()),
     }
+}
+
+/// `cable` with the shield moved from its properties (where the checked inputs put it) to its
+/// field (design 072 §4.5): the field is cleared when the properties hold none.
+fn take_shield(mut cable: ecad_model::Cable) -> ecad_model::Cable {
+    cable.shield = cable.properties.remove(CableField::Shield.key()).and_then(|w| <Shield as Word>::parse(&w));
+    cable
 }
 
 /// A planned `cablenew`.
@@ -304,7 +319,9 @@ pub fn plan_new(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, fiel
     let tag = crate::devices::new_cable_tag(ledger, high, typed_tag.as_deref())?;
     props.insert(CableField::Tag.key().to_string(), tag.clone());
     let id: CableId = ids.fresh();
-    ops.push(Op::CreateCable { id, cable: ecad_model::Cable { properties: props, cores: Vec::new() } });
+    let mut cable = take_shield(ecad_model::Cable { properties: props, ..ecad_model::Cable::default() });
+    crate::styles::cable::sync_offered_cores(doc, &Properties::new(), &mut cable);
+    ops.push(Op::CreateCable { id, cable });
     Ok(NewCable { id, tag, ops, added: pending.words() })
 }
 
@@ -362,23 +379,20 @@ pub fn edit_ops(
     }
     // Q6: never fewer cores than those in use.
     check_offer(doc, k, &after)?;
-    let object = ObjectRef::Cable(k);
-    let keys: BTreeSet<&String> = cab.properties.keys().chain(after.keys()).collect();
-    for key in keys {
-        let (b, a) = (cab.properties.get(key), after.get(key));
-        if b != a {
-            ops.push(Op::SetProperty { object, key: key.clone(), before: b.cloned(), after: a.cloned() });
-        }
-    }
     // A typed tag is fixed (026), as Set property on `tag` makes it.
     if set.tag.is_some() {
         let fixed = after.get(CableField::Tag.key()).is_some_and(|t| !ecad_model::tag::is_provisional(t));
-        let before = cab.properties.get(ecad_model::tag::FIXED_KEY).cloned();
-        let a = fixed.then(|| ecad_model::words::flag_word(true).to_string());
-        if before != a {
-            ops.push(Op::SetProperty { object, key: ecad_model::tag::FIXED_KEY.into(), before, after: a });
-        }
+        match fixed {
+            true => after.insert(ecad_model::tag::FIXED_KEY.into(), ecad_model::words::flag_word(true).to_string()),
+            false => after.remove(ecad_model::tag::FIXED_KEY),
+        };
     }
+    let mut cable = take_shield(ecad_model::Cable { properties: after, ..cab.clone() });
+    if set.shield.is_none() {
+        cable.shield = cab.shield;
+    }
+    crate::styles::cable::sync_offered_cores(doc, &cab.properties, &mut cable);
+    ops.extend(Op::modify_cable(k, cab, cable));
     Ok((ops, changed, pending.words()))
 }
 

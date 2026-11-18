@@ -136,7 +136,7 @@ impl Touched {
             Effect::Wire { id, .. } => {
                 self.wires.insert(*id);
             }
-            Effect::Cable { id, .. } | Effect::Member { cable: id, .. } => {
+            Effect::Cable { id, .. } => {
                 self.cables.insert(*id);
             }
             Effect::Route { id, .. } => {
@@ -609,6 +609,10 @@ impl Document {
 
     /// I18.
     fn check_cable(&self, id: CableId, c: &Cable) -> Result<()> {
+        // Design 072 §4.5: a key that became a cable field is never in the cable's bag.
+        if let Some(k) = c.properties.keys().find(|k| crate::keys::is_reserved_on(crate::keys::Holder::Cable, k)) {
+            return bad(format!("cable {id} holds {k} in its properties; it is a field"));
+        }
         let mut seen = BTreeSet::new();
         for m in &c.cores {
             match m.position {
