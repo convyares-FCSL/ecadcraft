@@ -19,7 +19,7 @@ use cadcraft_engine::ext::MarkShape;
 use cadcraft_engine::geom::Vec2;
 use common::{H, id};
 use ecad_cadcraft::interact::{self, NOT_OWNED, OUT_OF_RANGE};
-use ecad_model::{DeviceId, Document, End, PageId, TerminalId, Transaction, WireId};
+use ecad_model::{DeviceId, Document, PageId, RouteEnd, RouteId, TerminalId, Transaction, WireId};
 use serde_json::{Value, json};
 
 const SEED: u64 = 8;
@@ -101,6 +101,11 @@ fn only_conductor(d: &Document) -> WireId {
     *d.wires.keys().next().expect("a conductor")
 }
 
+fn only_route(d: &Document) -> RouteId {
+    assert_eq!(d.routes.len(), 1);
+    *d.routes.keys().next().expect("a route")
+}
+
 /// The quick-start scene with one more loose wire, connected and disconnected, built either by
 /// prompts or by the JSON forms with the values the prompts resolve.
 fn scene(h: &mut H, by_prompts: bool) {
@@ -180,11 +185,12 @@ fn scene(h: &mut H, by_prompts: bool) {
         h.run("wire", json!({"points": [[40.0, 10.0], [70.0, 10.0], [70.0, 0.0], [a1.x, a1.y]]})).unwrap();
     }
     let d = h.doc();
-    assert!(d.wires[&only_conductor(&d)].ends.iter().all(Option::is_some), "both ends attached");
+    assert!(d.routes[&only_route(&d)].ends.iter().all(|e| e.point().is_some()), "both ends attached");
+    only_conductor(&d);
     // A loose wire, typed (both ways the same JSON), then Connect and Disconnect.
     h.run("wire", json!({"points": [[0.0, 30.0], [20.0, 30.0]]})).unwrap();
     let d = h.doc();
-    let loose = *d.wires.iter().find(|(_, c)| c.ends.iter().all(Option::is_none)).unwrap().0;
+    let loose = *d.routes.iter().find(|(_, r)| r.ends.iter().all(|e| *e == RouteEnd::Free)).unwrap().0;
     let t2 = terminal_at(&d, pg, 0.0, 10.0);
     if by_prompts {
         start(h, "connect");
@@ -203,8 +209,8 @@ fn scene(h: &mut H, by_prompts: bool) {
         click(h, Vec2::new(2.0, 12.0));
         typed(h, "");
     } else {
-        h.run("connect", json!({"conductor": loose.hex(), "end": "A", "terminal": t2.hex()})).unwrap();
-        h.run("disconnect", json!({"conductor": loose.hex(), "end": "A"})).unwrap();
+        h.run("connect", json!({"route": loose.hex(), "end": "A", "terminal": t2.hex()})).unwrap();
+        h.run("disconnect", json!({"route": loose.hex(), "end": "A"})).unwrap();
     }
 }
 
@@ -251,11 +257,11 @@ fn json_forms_never_prompt() {
         h.run(cmd, params.clone()).unwrap();
         assert!(h.s.running.is_none(), "{cmd} JSON form left a prompt");
     }
-    let w = only_conductor(&h.doc());
-    h.run("disconnect", json!({"conductor": w.hex(), "end": "A"})).unwrap();
+    let w = only_route(&h.doc());
+    h.run("disconnect", json!({"route": w.hex(), "end": "A"})).unwrap();
     assert!(h.s.running.is_none());
     let t = terminal_at(&h.doc(), page(&mut h), 40.0, 10.0);
-    h.run("connect", json!({"conductor": w.hex(), "end": "A", "terminal": t.hex()})).unwrap();
+    h.run("connect", json!({"route": w.hex(), "end": "A", "terminal": t.hex()})).unwrap();
     assert!(h.s.running.is_none());
     // `name {json}` at the command line runs the JSON form too.
     h.cmdline(r#"wire {"points":[[0,40],[10,40]]}"#);
@@ -414,12 +420,11 @@ fn capture_is_within_the_aperture_only_and_the_preview_says_so_first() {
             typed(&mut h, "");
         }
         let d = h.doc();
-        let w = only_conductor(&d);
-        assert_eq!(d.wires[&w].end(End::B).is_some(), attaches, "{pixels} px");
-        let route = ecad_model::derive::route_on_page(&d, w, page(&mut h)).unwrap().1;
-        let end = route.path_ends().unwrap().1;
+        let r = only_route(&d);
+        assert_eq!(d.routes[&r].ends[1].point().is_some(), attaches, "{pixels} px");
+        let end = d.routes[&r].end_points().unwrap()[1];
         if attaches {
-            let t = d.wires[&w].end(End::B).unwrap();
+            let t = d.routes[&r].ends[1].point().unwrap();
             let at = ecad_model::derive::terminal_positions(&d, page(&mut h)).into_iter().find(|x| x.0 == t).unwrap().2;
             assert_eq!(end, at, "the end is the terminal's point exactly");
         }
@@ -444,7 +449,7 @@ fn typed_points_are_literal() {
     typed(&mut h, &near);
     typed(&mut h, "");
     let d = h.doc();
-    assert!(d.wires[&only_conductor(&d)].end(End::B).is_none());
+    assert!(d.routes[&only_route(&d)].ends[1].point().is_none());
 }
 
 #[test]
@@ -531,12 +536,13 @@ fn hostile_input_is_refused_without_a_commit() {
     assert_eq!(h.s.log.last().unwrap(), interact::BAD_NAME);
     h.s.cancel();
     assert_eq!(h.head(), head);
-    // 10 001 wire points: the last is refused; Esc commits nothing.
+    // 4 097 wire points (a route's bound, design 072 §4.3): the last is refused; Esc commits
+    // nothing.
     start(&mut h, "wire");
-    for i in 0..10_001u32 {
+    for i in 0..4_097u32 {
         h.s.input(Input::Point(Vec2::new(f64::from(i), 500.0 + f64::from(i % 2)))).unwrap();
     }
-    assert_eq!(h.s.log.last().unwrap(), "A wire has at most 10000 points; press Enter to finish.");
+    assert_eq!(h.s.log.last().unwrap(), "A wire has at most 4096 points; press Enter to finish.");
     h.s.cancel();
     assert_eq!(h.head(), head);
     h.check();
@@ -568,7 +574,7 @@ fn the_overlay_marks_terminals_and_wire_ends_and_hover_names_them() {
     assert_eq!(lines[1], format!("id {}", coil.hex()));
     assert_eq!(lines[2], "Connection points: 2");
     assert!(lines.iter().any(|l| l == "  A1 — 1 wire end"), "{lines:?}");
-    let w = d.wires.iter().find(|(_, c)| c.ends.iter().all(Option::is_some)).map(|(w, _)| *w).unwrap();
+    let w = *d.wires.keys().next().unwrap();
     let wh = h.route_handle(pg, w);
     let lines = h.p(|p| interact::hover_lines(p, uid, wh)).unwrap();
     assert_eq!(lines[0], "Wire 01", "a wire is named by its number");

@@ -16,7 +16,7 @@ use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Input, Session};
 use common::{H, id};
 use ecad_cadcraft::{Persistence, ProjectHandle};
-use ecad_model::{CableId, Document, Form, ItemId, ItemKind, ObjectRef, Op, PageId, Primitive, Pt, Subject, Transaction, WireId};
+use ecad_model::{CableId, Document, Form, ItemId, ItemKind, Op, PageId, Primitive, Pt, Subject, Transaction, WireId};
 use serde_json::{Value, json};
 
 const SEED: u64 = 404;
@@ -73,8 +73,9 @@ fn conductors_snapshot(d: &Document) -> Vec<String> {
     d.wires
         .iter()
         .map(|(c, x)| {
-            let reps: Vec<String> = d
-                .representations_of(Subject::Wire(*c))
+            let reps: Vec<String> = ecad_cadcraft::wires::routes_of_wire(d, *c)
+                .into_iter()
+                .flat_map(|r| d.representations_of(Subject::Route(r)).map(|(rid, r)| (rid, r.clone())).collect::<Vec<_>>())
                 .map(|(rid, r)| format!("{rid:?} {r:?} {:?}", r.items.iter().map(|i| &d.items[i]).collect::<Vec<_>>()))
                 .collect();
             format!("{c:?} {x:?} {reps:?}")
@@ -169,7 +170,7 @@ fn ac1_one_transaction_with_members_in_crossing_order_and_conductors_unchanged()
                     other => panic!("slash is a line: {other:?}"),
                 }
                 // O4: the same style as a new wire.
-                let wire_item = d.representations_of(Subject::Wire(f.w0)).next().unwrap().1.items[0];
+                let wire_item = crate::common::wire_line(&d, f.w0, f.page).unwrap().0;
                 assert_eq!(it.style, d.items[&wire_item].style, "slash in the wire style (O4)");
             }
             other => panic!("op 4 is AddItem: {other:?}"),
@@ -896,40 +897,18 @@ fn ac8_hostile_typed_points_and_huge_valid_coordinates() {
 }
 
 /// A reopened project with `n` + 1 parallel unit wires at y = 0 ..= n (x from 0 to 1), made in one
-/// transaction to keep the run short: the ops of one real `wire` are copied with fresh IDs and
-/// moved up by 1 each, committed to the ledger, saved, and the project reopened so its pages are
-/// projected from the history like any opened project. Returns the wires bottom to top.
+/// transaction to keep the run short ([`crate::common::wired_lines`]), committed to the ledger,
+/// saved, and the project reopened so its pages are projected from the history like any opened
+/// project. Returns the wires bottom to top.
 fn bulk_wires(n: usize) -> (H, Vec<WireId>) {
-    use ecad_model::{Author, RepresentationId};
+    use ecad_model::Author;
     let mut h = H::new(SEED);
-    let first = wire(&mut h, &[(0.0, 0.0), (1.0, 0.0)]);
-    let template = last_tx(&mut h).ops;
-    let mut ops = Vec::new();
-    let mut ws = vec![first];
-    for i in 1..=n {
-        let y = i as f64;
-        let base = (0xABCD_u128 << 64) + 4 * i as u128;
-        let (c, it, r) = (WireId::from(base), ItemId::from(base + 1), RepresentationId::from(base + 2));
-        ws.push(c);
-        for op in &template {
-            ops.push(match op.clone() {
-                Op::CreateWire { conductor, .. } => Op::CreateWire { id: c, conductor },
-                Op::AddItem { mut item, .. } => {
-                    item.kind = ItemKind::Primitive(Primitive::Line { a: Pt::new(0.0, y), b: Pt::new(1.0, y) });
-                    Op::AddItem { id: it, item }
-                }
-                Op::LinkRepresentation { mut rep, .. } => {
-                    rep.subject = Subject::Wire(c);
-                    rep.items = vec![it];
-                    Op::LinkRepresentation { id: r, rep }
-                }
-                // Since 022 a new wire records its `wire_number`; the copies stay unnumbered,
-                // which these cap tests do not need.
-                Op::SetProperty { object: ObjectRef::Wire(_), ref key, .. } if key == ecad_model::connectivity::WIRE_NUMBER => continue,
-                other => panic!("unexpected op in a wire transaction: {other:?}"),
-            });
-        }
-    }
+    let (ops, made) = h.cfg(|p| {
+        let page = p.ledger.document().page_order[0];
+        let style = ecad_model::Style { layer: p.default_layer, color: ecad_model::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
+        crate::common::wired_lines(&mut p.ids, page, style, n + 1, |i| (Pt::new(0.0, i as f64), Pt::new(1.0, i as f64)))
+    });
+    let ws: Vec<WireId> = made.into_iter().map(|(w, _, _)| w).collect();
     // The old session's page is not reprojected after this direct commit, so it is saved without
     // the harness checks and only the reopened project is used.
     h.cfg(|p| p.ledger.commit(Author::User, "bulk wires", ops)).unwrap();

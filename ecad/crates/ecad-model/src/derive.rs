@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::book::Book;
 use crate::doc::{Document, End, Form, ItemKind, Primitive, ReferenceStyle, Representation, Subject};
 use crate::geom::Pt;
-use crate::id::{CableId, ItemId, PageId, RepresentationId, TerminalId, WireId};
+use crate::id::{CableId, ItemId, PageId, RepresentationId, RouteId, TerminalId, WireId};
 use crate::sheet::Grid;
 
 /// Where each terminal sits on one page, from drawn connection points and symbol placements.
@@ -81,7 +81,8 @@ pub fn route_on_page(doc: &Document, conductor: WireId, page: PageId) -> Option<
 /// An attached conductor end whose drawn route end is not at its terminal.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Mismatch {
-    pub conductor: WireId,
+    pub route: RouteId,
+    /// End A is the route's first point, end B its last.
     pub end: End,
     pub terminal: TerminalId,
     pub page: PageId,
@@ -89,7 +90,7 @@ pub struct Mismatch {
     pub terminal_at: Pt,
 }
 
-/// Attached ends whose geometry disagrees with their attachment (DOC-03 check).
+/// Route ends on a connection point whose drawn end is not where that point is shown (DOC-03 check).
 ///
 /// # Semantics
 /// Only pages where both the route and the terminal are shown are compared; an attachment to a
@@ -100,21 +101,14 @@ pub fn mismatches(doc: &Document, tol: f64) -> Vec<Mismatch> {
     for page in &doc.page_order {
         positions.insert(*page, terminal_positions(doc, *page));
     }
-    for (cid, c) in &doc.wires {
-        for (_, r) in doc.representations_of(Subject::Wire(*cid)) {
-            let Some((a, b)) = r.items.first().and_then(|i| doc.items.get(i)).and_then(|i| match &i.kind {
-                ItemKind::Primitive(p) => p.path_ends(),
-                ItemKind::Symbol(_) => None,
-            }) else {
-                continue;
-            };
-            for (end, at) in [(End::A, a), (End::B, b)] {
-                let Some(t) = c.end(end) else { continue };
-                let shown: Vec<Pt> = positions.get(&r.page).into_iter().flatten().filter(|(pt, _, _)| *pt == t).map(|(_, _, p)| *p).collect();
-                if !shown.is_empty() && !shown.iter().any(|p| p.near(at, tol)) {
-                    let terminal_at = shown.first().copied().unwrap_or_default();
-                    out.push(Mismatch { conductor: *cid, end, terminal: t, page: r.page, route_end: at, terminal_at });
-                }
+    for (rid, r) in &doc.routes {
+        let Some([a, b]) = r.end_points() else { continue };
+        for ((end, at), e) in [(End::A, a), (End::B, b)].into_iter().zip(r.ends) {
+            let Some(t) = e.point() else { continue };
+            let shown: Vec<Pt> = positions.get(&r.page).into_iter().flatten().filter(|(pt, _, _)| *pt == t).map(|(_, _, p)| *p).collect();
+            if !shown.is_empty() && !shown.iter().any(|p| p.near(at, tol)) {
+                let terminal_at = shown.first().copied().unwrap_or_default();
+                out.push(Mismatch { route: *rid, end, terminal: t, page: r.page, route_end: at, terminal_at });
             }
         }
     }
@@ -154,7 +148,7 @@ pub fn nets(doc: &Document) -> Vec<Net> {
     }
     for (cid, c) in &doc.wires {
         let ci = id_of(Node::Wire(*cid), &mut nodes, &mut parent);
-        for t in c.ends.iter().flatten() {
+        for t in &c.ends {
             let ti = id_of(Node::Terminal(*t), &mut nodes, &mut parent);
             let (a, b) = (find(&mut parent, ci), find(&mut parent, ti));
             if let Some(slot) = parent.get_mut(a) {

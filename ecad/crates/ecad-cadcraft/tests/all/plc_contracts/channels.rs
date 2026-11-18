@@ -155,9 +155,8 @@ fn f_a_cell_ends_a_loose_wire_at_its_point() {
     assert_eq!(ends, [1, 1, 2], "{cells:?}");
     for (_, t) in cells.iter().take(2) {
         let (c, _) = d.ends_at(*t)[0];
-        let wire = &d.wires[&c];
-        assert!(wire.ends.iter().all(Option::is_some), "the kept half runs from the lamp to the point: {wire:?}");
-        let (_, _, route) = ecad_cadcraft::wires::route_vertices(&d, c, page).unwrap();
+        let r = ecad_cadcraft::wires::route_of_wire_on(&d, c, page).unwrap();
+        let (_, _, route) = ecad_cadcraft::wires::route_vertices(&d, r).unwrap();
         assert!(route.iter().all(|q| q.y >= 200.0 - 1e-9), "nothing past the point, into the cell: {route:?}");
     }
     same_as_built(&mut h);

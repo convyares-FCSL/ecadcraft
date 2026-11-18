@@ -164,7 +164,7 @@ fn conductor_at(h: &mut H, component: DeviceId, label: &str) -> WireId {
         .find(|(_, t)| t.label.as_deref() == Some(label) || t.key.as_deref() == Some(label))
         .map(|(i, _)| i)
         .unwrap_or_else(|| panic!("no pin {label}"));
-    d.wires.iter().find(|(_, c)| c.ends.contains(&Some(t))).map(|(i, _)| *i).unwrap_or_else(|| panic!("no conductor at {label}"))
+    d.wires.iter().find(|(_, c)| c.ends.contains(&t)).map(|(i, _)| *i).unwrap_or_else(|| panic!("no conductor at {label}"))
 }
 
 /// Board 2.05's shape, made up: location +CAB1 over the panel; -Q01 (mcb1, pins 1 above, 2
@@ -1150,7 +1150,6 @@ fn core01_an_unticked_spare_core_is_an_error_until_ticked_not_used() {
     let k = cored(&mut h, 100.0, "-W01", "H07RN-F 4G1.5");
     let open = open_of(&mut h, k);
     assert_eq!(open.len(), 1, "4 offered, 3 used: {open:?}");
-    assert!(open[0].unwired);
     let label = open[0].label.clone();
     let rows = checks_of(&mut h, "core-open");
     assert_eq!(rows.len(), 1, "{rows:?}");
@@ -1168,34 +1167,6 @@ fn core01_an_unticked_spare_core_is_an_error_until_ticked_not_used() {
     // Unticking (null) brings it back too.
     h.run("setprop", json!({"cable": k.hex(), "key": format!("unused.{label}"), "value": null})).unwrap();
     assert_eq!(checks_of(&mut h, "core-open").len(), 1);
-}
-
-/// Item 1, open end: a cable core whose wire ends on nothing is `core-open` "is open at an end";
-/// the open end is that conductor's free end, and its place is the page it is drawn on.
-#[test]
-fn core02_a_core_open_at_an_end_names_the_conductor_and_its_free_end() {
-    let mut h = H::new(5732);
-    let page = h.first_page();
-    placed(&mut h, "lamp", 300.0, 200.0);
-    let w: WireId = id(&h.run("wire", json!({"points": pts(&[(300.0, 190.0), (300.0, 60.0)])})).unwrap(), "conductor");
-    let v = h.run("cableslash", json!({"from": [295, 120], "to": [305, 120], "tag": "-W02"})).unwrap();
-    let k = ecad_model::CableId::parse(&s(&v["cable"])).unwrap();
-    let open = open_of(&mut h, k);
-    let o = open.iter().find(|o| !o.unwired).cloned().unwrap_or_else(|| panic!("an open end: {open:?}"));
-    let (c, end) = o.end.unwrap();
-    assert_eq!(c, w, "the dangling wire");
-    let d = h.doc();
-    assert!(d.wires[&c].end(end).is_none(), "the end named is the free one");
-    let (pg, at) = ecad_cadcraft::checks::conductor_place(&d, c, Some(end));
-    assert_eq!(pg, Some(page));
-    let at = at.unwrap();
-    assert!((at.x - 300.0).abs() < 1e-6 && (at.y - 60.0).abs() < 1e-6, "the free end (300, 60): {at:?}");
-    let rows = rows_text(&mut h, "core-open");
-    assert!(rows.iter().any(|r| r.contains(&format!("-W02 core {} is open at an end; connect it, or tick Not used", o.label))), "{rows:?}");
-    let head = h.head();
-    h.run("setprop", json!({"cable": k.hex(), "key": format!("unused.{}", o.label), "value": "yes"})).unwrap();
-    assert_eq!(h.head(), head + 1);
-    assert_eq!(rows_text(&mut h, "core-open").len(), rows.len() - 1, "that core cleared");
 }
 
 /// Item 2: a project saved with an automatic spare (no `unused.` key, as every project before the

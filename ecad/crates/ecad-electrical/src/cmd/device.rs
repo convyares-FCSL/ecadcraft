@@ -9,8 +9,8 @@
 use std::collections::BTreeMap;
 
 use ecad_model::{
-    CableId, Device, DeviceId, Document, End, Form, IdAllocator, ItemId, Op, PageId, ProjectSettings, Pt, Representation, RepresentationId, Subject,
-    Terminal, TerminalId, Wire, WireId,
+    CableId, Device, DeviceId, Document, Form, IdAllocator, ItemId, Op, PageId, ProjectSettings, Pt, Representation, RepresentationId, RouteEnd,
+    RouteId, Subject, Terminal, TerminalId, WireId,
 };
 
 use crate::devices;
@@ -74,7 +74,10 @@ pub fn apply_tag_settings(after: &mut ProjectSettings, settings: TagSettings) {
 /// What `ecaddelete` deletes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Doomed {
+    /// A wire: the routes drawn straight between its two connection points.
     Wire(WireId),
+    /// A drawn route.
+    Route(RouteId),
     Device(DeviceId),
     Cable(CableId),
 }
@@ -113,39 +116,62 @@ fn kept_words(n: usize) -> String {
     }
 }
 
-/// `ecaddelete {conductor} | {component} | {cable}`: the object with its drawings, in one
-/// transaction. A wire leaves its cables; a device's connection points let go of their wires and a
-/// rack's cards leave it (design 045 §2.2, FP1); a cable's wires stay (design 004 §8, owner answer
-/// O3).
+/// The ops removing routes `routes` with their drawings; routes landing on them end free.
+fn remove_routes(doc: &Document, routes: &[RouteId]) -> Vec<Op> {
+    let mut edits = crate::wires::RouteEdits::new(doc);
+    for r in routes {
+        edits.free_tees(*r);
+    }
+    for r in routes {
+        edits.forget(*r);
+    }
+    let mut ops = edits.ops();
+    for r in routes {
+        ops.extend(crate::wires::remove_route_ops(doc, *r));
+    }
+    ops
+}
+
+/// `ecaddelete {conductor} | {route} | {component} | {cable}`: the object with its drawings, in
+/// one transaction. A wire goes with the routes drawn straight between its two connection points
+/// (the commit's rewrite takes it away) and leaves its cables; a route goes with its drawing, and
+/// routes landing on it end free; a device's connection points let go of their routes and a
+/// rack's cards leave it (design 045 §2.2, FP1); a cable's wires stay (design 004 §8, owner
+/// answer O3).
 ///
 /// # Errors
-/// No such conductor, component or cable.
+/// No such conductor, route, component or cable; a wire with no route drawn straight between its
+/// points.
 pub fn plan_delete(doc: &Document, doomed: Doomed) -> Result<Deleted, CmdError> {
     let mut ops = Vec::new();
     match doomed {
         Doomed::Wire(c) => {
-            let conductor = doc.wires.get(&c).ok_or(CmdError::refused("no such conductor"))?;
-            for end in End::BOTH {
-                if let Some(t) = conductor.end(end) {
-                    ops.push(Op::AttachEnd { conductor: c, end, before: Some(t), after: None });
-                }
+            let wire = doc.wires.get(&c).ok_or(CmdError::refused("no such conductor"))?;
+            let [a, b] = wire.ends;
+            let direct: Vec<RouteId> = doc
+                .routes_at(a)
+                .filter(|r| doc.routes.get(r).is_some_and(|x| x.ends.contains(&RouteEnd::Point(a)) && x.ends.contains(&RouteEnd::Point(b))))
+                .collect();
+            if direct.is_empty() {
+                return Err(CmdError::refused("This wire is not drawn as one line between its two points; erase the lines it runs along instead."));
             }
             for cable in doc.cables_of(c) {
                 if let Some((i, m)) = doc.cables.get(&cable).and_then(|k| k.members.iter().enumerate().find(|(_, m)| m.conductor == c)) {
                     ops.push(Op::RemoveCableMember { cable, index: i, member: m.clone() });
                 }
             }
-            ops.extend(remove_representations(doc, Subject::Wire(c)));
-            ops.push(Op::DeleteWire { id: c, conductor: Wire { ends: [None, None], ..conductor.clone() } });
+            ops.extend(remove_routes(doc, &direct));
             Ok(Deleted { ops, released: 0, kept: None, message: None })
+        }
+        Doomed::Route(r) => {
+            if !doc.routes.contains_key(&r) {
+                return Err(CmdError::refused("no such wire"));
+            }
+            Ok(Deleted { ops: remove_routes(doc, &[r]), released: 0, kept: None, message: None })
         }
         Doomed::Device(c) => {
             let component = doc.devices.get(&c).ok_or(CmdError::refused("no such component"))?;
-            for (t, _) in doc.terminals_of(c) {
-                for (w, end) in doc.ends_at(t) {
-                    ops.push(Op::AttachEnd { conductor: w, end, before: Some(t), after: None });
-                }
-            }
+            ops.extend(crate::wires::free_points_ops(doc, doc.terminals_of(c).map(|(t, _)| t)));
             ops.extend(remove_representations(doc, Subject::Device(c)));
             for (t, term) in doc.terminals_of(c) {
                 ops.push(Op::RemoveTerminal { id: t, terminal: term.clone() });

@@ -101,7 +101,7 @@ impl Command for CablecontinueParams {
                 .map(|r| {
                     json!({
                         "conductor": r.conductor.hex(),
-                        "representation": r.rep.hex(),
+                        "route": r.route.hex(),
                         "item": r.item.hex(),
                         "free_end": if r.free_end == End::A { "A" } else { "B" },
                     })

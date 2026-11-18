@@ -190,7 +190,7 @@ pub fn verify_page_pending(
         if let Some(Mapped::Item(id)) = map.get(e.handle)
             && doc
                 .representation_of_item(id)
-                .is_some_and(|(_, r)| r.role == crate::locations::ROLE || matches!(r.subject, ecad_model::Subject::Wire(_)))
+                .is_some_and(|(_, r)| r.role == crate::locations::ROLE || matches!(r.subject, ecad_model::Subject::Route(_)))
             && let Some(own) = doc.items.get(&id).and_then(|item| crate::convert::entity_for(doc, item, e.handle))
         {
             e.common.color = own.common.color;
@@ -368,30 +368,33 @@ pub fn verify_page_pending(
     }
     v.groups = wanted_groups;
 
-    // 6. Relationships shown on the page: an attached conductor end drawn here ends on a terminal
-    //    position read from the drawing (markers and symbol blocks), not from the document.
+    // 6. Relationships shown on the page: a route end on a connection point drawn here ends on a
+    //    terminal position read from the drawing (markers and symbol blocks), not from the document.
     let mut drawn_terminals: Vec<Pt> = entities.values().filter_map(|e| marker_position(e)).collect();
     drawn_terminals.extend(entities.values().flat_map(|e| block_terminals(drawing, e)));
-    for (cid, c) in &doc.wires {
-        let Some((item, _)) = ecad_model::derive::route_on_page(doc, *cid, page) else { continue };
+    let shown = ecad_model::derive::terminal_positions(doc, page);
+    for rid in doc.routes_on(page) {
+        let Some(c) = doc.routes.get(&rid) else { continue };
+        let Some((item, _)) = doc.representations_of(ecad_model::Subject::Route(rid)).find_map(|(_, r)| r.items.first().map(|i| (*i, r))) else {
+            continue;
+        };
         let Some(e) = map.item(item).and_then(|h| entities.get(&h)) else { continue };
         let Some(path) = item_from(doc, page, e).ok().and_then(|i| match i.kind {
             ItemKind::Primitive(p) => p.path_ends(),
             ItemKind::Symbol(_) => None,
         }) else {
-            problems.push(format!("route of conductor {cid} is not a path in the drawing"));
+            problems.push(format!("route {rid} is not a path in the drawing"));
             continue;
         };
-        for end in End::BOTH {
-            let Some(t) = c.end(end) else { continue };
-            let shown_here = ecad_model::derive::terminal_positions(doc, page).iter().any(|(x, _, _)| *x == t);
-            if !shown_here {
+        for (end, landed) in End::BOTH.into_iter().zip(c.ends) {
+            let Some(t) = landed.point() else { continue };
+            if !shown.iter().any(|(x, _, _)| *x == t) {
                 continue;
             }
             v.attached_ends += 1;
             let at = if end == End::A { path.0 } else { path.1 };
             if !drawn_terminals.iter().any(|p| near(*p, at)) {
-                problems.push(format!("conductor {cid} end {end:?} is attached but not drawn on a connection point"));
+                problems.push(format!("route {rid} end {end:?} is on a connection point but not drawn on it"));
             }
         }
     }

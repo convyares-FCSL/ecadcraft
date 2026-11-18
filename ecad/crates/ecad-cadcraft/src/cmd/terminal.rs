@@ -12,9 +12,9 @@ use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
 use ecad_electrical::cmd::terminal::{self as rules, Bridge, TerminalsInput};
 pub use ecad_electrical::cmd::terminal::{
-    BRIDGE_STANDOFF, Fence, FenceKind, MAX_FENCE, definition_for, land_level, level_symbol, on_wire_of, plan_fence, plan_fence_typed, staple,
+    BRIDGE_STANDOFF, Fence, FenceKind, MAX_FENCE, definition_for, land_level, level_symbol, plan_fence, plan_fence_typed, staple,
 };
-use ecad_model::{CableId, DeviceId, Document, End, Noun, Op, PageId, Placement, Pt, Style, TerminalId, WireId};
+use ecad_model::{CableId, DeviceId, Document, Noun, Op, PageId, Placement, Pt, RouteEnd, RouteId, Style, TerminalId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -26,7 +26,7 @@ pub use crate::connectors::{Land, plan_land};
 pub use crate::strips::terminal_words;
 use crate::strips::{self, StripData, TermRow};
 use crate::terminal_types as tt;
-use crate::wires::{ON_WIRE, OnWire};
+use crate::wires::{ON_WIRE, OnRoute};
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[
@@ -67,39 +67,17 @@ position of its type that lacks it; at most 200)",
 
 /// The echo of a landed terminal.
 fn land_words(doc: &Document, t: TerminalId, land: &Land) -> String {
-    let conn = doc.connectivity();
-    let wire = conn
-        .net_of_conductor(land.conductor)
-        .and_then(|n| conn.net(n))
-        .and_then(|n| ecad_model::wiring::net_number(doc, n))
-        .unwrap_or_else(|| crate::slash::wire_name(doc, land.conductor));
-    let mut line = format!("Placed {} on wire {wire} (split in two).", terminal_words(doc, t));
-    if let Some((k, keeper, decided)) = land.cable {
-        let core = doc
-            .cables
-            .get(&k)
-            .and_then(|x| x.members.iter().find(|m| m.conductor == keeper))
-            .and_then(|m| m.core.clone())
-            .map_or_else(String::new, |c| format!(" core {c}"));
-        let half = if keeper == land.conductor { "first" } else { "second" };
-        if !decided {
-            line.push_str(&format!(
-                " {}{core} stays with the {half} half; move it with Cable Cores if that is wrong.",
-                crate::slash::cable_name(doc, k)
-            ));
-        }
-    }
-    line
+    format!("Placed {} on wire {} (split in two).", terminal_words(doc, t), route_words(doc, land.route))
 }
 
-/// Where a terminal starter placed at `at` lands on a wire (018's `place`), or `None` when `at` is
-/// on no wire (or on a loose wire end): it is then placed as before.
-pub(crate) fn landing_point(doc: &Document, page: PageId, at: Pt) -> Option<OnWire> {
-    let on = crate::wires::wire_at(doc, page, at, ON_WIRE, None)?;
-    let (_, _, v) = crate::wires::route_vertices(doc, on.conductor, page)?;
-    let cond = doc.wires.get(&on.conductor)?;
-    for (end, p) in [(End::A, v.first()), (End::B, v.last())] {
-        if p.is_some_and(|p| p.near(on.at, ON_WIRE)) && cond.end(end).is_none() {
+/// Where a terminal starter placed at `at` lands on a route (018's `place`), or `None` when `at`
+/// is on no route (or on a route's free end): it is then placed as before.
+pub(crate) fn landing_point(doc: &Document, page: PageId, at: Pt) -> Option<OnRoute> {
+    let on = crate::wires::route_at(doc, page, at, ON_WIRE, None)?;
+    let route = doc.routes.get(&on.route)?;
+    let [first, last] = route.end_points()?;
+    for (p, e) in [first, last].into_iter().zip(route.ends) {
+        if p.near(on.at, ON_WIRE) && e == RouteEnd::Free {
             return None;
         }
     }
@@ -108,11 +86,7 @@ pub(crate) fn landing_point(doc: &Document, page: PageId, at: Pt) -> Option<OnWi
 
 /// The JSON fields and echo of a landed place.
 pub(crate) fn land_result(doc: &Document, t: TerminalId, land: &Land) -> (Value, String) {
-    let mut v = json!({"split": {"conductor": land.conductor.hex(), "new": land.new.hex()}});
-    if let Some((k, keeper, _)) = land.cable {
-        v["cable_kept_by"] = json!({"cable": k.hex(), "conductor": keeper.hex()});
-    }
-    (v, land_words(doc, t, land))
+    (json!({"split": {"route": land.route.hex(), "new": land.new.hex()}}), land_words(doc, t, land))
 }
 
 // ---------------------------------------------------------------- Place Terminals (§3.2)
@@ -185,9 +159,8 @@ impl Command for TerminalsParams {
                 "strip": f.strip.hex(),
                 "tag": f.tag,
                 "type": ty.code,
-                "terminals": f.placed.iter().zip(&shown).map(|((t, l, c, n), sl)| json!({"terminal": t.hex(), "position": l, "label": sl, "conductor": c.hex(), "new": n.hex()})).collect::<Vec<_>>(),
+                "terminals": f.placed.iter().zip(&shown).map(|((t, l, r, n), sl)| json!({"terminal": t.hex(), "position": l, "label": sl, "route": r.hex(), "new": n.hex()})).collect::<Vec<_>>(),
                 "skipped": f.skipped,
-                "dropped_wire_numbers": f.dropped.iter().map(|(c, n, fixed)| json!({"conductor": c.hex(), "number": n, "fixed": fixed})).collect::<Vec<_>>(),
                 "message": message,
             }))
         })?;
@@ -205,6 +178,11 @@ fn wire_words(doc: &Document, w: WireId) -> String {
         .and_then(|n| conn.net(n))
         .and_then(|n| ecad_model::wiring::net_number(doc, n))
         .unwrap_or_else(|| crate::slash::wire_name(doc, w))
+}
+
+/// The words for the wire route `r` carries ([`crate::wires::wire_of_route`]), `?` for none.
+fn route_words(doc: &Document, r: RouteId) -> String {
+    crate::wires::wire_of_route(doc, r).map_or_else(|| "?".to_string(), |w| wire_words(doc, w))
 }
 
 /// `place {symbol: <level starter>, at, rotation?, mirror?, device?, tag?, position?}` (brief 036
@@ -256,7 +234,7 @@ pub(crate) fn place_level(
         let placement = Placement { origin, rotation: degrees.to_radians(), mirror, scale: 1.0 };
         let shown = level_symbol(&mut p.ids, page, style, def, starter, c, &position, placement, &mut ops)?;
         let land = match landing {
-            Some(on) => Some(land_level(doc, &mut p.ids, page, on, &shown, placement)?),
+            Some(on) => Some(land_level(doc, &mut p.ids, on, &shown, placement)?),
             None => None,
         };
         if let Some(l) = &land {
@@ -278,9 +256,9 @@ pub(crate) fn place_level(
             (Some(l), true) => format!(
                 "Placed {} {name} on wire {}: in {}, out {}.",
                 ty.word,
-                wire_words(doc, l.conductor),
-                wire_words(doc, l.conductor),
-                wire_words(doc, l.new)
+                route_words(doc, l.route),
+                route_words(doc, l.route),
+                route_words(doc, l.new)
             ),
             (Some(l), false) => match first {
                 Some(t) => land_words(doc, t, l),
@@ -298,14 +276,7 @@ pub(crate) fn place_level(
             "message": message,
         });
         if let Some(l) = &land {
-            v["split"] = json!({"conductor": l.conductor.hex(), "new": l.new.hex()});
-            if let Some((n, fixed)) = &l.dropped_number {
-                v["dropped_wire_number"] = json!({"conductor": l.new.hex(), "number": n, "fixed": fixed});
-                let words = format!(" The out half no longer carries {}wire number {n}; it gets its own.", if *fixed { "the fixed " } else { "" });
-                if let Some(m) = v["message"].as_str() {
-                    v["message"] = json!(format!("{m}{words}"));
-                }
-            }
+            v["split"] = json!({"route": l.route.hex(), "new": l.new.hex()});
         }
         crate::draw::proposals::finish_place(p, pg, c, strip.is_some(), &proposed, &mut v);
         Ok(v)
@@ -337,9 +308,10 @@ impl Command for BridgeParams {
                 Bridge::Already { conductor, same, message } => {
                     Ok(json!({"conductor": conductor.hex(), "bridge": same, "changed": false, "message": message}))
                 }
-                Bridge::Drawn { ops, label, conductor, same, message } => {
+                Bridge::Drawn { ops, label, route, same, message } => {
                     p.apply_edit(pg, "bridge", &label, ops)?;
-                    Ok(json!({"conductor": conductor.hex(), "bridge": same, "changed": true, "message": message}))
+                    let conductor = crate::wires::wire_between(p.ledger.document(), self.from, self.to);
+                    Ok(json!({"conductor": conductor.map(|c| c.hex()), "route": route.hex(), "bridge": same, "changed": true, "message": message}))
                 }
             }
         })?;

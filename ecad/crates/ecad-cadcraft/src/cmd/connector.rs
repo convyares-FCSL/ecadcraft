@@ -69,8 +69,7 @@ fn result_json(doc: &Document, m: &Made, message: &str) -> Value {
             "pin": x.name,
             "name": cn::pin_name(doc, x.terminal).unwrap_or_else(|| format!("{}:{}", m.tag, x.name)),
         })).collect::<Vec<_>>(),
-        "split": m.splits.iter().map(|(c, n)| json!({"conductor": c.hex(), "new": n.hex()})).collect::<Vec<_>>(),
-        "dropped_wire_numbers": m.dropped.iter().map(|(c, n)| json!({"conductor": c.hex(), "number": n})).collect::<Vec<_>>(),
+        "split": m.splits.iter().map(|(r, n)| json!({"route": r.hex(), "new": n.hex()})).collect::<Vec<_>>(),
         "echo": message,
         "message": message,
     })
@@ -236,13 +235,13 @@ pub(crate) fn place_half(
         let landing = if pin_starter { crate::cmd::terminal::landing_point(doc, page, at) } else { None };
         let origin = landing.map_or(at, |on| on.at);
         let rotation = match landing {
-            Some(on) if degrees == 0.0 => rules::along_wire(doc, page, &on),
+            Some(on) if degrees == 0.0 => rules::along_wire(doc, &on),
             _ => degrees.to_radians(),
         };
         let placement = Placement { origin, rotation, mirror, scale: 1.0 };
         let (rep, _, shown) = cn::symbol_ops(&mut p.ids, page, style, def, starter, c, &names, placement, &mut ops)?;
         let land = match landing {
-            Some(on) => Some(cn::land_pin(doc, &mut p.ids, page, on, &shown, placement)?),
+            Some(on) => Some(cn::land_pin(doc, &mut p.ids, on, &shown, placement)?),
             None => None,
         };
         if let Some(l) = &land {
@@ -260,8 +259,7 @@ pub(crate) fn place_half(
             tag: tag_text.clone(),
             new,
             shown: shown.clone(),
-            splits: land.iter().map(|l| (l.conductor, l.new)).collect(),
-            dropped: land.iter().filter_map(|l| l.dropped_number.as_ref().map(|(n, _)| (l.new, n.clone()))).collect(),
+            splits: land.iter().map(|l| (l.route, l.new)).collect(),
             ops: Vec::new(),
         };
         let names: Vec<String> = shown.iter().filter_map(|x| cn::pin_name(doc, x.terminal)).collect();

@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::doc::{Cable, CableMember, Definition, Device, Document, End, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal, Wire};
+use crate::doc::{Cable, CableMember, Definition, Device, Document, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal, Wire};
 use crate::error::{ModelError, Result};
 use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, TerminalId, WireId};
 use crate::index::Delta;
@@ -38,6 +38,10 @@ pub(crate) fn settle(doc: &mut Document) {
 
 /// One recorded change.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "ops record whole objects before and after (design 072 F20); a transaction holds few, and boxing one variant only moves the size"
+)]
 pub enum Op {
     AddPage {
         id: PageId,
@@ -115,24 +119,19 @@ pub enum Op {
     },
     CreateWire {
         id: WireId,
-        conductor: Wire,
+        wire: Wire,
     },
     DeleteWire {
         id: WireId,
-        conductor: Wire,
+        wire: Wire,
     },
-    /// A wire's values change, the whole struct recorded (design 072 F20). Its ends are not
-    /// read or changed: [`Op::AttachEnd`] moves them, also in the same transaction.
+    /// A wire's values, net or place in its net's order change, the whole struct recorded (design
+    /// 072 F20). Its ends and conductor id never change: a wire between other points is another
+    /// wire.
     ModifyWire {
         id: WireId,
         before: Wire,
         after: Wire,
-    },
-    AttachEnd {
-        conductor: WireId,
-        end: End,
-        before: Option<TerminalId>,
-        after: Option<TerminalId>,
     },
     /// A route drawn (design 072 F31).
     AddRoute {
@@ -277,10 +276,9 @@ impl Op {
             Op::LinkRepresentation { id, rep } => Op::UnlinkRepresentation { id, rep },
             Op::UnlinkRepresentation { id, rep } => Op::LinkRepresentation { id, rep },
             Op::ModifyRepresentation { id, before, after } => Op::ModifyRepresentation { id, before: after, after: before },
-            Op::CreateWire { id, conductor } => Op::DeleteWire { id, conductor },
-            Op::DeleteWire { id, conductor } => Op::CreateWire { id, conductor },
+            Op::CreateWire { id, wire } => Op::DeleteWire { id, wire },
+            Op::DeleteWire { id, wire } => Op::CreateWire { id, wire },
             Op::ModifyWire { id, before, after } => Op::ModifyWire { id, before: after, after: before },
-            Op::AttachEnd { conductor, end, before, after } => Op::AttachEnd { conductor, end, before: after, after: before },
             Op::AddRoute { id, route } => Op::RemoveRoute { id, route },
             Op::RemoveRoute { id, route } => Op::AddRoute { id, route },
             Op::ModifyRoute { id, before, after } => Op::ModifyRoute { id, before: after, after: before },
@@ -461,36 +459,31 @@ impl Op {
                     doc.index.representation(*id, &old, Delta::Remove);
                 }
             }
-            Op::CreateWire { id, conductor } => {
+            Op::CreateWire { id, wire } => {
                 absent(&doc.wires, *id, "wire")?;
-                doc.index.conductor(*id, conductor, Delta::Add);
-                doc.wires.insert(*id, conductor.clone());
+                if wire.ends[0] == wire.ends[1] {
+                    return Err(pre(format!("wire {id} would end twice at one connection point")));
+                }
+                doc.index.conductor(*id, wire, Delta::Add);
+                doc.wires.insert(*id, wire.clone());
             }
-            Op::DeleteWire { id, conductor } => {
-                holds(&doc.wires, *id, conductor, "wire", checked)?;
+            Op::DeleteWire { id, wire } => {
+                holds(&doc.wires, *id, wire, "wire", checked)?;
                 if let Some(old) = doc.wires.remove(id) {
                     doc.index.conductor(*id, &old, Delta::Remove);
                 }
             }
             Op::ModifyWire { id, before, after } => {
+                if !before.same_wire(after) {
+                    return Err(pre(format!("wire {id}: a wire's ends and conductor never change")));
+                }
                 let w = doc.wires.get_mut(id).ok_or_else(|| pre(format!("wire {id} does not exist")))?;
-                if checked && (Wire { ends: w.ends, ..before.clone() }) != *w {
+                if checked && *before != *w {
                     return Err(pre(format!("wire {id} differs from the recorded value")));
                 }
-                let new = Wire { ends: w.ends, ..after.clone() };
-                let old = std::mem::replace(w, new.clone());
+                let old = std::mem::replace(w, after.clone());
                 doc.index.conductor(*id, &old, Delta::Remove);
-                doc.index.conductor(*id, &new, Delta::Add);
-            }
-            Op::AttachEnd { conductor, end, before, after } => {
-                let c = doc.wires.get_mut(conductor).ok_or_else(|| pre(format!("wire {conductor} does not exist")))?;
-                let current = c.end(*end);
-                if checked && current != *before {
-                    return Err(pre(format!("wire {conductor} end {end:?} is not attached as recorded")));
-                }
-                c.set_end(*end, *after);
-                doc.index.conductor_end(*conductor, *end, current, Delta::Remove);
-                doc.index.conductor_end(*conductor, *end, *after, Delta::Add);
+                doc.index.conductor(*id, after, Delta::Add);
             }
             Op::AddRoute { id, route } => {
                 absent(&doc.routes, *id, "route")?;
@@ -726,7 +719,6 @@ impl Op {
             Op::CreateWire { .. } => "CreateWire",
             Op::DeleteWire { .. } => "DeleteWire",
             Op::ModifyWire { .. } => "ModifyWire",
-            Op::AttachEnd { .. } => "AttachEnd",
             Op::AddRoute { .. } => "AddRoute",
             Op::RemoveRoute { .. } => "RemoveRoute",
             Op::ModifyRoute { .. } => "ModifyRoute",

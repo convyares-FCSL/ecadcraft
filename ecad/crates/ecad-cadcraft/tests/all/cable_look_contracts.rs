@@ -668,13 +668,13 @@ fn m_hostile_geometry_never_panics() {
     );
     let d = look::cable_on_page(&doc, page, k, true, 1e-6, &look::font_width);
     assert!(d.is_fan());
-    let (route, _) = ecad_model::derive::route_on_page(&doc, wires[3], page).unwrap();
+    let (route, _) = crate::common::wire_line(&doc, wires[3], page).unwrap();
     doc.items.get_mut(&route).unwrap().kind = ItemKind::Primitive(Primitive::Line { a: Pt::new(-1e12, 15.0), b: Pt::new(f64::INFINITY, 15.0) });
     let d = look::cable_on_page(&doc, page, k, true, 1e-6, &look::font_width);
     assert!(!d.is_fan(), "drawn traditional when a value is not finite");
     // Two wires ending at the same point (pitch 0).
     let mut doc = h.doc();
-    let (r1, _) = ecad_model::derive::route_on_page(&doc, wires[1], page).unwrap();
+    let (r1, _) = crate::common::wire_line(&doc, wires[1], page).unwrap();
     doc.items.get_mut(&r1).unwrap().kind = ItemKind::Primitive(Primitive::Line { a: Pt::new(0.0, 0.0), b: Pt::new(120.0, 0.0) });
     let _ = look::cable_on_page(&doc, page, k, true, 1e-6, &look::font_width);
 }

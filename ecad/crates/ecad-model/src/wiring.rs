@@ -485,14 +485,8 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetKey>, BTreeSet<N
     for op in ops {
         match op {
             Op::CreateWire { id, .. } => add(Node::Wire(*id), &mut nets),
-            Op::DeleteWire { conductor, .. } => {
-                for t in conductor.ends.iter().flatten() {
-                    add(Node::Terminal(*t), &mut nets);
-                }
-            }
-            Op::AttachEnd { conductor, before, after, .. } => {
-                add(Node::Wire(*conductor), &mut nets);
-                for t in [before, after].into_iter().flatten() {
+            Op::DeleteWire { wire, .. } => {
+                for t in &wire.ends {
                     add(Node::Terminal(*t), &mut nets);
                 }
             }

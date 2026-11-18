@@ -1,7 +1,7 @@
 //! Contract tests for the ledger: TX-01..TX-04, UNDO-01..UNDO-03, SAVE-01/02, DOC-05..DOC-07.
 
 use ecad_model::{
-    Author, CableMember, Color, Device, Document, End, IdAllocator, Item, ItemKind, Layer, Ledger, ModelError, Op, Page, PageId, Primitive, Pt,
+    Author, CableMember, Color, Device, Document, IdAllocator, Item, ItemKind, Layer, Ledger, ModelError, Op, Page, PageId, Primitive, Pt,
     Representation, Style, Subject, Terminal, TxKind, Wire,
 };
 
@@ -41,6 +41,7 @@ fn every_op_inverts_to_the_previous_state() {
     let item = f.ids.fresh();
     let comp = f.ids.fresh();
     let term = f.ids.fresh();
+    let term2 = f.ids.fresh();
     let cond = f.ids.fresh();
     let cable = f.ids.fresh();
     let rep = f.ids.fresh();
@@ -48,6 +49,7 @@ fn every_op_inverts_to_the_previous_state() {
         Op::AddItem { id: item, item: line(&f, (0.0, 0.0), (1.0, 0.0)) },
         Op::CreateDevice { id: comp, device: Device::default() },
         Op::AddTerminal { id: term, terminal: Terminal { component: comp, label: None, key: None } },
+        Op::AddTerminal { id: term2, terminal: Terminal { component: comp, label: None, key: None } },
         Op::LinkRepresentation {
             id: rep,
             rep: Representation {
@@ -59,8 +61,7 @@ fn every_op_inverts_to_the_previous_state() {
                 connection_points: [(term, Pt::new(1.0, 0.0))].into(),
             },
         },
-        Op::CreateWire { id: cond, conductor: Wire::default() },
-        Op::AttachEnd { conductor: cond, end: End::B, before: None, after: Some(term) },
+        Op::CreateWire { id: cond, wire: Wire::new(f.ids.fresh(), f.ids.fresh(), term2, term) },
         Op::CreateCable { id: cable, cable: Default::default() },
         Op::AddCableMember { cable, index: 0, member: CableMember { conductor: cond, core: None } },
         Op::SetProperty { object: ecad_model::ObjectRef::Device(comp), key: "maker".into(), before: None, after: Some("-K1".into()) },
@@ -130,9 +131,12 @@ fn an_item_belongs_to_at_most_one_representation() {
 fn deleting_a_referenced_object_needs_explicit_detachment() {
     let mut f = fixture();
     let comp = f.ids.fresh();
-    let term = f.ids.fresh();
+    let (term, term2) = (f.ids.fresh(), f.ids.fresh());
     let cond = f.ids.fresh();
+    let cable = f.ids.fresh();
     let t = Terminal { component: comp, label: None, key: None };
+    let wire = Wire::new(f.ids.fresh(), f.ids.fresh(), term, term2);
+    let member = CableMember { conductor: cond, core: None };
     f.ledger
         .commit(
             Author::User,
@@ -140,17 +144,29 @@ fn deleting_a_referenced_object_needs_explicit_detachment() {
             vec![
                 Op::CreateDevice { id: comp, device: Device::default() },
                 Op::AddTerminal { id: term, terminal: t.clone() },
-                Op::CreateWire { id: cond, conductor: Wire::default() },
-                Op::AttachEnd { conductor: cond, end: End::A, before: None, after: Some(term) },
+                Op::AddTerminal { id: term2, terminal: t.clone() },
+                Op::CreateWire { id: cond, wire: wire.clone() },
+                Op::CreateCable { id: cable, cable: Default::default() },
+                Op::AddCableMember { cable, index: 0, member: member.clone() },
             ],
         )
         .unwrap();
-    let delete = vec![Op::RemoveTerminal { id: term, terminal: t.clone() }, Op::DeleteDevice { id: comp, device: Device::default() }];
+    // A wire a cable holds: deleting it alone leaves the cable naming a missing wire.
+    let delete = vec![Op::DeleteWire { id: cond, wire }];
     assert!(f.ledger.commit(Author::User, "delete without detaching", delete.clone()).is_err());
-    let mut with_detach = vec![Op::AttachEnd { conductor: cond, end: End::A, before: Some(term), after: None }];
+    // Removing a connection point takes the wires ending there with it (design 072 §4.4): the
+    // rewrite removes the wire's place in its cable too, in the same transaction.
+    let remove_point = vec![Op::RemoveTerminal { id: term, terminal: t.clone() }];
+    f.ledger.commit(Author::User, "remove a point of a cabled wire", remove_point).unwrap();
+    assert!(!f.ledger.document().wires.contains_key(&cond));
+    assert!(f.ledger.document().cables[&cable].members.is_empty());
+    f.ledger.undo(Author::User).unwrap();
+    assert!(f.ledger.document().wires.contains_key(&cond));
+    let mut with_detach = vec![Op::RemoveCableMember { cable, index: 0, member }];
     with_detach.extend(delete);
-    f.ledger.commit(Author::User, "delete component", with_detach).unwrap();
-    assert!(f.ledger.document().wires.contains_key(&cond), "the conductor survives with an open end");
+    f.ledger.commit(Author::User, "delete wire", with_detach).unwrap();
+    assert!(!f.ledger.document().wires.contains_key(&cond));
+    assert!(f.ledger.document().cables[&cable].members.is_empty(), "the cable survives without it");
 }
 
 #[test]

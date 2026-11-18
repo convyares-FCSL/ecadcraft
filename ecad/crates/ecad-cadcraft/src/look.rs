@@ -19,7 +19,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::{CableId, Document, End, ItemId, ItemKind, PageId, Primitive, Pt, RepresentationId, Subject, WireId};
+use ecad_model::{CableId, Document, ItemId, ItemKind, PageId, Primitive, Pt, RepresentationId, RouteEnd, RouteId, Subject, WireId};
 
 // ---------------------------------------------------------------- tokens (design §12)
 
@@ -352,6 +352,8 @@ fn inside_interval(a: Pt, b: Pt, lo: Pt, hi: Pt) -> Option<(f64, f64)> {
 /// One member with a route on the page.
 struct Member {
     conductor: WireId,
+    /// The line drawing it on the page.
+    route: Option<RouteId>,
     core: Option<String>,
     path: Vec<Pt>,
 }
@@ -752,7 +754,7 @@ fn cable_unfiltered(doc: &Document, idx: &PageIndex<'_>, cable: CableId, fan: bo
             continue;
         }
         if let Some(path) = idx.route(m.conductor).and_then(path_of) {
-            members.push(Member { conductor: m.conductor, core: m.core.clone(), path });
+            members.push(Member { conductor: m.conductor, route: idx.route_id(m.conductor), core: m.core.clone(), path });
         }
     }
     let markers = markers_of(doc, idx, cable, measure);
@@ -809,16 +811,16 @@ fn cable_unfiltered(doc: &Document, idx: &PageIndex<'_>, cable: CableId, fan: bo
                     continue;
                 }
                 for (m, e) in members.iter().zip(side_ends.get(s).into_iter().flatten()) {
-                    let attached = doc.wires.get(&m.conductor).is_some_and(|x| {
+                    let attached = m.route.and_then(|r| doc.routes.get(&r)).is_some_and(|x| {
                         let (a, b) = (m.path.first().copied(), m.path.last().copied());
                         let which = if a.is_some_and(|a| a.near(*e, tol)) {
-                            End::A
+                            0
                         } else if b.is_some_and(|b| b.near(*e, tol)) {
-                            End::B
+                            1
                         } else {
                             return false;
                         };
-                        x.end(which).is_some()
+                        x.ends.get(which).is_some_and(|e| e.point().is_some())
                     });
                     if attached {
                         out.at_reference.push(m.conductor);
@@ -902,7 +904,7 @@ fn fan_parts(
     // ends, which stay drawn).
     let mut hidden: Vec<ItemId> = Vec::new();
     for m in members {
-        hidden.extend(idx.conductor_reps(m.conductor).iter().flat_map(|r| r.items.iter().copied()));
+        hidden.extend(m.route.into_iter().flat_map(|r| idx.route_reps(r)).flat_map(|r| r.items.iter().copied()));
     }
     hidden.extend(
         idx.cable_reps(cable).iter().filter(|(_, r)| r.role != REFERENCE_ROLE && r.role != ANCHOR_ROLE).flat_map(|(_, r)| r.items.iter().copied()),
@@ -974,7 +976,14 @@ pub fn fan_ends(doc: &Document, page: PageId, cable: CableId, tol: f64, measure:
         .members
         .iter()
         .filter(|m| seen.insert(m.conductor))
-        .filter_map(|m| idx.route(m.conductor).and_then(path_of).map(|path| Member { conductor: m.conductor, core: m.core.clone(), path }))
+        .filter_map(|m| {
+            idx.route(m.conductor).and_then(path_of).map(|path| Member {
+                conductor: m.conductor,
+                route: idx.route_id(m.conductor),
+                core: m.core.clone(),
+                path,
+            })
+        })
         .collect();
     let Some((reference, s)) = sides(&members) else { return Vec::new() };
     let ends: [Vec<Pt>; 2] = [s.iter().map(|x| x.0).collect(), s.iter().map(|x| x.1).collect()];
@@ -1023,52 +1032,58 @@ pub fn cables_on_page(
         .collect()
 }
 
-/// What one page shows, indexed once per projection (brief 009 review S4): each conductor's
-/// route (its first route item, as `derive::route_on_page` picks it), its route primitives and
-/// representations, and each cable's representations. Every cable is then drawn without scanning
-/// the whole document again.
+/// What one page shows, indexed once per projection (brief 009 review S4): each wire's line on the
+/// page (the route running straight between its two points, else the first route carrying it, as
+/// [`crate::wires::route_of_wire_on`] picks it), the lines carrying it and their representations,
+/// and each cable's representations. Every cable is then drawn without scanning the whole
+/// document again.
 pub struct PageIndex<'a> {
-    routes: BTreeMap<WireId, &'a Primitive>,
+    routes: BTreeMap<WireId, (RouteId, &'a Primitive)>,
     prims: BTreeMap<WireId, Vec<&'a Primitive>>,
-    wires: BTreeMap<WireId, Vec<&'a ecad_model::Representation>>,
+    lines: BTreeMap<RouteId, Vec<&'a ecad_model::Representation>>,
     cables: BTreeMap<CableId, Vec<(RepresentationId, &'a ecad_model::Representation)>>,
 }
 
 impl<'a> PageIndex<'a> {
     /// One pass over the representations on `page` (through the page index, brief 014).
     pub fn new(doc: &'a Document, page: PageId) -> PageIndex<'a> {
-        let mut idx = PageIndex { routes: BTreeMap::new(), prims: BTreeMap::new(), wires: BTreeMap::new(), cables: BTreeMap::new() };
+        let mut idx = PageIndex { routes: BTreeMap::new(), prims: BTreeMap::new(), lines: BTreeMap::new(), cables: BTreeMap::new() };
         for (id, r) in doc.representations_on(page) {
             match r.subject {
-                // Design 072 F31: routes are drawn from lane D F2.
-                Subject::Route(_) => {}
-                Subject::Wire(w) => {
-                    idx.wires.entry(w).or_default().push(r);
+                Subject::Route(x) => {
                     let prim = |i: &ItemId| match doc.items.get(i).map(|x| &x.kind) {
                         Some(ItemKind::Primitive(p)) => Some(p),
                         _ => None,
                     };
-                    idx.prims.entry(w).or_default().extend(r.items.iter().filter_map(prim));
-                    if !idx.routes.contains_key(&w)
-                        && let Some(p) = r.items.first().and_then(prim).filter(|p| p.path_ends().is_some())
-                    {
-                        idx.routes.insert(w, p);
+                    let route = doc.routes.get(&x);
+                    idx.lines.entry(x).or_default().push(r);
+                    for w in crate::wires::wires_of_route(doc, x) {
+                        idx.prims.entry(w).or_default().extend(r.items.iter().filter_map(prim));
+                        let Some(p) = r.items.first().and_then(prim).filter(|p| p.path_ends().is_some()) else { continue };
+                        // The line running straight between the wire's two points wins.
+                        let direct = route.zip(doc.wires.get(&w)).is_some_and(|(x, c)| c.ends.iter().all(|t| x.ends.contains(&RouteEnd::Point(*t))));
+                        if direct || !idx.routes.contains_key(&w) {
+                            idx.routes.insert(w, (x, p));
+                        }
                     }
                 }
+                Subject::Wire(_) | Subject::Device(_) => {}
                 Subject::Cable(k) => idx.cables.entry(k).or_default().push((id, r)),
-                Subject::Device(_) => {}
             }
         }
         idx
     }
     fn route(&self, w: WireId) -> Option<&'a Primitive> {
-        self.routes.get(&w).copied()
+        self.routes.get(&w).map(|(_, p)| *p)
+    }
+    fn route_id(&self, w: WireId) -> Option<RouteId> {
+        self.routes.get(&w).map(|(r, _)| *r)
     }
     fn route_prims(&self, w: WireId) -> &[&'a Primitive] {
         self.prims.get(&w).map(Vec::as_slice).unwrap_or_default()
     }
-    fn conductor_reps(&self, w: WireId) -> &[&'a ecad_model::Representation] {
-        self.wires.get(&w).map(Vec::as_slice).unwrap_or_default()
+    fn route_reps(&self, r: RouteId) -> &[&'a ecad_model::Representation] {
+        self.lines.get(&r).map(Vec::as_slice).unwrap_or_default()
     }
     fn cable_reps(&self, k: CableId) -> &[(RepresentationId, &'a ecad_model::Representation)] {
         self.cables.get(&k).map(Vec::as_slice).unwrap_or_default()
@@ -1212,10 +1227,12 @@ pub fn coloured_routes(
     let mut out = Vec::new();
     let looks = crate::styles::wire::WireLooks::new(doc);
     for (rep, r) in doc.representations_on(page) {
-        let Subject::Wire(c) = r.subject else { continue };
+        let Subject::Route(x) = r.subject else { continue };
         if r.form != ecad_model::Form::Drawn {
             continue;
         }
+        // A line is coloured as the wire it stands for (design 072 §4.3).
+        let Some(c) = crate::wires::wire_of_route(doc, x) else { continue };
         let Some(item) = r.items.first() else { continue };
         let handle = map.and_then(|m| m.item(*item));
         if map.is_some() && handle.is_none() {

@@ -20,7 +20,7 @@ use cadcraft_engine::ext::MarkShape;
 use cadcraft_engine::geom::Vec2;
 use common::{H, id};
 use ecad_cadcraft::interact::{hover_lines, overlay_marks};
-use ecad_cadcraft::references::{markers_on_page, plan_continue};
+use ecad_cadcraft::references::markers_on_page;
 use ecad_cadcraft::{Mapped, ProjectHandle};
 use ecad_model::derive::{cable_references, nets};
 use ecad_model::{
@@ -91,9 +91,10 @@ fn continued() -> (R, Value) {
 
 /// Fixture R complete: the continued wires connected to K2.
 fn connected() -> R {
-    let (mut r, _) = continued();
-    for (w, t) in r.w.iter().zip(r.k2) {
-        r.h.run("connect", json!({"conductor": w.hex(), "end": "B", "terminal": t.hex()})).unwrap();
+    let (mut r, v) = continued();
+    // Each stub's free end onto K2 (design 072 §4.3: the stubs are routes).
+    for (s, t) in v["routes"].as_array().cloned().unwrap_or_default().iter().zip(r.k2) {
+        r.h.run("connect", json!({"route": s["route"], "end": s["free_end"], "terminal": t.hex()})).unwrap();
     }
     r
 }
@@ -193,16 +194,11 @@ fn continuing_a_cable_adds_routes_of_the_same_conductors_in_one_transaction() {
         })
         .collect();
     let k = Subject::Cable(r.c1);
-    assert_eq!(
-        roles,
-        vec![
-            ("reference".into(), k),
-            ("route".into(), Subject::Wire(r.w[0])),
-            ("route".into(), Subject::Wire(r.w[1])),
-            ("route".into(), Subject::Wire(r.w[2])),
-            ("slash".into(), k)
-        ]
-    );
+    // The stubs are new routes (design 072 §4.3).
+    let stub = |s: &Subject| if matches!(s, Subject::Route(_)) { Subject::Route(ecad_model::RouteId::from(0u128)) } else { *s };
+    let roles: Vec<(String, Subject)> = roles.iter().map(|(role, s)| (role.clone(), stub(s))).collect();
+    let any = Subject::Route(ecad_model::RouteId::from(0u128));
+    assert_eq!(roles, vec![("reference".into(), k), ("route".into(), any), ("route".into(), any), ("route".into(), any), ("slash".into(), k)]);
     let after = r.h.doc();
     assert_eq!(after.cables, before.cables, "same cable, same members");
     assert_eq!(after.wires, before.wires, "no conductor or attachment changed");
@@ -508,19 +504,6 @@ fn refusals_say_why_and_change_nothing() {
     let e = f.h.run("cablecontinue", json!({"cable": f.c1.hex(), "at": [80, 5], "toward": [90, 5]})).unwrap_err();
     assert!(e.contains("Cable -C01 is already drawn on this page; continue it on another page."), "{e}");
     assert_eq!(f.h.head(), head);
-    let doc = f.h.doc();
-    let mut both = doc.clone();
-    for w in f.w {
-        both.wires.get_mut(&w).unwrap().set_end(ecad_model::End::B, Some(f.k2[0]));
-    }
-    let e = plan_continue(&both, f.field, f.c1, None, Pt::new(0.0, 0.0), Pt::new(10.0, 0.0), 1e-6).unwrap_err().to_string();
-    assert_eq!(e, "None of cable -C01's wires can continue: each is connected at both ends or already drawn on this page.");
-    // A mixed cable: the both-ends wire is skipped and reported.
-    let mut mixed = doc.clone();
-    mixed.wires.get_mut(&f.w[2]).unwrap().set_end(ecad_model::End::B, Some(f.k2[0]));
-    let plan = plan_continue(&mixed, f.field, f.c1, None, Pt::new(0.0, 0.0), Pt::new(10.0, 0.0), 1e-6).unwrap();
-    assert_eq!(plan.stubs.len(), 2);
-    assert_eq!(plan.skipped, vec![(f.w[2], ecad_cadcraft::references::Skip::BothConnected)]);
 }
 
 /// The JSON forms of every new or changed command, as an agent drives them (brief 011 rule):
@@ -821,7 +804,7 @@ fn fan_view_keeps_the_reference_drawn() {
 #[test]
 #[ignore = "slow: ten-thousand-wire cable, about 7 s"]
 fn a_ten_thousand_wire_cable_continues_in_bounded_time() {
-    use ecad_model::{Author, Wire};
+    use ecad_model::Author;
     let n = ecad_cadcraft::slash::MAX_CABLE_MEMBERS;
     let mut h = H::new(SEED + 7);
     let supply = h.first_page();
@@ -829,29 +812,9 @@ fn a_ten_thousand_wire_cable_continues_in_bounded_time() {
         let style = Style { layer: p.default_layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
         let cable: CableId = p.ids.fresh();
         let mut ops = vec![Op::CreateCable { id: cable, cable: Cable::default() }];
-        for i in 0..n {
-            let (c, it, r): (WireId, ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
-            let y = i as f64;
-            ops.push(Op::CreateWire { id: c, conductor: Wire::default() });
-            ops.push(Op::AddItem {
-                id: it,
-                item: Item {
-                    page: supply,
-                    style: style.clone(),
-                    kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(0.0, y), b: Pt::new(60.0, y) }),
-                },
-            });
-            ops.push(Op::LinkRepresentation {
-                id: r,
-                rep: Representation {
-                    subject: Subject::Wire(c),
-                    page: supply,
-                    form: Form::Drawn,
-                    role: "route".into(),
-                    items: vec![it],
-                    connection_points: Default::default(),
-                },
-            });
+        let (lines, made) = crate::common::wired_lines(&mut p.ids, supply, style.clone(), n, |i| (Pt::new(0.0, i as f64), Pt::new(60.0, i as f64)));
+        ops.extend(lines);
+        for (i, (c, _, _)) in made.into_iter().enumerate() {
             ops.push(Op::AddCableMember { cable, index: i, member: CableMember { conductor: c, core: None } });
         }
         let (it, r): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
@@ -917,11 +880,10 @@ fn assert_flag_away(h: &mut H, page: PageId, cable: CableId, u: Pt) {
     let m = markers_on_page(&doc, page).into_iter().find(|m| m.cable == cable).expect("a marker");
     let along = |p: Pt| (p.x - m.at.x) * u.x + (p.y - m.at.y) * u.y;
     // The wires leave the point the other way.
-    let ends = ecad_model::derive::route_ends_by_page(&doc);
     let routes: Vec<Pt> = doc.cables[&cable]
         .members
         .iter()
-        .filter_map(|x| ends.get(&(x.conductor, page)).copied())
+        .filter_map(|x| crate::common::wire_line(&doc, x.conductor, page).and_then(|(_, p)| p.path_ends()))
         .map(|(a, b)| if a.dist(m.at) <= b.dist(m.at) { b } else { a })
         .collect();
     assert!(!routes.is_empty() && routes.iter().all(|far| along(*far) < 0.0), "the wires leave against {u:?}");

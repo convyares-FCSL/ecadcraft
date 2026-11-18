@@ -9,8 +9,8 @@
 use std::collections::BTreeMap;
 
 use ecad_model::{
-    CableId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId, Style, Subject,
-    WireId,
+    CableId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId, RouteEnd,
+    RouteId, Style, Subject, WireId,
 };
 
 use crate::error::CmdError;
@@ -54,11 +54,12 @@ pub fn reference(doc: &Document, ids: &mut IdAllocator, page: PageId, style: Sty
     Ok(reference_ops(ids, page, style, cable, at))
 }
 
-/// One continued member's stub route.
+/// One continued member's stub: a route with both ends free (design 072 §4.3), drawn for the
+/// wire it continues.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StubRoute {
     pub conductor: WireId,
-    pub rep: RepresentationId,
+    pub route: RouteId,
     pub item: ItemId,
     pub free_end: End,
 }
@@ -79,8 +80,8 @@ pub struct Continued {
 
 /// `cablecontinue` (design 010 §2.2, §5, §7.2): the second drawing of `cable` on `page`. A
 /// reference end at `at`, then for each continued member (`members` restricts and orders them) a
-/// stub that is a new route of the **same** conductor, then a slash across the stubs. No
-/// conductor, attachment or membership changes, so the nets are unchanged.
+/// stub, a new route with free ends, then a slash across the stubs. No wire or membership
+/// changes, so the nets are unchanged.
 ///
 /// # Errors
 /// `members` longer than a cable holds (R9); the refusals of design 010 §4.4 and §7.2.
@@ -96,23 +97,9 @@ pub fn continue_cable(
     let mut ops = reference.ops.clone();
     let mut routes = Vec::with_capacity(plan.stubs.len());
     for stub in &plan.stubs {
-        let (i, r): (ItemId, RepresentationId) = (ids.fresh(), ids.fresh());
-        ops.push(Op::AddItem {
-            id: i,
-            item: Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Line { a: stub.a, b: stub.b }) },
-        });
-        ops.push(Op::LinkRepresentation {
-            id: r,
-            rep: Representation {
-                subject: Subject::Wire(stub.conductor),
-                page,
-                form: Form::Drawn,
-                role: "route".into(),
-                items: vec![i],
-                connection_points: BTreeMap::new(),
-            },
-        });
-        routes.push(StubRoute { conductor: stub.conductor, rep: r, item: i, free_end: stub.free_end });
+        let (r, i, add) = crate::wires::add_route(ids, page, style.clone(), vec![stub.a, stub.b], [RouteEnd::Free, RouteEnd::Free]);
+        ops.extend(add);
+        routes.push(StubRoute { conductor: stub.conductor, route: r, item: i, free_end: stub.free_end });
     }
     let (slash_item, slash_rep): (ItemId, RepresentationId) = (ids.fresh(), ids.fresh());
     ops.push(Op::AddItem {

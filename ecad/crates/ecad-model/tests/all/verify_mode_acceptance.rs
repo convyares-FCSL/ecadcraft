@@ -106,6 +106,9 @@ fn replay_verified_runs_the_full_check_in_any_build() {
 fn indexes_match_a_rebuild_after_every_rolled_back_transaction() {
     let mut l = Ledger::new(7);
     let (page, layer, c, t1, t2, w, cable) = (PageId(1), LayerId(2), DeviceId(3), TerminalId(4), TerminalId(5), WireId(6), CableId(7));
+    // The wire runs from t1 to a third point, t3.
+    let t3 = TerminalId(8);
+    let w_v = Wire::new(NetId(10), ConductorId(11), t1, t3);
     l.commit(
         Author::User,
         "setup",
@@ -115,8 +118,8 @@ fn indexes_match_a_rebuild_after_every_rolled_back_transaction() {
             Op::CreateDevice { id: c, device: Device::default() },
             Op::AddTerminal { id: t1, terminal: Terminal { component: c, label: None, key: None } },
             Op::AddTerminal { id: t2, terminal: Terminal { component: c, label: None, key: None } },
-            Op::CreateWire { id: w, conductor: Wire::default() },
-            Op::AttachEnd { conductor: w, end: End::A, before: None, after: Some(t1) },
+            Op::AddTerminal { id: t3, terminal: Terminal { component: c, label: None, key: None } },
+            Op::CreateWire { id: w, wire: w_v.clone() },
             Op::CreateCable { id: cable, cable: Cable::default() },
             Op::AddCableMember { cable, index: 0, member: CableMember { conductor: w, core: None } },
         ],
@@ -125,20 +128,20 @@ fn indexes_match_a_rebuild_after_every_rolled_back_transaction() {
     let before = serde_json::to_string(l.document()).unwrap();
     let fails: Vec<Vec<Op>> = vec![
         vec![
-            Op::AttachEnd { conductor: w, end: End::B, before: None, after: Some(t2) },
+            Op::CreateWire { id: WireId(12), wire: Wire::new(NetId(13), ConductorId(14), t1, t2) },
             Op::RemoveCableMember { cable, index: 0, member: CableMember { conductor: w, core: None } },
             Op::DeleteCable { id: cable, cable: Cable { properties: Default::default(), members: vec![] } },
             Op::RemoveTerminal { id: TerminalId(99), terminal: Terminal { component: c, label: None, key: None } },
         ],
+        // The wire deleted and made again to a point that does not exist.
         vec![
-            Op::AttachEnd { conductor: w, end: End::A, before: Some(t1), after: None },
-            Op::RemoveTerminal { id: t1, terminal: Terminal { component: c, label: None, key: None } },
-            Op::AttachEnd { conductor: w, end: End::A, before: None, after: Some(t1) },
+            Op::DeleteWire { id: w, wire: w_v.clone() },
+            Op::CreateWire { id: w, wire: Wire { ends: [t1, TerminalId(99)], ..w_v.clone() } },
         ],
-        // Valid ops, invalid end state: a terminal removed under a conductor end.
+        // Valid ops, invalid end state: a wire made to a point that does not exist.
         vec![
             Op::RemoveCableMember { cable, index: 0, member: CableMember { conductor: w, core: None } },
-            Op::RemoveTerminal { id: t1, terminal: Terminal { component: c, label: None, key: None } },
+            Op::CreateWire { id: WireId(12), wire: Wire::new(NetId(13), ConductorId(14), t2, TerminalId(99)) },
         ],
     ];
     for (k, ops) in fails.into_iter().enumerate() {

@@ -889,6 +889,26 @@ impl Document {
         referrers(&self.index.terminal_ends, &terminal).collect()
     }
 
+    /// The wires of net `net`, in ID order, through the index.
+    pub fn wires_of_net(&self, net: crate::id::NetId) -> impl Iterator<Item = WireId> + '_ {
+        referrers(&self.index.net_wires, &net)
+    }
+
+    /// The routes with an end on connection point `t`, in ID order, through the index.
+    pub fn routes_at(&self, t: TerminalId) -> impl Iterator<Item = crate::id::RouteId> + '_ {
+        referrers(&self.index.terminal_routes, &t)
+    }
+
+    /// The routes ending on the middle of route `r` (its T-joins), in ID order, through the index.
+    pub fn tees_of(&self, r: crate::id::RouteId) -> impl Iterator<Item = crate::id::RouteId> + '_ {
+        referrers(&self.index.route_tees, &r)
+    }
+
+    /// The routes drawn on page `page`, in ID order, through the index.
+    pub fn routes_on(&self, page: PageId) -> impl Iterator<Item = crate::id::RouteId> + '_ {
+        referrers(&self.index.page_routes, &page)
+    }
+
     /// Components whose tag is the same tag as `tag` (equal [`crate::tag::key`]), in ID order,
     /// through the tag index: the cost does not grow with the project.
     pub fn components_tagged(&self, tag: &str) -> Vec<DeviceId> {

@@ -79,7 +79,7 @@ fn fixture() -> G {
     let wires =
         [wire(&mut h, json!([[0, 0], [60, 0]]), "W0"), wire(&mut h, json!([[0, 5], [60, 5]]), "W5"), wire(&mut h, json!([[0, 10], [60, 10]]), "W10")];
     let d = h.doc();
-    assert!(wires.iter().all(|w| d.wires[w].ends.iter().all(Option::is_some)), "attached at both ends");
+    assert!(wires.iter().all(|w| d.wires.contains_key(w)), "attached at both ends");
     let r = h.run("cableslash", json!({"from": [28, -3], "to": [32, 18], "tag": "C1"})).unwrap();
     h.run("zoom", json!({"mode": "window", "p1": [-20, -30], "p2": [80, 50]})).unwrap();
     G { h, page, c1: id(&r, "cable"), slash: id(&r, "item"), wires }
@@ -237,7 +237,7 @@ fn the_fan_of_g_is_the_worked_example() {
     let doc = g.h.doc();
     let map = g.h.p(|p| p.pages[&g.page].map.clone());
     for w in g.wires {
-        let (item, _) = ecad_model::derive::route_on_page(&doc, w, g.page).unwrap();
+        let (item, _) = crate::common::wire_line(&doc, w, g.page).unwrap();
         assert!(map.item(item).is_none(), "the route of {w:?} is not drawn");
     }
     assert!(map.item(g.slash).is_none(), "the slash is not drawn");
@@ -320,8 +320,9 @@ fn edits_on_the_fan_are_refused_and_json_forms_still_work() {
     .unwrap_err();
     assert_eq!(e, views::LAYER_RESERVED);
     // JSON forms act on IDs whatever the view.
-    g.h.run("disconnect", json!({"conductor": g.wires[0].hex(), "end": "A"})).unwrap();
-    assert!(g.h.doc().wires[&g.wires[0]].ends[0].is_none());
+    let r = g.h.route_of(g.page, g.wires[0]);
+    g.h.run("disconnect", json!({"route": r.hex(), "end": "A"})).unwrap();
+    assert!(g.h.doc().routes[&r].ends[0].point().is_none());
     assert_eq!(g.h.head(), head + 1);
     g.h.run("u", Value::Null).unwrap();
     assert_eq!(g.h.head(), head + 2);
@@ -527,7 +528,7 @@ fn hostile_geometry_falls_back_to_traditional() {
     view(&mut h, k, "fan");
     let doc = h.doc();
     assert_eq!(views::fan_on_page(&doc, page, k, 1e-6), FanOnPage::Failed);
-    let (item, _) = ecad_model::derive::route_on_page(&doc, a, page).unwrap();
+    let (item, _) = crate::common::wire_line(&doc, a, page).unwrap();
     assert!(h.p(|p| p.pages[&page].map.item(item)).is_some(), "drawn traditional");
     h.check();
 }

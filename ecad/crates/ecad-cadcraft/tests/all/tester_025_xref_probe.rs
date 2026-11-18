@@ -258,7 +258,7 @@ fn step(x: &mut X, rng: &mut Rng, n: usize) -> Option<&'static str> {
             let page = x.h.p(|p| p.ledger.document().representations.get(&x.coil).map(|r| r.page))?;
             x.h.activate(page);
             let doc = x.h.doc();
-            let (item, _) = ecad_model::derive::route_on_page(&doc, x.a2, page)?;
+            let (item, _) = crate::common::wire_line(&doc, x.a2, page)?;
             let hd = x.h.handle_of(page, item);
             r(
                 &mut x.h,

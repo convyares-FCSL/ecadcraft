@@ -18,7 +18,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::doc::{Document, End, Properties, Wire};
+use crate::doc::{Document, Properties, Wire};
 use crate::id::{FolderId, PageId};
 use crate::invariant::Touched;
 use crate::op::{ObjectRef, Op};
@@ -99,24 +99,22 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
             (None, None) => {}
         }
     }
-    // Conductors: properties and ends change in place.
+    // Wires: values, net and order change in place; a wire between other points is another wire.
     for id in ids(&from.wires, &to.wires, scope.map(|s| &s.wires)) {
         match (from.wires.get(&id), to.wires.get(&id)) {
+            (Some(a), Some(b)) if !a.same_wire(b) => {
+                removes.push(Op::DeleteWire { id, wire: a.clone() });
+                adds.push(Op::CreateWire { id, wire: b.clone() });
+            }
             (Some(a), Some(b)) => {
                 props(ObjectRef::Wire(id), &a.display, &b.display, &all, &mut changes);
-                let values = Wire { ends: a.ends, display: a.display.clone(), ..b.clone() };
-                let before = Wire { display: a.display.clone(), ..a.clone() };
-                if values != before {
-                    changes.push(Op::ModifyWire { id, before, after: values });
-                }
-                for end in End::BOTH {
-                    if a.end(end) != b.end(end) {
-                        changes.push(Op::AttachEnd { conductor: id, end, before: a.end(end), after: b.end(end) });
-                    }
+                let values = Wire { display: a.display.clone(), ..b.clone() };
+                if values != *a {
+                    changes.push(Op::ModifyWire { id, before: a.clone(), after: values });
                 }
             }
-            (Some(a), None) => removes.push(Op::DeleteWire { id, conductor: a.clone() }),
-            (None, Some(b)) => adds.push(Op::CreateWire { id, conductor: b.clone() }),
+            (Some(a), None) => removes.push(Op::DeleteWire { id, wire: a.clone() }),
+            (None, Some(b)) => adds.push(Op::CreateWire { id, wire: b.clone() }),
             (None, None) => {}
         }
     }
@@ -336,7 +334,7 @@ pub fn objects(ops: &[Op]) -> BTreeMap<(&'static str, u128), usize> {
             }
             Op::AddTerminal { id, .. } | Op::RemoveTerminal { id, .. } => ("terminal", id.0),
             Op::LinkRepresentation { id, .. } | Op::ModifyRepresentation { id, .. } | Op::UnlinkRepresentation { id, .. } => ("representation", id.0),
-            Op::CreateWire { id, .. } | Op::DeleteWire { id, .. } | Op::ModifyWire { id, .. } | Op::AttachEnd { conductor: id, .. } => ("wire", id.0),
+            Op::CreateWire { id, .. } | Op::DeleteWire { id, .. } | Op::ModifyWire { id, .. } => ("wire", id.0),
             Op::AddRoute { id, .. } | Op::RemoveRoute { id, .. } | Op::ModifyRoute { id, .. } => ("route", id.0),
             Op::CreateCable { id, .. }
             | Op::DeleteCable { id, .. }

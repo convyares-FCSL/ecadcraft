@@ -30,7 +30,7 @@
 //! | `ModifyItem` / `RemoveItem` of an item of a component's representation | that component |
 //! | the same of a conductor route | the components at the conductor's ends (a table under `auto` follows the rail its coil's wire meets) |
 //! | `LinkRepresentation` / `UnlinkRepresentation` / `ModifyRepresentation` | the component it shows, or the components at its conductor's ends |
-//! | `AttachEnd`, `CreateWire`, `DeleteWire` | the components at the ends before and after |
+//! | `CreateWire`, `DeleteWire` (the commit's wire rewrite included) | the components at the ends |
 //! | `AddTerminal` / `RemoveTerminal` | that component (its labels) |
 //! | `CreateDevice` / `DeleteDevice` | that component |
 //! | `SetProperty` component `contacts` or `mirror` | that component |
@@ -49,7 +49,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::CmdError;
 use ecad_model::{
-    CableId, ContactMirror, DeviceId, Document, Form, LengthUnit, ObjectRef, Op, PageId, Primitive, Pt, Representation, RepresentationId, Subject,
+    CableId, ContactMirror, DeviceId, Document, Form, LengthUnit, ObjectRef, Op, PageId, Pt, Representation, RepresentationId, Subject,
 };
 use serde_json::{Value, json};
 
@@ -951,14 +951,6 @@ fn run_down(path: &[Pt], from: Pt) -> Option<f64> {
     (end.y < start.y - 1e-6).then_some(end.y)
 }
 
-fn path_points(p: &Primitive) -> Option<Vec<Pt>> {
-    match p {
-        Primitive::Line { a, b } => Some(vec![*a, *b]),
-        Primitive::Polyline { vertices, closed: false } => Some(vertices.clone()),
-        _ => None,
-    }
-}
-
 /// Where the table of head `head` of device `c` goes, for `placement`; `None` for `off` or a
 /// head that cannot be drawn.
 pub fn table_top(doc: &Document, c: DeviceId, head: RepresentationId, placement: Placement) -> Option<Pt> {
@@ -982,10 +974,7 @@ pub fn table_top(doc: &Document, c: DeviceId, head: RepresentationId, placement:
         }
         Placement::Auto => {
             let run = lowest.and_then(|(t, p)| {
-                doc.ends_at(t).into_iter().find_map(|(w, _)| {
-                    let (_, prim) = ecad_model::derive::route_on_page(doc, w, r.page)?;
-                    run_down(&path_points(&prim)?, p)
-                })
+                doc.routes_at(t).filter_map(|x| doc.routes.get(&x)).filter(|x| x.page == r.page).find_map(|x| run_down(&x.points, p))
             });
             match run {
                 Some(y) => Pt::new(origin.x, y - 4.0 * k),
@@ -1626,7 +1615,7 @@ impl Scope {
     fn collect(&mut self, doc: &Document, idx: &RefIndex, ops: &[Op]) {
         let ends = |s: &mut Scope, w: ecad_model::WireId| {
             if let Some(c) = doc.wires.get(&w) {
-                for t in c.ends.iter().flatten() {
+                for t in &c.ends {
                     if let Some(x) = doc.terminals.get(t) {
                         s.devices.insert(x.component);
                     }
@@ -1653,16 +1642,8 @@ impl Scope {
                     rep(self, before);
                     rep(self, after);
                 }
-                Op::AttachEnd { conductor, before, after, .. } => {
-                    ends(self, *conductor);
-                    for t in [before, after].into_iter().flatten() {
-                        if let Some(x) = doc.terminals.get(t) {
-                            self.devices.insert(x.component);
-                        }
-                    }
-                }
-                Op::CreateWire { conductor, .. } | Op::DeleteWire { conductor, .. } => {
-                    for t in conductor.ends.iter().flatten() {
+                Op::CreateWire { wire, .. } | Op::DeleteWire { wire, .. } => {
+                    for t in &wire.ends {
                         if let Some(x) = doc.terminals.get(t) {
                             self.devices.insert(x.component);
                         }

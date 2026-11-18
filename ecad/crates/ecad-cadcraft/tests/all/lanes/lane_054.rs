@@ -479,8 +479,7 @@ fn a_plain_page_gets_no_checks_numbering_or_references() {
     h.run("wire", json!({"points": [[0, 40], [60, 40]]})).unwrap();
     assert_eq!(on_page(&mut h, plain), 0, "no Checks row on a Plain page");
     let d = h.doc();
-    let on_plain: Vec<_> =
-        d.wires.iter().filter(|(c, _)| d.representations_of(ecad_model::Subject::Wire(**c)).all(|(_, r)| r.page == plain)).collect();
+    let on_plain: Vec<_> = d.wires.iter().filter(|(c, _)| ecad_cadcraft::wires::wire_pages(&d, **c).iter().all(|p| *p == plain)).collect();
     assert!(!on_plain.is_empty());
     assert!(on_plain.iter().all(|(_, c)| !c.number.is_some()), "no wire number on a Plain page");
     let _ = before_numbered;

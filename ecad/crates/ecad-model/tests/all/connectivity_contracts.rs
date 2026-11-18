@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use ecad_model::connectivity::{CONTINUATION, KIND, NAME};
 use ecad_model::wiring::{self, Scheme};
 use ecad_model::{
-    Author, Connectivity, Definition, DefinitionId, Device, DeviceId, Document, End, IdAllocator, Ledger, ObjectRef, Op, Page, PageId, Terminal,
+    Author, Connectivity, Definition, DefinitionId, Device, DeviceId, Document, IdAllocator, Ledger, ObjectRef, Op, Page, PageId, Terminal,
     TerminalDef, TerminalId, Wire, WireId,
 };
 
@@ -63,32 +63,46 @@ impl P {
         (c, ts[0])
     }
 
-    fn wire(&mut self, a: Option<TerminalId>, b: Option<TerminalId>) -> WireId {
+    /// A connection point of its own (a one-terminal device), joined to nothing: where a wire
+    /// that goes nowhere else ends.
+    fn point(&mut self) -> TerminalId {
+        self.device(1).1[0]
+    }
+
+    /// A wire whose bare ends are given connection points: the wire is one commit.
+    fn bare(&mut self, a: TerminalId, b: TerminalId) -> Wire {
+        Wire::new(self.ids.fresh(), self.ids.fresh(), a, b)
+    }
+
+    fn wire(&mut self, a: TerminalId, b: TerminalId) -> WireId {
         self.wire_props(a, b, &[])
     }
 
-    fn wire_props(&mut self, a: Option<TerminalId>, b: Option<TerminalId>, props: &[(&str, &str)]) -> WireId {
+    fn wire_props(&mut self, a: TerminalId, b: TerminalId, props: &[(&str, &str)]) -> WireId {
         let w: WireId = self.ids.fresh();
-        let mut conductor = Wire { ends: [a, b], ..Wire::default() };
+        let mut wire = self.bare(a, b);
         for (k, v) in props {
-            put(&mut conductor, k, Some(v));
+            put(&mut wire, k, Some(v));
         }
-        self.commit(vec![Op::CreateWire { id: w, conductor }]);
+        self.commit(vec![Op::CreateWire { id: w, wire }]);
         w
     }
 
+    /// A wire from `a` to a point of its own.
+    fn loose(&mut self, a: TerminalId) -> WireId {
+        let b = self.point();
+        self.wire(a, b)
+    }
+
+    /// A wire between two points of its own.
+    fn free_props(&mut self, props: &[(&str, &str)]) -> WireId {
+        let (a, b) = (self.point(), self.point());
+        self.wire_props(a, b, props)
+    }
+
     fn delete(&mut self, w: WireId) {
-        let c = self.doc().wires.get(&w).unwrap().clone();
-        let mut ops = Vec::new();
-        for end in End::BOTH {
-            if let Some(t) = c.end(end) {
-                ops.push(Op::AttachEnd { conductor: w, end, before: Some(t), after: None });
-            }
-        }
-        let mut bare = c.clone();
-        bare.ends = [None, None];
-        ops.push(Op::DeleteWire { id: w, conductor: bare });
-        self.commit(ops);
+        let wire = self.doc().wires.get(&w).unwrap().clone();
+        self.commit(vec![Op::DeleteWire { id: w, wire }]);
     }
 
     fn number(&self, w: WireId) -> Option<String> {
@@ -131,32 +145,32 @@ fn nets_join_through_attachments_continuations_and_bridges_only() {
     let mut p = P::new();
     // Two ends on one connection point: one net.
     let (_, k) = p.device(2);
-    let a = p.wire(Some(k[0]), None);
-    let b = p.wire(Some(k[0]), None);
+    let a = p.loose(k[0]);
+    let b = p.loose(k[0]);
     assert!(p.same_net(a, b));
     // A T without a junction (the end merely lies on the other wire): two nets.
-    let c = p.wire(None, None);
+    let c = p.free_props(&[]);
     assert!(!p.same_net(a, c));
     // With a junction: one net.
     let mut j = Device::default();
     j.properties.insert(KIND.into(), "junction".into());
     let (_, jt) = p.device_with(1, j);
-    let d = p.wire(Some(jt[0]), Some(k[1]));
-    let e = p.wire(Some(jt[0]), None);
+    let d = p.wire(jt[0], k[1]);
+    let e = p.loose(jt[0]);
     assert!(p.same_net(d, e));
     // A crossing never connects: two wires with no shared point.
     let (_, x) = p.device(4);
-    let h = p.wire(Some(x[0]), Some(x[1]));
-    let v = p.wire(Some(x[2]), Some(x[3]));
+    let h = p.wire(x[0], x[1]);
+    let v = p.wire(x[2], x[3]);
     assert!(!p.same_net(h, v));
     // Continuations with the same name (any case, trimmed) are one net, on any page.
     let (_, c1) = p.continuation("24V");
     let (_, c2) = p.continuation(" 24v ");
-    let w1 = p.wire(Some(c1), None);
-    let w2 = p.wire(Some(c2), None);
+    let w1 = p.loose(c1);
+    let w2 = p.loose(c2);
     assert!(p.same_net(w1, w2));
     let (_, c3) = p.continuation("0V");
-    let w3 = p.wire(Some(c3), None);
+    let w3 = p.loose(c3);
     assert!(!p.same_net(w1, w3));
     // A definition's bridge joins a device's terminals.
     let def: DefinitionId = p.ids.fresh();
@@ -170,9 +184,9 @@ fn nets_join_through_attachments_continuations_and_bridges_only() {
     };
     p.commit(vec![Op::EmbedDefinition { id: def, definition }]);
     let (_, bt) = p.device_with(3, Device { definition: Some(def), ..Device::default() });
-    let b1 = p.wire(Some(bt[0]), None);
-    let b2 = p.wire(Some(bt[1]), None);
-    let b3 = p.wire(Some(bt[2]), None);
+    let b1 = p.loose(bt[0]);
+    let b2 = p.loose(bt[1]);
+    let b3 = p.loose(bt[2]);
     assert!(p.same_net(b1, b2));
     assert!(!p.same_net(b1, b3));
     p.check();
@@ -185,8 +199,8 @@ fn a_cable_core_runs_its_net_through() {
     let mut p = P::new();
     let (_, x) = p.device(2);
     let (_, m) = p.device(2);
-    let core1 = p.wire(Some(x[0]), Some(m[0]));
-    let core2 = p.wire(Some(x[1]), Some(m[1]));
+    let core1 = p.wire(x[0], m[0]);
+    let core2 = p.wire(x[1], m[1]);
     let cable: ecad_model::CableId = p.ids.fresh();
     p.commit(vec![Op::CreateCable {
         id: cable,
@@ -198,7 +212,7 @@ fn a_cable_core_runs_its_net_through() {
             ],
         },
     }]);
-    let field = p.wire(Some(x[0]), None);
+    let field = p.loose(x[0]);
     assert!(p.same_net(core1, field));
     assert!(!p.same_net(core1, core2));
     assert_eq!(p.number(core1), p.number(field));
@@ -210,17 +224,17 @@ fn the_numbering_rules() {
     let mut p = P::new();
     let (_, k) = p.device(6);
     // New net: next free number of its scope; with no potential the prefix is empty.
-    let a = p.wire(Some(k[0]), Some(k[1]));
+    let a = p.wire(k[0], k[1]);
     assert_eq!(p.number(a).as_deref(), Some("01"));
     // Another new net: the next one; adding a wire never renumbers the first.
-    let b = p.wire(Some(k[2]), Some(k[3]));
+    let b = p.wire(k[2], k[3]);
     assert_eq!(p.number(b).as_deref(), Some("02"));
     assert_eq!(p.number(a).as_deref(), Some("01"));
     // A conductor added to a numbered net gets its number.
-    let a2 = p.wire(Some(k[1]), None);
+    let a2 = p.loose(k[1]);
     assert_eq!(p.number(a2).as_deref(), Some("01"));
     // Merge, both automatic: the number on more conductors wins (01 has two, 02 one).
-    let bridge = p.wire(Some(k[1]), Some(k[2]));
+    let bridge = p.wire(k[1], k[2]);
     for w in [a, a2, b, bridge] {
         assert_eq!(p.number(w).as_deref(), Some("01"), "{w}");
     }
@@ -232,7 +246,7 @@ fn the_numbering_rules() {
     assert_eq!(p.number(b).as_deref(), Some("02"));
     // Merge, one fixed: the fixed number wins and is written fixed on all.
     p.fix(b, "24V-99");
-    let join = p.wire(Some(k[1]), Some(k[3]));
+    let join = p.wire(k[1], k[3]);
     for w in [a, a2, b, join] {
         assert_eq!(p.number(w).as_deref(), Some("24V-99"));
         assert!(p.fixed(w));
@@ -244,7 +258,7 @@ fn the_numbering_rules() {
     assert_eq!(wiring::sharing(p.doc(), "24V-99").len(), 2);
     // Merge, two different fixed: nothing rewritten.
     p.fix(b, "24V-98");
-    let join = p.wire(Some(k[1]), Some(k[3]));
+    let join = p.wire(k[1], k[3]);
     assert_eq!(p.number(a).as_deref(), Some("24V-99"));
     assert_eq!(p.number(b).as_deref(), Some("24V-98"));
     let net = p.doc().connectivity().net_of_conductor(join).unwrap();
@@ -256,13 +270,16 @@ fn the_numbering_rules() {
 fn a_potential_sets_the_prefix_and_a_potential_change_renumbers_an_automatic_number() {
     let mut p = P::new();
     let (_, k) = p.device(4);
-    let a = p.wire_props(Some(k[0]), Some(k[1]), &[("potential", "24V")]);
+    let a = p.wire_props(k[0], k[1], &[("potential", "24V")]);
     assert_eq!(p.number(a).as_deref(), Some("24V-01"));
-    let b = p.wire_props(Some(k[2]), None, &[("potential", "24V")]);
+    let b = {
+        let f = p.point();
+        p.wire_props(k[2], f, &[("potential", "24V")])
+    };
     assert_eq!(p.number(b).as_deref(), Some("24V-02"));
     // PE is unnumbered: every net shows the prefix alone, and sharing it is no error.
-    let pe1 = p.wire_props(None, None, &[("potential", "PE")]);
-    let pe2 = p.wire_props(None, None, &[("potential", "PE")]);
+    let pe1 = p.free_props(&[("potential", "PE")]);
+    let pe2 = p.free_props(&[("potential", "PE")]);
     assert_eq!(p.number(pe1).as_deref(), Some("PE"));
     assert_eq!(p.number(pe2).as_deref(), Some("PE"));
     assert!(wiring::sharing(p.doc(), "PE").is_empty());
@@ -275,7 +292,7 @@ fn a_potential_sets_the_prefix_and_a_potential_change_renumbers_an_automatic_num
     assert_eq!(p.number(a).as_deref(), Some("X-1"));
     // A continuation named for a potential gives a net with none its prefix.
     let (_, c) = p.continuation("N");
-    let n = p.wire(Some(c), None);
+    let n = p.loose(c);
     assert_eq!(p.number(n).as_deref(), Some("N-01"));
     p.check();
 }
@@ -283,7 +300,7 @@ fn a_potential_sets_the_prefix_and_a_potential_change_renumbers_an_automatic_num
 #[test]
 fn settings_changes_never_renumber_until_renumber_wires() {
     let mut p = P::new();
-    let a = p.wire_props(None, None, &[("potential", "24V")]);
+    let a = p.free_props(&[("potential", "24V")]);
     assert_eq!(p.number(a).as_deref(), Some("24V-01"));
     let before = p.doc().settings.clone();
     let mut after = before.clone();
@@ -291,7 +308,7 @@ fn settings_changes_never_renumber_until_renumber_wires() {
     after.wiring.digits = Some(3);
     p.commit(vec![Op::SetProjectSettings { before, after }]);
     assert_eq!(p.number(a).as_deref(), Some("24V-01"));
-    let b = p.wire_props(None, None, &[("potential", "24V")]);
+    let b = p.free_props(&[("potential", "24V")]);
     // No route: page 1 column 1.
     assert_eq!(p.number(b).as_deref(), Some("24V-1.001"));
     let ops = wiring::renumber(p.doc(), true);
@@ -305,11 +322,13 @@ fn settings_changes_never_renumber_until_renumber_wires() {
 fn renumber_unnumbered_numbers_only_nets_without_a_number() {
     let mut p = P::new();
     // A conductor created without the pass (an older project).
+    let (a, b) = (p.point(), p.point());
     let w: WireId = p.ids.fresh();
-    p.ledger.commit(Author::User, "old", vec![Op::CreateWire { id: w, conductor: Wire::default() }]).unwrap();
+    let wire = p.bare(a, b);
+    p.ledger.commit(Author::User, "old", vec![Op::CreateWire { id: w, wire }]).unwrap();
     assert_eq!(p.number(w), None);
     assert_eq!(wiring::unnumbered_nets(p.doc()), 1);
-    let numbered = p.wire(None, None);
+    let numbered = p.free_props(&[]);
     assert_eq!(p.number(numbered).as_deref(), Some("01"));
     let ops = wiring::renumber(p.doc(), false);
     p.commit(ops);
@@ -322,9 +341,10 @@ fn renumber_unnumbered_numbers_only_nets_without_a_number() {
 fn undo_restores_numbers_exactly_and_the_pass_is_one_transaction_with_the_edit() {
     let mut p = P::new();
     let (_, k) = p.device(2);
-    let a = p.wire(Some(k[0]), None);
+    let a = p.loose(k[0]);
+    let f = p.point();
     let head = p.ledger.head();
-    let b = p.wire(Some(k[1]), None);
+    let b = p.wire(k[1], f);
     assert_eq!(p.ledger.head(), head + 1, "the wire and its number are one transaction");
     assert_eq!(p.number(b).as_deref(), Some("02"));
     p.ledger.undo(Author::User).unwrap();
@@ -339,13 +359,11 @@ fn undo_restores_numbers_exactly_and_the_pass_is_one_transaction_with_the_edit()
 fn a_refused_transaction_leaves_nets_as_they_were() {
     let mut p = P::new();
     let (_, k) = p.device(2);
-    let a = p.wire(Some(k[0]), Some(k[1]));
+    let a = p.wire(k[0], k[1]);
     let before = Connectivity::build(p.doc());
-    // The second op fails its precondition: the first (a detach) is rolled back.
-    let bad = vec![
-        Op::AttachEnd { conductor: a, end: End::A, before: Some(k[0]), after: None },
-        Op::AttachEnd { conductor: a, end: End::B, before: Some(k[0]), after: None },
-    ];
+    // The second op fails its precondition: the first (a delete) is rolled back.
+    let wire = p.doc().wires[&a].clone();
+    let bad = vec![Op::DeleteWire { id: a, wire: wire.clone() }, Op::DeleteWire { id: a, wire }];
     assert!(p.try_commit(bad).is_err());
     assert_eq!(p.doc().connectivity().differs_from(&before), None);
 }
@@ -391,21 +409,31 @@ fn random_ops(seed: u64, steps: usize) {
                 p.continuation(name);
             }
             3 | 4 => {
+                // An end that goes nowhere else lands on a point of its own.
                 let a = if next(4) == 0 { None } else { pick_t(next(97)) };
                 let b = if next(4) == 0 { None } else { pick_t(next(89)) };
-                p.wire(a, b);
+                let a = a.unwrap_or_else(|| p.point());
+                let b = b.unwrap_or_else(|| p.point());
+                if a != b {
+                    p.wire(a, b);
+                }
             }
             5 if !conductors.is_empty() => {
                 let w = conductors[next(conductors.len())];
                 p.delete(w);
             }
             6 if !conductors.is_empty() => {
+                // Move one end: the wire between other points is another wire (Delete + Create).
                 let w = conductors[next(conductors.len())];
-                let end = if next(2) == 0 { End::A } else { End::B };
-                let before = p.doc().wires.get(&w).unwrap().end(end);
-                let after = if next(3) == 0 { None } else { pick_t(next(101)) };
-                if before != after {
-                    p.commit(vec![Op::AttachEnd { conductor: w, end, before, after }]);
+                let old = p.doc().wires.get(&w).unwrap().clone();
+                let end = next(2);
+                let to = if next(3) == 0 { p.point() } else { pick_t(next(101)).unwrap_or_else(|| p.point()) };
+                let mut ends = old.ends;
+                ends[end] = to;
+                if ends[0] != ends[1] && ends != old.ends {
+                    let id: WireId = p.ids.fresh();
+                    let wire = old.values_onto(&p.bare(ends[0], ends[1]));
+                    p.commit(vec![Op::DeleteWire { id: w, wire: old }, Op::CreateWire { id, wire }]);
                 }
             }
             7 if !comps.is_empty() => {
@@ -455,7 +483,7 @@ fn random_ops(seed: u64, steps: usize) {
 fn unrelated_ops_change_no_net_and_number_nothing() {
     let mut p = P::new();
     let (c, k) = p.device(2);
-    p.wire(Some(k[0]), Some(k[1]));
+    p.wire(k[0], k[1]);
     let before = p.doc().connectivity().clone();
     let d = p.doc().devices[&c].clone();
     let tag = Op::ModifyDevice { id: c, before: d.clone(), after: d.with_tag(Some("-K1")) };
@@ -475,7 +503,7 @@ fn unrelated_ops_change_no_net_and_number_nothing() {
 fn links_join_terminals_by_label_and_number_in_the_same_transaction() {
     let mut p = P::new();
     let (strip, t) = p.device(6);
-    let w: Vec<WireId> = t.iter().map(|x| p.wire(Some(*x), None)).collect();
+    let w: Vec<WireId> = t.iter().map(|x| p.loose(*x)).collect();
     assert!(!p.same_net(w[0], w[3]));
     let set = |p: &mut P, key: &str, value: Option<&str>| {
         let before = p.doc().devices.get(&strip).unwrap().properties.get(key).cloned();

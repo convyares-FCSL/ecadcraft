@@ -350,21 +350,12 @@ impl Touch {
                         self.all_results = true;
                     }
                 }
-                Op::CreateWire { id, conductor } | Op::DeleteWire { id, conductor } => {
+                Op::CreateWire { id, wire } | Op::DeleteWire { id, wire } => {
                     self.retrace.insert(RatedSubject::Wire(*id));
                     if let Some(n) = conn.net_of_conductor(*id) {
                         self.nets.insert(n);
                     }
-                    for t in conductor.ends.iter().flatten() {
-                        net_of_terminal(*t, self);
-                    }
-                }
-                Op::AttachEnd { conductor, before, after, .. } => {
-                    self.retrace.insert(RatedSubject::Wire(*conductor));
-                    if let Some(n) = conn.net_of_conductor(*conductor) {
-                        self.nets.insert(n);
-                    }
-                    for t in [before, after].into_iter().flatten() {
+                    for t in &wire.ends {
                         net_of_terminal(*t, self);
                     }
                 }

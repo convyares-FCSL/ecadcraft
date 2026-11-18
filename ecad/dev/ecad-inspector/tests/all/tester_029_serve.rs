@@ -442,7 +442,7 @@ fn hostile_text_comes_back_as_plain_json_strings() {
             Op::CreateDevice { id: k, device: Device { properties: props(&[("note", X)]), ..Device::default() }.with_tag(Some(X)) },
             Op::AddTerminal { id: a, terminal: Terminal { component: k, label: Some(X.into()), key: None } },
             Op::AddTerminal { id: b, terminal: Terminal { component: k, label: Some("2".into()), key: None } },
-            Op::CreateWire { id: w, conductor: Wire { display: props(&[("wire.category", X)]), ends: [Some(a), Some(b)], ..Wire::default() } },
+            Op::CreateWire { id: w, wire: Wire { display: props(&[("wire.category", X)]), ..Wire::new(ids.fresh(), ids.fresh(), a, b) } },
             Op::CreateCable {
                 id: c,
                 cable: Cable { properties: props(&[("tag", X)]), members: vec![CableMember { conductor: w, core: Some(X.into()) }] },

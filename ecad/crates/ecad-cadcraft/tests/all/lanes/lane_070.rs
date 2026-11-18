@@ -69,7 +69,6 @@ fn the_wire_commands_refuse_input_uniformly() {
         ("wiresettings", json!({"scheme": 1}), "`scheme` must be text, or null"),
         ("wiresettings", json!({"potentials": 1}), "`potentials` must be a list of objects, or null"),
         ("renumberwires", json!({"scope": "x"}), "`scope` must be one of \"unnumbered\", \"all\", or null"),
-        ("junction", json!({}), "`at` (point [x, y]) is required"),
         ("joinwires", json!({"at": "here"}), "`at` must be a point [x, y]"),
         ("checks", json!({"kinds": "nope"}), "`kinds` must be a list of texts, or null"),
     ];

@@ -116,12 +116,15 @@ fn replacing_or_unsupported_edits_are_refused() {
 fn connecting_to_a_deleted_terminal_fails_cleanly() {
     let (mut h, c1, _c2, w) = fixture();
     let t = h.doc().terminals_of(c1).next().map(|(t, _)| t).unwrap();
+    let page = h.first_page();
+    let route = h.route_of(page, w);
     h.run("ecaddelete", json!({"component": c1.hex()})).unwrap();
     let b = before(&mut h);
-    let r = h.run("connect", json!({"conductor": w.hex(), "end": "A", "terminal": t.hex()}));
+    let r = h.run("connect", json!({"route": route.hex(), "end": "A", "terminal": t.hex()}));
     assert!(r.is_err());
     unchanged(&mut h, &b, "connect to a deleted terminal");
-    assert_eq!(h.doc().wires[&w].ends[0], None, "deleting the component detached the wire explicitly");
+    assert_eq!(h.doc().routes[&route].ends[0], ecad_model::RouteEnd::Free, "deleting the component let the line's end go explicitly");
+    assert!(!h.doc().wires.contains_key(&w), "and its wire with it");
 }
 
 #[cfg(feature = "fault-injection")]

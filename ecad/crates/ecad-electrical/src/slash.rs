@@ -5,8 +5,9 @@
 //! what is previewed is what is committed.
 //!
 //! # Semantics
-//! Only conductor routes on the given page are tested: every segment of every Line or Polyline
-//! item of every conductor representation there (a closed polyline includes its closing segment).
+//! Only routes on the given page are tested (design 072 §4.3; through the page's route index):
+//! every segment of each route's drawing. A route stands for the wire it carries
+//! ([`crate::wires::wire_of_route`]); a route carrying no wire is not tested.
 //! All tests use the project's tolerance.
 //! - C1 to C3: the slash crosses the inside of a route segment, passes through a bend, or ends on
 //!   the inside of a route: the conductor **counts**.
@@ -26,7 +27,7 @@
 use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::{CableId, Document, ItemId, ItemKind, PageId, Primitive, Pt, Subject, WireId};
+use ecad_model::{CableId, Document, ItemId, ItemKind, PageId, Primitive, Pt, RouteId, Subject, WireId};
 
 /// Most wires one cable may hold (input-derived sizes are capped, never trusted).
 pub const MAX_CABLE_MEMBERS: usize = 10_000;
@@ -34,6 +35,9 @@ pub const MAX_CABLE_MEMBERS: usize = 10_000;
 /// A conductor the slash takes.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Crossing {
+    /// The route crossed.
+    pub route: RouteId,
+    /// The wire it carries.
     pub conductor: WireId,
     /// Its first crossing point on the slash.
     pub at: Pt,
@@ -139,12 +143,12 @@ fn usable(tol: f64) -> f64 {
     if tol.is_finite() && tol >= 0.0 { tol } else { 0.0 }
 }
 
-/// The conductor routes shown on `page`: route item → conductor.
-fn routes(doc: &Document, page: PageId) -> BTreeMap<ItemId, WireId> {
+/// The routes drawn on `page` that carry a wire: route item → (route, the wire it carries).
+fn routes(doc: &Document, page: PageId) -> BTreeMap<ItemId, (RouteId, WireId)> {
     let mut out = BTreeMap::new();
-    for r in doc.representations.values().filter(|r| r.page == page) {
-        if let Subject::Wire(c) = r.subject {
-            out.extend(r.items.iter().map(|i| (*i, c)));
+    for r in doc.routes_on(page) {
+        if let (Some((_, item, _)), Some(w)) = (crate::wires::route_item(doc, r), crate::wires::wire_of_route(doc, r)) {
+            out.insert(item, (r, w));
         }
     }
     out
@@ -207,7 +211,7 @@ pub fn crossings(doc: &Document, page: PageId, from: Pt, to: Pt, tol: f64) -> Cr
         return out;
     }
     let routes = routes(doc, page);
-    let mut meets: BTreeMap<WireId, Meets> = BTreeMap::new();
+    let mut meets: BTreeMap<(RouteId, WireId), Meets> = BTreeMap::new();
     let mut ignored: Vec<(f64, ItemId, Pt)> = Vec::new();
     for (id, item) in doc.items.iter().filter(|(_, i)| i.page == page) {
         let ItemKind::Primitive(prim) = &item.kind else { continue };
@@ -232,14 +236,20 @@ pub fn crossings(doc: &Document, page: PageId, from: Pt, to: Pt, tol: f64) -> Cr
             }
         }
     }
-    for (c, m) in meets {
+    for ((r, c), m) in meets {
         match m.first {
-            Some((along, at)) => out.members.push(Crossing { conductor: c, at, along }),
+            Some((along, at)) => out.members.push(Crossing { route: r, conductor: c, at, along }),
             None if m.touched => out.touched.push(c),
             None => {}
         }
     }
     order(&mut out.members, tol);
+    // C6: a wire drawn by several routes counts once, at its first crossing.
+    let mut seen = BTreeSet::new();
+    out.members.retain(|m| seen.insert(m.conductor));
+    out.touched.sort_unstable();
+    out.touched.dedup();
+    out.touched.retain(|c| !seen.contains(c));
     ignored.sort_by(|x, y| x.0.total_cmp(&y.0).then(x.1.cmp(&y.1)));
     out.ignored = ignored.into_iter().map(|(_, i, at)| (i, at)).collect();
     out
@@ -284,7 +294,7 @@ pub fn member_crossing_points_where(doc: &Document, page: PageId, tol: f64, show
     let tol = usable(tol);
     let routes = routes(doc, page);
     let mut by_conductor: BTreeMap<WireId, Vec<&Primitive>> = BTreeMap::new();
-    for (i, c) in &routes {
+    for (i, (_, c)) in &routes {
         if let Some(ItemKind::Primitive(prim)) = doc.items.get(i).map(|x| &x.kind) {
             by_conductor.entry(*c).or_default().push(prim);
         }
@@ -314,7 +324,7 @@ pub fn member_crossings_of(doc: &Document, page: PageId, cable: CableId, tol: f6
     let Some(c) = doc.cables.get(&cable) else { return Vec::new() };
     let routes = routes(doc, page);
     let mut by_conductor: BTreeMap<WireId, Vec<&Primitive>> = BTreeMap::new();
-    for (i, w) in &routes {
+    for (i, (_, w)) in &routes {
         if let Some(ItemKind::Primitive(prim)) = doc.items.get(i).map(|x| &x.kind) {
             by_conductor.entry(*w).or_default().push(prim);
         }

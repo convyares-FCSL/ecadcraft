@@ -912,10 +912,9 @@ pub fn op_view(op: &Op) -> OpView {
         Op::LinkRepresentation { rep, .. } => (None, val(rep)),
         Op::ModifyRepresentation { before, after, .. } => (val(before), val(after)),
         Op::UnlinkRepresentation { rep, .. } => (val(rep), None),
-        Op::CreateWire { conductor, .. } => (None, val(conductor)),
-        Op::DeleteWire { conductor, .. } => (val(conductor), None),
+        Op::CreateWire { wire, .. } => (None, val(wire)),
+        Op::DeleteWire { wire, .. } => (val(wire), None),
         Op::ModifyWire { before, after, .. } => (val(before), val(after)),
-        Op::AttachEnd { end, before, after, .. } => (val(&json!({"end": end, "terminal": before})), val(&json!({"end": end, "terminal": after}))),
         Op::AddRoute { route, .. } => (None, val(route)),
         Op::RemoveRoute { route, .. } => (val(route), None),
         Op::ModifyRoute { before, after, .. } => (val(before), val(after)),
@@ -996,15 +995,11 @@ pub fn op_targets(op: &Op) -> Vec<ObjectId> {
             rep_refs(before, &mut out);
             rep_refs(after, &mut out);
         }
-        Op::CreateWire { id, conductor } | Op::DeleteWire { id, conductor } => {
+        Op::CreateWire { id, wire } | Op::DeleteWire { id, wire } => {
             out.push(ObjectId::Wire(*id));
-            out.extend(conductor.ends.iter().flatten().map(|t| ObjectId::Terminal(*t)));
+            out.extend(wire.ends.iter().map(|t| ObjectId::Terminal(*t)));
         }
         Op::ModifyWire { id, .. } => out.push(ObjectId::Wire(*id)),
-        Op::AttachEnd { conductor, before, after, .. } => {
-            out.push(ObjectId::Wire(*conductor));
-            out.extend(before.iter().chain(after.iter()).map(|t| ObjectId::Terminal(*t)));
-        }
         Op::AddRoute { id, route } | Op::RemoveRoute { id, route } => {
             out.push(ObjectId::Route(*id));
             out.push(ObjectId::Page(route.page));
@@ -1096,7 +1091,8 @@ pub fn resolve(doc: &Document, mapped: Mapped) -> Resolved {
     };
     r.terminals = match r.subject {
         Some(Subject::Device(c)) => doc.terminals.iter().filter(|(_, t)| t.component == c).map(|(id, _)| *id).collect(),
-        Some(Subject::Wire(c)) => doc.wires.get(&c).map(|x| x.ends.iter().flatten().copied().collect()).unwrap_or_default(),
+        Some(Subject::Wire(c)) => doc.wires.get(&c).map(|x| x.ends.to_vec()).unwrap_or_default(),
+        Some(Subject::Route(x)) => doc.routes.get(&x).map(|r| r.points_landed().collect()).unwrap_or_default(),
         _ => Vec::new(),
     };
     r.ids.extend(r.item.map(ObjectId::Item));
@@ -1160,7 +1156,7 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
         ObjectId::Terminal(t) => doc
             .wires
             .iter()
-            .filter(|(_, c)| c.ends.contains(&Some(t)))
+            .filter(|(_, c)| c.ends.contains(&t))
             .map(|(i, _)| ObjectId::Wire(*i))
             .chain(doc.routes.iter().filter(|(_, r)| r.points_landed().any(|p| p == t)).map(|(i, _)| ObjectId::Route(*i)))
             .collect(),
@@ -1170,6 +1166,7 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
             .filter(|(_, k)| k.members.iter().any(|m| m.conductor == c))
             .map(|(i, _)| ObjectId::Cable(*i))
             .chain(reps_of(Subject::Wire(c)))
+            .chain(crate::wires::routes_of_wire(doc, c).into_iter().map(ObjectId::Route))
             .collect(),
         ObjectId::Cable(c) => doc
             .cables

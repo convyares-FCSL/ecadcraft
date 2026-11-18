@@ -5,7 +5,7 @@
 use ecad_cadcraft::checks::{Fix, Kind};
 use ecad_cadcraft::outputs::{Group, Outputs};
 use ecad_cadcraft::strips::Strips;
-use ecad_model::{Author, CableId, DeviceId, End, Op, PageId, TerminalId, WireId};
+use ecad_model::{Author, CableId, DeviceId, Op, PageId, RouteEnd, RouteId, TerminalId, WireId};
 use serde_json::{Value, json};
 
 use crate::common::place;
@@ -89,18 +89,18 @@ fn a_terminal_on_a_wire_splits_it_and_undo_restores_it() {
     assert_eq!(t.h.head(), head + 1, "one transaction");
     assert_eq!(v["tag"], "-X01", "{v}");
     assert!(v["message"].as_str().unwrap().starts_with("Placed -X01:1 on wire"), "{v}");
-    let new: WireId = id(&v["split"], "new");
+    let (kept, new): (RouteId, RouteId) = (id(&v["split"], "route"), id(&v["split"], "new"));
     let x1: DeviceId = id(&v, "component");
     let term: TerminalId = id(&v["terminals"][0], "terminal");
     let doc = t.h.doc();
-    assert_eq!(doc.wires[&t.wires[0]].end(End::B), Some(term));
-    assert_eq!(doc.wires[&new].end(End::A), Some(term));
-    let conn = doc.connectivity();
-    assert_eq!(conn.net_of_conductor(t.wires[0]), conn.net_of_conductor(new), "one net");
-    // The cable's slash crosses the second half, so it keeps the membership.
-    assert!(doc.cables[&t.cable].members.iter().any(|m| m.conductor == new));
-    assert!(!doc.cables[&t.cable].members.iter().any(|m| m.conductor == t.wires[0]));
-    assert_eq!(v["cable_kept_by"]["conductor"], json!(new.hex()));
+    assert_eq!(doc.routes[&kept].ends[1], RouteEnd::Point(term));
+    assert_eq!(doc.routes[&new].ends[0], RouteEnd::Point(term));
+    // One net (design 072 §4.4): the wire's two points and the terminal.
+    let [a, b] = before.wires[&t.wires[0]].ends;
+    let nets: std::collections::BTreeSet<_> = [a, b, term].iter().flat_map(|x| doc.ends_at(*x)).map(|(w, _)| doc.wires[&w].net).collect();
+    assert_eq!(nets.len(), 1, "one net");
+    // The cable keeps a member on the net (design 072 §4.4: the rewrite keeps memberships).
+    assert!(!doc.cables[&t.cable].members.is_empty());
     assert_eq!(t.h.p(|p| p.ledger.log().last().unwrap().label.clone()), "Place terminal");
     same_as_built(&mut t.h);
     let plan = strip_plan(&mut t.h);
@@ -415,15 +415,8 @@ fn relabelling_wired_terminals_by_remove_and_add_needs_no_new_op() {
     let inverse: Vec<Op> = ops.iter().rev().map(Op::inverse).collect();
     t.h.cfg(|p| p.ledger.commit(Author::User, "undo swap", inverse)).unwrap();
     assert_eq!(t.h.doc().terminals, doc.terminals);
-    // As the design wrote it: detach, remove, add, attach back.
-    let mut ops = Vec::new();
-    for (w, end) in doc.ends_at(t3) {
-        ops.push(Op::AttachEnd { conductor: w, end, before: Some(t3), after: None });
-    }
-    ops.extend(relabel(t3, "9"));
-    for (w, end) in doc.ends_at(t3) {
-        ops.push(Op::AttachEnd { conductor: w, end, before: None, after: Some(t3) });
-    }
+    // Once more, alone: the routes landing on it stay on it (design 072 §4.3).
+    let ops: Vec<Op> = relabel(t3, "9").into();
     t.h.cfg(|p| p.ledger.commit(Author::User, "relabel", ops)).unwrap();
     let d = t.h.doc();
     assert_eq!(d.terminals[&t3].label.as_deref(), Some("9"));
@@ -518,7 +511,7 @@ fn renumbering_terminals_follows_drawing_order() {
     let after: Vec<_> = terms.iter().map(|x| d.ends_at(*x)).collect();
     assert_eq!(ends, after, "the wires stay attached");
     let ops = t.h.p(|p| p.ledger.log().last().unwrap().ops.clone());
-    assert!(ops.iter().all(|o| !matches!(o, Op::AttachEnd { .. })), "Remove + Add of the same ID, no detaching");
+    assert!(ops.iter().all(|o| !matches!(o, Op::ModifyRoute { .. } | Op::DeleteWire { .. })), "Remove + Add of the same ID, no detaching");
     same_as_built(&mut t.h);
     let plan = strip_plan(&mut t.h);
     assert_eq!(plan["strips"][0]["rows"][0]["outside"][0]["target"], "-S01:13", "{plan}");

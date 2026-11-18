@@ -796,7 +796,7 @@ fn ac3_fans_of_one_two_and_twenty_wires() {
     assert_eq!(view_of(&mut h, two), "fan");
     let doc = h.doc();
     assert_eq!(views::fan_on_page(&doc, page, two, 1e-6), views::FanOnPage::TooFew);
-    let (route, _) = ecad_model::derive::route_on_page(&doc, members[0], page).unwrap();
+    let (route, _) = crate::common::wire_line(&doc, members[0], page).unwrap();
     assert!(h.p(|p| p.pages[&page].map.item(route)).is_some(), "the remaining wire is drawn");
     h.run("u", Value::Null).unwrap();
     h.check();
@@ -946,7 +946,7 @@ fn ac3_a_fan_that_cannot_be_drawn_stays_traditional_and_says_so() {
 fn ac3_degenerate_reference_routes_fall_back_without_panic() {
     let mut g = fixture();
     let doc = g.h.doc();
-    let (item, _) = ecad_model::derive::route_on_page(&doc, g.wires[1], g.page).unwrap();
+    let (item, _) = crate::common::wire_line(&doc, g.wires[1], g.page).unwrap();
     let cases: Vec<(&str, ecad_model::Primitive, bool)> = vec![
         ("zero length", ecad_model::Primitive::Line { a: Pt::new(0.0, 5.0), b: Pt::new(0.0, 5.0) }, true),
         ("NaN", ecad_model::Primitive::Line { a: Pt::new(0.0, 5.0), b: Pt::new(f64::NAN, 5.0) }, true),
@@ -1153,7 +1153,8 @@ fn ac6_edits_of_the_fan_are_refused_and_change_nothing() {
     let at = lines.iter().position(|l| l == "View: fan").expect("View: fan");
     assert!(lines.get(at - 1).is_some_and(|l| l.starts_with("id ")), "after the id line: {lines:?}");
     // Programmatic calls ignore the view (O4).
-    g.h.run("disconnect", json!({"conductor": g.wires[1].hex(), "end": "B"})).unwrap();
+    let line = g.h.route_of(g.page, g.wires[1]);
+    g.h.run("disconnect", json!({"route": line.hex(), "end": "B"})).unwrap();
     assert_eq!(g.h.head(), head + 1);
     g.h.check();
 }
@@ -1165,7 +1166,8 @@ fn the_fan_follows_route_edits_made_in_traditional_view() {
     let r = g.h.route_handle(g.page, g.wires[1]);
     let set_ = BTreeSet::from([r]);
     // Moving a whole attached wire is refused by 008's rules; disconnect and move the B end instead.
-    g.h.run("disconnect", json!({"conductor": g.wires[1].hex(), "end": "B"})).unwrap();
+    let line = g.h.route_of(g.page, g.wires[1]);
+    g.h.run("disconnect", json!({"route": line.hex(), "end": "B"})).unwrap();
     let res = g.h.run("grip.stretch", json!({"handle": r.hex(), "index": 1, "to": [60, 6]}));
     eprintln!("stretch end: {res:?} ({set_:?})");
     set(&mut g.h, g.c1, "fan");

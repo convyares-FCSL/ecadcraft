@@ -7,38 +7,21 @@
 use std::collections::BTreeMap;
 
 use ecad_model::{
-    DefinitionId, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Noun, Op, PageId, Placement, Primitive, Pt,
-    Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId, Wire, WireId,
+    DefinitionId, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Noun, Op, PageId, Placement, Pt, Representation,
+    RepresentationId, RouteEnd, RouteId, Style, Subject, SymbolInstance, Terminal, TerminalId, WireId,
 };
 
-use crate::connectors::{Land, plan_land, segments, strip_terminal_at};
+use crate::connectors::{Land, plan_land, plan_land_ends, strip_terminal_at};
 use crate::devices::TagHigh;
 use crate::error::CmdError;
 use crate::strips::{self, terminal_words};
 use crate::terminal_types as tt;
-use crate::wires::{ON_WIRE, OnWire};
+use crate::wires::OnRoute;
 
 /// Most wires one Place Terminals line lands on (design 028 §3.2).
 pub const MAX_FENCE: usize = 200;
 /// How far a bridge's staple stands off its terminals, in millimetres (design 028 §4).
 pub const BRIDGE_STANDOFF: f64 = 4.0;
-
-/// The wire `c` met at `at` on `page`: its segment there.
-pub fn on_wire_of(doc: &Document, page: PageId, c: WireId, at: Pt) -> Option<OnWire> {
-    let (_, _, v) = crate::wires::route_vertices(doc, c, page)?;
-    let mut best: Option<(f64, usize)> = None;
-    for (i, (a, b)) in segments(&v).enumerate() {
-        let (dx, dy) = (b.x - a.x, b.y - a.y);
-        let len2 = dx * dx + dy * dy;
-        let t = if len2 > 0.0 { (((at.x - a.x) * dx + (at.y - a.y) * dy) / len2).clamp(0.0, 1.0) } else { 0.0 };
-        let d = Pt::new(a.x + t * dx, a.y + t * dy).dist(at);
-        if d.is_finite() && best.is_none_or(|(bd, _)| d < bd) {
-            best = Some((d, i));
-        }
-    }
-    let (d, segment) = best?;
-    (d <= ON_WIRE).then_some(OnWire { conductor: c, segment, at })
-}
 
 /// The definition ID of starter `s` in `doc`, embedding it in `ops` when it is not yet there.
 ///
@@ -96,13 +79,10 @@ pub struct Fence {
     pub ops: Vec<Op>,
     pub strip: DeviceId,
     pub tag: String,
-    /// (terminal, label, wire, new half) in crossing order.
-    pub placed: Vec<(TerminalId, String, WireId, WireId)>,
+    /// (terminal, label, route, its new second part) in crossing order.
+    pub placed: Vec<(TerminalId, String, RouteId, RouteId)>,
     /// Wires skipped because a terminal of the strip is already there.
     pub skipped: usize,
-    /// Brief 036: stored wire numbers the out halves of two-point splits did not keep: (the new
-    /// half, the number, whether it was fixed).
-    pub dropped: Vec<(WireId, String, bool)>,
 }
 
 /// Plan Place Terminals (design 028 §3.2) from `from` to `to` on `page`.
@@ -193,33 +173,29 @@ pub fn plan_fence_typed(
         }
     };
     let mut placed = Vec::new();
-    let mut dropped = Vec::new();
     let mut named = kind.position.clone();
     let on_wire = |e: CmdError, c: WireId| CmdError::refused(format!("{e} (wire {})", crate::slash::wire_name(doc, c)));
     for m in crossings {
-        let on = on_wire_of(doc, page, m.conductor, m.at).ok_or(CmdError::refused("A crossed wire has no route here."))?;
+        let on = crate::wires::on_route_of(doc, m.route, m.at).ok_or(CmdError::refused("A crossed wire has no route here."))?;
         if legacy {
             let label = next.to_string();
             let t = terminal_symbol(ids, page, style.clone(), def, strip, &label, m.at, first_main, ecad_model::Word::word(starter.key), &mut ops);
             first_main = false;
-            let land = plan_land(doc, ids, page, on, t).map_err(|e| on_wire(e, m.conductor))?;
+            let land = plan_land(doc, ids, on, t).map_err(|e| on_wire(e, m.conductor))?;
             ops.extend(land.ops);
-            placed.push((t, label, land.conductor, land.new));
+            placed.push((t, label, land.route, land.new));
             next += 1;
             continue;
         }
         let position = chooser.choose(doc, existing, kind.ty, kind.level, named.take().as_deref())?;
         let placement = Placement { origin: m.at, rotation: 0.0, mirror: false, scale: 1.0 };
         let shown = level_symbol(ids, page, style.clone(), def, starter, strip, &position, placement, &mut ops)?;
-        let land = land_level(doc, ids, page, on, &shown, placement).map_err(|e| on_wire(e, m.conductor))?;
-        if let Some((n, fixed)) = land.dropped_number.clone() {
-            dropped.push((land.new, n, fixed));
-        }
+        let land = land_level(doc, ids, on, &shown, placement).map_err(|e| on_wire(e, m.conductor))?;
         ops.extend(land.ops);
         let t = shown.first().map(|(_, t, _)| *t).ok_or(CmdError::refused("The symbol has no connection point."))?;
-        placed.push((t, position, land.conductor, land.new));
+        placed.push((t, position, land.route, land.new));
     }
-    Ok(Fence { ops, strip, tag, placed, skipped, dropped })
+    Ok(Fence { ops, strip, tag, placed, skipped })
 }
 
 /// Plan one level symbol (or a whole terminal) of `strip` at position `position` (brief 036 §3.3):
@@ -258,61 +234,25 @@ pub fn level_symbol(
     Ok(out)
 }
 
-/// Land a level symbol on its wire: a one-point level as 028 does; a two-point level splits the
-/// wire into two nets (design 036 §3.4): the half towards the in point lands on `.1i`, the other
-/// on `.1o`, each route ending at its point, and the second half drops its stored wire number.
+/// Land a level symbol on its route: a one-point level as 028 does; a two-point level splits the
+/// route into two nets (design 036 §3.4): the part towards the in point ends on `.1i`, the other
+/// on `.1o`, each drawn to its point. The commit's rewrite makes the wires of both nets.
 ///
 /// # Errors
 /// [`plan_land`]'s.
 pub fn land_level(
-    doc: &Document, ids: &mut IdAllocator, page: PageId, on: OnWire, shown: &[(String, TerminalId, Pt)], placement: Placement,
+    doc: &Document, ids: &mut IdAllocator, on: OnRoute, shown: &[(String, TerminalId, Pt)], placement: Placement,
 ) -> Result<Land, CmdError> {
     let first = shown.first().map(|(_, t, _)| *t).ok_or(CmdError::refused("The symbol has no connection point."))?;
     let (Some(tin), Some(tout)) = (shown.iter().find(|(k, _, _)| k.ends_with('i')), shown.iter().find(|(k, _, _)| k.ends_with('o'))) else {
-        return plan_land(doc, ids, page, on, first);
+        return plan_land(doc, ids, on, first);
     };
-    let mut land = plan_land(doc, ids, page, on, tin.1)?;
     let (pin, pout) = (placement.apply(tin.2), placement.apply(tout.2));
-    // Which half comes from the in point's side: the kept half's vertex before the split.
-    let before = crate::wires::route_vertices(doc, on.conductor, page).and_then(|(_, _, v)| v.get(on.segment).copied());
+    // Which part comes from the in point's side: the kept part's vertex before the split.
+    let before = doc.routes.get(&on.route).and_then(|r| r.points.get(on.segment).copied());
     let keep_in = before.is_none_or(|b| b.dist(pin) <= b.dist(pout));
     let (keep_t, keep_p, rest_t, rest_p) = if keep_in { (tin.1, pin, tout.1, pout) } else { (tout.1, pout, tin.1, pin) };
-    let (c1, c2) = (land.conductor, land.new);
-    let mut dropped: Option<(String, bool)> = None;
-    for op in &mut land.ops {
-        match op {
-            Op::AttachEnd { conductor, end: End::B, after, .. } if *conductor == c1 => *after = Some(keep_t),
-            Op::CreateWire { id, conductor } if *id == c2 => {
-                conductor.ends[0] = Some(rest_t);
-                dropped = conductor.number.take().map(|n| (n.text.to_string(), n.fixed));
-            }
-            Op::ModifyItem { after, .. } => set_route_end(after, keep_p, false),
-            Op::AddItem { item, .. } if matches!(item.kind, ItemKind::Primitive(_)) => set_route_end(item, rest_p, true),
-            _ => {}
-        }
-    }
-    land.dropped_number = dropped;
-    Ok(land)
-}
-
-/// Move a route's first (`start`) or last vertex to `p`.
-fn set_route_end(item: &mut Item, p: Pt, start: bool) {
-    match &mut item.kind {
-        ItemKind::Primitive(Primitive::Line { a, b }) => {
-            if start {
-                *a = p;
-            } else {
-                *b = p;
-            }
-        }
-        ItemKind::Primitive(Primitive::Polyline { vertices, .. }) => {
-            let v = if start { vertices.first_mut() } else { vertices.last_mut() };
-            if let Some(v) = v {
-                *v = p;
-            }
-        }
-        _ => {}
-    }
+    plan_land_ends(doc, ids, on, (RouteEnd::Point(keep_t), keep_p), (RouteEnd::Point(rest_t), rest_p))
 }
 
 /// The level a prompt or JSON names for type `t` on strip `c`: a level name (`N`), a number, or
@@ -435,12 +375,6 @@ pub fn terminals_message(doc: &Document, ty: &tt::TermType, level: Option<u32>, 
         };
         format!("Placed {}:{range} on {wires} ({span}{what}).", f.tag)
     };
-    let message = if f.dropped.is_empty() {
-        message
-    } else {
-        let list: Vec<&str> = f.dropped.iter().map(|(_, n, _)| n.as_str()).collect();
-        format!("{message} Out halves no longer carry wire number{} {}; they get their own.", if list.len() == 1 { "" } else { "s" }, list.join(", "))
-    };
     (shown, message)
 }
 
@@ -459,8 +393,9 @@ pub fn staple(a: Pt, b: Pt) -> Vec<Pt> {
 pub enum Bridge {
     /// A wire already joins the two: nothing to record.
     Already { conductor: WireId, same: bool, message: String },
-    /// A new wire (a bridge when both are of one strip).
-    Drawn { ops: Vec<Op>, label: String, conductor: WireId, same: bool, message: String },
+    /// A new route between the two (a bridge when both are of one strip); the commit's rewrite
+    /// makes its wire.
+    Drawn { ops: Vec<Op>, label: String, route: RouteId, same: bool, message: String },
 }
 
 /// `bridge {from, to}` (design 028 §4): a wire between two terminals shown on `page`; of one strip
@@ -478,9 +413,7 @@ pub fn plan_bridge(doc: &Document, ids: &mut IdAllocator, page: PageId, style: S
     let (wa, wb) = (terminal_words(doc, a), terminal_words(doc, b));
     let (sa, sb) = (strips::strip_of_terminal(doc, a), strips::strip_of_terminal(doc, b));
     let same = sa.is_some() && sa == sb;
-    if let Some((w, _)) =
-        doc.ends_at(a).into_iter().find(|(w, _)| doc.wires.get(w).is_some_and(|c| c.ends.contains(&Some(b)) && c.ends.contains(&Some(a))))
-    {
+    if let Some(w) = crate::wires::wire_between(doc, a, b) {
         return Ok(Bridge::Already { conductor: w, same, message: format!("{wa} and {wb} are already bridged.") });
     }
     let pos = |t: TerminalId| {
@@ -492,26 +425,8 @@ pub fn plan_bridge(doc: &Document, ids: &mut IdAllocator, page: PageId, style: S
             "{wa} and {wb} must both be on this page to draw a bridge; open the page that shows both, or draw a wire."
         )));
     };
-    let route = if same { staple(pa, pb) } else { vec![pa, pb] };
-    let (w, i, r): (WireId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
-    let item = Item { page, style, kind: ItemKind::Primitive(Primitive::Polyline { vertices: route, closed: false }) };
-    let ops = vec![
-        Op::CreateWire { id: w, conductor: Wire::default() },
-        Op::AddItem { id: i, item },
-        Op::LinkRepresentation {
-            id: r,
-            rep: Representation {
-                subject: Subject::Wire(w),
-                page,
-                form: Form::Drawn,
-                role: "route".into(),
-                items: vec![i],
-                connection_points: BTreeMap::new(),
-            },
-        },
-        Op::AttachEnd { conductor: w, end: End::A, before: None, after: Some(a) },
-        Op::AttachEnd { conductor: w, end: End::B, before: None, after: Some(b) },
-    ];
+    let points = if same { staple(pa, pb) } else { vec![pa, pb] };
+    let (route, _, ops) = crate::wires::add_route(ids, page, style, points, [RouteEnd::Point(a), RouteEnd::Point(b)]);
     let label_b = tt::terminal_name(doc, b);
     let label = if same { format!("Bridge {wa}\u{2013}{label_b}") } else { "Wire".to_string() };
     let message = if same {
@@ -519,7 +434,7 @@ pub fn plan_bridge(doc: &Document, ids: &mut IdAllocator, page: PageId, style: S
     } else {
         format!("{wa} and {wb} are on different strips; drawn as a wire, not a bridge.")
     };
-    Ok(Bridge::Drawn { ops, label, conductor: w, same, message })
+    Ok(Bridge::Drawn { ops, label, route, same, message })
 }
 
 // ---------------------------------------------------------------- the terminal plan (§10)

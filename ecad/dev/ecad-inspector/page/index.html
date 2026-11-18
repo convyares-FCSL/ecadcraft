@@ -132,7 +132,7 @@ function render() {
     <h2>Checks</h2><table>
     <tr><th>Replay equals live</th><td>${ok(checks.replay_equals_live)}</td></tr>
     <tr><th>Invariants hold</th><td>${ok(checks.invariants_hold)}</td></tr>
-    <tr><th>Attached ends off their terminal</th><td>${checks.mismatches.length ? `<span class="bad">${esc(checks.mismatches.length)}</span>` : '<span class="ok">0</span>'}</td></tr>
+    <tr><th>Route ends off their connection point</th><td>${checks.mismatches.length ? `<span class="bad">${esc(checks.mismatches.length)}</span>` : '<span class="ok">0</span>'}</td></tr>
     <tr><th>Nets (derived)</th><td>${esc(checks.nets.length)}</td></tr>
     </table></div></div>
     <h2>Pages</h2><div class="wrap"><table><tr><th>Page</th><th>Open</th><th>Projection equals drawing</th><th>Mapped handles</th></tr>
@@ -160,13 +160,12 @@ function render() {
     h += `<tr><td>${name(c)}</td><td>${esc(JSON.stringify(comp.properties))}</td><td>${ts.map(([t]) => name(t)).join("<br>")}</td>
       <td>${reps.map(([r, rep]) => `${name(r)} ${esc(rep.form)} on ${name(rep.page)}`).join("<br>") || '<span class="warn">not shown</span>'}</td></tr>`;
   }
-  h += `</table></div><h2>Wires</h2><div class="wrap"><table><tr><th>Wire</th><th>End A</th><th>End B</th><th>Cables</th><th>Shown</th></tr>`;
+  h += `</table></div><h2>Wires</h2><div class="wrap"><table><tr><th>Wire</th><th>End A</th><th>End B</th><th>Net</th><th>Order</th><th>Conductor</th><th>Cables</th></tr>`;
   for (const [w, c] of Object.entries(d.wires)) {
-    if (!match([w, ...c.ends.filter(Boolean)])) continue;
+    if (!match([w, c.net, c.conductor, ...c.ends])) continue;
     const cables = Object.entries(d.cables).filter(([, k]) => k.members.some((m) => m.conductor === w)).map(([k]) => name(k));
-    const shown = Object.values(d.representations).some((r) => r.subject.Wire === w);
-    h += `<tr><td>${name(w)}</td><td>${c.ends[0] ? name(c.ends[0]) : '<span class="muted">open</span>'}</td><td>${c.ends[1] ? name(c.ends[1]) : "open"}</td>
-      <td>${cables.join(", ")}</td><td>${shown ? "yes" : '<span class="warn">not shown</span>'}</td></tr>`;
+    h += `<tr><td>${name(w)}</td><td>${name(c.ends[0])}</td><td>${name(c.ends[1])}</td><td>${name(c.net)}</td>
+      <td>${esc(c.net_order)}${c.order_fixed ? " (fixed)" : ""}</td><td>${name(c.conductor)}</td><td>${cables.join(", ")}</td></tr>`;
   }
   h += `</table></div><h2>Cables</h2><div class="wrap"><table><tr><th>Cable</th><th>Members (in order)</th></tr>`;
   for (const [k, c] of Object.entries(d.cables)) {
@@ -388,8 +387,8 @@ const views = {
   async wiring() {
     return `<h2>Nets</h2>` + (await paged("nets", "nets", {}, ["Number", "Fixed", "Potential", "Place", "Connection points", "Wires"],
       (r) => `<tr><td>${esc(r.number ?? "(none)")}</td><td>${r.fixed ? "yes" : ""}</td><td>${esc(r.potential)}</td><td>${esc(r.place)}</td><td>${join(r.points)}</td><td>${esc(r.wires)}</td></tr>`)) +
-      `<h2>Wires</h2>` + (await paged("wires", "wires", {}, ["Number", "Ends", "Size", "Colours", "Potential", "Rating and load", "Cable", "Core"],
-      (r) => `<tr><td>${esc(r.number ?? "(none)")}${r.fixed ? " (fixed)" : ""}</td><td>${(r.ends || []).map(esc).join(" → ")}</td><td>${esc(r.size)}</td><td>${esc(r.colours)}</td><td>${esc(r.potential)}</td><td>${(r.rating || []).map(esc).join("<br>")}</td><td>${esc(r.cable)}</td><td>${esc(r.core)}</td></tr>`)) +
+      `<h2>Wires</h2>` + (await paged("wires", "wires", {}, ["Number", "Ends", "Net", "Order", "Size", "Colours", "Potential", "Rating and load", "Cable", "Core"],
+      (r) => `<tr><td>${esc(r.number ?? "(none)")}${r.fixed ? " (fixed)" : ""}</td><td>${(r.ends || []).map(esc).join(" → ")}</td><td class="mono">${esc(short(r.net || ""))}</td><td>${esc(r.net_order)}${r.order_fixed ? " (fixed)" : ""}</td><td>${esc(r.size)}</td><td>${esc(r.colours)}</td><td>${esc(r.potential)}</td><td>${(r.rating || []).map(esc).join("<br>")}</td><td>${esc(r.cable)}</td><td>${esc(r.core)}</td></tr>`)) +
       `<h2>Cables</h2>` + (await paged("cables", "cables", {}, ["Tag", "Members", "Ends"],
       (r) => `<tr><td>${esc(r.tag)}</td><td>${r.members.map((m) => `${esc(m.wire)}${m.core ? ` core ${esc(m.core)}` : ""}`).join("<br>")}</td><td>${(r.ends || []).map(join).join(" ↔ ")}</td></tr>`));
   },
@@ -440,7 +439,7 @@ const views = {
       const i = inv.ok;
       h += `<h2>Invariants (the opened state)</h2><table><tr><th>Invariants</th><td>${i.invariants ? `<span class="bad">${esc(i.invariants)}</span>` : '<span class="ok">hold</span>'}</td></tr>
         <tr><th>Index</th><td>${i.index ? `<span class="bad">${esc(i.index)}</span>` : '<span class="ok">matches a rebuild</span>'}</td></tr>
-        <tr><th>Attached ends off their connection point</th><td>${i.mismatches ? `<span class="bad">${esc(i.mismatches)}</span>` : '<span class="ok">0</span>'}</td></tr></table>`;
+        <tr><th>Route ends off their connection point</th><td>${i.mismatches ? `<span class="bad">${esc(i.mismatches)}</span>` : '<span class="ok">0</span>'}</td></tr></table>`;
     }
     const v = (await call("verify")).ok || {};
     info.verify = v;

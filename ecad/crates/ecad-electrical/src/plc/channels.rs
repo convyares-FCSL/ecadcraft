@@ -18,8 +18,8 @@ use crate::CmdError;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
-    DefinitionId, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Placement, Pt, Representation, RepresentationId,
-    Style, Subject, SymbolInstance, Terminal, TerminalId,
+    DefinitionId, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Placement, Pt, Representation, RepresentationId, Style,
+    Subject, SymbolInstance, Terminal, TerminalId,
 };
 
 use super::card_type_of;
@@ -384,8 +384,8 @@ pub fn landing_role(s: &Starter) -> Option<&'static str> {
 /// Whether the wire crossed at `m` runs mostly down from the crossing (pack re-run, bug 8): its
 /// route reaches further below than above. A cell on such a wire is turned 180°, its frame and
 /// texts above its points and clear of the wire, as Make Card Page draws outputs.
-fn runs_down(doc: &Document, page: PageId, m: &crate::slash::Crossing) -> bool {
-    let Some((_, _, v)) = crate::wires::route_vertices(doc, m.conductor, page) else { return false };
+fn runs_down(doc: &Document, m: &crate::slash::Crossing) -> bool {
+    let Some(v) = doc.routes.get(&m.route).map(|r| &r.points) else { return false };
     let up = v.iter().map(|p| p.y - m.at.y).fold(0.0, f64::max);
     let down = v.iter().map(|p| m.at.y - p.y).fold(0.0, f64::max);
     down > up + 1e-6
@@ -399,10 +399,10 @@ const POINT_MATCH: f64 = 0.5;
 /// its point count spaced as its points are (pack re-run, bug 6); otherwise, or when `role` names
 /// one point, one cell per wire with that point (else [`landing_role`]) on it. Each cell is turned
 /// 180° when its first wire runs down (`runs_down`).
-pub fn landings(doc: &Document, page: PageId, s: &Starter, members: &[crate::slash::Crossing], role: Option<&'static str>) -> Vec<Landing> {
+pub fn landings(doc: &Document, s: &Starter, members: &[crate::slash::Crossing], role: Option<&'static str>) -> Vec<Landing> {
     let roles = roles_of(s);
     let terms = s.definition().map(|d| d.terminals.clone()).unwrap_or_default();
-    let rotation = |m: &crate::slash::Crossing| if runs_down(doc, page, m) { std::f64::consts::PI } else { 0.0 };
+    let rotation = |m: &crate::slash::Crossing| if runs_down(doc, m) { std::f64::consts::PI } else { 0.0 };
     let n = roles.len();
     if role.is_none() && n > 1 && members.len().is_multiple_of(n) {
         let groups: Option<Vec<Landing>> = members
@@ -433,66 +433,40 @@ pub fn landings(doc: &Document, page: PageId, s: &Starter, members: &[crate::sla
     members.iter().map(|m| Landing { rotation: rotation(m), points: vec![(role, *m)] }).collect()
 }
 
-/// The ops landing a channel cell's point `t` on its wire at `on` (design 045 §4.5). The wire is
-/// split at the point as Place Terminals splits it (028 §3.1), but a cell has one point, not a way
-/// through: a half whose far end is attached to nothing, and which no cable holds, carries nothing
-/// past the cell, so it is not kept. The wire ends at the point instead of running on through the
-/// cell box, where its number label covered the channel number. A half that reaches something is
-/// kept, as before.
+/// The ops landing a channel cell's point `t` on its route at `on` (design 045 §4.5, design 072
+/// §4.3). The route is split at the point as Place Terminals splits it (028 §3.1), but a cell has
+/// one point, not a way through: a part whose far end lands on nothing (a free end, and no route
+/// landing on it) carries nothing past the cell, so it is not kept. The route ends at the point
+/// instead of running on through the cell box, where its wire's number label covered the channel
+/// number. A part that reaches something is kept, as before.
 ///
 /// # Errors
 /// As [`crate::connectors::plan_land`].
-pub fn land_cell(doc: &Document, ids: &mut IdAllocator, page: PageId, on: crate::wires::OnWire, t: TerminalId) -> Result<Vec<Op>, CmdError> {
-    let land = crate::connectors::plan_land(doc, ids, page, on, t)?;
-    let Some(cond) = doc.wires.get(&land.conductor) else { return Ok(land.ops) };
-    if !doc.cables_of(land.conductor).is_empty() {
-        return Ok(land.ops);
+pub fn land_cell(doc: &Document, ids: &mut IdAllocator, on: crate::wires::OnRoute, t: TerminalId) -> Result<Vec<Op>, CmdError> {
+    let route = doc.routes.get(&on.route).ok_or(CmdError::NotFound(ecad_model::Noun::Wire))?;
+    let (a_free, b_free) = (route.ends[0] == ecad_model::RouteEnd::Free, route.ends[1] == ecad_model::RouteEnd::Free);
+    if a_free == b_free || doc.tees_of(on.route).next().is_some() {
+        return Ok(crate::connectors::plan_land(doc, ids, on, t)?.ops);
     }
-    let (a_loose, b_loose) = (cond.end(End::A).is_none(), cond.end(End::B).is_none());
-    if a_loose == b_loose {
-        return Ok(land.ops);
-    }
-    // The new half (the far side, end B) is dropped: its conductor, representation and item.
-    let new = land.new;
-    let new_items: Vec<ItemId> = land
-        .ops
-        .iter()
-        .filter_map(|op| match op {
-            Op::LinkRepresentation { rep, .. } if rep.subject == Subject::Wire(new) => Some(rep.items.clone()),
-            _ => None,
-        })
-        .flatten()
-        .collect();
-    let rest_path = land.ops.iter().find_map(|op| match op {
-        Op::AddItem { id, item } if new_items.contains(id) => Some(item.kind.clone()),
-        _ => None,
-    });
-    let mut out = Vec::with_capacity(land.ops.len());
-    for op in land.ops {
-        match op {
-            Op::CreateWire { id, .. } if id == new => {}
-            Op::AddItem { id, .. } if new_items.contains(&id) => {}
-            Op::LinkRepresentation { rep, .. } if rep.subject == Subject::Wire(new) => {}
-            // End A's side is the loose one: the wire keeps its own ID, now drawn along the far
-            // side, its end A on the point and its end B where it was.
-            Op::ModifyItem { id, before, mut after } if a_loose && id_of_route(doc, land.conductor, page) == Some(id) => {
-                if let Some(k) = rest_path.clone() {
-                    after.kind = k;
-                }
-                out.push(Op::ModifyItem { id, before, after });
-            }
-            Op::AttachEnd { conductor, end: End::B, .. } if a_loose && conductor == land.conductor => {
-                out.push(Op::AttachEnd { conductor, end: End::A, before: cond.end(End::A), after: Some(t) });
-            }
-            op => out.push(op),
+    // Refusals as a split's (a route end, a strip terminal there).
+    crate::connectors::plan_land(doc, ids, on, t)?;
+    let v = &route.points;
+    let seg = on.segment;
+    let points: Vec<Pt> = if a_free {
+        // The far side (end B's) is kept, from the point.
+        std::iter::once(on.at).chain(v.get(seg + 1..).unwrap_or_default().iter().copied().filter(|p| !p.near(on.at, 1e-9))).collect()
+    } else {
+        v.get(..=seg).unwrap_or_default().iter().copied().filter(|p| !p.near(on.at, 1e-9)).chain(std::iter::once(on.at)).collect()
+    };
+    let mut edits = crate::wires::RouteEdits::new(doc);
+    if let Some(x) = edits.get(on.route) {
+        x.points = points;
+        let end = if a_free { 0 } else { 1 };
+        if let Some(e) = x.ends.get_mut(end) {
+            *e = ecad_model::RouteEnd::Point(t);
         }
     }
-    Ok(out)
-}
-
-/// The item drawing wire `c`'s route on `page`.
-fn id_of_route(doc: &Document, c: ecad_model::WireId, page: PageId) -> Option<ItemId> {
-    crate::wires::route_vertices(doc, c, page).map(|(id, _, _)| id)
+    Ok(edits.ops())
 }
 
 /// A channel's own property key: `plc.ch.<i>.<what>`.

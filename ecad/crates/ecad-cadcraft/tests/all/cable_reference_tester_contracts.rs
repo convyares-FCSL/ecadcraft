@@ -44,6 +44,8 @@ struct R {
     c1: CableId,
     w: [WireId; 3],
     k2: [TerminalId; 3],
+    /// The continued stubs on Field (design 072 §4.3: routes), with the free end of each.
+    stubs: Vec<(ecad_model::RouteId, String)>,
 }
 
 fn set_tag(h: &mut H, key: &str, id: &str, value: &str) {
@@ -83,7 +85,7 @@ fn fixture(seed: u64, attached: bool) -> R {
     let field: PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
     let k2 = component(&mut h, field, "line 100,-5 110,-5 110,15 100,15 c", [(100.0, 0.0), (100.0, 5.0), (100.0, 10.0)], "K2");
     h.activate(supply);
-    R { h, supply, field, c1, w: [w[0], w[1], w[2]], k2 }
+    R { h, supply, field, c1, w: [w[0], w[1], w[2]], k2, stubs: Vec::new() }
 }
 
 fn referenced(seed: u64) -> R {
@@ -95,14 +97,21 @@ fn referenced(seed: u64) -> R {
 fn continued(seed: u64) -> R {
     let mut r = referenced(seed);
     r.h.activate(r.field);
-    r.h.run("cablecontinue", json!({"cable": r.c1.hex(), "at": [20, 5], "toward": [40, 5]})).unwrap();
+    let v = r.h.run("cablecontinue", json!({"cable": r.c1.hex(), "at": [20, 5], "toward": [40, 5]})).unwrap();
+    r.stubs = v["routes"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .map(|s| (id(s, "route"), s["free_end"].as_str().unwrap_or("B").to_string()))
+        .collect();
     r
 }
 
 fn connected(seed: u64) -> R {
     let mut r = continued(seed);
-    for (w, t) in r.w.iter().zip(r.k2) {
-        r.h.run("connect", json!({"conductor": w.hex(), "end": "B", "terminal": t.hex()})).unwrap();
+    for ((s, end), t) in r.stubs.clone().into_iter().zip(r.k2) {
+        r.h.run("connect", json!({"route": s.hex(), "end": end, "terminal": t.hex()})).unwrap();
     }
     r
 }
@@ -584,10 +593,10 @@ fn per_page_edits_touch_only_the_page_they_are_made_on() {
     let mut r = connected(SEED + 11);
     r.h.activate(r.field);
     let supply_route = r.h.route_ends(r.supply, r.w[0]);
-    r.h.run("disconnect", json!({"conductor": r.w[0].hex(), "end": "B"})).unwrap();
+    let (stub, end) = r.stubs[0].clone();
+    r.h.run("disconnect", json!({"route": stub.hex(), "end": end})).unwrap();
     assert_eq!(r.h.route_ends(r.supply, r.w[0]), supply_route, "Supply's route untouched");
-    assert!(r.h.doc().wires[&r.w[0]].end(ecad_model::End::A).is_some(), "end A (on K1) stays attached");
-    r.h.run("connect", json!({"conductor": r.w[0].hex(), "end": "B", "terminal": r.k2[0].hex()})).unwrap();
+    r.h.run("connect", json!({"route": stub.hex(), "end": end, "terminal": r.k2[0].hex()})).unwrap();
     // Move K2 (its outline lines) down 20: Field's stub ends follow, Supply's routes do not.
     let doc = r.h.doc();
     let k2 = doc.terminals[&r.k2[0]].component;

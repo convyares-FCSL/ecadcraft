@@ -1,11 +1,12 @@
-//! Lane 072 D (design 072 §4.2, §4.6; acceptance A2, A4, A9): the wire's typed values round-trip
-//! in their stored form, a stored value in any other form is a read error, and `ModifyWire`
-//! changes a wire's values, is its own inverse and never moves its ends.
+//! Lane 072 D (design 072 §4.2–§4.4, §4.6; acceptance A2, A4, A9, A12): the wire's typed values
+//! round-trip in their stored form, a stored value in any other form is a read error, `ModifyWire`
+//! changes a wire's values, is its own inverse and never moves its ends, and every edit of the
+//! routes rewrites the wires of the nets whose points changed, in the same transaction.
 
 use ecad_model::text::Text;
 use ecad_model::units::Amps;
 use ecad_model::wire::{Basis, Bundling, CircuitInputs, Colours, InstallMethod, SupplySystem, WireNumber, WireSize};
-use ecad_model::{Author, IdAllocator, Ledger, Op, TerminalId, Wire, WireId, Word};
+use ecad_model::{Author, ConductorId, IdAllocator, Ledger, NetId, Op, TerminalId, Wire, WireId, Word};
 
 #[test]
 fn sizes_read_typed_and_store_one_form() {
@@ -100,13 +101,12 @@ fn rating_inputs_are_words_and_bounded_numbers() {
 #[test]
 fn a_wire_is_strict_on_reading() {
     let w = Wire {
-        ends: [Some(TerminalId(4)), None],
         size: WireSize::parse("1.5"),
         colours: Colours::parse("BU"),
         number: Some(WireNumber { text: Text::new("24V-07").unwrap(), fixed: true }),
         potential: Text::new("24V").ok(),
         load: Some(Amps(2.0)),
-        ..Wire::default()
+        ..Wire::new(NetId(1), ConductorId(2), TerminalId(4), TerminalId(5))
     };
     let text = serde_json::to_string(&w).unwrap();
     assert_eq!(serde_json::from_str::<Wire>(&text).unwrap(), w);
@@ -115,26 +115,32 @@ fn a_wire_is_strict_on_reading() {
     assert!(serde_json::from_value::<Wire>(v).is_err(), "an unknown field is a read error");
     let hidden = text.replace("24V-07", "24V\u{202e}07");
     assert!(serde_json::from_str::<Wire>(&hidden).is_err(), "a hidden character is a read error");
-    assert_eq!(w.values().first().map(|(k, v)| (*k, v.as_str())), Some(("wire number", "24V-07")));
+    assert!(w.values().iter().any(|(k, v)| *k == "wire number" && v == "24V-07"));
+    let mut v: serde_json::Value = serde_json::from_str(&text).unwrap();
+    v["ends"] = serde_json::json!([4, null]);
+    assert!(serde_json::from_value::<Wire>(v).is_err(), "a wire has two connection points");
 }
 
 #[test]
-fn modify_wire_changes_values_undoes_and_keeps_the_ends() {
+fn modify_wire_changes_values_undoes_and_never_moves_the_ends() {
     let mut ids = IdAllocator::seeded(72);
     let mut l = Ledger::new(72);
+    let (_, a, b) = page_with_points(&mut l, &mut ids);
     let w: WireId = ids.fresh();
-    let created = Wire::between(None, None);
-    l.commit(Author::User, "wire", vec![Op::CreateWire { id: w, conductor: created.clone() }]).unwrap();
+    let created = Wire::new(ids.fresh(), ids.fresh(), a, b);
+    l.commit(Author::User, "wire", vec![Op::CreateWire { id: w, wire: created.clone() }]).unwrap();
     let mut after = created.clone();
     after.size = WireSize::parse("2.5");
-    // An `after` naming other ends changes the values only.
-    after.ends = [Some(TerminalId(99)), None];
-    let op = Op::ModifyWire { id: w, before: created.clone(), after };
+    let op = Op::ModifyWire { id: w, before: created.clone(), after: after.clone() };
     assert!(matches!(op.inverse(), Op::ModifyWire { .. }));
     l.commit(Author::User, "size", vec![op]).unwrap();
     let now = l.document().wires.get(&w).unwrap().clone();
     assert_eq!(now.size.map(|s| s.to_string()).as_deref(), Some("2.5"));
-    assert_eq!(now.ends, [None, None], "the ends stay");
+    // Other ends or another conductor id are another wire: refused.
+    let moved = Wire { ends: [b, a], ..now.clone() };
+    assert!(l.commit(Author::User, "ends", vec![Op::ModifyWire { id: w, before: now.clone(), after: moved }]).is_err());
+    let other = Wire { conductor: ids.fresh(), ..now.clone() };
+    assert!(l.commit(Author::User, "id", vec![Op::ModifyWire { id: w, before: now.clone(), after: other }]).is_err());
     // A recorded `before` that no longer holds is refused.
     let stale = Op::ModifyWire { id: w, before: created.clone(), after: created.clone() };
     assert!(l.commit(Author::User, "stale", vec![stale]).is_err());
@@ -253,5 +259,125 @@ fn routes_join_the_points_they_land_on_into_one_net() {
     l.document().check_index().unwrap();
     l.undo(Author::User).unwrap();
     assert_eq!(net(&l, a), net(&l, b));
+    l.document().check_index().unwrap();
+}
+
+/// The wires of `l`, as `(net, net_order, [end, end])`, in net then order. A wire's two ends are
+/// a pair: they are listed in ID order.
+fn wires(l: &Ledger) -> Vec<(NetId, u16, [TerminalId; 2])> {
+    let pair = |e: [TerminalId; 2]| if e[0] <= e[1] { e } else { [e[1], e[0]] };
+    let mut v: Vec<_> = l.document().wires.values().map(|w| (w.net, w.net_order, pair(w.ends))).collect();
+    v.sort();
+    v
+}
+
+/// `v` as [`wires`] lists it: each pair in ID order, sorted.
+fn want(v: Vec<(NetId, u16, [TerminalId; 2])>) -> Vec<(NetId, u16, [TerminalId; 2])> {
+    let mut v: Vec<_> = v.into_iter().map(|(n, o, e)| (n, o, if e[0] <= e[1] { e } else { [e[1], e[0]] })).collect();
+    v.sort();
+    v
+}
+
+/// One route on page `p` from `from` to `to` through `pts`.
+fn route(p: ecad_model::PageId, pts: &[(f64, f64)], from: ecad_model::RouteEnd, to: ecad_model::RouteEnd) -> ecad_model::Route {
+    ecad_model::Route::new(p, pts.iter().map(|(x, y)| ecad_model::Pt::new(*x, *y)).collect(), [from, to])
+}
+
+#[test]
+fn drawing_routes_makes_wires_in_drawing_order_and_a_tee_joins_from_the_nearer_end() {
+    use ecad_model::{Pt, RouteEnd, RouteId};
+    let mut ids = IdAllocator::seeded(41);
+    let mut l = Ledger::new(41);
+    let (p, a, b) = page_with_points(&mut l, &mut ids);
+    let (_, c, d) = page_with_points(&mut l, &mut ids);
+    let (r1, r2, r3): (RouteId, RouteId, RouteId) = (ids.fresh(), ids.fresh(), ids.fresh());
+    // A–B: one wire, first in a new net.
+    let ab = route(p, &[(0.0, 0.0), (10.0, 0.0)], RouteEnd::Point(a), RouteEnd::Point(b));
+    l.commit(Author::User, "a-b", vec![Op::AddRoute { id: r1, route: ab.clone() }]).unwrap();
+    let w = wires(&l);
+    assert_eq!(w.len(), 1);
+    let net = w[0].0;
+    assert_eq!((w[0].1, w[0].2), (1, [a, b]));
+    let ab_wire = *l.document().wires.keys().next().unwrap();
+    // C onto the middle of A–B, nearer B: 1 = A–B, 2 = B–C.
+    let tee = route(p, &[(8.0, 5.0), (8.0, 0.0)], RouteEnd::Point(c), RouteEnd::On { route: r1, at: Pt::new(8.0, 0.0) });
+    l.commit(Author::User, "tee", vec![Op::AddRoute { id: r2, route: tee.clone() }]).unwrap();
+    assert_eq!(wires(&l), want(vec![(net, 1, [a, b]), (net, 2, [b, c])]));
+    assert!(l.document().wires.contains_key(&ab_wire), "A–B keeps its wire");
+    // D onto the middle of A–B nearer A: A has room, so 3 = A–D.
+    let tee2 = route(p, &[(2.0, 5.0), (2.0, 0.0)], RouteEnd::Point(d), RouteEnd::On { route: r1, at: Pt::new(2.0, 0.0) });
+    l.commit(Author::User, "tee2", vec![Op::AddRoute { id: r3, route: tee2 }]).unwrap();
+    assert_eq!(wires(&l), want(vec![(net, 1, [a, b]), (net, 2, [b, c]), (net, 3, [a, d])]));
+    // One undo takes the route and its wire back together.
+    l.undo(Author::User).unwrap();
+    assert_eq!(wires(&l), want(vec![(net, 1, [a, b]), (net, 2, [b, c])]));
+    l.document().check_index().unwrap();
+    // Lifting C's T: C leaves, its wire goes, A–B is untouched.
+    let lifted = ecad_model::Route { ends: [RouteEnd::Point(c), RouteEnd::Free], ..tee.clone() };
+    l.commit(Author::User, "lift", vec![Op::ModifyRoute { id: r2, before: tee, after: lifted }]).unwrap();
+    assert_eq!(wires(&l), want(vec![(net, 1, [a, b])]));
+    assert!(l.document().wires.contains_key(&ab_wire));
+    // Redrawing A–B through other places on the same points leaves the wires alone.
+    let mut bent = ab.clone();
+    bent.points.insert(1, Pt::new(5.0, -5.0));
+    l.commit(Author::User, "bend", vec![Op::ModifyRoute { id: r1, before: ab, after: bent.clone() }]).unwrap();
+    assert_eq!(l.transaction(l.head()).map(|t| t.ops.len()), Some(1), "no wire ops when no point changed");
+    // Erasing A–B: its wire goes.
+    l.commit(Author::User, "erase", vec![Op::RemoveRoute { id: r1, route: bent }]).unwrap();
+    assert!(wires(&l).is_empty());
+    l.document().check_index().unwrap();
+}
+
+#[test]
+fn joining_two_nets_keeps_the_bigger_ones_id_and_splitting_gives_the_smaller_a_new_one() {
+    use ecad_model::{RouteEnd, RouteId};
+    let mut ids = IdAllocator::seeded(42);
+    let mut l = Ledger::new(42);
+    let (p, a, b) = page_with_points(&mut l, &mut ids);
+    let (_, c, d) = page_with_points(&mut l, &mut ids);
+    let (_, e, _) = page_with_points(&mut l, &mut ids);
+    let r: Vec<RouteId> = (0..4).map(|_| ids.fresh()).collect();
+    let line = |x: f64, from: TerminalId, to: TerminalId| route(p, &[(x, 0.0), (x + 10.0, 0.0)], RouteEnd::Point(from), RouteEnd::Point(to));
+    // Net 1: A–B–C (two wires); net 2: D–E (one wire).
+    l.commit(Author::User, "abc", vec![Op::AddRoute { id: r[0], route: line(0.0, a, b) }, Op::AddRoute { id: r[1], route: line(10.0, b, c) }])
+        .unwrap();
+    l.commit(Author::User, "de", vec![Op::AddRoute { id: r[2], route: line(40.0, d, e) }]).unwrap();
+    let net_of = |l: &Ledger, t: TerminalId| l.document().wires.values().find(|w| w.ends.contains(&t)).map(|w| w.net).unwrap();
+    let (n1, n2) = (net_of(&l, a), net_of(&l, d));
+    assert_ne!(n1, n2);
+    assert_eq!(wires(&l).iter().filter(|w| w.0 == n1).count(), 2);
+    let de_conductor = l.document().wires.values().find(|w| w.ends.contains(&d)).unwrap().conductor;
+    // C–D joins them: net 1 keeps its id; its order stays, C–D follows, then D–E.
+    let cd = line(30.0, c, d);
+    l.commit(Author::User, "cd", vec![Op::AddRoute { id: r[3], route: cd.clone() }]).unwrap();
+    assert_eq!(wires(&l), want(vec![(n1, 1, [a, b]), (n1, 2, [b, c]), (n1, 3, [c, d]), (n1, 4, [d, e])]));
+    let de = l.document().wires.values().find(|w| w.ends.contains(&e)).unwrap();
+    assert_eq!(de.conductor, de_conductor, "D–E keeps its conductor id");
+    // Erasing C–D splits them again: net 1 keeps A–B–C; D–E gets a new net id.
+    l.commit(Author::User, "split", vec![Op::RemoveRoute { id: r[3], route: cd }]).unwrap();
+    let n3 = net_of(&l, d);
+    assert_eq!(net_of(&l, a), n1);
+    assert_ne!(n3, n1);
+    assert_eq!(wires(&l).len(), 3);
+    l.document().check_index().unwrap();
+}
+
+#[test]
+fn a_point_cut_out_of_a_chain_joins_its_neighbours() {
+    use ecad_model::{RouteEnd, RouteId};
+    let mut ids = IdAllocator::seeded(43);
+    let mut l = Ledger::new(43);
+    let (p, a, b) = page_with_points(&mut l, &mut ids);
+    let (_, c, _) = page_with_points(&mut l, &mut ids);
+    let (r1, r2, r3): (RouteId, RouteId, RouteId) = (ids.fresh(), ids.fresh(), ids.fresh());
+    let line = |from: TerminalId, to: TerminalId| route(p, &[(0.0, 0.0), (10.0, 0.0)], RouteEnd::Point(from), RouteEnd::Point(to));
+    // A–B–C, then A–C drawn too: no new point, no new wire.
+    l.commit(Author::User, "abc", vec![Op::AddRoute { id: r1, route: line(a, b) }, Op::AddRoute { id: r2, route: line(b, c) }]).unwrap();
+    l.commit(Author::User, "ac", vec![Op::AddRoute { id: r3, route: line(a, c) }]).unwrap();
+    let net = l.document().wires.values().next().unwrap().net;
+    assert_eq!(wires(&l), want(vec![(net, 1, [a, b]), (net, 2, [b, c])]));
+    // B's routes go: B leaves, A–C takes its place.
+    l.commit(Author::User, "cut b", vec![Op::RemoveRoute { id: r1, route: line(a, b) }, Op::RemoveRoute { id: r2, route: line(b, c) }]).unwrap();
+    assert_eq!(wires(&l), want(vec![(net, 1, [a, c])]));
     l.document().check_index().unwrap();
 }

@@ -782,7 +782,7 @@ fn ac6_nan_infinite_and_overflowing_geometry_never_panics() {
     view(&mut f.h, f.c1, "fan");
     reference_end(&mut f.h, f.page, f.c1, Pt::new(125.0, 21.25), 1);
     let base = f.h.doc();
-    let (route, _) = ecad_model::derive::route_on_page(&base, f.wires[1], f.page).unwrap();
+    let (route, _) = crate::common::wire_line(&base, f.wires[1], f.page).unwrap();
     let bad = [f64::NAN, f64::INFINITY, f64::NEG_INFINITY];
     // Committing a non-finite route or reference point is refused; nothing written.
     for x in bad {

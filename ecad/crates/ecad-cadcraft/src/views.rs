@@ -115,8 +115,7 @@ pub type Fan = crate::look::CableDrawing;
 /// The fan of `cable` on `page` (design 009 §4), measured with the drafting font. Bounded by the
 /// members and their route points; never panics.
 pub fn fan_on_page(doc: &Document, page: PageId, cable: CableId, tol: f64) -> FanOnPage {
-    let routed =
-        doc.cables.get(&cable).is_some_and(|c| c.members.iter().any(|m| ecad_model::derive::route_on_page(doc, m.conductor, page).is_some()));
+    let routed = doc.cables.get(&cable).is_some_and(|c| c.members.iter().any(|m| crate::wires::route_of_wire_on(doc, m.conductor, page).is_some()));
     if !routed {
         return FanOnPage::Nothing;
     }

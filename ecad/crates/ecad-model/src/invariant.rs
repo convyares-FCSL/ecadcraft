@@ -130,7 +130,7 @@ impl Touched {
             Effect::Rep { id, .. } => {
                 self.representations.insert(*id);
             }
-            Effect::Wire { id, .. } | Effect::End { conductor: id, .. } => {
+            Effect::Wire { id, .. } => {
                 self.wires.insert(*id);
             }
             Effect::Cable { id, .. } | Effect::Member { cable: id, .. } => {
@@ -564,10 +564,16 @@ impl Document {
 
     /// I17.
     fn check_conductor(&self, id: WireId, c: &Wire) -> Result<()> {
-        for t in c.ends.iter().flatten() {
+        for t in &c.ends {
             if !self.terminals.contains_key(t) {
                 return bad(format!("wire {id} is attached to missing terminal {t}"));
             }
+        }
+        if c.ends[0] == c.ends[1] {
+            return bad(format!("wire {id} ends twice at terminal {}", c.ends[0]));
+        }
+        if c.net_order == 0 {
+            return bad(format!("wire {id} has no place in its net's order"));
         }
         Ok(())
     }

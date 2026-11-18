@@ -2,8 +2,8 @@
 
 use ecad_model::derive::{mismatches, nets};
 use ecad_model::{
-    Author, CableMember, Color, Device, End, Form, IdAllocator, Item, ItemKind, Layer, Ledger, Op, Page, Primitive, Pt, Representation, Style,
-    Subject, Terminal, Wire,
+    Author, CableMember, Color, Device, End, Form, IdAllocator, Item, ItemKind, Layer, Ledger, Op, Page, Primitive, Pt, Representation, Route,
+    RouteEnd, Style, Subject, Terminal, TerminalId, WireId,
 };
 
 fn style(layer: ecad_model::LayerId) -> Style {
@@ -62,18 +62,39 @@ fn worked_example_replays_and_undoes() {
     ops.push(Op::ModifyRepresentation { id: r1, before: rep1.clone(), after: rep1b.clone() });
     l.commit(Author::User, "Add terminals", ops).unwrap();
 
-    // 3. Loose conductor, then connect; two more drawn attached.
-    let mut wires = Vec::new();
+    // The far ends: a second device's connection points at x = 90.
+    let (c2, r2, edge) = (ids.fresh(), ids.fresh(), ids.fresh());
+    let us: Vec<TerminalId> = (0..3).map(|_| ids.fresh()).collect();
+    let mut ops = vec![Op::AddItem { id: edge, item: line((95.0, 0.0), (95.0, 20.0)) }, Op::CreateDevice { id: c2, device: Device::default() }];
+    ops.extend(us.iter().map(|u| Op::AddTerminal { id: *u, terminal: Terminal { component: c2, label: None, key: None } }));
+    ops.push(Op::LinkRepresentation {
+        id: r2,
+        rep: Representation {
+            subject: Subject::Device(c2),
+            page: p1,
+            form: Form::Drawn,
+            role: "main".into(),
+            items: vec![edge],
+            connection_points: us.iter().zip([15.0, 10.0, 5.0]).map(|(u, y)| (*u, Pt::new(90.0, y))).collect(),
+        },
+    });
+    l.commit(Author::User, "Far ends", ops).unwrap();
+
+    // 3. A loose route, then connected; two more drawn attached. The wires come from the routes
+    //    (design 072 §4.4): a route between two points carries one, a loose one none.
+    let pts = |v: &[(f64, f64)]| v.iter().map(|p| Pt::new(p.0, p.1)).collect::<Vec<_>>();
+    let mut routes = Vec::new();
     for (k, y) in [15.0, 10.0, 5.0].into_iter().enumerate() {
-        let (w, i, r) = (ids.fresh(), ids.fresh(), ids.fresh());
+        let (rt, i, r) = (ids.fresh(), ids.fresh(), ids.fresh());
         let x_end = if k == 0 { 55.0 } else { 40.0 };
-        let mut ops = vec![
-            Op::CreateWire { id: w, conductor: Wire::default() },
+        let to = if k == 0 { RouteEnd::Free } else { RouteEnd::Point(ts[k]) };
+        let ops = vec![
             Op::AddItem { id: i, item: poly(&[(90.0, y), (x_end, y)]) },
+            Op::AddRoute { id: rt, route: Route::new(p1, pts(&[(90.0, y), (x_end, y)]), [RouteEnd::Point(us[k]), to]) },
             Op::LinkRepresentation {
                 id: r,
                 rep: Representation {
-                    subject: Subject::Wire(w),
+                    subject: Subject::Route(rt),
                     page: p1,
                     form: Form::Drawn,
                     role: "route".into(),
@@ -82,41 +103,52 @@ fn worked_example_replays_and_undoes() {
                 },
             },
         ];
-        if k > 0 {
-            ops.push(Op::AttachEnd { conductor: w, end: End::B, before: None, after: Some(ts[k]) });
-        }
         l.commit(Author::User, "Wire", ops).unwrap();
-        wires.push((w, i));
+        routes.push((rt, i));
     }
-    let (w1, i5) = wires[0];
+    assert_eq!(l.document().wires.len(), 2, "the loose route carries no wire yet");
+    let (r0, i5) = routes[0];
+    let before = l.document().routes[&r0].clone();
+    let after = Route::new(p1, pts(&[(90.0, 15.0), (40.0, 15.0)]), [RouteEnd::Point(us[0]), RouteEnd::Point(ts[0])]);
     l.commit(
         Author::User,
         "Connect",
         vec![
             Op::ModifyItem { id: i5, before: poly(&[(90.0, 15.0), (55.0, 15.0)]), after: poly(&[(90.0, 15.0), (40.0, 15.0)]) },
-            Op::AttachEnd { conductor: w1, end: End::B, before: None, after: Some(ts[0]) },
+            Op::ModifyRoute { id: r0, before, after },
         ],
     )
     .unwrap();
     assert!(mismatches(l.document(), 1e-9).is_empty());
+    let wires: Vec<WireId> = l.document().wires.keys().copied().collect();
+    assert_eq!(wires.len(), 3);
+    for (u, t) in us.iter().zip(&ts) {
+        assert!(l.document().wires.values().any(|w| w.ends.contains(u) && w.ends.contains(t)), "a wire from {u} to {t}");
+    }
 
     // 4. Cable.
     let k1 = ids.fresh();
     let mut ops = vec![Op::CreateCable { id: k1, cable: Default::default() }];
-    for (n, (w, _)) in wires.iter().enumerate() {
+    for (n, w) in wires.iter().enumerate() {
         ops.push(Op::AddCableMember { cable: k1, index: n, member: CableMember { conductor: *w, core: None } });
     }
     l.commit(Author::User, "Group as cable", ops).unwrap();
     let conductors_before: Vec<_> = l.document().wires.clone().into_iter().collect();
 
-    // 5. Reroute w2.
-    let i6 = wires[1].1;
+    // 5. Reroute the second route.
+    let (r6, i6) = routes[1];
+    let before = l.document().routes[&r6].clone();
+    let after = Route { points: pts(&[(90.0, 10.0), (65.0, 25.0), (40.0, 10.0)]), ..before.clone() };
     l.commit(
         Author::User,
         "Grip edit",
-        vec![Op::ModifyItem { id: i6, before: poly(&[(90.0, 10.0), (40.0, 10.0)]), after: poly(&[(90.0, 10.0), (65.0, 25.0), (40.0, 10.0)]) }],
+        vec![
+            Op::ModifyItem { id: i6, before: poly(&[(90.0, 10.0), (40.0, 10.0)]), after: poly(&[(90.0, 10.0), (65.0, 25.0), (40.0, 10.0)]) },
+            Op::ModifyRoute { id: r6, before, after },
+        ],
     )
     .unwrap();
+    assert_eq!(l.document().wires.clone().into_iter().collect::<Vec<_>>(), conductors_before, "a reroute keeps the wires");
     let nets_before = nets(l.document());
 
     // 6. Move the component; ends follow.
@@ -129,12 +161,18 @@ fn worked_example_replays_and_undoes() {
         p.y -= 5.0;
     }
     ops.push(Op::ModifyRepresentation { id: r1, before: rep1b.clone(), after: rep1c });
-    let before_items: Vec<Item> = wires.iter().map(|(_, i)| l.document().items[i].clone()).collect();
-    for ((_, i), before) in wires.iter().zip(before_items) {
+    for (rt, i) in &routes {
+        let before = l.document().items[i].clone();
         let ItemKind::Primitive(p) = &before.kind else { unreachable!() };
         let (_, b) = p.path_ends().unwrap();
         let after = Item { kind: ItemKind::Primitive(p.with_path_end(End::B, Pt::new(b.x, b.y - 5.0)).unwrap()), ..before.clone() };
         ops.push(Op::ModifyItem { id: *i, before, after });
+        let before = l.document().routes[rt].clone();
+        let mut after = before.clone();
+        if let Some(last) = after.points.last_mut() {
+            last.y -= 5.0;
+        }
+        ops.push(Op::ModifyRoute { id: *rt, before, after });
     }
     l.commit(Author::User, "Move", ops).unwrap();
     assert!(mismatches(l.document(), 1e-9).is_empty(), "drawing and intent agree after connected movement");

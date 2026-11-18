@@ -219,7 +219,7 @@ fn project(st: &mut Host<'_>, limit: u64) -> Result<Value, String> {
                 "id": id.hex(),
                 "values": c.values().into_iter().map(|(k, v)| (k.to_string(), Value::String(v))).collect::<serde_json::Map<_, _>>(),
                 "display": c.display,
-                "ends": {"A": c.end(ecad_model::End::A).map(|t| t.hex()), "B": c.end(ecad_model::End::B).map(|t| t.hex())},
+                "ends": {"A": c.end(ecad_model::End::A).hex(), "B": c.end(ecad_model::End::B).hex()},
                 "cable": cable_of(*id),
             })
         });

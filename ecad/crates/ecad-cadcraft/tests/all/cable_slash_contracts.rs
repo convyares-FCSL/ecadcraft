@@ -16,10 +16,7 @@ use common::{H, id};
 use ecad_cadcraft::debug::{ObjectId, used_by};
 use ecad_cadcraft::interact::{hover_lines, overlay_marks};
 use ecad_cadcraft::slash::MAX_CABLE_MEMBERS;
-use ecad_model::{
-    Author, CableId, Color, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId, Style, Subject, Transaction,
-    WireId,
-};
+use ecad_model::{Author, CableId, Color, Form, ItemId, ItemKind, Op, PageId, Primitive, Pt, RepresentationId, Style, Subject, Transaction, WireId};
 use serde_json::{Value, json};
 
 const SEED: u64 = 40_04;
@@ -118,7 +115,7 @@ fn a_slash_makes_one_cable_of_the_wires_it_crosses_in_one_transaction() {
     assert_eq!(rep.items, vec![item]);
     assert!(rep.connection_points.is_empty());
     assert_eq!(d.items[&item].kind, ItemKind::Primitive(Primitive::Line { a: Pt::new(28.0, -3.0), b: Pt::new(32.0, 18.0) }));
-    let route = ecad_model::derive::route_on_page(&d, f.w0, f.page).unwrap().0;
+    let route = crate::common::wire_line(&d, f.w0, f.page).unwrap().0;
     assert_eq!(d.items[&item].style, d.items[&route].style, "the same style as a new wire (O4)");
 }
 
@@ -409,7 +406,7 @@ fn erasing_the_slash_keeps_the_cable_and_deleting_the_cable_keeps_the_wires() {
     assert!(!d.items.contains_key(&item) && !d.representations.contains_key(&rid), "the slash goes with it");
     assert_eq!(d.wires, before.wires, "every conductor stays");
     for c in [f.w0, f.w5, f.w10] {
-        assert_eq!(ecad_model::derive::route_on_page(&d, c, f.page), ecad_model::derive::route_on_page(&before, c, f.page), "routes unchanged");
+        assert_eq!(crate::common::wire_line(&d, c, f.page), crate::common::wire_line(&before, c, f.page), "routes unchanged");
     }
     let tx = f.h.p(|p| p.ledger.log().last().cloned().unwrap());
     let names: Vec<&str> = tx.ops.iter().map(Op::name).collect();
@@ -486,26 +483,10 @@ fn wires_at(h: &mut H, xs: &[f64]) {
     h.cfg(|p| {
         let page = p.ledger.document().page_order[0];
         let style = Style { layer: p.default_layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
-        let mut ops = Vec::new();
-        for &x in xs {
-            let (c, item, r): (WireId, ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
-            ops.push(Op::CreateWire { id: c, conductor: Default::default() });
-            ops.push(Op::AddItem {
-                id: item,
-                item: Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(x, -1.0), b: Pt::new(x, 1.0) }) },
-            });
-            ops.push(Op::LinkRepresentation {
-                id: r,
-                rep: Representation {
-                    subject: Subject::Wire(c),
-                    page,
-                    form: Form::Drawn,
-                    role: "route".into(),
-                    items: vec![item],
-                    connection_points: Default::default(),
-                },
-            });
-        }
+        let (ops, _) = crate::common::wired_lines(&mut p.ids, page, style, xs.len(), |i| {
+            let x = xs.get(i).copied().unwrap_or_default();
+            (Pt::new(x, -1.0), Pt::new(x, 1.0))
+        });
         p.ledger.commit(Author::User, "many wires", ops).unwrap();
     });
 }

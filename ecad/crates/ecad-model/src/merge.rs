@@ -666,8 +666,34 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
             Obj::Wire(id) => {
                 let v = object(ctx, obj, &what, a.wires.get(&id), t.wires.get(&id), s.wires.get(&id), |ctx, a, t, s| {
                     let opt = |x: Option<String>| x.unwrap_or_else(|| "(none)".into());
-                    let mut c = Wire {
-                        ends: t.ends,
+                    Wire {
+                        net: field(ctx, obj, "net", format!("{what} · net"), &a.net, &t.net, &s.net, &|x| x.to_string()),
+                        conductor: t.conductor,
+                        net_order: field(
+                            ctx,
+                            obj,
+                            "net_order",
+                            format!("{what} · place in its net"),
+                            &a.net_order,
+                            &t.net_order,
+                            &s.net_order,
+                            &|x| x.to_string(),
+                        ),
+                        ends: field(ctx, obj, "ends", format!("{what} · connection points"), &a.ends, &t.ends, &s.ends, &|e| {
+                            format!("{} – {}", name_of(&docs, Obj::Terminal(e[0])), name_of(&docs, Obj::Terminal(e[1])))
+                        }),
+                        order_fixed: field(
+                            ctx,
+                            obj,
+                            "order_fixed",
+                            format!("{what} · order fixed"),
+                            &a.order_fixed,
+                            &t.order_fixed,
+                            &s.order_fixed,
+                            &|x| {
+                                if *x { "yes".into() } else { "no".into() }
+                            },
+                        ),
                         size: field(ctx, obj, "size", format!("{what} · size"), &a.size, &t.size, &s.size, &|x| opt(x.map(|v| v.to_string()))),
                         colours: field(ctx, obj, "colours", format!("{what} · colours"), &a.colours, &t.colours, &s.colours, &|x| {
                             opt(x.as_ref().map(|v| v.to_string()))
@@ -681,34 +707,7 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                         rating: field(ctx, obj, "rating", format!("{what} · rating inputs"), &a.rating, &t.rating, &s.rating, &|x| format!("{x:?}")),
                         load: field(ctx, obj, "load", format!("{what} · load"), &a.load, &t.load, &s.load, &|x| opt(x.map(|v| v.to_string()))),
                         display: merge_props(ctx, obj, &what, &a.display, &t.display, &s.display, &all),
-                    };
-                    // A connection conflict always offers Leave unconnected (design §5.3, owner
-                    // answer 7): the end stays where the kept drawing has it, loose.
-                    for (end, name, word) in [(End::A, "end.a", "end A"), (End::B, "end.b", "end B")] {
-                        let show = |x: Option<TerminalId>| x.map_or_else(|| "unconnected".into(), |x| name_of(&docs, Obj::Terminal(x)));
-                        let v = match pick(Some(&a.end(end)), Some(&t.end(end)), Some(&s.end(end))) {
-                            Some(Some(v)) => v,
-                            _ => {
-                                let k = Conflict {
-                                    id: format!("{}/{name}", obj.hex()),
-                                    kind: ConflictKind::Value,
-                                    object: obj,
-                                    what: format!("{what} {word}"),
-                                    target: show(t.end(end)),
-                                    source: show(s.end(end)),
-                                    choices: vec![Choice::Target, Choice::Source, Choice::Drop],
-                                    chosen: None,
-                                };
-                                match ctx.ask(k) {
-                                    Some(Choice::Source) => s.end(end),
-                                    Some(Choice::Drop) => None,
-                                    _ => t.end(end),
-                                }
-                            }
-                        };
-                        c.set_end(end, v);
                     }
-                    c
                 });
                 set(&mut m.wires, id, v);
             }
@@ -744,12 +743,6 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                     }),
                 });
                 set(&mut m.folders, id, v);
-            }
-            Obj::Representation(id) if let Some(v) = folded(ctx, Obj::Representation(id)) => {
-                set(&mut m.representations, id, v.and_then(|d| d.representations.get(&id).cloned()));
-            }
-            Obj::Item(id) if let Some(v) = folded(ctx, Obj::Item(id)) => {
-                set(&mut m.items, id, v.and_then(|d| d.items.get(&id).cloned()));
             }
             Obj::Representation(id) => {
                 let v =
@@ -910,47 +903,6 @@ fn merge_style_layer(ctx: &mut Ctx<'_, '_>, layer: StyleLayer, a: &StyleCatalogu
         }
     }
     out
-}
-
-/// A wire's drawing (its symbol or route item) changed on both sides while one of its ends is a
-/// connection conflict: it follows that conflict's answer instead of being a second conflict
-/// (tester 020b, defect 2): the source's drawing for `branch`, else the target's. `None` when
-/// it is not such a case; `Some(None)` when the chosen side has no such object.
-fn folded<'a>(ctx: &Ctx<'a, '_>, obj: Obj) -> Option<Option<&'a Document>> {
-    let (a, t, s) = (ctx.inp.ancestor, ctx.inp.target, ctx.inp.source);
-    let conductor = |d: &Document| -> Option<WireId> {
-        let rep = match obj {
-            Obj::Representation(r) => d.representations.get(&r)?,
-            Obj::Item(i) => d.representation_of_item(i)?.1,
-            _ => return None,
-        };
-        match rep.subject {
-            Subject::Wire(c) => Some(c),
-            _ => None,
-        }
-    };
-    let changed_on_both = match obj {
-        Obj::Representation(r) => {
-            let (x, y, z) = (a.representations.get(&r), t.representations.get(&r), s.representations.get(&r));
-            y.is_some() && z.is_some() && pick(x, y, z).is_none()
-        }
-        Obj::Item(i) => {
-            let (x, y, z) = (a.items.get(&i), t.items.get(&i), s.items.get(&i));
-            y.is_some() && z.is_some() && pick(x, y, z).is_none()
-        }
-        _ => false,
-    };
-    if !changed_on_both {
-        return None;
-    }
-    let c = conductor(t).or_else(|| conductor(s))?;
-    let (ca, ct, cs) = (a.wires.get(&c), t.wires.get(&c)?, s.wires.get(&c)?);
-    let end = End::BOTH.into_iter().find(|e| pick(Some(&ca.and_then(|x| x.end(*e))), Some(&ct.end(*e)), Some(&cs.end(*e))).is_none())?;
-    let id = format!("{}/end.{}", c.hex(), if end == End::A { "a" } else { "b" });
-    Some(match ctx.choices.get(&id) {
-        Some(Choice::Source) => Some(s),
-        _ => Some(t),
-    })
 }
 
 /// The object with ID `hex` in any of `docs`.
@@ -1155,9 +1107,7 @@ fn refs(m: &Document, obj: Obj) -> Vec<(Obj, Use)> {
         Obj::Wire(c) => {
             if let Some(c) = m.wires.get(&c) {
                 for e in End::BOTH {
-                    if let Some(t) = c.end(e) {
-                        out.push((Obj::Terminal(t), Use::End(e)));
-                    }
+                    out.push((Obj::Terminal(c.end(e)), Use::End(e)));
                 }
             }
         }
@@ -1199,7 +1149,7 @@ fn users_of(m: &Document, y: Obj) -> Vec<Obj> {
     let mut all: Vec<Obj> = Vec::new();
     match y {
         Obj::Terminal(t) => {
-            all.extend(m.wires.iter().filter(|(_, c)| c.ends.contains(&Some(t))).map(|(k, _)| Obj::Wire(*k)));
+            all.extend(m.wires.iter().filter(|(_, c)| c.ends.contains(&t)).map(|(k, _)| Obj::Wire(*k)));
             all.extend(m.representations.iter().filter(|(_, r)| r.connection_points.contains_key(&t)).map(|(k, _)| Obj::Representation(*k)));
             all.extend(m.routes.iter().filter(|(_, r)| r.ends.contains(&RouteEnd::Point(t))).map(|(k, _)| Obj::Route(*k)));
         }
@@ -1243,11 +1193,8 @@ fn users_of(m: &Document, y: Obj) -> Vec<Obj> {
 /// Stop `x`'s use of `y` (it was not brought back): detach, drop the entry, or remove `x`.
 fn drop_use(m: &mut Document, x: Obj, y: Obj, how: Use, check: &mut BTreeSet<Obj>) {
     match (x, how) {
-        (Obj::Wire(c), Use::End(e)) => {
-            if let Some(c) = m.wires.get_mut(&c) {
-                c.set_end(e, None);
-            }
-        }
+        // A wire runs between two connection points: without one it goes.
+        (Obj::Wire(_), Use::End(_)) => remove_whole(m, x, check),
         (Obj::Route(r), Use::RouteEnd(i)) => {
             if let Some(e) = m.routes.get_mut(&r).and_then(|r| r.ends.get_mut(i)) {
                 *e = RouteEnd::Free;
@@ -1330,7 +1277,7 @@ fn resolve_needed(ctx: &mut Ctx<'_, '_>, m: &mut Document, mut check: BTreeSet<O
             let user_names: Vec<String> = users.iter().take(3).map(|(x, _)| name_of(&docs, *x)).collect();
             let more = users.len().saturating_sub(3);
             let removed_on = if holds(t, y) { ctx.s().to_string() } else { ctx.t().to_string() };
-            let only_ends = users.iter().all(|(_, u)| matches!(u, Use::End(_) | Use::ConnectionPoint));
+            let only_ends = users.iter().all(|(_, u)| matches!(u, Use::ConnectionPoint));
             let mut choices = Vec::new();
             if from.is_some() {
                 choices.push(Choice::BringBack);
@@ -1448,9 +1395,6 @@ fn objs_of(ops: &[Op]) -> BTreeSet<Obj> {
             }
             Op::LinkRepresentation { id, .. } | Op::UnlinkRepresentation { id, .. } => {
                 out.insert(Obj::Representation(*id));
-            }
-            Op::AttachEnd { conductor, .. } => {
-                out.insert(Obj::Wire(*conductor));
             }
             Op::SetProperty { object: ObjectRef::Device(c), .. } => {
                 out.insert(Obj::Device(*c));
@@ -1845,7 +1789,7 @@ fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
         let docs = [s, a];
         for (e, word) in [(End::A, "end A"), (End::B, "end B")] {
             if x.end(e) != y.end(e) {
-                let show = |t: Option<TerminalId>| t.map_or_else(|| "unconnected".into(), |t| name_of(&docs, Obj::Terminal(t)));
+                let show = |t: TerminalId| name_of(&docs, Obj::Terminal(t));
                 return format!("· {word} {} → {}", show(x.end(e)), show(y.end(e)));
             }
         }
@@ -2059,6 +2003,7 @@ pub fn plan(inp: &Inputs<'_>, choices: &BTreeMap<String, Choice>) -> Plan {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+    use crate::id::{ConductorId, NetId};
 
     fn doc_with(tags: &[(u128, &str)]) -> Document {
         let mut d = Document::default();
@@ -2252,8 +2197,8 @@ mod tests {
         }
     }
 
-    fn wire(d: &mut Document, w: u128, b: Option<u128>) {
-        d.wires.insert(WireId(w), Wire { ends: [None, b.map(TerminalId)], ..Wire::default() });
+    fn wire(d: &mut Document, w: u128, a: u128, b: u128) {
+        d.wires.insert(WireId(w), Wire::new(NetId(90), ConductorId(91), TerminalId(a), TerminalId(b)));
     }
 
     fn scope_all(ids: &[Obj]) -> Scope {
@@ -2308,41 +2253,42 @@ mod tests {
     }
 
     #[test]
-    fn a_wire_end_conflict_offers_main_branch_and_leave_unconnected() {
+    fn a_wire_ends_conflict_offers_main_and_branch() {
         let mut a = Document::default();
-        device(&mut a, 1, "-K01", &[11, 12, 13]);
-        wire(&mut a, 5, None);
+        device(&mut a, 1, "-K01", &[11, 12, 13, 14]);
+        wire(&mut a, 5, 11, 12);
         let mut t = a.clone();
-        t.wires.get_mut(&WireId(5)).unwrap().set_end(End::B, Some(TerminalId(11)));
+        wire(&mut t, 5, 11, 13);
         let mut s = a.clone();
-        s.wires.get_mut(&WireId(5)).unwrap().set_end(End::B, Some(TerminalId(12)));
+        wire(&mut s, 5, 11, 14);
         let scope = scope_all(&[Obj::Wire(WireId(5))]);
-        let id = format!("{}/end.b", WireId(5).hex());
+        let id = format!("{}/ends", WireId(5).hex());
         let p = run(&a, &t, &s, &scope, &BTreeMap::new());
-        assert_eq!(p.conflicts[0].choices, vec![Choice::Target, Choice::Source, Choice::Drop]);
-        for (c, want) in [(Choice::Target, Some(11)), (Choice::Source, Some(12)), (Choice::Drop, None)] {
+        assert_eq!(p.conflicts[0].id, id);
+        assert_eq!(p.conflicts[0].choices, vec![Choice::Target, Choice::Source]);
+        for (c, want) in [(Choice::Target, 13), (Choice::Source, 14)] {
             let doc = applied(&t, &run(&a, &t, &s, &scope, &one(&id, c.clone())));
-            assert_eq!(doc.wires[&WireId(5)].end(End::B), want.map(TerminalId), "{c:?}");
+            assert_eq!(doc.wires[&WireId(5)].end(End::B), TerminalId(want), "{c:?}");
         }
     }
 
     #[test]
-    fn a_point_the_branch_uses_and_main_removed_is_brought_back_or_left_unconnected() {
+    fn a_point_the_branch_uses_and_main_removed_is_brought_back_or_its_wire_removed() {
         let mut a = Document::default();
         device(&mut a, 1, "-K01", &[11]);
-        wire(&mut a, 5, None);
+        device(&mut a, 2, "-K02", &[21]);
         let mut s = a.clone();
-        s.wires.get_mut(&WireId(5)).unwrap().set_end(End::B, Some(TerminalId(11)));
+        wire(&mut s, 5, 21, 11);
         let mut t = a.clone();
-        t.terminals.clear();
-        t.devices.clear();
+        t.terminals.remove(&TerminalId(11));
+        t.devices.remove(&DeviceId(1));
         let scope = scope_all(&[Obj::Wire(WireId(5)), Obj::Terminal(TerminalId(11)), Obj::Device(DeviceId(1))]);
         let tid = format!("{}/needed", TerminalId(11).hex());
         let cid = format!("{}/needed", DeviceId(1).hex());
-        // Leave unconnected: the end is loose, nothing comes back.
+        // Not brought back: a wire runs between two points, so without one it goes.
         let doc = applied(&t, &run(&a, &t, &s, &scope, &one(&tid, Choice::Drop)));
-        assert_eq!(doc.wires[&WireId(5)].end(End::B), None);
-        assert!(doc.terminals.is_empty());
+        assert!(!doc.wires.contains_key(&WireId(5)));
+        assert!(!doc.terminals.contains_key(&TerminalId(11)));
         // Bring back the point and its device.
         let both = BTreeMap::from([(tid.clone(), Choice::BringBack), (cid.clone(), Choice::BringBack)]);
         let doc = applied(&t, &run(&a, &t, &s, &scope, &both));

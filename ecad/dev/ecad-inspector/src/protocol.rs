@@ -406,7 +406,7 @@ fn invariants(d: &Document) -> Value {
     let shown: Vec<Value> = mismatches
         .iter()
         .take(200)
-        .map(|m| json!({"wire": wire_name(d, m.conductor), "end": format!("{:?}", m.end), "point": point_name(d, m.terminal), "page": page_number(d, m.page)}))
+        .map(|m| json!({"route": format!("({})", m.route.short()), "end": format!("{:?}", m.end), "point": point_name(d, m.terminal), "page": page_number(d, m.page)}))
         .collect();
     json!({
         "ok": check.is_ok() && index.is_ok() && mismatches.is_empty(),
@@ -524,7 +524,7 @@ fn devices(d: &Document, detail: bool) -> Vec<Value> {
     }
     let mut attached: BTreeMap<TerminalId, Vec<WireId>> = BTreeMap::new();
     for (id, w) in &d.wires {
-        for t in w.ends.iter().flatten() {
+        for t in &w.ends {
             attached.entry(*t).or_default().push(*id);
         }
     }
@@ -607,12 +607,16 @@ fn wires(d: &Document) -> Vec<Value> {
     d.wires
         .iter()
         .map(|(id, w)| {
-            let ends: Vec<String> = w.ends.iter().map(|e| e.map_or_else(|| "open".to_string(), |t| point_name(d, t))).collect();
+            let ends: Vec<String> = w.ends.iter().map(|t| point_name(d, *t)).collect();
             let cable = in_cable.get(id);
             json!({
                 "id": id.to_string(),
                 "number": wire_number(d, *id),
                 "ends": ends,
+                "net": w.net.to_string(),
+                "conductor": w.conductor.to_string(),
+                "net_order": w.net_order,
+                "order_fixed": w.order_fixed,
                 "size": w.size.map(|s| s.to_string()),
                 "colours": w.colours.as_ref().map(ToString::to_string),
                 "fixed": w.number_fixed(),
@@ -634,7 +638,7 @@ fn cables(d: &Document) -> Vec<Value> {
             for m in &k.members {
                 if let Some(w) = d.wires.get(&m.conductor) {
                     for (side, t) in ends.iter_mut().zip(w.ends.iter()) {
-                        if let Some(term) = t.and_then(|t| d.terminals.get(&t)) {
+                        if let Some(term) = d.terminals.get(t) {
                             side.insert(device_name(d, term.component));
                         }
                     }

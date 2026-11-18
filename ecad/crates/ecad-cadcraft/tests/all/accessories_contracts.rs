@@ -344,7 +344,7 @@ fn hostile_accessory_and_link_values_are_refused_in_words() {
     // Keys on a device that is not a strip.
     let w = f.wires[0];
     let doc = f.h.doc();
-    let far = doc.wires[&w].ends.iter().flatten().find_map(|t| {
+    let far = doc.wires[&w].ends.iter().find_map(|t| {
         let c = doc.terminals[t].component;
         (c != f.strip).then_some(c)
     });

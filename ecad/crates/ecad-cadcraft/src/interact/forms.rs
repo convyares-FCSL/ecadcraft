@@ -8,7 +8,7 @@ use cadcraft_engine::doc::color::{Color as CColor, Rgb};
 use cadcraft_engine::doc::{Entity, EntityKind, Handle};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, EngineError, Input, Interactive, Prompt, Session, Step};
-use ecad_model::{CableId, DeviceId, End, Placement, Primitive, Pt, Subject, WireId};
+use ecad_model::{CableId, DeviceId, End, Placement, Primitive, Pt, RouteId, Subject, WireId};
 use serde_json::{Value, json};
 
 use super::{
@@ -381,11 +381,7 @@ impl Wire {
                     if j.get("how").and_then(Value::as_str) == Some("merged") {
                         return format!("end {e} joins wire {number} (now one wire)");
                     }
-                    let n = j.get("wires").and_then(Value::as_u64).unwrap_or(2);
-                    return format!("end {e} meets {n} wires at a junction");
-                }
-                if entry("junctions", e).is_some() {
-                    return format!("end {e} joins a wire at a junction");
+                    return format!("end {e} lands on a wire there (a T)");
                 }
                 match names.iter().find(|(end, _)| end == e) {
                     Some((_, name)) => format!("end {e} attached to {name}"),
@@ -570,8 +566,8 @@ impl Interactive for Wire {
         let captured = capture_at(s, cursor);
         let mut out = captured.as_ref().map(|c| capture_preview(s, c, ATTACHED_ACI)).unwrap_or_default();
         // Brief 032 §2.4: an end on another wire's open end joins it (`join`), on its interior or
-        // on two or more ends gets a junction (`junction`), a refused merge shows the reason in
-        // red; with Join off, nothing.
+        // on two or more ends lands on it (a T), a refused merge shows the reason in red; with
+        // Join off, nothing.
         if captured.is_none()
             && self.join
             && in_range(cursor)
@@ -583,7 +579,7 @@ impl Interactive for Wire {
                 let doc = p.ledger.document();
                 let quiet = quiet_on(p, page);
                 let at = crate::wires::open_end_near(doc, page, pt(cursor), tol, &quiet)
-                    .or_else(|| crate::wires::wire_at(doc, page, pt(cursor), tol, None).map(|on| on.at));
+                    .or_else(|| crate::wires::route_at(doc, page, pt(cursor), tol, None).map(|on| on.at));
                 Ok(at.and_then(|at| crate::wires::join_preview(doc, page, at, &quiet, potential.as_deref())))
             });
             if let Ok(Some((at, text, refused))) = seen {
@@ -618,12 +614,13 @@ const NO_TERMINAL: &str = "No connection point there. Move onto a connection poi
 
 struct Link {
     connect: bool,
-    /// Connect: the wire end chosen, waiting for its terminal.
-    end: Option<(WireId, End, Pt)>,
+    /// Connect: the route end chosen, waiting for its terminal.
+    end: Option<(RouteId, End, Pt)>,
 }
 
-/// A picked wire's end nearer to `p` (A on a tie), its position and whether it is attached.
-fn wire_end(s: &Session, p: Vec2) -> Result<(WireId, End, Pt, bool), String> {
+/// A picked route's end nearer to `p` (A on a tie), its position and whether it is on a
+/// connection point.
+fn wire_end(s: &Session, p: Vec2) -> Result<(RouteId, End, Pt, bool), String> {
     let h = pick(s, p).ok_or(NOT_WIRE)?;
     read(s, |proj, page| {
         let doc = proj.ledger.document();
@@ -636,13 +633,12 @@ fn wire_end(s: &Session, p: Vec2) -> Result<(WireId, End, Pt, bool), String> {
             _ => return Err(NOT_WIRE.into()),
         };
         let Some((_, rep)) = doc.representation_of_item(i) else { return Err(NOT_WIRE.into()) };
-        let Subject::Wire(w) = rep.subject else { return Err(NOT_WIRE.into()) };
-        let (_, route) = ecad_model::derive::route_on_page(doc, w, page).ok_or(NOT_WIRE)?;
-        let (a, b) = route.path_ends().ok_or(NOT_WIRE)?;
+        let Subject::Route(r) = rep.subject else { return Err(NOT_WIRE.into()) };
+        let route = doc.routes.get(&r).ok_or(NOT_WIRE)?;
+        let [a, b] = route.end_points().ok_or(NOT_WIRE)?;
         let q = pt(p);
-        let (end, at) = if q.dist(a) <= q.dist(b) { (End::A, a) } else { (End::B, b) };
-        let attached = doc.wires.get(&w).and_then(|c| c.end(end)).is_some();
-        Ok((w, end, at, attached))
+        let (end, at, landed) = if q.dist(a) <= q.dist(b) { (End::A, a, route.ends[0]) } else { (End::B, b, route.ends[1]) };
+        Ok((r, end, at, landed.point().is_some()))
     })
 }
 
@@ -656,13 +652,13 @@ impl Link {
                     self.end = Some((w, end, at));
                     return Ok(Step::Continue);
                 }
-                commit(s, "disconnect", &json!({"conductor": w.hex(), "end": end_name(end)}))?;
+                commit(s, "disconnect", &json!({"route": w.hex(), "end": end_name(end)}))?;
                 s.echo(format!("End {} of wire {} disconnected.", end_name(end), w.hex()));
                 Ok(Step::Continue)
             }
             (Input::Point(p), Some((w, end, _))) => {
                 let (t, _, name) = terminal_for(s, p).ok_or_else(|| other(NO_TERMINAL))?;
-                commit(s, "connect", &json!({"conductor": w.hex(), "end": end_name(end), "terminal": t.hex()}))?;
+                commit(s, "connect", &json!({"route": w.hex(), "end": end_name(end), "terminal": t.hex()}))?;
                 s.echo(format!("End {} of wire {} connected to {name}.", end_name(end), w.hex()));
                 self.end = None;
                 Ok(Step::Continue)
@@ -1122,6 +1118,12 @@ pub(super) const NOT_A_CABLE: &str = "That is not a cable or a wire in a cable."
 
 /// The cable a mapped object names (design 005 §3.3): a slash, a fan line, or a wire in a cable
 /// (and, brief 010, a cable reference's point or text).
+/// The wire a clicked line stands for when picking cable members: the first wire it carries that
+/// is in a cable, else the wire it stands for ([`crate::wires::wire_of_route`]).
+fn cabled_wire(doc: &ecad_model::Document, r: ecad_model::RouteId) -> Option<WireId> {
+    crate::wires::wires_of_route(doc, r).into_iter().find(|w| !doc.cables_of(*w).is_empty()).or_else(|| crate::wires::wire_of_route(doc, r))
+}
+
 pub(super) fn cable_named(doc: &ecad_model::Document, m: Mapped) -> Result<CableId, &'static str> {
     match m {
         Mapped::Fan(k) => Ok(k),
@@ -1132,6 +1134,10 @@ pub(super) fn cable_named(doc: &ecad_model::Document, m: Mapped) -> Result<Cable
         Mapped::Item(i) => match doc.representation_of_item(i).map(|(_, r)| r.subject) {
             Some(Subject::Cable(k)) => Ok(k),
             Some(Subject::Wire(w)) => doc.cables_of(w).first().copied().ok_or(WIRE_NOT_IN_CABLE),
+            Some(Subject::Route(r)) => {
+                let w = cabled_wire(doc, r).ok_or(WIRE_NOT_IN_CABLE)?;
+                doc.cables_of(w).first().copied().ok_or(WIRE_NOT_IN_CABLE)
+            }
             _ => Err(NOT_A_CABLE),
         },
         Mapped::Label(w) => doc.cables_of(w).first().copied().ok_or(WIRE_NOT_IN_CABLE),
@@ -1272,6 +1278,7 @@ impl CableCore {
                 Some(Mapped::Fan(_)) => map.core_of(h).ok_or(CORE_IS_CABLE)?,
                 Some(Mapped::Item(i)) => match doc.representation_of_item(i).map(|(_, r)| r.subject) {
                     Some(Subject::Wire(w)) => w,
+                    Some(Subject::Route(r)) => cabled_wire(doc, r).ok_or(CORE_NOT_WIRE)?,
                     Some(Subject::Cable(_)) => return Err(CORE_IS_CABLE.into()),
                     _ => return Err(CORE_NOT_WIRE.into()),
                 },
@@ -1355,9 +1362,15 @@ impl Interactive for CableCore {
     /// The picked wire is highlighted while its label is asked for (design 009 §5.1 step 2).
     fn preview_objects(&self, s: &Session, _cursor: Vec2) -> Vec<Entity> {
         let Some((w, _, _)) = &self.picked else { return Vec::new() };
-        let route = read(s, |p, page| Ok(ecad_model::derive::route_on_page(p.ledger.document(), *w, page).map(|(_, prim)| prim)));
+        let route = read(s, |p, page| {
+            let doc = p.ledger.document();
+            Ok(crate::wires::route_of_wire_on(doc, *w, page).and_then(|r| doc.routes.get(&r)).map(|r| r.points.clone()))
+        });
         match route {
-            Ok(Some(prim)) => vec![preview_entity(s, crate::convert::kind_for_primitive(&prim), ATTACHED_ACI)],
+            Ok(Some(points)) => {
+                let prim = Primitive::Polyline { vertices: points, closed: false };
+                vec![preview_entity(s, crate::convert::kind_for_primitive(&prim), ATTACHED_ACI)]
+            }
             _ => Vec::new(),
         }
     }
