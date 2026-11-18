@@ -95,18 +95,17 @@ fn unknown_rows(doc: &Document) -> Vec<Check> {
                     );
                     out.push(Check { kind: Kind::TitleBindingUnknown, page: None, at: None, object: Object::None, which, fix: None });
                 }
+                // Design 072 §5.4: every binding that reads can be filled; only items past the
+                // bounds are skipped.
                 let (_, skipped) = l.usable();
-                let unknown = l.bindings().filter(|b| !super::bind::known(b)).count();
-                let n = unknown + skipped.items;
+                let n = skipped.items;
                 if n == 0 && body.other.is_empty() {
                     continue;
                 }
                 let which = if n == 0 {
                     format!("{name} has a title block part this build cannot draw.")
-                } else if unknown == n {
-                    format!("{name} has {} this build cannot fill.", count(n, "field", "fields"))
                 } else {
-                    format!("{name} has {} this build cannot fill or draw.", count(n, "item", "items"))
+                    format!("{name} has {} this build cannot draw.", count(n, "item", "items"))
                 };
                 out.push(Check { kind: Kind::TitleBindingUnknown, page: None, at: None, object: Object::None, which, fix: None });
             }
