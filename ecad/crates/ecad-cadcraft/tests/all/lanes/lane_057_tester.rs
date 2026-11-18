@@ -207,7 +207,7 @@ fn box_temp(h: &mut H, cab: DeviceId, v: &str) {
         return;
     }
     // Fix round: `rating {location, temperature}` writes it on the location's boxes.
-    let loc = h.doc().devices.get(&cab).and_then(|c| c.properties.get(ecad_model::book::LOCATION_KEY).cloned()).unwrap_or_default();
+    let loc = h.doc().devices.get(&cab).and_then(|c| c.value(ecad_model::book::LOCATION_KEY)).unwrap_or_default();
     let t = v.trim().parse::<f64>().map_or_else(|_| json!(v), |n| json!(n));
     if h.run("rating", json!({"location": loc, "temperature": t})).is_ok() {
         return;

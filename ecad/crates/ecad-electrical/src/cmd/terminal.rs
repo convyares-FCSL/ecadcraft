@@ -178,12 +178,15 @@ pub fn plan_fence_typed(
             let c: DeviceId = ids.fresh();
             // Brief 026: a provisional `-X?n` when provisional tags are on, as Place gives.
             let tag = high.next_auto(ledger, &crate::devices::prefix_for(doc, starter))?;
-            let mut properties = ecad_model::Properties::new();
-            properties.insert(ecad_model::tag::TAG_KEY.into(), tag.clone());
-            properties.insert("description".into(), "Terminal".into());
             ops.push(Op::CreateDevice {
                 id: c,
-                device: ecad_model::Device { properties, definition: Some(def), device_type: starter.device_type() },
+                device: ecad_model::Device {
+                    tag: Some(crate::devices::stored_tag(&tag)?),
+                    description: crate::devices::description_of("Terminal"),
+                    definition: Some(def),
+                    device_type: starter.device_type(),
+                    ..ecad_model::Device::default()
+                },
             });
             (c, tag, 1, legacy)
         }

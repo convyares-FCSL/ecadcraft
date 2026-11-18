@@ -339,10 +339,16 @@ pub fn plan_toposition(
     let keep = ["rating"];
     // Everything else goes with the device and is listed (review M1: no silent loss), its own
     // text placements included.
-    let lost: Vec<String> = props.keys().filter(|k| !keep.contains(&k.as_str())).cloned().collect();
+    let mut lost: Vec<String> = props.keys().filter(|k| !keep.contains(&k.as_str())).cloned().collect();
+    // Design 072 §2.1: the tag is a field of the device, and goes with it too.
+    if comp.tag.is_some() {
+        lost.push(ecad_model::tag::TAG_KEY.into());
+    }
+    lost.extend(ecad_model::TextField::ALL.into_iter().filter(|f| comp.text(*f).is_some()).map(|f| f.key().to_string()));
+    lost.sort();
     let strip_part = doc.devices.get(&strip).and_then(|x| x.properties.get(&crate::strips::type_key(ty, "part_number"))).cloned();
-    let note = match (props.get("part_number"), &strip_part) {
-        (Some(a), Some(b)) if a != b => {
+    let note = match (comp.part_number.as_ref().map(|t| t.to_string()), &strip_part) {
+        (Some(a), Some(b)) if a != *b => {
             Some(format!("{tag}'s part {a} differs from {stag}'s fuse terminal part {b}; set {stag}'s part if {a} is right."))
         }
         _ => None,

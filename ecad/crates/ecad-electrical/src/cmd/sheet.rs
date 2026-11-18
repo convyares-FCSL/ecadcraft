@@ -544,7 +544,8 @@ pub fn page_props(
         if let Some(k) = stored.as_ref().filter(|k| old.as_ref() != Some(*k)) {
             let code = code_with(doc, &pending, a, k);
             let spots = proposals::spots_on_page(doc, a, page);
-            absorb(&mut proposed, proposals::plan_change(doc, a, &spots, old.as_deref(), k, &code, &change.mode));
+            let x = proposals::plan_change(doc, &proposed.ops, a, &spots, old.as_deref(), k, &code, &change.mode);
+            absorb(&mut proposed, x);
         }
         now = designations::with_page_key(&now, a, stored.as_deref());
     }
@@ -740,8 +741,8 @@ pub fn tag_style_ops(doc: &Document, dash: Option<bool>, case: Option<Case>) -> 
         let objects = doc
             .devices
             .iter()
-            .filter_map(|(id, c)| c.properties.get(TAG_KEY).map(|t| (ObjectRef::Device(*id), t)))
-            .chain(doc.cables.iter().filter_map(|(id, c)| c.properties.get(TAG_KEY).map(|t| (ObjectRef::Cable(*id), t))));
+            .filter_map(|(id, c)| c.tag().map(|t| (ObjectRef::Device(*id), t)))
+            .chain(doc.cables.iter().filter_map(|(id, c)| c.properties.get(TAG_KEY).map(|t| (ObjectRef::Cable(*id), t.as_str()))));
         for (object, old) in objects {
             let new = tag::restyle(old, after);
             if let Some(k) = seen.get(&new)
@@ -750,8 +751,15 @@ pub fn tag_style_ops(doc: &Document, dash: Option<bool>, case: Option<Case>) -> 
                 return Err(CmdError::refused(format!("Changing the tag style would make two tags {new}; nothing was changed.")));
             }
             seen.insert(new.clone(), tag::key(old));
-            if new != *old {
-                ops.push(Op::SetProperty { object, key: TAG_KEY.into(), before: Some(old.clone()), after: Some(new) });
+            if new != old {
+                match object {
+                    ObjectRef::Device(c) => {
+                        if let Some(d) = doc.devices.get(&c) {
+                            ops.push(Op::ModifyDevice { id: c, before: d.clone(), after: d.with_tag(Some(&new)) });
+                        }
+                    }
+                    _ => ops.push(Op::SetProperty { object, key: TAG_KEY.into(), before: Some(old.to_string()), after: Some(new) }),
+                }
                 n += 1;
             }
         }
@@ -805,7 +813,8 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
         if let Some(key) = after.as_ref().filter(|key| old.as_ref() != Some(*key)) {
             let code = code_with(doc, &pending, a, key);
             let spots = proposals::spots_of_project(doc, a);
-            absorb(&mut proposed, proposals::plan_change(doc, a, &spots, old.as_deref(), key, &code, &change.mode));
+            let x = proposals::plan_change(doc, &proposed.ops, a, &spots, old.as_deref(), key, &code, &change.mode);
+            absorb(&mut proposed, x);
         }
         let before = pending.project(doc).clone();
         let now = designations::with_default_key(&before, a, after.as_deref());

@@ -64,7 +64,7 @@ fn positions(d: &Document, strip: DeviceId) -> BTreeMap<String, BTreeMap<String,
 }
 
 fn prop(h: &mut H, c: DeviceId, k: &str) -> Option<String> {
-    h.doc().devices.get(&c).and_then(|x| x.properties.get(k).cloned())
+    h.doc().devices.get(&c).and_then(|x| x.value(k))
 }
 
 fn squash(v: Option<String>) -> Option<String> {

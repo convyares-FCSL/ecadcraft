@@ -26,7 +26,7 @@ fn placed(h: &mut H, params: Value) -> DeviceId {
 }
 
 fn tag(d: &Document, c: DeviceId) -> String {
-    d.devices.get(&c).and_then(|x| x.properties.get("tag").cloned()).unwrap_or_default()
+    d.devices.get(&c).and_then(|x| x.tag().map(str::to_string)).unwrap_or_default()
 }
 
 /// Every text value derived on `page`, shown or not.

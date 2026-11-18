@@ -449,8 +449,8 @@ fn a1_place_symbol_asks_rack_and_slot_for_a_card_and_enter_takes_both() {
     let slots: Vec<(String, Option<String>, Option<String>)> = d
         .devices
         .values()
-        .filter(|c| c.properties.get("description").is_some_and(|x| x.contains("digital input card")))
-        .map(|c| (c.properties.get("tag").cloned().unwrap_or_default(), c.properties.get("plc.rack").cloned(), c.properties.get("plc.slot").cloned()))
+        .filter(|c| c.get("description").is_some_and(|x| x.contains("digital input card")))
+        .map(|c| (c.tag().unwrap_or_default().to_string(), c.properties.get("plc.rack").cloned(), c.properties.get("plc.slot").cloned()))
         .collect();
     let mut slots = slots;
     slots.sort();

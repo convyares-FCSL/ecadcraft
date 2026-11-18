@@ -137,7 +137,8 @@ pub fn plan_edit(doc: &Document, a: Aspect, edit: EditInput) -> Result<ListPlan,
     Ok(ListPlan { ops, label, key: e.key, code })
 }
 
-/// The value of property `prop` on device `o` (pages and the project store typed ids).
+/// The value of property `prop` (an override, `location.<type>`) on device `o` (pages, the
+/// project and a device's own value are typed ids).
 fn property_of(doc: &Document, o: ObjectRef, prop: &str) -> Option<String> {
     match o {
         ObjectRef::Device(c) => doc.devices.get(&c).and_then(|x| x.properties.get(prop)).cloned(),
@@ -185,6 +186,15 @@ pub fn plan_merge(doc: &Document, uses: &Uses, a: Aspect, from: &str, into: &str
                 if designations::default_key(&project, a).as_deref() == Some(from.key.as_str()) {
                     project = designations::with_default_key(&project, a, Some(&into.key));
                 }
+            }
+            // Design 072 §6.3: a device's own value is a field; its `fixed` flag stays as it was.
+            ObjectRef::Device(c) if prop == a.property() => {
+                crate::devices::edit_planned(doc, &mut ops, c, |d| {
+                    if designations::device_key(d, a).as_deref() == Some(from.key.as_str()) {
+                        let fixed = designations::device_fixed(d, a);
+                        *d = designations::with_device_key(d, a, Some(&into.key), fixed);
+                    }
+                });
             }
             _ => {
                 let before = property_of(doc, o, &prop);

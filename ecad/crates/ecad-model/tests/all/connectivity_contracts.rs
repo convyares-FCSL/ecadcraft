@@ -457,7 +457,8 @@ fn unrelated_ops_change_no_net_and_number_nothing() {
     let (c, k) = p.device(2);
     p.wire(Some(k[0]), Some(k[1]));
     let before = p.doc().connectivity().clone();
-    let tag = Op::SetProperty { object: ObjectRef::Device(c), key: "tag".into(), before: None, after: Some("-K1".into()) };
+    let d = p.doc().devices[&c].clone();
+    let tag = Op::ModifyDevice { id: c, before: d.clone(), after: d.with_tag(Some("-K1")) };
     let page: PageId = p.ids.fresh();
     let ops = vec![tag, Op::AddPage { id: page, page: Page::titled("2").unwrap(), index: 1 }];
     let head = p.ledger.head();

@@ -227,8 +227,8 @@ fn terminal_renumber_with_fixed_and_provisional_strip_tags() {
     assert_eq!(labels(&mut t.h, &a), ["21", "22", "23", "24"]);
     assert_eq!(labels(&mut t.h, &b), ["21", "22", "23", "24"]);
     let d = t.h.doc();
-    assert_eq!(d.devices[&x1].properties.get("tag").map(String::as_str), Some("-X01"));
-    assert_eq!(d.devices[&x1].properties.get("tag_fixed").map(String::as_str), Some("yes"));
+    assert_eq!(d.devices[&x1].tag(), Some("-X01"));
+    assert!(d.devices[&x1].tag_fixed);
     // One strip by selection; the other keeps its labels.
     t.h.run("renumber", json!({"kind": "terminals", "scope": "selection", "strips": [x2.hex()]})).unwrap();
     assert_eq!(labels(&mut t.h, &a), ["21", "22", "23", "24"]);
@@ -260,13 +260,13 @@ fn provisional_strip_tags_from_place_terminals_and_finalise() {
     let v = t.h.run("terminals", json!({"from": [310, 200], "to": [350, 200]})).unwrap();
     let x3: DeviceId = id(&v, "strip");
     let c: Vec<TerminalId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
-    let tag3 = t.h.doc().devices[&x3].properties.get("tag").cloned().unwrap_or_default();
+    let tag3 = t.h.doc().devices[&x3].tag().map(str::to_string).unwrap_or_default();
     assert!(tag::is_provisional(&tag3), "a strip placed in provisional mode: {tag3}");
     t.h.run("renumber", json!({"kind": "terminals", "scope": "selection", "strips": [c[0].hex()], "start": 5})).unwrap();
     assert_eq!(labels(&mut t.h, &c), ["5", "6", "7"]);
     t.h.run("finalise", json!({})).unwrap();
     assert_eq!(labels(&mut t.h, &c), ["5", "6", "7"], "Finalise does not touch terminal labels");
-    let tag3 = t.h.doc().devices[&x3].properties.get("tag").cloned().unwrap_or_default();
+    let tag3 = t.h.doc().devices[&x3].tag().map(str::to_string).unwrap_or_default();
     assert!(!tag::is_provisional(&tag3), "{tag3}");
     // Undo the finalise and the renumber, redo both.
     t.h.cmdline("u");

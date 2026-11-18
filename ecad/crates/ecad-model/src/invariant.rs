@@ -450,7 +450,11 @@ impl Document {
         if let Some(d) = c.definition
             && !self.definitions.contains_key(&d)
         {
-            return bad(format!("component {id} uses a missing definition"));
+            return bad(format!("device {id} uses a missing definition"));
+        }
+        // Design 072 §2.1: a key that became a device field is never in the device's bag.
+        if let Some(k) = c.properties.keys().find(|k| crate::keys::is_reserved_on(crate::keys::Holder::Device, k)) {
+            return bad(format!("device {id} holds {k} in its properties; it is a field"));
         }
         Ok(())
     }

@@ -447,7 +447,10 @@ pub fn plan_tagless(
     };
     let (component, terminal, item, representation): (DeviceId, TerminalId, ItemId, RepresentationId) =
         (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
-    ops.push(Op::CreateDevice { id: component, device: Device { properties: props, definition: Some(definition), device_type: s.device_type() } });
+    ops.push(Op::CreateDevice {
+        id: component,
+        device: Device { properties: props, definition: Some(definition), device_type: s.device_type(), ..Device::default() },
+    });
     ops.push(Op::AddTerminal { id: terminal, terminal: Terminal { component, label: None, key: Some("1".into()) } });
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition, placement }) } });
     ops.push(Op::LinkRepresentation {

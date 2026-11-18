@@ -729,15 +729,24 @@ pub fn create_ops(
     };
     let c: DeviceId = ids.fresh();
     let mut properties = ecad_model::Properties::new();
-    properties.insert(ecad_model::tag::TAG_KEY.into(), tag.clone());
-    properties.insert("description".into(), defaults::resolve(doc, &defaults::connectors::DESCRIPTION, Scope::project()).text());
+    let description = defaults::resolve(doc, &defaults::connectors::DESCRIPTION, Scope::project()).text();
     if let Some(n) = pins {
         properties.insert(PINS_KEY.into(), n.to_string());
     }
     if let Some(list) = names.filter(|l| !l.is_empty()) {
         properties.insert(PIN_NAMES_KEY.into(), list.join(","));
     }
-    ops.push(Op::CreateDevice { id: c, device: Device { properties, definition: Some(def), device_type: starter.device_type() } });
+    ops.push(Op::CreateDevice {
+        id: c,
+        device: Device {
+            tag: Some(crate::devices::stored_tag(&tag)?),
+            description: crate::devices::description_of(&description),
+            properties,
+            definition: Some(def),
+            device_type: starter.device_type(),
+            ..Device::default()
+        },
+    });
     Ok((c, tag))
 }
 
@@ -1287,7 +1296,7 @@ impl Index {
                         subject(r, &mut out);
                     }
                 }
-                Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
+                Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::ModifyDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
                     out.insert(*id);
                 }
                 Op::SetProperty { object: ecad_model::ObjectRef::Device(c), .. } => {

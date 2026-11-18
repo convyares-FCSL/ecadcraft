@@ -1000,7 +1000,7 @@ fn r07_registry_area_and_description_defaults() {
     assert_eq!(side_labels(&d, y, ".p").len(), 6, "registry pins and halves");
     assert!(side_labels(&d, y, ".s").is_empty());
     let d = c.h.doc();
-    assert_eq!(d.devices[&y].properties.get("description").map(String::as_str), Some("Connector"), "connector.description");
+    assert_eq!(d.devices[&y].get("description"), Some("Connector"), "connector.description");
 }
 
 // ------------------------------------------------------------------------------- row 8 (AC 6)
