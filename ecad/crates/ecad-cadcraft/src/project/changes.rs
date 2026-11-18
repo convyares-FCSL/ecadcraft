@@ -14,7 +14,7 @@ const CHANGE_LOG: usize = 64;
 pub struct Change {
     pub n: u64,
     pub pages: Option<BTreeSet<PageId>>,
-    /// What it could change in the Devices list ([`crate::device_list::devices_touched`]).
+    /// What it could change in the Devices list (the Devices feed, `ecad_electrical::derived::DevicesFeed`).
     pub devices: crate::device_list::DeviceTouch,
     /// The objects whose Properties rows it could change ([`crate::props::touched`]); `None`: any.
     pub props: Option<BTreeSet<ecad_model::ObjectRef>>,
@@ -331,7 +331,6 @@ impl Project {
         let reuse = self.xref_reuse();
         let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &ops, reuse, &crate::draw::text_style::EngineMetrics);
         let pages = pages_touched(self.ledger.document(), &ops, self.outputs.as_ref().map(|o| &o.plc));
-        let devices = crate::device_list::devices_touched(self.ledger.document(), &ops);
         let props = crate::props::touched(self.ledger.document(), &ops);
         let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &ops));
         let outputs = self.outputs.as_ref().map(|o| o.scope(self.ledger.document(), &ops));
@@ -362,7 +361,7 @@ impl Project {
         let generated = Some(self.generated_touched(generated));
         let pages = touched(touched(touched(pages, refs.pages), numbered), generated);
         let mut changes = self.finish_derived(pending);
-        pass_through(&mut changes, Old { pages, named: BTreeSet::new(), devices, props, echo: refs.orphaned.into_iter().collect() });
+        pass_through(&mut changes, Old { pages, named: BTreeSet::new(), props, echo: refs.orphaned.into_iter().collect() });
         self.apply_changes(pg, command, changes, Path::Command);
         Ok(tx)
     }
@@ -505,7 +504,6 @@ pub(super) enum Path<'a> {
 pub(super) struct Old {
     pub pages: Option<BTreeSet<PageId>>,
     pub named: BTreeSet<PageId>,
-    pub devices: crate::device_list::DeviceTouch,
     pub props: Option<BTreeSet<ecad_model::ObjectRef>>,
     pub echo: Vec<String>,
 }
@@ -514,9 +512,6 @@ pub(super) struct Old {
 pub(super) fn pass_through(changes: &mut Changes, old: Old) {
     changes.pages.union(PageSet::from_option(old.pages));
     changes.named.extend(old.named);
-    changes.devices.devices.extend(old.devices.devices);
-    changes.devices.pages |= old.devices.pages;
-    changes.devices.settings |= old.devices.settings;
     changes.props = match (changes.props.take(), old.props) {
         (Some(mut a), Some(b)) => {
             a.extend(b);

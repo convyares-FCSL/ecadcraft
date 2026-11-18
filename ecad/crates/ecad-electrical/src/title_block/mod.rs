@@ -79,20 +79,28 @@ fn geometry(r: Option<&ecad_model::StyleRecord>) -> Option<(Option<String>, Opti
     Some((r.field(sheet::FRAME_SHEET_FIELD).map(str::to_string), r.field(sheet::FRAME_MARGINS_FIELD).map(str::to_string), h))
 }
 
-/// What `op` reaches through the frames (see [`Reach`]). `doc` is the state the op applies to or
-/// came from; callers that see both states call it with each. Bounded: a frame record's change
-/// walks the pages once.
+/// What `op` reaches through the frames (see [`Reach`]): [`frame_reach_of`] on its effect.
 pub fn frame_reach(doc: &Document, op: &ecad_model::Op) -> Reach {
-    use ecad_model::{ObjectRef, Op};
-    match op {
-        Op::SetProperty { object: ObjectRef::Page(p), key, .. } if key == sheet::FRAME_STYLE_KEY => Reach::Pages([*p].into()),
-        Op::ModifyPage { id, before, after } if before.title_block != after.title_block || before.page_type != after.page_type => {
+    ecad_model::effect::Effects::of(std::slice::from_ref(op)).iter().next().map_or(Reach::NotFrame, |e| frame_reach_of(doc, e))
+}
+
+/// What `effect` reaches through the frames (see [`Reach`]). `doc` is the state the effect applies
+/// to or came from; callers that see both states call it with each. Bounded: a frame record's
+/// change walks the pages once.
+pub fn frame_reach_of(doc: &Document, effect: &ecad_model::effect::Effect<'_>) -> Reach {
+    use ecad_model::ObjectRef;
+    use ecad_model::effect::Effect;
+    match effect {
+        Effect::Prop { object: ObjectRef::Page(p), key, .. } if key.raw == sheet::FRAME_STYLE_KEY => Reach::Pages([*p].into()),
+        Effect::Page { id, before: Some(before), after: Some(after), index_before: None, index_after: None }
+            if before.title_block != after.title_block || before.page_type != after.page_type =>
+        {
             Reach::Pages([*id].into())
         }
-        Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key == sheet::FRAME_STYLE_KEY => Reach::Wide,
-        Op::SetStandard { before, after } if before != after => Reach::Wide,
-        Op::SetStyle { catalogue, id, before, after, .. } if *catalogue == sheet::FRAME_CATALOGUE => {
-            match (geometry(before.as_ref()), geometry(after.as_ref())) {
+        Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key.raw == sheet::FRAME_STYLE_KEY => Reach::Wide,
+        Effect::Standard { before, after } if before != after => Reach::Wide,
+        Effect::Style { catalogue, id, before, after, .. } if *catalogue == sheet::FRAME_CATALOGUE => {
+            match (geometry(*before), geometry(*after)) {
                 (Some(a), Some(b)) if a == b => Reach::Unchanged,
                 // A frame made or deleted: a choice naming it starts or stops resolving.
                 (None, _) | (_, None) => Reach::Wide,
@@ -100,7 +108,7 @@ pub fn frame_reach(doc: &Document, op: &ecad_model::Op) -> Reach {
                     doc.page_order
                         .iter()
                         .copied()
-                        .filter(|p| sheet::frame_style(doc, *p) == *id || sheet::title_block_style(doc, *p) == *id)
+                        .filter(|p| sheet::frame_style(doc, *p) == **id || sheet::title_block_style(doc, *p) == **id)
                         .collect(),
                 ),
             }

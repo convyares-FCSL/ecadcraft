@@ -18,6 +18,7 @@
 #![deny(clippy::wildcard_enum_match_arm)]
 
 mod changes;
+mod devices;
 mod tree;
 
 use std::sync::Arc;
@@ -27,6 +28,7 @@ use ecad_model::view::{DerivedView, NoteCx, Outcome, Phase};
 use ecad_model::{Document, Op};
 
 pub use changes::Changes;
+pub use devices::{DevicesFeed, DevicesScope};
 pub use tree::{TreeFeed, TreeScope};
 
 use crate::text_style::fonts::TextMetrics;
@@ -89,6 +91,7 @@ impl<V> Lazy<V> {
 #[derive(Debug, Default)]
 pub struct Pending {
     tree: TreeScope,
+    devices: DevicesScope,
 }
 
 /// The views worked out for another document state ([`Views::detached`]): not kept, not
@@ -102,12 +105,13 @@ pub struct Views {
     inputs: EngineInputs,
     // Stage 4: feeds for the change log.
     tree: TreeFeed,
+    devices: DevicesFeed,
 }
 
 impl Views {
     /// No view built yet; [`Views::rebuild`] builds the kept ones.
     pub fn new(inputs: EngineInputs) -> Self {
-        Views { inputs, tree: TreeFeed }
+        Views { inputs, tree: TreeFeed, devices: DevicesFeed::default() }
     }
 
     /// The engine's inputs the views are built with.
@@ -121,20 +125,24 @@ impl Views {
         let cx = NoteCx { doc: before, phase: Phase::Before, effects: &effects };
         let mut pending = Pending::default();
         note_view::<_, Inputs<'_>>(&self.tree, &cx, &mut pending.tree);
+        note_view::<_, Inputs<'_>>(&self.devices, &cx, &mut pending.devices);
         pending
     }
 
     /// After phase on the committed transaction's ops, then update every kept view, stage by
     /// stage, and merge their outcomes.
     pub fn finish(&mut self, after: &Document, tx_ops: &[Op], pending: Pending) -> Changes {
-        let Pending { mut tree } = pending;
+        let Pending { mut tree, mut devices } = pending;
         let effects = Effects::of(tx_ops);
         let cx = NoteCx { doc: after, phase: Phase::After, effects: &effects };
         note_view::<_, Inputs<'_>>(&self.tree, &cx, &mut tree);
+        note_view::<_, Inputs<'_>>(&self.devices, &cx, &mut devices);
         let inputs = Inputs { engine: &self.inputs };
         let mut changes = Changes::default();
         // Stage 4: the feeds, merged in field order.
         merge(&mut changes, self.tree.update(after, tree, &inputs));
+        merge(&mut changes, self.devices.update(after, devices, &inputs));
+        changes.devices = self.devices.take();
         changes
     }
 
