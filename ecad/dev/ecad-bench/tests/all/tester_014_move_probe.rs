@@ -216,9 +216,9 @@ fn move_components_with_wires_on_the_kept_small_project() {
             for e in pg.entities_of(p, page) {
                 let Some(Mapped::Item(item)) = map.get(e.handle) else { continue };
                 let Some((_, r)) = doc.representation_of_item(item) else { continue };
-                let Subject::Wire(c) = r.subject else { continue };
-                let Some(cond) = doc.wires.get(&c) else { continue };
-                let attached = cond.ends.iter().flatten().any(|t| doc.terminals.get(t).is_some_and(|x| x.component == first));
+                let Subject::Route(c) = r.subject else { continue };
+                let Some(route) = doc.routes.get(&c) else { continue };
+                let attached = route.ends.iter().filter_map(|e| e.point()).any(|t| doc.terminals.get(&t).is_some_and(|x| x.component == first));
                 if !attached {
                     continue;
                 }

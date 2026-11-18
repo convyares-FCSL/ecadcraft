@@ -13,7 +13,7 @@
 use cadcraft_engine::Session;
 use cadcraft_engine::doc::{EntityKind, Handle};
 use cadcraft_engine::geom::Vec2;
-use ecad_model::{CableId, DeviceId, Document, End, PageId, RepresentationId, Subject, TerminalId, WireId};
+use ecad_model::{CableId, DeviceId, Document, End, PageId, RepresentationId, RouteId, Subject, TerminalId, WireId};
 
 use super::{capture, pick, pixel, pt, read, route_ends, terminal_name};
 use crate::kinds::ObjectKind;
@@ -30,6 +30,8 @@ pub struct Target {
     pub name: String,
     pub component: Option<DeviceId>,
     pub conductor: Option<WireId>,
+    /// The drawn line (route) clicked, and for a wire end which of its ends.
+    pub route: Option<RouteId>,
     pub end: Option<End>,
     pub cable: Option<CableId>,
     pub terminal: Option<TerminalId>,
@@ -58,6 +60,7 @@ impl Target {
             name: name.into(),
             component: None,
             conductor: None,
+            route: None,
             end: None,
             cable: None,
             terminal: None,
@@ -114,21 +117,26 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
     }
     // A wire's end within the aperture.
     if ok_aperture {
-        let mut best: Option<(f64, WireId, End)> = None;
-        for (w, a, b) in route_ends(doc, page) {
+        let mut best: Option<(f64, RouteId, End)> = None;
+        for (r, a, b) in route_ends(doc, page) {
             for (end, p_) in [(End::A, a), (End::B, b)] {
                 let d = p_.dist(c);
                 if d <= aperture && best.is_none_or(|(x, _, _)| d < x) {
-                    best = Some((d, w, end));
+                    best = Some((d, r, end));
                 }
             }
         }
-        if let Some((_, w, end)) = best {
+        if let Some((_, r, end)) = best {
+            let w = crate::wires::wire_of_route(doc, r);
             t.kind = ObjectKind::WireEnd;
-            t.conductor = Some(w);
+            t.conductor = w;
+            t.route = Some(r);
             t.end = Some(end);
-            t.name = format!("end of {}", wire_words(doc, w));
-            t.handles = crate::checks::handles_of(p, page, crate::checks::Object::Wire(w));
+            t.name = match w {
+                Some(w) => format!("end of {}", wire_words(doc, w)),
+                None => "end of a wire line".into(),
+            };
+            t.handles = crate::checks::handles_of(p, page, crate::checks::Object::Route(r));
             return t;
         }
     }
@@ -203,8 +211,14 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
                     t.handles = crate::checks::handles_of(p, page, crate::checks::Object::Wire(w));
                 }
                 Subject::Cable(k) => return cable(p, page, t, k),
-                // Design 072 F31: routes are not drawn yet (lane D F2).
-                Subject::Route(_) => {}
+                Subject::Route(r) => {
+                    let w = crate::wires::wire_of_route(doc, r);
+                    t.kind = ObjectKind::Wire;
+                    t.conductor = w;
+                    t.route = Some(r);
+                    t.name = w.map_or_else(|| "wire line".into(), |w| wire_words(doc, w));
+                    t.handles = crate::checks::handles_of(p, page, crate::checks::Object::Route(r));
+                }
             },
             None => {}
         },

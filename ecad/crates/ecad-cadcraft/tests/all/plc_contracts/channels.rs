@@ -34,7 +34,7 @@ fn fixture(seed: u64) -> P {
     for i in 0..8 {
         let x = 100.0 + 20.0 * f64::from(i);
         placed(&mut h, "lamp", x, 260.0);
-        h.run("wire", json!({"points": pts(&[(x, 250.0), (x, 150.0)])})).unwrap();
+        h.wire_pp(&[(x, 250.0), (x, 150.0)]).unwrap();
     }
     P { h, cpu, di, di2, ai, iol, dq }
 }
@@ -146,7 +146,9 @@ fn f_a_cell_ends_a_loose_wire_at_its_point() {
     let v = h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [155.0, 200.0]})).unwrap();
     assert_eq!(v["message"], "Placed -A01 channels 0–2 on 3 wires (pins 1–3).", "{v}");
     let d = h.doc();
-    assert_eq!(d.wires.len(), wires + 1, "only the lamp-to-lamp wire is split in two");
+    // Design 072: a loose line carries no wire until both its ends land; each cell lands one, so
+    // the two loose lines get their wire (lamp to cell) and the lamp-to-lamp wire splits in two.
+    assert_eq!(d.wires.len(), wires + 3, "two loose lines get their wire, the lamp-to-lamp wire splits in two");
     let page = d.page_order[0];
     let mut cells: Vec<(String, TerminalId)> =
         d.terminals_of(di).filter_map(|(t, x)| x.key.as_ref().filter(|k| k.starts_with('.')).map(|k| (k.clone(), t))).collect();
@@ -155,9 +157,8 @@ fn f_a_cell_ends_a_loose_wire_at_its_point() {
     assert_eq!(ends, [1, 1, 2], "{cells:?}");
     for (_, t) in cells.iter().take(2) {
         let (c, _) = d.ends_at(*t)[0];
-        let wire = &d.wires[&c];
-        assert!(wire.ends.iter().all(Option::is_some), "the kept half runs from the lamp to the point: {wire:?}");
-        let (_, _, route) = ecad_cadcraft::wires::route_vertices(&d, c, page).unwrap();
+        let r = ecad_cadcraft::wires::route_of_wire_on(&d, c, page).unwrap();
+        let (_, _, route) = ecad_cadcraft::wires::route_vertices(&d, r).unwrap();
         assert!(route.iter().all(|q| q.y >= 200.0 - 1e-9), "nothing past the point, into the cell: {route:?}");
     }
     same_as_built(&mut h);
@@ -383,7 +384,7 @@ fn t_a_fence_across_too_many_wires_is_refused() {
     let mut h = H::new(4530);
     for i in 0..260 {
         let x = 10.0 + 1.0 * f64::from(i);
-        h.run("wire", json!({"points": pts(&[(x, 250.0), (x, 150.0)])})).unwrap();
+        h.wire_pp(&[(x, 250.0), (x, 150.0)]).unwrap();
     }
     let e = h.run("plcchannels", json!({"type": "DI", "from": [5.0, 200.0], "to": [300.0, 200.0]})).unwrap_err();
     assert!(e.contains("crosses 260 wires; at most 256"), "{e}");

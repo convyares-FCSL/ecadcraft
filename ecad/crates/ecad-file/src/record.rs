@@ -67,7 +67,6 @@ pub const OP_NAMES: &[&str] = &[
     "CreateWire",
     "DeleteWire",
     "ModifyWire",
-    "AttachEnd",
     "AddRoute",
     "RemoveRoute",
     "ModifyRoute",

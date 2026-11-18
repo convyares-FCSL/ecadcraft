@@ -20,8 +20,10 @@ fn last_tx(h: &mut H) -> (String, Vec<Op>) {
     h.p(|p| p.ledger.log().last().map(|t| (t.label.clone(), t.ops.clone())).unwrap_or_default())
 }
 
-/// `n` vertical wires at x = 0, 10, 20…, from y 0 to 50, with no ends attached.
+/// `n` vertical wires at x = 0, 10, 20…, from y 0 to 50, between connection points of one device.
 fn wires(h: &mut H, n: usize) -> Vec<WireId> {
+    let ends: Vec<(f64, f64)> = (0..n).flat_map(|i| [(10.0 * i as f64, 0.0), (10.0 * i as f64, 50.0)]).collect();
+    h.points_at(&ends);
     (0..n)
         .map(|i| {
             let x = 10.0 * i as f64;
@@ -190,7 +192,7 @@ fn slashing_onto_a_cable_not_drawn_assigns_its_cores_in_order() {
     let (label, _) = last_tx(&mut h);
     assert_eq!(label, "Cable slash");
     let doc = h.doc();
-    let members: Vec<(WireId, Option<String>)> = doc.cables[&k].members.iter().map(|m| (m.conductor, m.core.clone())).collect();
+    let members: Vec<(WireId, Option<String>)> = doc.cables[&k].members.iter().filter_map(|m| Some((m.wire()?, m.core.clone()))).collect();
     assert_eq!(members, vec![(ws[0], Some("1".into())), (ws[1], Some("2".into())), (ws[2], Some("3".into()))]);
     assert!(checks_of(&mut h, "cable-not-drawn").is_empty());
     let open = checks_of(&mut h, "core-open");
@@ -333,7 +335,7 @@ fn the_slash_tool_picks_a_cable_by_its_cable_keyword() {
     h.cmdline("-5,25");
     h.cmdline("500,25");
     let doc = h.doc();
-    let members: Vec<(WireId, Option<String>)> = doc.cables[&k].members.iter().map(|m| (m.conductor, m.core.clone())).collect();
+    let members: Vec<(WireId, Option<String>)> = doc.cables[&k].members.iter().filter_map(|m| Some((m.wire()?, m.core.clone()))).collect();
     assert_eq!(members, vec![(ws[0], Some("1".into())), (ws[1], Some("2".into()))]);
     assert_eq!(doc.cables.len(), 1, "no new cable");
     // `New` (the default) makes a new cable with the next free tag.

@@ -67,11 +67,27 @@ fn embedded_definitions_follow_the_owner_requirements() {
     for c in [f.c1, f.c2] {
         let doc = f.ledger.document();
         let (rid, rep) = doc.representations_of(Subject::Device(c)).next().map(|(i, r)| (i, r.clone())).unwrap();
-        for (w, cond) in doc.wires.iter() {
-            for end in End::BOTH {
-                if let Some(t) = cond.end(end).filter(|t| doc.terminals[t].component == c) {
-                    ops.push(Op::AttachEnd { conductor: *w, end, before: Some(t), after: None });
+        // Its routes go with their drawings, and the wires to its points with their cable cores.
+        for (r, route) in doc.routes.iter() {
+            let gone = ops.iter().any(|o| matches!(o, Op::RemoveRoute { id, .. } if id == r));
+            if !gone && route.ends.iter().any(|e| e.point().is_some_and(|t| doc.terminals[&t].component == c)) {
+                for (rid, rep) in doc.representations_of(Subject::Route(*r)) {
+                    ops.push(Op::UnlinkRepresentation { id: rid, rep: rep.clone() });
+                    for i in &rep.items {
+                        ops.push(Op::RemoveItem { id: *i, item: doc.items[i].clone() });
+                    }
                 }
+                ops.push(Op::RemoveRoute { id: *r, route: route.clone() });
+            }
+        }
+        for (w, wire) in doc.wires.iter() {
+            if wire.ends.iter().any(|t| doc.terminals[t].component == c) && !ops.iter().any(|o| matches!(o, Op::DeleteWire { id, .. } if id == w)) {
+                for (cable, cv) in doc.cables.iter() {
+                    for (index, member) in cv.members.iter().enumerate().rev().filter(|(_, m)| m.wire() == Some(*w)) {
+                        ops.push(Op::RemoveCableMember { cable: *cable, index, member: member.clone() });
+                    }
+                }
+                ops.push(Op::DeleteWire { id: *w, wire: wire.clone() });
             }
         }
         ops.push(Op::UnlinkRepresentation { id: rid, rep: rep.clone() });

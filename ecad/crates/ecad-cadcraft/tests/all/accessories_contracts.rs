@@ -3,7 +3,7 @@
 //! `jumper`, and the update maps. Driven through the commands' JSON forms.
 
 use ecad_cadcraft::outputs::{Group, Outputs};
-use ecad_model::{DeviceId, TerminalId, WireId};
+use ecad_model::{DeviceId, TerminalId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -14,17 +14,14 @@ struct F {
     h: H,
     strip: DeviceId,
     terms: Vec<TerminalId>,
-    wires: Vec<WireId>,
 }
 
 fn fixture(seed: u64) -> F {
     let mut h = H::new(seed);
     h.first_page();
-    let mut wires = Vec::new();
     for i in 0..6 {
         let x = 50.0 + 40.0 * f64::from(i);
-        let v = h.run("wire", json!({"points": pts(&[(x, 220.0), (x, 100.0)])})).unwrap();
-        wires.push(id::<WireId>(&v, "conductor"));
+        h.wire_pp(&[(x, 220.0), (x, 100.0)]).unwrap();
     }
     let v = h.run("terminals", json!({"from": [30, 160], "to": [280, 160]})).unwrap();
     let strip: DeviceId = id(&v, "strip");
@@ -42,7 +39,7 @@ fn fixture(seed: u64) -> F {
         }}),
     )
     .unwrap();
-    F { h, strip, terms, wires }
+    F { h, strip, terms }
 }
 
 impl F {
@@ -291,7 +288,7 @@ fn accessory_edits_recompute_only_what_they_touch() {
     let mut xs = Vec::new();
     for i in 0..2 {
         let x = 350.0 + 40.0 * f64::from(i);
-        f.h.run("wire", json!({"points": pts(&[(x, 220.0), (x, 100.0)])})).unwrap();
+        f.h.wire_pp(&[(x, 220.0), (x, 100.0)]).unwrap();
         xs.push(x);
     }
     let v = f.h.run("terminals", json!({"from": [330, 160], "to": [420, 160]})).unwrap();
@@ -310,7 +307,7 @@ fn accessory_edits_recompute_only_what_they_touch() {
     assert_eq!(f.bom_row("end_stop").unwrap()["part_number"], "ES-2");
     f.h.run("projectprops", json!({"props": {"strip_partition_maker": "M"}})).unwrap();
     assert_eq!(work(&mut f), 1);
-    f.h.run("wire", json!({"points": pts(&[(500.0, 50.0), (550.0, 50.0)])})).unwrap();
+    f.h.wire_pp(&[(500.0, 50.0), (550.0, 50.0)]).unwrap();
     assert_eq!(work(&mut f), 0, "an unrelated wire changes no strip");
     f.same_as_built();
 }
@@ -342,13 +339,18 @@ fn hostile_accessory_and_link_values_are_refused_in_words() {
     let v = f.h.run("checks", json!({"kinds": ["link-orphan"]})).unwrap();
     assert!(v.to_string().contains("99999"), "{v}");
     // Keys on a device that is not a strip.
-    let w = f.wires[0];
+    // Design 072: terminal 1 splits its line's wire in two; the device at the far end of either.
     let doc = f.h.doc();
-    let far = doc.wires[&w].ends.iter().flatten().find_map(|t| {
-        let c = doc.terminals[t].component;
-        (c != f.strip).then_some(c)
+    let far = doc.ends_at(f.terms[0]).into_iter().find_map(|(w, _)| {
+        doc.wires[&w].ends.iter().find_map(|t| {
+            let c = doc.terminals[t].component;
+            (c != f.strip).then_some(c)
+        })
     });
+    assert!(far.is_some(), "a wire from terminal 1 to another device");
     if let Some(c) = far {
+        // The fixture's far end is a point of a plain device (design 072): name it, as a drawn one is.
+        f.h.run("setprop", json!({"component": c.hex(), "key": "tag", "value": "-A9"})).unwrap();
         refused(&mut f, "setprop", json!({"component": c.hex(), "key": "acc.start", "value": "end_stop"}));
     }
     let coil = f.h.run("place", json!({"symbol": "coil", "at": [500, 200]})).unwrap();
@@ -410,7 +412,7 @@ fn renumbering_onto_a_spare_position_in_a_link() {
         )
     })
     .unwrap();
-    let mut f = F { h, strip, terms, wires: Vec::new() };
+    let mut f = F { h, strip, terms };
     f.h.run("setprop", json!({"component": strip.hex(), "key": "terminals", "value": "6"})).unwrap();
     f.h.run("setprop", json!({"component": strip.hex(), "key": "link.1", "value": "2-3"})).unwrap();
     f.acc(json!({"at": "3", "items": ["end_plate"]}));

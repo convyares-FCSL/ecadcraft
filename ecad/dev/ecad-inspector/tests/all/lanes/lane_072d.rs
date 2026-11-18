@@ -1,6 +1,6 @@
-//! Lane 072 D (design 072 §4.2, acceptance A15): a wire's typed values and the `ModifyWire` op that
-//! changes them are shown in the Readable view of their transaction, and the Raw view is the stored
-//! bytes.
+//! Lane 072 D (design 072 §4.2, acceptance A15): a wire's typed values, its net, conductor and
+//! place in the net's order, and the `CreateWire` and `ModifyWire` ops that record them are shown in
+//! the Readable view of their transaction, and the Raw view is the stored bytes.
 
 use std::time::Duration;
 
@@ -8,7 +8,7 @@ use ecad_inspector::source::{FileSource, Source, VerifyState};
 use ecad_model::text::Text;
 use ecad_model::units::Amps;
 use ecad_model::wire::{Basis, Colours, WireNumber, WireSize};
-use ecad_model::{Author, IdAllocator, Op, Wire, WireId};
+use ecad_model::{Author, ConductorId, Device, DeviceId, IdAllocator, NetId, Op, Terminal, TerminalId, Wire, WireId};
 
 use crate::common::*;
 
@@ -17,10 +17,27 @@ fn a_wires_values_and_its_modify_op_are_shown_raw_and_readable() {
     let dir = TempDir::new("072d-wire");
     let mut l = history();
     let mut ids = IdAllocator::seeded(72);
-    let w: WireId = ids.fresh();
-    let before =
-        Wire { number: Some(WireNumber { text: Text::new("24V-07").unwrap(), fixed: true }), potential: Text::new("24V").ok(), ..Wire::default() };
-    l.commit(Author::User, "wire", vec![Op::CreateWire { id: w, conductor: before.clone() }]).unwrap();
+    let (w, k, a, b): (WireId, DeviceId, TerminalId, TerminalId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
+    let (net, conductor): (NetId, ConductorId) = (ids.fresh(), ids.fresh());
+    let before = Wire {
+        net_order: 3,
+        order_fixed: true,
+        number: Some(WireNumber { text: Text::new("24V-07").unwrap(), fixed: true }),
+        potential: Text::new("24V").ok(),
+        ..Wire::new(net, conductor, a, b)
+    };
+    let point = |label: &str| Terminal { component: k, label: Some(label.into()), key: None };
+    l.commit(
+        Author::User,
+        "wire",
+        vec![
+            Op::CreateDevice { id: k, device: Device::default().with_tag(Some("-K7")) },
+            Op::AddTerminal { id: a, terminal: point("A1") },
+            Op::AddTerminal { id: b, terminal: point("A2") },
+            Op::CreateWire { id: w, wire: before.clone() },
+        ],
+    )
+    .unwrap();
     let mut after = before.clone();
     after.size = WireSize::parse("2.5");
     after.colours = Colours::parse("GNYE");
@@ -34,28 +51,49 @@ fn a_wires_values_and_its_modify_op_are_shown_raw_and_readable() {
     for want in ["ModifyWire", "24V-07", "GN/YE", "2.5", "manual"] {
         assert!(log.contains(want), "{want} in the readable log: {log}");
     }
+    let log = run(&[path.to_str().unwrap(), "log", "main", "--last", "2"]).unwrap();
+    for want in ["CreateWire", "net_order", "order_fixed", &net.hex(), &conductor.hex()] {
+        assert!(log.contains(want), "{want} in the readable log: {log}");
+    }
     let f = FileSource::from_path(&path);
     assert!(matches!(f.wait_verified(Duration::from_secs(60)), VerifyState::Done { .. }));
     let s = Some(&f as &dyn Source);
     let rows = ask(s, serde_json::json!({"op": "rows", "table": "transactions", "count": 1000}));
     let rows = rows["ok"]["rows"].as_array().cloned().unwrap_or_default();
-    let key = rows.last().and_then(|r| r["key"].as_str()).unwrap().to_string();
-    let readable = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "readable"}));
-    let text = readable["ok"]["decoded"].to_string();
-    for want in ["ModifyWire", "colours", "GN/YE", "size", "rating", "load"] {
-        assert!(text.contains(want), "{want} in the readable record: {text}");
-    }
-    let raw = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "raw"}));
+    let key_of = |back: usize| rows.iter().rev().nth(back).and_then(|r| r["key"].as_str()).unwrap().to_string();
     let r = f.store().unwrap().reader().unwrap();
-    let mut bytes = None;
-    r.raw_rows(|t, k, v| {
-        if t == "transactions" && ecad_inspector::text::hex(k) == key {
-            bytes = Some(v.to_vec());
+    let raw_bytes = |key: &str| {
+        let mut bytes = None;
+        r.raw_rows(|t, k, v| {
+            if t == "transactions" && ecad_inspector::text::hex(k) == key {
+                bytes = Some(v.to_vec());
+            }
+            Ok(())
+        })
+        .unwrap();
+        ecad_inspector::text::hex(&bytes.unwrap())
+    };
+    // The ModifyWire record (the last) and the CreateWire record (the one before it).
+    for (back, wants) in [
+        (0, &["ModifyWire", "colours", "GN/YE", "size", "rating", "load"][..]),
+        (1, &["CreateWire", "net", "conductor", "net_order", "order_fixed", "ends", &net.hex(), &conductor.hex(), &a.hex(), &b.hex()][..]),
+    ] {
+        let key = key_of(back);
+        let readable = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "readable"}));
+        let text = readable["ok"]["decoded"].to_string();
+        for want in wants {
+            assert!(text.contains(want), "{want} in the readable record: {text}");
         }
-        Ok(())
-    })
-    .unwrap();
-    assert_eq!(raw["ok"]["hex"], ecad_inspector::text::hex(&bytes.unwrap()));
+        assert!(!text.contains("AttachEnd"), "{text}");
+        let raw = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "raw"}));
+        assert_eq!(raw["ok"]["hex"], raw_bytes(&key));
+    }
+    // The wires view names the net, the conductor and its place in the net's order.
+    let wires = ask(s, serde_json::json!({"op": "wires"}));
+    let row = &wires["ok"]["rows"][0];
+    assert_eq!(row["ends"], serde_json::json!(["-K7:A1", "-K7:A2"]), "{wires}");
+    assert_eq!((row["net"].as_str(), row["conductor"].as_str()), (Some(net.to_string().as_str()), Some(conductor.to_string().as_str())), "{wires}");
+    assert_eq!((row["net_order"].as_u64(), row["order_fixed"].as_bool()), (Some(3), Some(true)), "{wires}");
 }
 
 #[test]
@@ -97,4 +135,45 @@ fn routes_and_their_ops_are_shown_raw_and_readable() {
     // The snapshot keeps the routes in the page's chunk.
     let summary = ask(s, serde_json::json!({"op": "summary"}));
     assert!(summary.get("ok").is_some(), "{summary}");
+}
+
+#[test]
+fn core_positions_are_shown_raw_and_readable() {
+    // Owner ruling, 2026-11-18: a core on a loose line, with its landed end, and an unplaced core.
+    use ecad_model::{Cable, CableId, CableMember, CorePosition, PageId, Pt, Route, RouteEnd, RouteId};
+    let dir = TempDir::new("072d-cores");
+    let mut l = history();
+    let page: PageId = *l.document().page_order.first().unwrap();
+    let mut ids = IdAllocator::seeded(74);
+    let (d, t, r, k): (DeviceId, TerminalId, RouteId, CableId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
+    let loose = Route::new(page, vec![Pt::new(0.0, 0.0), Pt::new(40.0, 0.0)], [RouteEnd::Point(t), RouteEnd::Free]);
+    let on_line = CableMember { position: CorePosition::Route { route: r, landed: Some(t) }, core: Some("1".into()) };
+    let spare = CableMember { position: CorePosition::Unplaced, core: Some("2".into()) };
+    l.commit(
+        Author::User,
+        "slash",
+        vec![
+            Op::CreateDevice { id: d, device: Device::default() },
+            Op::AddTerminal { id: t, terminal: Terminal { component: d, label: Some("1".into()), key: Some("1".into()) } },
+            Op::AddRoute { id: r, route: loose },
+            Op::CreateCable { id: k, cable: Cable::default() },
+            Op::AddCableMember { cable: k, index: 0, member: on_line },
+            Op::AddCableMember { cable: k, index: 1, member: spare },
+        ],
+    )
+    .unwrap();
+    let path = written(&dir, &l);
+    let f = FileSource::from_path(&path);
+    assert!(matches!(f.wait_verified(Duration::from_secs(60)), VerifyState::Done { .. }));
+    let s = Some(&f as &dyn Source);
+    let rows = ask(s, serde_json::json!({"op": "rows", "table": "transactions", "count": 1000}));
+    let rows = rows["ok"]["rows"].as_array().cloned().unwrap_or_default();
+    let key = rows.last().and_then(|r| r["key"].as_str().map(str::to_string)).unwrap();
+    let readable = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "readable"}));
+    let text = readable["ok"]["decoded"].to_string();
+    for want in ["AddCableMember", "position", "route", "landed", "unplaced"] {
+        assert!(text.contains(want), "{want} in the readable records: {text}");
+    }
+    let raw = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "raw"}));
+    assert!(raw["ok"]["hex"].as_str().is_some_and(|h| !h.is_empty()), "the raw row");
 }

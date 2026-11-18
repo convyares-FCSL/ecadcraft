@@ -806,7 +806,7 @@ fn page_obstacles(doc: &Document, page: PageId, fixed: &[TextBox]) -> Obstacles 
                     obs.add(b);
                 }
             }
-            ecad_model::Subject::Wire(_) => {
+            ecad_model::Subject::Route(_) => {
                 for item in r.items.iter().filter_map(|i| doc.items.get(i)) {
                     let pts: Vec<ecad_model::Pt> = match &item.kind {
                         ecad_model::ItemKind::Primitive(ecad_model::Primitive::Line { a, b }) => vec![*a, *b],

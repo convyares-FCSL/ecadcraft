@@ -24,7 +24,7 @@ fn build(c: &mut Client) -> String {
     let q = s(&c.exec("place", json!({"symbol": "mcb1", "at": [100, 300]})), "component");
     c.exec("setprop", json!({"component": q, "key": "rating", "value": "4 A"}));
     c.exec("place", json!({"symbol": "lamp", "at": [100, 200]}));
-    let w = s(&c.exec("wire", json!({"points": [[100, 290], [100, 210]]})), "conductor");
+    let w = s(&c.wire_pp(json!({"points": [[100, 290], [100, 210]]})), "conductor");
     let cab = s(&c.exec("cableslash", json!({"from": [95, 250], "to": [105, 250], "tag": "-W01"})), "cable");
     c.exec("setprop", json!({"cable": cab, "key": "type", "value": "H07RN-F 4G1.5"}));
     c.exec("setprop", json!({"cable": cab, "key": "length", "value": "12 m"}));

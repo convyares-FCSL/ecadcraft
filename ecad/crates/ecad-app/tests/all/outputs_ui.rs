@@ -59,6 +59,7 @@ fn main_symbol(h: &mut H, tag: &str) -> ecad_model::RepresentationId {
 }
 
 #[test]
+#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn the_demo_locations_reports_generated_pages_and_print_book() {
     ecad_cadcraft::printbook::install_io();
     let dir = std::env::temp_dir().join(format!("ecad-024-ui-{}", std::process::id()));

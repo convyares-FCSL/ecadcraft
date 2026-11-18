@@ -178,9 +178,11 @@ pub fn core_labels(doc: &Document, k: CableId) -> Vec<String> {
         .iter()
         .filter_map(|ch| {
             let first = *ch.first()?;
-            let core = ch.iter().find_map(|w| cab.members.iter().find(|m| m.conductor == *w).and_then(|m| m.core.clone()));
-            Some(ecad_model::CableMember { conductor: first, core })
+            let core = ch.iter().find_map(|w| cab.members.iter().find(|m| m.wire() == Some(*w)).and_then(|m| m.core.clone()));
+            Some(ecad_model::CableMember::on_wire(first, core))
         })
+        // Design 072: a core on a loose line (no wire yet) is a core of the cable too.
+        .chain(cab.members.iter().take(crate::slash::MAX_CABLE_MEMBERS).filter(|m| m.wire().is_none()).cloned())
         .collect();
     let count = crate::strips::count_cores(offer(doc, k), &heads);
     let mut out: Vec<String> = count.offer.clone().unwrap_or_default();
@@ -256,18 +258,16 @@ pub fn bad_unused(doc: &Document, k: CableId) -> (Vec<(String, String)>, usize) 
     (out, n)
 }
 
-/// A core that is not connected at both ends and not ticked Not used.
+/// An offered core no member uses (neither a wire nor a loose line, design 072 §4.2) and not
+/// ticked Not used. (A wire always runs between two connection points, so a core with a wire is
+/// never open at an end.)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpenCore {
     pub label: String,
-    /// No wire at all (an offered core nobody uses).
-    pub unwired: bool,
-    /// The open end: the conductor and which of its ends is attached to nothing.
-    pub end: Option<(ecad_model::WireId, ecad_model::End)>,
 }
 
-/// The open cores of cable `k` (owner rule): offered cores no member uses, and core chains with an
-/// end attached to nothing, unless ticked Not used. Bounded by the cable's member bound.
+/// The open cores of cable `k` (owner rule): offered cores no member uses, unless ticked Not
+/// used. Bounded by the cable's member bound.
 pub fn open_cores(doc: &Document, k: CableId) -> Vec<OpenCore> {
     let Some(cab) = doc.cables.get(&k) else { return Vec::new() };
     let chains = crate::references::core_chains(doc, k);
@@ -275,36 +275,14 @@ pub fn open_cores(doc: &Document, k: CableId) -> Vec<OpenCore> {
         .iter()
         .filter_map(|ch| {
             let first = *ch.first()?;
-            let core = ch.iter().find_map(|w| cab.members.iter().find(|m| m.conductor == *w).and_then(|m| m.core.clone()));
-            Some(ecad_model::CableMember { conductor: first, core })
+            let core = ch.iter().find_map(|w| cab.members.iter().find(|m| m.wire() == Some(*w)).and_then(|m| m.core.clone()));
+            Some(ecad_model::CableMember::on_wire(first, core))
         })
+        // Design 072: a core on a loose line is placed, so used.
+        .chain(cab.members.iter().take(crate::slash::MAX_CABLE_MEMBERS).filter(|m| m.wire().is_none()).cloned())
         .collect();
     let count = crate::strips::count_cores(offer(doc, k), &heads);
-    let mut out = Vec::new();
-    for label in &count.spare {
-        if !is_unused(doc, k, label) {
-            out.push(OpenCore { label: label.clone(), unwired: true, end: None });
-        }
-    }
-    for (i, ch) in chains.iter().enumerate() {
-        let end = ch.iter().find_map(|w| {
-            let [a, b] = doc.wires.get(w)?.ends;
-            if a.is_none() {
-                Some((*w, ecad_model::End::A))
-            } else if b.is_none() {
-                Some((*w, ecad_model::End::B))
-            } else {
-                None
-            }
-        });
-        let Some(end) = end else { continue };
-        let label =
-            count.matched.get(i).cloned().flatten().or_else(|| heads.get(i).and_then(|h| h.core.clone())).unwrap_or_else(|| (i + 1).to_string());
-        if !is_unused(doc, k, &label) {
-            out.push(OpenCore { label, unwired: false, end: Some(end) });
-        }
-    }
-    out
+    count.spare.iter().filter(|label| !is_unused(doc, k, label)).map(|label| OpenCore { label: label.clone() }).collect()
 }
 
 /// The cables that name cable type `id` (one pass over the cables, asked for one type at a time).

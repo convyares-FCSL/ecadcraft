@@ -111,6 +111,7 @@ fn the_history_tab_makes_a_version_shows_it_and_branches_from_it() {
     save(&h, &deltas, "020-branchbar.png");
 
     // An edit on the branch; Save and switch back to main: main is unchanged.
+    crate::common::points_at(h.state_mut(), &[(0.0, 150.0), (30.0, 150.0)]);
     let wires = doc(&mut h).wires.len();
     ok(&mut h, r#"wire {"points":[[0,150],[30,150]]}"#);
     assert_eq!(doc(&mut h).wires.len(), wires + 1);
@@ -128,6 +129,7 @@ fn the_history_tab_makes_a_version_shows_it_and_branches_from_it() {
     h.state_mut().revisions = None;
     assert_eq!(doc(&mut h).wires.len(), wires, "main is as it was");
     // C: Restore the version after an edit on main: one step, undone by u.
+    crate::common::points_at(h.state_mut(), &[(0.0, 160.0), (30.0, 160.0)]);
     ok(&mut h, r#"wire {"points":[[0,160],[30,160]]}"#);
     h.state_mut().history_action(Do::AskRestore(json!({"version": "Before change"})));
     h.run_steps(2);

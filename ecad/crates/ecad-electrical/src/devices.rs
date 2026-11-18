@@ -748,11 +748,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
     let (unlinks, links): (Vec<Op>, Vec<Op>) = ops_reps.into_iter().unzip();
     ops.extend(unlinks);
     ops.extend(links);
-    for (old, nt) in &new_terminal {
-        for (w, end) in doc.ends_at(*old) {
-            ops.push(Op::AttachEnd { conductor: w, end, before: Some(*old), after: Some(*nt) });
-        }
-    }
+    ops.extend(crate::wires::repoint_ops(doc, &new_terminal.iter().map(|(old, nt)| (*old, *nt)).collect()));
     for (t, term) in doc.terminals_of(from) {
         ops.push(Op::RemoveTerminal { id: t, terminal: term.clone() });
     }
@@ -832,11 +828,7 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
                 .into_iter()
                 .collect()
         };
-        for t in &drop {
-            for (w, end) in doc.ends_at(*t) {
-                ops.push(Op::AttachEnd { conductor: w, end, before: Some(*t), after: None });
-            }
-        }
+        ops.extend(crate::wires::free_points_ops(doc, drop.iter().copied()));
         for t in &drop {
             if let Some(term) = doc.terminals.get(t) {
                 ops.push(Op::RemoveTerminal { id: *t, terminal: term.clone() });

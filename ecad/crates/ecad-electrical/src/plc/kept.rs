@@ -179,33 +179,40 @@ impl Plc {
                 Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
                     out.insert(terminal.component);
                 }
-                Op::AttachEnd { conductor, before, after, .. } => {
-                    for t in [before, after].into_iter().flatten() {
+                // Design 072 §4.4: the commit's rewrite made, removed or moved a wire: the devices
+                // at its ends, and the cards on its net.
+                Op::CreateWire { wire, .. } | Op::DeleteWire { wire, .. } | Op::ModifyWire { after: wire, .. } => {
+                    for t in &wire.ends {
                         if let Some(x) = doc.terminals.get(t) {
                             out.insert(x.component);
                         }
                     }
-                    let conn = doc.connectivity();
-                    if let Some(net) = conn.net_of_conductor(*conductor).and_then(|n| conn.net(n)) {
-                        out.extend(
-                            net.terminals.iter().filter_map(|t| doc.terminals.get(t)).map(|x| x.component).filter(|c| self.cards.contains_key(c)),
-                        );
-                    }
-                }
-                // Brief 051 (design 051 §9.1): a card's symbol moved, or a wire on one of its
-                // points re-routed, changes its runs and their Checks rows.
-                Op::ModifyItem { id, .. } => match doc.representation_of_item(*id).map(|(_, r)| r.subject) {
-                    Some(Subject::Device(c)) if self.cards.contains_key(&c) => {
-                        out.insert(c);
-                    }
-                    Some(Subject::Wire(w)) => {
-                        let ends = doc.wires.get(&w).map(|x| x.ends).unwrap_or_default();
+                    for w in doc.wires_of_net(wire.net) {
+                        let ends = doc.wires.get(&w).map(|x| x.ends);
                         out.extend(
                             ends.iter().flatten().filter_map(|t| doc.terminals.get(t)).map(|x| x.component).filter(|c| self.cards.contains_key(c)),
                         );
                     }
-                    _ => {}
-                },
+                }
+                // Brief 051 (design 051 §9.1): a card's symbol moved changes its runs and their
+                // Checks rows.
+                Op::ModifyItem { id, .. } => {
+                    if let Some(Subject::Device(c)) = doc.representation_of_item(*id).map(|(_, r)| r.subject)
+                        && self.cards.contains_key(&c)
+                    {
+                        out.insert(c);
+                    }
+                }
+                // A route on one of a card's points re-routed (design 072 §4.3).
+                Op::AddRoute { route, .. } | Op::RemoveRoute { route, .. } => {
+                    out.extend(
+                        route.points_landed().filter_map(|t| doc.terminals.get(&t)).map(|x| x.component).filter(|c| self.cards.contains_key(c)),
+                    );
+                }
+                Op::ModifyRoute { before, after, .. } => {
+                    let points = before.points_landed().chain(after.points_landed());
+                    out.extend(points.filter_map(|t| doc.terminals.get(&t)).map(|x| x.component).filter(|c| self.cards.contains_key(c)));
+                }
                 // A text style or standard changed: the bands of every card (rare).
                 Op::SetStyle { .. } | Op::SetStandard { .. } => styles = true,
                 Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key.starts_with("text.") => styles = true,

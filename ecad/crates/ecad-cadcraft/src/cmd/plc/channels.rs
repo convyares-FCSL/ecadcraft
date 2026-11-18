@@ -80,8 +80,8 @@ pub(crate) fn place_channel(
         let cell = plan_cell(&mut p.ids, page, style, def, starter, card, &j, pl, &mut ops)?;
         let mut wire = None;
         if let (Some((_, on)), Some((_, t0, _, _))) = (landing, cell.terminals.first()) {
-            let land = crate::connectors::plan_land(doc, &mut p.ids, page, on, *t0)?;
-            wire = Some(land.conductor);
+            let land = crate::connectors::plan_land(doc, &mut p.ids, on, *t0)?;
+            wire = Some(land.route);
             ops.extend(land.ops);
         }
         // Brief 052d (design 052 §5.3): the place proposes for the card.
@@ -92,7 +92,10 @@ pub(crate) fn place_channel(
         let doc = p.ledger.document();
         let first = first_number(doc, card);
         let pins: Vec<String> = cell.terminals.iter().map(|(_, _, pin, _)| pin.clone()).collect();
-        let on = wire.map(|w| format!(" on wire {}", crate::slash::wire_name(doc, w))).unwrap_or_default();
+        let on = wire
+            .and_then(|r| crate::wires::wire_of_route(doc, r))
+            .map(|w| format!(" on wire {}", crate::slash::wire_name(doc, w)))
+            .unwrap_or_default();
         let message = format!("Placed {card_tag} channel {} ({}){on}.", j.index + first, pins_words(&pins));
         let mut v = json!({
             "component": card.hex(),

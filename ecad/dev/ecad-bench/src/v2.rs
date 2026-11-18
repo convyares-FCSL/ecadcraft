@@ -138,8 +138,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredV2, S
     {
         let mut o = open(&copy)?;
         let mut ids = IdAllocator::seeded(EDIT_SEED);
-        for run in 0..runs.max(5) {
-            let ops = crate::generate::added_wire(o.ledger.document(), &mut ids, &format!("W-v2-{}", run + 1))?;
+        for _ in 0..runs.max(5) {
+            let ops = crate::generate::added_wire(o.ledger.document(), &mut ids)?;
             o.ledger.commit(Author::User, "Wire", ops).map_err(|e| e.to_string())?;
             let t = Instant::now();
             o.project.save(&mut o.ledger).map_err(|e| e.to_string())?;
@@ -267,7 +267,7 @@ fn copy_file(from: &Path, to: &Path) -> Result<(), String> {
 pub fn crash_save(path: &Path) -> Result<(), String> {
     let mut o = open(path)?;
     let mut ids = IdAllocator::seeded(EDIT_SEED ^ u64::from(std::process::id()));
-    let ops = crate::generate::added_wire(o.ledger.document(), &mut ids, "W-crash")?;
+    let ops = crate::generate::added_wire(o.ledger.document(), &mut ids)?;
     o.ledger.commit(Author::User, "Wire", ops).map_err(|e| e.to_string())?;
     o.project.save(&mut o.ledger).map_err(|e| e.to_string())?;
     std::process::exit(0)
@@ -438,8 +438,8 @@ pub fn probe(path: &Path) -> Result<(), String> {
     }
     let mut o = open(&copy)?;
     let mut ids = IdAllocator::seeded(EDIT_SEED ^ 7);
-    for i in 0..10 {
-        let ops = crate::generate::added_wire(o.ledger.document(), &mut ids, &format!("W-probe-{i}"))?;
+    for _ in 0..10 {
+        let ops = crate::generate::added_wire(o.ledger.document(), &mut ids)?;
         o.ledger.commit(Author::User, "Wire", ops).map_err(|e| e.to_string())?;
         let t = Instant::now();
         o.project.save(&mut o.ledger).map_err(|e| e.to_string())?;

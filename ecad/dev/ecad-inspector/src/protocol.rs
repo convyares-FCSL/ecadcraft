@@ -406,7 +406,7 @@ fn invariants(d: &Document) -> Value {
     let shown: Vec<Value> = mismatches
         .iter()
         .take(200)
-        .map(|m| json!({"wire": wire_name(d, m.conductor), "end": format!("{:?}", m.end), "point": point_name(d, m.terminal), "page": page_number(d, m.page)}))
+        .map(|m| json!({"route": format!("({})", m.route.short()), "end": format!("{:?}", m.end), "point": point_name(d, m.terminal), "page": page_number(d, m.page)}))
         .collect();
     json!({
         "ok": check.is_ok() && index.is_ok() && mismatches.is_empty(),
@@ -524,7 +524,7 @@ fn devices(d: &Document, detail: bool) -> Vec<Value> {
     }
     let mut attached: BTreeMap<TerminalId, Vec<WireId>> = BTreeMap::new();
     for (id, w) in &d.wires {
-        for t in w.ends.iter().flatten() {
+        for t in &w.ends {
             attached.entry(*t).or_default().push(*id);
         }
     }
@@ -600,19 +600,23 @@ fn wires(d: &Document) -> Vec<Value> {
     let mut in_cable: BTreeMap<WireId, (String, Option<String>)> = BTreeMap::new();
     for (id, k) in &d.cables {
         let tag = k.properties.get(ecad_model::tag::TAG_KEY).cloned().unwrap_or_else(|| format!("({})", id.short()));
-        for m in &k.members {
-            in_cable.insert(m.conductor, (tag.clone(), m.core.clone()));
+        for w in k.members.iter().filter_map(|m| m.wire()) {
+            in_cable.insert(w, (tag.clone(), k.members.iter().find(|m| m.wire() == Some(w)).and_then(|m| m.core.clone())));
         }
     }
     d.wires
         .iter()
         .map(|(id, w)| {
-            let ends: Vec<String> = w.ends.iter().map(|e| e.map_or_else(|| "open".to_string(), |t| point_name(d, t))).collect();
+            let ends: Vec<String> = w.ends.iter().map(|t| point_name(d, *t)).collect();
             let cable = in_cable.get(id);
             json!({
                 "id": id.to_string(),
                 "number": wire_number(d, *id),
                 "ends": ends,
+                "net": w.net.to_string(),
+                "conductor": w.conductor.to_string(),
+                "net_order": w.net_order,
+                "order_fixed": w.order_fixed,
                 "size": w.size.map(|s| s.to_string()),
                 "colours": w.colours.as_ref().map(ToString::to_string),
                 "fixed": w.number_fixed(),
@@ -625,16 +629,29 @@ fn wires(d: &Document) -> Vec<Value> {
         .collect()
 }
 
+/// Where a cable core is, in words: its wire, or the line it waits on with its landed end
+/// (owner ruling, 2026-11-18), or unplaced.
+fn core_place(d: &Document, p: ecad_model::CorePosition) -> String {
+    match p {
+        ecad_model::CorePosition::Wire(w) => wire_name(d, w),
+        ecad_model::CorePosition::Route { route, landed: Some(t) } => {
+            format!("line {} (no wire yet, landed at {})", route.short(), point_name(d, t))
+        }
+        ecad_model::CorePosition::Route { route, landed: None } => format!("line {} (no wire yet, no end landed)", route.short()),
+        ecad_model::CorePosition::Unplaced => "unplaced".into(),
+    }
+}
+
 fn cables(d: &Document) -> Vec<Value> {
     d.cables
         .iter()
         .map(|(id, k)| {
-            let members: Vec<Value> = k.members.iter().map(|m| json!({"wire": wire_name(d, m.conductor), "core": m.core})).collect();
+            let members: Vec<Value> = k.members.iter().map(|m| json!({"wire": core_place(d, m.position), "core": m.core})).collect();
             let mut ends: [BTreeSet<String>; 2] = [BTreeSet::new(), BTreeSet::new()];
             for m in &k.members {
-                if let Some(w) = d.wires.get(&m.conductor) {
+                if let Some(w) = m.wire().and_then(|w| d.wires.get(&w)) {
                     for (side, t) in ends.iter_mut().zip(w.ends.iter()) {
-                        if let Some(term) = t.and_then(|t| d.terminals.get(&t)) {
+                        if let Some(term) = d.terminals.get(t) {
                             side.insert(device_name(d, term.component));
                         }
                     }

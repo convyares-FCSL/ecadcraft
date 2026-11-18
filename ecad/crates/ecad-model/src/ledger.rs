@@ -580,8 +580,26 @@ fn apply_tx_extended(
     let mut touched = Touched::default();
     let mut more = Vec::new();
     let applied = journal.apply_rest(&mut touched).and_then(|()| {
-        more = extend(journal.doc, ops);
-        journal.extend(more.clone(), &mut touched)
+        // Design 072 §4.4: the wires of every net whose points changed, in the same transaction.
+        let mut wires = crate::wire_order::rewrite(journal.doc, ops);
+        if !wires.is_empty() {
+            journal.extend(wires.clone(), &mut touched)?;
+        }
+        // The cores on the routes changed move with them (owner ruling, 2026-11-18).
+        let cores = crate::wire_order::cores(journal.doc, ops);
+        if !cores.is_empty() {
+            journal.extend(cores.clone(), &mut touched)?;
+            wires.extend(cores);
+        }
+        let extra = if wires.is_empty() {
+            extend(journal.doc, ops)
+        } else {
+            let all: Vec<Op> = ops.iter().cloned().chain(wires.iter().cloned()).collect();
+            extend(journal.doc, &all)
+        };
+        more = wires;
+        more.extend(extra.iter().cloned());
+        journal.extend(extra, &mut touched)
     });
     let (result, disagreement) = match applied {
         Ok(()) => validate(journal.doc, &touched, verify),
@@ -608,8 +626,16 @@ fn applied_then_reverted<R>(
     doc: &mut Document, ops: &[Op], verify: bool, history: Option<Committed<'_>>, health: &mut Health, read: impl FnOnce(&Document) -> R,
 ) -> (Result<R>, Option<String>) {
     let mut journal = Journal::new(doc, ops, history, health);
-    let (checked, disagreement) = match journal.apply() {
-        Ok(touched) => validate(journal.doc, &touched, verify),
+    let mut touched = Touched::default();
+    // As a commit does (design 072 §4.4): the wires of the nets whose points changed follow.
+    let applied = journal.apply_rest(&mut touched).and_then(|()| {
+        let wires = crate::wire_order::rewrite(journal.doc, ops);
+        journal.extend(wires, &mut touched)?;
+        let cores = crate::wire_order::cores(journal.doc, ops);
+        journal.extend(cores, &mut touched)
+    });
+    let (checked, disagreement) = match applied {
+        Ok(()) => validate(journal.doc, &touched, verify),
         Err(e) => (Err(e), None),
     };
     let result = checked.map(|()| read(journal.doc));
@@ -1130,15 +1156,13 @@ impl Ledger {
     /// # Errors
     /// As [`Ledger::commit`].
     pub fn commit_at(&mut self, author: Author, label: &str, ops: Vec<Op>, time_ms: Option<u64>) -> Result<TxId> {
-        if ops.is_empty() {
-            return Err(ModelError::Empty);
-        }
-        self.append(author, label.to_string(), TxKind::Edit, ops, time_ms)
+        self.commit_extended(author, label, ops, time_ms, |_, _| Vec::new())
     }
 
     /// [`Ledger::commit_at`] with a pass that extends the transaction (brief 022's numbering
-    /// pass): after `ops` are applied, `extend` sees the document as they left it (no copy) and
-    /// returns more ops, recorded in the same transaction after `ops`, so one undo undoes both.
+    /// pass): after `ops` are applied, the wire rewrite ([`crate::wire_order::rewrite`], every
+    /// edit) and then `extend` see the document as they left it (no copy) and return more ops,
+    /// recorded in the same transaction after `ops`, so one undo undoes all.
     ///
     /// # Errors
     /// As [`Ledger::commit`]; the extra ops are checked like any other.
@@ -1372,13 +1396,14 @@ mod tests {
 
     use super::*;
     use crate::doc::{Cable, CableMember, Device, End, Layer, Page, Terminal, Wire};
-    use crate::id::{CableId, DeviceId, LayerId, PageId, TerminalId, WireId};
+    use crate::id::{CableId, ConductorId, DeviceId, LayerId, NetId, PageId, TerminalId, WireId};
 
     fn json(doc: &Document) -> String {
         serde_json::to_string(doc).unwrap()
     }
 
-    /// A ledger with a component, two terminals, a conductor on the first and a cable holding it.
+    /// A ledger with a component, three terminals, a wire from the first to the third and a cable
+    /// holding it.
     fn ledger() -> Ledger {
         let mut l = Ledger::new(3);
         let (c, w) = (DeviceId(3), WireId(6));
@@ -1391,10 +1416,10 @@ mod tests {
                 Op::CreateDevice { id: c, device: Device::default() },
                 Op::AddTerminal { id: TerminalId(4), terminal: Terminal { component: c, label: None, key: None } },
                 Op::AddTerminal { id: TerminalId(5), terminal: Terminal { component: c, label: None, key: None } },
-                Op::CreateWire { id: w, conductor: Wire::default() },
-                Op::AttachEnd { conductor: w, end: End::A, before: None, after: Some(TerminalId(4)) },
+                Op::AddTerminal { id: TerminalId(10), terminal: Terminal { component: c, label: None, key: None } },
+                Op::CreateWire { id: w, wire: Wire::new(NetId(14), ConductorId(15), TerminalId(4), TerminalId(10)) },
                 Op::CreateCable { id: CableId(7), cable: Cable::default() },
-                Op::AddCableMember { cable: CableId(7), index: 0, member: CableMember { conductor: w, core: None } },
+                Op::AddCableMember { cable: CableId(7), index: 0, member: CableMember::on_wire(w, None) },
             ],
         )
         .unwrap();
@@ -1404,8 +1429,8 @@ mod tests {
     /// A valid three-op transaction touching indexes.
     fn three_ops() -> Vec<Op> {
         vec![
-            Op::AttachEnd { conductor: WireId(6), end: End::B, before: None, after: Some(TerminalId(5)) },
-            Op::RemoveCableMember { cable: CableId(7), index: 0, member: CableMember { conductor: WireId(6), core: None } },
+            Op::CreateWire { id: WireId(11), wire: Wire::new(NetId(12), ConductorId(13), TerminalId(4), TerminalId(5)) },
+            Op::RemoveCableMember { cable: CableId(7), index: 0, member: CableMember::on_wire(WireId(6), None) },
             Op::AddPage { id: PageId(8), page: Page::new("2"), index: 1 },
         ]
     }
@@ -1459,10 +1484,10 @@ mod tests {
     fn a_failed_revert_rebuilds_the_document_from_the_log() {
         let mut l = ledger();
         let (doc, head) = (json(l.document()), l.head());
-        // Ops that apply, then an end state that fails: a conductor end on a missing terminal.
+        // Ops that apply, then an end state that fails: a wire end on a missing terminal.
         let ops = vec![
             Op::AddPage { id: PageId(8), page: Page::new("2"), index: 1 },
-            Op::AttachEnd { conductor: WireId(6), end: End::B, before: None, after: Some(TerminalId(99)) },
+            Op::CreateWire { id: WireId(11), wire: Wire::new(NetId(12), ConductorId(13), TerminalId(4), TerminalId(99)) },
         ];
         hooks::FAIL_REVERT.with(|c| c.set(true));
         // The debug assertion fires only after the document has been rebuilt.
@@ -1525,7 +1550,7 @@ mod tests {
         let mut l = ledger();
         let (doc, head) = (json(l.document()), l.head());
         let seen = l.with_applied(&three_ops(), |d| (d.ends_at(TerminalId(5)), d.cables_of(WireId(6)), d.pages.len(), d.check().is_ok())).unwrap();
-        assert_eq!(seen, (vec![(WireId(6), End::B)], vec![], 2, true));
+        assert_eq!(seen, (vec![(WireId(11), End::B)], vec![], 2, true));
         assert_unchanged(&l, &doc, head);
         // The plain document form does the same.
         let mut d = l.document().clone();
@@ -1540,9 +1565,10 @@ mod tests {
         let (doc, head) = (json(l.document()), l.head());
         let bad_end = vec![
             Op::AddPage { id: PageId(8), page: Page::new("2"), index: 1 },
-            Op::AttachEnd { conductor: WireId(6), end: End::B, before: None, after: Some(TerminalId(99)) },
+            Op::CreateWire { id: WireId(11), wire: Wire::new(NetId(12), ConductorId(13), TerminalId(4), TerminalId(99)) },
         ];
-        let bad_before = vec![Op::AttachEnd { conductor: WireId(6), end: End::A, before: Some(TerminalId(5)), after: None }];
+        // A recorded wire that differs from the one in the document.
+        let bad_before = vec![Op::DeleteWire { id: WireId(6), wire: Wire::new(NetId(14), ConductorId(15), TerminalId(5), TerminalId(10)) }];
         for ops in [bad_end, bad_before] {
             let mut ran = false;
             let previewed = l.with_applied(&ops, |_| ran = true).map_err(|e| e.to_string());

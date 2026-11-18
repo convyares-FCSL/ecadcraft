@@ -187,6 +187,20 @@ fn index(doc: &Document) -> Vec<Value> {
     for id in doc.wires.keys() {
         push("wire", format!("{:032x}", id.0), id.short(), label_of(doc, Subject::Wire(*id)));
     }
+    // A wire's net and its conductor (design 072 §4.2): named after the wire first in the net's
+    // order, and after the wire that is the conductor.
+    let mut nets: std::collections::BTreeMap<ecad_model::NetId, (u16, String)> = std::collections::BTreeMap::new();
+    for (id, w) in &doc.wires {
+        let label = label_of(doc, Subject::Wire(*id));
+        push("conductor", format!("{:032x}", w.conductor.0), w.conductor.short(), format!("conductor of {label}"));
+        let first = nets.entry(w.net).or_insert_with(|| (w.net_order, label.clone()));
+        if w.net_order < first.0 {
+            *first = (w.net_order, label);
+        }
+    }
+    for (id, (_, label)) in &nets {
+        push("net", format!("{:032x}", id.0), id.short(), format!("net of {label}"));
+    }
     for id in doc.cables.keys() {
         push("cable", format!("{:032x}", id.0), id.short(), label_of(doc, Subject::Cable(*id)));
     }
@@ -325,4 +339,39 @@ pub fn references_json(doc: &Document, refs: &[CableReference]) -> Value {
             })
             .collect(),
     )
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use ecad_model::{Author, ConductorId, Device, DeviceId, IdAllocator, NetId, Op, Terminal, TerminalId, Wire, WireId};
+
+    /// Design 072 §4.2: a wire's net and conductor have labels in the snapshot's index, the net
+    /// named after the wire first in its order.
+    #[test]
+    fn a_wires_net_and_conductor_are_labelled() {
+        let mut ids = IdAllocator::seeded(72);
+        let mut l = ecad_model::Ledger::new(72);
+        let (k, a, b, c): (DeviceId, TerminalId, TerminalId, TerminalId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
+        let (w1, w2, net, c1, c2): (WireId, WireId, NetId, ConductorId, ConductorId) =
+            (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
+        let point = |label: &str| Terminal { component: k, label: Some(label.into()), key: None };
+        let number = |n: &str| ecad_model::text::Text::new(n).ok().map(|text| ecad_model::wire::WireNumber { text, fixed: true });
+        let ops = vec![
+            Op::CreateDevice { id: k, device: Device::default().with_tag(Some("-K1")) },
+            Op::AddTerminal { id: a, terminal: point("1") },
+            Op::AddTerminal { id: b, terminal: point("2") },
+            Op::AddTerminal { id: c, terminal: point("3") },
+            Op::CreateWire { id: w1, wire: Wire { net_order: 2, number: number("102"), ..Wire::new(net, c1, b, c) } },
+            Op::CreateWire { id: w2, wire: Wire { net_order: 1, number: number("101"), ..Wire::new(net, c2, a, b) } },
+        ];
+        l.commit(Author::User, "wires", ops).unwrap();
+        let s = super::snapshot("t", &l, None, &super::EventLog::default(), None).unwrap();
+        let label = |kind: &str, hex: String| {
+            s["index"].as_array().unwrap().iter().find(|x| x["kind"] == kind && x["id"] == hex.as_str()).map(|x| x["label"].clone())
+        };
+        assert_eq!(label("net", format!("{:032x}", net.0)), Some("net of wire 101".into()));
+        assert_eq!(label("conductor", format!("{:032x}", c1.0)), Some("conductor of wire 102".into()));
+        assert_eq!(label("conductor", format!("{:032x}", c2.0)), Some("conductor of wire 101".into()));
+    }
 }

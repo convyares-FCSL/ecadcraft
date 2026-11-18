@@ -22,7 +22,7 @@ use crate::keys::PropsExt;
 use std::collections::BTreeMap;
 
 use crate::doc::{Cable, CableMember, Device, Document, End, Folder, Item, ItemKind, Page, Representation, Subject, Terminal, Wire};
-use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, TerminalId, WireId};
+use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, NetId, PageId, RepresentationId, RouteId, TerminalId, WireId};
 use crate::op::ObjectRef;
 
 /// Whether a reference is being added or removed.
@@ -68,6 +68,8 @@ pub(crate) struct Index {
     pub(crate) terminal_ends: Multi<TerminalId, (WireId, End)>,
     /// Wire → cables listing it.
     pub(crate) conductor_cables: Multi<WireId, CableId>,
+    /// Route → the cables with a core on it (a line with no wire yet).
+    pub(crate) route_cables: Multi<RouteId, CableId>,
     /// Device → its terminals.
     pub(crate) component_terminals: Multi<DeviceId, TerminalId>,
     /// Subject → representations depicting it.
@@ -108,6 +110,8 @@ pub(crate) struct Index {
     pub(crate) terminal_routes: Multi<TerminalId, RouteId>,
     /// Route → routes landing on its middle (a T).
     pub(crate) route_tees: Multi<RouteId, RouteId>,
+    /// Net → its wires (design 072 §4.2).
+    pub(crate) net_wires: Multi<NetId, WireId>,
 }
 
 impl Index {
@@ -284,15 +288,10 @@ impl Index {
 
     pub(crate) fn conductor(&mut self, id: WireId, c: &Wire, delta: Delta) {
         for end in End::BOTH {
-            self.conductor_end(id, end, c.end(end), delta);
+            bump(&mut self.terminal_ends, c.end(end), (id, end), delta);
         }
+        bump(&mut self.net_wires, c.net, id, delta);
         self.style_choices(ObjectRef::Wire(id), &c.display, delta);
-    }
-
-    pub(crate) fn conductor_end(&mut self, id: WireId, end: End, terminal: Option<TerminalId>, delta: Delta) {
-        if let Some(t) = terminal {
-            bump(&mut self.terminal_ends, t, (id, end), delta);
-        }
     }
 
     pub(crate) fn cable(&mut self, id: CableId, c: &Cable, delta: Delta) {
@@ -311,7 +310,12 @@ impl Index {
     }
 
     pub(crate) fn cable_member(&mut self, id: CableId, m: &CableMember, delta: Delta) {
-        bump(&mut self.conductor_cables, m.conductor, id, delta);
+        if let Some(w) = m.wire() {
+            bump(&mut self.conductor_cables, w, id, delta);
+        }
+        if let Some(r) = m.route() {
+            bump(&mut self.route_cables, r, id, delta);
+        }
     }
 
     /// How many times representations list `item`, in total (DOC-05 allows one).

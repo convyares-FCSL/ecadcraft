@@ -148,7 +148,7 @@ fn canon(d: &Document) -> Vec<String> {
         let subject = match r.subject {
             Subject::Device(_) => "component".to_string(),
             Subject::Wire(c) => {
-                let ends: Vec<String> = End::BOTH.iter().map(|e| d.wires.get(&c).and_then(|x| x.end(*e)).map_or("loose".into(), label)).collect();
+                let ends: Vec<String> = End::BOTH.iter().map(|e| d.wires.get(&c).map_or("loose".into(), |x| label(x.end(*e)))).collect();
                 format!("wire ends {ends:?}")
             }
             Subject::Cable(_) => "cable".into(),
@@ -282,8 +282,12 @@ fn q4_a_typed_point_near_a_terminal_does_not_attach_in_the_ui() {
         type_enter(&mut h, "");
     }
     let d = doc(&mut h);
-    let c = d.wires.values().next().expect("a wire was drawn");
-    assert!(c.end(End::B).is_none() && !ended_by_capture, "typed {near} (3 px from A1) was captured: Q4 says typed points are literal");
+    // A line with a free end carries no wire (design 072 §4).
+    let r = d.routes.values().next().expect("a line was drawn");
+    assert!(
+        r.ends[1] == ecad_model::RouteEnd::Free && d.wires.is_empty() && !ended_by_capture,
+        "typed {near} (3 px from A1) was captured: Q4 says typed points are literal"
+    );
 }
 
 /// Design §9: during Wire, Ctrl+Z removes the last point (it does not undo the last committed

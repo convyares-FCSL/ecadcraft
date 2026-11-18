@@ -222,7 +222,7 @@ fn bug_11_four_pole_power_contacts_show_their_coil_like_no_and_nc() {
 /// Vertical wires at `xs` from y 250 down to 150.
 fn wires(h: &mut H, xs: &[f64]) {
     for x in xs {
-        h.run("wire", json!({"points": crate::common::pts(&[(*x, 250.0), (*x, 150.0)])})).unwrap();
+        h.wire_pp(&[(*x, 250.0), (*x, 150.0)]).unwrap();
     }
 }
 
@@ -345,7 +345,7 @@ fn bug_8_cells_on_wires_running_down_are_turned_with_their_frame_above() {
     let page = h.first_page();
     // Wires from y 230 down to 150; the fence just under their top.
     for x in [100.0, 120.0] {
-        h.run("wire", json!({"points": crate::common::pts(&[(x, 230.0), (x, 150.0)])})).unwrap();
+        h.wire_pp(&[(x, 230.0), (x, 150.0)]).unwrap();
     }
     let v = h.run("plcchannels", json!({"type": "DQ", "from": [95, 228], "to": [125, 228]})).unwrap();
     let card = card_of(&v);
@@ -359,7 +359,7 @@ fn bug_8_cells_on_wires_running_down_are_turned_with_their_frame_above() {
     let mut h = H::new(9109);
     let page = h.first_page();
     for x in [100.0, 120.0] {
-        h.run("wire", json!({"points": crate::common::pts(&[(x, 270.0), (x, 190.0)])})).unwrap();
+        h.wire_pp(&[(x, 270.0), (x, 190.0)]).unwrap();
     }
     let v = h.run("plcchannels", json!({"type": "DI", "from": [95, 192], "to": [125, 192]})).unwrap();
     let runs = h.p(|p| ecad_cadcraft::plc::look::runs_of_card(p.ledger.document(), card_of(&v), page));

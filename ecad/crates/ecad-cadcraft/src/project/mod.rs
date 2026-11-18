@@ -1135,20 +1135,19 @@ impl Project {
     fn following_routes(&self, page: PageId, moved: &dyn Fn(TerminalId) -> Option<Pt>) -> Vec<cadcraft_engine::doc::EntityKind> {
         let doc = self.ledger.document();
         let mut out = Vec::new();
-        for (cid, c) in &doc.wires {
-            let Some((_, prim)) = ecad_model::derive::route_on_page(doc, *cid, page) else { continue };
-            let mut p = prim.clone();
+        for r in doc.routes_on(page) {
+            let Some(route) = doc.routes.get(&r) else { continue };
+            let mut points = route.points.clone();
             let mut any = false;
-            for end in End::BOTH {
-                if let Some(to) = c.end(end).and_then(moved)
-                    && let Some(q) = p.with_path_end(end, to)
-                {
-                    p = q;
+            for (end, landed) in End::BOTH.into_iter().zip(route.ends) {
+                let slot = if end == End::A { points.first_mut() } else { points.last_mut() };
+                if let (Some(to), Some(p)) = (landed.point().and_then(moved), slot) {
+                    *p = to;
                     any = true;
                 }
             }
             if any {
-                out.push(kind_for_primitive(&p));
+                out.push(kind_for_primitive(&ecad_model::Primitive::Polyline { vertices: points, closed: false }));
             }
         }
         out
@@ -1201,8 +1200,14 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
                 out.insert(before.page);
                 out.insert(after.page);
             }
-            Op::AttachEnd { conductor, .. } => {
-                out.extend(doc.representations_of(Subject::Wire(*conductor)).map(|(_, r)| r.page));
+            // A route is drawn on its page; the wire labels its net's change move with the rewrite's
+            // own ops (`Project::numbered_pages`).
+            Op::AddRoute { route, .. } | Op::RemoveRoute { route, .. } => {
+                out.insert(route.page);
+            }
+            Op::ModifyRoute { before, after, .. } => {
+                out.insert(before.page);
+                out.insert(after.page);
             }
             // Brief 049 (design 049 §8.2): a continuation's partners list it on their pages; those
             // pages come from the reference index's watch (`xref::Watch`), and its own pages from
@@ -1210,9 +1215,8 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
             Op::CreateDevice { device: component, .. } | Op::DeleteDevice { device: component, .. }
                 if ecad_model::connectivity::continuation_key(&component.properties).is_some() => {}
             Op::CreateWire { id, .. } if !doc.wires.contains_key(id) => {}
-            // Brief 032: a deleted conductor's routes are unlinked and its ends detached in the
-            // same transaction (the invariant requires it), and those ops name its pages.
-            Op::DeleteWire { .. } => {}
+            // A deleted wire's labels are on the pages of the routes at its ends.
+            Op::DeleteWire { wire, .. } => out.extend(points_pages(doc, &wire.ends)),
             Op::CreateDevice { id, .. } if !doc.devices.contains_key(id) => {}
             Op::AddTerminal { id, .. } if !doc.terminals.contains_key(id) => {}
             // Brief 028: a terminal relabelled (Remove + Add of one ID) is drawn by its device's
@@ -1274,7 +1278,7 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
             Op::RemoveDefinition { id, .. } if unused_after(doc, *id, ops) => {}
             // A conductor's label shows its properties (brief 022): its pages.
             Op::SetProperty { object: ecad_model::ObjectRef::Wire(c), .. } | Op::ModifyWire { id: c, .. } => {
-                out.extend(doc.representations_of(Subject::Wire(*c)).map(|(_, r)| r.page));
+                out.extend(crate::wires::wire_pages(doc, *c));
             }
             // Brief 026: a cable's tag is drawn by its slashes and its members' labels: their
             // pages (its references elsewhere are the reference snapshot's part). A high-water
@@ -1283,7 +1287,7 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
                 out.extend(doc.representations_of(Subject::Cable(*k)).map(|(_, r)| r.page));
                 if let Some(cable) = doc.cables.get(k) {
                     for m in &cable.members {
-                        out.extend(doc.representations_of(Subject::Wire(m.conductor)).map(|(_, r)| r.page));
+                        out.extend(crate::cables::member_pages(doc, m));
                     }
                 }
             }
@@ -1337,6 +1341,12 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
     // page value changes the tag prefixes of that page only, and a moved symbol those of its own
     // page; both pages are named by the ops above. #102's widening is gone.
     Some(out)
+}
+
+/// The pages where the routes landing on connection points `points` are drawn (a wire's labels),
+/// through the index.
+pub(crate) fn points_pages(doc: &ecad_model::Document, points: &[TerminalId]) -> BTreeSet<PageId> {
+    points.iter().flat_map(|t| doc.routes_at(*t)).filter_map(|r| doc.routes.get(&r).map(|x| x.page)).collect()
 }
 
 /// The pages whose drawn objects `ops` add, change or remove (items and representations): where

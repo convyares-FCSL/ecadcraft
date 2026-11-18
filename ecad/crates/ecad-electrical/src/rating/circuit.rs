@@ -310,7 +310,7 @@ pub(super) fn panel_temperature_at(doc: &Document, ctx: &mut Context, c: WireId)
     let mut best: Option<(f64, String)> = None;
     let mut locations: Vec<String> = Vec::new();
     if let Some(x) = doc.wires.get(&c) {
-        for t in x.ends.iter().flatten() {
+        for t in &x.ends {
             let Some(comp) = doc.terminals.get(t).map(|t| t.component) else { continue };
             // Brief 052: the device's stored location is an entry key; boxes match by key, and the
             // row shows the entry's code.

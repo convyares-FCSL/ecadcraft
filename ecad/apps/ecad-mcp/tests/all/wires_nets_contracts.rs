@@ -22,24 +22,26 @@ fn hex(v: &Value, key: &str) -> String {
     v[key].as_str().unwrap().to_string()
 }
 
-/// FP-W3: `wire` that merges records one `Wire` transaction with no `CreateWire`, and says
-/// `created: false` with the existing wire; a wire between two open ends removes the folded wire.
+/// FP-W3 (design 072: routes draw, wires connect): `wire` that merges records one `Wire`
+/// transaction that grows the existing line (no new route), and says `created: false` with that
+/// line; a line between two open ends removes the folded line.
 #[test]
 fn wire_merging_through_execute() {
     let mut c = writer(WRITER_SEED);
     let first = c.exec("wire", json!({"points": [[0, 0], [50, 0]]}));
     let r = c.exec("wire", json!({"points": [[50, 0], [50, -20]]}));
     assert_eq!(r["created"], json!(false), "{r}");
-    assert_eq!(r["conductor"], first["conductor"]);
+    assert_eq!(r["route"], first["route"]);
+    assert_eq!(r["conductor"], Value::Null, "its ends are free: no wire yet");
     let t = last(&mut c);
     assert_eq!(t.label, "Wire");
-    assert!(!t.ops.iter().any(|o| matches!(o, Op::CreateWire { .. })), "{:?}", t.ops);
-    // Both ends: the folded wire is reported and no longer exists.
+    assert!(!t.ops.iter().any(|o| matches!(o, Op::AddRoute { .. })), "{:?}", t.ops);
+    // Both ends: the folded line is reported and no longer exists.
     let other = c.exec("wire", json!({"points": [[100, -20], [140, -20]]}));
     let r = c.exec("wire", json!({"points": [[50, -20], [100, -20]]}));
-    assert_eq!(r["removed"], json!([hex(&other, "conductor")]), "{r}");
+    assert_eq!(r["removed"], json!([hex(&other, "route")]), "{r}");
     let t = last(&mut c);
-    assert!(t.ops.iter().any(|o| matches!(o, Op::DeleteWire { id, .. } if id.hex() == hex(&other, "conductor"))));
+    assert!(t.ops.iter().any(|o| matches!(o, Op::RemoveRoute { id, .. } if id.hex() == hex(&other, "route"))));
 }
 
 /// `joinwires`: one `Join wires` transaction by the agent.

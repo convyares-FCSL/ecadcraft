@@ -5,7 +5,7 @@
 
 use crate::common;
 
-use common::{H, id, pts};
+use common::{H, id};
 use ecad_cadcraft::checks::{self, Kind as CheckKind};
 use ecad_cadcraft::symbols::{self, Family, STARTER_LIBRARY, STARTERS};
 use ecad_model::{DeviceId, Op, TerminalId, Word};
@@ -135,7 +135,7 @@ fn a_fuse_bank_breaks_the_net_and_its_spare_points_are_quiet() {
     for t in [lp, f1, f2] {
         let at = h.terminal_pos(page, t);
         let dy = if t == lp { 30.0 } else { -30.0 };
-        h.run("wire", json!({"points": pts(&[(at.x, at.y), (at.x, at.y + dy)])})).unwrap();
+        h.wire_pp(&[(at.x, at.y), (at.x, at.y + dy)]).unwrap();
     }
     let doc = h.doc();
     let conn = doc.connectivity();
@@ -246,8 +246,8 @@ fn a_bulkhead_pin_is_one_net_from_both_sides_and_spare_pins_are_quiet() {
     assert_eq!(rj["tag"], "-X01");
     let (p1, p2, sh) = (terminal(&rj, "1"), terminal(&rj, "2"), terminal(&rj, "SH"));
     let at = h.terminal_pos(page, p1);
-    let up: ecad_model::WireId = id(&h.run("wire", json!({"points": pts(&[(at.x, at.y), (at.x, at.y + 30.0)])})).unwrap(), "conductor");
-    let down: ecad_model::WireId = id(&h.run("wire", json!({"points": pts(&[(at.x, at.y), (at.x, at.y - 30.0)])})).unwrap(), "conductor");
+    let up: ecad_model::WireId = id(&h.wire_pp(&[(at.x, at.y), (at.x, at.y + 30.0)]).unwrap(), "conductor");
+    let down: ecad_model::WireId = id(&h.wire_pp(&[(at.x, at.y), (at.x, at.y - 30.0)]).unwrap(), "conductor");
     let doc = h.doc();
     let conn = doc.connectivity();
     assert_eq!(conn.net_of_conductor(up), conn.net_of_conductor(down), "a feed-through is one net");

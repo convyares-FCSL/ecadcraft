@@ -440,13 +440,13 @@ fn wire_categories_in_use_cross_zero_only() {
     let d0 = h.doc();
     let mut uses = ecad_cadcraft::front::Uses::build(&d0);
     let last = |h: &mut H| h.p(|p| p.ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default());
-    let w: ecad_model::WireId = id(&h.run("wire", json!({"points": [[0, 0], [60, 0]]})).unwrap(), "conductor");
+    let w: ecad_model::WireId = id(&h.wire_pp(&[(0.0, 0.0), (60.0, 0.0)]).unwrap(), "conductor");
     let ops = last(&mut h);
     uses.update(&h.doc(), &ops);
     h.run("category", json!({"conductor": w.hex(), "value": "dc24"})).unwrap();
     let ops = last(&mut h);
     assert!(uses.update(&h.doc(), &ops), "the first 24 V DC wire");
-    let w2: ecad_model::WireId = id(&h.run("wire", json!({"points": [[0, 20], [60, 20]]})).unwrap(), "conductor");
+    let w2: ecad_model::WireId = id(&h.wire_pp(&[(0.0, 20.0), (60.0, 20.0)]).unwrap(), "conductor");
     let ops = last(&mut h);
     uses.update(&h.doc(), &ops);
     h.run("category", json!({"conductor": w2.hex(), "value": "dc24"})).unwrap();
@@ -476,11 +476,10 @@ fn a_plain_page_gets_no_checks_numbering_or_references() {
     assert!(!ptype::look_of(&d, &StyleRef::Builtin("plain".into())).checks);
     assert!(!ecad_model::sheet::page_checks(&d, plain));
     let before_numbered = numbered(&mut h);
-    h.run("wire", json!({"points": [[0, 40], [60, 40]]})).unwrap();
+    h.wire_pp(&[(0.0, 40.0), (60.0, 40.0)]).unwrap();
     assert_eq!(on_page(&mut h, plain), 0, "no Checks row on a Plain page");
     let d = h.doc();
-    let on_plain: Vec<_> =
-        d.wires.iter().filter(|(c, _)| d.representations_of(ecad_model::Subject::Wire(**c)).all(|(_, r)| r.page == plain)).collect();
+    let on_plain: Vec<_> = d.wires.iter().filter(|(c, _)| ecad_cadcraft::wires::wire_pages(&d, **c).iter().all(|p| *p == plain)).collect();
     assert!(!on_plain.is_empty());
     assert!(on_plain.iter().all(|(_, c)| !c.number.is_some()), "no wire number on a Plain page");
     let _ = before_numbered;

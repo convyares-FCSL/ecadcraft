@@ -16,7 +16,7 @@ use ecad_cadcraft::outputs::{Group, Outputs};
 use ecad_model::{Author, DeviceId, Document, Op, PageId, Subject, TerminalId};
 use serde_json::{Value, json};
 
-use crate::common::{H, id, pts};
+use crate::common::{H, id};
 use crate::common::{reopen, tmp_dir};
 
 // ------------------------------------------------------------------------------- helpers
@@ -28,7 +28,7 @@ fn ids(v: &Value) -> Vec<TerminalId> {
 /// Vertical wires at `xs`, from y 250 to y 150.
 fn drops(h: &mut H, xs: &[f64]) {
     for x in xs {
-        h.run("wire", json!({"points": pts(&[(*x, 250.0), (*x, 150.0)])})).unwrap();
+        h.wire_pp(&[(*x, 250.0), (*x, 150.0)]).unwrap();
     }
 }
 
@@ -255,8 +255,8 @@ fn fixture_m(seed: u64) -> M {
     drops(&mut h, &[500.0]);
     let f = h.run("place", json!({"symbol": "fuseterm", "at": [400, 200]})).unwrap();
     let fuse_dev: DeviceId = id(&f, "component");
-    h.run("wire", json!({"points": pts(&[(400.0, 210.0), (400.0, 260.0)])})).unwrap();
-    h.run("wire", json!({"points": pts(&[(400.0, 190.0), (400.0, 140.0)])})).unwrap();
+    h.wire_pp(&[(400.0, 210.0), (400.0, 260.0)]).unwrap();
+    h.wire_pp(&[(400.0, 190.0), (400.0, 140.0)]).unwrap();
     h.run("setprop", json!({"component": fuse_dev.hex(), "key": "rating", "value": "4A"})).unwrap();
     h.activate(p1);
     M { h, p1, p2, fuse_dev }
@@ -584,13 +584,20 @@ fn h_toposition_converts_a_fuse_device() {
     let pos = positions(&d, x2);
     let (p, l) = pos.iter().find(|(_, l)| l.contains_key(".1i")).map(|(p, l)| (p.clone(), l.clone())).unwrap_or_else(|| panic!("{pos:?}"));
     assert_eq!(p, "5", "§3.3 new position");
-    // Nets unchanged: each wire's net has the same conductors as before.
+    // Nets unchanged: each net has as many wires as before, with the same numbers. The wires now
+    // end on the position's points, so they are new wires carrying the old ones' values (design
+    // 072 §4.4).
+    let numbers = |doc: &Document, ws: &[ecad_model::WireId]| -> Vec<String> {
+        let mut v: Vec<String> = ws.iter().map(|w| format!("{:?}", doc.wires.get(w).map(|x| &x.number))).collect();
+        v.sort();
+        v
+    };
     let (na, nb) = (conductors_of(&d, l[".1i"]), conductors_of(&d, l[".1o"]));
-    let mut before = [ca.clone(), cb.clone()];
-    let mut after = [na, nb];
+    let mut before = [numbers(&d0, &ca), numbers(&d0, &cb)];
+    let mut after = [numbers(&d, &na), numbers(&d, &nb)];
     before.sort();
     after.sort();
-    assert_eq!(before, after, "nets keep their conductors");
+    assert_eq!(before, after, "nets keep their wires and numbers");
     assert_eq!(prop(&mut m.h, x2, &format!("rating.{p}")).as_deref(), Some("4A"), "rating carried");
     let label = m.h.p(|p| p.ledger.log().last().map(|t| t.label.clone())).unwrap_or_default();
     assert!(label.starts_with("-F01 \u{2192} -X") && label.ends_with(":5"), "transaction label `-F05 → -X01:7`: {label}");

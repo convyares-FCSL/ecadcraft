@@ -409,7 +409,7 @@ pub fn explicit_users(doc: &Document, catalogue: &str, id: &StyleRef) -> Vec<(&'
 fn pages_of(doc: &Document, o: ObjectRef, out: &mut BTreeSet<PageId>) {
     match o {
         ObjectRef::Device(c) => out.extend(doc.representations_of(Subject::Device(c)).map(|(_, r)| r.page)),
-        ObjectRef::Wire(c) => out.extend(doc.representations_of(Subject::Wire(c)).map(|(_, r)| r.page)),
+        ObjectRef::Wire(c) => out.extend(crate::wires::wire_pages(doc, c)),
         ObjectRef::Cable(c) => out.extend(doc.representations_of(Subject::Cable(c)).map(|(_, r)| r.page)),
         ObjectRef::Page(p) => {
             out.insert(p);

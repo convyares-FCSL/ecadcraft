@@ -12,7 +12,7 @@
 //! document lookups.
 #![deny(clippy::wildcard_enum_match_arm)]
 
-use crate::doc::{Cable, CableMember, Definition, Device, End, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal, Wire};
+use crate::doc::{Cable, CableMember, Definition, Device, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal, Wire};
 use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, TerminalId, WireId};
 use crate::keys::{Area, area_of};
 use crate::op::{ObjectRef, Op};
@@ -79,13 +79,6 @@ pub enum Effect<'a> {
         id: WireId,
         before: Option<&'a Wire>,
         after: Option<&'a Wire>,
-    },
-    /// A conductor end attached or detached.
-    End {
-        conductor: WireId,
-        end: End,
-        before: Option<TerminalId>,
-        after: Option<TerminalId>,
     },
     /// A route drawn, removed or changed (design 072 F31).
     Route {
@@ -162,7 +155,6 @@ pub enum EffectKind {
     Terminal,
     Rep,
     Wire,
-    End,
     Route,
     Cable,
     Member,
@@ -177,7 +169,7 @@ pub enum EffectKind {
 
 impl EffectKind {
     /// Every kind, in declaration order.
-    pub const ALL: [EffectKind; 19] = [
+    pub const ALL: [EffectKind; 18] = [
         EffectKind::Page,
         EffectKind::Layer,
         EffectKind::Item,
@@ -186,7 +178,6 @@ impl EffectKind {
         EffectKind::Terminal,
         EffectKind::Rep,
         EffectKind::Wire,
-        EffectKind::End,
         EffectKind::Route,
         EffectKind::Cable,
         EffectKind::Member,
@@ -264,7 +255,6 @@ impl Effect<'_> {
             Effect::Terminal { .. } => EffectKind::Terminal,
             Effect::Rep { .. } => EffectKind::Rep,
             Effect::Wire { .. } => EffectKind::Wire,
-            Effect::End { .. } => EffectKind::End,
             Effect::Route { .. } => EffectKind::Route,
             Effect::Cable { .. } => EffectKind::Cable,
             Effect::Member { .. } => EffectKind::Member,
@@ -389,10 +379,9 @@ fn classify(op: &Op) -> Effect<'_> {
         Op::LinkRepresentation { id, rep } => Effect::Rep { id: *id, before: None, after: Some(rep) },
         Op::ModifyRepresentation { id, before, after } => Effect::Rep { id: *id, before: Some(before), after: Some(after) },
         Op::UnlinkRepresentation { id, rep } => Effect::Rep { id: *id, before: Some(rep), after: None },
-        Op::CreateWire { id, conductor } => Effect::Wire { id: *id, before: None, after: Some(conductor) },
-        Op::DeleteWire { id, conductor } => Effect::Wire { id: *id, before: Some(conductor), after: None },
+        Op::CreateWire { id, wire } => Effect::Wire { id: *id, before: None, after: Some(wire) },
+        Op::DeleteWire { id, wire } => Effect::Wire { id: *id, before: Some(wire), after: None },
         Op::ModifyWire { id, before, after } => Effect::Wire { id: *id, before: Some(before), after: Some(after) },
-        Op::AttachEnd { conductor, end, before, after } => Effect::End { conductor: *conductor, end: *end, before: *before, after: *after },
         Op::AddRoute { id, route } => Effect::Route { id: *id, before: None, after: Some(route) },
         Op::RemoveRoute { id, route } => Effect::Route { id: *id, before: Some(route), after: None },
         Op::ModifyRoute { id, before, after } => Effect::Route { id: *id, before: Some(before), after: Some(after) },
@@ -441,7 +430,6 @@ fn fold_key(e: &Effect<'_>, remove: bool) -> Option<Open> {
         | Effect::Terminal { .. }
         | Effect::Rep { .. }
         | Effect::Wire { .. }
-        | Effect::End { .. }
         | Effect::Route { .. }
         | Effect::Cable { .. }
         | Effect::Member { .. }

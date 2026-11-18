@@ -22,7 +22,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::CmdError;
-use ecad_model::derive::{CableReference, cable_references, cable_references_of, route_ends_by_page};
+use ecad_model::derive::{CableReference, cable_references, cable_references_of};
 use ecad_model::{CableId, Document, End, ItemId, LengthUnit, Op, PageId, Pt, Representation, RepresentationId, Subject, TerminalId, WireId};
 
 pub use ecad_model::derive::{MAX_REFERENCES_PER_CABLE, REFERENCE_ROLE};
@@ -211,9 +211,9 @@ fn text_box_holds(m: &Marker, p: Pt, pad: f64, h: f64, metrics: &dyn TextMetrics
     p.x >= lo.x - pad && p.x <= hi.x + pad && p.y >= lo.y - pad && p.y <= hi.y + pad
 }
 
-/// The pages (in page order) where `conductor` has a route.
+/// The pages (in page order) where `conductor` has a route ([`crate::wires::wire_pages`]).
 pub fn route_pages(doc: &Document, conductor: WireId) -> Vec<PageId> {
-    let on: BTreeSet<PageId> = doc.representations_of(Subject::Wire(conductor)).filter(|(_, r)| !r.items.is_empty()).map(|(_, r)| r.page).collect();
+    let on = crate::wires::wire_pages(doc, conductor);
     doc.page_order.iter().copied().filter(|p| on.contains(p)).collect()
 }
 
@@ -290,8 +290,7 @@ pub fn check_reference(doc: &Document, page: PageId, cable: CableId) -> Result<(
     if refs.len() >= MAX_REFERENCES_PER_CABLE {
         return Err(CmdError::refused(already_continues(doc, cable)));
     }
-    let routes = route_ends_by_page(doc);
-    if !c.members.iter().any(|m| routes.contains_key(&(m.conductor, page))) {
+    if !c.members.iter().any(|m| crate::cables::member_pages(doc, m).contains(&page)) {
         return Err(CmdError::refused(no_wires_here(doc, cable)));
     }
     Ok(())
@@ -375,9 +374,9 @@ pub fn plan_continue(
         ecad_model::ItemKind::Primitive(ecad_model::Primitive::Point { at }) if at.is_finite() => Some(*at),
         _ => None,
     });
-    let in_cable: BTreeSet<WireId> = c.members.iter().map(|m| m.conductor).collect();
+    let in_cable: BTreeSet<WireId> = c.members.iter().filter_map(|m| m.wire()).collect();
     let candidates: Vec<WireId> = match members {
-        None => c.members.iter().map(|m| m.conductor).collect(),
+        None => c.members.iter().filter_map(|m| m.wire()).collect(),
         Some(list) => {
             if list.len() > crate::slash::MAX_CABLE_MEMBERS {
                 return Err(CmdError::refused(too_many_members()));
@@ -394,29 +393,34 @@ pub fn plan_continue(
             list.to_vec()
         }
     };
-    let routes = route_ends_by_page(doc);
-    if !candidates.is_empty() && candidates.iter().all(|w| routes.contains_key(&(*w, page))) {
+    let drawn_on = |w: WireId, pg: PageId| crate::wires::wire_pages(doc, w).contains(&pg);
+    if !candidates.is_empty() && candidates.iter().all(|w| drawn_on(*w, page)) {
         return Err(CmdError::refused(drawn_here(doc, cable)));
     }
     let mut going: Vec<(WireId, End)> = Vec::new();
     let mut skipped = Vec::new();
     for w in &candidates {
-        if routes.contains_key(&(*w, page)) {
+        if drawn_on(*w, page) {
             skipped.push((*w, Skip::DrawnHere));
             continue;
         }
         let Some(conductor) = doc.wires.get(w) else { continue };
-        let free = match (conductor.end(End::A), conductor.end(End::B)) {
-            (Some(_), Some(_)) => {
+        // The end drawn on the source page is the one already there; the other continues here.
+        let on_source = |e: End| crate::wires::drawn_ends_at(doc, conductor.end(e)).iter().any(|(p, _)| *p == s.page);
+        let free = match (on_source(End::A), on_source(End::B)) {
+            (true, true) => {
                 skipped.push((*w, Skip::BothConnected));
                 continue;
             }
-            (Some(_), None) => End::B,
-            (None, Some(_)) => End::A,
-            (None, None) => match (routes.get(&(*w, s.page)), source_at) {
-                (Some((ra, rb)), Some(p)) if ra.dist(p) < rb.dist(p) => End::A,
-                _ => End::B,
-            },
+            (true, false) => End::B,
+            (false, true) => End::A,
+            (false, false) => {
+                let near = |e: End| crate::wires::drawn_ends_at(doc, conductor.end(e)).first().map(|(_, p)| *p);
+                match (near(End::A), near(End::B), source_at) {
+                    (Some(ra), Some(rb), Some(p)) if ra.dist(p) < rb.dist(p) => End::A,
+                    _ => End::B,
+                }
+            }
         };
         going.push((*w, free));
     }
@@ -561,7 +565,6 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
                 note(before, &mut out);
                 note(after, &mut out);
             }
-            Op::AttachEnd { conductor, .. } => out.extend(doc.cables_of(*conductor)),
             Op::CreateWire { id, .. } if !doc.wires.contains_key(id) => {}
             // Brief 032 (a fold deletes the folded wire; numbering writes wire numbers): a
             // conductor's cables only, never every cable.
@@ -655,7 +658,7 @@ fn moved_cables(doc: &Document, ops: &[Op], done: &mut bool, out: &mut BTreeSet<
 }
 
 /// Per member of a cable: the conductor, the pages it is routed on, and its end attachments.
-type MemberState = Vec<(WireId, Vec<PageId>, [Option<TerminalId>; 2])>;
+type MemberState = Vec<(ecad_model::CorePosition, Vec<PageId>, Option<[TerminalId; 2]>)>;
 
 /// The references of some cables at one moment, and what their reference ends are drawn from, so
 /// that one commit derives them once before and once after (brief 014).
@@ -685,8 +688,8 @@ impl Snapshot {
                 let state: MemberState = list
                     .iter()
                     .map(|m| {
-                        let ends = doc.wires.get(&m.conductor).map(|c| c.ends).unwrap_or([None, None]);
-                        (m.conductor, route_pages(doc, m.conductor), ends)
+                        let ends = m.wire().and_then(|w| doc.wires.get(&w)).map(|c| c.ends);
+                        (m.position, crate::cables::member_pages(doc, m).into_iter().collect(), ends)
                     })
                     .collect();
                 members.insert(k, state);
@@ -768,17 +771,16 @@ pub fn hover_lines(doc: &Document, reference: RepresentationId) -> Option<Vec<St
             lines.push(format!("Other end: {}", place(o)));
             // Built once per hover; the lines stop one past the hover's cap, so the caller still
             // says `… and N more`.
-            let routes = route_ends_by_page(doc);
             let shown: BTreeSet<ecad_model::TerminalId> =
                 ecad_model::derive::terminal_positions(doc, o.page).into_iter().map(|(t, _, _)| t).collect();
             let members = doc.cables.get(&r.cable).map(|c| c.members.as_slice()).unwrap_or_default();
-            for m in members.iter().filter(|m| routes.contains_key(&(m.conductor, o.page))) {
+            for m in members.iter().filter(|m| crate::cables::member_pages(doc, m).contains(&o.page)) {
                 if lines.len() > crate::words::MAX_HOVER_LINES {
                     break;
                 }
-                let terminal = doc.wires.get(&m.conductor).and_then(|c| terminal_on(doc, &shown, c));
+                let terminal = m.wire().and_then(|w| doc.wires.get(&w)).and_then(|c| terminal_on(doc, &shown, c));
                 let to = terminal.unwrap_or_else(|| "(not connected)".into());
-                lines.push(format!("  {} -> {to}", crate::slash::wire_name(doc, m.conductor)));
+                lines.push(format!("  {} -> {to}", crate::slash::position_name(doc, m.position)));
             }
         }
     }
@@ -787,7 +789,7 @@ pub fn hover_lines(doc: &Document, reference: RepresentationId) -> Option<Vec<St
 
 /// `K2:1`: the terminal among `shown` (those on the other end's page) a conductor attaches to.
 fn terminal_on(doc: &Document, shown: &BTreeSet<ecad_model::TerminalId>, c: &ecad_model::Wire) -> Option<String> {
-    let t = End::BOTH.into_iter().filter_map(|e| c.end(e)).find(|t| shown.contains(t))?;
+    let t = End::BOTH.into_iter().map(|e| c.end(e)).find(|t| shown.contains(t))?;
     // Brief 044: a connector pin is named by its half (`-X10.S:3`).
     if let Some(name) = crate::connectors::pin_name(doc, t) {
         return Some(name);
@@ -840,7 +842,7 @@ fn continuation_groups(doc: &Document, members: &[WireId]) -> BTreeMap<String, V
     let mut groups: BTreeMap<String, Vec<(usize, ecad_model::DeviceId, Option<PageId>)>> = BTreeMap::new();
     for (i, w) in members.iter().enumerate() {
         let Some(cond) = doc.wires.get(w) else { continue };
-        for t in cond.ends.iter().flatten() {
+        for t in &cond.ends {
             if let Some((c, key, page)) = continuation_at(doc, *t) {
                 groups.entry(key).or_default().push((i, c, page));
             }
@@ -856,7 +858,7 @@ fn continuation_groups(doc: &Document, members: &[WireId]) -> BTreeMap<String, V
 /// stored; cost proportional to the cable's members, each visited once (a cycle ends).
 pub fn core_chains(doc: &Document, cable: CableId) -> Vec<Vec<WireId>> {
     let Some(c) = doc.cables.get(&cable) else { return Vec::new() };
-    let members: Vec<WireId> = c.members.iter().take(crate::slash::MAX_CABLE_MEMBERS).map(|m| m.conductor).collect();
+    let members: Vec<WireId> = c.members.iter().take(crate::slash::MAX_CABLE_MEMBERS).filter_map(|m| m.wire()).collect();
     let n = members.len();
     let mut next: Vec<Vec<usize>> = vec![Vec::new(); n];
     for g in continuation_groups(doc, &members).values() {
@@ -957,17 +959,17 @@ pub fn plan_slash_continue(doc: &Document, page: PageId, cable: CableId, crossed
     if c.members.len().saturating_add(crossed.len()) > crate::slash::MAX_CABLE_MEMBERS {
         return Err(CmdError::refused(crate::slash::too_many()));
     }
-    let members: Vec<WireId> = c.members.iter().map(|m| m.conductor).collect();
+    let members: Vec<WireId> = c.members.iter().filter_map(|m| m.wire()).collect();
     let groups = continuation_groups(doc, &members);
     let chains = core_chains(doc, cable);
     let chain_of = |w: WireId| chains.iter().position(|ch| ch.contains(&w));
-    let drawn_here = |ch: &Vec<WireId>| ch.iter().any(|w| doc.representations_of(Subject::Wire(*w)).any(|(_, r)| r.page == page));
-    let label_of = |ch: &Vec<WireId>| ch.iter().find_map(|w| c.members.iter().find(|m| m.conductor == *w).and_then(|m| m.core.clone()));
+    let drawn_here = |ch: &Vec<WireId>| ch.iter().any(|w| crate::wires::wire_pages(doc, *w).contains(&page));
+    let label_of = |ch: &Vec<WireId>| ch.iter().find_map(|w| c.members.iter().find(|m| m.wire() == Some(*w)).and_then(|m| m.core.clone()));
     let mut out: Vec<Continued> = Vec::new();
     let mut used: BTreeMap<usize, WireId> = BTreeMap::new();
     let mut not: Vec<String> = Vec::new();
     for w in crossed {
-        let ends = doc.wires.get(w).map(|x| x.ends).unwrap_or_default();
+        let ends = doc.wires.get(w).map(|x| x.ends);
         // The member it continues, and the continuation's name as drawn.
         let found = ends.iter().flatten().find_map(|t| {
             let (k, key, kp) = continuation_at(doc, *t)?;
@@ -1014,12 +1016,11 @@ pub fn plan_slash_continue(doc: &Document, page: PageId, cable: CableId, crossed
 /// where they continue, not by `cablecontinue`.
 pub fn cores_end_on_continuations(doc: &Document, cable: CableId, members: Option<&[WireId]>) -> bool {
     let Some(c) = doc.cables.get(&cable) else { return false };
-    let all: Vec<WireId> = c.members.iter().map(|m| m.conductor).collect();
+    let all: Vec<WireId> = c.members.iter().filter_map(|m| m.wire()).collect();
     let list = members.unwrap_or(&all);
-    let both = |w: &WireId| doc.wires.get(w).is_some_and(|x| x.ends.iter().all(Option::is_some));
     !list.is_empty()
-        && list.iter().all(both)
-        && list.iter().any(|w| doc.wires.get(w).is_some_and(|x| x.ends.iter().flatten().any(|t| continuation_at(doc, *t).is_some())))
+        && list.iter().all(|w| doc.wires.contains_key(w))
+        && list.iter().any(|w| doc.wires.get(w).is_some_and(|x| x.ends.iter().any(|t| continuation_at(doc, *t).is_some())))
 }
 
 /// 032 §3.4: R6 when the cable's cores end on continuations.
@@ -1049,12 +1050,12 @@ pub fn slash_erase_followups(doc: &Document, erased: &[(RepresentationId, Repres
         if !kept {
             continue;
         }
-        let only_there = |w: WireId| {
-            let mut reps = doc.representations_of(Subject::Wire(w)).peekable();
-            reps.peek().is_some() && reps.all(|(_, r)| pages.contains(&r.page))
+        let only_there = |m: &ecad_model::CableMember| {
+            let on = crate::cables::member_pages(doc, m);
+            !on.is_empty() && on.iter().all(|p| pages.contains(p))
         };
         for (index, m) in c.members.iter().enumerate().rev() {
-            if only_there(m.conductor) {
+            if only_there(m) {
                 ops.push(Op::RemoveCableMember { cable: k, index, member: m.clone() });
             }
         }

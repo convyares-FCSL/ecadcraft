@@ -113,6 +113,7 @@ fn e_provisional_tags_are_drawn_orange_listed_in_checks_and_finalised() {
     let t = texts.iter().find(|t| t.of == TextOf::Tag && t.value == "-K?1").expect("the tag is drawn");
     assert_eq!(t.aci, Some(PROVISIONAL_ACI));
     // A new net with a potential reads 24V-?, provisional.
+    f.h.points_at(&[(400.0, 20.0), (440.0, 20.0)]);
     let w = f.h.run("wire", json!({"points": [[400, 20], [440, 20]], "potential": "24V"})).unwrap();
     let w: ecad_model::WireId = id(&w, "conductor");
     let label = f.h.p(|p| ecad_model::wiring::label(p.ledger.document(), w)).unwrap();

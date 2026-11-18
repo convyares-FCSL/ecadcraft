@@ -8,8 +8,8 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use ecad_model::{
-    CableId, CableMember, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Primitive, Pt, Representation, RepresentationId,
-    Style, Subject, WireId,
+    CableId, CableMember, CorePosition, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Primitive, Pt, Representation,
+    RepresentationId, Style, Subject, WireId,
 };
 
 use crate::devices::TagHigh;
@@ -89,7 +89,7 @@ pub fn slash_new(
     ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, from: Pt, to: Pt, found: &Crossings, tag: Option<&str>,
 ) -> Result<Slashed, CmdError> {
     let doc = ledger.document();
-    let blocked: Vec<(WireId, CableId)> = slash::blocked(doc, &found.members).into_iter().map(|(m, k)| (m.conductor, k)).collect();
+    let blocked: Vec<(CorePosition, CableId)> = slash::blocked(doc, &found.members).into_iter().map(|(m, k)| (m.position, k)).collect();
     if !blocked.is_empty() {
         return Err(CmdError::refused(slash::already_in_cable(doc, &blocked, "Nothing was created.")));
     }
@@ -100,7 +100,7 @@ pub fn slash_new(
     c.properties.insert(ecad_model::tag::TAG_KEY.into(), t);
     let mut ops = vec![Op::CreateCable { id: cable, cable: c }];
     for (index, m) in found.members.iter().enumerate() {
-        ops.push(Op::AddCableMember { cable, index, member: CableMember { conductor: m.conductor, core: None } });
+        ops.push(Op::AddCableMember { cable, index, member: CableMember { position: m.position, core: None } });
     }
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Line { a: from, b: to }) } });
     ops.push(Op::LinkRepresentation {
@@ -130,7 +130,8 @@ pub fn add_to_cable(
 ) -> Result<(CableId, Vec<Op>), CmdError> {
     let doc = ledger.document();
     // A conductor is in at most one cable (design 004, owner answer O5; §18.4 defers several).
-    let blocked: Vec<(WireId, CableId)> = conductors.iter().filter_map(|w| doc.cables_of(*w).first().map(|k| (*w, *k))).collect();
+    let blocked: Vec<(CorePosition, CableId)> =
+        conductors.iter().filter_map(|w| doc.cables_of(*w).first().map(|k| (CorePosition::Wire(*w), *k))).collect();
     if !blocked.is_empty() {
         return Err(CmdError::refused(slash::already_in_cable(doc, &blocked, "Nothing was changed.")));
     }
@@ -168,7 +169,7 @@ pub fn add_to_cable(
     let mut spare: VecDeque<String> =
         existing.and_then(|k| crate::strips::cable_cores(doc, k)).map(|c| c.spare.into_iter().collect()).unwrap_or_default();
     for w in conductors {
-        ops.push(Op::AddCableMember { cable, index, member: CableMember { conductor: *w, core: spare.pop_front() } });
+        ops.push(Op::AddCableMember { cable, index, member: CableMember::on_wire(*w, spare.pop_front()) });
         index += 1;
     }
     Ok((cable, ops))
@@ -183,10 +184,10 @@ fn core_label(text: Option<&str>) -> Result<Option<String>, CmdError> {
 }
 
 /// The ops changing member `index` of `cable` from `old` to `new` (design 009 §5.3).
-fn core_ops(cable: CableId, index: usize, conductor: WireId, old: Option<String>, new: Option<String>) -> [Op; 2] {
+fn core_ops(cable: CableId, index: usize, position: CorePosition, old: Option<String>, new: Option<String>) -> [Op; 2] {
     [
-        Op::RemoveCableMember { cable, index, member: CableMember { conductor, core: old } },
-        Op::AddCableMember { cable, index, member: CableMember { conductor, core: new } },
+        Op::RemoveCableMember { cable, index, member: CableMember { position, core: old } },
+        Op::AddCableMember { cable, index, member: CableMember { position, core: new } },
     ]
 }
 
@@ -219,13 +220,13 @@ pub fn core(doc: &Document, conductor: WireId, core: Option<&str>) -> Result<Cor
         return Err(CmdError::refused(format!("Wire {} is not in a cable.", slash::wire_name(doc, conductor))));
     };
     let members = doc.cables.get(&cable).map(|c| c.members.as_slice()).unwrap_or_default();
-    let index = members.iter().position(|m| m.conductor == conductor).ok_or(CmdError::refused(NO_CONDUCTOR))?;
+    let index = members.iter().position(|m| m.wire() == Some(conductor)).ok_or(CmdError::refused(NO_CONDUCTOR))?;
     let old = members.get(index).and_then(|m| m.core.clone());
     let duplicates = match core.as_deref() {
-        Some(c) => members.iter().filter(|m| m.conductor != conductor && m.core.as_deref() == Some(c)).map(|m| m.conductor).collect(),
+        Some(c) => members.iter().filter(|m| m.wire() != Some(conductor) && m.core.as_deref() == Some(c)).filter_map(|m| m.wire()).collect(),
         None => Vec::new(),
     };
-    let ops = if old == core { Vec::new() } else { core_ops(cable, index, conductor, old, core.clone()).to_vec() };
+    let ops = if old == core { Vec::new() } else { core_ops(cable, index, CorePosition::Wire(conductor), old, core.clone()).to_vec() };
     Ok(CoreSet { cable, conductor, index, core, duplicates, ops })
 }
 
@@ -250,7 +251,7 @@ pub fn cores(doc: &Document, cable: CableId, given: &[Option<String>]) -> Result
     let mut ops = Vec::new();
     for (index, (m, new)) in members.iter().zip(&cores).enumerate() {
         if m.core != *new {
-            ops.extend(core_ops(cable, index, m.conductor, m.core.clone(), new.clone()));
+            ops.extend(core_ops(cable, index, m.position, m.core.clone(), new.clone()));
         }
     }
     Ok((cores, ops))

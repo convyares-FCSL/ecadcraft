@@ -25,7 +25,7 @@ use ecad_electrical::CmdError;
 use ecad_electrical::cmd::cable::{self as rules, CableInput, EndInput};
 pub use ecad_electrical::cmd::cable::{BadReason, Drawn, assign_cores, bad_value, cable_named, check_remove, drawn, edit_ops};
 use ecad_model::{
-    CableId, CableMember, Document, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Representation, RepresentationId, Subject, WireId,
+    CableId, CableMember, CorePosition, Document, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Representation, RepresentationId, Subject,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -238,6 +238,17 @@ impl Command for CableremoveParams {
 // ---------------------------------------------------------------------------------------------
 // The assign rule (design 059 §4.3, FD5)
 
+/// The hex of the wires a slash crossed, in crossing order (the `conductors` of a result).
+pub(crate) fn crossing_wires(members: &[crate::slash::Crossing]) -> Vec<String> {
+    members.iter().filter_map(|m| m.wire()).map(|w| w.hex()).collect()
+}
+
+/// The hex of the loose lines (no wire yet) a slash crossed, in crossing order (the `lines` of a
+/// result).
+pub(crate) fn crossing_lines(members: &[crate::slash::Crossing]) -> Vec<String> {
+    members.iter().filter_map(|m| m.position.route()).map(|r| r.hex()).collect()
+}
+
 /// `cableslash` onto cable `k` that is not drawn (FD5): the crossed wires become its members in
 /// crossing order with its free cores' labels, plus the slash. One transaction, `Cable slash`.
 ///
@@ -248,7 +259,7 @@ pub(crate) fn run_slash_assign(
     found: &crate::slash::Crossings,
 ) -> Result<Value, CmdError> {
     let doc = p.ledger.document();
-    let blocked: Vec<(WireId, CableId)> = crate::slash::blocked(doc, &found.members).into_iter().map(|(m, c)| (m.conductor, c)).collect();
+    let blocked: Vec<(CorePosition, CableId)> = crate::slash::blocked(doc, &found.members).into_iter().map(|(m, c)| (m.position, c)).collect();
     if !blocked.is_empty() {
         return Err(rules::already_in_cable(crate::slash::already_in_cable(doc, &blocked, "Nothing was changed.")));
     }
@@ -259,7 +270,7 @@ pub(crate) fn run_slash_assign(
     let (item, rep): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
     let mut ops = Vec::new();
     for (index, (m, core)) in found.members.iter().zip(cores.iter()).enumerate() {
-        ops.push(Op::AddCableMember { cable: k, index, member: CableMember { conductor: m.conductor, core: core.clone() } });
+        ops.push(Op::AddCableMember { cable: k, index, member: CableMember { position: m.position, core: core.clone() } });
     }
     let style = crate::cmd::plain_style(p);
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Line { a: from, b: to }) } });
@@ -280,7 +291,8 @@ pub(crate) fn run_slash_assign(
         "item": item.hex(),
         "representation": rep.hex(),
         "assigned": true,
-        "conductors": found.members.iter().map(|m| m.conductor.hex()).collect::<Vec<_>>(),
+        "conductors": crossing_wires(&found.members),
+        "lines": crossing_lines(&found.members),
         "cores": cores,
         "ignored": found.ignored.iter().map(|(i, _)| i.hex()).collect::<Vec<_>>(),
         "touched": found.touched.iter().map(|c| c.hex()).collect::<Vec<_>>(),

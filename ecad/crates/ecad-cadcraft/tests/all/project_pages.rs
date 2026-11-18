@@ -160,7 +160,7 @@ fn undo_and_redo_bring_the_page_they_change_to_the_front() {
     h.run("newpage", json!({"title": "Spare"})).unwrap();
     let spare = h.doc().page_order[2];
     h.activate(field);
-    let w = h.run("wire", json!({"points": [[0, 0], [30, 0]]})).unwrap();
+    let w = h.wire_pp(&[(0.0, 0.0), (30.0, 0.0)]).unwrap();
     let wire: ecad_model::WireId = common::id(&w, "conductor");
     let count = |h: &mut common::H| h.pv(|p, pg| pg.entities_of(p, field).len());
     let with_wire = count(&mut h);

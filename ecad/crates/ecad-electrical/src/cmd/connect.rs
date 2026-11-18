@@ -1,61 +1,55 @@
-//! The rules of `connect` and `disconnect` (brief 004): attach a wire's end to a connection point
-//! (moving the route's end onto it), or detach it. Each returns the ops to commit.
+//! The rules of `connect` and `disconnect` (brief 004, design 072 §4.3): land a route's end on a
+//! connection point (moving the route's end onto it), or let it go. Each returns the ops to
+//! commit; the commit's rewrite makes the wires follow.
 //!
 //! Excludes: the interactive forms and the JSON.
 
-use ecad_model::{Document, End, Item, ItemId, ItemKind, Op, PageId, Pt, TerminalId, WireId};
+use ecad_model::{Document, End, Op, PageId, RouteEnd, RouteId, TerminalId};
 
 use crate::error::CmdError;
+use crate::wires::{RouteEdits, end_index};
 
-/// No conductor with the ID given.
-const NO_CONDUCTOR: &str = "no such conductor";
-/// The route is not a path.
-const NOT_A_PATH: &str = "route is not a path";
+/// No route with the ID given.
+const NO_ROUTE: &str = "no such wire";
 
-/// The route of `c` on `page`, its item, and where its `end` lies.
-fn route_and_end(doc: &Document, page: PageId, c: WireId, end: End) -> Result<(ItemId, Item, Pt), CmdError> {
-    let (id, _) = ecad_model::derive::route_on_page(doc, c, page).ok_or(CmdError::refused("the conductor has no route on this page"))?;
-    let item = doc.items.get(&id).cloned().ok_or(CmdError::refused("route missing"))?;
-    let ItemKind::Primitive(prim) = &item.kind else { return Err(CmdError::refused(NOT_A_PATH)) };
-    let (a, b) = prim.path_ends().ok_or(CmdError::refused(NOT_A_PATH))?;
-    Ok((id, item, if end == End::A { a } else { b }))
-}
-
-/// The ops attaching `end` of wire `c` to connection point `t` shown on `page`: the route's end
-/// moved onto the point when it is elsewhere, then the attachment.
+/// The ops landing `end` of route `r` on connection point `t` shown on the route's page: the
+/// route's end (and its drawing) moved onto the point when it is elsewhere, and the end on it.
 ///
 /// # Errors
-/// No such conductor or connection point; the point is not shown on `page`; the wire has no
-/// route there.
-pub fn connect(doc: &Document, page: PageId, c: WireId, end: End, t: TerminalId) -> Result<Vec<Op>, CmdError> {
-    let conductor = doc.wires.get(&c).ok_or(CmdError::refused(NO_CONDUCTOR))?;
+/// No such route or connection point; the point is not shown on the route's page.
+pub fn connect(doc: &Document, r: RouteId, end: End, t: TerminalId) -> Result<Vec<Op>, CmdError> {
+    let page: PageId = doc.routes.get(&r).ok_or(CmdError::refused(NO_ROUTE))?.page;
     if !doc.terminals.contains_key(&t) {
         return Err(CmdError::refused("no such connection point"));
     }
-    let at = ecad_model::derive::terminal_positions(doc, page)
-        .into_iter()
-        .find(|(x, _, _)| *x == t)
-        .map(|(_, _, p)| p)
-        .ok_or(CmdError::refused("the connection point is not shown on this page"))?;
-    let (route, item, current) = route_and_end(doc, page, c, end)?;
-    let mut ops = Vec::new();
-    if !current.near(at, 1e-12) {
-        let ItemKind::Primitive(prim) = &item.kind else { return Err(CmdError::refused(NOT_A_PATH)) };
-        let moved = prim.with_path_end(end, at).ok_or(CmdError::refused(NOT_A_PATH))?;
-        ops.push(Op::ModifyItem { id: route, before: item.clone(), after: Item { kind: ItemKind::Primitive(moved), ..item.clone() } });
+    let at = ecad_model::derive::terminal_position(doc, page, t).ok_or(CmdError::refused("the connection point is not shown on this page"))?;
+    let mut edits = RouteEdits::new(doc);
+    let route = edits.get(r).ok_or(CmdError::refused(NO_ROUTE))?;
+    let slot = match end {
+        End::A => route.points.first_mut(),
+        End::B => route.points.last_mut(),
+    };
+    if let Some(p) = slot
+        && !p.near(at, 1e-12)
+    {
+        *p = at;
     }
-    ops.push(Op::AttachEnd { conductor: c, end, before: conductor.end(end), after: Some(t) });
-    Ok(ops)
+    if let Some(e) = route.ends.get_mut(end_index(end)) {
+        *e = RouteEnd::Point(t);
+    }
+    Ok(edits.ops())
 }
 
-/// The op detaching `end` of wire `c`.
+/// The ops letting `end` of route `r` go: it ends free where it is.
 ///
 /// # Errors
-/// No such conductor; that end is not connected.
-pub fn disconnect(doc: &Document, c: WireId, end: End) -> Result<Op, CmdError> {
-    let before = doc.wires.get(&c).ok_or(CmdError::refused(NO_CONDUCTOR))?.end(end);
-    if before.is_none() {
+/// No such route; that end is not on a connection point.
+pub fn disconnect(doc: &Document, r: RouteId, end: End) -> Result<Vec<Op>, CmdError> {
+    let route = doc.routes.get(&r).ok_or(CmdError::refused(NO_ROUTE))?;
+    if route.ends.get(end_index(end)).and_then(|e| e.point()).is_none() {
         return Err(CmdError::refused("that end is not connected"));
     }
-    Ok(Op::AttachEnd { conductor: c, end, before, after: None })
+    let mut edits = RouteEdits::new(doc);
+    edits.set_end(r, end, RouteEnd::Free);
+    Ok(edits.ops())
 }

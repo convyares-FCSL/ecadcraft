@@ -28,7 +28,7 @@ fn terminal_strip_commands_through_execute() {
     let mut c = writer(WRITER_SEED);
     let mut wires = Vec::new();
     for x in [100, 120, 140] {
-        let w = c.exec("wire", json!({"points": [[x, 200], [x, 100]]}));
+        let w = c.wire_pp(json!({"points": [[x, 200], [x, 100]]}));
         wires.push(hex(&w, "conductor"));
     }
     let slash = c.exec("cableslash", json!({"from": [90, 120], "to": [150, 120], "tag": "-W01"}));

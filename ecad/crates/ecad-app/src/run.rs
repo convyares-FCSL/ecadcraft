@@ -386,11 +386,6 @@ impl App {
                     self.after_logic();
                 }
             }
-            A::AddJunction(page, at) => {
-                if self.show_page(page).is_ok() {
-                    let _ = self.run_line(&format!("junction {}", json!({"at": [at.x, at.y]})));
-                }
-            }
             A::JoinWires(page, at) => {
                 if self.show_page(page).is_ok() {
                     let _ = self.run_line(&format!("joinwires {}", json!({"at": [at.x, at.y]})));

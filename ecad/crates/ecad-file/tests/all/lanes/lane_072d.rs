@@ -23,3 +23,33 @@ fn routes_come_back_from_the_snapshot_and_the_log() {
         assert_eq!(opened.ledger.document().routes, f.ledger.document().routes, "{name}");
     }
 }
+
+#[test]
+fn core_positions_come_back_from_the_snapshot_and_the_log() {
+    // Owner ruling, 2026-11-18: a core's position is stored as written, never worked out on read.
+    let dir = TempDir::new("072d-cores");
+    let mut f = fixture();
+    let (r, k): (RouteId, CableId) = (f.ids.fresh(), f.ids.fresh());
+    let loose = Route::new(f.page, vec![Pt::new(0.0, 0.0), Pt::new(40.0, 0.0)], [RouteEnd::Free, RouteEnd::Free]);
+    let on_line = CableMember { position: CorePosition::Route { route: r, landed: None }, core: Some("1".into()) };
+    let spare = CableMember { position: CorePosition::Unplaced, core: Some("2".into()) };
+    f.ledger
+        .commit(
+            Author::User,
+            "slash",
+            vec![
+                Op::AddRoute { id: r, route: loose },
+                Op::CreateCable { id: k, cable: Cable::default() },
+                Op::AddCableMember { cable: k, index: 0, member: on_line },
+                Op::AddCableMember { cable: k, index: 1, member: spare },
+            ],
+        )
+        .unwrap();
+    let (lo, hi) = ecad_file::schema::SNAPSHOT_EVERY_RANGE;
+    for (name, every) in [("snap.ecad", lo), ("log.ecad", hi)] {
+        let p = dir.path(name);
+        ProjectV2::create(Store::create(&p).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, every).unwrap();
+        let opened = ProjectV2::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
+        assert_eq!(opened.ledger.document().cables, f.ledger.document().cables, "{name}");
+    }
+}

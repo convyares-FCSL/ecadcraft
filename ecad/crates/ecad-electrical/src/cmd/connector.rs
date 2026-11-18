@@ -6,7 +6,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::{DeviceId, Document, IdAllocator, Ledger, Noun, ObjectRef, Op, PageId, Placement, Pt, Style, Terminal, TerminalId, WireId};
+use ecad_model::{DeviceId, Document, IdAllocator, Ledger, Noun, ObjectRef, Op, PageId, Placement, Pt, RouteId, Style, Terminal, TerminalId, WireId};
 
 use crate::connectors::{self as cn, Family, Names, Shown};
 use crate::defaults::{self, Scope};
@@ -162,8 +162,8 @@ pub struct Made {
     pub tag: String,
     pub new: bool,
     pub shown: Vec<Shown>,
-    pub splits: Vec<(WireId, WireId)>,
-    pub dropped: Vec<(WireId, String)>,
+    /// The routes split by pins: (route, its new second part).
+    pub splits: Vec<(RouteId, RouteId)>,
     /// The transaction's ops.
     pub ops: Vec<Op>,
 }
@@ -237,12 +237,15 @@ pub fn plan_connector(
         let (from, to) = match (input.line, input.wire) {
             (Some(l), _) => l,
             (None, Some(w)) => {
-                let mid = wire_point(doc, page, w).ok_or(CmdError::refused("That wire is not drawn on this page."))?;
+                let mid = crate::wires::route_of_wire_on(doc, w, page)
+                    .and_then(|r| route_point(doc, r))
+                    .ok_or(CmdError::refused("That wire is not drawn on this page."))?;
                 (mid, mid)
             }
             (None, None) => return Err(CmdError::refused(NEEDS_AT)),
         };
-        let pins = Pins { device, halves, pins: pins_given, names: &names, pin: input.pin.as_deref(), from, to, wire: input.wire };
+        let route = input.wire.and_then(|w| crate::wires::route_of_wire_on(doc, w, page));
+        let pins = Pins { device, halves, pins: pins_given, names: &names, pin: input.pin.as_deref(), from, to, route };
         let made = place_pins(ledger, ids, high, page, style, pins, tol)?;
         let names: Vec<String> = made.shown.iter().filter(|x| x.side != Side::Plug || halves == Side::Plug).map(|x| x.name.clone()).collect();
         let label = format!("Place pins {}:{}", made.tag, span(&names));
@@ -268,7 +271,7 @@ pub fn echo(doc: &Document, c: &Connector) -> String {
             parts.push(format!("{}:{}", cn::half_tag(doc, m.component, side), span(&names)));
         }
     }
-    let mut out = if c.pins_layout {
+    if c.pins_layout {
         let n = m.splits.len();
         let what = match c.halves {
             Side::Both => "pin pairs",
@@ -286,21 +289,12 @@ pub fn echo(doc: &Document, c: &Connector) -> String {
     } else {
         let n = cn::pin_count(doc, m.component, &cn::drawn(doc, m.component));
         format!("Placed {} ({}, {n} pins): {}.", m.tag, c.family.name(), parts.join(", "))
-    };
-    if !m.dropped.is_empty() {
-        let list: Vec<&str> = m.dropped.iter().map(|(_, n)| n.as_str()).collect();
-        out.push_str(&format!(
-            " The open parts of the cut wires no longer carry wire number{} {}.",
-            if list.len() == 1 { "" } else { "s" },
-            list.join(", ")
-        ));
     }
-    out
 }
 
-/// A point on wire `w`'s route on `page`: the middle of its longest segment.
-fn wire_point(doc: &Document, page: PageId, w: WireId) -> Option<Pt> {
-    let (_, _, v) = crate::wires::route_vertices(doc, w, page)?;
+/// A point on route `r`: the middle of its longest segment.
+fn route_point(doc: &Document, r: RouteId) -> Option<Pt> {
+    let v = &doc.routes.get(&r)?.points;
     let mut best: Option<(f64, Pt)> = None;
     for pair in v.windows(2) {
         let (Some(a), Some(b)) = (pair.first(), pair.get(1)) else { continue };
@@ -320,7 +314,7 @@ fn place_bulkhead(
     let starter = crate::devices::starter(key)?;
     let placement = Placement { origin: at, rotation: degrees.to_radians(), mirror: false, scale: 1.0 };
     let plan = crate::devices::plan_place(ledger, ids, high, page, style, starter, placement, crate::devices::Target::New(None))?;
-    Ok(Made { component: plan.component, tag: plan.tag, new: true, shown: Vec::new(), splits: Vec::new(), dropped: Vec::new(), ops: plan.ops })
+    Ok(Made { component: plan.component, tag: plan.tag, new: true, shown: Vec::new(), splits: Vec::new(), ops: plan.ops })
 }
 
 /// The names a whole half of `n` pins takes on connector `c`: its drawn names in order, then the
@@ -410,12 +404,12 @@ fn place_row(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: P
         shown.extend(sh);
     }
     let (component, tag, new) = made.ok_or(CmdError::refused("Nothing to place."))?;
-    Ok(Made { component, tag, new, shown, splits: Vec::new(), dropped: Vec::new(), ops })
+    Ok(Made { component, tag, new, shown, splits: Vec::new(), ops })
 }
 
-/// The rotation of a pin symbol on a wire segment: its points along the wire.
-pub fn along_wire(doc: &Document, page: PageId, on: &crate::wires::OnWire) -> f64 {
-    let Some((_, _, v)) = crate::wires::route_vertices(doc, on.conductor, page) else { return 0.0 };
+/// The rotation of a pin symbol on a route segment: its points along the route.
+pub fn along_wire(doc: &Document, on: &crate::wires::OnRoute) -> f64 {
+    let Some(v) = doc.routes.get(&on.route).map(|r| &r.points) else { return 0.0 };
     match (v.get(on.segment), v.get(on.segment + 1)) {
         (Some(a), Some(b)) if (b.x - a.x).abs() > (b.y - a.y).abs() => std::f64::consts::FRAC_PI_2,
         _ => 0.0,
@@ -431,7 +425,7 @@ struct Pins<'a> {
     pin: Option<&'a str>,
     from: Pt,
     to: Pt,
-    wire: Option<WireId>,
+    route: Option<RouteId>,
 }
 
 /// Pins: one pin symbol on each wire the line crosses (design 044 §4.2, §4.4, §4.5).
@@ -440,12 +434,12 @@ fn place_pins(
 ) -> Result<Made, CmdError> {
     let doc = ledger.document();
     let (device, halves, names, from, to) = (a.device, a.halves, a.names, a.from, a.to);
-    let crossings: Vec<crate::wires::OnWire> = if from.near(to, 1e-9) {
-        let w = a
-            .wire
-            .or_else(|| crate::wires::wire_at(doc, page, from, crate::wires::ON_WIRE, None).map(|o| o.conductor))
+    let crossings: Vec<crate::wires::OnRoute> = if from.near(to, 1e-9) {
+        let r = a
+            .route
+            .or_else(|| crate::wires::route_at(doc, page, from, crate::wires::ON_WIRE, None).map(|o| o.route))
             .ok_or(CmdError::refused("Click on a wire, or draw a line across the wires."))?;
-        vec![super::terminal::on_wire_of(doc, page, w, from).ok_or(CmdError::refused("That wire is not drawn here."))?]
+        vec![crate::wires::on_route_of(doc, r, from).ok_or(CmdError::refused("That wire is not drawn here."))?]
     } else {
         let found = crate::slash::crossings(doc, page, from, to, tol);
         if found.members.len() > cn::MAX_PINS {
@@ -455,7 +449,7 @@ fn place_pins(
                 cn::MAX_PINS
             )));
         }
-        found.members.iter().filter_map(|m| super::terminal::on_wire_of(doc, page, m.conductor, m.at)).collect()
+        found.members.iter().filter_map(|m| crate::wires::on_route_of(doc, m.route, m.at)).collect()
     };
     if crossings.is_empty() {
         return Err(CmdError::refused("The line crosses no wire. Draw it across the wires."));
@@ -487,7 +481,6 @@ fn place_pins(
     let mut named = a.pin.map(str::to_string);
     let mut shown_all = Vec::new();
     let mut splits = Vec::new();
-    let mut dropped = Vec::new();
     let take = |side: Side, name: &str, taken: &mut BTreeSet<(Side, String)>| match side {
         Side::Both => {
             taken.insert((Side::Socket, name.to_string()));
@@ -530,19 +523,18 @@ fn place_pins(
             return Err(CmdError::refused(format!("{tag}:{name} is already being drawn. Pick another pin.")));
         }
         take(halves, &name, &mut taken);
-        let rotation = along_wire(doc, page, &on);
+        let rotation = along_wire(doc, &on);
         let placement = Placement { origin: on.at, rotation, mirror: false, scale: 1.0 };
         let (_, _, shown) = cn::symbol_ops(ids, page, style.clone(), def, starter, component, std::slice::from_ref(&name), placement, &mut ops)?;
-        let land = cn::land_pin(doc, ids, page, on, &shown, placement)
-            .map_err(|e| CmdError::refused(format!("{e} (wire {})", crate::slash::wire_name(doc, on.conductor))))?;
-        if let Some((n, _)) = &land.dropped_number {
-            dropped.push((land.new, n.clone()));
-        }
-        splits.push((land.conductor, land.new));
+        let land = cn::land_pin(doc, ids, on, &shown, placement).map_err(|e| match crate::wires::wire_of_route(doc, on.route) {
+            Some(w) => CmdError::refused(format!("{e} (wire {})", crate::slash::wire_name(doc, w))),
+            None => e,
+        })?;
+        splits.push((land.route, land.new));
         ops.extend(land.ops);
         shown_all.extend(shown);
     }
-    Ok(Made { component, tag, new, shown: shown_all, splits, dropped, ops })
+    Ok(Made { component, tag, new, shown: shown_all, splits, ops })
 }
 
 // ---------------------------------------------------------------- pinlabel (§5.3)

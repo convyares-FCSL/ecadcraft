@@ -41,6 +41,7 @@ const BUILTIN: [(&str, &str, &str, &str, &str, &str, f64); 10] = [
 
 /// A horizontal wire at height `y` on the active page, with an optional potential.
 fn wire_at(h: &mut H, y: f64, potential: Option<&str>) -> WireId {
+    h.points_at(&[(0.0, y), (60.0, y)]);
     let mut p = json!({"points": pts(&[(0.0, y), (60.0, y)])});
     if let Some(v) = potential {
         p["potential"] = json!(v);
@@ -211,6 +212,7 @@ fn b12_the_wire_report_shows_category_and_resolved_values() {
 fn b13_category_on_a_conductor_and_the_potential_rule() {
     let mut h = H::new(0x50b_1301);
     let a = wire_at(&mut h, 20.0, Some("24V"));
+    h.points_at(&[(30.0, 60.0)]);
     let b: WireId = id(&h.run("wire", json!({"points": pts(&[(30.0, 20.0), (30.0, 60.0)])})).unwrap(), "conductor"); // a tee: its own conductor
     assert_ne!(a, b, "two conductors");
     assert_eq!(net_potential(&mut h, b), "24V", "joined into the 24V net");
@@ -250,6 +252,7 @@ fn b13_a_potential_change_moves_only_unassigned_conductors() {
     let mut h = H::new(0x50b_1302);
     let page = h.first_page();
     let a = wire_at(&mut h, 20.0, Some("24V"));
+    h.points_at(&[(30.0, 60.0)]);
     let b: WireId = id(&h.run("wire", json!({"points": pts(&[(30.0, 20.0), (30.0, 60.0)])})).unwrap(), "conductor"); // a tee: its own conductor
     assert_ne!(a, b, "two conductors");
     h.run("category", json!({"conductor": b.hex(), "value": "signal"})).unwrap();
@@ -264,12 +267,14 @@ fn b13_a_potential_change_moves_only_unassigned_conductors() {
 #[test]
 fn b13_wire_with_a_category_and_the_prompt_keyword() {
     let mut h = H::new(0x50b_1303);
+    h.points_at(&[(0.0, 20.0), (60.0, 20.0)]);
     let (v, _) = one_tx(&mut h, "wire", json!({"points": pts(&[(0.0, 20.0), (60.0, 20.0)]), "category": "dc24"}));
     let w: WireId = id(&v, "conductor");
     assert_eq!(h.doc().wires[&w].display.get("wire.category").map(String::as_str), Some("dc24"));
     assert_eq!(net_potential(&mut h, w), "24V", "no potential before: the category's is written");
     refused(&mut h, "wire", json!({"points": pts(&[(0.0, 40.0), (60.0, 40.0)]), "category": "nope"}));
     // The typed command: the prompt names the keyword.
+    h.points_at(&[(0.0, 80.0), (60.0, 80.0)]);
     h.s.cmdline("wire").unwrap();
     let prompt = h.s.current_prompt().map(|p| p.display()).unwrap_or_default();
     assert!(prompt.contains("Potential/Category"), "{prompt}");
@@ -478,7 +483,10 @@ fn b18_old_potential_colours_are_ignored_and_reported() {
 #[test]
 fn b18_category_records_and_choices_round_trip() {
     let mut h = H::new(0x50b_1803);
-    let a = wire_at(&mut h, 20.0, Some("24V"));
+    // The wire's two connection points (design 072), before the trail starts.
+    h.points_at(&[(0.0, 20.0), (60.0, 20.0)]);
+    h.trail = vec![h.doc()];
+    let a: WireId = id(&h.run("wire", json!({"points": pts(&[(0.0, 20.0), (60.0, 20.0)]), "potential": "24V"})).unwrap(), "conductor");
     h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colour": "RD", "part_number": "W-05", "allowance": 2}})).unwrap();
     let ac = own_id(
         &h.run("setstyle", json!({"catalogue": "wire", "new": true, "name": "48 V AC", "copy_of": "signal", "fields": {"potential": "48V"}}))

@@ -213,18 +213,22 @@ fn project(st: &mut Host<'_>, limit: u64) -> Result<Value, String> {
             let terminals: Vec<Value> = doc.terminals_of(*id).map(|(t, term)| json!({"id": t.hex(), "label": term.label})).collect();
             json!({"id": id.hex(), "properties": c.properties, "terminals": terminals})
         });
-        let cable_of = |c| doc.cables.iter().find(|(_, k)| k.members.iter().any(|m| m.conductor == c)).map(|(id, _)| id.hex());
+        let cable_of = |c| doc.cables.iter().find(|(_, k)| k.members.iter().any(|m| m.wire() == Some(c))).map(|(id, _)| id.hex());
         let conductors = doc.wires.iter().map(|(id, c)| {
             json!({
                 "id": id.hex(),
                 "values": c.values().into_iter().map(|(k, v)| (k.to_string(), Value::String(v))).collect::<serde_json::Map<_, _>>(),
                 "display": c.display,
-                "ends": {"A": c.end(ecad_model::End::A).map(|t| t.hex()), "B": c.end(ecad_model::End::B).map(|t| t.hex())},
+                "ends": {"A": c.end(ecad_model::End::A).hex(), "B": c.end(ecad_model::End::B).hex()},
                 "cable": cable_of(*id),
             })
         });
         let cables = doc.cables.iter().map(|(id, c)| {
-            let members: Vec<Value> = c.members.iter().map(|m| json!({"conductor": m.conductor.hex(), "core": m.core})).collect();
+            let members: Vec<Value> = c
+                .members
+                .iter()
+                .map(|m| json!({"conductor": m.wire().map(|w| w.hex()), "line": m.route().map(|r| r.hex()), "core": m.core}))
+                .collect();
             json!({"id": id.hex(), "properties": c.properties, "members": members})
         });
         let nets = derive::nets(doc);

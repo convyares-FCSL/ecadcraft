@@ -793,8 +793,9 @@ shows the same facts.
    (**Cable View**, click it): its cores' labels hide with the cores; back to traditional, they
    return. Nothing is recorded.
 2. **Hover** the wire under the coil (the 0V wire). Expected, among the lens lines:
+   `End B: connection point X2 of -H01` (the lamp's line ends on the coil's: a T, no junction),
    `Wire number 0V-01`, `Potential 0V (continuation)`, `Cross-section 0.5 (0V) · Colour BU (0V)`
-   and `Net 0V-01 · 5 wires · -G01:-, -H01:X2, -H02:X2, -K01:A2`.
+   and `Net 0V-01 · 4 wires · -G01:-, -H01:X2, -H02:X2, -K01:A2`.
 3. **A wire into a net.** Click **Wire** (ECAD tab, Wiring) and draw from the lamp's `X1` to an
    empty spot, Enter. Expected: `Wire 24V-04 drawn; …`, and the new wire shows `24V-04 0.5 BU`;
    no other label changes. Type `u`.
@@ -1464,11 +1465,12 @@ Developer). Type commands in the ECAD command field at the top of the Developer 
    command `place`; its ops include `CreateComponent`, two `AddTerminal`, `AddItem` and
    `LinkRepresentation`. Expand one: `before: (none)` and the new value after. The record says
    **Pending: only in memory, not in the file.**
-3. **Wire.** `wire {"points":[[60,0],[90,0]]}`, then click the wire and its line in
-   **Selection**. Expected: the trail lists the wire's item, its route representation, the
-   conductor and the coil connection point it is attached to (`…:A1`); the transactions are `#3 Wire`
-   and `#2 Place symbol` (which created that connection point). In `#3`, expand `AttachEnd`: before
-   `"terminal": null`, after the connection point's ID.
+3. **Wire.** `wire {"points":[[90,0],[110,0]]}` (from the coil's A1 to its A2: a wire runs
+   between two connection points), then click the wire and its line in **Selection**. Expected:
+   the trail lists the line's item, its route representation, the route, the wire it carries and
+   the coil connection points it lands on (`…:A1`, `…:A2`); the transactions are `#3 Wire` and
+   `#2 Place symbol` (which created those connection points). In `#3`, expand `AddRoute` and
+   `CreateWire`: before `(none)`, after the route and the wire with its two connection points.
 4. **Save.** Click **Save As…** and save as `~/ecad-projects/debug-demo`. Expected: everything
    turns green. **History**: `Saved durably (…/debug-demo.ecad): transactions 1–3.` and
    `Nothing pending.` Click `#3`: `Saved: offset … in the file, … bytes.` Click **Read bytes**:
@@ -1478,8 +1480,8 @@ Developer). Type commands in the ECAD command field at the top of the Developer 
 5. **Move.** Click the coil, then `move 100,0 100,-10`. Expected: `live at seq 4`; **History**:
    `Pending (in memory only; lost unless saved): transactions 4–4.` and `#4 [pending] MOVE`.
    Click the wire and its **Selection** line: its trail now includes `#4`, because moving the
-   coil moved the wire's end. In `#4`, the wire's `ModifyItem` shows different vertices before
-   and after.
+   coil moved the wire's ends. In `#4`, the route's `ModifyRoute` and its line's `ModifyItem` show
+   different points before and after.
 6. **Undo.** `u`. Expected: `#5 [pending] MOVE (undo of #4, …)`. Undo is a new transaction that
    applies the opposite change; `#4` stays in the history. Its ops show before and after swapped.
 7. **Look back without changing anything.** In **History**, type `2` beside
