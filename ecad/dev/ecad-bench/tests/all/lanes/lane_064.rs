@@ -7,6 +7,9 @@
 //!
 //! Step 3: the Devices feed equals the old `device_list::devices_touched` (kept here as its
 //! oracle) on every transaction of the same history.
+//!
+//! Step 4: the frame's effect map (`frames::touched_by`, `generated::touched_by`) equals the old
+//! op-based `frames::touches` and `generated::touches` (kept here) for every page's frame.
 
 use std::collections::BTreeSet;
 
@@ -15,6 +18,7 @@ use ecad_cadcraft::device_list::DeviceTouch;
 use ecad_cadcraft::symbols;
 use ecad_cadcraft::title_block::{self, Reach};
 use ecad_electrical::derived::{EngineInputs, Views};
+use ecad_electrical::{frames, generated};
 use ecad_model::{Author, DeviceId, Document, ObjectRef, Op, Subject, Touched};
 
 /// `Touched::add` as it was before design 064 (one arm per op).
@@ -248,4 +252,118 @@ fn the_devices_feed_matches_its_old_function_on_the_small_corpus() {
 fn the_devices_feed_matches_its_old_function_on_the_medium_corpus() {
     let n = devices_feed_agrees(tier("medium").unwrap());
     assert!(n > 10, "{n} transactions");
+}
+
+/// `frames::touches` as it was before design 064 step 4.
+fn old_frame_touches(ops: &[Op], page: ecad_model::PageId, shown: &frames::FrameInput) -> bool {
+    use ecad_electrical::{designations, revisions};
+    let removed: BTreeSet<ecad_model::PageId> = ops.iter().filter_map(|o| if let Op::RemovePage { id, .. } = o { Some(*id) } else { None }).collect();
+    let added: BTreeSet<ecad_model::PageId> = ops.iter().filter_map(|o| if let Op::AddPage { id, .. } = o { Some(*id) } else { None }).collect();
+    let pair = |id: &ecad_model::PageId| removed.contains(id) && added.contains(id);
+    ops.iter().any(|op| match op {
+        Op::SetProjectSettings { before, after } => before.sheet != after.sheet || before.length_unit != after.length_unit,
+        Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if ecad_electrical::text_style::is_reserved_key(key) => true,
+        Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key == ecad_electrical::defaults::styles::FRAME.key => true,
+        Op::SetStyle { catalogue, .. } => {
+            *catalogue == ecad_model::StyleCatalogue::Frame
+                || *catalogue == ecad_model::StyleCatalogue::Text
+                || *catalogue == ecad_model::StyleCatalogue::Page
+        }
+        Op::SetStandard { before, after } => before != after,
+        Op::ModifyProject { before, after } if revisions::issue_changed(before, after) || before.info != after.info => true,
+        Op::ModifyProject { before, after } => designations::Aspect::ALL.into_iter().any(|a| {
+            let field = match a {
+                designations::Aspect::Function => &shown.function,
+                designations::Aspect::Location => &shown.location,
+            };
+            designations::default_key(before, a) != designations::default_key(after, a)
+                || designations::changed_codes(before, after, a).iter().any(|k| {
+                    let old = designations::code_in_project(before, a, k);
+                    old.as_deref().is_some_and(|b| b == field || shown.project.values().any(|v| v == b))
+                })
+        }),
+        Op::SetProperty { object: ObjectRef::Project, key, .. } => {
+            shown.project.contains_key(key.as_str()) || key == revisions::COLUMNS_KEY || key == revisions::PENDING_KEY
+        }
+        Op::SetProperty { object: ObjectRef::Page(p), .. } => *p == page,
+        Op::ModifyPage { id, before, after } => {
+            let ch = before.change(after);
+            *id == page || ch.folder || (ch.number && shown.next_page == Some(*id))
+        }
+        Op::AddPage { id, index, .. } | Op::RemovePage { id, index, .. } if pair(id) => {
+            let moved = ops.iter().any(|o| match o {
+                Op::AddPage { id: a, index: i, .. } | Op::RemovePage { id: a, index: i, .. } => a == id && i != index,
+                _ => false,
+            });
+            *id == page || moved
+        }
+        Op::AddPage { .. } | Op::RemovePage { .. } => true,
+        Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => true,
+        Op::NameVersion { .. } | Op::UnnameVersion { .. } => true,
+        _ => false,
+    })
+}
+
+/// `generated::touches` as it was before design 064 step 4.
+fn old_generated_touches(ops: &[Op], kind: generated::GenKind) -> bool {
+    use generated::GenKind;
+    ops.iter().any(|op| match (kind, op) {
+        (
+            GenKind::Contents,
+            Op::AddPage { .. } | Op::RemovePage { .. } | Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. },
+        ) => true,
+        (GenKind::Contents, Op::ModifyPage { before, after, .. }) => {
+            before.title != after.title || before.number != after.number || before.folder != after.folder
+        }
+        (GenKind::Revisions, Op::SetProperty { object: ObjectRef::Project, .. }) => true,
+        (GenKind::Revisions, Op::NameVersion { .. } | Op::UnnameVersion { .. }) => true,
+        (GenKind::Revisions, Op::ModifyProject { before, after }) => before.revisions != after.revisions || before.info != after.info,
+        _ => false,
+    })
+}
+
+/// The frame's effect map against its old op-based functions on every transaction of `tier`'s
+/// churned history (with five undos and five redos), for every page's frame and both generated
+/// kinds. Returns how many (transaction, page) pairs were compared.
+fn frame_map_agrees(tier: Tier) -> usize {
+    let mut g = generate(tier, Variant::Churned).unwrap();
+    for undo in [true, true, true, true, true, false, false, false, false, false] {
+        let r = if undo { g.ledger.undo_at(Author::User, None) } else { g.ledger.redo_at(Author::User, None) };
+        r.unwrap();
+    }
+    let metrics = ecad_electrical::text_style::fonts::FixedWidth;
+    let mut doc = Document::default();
+    let mut checked = 0;
+    for tx in g.ledger.log() {
+        let what = format!("{} transaction {} {:?}", tier.name, tx.seq, tx.label);
+        for kind in [generated::GenKind::Contents, generated::GenKind::Revisions] {
+            assert_eq!(generated::touches(&tx.ops, kind), old_generated_touches(&tx.ops, kind), "{what}: {kind:?}");
+        }
+        let book = ecad_model::book::Book::of(&doc);
+        let text = frames::FrameText::with(&doc, &metrics);
+        for page in doc.page_order.clone() {
+            let shown = frames::FrameInput::with(&doc, page, &book, text);
+            assert_eq!(frames::touches(&tx.ops, page, &shown), old_frame_touches(&tx.ops, page, &shown), "{what}: page {page}");
+            checked += 1;
+        }
+        for op in &tx.ops {
+            op.apply(&mut doc).unwrap();
+        }
+    }
+    checked
+}
+
+/// Step 4: the frame's map on the small tier's recorded history.
+#[test]
+fn the_frame_map_matches_its_old_functions_on_the_small_corpus() {
+    let n = frame_map_agrees(tier("small").unwrap());
+    assert!(n > 10, "{n} frames");
+}
+
+/// Step 4: the frame's map on the medium tier's recorded history (design 064 §10).
+#[test]
+#[ignore = "slow: generates the medium bench project"]
+fn the_frame_map_matches_its_old_functions_on_the_medium_corpus() {
+    let n = frame_map_agrees(tier("medium").unwrap());
+    assert!(n > 10, "{n} frames");
 }
