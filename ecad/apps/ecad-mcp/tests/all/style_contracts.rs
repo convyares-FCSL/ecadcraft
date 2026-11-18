@@ -101,7 +101,7 @@ fn category_and_wire_with_a_category_by_the_agent() {
     let id = v["conductor"].as_str().unwrap();
     let d = c.doc();
     let cond = d.wires.iter().find(|(k, _)| k.hex() == id).unwrap().1;
-    assert_eq!(cond.display.get("wire.category").map(String::as_str), Some("dc24"));
+    assert_eq!(cond.wire_type.as_ref().map(ecad_model::StyleRef::text).as_deref(), Some("dc24"));
     let mut r = crate::mcp_contracts::reader();
     let m = r.refused("execute", json!({"command": "category", "params": {"conductor": w, "value": "signal"}}));
     assert_eq!(m, policy::WRITES_OFF);

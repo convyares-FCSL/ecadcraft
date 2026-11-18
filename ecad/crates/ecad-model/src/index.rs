@@ -292,6 +292,9 @@ impl Index {
             bump(&mut self.terminal_ends, c.end(end), (id, end), delta);
         }
         bump(&mut self.net_wires, c.net, id, delta);
+        if let Some(t) = &c.wire_type {
+            self.style_choice(ObjectRef::Wire(id), crate::wiring::WIRE_CATEGORY, &t.text(), delta);
+        }
         self.style_choices(ObjectRef::Wire(id), &c.display, delta);
     }
 

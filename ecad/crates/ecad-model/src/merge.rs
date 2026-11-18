@@ -817,6 +817,9 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                                 if *x { "yes".into() } else { "no".into() }
                             },
                         ),
+                        wire_type: field(ctx, obj, "wire_type", format!("{what} · wire type"), &a.wire_type, &t.wire_type, &s.wire_type, &|x| {
+                            opt(x.as_ref().map(StyleRef::text))
+                        }),
                         size: field(ctx, obj, "size", format!("{what} · size"), &a.size, &t.size, &s.size, &|x| opt(x.map(|v| v.to_string()))),
                         colours: field(ctx, obj, "colours", format!("{what} · colours"), &a.colours, &t.colours, &s.colours, &|x| {
                             opt(x.as_ref().map(|v| v.to_string()))
@@ -2039,7 +2042,11 @@ fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
                 p.extend(x.tag().map(|t| (tag::TAG_KEY.to_string(), t.to_string())));
                 p
             }),
-            Obj::Wire(c) => d.wires.get(&c).map(|x| x.display.clone()),
+            Obj::Wire(c) => d.wires.get(&c).map(|x| {
+                let mut p = x.display.clone();
+                p.extend(x.wire_type.as_ref().map(|t| (crate::wiring::WIRE_CATEGORY.to_string(), t.text())));
+                p
+            }),
             Obj::Cable(c) => d.cables.get(&c).map(|x| x.properties.clone()),
             Obj::Page(p) => d.pages.get(&p).map(|x| x.display.clone()),
             Obj::Project => Some(d.properties.clone()),

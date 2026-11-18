@@ -279,6 +279,8 @@ pub struct Wire {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub order_fixed: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wire_type: Option<m::StyleRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size: Option<m::wire::WireSize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub colours: Option<m::wire::Colours>,
@@ -1095,6 +1097,7 @@ impl From<&m::Wire> for Wire {
             net_order: c.net_order,
             ends: c.ends,
             order_fixed: c.order_fixed,
+            wire_type: c.wire_type.clone(),
             size: c.size,
             colours: c.colours.clone(),
             number: c.number.clone(),
@@ -1441,6 +1444,7 @@ impl From<Wire> for m::Wire {
             net_order: c.net_order,
             ends: c.ends,
             order_fixed: c.order_fixed,
+            wire_type: c.wire_type,
             size: c.size,
             colours: c.colours,
             number: c.number,
