@@ -656,6 +656,15 @@ pub fn plan_place(
                     connection_points: cps,
                 },
             });
+            // Design 072 §3: a PLC card's body is its symbol (a card a channel cell made had the
+            // cell's), so its points are its symbol's.
+            if crate::plc::rack::CardType::of_symbol(s).is_some()
+                && let Some(d) = doc.devices.get(&c)
+                && matches!(d.device_type, ecad_model::DeviceType::PlcModule(_) | ecad_model::DeviceType::PlcRack(_))
+                && d.definition != Some(definition)
+            {
+                ops.push(Op::SetDeviceDefinition { id: c, before: d.definition, after: Some(definition) });
+            }
             let t = tag_words(doc, c);
             Ok(Placed { ops, label: format!("Add symbol to {t}"), component: c, representation, item, definition, tag: t, joined: true, terminals })
         }

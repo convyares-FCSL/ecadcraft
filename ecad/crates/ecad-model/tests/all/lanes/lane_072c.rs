@@ -2,7 +2,7 @@
 //! strictly, and the keys they replaced are reserved.
 
 use ecad_model::Word;
-use ecad_model::keys::is_reserved;
+use ecad_model::keys::{Holder, is_reserved_on};
 use ecad_model::plc::{
     AddressStyle, Channel, ChannelGroup, CommLink, CommRole, Communication, IoLinkMaster, ModuleFunction, NetAddress, PlcModule, PlcRack, Protocol,
     RackHead, SafeState, Signal,
@@ -97,9 +97,9 @@ fn channels_number_across_groups() {
 #[test]
 fn the_replaced_keys_are_reserved() {
     for k in ["plc.rack", "plc.slot", "plc.channels", "plc.addr.start", "plc.addr.size", "plc.kind", "plc.ch.3.text", "plc.ch.0.tag"] {
-        assert!(is_reserved(k), "{k}");
+        assert!(is_reserved_on(Holder::Device, k), "{k}");
     }
-    assert!(!is_reserved("plc.slots"), "a registry entry stays a value");
+    assert!(!is_reserved_on(Holder::Device, "plc.slots"), "a registry entry stays a value");
 }
 
 /// A station's network address: an IPv4 address in its one written form, or a node number.
@@ -110,4 +110,45 @@ fn network_addresses_read_strictly() {
     for bad in ["300.1.1.1", "1.2.3", "1.2.3.4.5", "01.2.3.4", "65536", "x"] {
         assert_eq!(NetAddress::parse(bad), None, "{bad}");
     }
+}
+
+/// Design 072 §3, design 045 FP2 withdrawn (no compatibility before v1): a PLC module's point is
+/// a channel's (`.0.in`) or its own symbol's. An old `I1.3` channel key is unknown: a commit with
+/// it is refused, and a history holding it stops there when read (the project opens read-only at
+/// the last good transaction). Nothing reads a channel out of its text.
+#[test]
+fn an_old_channel_key_on_a_module_is_a_read_error() {
+    use ecad_model::{Author, Device, Ledger, Op, Terminal, TerminalId, Transaction, TxKind};
+    let mut l = Ledger::new(0x0007_2cf2);
+    let c: DeviceId = DeviceId::from(0x072c_0001u128);
+    let good: TerminalId = TerminalId::from(0x072c_0002u128);
+    let module = Device {
+        device_type: DeviceType::PlcModule(PlcModule::new(ModuleFunction::DigitalIn(ChannelGroup::new(Signal::Dc24v, 16)))),
+        ..Device::default()
+    };
+    let point = |k: &str| Terminal { component: c, label: Some("1".into()), key: Some(k.parse().unwrap()) };
+    l.commit(Author::User, "card", vec![Op::CreateDevice { id: c, device: module }, Op::AddTerminal { id: good, terminal: point(".0.in") }]).unwrap();
+    for old in ["I1.3", "Q0.0", "L+"] {
+        let t: TerminalId = TerminalId::from(0x072c_0100u128);
+        let e = l.commit(Author::User, "old key", vec![Op::AddTerminal { id: t, terminal: point(old) }]).unwrap_err().to_string();
+        assert!(e.contains(&format!("keyed {old}")), "{old}: {e}");
+    }
+    assert_eq!(l.head(), 1, "nothing was committed");
+    // A history written elsewhere with the old key: read up to the transaction before it.
+    let mut log = l.log().to_vec();
+    let bad = Transaction {
+        id: ecad_model::TxId(log[0].id.0 + 1),
+        seq: 2,
+        author: Author::User,
+        label: "old key".into(),
+        kind: TxKind::Edit,
+        time_ms: None,
+        ops: vec![Op::AddTerminal { id: TerminalId::from(0x072c_0200u128), terminal: point("I1.3") }],
+    };
+    log.push(bad);
+    let (read, failure) = Ledger::replay_prefix(log, 0x0007_2cf2);
+    assert_eq!(read.head(), 1, "the last good transaction");
+    let (at, e) = failure.expect("the old key is a read error");
+    assert_eq!(at, 1);
+    assert!(e.to_string().contains("keyed I1.3"), "{e}");
 }

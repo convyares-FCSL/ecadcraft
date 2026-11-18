@@ -216,10 +216,11 @@ fn h_compact_symbols_follow_fp7() {
 // ------------------------------------------------------------------------------- FP2: di and do
 
 /// Design 072 §3: `di` and `do` key their point by role (`.in`, `.out`) and join a card as
-/// channels (`.0.in`); a key in the old `I1.3` form is a plain point name, not a channel: nothing
-/// reads a channel number out of its text.
+/// channels (`.0.in`). Design 045 FP2 is withdrawn (no compatibility before v1): an old `I1.3`
+/// key on a card is unknown, so writing one is refused (ecad-model's lane_072c test shows a file
+/// holding one opens read-only).
 #[test]
-fn fp2_di_and_do_are_channels_and_old_keys_are_plain_names() {
+fn fp2_di_and_do_are_channels_and_an_old_key_is_refused() {
     let (mut p, c) = with_cards(0x7045_5e001);
     let a04 = c["-A04"];
     p.h.activate(p.analogue);
@@ -227,20 +228,20 @@ fn fp2_di_and_do_are_channels_and_old_keys_are_plain_names() {
     p.h.run("place", json!({"symbol": "di", "at": [120, 200], "device": a04.hex()})).unwrap();
     let pts = channel_points(&p.h.doc(), a04);
     assert!(pts.contains_key(".0.in") && pts.contains_key(".1.in"), "{:?}", pts.keys().collect::<Vec<_>>());
-    rekey_raw(&mut p.h, pts[".1.in"].1, Some("I1.3"), Some("I1.3"));
-    let mut h = reload(p.h, "old di", 0x7045_5e101);
-    read_everything(&mut h);
-    let d = h.doc();
-    let a04 = by_tag(&d, "-A04");
-    let pts = channel_points(&d, a04);
-    assert!(!pts.contains_key(".11.in") && !pts.contains_key(".1.in"), "I1.3 is no channel: {:?}", pts.keys().collect::<Vec<_>>());
-    // Channel 1 is free again; channel 11 was never drawn.
-    h.run("place", json!({"symbol": "di", "at": [140, 200], "device": a04.hex()})).unwrap();
-    assert!(channel_points(&h.doc(), a04).contains_key(".1.in"), "channel 1 is the lowest free one");
-    h.run("place", json!({"symbol": "chdi", "at": [160, 200], "device": a04.hex(), "channel": 11})).unwrap();
-    let old_do = h.run("place", json!({"symbol": "do", "at": [180, 200], "device": by_tag(&d, "-A07").hex()})).unwrap();
+    let d = p.h.doc();
+    let t = pts[".1.in"].1;
+    let before = d.terminals[&t].clone();
+    let mut after = before.clone();
+    after.key = Some("I1.3".parse().unwrap());
+    let head = p.h.head();
+    let e = p.h.cfg(|x| {
+        x.ledger.commit(Author::User, "hand-made", vec![Op::RemoveTerminal { id: t, terminal: before }, Op::AddTerminal { id: t, terminal: after }])
+    });
+    assert!(e.is_err_and(|e| e.to_string().contains("keyed I1.3")), "the old key is refused");
+    assert_eq!(p.h.head(), head);
+    let old_do = p.h.run("place", json!({"symbol": "do", "at": [180, 200], "device": c["-A07"].hex()})).unwrap();
     assert!(old_do["terminals"].to_string().contains(".0.out"), "{old_do}");
-    h.check();
+    p.h.check();
 }
 
 // ------------------------------------------------------------------------------- K, §4.6 (AC 4)
