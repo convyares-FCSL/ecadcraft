@@ -15,9 +15,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
-    Definition, DefinitionId, Device, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Noun, Op, Origin, PageId,
-    Placement, Primitive, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId, TextHAlign,
-    TextSlot, TextVAlign, WireId,
+    Definition, DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Noun, Op, Origin, PageId, Placement,
+    Primitive, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId, TextHAlign, TextSlot,
+    TextVAlign, WireId,
 };
 
 use crate::defaults::symbols::Field;
@@ -437,7 +437,7 @@ fn row(doc: &Document, item: ItemId, rid: RepresentationId, old_id: DefinitionId
             Some(nd) => {
                 if !nd.at.near(td.at, TOL) {
                     let d = nd.at.dist(td.at);
-                    let wired = t.filter(|t| doc.has_ends(*t));
+                    let wired = t.filter(|t| doc.has_ends(*t) || doc.routes_at(*t).next().is_some());
                     match wired {
                         Some(t) => {
                             changes.push(format!("{k} moves {} mm, {} follows", mm(d), wire_words(doc, t)));
@@ -513,8 +513,7 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
     const GONE: &str = "A copy is gone.";
     let mut ops = Vec::new();
     let mut set_def: BTreeSet<DeviceId> = BTreeSet::new();
-    let mut moved_routes: BTreeMap<ItemId, Item> = BTreeMap::new();
-    let mut route_before: BTreeMap<ItemId, Item> = BTreeMap::new();
+    let mut moved_routes = crate::wires::RouteEdits::new(doc);
     for row in rows {
         if let Some(clash) = &row.clash {
             return Err(CmdError::refused(format!("{} (p. {}) would clash: {clash}", row.tag, crate::references::page_number(doc, row.page))));
@@ -553,9 +552,7 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
                             cps.insert(t, nd.at);
                         }
                         let (from, to) = (inst.placement.apply(td.at), inst.placement.apply(nd.at));
-                        for (cond, _) in doc.ends_at(t) {
-                            follow(doc, cond, r.page, from, to, &mut route_before, &mut moved_routes);
-                        }
+                        follow(doc, t, r.page, from, to, &mut moved_routes);
                     }
                 }
             }
@@ -572,32 +569,25 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
             ops.push(Op::ModifyRepresentation { id: row.rep, before: r.clone(), after: Representation { connection_points: cps, ..r.clone() } });
         }
     }
-    for (id, after) in moved_routes {
-        if let Some(before) = route_before.remove(&id) {
-            ops.push(Op::ModifyItem { id, before, after });
-        }
-    }
+    ops.extend(moved_routes.ops());
     Ok(ops)
 }
 
-/// Move the end of conductor `c`'s route on `page` that lies at `from` to `to` (the route's other
-/// vertices stay), accumulating several moves of one route.
-fn follow(doc: &Document, c: WireId, page: PageId, from: Pt, to: Pt, before: &mut BTreeMap<ItemId, Item>, after: &mut BTreeMap<ItemId, Item>) {
-    let Some((id, _)) = ecad_model::derive::route_on_page(doc, c, page) else { return };
-    let Some(orig) = doc.items.get(&id) else { return };
-    let cur = after.get(&id).cloned().unwrap_or_else(|| orig.clone());
-    let ItemKind::Primitive(prim) = &cur.kind else { return };
-    let Some((a, b)) = prim.path_ends() else { return };
-    let end = if a.near(from, 1e-6) {
-        End::A
-    } else if b.near(from, 1e-6) {
-        End::B
-    } else {
-        return;
-    };
-    let Some(moved) = prim.with_path_end(end, to) else { return };
-    before.entry(id).or_insert_with(|| orig.clone());
-    after.insert(id, Item { kind: ItemKind::Primitive(moved), ..cur });
+/// Move the ends of the routes on `page` landing on connection point `t` at `from` to `to` (the
+/// routes' other points stay), gathering several moves of one route in `edits`.
+fn follow(doc: &Document, t: TerminalId, page: PageId, from: Pt, to: Pt, edits: &mut crate::wires::RouteEdits<'_>) {
+    for r in doc.routes_at(t).filter(|r| doc.routes.get(r).is_some_and(|x| x.page == page)).collect::<Vec<_>>() {
+        let Some(route) = edits.get(r) else { continue };
+        let n = route.points.len();
+        for (i, e) in [(0, route.ends[0]), (n.saturating_sub(1), route.ends[1])] {
+            if e == ecad_model::RouteEnd::Point(t)
+                && let Some(p) = route.points.get_mut(i)
+                && p.near(from, 1e-6)
+            {
+                *p = to;
+            }
+        }
+    }
 }
 
 /// Superseded project versions of `lineage` nothing places once `ops` are applied (FP8), as
@@ -905,7 +895,11 @@ pub fn not_plain(doc: &Document, i: ItemId) -> String {
         Some(Subject::Wire(c)) => format!("Wire {}", wire_number(doc, c)),
         Some(Subject::Device(c)) => crate::devices::tag_words(doc, c),
         Some(Subject::Cable(k)) => crate::references::cable_words(doc, k),
-        Some(Subject::Route(_)) => "A line".to_string(),
+        // Design 072: a line names the wire it carries; a loose line carries none.
+        Some(Subject::Route(r)) => match crate::wires::wire_of_route(doc, r) {
+            Some(c) => format!("Wire {}", wire_number(doc, c)),
+            None => "A line".to_string(),
+        },
         None => "Part of the selection".to_string(),
     };
     format!("{what} is not plain geometry; Make symbol takes lines, arcs and text.")

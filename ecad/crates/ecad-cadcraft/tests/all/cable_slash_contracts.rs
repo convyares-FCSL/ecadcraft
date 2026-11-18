@@ -17,10 +17,16 @@ use ecad_cadcraft::debug::{ObjectId, used_by};
 use ecad_cadcraft::interact::{hover_lines, overlay_marks};
 use ecad_cadcraft::slash::MAX_CABLE_MEMBERS;
 use ecad_model::{
-    Author, CableId, Color, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId, Style, Subject, Transaction,
-    WireId,
+    Author, CableId, Color, CorePosition, Form, ItemId, ItemKind, Op, PageId, Primitive, Pt, RepresentationId, Style, Subject, Transaction, WireId,
 };
 use serde_json::{Value, json};
+
+/// `wire` point to point (design 072: a wire runs between two connection points): a connection
+/// point at each end that has none first ([`H::wire_pp`]).
+fn wire_pp(h: &mut H, points: Value) -> Result<Value, String> {
+    let p: Vec<(f64, f64)> = points.as_array().into_iter().flatten().filter_map(|q| Some((q[0].as_f64()?, q[1].as_f64()?))).collect();
+    h.wire_pp(&p)
+}
 
 const SEED: u64 = 40_04;
 
@@ -34,7 +40,7 @@ struct F {
 }
 
 fn wire(h: &mut H, points: Value, tag: &str) -> WireId {
-    let c: WireId = id(&h.run("wire", json!({ "points": points })).unwrap(), "conductor");
+    let c: WireId = id(&wire_pp(h, json!(points)).unwrap(), "conductor");
     h.run("wirenumber", json!({"conductor": c.hex(), "value": tag})).unwrap();
     c
 }
@@ -57,7 +63,7 @@ fn slash(h: &mut H, from: (f64, f64), to: (f64, f64)) -> Result<Value, String> {
 }
 
 fn members(h: &mut H, k: CableId) -> Vec<WireId> {
-    h.doc().cables[&k].members.iter().map(|m| m.conductor).collect()
+    h.doc().cables[&k].members.iter().filter_map(|m| m.wire()).collect()
 }
 
 fn history(h: &mut H) -> Vec<Transaction> {
@@ -118,7 +124,7 @@ fn a_slash_makes_one_cable_of_the_wires_it_crosses_in_one_transaction() {
     assert_eq!(rep.items, vec![item]);
     assert!(rep.connection_points.is_empty());
     assert_eq!(d.items[&item].kind, ItemKind::Primitive(Primitive::Line { a: Pt::new(28.0, -3.0), b: Pt::new(32.0, 18.0) }));
-    let route = ecad_model::derive::route_on_page(&d, f.w0, f.page).unwrap().0;
+    let route = crate::common::wire_line(&d, f.w0, f.page).unwrap().0;
     assert_eq!(d.items[&item].style, d.items[&route].style, "the same style as a new wire (O4)");
 }
 
@@ -409,7 +415,7 @@ fn erasing_the_slash_keeps_the_cable_and_deleting_the_cable_keeps_the_wires() {
     assert!(!d.items.contains_key(&item) && !d.representations.contains_key(&rid), "the slash goes with it");
     assert_eq!(d.wires, before.wires, "every conductor stays");
     for c in [f.w0, f.w5, f.w10] {
-        assert_eq!(ecad_model::derive::route_on_page(&d, c, f.page), ecad_model::derive::route_on_page(&before, c, f.page), "routes unchanged");
+        assert_eq!(crate::common::wire_line(&d, c, f.page), crate::common::wire_line(&before, c, f.page), "routes unchanged");
     }
     let tx = f.h.p(|p| p.ledger.log().last().cloned().unwrap());
     let names: Vec<&str> = tx.ops.iter().map(Op::name).collect();
@@ -452,12 +458,21 @@ fn the_drawing_shows_the_cable_and_hover_lists_its_wires() {
     let w5 = f.h.route_handle(f.page, f.w5);
     let lines = f.h.p(|p| hover_lines(p, uid, w5)).unwrap();
     assert!(lines.iter().any(|l| l.starts_with("In cable -W")), "{lines:?}");
-    // Move W5 away: membership stays, its dot goes.
+    // Move W5's line away: it leaves both its points, so W5 goes (design 072: a wire runs
+    // between two points), but the core stays in the cable, on the moved line; its dot goes.
+    let before = f.h.p(|p| hover_lines(p, uid, slash_handle)).unwrap();
+    let line = f.h.route_of(f.page, f.w5);
     f.h.run("move", json!({"handles": [w5.hex()], "delta": [0, 50]})).unwrap();
-    assert_eq!(members(&mut f.h, k), vec![f.w0, f.w5, f.w10]);
+    let positions: Vec<CorePosition> = f.h.doc().cables[&k].members.iter().map(|m| m.position).collect();
+    assert_eq!(
+        positions,
+        vec![CorePosition::Wire(f.w0), CorePosition::Route { route: line, landed: None }, CorePosition::Wire(f.w10)],
+        "membership stays"
+    );
     assert_eq!(dots(&mut f.h).len(), 2);
     let lines = f.h.p(|p| hover_lines(p, uid, slash_handle)).unwrap();
-    assert!(lines.contains(&"  W5".to_string()), "hover still lists W5");
+    assert_eq!(lines.len(), before.len(), "hover still lists three cores: {lines:?}");
+    assert!(lines.contains(&"  W0".to_string()) && lines.contains(&"  W10".to_string()), "{lines:?}");
 }
 
 /// Design §9 (check O): the debugger trail of a cable lists its members first, in member order.
@@ -486,26 +501,10 @@ fn wires_at(h: &mut H, xs: &[f64]) {
     h.cfg(|p| {
         let page = p.ledger.document().page_order[0];
         let style = Style { layer: p.default_layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
-        let mut ops = Vec::new();
-        for &x in xs {
-            let (c, item, r): (WireId, ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
-            ops.push(Op::CreateWire { id: c, conductor: Default::default() });
-            ops.push(Op::AddItem {
-                id: item,
-                item: Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(x, -1.0), b: Pt::new(x, 1.0) }) },
-            });
-            ops.push(Op::LinkRepresentation {
-                id: r,
-                rep: Representation {
-                    subject: Subject::Wire(c),
-                    page,
-                    form: Form::Drawn,
-                    role: "route".into(),
-                    items: vec![item],
-                    connection_points: Default::default(),
-                },
-            });
-        }
+        let (ops, _) = crate::common::wired_lines(&mut p.ids, page, style, xs.len(), |i| {
+            let x = xs.get(i).copied().unwrap_or_default();
+            (Pt::new(x, -1.0), Pt::new(x, 1.0))
+        });
         p.ledger.commit(Author::User, "many wires", ops).unwrap();
     });
 }

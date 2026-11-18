@@ -1,12 +1,14 @@
-//! Lane 072 D (design 072 §4.2; brief 011): a wire's size, colours and rating inputs set through
+//! Lane 072 D (design 072 §4; brief 011): a wire's size, colours and rating inputs set through
 //! MCP's `execute` record one `ModifyWire` by the agent; a value that does not read, and a key a
-//! wire does not have, are refused and record nothing; with writes off the command is refused.
+//! wire does not have, are refused and record nothing; `wire` point to point records its route
+//! and the wire the rewrite made; `cableslash` across a loose line puts the core on the line;
+//! with writes off each command is refused.
 
 use ecad_mcp::{EcadMcp, Options};
 use ecad_model::units::Amps;
 use ecad_model::wire::Basis;
-use ecad_model::{Author, Op, Wire};
-use serde_json::json;
+use ecad_model::{Author, CorePosition, Op, RouteEnd, RouteId, Wire};
+use serde_json::{Value, json};
 
 use crate::mcp_contracts::{AGENT, Client, reader};
 
@@ -27,7 +29,7 @@ fn last_modified(c: &mut Client) -> (Author, Wire) {
 #[test]
 fn a_wires_values_set_through_mcp_record_one_modify_wire() {
     let mut c = Client::new(EcadMcp::in_memory("lane072d", 72, Options { write: true, agent: None }).unwrap());
-    let v = c.exec("wire", json!({"points": [[0, 0], [50, 0]]}));
+    let v = c.wire_pp(json!({"points": [[0, 0], [50, 0]]}));
     let w = v["conductor"].as_str().unwrap().to_string();
 
     let before = c.log().len();
@@ -55,4 +57,86 @@ fn a_wires_values_set_through_mcp_record_one_modify_wire() {
 
     let mut r = reader();
     r.refused("execute", json!({"command": "setprop", "params": {"conductor": w, "key": "size", "value": "2.5"}}));
+}
+
+/// Brief 011's contract for lane 072 D (design 072 §4): `wire` from one connection point to
+/// another through `execute` records one transaction by the agent holding the route drawn
+/// (`AddRoute`) and the wire the commit's rewrite made (`CreateWire`); with writes off it is
+/// refused and records nothing.
+#[test]
+fn wire_point_to_point_through_mcp_records_the_route_and_its_wire_as_the_agent() {
+    let mut c = Client::new(EcadMcp::in_memory("lane072d-wire", 721, Options { write: true, agent: None }).unwrap());
+    let [a, b] = c.points_at(&[(0.0, 0.0), (60.0, 0.0)])[..] else { panic!("two points") };
+    let before = c.log().len();
+    let v = c.exec("wire", json!({"points": [[0, 0], [30, 0], [60, 0]]}));
+    let log = c.log();
+    assert_eq!(log.len(), before + 1, "one transaction: {v}");
+    let t = log.last().unwrap();
+    assert_eq!(t.author, Author::Agent(AGENT.into()));
+    let route = t
+        .ops
+        .iter()
+        .find_map(|o| match o {
+            Op::AddRoute { id, route } => Some((*id, route.clone())),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("an AddRoute: {:?}", t.ops));
+    assert_eq!(route.1.ends, [RouteEnd::Point(a), RouteEnd::Point(b)], "both ends on the connection points");
+    assert_eq!(v["route"], json!(route.0.hex()));
+    let (w, wire) = t
+        .ops
+        .iter()
+        .find_map(|o| match o {
+            Op::CreateWire { id, wire } => Some((*id, wire.clone())),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("a CreateWire: {:?}", t.ops));
+    assert_eq!(wire.ends, [a, b], "the wire runs between the two points");
+    assert_eq!(v["conductor"], json!(w.hex()), "{v}");
+    assert!(c.doc().wires.contains_key(&w));
+
+    let mut r = reader();
+    let before = r.log();
+    let m = r.refused("execute", json!({"command": "wire", "params": {"points": [[0, 0], [60, 0]]}}));
+    assert_eq!(m, ecad_mcp::policy::WRITES_OFF);
+    assert_eq!(r.log(), before, "nothing recorded with writes off");
+}
+
+/// Lane 072 D (owner ruling, 2026-11-18): `cableslash` across a loose line through `execute` puts
+/// the core on the line (`CorePosition::Route`, no wire yet) in one transaction by the agent; the
+/// result names the line under `lines` and no conductor; with writes off it is refused.
+#[test]
+fn cableslash_across_a_loose_line_puts_the_core_on_the_line() {
+    let mut c = Client::new(EcadMcp::in_memory("lane072d-slash", 722, Options { write: true, agent: None }).unwrap());
+    let [a] = c.points_at(&[(0.0, 0.0)])[..] else { panic!("one point") };
+    let line = c.exec("wire", json!({"points": [[0, 0], [60, 0]]}));
+    assert_eq!(line["conductor"], Value::Null, "a line with a free end carries no wire: {line}");
+    let route = RouteId::parse(line["route"].as_str().unwrap()).unwrap();
+
+    let before = c.log().len();
+    let v = c.exec("cableslash", json!({"from": [30, -5], "to": [30, 5], "tag": "-W72"}));
+    let log = c.log();
+    assert_eq!(log.len(), before + 1, "one transaction: {v}");
+    let t = log.last().unwrap();
+    assert_eq!(t.author, Author::Agent(AGENT.into()));
+    assert!(t.ops.iter().any(|o| matches!(o, Op::CreateCable { .. })), "{:?}", t.ops);
+    let member = t
+        .ops
+        .iter()
+        .find_map(|o| match o {
+            Op::AddCableMember { member, .. } => Some(member.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("an AddCableMember: {:?}", t.ops));
+    assert_eq!(member.position, CorePosition::Route { route, landed: Some(a) }, "the core sits on the line, landed at its point");
+    assert_eq!(v["lines"], json!([route.hex()]), "{v}");
+    assert_eq!(v["conductors"], json!([]), "{v}");
+    let cable = c.doc().cables_tagged("-W72")[0];
+    assert_eq!(c.doc().cables[&cable].members.len(), 1);
+
+    let mut r = reader();
+    let before = r.log();
+    let m = r.refused("execute", json!({"command": "cableslash", "params": {"from": [30, -5], "to": [30, 5]}}));
+    assert_eq!(m, ecad_mcp::policy::WRITES_OFF);
+    assert_eq!(r.log(), before, "nothing recorded with writes off");
 }

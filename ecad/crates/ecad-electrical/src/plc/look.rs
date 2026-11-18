@@ -419,10 +419,7 @@ pub fn through_checks(doc: &Document, c: DeviceId, tag: &str, out: &mut Vec<crat
                     continue;
                 }
                 let Some(cond) = doc.wires.get(&w) else { continue };
-                if cond.ends.iter().any(Option::is_none) {
-                    continue;
-                }
-                let Some((_, _, route)) = crate::wires::route_vertices(doc, w, page) else { continue };
+                let Some(route) = crate::wires::route_of_wire_on(doc, w, page).and_then(|r| doc.routes.get(&r)).map(|r| &r.points) else { continue };
                 // A segment that passes well inside a frame (past the top edge it lands on):
                 // nine points along each segment, so a straight drop through the box counts.
                 let within = |q: Pt| rects.iter().any(|(x0, x1, y0, y1)| q.x > *x0 + 0.5 && q.x < *x1 - 0.5 && q.y > *y0 + 0.5 && q.y < *y1 - 0.5);
@@ -439,7 +436,6 @@ pub fn through_checks(doc: &Document, c: DeviceId, tag: &str, out: &mut Vec<crat
                 let other = cond
                     .ends
                     .iter()
-                    .flatten()
                     .find(|x| **x != t)
                     .map(|x| {
                         let name = crate::terminal_types::terminal_name(doc, *x);

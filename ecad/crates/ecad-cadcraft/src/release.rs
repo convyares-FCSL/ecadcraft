@@ -117,7 +117,7 @@ impl Group {
 /// Which kinds each group shows (by their JSON names, so 026's kinds are placed before they
 /// exist). Errors take every error-severity kind; a kind in no row is in [`Group::Other`].
 pub const GROUPS: &[(Group, &[&str])] = &[
-    (Group::OpenEnds, &["open-end", "loose-wire", "drawn-away", "looks-connected", "unconnected"]),
+    (Group::OpenEnds, &["open-end", "loose-wire", "no-wire-yet", "drawn-away", "looks-connected", "unconnected"]),
     (Group::Orphans, &["orphan-reference", "lonely-continuation", "single-point"]),
     (Group::Provisional, &["provisional-tag", "provisional-wires", "unnumbered"]),
     (Group::Parts, &["no-part-number"]),

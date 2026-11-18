@@ -152,20 +152,13 @@ pub const TOOLS: &[Tool] = &[
         tooltip: "Click points to draw a wire; ends on connection points attach; Enter to finish",
         kind: Kind::Start("wire"),
     },
-    // Brief 022: junctions, wire numbers.
-    Tool {
-        id: "ecad.junction",
-        group: "Wiring",
-        label: "Junction",
-        tooltip: "Click a wire where a T joins it: a junction dot, and the wire is split there",
-        kind: Kind::Start("junction"),
-    },
+    // Brief 022: wire numbers.
     // Brief 032: repair wire ends that meet.
     Tool {
         id: "ecad.joinwires",
         group: "Wiring",
         label: "Join Wires",
-        tooltip: "Click where wire ends meet: two ends become one wire; an end on a wire gets a junction",
+        tooltip: "Click where wire ends meet: two ends become one line; an end on a line's middle lands there (a T)",
         kind: Kind::Start("joinwires"),
     },
     Tool {
@@ -437,8 +430,18 @@ impl Picked {
                 Some(Mapped::Item(i)) => {
                     let index =
                         index.get_or_insert_with(|| doc.representations.values().flat_map(|r| r.items.iter().map(|i| (*i, r.subject))).collect());
-                    if let Some(s) = index.get(&i) {
-                        subjects.insert(*s);
+                    match index.get(&i) {
+                        // A route's line names the wire it carries (design 072 §4); a loose line
+                        // carries none.
+                        Some(Subject::Route(r)) => {
+                            if let Some(w) = ecad_cadcraft::wires::wire_of_route(doc, *r) {
+                                subjects.insert(Subject::Wire(w));
+                            }
+                        }
+                        Some(s) => {
+                            subjects.insert(*s);
+                        }
+                        None => {}
                     }
                 }
                 Some(Mapped::Marker(rep, t)) => {

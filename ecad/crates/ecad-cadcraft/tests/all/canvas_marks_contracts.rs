@@ -86,7 +86,7 @@ fn marks_take_the_token_colours_and_sizes() {
 /// warning): every marker kind this page can show.
 fn colour_page(seed: u64, code: &str) -> (H, WireId) {
     let (mut h, ..) = small_project(seed);
-    let w: WireId = id(&h.run("wire", json!({"points": pts(&[(0.0, 60.0), (60.0, 60.0)])})).unwrap(), "conductor");
+    let w: WireId = id(&h.wire_pp(&[(0.0, 60.0), (60.0, 60.0)]).unwrap(), "conductor");
     h.run("setprop", json!({"conductor": w.hex(), "key": "colours", "value": code})).unwrap();
     // An open end lying on the GNYE wire's middle, not joined: looks connected.
     h.run("wire", json!({"points": pts(&[(30.0, 90.0), (30.0, 60.0)]), "join": false})).unwrap();
@@ -247,10 +247,10 @@ fn a_hostile_page_draws_a_bounded_number_of_dashes_and_says_so() {
     // 6 wires of 15 m: about 3 750 dashes each, so the page budget takes five.
     for k in 0..6 {
         let y = 1000.0 + 10.0 * f64::from(k);
-        wires.push(id(&h.run("wire", json!({"points": pts(&[(0.0, y), (15_000.0, y)])})).unwrap(), "conductor"));
+        wires.push(id(&h.wire_pp(&[(0.0, y), (15_000.0, y)]).unwrap(), "conductor"));
     }
     // One of 1e8 mm (100 km): 25 million dashes asked for, within the command's coordinate range.
-    wires.push(id(&h.run("wire", json!({"points": pts(&[(0.0, 2000.0), (1e8, 2000.0)])})).unwrap(), "conductor"));
+    wires.push(id(&h.wire_pp(&[(0.0, 2000.0), (1e8, 2000.0)]).unwrap(), "conductor"));
     for w in &wires {
         h.run("setprop", json!({"conductor": w.hex(), "key": "colours", "value": "GNYE"})).unwrap();
     }

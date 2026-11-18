@@ -4,7 +4,7 @@ use ecad_cadcraft::checks::{Kind, Severity};
 use ecad_model::DeviceId;
 use serde_json::{Value, json};
 
-use crate::common::{H, id, pts};
+use crate::common::{H, id};
 
 /// Two connector rows and one terminal strip on the active page.
 fn fixture(h: &mut H) -> (Vec<DeviceId>, DeviceId) {
@@ -15,7 +15,7 @@ fn fixture(h: &mut H) -> (Vec<DeviceId>, DeviceId) {
     }
     for i in 0..3 {
         let x = 200.0 + 10.0 * f64::from(i);
-        h.run("wire", json!({"points": pts(&[(x, 200.0), (x, 240.0)])})).unwrap();
+        h.wire_pp(&[(x, 200.0), (x, 240.0)]).unwrap();
     }
     let v = h.run("terminals", json!({"from": [190, 220], "to": [240, 220]})).unwrap();
     (conns, id(&v, "strip"))
@@ -77,7 +77,6 @@ const KINDS_AT_060: &[(&str, &str, Severity)] = &[
     ("looks-connected", "Looks connected", Severity::Warning),
     ("drawn-away", "End drawn away from its connection point", Severity::Warning),
     ("single-point", "Net with a single connection point", Severity::Warning),
-    ("thin-junction", "Junction with fewer than three wires", Severity::Info),
     ("unconnected", "Connection point not connected", Severity::Info),
     ("lonely-continuation", "Continuation without partner", Severity::Info),
     ("mixed-potentials", "Mixed potentials in one net", Severity::Info),
@@ -198,7 +197,8 @@ fn every_check_kind_is_in_the_table_once_and_keeps_its_words() {
         let k = Kind::parse(name).unwrap_or_else(|| panic!("kind {name} is gone: persisted names never change"));
         assert_eq!((k.words(), k.severity()), (*words, *severity), "{name}");
     }
-    assert_eq!(KINDS_AT_060.len(), 110);
+    // 110 at 060, less `thin-junction` (design 072 §4: the junction device is gone).
+    assert_eq!(KINDS_AT_060.len(), 109);
 }
 
 /// Brief 060 (R7): each whole-project check source keeps its rows under a key of its own.

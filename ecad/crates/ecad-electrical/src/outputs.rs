@@ -19,7 +19,7 @@
 //! | `SetProperty(Page P, location)`, `AddPage` / `RemovePage` of P | conductors routed on P (their Page cell); no device row |
 //! | `SetProperty(Page P, number)` | conductors routed on P |
 //! | `SetProperty(Project, designation.<a>.<key>.code)` (a rename in the list, brief 052) | the devices, connectors and items storing that key (the one wide case, by intent) |
-//! | `CreateWire` / `DeleteWire` / `AttachEnd` / `SetProperty` conductor / route ops | that conductor and its net's conductors (before and after); their cables |
+//! | `CreateWire` / `DeleteWire` / `SetProperty` conductor (the commit's wire rewrite included) / route ops | that conductor and its net's conductors (before and after); their cables |
 //! | `CreateCable` / `DeleteCable` / members / `SetProperty` cable | that cable; its cores |
 //! | `SetProperty` of a continuation's `name` (brief 032) | the cables with a member attached to its old or new name group: their core chains |
 //! | `SetProjectSettings` changing the potentials table | conductors on the potentials whose row changed (potential index); with a row added or removed, also those with no potential |
@@ -79,22 +79,11 @@ impl PageCx {
     }
 }
 
-/// Where conductor `w`'s two ends are drawn: end A at its first route's first vertex, end B at
-/// its last route's last vertex, routes in book order.
+/// Where conductor `w`'s two ends are drawn: each at the first (in book order) route end landing
+/// on its connection point.
 pub fn end_points(doc: &Document, w: WireId, cx: &PageCx) -> [Option<(PageId, Pt)>; 2] {
-    let mut routes: Vec<(usize, Vec<Pt>, PageId)> = doc
-        .representations_of(Subject::Wire(w))
-        .filter_map(|(_, r)| {
-            let pts = r.items.iter().filter_map(|i| doc.items.get(i)).find_map(|i| match &i.kind {
-                ecad_model::ItemKind::Primitive(ecad_model::Primitive::Polyline { vertices, .. }) => Some(vertices.clone()),
-                ecad_model::ItemKind::Primitive(ecad_model::Primitive::Line { a, b }) => Some(vec![*a, *b]),
-                _ => None,
-            })?;
-            Some((cx.pos(r.page), pts, r.page))
-        })
-        .collect();
-    routes.sort_by_key(|(pos, _, _)| *pos);
-    [routes.first().and_then(|(_, v, p)| v.first().map(|x| (*p, *x))), routes.last().and_then(|(_, v, p)| v.last().map(|x| (*p, *x)))]
+    let Some(wire) = doc.wires.get(&w) else { return [None, None] };
+    wire.ends.map(|t| crate::wires::drawn_ends_at(doc, t).into_iter().min_by_key(|(p, _)| cx.pos(*p)))
 }
 
 /// One device as the reports see it.
@@ -497,7 +486,14 @@ impl Scope {
             Subject::Cable(k) => {
                 self.cables.insert(k);
             }
-            Subject::Route(_) => {}
+            // A route's drawing: the wires at the points it lands on (where their ends are drawn).
+            Subject::Route(r) => {
+                if let Some(route) = doc.routes.get(&r) {
+                    for t in route.points_landed() {
+                        self.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+                    }
+                }
+            }
         }
     }
 
@@ -612,17 +608,27 @@ impl Scope {
                         self.subject(doc, r.subject, r.page);
                     }
                 }
-                Op::CreateWire { id, .. } | Op::DeleteWire { id, .. } | Op::AttachEnd { conductor: id, .. } => {
+                Op::CreateWire { id, .. } | Op::DeleteWire { id, .. } => {
                     self.wires.insert(*id);
                 }
                 Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
                     self.cables.insert(*id);
                 }
-                // Design 072 F31: routes draw nothing outputs read until wires run along them (lane D F2).
-                Op::AddRoute { .. } | Op::RemoveRoute { .. } | Op::ModifyRoute { .. } => {}
+                // Design 072 §4.3: a route moved, added or removed moves where the wires at the
+                // points it lands on are drawn.
+                Op::AddRoute { route, .. } | Op::RemoveRoute { route, .. } => {
+                    for t in route.points_landed() {
+                        self.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+                    }
+                }
+                Op::ModifyRoute { before, after, .. } => {
+                    for t in before.points_landed().chain(after.points_landed()) {
+                        self.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+                    }
+                }
                 Op::AddCableMember { cable, member, .. } | Op::RemoveCableMember { cable, member, .. } => {
                     self.cables.insert(*cable);
-                    self.wires.insert(member.conductor);
+                    self.wires.extend(member.wire());
                 }
                 Op::SetProjectSettings { before, after } => {
                     let rows = |w: &ecad_model::wiring::WiringSettings| -> BTreeMap<String, ecad_model::wiring::PotentialDef> {
@@ -705,8 +711,8 @@ fn chain_heads(doc: &Document, k: CableId, cab: &ecad_model::Cable) -> (Vec<ecad
     let mut tails = Vec::with_capacity(chains.len());
     for ch in &chains {
         let (Some(first), Some(last)) = (ch.first(), ch.last()) else { continue };
-        let core = ch.iter().find_map(|w| cab.members.iter().find(|m| m.conductor == *w).and_then(|m| m.core.clone()));
-        heads.push(ecad_model::CableMember { conductor: *first, core });
+        let core = ch.iter().find_map(|w| cab.members.iter().find(|m| m.wire() == Some(*w)).and_then(|m| m.core.clone()));
+        heads.push(ecad_model::CableMember::on_wire(*first, core));
         tails.push(*last);
     }
     (heads, tails)

@@ -305,11 +305,63 @@ pub struct Representation {
     pub connection_points: BTreeMap<TerminalId, Pt>,
 }
 
-/// A conductor's membership of a cable.
+/// Where a cable core is (owner ruling, 2026-11-18): stored, never worked out from the
+/// connections on read.
+///
+/// # Semantics
+/// - `Unplaced`: the core is on no line yet.
+/// - `Route`: the core is on a drawn line that carries no wire yet (a loose line); `landed` is the
+///   connection point of the one end that has landed, when exactly one has.
+/// - `Wire`: the core is that wire. The command that lands a line's second end moves its cores
+///   from the route to the wire it forms.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CorePosition {
+    Unplaced,
+    Route { route: RouteId, landed: Option<TerminalId> },
+    Wire(WireId),
+}
+
+impl CorePosition {
+    /// The wire, when the core is on one.
+    pub fn wire(self) -> Option<WireId> {
+        match self {
+            CorePosition::Wire(w) => Some(w),
+            CorePosition::Unplaced | CorePosition::Route { .. } => None,
+        }
+    }
+
+    /// The route, when the core is on a line with no wire yet.
+    pub fn route(self) -> Option<RouteId> {
+        match self {
+            CorePosition::Route { route, .. } => Some(route),
+            CorePosition::Unplaced | CorePosition::Wire(_) => None,
+        }
+    }
+}
+
+/// One core of a cable: where it is and its label.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CableMember {
-    pub conductor: WireId,
+    pub position: CorePosition,
     pub core: Option<String>,
+}
+
+impl CableMember {
+    /// A core on wire `w`.
+    pub fn on_wire(w: WireId, core: Option<String>) -> Self {
+        CableMember { position: CorePosition::Wire(w), core }
+    }
+
+    /// The wire this core is, when it is one.
+    pub fn wire(&self) -> Option<WireId> {
+        self.position.wire()
+    }
+
+    /// The route this core is on, when it has no wire yet.
+    pub fn route(&self) -> Option<RouteId> {
+        self.position.route()
+    }
 }
 
 /// A cable groups existing conductors (DOC-04).
@@ -889,6 +941,26 @@ impl Document {
         referrers(&self.index.terminal_ends, &terminal).collect()
     }
 
+    /// The wires of net `net`, in ID order, through the index.
+    pub fn wires_of_net(&self, net: crate::id::NetId) -> impl Iterator<Item = WireId> + '_ {
+        referrers(&self.index.net_wires, &net)
+    }
+
+    /// The routes with an end on connection point `t`, in ID order, through the index.
+    pub fn routes_at(&self, t: TerminalId) -> impl Iterator<Item = crate::id::RouteId> + '_ {
+        referrers(&self.index.terminal_routes, &t)
+    }
+
+    /// The routes ending on the middle of route `r` (its T-joins), in ID order, through the index.
+    pub fn tees_of(&self, r: crate::id::RouteId) -> impl Iterator<Item = crate::id::RouteId> + '_ {
+        referrers(&self.index.route_tees, &r)
+    }
+
+    /// The routes drawn on page `page`, in ID order, through the index.
+    pub fn routes_on(&self, page: PageId) -> impl Iterator<Item = crate::id::RouteId> + '_ {
+        referrers(&self.index.page_routes, &page)
+    }
+
     /// Components whose tag is the same tag as `tag` (equal [`crate::tag::key`]), in ID order,
     /// through the tag index: the cost does not grow with the project.
     pub fn components_tagged(&self, tag: &str) -> Vec<DeviceId> {
@@ -964,5 +1036,10 @@ impl Document {
     /// Cables `conductor` is a member of, in ID order.
     pub fn cables_of(&self, conductor: WireId) -> Vec<CableId> {
         referrers(&self.index.conductor_cables, &conductor).collect()
+    }
+
+    /// The cables with a core on route `r` (a line with no wire yet).
+    pub fn cables_on_route(&self, r: RouteId) -> Vec<CableId> {
+        referrers(&self.index.route_cables, &r).collect()
     }
 }

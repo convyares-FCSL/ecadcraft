@@ -15,6 +15,15 @@ use crate::designations::{self, Aspect};
 use crate::slash::MAX_CABLE_MEMBERS;
 use crate::styles::{self, cable};
 
+/// The pages a cable core is drawn on: its wire's pages, or its line's page while it has no wire.
+pub fn member_pages(doc: &Document, m: &ecad_model::CableMember) -> BTreeSet<PageId> {
+    match m.position {
+        ecad_model::CorePosition::Wire(w) => crate::wires::wire_pages(doc, w),
+        ecad_model::CorePosition::Route { route, .. } => doc.routes.get(&route).map(|r| r.page).into_iter().collect(),
+        ecad_model::CorePosition::Unplaced => BTreeSet::new(),
+    }
+}
+
 /// A cable end: `From` is the cabinet end, `To` the field end (057's sides).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Side {
@@ -360,8 +369,8 @@ pub fn drawn_pages(doc: &Document, k: CableId) -> Vec<(PageId, String)> {
         && let Some(c) = doc.cables.get(&k)
     {
         for m in c.members.iter().take(MAX_CABLE_MEMBERS) {
-            for (_, r) in doc.representations_of(Subject::Wire(m.conductor)) {
-                out.entry(r.page).or_insert_with(|| crate::references::page_number(doc, r.page));
+            for p in member_pages(doc, m) {
+                out.entry(p).or_insert_with(|| crate::references::page_number(doc, p));
             }
         }
     }
@@ -397,10 +406,7 @@ impl DrawnEnd {
 pub fn drawn_ends(doc: &Document, k: CableId) -> [DrawnEnd; 2] {
     let mut out = [DrawnEnd::default(), DrawnEnd::default()];
     for chain in crate::references::core_chains(doc, k).iter().take(MAX_CABLE_MEMBERS) {
-        let ends = [
-            chain.first().and_then(|w| doc.wires.get(w)).and_then(|c| c.ends[0]),
-            chain.last().and_then(|w| doc.wires.get(w)).and_then(|c| c.ends[1]),
-        ];
+        let ends = [chain.first().and_then(|w| doc.wires.get(w)).map(|c| c.ends[0]), chain.last().and_then(|w| doc.wires.get(w)).map(|c| c.ends[1])];
         for (slot, t) in out.iter_mut().zip(ends) {
             let Some(c) = t.and_then(|t| doc.terminals.get(&t)).map(|x| x.component) else { continue };
             if crate::wires::kind_of(doc, c).is_some() {

@@ -115,6 +115,25 @@ impl Route {
     }
 
     /// Its values in words, in a fixed order, for change lists, diffs and the inspector.
+    /// How far along the route `at` lies, from its first point, and the route's whole length:
+    /// `at` is taken at its nearest place on the route. `None` for a route with no length.
+    pub fn along(&self, at: Pt) -> Option<(f64, f64)> {
+        let mut walked = 0.0;
+        let mut best: Option<(f64, f64)> = None;
+        for w in self.points.windows(2) {
+            let (Some(a), Some(b)) = (w.first().copied(), w.get(1).copied()) else { continue };
+            let len = a.dist(b);
+            let t = if len > 0.0 { (((at.x - a.x) * (b.x - a.x) + (at.y - a.y) * (b.y - a.y)) / (len * len)).clamp(0.0, 1.0) } else { 0.0 };
+            let q = Pt { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+            let d = q.dist(at);
+            if best.is_none_or(|(bd, _)| d < bd) {
+                best = Some((d, walked + len * t));
+            }
+            walked += len;
+        }
+        best.filter(|_| walked > 0.0).map(|(_, s)| (s, walked))
+    }
+
     pub fn values(&self) -> Vec<(&'static str, String)> {
         let end = |e: &RouteEnd| match e {
             RouteEnd::Point(t) => format!("point {t}"),

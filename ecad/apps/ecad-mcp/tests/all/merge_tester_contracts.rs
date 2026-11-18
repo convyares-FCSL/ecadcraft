@@ -4,7 +4,7 @@
 //! a dead end); merging an already merged branch; undo and redo across a merge; the file verifies.
 
 use ecad_mcp::{EcadMcp, Options};
-use ecad_model::{DeviceId, TxKind, WireId};
+use ecad_model::{DeviceId, TxKind};
 use serde_json::{Value, json};
 
 use crate::mcp_contracts::{Client, TempDir};
@@ -19,7 +19,7 @@ fn project(dir: &TempDir, name: &str) -> (Client, String, String, String) {
     let mut c = Client::new(EcadMcp::create(&path, Options { write: true, agent: None }).unwrap());
     let coil = c.exec("place", json!({"symbol": "coil", "at": [0, 0]}))["component"].as_str().unwrap().to_string();
     c.exec("setprop", json!({"component": coil, "key": "description", "value": "Pump"}));
-    let w = c.exec("wire", json!({"points": [[100, 40], [160, 40]]}))["conductor"].as_str().unwrap().to_string();
+    let w = c.wire_pp(json!({"points": [[100, 40], [160, 40]]}))["conductor"].as_str().unwrap().to_string();
     c.ok("save", json!({}));
     (c, coil, w, path)
 }
@@ -270,38 +270,55 @@ fn the_same_new_tag_on_both_sides_is_renumbered_and_tags_stay_unique() {
 }
 
 #[test]
-fn a_wire_end_attached_differently_on_both_sides_can_be_left_unconnected() {
+fn a_line_end_attached_differently_on_both_sides_offers_main_or_branch() {
     let dir = TempDir::new("t020b-end");
     let path = dir.file("end.ecad");
     let mut c = Client::new(EcadMcp::create(&path, Options { write: true, agent: None }).unwrap());
     let placed = c.exec("place", json!({"symbol": "coil", "at": [0, 0]}));
     let t: Vec<String> = placed["terminals"].as_array().unwrap().iter().map(|t| t["terminal"].as_str().unwrap().to_string()).collect();
     assert!(t.len() >= 2, "{placed}");
-    let w = c.exec("wire", json!({"points": [[100, 40], [160, 40]]}))["conductor"].as_str().unwrap().to_string();
+    // Design 072: a line with a free end (a route, no wire yet); `connect` lands its end B.
+    let w = c.exec("wire", json!({"points": [[100, 40], [160, 40]]}))["route"].as_str().unwrap().to_string();
     c.ok("save", json!({}));
     c.exec("branch", json!({"name": "Option W"}));
-    c.exec("connect", json!({"conductor": w, "terminal": t[1], "end": "B"}));
+    c.exec("connect", json!({"route": w, "terminal": t[1], "end": "B"}));
     c.exec("switchbranch", json!({"branch": "main", "save": true}));
-    c.exec("connect", json!({"conductor": w, "terminal": t[0], "end": "B"}));
+    c.exec("connect", json!({"route": w, "terminal": t[0], "end": "B"}));
     let pv = c.exec("merge", json!({"from": "Option W", "preview": true}));
-    let k =
-        pv["conflicts"].as_array().unwrap().iter().find(|k| k["id"].as_str().unwrap().ends_with("/end.b")).cloned().unwrap_or_else(|| panic!("{pv}"));
+    let k = pv["conflicts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|k| k["id"].as_str().unwrap() == format!("{w}/ends"))
+        .cloned()
+        .unwrap_or_else(|| panic!("{pv}"));
     eprintln!("end conflict: {k}");
-    // Design §5.3 and owner answer 7: a connection conflict always offers Leave unconnected.
-    assert!(k["choices"].as_array().unwrap().iter().any(|x| x == "loose"), "Leave unconnected offered: {k}");
-    let cid = WireId::parse(&w).unwrap();
-    every_choice_merges(&mut c, "Option W", &mut |c, _, ch| {
-        let end_b = c.doc().wires.get(&cid).unwrap().end(ecad_model::End::B);
+    // Design 072 (lead, 2026-11-18): a route drawn differently on both sides offers main or
+    // branch, each landing end B where that side put it.
+    let choices: Vec<&str> = k["choices"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
+    assert_eq!(choices, ["main", "branch"], "{k}");
+    let rid = ecad_model::RouteId::parse(&w).unwrap();
+    let point = |s: &str| ecad_model::RouteEnd::Point(ecad_model::TerminalId::parse(s).unwrap());
+    let (on_main, on_branch) = (point(&t[0]), point(&t[1]));
+    let ends_id = format!("{w}/ends");
+    let tried = every_choice_merges(&mut c, "Option W", &mut |c, id, ch| {
+        if id != ends_id {
+            return;
+        }
+        let end_b = c.doc().routes.get(&rid).unwrap().ends[1];
         eprintln!("  choice {ch}: end B = {end_b:?}");
-        if ch == "loose" {
-            assert!(end_b.is_none(), "Leave unconnected leaves end B loose");
+        match ch {
+            "main" => assert_eq!(end_b, on_main, "main's connection"),
+            "branch" => assert_eq!(end_b, on_branch, "the branch's connection"),
+            _ => {}
         }
     });
-    // Leave it loose, and Checks lists the open end.
-    let id = k["id"].as_str().unwrap();
-    c.exec("merge", json!({"from": "Option W", "choices": {id: "loose"}}));
-    let checks = c.exec("checks", json!({}));
-    eprintln!("checks after loose: {checks}");
+    assert!(tried >= 2);
+    // Take the branch's drawing of the line (its ends, points and item).
+    let all: serde_json::Map<String, Value> =
+        pv["conflicts"].as_array().unwrap().iter().map(|k| (k["id"].as_str().unwrap().to_string(), json!("branch"))).collect();
+    c.exec("merge", json!({"from": "Option W", "choices": all}));
+    assert_eq!(c.doc().routes.get(&rid).unwrap().ends[1], on_branch);
     c.ok("save", json!({}));
     verify(&path);
 }
@@ -314,10 +331,10 @@ fn a_branch_wire_attached_to_a_point_main_removed_offers_bring_back_or_leave_loo
     let placed = c.exec("place", json!({"symbol": "coil", "at": [0, 0]}));
     let coil = placed["component"].as_str().unwrap().to_string();
     let t0 = placed["terminals"][0]["terminal"].as_str().unwrap().to_string();
-    let w = c.exec("wire", json!({"points": [[100, 40], [160, 40]]}))["conductor"].as_str().unwrap().to_string();
+    let w = c.exec("wire", json!({"points": [[100, 40], [160, 40]]}))["route"].as_str().unwrap().to_string();
     c.ok("save", json!({}));
     c.exec("branch", json!({"name": "Option X"}));
-    c.exec("connect", json!({"conductor": w, "terminal": t0, "end": "B"}));
+    c.exec("connect", json!({"route": w, "terminal": t0, "end": "B"}));
     c.exec("switchbranch", json!({"branch": "main", "save": true}));
     c.exec("devicedelete", json!({"component": coil}));
     let pv = c.exec("merge", json!({"from": "Option X", "preview": true}));

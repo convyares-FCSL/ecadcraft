@@ -5,7 +5,7 @@
 use ecad_cadcraft::checks::{Fix, Kind};
 use ecad_cadcraft::outputs::{Group, Outputs};
 use ecad_cadcraft::strips::Strips;
-use ecad_model::{Author, CableId, DeviceId, End, Op, PageId, TerminalId, WireId};
+use ecad_model::{Author, CableId, DeviceId, Op, PageId, RouteEnd, RouteId, TerminalId, WireId};
 use serde_json::{Value, json};
 
 use crate::common::place;
@@ -47,7 +47,7 @@ fn fixture(seed: u64) -> T {
     ];
     let mut wires = Vec::new();
     for r in &routes {
-        let v = h.run("wire", json!({"points": pts(r)})).unwrap();
+        let v = h.wire_pp(r).unwrap();
         assert_eq!(v["attached"].as_array().unwrap().len(), 2, "{v}");
         wires.push(id::<WireId>(&v, "conductor"));
     }
@@ -89,18 +89,18 @@ fn a_terminal_on_a_wire_splits_it_and_undo_restores_it() {
     assert_eq!(t.h.head(), head + 1, "one transaction");
     assert_eq!(v["tag"], "-X01", "{v}");
     assert!(v["message"].as_str().unwrap().starts_with("Placed -X01:1 on wire"), "{v}");
-    let new: WireId = id(&v["split"], "new");
+    let (kept, new): (RouteId, RouteId) = (id(&v["split"], "route"), id(&v["split"], "new"));
     let x1: DeviceId = id(&v, "component");
     let term: TerminalId = id(&v["terminals"][0], "terminal");
     let doc = t.h.doc();
-    assert_eq!(doc.wires[&t.wires[0]].end(End::B), Some(term));
-    assert_eq!(doc.wires[&new].end(End::A), Some(term));
-    let conn = doc.connectivity();
-    assert_eq!(conn.net_of_conductor(t.wires[0]), conn.net_of_conductor(new), "one net");
-    // The cable's slash crosses the second half, so it keeps the membership.
-    assert!(doc.cables[&t.cable].members.iter().any(|m| m.conductor == new));
-    assert!(!doc.cables[&t.cable].members.iter().any(|m| m.conductor == t.wires[0]));
-    assert_eq!(v["cable_kept_by"]["conductor"], json!(new.hex()));
+    assert_eq!(doc.routes[&kept].ends[1], RouteEnd::Point(term));
+    assert_eq!(doc.routes[&new].ends[0], RouteEnd::Point(term));
+    // One net (design 072 §4.4): the wire's two points and the terminal.
+    let [a, b] = before.wires[&t.wires[0]].ends;
+    let nets: std::collections::BTreeSet<_> = [a, b, term].iter().flat_map(|x| doc.ends_at(*x)).map(|(w, _)| doc.wires[&w].net).collect();
+    assert_eq!(nets.len(), 1, "one net");
+    // The cable keeps a member on the net (design 072 §4.4: the rewrite keeps memberships).
+    assert!(!doc.cables[&t.cable].members.is_empty());
     assert_eq!(t.h.p(|p| p.ledger.log().last().unwrap().label.clone()), "Place terminal");
     same_as_built(&mut t.h);
     let plan = strip_plan(&mut t.h);
@@ -143,8 +143,9 @@ fn place_terminals_bridges_cores_and_the_plan() {
     let doc = t.h.doc();
     // The cable's members are the field halves (§3.1).
     for (i, x) in v["terminals"].as_array().unwrap().iter().enumerate() {
-        let new: WireId = id(x, "new");
-        assert!(doc.cables[&t.cable].members.iter().any(|m| m.conductor == new), "member {i}");
+        // `new` is the route from the terminal on (design 072 §4.3); the wire it carries.
+        let new = ecad_cadcraft::wires::wire_of_route(&doc, id(x, "new"));
+        assert!(new.is_some() && doc.cables[&t.cable].members.iter().any(|m| m.wire() == new), "member {i}");
     }
     same_as_built(&mut t.h);
     // C: a bridge between 3 and 4.
@@ -164,8 +165,9 @@ fn place_terminals_bridges_cores_and_the_plan() {
     let conn = t.h.doc();
     let c = conn.connectivity();
     let n3 = c.net_of_conductor(bridge);
-    assert_eq!(n3, c.net_of_conductor(t.wires[2]), "bridged terminals share a net");
-    assert_eq!(n3, c.net_of_conductor(t.wires[3]));
+    // The terminals' wires are new since the split (design 072 §4.4): their nets by point.
+    assert_eq!(n3, c.net_of_terminal(terms[2]), "bridged terminals share a net");
+    assert_eq!(n3, c.net_of_terminal(terms[3]));
     let again = t.h.run("bridge", json!({"from": terms[2].hex(), "to": terms[3].hex()})).unwrap();
     assert_eq!(again["changed"], false);
     assert_eq!(again["message"], "-X01:3 and -X01:4 are already bridged.");
@@ -180,11 +182,11 @@ fn place_terminals_bridges_cores_and_the_plan() {
     assert_eq!(r["from_devices"], json!(["-X01"]), "{r}");
     assert_eq!(r["to_devices"], json!(["-M01", "-S01"]), "{r}");
     // A fifth wire added to -W01 takes core 5.
-    let w5 = t.h.run("wire", json!({"points": pts(&[(300.0, 200.0), (300.0, 50.0)])})).unwrap();
+    let w5 = t.h.wire_pp(&[(300.0, 200.0), (300.0, 50.0)]).unwrap();
     let w5: WireId = id(&w5, "conductor");
     t.h.run("cableadd", json!({"cable": t.cable.hex(), "conductors": [w5.hex()]})).unwrap();
     let doc = t.h.doc();
-    assert_eq!(doc.cables[&t.cable].members.iter().find(|m| m.conductor == w5).unwrap().core.as_deref(), Some("5"));
+    assert_eq!(doc.cables[&t.cable].members.iter().find(|m| m.wire() == Some(w5)).unwrap().core.as_deref(), Some("5"));
     let cores = t.h.run("cablecores", json!({"cable": t.cable.hex()})).unwrap();
     assert_eq!(cores["offer"], "7G");
     assert_eq!(cores["source"], "type");
@@ -193,7 +195,7 @@ fn place_terminals_bridges_cores_and_the_plan() {
     // Three more: an eighth member gives too-many-cores; nothing is refused.
     let mut more = Vec::new();
     for x in [310.0, 320.0, 330.0] {
-        let w = t.h.run("wire", json!({"points": pts(&[(x, 200.0), (x, 50.0)])})).unwrap();
+        let w = t.h.wire_pp(&[(x, 200.0), (x, 50.0)]).unwrap();
         more.push(id::<WireId>(&w, "conductor").hex());
     }
     t.h.run("cableadd", json!({"cable": t.cable.hex(), "conductors": more})).unwrap();
@@ -228,8 +230,11 @@ fn setting_a_field_device_to_the_strip_location_flips_only_its_rows() {
     let lamp = place(&mut t.h, "lamp", (340.0, 60.0));
     let h1: DeviceId = id(&lamp, "component");
     t.h.run("setlocation", json!({"component": h1.hex(), "value": "+FIELD"})).unwrap();
-    // A wire from -K01's coil top? Use a free wire from (330,175) to the lamp X1 (340, 70).
-    let k = t.h.run("wire", json!({"points": pts(&[(330.0, 200.0), (330.0, 70.0), (340.0, 70.0)])})).unwrap();
+    // A wire from a point in +CP1 at (330, 200) to the lamp's X1 (340, 70).
+    let top = t.h.points_at(&[(330.0, 200.0)])[0];
+    let top_device = t.h.doc().terminals[&top].component;
+    t.h.run("setlocation", json!({"component": top_device.hex(), "value": "+CP1"})).unwrap();
+    let k = t.h.wire_pp(&[(330.0, 200.0), (330.0, 70.0), (340.0, 70.0)]).unwrap();
     let _w: WireId = id(&k, "conductor");
     // Land -X01:5 on it inside +CP1.
     let x = t.h.run("place", json!({"symbol": "terminal", "at": [330, 170], "tag": "-X01"})).unwrap();
@@ -415,15 +420,8 @@ fn relabelling_wired_terminals_by_remove_and_add_needs_no_new_op() {
     let inverse: Vec<Op> = ops.iter().rev().map(Op::inverse).collect();
     t.h.cfg(|p| p.ledger.commit(Author::User, "undo swap", inverse)).unwrap();
     assert_eq!(t.h.doc().terminals, doc.terminals);
-    // As the design wrote it: detach, remove, add, attach back.
-    let mut ops = Vec::new();
-    for (w, end) in doc.ends_at(t3) {
-        ops.push(Op::AttachEnd { conductor: w, end, before: Some(t3), after: None });
-    }
-    ops.extend(relabel(t3, "9"));
-    for (w, end) in doc.ends_at(t3) {
-        ops.push(Op::AttachEnd { conductor: w, end, before: None, after: Some(t3) });
-    }
+    // Once more, alone: the routes landing on it stay on it (design 072 §4.3).
+    let ops: Vec<Op> = relabel(t3, "9").into();
     t.h.cfg(|p| p.ledger.commit(Author::User, "relabel", ops)).unwrap();
     let d = t.h.doc();
     assert_eq!(d.terminals[&t3].label.as_deref(), Some("9"));
@@ -518,10 +516,13 @@ fn renumbering_terminals_follows_drawing_order() {
     let after: Vec<_> = terms.iter().map(|x| d.ends_at(*x)).collect();
     assert_eq!(ends, after, "the wires stay attached");
     let ops = t.h.p(|p| p.ledger.log().last().unwrap().ops.clone());
-    assert!(ops.iter().all(|o| !matches!(o, Op::AttachEnd { .. })), "Remove + Add of the same ID, no detaching");
+    assert!(ops.iter().all(|o| !matches!(o, Op::ModifyRoute { .. } | Op::DeleteWire { .. })), "Remove + Add of the same ID, no detaching");
     same_as_built(&mut t.h);
     let plan = strip_plan(&mut t.h);
-    assert_eq!(plan["strips"][0]["rows"][0]["outside"][0]["target"], "-S01:13", "{plan}");
+    // The first row is -X01:4's: its cable core to -S01:13 is outside. (The moved terminal's
+    // -K02 side leaves it to the right, so with no strip location it is outside too.)
+    let out = plan["strips"][0]["rows"][0]["outside"].as_array().cloned().unwrap_or_default();
+    assert!(out.iter().any(|c| c["target"] == "-S01:13" && c["cable"] == "-W01"), "{plan}");
     t.h.cmdline("u");
     assert_eq!(t.h.doc().terminals[&terms[3]].label.as_deref(), Some("4"));
     same_as_built(&mut t.h);

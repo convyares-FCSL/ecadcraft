@@ -15,7 +15,7 @@ use ecad_model::{CableId, DeviceId, PageId, TerminalId};
 use serde_json::{Value, json};
 
 use crate::common::place;
-use crate::common::{H, id, pts};
+use crate::common::{H, id};
 
 /// Fixture G's objects.
 struct G {
@@ -48,7 +48,7 @@ fn fixture(seed: u64) -> G {
         vec![(200.0, 210.0), (200.0, 95.0), (120.0, 95.0), (120.0, 65.0)],
         vec![(250.0, 210.0), (250.0, 70.0)],
     ] {
-        h.run("wire", json!({"points": pts(&r)})).unwrap();
+        h.wire_pp(&r).unwrap();
     }
     let v = h.run("cableslash", json!({"from": [90, 120], "to": [260, 120], "tag": "-W01"})).unwrap();
     let cable: CableId = id(&v, "cable");
@@ -59,7 +59,7 @@ fn fixture(seed: u64) -> G {
     let terms: Vec<TerminalId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
     // A PE and a fuse position on wires of their own.
     for x in [300.0, 340.0] {
-        h.run("wire", json!({"points": pts(&[(x, 260.0), (x, 160.0)])})).unwrap();
+        h.wire_pp(&[(x, 260.0), (x, 160.0)]).unwrap();
     }
     h.run("terminals", json!({"strip": x1.hex(), "type": "PE", "level": "All", "from": [290, 200], "to": [310, 200]})).unwrap();
     let f = h.run("terminals", json!({"strip": x1.hex(), "type": "FUSE", "level": "All", "from": [330, 200], "to": [350, 200]})).unwrap();

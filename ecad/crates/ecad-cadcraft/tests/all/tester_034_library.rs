@@ -15,7 +15,7 @@ use ecad_cadcraft::symbols::{self, STARTER_LIBRARY, STARTERS};
 use ecad_model::{DeviceId, Document, Pt, TerminalId, Word};
 use serde_json::{Value, json};
 
-use crate::common::{H, id, pts};
+use crate::common::{H, id};
 use crate::common::{reopen, tmp_dir};
 
 /// `def_id(0)` of the starter library (design 018 §4): definition IDs are this plus n.
@@ -625,9 +625,9 @@ fn f_fuse_bank_breaks_the_net_per_fuse() {
     let mut h = H::new(0x7034_0009);
     let v = place(&mut h, "fusebank8", (100.0, 150.0));
     // L+ (90,170), outputs 1 (100,135) and 2 (110,135).
-    h.run("wire", json!({"points": pts(&[(90.0, 200.0), (90.0, 170.0)])})).unwrap();
-    h.run("wire", json!({"points": pts(&[(100.0, 135.0), (100.0, 100.0)])})).unwrap();
-    h.run("wire", json!({"points": pts(&[(110.0, 135.0), (110.0, 90.0)])})).unwrap();
+    h.wire_pp(&[(90.0, 200.0), (90.0, 170.0)]).unwrap();
+    h.wire_pp(&[(100.0, 135.0), (100.0, 100.0)]).unwrap();
+    h.wire_pp(&[(110.0, 135.0), (110.0, 90.0)]).unwrap();
     let d = h.doc();
     let (lp, o1, o2) = (term(&v, "L+"), term(&v, "1"), term(&v, "2"));
     for t in [lp, o1, o2] {
@@ -644,8 +644,8 @@ fn g_fuse_terminal_breaks_the_net() {
     let mut h = H::new(0x7034_000a);
     let v = place(&mut h, "fuseterm", (100.0, 150.0));
     assert_eq!(v["tag"], json!("-F01"));
-    h.run("wire", json!({"points": pts(&[(100.0, 200.0), (100.0, 160.0)])})).unwrap();
-    h.run("wire", json!({"points": pts(&[(100.0, 140.0), (100.0, 100.0)])})).unwrap();
+    h.wire_pp(&[(100.0, 200.0), (100.0, 160.0)]).unwrap();
+    h.wire_pp(&[(100.0, 140.0), (100.0, 100.0)]).unwrap();
     let d = h.doc();
     let (a, b) = (term(&v, "1"), term(&v, "2"));
     assert!(d.has_ends(a) && d.has_ends(b));
@@ -661,8 +661,8 @@ fn h_bulkhead_pin_joins_both_sides() {
     let mut h = H::new(0x7034_000b);
     let v = place(&mut h, "rj45", (100.0, 150.0));
     assert_eq!(v["tag"], json!("-X01"));
-    h.run("wire", json!({"points": pts(&[(100.0, 200.0), (100.0, 150.0)])})).unwrap();
-    h.run("wire", json!({"points": pts(&[(100.0, 150.0), (100.0, 100.0)])})).unwrap();
+    h.wire_pp(&[(100.0, 200.0), (100.0, 150.0)]).unwrap();
+    h.wire_pp(&[(100.0, 150.0), (100.0, 100.0)]).unwrap();
     let d = h.doc();
     let pin = term(&v, "1");
     let net = net_of(&d, pin).expect("pin 1 has a net");
@@ -765,7 +765,7 @@ fn j_quiet_spare_points_are_not_flagged() {
     // Wiring a quiet pin changes nothing else: its neighbour stays quiet.
     let (e, v) = placed.iter().find(|(e, _)| e.key == "socket4").unwrap();
     let at = slot(cat.iter().position(|x| x.key == e.key).unwrap());
-    h.run("wire", json!({"points": pts(&[(at.0, at.1 + 5.0), (at.0, at.1 + 30.0)])})).unwrap();
+    h.wire_pp(&[(at.0, at.1 + 5.0), (at.0, at.1 + 30.0)]).unwrap();
     let f = unconnected(&h.doc());
     assert!(!f.contains(&term(v, "1")) && !f.contains(&term(v, "2")));
 }

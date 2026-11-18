@@ -485,14 +485,8 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetKey>, BTreeSet<N
     for op in ops {
         match op {
             Op::CreateWire { id, .. } => add(Node::Wire(*id), &mut nets),
-            Op::DeleteWire { conductor, .. } => {
-                for t in conductor.ends.iter().flatten() {
-                    add(Node::Terminal(*t), &mut nets);
-                }
-            }
-            Op::AttachEnd { conductor, before, after, .. } => {
-                add(Node::Wire(*conductor), &mut nets);
-                for t in [before, after].into_iter().flatten() {
+            Op::DeleteWire { wire, .. } => {
+                for t in &wire.ends {
                     add(Node::Terminal(*t), &mut nets);
                 }
             }
@@ -619,8 +613,10 @@ pub fn assign_nets(doc: &Document, touched: &BTreeSet<NetKey>, potential_changed
 /// Whether every route of `net`'s conductors is on a page of `pages` (and it has one).
 fn only_on(doc: &Document, net: &NetData, pages: &std::collections::BTreeSet<crate::id::PageId>) -> bool {
     let mut any = false;
+    // A wire is drawn by the routes at its ends (design 072 §4.3).
     for c in &net.wires {
-        for (_, r) in doc.representations_of(crate::doc::Subject::Wire(*c)) {
+        let Some(w) = doc.wires.get(c) else { continue };
+        for r in w.ends.iter().flat_map(|t| doc.routes_at(*t)).filter_map(|r| doc.routes.get(&r)) {
             if !pages.contains(&r.page) {
                 return false;
             }

@@ -165,35 +165,30 @@ pub fn fixture() -> Fixture {
     f.c2 = c2;
     f.c3 = c3;
     f.t = vec![t1[0], t1[1], t2[0], t2[1], t3[0], t3[1]];
-    let (w, route, rep): (WireId, ItemId, RepresentationId) = (f.ids.fresh(), f.ids.fresh(), f.ids.fresh());
+    // A route between the two points (design 072 F31): the rewrite keeps the wire made with it.
+    let (w, net, conductor, route, item, rep): (WireId, NetId, ConductorId, RouteId, ItemId, RepresentationId) =
+        (f.ids.fresh(), f.ids.fresh(), f.ids.fresh(), f.ids.fresh(), f.ids.fresh(), f.ids.fresh());
+    let points = vec![Pt::new(90.0, 0.0), Pt::new(120.0, 0.0), Pt::new(150.0, 10.0)];
     f.commit(
         "WIRE",
         vec![
-            Op::CreateWire { id: w, conductor: Wire::default() },
+            Op::AddRoute { id: route, route: Route::new(page, points.clone(), [RouteEnd::Point(t1[0]), RouteEnd::Point(t2[0])]) },
             Op::AddItem {
-                id: route,
-                item: Item {
-                    page,
-                    style: style(layer),
-                    kind: ItemKind::Primitive(Primitive::Polyline {
-                        vertices: vec![Pt::new(90.0, 0.0), Pt::new(120.0, 0.0), Pt::new(150.0, 10.0)],
-                        closed: false,
-                    }),
-                },
+                id: item,
+                item: Item { page, style: style(layer), kind: ItemKind::Primitive(Primitive::Polyline { vertices: points, closed: false }) },
             },
             Op::LinkRepresentation {
                 id: rep,
                 rep: Representation {
-                    subject: Subject::Wire(w),
+                    subject: Subject::Route(route),
                     page,
                     form: Form::Drawn,
                     role: "route".into(),
-                    items: vec![route],
+                    items: vec![item],
                     connection_points: Default::default(),
                 },
             },
-            Op::AttachEnd { conductor: w, end: End::A, before: None, after: Some(t1[0]) },
-            Op::AttachEnd { conductor: w, end: End::B, before: None, after: Some(t2[0]) },
+            Op::CreateWire { id: w, wire: Wire::new(net, conductor, t1[0], t2[0]) },
         ],
     );
     let cable: CableId = f.ids.fresh();
@@ -201,7 +196,7 @@ pub fn fixture() -> Fixture {
         "Cable",
         vec![
             Op::CreateCable { id: cable, cable: Cable::default() },
-            Op::AddCableMember { cable, index: 0, member: CableMember { conductor: w, core: Some("1".into()) } },
+            Op::AddCableMember { cable, index: 0, member: CableMember::on_wire(w, Some("1".into())) },
         ],
     );
     // Keys whose UTF-8 and UTF-16 orders differ (U+FF5E sorts before U+1F600 in UTF-8 only).

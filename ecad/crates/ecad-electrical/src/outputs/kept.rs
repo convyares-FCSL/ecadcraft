@@ -356,9 +356,9 @@ impl Outputs {
         }
         for p in &scope.route_pages {
             if doc.pages.contains_key(p) {
-                for (_, r) in doc.representations_on(*p) {
-                    if let Subject::Wire(w) = r.subject {
-                        scope.wires.insert(w);
+                for r in doc.routes_on(*p).filter_map(|r| doc.routes.get(&r)) {
+                    for t in r.points_landed() {
+                        scope.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
                     }
                 }
             }
@@ -802,27 +802,14 @@ impl Outputs {
             }
         }
         let Some(cond) = doc.wires.get(&w) else { return };
-        // Routes in book order.
-        let mut routes: Vec<(usize, Vec<Pt>, PageId)> = doc
-            .representations_of(Subject::Wire(w))
-            .filter_map(|(_, r)| {
-                let pts = r.items.iter().filter_map(|i| doc.items.get(i)).find_map(|i| match &i.kind {
-                    ecad_model::ItemKind::Primitive(ecad_model::Primitive::Polyline { vertices, .. }) => Some(vertices.clone()),
-                    ecad_model::ItemKind::Primitive(ecad_model::Primitive::Line { a, b }) => Some(vec![*a, *b]),
-                    _ => None,
-                })?;
-                let pos = cx.pos(r.page);
-                Some((pos, pts, r.page))
-            })
-            .collect();
-        routes.sort_by_key(|(pos, _, _)| *pos);
-        let a_at = routes.first().and_then(|(_, v, p)| v.first().map(|x| (*p, *x)));
-        let b_at = routes.last().and_then(|(_, v, p)| v.last().map(|x| (*p, *x)));
-        let mid = routes.first().and_then(|(_, v, p)| {
-            let (Some(a), Some(b)) = (v.first(), v.get(1).or(v.first())) else { return None };
-            Some((*p, Pt::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0)))
+        // Where its ends are drawn (book order), and the middle of the first segment of the first
+        // route landing on its first point.
+        let [a_at, b_at] = crate::outputs::end_points(doc, w, cx);
+        let mid = crate::wires::routes_of_wire(doc, w).into_iter().filter_map(|r| doc.routes.get(&r)).min_by_key(|r| cx.pos(r.page)).and_then(|r| {
+            let (Some(a), Some(b)) = (r.points.first(), r.points.get(1).or(r.points.first())) else { return None };
+            Some((r.page, Pt::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0)))
         });
-        let mut ends = [self.end_cell(doc, cond.end(End::A), a_at, cx), self.end_cell(doc, cond.end(End::B), b_at, cx)];
+        let mut ends = [self.end_cell(doc, Some(cond.end(End::A)), a_at, cx), self.end_cell(doc, Some(cond.end(End::B)), b_at, cx)];
         if ends[1].order < ends[0].order {
             ends.swap(0, 1);
         }
@@ -852,7 +839,7 @@ impl Outputs {
             .filter_map(|k| {
                 let cab = doc.cables.get(&k)?;
                 let tag = cab.properties.text(ecad_model::keys::TAG).map(str::to_string).unwrap_or_else(|| "?".into());
-                let i = cab.members.iter().position(|m| m.conductor == w)?;
+                let i = cab.members.iter().position(|m| m.wire() == Some(w))?;
                 let core = cab.members.get(i).and_then(|m| m.core.clone()).unwrap_or_else(|| (i + 1).to_string());
                 Some(format!("{tag} core {core}"))
             })
@@ -923,8 +910,8 @@ impl Outputs {
         // Brief 028: the devices at the cores' ends, per location.
         let mut at_loc: BTreeMap<String, BTreeSet<((String, u64, String), DeviceId)>> = BTreeMap::new();
         for m in &cab.members {
-            let Some(cond) = doc.wires.get(&m.conductor) else { continue };
-            for t in cond.ends.iter().flatten() {
+            let Some(cond) = m.wire().and_then(|w| doc.wires.get(&w)) else { continue };
+            for t in &cond.ends {
                 let Some(c) = doc.terminals.get(t).map(|x| x.component) else { continue };
                 if crate::wires::kind_of(doc, c).is_some() {
                     continue;
@@ -982,7 +969,7 @@ impl Outputs {
                 designation: p("designation"),
                 go,
                 count: crate::strips::count_cores(crate::styles::cable::offer(doc, k), &heads),
-                members: heads.iter().map(|m| m.conductor).collect(),
+                members: heads.iter().filter_map(|m| m.wire()).collect(),
                 member_cores: heads.iter().map(|m| m.core.clone()).collect(),
                 tails,
                 from_devices,

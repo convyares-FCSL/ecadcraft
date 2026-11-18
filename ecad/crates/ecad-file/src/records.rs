@@ -235,26 +235,17 @@ pub struct Representation {
     pub connection_points: BTreeMap<TerminalId, Pt>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum End {
-    A,
-    B,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Ends {
-    pub a: Option<TerminalId>,
-    pub b: Option<TerminalId>,
-}
-
-/// A wire (design 072 §4.2): its ends, its typed values (the model's own strict types) and its
-/// display choices.
+/// A wire (design 072 §4.2): its net, its conductor id, its place in the net's order, its two
+/// connection points, its typed values (the model's own strict types) and its display choices.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Wire {
-    pub ends: Ends,
+    pub net: m::NetId,
+    pub conductor: m::ConductorId,
+    pub net_order: u16,
+    pub ends: [TerminalId; 2],
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub order_fixed: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size: Option<m::wire::WireSize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -274,8 +265,41 @@ pub struct Wire {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CableMember {
-    pub conductor: WireId,
+    pub position: CorePosition,
     pub core: Option<String>,
+}
+
+/// Where a cable core is (owner ruling, 2026-11-18): stored as written.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum CorePosition {
+    Unplaced,
+    Route {
+        route: RouteId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        landed: Option<TerminalId>,
+    },
+    Wire(WireId),
+}
+
+impl From<m::CorePosition> for CorePosition {
+    fn from(p: m::CorePosition) -> Self {
+        match p {
+            m::CorePosition::Unplaced => CorePosition::Unplaced,
+            m::CorePosition::Route { route, landed } => CorePosition::Route { route, landed },
+            m::CorePosition::Wire(w) => CorePosition::Wire(w),
+        }
+    }
+}
+
+impl From<CorePosition> for m::CorePosition {
+    fn from(p: CorePosition) -> Self {
+        match p {
+            CorePosition::Unplaced => m::CorePosition::Unplaced,
+            CorePosition::Route { route, landed } => m::CorePosition::Route { route, landed },
+            CorePosition::Wire(w) => m::CorePosition::Wire(w),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -676,6 +700,7 @@ impl<'de, const N: usize> Deserialize<'de> for Hex<N> {
 /// `{"op": "<Name>", "v": 1, …fields…}` (see [`crate::record`]).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[expect(clippy::large_enum_variant, reason = "mirrors `ecad_model::Op`: ops record whole objects before and after")]
 pub enum Op {
     AddPage {
         id: PageId,
@@ -751,22 +776,16 @@ pub enum Op {
     },
     CreateWire {
         id: WireId,
-        conductor: Wire,
+        wire: Wire,
     },
     DeleteWire {
         id: WireId,
-        conductor: Wire,
+        wire: Wire,
     },
     ModifyWire {
         id: WireId,
         before: Wire,
         after: Wire,
-    },
-    AttachEnd {
-        conductor: WireId,
-        end: End,
-        before: Option<TerminalId>,
-        after: Option<TerminalId>,
     },
     /// Design 072 F31.
     AddRoute {
@@ -1043,17 +1062,14 @@ impl From<&m::Representation> for Representation {
     }
 }
 
-fn end(e: m::End) -> End {
-    match e {
-        m::End::A => End::A,
-        m::End::B => End::B,
-    }
-}
-
 impl From<&m::Wire> for Wire {
     fn from(c: &m::Wire) -> Self {
         Wire {
-            ends: Ends { a: c.end(m::End::A), b: c.end(m::End::B) },
+            net: c.net,
+            conductor: c.conductor,
+            net_order: c.net_order,
+            ends: c.ends,
+            order_fixed: c.order_fixed,
             size: c.size,
             colours: c.colours.clone(),
             number: c.number.clone(),
@@ -1089,7 +1105,7 @@ impl From<Route> for m::Route {
 
 impl From<&m::CableMember> for CableMember {
     fn from(c: &m::CableMember) -> Self {
-        CableMember { conductor: c.conductor, core: c.core.clone() }
+        CableMember { position: c.position.into(), core: c.core.clone() }
     }
 }
 
@@ -1198,12 +1214,9 @@ impl From<&m::Op> for Op {
             m::Op::LinkRepresentation { id, rep } => Op::LinkRepresentation { id: *id, rep: rep.into() },
             m::Op::ModifyRepresentation { id, before, after } => Op::ModifyRepresentation { id: *id, before: before.into(), after: after.into() },
             m::Op::UnlinkRepresentation { id, rep } => Op::UnlinkRepresentation { id: *id, rep: rep.into() },
-            m::Op::CreateWire { id, conductor } => Op::CreateWire { id: *id, conductor: conductor.into() },
-            m::Op::DeleteWire { id, conductor } => Op::DeleteWire { id: *id, conductor: conductor.into() },
+            m::Op::CreateWire { id, wire } => Op::CreateWire { id: *id, wire: wire.into() },
+            m::Op::DeleteWire { id, wire } => Op::DeleteWire { id: *id, wire: wire.into() },
             m::Op::ModifyWire { id, before, after } => Op::ModifyWire { id: *id, before: before.into(), after: after.into() },
-            m::Op::AttachEnd { conductor, end: e, before, after } => {
-                Op::AttachEnd { conductor: *conductor, end: end(*e), before: *before, after: *after }
-            }
             m::Op::AddRoute { id, route } => Op::AddRoute { id: *id, route: route.into() },
             m::Op::RemoveRoute { id, route } => Op::RemoveRoute { id: *id, route: route.into() },
             m::Op::ModifyRoute { id, before, after } => Op::ModifyRoute { id: *id, before: before.into(), after: after.into() },
@@ -1351,17 +1364,14 @@ impl From<Representation> for m::Representation {
     }
 }
 
-fn mend(e: End) -> m::End {
-    match e {
-        End::A => m::End::A,
-        End::B => m::End::B,
-    }
-}
-
 impl From<Wire> for m::Wire {
     fn from(c: Wire) -> Self {
         m::Wire {
-            ends: [c.ends.a, c.ends.b],
+            net: c.net,
+            conductor: c.conductor,
+            net_order: c.net_order,
+            ends: c.ends,
+            order_fixed: c.order_fixed,
             size: c.size,
             colours: c.colours,
             number: c.number,
@@ -1375,7 +1385,7 @@ impl From<Wire> for m::Wire {
 
 impl From<CableMember> for m::CableMember {
     fn from(c: CableMember) -> Self {
-        m::CableMember { conductor: c.conductor, core: c.core }
+        m::CableMember { position: c.position.into(), core: c.core }
     }
 }
 
@@ -1460,10 +1470,9 @@ impl TryFrom<Op> for m::Op {
             Op::LinkRepresentation { id, rep } => m::Op::LinkRepresentation { id, rep: rep.into() },
             Op::ModifyRepresentation { id, before, after } => m::Op::ModifyRepresentation { id, before: before.into(), after: after.into() },
             Op::UnlinkRepresentation { id, rep } => m::Op::UnlinkRepresentation { id, rep: rep.into() },
-            Op::CreateWire { id, conductor } => m::Op::CreateWire { id, conductor: conductor.into() },
-            Op::DeleteWire { id, conductor } => m::Op::DeleteWire { id, conductor: conductor.into() },
+            Op::CreateWire { id, wire } => m::Op::CreateWire { id, wire: wire.into() },
+            Op::DeleteWire { id, wire } => m::Op::DeleteWire { id, wire: wire.into() },
             Op::ModifyWire { id, before, after } => m::Op::ModifyWire { id, before: before.into(), after: after.into() },
-            Op::AttachEnd { conductor, end, before, after } => m::Op::AttachEnd { conductor, end: mend(end), before, after },
             Op::AddRoute { id, route } => m::Op::AddRoute { id, route: route.into() },
             Op::RemoveRoute { id, route } => m::Op::RemoveRoute { id, route: route.into() },
             Op::ModifyRoute { id, before, after } => m::Op::ModifyRoute { id, before: before.into(), after: after.into() },

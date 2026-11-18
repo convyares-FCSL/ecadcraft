@@ -39,7 +39,6 @@ const ECAD_COMMANDS: &[&str] = &[
     "potential",
     "wiresettings",
     "renumberwires",
-    "junction",
     "checks",
     "newpage",
     "openpage",

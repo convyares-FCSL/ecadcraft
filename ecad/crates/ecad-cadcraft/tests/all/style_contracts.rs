@@ -328,6 +328,7 @@ fn a_hostile_style_document_opens_draws_and_reports() {
 // ------------------------------------------------------------------------- 050b: wire categories
 
 fn wire(h: &mut H, y: f64, potential: Option<&str>) -> ecad_model::WireId {
+    h.points_at(&[(10.0, y), (60.0, y)]);
     let mut p = json!({"points": [[10, y], [60, y]]});
     if let Some(pot) = potential {
         p["potential"] = json!(pot);
@@ -402,6 +403,7 @@ fn choosing_a_category_sets_a_missing_potential_and_keeps_another() {
     let v = h.run("category", json!({"conductor": a.hex(), "value": "Power L1"})).unwrap();
     assert_eq!(v["message"], json!("Category set; the net keeps potential 24V."));
     // `wire {category}` gives the new wire its category in the same transaction.
+    h.points_at(&[(10.0, 190.0), (60.0, 190.0)]);
     let before = h.head();
     let r = h.run("wire", json!({"points": [[10, 190], [60, 190]], "category": "analogue"})).unwrap();
     assert_eq!(h.head(), before + 1);

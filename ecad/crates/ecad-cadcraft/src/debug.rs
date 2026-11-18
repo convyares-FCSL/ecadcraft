@@ -912,10 +912,9 @@ pub fn op_view(op: &Op) -> OpView {
         Op::LinkRepresentation { rep, .. } => (None, val(rep)),
         Op::ModifyRepresentation { before, after, .. } => (val(before), val(after)),
         Op::UnlinkRepresentation { rep, .. } => (val(rep), None),
-        Op::CreateWire { conductor, .. } => (None, val(conductor)),
-        Op::DeleteWire { conductor, .. } => (val(conductor), None),
+        Op::CreateWire { wire, .. } => (None, val(wire)),
+        Op::DeleteWire { wire, .. } => (val(wire), None),
         Op::ModifyWire { before, after, .. } => (val(before), val(after)),
-        Op::AttachEnd { end, before, after, .. } => (val(&json!({"end": end, "terminal": before})), val(&json!({"end": end, "terminal": after}))),
         Op::AddRoute { route, .. } => (None, val(route)),
         Op::RemoveRoute { route, .. } => (val(route), None),
         Op::ModifyRoute { before, after, .. } => (val(before), val(after)),
@@ -996,15 +995,11 @@ pub fn op_targets(op: &Op) -> Vec<ObjectId> {
             rep_refs(before, &mut out);
             rep_refs(after, &mut out);
         }
-        Op::CreateWire { id, conductor } | Op::DeleteWire { id, conductor } => {
+        Op::CreateWire { id, wire } | Op::DeleteWire { id, wire } => {
             out.push(ObjectId::Wire(*id));
-            out.extend(conductor.ends.iter().flatten().map(|t| ObjectId::Terminal(*t)));
+            out.extend(wire.ends.iter().map(|t| ObjectId::Terminal(*t)));
         }
         Op::ModifyWire { id, .. } => out.push(ObjectId::Wire(*id)),
-        Op::AttachEnd { conductor, before, after, .. } => {
-            out.push(ObjectId::Wire(*conductor));
-            out.extend(before.iter().chain(after.iter()).map(|t| ObjectId::Terminal(*t)));
-        }
         Op::AddRoute { id, route } | Op::RemoveRoute { id, route } => {
             out.push(ObjectId::Route(*id));
             out.push(ObjectId::Page(route.page));
@@ -1016,11 +1011,11 @@ pub fn op_targets(op: &Op) -> Vec<ObjectId> {
         }
         Op::CreateCable { id, cable } | Op::DeleteCable { id, cable } => {
             out.push(ObjectId::Cable(*id));
-            out.extend(cable.members.iter().map(|m| ObjectId::Wire(m.conductor)));
+            out.extend(cable.members.iter().filter_map(member_object));
         }
         Op::AddCableMember { cable, member, .. } | Op::RemoveCableMember { cable, member, .. } => {
             out.push(ObjectId::Cable(*cable));
-            out.push(ObjectId::Wire(member.conductor));
+            out.extend(member_object(member));
         }
         Op::SetProperty { object, .. } => out.push(match object {
             ecad_model::ObjectRef::Device(c) => ObjectId::Device(*c),
@@ -1040,6 +1035,11 @@ pub fn op_targets(op: &Op) -> Vec<ObjectId> {
     let mut seen = BTreeSet::new();
     out.retain(|i| seen.insert(*i));
     out
+}
+
+/// The object a cable member stands on: its wire, or its loose line while it has no wire.
+fn member_object(m: &ecad_model::CableMember) -> Option<ObjectId> {
+    m.wire().map(ObjectId::Wire).or_else(|| m.route().map(ObjectId::Route))
 }
 
 /// Whether `tx` names any of `ids`.
@@ -1096,12 +1096,17 @@ pub fn resolve(doc: &Document, mapped: Mapped) -> Resolved {
     };
     r.terminals = match r.subject {
         Some(Subject::Device(c)) => doc.terminals.iter().filter(|(_, t)| t.component == c).map(|(id, _)| *id).collect(),
-        Some(Subject::Wire(c)) => doc.wires.get(&c).map(|x| x.ends.iter().flatten().copied().collect()).unwrap_or_default(),
+        Some(Subject::Wire(c)) => doc.wires.get(&c).map(|x| x.ends.to_vec()).unwrap_or_default(),
+        Some(Subject::Route(x)) => doc.routes.get(&x).map(|r| r.points_landed().collect()).unwrap_or_default(),
         _ => Vec::new(),
     };
     r.ids.extend(r.item.map(ObjectId::Item));
     r.ids.extend(r.representation.map(ObjectId::Representation));
     r.ids.extend(r.subject.map(ObjectId::from));
+    // A route's line: the wire it carries follows it (design 072 §4: routes draw, wires connect).
+    if let Some(Subject::Route(x)) = r.subject {
+        r.ids.extend(crate::wires::wire_of_route(doc, x).map(ObjectId::Wire));
+    }
     r.ids.extend(r.terminal.map(ObjectId::Terminal));
     for t in &r.terminals {
         if r.terminal != Some(*t) {
@@ -1160,30 +1165,28 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
         ObjectId::Terminal(t) => doc
             .wires
             .iter()
-            .filter(|(_, c)| c.ends.contains(&Some(t)))
+            .filter(|(_, c)| c.ends.contains(&t))
             .map(|(i, _)| ObjectId::Wire(*i))
             .chain(doc.routes.iter().filter(|(_, r)| r.points_landed().any(|p| p == t)).map(|(i, _)| ObjectId::Route(*i)))
             .collect(),
         ObjectId::Wire(c) => doc
             .cables
             .iter()
-            .filter(|(_, k)| k.members.iter().any(|m| m.conductor == c))
+            .filter(|(_, k)| k.members.iter().any(|m| m.wire() == Some(c)))
             .map(|(i, _)| ObjectId::Cable(*i))
             .chain(reps_of(Subject::Wire(c)))
+            .chain(crate::wires::routes_of_wire(doc, c).into_iter().map(ObjectId::Route))
             .collect(),
-        ObjectId::Cable(c) => doc
-            .cables
-            .get(&c)
-            .into_iter()
-            .flat_map(|k| k.members.iter().map(|m| ObjectId::Wire(m.conductor)))
-            .chain(reps_of(Subject::Cable(c)))
-            .collect(),
+        ObjectId::Cable(c) => {
+            doc.cables.get(&c).into_iter().flat_map(|k| k.members.iter().filter_map(member_object)).chain(reps_of(Subject::Cable(c))).collect()
+        }
         ObjectId::Route(r) => doc
             .routes
             .iter()
             .filter(|(_, x)| x.ends.iter().any(|e| e.route() == Some(r)))
             .map(|(i, _)| ObjectId::Route(*i))
             .chain(reps_of(Subject::Route(r)))
+            .chain(crate::wires::wire_of_route(doc, r).map(ObjectId::Wire))
             .collect(),
         ObjectId::Page(p) => doc
             .representations
@@ -1235,7 +1238,7 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
             let core = doc.cables_of(c).first().and_then(|k| doc.cables.get(k)).and_then(|k| {
                 k.members
                     .iter()
-                    .find(|m| m.conductor == c)
+                    .find(|m| m.wire() == Some(c))
                     .and_then(|m| m.core.as_deref().filter(|x| !x.trim().is_empty()).map(|x| crate::words::shorten(x, crate::words::MAX_CORE_CHARS)))
             });
             match core {

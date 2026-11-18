@@ -6,7 +6,7 @@ use ecad_model::{DeviceId, PageId, Subject};
 use serde_json::{Value, json};
 
 use super::{placed, prop};
-use crate::common::{H, id, pts};
+use crate::common::{H, id};
 
 fn rack_of(h: &mut H, c: DeviceId) -> Option<String> {
     prop(h, c, "plc.rack")
@@ -69,7 +69,7 @@ fn wired_through_a_strip(seed: u64) -> (H, DeviceId, DeviceId, PageId) {
     placed(&mut h, "plccpu", 50.0, 400.0);
     let di = placed(&mut h, "plcdi", 100.0, 400.0);
     placed(&mut h, "lamp", 100.0, 260.0);
-    h.run("wire", json!({"points": pts(&[(100.0, 250.0), (100.0, 150.0)])})).unwrap();
+    h.wire_pp(&[(100.0, 250.0), (100.0, 150.0)]).unwrap();
     let v = h.run("terminals", json!({"from": [95.0, 230.0], "to": [105.0, 230.0]})).unwrap();
     let strip: DeviceId = id(&v, "strip");
     h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [115.0, 200.0]})).unwrap();
@@ -109,12 +109,12 @@ fn review_2_renaming_a_continuation_patches_the_cards_io_rows() {
     let di = placed(&mut h, "plcdi", 100.0, 400.0);
     // Channel 0 on a wire ending at continuation A; a lamp wired to continuation B.
     h.run("place", json!({"symbol": "continuation", "at": [100, 250], "name": "A"})).unwrap();
-    h.run("wire", json!({"points": pts(&[(100.0, 250.0), (100.0, 150.0)])})).unwrap();
+    h.wire_pp(&[(100.0, 250.0), (100.0, 150.0)]).unwrap();
     h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [115.0, 200.0]})).unwrap();
     let b = h.run("place", json!({"symbol": "continuation", "at": [300, 250], "name": "B"})).unwrap();
     let b: DeviceId = id(&b, "component");
     placed(&mut h, "lamp", 300.0, 160.0);
-    h.run("wire", json!({"points": pts(&[(300.0, 250.0), (300.0, 170.0)])})).unwrap();
+    h.wire_pp(&[(300.0, 250.0), (300.0, 170.0)]).unwrap();
     h.run("newpage", json!({"generated": "iolist"})).unwrap();
     assert!(!targets(&mut h).iter().any(|t| t.ends_with(":X1")), "{:?}", targets(&mut h));
     h.cfg(|p| {
@@ -134,7 +134,7 @@ fn review_3_kept_model_paths_walk_no_project() {
     placed(&mut h, "plcai", 140.0, 400.0);
     for i in 0..4 {
         let x = 100.0 + 20.0 * f64::from(i);
-        h.run("wire", json!({"points": pts(&[(x, 250.0), (x, 150.0)])})).unwrap();
+        h.wire_pp(&[(x, 250.0), (x, 150.0)]).unwrap();
     }
     h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [175.0, 200.0]})).unwrap();
     h.cfg(|p| {

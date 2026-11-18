@@ -24,11 +24,12 @@ pub(crate) fn run_slash_continue(
     found: &crate::slash::Crossings,
 ) -> Result<serde_json::Value, String> {
     let doc = p.ledger.document();
-    let crossed: Vec<WireId> = found.members.iter().map(|m| m.conductor).collect();
+    let crossed: Vec<WireId> = found.members.iter().filter_map(|m| m.wire()).collect();
     if doc.representations_of(Subject::Cable(cable)).any(|(_, r)| r.page == page && r.role == "slash") {
         return Err(format!("{} already has a slash on this page.", crate::references::title(doc, cable)));
     }
-    let blocked: Vec<(WireId, CableId)> = crate::slash::blocked(doc, &found.members).into_iter().map(|(m, k)| (m.conductor, k)).collect();
+    let blocked: Vec<(ecad_model::CorePosition, CableId)> =
+        crate::slash::blocked(doc, &found.members).into_iter().map(|(m, k)| (m.position, k)).collect();
     if !blocked.is_empty() {
         return Err(crate::slash::already_in_cable(doc, &blocked, "Nothing was created."));
     }
@@ -37,7 +38,7 @@ pub(crate) fn run_slash_continue(
     let (item, rep): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
     let mut ops = Vec::new();
     for (i, w) in plan.iter().enumerate() {
-        ops.push(Op::AddCableMember { cable, index: start + i, member: ecad_model::CableMember { conductor: w.conductor, core: w.core.clone() } });
+        ops.push(Op::AddCableMember { cable, index: start + i, member: ecad_model::CableMember::on_wire(w.conductor, w.core.clone()) });
     }
     let style = crate::cmd::plain_style(p);
     ops.push(Op::AddItem {

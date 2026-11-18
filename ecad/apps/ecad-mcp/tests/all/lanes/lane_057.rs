@@ -31,7 +31,7 @@ fn rating_and_ratingtable_are_one_agent_transaction_and_refused_with_writes_off(
     let path = dir.file("Ratings 057.ecad");
     {
         let mut c = Client::new(EcadMcp::create(&path, Options { write: true, agent: None }).unwrap());
-        let w = c.exec("wire", json!({"points": [[0, 0], [60, 0]]}));
+        let w = c.wire_pp(json!({"points": [[0, 0], [60, 0]]}));
         let conductor = w["conductor"].as_str().unwrap().to_string();
         one_by_agent_then_undo(&mut c, "rating", json!({"wire": conductor, "basis": "manual", "manual": "10 A", "bundling": "0.8"}));
         let t = one_by_agent_then_undo(&mut c, "ratingtable", json!({"name": "Test (synthetic)", "source": "made up", "csv": SYNTHETIC}));

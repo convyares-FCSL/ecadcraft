@@ -393,7 +393,7 @@ pub fn plan_channels(
         Some(w) => Some(role_named(starter, w)?),
         None => None,
     };
-    let landings = landings(doc, page, starter, &found.members, point_role);
+    let landings = landings(doc, starter, &found.members, point_role);
     // Brief 051 (design 051 §2.2, Q1): cells are one width apart at least, or they overlap.
     let anchors: Vec<crate::slash::Crossing> = landings.iter().filter_map(|l| l.points.first().map(|x| x.1)).collect();
     if let Some(e) = spacing_refusal(doc, starter, t, &anchors) {
@@ -439,10 +439,10 @@ pub fn plan_channels(
         let cell = plan_cell(ids, page, style.clone(), def, starter, card, &j, pl, &mut ops)?;
         for (role, m) in &l.points {
             let at = role_at(def_terms, role).map(|q| pl.apply(q)).ok_or(CmdError::refused(NO_ROLE))?;
-            let on = crate::cmd::terminal::on_wire_of(doc, page, m.conductor, at).ok_or(CmdError::refused("A crossed wire has no route here."))?;
+            let on = crate::wires::on_route_of(doc, m.route, at).ok_or(CmdError::refused("A crossed wire has no route here."))?;
             let tid = cell.terminals.iter().find(|x| x.0 == *role).map(|x| x.1).ok_or(CmdError::refused(NO_POINT))?;
-            let land = land_cell(doc, ids, page, on, tid)
-                .map_err(|e| CmdError::refused(format!("{e} (wire {})", crate::slash::wire_name(doc, m.conductor))))?;
+            let land = land_cell(doc, ids, on, tid)
+                .map_err(|e| CmdError::refused(format!("{e} (wire {})", crate::slash::position_name(doc, m.position))))?;
             ops.extend(land);
         }
         placed.push(next);

@@ -3,7 +3,7 @@
 //! two-colour wires on a page get their dashes. Pure rules over the document; the cable fan
 //! drawing that uses them stays in `look`.
 
-use ecad_model::{Document, ItemKind, PageId, Pt, Subject, WireId};
+use ecad_model::{Document, PageId, Pt, WireId};
 
 /// Longest core label accepted (Unicode scalar values, after trimming).
 pub const MAX_CORE_CHARS: usize = 32;
@@ -185,18 +185,18 @@ pub fn dash_budget(doc: &Document, page: PageId) -> DashBudget {
     let mut out = DashBudget::default();
     let mut total: usize = 0;
     let looks = crate::styles::wire::WireLooks::new(doc);
-    for (rep, r) in doc.representations_on(page) {
-        let Subject::Wire(c) = r.subject else { continue };
-        if r.form != ecad_model::Form::Drawn {
+    // Each route on the page (the page index), in the colour of the wire it stands for.
+    for route in doc.routes_on(page) {
+        let (Some(points), Some((rep, _, _)), Some(c)) =
+            (doc.routes.get(&route).map(|x| x.points.clone()), crate::wires::route_item(doc, route), crate::wires::wire_of_route(doc, route))
+        else {
             continue;
-        }
+        };
         // Only two-colour codes have dashes.
         let Some(code) = conductor_colour_in(doc, &looks, c) else { continue };
         if !colour_code(&code).is_some_and(|(_, b)| b.is_some()) {
             continue;
         }
-        let Some(ItemKind::Primitive(prim)) = r.items.first().and_then(|i| doc.items.get(i)).map(|i| &i.kind) else { continue };
-        let Some(points) = crate::wires::path_vertices(prim) else { continue };
         let n = dash_count(&points, on, off);
         if n > MAX_DASHES || total.saturating_add(n) > MAX_PAGE_DASHES {
             if !out.left_out.contains(&c) {

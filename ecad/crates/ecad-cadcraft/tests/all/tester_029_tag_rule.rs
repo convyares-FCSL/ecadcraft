@@ -40,7 +40,7 @@ fn cableadd_after_opening_a_rule_1_file_skips_the_deleted_cable_number() {
             Op::CreateDevice { id: x1, device: Device::default().with_tag(Some("-X1")) },
             Op::AddTerminal { id: a1, terminal: Terminal { component: k1, label: Some("A1".into()), key: None } },
             Op::AddTerminal { id: t3, terminal: Terminal { component: x1, label: Some("3".into()), key: None } },
-            Op::CreateWire { id: wire, conductor: Wire::between(Some(a1), Some(t3)) },
+            Op::CreateWire { id: wire, wire: Wire::new(ids.fresh(), ids.fresh(), a1, t3) },
         ],
     )
     .unwrap();

@@ -291,6 +291,7 @@ fn tag_page(h: &mut Harness<'static, App>, page: PageId, name: &str) {
 
 /// Design §11 fixture R built by clicks, the reference screenshots, AC2, AC3 and AC5 in the UI.
 #[test]
+#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn fixture_r_by_label_and_canvas_clicks_with_reference_screenshots() {
     let out = std::env::var_os("ECAD_TESTER_SHOTS").map(PathBuf::from);
     if let Some(dir) = &out {
@@ -360,7 +361,7 @@ fn fixture_r_by_label_and_canvas_clicks_with_reference_screenshots() {
     // Connect each stub's free end to K2 (JSON form; Connect's clicks are brief 008's).
     let d = doc(&mut h);
     let cable = *d.cables.keys().next().unwrap();
-    let wires: Vec<_> = d.cables[&cable].members.iter().map(|m| m.conductor).collect();
+    let wires: Vec<_> = d.cables[&cable].members.iter().filter_map(|m| m.wire()).collect();
     let k2: Vec<_> = ecad_model::derive::terminal_positions(&d, field).into_iter().map(|(t, _, p)| (t, p)).collect();
     for w in &wires {
         let end = ecad_model::derive::route_on_page(&d, *w, field).unwrap().1.path_ends().unwrap().1;

@@ -45,7 +45,7 @@ use cadcraft_engine::ext::{Mark, MarkShape};
 use cadcraft_engine::geom::{Vec2, Vec3};
 use cadcraft_engine::{EngineError, Session};
 use ecad_model::derive::terminal_positions;
-use ecad_model::{CableId, DeviceId, Document, End, Form, ItemKind, PageId, Primitive, Pt, Subject, TerminalId, WireId};
+use ecad_model::{CableId, DeviceId, Document, End, Form, ItemKind, PageId, Primitive, Pt, RouteEnd, RouteId, Subject, TerminalId, WireId};
 
 use crate::access::{owner_of_active, try_lock};
 use crate::project::{Mapped, Project};
@@ -64,7 +64,7 @@ pub(crate) use forms::{addterminal, cablecore, cablefan, cableslash, cableview, 
 pub(crate) use location_form::{functionbox, locationbox};
 pub(crate) use refs::{cablecontinue, cablegoto, cableref};
 pub(crate) use terminals::{bridge, terminals};
-pub(crate) use wiring_forms::{joinwires, junction, renumberwires, wirenumber};
+pub(crate) use wiring_forms::{joinwires, renumberwires, wirenumber};
 pub(crate) use xrefs::mirrormove;
 
 /// Refusal on a drawing that is not an ECAD page (design §3.4).
@@ -333,23 +333,8 @@ pub(crate) fn preview_text(s: &Session, at: Pt, px: f64, value: String, aci: u8)
 }
 
 /// Where conductor routes on `page` start and end, once per conductor (its first route).
-fn route_ends(doc: &Document, page: PageId) -> Vec<(WireId, Pt, Pt)> {
-    let mut seen = BTreeSet::new();
-    let mut out = Vec::new();
-    for r in doc.representations.values().filter(|r| r.page == page) {
-        let Subject::Wire(c) = r.subject else { continue };
-        if seen.contains(&c) {
-            continue;
-        }
-        let Some(ItemKind::Primitive(prim)) = r.items.first().and_then(|i| doc.items.get(i)).map(|i| &i.kind) else {
-            continue;
-        };
-        if let Some((a, b)) = prim.path_ends() {
-            seen.insert(c);
-            out.push((c, a, b));
-        }
-    }
-    out
+fn route_ends(doc: &Document, page: PageId) -> Vec<(RouteId, Pt, Pt)> {
+    doc.routes_on(page).filter_map(|r| doc.routes.get(&r).and_then(|x| x.end_points()).map(|[a, b]| (r, a, b))).collect()
 }
 
 /// The marks shown over page drawing `uid` (design 008 §4.1): a ring on every terminal shown, a
@@ -380,23 +365,21 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
     // folded in).
     let markers = crate::references::markers_on_page(doc, page);
     let quiet = p.pages.get(&page).map(|v| v.map.quiet_ends()).unwrap_or_default();
-    for (c, a, b) in route_ends(doc, page) {
-        let Some(conductor) = doc.wires.get(&c) else { continue };
-        for (end, at) in [(End::A, a), (End::B, b)] {
-            if conductor.end(end).is_none() && quiet.iter().any(|q| q.near(at, p.tolerance)) {
-                continue;
-            }
-            match conductor.end(end) {
-                // An end attached to a terminal shown on this page: a dot on the terminal. One
-                // attached to a terminal on another page (a wire continued across pages) gets no
-                // mark here: its connection is not on this page.
-                Some(t) => {
+    for (r, a, b) in route_ends(doc, page) {
+        let Some(route) = doc.routes.get(&r) else { continue };
+        for (at, landed) in [a, b].into_iter().zip(route.ends) {
+            match landed {
+                // An end on a connection point shown on this page: a dot on the point.
+                RouteEnd::Point(t) => {
                     if let Some((_, _, q)) = positions.iter().find(|(x, _, _)| *x == t) {
                         let color = colour(ecad_drawing_style::Meaning::WireEndAttached);
                         out.push(Mark { at: v2(*q), shape: MarkShape::Dot, size: WIRE_END_ATTACHED_PX, stroke: 0.0, color });
                     }
                 }
-                None => {
+                // A T: its dot is a drawing aid (design 072 §4.4, lane F).
+                RouteEnd::On { .. } => {}
+                RouteEnd::Free if quiet.iter().any(|q| q.near(at, p.tolerance)) => {}
+                RouteEnd::Free => {
                     let color = colour(ecad_drawing_style::Meaning::LooseEnd);
                     out.push(Mark { at: v2(at), shape: MarkShape::Square, size: LOOSE_END_PX, stroke: 1.0, color });
                 }
@@ -477,7 +460,7 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
             }
         }
         // A conductor label (brief 022): its wire's lens.
-        Mapped::Label(w) => wire_lines(doc, w, page),
+        Mapped::Label(w) => wire_lines(doc, Some(w), crate::wires::route_of_wire_on(doc, w, page), page),
         // A link line (brief 030, design 030 §5.3).
         Mapped::Link(c, n) => vec![crate::link_lines::hover(doc, p.outputs.as_ref().and_then(|o| o.strips.get(c)), c, n)],
         Mapped::Item(i) => match doc.representation_of_item(i)? {
@@ -488,8 +471,8 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
                 // Brief 049 (design 049 §5.4): a continuation arrow's other ends.
                 Subject::Device(c) if crate::continuations::arrow(doc, rid).is_some() => crate::continuations::hover_lines(doc, c, rid),
                 Subject::Device(c) => component_lines(doc, c),
-                Subject::Wire(w) => wire_lines(doc, w, page),
-                Subject::Route(_) => return None,
+                Subject::Wire(w) => wire_lines(doc, Some(w), None, page),
+                Subject::Route(x) => wire_lines(doc, crate::wires::wire_of_route(doc, x), Some(x), page),
                 // A drawn slash: traditional, or a fan that cannot be drawn on this page.
                 Subject::Cable(k) => {
                     let shown = match p.view_of(k) {
@@ -561,12 +544,11 @@ fn with_drawings(doc: &Document, k: CableId, mut lines: Vec<String>) -> Vec<Stri
     if refs.is_empty() {
         return lines;
     }
-    let routes = ecad_model::derive::route_ends_by_page(doc);
     let members = doc.cables.get(&k).map(|c| c.members.as_slice()).unwrap_or_default();
+    let member_pages: std::collections::BTreeSet<PageId> = members.iter().flat_map(|m| crate::cables::member_pages(doc, m)).collect();
     let mut pages: Vec<PageId> = Vec::new();
     for p in &doc.page_order {
-        let drawn =
-            doc.representations_of(Subject::Cable(k)).any(|(_, r)| r.page == *p) || members.iter().any(|m| routes.contains_key(&(m.conductor, *p)));
+        let drawn = doc.representations_of(Subject::Cable(k)).any(|(_, r)| r.page == *p) || member_pages.contains(p);
         if drawn {
             pages.push(*p);
         }
@@ -638,7 +620,12 @@ fn terminal_lines(doc: &Document, t: TerminalId) -> Vec<String> {
 
 /// The core label of member `w` of cable `k`, when it has one that is not blank, as drawn.
 fn core_of(doc: &Document, k: CableId, w: WireId) -> Option<String> {
-    let core = doc.cables.get(&k)?.members.iter().find(|m| m.conductor == w)?.core.as_deref()?;
+    member_core(doc.cables.get(&k)?.members.iter().find(|m| m.wire() == Some(w))?)
+}
+
+/// A member's core label, shortened for a hover; `None` when it has none.
+fn member_core(m: &ecad_model::CableMember) -> Option<String> {
+    let core = m.core.as_deref()?;
     (!core.trim().is_empty()).then(|| crate::words::shorten(core, crate::words::MAX_CORE_CHARS))
 }
 
@@ -671,68 +658,76 @@ fn cable_lines(doc: &Document, page: PageId, k: CableId) -> Vec<String> {
     } else {
         // The stored member order, nothing more (owner answer Q2).
         lines.push(format!("Wires: {}", members.len()));
-        lines.extend(members.iter().map(|m| match core_of(doc, k, m.conductor) {
-            Some(c) => format!("  {}  core {c}", crate::slash::wire_name(doc, m.conductor)),
-            None => format!("  {}", crate::slash::wire_name(doc, m.conductor)),
+        lines.extend(members.iter().map(|m| match member_core(m) {
+            Some(c) => format!("  {}  core {c}", crate::slash::position_name(doc, m.position)),
+            None => format!("  {}", crate::slash::position_name(doc, m.position)),
         }));
     }
     lines
 }
 
-fn wire_lines(doc: &Document, w: WireId, page: PageId) -> Vec<String> {
-    let conductor = doc.wires.get(&w);
-    let mut lines = vec![format!("Wire {}", conductor.and_then(|x| x.number_text()).unwrap_or("(no number)")), format!("id {}", w.hex())];
-    if let Some(k) = doc.cables_of(w).first() {
-        let name = match doc.cables.get(k).and_then(|x| tag(&x.properties)) {
+/// A wire's lens: wire `w` (the one a clicked line stands for, when it has one) and the open ends
+/// of route `route` (the line clicked, or the wire's line on `page`).
+fn wire_lines(doc: &Document, w: Option<WireId>, route: Option<RouteId>, page: PageId) -> Vec<String> {
+    let conductor = w.and_then(|w| doc.wires.get(&w));
+    let mut lines = match w {
+        Some(w) => vec![format!("Wire {}", conductor.and_then(|x| x.number_text()).unwrap_or("(no number)")), format!("id {}", w.hex())],
+        None => vec!["Wire line (no connection points yet)".to_string()],
+    };
+    if let Some((w, k)) = w.and_then(|w| doc.cables_of(w).first().map(|k| (w, *k))) {
+        let name = match doc.cables.get(&k).and_then(|x| tag(&x.properties)) {
             Some(t) => t.to_string(),
             None => format!("{}…", short(&k.hex())),
         };
-        match core_of(doc, *k, w) {
+        match core_of(doc, k, w) {
             Some(c) => lines.push(format!("In cable {name}, core {c}")),
             None => lines.push(format!("In cable {name}")),
         }
     }
-    for end in End::BOTH {
-        lines.push(match conductor.and_then(|x| x.end(end)) {
-            // A junction or a continuation (brief 022) is named by what it is.
-            Some(t) if doc.terminals.get(&t).is_some_and(|x| crate::wires::kind_of(doc, x.component).is_some()) => {
-                let words = crate::wires::point_words(doc, t);
-                match words.strip_prefix('\u{2192}') {
-                    Some(name) => format!("End {end:?}: continuation {name}"),
-                    None => format!("End {end:?}: {words}"),
+    if let Some(c) = conductor {
+        for end in End::BOTH {
+            let t = c.end(end);
+            lines.push(match doc.terminals.get(&t) {
+                // A continuation (brief 022) is named by what it is.
+                Some(x) if crate::wires::kind_of(doc, x.component).is_some() => {
+                    let words = crate::wires::point_words(doc, t);
+                    match words.strip_prefix('\u{2192}') {
+                        Some(name) => format!("End {end:?}: continuation {name}"),
+                        None => format!("End {end:?}: {words}"),
+                    }
                 }
-            }
-            Some(t) => {
-                let of = doc
-                    .terminals
-                    .get(&t)
-                    .map(|x| {
-                        let c = doc.devices.get(&x.component);
-                        c.and_then(|c| c.tag()).map_or_else(|| short(&x.component.hex()).to_string(), str::to_string)
-                    })
-                    .unwrap_or_default();
-                format!("End {end:?}: connection point {} of {of}", terminal_name(doc, t))
-            }
-            None => format!("End {end:?}: not connected"),
-        });
+                Some(x) => {
+                    let of =
+                        doc.devices.get(&x.component).and_then(|c| c.tag()).map_or_else(|| short(&x.component.hex()).to_string(), str::to_string);
+                    format!("End {end:?}: connection point {} of {of}", terminal_name(doc, t))
+                }
+                None => format!("End {end:?}: not connected"),
+            });
+        }
     }
-    // Brief 032 §2.6: an open end lying on another wire says so, and how to join them.
-    if let (Some(cond), Some((a, b))) = (conductor, ecad_model::derive::route_ends_on(doc, w, page)) {
-        for (end, at) in [(End::A, a), (End::B, b)] {
-            if cond.end(end).is_some() {
-                continue;
-            }
-            if let Some(on) = crate::wires::wire_at(doc, page, at, crate::wires::ON_WIRE, Some(w)) {
-                let conn = doc.connectivity();
-                let number = conn
-                    .net_of_conductor(on.conductor)
-                    .and_then(|n| conn.net(n))
-                    .and_then(|n| ecad_model::wiring::net_number(doc, n))
-                    .unwrap_or_else(|| "?".into());
-                lines.push(format!("Open end: looks connected to {number}; Join Wires joins them."));
+    // Brief 032 §2.6: an open end of the line lying on another line says so, and how to join them.
+    if let Some(r) = route
+        && let Some(line) = doc.routes.get(&r)
+    {
+        for (at, landed) in line.end_points().into_iter().flatten().zip(line.ends) {
+            match landed {
+                RouteEnd::On { .. } => lines.push("Open end: lands on another wire (a T).".into()),
+                RouteEnd::Free => {
+                    if let Some(on) = crate::wires::route_at(doc, page, at, crate::wires::ON_WIRE, Some(r)) {
+                        let conn = doc.connectivity();
+                        let number = crate::wires::wire_of_route(doc, on.route)
+                            .and_then(|w| conn.net_of_conductor(w))
+                            .and_then(|n| conn.net(n))
+                            .and_then(|n| ecad_model::wiring::net_number(doc, n))
+                            .unwrap_or_else(|| "?".into());
+                        lines.push(format!("Open end: looks connected to {number}; Join Wires joins them."));
+                    }
+                }
+                RouteEnd::Point(_) => {}
             }
         }
     }
+    let Some(w) = w else { return lines };
     // Brief 010: a wire continued on other pages says where.
     let others: Vec<String> =
         crate::references::route_pages(doc, w).into_iter().filter(|p| *p != page).map(|p| crate::references::page_number_words(doc, p)).collect();

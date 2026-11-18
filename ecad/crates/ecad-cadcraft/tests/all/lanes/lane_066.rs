@@ -216,6 +216,7 @@ fn wire_label_height(doc: &Document) -> Value<'_> {
 /// A project with one labelled wire, the label height chosen (`Some`) or not.
 fn project(seed: u64, height: Option<f64>) -> H {
     let mut h = H::new(seed);
+    h.points_at(&[(20.0, 20.0), (80.0, 20.0)]);
     h.run("wire", json!({"points": pts(&[(20.0, 20.0), (80.0, 20.0)]), "potential": "24V"})).unwrap();
     if let Some(x) = height {
         h.run("wiresettings", json!({"label_height": x})).unwrap();

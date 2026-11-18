@@ -5,7 +5,7 @@ use ecad_model::{DeviceId, PageId};
 use serde_json::{Value, json};
 
 use super::{placed, prop};
-use crate::common::{H, id, pts};
+use crate::common::{H, id};
 
 /// A CPU, a DI card wired to eight lamps through a fence, an AI card and a DQ card.
 struct F {
@@ -24,7 +24,7 @@ fn fixture(seed: u64) -> F {
     for i in 0..8 {
         let x = 100.0 + 20.0 * f64::from(i);
         lamps.push(placed(&mut h, "lamp", x, 260.0));
-        h.run("wire", json!({"points": pts(&[(x, 250.0), (x, 150.0)])})).unwrap();
+        h.wire_pp(&[(x, 250.0), (x, 150.0)]).unwrap();
     }
     h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [255.0, 200.0]})).unwrap();
     F { h, di, lamps }

@@ -9,7 +9,7 @@ use ecad_cadcraft::rating::{self, parse};
 use ecad_model::{CableId, DeviceId, WireId};
 use serde_json::{Value, json};
 
-use crate::common::{H, id, pts};
+use crate::common::{H, id};
 
 /// The synthetic rating table of design 057 §11 (not from any standard).
 pub const SYNTHETIC: &str = "kind,a,b,c,d,value\n\
@@ -41,7 +41,7 @@ fn place(h: &mut H, symbol: &str, at: [f64; 2], tag: &str) -> DeviceId {
 }
 
 fn wire(h: &mut H, points: &[(f64, f64)]) -> WireId {
-    id(&h.run("wire", json!({"points": pts(points)})).unwrap_or_else(|e| panic!("wire {points:?}: {e}")), "conductor")
+    id(&h.wire_pp(points).unwrap_or_else(|e| panic!("wire {points:?}: {e}")), "conductor")
 }
 
 fn setprop(h: &mut H, what: &str, idv: String, key: &str, value: Value) {

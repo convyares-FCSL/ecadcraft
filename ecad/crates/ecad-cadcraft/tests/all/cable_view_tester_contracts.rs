@@ -33,6 +33,13 @@ use ecad_cadcraft::{Persistence, Project, ProjectHandle};
 use ecad_model::{CableId, ItemId, PageId, Pt, Transaction, WireId};
 use serde_json::{Value, json};
 
+/// `wire` point to point (design 072: a wire runs between two connection points): a connection
+/// point at each end that has none first ([`H::wire_pp`]).
+fn wire_pp(h: &mut H, points: Value) -> Result<Value, String> {
+    let p: Vec<(f64, f64)> = points.as_array().into_iter().flatten().filter_map(|q| Some((q[0].as_f64()?, q[1].as_f64()?))).collect();
+    h.wire_pp(&p)
+}
+
 const SEED: u64 = 0x5005_7e57;
 
 // ------------------------------------------------------------------------------------- helpers
@@ -99,7 +106,7 @@ fn fixture_on(mut h: H) -> G {
     component(&mut h, page, "line 60,-5 70,-5 70,15 60,15 c", 60.0);
     let mut wires = Vec::new();
     for y in [0, 5, 10] {
-        let r = h.run("wire", json!({"points": [[0, y], [60, y]]})).unwrap();
+        let r = wire_pp(&mut h, json!([[0, y], [60, y]])).unwrap();
         wires.push(id(&r, "conductor"));
     }
     let r = h.run("cableslash", json!({"from": [28, -3], "to": [32, 18], "tag": "C1"})).unwrap();
@@ -415,7 +422,7 @@ fn child_reopen_through_env() {
     let mut g = fixture_on(H { s, project: handle, trail: Vec::new() });
     // C2: three more wires, slashed.
     for y in [30, 35, 40] {
-        g.h.run("wire", json!({"points": [[0, y], [60, y]]})).unwrap();
+        wire_pp(&mut g.h, json!([[0, y], [60, y]])).unwrap();
     }
     let c2: CableId = id(&g.h.run("cableslash", json!({"from": [30, 25], "to": [30, 45], "tag": "C2"})).unwrap(), "cable");
     let path = work.join("two.ecad").display().to_string();
@@ -749,7 +756,7 @@ fn ac2_writes_keep_other_projects_and_drop_unknown_cables() {
 fn parallel_cable(h: &mut H, y0: f64, n: usize, gap: f64) -> CableId {
     for i in 0..n {
         let y = y0 + i as f64 * gap;
-        h.run("wire", json!({"points": [[0.0, y], [60.0, y]]})).unwrap();
+        wire_pp(h, json!([[0.0, y], [60.0, y]])).unwrap();
     }
     let r = h.run("cableslash", json!({"from": [20.0, y0 - gap / 2.0], "to": [20.0, y0 + (n as f64 - 0.5) * gap]})).unwrap();
     assert_eq!(r["conductors"].as_array().unwrap().len(), n);
@@ -790,13 +797,13 @@ fn ac3_fans_of_one_two_and_twenty_wires() {
     assert_eq!(tails(&mut h, page, twenty).len(), 40);
     // A fan cable left with one wire is drawn traditional on the page (design 009 §4.1): its
     // route is drawn, no panic.
-    let members: Vec<WireId> = h.doc().cables[&two].members.iter().map(|m| m.conductor).collect();
+    let members: Vec<WireId> = h.doc().cables[&two].members.iter().filter_map(|m| m.wire()).collect();
     h.run("ecaddelete", json!({"conductor": members[1].hex()})).unwrap();
     h.check();
     assert_eq!(view_of(&mut h, two), "fan");
     let doc = h.doc();
     assert_eq!(views::fan_on_page(&doc, page, two, 1e-6), views::FanOnPage::TooFew);
-    let (route, _) = ecad_model::derive::route_on_page(&doc, members[0], page).unwrap();
+    let (route, _) = crate::common::wire_line(&doc, members[0], page).unwrap();
     assert!(h.p(|p| p.pages[&page].map.item(route)).is_some(), "the remaining wire is drawn");
     h.run("u", Value::Null).unwrap();
     h.check();
@@ -837,17 +844,18 @@ fn ac3_right_to_left_and_bent_references_and_loose_ends() {
     let mut h = H::new(SEED + 3);
     let page = h.first_page();
     for pts in [json!([[0, 0], [60, 0]]), json!([[60, 5], [0, 5]]), json!([[0, 10], [60, 10]])] {
-        h.run("wire", json!({ "points": pts })).unwrap();
+        wire_pp(&mut h, json!(pts)).unwrap();
     }
     let k: CableId = id(&h.run("cableslash", json!({"from": [28, -3], "to": [32, 18]})).unwrap(), "cable");
     let before = marks(&mut h, page);
-    assert!(before.iter().filter(|m| m.0 == "Square").count() >= 6, "loose-end squares: {before:?}");
+    // Design 072: the wires run between connection points, so no end is loose (no square).
+    assert!(!before.is_empty() && before.iter().all(|m| m.0 != "Square"), "no loose-end squares: {before:?}");
     set(&mut h, k, "fan");
     // Brief 009: a tail ends at every wire end, on the correct side, whatever the route direction.
     let t = tails(&mut h, page, k);
     assert_eq!(t.len(), 6, "{t:?}");
     assert_tails_end_at(&t, &[(0.0, 0.0), (0.0, 5.0), (0.0, 10.0), (60.0, 0.0), (60.0, 5.0), (60.0, 10.0)]);
-    assert_eq!(marks(&mut h, page), before, "loose-end squares stay where they were");
+    assert_eq!(marks(&mut h, page), before, "the end marks stay where they were");
     assert_eq!(magenta_marks(&mut h, page), 0, "no crossing dots in fan view");
     h.check();
 
@@ -855,7 +863,7 @@ fn ac3_right_to_left_and_bent_references_and_loose_ends() {
     let mut h = H::new(SEED + 4);
     let page = h.first_page();
     for pts in [json!([[0, 20], [60, 20]]), json!([[0, 25], [30, 25], [30, 40], [60, 40]]), json!([[0, 30], [60, 30]])] {
-        h.run("wire", json!({ "points": pts })).unwrap();
+        wire_pp(&mut h, json!(pts)).unwrap();
     }
     let k: CableId = id(&h.run("cableslash", json!({"from": [10, 17], "to": [10, 33]})).unwrap(), "cable");
     set(&mut h, k, "fan");
@@ -882,7 +890,7 @@ fn ac3_hostile_coordinates_never_panic() {
         json!([[0, 0], [0, 0]]),
         json!([[0, 0], [1e300, 0]]),
     ] {
-        made.push((pts.clone(), h.run("wire", json!({ "points": pts }))));
+        made.push((pts.clone(), wire_pp(&mut h, json!(pts))));
     }
     eprintln!("hostile wires: {:?}", made.iter().map(|(p, r)| format!("{p} -> {}", r.is_ok())).collect::<Vec<_>>());
     if let Ok(r) = h.run("cableslash", json!({"from": [1e12 + 20.0, 1e12 - 2.0], "to": [1e12 + 20.0, 1e12 + 7.0]})) {
@@ -894,9 +902,9 @@ fn ac3_hostile_coordinates_never_panic() {
     // A cable whose middle (reference) member is a tiny wire: L at or under the tolerance.
     let mut h = H::new(SEED + 6);
     let page = h.first_page();
-    h.run("wire", json!({"points": [[0, 0], [60, 0]]})).unwrap();
-    let tiny = h.run("wire", json!({"points": [[20, 2], [20.000000001, 2]]}));
-    h.run("wire", json!({"points": [[0, 4], [60, 4]]})).unwrap();
+    wire_pp(&mut h, json!([[0, 0], [60, 0]])).unwrap();
+    let tiny = wire_pp(&mut h, json!([[20, 2], [20.000000001, 2]]));
+    wire_pp(&mut h, json!([[0, 4], [60, 4]])).unwrap();
     eprintln!("tiny wire accepted: {}", tiny.is_ok());
     if let Ok(r) = h.run("cableslash", json!({"from": [20, -1], "to": [20, 5]})) {
         let k: CableId = id(&r, "cable");
@@ -913,10 +921,10 @@ fn ac3_hostile_coordinates_never_panic() {
 fn ac3_a_fan_that_cannot_be_drawn_stays_traditional_and_says_so() {
     let mut h = H::new(SEED + 7);
     let page = h.first_page();
-    h.run("wire", json!({"points": [[0, 0], [60, 0]]})).unwrap();
+    wire_pp(&mut h, json!([[0, 0], [60, 0]])).unwrap();
     // Two finite segments whose total length overflows to infinity.
-    let huge = h.run("wire", json!({"points": [[0.0, 5.0], [1.7e308, 5.0], [0.0, 6.0]]}));
-    h.run("wire", json!({"points": [[0, 10], [60, 10]]})).unwrap();
+    let huge = wire_pp(&mut h, json!([[0.0, 5.0], [1.7e308, 5.0], [0.0, 6.0]]));
+    wire_pp(&mut h, json!([[0, 10], [60, 10]])).unwrap();
     let Ok(huge) = huge else {
         eprintln!("a wire of overflowing length is refused: {huge:?}; the fallback is not reachable from outside");
         return;
@@ -927,7 +935,7 @@ fn ac3_a_fan_that_cannot_be_drawn_stays_traditional_and_says_so() {
         eprintln!("the slash does not take the overflowing wire: {r}; the fallback is not reachable from outside");
         return;
     }
-    assert_eq!(h.doc().cables[&k].members[1].conductor, id::<WireId>(&huge, "conductor"), "the reference");
+    assert_eq!(h.doc().cables[&k].members[1].wire(), Some(id::<WireId>(&huge, "conductor")), "the reference");
     let r = h.run("cableview", json!({"cable": k.hex(), "view": "fan"})).unwrap();
     assert_eq!(r["view"], "fan", "{r}");
     h.check();
@@ -946,7 +954,7 @@ fn ac3_a_fan_that_cannot_be_drawn_stays_traditional_and_says_so() {
 fn ac3_degenerate_reference_routes_fall_back_without_panic() {
     let mut g = fixture();
     let doc = g.h.doc();
-    let (item, _) = ecad_model::derive::route_on_page(&doc, g.wires[1], g.page).unwrap();
+    let (item, _) = crate::common::wire_line(&doc, g.wires[1], g.page).unwrap();
     let cases: Vec<(&str, ecad_model::Primitive, bool)> = vec![
         ("zero length", ecad_model::Primitive::Line { a: Pt::new(0.0, 5.0), b: Pt::new(0.0, 5.0) }, true),
         ("NaN", ecad_model::Primitive::Line { a: Pt::new(0.0, 5.0), b: Pt::new(f64::NAN, 5.0) }, true),
@@ -1000,12 +1008,15 @@ fn ac4_undo_and_redo_act_on_the_last_real_edit() {
     assert_eq!(view_of(&mut g.h, g.c1), "fan", "still fan after redo");
     assert_eq!(tails(&mut g.h, g.page, g.c1).len(), 6, "the fan is drawn again");
     // A real edit in fan view (owner O3: moving equipment is allowed): a new wire.
-    g.h.run("wire", json!({"points": [[0, 30], [60, 30]]})).unwrap();
+    // (Its connection points first, design 072, so the wire is one edit of its own.)
+    g.h.points_at(&[(0.0, 30.0), (60.0, 30.0)]);
+    let before_wire = g.h.doc();
+    wire_pp(&mut g.h, json!([[0, 30], [60, 30]])).unwrap();
     let with_wire = g.h.doc();
     set(&mut g.h, g.c1, "traditional");
     set(&mut g.h, g.c1, "fan");
     g.h.cmdline("u");
-    assert_eq!(g.h.doc(), after_slash, "u undid the wire, not a switch");
+    assert_eq!(g.h.doc(), before_wire, "u undid the wire, not a switch");
     assert_eq!(view_of(&mut g.h, g.c1), "fan");
     g.h.cmdline("redo");
     assert_eq!(g.h.doc(), with_wire);
@@ -1021,7 +1032,7 @@ fn ac4_undo_and_redo_act_on_the_last_real_edit() {
 fn switching_during_an_interactive_slash() {
     let mut g = fixture();
     for y in [30, 35, 40] {
-        g.h.run("wire", json!({"points": [[0, y], [60, y]]})).unwrap();
+        wire_pp(&mut g.h, json!([[0, y], [60, y]])).unwrap();
     }
     let head = g.h.head();
     g.h.s.start("cableslash").unwrap();
@@ -1153,7 +1164,8 @@ fn ac6_edits_of_the_fan_are_refused_and_change_nothing() {
     let at = lines.iter().position(|l| l == "View: fan").expect("View: fan");
     assert!(lines.get(at - 1).is_some_and(|l| l.starts_with("id ")), "after the id line: {lines:?}");
     // Programmatic calls ignore the view (O4).
-    g.h.run("disconnect", json!({"conductor": g.wires[1].hex(), "end": "B"})).unwrap();
+    let line = g.h.route_of(g.page, g.wires[1]);
+    g.h.run("disconnect", json!({"route": line.hex(), "end": "B"})).unwrap();
     assert_eq!(g.h.head(), head + 1);
     g.h.check();
 }
@@ -1165,13 +1177,21 @@ fn the_fan_follows_route_edits_made_in_traditional_view() {
     let r = g.h.route_handle(g.page, g.wires[1]);
     let set_ = BTreeSet::from([r]);
     // Moving a whole attached wire is refused by 008's rules; disconnect and move the B end instead.
-    g.h.run("disconnect", json!({"conductor": g.wires[1].hex(), "end": "B"})).unwrap();
+    // Design 072: a wire runs between two points, so the end lands on a point at its new place.
+    let line = g.h.route_of(g.page, g.wires[1]);
+    let to = g.h.points_at(&[(60.0, 6.0)])[0];
+    g.h.run("disconnect", json!({"route": line.hex(), "end": "B"})).unwrap();
     let res = g.h.run("grip.stretch", json!({"handle": r.hex(), "index": 1, "to": [60, 6]}));
     eprintln!("stretch end: {res:?} ({set_:?})");
+    let joined = g.h.run("connect", json!({"route": line.hex(), "end": "B", "terminal": to.hex()}));
+    eprintln!("connect: {joined:?}");
+    let doc = g.h.doc();
+    assert_eq!(doc.routes[&line].ends[1], ecad_model::RouteEnd::Point(to), "the moved end is on the point");
+    assert_eq!(doc.cables[&g.c1].members.len(), 3, "the core stays in the cable");
     set(&mut g.h, g.c1, "fan");
-    let ends = g.h.route_ends(g.page, g.wires[1]);
+    let end = Pt::new(60.0, 6.0);
     let paths = fan_paths(&mut g.h, g.page);
-    assert!(paths.iter().any(|p| p.iter().any(|q| q.near(ends.1, 1e-9))), "fan ends at {:?}: {paths:?}", ends.1);
+    assert!(paths.iter().any(|p| p.iter().any(|q| q.near(end, 1e-9))), "fan ends at {end:?}: {paths:?}");
     g.h.check();
 }
 
@@ -1372,7 +1392,7 @@ fn round2_m3_two_windows() {
     let work = Tmp::new("m3-work");
     let mut g = fixture();
     for y in [30, 35, 40] {
-        g.h.run("wire", json!({"points": [[0, y], [60, y]]})).unwrap();
+        wire_pp(&mut g.h, json!([[0, y], [60, y]])).unwrap();
     }
     let c2: CableId = id(&g.h.run("cableslash", json!({"from": [30, 25], "to": [30, 45], "tag": "C2"})).unwrap(), "cable");
     g.h.cfg(|pr| {
@@ -1408,7 +1428,7 @@ fn round2_m5_selection_with_a_failure_carries_on() {
     let mut cables = vec![g.c1];
     for (y0, n) in [(30, 3), (50, 3), (70, 1)] {
         for i in 0..n {
-            g.h.run("wire", json!({"points": [[0, y0 + 5 * i], [60, y0 + 5 * i]]})).unwrap();
+            wire_pp(&mut g.h, json!([[0, y0 + 5 * i], [60, y0 + 5 * i]])).unwrap();
         }
         let r = g.h.run("cableslash", json!({"from": [30, y0 - 3], "to": [30, y0 + 5 * n - 2]})).unwrap();
         cables.push(id(&r, "cable"));
@@ -1459,7 +1479,7 @@ fn round2_m5_selection_with_a_failure_carries_on() {
 fn round2_observation5_view_after_undo_switch_redo() {
     let mut h = H::new(SEED + 13);
     for y in [0, 5, 10, 30, 35, 40] {
-        h.run("wire", json!({"points": [[0, y], [60, y]]})).unwrap();
+        wire_pp(&mut h, json!([[0, y], [60, y]])).unwrap();
     }
     let k2: CableId = id(&h.run("cableslash", json!({"from": [30, 25], "to": [30, 45]})).unwrap(), "cable");
     let k1: CableId = id(&h.run("cableslash", json!({"from": [28, -3], "to": [32, 18]})).unwrap(), "cable");

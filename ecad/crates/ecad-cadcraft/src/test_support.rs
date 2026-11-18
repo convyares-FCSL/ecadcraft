@@ -119,7 +119,8 @@ impl ProjectBuilder {
     }
 
     /// Draw a wire between two ends: points on the page, or the first connection point of a tagged
-    /// device. Both ends are attached when they meet a connection point.
+    /// device. Both ends are attached when they meet a connection point; a line with an end that
+    /// meets none carries no wire (design 072) and adds nothing to [`Built::wires`].
     pub fn wire(mut self, a: impl Into<End>, b: impl Into<End>) -> Self {
         self.steps.push(Step::Wire(a.into(), b.into()));
         self
@@ -218,7 +219,9 @@ impl Built {
             Step::Wire(a, b) => {
                 let (pa, pb) = (self.point(a), self.point(b));
                 let v = self.exec("wire", json!({"points": [[pa.x, pa.y], [pb.x, pb.y]]}));
-                self.wires.push(hex_id(&v, "conductor"));
+                if v["conductor"].is_string() {
+                    self.wires.push(hex_id(&v, "conductor"));
+                }
             }
             Step::Cable(params) => {
                 let v = self.exec("cablenew", params.clone());

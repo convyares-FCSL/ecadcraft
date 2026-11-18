@@ -60,7 +60,7 @@ fn rated(h: &mut H, dir: &std::path::Path) -> (ecad_model::WireId, ecad_model::C
         .iter()
         .find(|(_, c)| {
             c.potential_name() == Some("L")
-                && c.ends.iter().flatten().any(|t| d.terminals.get(t).is_some_and(|x| x.component == q01 && x.label.as_deref() == Some("2")))
+                && c.ends.iter().any(|t| d.terminals.get(t).is_some_and(|x| x.component == q01 && x.label.as_deref() == Some("2")))
         })
         .map(|(id, _)| *id)
         .unwrap();

@@ -136,7 +136,7 @@ pub fn strip_of_terminal(doc: &Document, t: TerminalId) -> Option<DeviceId> {
 /// The strip a conductor bridges, when its two ends are on two terminals of one strip.
 pub fn bridge_of(doc: &Document, w: WireId) -> Option<DeviceId> {
     let cond = doc.wires.get(&w)?;
-    let (a, b) = (cond.end(End::A)?, cond.end(End::B)?);
+    let (a, b) = (cond.end(End::A), cond.end(End::B));
     if a == b {
         return None;
     }
@@ -1013,13 +1013,13 @@ impl Strips {
         for k in scope.cables {
             out.extend(self.by_cable.get(k).into_iter().flatten().copied());
             if let Some(cab) = doc.cables.get(k) {
-                wires.extend(cab.members.iter().map(|m| m.conductor));
+                wires.extend(cab.members.iter().filter_map(|m| m.wire()));
             }
         }
         for w in &wires {
             out.extend(self.by_conductor.get(w).into_iter().flatten().copied());
             if let Some(cond) = doc.wires.get(w) {
-                out.extend(cond.ends.iter().flatten().filter_map(|t| strip_of_terminal(doc, *t)));
+                out.extend(cond.ends.iter().filter_map(|t| strip_of_terminal(doc, *t)));
             }
         }
         for p in scope.pages {
@@ -1188,34 +1188,29 @@ fn leaves_inward(from: Pt, next: Pt) -> bool {
     if dy.abs() >= dx.abs() { dy > 0.0 } else { dx < 0.0 }
 }
 
-/// The route direction of conductor `w` at its end `end` on `page`: inside (`true`) or not;
-/// `None` when it has no route there.
+/// The direction of the route leaving conductor `w`'s end `end` (its connection point) on
+/// `page`: inside (`true`) or not; `None` when no route lands there on that page. The route
+/// carrying `w` (one running to its other end) is preferred over another route at the point.
 fn geometric_inside(doc: &Document, w: WireId, end: End, page: PageId) -> Option<bool> {
-    let (_, _, v) = crate::wires::route_vertices(doc, w, page)?;
-    let (a, b) = match end {
-        End::A => (*v.first()?, *v.get(1)?),
-        End::B => (*v.last()?, *v.get(v.len().checked_sub(2)?)?),
-    };
-    Some(leaves_inward(a, b))
+    let wire = doc.wires.get(&w)?;
+    let t = wire.end(end);
+    let far = ecad_model::RouteEnd::Point(wire.end(end.other()));
+    let mut at: Vec<&ecad_model::Route> = doc.routes_at(t).filter_map(|r| doc.routes.get(&r)).filter(|r| r.page == page).collect();
+    at.sort_by_key(|r| !r.ends.contains(&far));
+    at.into_iter().find_map(|r| {
+        let v = &r.points;
+        let (a, b) =
+            if r.ends[0] == ecad_model::RouteEnd::Point(t) { (*v.first()?, *v.get(1)?) } else { (*v.last()?, *v.get(v.len().checked_sub(2)?)?) };
+        Some(leaves_inward(a, b))
+    })
 }
 
 /// The cell of a terminal's conductor's far end, worked out like the wire report's.
 fn far_cell(doc: &Document, o: &Outputs, w: WireId, far: End, cx: &PageCx) -> (Option<String>, Option<DeviceId>) {
     let Some(cond) = doc.wires.get(&w) else { return (None, None) };
     let t = cond.end(far);
-    let comp = t.and_then(|t| doc.terminals.get(&t)).map(|x| x.component);
-    // Only a junction's cell needs where the end is drawn (its place); the rest are named.
-    let at = match comp.and_then(|c| crate::wires::kind_of(doc, c)) {
-        Some(ecad_model::connectivity::JUNCTION) => {
-            let [a, b] = crate::outputs::end_points(doc, w, cx);
-            match far {
-                End::A => a,
-                End::B => b,
-            }
-        }
-        _ => None,
-    };
-    let cell = o.end_cell_of(doc, t, at, cx);
+    let comp = doc.terminals.get(&t).map(|x| x.component);
+    let cell = o.end_cell_of(doc, Some(t), None, cx);
     (cell.text(doc.settings.reference_style()), comp)
 }
 
@@ -1295,11 +1290,8 @@ fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripDat
                 End::A => End::B,
                 End::B => End::A,
             };
-            let other = cond.end(far_end);
-            if let Some(o2) = other
-                && o2 != t
-                && mine.contains(&o2)
-            {
+            let o2 = cond.end(far_end);
+            if o2 != t && mine.contains(&o2) {
                 // A bridge.
                 bridged.insert(t);
                 bridged.insert(o2);
@@ -1318,7 +1310,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripDat
                 let tag = doc.cables.get(&k).and_then(|x| clean(x.properties.get("tag")));
                 (k, tag)
             });
-            let core = cable.as_ref().and_then(|(k, _)| doc.cables.get(k)?.members.iter().find(|m| m.conductor == w)?.core.clone());
+            let core = cable.as_ref().and_then(|(k, _)| doc.cables.get(k)?.members.iter().find(|m| m.wire() == Some(w))?.core.clone());
             let cell = SideCell { conductor: w, target, wire: o.wire(w).and_then(|r| r.wire_number.clone()), cable, core, far };
             // §5.2: cable core → outside; far device's location against the strip's; geometry.
             let inside = match side {
@@ -1637,7 +1629,7 @@ fn far_words(doc: &Document, w: WireId, mine: End) -> (String, Option<DeviceId>)
         End::A => End::B,
         End::B => End::A,
     };
-    let Some(t) = doc.wires.get(&w).and_then(|c| c.end(far)) else { return ("loose".into(), None) };
+    let Some(t) = doc.wires.get(&w).map(|c| c.end(far)) else { return ("loose".into(), None) };
     let Some(c) = doc.terminals.get(&t).map(|x| x.component) else { return ("loose".into(), None) };
     match crate::wires::kind_of(doc, c) {
         Some(ecad_model::connectivity::JUNCTION) => ("junction".into(), Some(c)),
@@ -1675,7 +1667,7 @@ pub fn terminal_hover(doc: &Document, c: DeviceId, here: RepresentationId) -> Ve
         lines.push(format!("{}  {kind}  {}", crate::strips::terminal_words(doc, t), location.clone().unwrap_or_else(|| "?".into())));
         let mut bridged = Vec::new();
         for (w, end) in doc.ends_at(t) {
-            let far_t = doc.wires.get(&w).and_then(|x| {
+            let far_t = doc.wires.get(&w).map(|x| {
                 x.end(match end {
                     End::A => End::B,
                     End::B => End::A,
@@ -1701,7 +1693,7 @@ pub fn terminal_hover(doc: &Document, c: DeviceId, here: RepresentationId) -> Ve
                     let core = doc
                         .cables
                         .get(&k)
-                        .and_then(|x| x.members.iter().find(|m| m.conductor == w))
+                        .and_then(|x| x.members.iter().find(|m| m.wire() == Some(w)))
                         .and_then(|m| m.core.clone())
                         .unwrap_or_else(|| "?".into());
                     lines.push(format!("outside  {} core {core} \u{2192} {target}", crate::slash::cable_name(doc, k)));
@@ -1851,7 +1843,7 @@ mod tests {
 
     #[test]
     fn members_meet_the_offer_by_label_then_in_order() {
-        let m = |core: Option<&str>| CableMember { conductor: WireId(1), core: core.map(str::to_string) };
+        let m = |core: Option<&str>| CableMember::on_wire(WireId(1), core.map(str::to_string));
         let offer = |t: &str| Some((parse_cores(t).unwrap(), OfferSource::Cores, t.to_string()));
         let c = count_cores(offer("7G"), &[m(None), m(None), m(Some("3")), m(None), m(None)]);
         assert_eq!(c.used(), 5);

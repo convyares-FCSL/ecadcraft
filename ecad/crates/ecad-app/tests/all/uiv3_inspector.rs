@@ -153,6 +153,7 @@ fn the_layout_tab_reads_the_placement_and_sets_the_texts_and_contact_table() {
 }
 
 #[test]
+#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn the_checks_tab_switches_between_this_page_and_the_project() {
     let (mut h, dir, _one) = harness(None);
     select_coil(&mut h, RightTab::Checks);

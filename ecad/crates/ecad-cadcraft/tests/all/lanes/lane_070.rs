@@ -69,7 +69,6 @@ fn the_wire_commands_refuse_input_uniformly() {
         ("wiresettings", json!({"scheme": 1}), "`scheme` must be text, or null"),
         ("wiresettings", json!({"potentials": 1}), "`potentials` must be a list of objects, or null"),
         ("renumberwires", json!({"scope": "x"}), "`scope` must be one of \"unnumbered\", \"all\", or null"),
-        ("junction", json!({}), "`at` (point [x, y]) is required"),
         ("joinwires", json!({"at": "here"}), "`at` must be a point [x, y]"),
         ("checks", json!({"kinds": "nope"}), "`kinds` must be a list of texts, or null"),
     ];
@@ -116,7 +115,7 @@ fn an_unknown_parameter_is_refused() {
 #[test]
 fn the_typed_wire_commands_still_work() {
     let mut h = H::new(7003);
-    let w = h.run("wire", json!({"points": [[0, 0], [30, 0]]})).unwrap_or(Value::Null);
+    let w = h.wire_pp(&[(0.0, 0.0), (30.0, 0.0)]).unwrap_or(Value::Null);
     let c = w["conductor"].as_str().unwrap_or_default().to_string();
     let n = h.run("net", json!({"conductor": c})).unwrap_or(Value::Null);
     assert_eq!(n["conductors"], json!([c]));

@@ -130,7 +130,7 @@ impl Touched {
             Effect::Rep { id, .. } => {
                 self.representations.insert(*id);
             }
-            Effect::Wire { id, .. } | Effect::End { conductor: id, .. } => {
+            Effect::Wire { id, .. } => {
                 self.wires.insert(*id);
             }
             Effect::Cable { id, .. } | Effect::Member { cable: id, .. } => {
@@ -341,6 +341,9 @@ impl Document {
         let mut cables = touched.cables.clone();
         for c in &touched.wires {
             cables.extend(referrers(&ix.conductor_cables, c));
+        }
+        for r in &touched.routes {
+            cables.extend(referrers(&ix.route_cables, r));
         }
         for id in &cables {
             if let Some(c) = self.cables.get(id) {
@@ -564,10 +567,16 @@ impl Document {
 
     /// I17.
     fn check_conductor(&self, id: WireId, c: &Wire) -> Result<()> {
-        for t in c.ends.iter().flatten() {
+        for t in &c.ends {
             if !self.terminals.contains_key(t) {
                 return bad(format!("wire {id} is attached to missing terminal {t}"));
             }
+        }
+        if c.ends[0] == c.ends[1] {
+            return bad(format!("wire {id} ends twice at terminal {}", c.ends[0]));
+        }
+        if c.net_order == 0 {
+            return bad(format!("wire {id} has no place in its net's order"));
         }
         Ok(())
     }
@@ -576,11 +585,21 @@ impl Document {
     fn check_cable(&self, id: CableId, c: &Cable) -> Result<()> {
         let mut seen = BTreeSet::new();
         for m in &c.members {
-            if !self.wires.contains_key(&m.conductor) {
-                return bad(format!("cable {id} lists missing conductor {}", m.conductor));
+            match m.position {
+                crate::doc::CorePosition::Unplaced => continue,
+                crate::doc::CorePosition::Wire(w) if !self.wires.contains_key(&w) => {
+                    return bad(format!("cable {id} lists missing conductor {w}"));
+                }
+                crate::doc::CorePosition::Route { route, .. } if !self.routes.contains_key(&route) => {
+                    return bad(format!("cable {id} has a core on missing route {route}"));
+                }
+                crate::doc::CorePosition::Route { landed: Some(t), .. } if !self.terminals.contains_key(&t) => {
+                    return bad(format!("cable {id} has a core landed at missing point {t}"));
+                }
+                crate::doc::CorePosition::Wire(_) | crate::doc::CorePosition::Route { .. } => {}
             }
-            if !seen.insert(m.conductor) {
-                return bad(format!("cable {id} lists conductor {} twice", m.conductor));
+            if !seen.insert(m.position) {
+                return bad(format!("cable {id} lists {:?} twice", m.position));
             }
         }
         Ok(())

@@ -302,7 +302,7 @@ fn neighbors_base(doc: &Document, node: &Node) -> Vec<Node> {
         }
         Node::Wire(c) => {
             if let Some(cond) = doc.wires.get(c) {
-                for t in cond.ends.iter().flatten() {
+                for t in &cond.ends {
                     if doc.terminals.contains_key(t) {
                         out.push(Node::Terminal(*t));
                     }
@@ -621,7 +621,6 @@ impl Connectivity {
     /// | Op | Here |
     /// | --- | --- |
     /// | `CreateWire` / `DeleteWire` | node added and joined to its ends / node removed, its net suspect |
-    /// | `AttachEnd` | `before` cut (net suspect), `after` joined |
     /// | `AddRoute` / `RemoveRoute` (design 072 F31) | node added and joined to the points and routes it lands on and the routes landing on it / node removed, its net suspect |
     /// | `ModifyRoute` | its ends changed: the route and its old neighbours cut (net suspect), then joined to the new |
     /// | `AddTerminal` / `RemoveTerminal` | node added and joined (ends, name group, bridges) / removed |
@@ -638,10 +637,6 @@ impl Connectivity {
             Op::DeleteWire { id, .. } => {
                 let wire = doc.wires.get(id).cloned();
                 self.remove(doc, wire.as_ref(), &Node::Wire(*id));
-            }
-            Op::AttachEnd { conductor, before: Some(t), .. } => {
-                self.cut(&Node::Wire(*conductor));
-                self.cut(&Node::Terminal(*t));
             }
             Op::RemoveTerminal { id, .. } => self.remove(doc, None, &Node::Terminal(*id)),
             // Design 072 F31: a route removed, or redrawn so that its ends land elsewhere.
@@ -719,10 +714,6 @@ impl Connectivity {
     pub(crate) fn after_op(&mut self, doc: &Document, op: &Op) {
         match op {
             Op::CreateWire { id, .. } => self.ensure(doc, Node::Wire(*id)),
-            Op::AttachEnd { conductor, after: Some(t), .. } => {
-                self.ensure(doc, Node::Wire(*conductor));
-                self.ensure(doc, Node::Terminal(*t));
-            }
             Op::AddTerminal { id, .. } => self.ensure(doc, Node::Terminal(*id)),
             Op::AddRoute { id, .. } | Op::ModifyRoute { id, .. } => self.ensure(doc, Node::Route(*id)),
             Op::CreateDevice { id, device: component } | Op::DeleteDevice { id, device: component } => {
