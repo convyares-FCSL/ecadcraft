@@ -172,7 +172,7 @@ impl RatedSubject {
 /// # Semantics
 /// [`evaluate`], the volt drop and the protection side read a subject only through this trait, so
 /// a wire and a cable are rated by the same code. `length` and `type` are a cable's properties
-/// until they get types of their own; `protected_by` is free text naming a device.
+/// until they get types of their own.
 pub trait Circuit {
     /// Its own rating inputs; each overrides the project's.
     fn inputs(&self) -> &CircuitInputs;
@@ -182,8 +182,8 @@ pub trait Circuit {
     fn length(&self) -> Option<&str>;
     /// Its free-text type (`4G2.5`), read for a size when it has no cable type.
     fn type_text(&self) -> Option<&str>;
-    /// The device it names as its protection (`-F01`, `-F01:3`), when not blank.
-    fn protected_by(&self) -> Option<&str>;
+    /// The device it names as its protection, over the trace's.
+    fn protected_by(&self) -> Option<ecad_model::wire::ProtectedBy>;
 }
 
 fn named<'a>(p: &'a ecad_model::Properties, key: &str) -> Option<&'a str> {
@@ -203,8 +203,8 @@ impl Circuit for ecad_model::wire::Wire {
     fn type_text(&self) -> Option<&str> {
         named(&self.display, "type")
     }
-    fn protected_by(&self) -> Option<&str> {
-        named(&self.display, PROTECTED_BY)
+    fn protected_by(&self) -> Option<ecad_model::wire::ProtectedBy> {
+        self.protected_by
     }
 }
 
@@ -221,8 +221,8 @@ impl Circuit for ecad_model::Cable {
     fn type_text(&self) -> Option<&str> {
         named(&self.properties, "type")
     }
-    fn protected_by(&self) -> Option<&str> {
-        named(&self.properties, PROTECTED_BY)
+    fn protected_by(&self) -> Option<ecad_model::wire::ProtectedBy> {
+        self.protected_by
     }
 }
 
@@ -260,7 +260,7 @@ pub enum Issue {
     LoadOver,
     VoltDropOver,
     BundlingUnset,
-    /// `protected_by` names nothing.
+    /// `protected_by` names a device that is not there (read so from a file).
     DeviceMissing(String),
     /// No device found (`true`: the trace stopped at its bound).
     NoDevice(bool),
@@ -918,9 +918,11 @@ pub fn rows(doc: &Document, r: &Rating) -> Vec<Check> {
                     show,
                 );
             }
-            Issue::DeviceMissing(t) => {
-                row(CheckKind::RatingDeviceMissing, format!("{who} names {t} as its protection; there is no {t}"), Some(Fix::ClearProtectedBy(s)))
-            }
+            Issue::DeviceMissing(t) => row(
+                CheckKind::RatingDeviceMissing,
+                format!("{who} names {t} as its protection; it is not in the project"),
+                Some(Fix::ClearProtectedBy(s)),
+            ),
             Issue::TwoDevices(a, b) => {
                 let used = i_n.map(|x| format!("; {} A ({a}) used", dataset::fmt_num(x))).unwrap_or_default();
                 row(CheckKind::RatingTwoDevices, format!("{who} is fed by {a} and {b}{used}"), None);

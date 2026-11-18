@@ -674,13 +674,11 @@ fn d02_protected_by_a_fuse_of_a_bank_and_by_hand() {
     let r = wire_r(&mut h, wire);
     assert_eq!(device_in(&r), Some(2.0), "{r}");
     assert!(r.to_string().contains("named"), "found by hand: {r}");
-    // Naming nothing is refused by `rating`; set by setprop (a file made elsewhere): a Warning.
+    // Naming nothing is refused by `rating` and by setprop (design 072 step d: the device itself
+    // is stored; a dangling one comes only from a file, ecad-electrical's protection tests).
     let e = refused(&mut h, "rating", json!({"wire": wire.hex(), "protected_by": "-Q09"}));
     assert!(e.contains("-Q09"), "{e}");
-    h.run("setprop", json!({"conductor": wire.hex(), "key": "protected_by", "value": "-Q09"})).unwrap();
-    let rows = rows_text(&mut h, "rating-device-missing");
-    assert!(rows.len() == 1 && rows[0].contains("names -Q09 as its protection; there is no -Q09"), "{rows:?}");
-    assert!(fixes(&mut h, "rating-device-missing").iter().any(|f| f.contains("ClearProtectedBy")), "the fix");
+    refused(&mut h, "setprop", json!({"conductor": wire.hex(), "key": "protected_by", "value": "-Q09"}));
     // A non-protective device named by hand: used, with an Info row.
     let k01 = placed(&mut h, "coil", 340.0, 300.0);
     h.run("setprop", json!({"component": k01.hex(), "key": "rating", "value": "3 A"})).unwrap();

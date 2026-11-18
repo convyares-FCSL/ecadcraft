@@ -872,10 +872,9 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
     tag_settings(&mut settings, "tag_padding", change.tag_padding, &change.tag_prefixes)?;
     // Brief 022 fix round: how label colours are written, and the label height.
     if let Some(w) = &change.colour_style {
-        settings.wiring.colour_style = Some(
-            ecad_model::wiring::ColourStyle::parse(w)
-                .ok_or(CmdError::refused("`colour_style` must be \"iec\" (BN, BU, GNYE) or \"three-letter\" (BRN, BLU, GRN/YEL)"))?,
-        );
+        settings.wiring.colour_style = Some(<ecad_model::colour::ColourWords as ecad_model::words::Word>::parse(w).ok_or(CmdError::refused(
+            "`colour_style` must be \"code2\" (BN, BU, GN/YE), \"code3\" (BRN, BLU, GRN/YEL) or \"name\" (Brown, Blue, Green/Yellow)",
+        ))?);
     }
     if let Some(h) = change.label_height {
         settings.wiring.label_height = Some(

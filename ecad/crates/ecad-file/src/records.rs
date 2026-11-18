@@ -290,6 +290,8 @@ pub struct Wire {
     pub rating: m::wire::CircuitInputs,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub load: Option<m::units::Amps>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protected_by: Option<m::wire::ProtectedBy>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub display: BTreeMap<String, String>,
 }
@@ -375,6 +377,8 @@ pub struct Cable {
     pub rating: m::wire::CircuitInputs,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub load: Option<m::units::Amps>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protected_by: Option<m::wire::ProtectedBy>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -541,15 +545,6 @@ pub struct PotentialDef {
     pub cross_section: Option<String>,
 }
 
-/// How label colours are written (brief 022 fix round).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ColourStyle {
-    #[serde(rename = "iec")]
-    Iec,
-    #[serde(rename = "three-letter")]
-    ThreeLetter,
-}
-
 /// Wiring settings (brief 022). `colour_style` is left out at its default; the label height, rule
 /// and shortest labelled wire are written only when the project chose them (brief 066, F2).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -562,7 +557,7 @@ pub struct WiringSettings {
     pub unclassified_prefix: String,
     pub potentials: Vec<PotentialDef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub colour_style: Option<ColourStyle>,
+    pub colour_style: Option<m::colour::ColourWords>,
     /// Brief 066 (F2): written only when the project chose a height, even one equal to the
     /// built-in; absent follows the built-in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -605,10 +600,7 @@ impl From<&m::wiring::WiringSettings> for WiringSettings {
                     cross_section: p.legacy_cross_section.clone(),
                 })
                 .collect(),
-            colour_style: w.colour_style.map(|c| match c {
-                m::wiring::ColourStyle::Iec => ColourStyle::Iec,
-                m::wiring::ColourStyle::ThreeLetter => ColourStyle::ThreeLetter,
-            }),
+            colour_style: w.colour_style,
             label_height: w.label_height,
             label_rule: w.label_rule.clone(),
             label_min_length: w.label_min_length,
@@ -665,10 +657,7 @@ impl From<WiringSettings> for m::wiring::WiringSettings {
                     legacy_cross_section: p.cross_section.filter(|v| !v.trim().is_empty()),
                 })
                 .collect(),
-            colour_style: w.colour_style.map(|c| match c {
-                ColourStyle::Iec => m::wiring::ColourStyle::Iec,
-                ColourStyle::ThreeLetter => m::wiring::ColourStyle::ThreeLetter,
-            }),
+            colour_style: w.colour_style,
             label_height: w.label_height,
             label_rule: w.label_rule,
             label_min_length: w.label_min_length,
@@ -1112,6 +1101,7 @@ impl From<&m::Wire> for Wire {
             potential: c.potential.clone(),
             rating: c.rating,
             load: c.load,
+            protected_by: c.protected_by,
             display: c.display.clone(),
         }
     }
@@ -1147,7 +1137,14 @@ impl From<&m::Core> for Core {
 
 impl From<&m::Cable> for Cable {
     fn from(c: &m::Cable) -> Self {
-        Cable { properties: c.properties.clone(), cores: c.cores.iter().map(Into::into).collect(), shield: c.shield, rating: c.rating, load: c.load }
+        Cable {
+            properties: c.properties.clone(),
+            cores: c.cores.iter().map(Into::into).collect(),
+            shield: c.shield,
+            rating: c.rating,
+            load: c.load,
+            protected_by: c.protected_by,
+        }
     }
 }
 
@@ -1450,6 +1447,7 @@ impl From<Wire> for m::Wire {
             potential: c.potential,
             rating: c.rating,
             load: c.load,
+            protected_by: c.protected_by,
             display: c.display,
         }
     }
@@ -1463,7 +1461,14 @@ impl From<Core> for m::Core {
 
 impl From<Cable> for m::Cable {
     fn from(c: Cable) -> Self {
-        m::Cable { properties: c.properties, cores: c.cores.into_iter().map(Into::into).collect(), shield: c.shield, rating: c.rating, load: c.load }
+        m::Cable {
+            properties: c.properties,
+            cores: c.cores.into_iter().map(Into::into).collect(),
+            shield: c.shield,
+            rating: c.rating,
+            load: c.load,
+            protected_by: c.protected_by,
+        }
     }
 }
 

@@ -262,3 +262,41 @@ fn a_cables_values_set_through_mcp_record_one_modify_cable() {
         assert_eq!(r.log(), before, "{cmd}: nothing recorded with writes off");
     }
 }
+
+/// Lane 072 D step d (overseer ruling, 2026-11-18): `rating {protected_by}` through `execute`
+/// records one `ModifyWire` by the agent holding the device itself; deleting that device clears it
+/// in the same transaction and says so, and undo brings it back; a name that is no device is
+/// refused and records nothing; with writes off it is refused.
+#[test]
+fn protected_by_through_mcp_is_the_device_and_deleting_it_clears_it() {
+    let mut c = Client::new(EcadMcp::in_memory("lane072d-protect", 723, Options { write: true, agent: None }).unwrap());
+    let v = c.wire_pp(json!({"points": [[0, 0], [50, 0]]}));
+    let w = v["conductor"].as_str().unwrap().to_string();
+    let q = c.exec("place", json!({"symbol": "mcb1", "at": [200, 100]}))["component"].as_str().unwrap().to_string();
+    c.exec("setprop", json!({"component": q, "key": "rating", "value": "16 A"}));
+    let q_id = c.doc().devices.keys().copied().find(|d| d.hex() == q).unwrap();
+    let tag = c.doc().devices[&q_id].tag().unwrap_or_default().to_string();
+
+    c.exec("rating", json!({"wire": w, "protected_by": tag}));
+    let (author, after) = last_modified(&mut c);
+    assert_eq!(author, Author::Agent(AGENT.into()));
+    assert_eq!(after.protected_by, Some(ecad_model::wire::ProtectedBy { device: q_id, position: None }));
+    assert!(!after.display.contains_key("protected_by"), "no free-text copy: {:?}", after.display);
+
+    let before = c.log().len();
+    let m = c.refused("execute", json!({"command": "rating", "params": {"wire": w, "protected_by": "-Q99"}}));
+    assert!(m.contains("-Q99"), "{m}");
+    assert_eq!(c.log().len(), before, "a refusal records nothing");
+
+    let r = c.exec("ecaddelete", json!({"component": q}));
+    assert!(r["message"].as_str().is_some_and(|m| m.contains("protected_by cleared on 1 wire")), "{r}");
+    let last = c.log().last().cloned().unwrap();
+    assert!(last.ops.iter().any(|o| matches!(o, Op::DeleteDevice { .. })), "{:?}", last.ops);
+    let wid = c.doc().wires.keys().copied().find(|x| x.hex() == w).unwrap();
+    assert_eq!(c.doc().wires[&wid].protected_by, None, "cleared in the same transaction");
+    c.exec("undo", json!({}));
+    assert_eq!(c.doc().wires[&wid].protected_by.map(|p| p.device), Some(q_id), "undo brings it back");
+
+    let mut r = reader();
+    r.refused("execute", json!({"command": "rating", "params": {"wire": w, "protected_by": tag}}));
+}

@@ -147,7 +147,7 @@ fn wiring_settings_and_bridges_are_written_only_when_set_and_round_trip() {
     let mut after = before.clone();
     after.wiring.scheme = ecad_model::wiring::Scheme::PageColumn;
     after.wiring.digits = Some(3);
-    after.wiring.colour_style = Some(ecad_model::wiring::ColourStyle::ThreeLetter);
+    after.wiring.colour_style = Some(ecad_model::colour::ColourWords::Code3);
     after.wiring.label_height = Some(2.5);
     // Brief 032 (FP-W1): the label rule and the shortest labelled wire.
     after.wiring.label_rule = Some(ecad_model::wiring::LABEL_RULE_EACH.into());
@@ -155,7 +155,7 @@ fn wiring_settings_and_bridges_are_written_only_when_set_and_round_trip() {
     after.wiring.potentials.retain(|p| p.name != "PE");
     let op = Op::SetProjectSettings { before, after: after.clone() };
     let line = ecad_file::record::op_value(&op).unwrap().to_string();
-    assert!(line.contains("\"page-column\"") && line.contains("\"three-letter\""), "{line}");
+    assert!(line.contains("\"page-column\"") && line.contains("\"code3\""), "{line}");
     f.ledger.commit(Author::User, "Wire settings", vec![op]).unwrap();
 
     let bare = ecad_model::Definition {

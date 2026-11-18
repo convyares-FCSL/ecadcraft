@@ -110,49 +110,12 @@ pub struct PotentialDef {
 /// The conductor property naming its wire category (brief 050b, FP5).
 pub const WIRE_CATEGORY: &str = "wire.category";
 
-/// How colours are written on labels (owner, 2026-11-09).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum ColourStyle {
-    /// IEC 60757 two-letter codes: `BN`, `BU`, `GNYE`.
-    #[default]
-    #[serde(rename = "iec")]
-    Iec,
-    /// Three-letter codes: `BRN`, `BLU`, `GRN/YEL`.
-    #[serde(rename = "three-letter")]
-    ThreeLetter,
-}
-
-impl ColourStyle {
-    /// The colour words it writes.
-    pub fn words(self) -> ColourWords {
-        match self {
-            ColourStyle::Iec => ColourWords::Code2,
-            ColourStyle::ThreeLetter => ColourWords::Code3,
-        }
-    }
-
-    pub fn name(self) -> &'static str {
-        match self {
-            ColourStyle::Iec => "iec",
-            ColourStyle::ThreeLetter => "three-letter",
-        }
-    }
-
-    pub fn parse(text: &str) -> Option<Self> {
-        match text.trim().to_ascii_lowercase().as_str() {
-            "iec" | "iec60757" | "iec 60757" | "two-letter" => Some(ColourStyle::Iec),
-            "three-letter" | "three" | "3" | "three_letter" => Some(ColourStyle::ThreeLetter),
-            _ => None,
-        }
-    }
-}
-
-/// A colour as labels write it in `style`: a known code (either form, any case) in that style;
+/// A colour as labels write it in `words`: a known colour (any form, any case) in those words;
 /// anything else (free text) as typed.
-pub fn colour_text(style: ColourStyle, value: &str) -> String {
+pub fn colour_text(words: ColourWords, value: &str) -> String {
     let v = value.trim();
     match Colours::parse(v) {
-        Some(c) => c.shown(style.words()),
+        Some(c) => c.shown(words),
         None => v.to_string(),
     }
 }
@@ -193,7 +156,7 @@ pub struct WiringSettings {
     /// How label colours are written, when the project chose (brief 066, F3: `None` follows the
     /// built-in, [`WiringSettings::colour_style`]).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub colour_style: Option<ColourStyle>,
+    pub colour_style: Option<ColourWords>,
     /// Text height of conductor labels, millimetres, when the project chose one (brief 066, F2:
     /// `None` follows the built-in, the registry's `text.wire_label.height`; a chosen value is kept
     /// even when it equals the built-in). Read through the registry, which keeps it in range.
@@ -224,8 +187,8 @@ pub const LABEL_MIN_LENGTHS: std::ops::RangeInclusive<f64> = 0.0..=100.0;
 /// The label heights a project may set, millimetres.
 pub const LABEL_HEIGHTS: std::ops::RangeInclusive<f64> = 0.5..=10.0;
 
-/// The words of the colour styles ([`ColourStyle::name`]).
-pub const COLOUR_STYLE_WORDS: &[&str] = &["iec", "three-letter"];
+/// The words of the colour setting ([`ColourWords`]): `code2`, `code3`, `name`.
+pub const COLOUR_STYLE_WORDS: &[&str] = <ColourWords as crate::words::Word>::WORDS;
 /// The most digits a sequence is padded to.
 pub const MAX_DIGITS: u8 = 6;
 
@@ -283,7 +246,7 @@ impl WiringSettings {
     }
 
     /// The colour style: the project's choice, else the built-in ([`crate::builtins`]).
-    pub fn colour_style(&self) -> ColourStyle {
+    pub fn colour_style(&self) -> ColourWords {
         self.colour_style.unwrap_or_else(|| crate::builtins::builtins().colour_style)
     }
 

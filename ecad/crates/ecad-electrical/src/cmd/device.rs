@@ -182,7 +182,11 @@ pub fn plan_delete(doc: &Document, doomed: Doomed) -> Result<Deleted, CmdError> 
                 if crate::plc::edit::station_of(doc, c).is_some() { crate::plc::rack::release_cards(doc, c) } else { (Vec::new(), 0) };
             ops.extend(released_ops);
             ops.push(Op::DeleteDevice { id: c, device: component.clone() });
-            let message = (released > 0).then(|| format!("Deleted {}; {}", devices::tag_words(doc, c), crate::plc::rack::released_words(released)));
+            let mut message =
+                (released > 0).then(|| format!("Deleted {}; {}", devices::tag_words(doc, c), crate::plc::rack::released_words(released)));
+            if let Some(cleared) = crate::rating::trace::cleared_words(doc, c) {
+                message = Some(format!("{}; {cleared}", message.unwrap_or_else(|| format!("Deleted {}", devices::tag_words(doc, c)))));
+            }
             Ok(Deleted { ops, released, kept: None, message })
         }
         Doomed::Cable(k) => {

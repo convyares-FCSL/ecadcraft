@@ -921,6 +921,7 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
                 notes.push(format!("Deleted {who}; {}", crate::plc::rack::released_words(n)));
             }
             notes.push(format!("Deleted {who} with its last symbol; U brings it back."));
+            notes.extend(crate::rating::trace::cleared_words(doc, c).map(|w| format!("{who}: {w}")));
         } else {
             // Brief 036 (review M1): a level's own label and a fuse position's rating go with
             // the last terminal of their level or position, never left to come back later.

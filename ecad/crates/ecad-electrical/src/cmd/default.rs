@@ -143,7 +143,9 @@ pub fn write_setting(entry: &Entry, s: &mut ProjectSettings, value: Option<&str>
         k if k == defaults::settings::TAG_PADDING.key => s.tag_padding = whole(value)?.map(small),
         k if k == defaults::settings::WIRE_DIGITS.key => s.wiring.digits = whole(value)?.map(small),
         k if k == defaults::settings::PAGE_NUMBER_STEP.key => s.page_number_step = whole(value)?,
-        k if k == defaults::settings::COLOUR_STYLE.key => s.wiring.colour_style = value.and_then(ecad_model::wiring::ColourStyle::parse),
+        k if k == defaults::settings::COLOUR_STYLE.key => {
+            s.wiring.colour_style = value.and_then(<ecad_model::colour::ColourWords as ecad_model::words::Word>::parse)
+        }
         k if k == defaults::settings::REFERENCE_STYLE.key => s.reference_style = value.and_then(ecad_model::ReferenceStyle::parse),
         _ => match starter_key(entry) {
             Some(key) => set_tag_prefix(s, key, value),

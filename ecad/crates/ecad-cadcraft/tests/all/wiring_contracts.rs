@@ -387,7 +387,7 @@ fn the_kept_checks_list_follows_every_edit_and_equals_a_fresh_build() {
         ("wire", json!({"points": [[600, 0], [600, 40]], "potential": "PE"})),
         ("wire", json!({"points": [[600, 40], [640, 40]], "potential": "PE"})),
         // Settings: label looks re-check nothing, numbering settings re-check every net.
-        ("wiresettings", json!({"label_height": 2.5, "colour_style": "three-letter"})),
+        ("wiresettings", json!({"label_height": 2.5, "colour_style": "code3"})),
         ("wiresettings", json!({"digits": 3})),
         ("newpage", json!({"title": "2"})),
     ];
@@ -503,8 +503,8 @@ fn colours_are_iec_codes_or_three_letter_and_free_text_stays() {
         [a, b, c].map(|w| all.iter().find(|l| l.conductor == w).unwrap().text.clone())
     };
     assert_eq!(texts(&mut h), ["24V-01 0.5 BU", "PE 2.5 GN/YE", "L-01 2.5 BN"]);
-    let r = h.run("wiresettings", json!({"colour_style": "three-letter"})).unwrap();
-    assert_eq!(r["colour_style"], json!("three-letter"));
+    let r = h.run("wiresettings", json!({"colour_style": "code3"})).unwrap();
+    assert_eq!(r["colour_style"], json!("code3"));
     assert_eq!(texts(&mut h), ["24V-01 0.5 BLU", "PE 2.5 GRN/YEL", "L-01 2.5 BRN"]);
     // Design 072 §4.6: a wire's own colours are IEC 60757 colours; free text is refused.
     let e = h.run("setprop", json!({"conductor": a.hex(), "key": "colours", "value": "Violet stripe"})).unwrap_err();

@@ -21,7 +21,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::colour::{ColourWords, ConductorColour};
 use crate::doc::Properties;
-use crate::id::{ConductorId, NetId, TerminalId};
+use crate::id::{ConductorId, DeviceId, NetId, TerminalId};
 use crate::text::Text;
 use crate::units::{Amps, Celsius, Mm2, Percent, Volts};
 use crate::words::{is_digits, uint};
@@ -82,6 +82,9 @@ pub struct Wire {
     /// The current it carries, as typed (Ib).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub load: Option<Amps>,
+    /// The device named as its protection (`rating {protected_by}`), over the trace's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protected_by: Option<ProtectedBy>,
     /// Display choices and defaults-registry values only (design 072 §9.2).
     #[serde(default, skip_serializing_if = "Properties::is_empty")]
     pub display: Properties,
@@ -102,6 +105,7 @@ impl Wire {
             potential: None,
             rating: CircuitInputs::default(),
             load: None,
+            protected_by: None,
             display: Properties::default(),
         }
     }
@@ -517,6 +521,18 @@ impl Bundling {
             Bundling::Circuits(n) => bounds::CIRCUITS.contains(&n),
         }
     }
+}
+
+/// The protective device a wire or a cable names (design 072 §4.5): a device, and the fuse or
+/// pole of a multi-way device (`-F01:3` is position 3). Deleting the device clears every
+/// `protected_by` that names it in the same transaction; one read from a file that names nothing
+/// is a check row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProtectedBy {
+    pub device: DeviceId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<u8>,
 }
 
 /// The rating inputs a wire or a cable holds of its own (design 057 §2, design 072 §4.2, §4.5):

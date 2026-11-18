@@ -67,7 +67,7 @@ fn settings_json(doc: &Document) -> Value {
     let w = &doc.settings.wiring;
     json!({
         "scheme": w.scheme.name(),
-        "colour_style": w.colour_style().name(),
+        "colour_style": ecad_model::words::Word::word(w.colour_style()),
         "label_height": crate::cmd::sheet::wire_label_height(doc),
         "label_rule": wires::label_rule_word(doc),
         "label_min_length": wires::label_min_length(doc),
@@ -357,7 +357,7 @@ pub(crate) struct WiresettingsParams {
     /// The whole potentials table (colours and cross-sections are wire categories').
     #[serde(default)]
     potentials: Option<Vec<PotentialRowParam>>,
-    /// "iec" (BN, BU, GNYE) or "three-letter" (BRN, BLU, GRN/YEL).
+    /// "code2" (BN, BU, GN/YE), "code3" (BRN, BLU, GRN/YEL) or "name" (Brown, Blue, Green/Yellow).
     #[serde(default)]
     colour_style: Option<String>,
     /// Wire label height in mm, 0.5 to 10.

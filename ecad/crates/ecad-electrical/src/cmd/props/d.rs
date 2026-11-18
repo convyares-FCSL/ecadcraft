@@ -60,7 +60,7 @@ pub fn cable_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>)
     let mut after = cab.clone();
     if let Some(r) = cable_rating_key(key) {
         let checked = value.map(|v| super::super::rating::check_value(doc, r, v)).transpose()?;
-        super::super::rating::set_cable(&mut after, r, checked.as_deref());
+        super::super::rating::set_cable(doc, &mut after, r, checked.as_deref());
         return Ok(Op::modify_cable(k, cab, after));
     }
     if key == crate::cables::CableField::Shield.key() {
@@ -84,9 +84,9 @@ pub fn cable_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>)
 }
 
 /// The `rating` key a `setprop` key on a cable names: `load`, or a rating input by its stored key
-/// (`rating.basis`); `protected_by` and the cable type stay properties of their own.
+/// (`rating.basis`), `protected_by`; the cable type stays a property of its own.
 fn cable_rating_key(key: &str) -> Option<&'static str> {
-    super::super::rating::KEYS.iter().find(|r| r.3 && r.1 == key && r.0 != "protected_by" && r.0 != "cable_type").map(|r| r.0)
+    super::super::rating::KEYS.iter().find(|r| r.3 && r.1 == key && r.0 != "cable_type").map(|r| r.0)
 }
 
 fn is_wire(o: ObjectRef) -> bool {
@@ -158,13 +158,10 @@ pub fn wire_rating(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>)
     let key = rating_key(key).ok_or_else(|| no_such_key(key))?;
     let checked = match value.map(str::trim).filter(|v| !v.is_empty()) {
         None => None,
-        // A device named by hand is kept as typed (Checks says when it names nothing) until lane
-        // D step 3 stores the device itself.
-        Some(v) if key == "protected_by" => Some(v.to_string()),
         Some(v) => Some(super::super::rating::check_value(doc, key, v)?),
     };
     let mut after = w.clone();
-    super::super::rating::set_wire(&mut after, key, checked.as_deref());
+    super::super::rating::set_wire(doc, &mut after, key, checked.as_deref());
     Ok(modify(c, w, after))
 }
 

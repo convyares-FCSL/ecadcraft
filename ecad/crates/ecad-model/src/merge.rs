@@ -829,6 +829,16 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                         }),
                         rating: field(ctx, obj, "rating", format!("{what} · rating inputs"), &a.rating, &t.rating, &s.rating, &|x| format!("{x:?}")),
                         load: field(ctx, obj, "load", format!("{what} · load"), &a.load, &t.load, &s.load, &|x| opt(x.map(|v| v.to_string()))),
+                        protected_by: field(
+                            ctx,
+                            obj,
+                            "protected_by",
+                            format!("{what} · protected by"),
+                            &a.protected_by,
+                            &t.protected_by,
+                            &s.protected_by,
+                            &|x| opt(x.map(|p| name_of(&docs, Obj::Device(p.device)))),
+                        ),
                         display: merge_props(ctx, obj, &what, &a.display, &t.display, &s.display, &all),
                     }
                 });
@@ -845,6 +855,16 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                     load: field(ctx, obj, "load", format!("{what} · load"), &a.load, &t.load, &s.load, &|x| {
                         x.map_or_else(|| "(none)".to_string(), |v| v.to_string())
                     }),
+                    protected_by: field(
+                        ctx,
+                        obj,
+                        "protected_by",
+                        format!("{what} · protected by"),
+                        &a.protected_by,
+                        &t.protected_by,
+                        &s.protected_by,
+                        &|x| x.map_or_else(|| "(none)".to_string(), |p| name_of(&docs, Obj::Device(p.device))),
+                    ),
                 });
                 set(&mut m.cables, id, v);
             }

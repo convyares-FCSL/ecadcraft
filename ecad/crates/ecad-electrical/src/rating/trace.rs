@@ -265,6 +265,32 @@ pub fn named(doc: &Document, text: &str) -> Option<(DeviceId, Option<String>)> {
     Some((c, fuse))
 }
 
+/// The device `text` names (`-Q01`, `-F01:3`) as stored: the device and its numbered position.
+/// `None` when it names nothing or the position is not a number 1 to 255.
+pub fn protected_by(doc: &Document, text: &str) -> Option<ecad_model::wire::ProtectedBy> {
+    let (device, fuse) = named(doc, text)?;
+    let position = match fuse {
+        None => None,
+        Some(f) => Some(f.trim().parse::<u8>().ok().filter(|n| *n > 0)?),
+    };
+    Some(ecad_model::wire::ProtectedBy { device, position })
+}
+
+/// How many wires and cables name device `c` as their protection: the ones deleting it clears.
+pub fn protected_count(doc: &Document, c: DeviceId) -> (usize, usize) {
+    let names = |p: Option<ecad_model::wire::ProtectedBy>| p.is_some_and(|p| p.device == c);
+    (doc.wires.values().filter(|w| names(w.protected_by)).count(), doc.cables.values().filter(|k| names(k.protected_by)).count())
+}
+
+/// What deleting device `c` says of the `protected_by`s it clears (`protected_by cleared on 2
+/// wires and 1 cable`); `None` when none name it.
+pub fn cleared_words(doc: &Document, c: DeviceId) -> Option<String> {
+    let (w, k) = protected_count(doc, c);
+    let n = |n: usize, one: &str| format!("{n} {one}{}", if n == 1 { "" } else { "s" });
+    let parts: Vec<String> = [(w, "wire"), (k, "cable")].into_iter().filter(|(c, _)| *c > 0).map(|(c, one)| n(c, one)).collect();
+    (!parts.is_empty()).then(|| format!("protected_by cleared on {}", parts.join(" and ")))
+}
+
 /// The rating text of a device (or its fuse).
 pub fn rating_text(doc: &Document, c: DeviceId, fuse: Option<&str>) -> String {
     let props = doc.devices.get(&c).map(|x| &x.properties);

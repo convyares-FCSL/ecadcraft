@@ -18,7 +18,8 @@ pub struct Device {
 /// The device of subject `s`: its `protected_by`, else the trace's.
 pub(super) fn device_of(doc: &Document, s: RatedSubject, found: &Found, issues: &mut Vec<Issue>) -> Option<Device> {
     if let Some(named) = s.circuit(doc).and_then(|c| c.protected_by()) {
-        return match trace::named(doc, named) {
+        let fuse = named.position.map(|n| n.to_string());
+        return match doc.devices.contains_key(&named.device).then_some((named.device, fuse)) {
             Some((c, fuse)) => {
                 let amps = trace::amps_of(doc, c, fuse.as_deref());
                 let tag = trace::device_words(doc, c, fuse.as_deref());
@@ -31,7 +32,7 @@ pub(super) fn device_of(doc: &Document, s: RatedSubject, found: &Found, issues: 
                 Some(Device { component: c, fuse, tag, amps, how: How::Named })
             }
             None => {
-                issues.push(Issue::DeviceMissing(named.chars().take(32).collect()));
+                issues.push(Issue::DeviceMissing(format!("device {}", named.device.hex())));
                 None
             }
         };
@@ -61,4 +62,25 @@ pub(super) fn device_of(doc: &Document, s: RatedSubject, found: &Found, issues: 
         issues.push(Issue::TwoDevices(first.tag.clone(), second.tag.clone()));
     }
     devs.into_iter().next()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ecad_model::IdAllocator;
+    use ecad_model::wire::{ProtectedBy, Wire};
+
+    /// A `protected_by` read from a file that names no device: a device-missing row, no device.
+    #[test]
+    fn a_protected_by_naming_no_device_is_a_device_missing_issue() {
+        let mut ids = IdAllocator::seeded(72);
+        let (c, gone): (WireId, DeviceId) = (ids.fresh(), ids.fresh());
+        let mut w = Wire::new(ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
+        w.protected_by = Some(ProtectedBy { device: gone, position: Some(3) });
+        let mut doc = Document::default();
+        doc.wires.insert(c, w);
+        let mut issues = Vec::new();
+        assert_eq!(device_of(&doc, RatedSubject::Wire(c), &Found::default(), &mut issues), None);
+        assert_eq!(issues, vec![Issue::DeviceMissing(format!("device {}", gone.hex()))]);
+    }
 }
