@@ -22,7 +22,9 @@ fn rgb(c: ecad_drawing_style::Color) -> Rgb {
 
 #[test]
 fn colour_codes_are_one_or_two_colours() {
-    let one = |c: &str| look::colour_code(c).map(|(a, b)| (look::CODE_COLOURS[a].0, b.map(|i| look::CODE_COLOURS[i].0)));
+    let one = |c: &str| {
+        look::colour_code(c).map(|(a, b)| (look::CODE_COLOURS[a].0.forms().code2.as_str(), b.map(|i| look::CODE_COLOURS[i].0.forms().code2.as_str())))
+    };
     for (code, want) in [
         ("BU", Some(("BU", None))),
         ("blu", Some(("BU", None))),

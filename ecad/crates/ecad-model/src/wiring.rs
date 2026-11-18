@@ -147,25 +147,6 @@ impl ColourStyle {
     }
 }
 
-/// The IEC 60757 colour codes and their three-letter forms.
-pub const COLOUR_CODES: [(&str, &str); 15] = [
-    ("BK", "BLK"),
-    ("BN", "BRN"),
-    ("RD", "RED"),
-    ("OG", "ORG"),
-    ("YE", "YEL"),
-    ("GN", "GRN"),
-    ("BU", "BLU"),
-    ("VT", "VIO"),
-    ("GY", "GRY"),
-    ("WH", "WHT"),
-    ("PK", "PNK"),
-    ("GD", "GLD"),
-    ("TQ", "TQS"),
-    ("SR", "SLR"),
-    ("GNYE", "GRN/YEL"),
-];
-
 /// A colour as labels write it in `style`: a known code (either form, any case) in that style;
 /// anything else (free text) as typed.
 pub fn colour_text(style: ColourStyle, value: &str) -> String {

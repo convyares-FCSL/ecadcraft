@@ -1329,7 +1329,7 @@ pub fn text_colour_rgb(c: crate::text_style::TextColour, sheet: &ecad_drawing_st
         crate::text_style::TextColour::Rgb(r, g, b) => Some(cadcraft_engine::doc::color::Rgb(r, g, b)),
         crate::text_style::TextColour::Code(i) => {
             let dark = sheet.sheet == ecad_drawing_style::sheet::DARK.sheet;
-            crate::words::CODE_COLOURS.get(i).map(|(_, _, paper, on_dark)| rgb(if dark { *on_dark } else { *paper }))
+            crate::words::CODE_COLOURS.get(i).map(|(_, paper, on_dark)| rgb(if dark { *on_dark } else { *paper }))
         }
     }
 }

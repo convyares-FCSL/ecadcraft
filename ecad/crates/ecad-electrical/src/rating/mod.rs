@@ -138,19 +138,17 @@ impl RatedSubject {
         }
     }
 
-    fn props(self, doc: &Document) -> Option<&ecad_model::Properties> {
+    /// The wire or cable itself, as a [`Circuit`].
+    pub fn circuit(self, doc: &Document) -> Option<&dyn Circuit> {
         match self {
-            RatedSubject::Wire(c) => doc.wires.get(&c).map(|x| &x.display),
-            RatedSubject::Cable(k) => doc.cables.get(&k).map(|x| &x.properties),
+            RatedSubject::Wire(c) => doc.wires.get(&c).map(|x| x as &dyn Circuit),
+            RatedSubject::Cable(k) => doc.cables.get(&k).map(|x| x as &dyn Circuit),
         }
     }
 
     /// Its own rating inputs and load: a wire's or a cable's fields (design 072 §4.2, §4.5).
     pub fn inputs(self, doc: &Document) -> (CircuitInputs, Option<f64>) {
-        match self {
-            RatedSubject::Wire(c) => doc.wires.get(&c).map_or_else(Default::default, |w| (w.rating, w.load.map(|a| a.0))),
-            RatedSubject::Cable(k) => doc.cables.get(&k).map_or_else(Default::default, |x| (x.rating, x.load.map(|a| a.0))),
-        }
+        self.circuit(doc).map_or_else(Default::default, |c| (*c.inputs(), c.load()))
     }
 
     /// Its words in a row: the wire number (or `wire`), the cable tag.
@@ -165,6 +163,66 @@ impl RatedSubject {
             }),
             RatedSubject::Cable(k) => crate::cables::cable_title(doc, k),
         }
+    }
+}
+
+/// What the rating check reads from a panel wire or a field cable (design 072 §4.5): its typed
+/// rating inputs and load, and the few words still kept as properties.
+///
+/// # Semantics
+/// [`evaluate`], the volt drop and the protection side read a subject only through this trait, so
+/// a wire and a cable are rated by the same code. `length` and `type` are a cable's properties
+/// until they get types of their own; `protected_by` is free text naming a device.
+pub trait Circuit {
+    /// Its own rating inputs; each overrides the project's.
+    fn inputs(&self) -> &CircuitInputs;
+    /// Its typed design current Ib, in A.
+    fn load(&self) -> Option<f64>;
+    /// Its length as typed (`25 m`).
+    fn length(&self) -> Option<&str>;
+    /// Its free-text type (`4G2.5`), read for a size when it has no cable type.
+    fn type_text(&self) -> Option<&str>;
+    /// The device it names as its protection (`-F01`, `-F01:3`), when not blank.
+    fn protected_by(&self) -> Option<&str>;
+}
+
+fn named<'a>(p: &'a ecad_model::Properties, key: &str) -> Option<&'a str> {
+    p.get(key).map(String::as_str).filter(|v| !v.trim().is_empty())
+}
+
+impl Circuit for ecad_model::wire::Wire {
+    fn inputs(&self) -> &CircuitInputs {
+        &self.rating
+    }
+    fn load(&self) -> Option<f64> {
+        self.load.map(|a| a.0)
+    }
+    fn length(&self) -> Option<&str> {
+        named(&self.display, "length")
+    }
+    fn type_text(&self) -> Option<&str> {
+        named(&self.display, "type")
+    }
+    fn protected_by(&self) -> Option<&str> {
+        named(&self.display, PROTECTED_BY)
+    }
+}
+
+impl Circuit for ecad_model::Cable {
+    fn inputs(&self) -> &CircuitInputs {
+        &self.rating
+    }
+    fn load(&self) -> Option<f64> {
+        self.load.map(|a| a.0)
+    }
+    fn length(&self) -> Option<&str> {
+        named(&self.properties, "length")
+    }
+    fn type_text(&self) -> Option<&str> {
+        named(&self.properties, "type")
+    }
+    fn protected_by(&self) -> Option<&str> {
+        named(&self.properties, PROTECTED_BY)
     }
 }
 
