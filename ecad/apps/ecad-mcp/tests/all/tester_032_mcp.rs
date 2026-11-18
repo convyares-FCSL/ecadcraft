@@ -118,14 +118,23 @@ fn wire_joinwires_cableslash_cablecontinue_wiresettings_by_the_agent_then_refuse
         assert!(m.contains("slash the wires there with tag -W04"), "{m}");
         assert_eq!(c.log().len(), n);
 
-        // `cableslash` continuing: one transaction "Cable slash", AddCableMember and
+        // `cableslash` continuing: one transaction "Cable slash", ModifyCable and
         // LinkRepresentation, no CreateCable.
         let n = c.log().len();
         let v = c.exec("cableslash", json!({"from": [90, 70], "to": [150, 70], "tag": "-W04"}));
         let Transaction { label, ops, .. } = assert_one_by_agent(&mut c, n, "cableslash continue");
         assert_eq!(label, "Cable slash");
         assert_eq!(v["continued"], json!(true), "{v}");
-        assert_eq!(ops.iter().filter(|o| matches!(o, Op::AddCableMember { .. })).count(), 3, "{ops:?}");
+        // One ModifyCable for the cable, placing three more cores on wires.
+        let placed = |c: &ecad_model::Cable| c.cores.iter().filter(|m| m.wire().is_some()).count() as isize;
+        let added: Vec<isize> = ops
+            .iter()
+            .filter_map(|o| match o {
+                Op::ModifyCable { before, after, .. } => Some(placed(after) - placed(before)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(added, vec![3], "{:?}", ops);
         assert!(ops.iter().any(|o| matches!(o, Op::LinkRepresentation { .. })), "{ops:?}");
         assert!(!ops.iter().any(|o| matches!(o, Op::CreateCable { .. })), "{ops:?}");
 

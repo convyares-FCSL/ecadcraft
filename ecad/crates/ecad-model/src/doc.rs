@@ -712,6 +712,9 @@ pub struct Cable {
     pub properties: Properties,
     /// The whole core set, in core order (design 072 §4.5).
     pub cores: Vec<Core>,
+    /// The cable's own shield; `None` takes its cable type's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shield: Option<crate::style::cable::Shield>,
 }
 
 /// SHA-256 of a definition's canonical form (proposal §20.10), as 64 lower-case hex digits.

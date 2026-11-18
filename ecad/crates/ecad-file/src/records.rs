@@ -369,6 +369,8 @@ impl From<CorePosition> for m::CorePosition {
 pub struct Cable {
     pub properties: BTreeMap<String, String>,
     pub cores: Vec<Core>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shield: Option<m::style::cable::Shield>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -885,15 +887,10 @@ pub enum Op {
         id: CableId,
         cable: Cable,
     },
-    AddCableMember {
-        cable: CableId,
-        index: u64,
-        member: Core,
-    },
-    RemoveCableMember {
-        cable: CableId,
-        index: u64,
-        member: Core,
+    ModifyCable {
+        id: CableId,
+        before: Cable,
+        after: Cable,
     },
     SetProperty {
         object: ObjectRef,
@@ -1146,7 +1143,7 @@ impl From<&m::Core> for Core {
 
 impl From<&m::Cable> for Cable {
     fn from(c: &m::Cable) -> Self {
-        Cable { properties: c.properties.clone(), cores: c.cores.iter().map(Into::into).collect() }
+        Cable { properties: c.properties.clone(), cores: c.cores.iter().map(Into::into).collect(), shield: c.shield }
     }
 }
 
@@ -1284,8 +1281,7 @@ impl From<&m::Op> for Op {
             m::Op::ModifyRoute { id, before, after } => Op::ModifyRoute { id: *id, before: before.into(), after: after.into() },
             m::Op::CreateCable { id, cable } => Op::CreateCable { id: *id, cable: cable.into() },
             m::Op::DeleteCable { id, cable } => Op::DeleteCable { id: *id, cable: cable.into() },
-            m::Op::AddCableMember { cable, index, member } => Op::AddCableMember { cable: *cable, index: ix(*index), member: member.into() },
-            m::Op::RemoveCableMember { cable, index, member } => Op::RemoveCableMember { cable: *cable, index: ix(*index), member: member.into() },
+            m::Op::ModifyCable { id, before, after } => Op::ModifyCable { id: *id, before: before.into(), after: after.into() },
             m::Op::SetProperty { object: o, key, before, after } => {
                 Op::SetProperty { object: object(*o), key: key.clone(), before: before.clone(), after: after.clone() }
             }
@@ -1463,7 +1459,7 @@ impl From<Core> for m::Core {
 
 impl From<Cable> for m::Cable {
     fn from(c: Cable) -> Self {
-        m::Cable { properties: c.properties, cores: c.cores.into_iter().map(Into::into).collect() }
+        m::Cable { properties: c.properties, cores: c.cores.into_iter().map(Into::into).collect(), shield: c.shield }
     }
 }
 
@@ -1551,8 +1547,7 @@ impl TryFrom<Op> for m::Op {
             Op::ModifyRoute { id, before, after } => m::Op::ModifyRoute { id, before: before.into(), after: after.into() },
             Op::CreateCable { id, cable } => m::Op::CreateCable { id, cable: cable.into() },
             Op::DeleteCable { id, cable } => m::Op::DeleteCable { id, cable: cable.into() },
-            Op::AddCableMember { cable, index: i, member } => m::Op::AddCableMember { cable, index: index(i)?, member: member.into() },
-            Op::RemoveCableMember { cable, index: i, member } => m::Op::RemoveCableMember { cable, index: index(i)?, member: member.into() },
+            Op::ModifyCable { id, before, after } => m::Op::ModifyCable { id, before: before.into(), after: after.into() },
             Op::SetProperty { object, key, before, after } => m::Op::SetProperty { object: mobject(object), key, before, after },
             Op::EmbedDefinition { id, definition } => m::Op::EmbedDefinition { id, definition: definition.into() },
             Op::RemoveDefinition { id, definition } => m::Op::RemoveDefinition { id, definition: definition.into() },

@@ -400,9 +400,9 @@ impl Touch {
                         self.retrace.extend(m.wire().map(RatedSubject::Wire));
                     }
                 }
-                Op::AddCableMember { cable, member, .. } | Op::RemoveCableMember { cable, member, .. } => {
-                    self.retrace.insert(RatedSubject::Cable(*cable));
-                    self.retrace.extend(member.wire().map(RatedSubject::Wire));
+                Op::ModifyCable { id, before, after } => {
+                    self.retrace.insert(RatedSubject::Cable(*id));
+                    self.retrace.extend(before.cores.iter().chain(&after.cores).filter_map(|m| m.wire()).map(RatedSubject::Wire));
                 }
                 // A device moved may enter another location box: its wires; a box moved: the wires at
                 // its location and those of the devices on its page.

@@ -64,6 +64,8 @@ fn embedded_definitions_follow_the_owner_requirements() {
     // Remove the d1 instances, then d1 itself: earlier revisions keep the original content.
     let before = f.ledger.head();
     let mut ops = Vec::new();
+    // Each cable's cores once the wires go, written as one ModifyCable per cable at the end.
+    let mut cables = std::collections::BTreeMap::new();
     for c in [f.c1, f.c2] {
         let doc = f.ledger.document();
         let (rid, rep) = doc.representations_of(Subject::Device(c)).next().map(|(i, r)| (i, r.clone())).unwrap();
@@ -83,8 +85,10 @@ fn embedded_definitions_follow_the_owner_requirements() {
         for (w, wire) in doc.wires.iter() {
             if wire.ends.iter().any(|t| doc.terminals[t].component == c) && !ops.iter().any(|o| matches!(o, Op::DeleteWire { id, .. } if id == w)) {
                 for (cable, cv) in doc.cables.iter() {
-                    for (index, member) in cv.cores.iter().enumerate().rev().filter(|(_, m)| m.wire() == Some(*w)) {
-                        ops.push(Op::RemoveCableMember { cable: *cable, index, member: member.clone() });
+                    if cv.cores.iter().any(|m| m.wire() == Some(*w)) {
+                        let (_, after): &mut (ecad_model::Cable, ecad_model::Cable) =
+                            cables.entry(*cable).or_insert_with(|| (cv.clone(), cv.clone()));
+                        after.cores.retain(|m| m.wire() != Some(*w));
                     }
                 }
                 ops.push(Op::DeleteWire { id: *w, wire: wire.clone() });
@@ -98,6 +102,7 @@ fn embedded_definitions_follow_the_owner_requirements() {
         ops.push(Op::DeleteDevice { id: c, device: doc.devices[&c].clone() });
     }
     ops.push(Op::RemoveDefinition { id: f.d1, definition: doc.definitions[&f.d1].clone() });
+    ops.extend(cables.into_iter().filter_map(|(id, (before, after))| Op::modify_cable(id, &before, after)));
     f.commit("Remove old version", ops);
     let opened = reopened(&mut f.ledger);
     assert!(!opened.ledger.document().definitions.contains_key(&f.d1));

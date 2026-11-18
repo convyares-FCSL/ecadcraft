@@ -148,18 +148,16 @@ fn ac1_one_transaction_with_members_in_crossing_order_and_conductors_unchanged()
         // Design §2: the op list, in order.
         let tx = last_tx(&mut f.h);
         assert_eq!(tx.label, "Cable slash");
-        assert_eq!(tx.ops.len(), 6, "{:?}", tx.ops);
-        assert!(matches!(&tx.ops[0], Op::CreateCable { id, cable } if *id == k && cable.cores.is_empty()));
-        for (i, c) in want.iter().enumerate() {
-            assert!(
-                matches!(&tx.ops[1 + i], Op::AddCableMember { cable, index, member }
-                    if *cable == k && *index == i && member.wire() == Some(*c) && member.label.is_none()),
-                "member op {i}: {:?}",
-                tx.ops[1 + i]
-            );
+        assert_eq!(tx.ops.len(), 3, "{:?}", tx.ops);
+        // The new cable carries its cores, in crossing order.
+        let Op::CreateCable { id: created, cable } = &tx.ops[0] else { panic!("op 0 is CreateCable: {:?}", tx.ops[0]) };
+        assert_eq!(*created, k);
+        assert_eq!(cable.cores.len(), want.len(), "{:?}", cable.cores);
+        for (i, (member, c)) in cable.cores.iter().zip(&want).enumerate() {
+            assert!(member.wire() == Some(*c) && member.label.is_none(), "core {i}: {member:?}");
         }
         let item: ItemId = id(&r, "item");
-        match &tx.ops[4] {
+        match &tx.ops[1] {
             Op::AddItem { id, item: it } => {
                 assert_eq!(*id, item);
                 assert_eq!(it.page, f.page);
@@ -173,9 +171,9 @@ fn ac1_one_transaction_with_members_in_crossing_order_and_conductors_unchanged()
                 let wire_item = crate::common::wire_line(&d, f.w0, f.page).unwrap().0;
                 assert_eq!(it.style, d.items[&wire_item].style, "slash in the wire style (O4)");
             }
-            other => panic!("op 4 is AddItem: {other:?}"),
+            other => panic!("op 1 is AddItem: {other:?}"),
         }
-        match &tx.ops[5] {
+        match &tx.ops[2] {
             Op::LinkRepresentation { id: rid, rep } => {
                 assert_eq!(rid.hex(), r["representation"].as_str().unwrap());
                 assert_eq!(rep.subject, Subject::Cable(k));
@@ -185,7 +183,7 @@ fn ac1_one_transaction_with_members_in_crossing_order_and_conductors_unchanged()
                 assert_eq!(rep.items, vec![item]);
                 assert!(rep.connection_points.is_empty());
             }
-            other => panic!("op 5 is LinkRepresentation: {other:?}"),
+            other => panic!("op 2 is LinkRepresentation: {other:?}"),
         }
     }
 }
@@ -539,8 +537,8 @@ fn ac6_erase_keeps_the_cable_and_delete_keeps_the_conductors() {
     slash(&mut f.h, (40.0, 3.0), (40.0, 7.0)).unwrap();
 }
 
-/// AC6 and design §8: `ecaddelete {cable}` with its slash still drawn removes the members, the
-/// slash and the cable in one transaction, in that op order, and undo brings it all back.
+/// AC6 and design §8: `ecaddelete {cable}` with its slash still drawn removes the slash and the
+/// cable (with its cores) in one transaction, in that op order, and undo brings it all back.
 #[test]
 fn ac6_deleting_a_cable_with_its_slash_removes_both_and_undoes() {
     let mut f = fixture(SEED);
@@ -555,7 +553,6 @@ fn ac6_deleting_a_cable_with_its_slash_removes_both_and_undoes() {
         .ops
         .iter()
         .map(|o| match o {
-            Op::RemoveCableMember { .. } => "member",
             Op::RemoveItem { .. } => "item",
             Op::UnlinkRepresentation { .. } => "unlink",
             Op::DeleteCable { .. } => "cable",
@@ -564,13 +561,11 @@ fn ac6_deleting_a_cable_with_its_slash_removes_both_and_undoes() {
         .collect();
     // Design §8 lists `RemoveItem` then `UnlinkRepresentation`; the implementation unlinks first.
     // Both replay to the same state (checked by the harness), so either order is accepted here.
-    assert!(
-        kinds == ["member", "member", "member", "item", "unlink", "cable"] || kinds == ["member", "member", "member", "unlink", "item", "cable"],
-        "{:?}",
-        tx.ops
-    );
-    let idx: Vec<usize> = tx.ops.iter().filter_map(|o| if let Op::RemoveCableMember { index, .. } = o { Some(*index) } else { None }).collect();
-    assert_eq!(idx, [2, 1, 0], "last index first");
+    assert!(kinds == ["item", "unlink", "cable"] || kinds == ["unlink", "item", "cable"], "{:?}", tx.ops);
+    // The DeleteCable carries the whole cable, its three cores included.
+    let deleted = tx.ops.iter().find_map(|o| if let Op::DeleteCable { cable, .. } = o { Some(cable) } else { None }).unwrap();
+    assert_eq!(deleted, &with.cables[&k]);
+    assert_eq!(deleted.cores.len(), 3);
     let d = f.h.doc();
     assert!(d.cables.is_empty() && !d.items.contains_key(&id::<ItemId>(&r, "item")));
     assert_eq!(conductors_snapshot(&d), conductors);

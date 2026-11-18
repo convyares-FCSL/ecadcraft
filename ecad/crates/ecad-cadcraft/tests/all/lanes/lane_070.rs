@@ -82,7 +82,11 @@ fn the_wire_commands_refuse_input_uniformly() {
 #[test]
 fn the_wire_commands_keep_their_rule_words() {
     let rows: &[(&str, Value, &str)] = &[
-        ("wire", json!({"points": [[0, 0], [9, 0]], "join": true, "junction": false}), "`join` and `junction` disagree; give only `join`"),
+        (
+            "wire",
+            json!({"points": [[0, 0], [9, 0]], "join": true, "junction": false}),
+            "`junction` is not a parameter of this command; it takes `category`, `join`, `points`, `potential`",
+        ),
         ("nets", json!({"after": "zz"}), "`after` must be a cursor from `next`"),
         ("net", json!({}), "one of `conductor`, `terminal` or `number` is required"),
         ("net", json!({"conductor": "1"}), "No such wire."),
@@ -107,7 +111,7 @@ fn the_wire_commands_keep_their_rule_words() {
 fn an_unknown_parameter_is_refused() {
     let mut h = H::new(7002);
     let e = h.run("wire", json!({"points": [[0, 0], [9, 0]], "colour": "RD"})).err().unwrap_or_default();
-    assert_eq!(e, "`colour` is not a parameter of this command; it takes `category`, `join`, `junction`, `points`, `potential`");
+    assert_eq!(e, "`colour` is not a parameter of this command; it takes `category`, `join`, `points`, `potential`");
     assert!(h.doc().wires.is_empty(), "nothing was drawn");
 }
 

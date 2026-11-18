@@ -619,8 +619,8 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
             Op::SetProperty { object: ecad_model::ObjectRef::Cable(k), .. } => {
                 out.insert(*k);
             }
-            Op::AddCableMember { cable, .. } | Op::RemoveCableMember { cable, .. } => {
-                out.insert(*cable);
+            Op::ModifyCable { id, .. } => {
+                out.insert(*id);
             }
             Op::SetProjectSettings { before, after }
                 if before.length_unit == after.length_unit && before.sheet == after.sheet && before.reference_style == after.reference_style => {}
@@ -1057,11 +1057,8 @@ pub fn slash_erase_followups(doc: &Document, erased: &[(RepresentationId, Repres
             let on = crate::cables::member_pages(doc, m);
             !on.is_empty() && on.iter().all(|p| pages.contains(p))
         };
-        for (index, m) in c.cores.iter().enumerate().rev() {
-            if only_there(m) {
-                ops.push(Op::RemoveCableMember { cable: k, index, member: m.clone() });
-            }
-        }
+        let after = ecad_model::Cable { cores: c.cores.iter().filter(|m| !only_there(m)).cloned().collect(), ..c.clone() };
+        ops.extend(Op::modify_cable(k, c, after));
     }
     ops
 }

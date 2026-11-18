@@ -87,14 +87,10 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
     let mut adds = Vec::new();
     let mut changes = Vec::new();
 
-    // Cables: members are compared whole; a cable whose members differ is removed and added.
+    // Cables: compared whole (design 072 §4.5); a changed cable is one ModifyCable.
     for id in ids(&from.cables, &to.cables, scope.map(|s| &s.cables)) {
         match (from.cables.get(&id), to.cables.get(&id)) {
-            (Some(a), Some(b)) if a.cores == b.cores => props(ObjectRef::Cable(id), &a.properties, &b.properties, &all, &mut changes),
-            (Some(a), Some(b)) => {
-                removes.push(Op::DeleteCable { id, cable: a.clone() });
-                adds.push(Op::CreateCable { id, cable: b.clone() });
-            }
+            (Some(a), Some(b)) => changes.extend(Op::modify_cable(id, a, b.clone())),
             (Some(a), None) => removes.push(Op::DeleteCable { id, cable: a.clone() }),
             (None, Some(b)) => adds.push(Op::CreateCable { id, cable: b.clone() }),
             (None, None) => {}
@@ -346,10 +342,7 @@ pub fn objects(ops: &[Op]) -> BTreeMap<(&'static str, u128), usize> {
             Op::LinkRepresentation { id, .. } | Op::ModifyRepresentation { id, .. } | Op::UnlinkRepresentation { id, .. } => ("representation", id.0),
             Op::CreateWire { id, .. } | Op::DeleteWire { id, .. } | Op::ModifyWire { id, .. } => ("wire", id.0),
             Op::AddRoute { id, .. } | Op::RemoveRoute { id, .. } | Op::ModifyRoute { id, .. } => ("route", id.0),
-            Op::CreateCable { id, .. }
-            | Op::DeleteCable { id, .. }
-            | Op::AddCableMember { cable: id, .. }
-            | Op::RemoveCableMember { cable: id, .. } => ("cable", id.0),
+            Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } | Op::ModifyCable { id, .. } => ("cable", id.0),
             Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => ("definition", id.0),
             Op::AddFolder { id, .. } | Op::RemoveFolder { id, .. } | Op::ModifyFolder { id, .. } => ("folder", id.0),
             Op::SetProperty { object, .. } => match object {

@@ -225,7 +225,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     // other line, a T; no junction device).
     ok(&mut h, r#"newpage {"title":"Tee"}"#);
     ok(&mut h, r#"wire {"points":[[0,0],[60,0]]}"#);
-    ok(&mut h, r#"wire {"points":[[30,30],[30,0]],"junction":false}"#);
+    ok(&mut h, r#"wire {"points":[[30,30],[30,0]],"join":false}"#);
     ok(&mut h, "zoom e");
     h.run_steps(3);
     let rows = h.state().panel.checks.rows().to_vec();

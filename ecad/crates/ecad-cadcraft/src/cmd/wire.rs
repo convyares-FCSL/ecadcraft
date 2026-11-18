@@ -527,7 +527,7 @@ impl Command for ChecksParams {
 
 // ---------------------------------------------------------------- wire (brief 032 §2)
 
-/// `wire {points, potential?, join?: bool, junction?: bool, category?}` (design 032 §2.3).
+/// `wire {points, potential?, join?: bool, category?}` (design 032 §2.3).
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct WireParams {
@@ -539,9 +539,6 @@ pub(crate) struct WireParams {
     /// Join ends that meet other wires (default: the project's `wire.join`).
     #[serde(default)]
     join: Option<bool>,
-    /// The old name of `join`.
-    #[serde(default)]
-    junction: Option<bool>,
     /// The new wire's category, its ID or name ("auto" or none: the net's).
     #[serde(default)]
     category: Option<String>,
@@ -553,10 +550,7 @@ impl Command for WireParams {
             Some(v) => wiring::valid_text("potential", Some(&v)).map_err(err)?,
             None => None,
         };
-        let join = match (self.join, self.junction) {
-            (Some(a), Some(b)) if a != b => return Err(err("`join` and `junction` disagree; give only `join`")),
-            (a, b) => a.or(b),
-        };
+        let join = self.join;
         let points: Vec<Pt> = self.points.0.into_iter().map(|p| p.0).collect();
         let category = not_auto(self.category);
         on_project(s, |p, pg, page| {

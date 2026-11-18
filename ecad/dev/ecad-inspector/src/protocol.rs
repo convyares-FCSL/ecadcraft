@@ -712,7 +712,7 @@ fn cables(d: &Document) -> Vec<Value> {
                     }
                 }
             }
-            json!({"id": id.to_string(), "tag": k.properties.get(ecad_model::tag::TAG_KEY), "members": members, "ends": ends})
+            json!({"id": id.to_string(), "tag": k.properties.get(ecad_model::tag::TAG_KEY), "shield": k.shield.map(ecad_model::words::Word::word), "members": members, "ends": ends})
         })
         .collect()
 }

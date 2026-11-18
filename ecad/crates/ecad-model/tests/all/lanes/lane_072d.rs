@@ -402,12 +402,7 @@ fn a_core_on_a_loose_line_moves_onto_the_wire_when_the_second_end_lands() {
     assert!(wires(&l).is_empty(), "a loose line carries no wire");
     let on_line =
         Core { position: CorePosition::Route { route: r, landed: Some(a) }, ..ecad_model::Core::unplaced(ecad_model::CoreLabel::new("1").ok()) };
-    l.commit(
-        Author::User,
-        "slash",
-        vec![Op::CreateCable { id: k, cable: Cable::default() }, Op::AddCableMember { cable: k, index: 0, member: on_line }],
-    )
-    .unwrap();
+    l.commit(Author::User, "slash", vec![Op::CreateCable { id: k, cable: Cable { cores: vec![on_line], ..Cable::default() } }]).unwrap();
     assert_eq!(l.document().cables_on_route(r), vec![k]);
     // The second end lands on B: the wire forms and the core moves onto it, keeping its label.
     let landed = ecad_model::Route { ends: [RouteEnd::Point(a), RouteEnd::Point(b)], ..loose.clone() };
@@ -445,24 +440,21 @@ fn a_core_must_sit_on_something_that_exists_and_once() {
     let (_, a, _) = page_with_points(&mut l, &mut ids);
     let (k, r): (CableId, RouteId) = (ids.fresh(), ids.fresh());
     let missing = Core { position: CorePosition::Route { route: r, landed: Some(a) }, ..ecad_model::Core::unplaced(None) };
+    let refused = l.commit(Author::User, "bad", vec![Op::CreateCable { id: k, cable: Cable { cores: vec![missing.clone()], ..Cable::default() } }]);
+    assert!(refused.is_err(), "a core on a route that does not exist is refused");
+    // Nor can an existing cable be given one.
+    l.commit(Author::User, "empty", vec![Op::CreateCable { id: k, cable: Cable::default() }]).unwrap();
     let refused = l.commit(
         Author::User,
         "bad",
-        vec![Op::CreateCable { id: k, cable: Cable::default() }, Op::AddCableMember { cable: k, index: 0, member: missing }],
+        vec![Op::ModifyCable { id: k, before: Cable::default(), after: Cable { cores: vec![missing], ..Cable::default() } }],
     );
-    assert!(refused.is_err(), "a core on a route that does not exist is refused");
+    assert!(refused.is_err(), "a ModifyCable onto a route that does not exist is refused");
+    l.undo(Author::User).unwrap();
     // Unplaced cores are allowed, any number of them.
     let unplaced = Core { position: CorePosition::Unplaced, ..ecad_model::Core::unplaced(None) };
-    l.commit(
-        Author::User,
-        "spare",
-        vec![
-            Op::CreateCable { id: k, cable: Cable::default() },
-            Op::AddCableMember { cable: k, index: 0, member: unplaced.clone() },
-            Op::AddCableMember { cable: k, index: 1, member: unplaced },
-        ],
-    )
-    .unwrap();
+    l.commit(Author::User, "spare", vec![Op::CreateCable { id: k, cable: Cable { cores: vec![unplaced.clone(), unplaced], ..Cable::default() } }])
+        .unwrap();
     assert_eq!(core_of(&l, k), vec![CorePosition::Unplaced, CorePosition::Unplaced]);
 }
 
@@ -640,9 +632,7 @@ fn a_cores_purpose_is_kept_apart_from_its_position() {
         vec![
             Op::AddRoute { id: r, route: loose.clone() },
             Op::AddRoute { id: r2, route: other.clone() },
-            Op::CreateCable { id: k, cable: Cable::default() },
-            Op::AddCableMember { cable: k, index: 0, member: spare.clone() },
-            Op::AddCableMember { cable: k, index: 1, member: plain },
+            Op::CreateCable { id: k, cable: Cable { cores: vec![spare.clone(), plain], ..Cable::default() } },
         ],
     )
     .unwrap();

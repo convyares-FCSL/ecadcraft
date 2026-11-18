@@ -838,6 +838,9 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                 let v = object(ctx, obj, &what, a.cables.get(&id), t.cables.get(&id), s.cables.get(&id), |ctx, a, t, s| Cable {
                     properties: merge_props(ctx, obj, &what, &a.properties, &t.properties, &s.properties, &all),
                     cores: merge_members(&a.cores, &t.cores, &s.cores),
+                    shield: field(ctx, obj, "shield", format!("{what} · shield"), &a.shield, &t.shield, &s.shield, &|x| {
+                        x.map_or_else(|| "(none)".to_string(), |v| crate::words::Word::word(v).to_string())
+                    }),
                 });
                 set(&mut m.cables, id, v);
             }
@@ -1632,11 +1635,8 @@ fn objs_of(ops: &[Op]) -> BTreeSet<Obj> {
             Op::SetProperty { object: ObjectRef::Device(c), .. } => {
                 out.insert(Obj::Device(*c));
             }
-            Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
+            Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } | Op::ModifyCable { id, .. } => {
                 out.insert(Obj::Cable(*id));
-            }
-            Op::AddCableMember { cable, .. } | Op::RemoveCableMember { cable, .. } => {
-                out.insert(Obj::Cable(*cable));
             }
             _ => {}
         }
@@ -1821,25 +1821,23 @@ pub fn join_cables(doc: &Document, from: CableId, into: CableId) -> Result<Vec<O
     let a = doc.cables.get(&from).ok_or(crate::ParseError::NotFound(crate::Noun::Cable))?;
     let b = doc.cables.get(&into).ok_or(crate::ParseError::NotFound(crate::Noun::Cable))?;
     let mut ops = Vec::new();
-    for (i, mem) in a.cores.iter().enumerate().rev() {
-        ops.push(Op::RemoveCableMember { cable: from, index: i, member: mem.clone() });
-    }
-    let mut n = b.cores.len();
+    let mut joined = b.clone();
     for mem in &a.cores {
         // A line in both stays once; an unplaced core joins only when `into` has no core of its label.
         let unplaced_dup = mem.position == CorePosition::Unplaced && b.cores.iter().any(|x| x.label == mem.label);
         if unplaced_dup || (mem.position != CorePosition::Unplaced && b.cores.iter().any(|x| x.position == mem.position)) {
             continue;
         }
-        ops.push(Op::AddCableMember { cable: into, index: n, member: mem.clone() });
-        n += 1;
+        joined.cores.push(mem.clone());
     }
+    let mut empty = a.clone();
+    empty.cores.clear();
+    ops.extend(Op::modify_cable(from, a, empty.clone()));
+    ops.extend(Op::modify_cable(into, b, joined));
     for (rid, r) in doc.representations_of(Subject::Cable(from)) {
         ops.push(Op::UnlinkRepresentation { id: rid, rep: r.clone() });
         ops.push(Op::LinkRepresentation { id: rid, rep: crate::doc::Representation { subject: Subject::Cable(into), ..r.clone() } });
     }
-    let mut empty = a.clone();
-    empty.cores.clear();
     ops.push(Op::DeleteCable { id: from, cable: empty });
     Ok(ops)
 }

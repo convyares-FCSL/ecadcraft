@@ -174,10 +174,10 @@ function render() {
     h += `<tr><td>${name(w)}</td><td>${name(c.ends[0])}</td><td>${name(c.ends[1])}</td><td>${name(c.net)}</td>
       <td>${esc(c.net_order)}${c.order_fixed ? " (fixed)" : ""}</td><td>${name(c.conductor)}</td><td>${cables.join(", ")}</td></tr>`;
   }
-  h += `</table></div><h2>Cables</h2><div class="wrap"><table><tr><th>Cable</th><th>Members (in order)</th></tr>`;
+  h += `</table></div><h2>Cables</h2><div class="wrap"><table><tr><th>Cable</th><th>Shield</th><th>Members (in order)</th></tr>`;
   for (const [k, c] of Object.entries(d.cables)) {
     if (!match([k, ...c.cores.map((m) => corePlaceId(m.position))])) continue;
-    h += `<tr><td>${name(k)}</td><td>${c.cores.map((m) => corePlace(m.position) + (m.label ? ` core ${esc(m.label)}` : "") + (m.colours ? ` ${esc(m.colours)}` : "") + (m.purpose === "spare" ? " (spare)" : "")).join("<br>")}</td></tr>`;
+    h += `<tr><td>${name(k)}</td><td>${esc(c.shield ?? "")}</td><td>${c.cores.map((m) => corePlace(m.position) + (m.label ? ` core ${esc(m.label)}` : "") + (m.colours ? ` ${esc(m.colours)}` : "") + (m.purpose === "spare" ? " (spare)" : "")).join("<br>")}</td></tr>`;
   }
   h += `</table></div><h2>Transactions (1-${esc(s.seq)})</h2>`;
   for (const t of [...s.transactions].reverse()) {
@@ -406,8 +406,8 @@ const views = {
       (r) => `<tr><td>${esc(r.number ?? "(none)")}</td><td>${r.fixed ? "yes" : ""}</td><td>${esc(r.potential)}</td><td>${esc(r.place)}</td><td>${join(r.points)}</td><td>${esc(r.wires)}</td></tr>`)) +
       `<h2>Wires</h2>` + (await paged("wires", "wires", {}, ["Number", "Ends", "Net", "Order", "Size", "Colours", "Potential", "Rating and load", "Cable", "Core"],
       (r) => `<tr><td>${esc(r.number ?? "(none)")}${r.fixed ? " (fixed)" : ""}</td><td>${(r.ends || []).map(esc).join(" → ")}</td><td class="mono">${esc(short(r.net || ""))}</td><td>${esc(r.net_order)}${r.order_fixed ? " (fixed)" : ""}</td><td>${esc(r.size)}</td><td>${esc(r.colours)}</td><td>${esc(r.potential)}</td><td>${(r.rating || []).map(esc).join("<br>")}</td><td>${esc(r.cable)}</td><td>${esc(r.core)}</td></tr>`)) +
-      `<h2>Cables</h2>` + (await paged("cables", "cables", {}, ["Tag", "Members", "Ends"],
-      (r) => `<tr><td>${esc(r.tag)}</td><td>${r.members.map((m) => `${esc(m.wire)}${m.core ? ` core ${esc(m.core)}` : ""}${m.colours ? ` ${esc(m.colours)}` : ""}${m.purpose === "spare" ? " (spare)" : ""}`).join("<br>")}</td><td>${(r.ends || []).map(join).join(" ↔ ")}</td></tr>`));
+      `<h2>Cables</h2>` + (await paged("cables", "cables", {}, ["Tag", "Shield", "Members", "Ends"],
+      (r) => `<tr><td>${esc(r.tag)}</td><td>${esc(r.shield ?? "")}</td><td>${r.members.map((m) => `${esc(m.wire)}${m.core ? ` core ${esc(m.core)}` : ""}${m.colours ? ` ${esc(m.colours)}` : ""}${m.purpose === "spare" ? " (spare)" : ""}`).join("<br>")}</td><td>${(r.ends || []).map(join).join(" ↔ ")}</td></tr>`));
   },
   async history() {
     const b = await call("branches");

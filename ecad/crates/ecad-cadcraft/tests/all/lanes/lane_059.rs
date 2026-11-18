@@ -53,7 +53,12 @@ fn cablenew_makes_a_cable_that_is_not_drawn_in_one_transaction() {
     assert_eq!(r["tag"], json!("-W01"), "{r}");
     let (label, ops) = last_tx(&mut h);
     assert_eq!(label, "Create cable");
-    assert!(matches!(ops.as_slice(), [Op::CreateCable { cable, .. }] if cable.cores.is_empty()), "{ops:?}");
+    // Design 072 §4.5: the offered cores are stored, on no line yet.
+    assert!(
+        matches!(ops.as_slice(), [Op::CreateCable { cable, .. }]
+        if cable.cores.len() == 4 && cable.cores.iter().all(|m| m.position == ecad_model::CorePosition::Unplaced)),
+        "{ops:?}"
+    );
     let doc = h.doc();
     assert!(!cable_cmds::is_drawn(&doc, k));
     let rows = checks_of(&mut h, "cable-not-drawn");
@@ -93,8 +98,10 @@ fn cableedit_sets_fields_in_one_transaction_and_refuses_bad_values() {
     h.run("cableedit", json!({"cable": k.hex(), "set": {"length": 12, "to": {"gland": "M20", "location": "+FIELD"}, "shield": "overall"}})).unwrap();
     let (label, ops) = last_tx(&mut h);
     assert_eq!(label, "Edit cable");
-    let on_cable = ops.iter().filter(|o| matches!(o, Op::SetProperty { object: ecad_model::ObjectRef::Cable(_), .. })).count();
-    assert_eq!(on_cable, 4, "{ops:?}");
+    // Design 072 §4.5: one ModifyCable for every field, never a SetProperty on the cable.
+    let on_cable = ops.iter().filter(|o| matches!(o, Op::ModifyCable { .. })).count();
+    assert_eq!(on_cable, 1, "{ops:?}");
+    assert!(!ops.iter().any(|o| matches!(o, Op::SetProperty { object: ecad_model::ObjectRef::Cable(_), .. })), "{ops:?}");
     let doc = h.doc();
     assert_eq!(cable_cmds::planned(&doc, k, Side::To, ecad_cadcraft::designations::Aspect::Location).as_deref(), Some("+FIELD"));
     assert_eq!(cable_cmds::gland(&doc, k, Side::To).map(|g| g.0).as_deref(), Some("M20"));
@@ -262,18 +269,18 @@ fn a_drawn_cable_end_off_its_plan_warns_for_that_end_only() {
 fn hostile_cable_values_are_ignored_and_reported() {
     let mut h = H::new(5911);
     let k = new_cable(&mut h, json!({}));
-    for (key, v) in
-        [("length", "abc".to_string()), ("gland.to", "x".repeat(300)), ("shield", "lead".to_string()), ("end.from.location", "nokey".to_string())]
-    {
+    for (key, v) in [("length", "abc".to_string()), ("gland.to", "x".repeat(300)), ("end.from.location", "nokey".to_string())] {
         h.run("setprop", json!({"cable": k.hex(), "key": key, "value": v})).unwrap();
     }
+    // Design 072 §4.5: the shield is a typed field; no property can hold a word it does not read.
+    assert!(h.run("setprop", json!({"cable": k.hex(), "key": "shield", "value": "lead"})).is_err());
     let doc = h.doc();
     assert!(cable_cmds::read(&doc, k, cable_cmds::CableField::Length).is_none());
     assert!(cable_cmds::gland(&doc, k, Side::To).is_none());
     assert!(cable_cmds::shield(&doc, k).is_none());
     assert!(cable_cmds::plan_words(&doc, k, Side::From).is_none());
     let rows = checks_of(&mut h, "cable-bad-value");
-    assert_eq!(rows.len(), 4, "{rows:?}");
+    assert_eq!(rows.len(), 3, "{rows:?}");
     assert!(rows.iter().any(|r| r["text"].as_str().unwrap_or_default().contains("length \"abc\" is not a number of metres")), "{rows:?}");
 }
 

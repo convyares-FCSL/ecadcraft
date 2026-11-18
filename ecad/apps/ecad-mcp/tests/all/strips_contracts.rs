@@ -65,7 +65,7 @@ fn terminal_strip_commands_through_execute() {
     );
     c.exec("setprop", json!({"cable": cable, "key": "cores", "value": "5G"}));
     assert!(
-        matches!(&last_by_agent(&mut c).1[..], [Op::SetProperty { object: ObjectRef::Cable(_), key, after: Some(v), .. }] if key == "cores" && v == "5G")
+        matches!(&last_by_agent(&mut c).1[..], [Op::ModifyCable { after, .. }] if after.properties.get("cores").map(String::as_str) == Some("5G"))
     );
     // A terminal plan page.
     let page = c.exec("newpage", json!({"generated": "terminals", "strip": strip}));

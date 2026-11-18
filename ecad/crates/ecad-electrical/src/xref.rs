@@ -40,8 +40,7 @@
 //! | `SetProjectSettings` changing `reference_style`, `sheet`, `length_unit` or `contact_mirror` | none derived: every page with a device member is redrawn or marked stale (the one wide case) |
 //! | every other op | none |
 //!
-//! Cable references: `CreateCable`, `DeleteCable`, `AddCableMember` and `RemoveCableMember` now
-//! scope to their cable ([`crate::references::cables_touched`]); everything else is as before.
+//! Cable references: `CreateCable`, `DeleteCable` and `ModifyCable` now scope to their cable ([`crate::references::cables_touched`]); everything else is as before.
 //!
 //! This module records nothing and has no UI: commands commit through their JSON forms.
 
@@ -1477,7 +1476,7 @@ impl RefIndex {
                 Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
                     out.insert(Group::Device(*id));
                 }
-                Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
+                Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } | Op::ModifyCable { id, .. } => {
                     out.insert(Group::Cable(*id));
                 }
                 Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => {

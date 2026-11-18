@@ -119,15 +119,15 @@ fn cableslash_across_a_loose_line_puts_the_core_on_the_line() {
     assert_eq!(log.len(), before + 1, "one transaction: {v}");
     let t = log.last().unwrap();
     assert_eq!(t.author, Author::Agent(AGENT.into()));
-    assert!(t.ops.iter().any(|o| matches!(o, Op::CreateCable { .. })), "{:?}", t.ops);
+    // The new cable carries its one core.
     let member = t
         .ops
         .iter()
         .find_map(|o| match o {
-            Op::AddCableMember { member, .. } => Some(member.clone()),
+            Op::CreateCable { cable, .. } => cable.cores.first().cloned(),
             _ => None,
         })
-        .unwrap_or_else(|| panic!("an AddCableMember: {:?}", t.ops));
+        .unwrap_or_else(|| panic!("a CreateCable with a core: {:?}", t.ops));
     assert_eq!(member.position, CorePosition::Route { route, landed: Some(a) }, "the core sits on the line, landed at its point");
     assert_eq!(v["lines"], json!([route.hex()]), "{v}");
     assert_eq!(v["conductors"], json!([]), "{v}");

@@ -43,12 +43,7 @@ fn core_positions_come_back_from_the_snapshot_and_the_log() {
         .commit(
             Author::User,
             "slash",
-            vec![
-                Op::AddRoute { id: r, route: loose },
-                Op::CreateCable { id: k, cable: Cable::default() },
-                Op::AddCableMember { cable: k, index: 0, member: on_line },
-                Op::AddCableMember { cable: k, index: 1, member: spare },
-            ],
+            vec![Op::AddRoute { id: r, route: loose }, Op::CreateCable { id: k, cable: Cable { cores: vec![on_line, spare], ..Cable::default() } }],
         )
         .unwrap();
     let (lo, hi) = ecad_file::schema::SNAPSHOT_EVERY_RANGE;

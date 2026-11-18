@@ -302,7 +302,8 @@ fn r3_reducing_cores_below_those_assigned_is_refused_naming_them() {
     slash_across(&mut h, (-5.0, 25.0), (25.0, 25.0), Some(k)).unwrap();
     let doc = h.doc();
     let labels: Vec<Option<String>> = doc.cables[&k].cores.iter().map(|m| m.label_str().map(str::to_string)).collect();
-    assert_eq!(labels, vec![Some("BN".into()), Some("BK".into()), Some("GY".into())]);
+    // Design 072 §4.5: GNYE, offered and on no line, is stored too.
+    assert_eq!(labels, vec![Some("BN".into()), Some("BK".into()), Some("GY".into()), Some("GNYE".into())]);
     // A list without GY, or with too few: refused, naming the cores in use.
     for (cores, words) in
         [("BN,BK", "has wires on cores BN, BK and GY"), ("BN,BK,GNYE", "has wires on cores BN, BK and GY"), ("2G", "has wires on cores")]
@@ -442,7 +443,9 @@ fn r6_cableadd_onto_a_cable_not_drawn_takes_its_free_cores_in_order() {
     h.run("cableadd", json!({"conductors": [ws[0].hex(), ws[1].hex()], "cable": k.hex()})).unwrap();
     let doc = h.doc();
     let labels: Vec<Option<String>> = doc.cables[&k].cores.iter().map(|m| m.label_str().map(str::to_string)).collect();
-    assert_eq!(labels, vec![Some("1".into()), Some("2".into())]);
+    // Design 072 §4.5: the stored cores 1 and 2 are placed; GNYE stays stored, on no line.
+    assert_eq!(labels, vec![Some("1".into()), Some("2".into()), Some("GNYE".into())]);
+    assert_eq!(doc.cables[&k].cores[2].position, ecad_model::CorePosition::Unplaced);
     assert!(checks_of(&mut h, "cable-not-drawn").is_empty());
 }
 
@@ -650,10 +653,11 @@ fn r7_a_file_with_hostile_cable_values_reads_as_absent_without_a_panic() {
         ("gland.from", "\u{202e}M20".to_string()),
         ("end.to.function", big.clone()),
         ("cable_type", "#ffffffffffffffffffffffffffffffff".to_string()),
-        ("shield", "OVERALL ".to_string()),
     ] {
         h.run("setprop", json!({"cable": k.hex(), "key": key, "value": v})).unwrap();
     }
+    // Design 072 §4.5: the shield is a typed field, never a property.
+    assert!(h.run("setprop", json!({"cable": k.hex(), "key": "shield", "value": "OVERALL "})).is_err());
     let doc = h.doc();
     assert!(cable_cmds::read(&doc, k, CableField::Length).is_none());
     assert!(cable_cmds::part_value(&doc, k, CableField::Maker).is_none());
@@ -918,7 +922,16 @@ fn f3_the_slash_tool_assigns_a_picked_cable_not_drawn_in_crossing_order() {
     assert_eq!(h.head(), head + 1, "one transaction");
     let (label, ops) = last_tx(&mut h);
     assert_eq!(label, "Cable slash");
-    assert_eq!(ops.iter().filter(|o| matches!(o, Op::AddCableMember { .. })).count(), 3);
+    // One ModifyCable for the cable, placing three more cores on wires.
+    let placed = |c: &ecad_model::Cable| c.cores.iter().filter(|m| m.wire().is_some()).count() as isize;
+    let added: Vec<isize> = ops
+        .iter()
+        .filter_map(|o| match o {
+            Op::ModifyCable { id, before, after } if *id == k => Some(placed(after) - placed(before)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(added, vec![3], "{:?}", ops);
     let doc = h.doc();
     let members: Vec<(WireId, Option<String>)> =
         doc.cables[&k].cores.iter().filter_map(|m| Some((m.wire()?, m.label_str().map(str::to_string)))).collect();

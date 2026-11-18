@@ -109,6 +109,7 @@ fn indexes_match_a_rebuild_after_every_rolled_back_transaction() {
     // The wire runs from t1 to a third point, t3.
     let t3 = TerminalId(8);
     let w_v = Wire::new(NetId(10), ConductorId(11), t1, t3);
+    let cabled = Cable { cores: vec![Core::on_wire(w, None)], ..Cable::default() };
     l.commit(
         Author::User,
         "setup",
@@ -120,8 +121,7 @@ fn indexes_match_a_rebuild_after_every_rolled_back_transaction() {
             Op::AddTerminal { id: t2, terminal: Terminal { component: c, label: None, key: None, accepts: Default::default() } },
             Op::AddTerminal { id: t3, terminal: Terminal { component: c, label: None, key: None, accepts: Default::default() } },
             Op::CreateWire { id: w, wire: w_v.clone() },
-            Op::CreateCable { id: cable, cable: Cable::default() },
-            Op::AddCableMember { cable, index: 0, member: Core::on_wire(w, None) },
+            Op::CreateCable { id: cable, cable: cabled.clone() },
         ],
     )
     .unwrap();
@@ -129,15 +129,15 @@ fn indexes_match_a_rebuild_after_every_rolled_back_transaction() {
     let fails: Vec<Vec<Op>> = vec![
         vec![
             Op::CreateWire { id: WireId(12), wire: Wire::new(NetId(13), ConductorId(14), t1, t2) },
-            Op::RemoveCableMember { cable, index: 0, member: Core::on_wire(w, None) },
-            Op::DeleteCable { id: cable, cable: Cable { properties: Default::default(), cores: vec![] } },
+            Op::ModifyCable { id: cable, before: cabled.clone(), after: Cable::default() },
+            Op::DeleteCable { id: cable, cable: Cable { properties: Default::default(), cores: vec![], shield: None } },
             Op::RemoveTerminal { id: TerminalId(99), terminal: Terminal { component: c, label: None, key: None, accepts: Default::default() } },
         ],
         // The wire deleted and made again to a point that does not exist.
         vec![Op::DeleteWire { id: w, wire: w_v.clone() }, Op::CreateWire { id: w, wire: Wire { ends: [t1, TerminalId(99)], ..w_v.clone() } }],
         // Valid ops, invalid end state: a wire made to a point that does not exist.
         vec![
-            Op::RemoveCableMember { cable, index: 0, member: Core::on_wire(w, None) },
+            Op::ModifyCable { id: cable, before: cabled.clone(), after: Cable::default() },
             Op::CreateWire { id: WireId(12), wire: Wire::new(NetId(13), ConductorId(14), t2, TerminalId(99)) },
         ],
     ];

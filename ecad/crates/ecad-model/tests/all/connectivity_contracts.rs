@@ -219,6 +219,7 @@ fn a_cable_core_runs_its_net_through() {
                 ecad_model::Core::on_wire(core1, ecad_model::CoreLabel::new("1").ok()),
                 ecad_model::Core::on_wire(core2, ecad_model::CoreLabel::new("2").ok()),
             ],
+            shield: None,
         },
     }]);
     let field = p.loose(x[0]);

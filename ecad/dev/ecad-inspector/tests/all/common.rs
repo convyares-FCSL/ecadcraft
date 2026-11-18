@@ -129,8 +129,10 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
     let cable: CableId = ids.fresh();
     let mut cprops = ecad_model::doc::Properties::new();
     cprops.insert("tag".into(), "-W1".into());
-    let cable_op =
-        Op::CreateCable { id: cable, cable: Cable { properties: cprops, cores: vec![Core::on_wire(w1, ecad_model::CoreLabel::new("1").ok())] } };
+    let cable_op = Op::CreateCable {
+        id: cable,
+        cable: Cable { properties: cprops, cores: vec![Core::on_wire(w1, ecad_model::CoreLabel::new("1").ok())], shield: None },
+    };
     l.commit(Author::User, "Cable", vec![cable_op]).unwrap();
     for i in 0..20 {
         let id: ItemId = ids.fresh();

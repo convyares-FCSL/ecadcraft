@@ -43,7 +43,10 @@ fn the_cable_manager_commands_are_agent_transactions_and_refused_with_writes_off
             c.exec("wire", json!({"points": [[x, 0], [x, 50]]}));
         }
         let (v, ops) = one_by_agent(&mut c, "cablenew", json!({"cores": "3G", "to": {"gland": "M20"}}), "Create cable");
-        assert!(matches!(ops.as_slice(), [Op::CreateCable { cable, .. }] if cable.cores.is_empty()), "{ops:?}");
+        assert!(
+            matches!(ops.as_slice(), [Op::CreateCable { cable, .. }] if cable.cores.iter().all(|m| m.position == ecad_model::CorePosition::Unplaced)),
+            "{ops:?}"
+        );
         let k = v["cable"].as_str().unwrap().to_string();
         let (_, ops) = one_by_agent(&mut c, "cableedit", json!({"cable": k, "set": {"length": 12}}), "Edit cable");
         assert_eq!(ops.len(), 1, "{ops:?}");
@@ -53,7 +56,16 @@ fn the_cable_manager_commands_are_agent_transactions_and_refused_with_writes_off
         // Three wires: assigned.
         let (v, ops) = one_by_agent(&mut c, "cableslash", json!({"from": [-5, 25], "to": [25, 25], "cable": k}), "Cable slash");
         assert_eq!(v["assigned"], json!(true), "{v}");
-        assert_eq!(ops.iter().filter(|o| matches!(o, Op::AddCableMember { .. })).count(), 3);
+        // One ModifyCable for the cable, placing its three stored cores on the lines crossed.
+        let placed = |c: &ecad_model::Cable| c.cores.iter().filter(|m| m.position != ecad_model::CorePosition::Unplaced).count() as isize;
+        let added: Vec<isize> = ops
+            .iter()
+            .filter_map(|o| match o {
+                Op::ModifyCable { before, after, .. } => Some(placed(after) - placed(before)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(added, vec![3], "{:?}", ops);
         refused_writes_nothing(&mut c, "cableedit", json!({"cable": k, "set": {"cores": "2G"}}), "has wires on cores");
         refused_writes_nothing(&mut c, "cableremove", json!({"cable": k}), "is drawn on");
         refused_writes_nothing(&mut c, "cableremove", json!({"cable": k, "drawn": "unassign"}), "is not a parameter of this command");
@@ -70,7 +82,7 @@ fn the_cable_manager_commands_are_agent_transactions_and_refused_with_writes_off
     let doc = c.doc();
     let w09 =
         doc.cables.values().find(|x| x.properties.get("tag").map(String::as_str) == Some("-W09")).expect("FD1: the cable not drawn round-trips");
-    assert!(w09.cores.is_empty());
+    assert!(w09.cores.iter().all(|m| m.position == ecad_model::CorePosition::Unplaced), "stored offered cores only");
     assert!(w09.properties.contains_key("end.from.location"));
     let log = c.log();
     for (cmd, params) in [

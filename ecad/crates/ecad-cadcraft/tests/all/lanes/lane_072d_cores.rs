@@ -49,9 +49,10 @@ fn a_stored_place_the_line_no_longer_gives_is_reported_not_changed() {
     // A file made elsewhere: the core says no end has landed, though one has.
     let stale = CorePosition::Route { route, landed: None };
     h.cfg(|p| {
-        let old = p.ledger.document().cables[&k].cores[0].clone();
-        let new = Core { position: stale, ..old.clone() };
-        let ops = vec![Op::RemoveCableMember { cable: k, index: 0, member: old }, Op::AddCableMember { cable: k, index: 0, member: new }];
+        let old = p.ledger.document().cables[&k].clone();
+        let mut new = old.clone();
+        new.cores[0] = Core { position: stale, ..old.cores[0].clone() };
+        let ops = vec![Op::ModifyCable { id: k, before: old, after: new }];
         p.ledger.commit(Author::User, "a file made elsewhere", ops).unwrap();
     });
     assert_eq!(h.doc().cables[&k].cores[0].position, stale, "nothing moved it back");
@@ -83,11 +84,12 @@ fn ticking_not_used_stores_the_cores_purpose_not_a_property() {
     assert!(rows(&mut h, "core-open").is_empty());
     h.check();
 
-    // Ticking it again changes nothing; unticking takes the unplaced core away again.
+    // Ticking it again changes nothing; unticking keeps the offered core, in use and unplaced.
     let again = h.run("setprop", json!({"cable": k.hex(), "key": "unused.2", "value": "yes"})).unwrap();
     assert_eq!(again["changed"], json!(false));
     h.run("setprop", json!({"cable": k.hex(), "key": "unused.2", "value": null})).unwrap();
-    assert!(h.doc().cables[&k].cores.iter().all(|m| m.label_str() != Some("2")));
+    let two = h.doc().cables[&k].cores.iter().find(|m| m.label_str() == Some("2")).cloned().expect("offered core 2 stays");
+    assert_eq!((two.purpose, two.position), (Purpose::InUse, CorePosition::Unplaced));
     assert_eq!(rows(&mut h, "core-open").len(), 1);
     // A core the cable does not have is refused.
     assert!(h.run("setprop", json!({"cable": k.hex(), "key": "unused.9", "value": "yes"})).is_err());

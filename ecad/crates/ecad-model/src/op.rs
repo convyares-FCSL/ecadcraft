@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::doc::{Cable, Core, Definition, Device, Document, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal, Wire};
+use crate::doc::{Cable, Definition, Device, Document, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal, Wire};
 use crate::error::{ModelError, Result};
 use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, TerminalId, WireId};
 use crate::index::Delta;
@@ -174,15 +174,11 @@ pub enum Op {
         id: CableId,
         cable: Cable,
     },
-    AddCableMember {
-        cable: CableId,
-        index: usize,
-        member: Core,
-    },
-    RemoveCableMember {
-        cable: CableId,
-        index: usize,
-        member: Core,
+    /// A cable's fields or cores changed, the whole struct recorded (design 072 §4.5).
+    ModifyCable {
+        id: CableId,
+        before: Cable,
+        after: Cable,
     },
     SetProperty {
         object: ObjectRef,
@@ -280,7 +276,16 @@ fn holds<K: Ord + Copy + std::fmt::Display, V: PartialEq>(map: &BTreeMap<K, V>, 
     }
 }
 
+/// A cable's offer key (`4G`, `BN,BK,GY`): written only with the cores it offers, by ModifyCable.
+pub const CABLE_CORES_KEY: &str = "cores";
+
 impl Op {
+    /// The `ModifyCable` that makes cable `id` from `before` into `after`; `None` when they are
+    /// the same.
+    pub fn modify_cable(id: CableId, before: &Cable, after: Cable) -> Option<Op> {
+        (before != &after).then(|| Op::ModifyCable { id, before: before.clone(), after })
+    }
+
     /// The op that undoes this one.
     pub fn inverse(&self) -> Op {
         match self.clone() {
@@ -309,8 +314,7 @@ impl Op {
             Op::ModifyRoute { id, before, after } => Op::ModifyRoute { id, before: after, after: before },
             Op::CreateCable { id, cable } => Op::DeleteCable { id, cable },
             Op::DeleteCable { id, cable } => Op::CreateCable { id, cable },
-            Op::AddCableMember { cable, index, member } => Op::RemoveCableMember { cable, index, member },
-            Op::RemoveCableMember { cable, index, member } => Op::AddCableMember { cable, index, member },
+            Op::ModifyCable { id, before, after } => Op::ModifyCable { id, before: after, after: before },
             Op::SetProperty { object, key, before, after } => Op::SetProperty { object, key, before: after, after: before },
             Op::EmbedDefinition { id, definition } => Op::RemoveDefinition { id, definition },
             Op::RemoveDefinition { id, definition } => Op::EmbedDefinition { id, definition },
@@ -552,24 +556,12 @@ impl Op {
                     doc.index.cable(*id, &old, Delta::Remove);
                 }
             }
-            Op::AddCableMember { cable, index, member } => {
-                let c = doc.cables.get_mut(cable).ok_or_else(|| pre(format!("cable {cable} does not exist")))?;
-                if *index > c.cores.len() {
-                    return Err(pre(format!("cable {cable} member index {index} is past the end")));
+            Op::ModifyCable { id, before, after } => {
+                holds(&doc.cables, *id, before, "cable", checked)?;
+                if let Some(old) = doc.cables.insert(*id, after.clone()) {
+                    doc.index.cable(*id, &old, Delta::Remove);
                 }
-                c.cores.insert(*index, member.clone());
-                doc.index.cable_member(*cable, member, Delta::Add);
-            }
-            Op::RemoveCableMember { cable, index, member } => {
-                let c = doc.cables.get_mut(cable).ok_or_else(|| pre(format!("cable {cable} does not exist")))?;
-                match c.cores.get(*index) {
-                    Some(cur) if !checked || cur == member => {}
-                    _ => {
-                        return Err(pre(format!("cable {cable} member {index} differs from the recorded value")));
-                    }
-                }
-                let old = c.cores.remove(*index);
-                doc.index.cable_member(*cable, &old, Delta::Remove);
+                doc.index.cable(*id, after, Delta::Add);
             }
             Op::SetProperty { object, key, before, after } => {
                 let reserved = match object.holder() {
@@ -578,6 +570,10 @@ impl Op {
                 };
                 if reserved {
                     return Err(pre(format!("property {key} is a field now (design 072); its object's Modify op changes it")));
+                }
+                // Design 072 §4.5: a cable's offered cores are stored cores; only ModifyCable writes them.
+                if matches!(object, ObjectRef::Cable(_)) && key == CABLE_CORES_KEY {
+                    return Err(pre(format!("property {key} of a cable is written with its cores; ModifyCable changes it")));
                 }
                 let props = match object {
                     ObjectRef::Device(id) => doc.devices.get_mut(id).map(|c| &mut c.properties),
@@ -763,8 +759,7 @@ impl Op {
             Op::ModifyRoute { .. } => "ModifyRoute",
             Op::CreateCable { .. } => "CreateCable",
             Op::DeleteCable { .. } => "DeleteCable",
-            Op::AddCableMember { .. } => "AddCableMember",
-            Op::RemoveCableMember { .. } => "RemoveCableMember",
+            Op::ModifyCable { .. } => "ModifyCable",
             Op::SetProperty { .. } => "SetProperty",
             Op::EmbedDefinition { .. } => "EmbedDefinition",
             Op::RemoveDefinition { .. } => "RemoveDefinition",

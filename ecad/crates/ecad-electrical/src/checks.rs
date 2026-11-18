@@ -1547,8 +1547,7 @@ impl Scope {
                 Op::SetProperty { object: ObjectRef::Cable(k), .. }
                 | Op::CreateCable { id: k, .. }
                 | Op::DeleteCable { id: k, .. }
-                | Op::AddCableMember { cable: k, .. }
-                | Op::RemoveCableMember { cable: k, .. } => {
+                | Op::ModifyCable { id: k, .. } => {
                     // Brief 027: a new or deleted cable, or its tag (the orphan row's words).
                     self.cable_references.insert(*k);
                     // Brief 026: the cable's own rows, and every holder of the tags it had or has.
@@ -1560,14 +1559,24 @@ impl Scope {
                         Op::CreateCable { cable, .. } | Op::DeleteCable { cable, .. } => {
                             self.tag_holders(doc, cable.properties.get(ecad_model::tag::TAG_KEY).map(String::as_str));
                         }
+                        Op::ModifyCable { before, after, .. } => {
+                            let tag = |c: &'_ ecad_model::Cable| c.properties.get(ecad_model::tag::TAG_KEY).cloned();
+                            self.tag_holders(doc, [tag(before), tag(after)].iter().flatten().map(String::as_str));
+                        }
                         _ => {}
                     }
                     // A cable's tag and cores are part of its members' words.
                     if let Some(cable) = doc.cables.get(k) {
                         self.wires.extend(cable.cores.iter().filter_map(|m| m.wire()));
                     }
-                    if let Op::AddCableMember { member, .. } | Op::RemoveCableMember { member, .. } = op {
-                        self.wires.extend(member.wire());
+                    match op {
+                        Op::ModifyCable { before, after, .. } => {
+                            self.wires.extend(before.cores.iter().chain(&after.cores).filter_map(|m| m.wire()));
+                        }
+                        Op::CreateCable { cable, .. } | Op::DeleteCable { cable, .. } => {
+                            self.wires.extend(cable.cores.iter().filter_map(|m| m.wire()));
+                        }
+                        _ => {}
                     }
                 }
                 Op::AddItem { id, .. } | Op::RemoveItem { id, .. } => self.item(doc, *id),

@@ -445,7 +445,7 @@ fn hostile_text_comes_back_as_plain_json_strings() {
             Op::CreateWire { id: w, wire: Wire { display: props(&[("wire.category", X)]), ..Wire::new(ids.fresh(), ids.fresh(), a, b) } },
             Op::CreateCable {
                 id: c,
-                cable: Cable { properties: props(&[("tag", X)]), cores: vec![Core::on_wire(w, ecad_model::CoreLabel::new(X).ok())] },
+                cable: Cable { properties: props(&[("tag", X)]), cores: vec![Core::on_wire(w, ecad_model::CoreLabel::new(X).ok())], shield: None },
             },
             Op::SetProperty { object: ObjectRef::Project, key: "project.title".parse().unwrap(), before: None, after: Some(X.into()) },
         ],

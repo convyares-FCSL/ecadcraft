@@ -134,7 +134,7 @@ pub static PROP_RULES: &[PropRule] = &[
     PropRule {
         what: "cable cores (brief 028)",
         claims: |_, o, k| matches!(o, ObjectRef::Cable(_)) && k == crate::strips::CORES_KEY,
-        build: Build::Value(cores_value),
+        build: Build::Ops(cores_ops),
     },
     PropRule {
         what: "cable core not used (brief 057)",
@@ -284,8 +284,18 @@ fn accessory_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>)
     Ok(rule.unwrap_or_else(|| value.map(str::to_string)))
 }
 
-fn cores_value(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    crate::strips::cores_value(value)
+/// `setprop cores` on a cable: one ModifyCable writing the offer and the cores it offers
+/// (design 072 §4.5).
+fn cores_ops(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Vec<Op>, CmdError> {
+    let ObjectRef::Cable(k) = o else { return Err(CmdError::input("that property is set through its own rule")) };
+    let cab = doc.cables.get(&k).ok_or_else(|| CmdError::refused("No cable with that ID."))?;
+    let mut after = cab.clone();
+    match crate::strips::cores_value(value)? {
+        Some(v) => after.properties.insert(key.to_string(), v),
+        None => after.properties.remove(key),
+    };
+    crate::styles::cable::sync_offered_cores(doc, &cab.properties, &mut after);
+    Ok(Op::modify_cable(k, cab, after).into_iter().collect())
 }
 
 fn unused_ops(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Vec<Op>, CmdError> {

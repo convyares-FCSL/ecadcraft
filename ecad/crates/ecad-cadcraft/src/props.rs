@@ -95,8 +95,9 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
                 // The devices at its ends: a wire's net (brief 022) is shown through them.
                 out.extend(wire.ends.iter().filter_map(|t| doc.terminals.get(t)).map(|t| ObjectRef::Device(t.component)));
             }
-            Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
+            Op::CreateCable { id, cable } | Op::DeleteCable { id, cable } => {
                 out.insert(ObjectRef::Cable(*id));
+                out.extend(cable.cores.iter().filter_map(|m| m.wire()).map(ObjectRef::Wire));
             }
             // A route has no properties (design 072 F31); the devices it lands on show its net.
             Op::AddRoute { route, .. } | Op::RemoveRoute { route, .. } => {
@@ -106,9 +107,9 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
                 let landed = before.points_landed().chain(after.points_landed());
                 out.extend(landed.filter_map(|t| doc.terminals.get(&t)).map(|t| ObjectRef::Device(t.component)));
             }
-            Op::AddCableMember { cable, member, .. } | Op::RemoveCableMember { cable, member, .. } => {
-                out.insert(ObjectRef::Cable(*cable));
-                out.extend(member.wire().map(ObjectRef::Wire));
+            Op::ModifyCable { id, before, after } => {
+                out.insert(ObjectRef::Cable(*id));
+                out.extend(before.cores.iter().chain(&after.cores).filter_map(|m| m.wire()).map(ObjectRef::Wire));
             }
             // A new or removed item is shown through its representation (linked or unlinked in the
             // same transaction); a moved one changes its subject's place.

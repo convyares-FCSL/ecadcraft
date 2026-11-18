@@ -160,9 +160,7 @@ fn core_positions_are_shown_raw_and_readable() {
                 terminal: Terminal { component: d, label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() },
             },
             Op::AddRoute { id: r, route: loose },
-            Op::CreateCable { id: k, cable: Cable::default() },
-            Op::AddCableMember { cable: k, index: 0, member: on_line },
-            Op::AddCableMember { cable: k, index: 1, member: spare },
+            Op::CreateCable { id: k, cable: Cable { cores: vec![on_line, spare], ..Cable::default() } },
         ],
     )
     .unwrap();
@@ -175,7 +173,7 @@ fn core_positions_are_shown_raw_and_readable() {
     let key = rows.last().and_then(|r| r["key"].as_str().map(str::to_string)).unwrap();
     let readable = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "readable"}));
     let text = readable["ok"]["decoded"].to_string();
-    for want in ["AddCableMember", "position", "route", "landed", "unplaced"] {
+    for want in ["CreateCable", "position", "route", "landed", "unplaced"] {
         assert!(text.contains(want), "{want} in the readable records: {text}");
     }
     let raw = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "raw"}));
@@ -241,10 +239,11 @@ fn a_cores_label_colours_and_purpose_are_shown_raw_readable_and_on_the_cable_row
     let mut ids = IdAllocator::seeded(75);
     let k: CableId = ids.fresh();
     let spare = Core { label: CoreLabel::new("GNYE").ok(), colours: Colours::parse("GN/YE"), purpose: Purpose::Spare, ..Core::unplaced(None) };
+    l.commit(Author::User, "cable", vec![Op::CreateCable { id: k, cable: Cable::default() }]).unwrap();
     l.commit(
         Author::User,
         "unused",
-        vec![Op::CreateCable { id: k, cable: Cable::default() }, Op::AddCableMember { cable: k, index: 0, member: spare }],
+        vec![Op::ModifyCable { id: k, before: Cable::default(), after: Cable { cores: vec![spare], ..Cable::default() } }],
     )
     .unwrap();
     let path = written(&dir, &l);
@@ -256,7 +255,7 @@ fn a_cores_label_colours_and_purpose_are_shown_raw_readable_and_on_the_cable_row
     let key = rows.last().and_then(|r| r["key"].as_str().map(str::to_string)).unwrap();
     let readable = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "readable"}));
     let text = readable["ok"]["decoded"].to_string();
-    for want in ["AddCableMember", "label", "GNYE", "colours", "GN/YE", "purpose", "spare", "unplaced"] {
+    for want in ["ModifyCable", "label", "GNYE", "colours", "GN/YE", "purpose", "spare", "unplaced"] {
         assert!(text.contains(want), "{want} in the readable records: {text}");
     }
     let raw = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "raw"}));

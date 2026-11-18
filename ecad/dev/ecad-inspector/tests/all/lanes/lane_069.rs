@@ -205,8 +205,11 @@ fn every_op_ledger() -> Ledger {
         Op::RemoveRoute { id: route, route: route_v.clone() },
         Op::CreateCable { id: ids.fresh(), cable: cable_v.clone() },
         Op::DeleteCable { id: cable, cable: cable_v.clone() },
-        Op::AddCableMember { cable, index: 1, member: Core::on_wire(wire2, ecad_model::CoreLabel::new("2").ok()) },
-        Op::RemoveCableMember { cable, index: 0, member: Core::on_wire(wire, None) },
+        Op::ModifyCable {
+            id: cable,
+            before: cable_v.clone(),
+            after: Cable { cores: vec![Core::on_wire(wire2, ecad_model::CoreLabel::new("2").ok())], ..cable_v.clone() },
+        },
         Op::SetProperty { object: ObjectRef::Device(comp), key: "note".parse().unwrap(), before: Some("K1".into()), after: None },
         Op::EmbedDefinition { id: ids.fresh(), definition: def_v.clone() },
         Op::RemoveDefinition { id: def, definition: def_v.clone() },

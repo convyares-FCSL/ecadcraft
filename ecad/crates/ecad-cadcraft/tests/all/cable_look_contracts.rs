@@ -179,7 +179,7 @@ fn reference_end(h: &mut H, page: PageId, cable: CableId, at: Pt, n: u128) -> (I
 /// Check B (AC3): the JSON form records exactly the remove/add pair at the member's index, and
 /// nothing else changes.
 #[test]
-fn b_json_core_label_is_one_transaction_of_two_existing_ops() {
+fn b_json_core_label_is_one_transaction_of_one_modify_cable() {
     let mut f = fixture(true);
     let (before, head) = (f.h.doc(), f.h.head());
     let r = core(&mut f.h, f.wires[0], json!("1")).unwrap();
@@ -187,17 +187,10 @@ fn b_json_core_label_is_one_transaction_of_two_existing_ops() {
     assert_eq!(f.h.head(), head + 1);
     let t = last_tx(&mut f.h);
     assert_eq!(t.label, "Core label");
-    let member = |core: Option<&str>| ecad_model::Core::on_wire(f.wires[0], core.and_then(|c| ecad_model::CoreLabel::new(c).ok()));
-    assert_eq!(
-        t.ops,
-        vec![
-            Op::RemoveCableMember { cable: f.c1, index: 0, member: member(None) },
-            Op::AddCableMember { cable: f.c1, index: 0, member: member(Some("1")) },
-        ]
-    );
-    let after = f.h.doc();
     let mut expect = before.clone();
     expect.cables.get_mut(&f.c1).unwrap().cores[0].label = ecad_model::CoreLabel::new("1").ok();
+    assert_eq!(t.ops, vec![Op::ModifyCable { id: f.c1, before: before.cables[&f.c1].clone(), after: expect.cables[&f.c1].clone() }]);
+    let after = f.h.doc();
     assert_eq!(after, expect, "only the core changed");
     // The same value again: no transaction.
     let r = core(&mut f.h, f.wires[0], json!("1")).unwrap();
@@ -351,15 +344,13 @@ fn n_batch_cores_are_one_transaction_in_member_order() {
     assert_eq!(f.h.head(), head + 1);
     let t = last_tx(&mut f.h);
     assert_eq!(t.label, "Core labels");
-    let indexes: Vec<usize> = t
-        .ops
-        .iter()
-        .map(|o| match o {
-            Op::RemoveCableMember { index, .. } | Op::AddCableMember { index, .. } => *index,
-            other => panic!("{other:?}"),
-        })
-        .collect();
-    assert_eq!(indexes, vec![0, 0, 1, 1, 2, 2, 3, 3]);
+    // One ModifyCable whose cores keep their order and places; only the labels change.
+    let [Op::ModifyCable { id, before, after }] = t.ops.as_slice() else { panic!("{:?}", t.ops) };
+    assert_eq!(*id, f.c1);
+    let places = |c: &ecad_model::Cable| c.cores.iter().map(|m| m.position).collect::<Vec<_>>();
+    assert_eq!(places(before), places(after), "member order and places are kept");
+    let labels: Vec<Option<&str>> = after.cores.iter().map(|m| m.label_str()).collect();
+    assert_eq!(labels, vec![Some("1"), Some("2"), None, Some("4")]);
     assert_eq!(cores(&mut f.h, f.c1), vec![Some("1".into()), Some("2".into()), None, Some("4".into())]);
     let r = f.h.run("cablecore", json!({"cable": f.c1.hex(), "cores": ["1", "2", null, "4"]})).unwrap();
     assert_eq!((r["changed"].as_bool(), f.h.head()), (Some(false), head + 1));

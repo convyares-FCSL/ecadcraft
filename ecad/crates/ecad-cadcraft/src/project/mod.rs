@@ -1298,6 +1298,17 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
                     }
                 }
             }
+            // Design 072 §4.5: a cable's fields are drawn by its slashes and its cores' lines; a
+            // change of its cores redraws every page, as the core ops did.
+            Op::ModifyCable { id, before, after } => {
+                if before.cores != after.cores {
+                    return None;
+                }
+                out.extend(doc.representations_of(Subject::Cable(*id)).map(|(_, r)| r.page));
+                for m in &after.cores {
+                    out.extend(crate::cables::member_pages(doc, m));
+                }
+            }
             Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } if key.starts_with(ecad_model::tag::HIGH_RESET_PREFIX) => {}
             // Brief 052 (design 052 §8.2a): a rename in the project's list redraws the pages of
             // the devices, boxes and pages storing that entry (every page when it is the project's
