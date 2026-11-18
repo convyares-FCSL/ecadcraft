@@ -19,10 +19,13 @@
 //! This module draws nothing and records nothing.
 
 use ecad_model::sheet::{self as msheet, PROJECT_SHEET, SheetSpec};
-use ecad_model::{Document, PageId, StyleRef};
+use ecad_model::style::PageType;
+use ecad_model::style::page::{TypeBlock, TypeFrame, TypeSheet};
+use ecad_model::{Document, PageId, StyleRef, Word};
 
 use super::{Builtin, Catalogue, Field};
-use crate::defaults::{Kind, Slot};
+use crate::CmdError;
+use crate::defaults::{Kind, Slot, Value};
 use crate::generated::GenKind;
 
 fn is_sheet(s: &str) -> bool {
@@ -89,33 +92,14 @@ pub const PANEL: &str = "panel";
 /// The built-in Report type.
 pub const REPORT: &str = "report";
 
-/// Which generated kinds a type's pages may be.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Holds {
-    /// Drawn pages only.
-    None,
-    /// Cover, revision history, contents.
-    Front,
-    /// BOM, terminal plan, cable schedule, PLC racks, I/O list.
-    Report,
-}
+pub use ecad_model::style::page::Holds;
 
-impl Holds {
-    fn of_word(w: &str) -> Holds {
-        match w {
-            "front" => Holds::Front,
-            "report" => Holds::Report,
-            _ => Holds::None,
-        }
-    }
-
-    /// What a type must hold to take pages of `kind`: a cover, revision history or contents is a
-    /// Front sheet page, every other kind a Report page.
-    pub fn of_kind(kind: GenKind) -> Holds {
-        match kind {
-            GenKind::Cover | GenKind::Revisions | GenKind::Contents => Holds::Front,
-            _ => Holds::Report,
-        }
+/// What a type must hold to take pages of `kind`: a cover, revision history or contents is a
+/// Front sheet page, every other kind a Report page.
+pub fn holds_of_kind(kind: GenKind) -> Holds {
+    match kind {
+        GenKind::Cover | GenKind::Revisions | GenKind::Contents => Holds::Front,
+        _ => Holds::Report,
     }
 }
 
@@ -153,7 +137,7 @@ pub fn look_of(doc: &Document, id: &StyleRef) -> TypeLook {
         .and_then(|t| StyleRef::parse(&t))
         .filter(|f| super::exists(doc, ecad_model::StyleCatalogue::Frame, f));
     let zones = field(doc, id, "zones").is_none_or(|r| ecad_model::words::flag(r.word()) != Some(false));
-    let holds = Holds::of_word(field(doc, id, "holds").map_or("none", |r| r.word()));
+    let holds = field(doc, id, "holds").and_then(|r| <Holds as Word>::parse(r.word())).unwrap_or(Holds::None);
     let checks = msheet::type_checks(doc, id);
     TypeLook { sheet, frame, title_block, zones, holds, checks }
 }
@@ -246,7 +230,7 @@ pub fn touched_by(doc: &Document, op: &ecad_model::Op) -> Option<(Vec<PageId>, b
         .copied()
         .filter(|p| doc.pages.get(p).is_some_and(|x| x.page_type.as_ref().is_some_and(|v| v.text() == text) || msheet::page_type_of(doc, x) == *id))
         .collect();
-    let sheet = |r: &Option<ecad_model::StyleRecord>| r.as_ref().and_then(|r| r.fields.get("sheet").cloned());
+    let sheet = |r: &Option<ecad_model::StyleRecord>| r.as_ref().and_then(|r| r.body.page()).and_then(|p| p.sheet);
     // A new or removed record can also make a `page.type` start or stop naming a type.
     let sheet_changed = sheet(before) != sheet(after) || before.is_none() != after.is_none();
     Some((pages, sheet_changed))
@@ -254,7 +238,7 @@ pub fn touched_by(doc: &Document, op: &ecad_model::Op) -> Option<(Vec<PageId>, b
 
 /// The refusal for a generated `kind` given a type of the wrong position (design 054 §2.3).
 pub fn kind_refusal(kind: GenKind) -> String {
-    let (one, ty) = match Holds::of_kind(kind) {
+    let (one, ty) = match holds_of_kind(kind) {
         Holds::Front => ("Cover sheet", "Cover sheet"),
         _ => ("Report", "Report"),
     };
@@ -271,4 +255,52 @@ pub fn generated_refusal(doc: &Document, id: &StyleRef) -> String {
         [rest @ .., last] => format!("{} or {last}", rest.join(", ")),
     };
     format!("A {} page is generated: give generated: {words}.", super::name(doc, ecad_model::StyleCatalogue::Page, id))
+}
+
+/// The value of field `key` that `t` sets, if it sets one.
+pub fn get<'a>(t: &'a PageType, key: &str) -> Option<Value<'a>> {
+    match key {
+        "sheet" => t.sheet.map(|v| match v {
+            TypeSheet::Project => Value::Text(PROJECT_SHEET),
+            TypeSheet::Sheet(s) => Value::Sheet(s),
+        }),
+        "frame" => t.frame.as_ref().map(|v| match v {
+            TypeFrame::Project => Value::Text(PROJECT_SHEET),
+            TypeFrame::Style(id) => Value::of_style(id),
+        }),
+        "title_block" => t.title_block.as_ref().map(|v| match v {
+            TypeBlock::Frame => Value::Text(OWN_BLOCK),
+            TypeBlock::Style(id) => Value::of_style(id),
+        }),
+        "zones" => t.zones.map(Value::Flag),
+        "checks" => t.checks.map(Value::Flag),
+        "holds" => t.holds.map(|v| Value::Choice(v.word())),
+        _ => None,
+    }
+}
+
+/// Set (`Some`) or clear (`None`) field `key` of `t` from its text, as the `style` command
+/// checked it.
+///
+/// # Errors
+/// An unknown field, or text the field does not take, in words.
+pub fn set(t: &mut PageType, key: &str, value: Option<&str>) -> Result<(), CmdError> {
+    let bad = |what: &str| CmdError::refused(format!("{key} takes {what}, not {:?}.", value.unwrap_or_default()));
+    let flag = |v: &str| ecad_model::words::flag(v).ok_or_else(|| bad("yes or no"));
+    match (key, value) {
+        ("sheet", None) => t.sheet = None,
+        ("frame", None) => t.frame = None,
+        ("title_block", None) => t.title_block = None,
+        ("zones", None) => t.zones = None,
+        ("checks", None) => t.checks = None,
+        ("holds", None) => t.holds = None,
+        ("sheet", Some(v)) => t.sheet = Some(TypeSheet::parse(v).ok_or_else(|| bad("project or a sheet"))?),
+        ("frame", Some(v)) => t.frame = Some(TypeFrame::parse(v).ok_or_else(|| bad("project or a frame style"))?),
+        ("title_block", Some(v)) => t.title_block = Some(TypeBlock::parse(v).ok_or_else(|| bad("frame or a frame style"))?),
+        ("zones", Some(v)) => t.zones = Some(flag(v)?),
+        ("checks", Some(v)) => t.checks = Some(flag(v)?),
+        ("holds", Some(v)) => t.holds = Some(Word::parse(v).ok_or_else(|| bad(&HOLDS.join(", ")))?),
+        _ => return Err(CmdError::refused(format!("Page types have no field {key:?}."))),
+    }
+    Ok(())
 }

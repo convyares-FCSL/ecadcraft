@@ -40,7 +40,7 @@ pub(crate) fn num(v: &Value) -> Option<u64> {
 }
 
 pub(crate) fn prop(d: &Document, c: DeviceId, k: &str) -> Option<String> {
-    d.devices.get(&c).and_then(|x| x.value(k))
+    crate::common::plc_value(d, c, k)
 }
 
 pub(crate) fn tag(d: &Document, c: DeviceId) -> String {
@@ -204,7 +204,12 @@ pub(crate) fn raw(h: &mut H, ops: Vec<Op>) {
 }
 
 pub(crate) fn raw_setprop(h: &mut H, c: DeviceId, key: &str, value: Option<&str>) {
-    let before = prop(&h.doc(), c, key);
+    let d = h.doc();
+    if ecad_model::keys::is_reserved_on(ecad_model::keys::Holder::Device, key) {
+        raw(h, vec![crate::common::plc_raw(&d, c, key, value)]);
+        return;
+    }
+    let before = d.devices.get(&c).and_then(|x| x.properties.get(key).cloned());
     raw(h, vec![Op::SetProperty { object: ObjectRef::Device(c), key: key.into(), before, after: value.map(str::to_string) }]);
 }
 

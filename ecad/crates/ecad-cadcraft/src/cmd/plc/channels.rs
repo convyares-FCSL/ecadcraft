@@ -47,7 +47,12 @@ pub(crate) fn place_channel(
         };
         let doc = p.ledger.document();
         let j = if new {
-            let n = channel_count(doc, card, t);
+            // The new card is made in `ops`: its count is the one it is made with.
+            let n = crate::plc::edit::current(doc, &ops, card).and_then(|d| match d.device_type {
+                ecad_model::DeviceType::PlcModule(m) => Some(m.channel_count()),
+                _ => None,
+            });
+            let n = n.unwrap_or(0);
             let roles = roles_of(starter);
             let index = match named {
                 Some(x) => x.checked_sub(first_number(doc, card)).ok_or(CmdError::refused("Channels start at 0."))?,
@@ -104,7 +109,7 @@ pub(crate) fn place_channel(
             "representation": cell.representation.hex(),
             "item": cell.item.hex(),
             "symbol": starter.key,
-            "terminals": cell.terminals.iter().map(|(r, t, pin, _)| json!({"role": r, "label": pin, "key": key(j.index, r), "terminal": t.hex()})).collect::<Vec<_>>(),
+            "terminals": cell.terminals.iter().map(|(r, t, pin, _)| json!({"role": r, "label": pin, "key": key(j.index, *r), "terminal": t.hex()})).collect::<Vec<_>>(),
             "message": message,
         });
         crate::draw::proposals::finish_place(p, pg, card, !new, &proposed, &mut v);
@@ -194,7 +199,7 @@ impl Command for PlcchannelsParams {
             first_pins.sort_by_key(|x| x.parse::<u64>().unwrap_or(u64::MAX));
             let message = format!("Placed {tag} {} on {wires} ({}).", channels_words(first, &plan.placed), pins_words(&first_pins));
             let doc = p.ledger.document();
-            let count = channel_count(doc, c, plan.ty);
+            let count = channel_count(doc, c);
             let over = plan.placed.iter().filter(|i| **i >= count).count();
             let message = if over > 0 { format!("{message} {over} beyond its {count} channels: raise its count in Properties.") } else { message };
             Ok(json!({"card": c.hex(), "tag": tag, "channels": channels, "message": message}))

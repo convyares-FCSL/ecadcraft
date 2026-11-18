@@ -260,35 +260,17 @@ fn hostile_types_and_starts_read_as_absent_with_their_rows() {
     });
     assert_eq!(ty(&mut h, p1), "schematic");
     h.run("setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"holds": "x", "sheet": "A0 999x999"}})).unwrap_err();
-    // Written past the command's checks, as a hostile file would hold them.
-    h.cfg(|p| {
-        let mut r = ecad_model::StyleRecord::default();
-        r.fields.insert("holds".into(), "x".into());
-        r.fields.insert("sheet".into(), "A0 999x999".into());
-        r.fields.insert("zones".into(), "maybe".into());
-        p.ledger
-            .commit(
-                ecad_model::Author::User,
-                "hostile",
-                vec![ecad_model::Op::SetStyle {
-                    layer: ecad_model::StyleLayer::Project,
-                    catalogue: ecad_model::StyleCatalogue::Page,
-                    id: StyleRef::Builtin("schematic".into()),
-                    before: None,
-                    after: Some(r),
-                }],
-            )
-            .unwrap();
-    });
+    // Design 072 §8: a type record holds typed values, so a file cannot hold these (a read error).
+    let hostile = json!({"name": "", "body": {"page": {"holds": "x", "sheet": "A0 999x999", "zones": "maybe"}}});
+    assert!(serde_json::from_value::<ecad_model::StyleRecord>(hostile).is_err());
     let d = h.doc();
     let look = ptype::look_of(&d, &StyleRef::Builtin("schematic".into()));
     assert_eq!((look.holds, look.zones, look.sheet), (ptype::Holds::None, true, None));
     assert_eq!(sheet_of(&d, p1), d.settings.sheet());
     let rows = kinds(&mut h);
     // A hostile folder start: lane_054_tester's AC15 (a start naming no folder cannot be stored).
-    for k in [Kind::PageTypeUnknown, Kind::PageTypeField] {
-        assert!(rows.iter().any(|(x, _)| *x == k), "{k:?}: {rows:?}");
-    }
+    // Design 072 §8: a page type record holds typed values, so only the unknown type is reported.
+    assert!(rows.iter().any(|(x, _)| *x == Kind::PageTypeUnknown), "{rows:?}");
     assert!(h.run("renumberpages", json!({})).is_ok());
     let _ = NUMBER_KEY;
 }

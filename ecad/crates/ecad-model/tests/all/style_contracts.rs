@@ -11,11 +11,19 @@ use ecad_model::tag::HighWater;
 use ecad_model::{Author, Device, DeviceId, Document, Ledger, ObjectRef, Op, StandardId};
 
 fn header(name: &str) -> StandardHeader {
-    StandardHeader { id: StandardId(0x50), name: name.into(), based_on: "iec".into(), origin: None }
+    StandardHeader {
+        id: StandardId(0x50),
+        name: ecad_model::style::StyleName::new(name).unwrap(),
+        based_on: ecad_model::style::BasedOn::Iec,
+        origin: None,
+    }
 }
 
 fn rec(name: &str, fields: &[(&str, &str)]) -> StyleRecord {
-    StyleRecord { name: name.into(), fields: fields.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(), body: None }
+    // A text style's fields, as a file holds them (numbers as numbers).
+    let body: serde_json::Map<String, serde_json::Value> =
+        fields.iter().map(|(k, v)| (k.to_string(), v.parse::<f64>().map_or_else(|_| serde_json::json!(v), |x| serde_json::json!(x)))).collect();
+    StyleRecord::new(name, ecad_model::style::StyleBody::Text(serde_json::from_value(serde_json::Value::Object(body)).unwrap()))
 }
 
 fn tag() -> StyleRef {
@@ -223,12 +231,9 @@ fn style_records_merge_as_units() {
     let mut m = t.clone();
     m.commit(Author::User, "merge", plan.ops).unwrap();
     let d = m.document();
+    assert_eq!(d.styles.get(&ecad_model::StyleCatalogue::Text).and_then(|x| x.get(&big)).and_then(|r| r.body.entry("height")).as_deref(), Some("7"));
     assert_eq!(
-        d.styles.get(&ecad_model::StyleCatalogue::Text).and_then(|x| x.get(&big)).and_then(|r| r.fields.get("height")).map(String::as_str),
-        Some("7")
-    );
-    assert_eq!(
-        d.styles.get(&ecad_model::StyleCatalogue::Text).and_then(|x| x.get(&tag())).and_then(|r| r.fields.get("colour")).map(String::as_str),
+        d.styles.get(&ecad_model::StyleCatalogue::Text).and_then(|x| x.get(&tag())).and_then(|r| r.body.entry("colour")).as_deref(),
         Some("BU")
     );
     let values = &d.standard.as_ref().unwrap().values;

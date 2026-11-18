@@ -29,10 +29,14 @@ fn setprop_on_several_components_walks_the_single_component_rules() {
     let (conns, strip) = fixture(&mut h);
     let label_key = "term_label.1.1";
     let long_label = "L".repeat(30);
+    // Design 072 §3: a pinned start is a PLC module's field.
+    h.run("place", json!({"symbol": "plccpu", "at": [400, 40]})).unwrap();
+    let cards: Vec<DeviceId> =
+        [440.0, 480.0].iter().map(|x| id::<DeviceId>(&h.run("place", json!({"symbol": "plcdi", "at": [*x, 40.0]})).unwrap(), "component")).collect();
     // (components, key, refused value, accepted value, stored value)
     let cases: Vec<(Vec<DeviceId>, &str, &str, &str, &str)> = vec![
         (conns.clone(), "pins", "abc", " 6 ", "6"),
-        (conns.clone(), "plc.addr.start", "x1", "12", "12"),
+        (cards, "plc.addr.start", "x1", "12", "12"),
         (vec![strip], "terminal.level.separator", "too-long", ":", ":"),
         (vec![strip], label_key, &long_label, "Top", "Top"),
     ];
@@ -47,7 +51,7 @@ fn setprop_on_several_components_walks_the_single_component_rules() {
         h.run("setprop", json!({"devices": many, "key": key, "value": good})).unwrap();
         let d = h.doc();
         for c in &cs {
-            assert_eq!(d.devices[c].value(key).as_deref(), Some(stored), "{key} on {}", c.hex());
+            assert_eq!(crate::common::plc_value(&d, *c, key).as_deref(), Some(stored), "{key} on {}", c.hex());
         }
     }
 }
@@ -147,7 +151,6 @@ const KINDS_AT_060: &[(&str, &str, Severity)] = &[
     ("category-potential-twice", "Two wire categories are the default for one potential", Severity::Warning),
     ("wire-allowance", "Wire length not set (set an allowance in Standards)", Severity::Info),
     ("page-type-unknown", "Page type not found; drawn as its usual type", Severity::Warning),
-    ("page-type-field", "Page type value not read; its usual value is used", Severity::Warning),
     ("folder-start-unknown", "Folder start number not read", Severity::Info),
     ("folder-runs-overlap", "A folder's page numbers run into another folder's", Severity::Warning),
     ("cover-legend-cut", "The cover's symbol legend does not show every symbol", Severity::Info),
@@ -198,7 +201,8 @@ fn every_check_kind_is_in_the_table_once_and_keeps_its_words() {
         let k = Kind::parse(name).unwrap_or_else(|| panic!("kind {name} is gone: persisted names never change"));
         assert_eq!((k.words(), k.severity()), (*words, *severity), "{name}");
     }
-    assert_eq!(KINDS_AT_060.len(), 110);
+    // Design 072 §8: `page-type-field` went (a malformed page type value does not read).
+    assert_eq!(KINDS_AT_060.len(), 109);
 }
 
 /// Brief 060 (R7): each whole-project check source keeps its rows under a key of its own.

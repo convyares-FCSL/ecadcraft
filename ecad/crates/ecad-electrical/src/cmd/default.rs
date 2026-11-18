@@ -78,6 +78,12 @@ pub fn stored_text(entry: &Entry, typed: &str) -> Result<String, CmdError> {
         defaults::Value::Length(x) | defaults::Value::Number(x) => format!("{x}"),
         defaults::Value::Choice(w) => w.to_string(),
         defaults::Value::Flag(b) => ecad_model::words::flag_word(b).to_string(),
+        defaults::Value::Size(s) => s.to_string(),
+        defaults::Value::Colours(c) => c.to_string(),
+        defaults::Value::Colour(c) => c.to_string(),
+        defaults::Value::Sheet(s) => s.text(),
+        defaults::Value::Margins(m) => ecad_model::sheet::margins_text(&m),
+        defaults::Value::CoreColours(c) => c.to_string(),
         defaults::Value::Text(t) => t.trim().to_string(),
         defaults::Value::OwnStyle(id) => ecad_model::StyleRef::Own(id).text(),
     })

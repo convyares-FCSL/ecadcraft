@@ -19,7 +19,29 @@ fn hex(v: &Value, key: &str) -> String {
 }
 
 fn sets_key(ops: &[Op], key: &str) -> bool {
-    ops.iter().any(|o| matches!(o, Op::SetProperty { key: k, .. } if k == key))
+    // Design 072 §3: a module's station and slot are fields, set on the device it creates.
+    let has = |d: &ecad_model::Device| {
+        let ecad_model::DeviceType::PlcModule(m) = &d.device_type else { return false };
+        match key {
+            "plc.rack" => m.rack.is_some(),
+            "plc.slot" => m.slot.is_some(),
+            _ => key
+                .strip_prefix("plc.ch.")
+                .and_then(|r| r.split_once('.'))
+                .and_then(|(i, what)| Some((m.channel(i.parse().ok()?)?, what)))
+                .is_some_and(|(ch, what)| match what {
+                    "text" => ch.text.is_some(),
+                    "address" => ch.address.is_some(),
+                    "tag" => ch.tag.is_some(),
+                    _ => ch.safe.is_some(),
+                }),
+        }
+    };
+    ops.iter().any(|o| match o {
+        Op::SetProperty { key: k, .. } => k == key,
+        Op::CreateDevice { device, .. } | Op::ModifyDevice { after: device, .. } => has(device),
+        _ => false,
+    })
 }
 
 const KINDS_A: [&str; 4] = ["slot-twice", "rack-missing", "slot-range", "unracked"];
@@ -110,8 +132,9 @@ fn writes_b(c: &mut Client, ids: &Ids) {
         assert_one_by_agent(c, n, what);
     }
     let n = c.log().len();
-    c.exec("setdefault", json!({"key": "plc.address.style", "level": "object", "component": rack, "value": "slot"}));
-    assert_one_by_agent(c, n, "setdefault plc.address.style");
+    // Design 072 §3: the station's own address style is its field.
+    c.exec("setprop", json!({"component": rack, "key": "plc.address.style", "value": "slot"}));
+    assert_one_by_agent(c, n, "setprop plc.address.style");
 }
 
 /// 045a AC 7: the a-writes by the agent; reopened with writes off they are refused, and
@@ -251,5 +274,6 @@ fn fp1_merge_preview_names_racks_by_tag() {
     c.exec("merge", json!({"from": "Option R", "choices": {id: "branch"}}));
     let d = c.doc();
     let cid = ecad_model::DeviceId::parse(&card).unwrap();
-    assert_eq!(d.devices[&cid].properties.get("plc.rack").map(String::as_str), Some(a20.as_str()));
+    let ecad_model::DeviceType::PlcModule(m) = &d.devices[&cid].device_type else { panic!("a module") };
+    assert_eq!(m.rack.map(|r| r.hex()), Some(a20.clone()));
 }

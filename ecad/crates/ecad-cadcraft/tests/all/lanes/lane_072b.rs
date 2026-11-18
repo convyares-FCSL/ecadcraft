@@ -22,11 +22,14 @@ fn predicates_say(doc: &Document, c: DeviceId) -> Option<DeviceGroup> {
     if connectors::is_connector(doc, c) {
         return Some(DeviceGroup::Connector);
     }
-    if plc::rack::is_rack(doc, c) {
-        return Some(DeviceGroup::PlcRack);
-    }
-    if plc::rack::body_type(doc, c).is_some() {
-        return Some(DeviceGroup::PlcModule);
+    // Lane C (design 072 §3) removed the PLC predicates; the oracle reads the card body drawn.
+    let body = doc
+        .representations_of(ecad_model::Subject::Device(c))
+        .find_map(|(_, r)| ecad_cadcraft::devices::rep_starter(doc, r).and_then(plc::rack::CardType::of_symbol));
+    match body {
+        Some(t) if t.is_rack() => return Some(DeviceGroup::PlcRack),
+        Some(_) => return Some(DeviceGroup::PlcModule),
+        None => {}
     }
     if continuations::is_continuation(doc, c) || locations::is_box(doc, c) || bom::is_item(doc, c) {
         return Some(DeviceGroup::General);
