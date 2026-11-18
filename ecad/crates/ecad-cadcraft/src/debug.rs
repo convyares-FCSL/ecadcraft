@@ -1183,7 +1183,7 @@ fn tag(p: &ecad_model::Properties) -> Option<String> {
 
 fn subject_label(doc: &Document, s: Subject) -> String {
     let t = match s {
-        Subject::Device(c) => doc.devices.get(&c).and_then(|x| tag(&x.properties)),
+        Subject::Device(c) => doc.devices.get(&c).and_then(|x| x.tag().map(str::to_string)),
         Subject::Wire(c) => doc.wires.get(&c).and_then(|x| x.number_text()).map(str::to_string),
         Subject::Cable(c) => doc.cables.get(&c).and_then(|x| tag(&x.properties)),
     };
@@ -1215,7 +1215,7 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
         }
         ObjectId::Cable(c) => subject_label(doc, Subject::Cable(c)),
         ObjectId::Terminal(i) => doc.terminals.get(&i).map_or_else(String::new, |t| {
-            let name = t.label.clone().or_else(|| t.key.clone()).unwrap_or_else(|| i.short());
+            let name = t.label.clone().or_else(|| t.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| i.short());
             format!("{}:{name}", subject_label(doc, Subject::Device(t.component)))
         }),
         ObjectId::Representation(i) => doc.representations.get(&i).map_or_else(String::new, |r| {

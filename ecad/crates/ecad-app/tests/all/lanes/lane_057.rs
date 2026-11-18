@@ -52,8 +52,8 @@ fn rated(h: &mut H, dir: &std::path::Path) -> (ecad_model::WireId, ecad_model::C
     h.state_mut().open_project(&path).unwrap();
     h.run_steps(3);
     let d = doc(h);
-    let q01 = d.devices.iter().find(|(_, c)| c.properties.get("tag").is_some_and(|t| t.trim_start_matches('-') == "Q01")).map(|(id, _)| *id).unwrap();
-    let tag = d.devices[&q01].properties["tag"].clone();
+    let q01 = d.devices.iter().find(|(_, c)| c.tag().is_some_and(|t| t.trim_start_matches('-') == "Q01")).map(|(id, _)| *id).unwrap();
+    let tag = d.devices[&q01].tag().unwrap().to_string();
     // The L wire leaving Q01:2 (30, 110) downwards.
     let wire = d
         .wires

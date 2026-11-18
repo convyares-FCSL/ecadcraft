@@ -78,7 +78,7 @@ fn every_op_answers_in_shape_on_the_rich_fixture() {
         }),
         (json!({"op": "devices", "detail": true, "q": "-x1"}), |o| {
             assert_eq!(o["total"], 1);
-            assert_eq!(o["rows"][0]["properties"]["tag"], "-X1");
+            assert_eq!(o["rows"][0]["tag"], "-X1");
         }),
         (json!({"op": "nets"}), |o| {
             assert_eq!(o["total"], 3);

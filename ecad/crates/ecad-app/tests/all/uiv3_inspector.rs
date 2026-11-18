@@ -56,7 +56,7 @@ fn rand_suffix() -> u128 {
 /// The demo's -K01 coil (page 2).
 fn coil(h: &mut H) -> RepresentationId {
     let d = doc(h);
-    let k1 = d.devices.iter().find(|(_, c)| c.properties.get("tag").is_some_and(|t| t.ends_with("K01"))).map(|(id, _)| *id).expect("-K01");
+    let k1 = d.devices.iter().find(|(_, c)| c.tag().is_some_and(|t| t.ends_with("K01"))).map(|(id, _)| *id).expect("-K01");
     d.representations_of(Subject::Device(k1))
         .find(|(_, r)| ecad_cadcraft::devices::rep_starter(&d, r).is_some_and(|s| s.key == ecad_cadcraft::symbols::StarterKey::Coil))
         .map(|(id, _)| id)

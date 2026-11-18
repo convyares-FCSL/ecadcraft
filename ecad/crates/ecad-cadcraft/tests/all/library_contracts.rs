@@ -41,7 +41,7 @@ fn setprop(h: &mut H, c: DeviceId, key: &str, value: Value) -> Result<Value, Str
 }
 
 fn prop(h: &mut H, c: DeviceId, key: &str) -> Option<String> {
-    h.doc().devices[&c].properties.get(key).cloned()
+    h.doc().devices[&c].value(key)
 }
 
 fn embeds(ops: &[Op]) -> usize {

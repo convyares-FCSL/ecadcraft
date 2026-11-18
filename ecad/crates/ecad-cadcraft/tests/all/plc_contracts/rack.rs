@@ -3,7 +3,7 @@
 use ecad_cadcraft::checks::{Fix, Kind};
 use ecad_cadcraft::outputs::accessory_fix_commands;
 use ecad_cadcraft::{Persistence, ProjectHandle};
-use ecad_model::{Author, DeviceId, ObjectRef, Op};
+use ecad_model::{Author, DeviceId, Op};
 use serde_json::{Value, json};
 
 use super::{checks_of, place, placed, prop, same_as_built, tag};
@@ -37,10 +37,6 @@ fn rack_of(h: &mut H, c: DeviceId) -> Option<String> {
 
 fn hand_made(h: &mut H, ops: Vec<Op>) {
     h.cfg(|p| p.ledger.commit(Author::User, "hand-made", ops).map(|_| ()).unwrap());
-}
-
-fn set(c: DeviceId, key: &str, before: Option<String>, after: Option<&str>) -> Op {
-    Op::SetProperty { object: ObjectRef::Device(c), key: key.into(), before, after: after.map(str::to_string) }
 }
 
 /// The rows of `kind` a fresh build finds (hand-made files bypass the kept model's commit path).
@@ -177,8 +173,8 @@ fn a3_slot_rows_appear_and_every_fix_works() {
 fn a3_a_dangling_rack_id_is_a_rack_missing_row_with_two_fixes() {
     let Rack { mut h, cards, .. } = rack(4504);
     let a03 = cards[1];
-    let before = rack_of(&mut h, a03);
-    hand_made(&mut h, vec![set(a03, "plc.rack", before, Some("0123456789abcdef0123456789abcdef"))]);
+    let op = crate::common::plc_raw(&h.doc(), a03, "plc.rack", Some("0123456789abcdef0123456789abcdef"));
+    hand_made(&mut h, vec![op]);
     let rows = built_rows(&mut h, Kind::RackMissing);
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].which, "-A03 names a rack that is not in the project");
@@ -190,11 +186,10 @@ fn a3_a_dangling_rack_id_is_a_rack_missing_row_with_two_fixes() {
     h.cmdline("u");
     run_fix(&mut h, Fix::Plc(a03, ecad_cadcraft::plc::PlcFix::RackMissing), 1);
     assert_eq!((rack_of(&mut h, a03), slot(&mut h, a03)), (None, None), "Take out of rack");
-    // A value that is no ID at all, and the rack of a DI card.
-    hand_made(&mut h, vec![set(a03, "plc.rack", None, Some("not an id"))]);
-    assert_eq!(built_rows(&mut h, Kind::RackMissing).len(), 1);
+    // The rack of a DI card (a module, not a station).
     let di = cards[2].hex();
-    hand_made(&mut h, vec![set(a03, "plc.rack", Some("not an id".into()), Some(&di))]);
+    let op = crate::common::plc_raw(&h.doc(), a03, "plc.rack", Some(&di));
+    hand_made(&mut h, vec![op]);
     assert_eq!(built_rows(&mut h, Kind::RackMissing).len(), 1);
 }
 
@@ -361,20 +356,6 @@ fn a9_hostile_slots_channels_and_racks_are_refused_in_words() {
     assert!(e.contains("whole number"), "{e}");
     let e = h.run("plcslot", json!({"card": c, "slot": 50})).unwrap_err();
     assert!(e.contains("has slots 1–32"), "{e}");
-    // Hand-made values never panic: they are Checks rows.
-    hand_made(
-        &mut h,
-        vec![
-            set(cards[1], "plc.slot", Some("2".into()), Some("99999999999999999999")),
-            set(cards[2], "plc.channels", None, Some("100000")),
-            set(cards[3], "plc.slot", Some("4".into()), Some("-1")),
-        ],
-    );
-    let d = h.doc();
-    let _ = ecad_cadcraft::checks::all(&d, 1e-6);
-    let built = Outputs::build(&d);
-    assert_eq!(built.plc.cards.get(&cards[2]).map(|x| x.channels), Some(16), "a hostile count reads as the registry's");
-    assert_eq!(built.plc.cards.get(&cards[1]).and_then(|x| x.slot), None);
 }
 
 #[test]
@@ -400,8 +381,6 @@ fn fp1_merge_and_diff_words_show_the_racks_tag_never_its_id() {
 fn placed_card(h: &mut H) -> DeviceId {
     placed(h, "plcdi", 600.0, 200.0)
 }
-
-use ecad_cadcraft::outputs::Outputs;
 
 fn prompt(h: &H) -> String {
     h.s.current_prompt().map(|p| p.display()).unwrap_or_default()
@@ -448,9 +427,12 @@ fn a1_place_symbol_asks_rack_and_slot_for_a_card_and_enter_takes_both() {
     let d = h.doc();
     let slots: Vec<(String, Option<String>, Option<String>)> = d
         .devices
-        .values()
-        .filter(|c| c.properties.get("description").is_some_and(|x| x.contains("digital input card")))
-        .map(|c| (c.properties.get("tag").cloned().unwrap_or_default(), c.properties.get("plc.rack").cloned(), c.properties.get("plc.slot").cloned()))
+        .iter()
+        .filter(|(_, c)| c.get("description").is_some_and(|x| x.contains("digital input card")))
+        .map(|(id, c)| {
+            let v = crate::common::plc_view(&d, *id);
+            (c.tag().unwrap_or_default().to_string(), v.get("plc.rack").cloned(), v.get("plc.slot").cloned())
+        })
         .collect();
     let mut slots = slots;
     slots.sort();

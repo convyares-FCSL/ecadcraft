@@ -121,7 +121,9 @@ pub fn devices_touched(doc: &Document, ops: &[Op]) -> DeviceTouch {
             crate::title_block::Reach::NotFrame | crate::title_block::Reach::Unchanged => {}
         }
         match op {
-            Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => component(&Subject::Device(*id)),
+            Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::ModifyDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
+                component(&Subject::Device(*id))
+            }
             Op::SetProperty { object: ObjectRef::Device(c), .. } => component(&Subject::Device(*c)),
             Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => component(&rep.subject),
             Op::ModifyRepresentation { before, after, .. } => {
@@ -184,7 +186,7 @@ pub fn device_entry(doc: &Document, c: DeviceId) -> Option<DeviceEntry> {
     if comp.properties.contains_key(ecad_model::connectivity::KIND) {
         return None;
     }
-    let prefix = match comp.properties.get(ecad_model::tag::TAG_KEY) {
+    let prefix = match comp.tag() {
         Some(t) => Some(group_and_number(t).0),
         None if doc.representations_of(Subject::Device(c)).next().is_none() => return None,
         None => None,
@@ -275,7 +277,7 @@ pub fn device_entries(doc: &Document, filter: &str) -> Vec<DeviceEntry> {
     let untagged = doc
         .devices
         .iter()
-        .filter(|(_, c)| !c.properties.contains_key(ecad_model::tag::TAG_KEY))
+        .filter(|(_, c)| c.tag.is_none())
         // Junctions and continuations are not devices (design 022 §3.1).
         .filter(|(_, c)| !c.properties.contains_key(ecad_model::connectivity::KIND))
         .map(|(id, _)| *id)
@@ -300,7 +302,7 @@ pub fn group_and_number(t: &str) -> (String, u64) {
 }
 
 fn entry(doc: &Document, c: DeviceId, prefix: Option<String>, book: &Book) -> DeviceEntry {
-    let props = doc.devices.get(&c).map(|x| &x.properties);
+    let device = doc.devices.get(&c);
     let mut symbols: Vec<(usize, Option<u32>, SymbolEntry)> = doc
         .representations_of(Subject::Device(c))
         .map(|(rid, r)| {
@@ -324,9 +326,9 @@ fn entry(doc: &Document, c: DeviceId, prefix: Option<String>, book: &Book) -> De
         tag: devices::tag_of(doc, c).map(str::to_string),
         group: prefix.map_or_else(|| NO_TAG.to_string(), |p| format!("-{p}")),
         description: devices::description(doc, c),
-        properties: PROPERTIES.iter().map(|(k, _)| props.and_then(|p| p.get(*k).cloned())).collect(),
+        properties: PROPERTIES.iter().map(|(k, _)| device.and_then(|d| d.value(k))).collect(),
         symbols: symbols.into_iter().map(|(_, _, s)| s).collect(),
-        fixed: props.is_some_and(ecad_model::numbering::is_fixed),
+        fixed: device.is_some_and(ecad_model::Device::is_fixed),
     }
 }
 

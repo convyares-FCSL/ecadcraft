@@ -243,7 +243,7 @@ fn set(v: &[&str]) -> BTreeSet<String> {
 }
 
 fn prop(h: &mut H, c: DeviceId, key: &str) -> Option<String> {
-    h.doc().devices.get(&c).and_then(|x| x.properties.get(key).cloned())
+    h.doc().devices.get(&c).and_then(|x| x.value(key))
 }
 
 fn tag(n: usize, prefix: &str) -> String {
@@ -335,7 +335,7 @@ fn a1_every_new_symbol_is_in_the_catalogue_as_designed() {
         assert!(s.name.to_lowercase().contains(e.word), "{}: name {:?} should contain {:?}", e.key, s.name, e.word);
         let d = s.definition().unwrap_or_else(|err| panic!("{}: {err}", e.key));
         // Points: keys in definition order at the design's positions, on the grid.
-        let got: Vec<(String, f64, f64)> = d.terminals.iter().map(|t| (t.key.clone(), t.at.x, t.at.y)).collect();
+        let got: Vec<(String, f64, f64)> = d.terminals.iter().map(|t| (t.key.to_string(), t.at.x, t.at.y)).collect();
         assert_eq!(got.len(), e.points.len(), "{}: points {got:?}", e.key);
         for ((gk, gx, gy), (wk, wx, wy)) in got.iter().zip(&e.points) {
             assert_eq!(gk, wk, "{}: point order {got:?}", e.key);
@@ -779,8 +779,7 @@ fn j_quiet_spare_points_are_not_flagged() {
 fn k_bom_one_row_per_device() {
     let mut h = fixture_all(0x7034_000e);
     let d = h.doc();
-    let devices: BTreeSet<DeviceId> =
-        d.devices.iter().filter(|(_, c)| c.properties.get("tag").is_some_and(|t| !t.is_empty())).map(|(id, _)| *id).collect();
+    let devices: BTreeSet<DeviceId> = d.devices.iter().filter(|(_, c)| c.tag().is_some_and(|t| !t.is_empty())).map(|(id, _)| *id).collect();
     let bom = h.run("bom", json!({"limit": 5000})).unwrap();
     let rows = bom["rows"].as_array().unwrap().clone();
     let mut seen: BTreeMap<String, usize> = BTreeMap::new();
@@ -795,12 +794,7 @@ fn k_bom_one_row_per_device() {
         }
     }
     for c in &devices {
-        assert_eq!(
-            seen.get(&c.hex()).copied(),
-            Some(1),
-            "{} on one BOM row: {rows:?}",
-            d.devices[c].properties.get("tag").cloned().unwrap_or_default()
-        );
+        assert_eq!(seen.get(&c.hex()).copied(), Some(1), "{} on one BOM row: {rows:?}", d.devices[c].tag().map(str::to_string).unwrap_or_default());
     }
     assert_eq!(seen.len(), devices.len(), "nothing but devices on the BOM: {seen:?}");
     let qty: u64 = rows.iter().map(|r| r["qty"].as_u64().unwrap_or(0)).sum();
@@ -958,7 +952,8 @@ fn o_hostile_input_never_panics() {
 
 /// §13 check 12: no content hash of an existing starter changes unless its definition does. The
 /// hashes were the ones the starters had on `daeb0652`; design 072 (F15) added each starter's
-/// declared `device_type` to its definition, and they are re-pinned to that.
+/// declared `device_type` to its definition, and they are re-pinned to that; lane C (F41) gave `di` and
+/// `do` their module function.
 #[test]
 fn p_old_starters_keep_their_content_hash() {
     const PINNED: &[(&str, &str)] = &[
@@ -979,8 +974,8 @@ fn p_old_starters_keep_their_content_hash() {
         ("trafo", "b93505f2eab3aad42fbc8c2f647632effceeda5a6e1e06e634d3f53467dd92fd"),
         ("terminal", "c5c7b47bbddcd35973ad00f1dd8906db9602290ce0b955f0fd7ee1c2bf403a1f"),
         ("terminalpe", "d38f6429abbaf0e8e110505625b467b6531504a762e11205542230148f9f1c00"),
-        ("di", "418a6aab8d5818614ba43098c08872d64592926ca89ab42557f185476425f06a"),
-        ("do", "a7d39c8d471f7b36a469fff10c05eaa40ee4f93e921349a265a23e34cda6461f"),
+        ("di", "92732e642b7d5109705f643341f4d9ee02bb3729275a570182e63b6d126bf7b9"),
+        ("do", "caeab16ca1a100e4c5b4a49a878ebf666a634ef6365db7111ab237ba1e936307"),
         ("junction", "8a6e36eab66ded66ec4ef470682d2d5cecf536a0d1fe6c148c632154232a4868"),
         ("continuation", "7289a1f63b563b3f0ceb6959fd7fb34763daf4c1c6e56bb2366e01129ae7afaf"),
     ];

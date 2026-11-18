@@ -151,7 +151,8 @@ pub fn plan_delete(doc: &Document, doomed: Doomed) -> Result<Deleted, CmdError> 
                 ops.push(Op::RemoveTerminal { id: t, terminal: term.clone() });
             }
             // Brief 045 (design 045 §2.2, FP1): a rack's cards leave it in the same transaction.
-            let (released_ops, released) = if crate::plc::rack::is_rack(doc, c) { crate::plc::rack::release_cards(doc, c) } else { (Vec::new(), 0) };
+            let (released_ops, released) =
+                if crate::plc::edit::station_of(doc, c).is_some() { crate::plc::rack::release_cards(doc, c) } else { (Vec::new(), 0) };
             ops.extend(released_ops);
             ops.push(Op::DeleteDevice { id: c, device: component.clone() });
             let message = (released > 0).then(|| format!("Deleted {}; {}", devices::tag_words(doc, c), crate::plc::rack::released_words(released)));

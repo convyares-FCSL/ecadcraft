@@ -6,7 +6,10 @@
 
 use std::collections::BTreeMap;
 
-use ecad_model::{DeviceId, Document, IdAllocator, ItemKind, Noun, ObjectRef, Op, Representation, RepresentationId, Subject, Terminal, TerminalId};
+use ecad_model::{
+    DeviceId, Document, IdAllocator, ItemKind, LevelIo, Noun, ObjectRef, Op, PointKey, Representation, RepresentationId, Subject, Terminal,
+    TerminalId,
+};
 
 use crate::error::CmdError;
 use crate::strips::is_fuse_device;
@@ -290,12 +293,18 @@ pub fn plan_toposition(
     let mut chooser = tt::Chooser::new(doc, Some(strip));
     let pos = chooser.choose(doc, Some(strip), ty, Some(1), position)?;
     let (tin, tout): (TerminalId, TerminalId) = (ids.fresh(), ids.fresh());
-    ops.push(Op::AddTerminal { id: tin, terminal: Terminal { component: strip, label: Some(pos.clone()), key: Some(".1i".into()) } });
-    ops.push(Op::AddTerminal { id: tout, terminal: Terminal { component: strip, label: Some(pos.clone()), key: Some(".1o".into()) } });
+    ops.push(Op::AddTerminal {
+        id: tin,
+        terminal: Terminal { component: strip, label: Some(pos.clone()), key: Some(PointKey::Level { level: 1, io: Some(LevelIo::In) }) },
+    });
+    ops.push(Op::AddTerminal {
+        id: tout,
+        terminal: Terminal { component: strip, label: Some(pos.clone()), key: Some(PointKey::Level { level: 1, io: Some(LevelIo::Out) }) },
+    });
     // The device's points by key: `1` → in, `2` → out.
     let old: Vec<(TerminalId, Terminal)> = doc.terminals_of(device).map(|(t, x)| (t, x.clone())).collect();
     for (t, x) in &old {
-        let to = match x.key.as_deref() {
+        let to = match x.key.as_ref().and_then(PointKey::as_def) {
             Some("1") => tin,
             Some("2") => tout,
             _ => return Err(CmdError::refused(format!("{tag} has a connection point that is not 1 or 2; move its wires first."))),
@@ -313,7 +322,7 @@ pub fn plan_toposition(
     let d = starter.definition()?;
     let mut cps = BTreeMap::new();
     for td in &d.terminals {
-        cps.insert(if td.key.ends_with('i') { tin } else { tout }, td.at);
+        cps.insert(if matches!(td.key.level(), Some((_, Some(LevelIo::In)))) { tin } else { tout }, td.at);
     }
     let new_rep: RepresentationId = ids.fresh();
     ops.push(Op::LinkRepresentation {
@@ -339,10 +348,16 @@ pub fn plan_toposition(
     let keep = ["rating"];
     // Everything else goes with the device and is listed (review M1: no silent loss), its own
     // text placements included.
-    let lost: Vec<String> = props.keys().filter(|k| !keep.contains(&k.as_str())).cloned().collect();
+    let mut lost: Vec<String> = props.keys().filter(|k| !keep.contains(&k.as_str())).cloned().collect();
+    // Design 072 §2.1: the tag is a field of the device, and goes with it too.
+    if comp.tag.is_some() {
+        lost.push(ecad_model::tag::TAG_KEY.into());
+    }
+    lost.extend(ecad_model::TextField::ALL.into_iter().filter(|f| comp.text(*f).is_some()).map(|f| f.key().to_string()));
+    lost.sort();
     let strip_part = doc.devices.get(&strip).and_then(|x| x.properties.get(&crate::strips::type_key(ty, "part_number"))).cloned();
-    let note = match (props.get("part_number"), &strip_part) {
-        (Some(a), Some(b)) if a != b => {
+    let note = match (comp.part_number.as_ref().map(|t| t.to_string()), &strip_part) {
+        (Some(a), Some(b)) if a != *b => {
             Some(format!("{tag}'s part {a} differs from {stag}'s fuse terminal part {b}; set {stag}'s part if {a} is right."))
         }
         _ => None,
