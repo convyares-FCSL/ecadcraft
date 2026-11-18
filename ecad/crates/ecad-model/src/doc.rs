@@ -385,6 +385,10 @@ impl Device {
             crate::book::FUNCTION_KEY => self.function.map(crate::id::FunctionId::hex),
             crate::book::LOCATION_FIXED_KEY => self.location_fixed.then(|| crate::words::flag_word(true).to_string()),
             crate::book::FUNCTION_FIXED_KEY => self.function_fixed.then(|| crate::words::flag_word(true).to_string()),
+            _ if crate::device::Connector::is_key(key) => match &self.device_type {
+                DeviceType::Connector(x) => x.value(key),
+                _ => None,
+            },
             _ => self.get(key).map(str::to_string),
         }
     }

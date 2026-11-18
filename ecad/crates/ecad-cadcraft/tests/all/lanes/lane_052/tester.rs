@@ -15,7 +15,7 @@ use ecad_cadcraft::checks::{self, Kind};
 use ecad_cadcraft::designations::{self, Aspect};
 use ecad_cadcraft::outputs::{Group, Outputs};
 use ecad_cadcraft::{Persistence, ProjectHandle, generated, locations};
-use ecad_model::{Author, DeviceId, Document, ObjectRef, Op, PageId};
+use ecad_model::{Author, DeviceId, Document, Op, PageId};
 use serde_json::{Value, json};
 
 struct TempDir(PathBuf);
@@ -125,8 +125,6 @@ fn old_project(dir: &TempDir) -> (H, DeviceId, DeviceId, DeviceId, PageId, Docum
         let before = d.representations[&no_rep].clone();
         let mut after = before.clone();
         after.role = "main".into();
-        let set =
-            |o: ObjectRef, key: &str, before: Option<String>, v: &str| Op::SetProperty { object: o, key: key.into(), before, after: Some(v.into()) };
         // Design 072 §6.3: a device stores list ids; these name no entry (a removed one).
         let gone = |d: &ecad_model::Device, l: u128, f: Option<u128>| ecad_model::Device {
             location: Some(ecad_model::LocationId(l)),
@@ -135,7 +133,6 @@ fn old_project(dir: &TempDir) -> (H, DeviceId, DeviceId, DeviceId, PageId, Docum
         };
         let ops = vec![
             Op::ModifyDevice { id: k, before: d.devices[&k].clone(), after: gone(&d.devices[&k], OLD_CP1, Some(OLD_F1)) },
-            set(ObjectRef::Device(x), "half.s.location", None, "+CP2"),
             Op::ModifyDevice { id: bx, before: d.devices[&bx].clone(), after: gone(&d.devices[&bx], OLD_FIELD, None) },
             Op::ModifyRepresentation { id: no_rep, before, after },
         ];
@@ -162,7 +159,7 @@ fn an_old_project_opens_unchanged_and_flags_its_old_codes() {
     // The retired half key is not read (FP4, Q9), and the property is still in the file.
     let rows = ecad_cadcraft::connectors::half_rows(&d, x, &mut locations::BoxCache::default());
     assert!(rows.iter().all(|r| r.location.value.is_none()), "half.s.location is not read");
-    assert_eq!(d.devices[&x].properties.get("half.s.location").map(String::as_str), Some("+CP2"));
+    assert!(d.devices[&x].properties.keys().all(|k| !k.starts_with("half.")), "a half's keys are never in the bag");
     // Checks: the device's two values and the box.
     let rows = checks::all(&d, 1e-6);
     let missing: Vec<&str> = rows.iter().filter(|r| r.kind == Kind::DesignationMissing).map(|r| r.which.as_str()).collect();

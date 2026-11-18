@@ -7,9 +7,9 @@
 use ecad_model::units::{Degrees, Radians};
 use std::collections::BTreeSet;
 
-use ecad_model::{DeviceId, Document, IdAllocator, Ledger, Noun, ObjectRef, Op, PageId, Placement, Pt, Style, Terminal, TerminalId, WireId};
+use ecad_model::{DeviceId, Document, IdAllocator, Ledger, Noun, Op, PageId, Placement, Pt, Style, Terminal, TerminalId, WireId};
 
-use crate::connectors::{self as cn, Family, Names, Shown};
+use crate::connectors::{self as cn, Family, FamilyRules, Names, Shown};
 use crate::defaults::{self, Scope};
 use crate::devices::TagHigh;
 use crate::error::CmdError;
@@ -105,8 +105,8 @@ pub fn halves(doc: &Document, halves: Option<&str>) -> Result<Side, CmdError> {
 /// A word that names no family.
 pub fn family(doc: &Document, family: Option<&str>) -> Result<Family, CmdError> {
     match family {
-        None => Ok(Family::parse(defaults::resolve(doc, &defaults::connectors::MAKER_FAMILY, Scope::project()).word()).unwrap_or(Family::Plain)),
-        Some(w) => Family::parse(w).ok_or(CmdError::input("`family` is plain, dsub, m12, rj45, usba or usbb")),
+        None => Ok(Family::of_typed(defaults::resolve(doc, &defaults::connectors::MAKER_FAMILY, Scope::project()).word()).unwrap_or(Family::Plain)),
+        Some(w) => Family::of_typed(w).ok_or(CmdError::input("`family` is plain, dsub, m12, rj45, usba or usbb")),
     }
 }
 
@@ -631,8 +631,12 @@ pub fn plan_pinlabel(doc: &Document, input: PinlabelInput) -> Result<Pinlabel, C
         && list.contains(&old)
     {
         let after: Vec<String> = list.iter().map(|n| if *n == old { to.clone() } else { n.clone() }).collect();
-        let before = doc.devices.get(&c).and_then(|x| x.properties.get(cn::PIN_NAMES_KEY)).cloned();
-        ops.push(Op::SetProperty { object: ObjectRef::Device(c), key: cn::PIN_NAMES_KEY.into(), before, after: Some(after.join(",")) });
+        let names = cn::typed_names(&after)?;
+        crate::devices::edit_planned(doc, &mut ops, c, |d| {
+            if let ecad_model::DeviceType::Connector(x) = &mut d.device_type {
+                x.pin_names = names;
+            }
+        });
     }
     let label = format!("Rename pin {tag}:{old}");
     Ok(Pinlabel::Renamed { component: c, tag, from: old, to, ops, label })
