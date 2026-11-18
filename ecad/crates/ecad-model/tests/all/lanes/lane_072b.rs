@@ -290,3 +290,54 @@ fn a_protective_device_s_rating_is_typed() {
     }
     l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: d }]).unwrap();
 }
+
+/// Step 3, Switching (design 072 §2.2, "Ratings"): a switching device's operator, control rating
+/// and AC-3 rating are typed fields, shown from them; only a coil or an SSR without them has no
+/// rating; a bad value is refused.
+#[test]
+fn a_switching_device_s_rating_is_typed() {
+    use ecad_model::device::{Control, Operator, OperatorKind, RatingNote, Switching};
+    use ecad_model::units::{Amps, Current, RatedVoltage, Volts, Watts};
+    let k = Switching {
+        operator: Operator::Coil(Control { voltage: Some(RatedVoltage { volts: Volts(24.0), current: Current::Dc }), power: Some(Watts(3.0)) }),
+        ac3_current: Some(Amps(9.0)),
+        ac3_power: Some(Watts(4000.0)),
+    };
+    let d = Device { device_type: DeviceType::Switching(k), ..Device::default() };
+    let json = serde_json::to_value(&d.device_type).unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!({"switching": {"operator": {"coil": {"voltage": {"volts": 24.0, "current": "dc"}, "power": 3.0}}, "ac3_current": 9.0, "ac3_power": 4000.0}})
+    );
+    assert_eq!(serde_json::from_value::<DeviceType>(json).unwrap(), d.device_type, "round-trips");
+    assert_eq!(d.value("rating").as_deref(), Some("coil 24 V DC, 3 W, AC-3 9 A, 4 kW"));
+    assert!(!d.has_no_rating());
+    for bad in [
+        serde_json::json!({"switching": {}}),
+        serde_json::json!({"switching": {"operator": "foot"}}),
+        serde_json::json!({"switching": {"operator": "manual", "coil_voltage": 24}}),
+        serde_json::json!({"switching": {"operator": {"coil": {"voltage": {"volts": 24.0, "current": "ac/dc"}}}}}),
+    ] {
+        assert!(serde_json::from_value::<DeviceType>(bad.clone()).is_err(), "{bad}");
+    }
+    // An unrated coil has no rating, also with a note; an unrated push button is not warned about.
+    let coil = Device {
+        device_type: DeviceType::Switching(OperatorKind::Coil.empty()),
+        rating_note: Some(RatingNote::new("see datasheet").unwrap()),
+        ..Device::default()
+    };
+    assert!(coil.has_no_rating());
+    assert_eq!(coil.value("rating").as_deref(), Some("see datasheet"));
+    assert!(Device { device_type: DeviceType::Switching(OperatorKind::SolidState.empty()), ..Device::default() }.has_no_rating());
+    let button = Device { device_type: DeviceType::Switching(OperatorKind::Manual.empty()), ..Device::default() };
+    assert!(!button.has_no_rating());
+    assert_eq!(serde_json::to_value(&button.device_type).unwrap(), serde_json::json!({"switching": {"operator": "manual"}}));
+    // The invariant: out of range is refused.
+    let mut ids = IdAllocator::seeded(16);
+    let mut l = Ledger::new(16);
+    let c: DeviceId = ids.fresh();
+    let wild = Switching { ac3_current: Some(Amps(f64::NAN)), ..Switching::default() };
+    let bad = Device { device_type: DeviceType::Switching(wild), ..Device::default() };
+    assert!(l.commit(Author::User, "wild", vec![Op::CreateDevice { id: c, device: bad }]).is_err());
+    l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: d }]).unwrap();
+}

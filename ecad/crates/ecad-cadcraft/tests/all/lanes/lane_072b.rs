@@ -249,3 +249,51 @@ fn a_rating_is_read_into_typed_fields() {
     assert!(h.run("setprop", json!({"component": f.hex(), "key": "rating.9", "value": "4 A"})).is_err());
     assert!(h.run("setprop", json!({"component": f.hex(), "key": "rating", "value": "4 A"})).is_err());
 }
+
+/// Step 3, Switching (design 072 §2.2, "Ratings"): the symbol says what operates the device;
+/// `setprop rating` reads a coil's voltage and power and the AC-3 rating into typed fields; a
+/// voltage without AC or DC, or a current without AC-3, is asked; a manual switch has no coil.
+#[test]
+fn a_switching_rating_is_read_into_typed_fields() {
+    use ecad_model::Op;
+    use ecad_model::device::{DeviceType, OperatorKind};
+    use ecad_model::units::Current;
+    let mut h = H::new(7206);
+    let k: DeviceId = id(&crate::common::place(&mut h, "coil", (100.0, 100.0)), "component");
+    let kind = |h: &mut H, c: DeviceId| match &h.doc().devices[&c].device_type {
+        DeviceType::Switching(s) => Some(s.operator_kind()),
+        _ => None,
+    };
+    assert_eq!(kind(&mut h, k), Some(OperatorKind::Coil));
+    // An unrated coil has the Checks row `no-rating`; a rated one does not.
+    let no_rating = |h: &mut H| h.run("checks", json!({})).unwrap().to_string().contains("no-rating");
+    assert!(no_rating(&mut h));
+    let r = h.run("setprop", json!({"component": k.hex(), "key": "rating", "value": "24VDC AC-3 9A"})).unwrap();
+    assert_eq!(r["message"], json!("Read: coil 24 V DC, AC-3 9 A."), "{r}");
+    assert_eq!(r["value"], json!("coil 24 V DC, AC-3 9 A"));
+    let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());
+    assert!(matches!(ops.as_slice(), [Op::ModifyDevice { .. }]), "{ops:?}");
+    let DeviceType::Switching(s) = &h.doc().devices[&k].device_type else { panic!() };
+    assert_eq!(s.control().and_then(|c| c.voltage).map(|v| (v.volts.0, v.current)), Some((24.0, Current::Dc)));
+    assert_eq!(s.ac3_current.map(|a| a.0), Some(9.0));
+    assert!(h.doc().devices[&k].properties.is_empty());
+    assert!(!no_rating(&mut h));
+    // Ambiguous text is asked, never guessed.
+    let e = h.run("setprop", json!({"component": k.hex(), "key": "rating", "value": "24 V"})).unwrap_err();
+    assert!(e.contains("AC or DC"), "{e}");
+    let e = h.run("setprop", json!({"component": k.hex(), "key": "rating", "value": "9 A"})).unwrap_err();
+    assert!(e.contains("AC-3"), "{e}");
+    // A push button is manual: no coil, and unrated is no warning.
+    let s: DeviceId = id(&crate::common::place(&mut h, "pbno", (200.0, 100.0)), "component");
+    assert_eq!(kind(&mut h, s), Some(OperatorKind::Manual));
+    assert!(!no_rating(&mut h));
+    let e = h.run("setprop", json!({"component": s.hex(), "key": "rating", "value": "24 V DC"})).unwrap_err();
+    assert!(e.contains("manual switch has no coil"), "{e}");
+    let r = h.run("setprop", json!({"component": s.hex(), "key": "rating", "value": "AC-3 25 A"})).unwrap();
+    assert_eq!(r["value"], json!("AC-3 25 A"), "{r}");
+    // An SSR's input.
+    let u: DeviceId = id(&crate::common::place(&mut h, "ssrin", (300.0, 100.0)), "component");
+    assert_eq!(kind(&mut h, u), Some(OperatorKind::SolidState));
+    let r = h.run("setprop", json!({"component": u.hex(), "key": "rating", "value": "24 V DC"})).unwrap();
+    assert_eq!(r["value"], json!("input 24 V DC"), "{r}");
+}

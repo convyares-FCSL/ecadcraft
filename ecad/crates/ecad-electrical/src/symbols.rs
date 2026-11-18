@@ -605,6 +605,18 @@ impl Starter {
             };
             return DeviceType::Protection(kind.empty());
         }
+        // What operates a switching device is its symbol's (design 072 §2.2).
+        if let DeviceType::Switching(_) = t {
+            use ecad_model::device::OperatorKind as O;
+            let kind = if matches!(self.key, K::Ssrin | K::Ssrout) {
+                O::SolidState
+            } else if matches!(self.key, K::Pbno | K::Pbnc | K::Sel | K::Swco) {
+                O::Manual
+            } else {
+                O::Coil
+            };
+            return DeviceType::Switching(kind.empty());
+        }
         // A connector's family is its symbol's (a pin's: plain).
         if let DeviceType::Connector(_) = t {
             return DeviceType::Connector(Box::new(ecad_model::device::Connector::of_family(crate::connectors::family_of(self).unwrap_or_default())));
@@ -2813,17 +2825,17 @@ mod tests {
     #[test]
     fn the_basic_starters_keep_their_content_hashes() {
         let want: &[(&str, &str)] = &[
-            ("coil", "2af1b6d8286ce742810433538c9d705fd4d803259ff4302a4a335b8d791b95b0"),
-            ("no", "531a8952f3ab6faba59b2d92203e50b9a28e3ec6681b851089ad4f8a85bfa2b6"),
-            ("nc", "fb1755ecef8a01cbadc9fa1c00d3b47d6293b2598bf46e9763a108e40ec69e92"),
-            ("power3", "ddbafd55a10cf51b16178c304773cdc02a1cb104c672f708bc75f396cbc54d95"),
+            ("coil", "3f9e9e787649e4971374b769e219331326437cbb0e1c60e47547f7e5a36a04b8"),
+            ("no", "8e7d4d6a20491b33477c1be8bf321038a36d4e57f1bf1121e81056a4e6d2f17d"),
+            ("nc", "38fc0a82138483b26cee9a4ec60197014d9885b3984f6f344c2c2814e98a1389"),
+            ("power3", "a76a83b7635798ea04d852b03e7d0c079aadf5156dccb6fa40f8b699fb90b4c4"),
             ("mcb1", "d9339a17cfac13020ac09867d8356da9f2792728f1c7ef0f196c3776e3140955"),
             ("mcb2", "e9c6ab730790271ae429ab8e9f3b12066bf8ec3172d0502f36efb1bdcd514aaf"),
             ("fuse", "d208fae68200735acbf282e68dbf577de3152319d63ff52a2ad4f0705cc3c374"),
             ("psu", "ffe540113081227903544a5dd6ffd9fe7ff7a87f4b606a6eab35274c91ef87fe"),
-            ("pbno", "de7eb0aad4424b97477e5df51f974ce66c558d7e4457e56ac58d1ac54911f27e"),
-            ("pbnc", "e75283fe7b81d39d8dee2ab724a89ae120dc883a60602629cf0bca9d2ea0c4f6"),
-            ("sel", "1e9c869fcf4da31ff024f9d60f1e06168aa1757f2f2b2d4a66681e0af4ee5600"),
+            ("pbno", "54a6cb04eb6478b224d693bf85cceb231ac06242f72f7a781dfe2c7d643e8ec2"),
+            ("pbnc", "5e0403a445f7a49f5473931d6570baf1dd138341cce9c16324073bb13f613f57"),
+            ("sel", "6e5f96694929a0f5cfadcbd5dc0f6369f31e5a4c6ad5271786974417a8a10619"),
             ("lamp", "43370ffbca5feb202311b0a7f9308659fab76005655b2e016d2b45c2cd6a5df0"),
             ("motor3", "079e25164ab9a2fb0b5f1c5b867d65728ec8f152c5becd62db9cd22c7326f414"),
             ("motor1", "24661cd6e3ad00d4433ce1c31f45107b31e31b8c39730ee9af81d968939af812"),
