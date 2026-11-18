@@ -275,8 +275,6 @@ check_kinds! {
     WireAllowance = "wire-allowance", Info, "Wire length not set (set an allowance in Standards)";
     /// Brief 054 (design 054 §9): a page's `page.type` names no page type.
     PageTypeUnknown = "page-type-unknown", Warning, "Page type not found; drawn as its usual type";
-    /// Brief 054: a page type record holds a value its field does not take.
-    PageTypeField = "page-type-field", Warning, "Page type value not read; its usual value is used";
     /// Brief 054: a `folder.<id>.start` names no folder or is not 1–6 digits.
     FolderStartUnknown = "folder-start-unknown", Info, "Folder start number not read";
     /// Brief 054 (design 054 §4.4): a folder's run of numbers reaches another run's.
@@ -515,7 +513,6 @@ impl Check {
             | Kind::CategoryPotentialTwice
             | Kind::WireAllowance
             | Kind::PageTypeUnknown
-            | Kind::PageTypeField
             | Kind::FolderStartUnknown
             | Kind::FolderRunsOverlap
             | Kind::CoverLegendCut

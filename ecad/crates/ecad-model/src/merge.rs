@@ -991,7 +991,7 @@ fn merge_standard(ctx: &mut Ctx<'_, '_>, m: &mut Document, obj: Obj) {
         _ => None,
     };
     if let Some(target_keeps) = one_sided {
-        let name = a.standard.as_ref().map_or_else(String::new, |x| x.header.name.clone());
+        let name = a.standard.as_ref().map_or_else(String::new, |x| x.header.name.to_string());
         let (on_changed, on_removed) = if target_keeps { (ctx.t(), ctx.s()) } else { (ctx.s(), ctx.t()) };
         let word = |keeps: bool| if keeps { "changed" } else { "removed" };
         let c = Conflict {
@@ -1039,10 +1039,10 @@ pub fn style_words(catalogue: crate::style::StyleCatalogue, id: &StyleRef, recor
         C::Text => "Text style",
         C::Location => "Location box style",
         C::Frame => "Frame style",
-        C::Wire => "Wire category",
+        C::Wire => "Wire type",
         C::Page | C::Cable | C::RatingTable => "Style",
     };
-    match record.map(|r| r.name.as_str()).filter(|n| !n.is_empty()) {
+    match record.and_then(|r| r.name.as_ref()).map(|n| n.as_str()) {
         Some(n) => format!("{kind} \"{n}\""),
         None => format!("{kind} {id}"),
     }
@@ -1065,7 +1065,7 @@ fn merge_style_layer(ctx: &mut Ctx<'_, '_>, layer: StyleLayer, a: &StyleCatalogu
                     let show = |r: Option<&StyleRecord>| match r {
                         None => "removed".to_string(),
                         Some(r) => {
-                            let f: Vec<String> = r.fields.iter().map(|(k, v)| format!("{k} {v}")).collect();
+                            let f: Vec<String> = r.body.entries().iter().map(|(k, v)| format!("{k} {v}")).collect();
                             if f.is_empty() { "no changes".into() } else { f.join(", ") }
                         }
                     };

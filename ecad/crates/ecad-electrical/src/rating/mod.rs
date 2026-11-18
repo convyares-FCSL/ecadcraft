@@ -115,9 +115,12 @@ pub fn check_style(catalogue: ecad_model::StyleCatalogue, r: &ecad_model::style:
     if catalogue != wire::CATALOGUE.catalogue && catalogue != ecad_model::StyleCatalogue::Cable {
         return None;
     }
-    let num = |k: &str| r.fields.get(k).and_then(|v| v.trim().parse::<f64>().ok()).filter(|x| x.is_finite());
-    let at = num("rated_at").unwrap_or(30.0);
-    let max = num("max_temperature").unwrap_or(70.0);
+    let rating = match &r.body {
+        ecad_model::style::StyleBody::Wire(w) => &w.rating,
+        ecad_model::style::StyleBody::Cable(c) => &c.rating,
+        _ => return None,
+    };
+    let (at, max) = (rating.rated_at.map_or(30.0, |c| c.0), rating.max_temperature.map_or(70.0, |c| c.0));
     (at >= max).then(|| format!("Rated at {} \u{b0}C is not below the conductor's {} \u{b0}C.", dataset::fmt_num(at), dataset::fmt_num(max)))
 }
 
@@ -815,27 +818,7 @@ impl Touch {
 
 use crate::checks::{Check, Fix, Kind as CheckKind, Object};
 
-ecad_model::word_enum! {
-    /// A conductor material.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum Material {
-        Cu,
-    }
-}
-ecad_model::word_enum! {
-    /// A conductor class (IEC 60228).
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum ConductorClass {
-        #[strum(serialize = "1")]
-        One,
-        #[strum(serialize = "2")]
-        Two,
-        #[strum(serialize = "5")]
-        Five,
-        #[strum(serialize = "6")]
-        Six,
-    }
-}
+pub use ecad_model::style::wire::{ConductorClass, Material};
 
 /// Whether `k` is one of lane 057's kinds.
 pub fn is_rating_kind(k: CheckKind) -> bool {

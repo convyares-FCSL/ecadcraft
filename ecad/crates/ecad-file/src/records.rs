@@ -8,9 +8,7 @@
 use std::collections::BTreeMap;
 
 use ecad_model as m;
-use ecad_model::{
-    CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, StandardId, TerminalId, TxId, WireId,
-};
+use ecad_model::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, TerminalId, TxId, WireId};
 use serde::{Deserialize, Serialize};
 
 /// A point `[x, y]`.
@@ -878,37 +876,11 @@ pub enum StyleLayer {
     Project,
 }
 
-/// A style record (brief 050a, FP2): its name (left out while empty, as for an override of a
-/// built-in style) and the fields it sets (left out while empty).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct StyleRecord {
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub name: String,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub fields: BTreeMap<String, String>,
-    /// Brief 055 (FP1): a frame's title block, left out while absent.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub body: Option<m::title_block::StyleBody>,
-}
+/// A style record (brief 050a, design 072 §8): the model's strict record, its typed body as is.
+pub type StyleRecord = m::StyleRecord;
 
-/// A standard's header (brief 050a, FP1). `origin` is reserved for 2.1 and left out while absent.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct StandardHeader {
-    pub id: StandardId,
-    pub name: String,
-    pub based_on: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub origin: Option<StandardOrigin>,
-}
-
-/// Where a standard came from (reserved for 2.1).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct StandardOrigin {
-    pub library: LibraryId,
-}
+/// A standard's header (brief 050a, FP1): the model's strict record.
+pub type StandardHeader = m::StandardHeader;
 
 fn layer(l: m::StyleLayer) -> StyleLayer {
     match l {
@@ -921,35 +893,6 @@ fn mlayer(l: StyleLayer) -> m::StyleLayer {
     match l {
         StyleLayer::Standard => m::StyleLayer::Standard,
         StyleLayer::Project => m::StyleLayer::Project,
-    }
-}
-
-impl From<&m::StyleRecord> for StyleRecord {
-    fn from(r: &m::StyleRecord) -> Self {
-        StyleRecord { name: r.name.clone(), fields: r.fields.clone(), body: r.body.clone() }
-    }
-}
-
-impl From<StyleRecord> for m::StyleRecord {
-    fn from(r: StyleRecord) -> Self {
-        m::StyleRecord { name: r.name, fields: r.fields, body: r.body }
-    }
-}
-
-impl From<&m::StandardHeader> for StandardHeader {
-    fn from(h: &m::StandardHeader) -> Self {
-        StandardHeader {
-            id: h.id,
-            name: h.name.clone(),
-            based_on: h.based_on.clone(),
-            origin: h.origin.as_ref().map(|o| StandardOrigin { library: o.library }),
-        }
-    }
-}
-
-impl From<StandardHeader> for m::StandardHeader {
-    fn from(h: StandardHeader) -> Self {
-        m::StandardHeader { id: h.id, name: h.name, based_on: h.based_on, origin: h.origin.map(|o| m::style::StandardOrigin { library: o.library }) }
     }
 }
 
@@ -1235,16 +1178,10 @@ impl From<&m::Op> for Op {
             m::Op::AddFolder { id, folder, index } => Op::AddFolder { id: *id, folder: folder.into(), index: ix(*index) },
             m::Op::RemoveFolder { id, folder, index } => Op::RemoveFolder { id: *id, folder: folder.into(), index: ix(*index) },
             m::Op::ModifyFolder { id, before, after } => Op::ModifyFolder { id: *id, before: before.into(), after: after.into() },
-            m::Op::SetStyle { layer: l, catalogue, id, before, after } => Op::SetStyle {
-                layer: layer(*l),
-                catalogue: *catalogue,
-                id: id.clone(),
-                before: before.as_ref().map(Into::into),
-                after: after.as_ref().map(Into::into),
-            },
-            m::Op::SetStandard { before, after } => {
-                Op::SetStandard { before: before.as_ref().map(Into::into), after: after.as_ref().map(Into::into) }
+            m::Op::SetStyle { layer: l, catalogue, id, before, after } => {
+                Op::SetStyle { layer: layer(*l), catalogue: *catalogue, id: id.clone(), before: before.clone(), after: after.clone() }
             }
+            m::Op::SetStandard { before, after } => Op::SetStandard { before: before.clone(), after: after.clone() },
             m::Op::ModifyProject { before, after } => Op::ModifyProject { before: before.clone(), after: after.clone() },
         }
     }
@@ -1506,10 +1443,8 @@ impl TryFrom<Op> for m::Op {
             Op::AddFolder { id, folder, index: i } => m::Op::AddFolder { id, folder: folder.into(), index: index(i)? },
             Op::RemoveFolder { id, folder, index: i } => m::Op::RemoveFolder { id, folder: folder.into(), index: index(i)? },
             Op::ModifyFolder { id, before, after } => m::Op::ModifyFolder { id, before: before.into(), after: after.into() },
-            Op::SetStyle { layer: l, catalogue, id, before, after } => {
-                m::Op::SetStyle { layer: mlayer(l), catalogue, id, before: before.map(Into::into), after: after.map(Into::into) }
-            }
-            Op::SetStandard { before, after } => m::Op::SetStandard { before: before.map(Into::into), after: after.map(Into::into) },
+            Op::SetStyle { layer: l, catalogue, id, before, after } => m::Op::SetStyle { layer: mlayer(l), catalogue, id, before, after },
+            Op::SetStandard { before, after } => m::Op::SetStandard { before, after },
             Op::ModifyProject { before, after } => m::Op::ModifyProject { before, after },
         })
     }

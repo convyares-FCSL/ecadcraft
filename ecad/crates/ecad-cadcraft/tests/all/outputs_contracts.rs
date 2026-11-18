@@ -406,7 +406,7 @@ fn settings_changes_update_only_the_rows_they_reach() {
     same_as_built(&mut h);
     let work = |h: &mut H| h.p(|p| p.outputs.as_ref().map_or(0, |o| o.last_work));
     // The 24V wires' colour default changes (brief 050b: the 24 V DC category's): only the 24V wire.
-    h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colour": "RD"}})).unwrap();
+    h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colours": "RD"}})).unwrap();
     assert_eq!(work(&mut h), 1, "only the one 24V wire");
     same_as_built(&mut h);
     let table = h.cfg(|p| p.outputs().wire_table());
