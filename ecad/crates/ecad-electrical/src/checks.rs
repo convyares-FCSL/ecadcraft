@@ -1029,7 +1029,7 @@ fn is_quiet_point(doc: &Document, t: TerminalId) -> bool {
             .iter()
             .filter(|(x, _)| *x == t)
             .filter_map(|(_, at)| def.terminals.iter().find(|td| td.at.near(*at, 1e-9)))
-            .any(|td| crate::symbols::is_quiet(s, &td.key))
+            .any(|td| crate::symbols::is_quiet(s, &td.key.to_string()))
     })
 }
 

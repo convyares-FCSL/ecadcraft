@@ -56,8 +56,8 @@ pub(crate) fn by_tag(d: &Document, t: &str) -> DeviceId {
 pub(crate) fn channel_points(d: &Document, card: DeviceId) -> BTreeMap<String, (String, TerminalId)> {
     d.terminals
         .iter()
-        .filter(|(_, t)| t.component == card && t.key.as_deref().is_some_and(|k| k.starts_with('.')))
-        .map(|(id, t)| (t.key.clone().unwrap_or_default(), (t.label.clone().unwrap_or_default(), *id)))
+        .filter(|(_, t)| t.component == card && t.key.as_ref().map(ToString::to_string).as_deref().is_some_and(|k| k.starts_with('.')))
+        .map(|(id, t)| (t.key.as_ref().map(ToString::to_string).unwrap_or_default(), (t.label.clone().unwrap_or_default(), *id)))
         .collect()
 }
 
@@ -217,7 +217,8 @@ pub(crate) fn rekey_raw(h: &mut H, t: TerminalId, new_label: Option<&str>, new_k
         after.label = Some(l.to_string());
     }
     if let Some(k) = new_key {
-        after.key = Some(k.to_string());
+        // A text that is no key cannot be stored: the point is left without one.
+        after.key = k.parse().ok();
     }
     raw(h, vec![Op::RemoveTerminal { id: t, terminal: before }, Op::AddTerminal { id: t, terminal: after }]);
 }

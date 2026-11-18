@@ -1422,7 +1422,11 @@ fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripDat
                 row.internal_bridge = ty
                     .bridges
                     .iter()
-                    .position(|g| g.iter().any(|key| ecad_model::links::level_of_key(Some(key)).is_some_and(|(m, _)| m == n)))
+                    .position(|g| {
+                        g.iter()
+                            .filter_map(|key| key.parse::<ecad_model::PointKey>().ok())
+                            .any(|key| ecad_model::links::level_of_key(Some(&key)).is_some_and(|(m, _)| m == n))
+                    })
                     .map(|i| i + 1);
                 row.place = page.zip(at).and_then(|(p, a)| {
                     let grid = grids.entry(p).or_insert_with(|| ecad_model::sheet::Grid::of(doc, p));

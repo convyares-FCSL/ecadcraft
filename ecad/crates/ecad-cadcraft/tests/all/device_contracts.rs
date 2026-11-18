@@ -340,7 +340,7 @@ fn d_merging_a_device_whose_symbol_shows_no_connection_points_is_refused_clearly
     doc.representations.get_mut(&rid).unwrap().connection_points.clear();
     let ts: Vec<TerminalId> = doc.terminals_of(k2).map(|(t, _)| t).collect();
     for t in ts {
-        doc.terminals.get_mut(&t).unwrap().key = Some(format!("old-{}", t.short()));
+        doc.terminals.get_mut(&t).unwrap().key = Some(ecad_model::PointKey::Def(format!("old-{}", t.short())));
     }
     let mut ids = ecad_model::IdAllocator::seeded(5);
     let e = devices::plan_merge(&doc, &mut ids, k2, f.k1).unwrap_err().to_string();

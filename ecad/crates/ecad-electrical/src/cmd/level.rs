@@ -6,7 +6,10 @@
 
 use std::collections::BTreeMap;
 
-use ecad_model::{DeviceId, Document, IdAllocator, ItemKind, Noun, ObjectRef, Op, Representation, RepresentationId, Subject, Terminal, TerminalId};
+use ecad_model::{
+    DeviceId, Document, IdAllocator, ItemKind, LevelIo, Noun, ObjectRef, Op, PointKey, Representation, RepresentationId, Subject, Terminal,
+    TerminalId,
+};
 
 use crate::error::CmdError;
 use crate::strips::is_fuse_device;
@@ -290,12 +293,18 @@ pub fn plan_toposition(
     let mut chooser = tt::Chooser::new(doc, Some(strip));
     let pos = chooser.choose(doc, Some(strip), ty, Some(1), position)?;
     let (tin, tout): (TerminalId, TerminalId) = (ids.fresh(), ids.fresh());
-    ops.push(Op::AddTerminal { id: tin, terminal: Terminal { component: strip, label: Some(pos.clone()), key: Some(".1i".into()) } });
-    ops.push(Op::AddTerminal { id: tout, terminal: Terminal { component: strip, label: Some(pos.clone()), key: Some(".1o".into()) } });
+    ops.push(Op::AddTerminal {
+        id: tin,
+        terminal: Terminal { component: strip, label: Some(pos.clone()), key: Some(PointKey::Level { level: 1, io: Some(LevelIo::In) }) },
+    });
+    ops.push(Op::AddTerminal {
+        id: tout,
+        terminal: Terminal { component: strip, label: Some(pos.clone()), key: Some(PointKey::Level { level: 1, io: Some(LevelIo::Out) }) },
+    });
     // The device's points by key: `1` → in, `2` → out.
     let old: Vec<(TerminalId, Terminal)> = doc.terminals_of(device).map(|(t, x)| (t, x.clone())).collect();
     for (t, x) in &old {
-        let to = match x.key.as_deref() {
+        let to = match x.key.as_ref().and_then(PointKey::as_def) {
             Some("1") => tin,
             Some("2") => tout,
             _ => return Err(CmdError::refused(format!("{tag} has a connection point that is not 1 or 2; move its wires first."))),
@@ -313,7 +322,7 @@ pub fn plan_toposition(
     let d = starter.definition()?;
     let mut cps = BTreeMap::new();
     for td in &d.terminals {
-        cps.insert(if td.key.ends_with('i') { tin } else { tout }, td.at);
+        cps.insert(if matches!(td.key.level(), Some((_, Some(LevelIo::In)))) { tin } else { tout }, td.at);
     }
     let new_rep: RepresentationId = ids.fresh();
     ops.push(Op::LinkRepresentation {

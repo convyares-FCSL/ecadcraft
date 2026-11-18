@@ -180,7 +180,7 @@ fn index(doc: &Document) -> Vec<Value> {
     }
     for (id, t) in &doc.terminals {
         let owner = label_of(doc, Subject::Device(t.component));
-        let name = t.label.clone().or_else(|| t.key.clone()).unwrap_or_else(|| id.short());
+        let name = t.label.clone().or_else(|| t.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| id.short());
         push("terminal", format!("{:032x}", id.0), id.short(), format!("{owner}:{name}"));
     }
     for id in doc.wires.keys() {

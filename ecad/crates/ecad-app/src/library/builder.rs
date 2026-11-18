@@ -256,7 +256,7 @@ impl Builder {
             Tool::Text => "Text: click where it starts, then type.".into(),
             Tool::Point => match &self.entry {
                 Some((Entry::Label(i), _)) => {
-                    let key = self.draft.shape.points.get(*i).map_or(String::new(), |p| p.key.clone());
+                    let key = self.draft.shape.points.get(*i).map_or(String::new(), |p| p.key.to_string());
                     format!("Adds point {key}. Label? (Enter keeps none)")
                 }
                 _ => format!(

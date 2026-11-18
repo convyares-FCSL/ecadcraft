@@ -11,8 +11,10 @@ use crate::common::{H, id, pts};
 
 /// The connector's terminals by (side key, pin name).
 fn pins(d: &Document, c: DeviceId) -> Vec<(String, String, TerminalId)> {
-    let mut v: Vec<(String, String, TerminalId)> =
-        d.terminals_of(c).map(|(t, x)| (x.key.clone().unwrap_or_default(), x.label.clone().unwrap_or_default(), t)).collect();
+    let mut v: Vec<(String, String, TerminalId)> = d
+        .terminals_of(c)
+        .map(|(t, x)| (x.key.as_ref().map(ToString::to_string).unwrap_or_default(), x.label.clone().unwrap_or_default(), t))
+        .collect();
     v.sort();
     v
 }
@@ -354,8 +356,8 @@ fn every_starter_bridges_only_keys_a_placement_writes() {
         }
     }
     let mut d = symbols::by_key("plug4").unwrap().definition().unwrap().clone();
-    d.bridges = vec![vec![".s".into(), ".x".into()]];
-    assert!(!symbols::bridge_key_ok(&d, ".x"));
+    d.bridges = vec![vec![".s".parse().unwrap(), ".in".parse().unwrap()]];
+    assert!(!symbols::bridge_key_ok(&d, &".in".parse().unwrap()));
 }
 
 // ------------------------------------------------------------------------------- fix round 1

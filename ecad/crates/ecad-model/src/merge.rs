@@ -489,7 +489,11 @@ pub fn name_of(docs: &[&Document], obj: Obj) -> String {
     match obj {
         Obj::Device(c) => tag_of(c),
         Obj::Terminal(t) => match docs.iter().find_map(|d| d.terminals.get(&t)) {
-            Some(term) => format!("{}:{}", tag_of(term.component), term.label.clone().or_else(|| term.key.clone()).unwrap_or_else(|| t.short())),
+            Some(term) => format!(
+                "{}:{}",
+                tag_of(term.component),
+                term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| t.short())
+            ),
             None => t.short(),
         },
         Obj::Wire(c) => match docs.iter().find_map(|d| d.wires.get(&c)).and_then(|w| w.number_text().map(str::to_string)) {
@@ -846,7 +850,8 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
             }
             Obj::Terminal(id) => {
                 let v = object(ctx, obj, &what, a.terminals.get(&id), t.terminals.get(&id), s.terminals.get(&id), |ctx, a, t, s| {
-                    let show = |x: &Terminal| x.label.clone().or_else(|| x.key.clone()).unwrap_or_else(|| "(no label)".into());
+                    let show =
+                        |x: &Terminal| x.label.clone().or_else(|| x.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| "(no label)".into());
                     field(ctx, obj, "record", format!("{what} · changed on both"), a, t, s, &show)
                 });
                 set(&mut m.terminals, id, v);

@@ -27,7 +27,7 @@ use ecad_model::{
     Definition, DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Placement, Pt,
     Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId,
 };
-use ecad_model::{DeviceType, Noun, TextHAlign as HAlign, TextVAlign as VAlign};
+use ecad_model::{DeviceType, Noun, PointKey, TextHAlign as HAlign, TextVAlign as VAlign};
 
 /// `t` as a device's stored tag (design 072 §2.1): refused when it is not 1 to 40 printable
 /// characters.
@@ -551,7 +551,7 @@ pub struct Placed {
     pub tag: String,
     pub joined: bool,
     /// (definition key, label, terminal), in definition order.
-    pub terminals: Vec<(String, String, TerminalId)>,
+    pub terminals: Vec<(PointKey, String, TerminalId)>,
 }
 
 /// Plan placing starter symbol `s` at `placement` on `page` (design 018 §10).
@@ -613,7 +613,7 @@ pub fn plan_place(
             for td in &def.terminals {
                 let tid: TerminalId = ids.fresh();
                 ops.push(Op::AddTerminal { id: tid, terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()) } });
-                terminals.push((td.key.clone(), td.label.clone().unwrap_or_else(|| td.key.clone()), tid));
+                terminals.push((td.key.clone(), td.label.clone().unwrap_or_else(|| td.key.to_string()), tid));
             }
             ops.push(Op::AddItem { id: item, item: instance });
             ops.push(Op::LinkRepresentation {
@@ -637,7 +637,10 @@ pub fn plan_place(
             let mut cps = BTreeMap::new();
             for (td, label) in def.terminals.iter().zip(&labels) {
                 let tid: TerminalId = ids.fresh();
-                ops.push(Op::AddTerminal { id: tid, terminal: Terminal { component: c, label: Some(label.clone()), key: Some(label.clone()) } });
+                ops.push(Op::AddTerminal {
+                    id: tid,
+                    terminal: Terminal { component: c, label: Some(label.clone()), key: Some(PointKey::Def(label.clone())) },
+                });
                 cps.insert(tid, td.at);
                 terminals.push((td.key.clone(), label.clone(), tid));
             }
@@ -675,7 +678,7 @@ pub(crate) fn shown_terminals(doc: &Document, c: DeviceId, r: &Representation) -
                     .iter()
                     .filter_map(|td| {
                         let with_key: Vec<TerminalId> =
-                            doc.terminals_of(c).filter(|(_, t)| t.key.as_deref() == Some(td.key.as_str())).map(|(t, _)| t).collect();
+                            doc.terminals_of(c).filter(|(_, t)| t.key.as_ref() == Some(&td.key)).map(|(t, _)| t).collect();
                         let t = with_key.iter().find(|t| doc.representations_showing(**t).next().is_none()).or(with_key.first())?;
                         Some((*t, td.at))
                     })
@@ -736,7 +739,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
                map: &mut BTreeMap<TerminalId, TerminalId>|
      -> TerminalId {
         let nt: TerminalId = ids.fresh();
-        ops.push(Op::AddTerminal { id: nt, terminal: Terminal { component: into, label, key: Some(name) } });
+        ops.push(Op::AddTerminal { id: nt, terminal: Terminal { component: into, label, key: Some(PointKey::Def(name)) } });
         map.insert(old, nt);
         nt
     };
@@ -840,7 +843,7 @@ const MAX_RENAMED: u32 = 999;
 /// its 32-digit ID (pack re-run, bug 1).
 pub fn label_of(doc: &Document, t: TerminalId) -> String {
     let term = doc.terminals.get(&t);
-    term.and_then(|x| x.label.clone()).or_else(|| term.and_then(|x| x.key.clone())).unwrap_or_else(|| t.hex())
+    term.and_then(|x| x.label.clone()).or_else(|| term.and_then(|x| x.key.as_ref()).map(ToString::to_string)).unwrap_or_else(|| t.hex())
 }
 
 // ---------------------------------------------------------------- erasing (§3.3)
@@ -1399,7 +1402,7 @@ fn slot_texts(
 /// label.
 pub fn point_label_key(doc: &Document, rep: RepresentationId, t: TerminalId) -> String {
     let term = doc.terminals.get(&t);
-    let key = term.and_then(|x| x.key.clone()).or_else(|| term.and_then(|x| x.label.clone())).unwrap_or_else(|| t.hex());
+    let key = term.and_then(|x| x.key.as_ref()).map(ToString::to_string).or_else(|| term.and_then(|x| x.label.clone())).unwrap_or_else(|| t.hex());
     format!("{}point_label.{key}.at", crate::text_style::symbol_prefix(rep))
 }
 

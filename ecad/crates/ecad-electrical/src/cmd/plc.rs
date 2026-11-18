@@ -635,7 +635,8 @@ pub fn plan_channel(doc: &Document, card: &str, input: &ChannelInput) -> Result<
         for tid in copy {
             let term = doc.terminals.get(&tid).cloned().ok_or(CmdError::NotFound(ecad_model::Noun::Point))?;
             let role = point_of(doc, tid).map(|x| x.1).ok_or(CmdError::refused("Not a channel point."))?;
-            let after = Terminal { key: Some(crate::plc::channels::key(j, role)), ..term.clone() };
+            let key = crate::plc::channels::key(j, role).ok_or(CmdError::refused("Not a channel point."))?;
+            let after = Terminal { key: Some(key), ..term.clone() };
             ops.push(Op::RemoveTerminal { id: tid, terminal: term });
             ops.push(Op::AddTerminal { id: tid, terminal: after });
         }
