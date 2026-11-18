@@ -21,7 +21,7 @@ fn fixture() -> F {
 }
 
 fn folder(name: &str, parent: Option<FolderId>) -> Folder {
-    Folder { name: name.into(), parent }
+    Folder::new(name, parent)
 }
 
 /// A `ModifyPage` of `page` (as `f` holds it) with `change` applied.

@@ -40,34 +40,14 @@ pub const MAX_START_DIGITS: usize = 6;
 pub const BAD_START: &str = "A start number is 1 to 6 digits.";
 /// The refusal for deleting a drawn page (design 054 §8.3, Q9).
 pub const DRAWN_PAGE: &str = "Deleting a drawn page comes later; move its content first.";
-const KEY_PREFIX: &str = "folder.";
-const KEY_SUFFIX: &str = ".start";
-
-/// The project property holding `folder`'s start number (FP7).
-pub fn start_key(folder: FolderId) -> String {
-    format!("{KEY_PREFIX}{}{KEY_SUFFIX}", folder.hex())
-}
-
 /// Whether `t` is a start number: 1 to 6 ASCII digits.
 pub fn is_start(t: &str) -> bool {
     t.len() <= MAX_START_DIGITS && ecad_model::words::is_digits(t)
 }
 
-/// `folder`'s start number, when it has a valid one.
+/// `folder`'s start number (design 072 §5.2: `Folder.start`), when it has a valid one.
 pub fn start_of(doc: &Document, folder: FolderId) -> Option<String> {
-    doc.properties.get(&start_key(folder)).map(|s| s.trim()).filter(|s| is_start(s)).map(str::to_string)
-}
-
-/// The folder a `folder.<id>.start` key names (whether or not it exists), or `None` for any
-/// other key.
-fn folder_of_key(key: &str) -> Option<FolderId> {
-    let hex = key.strip_prefix(KEY_PREFIX)?.strip_suffix(KEY_SUFFIX)?;
-    (hex.len() == 32).then(|| u128::from_str_radix(hex, 16).ok().map(FolderId::from)).flatten()
-}
-
-/// Whether `key` is a folder start key.
-pub fn is_start_key(key: &str) -> bool {
-    key.starts_with(KEY_PREFIX) && key.ends_with(KEY_SUFFIX)
+    doc.folders.get(&folder)?.start.as_ref().map(|s| s.as_str().trim()).filter(|s| is_start(s)).map(str::to_string)
 }
 
 /// The run a page belongs to: the nearest folder above it (its own first) with a start number,
@@ -336,7 +316,6 @@ pub fn checks_changed(doc: &Document, ops: &[Op]) -> bool {
 /// Whether `op` can change [`check_rows`].
 pub fn touches_checks(op: &Op) -> bool {
     match op {
-        Op::SetProperty { object: ObjectRef::Project, key, .. } => is_start_key(key),
         Op::ModifyPage { before, after, .. } => before.folder != after.folder || before.number != after.number || before.page_type != after.page_type,
         Op::AddPage { .. } | Op::RemovePage { .. } | Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => true,
         Op::SetProjectSettings { before, after } => before.page_number_step != after.page_number_step,
@@ -383,21 +362,13 @@ pub fn check_rows(doc: &Document) -> Vec<Check> {
             }
         }
     }
-    // Folder start keys that name no folder or are not 1–6 digits.
-    for (key, value) in doc.properties.range(KEY_PREFIX.to_string()..).take_while(|(k, _)| k.starts_with(KEY_PREFIX)) {
-        if !key.ends_with(KEY_SUFFIX) {
-            continue;
+    // Folder start numbers that are not 1–6 digits (design 072 §5.2: a page number is stored).
+    for (id, f) in &doc.folders {
+        if f.start.as_ref().is_some_and(|s| !is_start(s.as_str().trim())) {
+            let mut r = row(Kind::FolderStartUnknown, None, format!("Folder {}'s start number is not 1 to 6 digits", f.name));
+            r.fix = Some(crate::checks::Fix::Page(PageFix::RemoveStart(*id)));
+            out.push(r);
         }
-        let named = folder_of_key(key);
-        let folder = named.filter(|f| doc.folders.contains_key(f));
-        let which = match folder.and_then(|f| doc.folders.get(&f)) {
-            None => "A folder start number names a folder that is not in the project".to_string(),
-            Some(f) if !is_start(value.trim()) => format!("Folder {}'s start number is not 1 to 6 digits", f.name),
-            Some(_) => continue,
-        };
-        let mut r = row(Kind::FolderStartUnknown, None, which);
-        r.fix = named.map(|f| crate::checks::Fix::Page(PageFix::RemoveStart(f)));
-        out.push(r);
     }
     // Runs that reach each other.
     for (a, b, n) in overlaps(doc, None) {

@@ -118,7 +118,7 @@ fn every_op_ledger() -> Ledger {
     let cable: ecad_model::CableId = ids.fresh();
     let cable_v = Cable { members: vec![CableMember { conductor: wire, core: None }], ..Cable::default() };
     let folder: ecad_model::FolderId = ids.fresh();
-    let folder_v = Folder { name: "F".into(), parent: None };
+    let folder_v = Folder { name: "F".into(), parent: None, start: None };
     ledger
         .commit(
             Author::User,
@@ -189,9 +189,9 @@ fn every_op_ledger() -> Ledger {
         Op::NameVersion { name: "w".into(), at: 2, description: None },
         Op::UnnameVersion { name: "v".into(), at: 1, description: None },
         Op::SetDeviceDefinition { id: comp, before: Some(def), after: None },
-        Op::AddFolder { id: ids.fresh(), folder: Folder { name: "G".into(), parent: Some(folder) }, index: 1 },
+        Op::AddFolder { id: ids.fresh(), folder: Folder { name: "G".into(), parent: Some(folder), start: None }, index: 1 },
         Op::RemoveFolder { id: folder, folder: folder_v.clone(), index: 0 },
-        Op::ModifyFolder { id: folder, before: folder_v.clone(), after: Folder { name: "Renamed".into(), parent: None } },
+        Op::ModifyFolder { id: folder, before: folder_v.clone(), after: Folder { name: "Renamed".into(), parent: None, start: None } },
         Op::SetStyle {
             layer: StyleLayer::Project,
             catalogue: ecad_model::StyleCatalogue::Wire,
