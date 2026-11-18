@@ -290,8 +290,9 @@ pub fn sub_items(doc: &Document, c: DeviceId) -> Subs {
 }
 
 /// Whether `c` is a fuse terminal device (034's `fuseterm`): covered by a part line with no `for`.
+/// Its stored kind says so ([`crate::strips::is_fuse_device`]).
 pub fn is_fuse_terminal(doc: &Document, c: DeviceId) -> bool {
-    head(doc, c).is_some_and(|s| s.key == crate::symbols::StarterKey::Fuseterm)
+    crate::strips::is_fuse_device(doc, c)
 }
 
 /// The names a `for` value lists, ranges of whole numbers expanded (`1-4, 7`), in order, each

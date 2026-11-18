@@ -600,6 +600,8 @@ impl Starter {
                 P::Rcbo
             } else if matches!(self.key, K::Rcd2 | K::Rcd4) {
                 P::Rcd
+            } else if self.key == K::Fuseterm {
+                P::FuseTerminal
             } else {
                 P::Fuse
             };

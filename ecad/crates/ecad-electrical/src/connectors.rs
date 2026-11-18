@@ -182,9 +182,10 @@ pub fn size_of(s: &Starter) -> Option<usize> {
 
 // ---------------------------------------------------------------- what is a connector
 
-/// Whether component `c` is a connector: its definition is a brief-044 half or pin.
+/// Whether device `c` is a connector: its stored type is [`ecad_model::DeviceType::Connector`]
+/// (design 072 §2.2), never its symbol.
 pub fn is_connector(doc: &Document, c: DeviceId) -> bool {
-    doc.devices.get(&c).and_then(|x| x.definition).and_then(|d| doc.definitions.get(&d)).is_some_and(symbols::is_mating)
+    doc.devices.get(&c).is_some_and(|x| matches!(x.device_type, ecad_model::DeviceType::Connector(_)))
 }
 
 /// The side of terminal `t` when it is a connector pin.

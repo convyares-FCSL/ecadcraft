@@ -247,7 +247,7 @@ fn build(kind: ProtectionKind, mut f: Found) -> Result<Protection, Problem> {
     if let Some(x) = f.bare.take() {
         match kind {
             ProtectionKind::Rcd => return Err(Problem::Ask(format!("{x}: A (rated current) or mA (residual current)?"))),
-            ProtectionKind::Fuse | ProtectionKind::FuseBank | ProtectionKind::Mcb | ProtectionKind::Rcbo => {
+            ProtectionKind::Fuse | ProtectionKind::FuseTerminal | ProtectionKind::FuseBank | ProtectionKind::Mcb | ProtectionKind::Rcbo => {
                 if f.amps.is_some() {
                     return Err(Problem::Refused("it gives two rated currents".into()));
                 }
@@ -259,7 +259,7 @@ fn build(kind: ProtectionKind, mut f: Found) -> Result<Protection, Problem> {
     let breaking = f.kilo.map(kilo).transpose()?;
     let residual = f.milli.map(milli).transpose()?;
     match kind {
-        ProtectionKind::Fuse | ProtectionKind::FuseBank => {
+        ProtectionKind::Fuse | ProtectionKind::FuseTerminal | ProtectionKind::FuseBank => {
             if f.curve.is_some() {
                 return Err(Problem::Refused("a fuse has no curve; its class is F, M, T, gG or aM".into()));
             }
@@ -272,7 +272,8 @@ fn build(kind: ProtectionKind, mut f: Found) -> Result<Protection, Problem> {
             if rated.is_none() {
                 return Err(Problem::Ask(AMPS_Q.into()));
             }
-            Ok(Protection::Fuse(Fuse { rated_current: rated, class: f.class, breaking }))
+            let fuse = Fuse { rated_current: rated, class: f.class, breaking };
+            Ok(if kind == ProtectionKind::FuseTerminal { Protection::FuseTerminal(fuse) } else { Protection::Fuse(fuse) })
         }
         ProtectionKind::Mcb | ProtectionKind::Rcbo => {
             if f.class.is_some() {
