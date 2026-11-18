@@ -1646,16 +1646,16 @@ fn setprop_on_one_and_on_several_refuse_alike_for_each_rule() {
     // (row, the two devices, key, a value its rule refuses)
     let rows: &[(&str, [&Value; 2], &str, &str)] = &[
         ("tag fixed (design 026)", [&coil, &coil2], "tag_fixed", "maybe"),
-        ("device property (design 018)", [&coil, &coil2], "description", &long),
+        ("device text fields (072 B)", [&coil, &coil2], "description", &long),
         ("wire, junction or continuation (briefs 022, 049)", [&coil, &coil2], "caption", "Up"),
         ("contacts (brief 025)", [&coil, &coil2], "contacts", "??"),
         ("contact table mirror (brief 025)", [&coil, &coil2], "mirror", "maybe"),
         ("strip offer (brief 028)", [&strip, &strip2], "terminals", "lots"),
         ("PE row part (brief 028)", [&coil, &coil2], "part_number.pe", &long),
-        ("connector (brief 044)", [&socket, &socket2], "pins", "99"),
+        ("connector fields (072 B)", [&socket, &socket2], "pins", "99"),
         ("strip terminal defaults (brief 036)", [&strip, &strip2], "terminal.level.separator", "abcd"),
         ("level label (brief 036)", [&strip, &strip2], "term_label.1", &long),
-        ("PLC card (brief 045)", [&card, &card2], "plc.addr.start", "x"),
+        ("PLC module fields (072 C)", [&card, &card2], "plc.addr.start", "x"),
         ("rating (brief 034)", [&coil, &coil2], "rating.1", "10A"),
         ("parts and items (brief 047)", [&coil, &coil2], "part.1.qty", "lots"),
         ("strip accessories, or free text (brief 030)", [&strip, &strip2], "link.1", "zz"),
@@ -1669,8 +1669,10 @@ fn setprop_on_one_and_on_several_refuse_alike_for_each_rule() {
         assert!(single.is_some(), "{what}: {key} {value} is refused");
         assert_eq!(single, many, "{what}: one and several differ");
     }
+    let lanes = ecad_electrical::cmd::props::LANES.iter().flat_map(|(_, rows)| rows.iter());
+    let all: Vec<&str> = PROP_RULES.iter().chain(lanes).map(|r| r.what).collect();
     for (what, ..) in rows {
-        assert!(PROP_RULES.iter().any(|r| r.what == *what), "{what}");
+        assert!(all.contains(what), "{what}");
     }
 }
 

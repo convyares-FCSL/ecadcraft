@@ -4,8 +4,9 @@
 //! # Semantics
 //! - Rack entries (`plc.slots`, `plc.slot.first`) may be overridden on the rack device (object
 //!   level), card entries (`plc.text.caption.show`) on the card device.
-//! - `plc.<type>.channels`: how many channels a card of that type has unless the card says
-//!   (`plc.channels`, a card property, [`crate::plc::rack::CHANNELS_KEY`]).
+//! - `plc.<type>.channels`: how many channels a new card of that type gets; from then on the count
+//!   is the module's own (design 072 §3).
+//! - `plc.address.style`: the project's; a station may store its own.
 //! - `plc.card.caption`: the caption under a card body when the card is in a rack; `{rack}` is the
 //!   rack's tag, `{slot}` the slot number, `{slot:02}` the slot padded to two digits. Nothing else
 //!   in braces is accepted, so a stored pattern can never name something the code does not fill.
@@ -37,18 +38,8 @@ ecad_model::word_enum! {
         Channel,
     }
 }
-ecad_model::word_enum! {
-    /// How PLC addresses are written.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum AddressStyle {
-        #[strum(serialize = "byte.bit")]
-        ByteBit,
-        Iec,
-        Percent,
-        Slot,
-        None,
-    }
-}
+/// How PLC addresses are written: a station stores its own (design 072 §3).
+pub use ecad_model::plc::AddressStyle;
 ecad_model::word_enum! {
     /// How a card is drawn on its page.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -253,7 +244,7 @@ pub static ADDRESS_STYLE: Entry = Entry {
     brief: "045",
     kind: Kind::Choice(<AddressStyle as ecad_model::Word>::WORDS),
     slot: Slot::new(),
-    levels: SPO,
+    levels: SP,
     project: ProjectSource::Property,
 };
 

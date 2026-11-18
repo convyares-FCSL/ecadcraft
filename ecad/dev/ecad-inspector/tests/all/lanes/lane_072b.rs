@@ -48,3 +48,84 @@ fn a_device_s_type_and_modify_device_are_shown_raw_and_readable() {
     .unwrap();
     assert_eq!(raw["ok"]["hex"], ecad_inspector::text::hex(&bytes.unwrap()));
 }
+
+#[test]
+fn a_device_s_text_fields_are_shown_raw_and_readable() {
+    use ecad_model::TextField;
+    let dir = TempDir::new("072b-text");
+    let mut l = history();
+    let mut ids = IdAllocator::seeded(73);
+    let c: DeviceId = ids.fresh();
+    let before = Device::default();
+    let mut after = before.with_text(TextField::Description, Some("Main pump")).unwrap();
+    after.set_text(TextField::PartNumber, Some("3RT2016")).unwrap();
+    after.set_text(TextField::Manufacturer, Some("Siemens")).unwrap();
+    l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: before.clone() }]).unwrap();
+    l.commit(Author::User, "describe", vec![Op::ModifyDevice { id: c, before, after }]).unwrap();
+    let path = written(&dir, &l);
+    let log = run(&[path.to_str().unwrap(), "log", "main", "--last", "1"]).unwrap();
+    for want in ["ModifyDevice", "description", "Main pump", "part_number", "3RT2016", "manufacturer", "Siemens"] {
+        assert!(log.contains(want), "{want} in the readable log: {log}");
+    }
+    let f = FileSource::from_path(&path);
+    assert!(matches!(f.wait_verified(Duration::from_secs(60)), VerifyState::Done { .. }));
+    let s = Some(&f as &dyn Source);
+    let rows = ask(s, serde_json::json!({"op": "devices", "detail": true}));
+    let text = rows["ok"].to_string();
+    assert!(text.contains("\"description\":\"Main pump\"") && text.contains("\"maker\":\"Siemens\""), "{text}");
+}
+
+/// Step 2c (design 072 §6.3, A15): a device's location and function, with their `fixed` flags,
+/// show in the readable log and in the devices view as their codes.
+#[test]
+fn a_device_s_location_and_function_are_shown() {
+    use ecad_model::{FunctionId, ListEntry, LocationId, Project, text::Text};
+    let dir = TempDir::new("072b-place");
+    let mut l = history();
+    let mut ids = IdAllocator::seeded(74);
+    let c: DeviceId = ids.fresh();
+    let (loc, fun): (LocationId, FunctionId) = (ids.fresh(), ids.fresh());
+    let project = Project {
+        locations: vec![ListEntry::new(loc, Text::new("+CP1").unwrap())],
+        functions: vec![ListEntry::new(fun, Text::new("=F1").unwrap())],
+        ..Project::default()
+    };
+    let before = Device::default();
+    let after = Device { location: Some(loc), location_fixed: true, function: Some(fun), ..before.clone() };
+    l.commit(Author::User, "list", vec![Op::ModifyProject { before: Project::default(), after: project }]).unwrap();
+    l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: before.clone() }]).unwrap();
+    l.commit(Author::User, "place", vec![Op::ModifyDevice { id: c, before, after }]).unwrap();
+    let path = written(&dir, &l);
+    let log = run(&[path.to_str().unwrap(), "log", "main", "--last", "1"]).unwrap();
+    for want in ["ModifyDevice", "location", "location_fixed", "function"] {
+        assert!(log.contains(want), "{want} in the readable log: {log}");
+    }
+    let f = FileSource::from_path(&path);
+    assert!(matches!(f.wait_verified(Duration::from_secs(60)), VerifyState::Done { .. }));
+    let s = Some(&f as &dyn Source);
+    let rows = ask(s, serde_json::json!({"op": "devices", "detail": true}));
+    let text = rows["ok"].to_string();
+    assert!(text.contains("\"location\":\"+CP1\"") && text.contains("\"location_fixed\":true") && text.contains("\"function\":\"=F1\""), "{text}");
+}
+
+/// Step 3, Connector (A15): a connector's family, pins and half parts show in the readable log.
+#[test]
+fn a_connector_s_data_is_shown() {
+    use ecad_model::device::{Connector, ConnectorFamily, PartText, PinCount};
+    let dir = TempDir::new("072b-conn");
+    let mut l = history();
+    let mut ids = IdAllocator::seeded(75);
+    let c: DeviceId = ids.fresh();
+    let before = Device { device_type: DeviceType::Connector(Box::new(Connector::of_family(ConnectorFamily::M12))), ..Device::default() };
+    let mut x = Connector::of_family(ConnectorFamily::M12);
+    x.pins = PinCount::new(5);
+    x.socket.manufacturer = Some(PartText::new("Acme").unwrap());
+    let after = Device { device_type: DeviceType::Connector(Box::new(x)), ..before.clone() };
+    l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: before.clone() }]).unwrap();
+    l.commit(Author::User, "pins", vec![Op::ModifyDevice { id: c, before, after }]).unwrap();
+    let path = written(&dir, &l);
+    let log = run(&[path.to_str().unwrap(), "log", "main", "--last", "1"]).unwrap();
+    for want in ["ModifyDevice", "connector", "m12", "pins", "Acme"] {
+        assert!(log.contains(want), "{want} in the readable log: {log}");
+    }
+}

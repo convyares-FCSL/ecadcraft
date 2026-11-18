@@ -144,7 +144,7 @@ impl Place {
     /// Brief 045 (design 045 §2.4): whether the next placement is a new card that still needs its
     /// rack answered (the project has a rack).
     fn needs_rack(&self, s: &Session) -> bool {
-        let card = crate::plc::rack::CardType::of_body(self.symbol().key).is_some_and(|t| !t.is_rack());
+        let card = crate::plc::rack::CardType::of_symbol(self.symbol()).is_some_and(|t| !t.is_rack());
         card && self.join.is_none()
             && self.tag.is_none()
             && self.rack.is_none()
@@ -153,7 +153,7 @@ impl Place {
 
     /// Whether the next placement is a new card (a card body, not a rack, joining no device).
     fn is_card(&self) -> bool {
-        crate::plc::rack::CardType::of_body(self.symbol().key).is_some_and(|t| !t.is_rack()) && self.join.is_none()
+        crate::plc::rack::CardType::of_symbol(self.symbol()).is_some_and(|t| !t.is_rack()) && self.join.is_none()
     }
 
     /// ` in -A01 slot 2` (or ` in no rack`) for a new card whose rack was answered.
@@ -741,8 +741,8 @@ impl Props {
     fn show(s: &mut Session, c: DeviceId) {
         let lines = read(s, |p, _| {
             let doc = p.ledger.document();
-            let props = doc.devices.get(&c).map(|x| x.properties.clone()).unwrap_or_default();
-            Ok(devices::PROPERTIES.iter().map(|(k, label)| format!("{label}: {}", props.get(*k).map_or("?", String::as_str))).collect::<Vec<_>>())
+            let d = doc.devices.get(&c).cloned().unwrap_or_default();
+            Ok(devices::PROPERTIES.iter().map(|(k, label)| format!("{label}: {}", d.value(k).unwrap_or_else(|| "?".into()))).collect::<Vec<_>>())
         })
         .unwrap_or_default();
         for l in lines {
@@ -877,7 +877,7 @@ impl Interactive for Props {
         match self.key {
             None => prompt("Enter property to change", Accept::TEXT, &KEYWORDS.iter().map(|(k, _)| *k).collect::<Vec<_>>(), None),
             Some(key) => {
-                let current = read(s, |p, _| Ok(p.ledger.document().devices.get(&c).and_then(|x| x.properties.get(key).cloned()))).ok().flatten();
+                let current = read(s, |p, _| Ok(p.ledger.document().devices.get(&c).and_then(|x| x.value(key)))).ok().flatten();
                 let label = devices::PROPERTIES.iter().find(|(k, _)| *k == key).map_or(key, |(_, l)| *l);
                 prompt(format!("New {}", label.to_lowercase()), Accept::TEXT, &[], current)
             }

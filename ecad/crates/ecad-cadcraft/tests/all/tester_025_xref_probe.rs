@@ -545,7 +545,7 @@ fn tester_025_counts_orphans_and_duplicate_tags() {
     assert!(!xref_handles(&mut x.h, p105, rep(&k2)).is_empty(), "a table of spares");
     // Duplicate tags: give -K2 the tag of -K1 (merge refused or asked): the two devices stay
     // apart in the index.
-    let tag = x.h.doc().devices[&x.k1].properties.get("tag").cloned().unwrap_or_default();
+    let tag = x.h.doc().devices[&x.k1].tag().map(str::to_string).unwrap_or_default();
     let _ = x.h.run("setprop", json!({"component": k2c.hex(), "key": "tag", "value": tag}));
     index_is_a_rebuild(&mut x.h, "duplicate tag");
     let groups: Vec<_> = x.h.p(|p| p.xref.groups().collect());

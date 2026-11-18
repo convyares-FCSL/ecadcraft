@@ -39,6 +39,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use crate::doc::{Document, Properties, Wire};
 use crate::id::{DeviceId, TerminalId, WireId};
 use crate::op::{ObjectRef, Op};
+use crate::point::PointKey;
 
 /// Wire property: the wire number its net carries (design 022 §5.1).
 pub const WIRE_NUMBER: &str = "wire_number";
@@ -216,9 +217,9 @@ fn name_of_terminal(doc: &Document, t: TerminalId) -> Option<String> {
 /// that.
 fn bridged(doc: &Document, t: TerminalId) -> Vec<TerminalId> {
     let Some(term) = doc.terminals.get(&t) else { return Vec::new() };
-    let Some(key) = term.key.as_deref() else { return Vec::new() };
-    if key.starts_with('.') {
-        let mut keys: BTreeSet<&str> = BTreeSet::new();
+    let Some(key) = term.key.as_ref() else { return Vec::new() };
+    if key.as_def().is_none() {
+        let mut keys: BTreeSet<&PointKey> = BTreeSet::new();
         for (_, r) in doc.representations_showing(t) {
             if let Some(def) = doc.rep_definition(r) {
                 keys.extend(def.bridged_with(key));
@@ -229,7 +230,7 @@ fn bridged(doc: &Document, t: TerminalId) -> Vec<TerminalId> {
         }
         return doc
             .terminals_of(term.component)
-            .filter(|(id, x)| *id != t && x.label == term.label && x.key.as_deref().is_some_and(|k| keys.contains(k)))
+            .filter(|(id, x)| *id != t && x.label == term.label && x.key.as_ref().is_some_and(|k| keys.contains(k)))
             .map(|(id, _)| id)
             .collect();
     }
@@ -239,11 +240,11 @@ fn bridged(doc: &Document, t: TerminalId) -> Vec<TerminalId> {
     if def.bridges.is_empty() {
         return Vec::new();
     }
-    let keys: BTreeSet<&str> = def.bridged_with(key).collect();
+    let keys: BTreeSet<&PointKey> = def.bridged_with(key).collect();
     if keys.is_empty() {
         return Vec::new();
     }
-    doc.terminals_of(term.component).filter(|(id, x)| *id != t && x.key.as_deref().is_some_and(|k| keys.contains(k))).map(|(id, _)| id).collect()
+    doc.terminals_of(term.component).filter(|(id, x)| *id != t && x.key.as_ref().is_some_and(|k| keys.contains(k))).map(|(id, _)| id).collect()
 }
 
 /// About how many edges `node` has, read from the indexes without listing them.
@@ -560,7 +561,7 @@ impl Connectivity {
         }
         r.connection_points
             .keys()
-            .filter(|t| doc.terminals.get(t).and_then(|x| x.key.as_deref()).is_some_and(|k| k.starts_with('.')))
+            .filter(|t| doc.terminals.get(t).and_then(|x| x.key.as_ref()).is_some_and(|k| k.as_def().is_none()))
             .copied()
             .collect()
     }

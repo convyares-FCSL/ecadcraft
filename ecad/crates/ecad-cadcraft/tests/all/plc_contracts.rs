@@ -26,7 +26,7 @@ pub(crate) fn placed(h: &mut H, symbol: &str, x: f64, y: f64) -> DeviceId {
 }
 
 pub(crate) fn prop(h: &mut H, c: DeviceId, k: &str) -> Option<String> {
-    h.doc().devices.get(&c).and_then(|x| x.properties.get(k).cloned())
+    crate::common::plc_value(&h.doc(), c, k)
 }
 
 pub(crate) fn tag(h: &mut H, c: DeviceId) -> String {

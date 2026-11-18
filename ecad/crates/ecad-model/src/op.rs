@@ -587,17 +587,6 @@ impl Op {
                         }
                     }
                 }
-                // A component's tag is indexed (brief 018).
-                if let ObjectRef::Device(id) = object
-                    && key == crate::tag::TAG_KEY
-                {
-                    if let Some(old) = &old {
-                        doc.index.tag(*id, old, Delta::Remove);
-                    }
-                    if let Some(new) = after {
-                        doc.index.tag(*id, new, Delta::Add);
-                    }
-                }
                 if let ObjectRef::Cable(id) = object
                     && key == crate::tag::TAG_KEY
                 {

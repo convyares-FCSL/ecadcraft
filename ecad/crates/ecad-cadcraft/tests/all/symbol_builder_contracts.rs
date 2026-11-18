@@ -36,7 +36,10 @@ fn place(h: &mut H, x: f64, y: f64) -> Value {
 }
 
 fn term(d: &Document, c: DeviceId, key: &str) -> TerminalId {
-    d.terminals_of(c).find(|(_, t)| t.key.as_deref() == Some(key)).map(|(t, _)| t).unwrap_or_else(|| panic!("no point {key}"))
+    d.terminals_of(c)
+        .find(|(_, t)| t.key.as_ref().map(ToString::to_string).as_deref() == Some(key))
+        .map(|(t, _)| t)
+        .unwrap_or_else(|| panic!("no point {key}"))
 }
 
 /// A wire from point `key` of `c` straight down 20 mm.
@@ -79,9 +82,9 @@ fn row_2_place_makes_a_device_with_its_prefix_description_and_points() {
     let c: DeviceId = id(&v, "component");
     let d = h.doc();
     let comp = &d.devices[&c];
-    assert_eq!(comp.properties.get("description").map(String::as_str), Some("Float switch"));
+    assert_eq!(comp.get("description"), Some("Float switch"));
     assert_eq!(comp.properties.get("rating").map(String::as_str), Some("24 V"));
-    let labels: Vec<(String, String)> = d.terminals_of(c).map(|(_, t)| (t.key.clone().unwrap(), t.label.clone().unwrap())).collect();
+    let labels: Vec<(String, String)> = d.terminals_of(c).map(|(_, t)| (t.key.as_ref().unwrap().to_string(), t.label.clone().unwrap())).collect();
     assert!(labels.contains(&("1".into(), "BN".into())) && labels.contains(&("2".into(), "BU".into())), "{labels:?}");
     // The tag sits at its slot (-4, 0) from the origin, right-aligned; the rating at (4, 0).
     let page = h.first_page();
@@ -146,7 +149,7 @@ fn row_4_family_entries_resolve_and_a_project_override_wins() {
     assert_eq!(place(&mut h, 100.0, 100.0)["tag"], "-S01");
     h.run("setdefault", json!({"key": "symbol.float1.description", "value": "Level switch"})).unwrap();
     let c: DeviceId = id(&place(&mut h, 150.0, 100.0), "component");
-    assert_eq!(h.doc().devices[&c].properties.get("description").map(String::as_str), Some("Level switch"));
+    assert_eq!(h.doc().devices[&c].get("description"), Some("Level switch"));
     let v = h.run("defaults", json!({"key": "symbol.float1.description"})).unwrap();
     assert_eq!(v["defaults"][0]["from"], "project");
     assert!(h.run("setdefault", json!({"key": "symbol.float1.join", "value": "part"})).unwrap_err().contains("symbol's own"));
