@@ -12,8 +12,7 @@
 //! 5. a route (design 072 F31) joins the connection points its ends land on and the routes it
 //!    lands on (a T): the route is a node.
 //!
-//! Nothing else joins: crossings, T-junctions without a junction device and loose ends lying on
-//! another route are separate nets.
+//! Nothing else joins: crossings and loose ends lying on another route are separate nets.
 //!
 //! # Semantics
 //! - [`Connectivity`] is derived: never serialised, never compared by the document's `==`.
@@ -50,12 +49,10 @@ pub const WIRE_NUMBER: &str = "wire_number";
 pub const WIRE_NUMBER_FIXED: &str = "wire_number_fixed";
 /// Wire property: the potential (`24V`, `L1`…) the conductor carries.
 pub const POTENTIAL: &str = "potential";
-/// Device property naming what a tagless component is (`junction`, `continuation`).
+/// Device property naming what a tagless component is (`continuation`, the only kind).
 pub const KIND: &str = "kind";
 /// The [`KIND`] of a continuation.
 pub const CONTINUATION: &str = "continuation";
-/// The [`KIND`] of a junction.
-pub const JUNCTION: &str = "junction";
 /// Device property: a continuation's name.
 pub const NAME: &str = "name";
 

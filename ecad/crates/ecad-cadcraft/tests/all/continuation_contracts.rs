@@ -290,8 +290,9 @@ fn caption_rules_and_wrapping() {
     assert_eq!(e, "Only continuation arrows have a caption; -K01 is a device.");
     let e = f.h.run("setprop", json!({"component": k.hex(), "key": CAPTION_KEY, "value": "X"})).unwrap_err();
     assert!(e.contains("-K01 is a device"), "{e}");
+    // The junction went with routes (design 072 D): a T is a line landing on a line.
     let e = f.h.run("place", json!({"symbol": "junction", "at": [10, 10], "caption": "X"})).unwrap_err();
-    assert!(e.starts_with("Only continuation arrows have a caption"), "{e}");
+    assert_eq!(e, "No symbol \"junction\". Type List to see them.");
     // `place` with a caption, then `setprop` changes it.
     let v = f.h.run("place", json!({"symbol": "continuation", "at": [250, 60], "name": "24V", "caption": " TO THE MOTOR SUPPLY CIRCUITS OF THE FIELD PANEL AND ITS OUTPUTS "})).unwrap();
     assert_eq!(v["caption"], json!("TO THE MOTOR SUPPLY CIRCUITS OF THE FIELD PANEL AND ITS OUTPUTS"));

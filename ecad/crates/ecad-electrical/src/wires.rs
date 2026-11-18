@@ -36,7 +36,7 @@ use std::collections::BTreeMap;
 
 use std::collections::BTreeSet;
 
-use ecad_model::connectivity::{CONTINUATION, JUNCTION, KIND, NAME};
+use ecad_model::connectivity::{CONTINUATION, KIND, NAME};
 use ecad_model::{
     ConductorId, DefinitionId, Device, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, NetId, Op, PageId, Placement, Primitive,
     Pt, Representation, RepresentationId, Route, RouteEnd, RouteId, Style, Subject, SymbolInstance, Terminal, TerminalId, Wire, WireId,
@@ -79,7 +79,7 @@ pub fn continuation_starter() -> &'static Starter {
     symbols::starter(symbols::StarterKey::Continuation)
 }
 
-/// What a tagless component is (`junction`, `continuation`), from its `kind` property.
+/// What a tagless component is (`continuation`), from its `kind` property.
 pub fn kind_of(doc: &Document, c: DeviceId) -> Option<&str> {
     doc.devices.get(&c)?.properties.get(KIND).map(String::as_str)
 }
@@ -872,12 +872,11 @@ pub fn plan_split(doc: &Document, ids: &mut IdAllocator, on: &OnRoute, first: (R
 /// Most connection points a net line names before `+n`.
 pub const MAX_POINTS_SHOWN: usize = 6;
 
-/// A connection point in words: `-K01:A1`; a junction `junction`, a continuation `→24V`.
+/// A connection point in words: `-K01:A1`; a continuation `→24V`.
 pub fn point_words(doc: &Document, t: TerminalId) -> String {
     let Some(term) = doc.terminals.get(&t) else { return "?".into() };
     let c = term.component;
     match kind_of(doc, c) {
-        Some(JUNCTION) => return "junction".into(),
         Some(CONTINUATION) => {
             let name = doc.devices.get(&c).and_then(|x| x.properties.get(NAME)).cloned().unwrap_or_default();
             return format!("\u{2192}{name}");
@@ -891,12 +890,12 @@ pub fn point_words(doc: &Document, t: TerminalId) -> String {
     }
 }
 
-/// The device connection points of a net (not junctions or continuations), in words, sorted.
+/// The device connection points of a net (not continuations), in words, sorted.
 pub fn net_points(doc: &Document, net: &ecad_model::NetData) -> Vec<String> {
     let mut v: Vec<String> = net
         .terminals
         .iter()
-        .filter(|t| doc.terminals.get(t).is_none_or(|x| !matches!(kind_of(doc, x.component), Some(JUNCTION | CONTINUATION))))
+        .filter(|t| doc.terminals.get(t).is_none_or(|x| !matches!(kind_of(doc, x.component), Some(CONTINUATION))))
         .map(|t| point_words(doc, *t))
         .collect();
     v.sort();

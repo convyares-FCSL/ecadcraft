@@ -627,7 +627,7 @@ pub(crate) fn join_by_default(doc: &Document) -> bool {
 
 // ---------------------------------------------------------------- place (the continuation form)
 
-/// `place {symbol: "continuation" | "junction", at, rotation?, mirror?, name?, caption?}`: a
+/// `place {symbol: "continuation", at, rotation?, mirror?, name?, caption?}`: a
 /// tagless component (design 022 §3.2), part of `place` ([`crate::cmd::device::PlaceParams`]).
 pub(crate) fn place_tagless(
     s: &mut Session, params: &crate::cmd::device::PlaceParams, starter: &'static Starter, at: Pt, degrees: Degrees, mirror: bool,
@@ -648,8 +648,7 @@ pub(crate) fn place_tagless(
         }
         let placement = Placement { origin: at, rotation: Radians::from(degrees), mirror, scale: 1.0 };
         let t = wires::plan_tagless(doc, &mut p.ids, page, style, starter, placement, props)?;
-        let label = if starter.key == crate::symbols::StarterKey::Continuation { "Continuation" } else { "Junction" };
-        p.apply_edit(pg, "place", label, t.ops.clone())?;
+        p.apply_edit(pg, "place", starter.name, t.ops.clone())?;
         if let Some(n) = &name {
             p.last_continuation = Some(n.clone());
         }

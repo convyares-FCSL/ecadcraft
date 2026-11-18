@@ -108,7 +108,7 @@ fn a_every_starter_symbol_gets_its_prefix_and_the_next_number() {
         ("di", "-A01"),
         ("do", "-A02"),
     ];
-    // Every starter but the tagless junction and continuation (brief 022); brief 034's families
+    // Every starter but the tagless continuation (brief 022); brief 034's families
     // are covered by `library_contracts`.
     assert_eq!(
         want.len(),

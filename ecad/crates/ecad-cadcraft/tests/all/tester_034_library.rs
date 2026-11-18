@@ -187,7 +187,7 @@ pub(crate) fn catalogue() -> Vec<Sym> {
 /// Brief 045's starters (design 045 §3.1, §4.1), not design 034's.
 pub(crate) const BRIEF_045: &[&str] = &["plcim", "plcpm", "plccm", "chdi", "chdq", "chai", "chao", "chrtd", "chiol"];
 
-const OLD: [(&str, u128, &str); 21] = [
+const OLD: [(&str, u128, &str); 20] = [
     ("coil", 1, "K"),
     ("no", 2, "K"),
     ("nc", 3, "K"),
@@ -206,7 +206,6 @@ const OLD: [(&str, u128, &str); 21] = [
     ("terminal", 16, "X"),
     ("di", 17, "A"),
     ("do", 18, "A"),
-    ("junction", 19, ""),
     ("continuation", 20, ""),
     ("terminalpe", 21, "X"),
 ];
@@ -385,7 +384,7 @@ fn a1_every_new_symbol_is_in_the_catalogue_as_designed() {
         .map(|k| k.word())
         .collect();
     assert!(extra.is_empty(), "keys not in design 034: {extra:?}");
-    assert_eq!(STARTERS.len(), 21 + cat.len() + 20 + 3 + STARTERS.iter().filter(|s| BRIEF_045.contains(&s.key.word())).count());
+    assert_eq!(STARTERS.len(), 20 + cat.len() + 20 + 3 + STARTERS.iter().filter(|s| BRIEF_045.contains(&s.key.word())).count());
 }
 
 /// §13 check 1 and §7.1: Find Symbol finds by family word, prefix and alias.
@@ -976,10 +975,9 @@ fn p_old_starters_keep_their_content_hash() {
         ("terminalpe", "d38f6429abbaf0e8e110505625b467b6531504a762e11205542230148f9f1c00"),
         ("di", "92732e642b7d5109705f643341f4d9ee02bb3729275a570182e63b6d126bf7b9"),
         ("do", "caeab16ca1a100e4c5b4a49a878ebf666a634ef6365db7111ab237ba1e936307"),
-        ("junction", "8a6e36eab66ded66ec4ef470682d2d5cecf536a0d1fe6c148c632154232a4868"),
         ("continuation", "7289a1f63b563b3f0ceb6959fd7fb34763daf4c1c6e56bb2366e01129ae7afaf"),
     ];
-    assert_eq!(PINNED.len(), 21, "pin every old starter");
+    assert_eq!(PINNED.len(), 20, "pin every old starter");
     for (key, want) in PINNED {
         let s = symbols::by_key(key).unwrap();
         let o = s.definition().unwrap().origin.clone().unwrap();

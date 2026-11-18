@@ -759,9 +759,6 @@ impl Outputs {
         let Some(term) = doc.terminals.get(&t) else { return EndCell { order, ..EndCell::default() } };
         let c = term.component;
         match crate::wires::kind_of(doc, c) {
-            Some(ecad_model::connectivity::JUNCTION) => {
-                EndCell { junction: Some(at.and_then(|(p, a)| cx.place(doc, p, a))), order, ..EndCell::default() }
-            }
             Some(ecad_model::connectivity::CONTINUATION) => {
                 let name = doc.devices.get(&c).and_then(|x| x.properties.get(ecad_model::connectivity::NAME)).cloned().unwrap_or_default();
                 EndCell { name: Some(format!("{name} >")), order, continuation: true, ..EndCell::default() }
@@ -776,7 +773,7 @@ impl Outputs {
                     Some(d) => d.location.value.clone(),
                     None => locations::resolve(doc, c).value,
                 };
-                EndCell { name: Some(name), location, device: Some(c), order, junction: None, continuation: false }
+                EndCell { name: Some(name), location, device: Some(c), order, continuation: false }
             }
         }
     }
