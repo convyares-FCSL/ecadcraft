@@ -144,8 +144,9 @@ impl DeviceType {
     pub fn has_rating_fields(&self) -> bool {
         match self {
             DeviceType::Protection(_) => true,
+            // A push button or selector is commonly unrated: only a coil or an SSR is warned about.
+            DeviceType::Switching(s) => s.operator_kind() != OperatorKind::Manual,
             DeviceType::PowerSupply(_)
-            | DeviceType::Switching(_)
             | DeviceType::Sensor(_)
             | DeviceType::Motor(_)
             | DeviceType::Load(_)
@@ -162,8 +163,8 @@ impl DeviceType {
     pub fn rating(&self) -> Option<String> {
         match self {
             DeviceType::Protection(p) => (!p.is_unrated()).then(|| p.to_string()),
+            DeviceType::Switching(s) => (!s.is_unrated()).then(|| s.to_string()),
             DeviceType::PowerSupply(_)
-            | DeviceType::Switching(_)
             | DeviceType::Sensor(_)
             | DeviceType::Motor(_)
             | DeviceType::Load(_)
@@ -180,8 +181,8 @@ impl DeviceType {
     pub fn unrated(&self) -> DeviceType {
         match self {
             DeviceType::Protection(p) => DeviceType::Protection(p.kind().empty()),
+            DeviceType::Switching(s) => DeviceType::Switching(s.operator_kind().empty()),
             DeviceType::PowerSupply(_)
-            | DeviceType::Switching(_)
             | DeviceType::Sensor(_)
             | DeviceType::Motor(_)
             | DeviceType::Load(_)
@@ -199,8 +200,8 @@ impl DeviceType {
         match self {
             DeviceType::Protection(p) => p.problem(),
             DeviceType::Connector(c) => c.problem(),
+            DeviceType::Switching(s) => s.problem(),
             DeviceType::PowerSupply(_)
-            | DeviceType::Switching(_)
             | DeviceType::Sensor(_)
             | DeviceType::Motor(_)
             | DeviceType::Load(_)
@@ -226,10 +227,8 @@ pub struct PowerSupply {}
 pub mod protection;
 pub use protection::{Breaker, Fuse, FuseBank, FuseClass, Poles, Protection, ProtectionKind, Rcbo, Rcd, TripCurve};
 
-/// A switching device and what operates it (group 3). Its fields come with lane B step 3.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Switching {}
+pub mod switching;
+pub use switching::{Control, Operator, OperatorKind, Switching};
 
 /// A sensor (group 4). Its fields come with lane B step 3.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]

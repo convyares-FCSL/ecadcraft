@@ -683,9 +683,10 @@ fn d02_protected_by_a_fuse_of_a_bank_and_by_hand() {
     assert!(rows.len() == 1 && rows[0].contains("names -Q09 as its protection; there is no -Q09"), "{rows:?}");
     assert!(fixes(&mut h, "rating-device-missing").iter().any(|f| f.contains("ClearProtectedBy")), "the fix");
     // A non-protective device named by hand. Design 072 §2.2: a coil has no protective rating
-    // (its text is a note), so `rating` refuses it; set by setprop it is used, with an Info row.
+    // (its AC-3 current is a switching rating), so `rating` refuses it; set by setprop it is
+    // used, with an Info row.
     let k01 = placed(&mut h, "coil", 340.0, 300.0);
-    h.run("setprop", json!({"component": k01.hex(), "key": "rating", "value": "3 A"})).unwrap();
+    h.run("setprop", json!({"component": k01.hex(), "key": "rating", "value": "AC-3 3 A"})).unwrap();
     let k = crate::plc_contracts::tag(&mut h, k01);
     let e = refused(&mut h, "rating", json!({"wire": wire.hex(), "protected_by": k}));
     assert!(e.contains("no rated current"), "{e}");

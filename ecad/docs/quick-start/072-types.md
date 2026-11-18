@@ -171,7 +171,7 @@ shown back from them:
 - Text that is no rating at all (`see datasheet`) is kept as the device's rating note, and the
   device gets the Checks warning **no-rating**, because the checks read only the typed fields.
 - A fuse bank takes `rating.<n>` per fuse (`rating.3` `6.3 A T`); its own `rating` is refused.
-- Other groups (switching, sensors, motors, loads, indicators, power supplies) keep what you type
+- Other groups (sensors, motors, loads, indicators, power supplies) keep what you type
   as the note until their own step; a symbol's default rating is read the same way when it is
   placed, and a symbol whose default rating does not read for its group cannot be saved.
 - A file whose device holds `rating` among its properties, or a protective device holding
@@ -183,6 +183,30 @@ and Checks shows "no rating"). Nobody has tried it by hand yet.
 
 Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector, and
 `rating::reader` in ecad-electrical (automated, not tried by hand).
+
+### Lane B, step 3: switching devices' ratings are typed
+
+A switching device (relay, contactor, SSR, push button, selector) now says what operates it, from
+its symbol: a **coil** (`coil`, `no`, `nc`, `co`, `power3`, `power4`), a **solid-state** input
+(`ssrin`, `ssrout`) or a **hand** (`pbno`, `pbnc`, `sel`, `swco`). Its rating is typed fields: the
+coil's or input's control voltage (`24 V DC`) and power (`3 W`), and the AC-3 rating: rated
+current (`AC-3 9 A`) and motor power (`4 kW`).
+
+- `24VDC AC-3 9A` on a coil reads as **coil 24 V DC, AC-3 9 A**; an SSR shows `input 24 V DC`.
+- Asked, never guessed: `24 V` (AC or DC?), `9 A` (is it the AC-3 current? write `AC-3 9 A`), a
+  bare `24` (which unit?).
+- A push button or selector has no coil: a voltage on it is refused; it takes only the AC-3
+  rating. An unrated push button or selector gets no **no-rating** warning; an unrated coil or
+  SSR does.
+- `24 V AC/DC`, `5 VA` and other text that does not read are kept as the note.
+
+To try it: place a coil (Checks shows "no rating"), type `24VDC AC-3 9A` as its rating (shown as
+`coil 24 V DC, AC-3 9 A`, and the warning goes), then `24 V` (refused, asks AC or DC). Place a
+push button and type `24 V DC` (refused: no coil). Nobody has tried it by hand yet.
+
+Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector
+(`…switching…`), and `rating::reader::switching` in ecad-electrical (automated, not tried by
+hand).
 
 ## Lane D: wires carry typed values
 

@@ -155,3 +155,49 @@ fn a_protective_rating_is_shown() {
         assert!(log.contains(want), "{want} in the readable log: {log}");
     }
 }
+
+/// Step 3, Switching (A15): a switching device's operator and typed rating show in the readable
+/// log and the Readable row view, and the Raw view is the stored bytes.
+#[test]
+fn a_switching_rating_is_shown_raw_and_readable() {
+    use ecad_model::device::{Control, Operator, OperatorKind, Switching};
+    use ecad_model::units::{Amps, Current, RatedVoltage, Volts};
+    let dir = TempDir::new("072b-switching");
+    let mut l = history();
+    let mut ids = IdAllocator::seeded(77);
+    let c: DeviceId = ids.fresh();
+    let before = Device { device_type: DeviceType::Switching(OperatorKind::Coil.empty()), ..Device::default() };
+    let k = Switching {
+        operator: Operator::Coil(Control { voltage: Some(RatedVoltage { volts: Volts(24.0), current: Current::Dc }), power: None }),
+        ac3_current: Some(Amps(9.0)),
+        ac3_power: None,
+    };
+    let after = Device { device_type: DeviceType::Switching(k), ..before.clone() };
+    l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: before.clone() }]).unwrap();
+    l.commit(Author::User, "rating", vec![Op::ModifyDevice { id: c, before, after }]).unwrap();
+    let path = written(&dir, &l);
+    let log = run(&[path.to_str().unwrap(), "log", "main", "--last", "1"]).unwrap();
+    for want in ["ModifyDevice", "switching", "operator", "coil", "voltage", "dc", "ac3_current"] {
+        assert!(log.contains(want), "{want} in the readable log: {log}");
+    }
+    let f = FileSource::from_path(&path);
+    assert!(matches!(f.wait_verified(Duration::from_secs(60)), VerifyState::Done { .. }));
+    let s = Some(&f as &dyn Source);
+    let last = ask(s, serde_json::json!({"op": "rows", "table": "transactions", "count": 1000}));
+    let rows = last["ok"]["rows"].as_array().cloned().unwrap_or_default();
+    let key = rows.last().and_then(|r| r["key"].as_str()).unwrap().to_string();
+    let readable = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "readable"}));
+    let text = readable["ok"]["decoded"].to_string();
+    assert!(text.contains("ModifyDevice") && text.contains("ac3_current"), "{text}");
+    let raw = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "raw"}));
+    let r = f.store().unwrap().reader().unwrap();
+    let mut bytes = None;
+    r.raw_rows(|t, k, v| {
+        if t == "transactions" && ecad_inspector::text::hex(k) == key {
+            bytes = Some(v.to_vec());
+        }
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(raw["ok"]["hex"], ecad_inspector::text::hex(&bytes.unwrap()));
+}
