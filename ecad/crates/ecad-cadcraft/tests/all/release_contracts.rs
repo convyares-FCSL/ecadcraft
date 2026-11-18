@@ -94,7 +94,6 @@ fn orphans(h: &mut H) -> Vec<String> {
 /// §14 A: an orphan reference end is a Checks row of its own, kept from each commit's ops: it
 /// comes with the end, goes when the cable is continued, and comes back on undo.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn an_orphan_reference_is_a_check_kept_by_its_update_map() {
     let mut h = H::new(0x0271);
     let supply = h.first_page();
@@ -114,9 +113,11 @@ fn an_orphan_reference_is_a_check_kept_by_its_update_map() {
     assert_eq!(v["total"], 1, "{v}");
     assert_eq!(v["checks"][0]["which"], "-C01 /?");
     assert!(v["checks"][0]["object"]["reference"].is_string(), "{v}");
-    // Continued on another page: the end has a partner.
-    h.run("newpage", json!({"title": "Field"})).unwrap();
-    h.run("cablecontinue", json!({"cable": c1.hex(), "at": [20, 5], "toward": [40, 5]})).unwrap();
+    // Its other end on another page: the end has a partner. Written as `cablecontinue` writes
+    // it (`H::reference_end`): a continuation needs wires leaving the page through the reference,
+    // which form only with lane F step F4.
+    let field: ecad_model::PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
+    h.reference_end(c1, field, (20.0, 5.0));
     assert!(orphans(&mut h).is_empty());
     kept_is_built(&mut h);
     h.cmdline("u");

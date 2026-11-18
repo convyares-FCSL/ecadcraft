@@ -96,6 +96,18 @@ fn continued() -> (R, Value) {
     (r, v)
 }
 
+/// Fixture R with the reference on Supply and C1's other reference end on Field at (20,5), written
+/// as `cablecontinue` writes it but without its stubs ([`H::reference_end`]): a continuation needs
+/// wires leaving the page through the reference, which form only with lane F step F4. For tests
+/// about the two ends' texts, flags and pages, not the wires.
+fn paired() -> R {
+    let mut r = before_reference();
+    r.h.run("cableref", json!({"cable": r.c1.hex(), "at": [65, 5]})).unwrap();
+    let field = r.field;
+    r.h.reference_end(r.c1, field, (20.0, 5.0));
+    r
+}
+
 /// Fixture R complete: the continued wires connected to K2.
 fn connected() -> R {
     let (mut r, v) = continued();
@@ -280,9 +292,8 @@ fn each_reference_shows_the_other_end_away_from_its_wires() {
 /// Check D: moving and renaming pages are one transaction each; the texts follow with none of
 /// their own; moving the point changes the other end's column.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn texts_follow_page_moves_renames_and_point_moves_live() {
-    let mut r = connected();
+    let mut r = paired();
     let head = r.h.head();
     r.h.run("movepage", json!({"page": r.field.hex(), "index": 1})).unwrap();
     assert_eq!(r.h.head(), head + 1, "exactly the move");
@@ -367,9 +378,8 @@ fn erasing_one_drawing_makes_the_other_end_an_orphan_and_undo_restores_it() {
 
 /// Erasing only the reference text erases its reference (design §9); moving it is refused.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn the_text_is_derived_erasing_it_erases_the_reference_and_moving_it_is_refused() {
-    let (mut r, _) = continued();
+    let mut r = paired();
     r.h.activate(r.supply);
     let rid = reference_on(&mut r.h, r.supply);
     let text = r.h.p(|p| p.pages[&r.supply].map.ref_text(rid)).unwrap();
@@ -931,9 +941,8 @@ fn assert_flag_away(h: &mut H, page: PageId, cable: CableId, u: Pt) {
 
 /// Fixture R's page 1: the wires come from the left, the flag points right.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn the_flag_points_right_when_the_wires_come_from_the_left() {
-    let (mut r, _) = continued();
+    let mut r = paired();
     assert_flag_away(&mut r.h, r.supply, r.c1, Pt::new(1.0, 0.0));
 }
 
@@ -1030,9 +1039,8 @@ fn only_the_active_page_is_drawn_and_another_page_shows_the_new_text_when_made_a
 /// Brief 016: undo on the active page of an edit made there stays on that page; another page
 /// shows the reverted reference text when it is made active.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn undo_on_the_page_of_the_edit_stays_and_other_pages_show_the_reverted_text_when_active() {
-    let mut r = connected();
+    let mut r = paired();
     r.h.activate(r.field);
     let fid = reference_on(&mut r.h, r.field);
     let fpoint = r.h.doc().representations[&fid].items[0];
@@ -1061,9 +1069,8 @@ fn undo_on_the_page_of_the_edit_stays_and_other_pages_show_the_reverted_text_whe
 /// from there. The undone edit was on page 2, so page 2 comes to the front with its end back, and
 /// page 1 shows `2/F1` when it is active again.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn undo_from_another_page_brings_the_page_of_the_edit_to_the_front() {
-    let mut r = connected();
+    let mut r = paired();
     r.h.activate(r.field);
     let doc = r.h.doc();
     let keep: Vec<cadcraft_engine::doc::Handle> = doc

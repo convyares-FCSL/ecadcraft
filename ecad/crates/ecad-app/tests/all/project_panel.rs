@@ -288,7 +288,11 @@ pub(crate) fn fixture_p(h: &mut Harness<'static, App>) -> (PageId, PageId, PageI
     let cable = doc(h).cables.keys().next().copied().unwrap();
     ok(h, &format!(r#"cableref {{"cable":"{}","at":[65,5]}}"#, cable.hex()));
     ok(h, r#"newpage {"title":"Field"}"#);
-    ok(h, &format!(r#"cablecontinue {{"cable":"{}","at":[20,5],"toward":[40,5]}}"#, cable.hex()));
+    // C1's other end on Field at (20,5), written as `cablecontinue` writes it but without its stubs:
+    // a continuation needs wires leaving the page through the reference, which form only with lane
+    // F step F4. The tests on this fixture are about pages and what the two ends say of each other.
+    let field = doc(h).page_order[1];
+    crate::common::reference_end(h.state_mut(), cable, field, (20.0, 5.0));
     ok(h, r#"newpage {"title":"Spare"}"#);
     let d = doc(h);
     (d.page_order[0], d.page_order[1], d.page_order[2])
@@ -305,7 +309,6 @@ pub(crate) fn take(h: &Harness<'static, App>, deltas: &Deltas, name: &str) -> Op
 /// Checks A, B, C, E, G, J and the screenshots `016-panel`, `016-rename`, `016-drag`,
 /// `016-collapsed`.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     let deltas: Deltas = Arc::default();
     let mut h = build(new_app(), Some(deltas.clone()));
@@ -516,7 +519,6 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
 /// reference shows Field around the other end, follows moves, renames, edits, undo and redo of
 /// its page only, records nothing and leaves the active page's selection and history alone.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn preview_reference_shows_the_other_end_and_records_nothing() {
     let deltas: Deltas = Arc::default();
     let mut h = build(new_app(), Some(deltas.clone()));

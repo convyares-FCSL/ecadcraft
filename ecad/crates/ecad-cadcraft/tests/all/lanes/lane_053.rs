@@ -55,8 +55,11 @@ fn ops_that_read_no_reference_touch_no_cable() {
     assert_eq!(touched(vec![typed]), Some([k].into()), "a cable's own property");
 }
 
-/// A cable continued from page Supply onto page Field: (harness, cable, Supply, Field).
-fn continued_cable(seed: u64) -> (H, ecad_model::CableId, ecad_model::PageId, ecad_model::PageId) {
+/// A cable slashed on page Supply with a reference there, and its other end on page Field:
+/// (harness, cable, Supply, Field). The other end is written as `cablecontinue` writes it
+/// ([`H::reference_end`]): a continuation needs wires leaving the page through the reference,
+/// which form only with lane F step F4, and these tests are about the references, not the wires.
+fn paired_cable(seed: u64) -> (H, ecad_model::CableId, ecad_model::PageId, ecad_model::PageId) {
     let mut h = H::new(seed);
     let supply = h.first_page();
     for y in [0.0, 5.0, 10.0] {
@@ -66,16 +69,15 @@ fn continued_cable(seed: u64) -> (H, ecad_model::CableId, ecad_model::PageId, ec
     h.run("cableref", json!({"cable": c1.hex(), "at": [65, 5]})).unwrap();
     let field: ecad_model::PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
     h.activate(field);
-    h.run("cablecontinue", json!({"cable": c1.hex(), "at": [20, 5], "toward": [40, 5]})).unwrap();
+    h.reference_end(c1, field, (20.0, 5.0));
     (h, c1, supply, field)
 }
 
 /// Review of #109, 1: a change of the project's standard re-traces every cable's references, and
 /// each reference's zone afterwards is the one a fresh derivation gives.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn a_standard_change_retraces_every_cable_reference() {
-    let (mut h, c1, supply, _) = continued_cable(0x53_03);
+    let (mut h, c1, supply, _) = paired_cable(0x53_03);
     let zone = |doc: &ecad_model::Document| {
         ecad_cadcraft::references::all(doc)
             .into_iter()
@@ -99,9 +101,8 @@ fn a_standard_change_retraces_every_cable_reference() {
 /// `wire`, `joinwires`: a page's reference markers come from the references of the cables drawn
 /// on it, and equal the markers taken from every reference of the project.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn a_page_s_markers_equal_those_of_every_reference() {
-    let (mut h, _, supply, field) = continued_cable(0x53_02);
+    let (mut h, _, supply, field) = paired_cable(0x53_02);
     let doc = h.doc();
     let every = ecad_cadcraft::references::all(&doc);
     for page in [supply, field] {

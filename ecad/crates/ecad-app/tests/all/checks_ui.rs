@@ -75,7 +75,6 @@ fn click(h: &mut H, label: &str) {
 }
 
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     let dir = std::env::temp_dir().join(format!("ecad-022-ui-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -171,8 +170,10 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     // Four rows of brief 022, brief 024's count of devices without a part number, brief 052's two
     // function rows (-K01 is =PUMP, which no page or box says; the others have none) and brief
     // 057's open core (the owner rule: -W01's unwired GNYE core is an error until ticked Not used),
-    // and brief 059's two `no-gland` rows (-W01 has no gland size at either end).
-    assert_eq!(rows.len(), 10, "{rows:?}");
+    // and brief 059's two `no-gland` rows (-W01 has no gland size at either end). Until lane F step
+    // F4 the demo does not continue -W01 on page 3, which adds seven: its orphan reference, and an
+    // open end and no wire yet for each of its three lines ending at the reference (with F4: 10).
+    assert_eq!(rows.len(), 17, "{rows:?}");
     assert_eq!(rows.iter().filter(|r| r.check.kind == Kind::NoGland).count(), 2, "{rows:?}");
     assert!(rows.iter().any(|r| r.check.kind == Kind::FunctionUnused), "{rows:?}");
     assert!(rows.iter().any(|r| r.check.kind == Kind::NoFunction), "{rows:?}");

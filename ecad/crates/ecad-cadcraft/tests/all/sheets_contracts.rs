@@ -32,7 +32,7 @@ fn text_on(h: &mut H, page: PageId) -> String {
 }
 
 /// Two pages, Supply and Field, and cable C1 slashed on Supply with its reference there at (120,5)
-/// (column C); with [`fixture_continued`], C1 continues on Field (its reference at (20,5)).
+/// (column C); with [`fixture_paired`], C1 has its other end on Field (its reference at (20,5)).
 struct S {
     h: H,
     supply: PageId,
@@ -47,11 +47,14 @@ fn fixture() -> S {
     S { h, supply, field }
 }
 
-/// [`fixture`] with C1 continued on Field. A continuation needs wires leaving the page through
-/// the reference, which form only with lane F step F4 (named points on both pages).
-fn fixture_continued() -> S {
+/// [`fixture`] with C1's second reference end on Field at (20,5), so the two ends name each other.
+/// Not `cablecontinue`: a continuation needs wires leaving the page through the reference, which
+/// form only with lane F step F4; these tests are about the frame, the pages and what the
+/// reference texts say, so the end is written as the continuation will write it
+/// ([`H::reference_end`]).
+fn fixture_paired() -> S {
     let (mut h, supply, field, c1) = pages_and_cable();
-    h.run("cablecontinue", json!({"cable": c1.hex(), "at": [20, 5], "toward": [40, 5]})).unwrap();
+    h.reference_end(c1, field, (20.0, 5.0));
     h.activate(supply);
     S { h, supply, field }
 }
@@ -115,9 +118,8 @@ fn a_new_page_has_an_a3_frame_and_a_filled_title_block() {
 /// Check B: a reference's column and row are the frame's (zones over the whole frame, counted
 /// from the top-left), on both ends; moving the point moves the other end's text.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn references_name_the_frames_column_and_row() {
-    let mut s = fixture_continued();
+    let mut s = fixture_paired();
     assert_eq!(text_on(&mut s.h, s.field), "1/F3", "Supply's end at x = 120 is in column C");
     assert_eq!(text_on(&mut s.h, s.supply), "2/F1");
     let doc = s.h.doc();
@@ -131,9 +133,8 @@ fn references_name_the_frames_column_and_row() {
 /// Check C: page number, title and function from `pageprops`: one transaction and one `u` each;
 /// the title block and the texts naming the page follow; refusals leave the head.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn page_properties_are_one_transaction_each_and_the_title_block_follows() {
-    let mut s = fixture_continued();
+    let mut s = fixture_paired();
     let head = s.h.head();
     s.h.run("pageprops", json!({"number": "100"})).unwrap();
     assert_eq!(s.h.head(), head + 1);
@@ -388,9 +389,8 @@ fn row(v: &ecad_cadcraft::props::PropsView, key: &str) -> String {
 /// Review S1: a wire's From and To follow a rename of the device at its end (the update map names
 /// the end devices), and a reference's Other ends follow a renumber of the partner's page.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn wire_and_reference_properties_follow_the_objects_they_name() {
-    let mut s = fixture_continued();
+    let mut s = fixture_paired();
     // A coil and a wire from its first connection point.
     let coil: ecad_model::DeviceId = id(&s.h.run("place", json!({"symbol": "coil", "at": [200, 150]})).unwrap(), "component");
     let doc = s.h.doc();
@@ -447,9 +447,8 @@ fn old_projects_touch_only_pages_whose_position_changed() {
 /// Review W2: an invalid project sheet (only from a hostile file) is read as A3 everywhere, so the
 /// frame and the references agree.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn an_invalid_sheet_falls_back_to_a3_everywhere() {
-    let mut s = fixture_continued();
+    let mut s = fixture_paired();
     let before = s.h.doc().settings;
     let mut after = before.clone();
     after.sheet = Some(ecad_model::SheetSpec { columns: 0, width: 0, ..ecad_model::SheetSpec::default() });

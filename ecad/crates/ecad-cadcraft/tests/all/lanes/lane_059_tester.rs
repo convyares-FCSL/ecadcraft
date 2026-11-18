@@ -827,8 +827,10 @@ fn r8_kept_rows_follow_new_remove_assign_and_undo() {
 
 // ================================================================ 059 full (059b, 059c, 059d)
 
-/// A cable slashed on page 1 with a reference there, continued on page 2 (032): drawn on two
-/// pages. Returns (cable, page 1, page 2).
+/// A cable slashed on page 1 with a reference there, and its other reference end on page 2:
+/// drawn on two pages. Returns (cable, page 1, page 2). The end on page 2 is written as
+/// `cablecontinue` writes it ([`H::reference_end`]): a continuation needs wires leaving the page
+/// through the reference, which form only with lane F step F4.
 fn on_two_pages(h: &mut H) -> (CableId, ecad_model::PageId, ecad_model::PageId) {
     let p1 = h.first_page();
     for y in [0.0, 5.0, 10.0] {
@@ -838,12 +840,11 @@ fn on_two_pages(h: &mut H) -> (CableId, ecad_model::PageId, ecad_model::PageId) 
     h.run("cableref", json!({"cable": w.hex(), "at": [65, 5]})).unwrap();
     let p2: ecad_model::PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
     h.activate(p2);
-    h.run("cablecontinue", json!({"cable": w.hex(), "at": [20, 5], "toward": [40, 5]})).unwrap_or_else(|e| panic!("cablecontinue: {e}"));
+    h.reference_end(w, p2, (20.0, 5.0));
     (w, p1, p2)
 }
 
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn f1_removing_a_cable_drawn_on_two_pages_names_both_with_a_go_to_each() {
     let mut h = H::new(59_901);
     let (w, p1, p2) = on_two_pages(&mut h);
