@@ -1,7 +1,8 @@
 //! Reading a typed rating into a group's typed fields (design 072 §2.2, "Ratings", owner decisions
 //! 2026-11-18): one reader per group (protection here, switching in [`read_switching`], sensors in
-//! [`read_sensor`], a strip's fuse positions in [`with_position_rating`]), used by `setprop` (the
-//! UI, the CLI and MCP alike) and by a symbol's default rating.
+//! [`read_sensor`], motors in [`read_motor`], loads in [`read_load`], a strip's fuse positions in
+//! [`with_position_rating`]), used by `setprop` (the UI, the CLI and MCP alike) and by a symbol's
+//! default rating.
 //!
 //! # Semantics
 //! - Text that reads as the group's rating fills its fields: `B16` on an MCB is curve B, 16 A.
@@ -23,12 +24,14 @@ use crate::error::CmdError;
 use ecad_model::Word;
 use ecad_model::device::protection::{MAX_AMPS, MAX_BREAKING_KA, MAX_RESIDUAL_MA};
 use ecad_model::device::{Breaker, Fuse, FuseClass, Poles, Protection, ProtectionKind, Rcbo, Rcd, TripCurve};
-use ecad_model::device::{DeviceType, RatingNote};
+use ecad_model::device::{DeviceType, Load, RatingNote};
 use ecad_model::units::{Amps, KiloAmps, MilliAmps};
 
+mod load;
 mod motor;
 mod sensor;
 mod switching;
+pub use load::read_load;
 pub use motor::read_motor;
 pub use sensor::read_sensor;
 pub use switching::read_switching;
@@ -370,10 +373,18 @@ pub fn rated(t: &DeviceType, who: &str, text: Option<&str>) -> Result<(DeviceTyp
                 Read::NotARating => Ok((DeviceType::Motor(m.unrated()), Some(note(text)?))),
             }
         }
+        DeviceType::Load(_) => {
+            let Some(text) = text else { return Ok((DeviceType::Load(Load::default()), None)) };
+            match read_load(text) {
+                Read::Rating(l) => Ok((DeviceType::Load(l), None)),
+                Read::Ask(q) => Err(CmdError::refused(format!("{who}'s rating '{text}' needs {q}"))),
+                Read::Refused(m) => Err(CmdError::refused(format!("{who}'s rating '{text}': {m}."))),
+                Read::NotARating => Ok((DeviceType::Load(Load::default()), Some(note(text)?))),
+            }
+        }
         // Groups whose typed rating is still to come (lane 072 B step 3), and groups with none:
         // the text is the note.
         DeviceType::PowerSupply(_)
-        | DeviceType::Load(_)
         | DeviceType::Indicator(_)
         | DeviceType::TerminalStrip(_)
         | DeviceType::Connector(_)

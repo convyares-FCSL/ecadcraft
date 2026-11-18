@@ -171,7 +171,7 @@ shown back from them:
 - Text that is no rating at all (`see datasheet`) is kept as the device's rating note, and the
   device gets the Checks warning **no-rating**, because the checks read only the typed fields.
 - A fuse bank takes `rating.<n>` per fuse (`rating.3` `6.3 A T`); its own `rating` is refused.
-- Other groups (loads, indicators, power supplies) keep what you type
+- Other groups (indicators, power supplies) keep what you type
   as the note until their own step; a symbol's default rating is read the same way when it is
   placed, and a symbol whose default rating does not read for its group cannot be saved.
 - A file whose device holds `rating` among its properties, or a protective device holding
@@ -268,6 +268,22 @@ Nobody has tried it by hand yet.
 
 Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector
 (`…motor…`), and `rating::reader::motor` in ecad-electrical (automated, not tried by hand).
+
+### Lane B, step 3: loads' ratings are typed
+
+Heaters and valves are **loads**. A load's rating is its rated power, in one typed field: shown in
+W below 1 kW (`5 W`) and in kW from it (`3 kW`).
+
+- `3000 W` reads as **3 kW**, `0,5 kW` as **500 W**.
+- Asked, never guessed: a bare `3` (W or kW?). A voltage (`24 V DC`) or a current is refused: a
+  load has only a power field. Other text (`see datasheet`) is kept as the note.
+- An unrated load now gets the Checks warning **no-rating**.
+
+To try it: place a heater (Checks shows "no rating"), type `3000 W` as its rating (shown as `3 kW`,
+and the warning goes), then `3` (refused, asks W or kW). Nobody has tried it by hand yet.
+
+Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector (`…load…`),
+and `rating::reader::load` in ecad-electrical (automated, not tried by hand).
 
 ## Lane D: wires carry typed values
 

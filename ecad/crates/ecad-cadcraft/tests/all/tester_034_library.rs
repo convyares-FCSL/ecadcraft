@@ -676,8 +676,8 @@ fn h_bulkhead_pin_joins_both_sides() {
 // AC 4: ratings
 
 /// AC 4, §7.3, §13 check 9: `rating` on any device; `rating.<n>` only on a fuse bank's fuse
-/// outputs. Design 072 §2.2: a protective device's rating is read into its typed fields and shown
-/// from them; other groups keep the text as the note (at most 64 characters, one line).
+/// outputs. Design 072 §2.2: a protective device's or a load's rating is read into its typed fields
+/// and shown from them; other groups keep the text as the note (at most 64 characters, one line).
 #[test]
 fn i_ratings_set_and_refused_as_designed() {
     let mut h = H::new(0x7034_000c);
@@ -689,9 +689,13 @@ fn i_ratings_set_and_refused_as_designed() {
     let k1: DeviceId = id(&place(&mut h, "coil", (150.0, 50.0)), "component");
 
     // `rating` on any device, one transaction each; trimmed; `null` and empty clear.
-    for (c, value, shown) in
-        [(q1, "13A C 30mA", "curve C, 13 A, 30 mA"), (e1, "235W", "235W"), (b1, "K", "K"), (f2, "6.3A T", "6.3 A, T"), (k1, "24V DC", "coil 24 V DC")]
-    {
+    for (c, value, shown) in [
+        (q1, "13A C 30mA", "curve C, 13 A, 30 mA"),
+        (e1, "235W", "235 W"),
+        (b1, "K", "K"),
+        (f2, "6.3A T", "6.3 A, T"),
+        (k1, "24V DC", "coil 24 V DC"),
+    ] {
         let head = h.head();
         setprop(&mut h, c, "rating", json!(value)).unwrap();
         assert_eq!(h.head(), head + 1);
@@ -700,7 +704,7 @@ fn i_ratings_set_and_refused_as_designed() {
     // A fuse bank's ratings are per fuse.
     refused(&mut h, "setprop", json!({"component": f1.hex(), "key": "rating", "value": "16A"}), "per fuse");
     setprop(&mut h, e1, "rating", json!("  300W  ")).unwrap();
-    assert_eq!(prop(&mut h, e1, "rating").as_deref(), Some("300W"), "trimmed");
+    assert_eq!(prop(&mut h, e1, "rating").as_deref(), Some("300 W"), "trimmed");
     setprop(&mut h, e1, "rating", Value::Null).unwrap();
     assert_eq!(prop(&mut h, e1, "rating"), None, "null clears");
     setprop(&mut h, b1, "rating", json!("")).unwrap();
