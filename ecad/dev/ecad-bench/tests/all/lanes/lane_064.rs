@@ -10,6 +10,11 @@
 //!
 //! Step 4: the frame's effect map (`frames::touched_by`, `generated::touched_by`) equals the old
 //! op-based `frames::touches` and `generated::touches` (kept here) for every page's frame.
+//!
+//! # Frozen pre-R9 behaviour, test oracle only
+//! Every `old_*` function here is a frozen copy of code R9 replaced, kept only as a test oracle.
+//! It is not live legacy code and nothing outside this module calls it. Delete it when R9's
+//! step 10 matrix covers it; step 10 decides whether it stays.
 
 use std::collections::BTreeSet;
 
