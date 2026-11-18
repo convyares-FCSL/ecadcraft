@@ -643,6 +643,15 @@ impl Starter {
             use ecad_model::device::{Indicator, SignalType};
             return DeviceType::Indicator(Indicator::empty(SignalType::Steady));
         }
+        // Whether it is a power supply or a transformer is its symbol's (design 072 §2.2).
+        if let DeviceType::PowerSupply(_) = t {
+            use ecad_model::device::{PowerSupply, Psu, Transformer};
+            return DeviceType::PowerSupply(if self.key == K::Trafo {
+                PowerSupply::Transformer(Transformer::default())
+            } else {
+                PowerSupply::Psu(Psu::default())
+            });
+        }
         // A connector's family is its symbol's (a pin's: plain).
         if let DeviceType::Connector(_) = t {
             return DeviceType::Connector(Box::new(ecad_model::device::Connector::of_family(crate::connectors::family_of(self).unwrap_or_default())));
@@ -2847,14 +2856,14 @@ mod tests {
             ("mcb1", "d9339a17cfac13020ac09867d8356da9f2792728f1c7ef0f196c3776e3140955"),
             ("mcb2", "e9c6ab730790271ae429ab8e9f3b12066bf8ec3172d0502f36efb1bdcd514aaf"),
             ("fuse", "d208fae68200735acbf282e68dbf577de3152319d63ff52a2ad4f0705cc3c374"),
-            ("psu", "ffe540113081227903544a5dd6ffd9fe7ff7a87f4b606a6eab35274c91ef87fe"),
+            ("psu", "306d6c56a4edea43a2efa8974998b28cffc0f8e8c44a23f8f8e8cee6480fb3d1"),
             ("pbno", "54a6cb04eb6478b224d693bf85cceb231ac06242f72f7a781dfe2c7d643e8ec2"),
             ("pbnc", "5e0403a445f7a49f5473931d6570baf1dd138341cce9c16324073bb13f613f57"),
             ("sel", "6e5f96694929a0f5cfadcbd5dc0f6369f31e5a4c6ad5271786974417a8a10619"),
             ("lamp", "b482bd48b086c90024ce09e579a6aaa442e8e4335709d2d22d99392e983253a6"),
             ("motor3", "0b9ef31129c1c87535c7cb4cfe3a5614dd2997d2ad73fa31c8a5e0f8fd1defd7"),
             ("motor1", "922fed0ffb4dbb4dc3521a05dcd9484801c994406e27ab2db4804d4a365b820d"),
-            ("trafo", "b93505f2eab3aad42fbc8c2f647632effceeda5a6e1e06e634d3f53467dd92fd"),
+            ("trafo", "fcf21356d4cfdfd0e56eda5ecf428ed02128f1dcab3340132993c9d3a58c21b6"),
             ("terminal", "c5c7b47bbddcd35973ad00f1dd8906db9602290ce0b955f0fd7ee1c2bf403a1f"),
             ("terminalpe", "d38f6429abbaf0e8e110505625b467b6531504a762e11205542230148f9f1c00"),
             ("di", "92732e642b7d5109705f643341f4d9ee02bb3729275a570182e63b6d126bf7b9"),

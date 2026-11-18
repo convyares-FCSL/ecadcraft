@@ -255,3 +255,25 @@ fn setprop_of_an_indicator_rating_records_modify_device() {
     let mut r = reader();
     r.refused("execute", json!({"command": "setprop", "params": {"component": id, "key": "rating", "value": "red"}}));
 }
+
+/// Step 3, PowerSupply: `setprop rating` on a power supply through MCP records one `ModifyDevice`
+/// with the typed voltages as the agent, answers what it read, and is refused with writes off.
+#[test]
+fn setprop_of_a_power_supply_rating_records_modify_device() {
+    let mut c = Client::new(EcadMcp::in_memory("lane072b-psu", 82, Options { write: true, agent: None }).unwrap());
+    let placed = c.exec("place", json!({"symbol": "psu", "at": [50, 50]}));
+    let id = placed["component"].as_str().unwrap().to_string();
+    let before = c.log().len();
+    let r = c.exec("setprop", json!({"component": id, "key": "rating", "value": "in 230 V AC out 24 V DC 10 A"}));
+    assert_eq!(r["message"], json!("Read: 230 V AC / 24 V DC, 10 A."), "{r}");
+    let log = c.log();
+    assert_eq!(log.len(), before + 1);
+    let last = log.last().unwrap();
+    assert_eq!(last.author, Author::Agent(AGENT.into()));
+    match last.ops.as_slice() {
+        [Op::ModifyDevice { after, .. }] => assert_eq!(after.value("rating").as_deref(), Some("230 V AC / 24 V DC, 10 A")),
+        other => panic!("{other:?}"),
+    }
+    let mut r = reader();
+    r.refused("execute", json!({"command": "setprop", "params": {"component": id, "key": "rating", "value": "24 V DC"}}));
+}

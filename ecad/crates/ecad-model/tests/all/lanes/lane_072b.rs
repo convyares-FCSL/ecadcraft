@@ -574,3 +574,59 @@ fn an_indicator_s_rating_is_typed() {
     let c: DeviceId = ids.fresh();
     l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: d }]).unwrap();
 }
+
+/// Step 3, PowerSupply (design 072 §2.2 row 1, "Ratings"): a power supply and a transformer each
+/// carry their own typed fields, shown from them; a transformer cannot hold watts or a DC voltage;
+/// one with none of them has no rating; a value out of range is refused.
+#[test]
+fn a_power_supply_s_rating_is_typed() {
+    use ecad_model::device::{PowerSupply, Psu, RatingNote, Transformer};
+    use ecad_model::units::{Amps, Current, RatedVoltage, VoltAmps, Volts, Watts};
+    let v = |volts, current| Some(RatedVoltage { volts: Volts(volts), current });
+    let psu = Psu { input: v(230.0, Current::Ac), output: v(24.0, Current::Dc), output_current: Some(Amps(5.0)), output_power: Some(Watts(120.0)) };
+    let d = Device { device_type: DeviceType::PowerSupply(PowerSupply::Psu(psu)), ..Device::default() };
+    let json = serde_json::to_value(&d.device_type).unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!({"power_supply": {"psu": {"input": {"volts": 230.0, "current": "ac"}, "output": {"volts": 24.0, "current": "dc"}, "output_current": 5.0, "output_power": 120.0}}})
+    );
+    assert_eq!(serde_json::from_value::<DeviceType>(json).unwrap(), d.device_type, "round-trips");
+    assert_eq!(serde_json::to_value(DeviceType::of_group(DeviceGroup::PowerSupply)).unwrap(), serde_json::json!({"power_supply": {"psu": {}}}));
+    assert_eq!(d.value("rating").as_deref(), Some("230 V AC / 24 V DC, 5 A, 120 W"));
+    assert!(!d.has_no_rating());
+    let t = Transformer { input: v(400.0, Current::Ac), output: v(24.0, Current::Ac), rated_power: Some(VoltAmps(250.0)) };
+    assert_eq!(t.ratio(), Some(400.0 / 24.0));
+    let td = Device { device_type: DeviceType::PowerSupply(PowerSupply::Transformer(t)), ..Device::default() };
+    assert_eq!(td.value("rating").as_deref(), Some("400 V AC / 24 V AC, 250 VA"));
+    for bad in [
+        serde_json::json!({"power_supply": {}}),
+        serde_json::json!({"power_supply": {"battery": {}}}),
+        serde_json::json!({"power_supply": {"transformer": {"output_power": 100.0}}}),
+        serde_json::json!({"power_supply": {"psu": {"rated_power": 100.0}}}),
+        serde_json::json!({"power_supply": {"psu": {"output": 24.0}}}),
+    ] {
+        assert!(serde_json::from_value::<DeviceType>(bad.clone()).is_err(), "{bad}");
+    }
+    // An unrated supply has no rating, also with a note.
+    let unrated = Device {
+        device_type: DeviceType::PowerSupply(PowerSupply::Transformer(Transformer::default())),
+        rating_note: Some(RatingNote::new("see datasheet").unwrap()),
+        ..Device::default()
+    };
+    assert!(unrated.has_no_rating());
+    assert_eq!(unrated.value("rating").as_deref(), Some("see datasheet"));
+    // The invariant: a value out of range or not a number, or a DC transformer, is refused.
+    let mut ids = IdAllocator::seeded(17);
+    let mut l = Ledger::new(17);
+    for wild in [
+        PowerSupply::Psu(Psu { output_current: Some(Amps(0.0)), ..Psu::default() }),
+        PowerSupply::Psu(Psu { output: v(f64::NAN, Current::Dc), ..Psu::default() }),
+        PowerSupply::Transformer(Transformer { output: v(24.0, Current::Dc), ..Transformer::default() }),
+    ] {
+        let c: DeviceId = ids.fresh();
+        let bad = Device { device_type: DeviceType::PowerSupply(wild), ..Device::default() };
+        assert!(l.commit(Author::User, "wild", vec![Op::CreateDevice { id: c, device: bad }]).is_err());
+    }
+    let c: DeviceId = ids.fresh();
+    l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: td }]).unwrap();
+}

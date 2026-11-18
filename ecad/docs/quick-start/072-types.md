@@ -305,6 +305,31 @@ Nobody has tried it by hand yet.
 Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector
 (`…indicator…`), and `rating::reader::indicator` in ecad-electrical (automated, not tried by hand).
 
+### Lane B, step 3: power supplies' and transformers' ratings are typed
+
+A `psu` symbol creates a **power supply** and a `trafo` symbol a **transformer**; the symbol
+decides which, the rating never does. A power supply's rating is its input and output voltage
+(each AC or DC), its output current and its output power. A transformer's is its two voltages
+(always AC) and its power in **VA**. A transformer's ratio comes from its two voltages.
+
+- `230VAC/24VDC 5A` (or `in 230 V AC out 24 V DC 5 A`) reads as **230 V AC / 24 V DC, 5 A**.
+  `24 V DC` alone is a power supply's output. On a transformer `400/24 V 250 VA` reads as
+  **400 V AC / 24 V AC, 250 VA**.
+- Asked, never guessed: one AC voltage on a power supply, or one voltage on a transformer (input
+  or output?), and a power-supply voltage without AC or DC. Refused: W or a current on a
+  transformer (use VA), DC on a transformer, and VA on a power supply. Other text
+  (`see datasheet`) is kept as the note.
+- An unrated power supply or transformer now gets the Checks warning **no-rating** (the demo's
+  -G01 too).
+
+To try it: place a power supply (Checks shows "no rating"), type `230VAC/24VDC 5A` as its rating
+(the warning goes), then `230 V AC` (refused: input or output?). Place a transformer and type
+`250 W` (refused: use VA). Nobody has tried it by hand yet.
+
+Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector
+(`…power_supply…`), and `rating::reader::power_supply` in ecad-electrical (automated, not tried
+by hand).
+
 ## Lane D: wires carry typed values
 
 A conductor is now a **wire** in code and files (`Wire`, ops `CreateWire`, `DeleteWire` and the

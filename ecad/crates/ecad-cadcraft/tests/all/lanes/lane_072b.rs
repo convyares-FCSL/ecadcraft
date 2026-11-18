@@ -513,3 +513,43 @@ fn an_indicator_rating_is_read_into_typed_fields() {
     assert!(h.doc().devices[&p].rating_note.is_some());
     assert!(no_rating(&mut h));
 }
+
+/// Step 3, PowerSupply (design 072 §2.2 row 1, "Ratings"): `psu` creates a power supply and `trafo`
+/// a transformer; `setprop rating` reads input / output, current and VA into typed fields; a
+/// voltage whose side is unclear is asked, W on a transformer refused, other text kept as the note;
+/// an unrated supply is warned about.
+#[test]
+fn a_power_supply_rating_is_read_into_typed_fields() {
+    use ecad_model::Op;
+    use ecad_model::device::{DeviceType, PowerSupply, Psu, Transformer};
+    use ecad_model::units::{Amps, Current, RatedVoltage, VoltAmps, Volts};
+    let mut h = H::new(7212);
+    let no_rating = |h: &mut H| h.run("checks", json!({})).unwrap().to_string().contains("no-rating");
+    let p: DeviceId = id(&crate::common::place(&mut h, "psu", (100.0, 100.0)), "component");
+    assert_eq!(h.doc().devices[&p].device_type, DeviceType::PowerSupply(PowerSupply::Psu(Psu::default())));
+    assert!(no_rating(&mut h));
+    let r = h.run("setprop", json!({"component": p.hex(), "key": "rating", "value": "230VAC/24VDC 5A"})).unwrap();
+    assert_eq!(r["message"], json!("Read: 230 V AC / 24 V DC, 5 A."), "{r}");
+    let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());
+    assert!(matches!(ops.as_slice(), [Op::ModifyDevice { .. }]), "{ops:?}");
+    let v = |volts, current| Some(RatedVoltage { volts: Volts(volts), current });
+    let want = Psu { input: v(230.0, Current::Ac), output: v(24.0, Current::Dc), output_current: Some(Amps(5.0)), output_power: None };
+    assert_eq!(h.doc().devices[&p].device_type, DeviceType::PowerSupply(PowerSupply::Psu(want)));
+    assert!(!no_rating(&mut h));
+    let err = h.run("setprop", json!({"component": p.hex(), "key": "rating", "value": "230 V AC"})).unwrap_err();
+    assert!(err.contains("input or the output"), "{err}");
+    let r = h.run("setprop", json!({"component": p.hex(), "key": "rating", "value": "see datasheet"})).unwrap();
+    assert_eq!(r["value"], json!("see datasheet"), "{r}");
+    assert!(no_rating(&mut h));
+    // A transformer: AC on both sides, VA, never W.
+    let t: DeviceId = id(&crate::common::place(&mut h, "trafo", (200.0, 100.0)), "component");
+    assert_eq!(h.doc().devices[&t].device_type, DeviceType::PowerSupply(PowerSupply::Transformer(Transformer::default())));
+    let r = h.run("setprop", json!({"component": t.hex(), "key": "rating", "value": "400/24 V 250 VA"})).unwrap();
+    assert_eq!(r["message"], json!("Read: 400 V AC / 24 V AC, 250 VA."), "{r}");
+    let want = Transformer { input: v(400.0, Current::Ac), output: v(24.0, Current::Ac), rated_power: Some(VoltAmps(250.0)) };
+    assert_eq!(h.doc().devices[&t].device_type, DeviceType::PowerSupply(PowerSupply::Transformer(want)));
+    let err = h.run("setprop", json!({"component": t.hex(), "key": "rating", "value": "250 W"})).unwrap_err();
+    assert!(err.contains("VA, not W"), "{err}");
+    let err = h.run("setprop", json!({"component": t.hex(), "key": "rating", "value": "400/24 V DC"})).unwrap_err();
+    assert!(err.contains("AC on both sides"), "{err}");
+}

@@ -186,6 +186,19 @@ operates them, so they are one **Switching** group with an `operator` (owner, 20
   A lamp is bought by its voltage, so it has a typed `rated_voltage` (AC or DC) beside its power:
   `24 V DC 2 W` reads in full. Checking it against its circuit's voltage is later work. (A motor
   still refuses a voltage; listed for the end-gate review.)
+- **PowerSupply (overseer rulings, 2026-11-18).** The kind is set by the starter (`psu` → `Psu`,
+  `trafo` → `Transformer`) and each kind carries only its own fields: `Psu { input, output:
+  Option<RatedVoltage>, output_current: Option<Amps>, output_power: Option<Watts> }`, and
+  `Transformer { input, output: Option<RatedVoltage>, rated_power: Option<VoltAmps> }`. A
+  transformer therefore cannot hold watts, and a DC voltage on one is invalid. Batteries come later.
+  The ratio is never stored: `Transformer::ratio()` works it out from the two voltages. The reader
+  takes `230 V AC / 24 V DC`, `230VAC/24VDC` and `in 230 V AC out 24 V DC` as input / output.
+  `400/24 V` gives both sides the one unit, and on a transformer it reads as AC/AC. One DC voltage
+  alone on a PSU is its output (a PSU's DC side is its output). One AC voltage alone on a PSU, one
+  voltage alone on a transformer, and a PSU voltage without AC/DC ask "input or output?" (or "AC
+  or DC?"). A PSU takes A and W together, with no consistency check yet. `VoltAmps` is its own unit
+  (VA is not W): a transformer reads `250 VA`. W or a current on a transformer, DC on a
+  transformer, and VA on a PSU are refused.
 - Catalogue products (an IVP4 versus an IVP6) are part-library data, never variants.
 - A group is added only when a symbol needs fields or a calculation no group has.
 - `DeviceType` offers `as_supply()`, `as_load()`, `as_protects()`, `as_switching()`, … (exhaustive,
