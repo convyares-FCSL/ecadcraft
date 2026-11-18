@@ -145,7 +145,7 @@ pub fn plan_fence_typed(
         return Err(CmdError::refused(format!("That line crosses {} wires; at most {MAX_FENCE} at once. Draw a shorter line.", found.members.len())));
     }
     let legacy = kind.ty.legacy();
-    let starter = crate::devices::starter(&kind.ty.starter_key(kind.level))?;
+    let starter = crate::symbols::starter(kind.ty.starter_key(kind.level));
     if let Some(c) = strip
         && !strips::is_strip(doc, c)
     {

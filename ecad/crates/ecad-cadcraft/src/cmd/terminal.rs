@@ -180,7 +180,7 @@ impl Command for TerminalsParams {
             let done = rules::plan_terminals(&p.ledger, &mut p.ids, &mut p.tag_high, page, style, input, tol)?;
             let f = done.fence;
             p.apply_edit(pg, "terminals", done.label, f.ops.clone())?;
-            p.last_placed = Some((ty.starter_key(done.level), f.strip));
+            p.last_placed = Some((ty.starter_key(done.level).to_string(), f.strip));
             let (shown, message) = rules::terminals_message(p.ledger.document(), ty, done.level, &f);
             Ok(json!({
                 "strip": f.strip.hex(),
@@ -215,7 +215,7 @@ fn wire_words(doc: &Document, w: WireId) -> String {
 pub(crate) fn place_level(
     s: &mut Session, params: &crate::cmd::device::PlaceParams, starter: &'static crate::symbols::Starter, at: Pt, degrees: Degrees, mirror: bool,
 ) -> cadcraft_engine::Result<Value> {
-    let (ty, level) = tt::of_starter(ecad_model::Word::word(starter.key)).ok_or_else(|| err("That symbol is not a terminal level."))?;
+    let (ty, level) = tt::of_starter(starter.key).ok_or_else(|| err("That symbol is not a terminal level."))?;
     let device = params.device_id()?;
     let tag = params.tag.clone();
     let position = params.position.clone();

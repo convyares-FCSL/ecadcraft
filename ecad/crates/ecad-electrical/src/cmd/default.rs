@@ -108,7 +108,8 @@ fn starter_key(entry: &Entry) -> Option<&'static str> {
     // Brief 045: its new starters' prefixes are in the `plc` area.
     let rest = entry.key.strip_prefix("symbol.").or_else(|| entry.key.strip_prefix("terminal.")).or_else(|| entry.key.strip_prefix("plc."))?;
     let key = rest.strip_suffix(".prefix")?;
-    defaults::symbols::prefix_entry(key).filter(|e| e.key == entry.key).map(|_| key)
+    let starter: crate::symbols::StarterKey = ecad_model::Word::parse(key)?;
+    defaults::symbols::prefix_entry(starter).filter(|e| e.key == entry.key).map(|_| key)
 }
 
 /// Set (or with `None` remove) starter `key`'s tag prefix in `s`, as Tag Settings writes it: the
