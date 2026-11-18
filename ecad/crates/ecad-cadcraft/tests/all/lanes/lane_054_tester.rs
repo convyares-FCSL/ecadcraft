@@ -497,7 +497,7 @@ fn ac6_a_types_sheet_reaches_its_pages_and_undo_restores() {
 }
 
 /// FP3, §3.1: the chain page `sheet` → type's stored sheet (project record, then standard record)
-/// → `settings.sheet()` → A3; a malformed stored sheet falls through and Checks has `page-type-field`.
+/// → `settings.sheet()` → A3; a malformed stored sheet does not read (design 072 §8).
 #[test]
 fn fp3_sheet_of_reads_the_type_record_then_falls_through() {
     let (mut h, p) = pages(0x54_0602, 2);
@@ -518,9 +518,8 @@ fn fp3_sheet_of_reads_the_type_record_then_falls_through() {
     assert!(sheet_text(&mut h, p[1]).starts_with("A1"), "`project`: settings.sheet()");
 }
 
-/// FP3: a stored type record whose `sheet` does not parse or is out of limits (`A0 999x999`, a
-/// 10 000-character text) reads as absent: the page keeps the project's sheet, nothing panics,
-/// `page-type-field` reports it; commands refuse writing it.
+/// FP3, design 072 §8: a type record whose `sheet` does not parse or is out of limits (`A0
+/// 999x999`, a 10 000-character text) does not read; commands refuse writing it.
 #[test]
 fn fp3_a_malformed_type_sheet_reads_as_absent() {
     let (mut h, p) = pages(0x54_0603, 1);
