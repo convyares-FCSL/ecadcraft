@@ -342,7 +342,7 @@ fn convert<'a>(kind: Kind, v: &'a DeValue<'_>, empty: bool) -> Result<Value<'a>,
                 }));
             };
             let s: &'a str = s.as_ref();
-            if empty && s.is_empty() && matches!(kind, Kind::Text { .. } | Kind::Parsed { .. }) {
+            if empty && s.is_empty() && matches!(kind, Kind::Text { .. } | Kind::Parsed { .. } | Kind::Choice(_)) {
                 return Ok(Value::Text(""));
             }
             // A built-in is written exactly; a stored project value is trimmed, a data value is not.

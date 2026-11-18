@@ -204,6 +204,7 @@ fn value_json(r: &Resolved<'_>) -> Value {
         defaults::Value::Colour(c) => json!(c.to_string()),
         defaults::Value::Sheet(s) => json!(s.text()),
         defaults::Value::Margins(m) => json!(ecad_model::sheet::margins_text(&m)),
+        defaults::Value::CoreColours(c) => json!(c.to_string()),
     }
 }
 

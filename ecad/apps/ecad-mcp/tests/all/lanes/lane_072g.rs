@@ -37,3 +37,26 @@ fn a_value_the_field_does_not_take_is_refused() {
     }
     assert_eq!(c.log().len(), before, "nothing recorded");
 }
+
+/// Design 072 F37: a cable type takes a core colour scheme; recorded typed, as the agent.
+#[test]
+fn setstyle_records_a_cable_type_with_a_core_scheme() {
+    use ecad_model::style::cable::CoreScheme;
+    let mut c = Client::new(EcadMcp::in_memory("lane072g-cable", 72, Options { write: true, agent: None }).unwrap());
+    let params =
+        json!({"catalogue": "cable", "new": true, "name": "Power 5G", "fields": {"cores": "5G", "size": "2.5", "core_scheme": "harmonised"}});
+    c.exec("setstyle", params.clone());
+    let log = c.log();
+    let last = log.last().unwrap();
+    assert_eq!(last.author, Author::Agent(AGENT.into()));
+    let [Op::SetStyle { catalogue: StyleCatalogue::Cable, after: Some(r), .. }] = last.ops.as_slice() else { panic!("{:?}", last.ops) };
+    let t = r.body.cable().expect("a cable type body");
+    assert_eq!(t.core_scheme, Some(CoreScheme::Harmonised));
+    assert_eq!(t.cores.as_ref().map(|c| c.as_str()), Some("5G"));
+    c.refused(
+        "execute",
+        json!({"command": "setstyle", "params": {"catalogue": "cable", "new": true, "name": "Bad", "fields": {"core_scheme": "rainbow"}}}),
+    );
+    let mut r = reader();
+    r.refused("execute", json!({"command": "setstyle", "params": params}));
+}

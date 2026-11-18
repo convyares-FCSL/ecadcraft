@@ -122,7 +122,7 @@ fn the_cable_is_drawn_end_to_end_in_its_core_colours() {
     let dir = std::env::temp_dir().join(format!("ecad-057-cable-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let (_, w01) = rated(&mut h, &dir);
-    ok(&mut h, r#"setstyle {"catalogue":"cable","new":true,"name":"H07RN-F 4G1.5","fields":{"cross_section":"1.5","core_colours":"BN,BK,GY,GNYE"}}"#);
+    ok(&mut h, r#"setstyle {"catalogue":"cable","new":true,"name":"H07RN-F 4G1.5","fields":{"size":"1.5","core_colours":"BN,BK,GY,GNYE"}}"#);
     let d = doc(&mut h);
     let ty = ecad_cadcraft::styles::rows(&d, &ecad_cadcraft::styles::cable::CATALOGUE)[0].id.text();
     ok(&mut h, &format!(r#"rating {{"cable":"{}","cable_type":"{ty}"}}"#, w01.hex()));

@@ -195,6 +195,15 @@ What changed for someone using the app:
   field the type does not have, or a value in another form, makes the project open read-only.
   Projects saved before this lane do not open (no compatibility before 1.0): regenerate them.
 
+- **Every style catalogue is typed** the same way: text styles, location styles, frames, page
+  types, rating tables and cable types store their fields as values, not free text. A file whose
+  style record holds an unknown field, or a value in another form, opens read-only.
+- Cable types: `cross_section` is now `size`, and a cable type can name a **core colour scheme**
+  (`core_scheme`): `harmonised` (power: brown, black, grey, blue, green/yellow; numbered black
+  cores from six up), `numbered`, `din47100` (data cables) or `icea_k2` (control cables). A
+  cable of that type takes its cores' colours from the scheme by its core offer (`5G`); the
+  type's own `core_colours` list still wins.
+
 ### Try it
 
 1. Open **Standards ▸ Wire types**: the list shows the twelve built-in types, with the two
@@ -202,12 +211,16 @@ What changed for someone using the app:
 2. Select **Protective earth**, set Insulation to `xlpe` and Size to `6`: a wire of potential PE
    now labels `… 6 GN/YE`.
 3. Type `paper` as the insulation: it is refused with the words it takes.
+4. In **Standards ▸ Cable types**, make a type with Cores `5G` and Core colour scheme
+   `harmonised`; give a cable that type: its cores show brown, black, grey, blue and
+   green/yellow.
 
 The headless tests (automated, not tried by hand):
 
 ```sh
 cargo test -p ecad-model --test all lane_072g
 cargo test -p ecad-electrical styles::wire
+cargo test -p ecad-electrical styles::cable
 cargo test -p ecad-mcp --test all lane_072g
 cargo test -p ecad-inspector --test all lane_072g
 ```

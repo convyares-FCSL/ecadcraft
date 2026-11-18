@@ -185,3 +185,31 @@ fn a_frame_style_reads_its_typed_fields_only() {
         assert!(serde_json::from_value::<StyleRecord>(w).is_err(), "{k}");
     }
 }
+
+/// Cable types (design 072 §8, F37): typed size, rating, core colours or scheme, part, offer,
+/// shield, gland and diameter; strict read.
+#[test]
+fn a_cable_type_reads_its_typed_fields_only() {
+    use ecad_model::style::CableType;
+    use ecad_model::style::cable::{CoreColours, CoreScheme, Shield};
+    let c = CableType {
+        size: WireSize::parse("1.5"),
+        core_colours: CoreColours::parse("BN,BK,GY,GNYE"),
+        core_scheme: Some(CoreScheme::Harmonised),
+        cores: ecad_model::text::Text::new("4G").ok(),
+        shield: Some(Shield::OverallAndPairs),
+        outer_diameter: Some(Mm(9.5)),
+        ..CableType::default()
+    };
+    let v = serde_json::to_value(StyleRecord::new("H07", StyleBody::Cable(c.clone()))).unwrap();
+    assert_eq!(v["body"]["cable"]["core_colours"], "BN,BK,GY,GN/YE");
+    assert_eq!(v["body"]["cable"]["shield"], "overall+pairs");
+    assert_eq!(serde_json::from_value::<StyleRecord>(v.clone()).unwrap().body, StyleBody::Cable(c));
+    for (k, bad) in
+        [("core_scheme", serde_json::json!("rainbow")), ("core_colours", serde_json::json!("BN,GNYE")), ("cross_section", serde_json::json!("1.5"))]
+    {
+        let mut w = v.clone();
+        w["body"]["cable"][k] = bad;
+        assert!(serde_json::from_value::<StyleRecord>(w).is_err(), "{k}");
+    }
+}
