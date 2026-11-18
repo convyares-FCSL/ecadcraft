@@ -74,7 +74,7 @@ fn pin(of: &str) -> &str {
 /// true (paper) colour on either sheet, so black stays black; [`core_line`] gives a dark core an
 /// outline that keeps it readable on the dark sheet (owner look check).
 fn colours(code: Option<&str>) -> (Color32, Option<Color32>) {
-    match code.and_then(|c| ecad_cadcraft::look::wire_colours(c, &ecad_drawing_style::sheet::PAPER)) {
+    match code.and_then(ecad_model::wire::Colours::parse).and_then(|c| ecad_cadcraft::look::wire_colours(&c, &ecad_drawing_style::sheet::PAPER)) {
         Some(w) => (ecad_ui::color(w.solid), w.dashes.map(ecad_ui::color)),
         None => (ecad_ui::color(ecad_ui::SHELL.text_2), None),
     }
@@ -82,7 +82,7 @@ fn colours(code: Option<&str>) -> (Color32, Option<Color32>) {
 
 /// The bars of colour code `code` (one, or two for a two-colour code), in its true colours.
 pub fn bars(code: &str) -> Vec<ecad_ui::tokens::Color> {
-    match ecad_cadcraft::look::wire_colours(code, &ecad_drawing_style::sheet::PAPER) {
+    match ecad_model::wire::Colours::parse(code).and_then(|c| ecad_cadcraft::look::wire_colours(&c, &ecad_drawing_style::sheet::PAPER)) {
         Some(w) => std::iter::once(w.solid).chain(w.dashes).collect(),
         None => Vec::new(),
     }

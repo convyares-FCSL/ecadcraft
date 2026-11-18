@@ -68,13 +68,11 @@ fn title(d: &mut Draw, r: R, text: &str, look: TextLook, s: f64) -> f64 {
     rule - 5.5 * s
 }
 
-/// A filled swatch (the insulation colour) with a thin ink outline; a two-colour code as halves.
-fn swatch(d: &mut Draw, at: (f64, f64), w: f64, h: f64, code: &str) {
-    let rgb = |i: usize| {
-        crate::words::CODE_COLOURS.get(i).map(|(_, paper, _)| {
-            let c = crate::look::rgb(*paper);
-            cadcraft_engine::doc::color::nearest_aci(c)
-        })
+/// A filled swatch (the insulation colour) with a thin ink outline; two colours as halves.
+fn swatch(d: &mut Draw, at: (f64, f64), w: f64, h: f64, colours: Option<&ecad_model::wire::Colours>) {
+    let rgb = |c: ecad_model::colour::ConductorColour| {
+        let c = crate::look::rgb(crate::words::drawn(c, &ecad_drawing_style::sheet::PAPER));
+        Some(cadcraft_engine::doc::color::nearest_aci(c))
     };
     let fill = |d: &mut Draw, x0: f64, x1: f64, aci: Option<u8>| {
         let (a, b) = (d.p(x0, at.1 - h / 2.0), d.p(x1, at.1 + h / 2.0));
@@ -83,13 +81,13 @@ fn swatch(d: &mut Draw, at: (f64, f64), w: f64, h: f64, code: &str) {
         let kind = EntityKind::Solid(Solid { corners: [v(a.x, a.y), v(b.x, a.y), v(a.x, b.y), v(b.x, b.y)] });
         d.out.push(Part { kind, weight: None, aci, layer: LAYER });
     };
-    match crate::words::colour_code(code) {
-        Some((a, Some(b))) => {
-            fill(d, at.0, at.0 + w / 2.0, rgb(a));
-            fill(d, at.0 + w / 2.0, at.0 + w, rgb(b));
+    match colours.map(|c| c.list()) {
+        Some([a, b]) => {
+            fill(d, at.0, at.0 + w / 2.0, rgb(*a));
+            fill(d, at.0 + w / 2.0, at.0 + w, rgb(*b));
         }
-        Some((a, None)) => fill(d, at.0, at.0 + w, rgb(a)),
-        None => {}
+        Some([a]) => fill(d, at.0, at.0 + w, rgb(*a)),
+        _ => {}
     }
     d.rect((at.0, at.1 - h / 2.0), (at.0 + w, at.1 + h / 2.0), crate::look::WIRE_WEIGHT, None);
 }
@@ -256,7 +254,7 @@ pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendF
                 if yy < bottom + 2.0 * s {
                     break;
                 }
-                swatch(&mut d, (x + 4.0 * s, yy), 9.0 * s, 3.0 * s, &w.colour);
+                swatch(&mut d, (x + 4.0 * s, yy), 9.0 * s, 3.0 * s, w.colour.as_ref());
                 d.text((x + 17.0 * s, yy), small, &w.text(), HAlign::Left, None, Some(half - 21.0 * s));
                 yy -= line_h;
             }

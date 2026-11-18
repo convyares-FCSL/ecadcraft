@@ -42,14 +42,17 @@ fn colour_codes_are_one_or_two_colours() {
     ] {
         assert_eq!(one(code), want, "{code}");
     }
-    let gnye = look::wire_colours("GNYE", &PAPER).unwrap();
+    let gnye = look::wire_colours(&ecad_model::wire::Colours::parse("GNYE").unwrap(), &PAPER).unwrap();
     assert_eq!(
         (gnye.solid, gnye.dashes),
         (ecad_drawing_style::wire::PE.paper.solid, ecad_drawing_style::wire::PE.paper.dashes),
         "GNYE is the PE look"
     );
-    assert_eq!(look::wire_colours("BU", &PAPER).map(|w| w.solid), Some(ecad_drawing_style::wire::DC_24V.paper.solid));
-    assert_eq!(look::wire_colours("BK", &PAPER).map(|w| w.solid), Some(PAPER.ink), "black is ink");
+    assert_eq!(
+        look::wire_colours(&ecad_model::wire::Colours::parse("BU").unwrap(), &PAPER).map(|w| w.solid),
+        Some(ecad_drawing_style::wire::DC_24V.paper.solid)
+    );
+    assert_eq!(look::wire_colours(&ecad_model::wire::Colours::parse("BK").unwrap(), &PAPER).map(|w| w.solid), Some(PAPER.ink), "black is ink");
 }
 
 #[test]

@@ -151,7 +151,10 @@ pub(crate) fn rgb(c: ecad_drawing_style::Color) -> Rgb {
 
 /// The paper colour an IEC code draws in (040's table).
 pub(crate) fn code_colour(code: &str) -> Color {
-    Color::True(rgb(ecad_cadcraft::look::wire_colours(code, &PAPER).unwrap_or_else(|| panic!("{code} is a colour")).solid))
+    Color::True(rgb(ecad_model::wire::Colours::parse(code)
+        .and_then(|c| ecad_cadcraft::look::wire_colours(&c, &PAPER))
+        .unwrap_or_else(|| panic!("{code} is a colour"))
+        .solid))
 }
 
 pub(crate) const INK: Color = Color::Index(7);

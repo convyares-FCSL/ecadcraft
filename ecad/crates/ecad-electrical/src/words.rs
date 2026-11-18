@@ -75,24 +75,33 @@ pub fn colour_code(code: &str) -> Option<(usize, Option<usize>)> {
     }
 }
 
-/// How a wire of colour `code` is drawn on `sheet`: its solid colour, and the dashes' colour for a
-/// two-colour code; `None` for an unknown code (drawn in ink).
-pub fn wire_colours(code: &str, sheet: &ecad_drawing_style::Sheet) -> Option<ecad_drawing_style::wire::WireColors> {
+/// How a wire of colours `colours` is drawn on `sheet`: its solid colour, and the dashes' colour
+/// for two colours; `None` for three colours (drawn in ink).
+pub fn wire_colours(colours: &Colours, sheet: &ecad_drawing_style::Sheet) -> Option<ecad_drawing_style::wire::WireColors> {
+    let (a, b) = match colours.list() {
+        [a] => (*a, None),
+        [a, b] => (*a, Some(*b)),
+        _ => return None,
+    };
+    Some(ecad_drawing_style::wire::WireColors { solid: drawn(a, sheet), dashes: b.map(|b| drawn(b, sheet)) })
+}
+
+/// The colour `c` is drawn in on `sheet`.
+pub fn drawn(c: ConductorColour, sheet: &ecad_drawing_style::Sheet) -> ecad_drawing_style::Color {
     let dark = sheet.sheet == ecad_drawing_style::sheet::DARK.sheet;
-    let colour = |i: usize| CODE_COLOURS.get(i).map(|(_, paper, on_dark)| if dark { *on_dark } else { *paper });
-    let (a, b) = colour_code(code)?;
-    Some(ecad_drawing_style::wire::WireColors { solid: colour(a)?, dashes: b.and_then(colour) })
+    let (_, paper, on_dark) = CODE_COLOURS[c as usize];
+    if dark { on_dark } else { paper }
 }
 
 /// The colour code a conductor's route is drawn in (brief 050b, design 050 §5.5): its wire
 /// category's line colour (`wire`: the insulation colour, its own or the category's; `ink`: none;
 /// or a code). `None` when it is drawn in ink.
-pub fn conductor_colour(doc: &Document, c: WireId) -> Option<String> {
+pub fn conductor_colour(doc: &Document, c: WireId) -> Option<Colours> {
     crate::styles::wire::wire_look(doc, c).route_code()
 }
 
 /// [`conductor_colour`] with the project's categories read once (`looks`).
-pub fn conductor_colour_in(doc: &Document, looks: &crate::styles::wire::WireLooks, c: WireId) -> Option<String> {
+pub fn conductor_colour_in(doc: &Document, looks: &crate::styles::wire::WireLooks, c: WireId) -> Option<Colours> {
     looks.look(doc, c).route_code()
 }
 
@@ -184,7 +193,7 @@ pub fn dash_budget(doc: &Document, page: PageId) -> DashBudget {
         };
         // Only two-colour codes have dashes.
         let Some(code) = conductor_colour_in(doc, &looks, c) else { continue };
-        if !colour_code(&code).is_some_and(|(_, b)| b.is_some()) {
+        if code.list().len() != 2 {
             continue;
         }
         let n = dash_count(&points, on, off);

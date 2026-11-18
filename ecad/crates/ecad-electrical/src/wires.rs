@@ -280,7 +280,9 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
         if look.label_rule == "none" {
             continue;
         }
-        let Some(label) = ecad_model::wiring::label_with(doc, *c, look.cross_section.map(|x| x.0), look.colour.map(|x| x.0)) else { continue };
+        let Some(label) = ecad_model::wiring::label_with(doc, *c, look.cross_section.map(|x| x.0), look.colour.map(|x| x.0.to_string())) else {
+            continue;
+        };
         let target = crate::text_style::TextTarget::conductor(*c, Some(page));
         if crate::text_style::text_shown(doc, target, crate::text_style::TextKind::WireLabel) == crate::text_style::Shown::Off {
             continue;
@@ -955,7 +957,7 @@ pub fn hover_lines(doc: &Document, w: WireId) -> Vec<String> {
     if let Some(v) = shown(ecad_model::wiring::CROSS_SECTION, &look.cross_section) {
         values.push(format!("Cross-section {v}"));
     }
-    if let Some(v) = shown(ecad_model::wiring::COLOUR, &look.colour) {
+    if let Some(v) = shown(ecad_model::wiring::COLOUR, &look.colour_text()) {
         values.push(format!("Colour {v}"));
     }
     if !values.is_empty() {
