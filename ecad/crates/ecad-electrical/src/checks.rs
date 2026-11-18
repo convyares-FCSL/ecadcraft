@@ -1033,9 +1033,8 @@ pub fn conductor_checks(doc: &Document, c: WireId) -> Vec<Check> {
     }
     let which = conductor_words(doc, c);
     // Brief 040: a colour code the app cannot draw is drawn in ink and listed as information.
-    if let Some(code) = crate::words::conductor_colour(doc, c).filter(|code| crate::words::colour_code(code).is_none()) {
+    if let Some(code) = crate::words::conductor_colour(doc, c).filter(|code| code.list().len() > 2) {
         let (page, at) = conductor_place(doc, c, None);
-        let code = crate::words::shorten(code.trim(), crate::words::MAX_CODE_CHARS);
         out.push(Check { kind: Kind::UnknownColour, page, at, object: Object::Wire(c), which: format!("{which} {code}"), fix: None });
     }
     out

@@ -1343,7 +1343,7 @@ pub fn colour_rgb(value: &str, sheet: &ecad_drawing_style::Sheet) -> Option<cadc
     if let Some((r, g, b)) = crate::styles::hex_rgb(t) {
         return Some(cadcraft_engine::doc::color::Rgb(r, g, b));
     }
-    let w = crate::words::wire_colours(t, sheet)?;
+    let w = crate::words::wire_colours(&ecad_model::wire::Colours::parse(t)?, sheet)?;
     Some(crate::look::rgb(w.solid))
 }
 

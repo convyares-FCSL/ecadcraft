@@ -812,7 +812,7 @@ impl Outputs {
         // Brief 050b: the wire's category gives what the wire has none of its own.
         let look = crate::styles::wire::wire_look(doc, w);
         let cross_section = look.cross_section.as_ref().map(|v| v.0.clone());
-        let colour = look.colour.as_ref().map(|v| v.0.clone());
+        let colour = look.colour.as_ref().map(|v| v.0.to_string());
         let colour_own = look.colour.as_ref().is_some_and(|v| v.1 == crate::defaults::Source::Object);
         let cross_section_own = look.cross_section.as_ref().is_some_and(|v| v.1 == crate::defaults::Source::Object);
         let category = look.category.clone().map(|id| {

@@ -271,11 +271,11 @@ pub enum CategoryFrom {
 pub struct WireLook {
     pub category: Option<StyleRef>,
     pub from: CategoryFrom,
-    /// Colour code and cross-section, with where they come from (`Object` = the conductor's own).
-    pub colour: Option<(String, Source)>,
+    /// Its colours and cross-section, with where they come from (`Object` = the conductor's own).
+    pub colour: Option<(Colours, Source)>,
     pub cross_section: Option<(String, Source)>,
-    /// `wire`, `ink` or one colour code.
-    pub line_colour: String,
+    /// What its route is drawn in: the insulation colour, ink, or one colour.
+    pub line_colour: LineColour,
     /// `continuous`, `dashed`, `dashdot`.
     pub line_type: &'static str,
     /// Millimetres.
@@ -285,14 +285,19 @@ pub struct WireLook {
 }
 
 impl WireLook {
-    /// The code a route is drawn in: the insulation colour for `wire`, none for `ink`, else the
-    /// line colour's code.
-    pub fn route_code(&self) -> Option<String> {
-        match self.line_colour.as_str() {
-            "wire" => self.colour.as_ref().map(|c| c.0.clone()),
-            "ink" => None,
-            code => Some(code.to_string()),
+    /// The colours a route is drawn in: the insulation colours for `wire`, none for `ink`, else the
+    /// line colour.
+    pub fn route_code(&self) -> Option<Colours> {
+        match self.line_colour {
+            LineColour::Wire => self.colour.as_ref().map(|c| c.0.clone()),
+            LineColour::Ink => None,
+            LineColour::Colour(c) => Colours::new(vec![c]),
         }
+    }
+
+    /// Its colours in their stored words (`GN/YE`), with where they come from.
+    pub fn colour_text(&self) -> Option<(String, Source)> {
+        self.colour.as_ref().map(|(c, s)| (c.to_string(), *s))
     }
 }
 
@@ -386,11 +391,12 @@ impl WireLooks {
         let core = !doc.cables_of(c).is_empty();
         let f = |key: &str| category.as_ref().and_then(|id| super::field_of(doc, ecad_model::StyleCatalogue::Wire, id, key, None));
         let from_cat = |key: &str| f(key).and_then(|r| text_of(&r).map(|t| (t, r.from)));
-        let own_colours = wire.and_then(|w| w.colours.as_ref()).map(|c| (c.to_string(), Source::Object));
+        let own_colours = wire.and_then(|w| w.colours.clone()).map(|c| (c, Source::Object));
         let own_size = wire.and_then(|w| w.size).map(|s| (s.to_string(), Source::Object));
-        let colour = own_colours.or_else(|| if core { None } else { from_cat("colours") });
+        let type_colours = || f("colours").and_then(|r| text_of(&r).and_then(|t| Colours::parse(&t)).map(|c| (c, r.from)));
+        let colour = own_colours.or_else(|| if core { None } else { type_colours() });
         let cross_section = own_size.or_else(|| if core { None } else { from_cat("size") });
-        let line_colour = f("line_colour").map_or_else(|| "wire".to_string(), |r| r.text().to_ascii_lowercase());
+        let line_colour = f("line_colour").and_then(|r| LineColour::parse(&r.text())).unwrap_or(LineColour::Wire);
         let line_type = match f("line_type").map(|r| r.word()) {
             Some("dashed") => "dashed",
             Some("dashdot") => "dashdot",

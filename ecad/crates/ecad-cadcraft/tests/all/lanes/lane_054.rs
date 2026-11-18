@@ -363,12 +363,12 @@ fn wire_colour_lines_merge_equal_categories() {
     let l = ecad_cadcraft::front::WireLine {
         names: vec!["L1".into(), "L2".into(), "L3".into()],
         cross_section: "2.5".into(),
-        colour: "BK".into(),
+        colour: ecad_model::wire::Colours::parse("BK"),
         label: None,
     };
     assert_eq!(l.text(), "L1, L2, L3 · 2.5 mm² · black");
-    assert_eq!(ecad_cadcraft::front::colour_words("GNYE"), "green / yellow");
-    assert_eq!(ecad_cadcraft::front::colour_words("orange"), "orange");
+    let gnye = ecad_model::wire::Colours::parse("GNYE").expect("GNYE");
+    assert_eq!(ecad_cadcraft::front::colour_words(&gnye), "green / yellow");
 }
 
 /// Review of #111, 1 and 2: several new copies of a definition in one transaction, and a
