@@ -8,7 +8,7 @@
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::bom::{Field, MAX_COMPONENTS};
 use ecad_electrical::cmd::bom::{self as rules, ItemChange, ItemFields, LineFields, PartlineChange};
-use ecad_model::ComponentId;
+use ecad_model::DeviceId;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -24,7 +24,7 @@ pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("partline", "Part Line", crate::cmd::input::typed::<PartlineParams>)
             .params(
-                "{component: id | components: [id…], add: {part_number?, maker?, description?, article_number?, qty?, unit?: \"pcs\"|\"m\", for?: \"1,2,4\"} \
+                "{component: id | devices: [id…], add: {part_number?, maker?, description?, article_number?, qty?, unit?: \"pcs\"|\"m\", for?: \"1,2,4\"} \
 | add: [{…}, …] (at most 20), kit?: name} | {component, line: n, set: {field: value|null}} | {component, line: n, remove: true} (one transaction)",
             )
             .noundo(),
@@ -127,10 +127,10 @@ enum AddParam {
 pub(crate) struct PartlineParams {
     /// The device or strip.
     #[serde(default)]
-    component: Option<ComponentId>,
+    component: Option<DeviceId>,
     /// Several devices or strips.
     #[serde(default)]
-    components: Option<Bounded<ComponentId, 0, MAX_COMPONENTS>>,
+    devices: Option<Bounded<DeviceId, 0, MAX_COMPONENTS>>,
     /// The line to add, or a list of lines (at most 20).
     #[serde(default)]
     add: Option<AddParam>,
@@ -160,19 +160,19 @@ impl Command for PartlineParams {
             }
             None => PartlineChange::Edit { line: self.line, remove: self.remove == Some(true), set: self.set.map(LineParams::fields) },
         };
-        let (component, components) = (self.component, self.components.map(|c| c.0));
+        let (component, devices) = (self.component, self.devices.map(|c| c.0));
         let v = on_project(s, |p, pg, _| {
             let doc = p.ledger.document();
-            let cs = rules::partline_targets(doc, component, components)?;
+            let cs = rules::partline_targets(doc, component, devices)?;
             let plan = rules::plan_partline(doc, &cs, change)?;
             let rows: Vec<Value> = plan.rows.iter().map(|(c, ns)| json!({"component": c.hex(), "lines": ns})).collect();
             if plan.ops.is_empty() {
-                return Ok(json!({"changed": false, "components": rows}));
+                return Ok(json!({"changed": false, "devices": rows}));
             }
             p.apply_edit(pg, "partline", &plan.label, plan.ops)?;
             let mut v = match rows.as_slice() {
                 [one] => one.clone(),
-                _ => json!({"components": rows}),
+                _ => json!({"devices": rows}),
             };
             v["changed"] = json!(true);
             v["message"] = json!(plan.message);
@@ -235,7 +235,7 @@ impl ItemParams {
 pub(crate) struct BomitemParams {
     /// The item to edit or delete.
     #[serde(default)]
-    item: Option<ComponentId>,
+    item: Option<DeviceId>,
     /// With `item`: the fields to set (null clears a field).
     #[serde(default)]
     set: Option<ItemParams>,

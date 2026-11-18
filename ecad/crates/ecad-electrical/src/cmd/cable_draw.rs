@@ -8,8 +8,8 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use ecad_model::{
-    CableId, CableMember, ConductorId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Primitive, Pt, Representation,
-    RepresentationId, Style, Subject,
+    CableId, CableMember, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Primitive, Pt, Representation, RepresentationId,
+    Style, Subject, WireId,
 };
 
 use crate::devices::TagHigh;
@@ -89,7 +89,7 @@ pub fn slash_new(
     ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, from: Pt, to: Pt, found: &Crossings, tag: Option<&str>,
 ) -> Result<Slashed, CmdError> {
     let doc = ledger.document();
-    let blocked: Vec<(ConductorId, CableId)> = slash::blocked(doc, &found.members).into_iter().map(|(m, k)| (m.conductor, k)).collect();
+    let blocked: Vec<(WireId, CableId)> = slash::blocked(doc, &found.members).into_iter().map(|(m, k)| (m.conductor, k)).collect();
     if !blocked.is_empty() {
         return Err(CmdError::refused(slash::already_in_cable(doc, &blocked, "Nothing was created.")));
     }
@@ -126,11 +126,11 @@ pub fn slash_new(
 /// cable holds; more wires than free cores onto a cable not drawn yet (brief 059); a tag that
 /// does not read or is taken. Nothing is changed then.
 pub fn add_to_cable(
-    ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, existing: Option<CableId>, conductors: &[ConductorId], tag: Option<&str>,
+    ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, existing: Option<CableId>, conductors: &[WireId], tag: Option<&str>,
 ) -> Result<(CableId, Vec<Op>), CmdError> {
     let doc = ledger.document();
     // A conductor is in at most one cable (design 004, owner answer O5; §18.4 defers several).
-    let blocked: Vec<(ConductorId, CableId)> = conductors.iter().filter_map(|w| doc.cables_of(*w).first().map(|k| (*w, *k))).collect();
+    let blocked: Vec<(WireId, CableId)> = conductors.iter().filter_map(|w| doc.cables_of(*w).first().map(|k| (*w, *k))).collect();
     if !blocked.is_empty() {
         return Err(CmdError::refused(slash::already_in_cable(doc, &blocked, "Nothing was changed.")));
     }
@@ -183,7 +183,7 @@ fn core_label(text: Option<&str>) -> Result<Option<String>, CmdError> {
 }
 
 /// The ops changing member `index` of `cable` from `old` to `new` (design 009 §5.3).
-fn core_ops(cable: CableId, index: usize, conductor: ConductorId, old: Option<String>, new: Option<String>) -> [Op; 2] {
+fn core_ops(cable: CableId, index: usize, conductor: WireId, old: Option<String>, new: Option<String>) -> [Op; 2] {
     [
         Op::RemoveCableMember { cable, index, member: CableMember { conductor, core: old } },
         Op::AddCableMember { cable, index, member: CableMember { conductor, core: new } },
@@ -194,13 +194,13 @@ fn core_ops(cable: CableId, index: usize, conductor: ConductorId, old: Option<St
 #[derive(Debug, Clone, PartialEq)]
 pub struct CoreSet {
     pub cable: CableId,
-    pub conductor: ConductorId,
+    pub conductor: WireId,
     /// The member's index in the cable.
     pub index: usize,
     /// The label as stored.
     pub core: Option<String>,
     /// The other members with the same label (design 009 §5.4, duplicates allowed).
-    pub duplicates: Vec<ConductorId>,
+    pub duplicates: Vec<WireId>,
     /// Empty when the label is unchanged.
     pub ops: Vec<Op>,
 }
@@ -210,9 +210,9 @@ pub struct CoreSet {
 ///
 /// # Errors
 /// No such conductor; the wire is not in a cable; a label that does not read.
-pub fn core(doc: &Document, conductor: ConductorId, core: Option<&str>) -> Result<CoreSet, CmdError> {
+pub fn core(doc: &Document, conductor: WireId, core: Option<&str>) -> Result<CoreSet, CmdError> {
     let core = core_label(core)?;
-    if !doc.conductors.contains_key(&conductor) {
+    if !doc.wires.contains_key(&conductor) {
         return Err(CmdError::refused(NO_CONDUCTOR));
     }
     let Some(cable) = doc.cables_of(conductor).first().copied() else {

@@ -11,7 +11,7 @@ use std::collections::BTreeSet;
 
 use ecad_model::book::Book;
 
-use ecad_model::{ComponentId, Document, ItemKind, ObjectRef, Op, PageId, Pt, RepresentationId, Subject};
+use ecad_model::{DeviceId, Document, ItemKind, ObjectRef, Op, PageId, Pt, RepresentationId, Subject};
 
 use crate::devices::{self, PROPERTIES};
 
@@ -38,7 +38,7 @@ pub struct SymbolEntry {
 /// One device in the list.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceEntry {
-    pub id: ComponentId,
+    pub id: DeviceId,
     /// Its tag; `None` for a component without one (converted outlines, older coils).
     pub tag: Option<String>,
     /// The group it is listed under: `-K`, `-Q`… (its tag's prefix), or [`NO_TAG`].
@@ -56,7 +56,7 @@ pub struct DeviceEntry {
 /// matter): the devices whose row or symbol rows may differ, and whether page numbers moved.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DeviceTouch {
-    pub components: BTreeSet<ComponentId>,
+    pub devices: BTreeSet<DeviceId>,
     /// Pages were added, removed, moved or renamed: the `/page.column` texts may differ.
     pub pages: bool,
     /// The project settings changed (tag prefixes, padding): the Devices list shows none of them,
@@ -67,7 +67,7 @@ pub struct DeviceTouch {
 impl DeviceTouch {
     /// Nothing in the list can differ.
     pub fn is_empty(&self) -> bool {
-        self.components.is_empty() && !self.pages
+        self.devices.is_empty() && !self.pages
     }
 
     /// Nothing the symbol search shows can differ (its rows and its second step): no device, no
@@ -84,23 +84,23 @@ impl DeviceTouch {
 pub fn devices_touched(doc: &Document, ops: &[Op]) -> DeviceTouch {
     let mut t = DeviceTouch::default();
     let mut component = |s: &Subject| {
-        if let Subject::Component(c) = s {
-            t.components.insert(*c);
+        if let Subject::Device(c) = s {
+            t.devices.insert(*c);
         }
     };
     let mut pages = false;
     let mut settings = false;
     // Pages whose book position changes (worked out once, only for ops that can move pages): only
     // their symbols' places and order may differ; a rename in place or an append moves none.
-    let mut extra: BTreeSet<ComponentId> = BTreeSet::new();
+    let mut extra: BTreeSet<DeviceId> = BTreeSet::new();
     let mut moved = false;
-    let mut moved_pages = |t: &mut BTreeSet<ComponentId>| {
+    let mut moved_pages = |t: &mut BTreeSet<DeviceId>| {
         if std::mem::replace(&mut moved, true) {
             return;
         }
         for p in ecad_model::book::positions_changed(doc, ops) {
             for (_, r) in doc.representations_on(p) {
-                if let Subject::Component(c) = r.subject {
+                if let Subject::Device(c) = r.subject {
                     t.insert(c);
                 }
             }
@@ -121,10 +121,8 @@ pub fn devices_touched(doc: &Document, ops: &[Op]) -> DeviceTouch {
             crate::title_block::Reach::NotFrame | crate::title_block::Reach::Unchanged => {}
         }
         match op {
-            Op::CreateComponent { id, .. } | Op::DeleteComponent { id, .. } | Op::SetComponentDefinition { id, .. } => {
-                component(&Subject::Component(*id))
-            }
-            Op::SetProperty { object: ObjectRef::Component(c), .. } => component(&Subject::Component(*c)),
+            Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => component(&Subject::Device(*id)),
+            Op::SetProperty { object: ObjectRef::Device(c), .. } => component(&Subject::Device(*c)),
             Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => component(&rep.subject),
             Op::ModifyRepresentation { before, after, .. } => {
                 component(&before.subject);
@@ -151,14 +149,17 @@ pub fn devices_touched(doc: &Document, ops: &[Op]) -> DeviceTouch {
             Op::AddPage { .. } | Op::RemovePage { .. } => moved_pages(&mut extra),
             // Brief 019: a page's number or sheet changes the place of the symbols on it; the book
             // order (folders) or the project's grid may change every place.
-            Op::SetProperty { object: ObjectRef::Page(pg), key, .. }
-                if key == ecad_model::book::NUMBER_KEY || key == ecad_model::sheet::SHEET_KEY =>
-            {
-                for (_, r) in doc.representations_on(*pg) {
-                    component(&r.subject);
+            Op::ModifyPage { id: pg, before, after } => {
+                let ch = before.change(after);
+                if ch.number || ch.sheet {
+                    for (_, r) in doc.representations_on(*pg) {
+                        component(&r.subject);
+                    }
+                }
+                if ch.folder {
+                    moved_pages(&mut extra);
                 }
             }
-            Op::SetProperty { object: ObjectRef::Page(_), key, .. } if key == ecad_model::book::FOLDER_KEY => moved_pages(&mut extra),
             Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => moved_pages(&mut extra),
             Op::SetProjectSettings { before, after } => {
                 settings = true;
@@ -169,7 +170,7 @@ pub fn devices_touched(doc: &Document, ops: &[Op]) -> DeviceTouch {
             _ => {}
         }
     }
-    t.components.extend(extra);
+    t.devices.extend(extra);
     t.pages = pages;
     t.settings = settings;
     t
@@ -177,22 +178,22 @@ pub fn devices_touched(doc: &Document, ops: &[Op]) -> DeviceTouch {
 
 /// The list entry of component `c` as it is now (`None`: gone, or a component without a tag that
 /// is drawn nowhere).
-pub fn device_entry(doc: &Document, c: ComponentId) -> Option<DeviceEntry> {
-    let comp = doc.components.get(&c)?;
+pub fn device_entry(doc: &Document, c: DeviceId) -> Option<DeviceEntry> {
+    let comp = doc.devices.get(&c)?;
     // Junctions and continuations are not devices (design 022 §3.1).
     if comp.properties.contains_key(ecad_model::connectivity::KIND) {
         return None;
     }
     let prefix = match comp.properties.get(ecad_model::tag::TAG_KEY) {
         Some(t) => Some(group_and_number(t).0),
-        None if doc.representations_of(Subject::Component(c)).next().is_none() => return None,
+        None if doc.representations_of(Subject::Device(c)).next().is_none() => return None,
         None => None,
     };
     Some(entry(doc, c, prefix, &Book::of(doc)))
 }
 
 /// The order of the list: tagged devices by prefix, number, tag; then those without a tag.
-pub fn sort_key(e: &DeviceEntry) -> (bool, String, u64, String, ComponentId) {
+pub fn sort_key(e: &DeviceEntry) -> (bool, String, u64, String, DeviceId) {
     match e.tag.as_deref() {
         Some(t) => {
             let (p, n) = group_and_number(t);
@@ -262,7 +263,7 @@ pub fn matches(e: &DeviceEntry, q: &str) -> bool {
 /// index), then the components without a tag that are drawn somewhere.
 pub fn device_entries(doc: &Document, filter: &str) -> Vec<DeviceEntry> {
     let book = Book::of(doc);
-    let mut tagged: Vec<((String, u64, String), ComponentId)> = doc
+    let mut tagged: Vec<((String, u64, String), DeviceId)> = doc
         .tagged()
         .filter_map(|(_, c)| {
             let t = devices::tag_of(doc, c)?;
@@ -272,13 +273,13 @@ pub fn device_entries(doc: &Document, filter: &str) -> Vec<DeviceEntry> {
         .collect();
     tagged.sort();
     let untagged = doc
-        .components
+        .devices
         .iter()
         .filter(|(_, c)| !c.properties.contains_key(ecad_model::tag::TAG_KEY))
         // Junctions and continuations are not devices (design 022 §3.1).
         .filter(|(_, c)| !c.properties.contains_key(ecad_model::connectivity::KIND))
         .map(|(id, _)| *id)
-        .filter(|id| doc.representations_of(Subject::Component(*id)).next().is_some());
+        .filter(|id| doc.representations_of(Subject::Device(*id)).next().is_some());
     tagged
         .into_iter()
         .map(|((p, _, _), c)| (Some(p), c))
@@ -298,10 +299,10 @@ pub fn group_and_number(t: &str) -> (String, u64) {
     }
 }
 
-fn entry(doc: &Document, c: ComponentId, prefix: Option<String>, book: &Book) -> DeviceEntry {
-    let props = doc.components.get(&c).map(|x| &x.properties);
+fn entry(doc: &Document, c: DeviceId, prefix: Option<String>, book: &Book) -> DeviceEntry {
+    let props = doc.devices.get(&c).map(|x| &x.properties);
     let mut symbols: Vec<(usize, Option<u32>, SymbolEntry)> = doc
-        .representations_of(Subject::Component(c))
+        .representations_of(Subject::Device(c))
         .map(|(rid, r)| {
             let name = devices::rep_starter(doc, r).map(|s| s.name.to_string()).unwrap_or_else(|| {
                 r.items

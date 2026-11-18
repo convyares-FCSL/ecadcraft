@@ -6,7 +6,7 @@
 use std::collections::BTreeSet;
 
 use ecad_cadcraft::text_style::TextKind;
-use ecad_model::{ComponentId, Document, ObjectRef, PageId, RepresentationId, Subject, TerminalId};
+use ecad_model::{DeviceId, Document, ObjectRef, PageId, RepresentationId, Subject, TerminalId};
 
 /// At most this many rows in "Where it is drawn" and "Connections" (hostile files can hold
 /// thousands; the full lists are in Project).
@@ -53,7 +53,7 @@ pub struct Placed {
 /// What the inspector shows about one device and its selected symbol.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct DeviceDetails {
-    pub component: Option<ComponentId>,
+    pub component: Option<DeviceId>,
     pub rep: Option<RepresentationId>,
     pub tag: String,
     pub description: String,
@@ -86,7 +86,7 @@ fn label(doc: &Document, t: TerminalId) -> String {
 }
 
 /// The labels a symbol shows: its connection points, in its definition's order.
-fn rep_labels(doc: &Document, c: ComponentId, r: &ecad_model::Representation) -> Vec<String> {
+fn rep_labels(doc: &Document, c: DeviceId, r: &ecad_model::Representation) -> Vec<String> {
     let points = ecad_cadcraft::xref::terminal_points(doc, c, r);
     if points.is_empty() {
         return r.connection_points.keys().take(8).map(|t| label(doc, *t)).collect();
@@ -102,10 +102,10 @@ pub fn size_words(s: &ecad_cadcraft::text_style::TextStyle) -> String {
 }
 
 /// Build the details of device `c` with symbol `rep` selected, adding what they read to `deps`.
-pub fn build(doc: &Document, c: ComponentId, rep: RepresentationId, kinds: &[TextKind], deps: &mut BTreeSet<ObjectRef>) -> DeviceDetails {
+pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKind], deps: &mut BTreeSet<ObjectRef>) -> DeviceDetails {
     use ecad_cadcraft::xref;
     let mut d = DeviceDetails { component: Some(c), rep: Some(rep), ..DeviceDetails::default() };
-    let props = doc.components.get(&c).map(|x| &x.properties);
+    let props = doc.devices.get(&c).map(|x| &x.properties);
     d.tag = ecad_cadcraft::devices::tag_words(doc, c);
     d.description = props.and_then(|p| p.get("description")).cloned().unwrap_or_default();
     d.standard = doc.standard.as_ref().map_or_else(|| "IEC".to_string(), |s| s.header.name.clone());
@@ -138,7 +138,7 @@ pub fn build(doc: &Document, c: ComponentId, rep: RepresentationId, kinds: &[Tex
         d.sizes = kinds.iter().map(|k| (*k, size_words(&ecad_cadcraft::text_style::text_style_at(doc, *k, scope)))).collect();
     }
     // Where it is drawn: the coil (or the symbol) first, then each contact the part offers.
-    let reps: Vec<(RepresentationId, &ecad_model::Representation)> = doc.representations_of(Subject::Component(c)).take(MAX_ROWS).collect();
+    let reps: Vec<(RepresentationId, &ecad_model::Representation)> = doc.representations_of(Subject::Device(c)).take(MAX_ROWS).collect();
     for (_, r) in &reps {
         deps.insert(ObjectRef::Page(r.page));
     }
@@ -180,17 +180,17 @@ pub fn build(doc: &Document, c: ComponentId, rep: RepresentationId, kinds: &[Tex
             d.connections.push(ConnRow { pin, wire: "not connected".into(), others: String::new() });
             continue;
         };
-        deps.extend(net.conductors.iter().take(MAX_ROWS).map(|w| ObjectRef::Conductor(*w)));
+        deps.extend(net.wires.iter().take(MAX_ROWS).map(|w| ObjectRef::Wire(*w)));
         let wire = match ecad_model::wiring::net_number(doc, net) {
             Some(n) => format!("wire {n}"),
-            None if net.conductors.is_empty() => "not connected".into(),
+            None if net.wires.is_empty() => "not connected".into(),
             None => "wire".into(),
         };
         let mut others = Vec::new();
         let mut more = 0usize;
         for o in net.terminals.iter().filter(|o| **o != t) {
             let Some(ot) = doc.terminals.get(o) else { continue };
-            deps.insert(ObjectRef::Component(ot.component));
+            deps.insert(ObjectRef::Device(ot.component));
             // Junctions and other untagged helpers are not named.
             let Some(tag) = ecad_cadcraft::devices::tag_of(doc, ot.component) else { continue };
             if others.len() < MAX_OTHERS {
@@ -211,6 +211,6 @@ pub fn build(doc: &Document, c: ComponentId, rep: RepresentationId, kinds: &[Tex
 /// The page a symbol is on (for the header of a page).
 pub fn page_words(doc: &Document, page: PageId) -> (String, String) {
     let number = ecad_model::book::page_number(doc, page);
-    let title = doc.pages.get(&page).map(|p| p.title.clone()).unwrap_or_default();
+    let title = doc.pages.get(&page).map(|p| p.title.to_string()).unwrap_or_default();
     (number, title)
 }

@@ -1,13 +1,13 @@
 //! Brief 060 (tidy-up guards, R0): `setprop` on several components walks the same rules as on one.
 
 use ecad_cadcraft::checks::{Kind, Severity};
-use ecad_model::ComponentId;
+use ecad_model::DeviceId;
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
 
 /// Two connector rows and one terminal strip on the active page.
-fn fixture(h: &mut H) -> (Vec<ComponentId>, ComponentId) {
+fn fixture(h: &mut H) -> (Vec<DeviceId>, DeviceId) {
     let mut conns = Vec::new();
     for y in [50.0, 120.0] {
         let v = h.run("connector", json!({"halves": "both", "family": "plain", "pins": 4, "layout": "row", "at": [50, y]})).unwrap();
@@ -30,7 +30,7 @@ fn setprop_on_several_components_walks_the_single_component_rules() {
     let label_key = "term_label.1.1";
     let long_label = "L".repeat(30);
     // (components, key, refused value, accepted value, stored value)
-    let cases: Vec<(Vec<ComponentId>, &str, &str, &str, &str)> = vec![
+    let cases: Vec<(Vec<DeviceId>, &str, &str, &str, &str)> = vec![
         (conns.clone(), "pins", "abc", " 6 ", "6"),
         (conns.clone(), "plc.addr.start", "x1", "12", "12"),
         (vec![strip], "terminal.level.separator", "too-long", ":", ":"),
@@ -41,13 +41,13 @@ fn setprop_on_several_components_walks_the_single_component_rules() {
         assert!(single.is_err(), "{key}={bad:?} on one component should be refused, got {single:?}");
         let many: Vec<Value> = cs.iter().map(|c| json!(c.hex())).collect();
         let before = h.head();
-        let multi = h.run("setprop", json!({"components": many, "key": key, "value": bad}));
+        let multi = h.run("setprop", json!({"devices": many, "key": key, "value": bad}));
         assert!(multi.is_err(), "{key}={bad:?} on several components should be refused, got {multi:?}");
         assert_eq!(h.head(), before, "{key}: a refusal records nothing");
-        h.run("setprop", json!({"components": many, "key": key, "value": good})).unwrap();
+        h.run("setprop", json!({"devices": many, "key": key, "value": good})).unwrap();
         let d = h.doc();
         for c in &cs {
-            assert_eq!(d.components[c].properties.get(key).map(String::as_str), Some(stored), "{key} on {}", c.hex());
+            assert_eq!(d.devices[c].properties.get(key).map(String::as_str), Some(stored), "{key} on {}", c.hex());
         }
     }
 }
@@ -59,10 +59,10 @@ fn channels_on_several_plain_devices_stays_free_text() {
     let mut h = H::new(6002);
     let (conns, _) = fixture(&mut h);
     let many: Vec<Value> = conns.iter().map(|c| json!(c.hex())).collect();
-    h.run("setprop", json!({"components": many, "key": "channels", "value": "8"})).unwrap();
+    h.run("setprop", json!({"devices": many, "key": "channels", "value": "8"})).unwrap();
     let d = h.doc();
     for c in &conns {
-        assert_eq!(d.components[c].properties.get("channels").map(String::as_str), Some("8"));
+        assert_eq!(d.devices[c].properties.get("channels").map(String::as_str), Some("8"));
     }
 }
 

@@ -4,7 +4,8 @@
 //! JSON.
 
 use ecad_model::style::{StyleLayer, StyleRecord, StyleRef, is_name};
-use ecad_model::{CableId, ComponentId, ConductorId, Document, IdAllocator, ObjectRef, Op};
+use ecad_model::units::Amps;
+use ecad_model::{CableId, DeviceId, Document, IdAllocator, ObjectRef, Op, Wire, WireId, Word};
 
 use crate::error::CmdError;
 use crate::rating::{self, Basis, RatedSubject, dataset, parse};
@@ -22,13 +23,13 @@ pub const PAGE: usize = 200;
 ///
 /// # Errors
 /// No panel wire by that number or ID.
-pub fn wires(doc: &Document, text: &str) -> Result<Vec<ConductorId>, CmdError> {
+pub fn wires(doc: &Document, text: &str) -> Result<Vec<WireId>, CmdError> {
     let t = text.trim();
-    if let Some(c) = ConductorId::parse(t).filter(|c| doc.conductors.contains_key(c)) {
+    if let Some(c) = WireId::parse(t).filter(|c| doc.wires.contains_key(c)) {
         return Ok(vec![c]);
     }
     let conn = doc.connectivity();
-    let mut out: Vec<ConductorId> = conn.nets_numbered(t).filter_map(|(n, _)| conn.net(n)).flat_map(|n| n.conductors.iter().copied()).collect();
+    let mut out: Vec<WireId> = conn.nets_numbered(t).filter_map(|(n, _)| conn.net(n)).flat_map(|n| n.wires.iter().copied()).collect();
     out.retain(|c| rating::is_panel_wire(doc, *c));
     out.sort();
     out.dedup();
@@ -59,7 +60,7 @@ pub fn cable_named(doc: &Document, text: &str) -> Result<CableId, CmdError> {
 /// Both, neither, or one that names nothing.
 pub fn subjects_of(doc: &Document, wire: Option<&str>, cable: Option<&str>) -> Result<Vec<RatedSubject>, CmdError> {
     match (wire, cable) {
-        (Some(w), None) => Ok(wires(doc, w)?.into_iter().map(RatedSubject::Conductor).collect()),
+        (Some(w), None) => Ok(wires(doc, w)?.into_iter().map(RatedSubject::Wire).collect()),
         (None, Some(c)) => Ok(vec![RatedSubject::Cable(cable_named(doc, c)?)]),
         (Some(_), Some(_)) => Err(CmdError::input("Give `wire` or `cable`, not both.")),
         (None, None) => Err(CmdError::input("Give `wire` (a wire number or conductor ID) or `cable` (a tag or ID).")),
@@ -147,9 +148,9 @@ pub struct RatingItem {
 pub fn item_ops(doc: &Document, item: &RatingItem) -> Result<(Vec<Op>, Vec<RatedSubject>), CmdError> {
     let subjects = subjects_of(doc, item.wire.as_deref(), item.cable.as_deref())?;
     let cable = matches!(subjects.first(), Some(RatedSubject::Cable(_)));
-    let mut sets: Vec<(&'static str, Option<String>)> = Vec::new();
+    let mut sets: Vec<(&'static str, &'static str, Option<String>)> = Vec::new();
     for (json_key, value) in &item.sets {
-        let Some((_, prop, for_wire, for_cable)) = KEYS.iter().find(|k| k.0 == *json_key) else { return Err(not_a_key(json_key)) };
+        let Some((key, prop, for_wire, for_cable)) = KEYS.iter().find(|k| k.0 == *json_key) else { return Err(not_a_key(json_key)) };
         if (cable && !for_cable) || (!cable && !for_wire) {
             return Err(CmdError::refused(format!("{json_key} is for {}.", if *for_wire { "panel wires" } else { "cables" })));
         }
@@ -157,22 +158,51 @@ pub fn item_ops(doc: &Document, item: &RatingItem) -> Result<(Vec<Op>, Vec<Rated
             None => None,
             Some(t) => Some(check_value(doc, json_key, t)?),
         };
-        sets.push((prop, after));
+        sets.push((key, prop, after));
     }
     let mut ops = Vec::new();
     for s in &subjects {
-        let props = match s {
-            RatedSubject::Conductor(c) => doc.conductors.get(c).map(|x| &x.properties),
-            RatedSubject::Cable(k) => doc.cables.get(k).map(|x| &x.properties),
-        };
-        for (key, after) in &sets {
-            let before = props.and_then(|p| p.get(*key)).cloned();
-            if before != *after {
-                ops.push(Op::SetProperty { object: s.object(), key: (*key).to_string(), before, after: after.clone() });
+        match s {
+            RatedSubject::Wire(c) => {
+                let Some(w) = doc.wires.get(c) else { continue };
+                let mut after = w.clone();
+                for (key, _, value) in &sets {
+                    set_wire(&mut after, key, value.as_deref());
+                }
+                if after != *w {
+                    ops.push(Op::ModifyWire { id: *c, before: w.clone(), after });
+                }
+            }
+            RatedSubject::Cable(k) => {
+                let props = doc.cables.get(k).map(|x| &x.properties);
+                for (_, key, after) in &sets {
+                    let before = props.and_then(|p| p.get(*key)).cloned();
+                    if before != *after {
+                        ops.push(Op::SetProperty { object: s.object(), key: (*key).to_string(), before, after: after.clone() });
+                    }
+                }
             }
         }
     }
     Ok((ops, subjects))
+}
+
+/// Set a wire's input `key` (a JSON key of [`KEYS`] for wires) to `value`, already checked by
+/// [`check_value`] (`None` clears it).
+pub fn set_wire(w: &mut Wire, key: &str, value: Option<&str>) {
+    match key {
+        "basis" => w.rating.basis = value.and_then(Basis::parse),
+        "manual" => w.rating.manual = value.and_then(parse::current).map(Amps),
+        "bundling" => w.rating.bundling = value.and_then(parse::bundling),
+        "load" => w.load = value.and_then(parse::current).map(Amps),
+        "protected_by" => {
+            match value {
+                Some(v) => w.display.insert(rating::PROTECTED_BY.into(), v.to_string()),
+                None => w.display.remove(rating::PROTECTED_BY),
+            };
+        }
+        _ => {}
+    }
 }
 
 /// What `rating` records: the ops of every item, the subjects named, and the label.
@@ -233,10 +263,10 @@ pub fn plan_temperature(doc: &Document, typed: &str, after: Option<&str>) -> Res
     // Brief 052: `location` is a code (or an entry key); boxes store the entry's key.
     let entry = crate::designations::find(doc, crate::designations::Aspect::Location, typed);
     let loc = entry.as_ref().map_or_else(|| typed.to_string(), |e| e.code.clone());
-    let boxes: Vec<ComponentId> = match &entry {
+    let boxes: Vec<DeviceId> = match &entry {
         None => Vec::new(),
         Some(e) => doc
-            .components
+            .devices
             .iter()
             .filter(|(_, x)| {
                 crate::locations::is_box_component(x) && x.properties.get(ecad_model::book::LOCATION_KEY).is_some_and(|l| l.trim() == e.key)
@@ -250,9 +280,9 @@ pub fn plan_temperature(doc: &Document, typed: &str, after: Option<&str>) -> Res
     let after = after.map(str::to_string);
     let mut ops = Vec::new();
     for c in &boxes {
-        let before = doc.components.get(c).and_then(|x| x.properties.get(rating::TEMPERATURE)).cloned();
+        let before = doc.devices.get(c).and_then(|x| x.properties.get(rating::TEMPERATURE)).cloned();
         if before != after {
-            ops.push(Op::SetProperty { object: ObjectRef::Component(*c), key: rating::TEMPERATURE.into(), before, after: after.clone() });
+            ops.push(Op::SetProperty { object: ObjectRef::Device(*c), key: rating::TEMPERATURE.into(), before, after: after.clone() });
         }
     }
     let words = after.as_deref().map_or_else(|| "project default".to_string(), |t| format!("{t} \u{b0}C"));

@@ -6,7 +6,7 @@ use crate::common::{H, id};
 use ecad_cadcraft::checks::{self, Kind};
 use ecad_cadcraft::designations::{self, Aspect};
 use ecad_cadcraft::{devices, locations};
-use ecad_model::{ComponentId, Document, PageId};
+use ecad_model::{DeviceId, Document, PageId};
 use serde_json::{Value, json};
 
 const SEED: u64 = 521;
@@ -19,19 +19,19 @@ fn texts(d: &Document, p: PageId) -> Vec<String> {
     devices::texts_on_page(d, p).into_iter().map(|t| t.value).collect()
 }
 
-fn set(h: &mut H, c: ComponentId, aspect: &str, value: Value) -> Value {
+fn set(h: &mut H, c: DeviceId, aspect: &str, value: Value) -> Value {
     h.run("setlocation", json!({"component": c.hex(), "aspect": aspect, "value": value})).unwrap()
 }
 
-fn code(d: &Document, c: ComponentId) -> Option<String> {
+fn code(d: &Document, c: DeviceId) -> Option<String> {
     locations::resolve(d, c).value
 }
 
 /// A coil `-K01` on page 105 and its NO contact on page 110.
-fn k01(h: &mut H) -> (ComponentId, PageId, PageId) {
+fn k01(h: &mut H) -> (DeviceId, PageId, PageId) {
     let p105 = h.first_page();
     h.run("pageprops", json!({"page": p105.hex(), "number": "105"})).unwrap();
-    let k = id::<ComponentId>(&h.run("place", json!({"symbol": "coil", "at": [75, 180], "tag": "-K01"})).unwrap(), "component");
+    let k = id::<DeviceId>(&h.run("place", json!({"symbol": "coil", "at": [75, 180], "tag": "-K01"})).unwrap(), "component");
     let p110 = page(h, "110");
     h.run("place", json!({"symbol": "no", "at": [100, 150], "device": k.hex()})).unwrap();
     (k, p105, p110)
@@ -51,7 +51,7 @@ fn a_box_never_changes_a_stored_location() {
     assert_eq!(code(&d, k).as_deref(), Some("+CP1"));
     assert!(texts(&d, p110).contains(&"+CP1-K01".to_string()), "{:?}", texts(&d, p110));
     // The stored value is the entry's key, not its code (FP8).
-    let stored = d.components[&k].properties.get("location").cloned().unwrap_or_default();
+    let stored = d.devices[&k].properties.get("location").cloned().unwrap_or_default();
     assert_ne!(stored, "+CP1");
     assert_eq!(designations::code_of(&d, Aspect::Location, &stored).as_deref(), Some("+CP1"));
     // Neither the coil's page (no location) nor the box (+FIELD) is +CP1: Checks says so.
@@ -93,7 +93,7 @@ fn function_is_stored_and_prefixed_like_location() {
 fn connector_halves_have_their_own_locations() {
     let mut h = H::new(SEED);
     let v = h.run("connector", json!({"halves": "both", "family": "plain", "pins": 4, "layout": "row", "at": [50, 50]})).unwrap();
-    let x: ComponentId = id(&v, "component");
+    let x: DeviceId = id(&v, "component");
     set(&mut h, x, "location", json!("+CP1"));
     h.run("setlocation", json!({"component": x.hex(), "type": "plug", "value": "+FIELD"})).unwrap();
     let d = h.doc();
@@ -104,8 +104,8 @@ fn connector_halves_have_their_own_locations() {
     // The old key routes to the override.
     h.run("setprop", json!({"component": x.hex(), "key": "half.s.location", "value": "+CP2"})).unwrap();
     let d = h.doc();
-    assert!(d.components[&x].properties.contains_key("location.socket"));
-    assert!(!d.components[&x].properties.contains_key("half.s.location"));
+    assert!(d.devices[&x].properties.contains_key("location.socket"));
+    assert!(!d.devices[&x].properties.contains_key("half.s.location"));
     // The head is the device.
     let e = h.run("setlocation", json!({"component": x.hex(), "type": "head", "value": "+CP3"})).unwrap_err();
     assert!(e.contains("The head is the device"), "{e}");
@@ -116,7 +116,7 @@ fn connector_halves_have_their_own_locations() {
 fn a_strip_terminal_keeps_the_strip_location() {
     let mut h = H::new(SEED);
     let v = h.run("place", json!({"symbol": "terminal", "at": [50, 150]})).unwrap();
-    let x: ComponentId = id(&v, "component");
+    let x: DeviceId = id(&v, "component");
     set(&mut h, x, "location", json!("+CP1"));
     h.run("locationbox", json!({"location": "+JB1", "corners": [[150, 100], [250, 200]]})).unwrap();
     let t5 = h.run("place", json!({"symbol": "terminal", "at": [200, 150], "device": x.hex()})).unwrap();
@@ -201,11 +201,13 @@ fn missing_and_duplicate_entries_are_listed() {
     let mut h = H::new(SEED);
     let (k, _, _) = k01(&mut h);
     let mut d = h.doc();
-    if let Some(c) = d.components.get_mut(&k) {
+    if let Some(c) = d.devices.get_mut(&k) {
         c.properties.insert("location".into(), "+CP1".into());
     }
-    d.properties.insert(designations::code_property(Aspect::Function, "aa"), "=F1".into());
-    d.properties.insert(designations::code_property(Aspect::Function, "bb"), "=f1".into());
+    // Design 072 §5.3: the ops refuse a code twice (I22); a hand-built document still shows it.
+    for (id, code) in [(0xaa, "=F1"), (0xbb, "=f1")] {
+        d.project.functions.push(ecad_model::Function::new(ecad_model::FunctionId(id), ecad_model::ListCode::new(code).unwrap()));
+    }
     d.rebuild_index();
     assert_eq!(code(&d, k), None, "a v0.2.0 code shows ?");
     assert!(locations::resolve(&d, k).missing());
@@ -223,7 +225,7 @@ fn two_heads_are_listed() {
     let mut d = h.doc();
     let rid = id(&other, "representation");
     if let Some(r) = d.representations.get_mut(&rid) {
-        r.subject = ecad_model::Subject::Component(k);
+        r.subject = ecad_model::Subject::Device(k);
     }
     d.rebuild_index();
     let rows = checks::all(&d, 1e-6);

@@ -4,14 +4,14 @@
 use cadcraft_engine::doc::{Entity, EntityKind};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
-use ecad_model::{ConductorId, Pt};
+use ecad_model::{Pt, WireId};
 use serde_json::{Value, json};
 
 use super::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
 use super::{ATTACHED_ACI, OUT_OF_RANGE, can_start, in_range, pick_radius, preview_entity, pt, read};
 
 /// The wire under a click (within the pick radius), and its number.
-fn wire_under(s: &Session, p: Vec2) -> R<(ConductorId, Pt, String)> {
+fn wire_under(s: &Session, p: Vec2) -> R<(WireId, Pt, String)> {
     let tol = pick_radius(s).unwrap_or(crate::wires::ON_WIRE).max(crate::wires::ON_WIRE);
     read(s, |proj, page| {
         let doc = proj.ledger.document();
@@ -28,7 +28,7 @@ fn wire_under(s: &Session, p: Vec2) -> R<(ConductorId, Pt, String)> {
 }
 
 /// The route of `w` on the active page, highlighted.
-fn highlight(s: &Session, w: ConductorId) -> Vec<Entity> {
+fn highlight(s: &Session, w: WireId) -> Vec<Entity> {
     let route = read(s, |p, page| Ok(ecad_model::derive::route_on_page(p.ledger.document(), w, page).map(|(_, x)| x)));
     match route {
         Ok(Some(prim)) => vec![preview_entity(s, crate::convert::kind_for_primitive(&prim), ATTACHED_ACI)],
@@ -141,13 +141,13 @@ pub(crate) fn wirenumber(s: &Session) -> R<Box<dyn Interactive>> {
 #[derive(Default)]
 struct WireNumber {
     /// The wire and its net's number.
-    picked: Option<(ConductorId, String)>,
+    picked: Option<(WireId, String)>,
     /// A typed number another net uses, waiting for the choice.
     conflict: Option<String>,
 }
 
 impl WireNumber {
-    fn fix(&mut self, s: &mut Session, w: ConductorId, value: Value, conflict: Option<&str>) -> R<Step> {
+    fn fix(&mut self, s: &mut Session, w: WireId, value: Value, conflict: Option<&str>) -> R<Step> {
         let mut params = json!({"conductor": w.hex(), "value": value});
         if let Some(c) = conflict {
             params["conflict"] = json!(c);

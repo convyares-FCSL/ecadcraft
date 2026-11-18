@@ -30,11 +30,12 @@
 //! | I14 | A symbol representation holds exactly one symbol instance and depicts a component; without connection points it shows that component's own definition (with them, any embedded definition: decision 2026-11-08, brief 018) | representation → item, representation → component → definition | touched representations; representations listing a touched item; representations of a touched component |
 //! | I15 | A drawn representation holds no symbol instance | representation → items | touched representations; representations listing a touched item |
 //! | I16 | Connection points belong to a component representation, name that component's terminals and are finite | representation → terminals → component | touched representations; representations placing a touched terminal; representations of a touched component |
-//! | I17 | Conductor ends attach to existing terminals (DOC-03, DOC-07) | conductor → terminal | touched conductors; conductors attached to a touched terminal |
+//! | I17 | Wire ends attach to existing terminals (DOC-03, DOC-07) | conductor → terminal | touched conductors; conductors attached to a touched terminal |
 //! | I18 | Cable members exist and are listed once (DOC-04, DOC-07) | cable → conductors | touched cables; cables listing a touched conductor |
 //! | I19 | The folder order lists each folder exactly once (brief 019) | folders, folder order | any folder added or removed (whole order, which is short) |
 //! | I20 | A folder's parent exists, the parents form no cycle and it nests at most 8 deep | folder → parent folders | touched folders, their sub-folders (all levels) and the sub-folders of a removed one |
 //! | I21 | A page's `folder` property names an existing folder | page → folder | touched pages and pages whose properties changed; pages in a touched folder |
+//! | I22 | The location and function lists hold each id and code once, codes with their sign | project | any change to the project's own data |
 //!
 //! Not invariants of the document: properties (other than a page's `folder`), layer names, project
 //! settings. Named versions are
@@ -48,16 +49,14 @@
 //!
 //! This module changes nothing: it only reads the document.
 
-use crate::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::doc::{
-    Cable, Component, Conductor, DEFINITION_DEFAULT_KEYS, Definition, Document, Form, Item, ItemKind, Primitive, Representation, Subject, Terminal,
-    TextSlot,
+    Cable, DEFINITION_DEFAULT_KEYS, Definition, Device, Document, Form, Item, ItemKind, Primitive, Representation, Subject, Terminal, TextSlot, Wire,
 };
 use crate::effect::{Effect, Effects};
 use crate::error::{ModelError, Result};
-use crate::id::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
+use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId, WireId};
 use crate::index::referrers;
 use crate::op::{ObjectRef, Op};
 
@@ -73,10 +72,10 @@ pub struct Touched {
     pub pages: BTreeSet<PageId>,
     pub layers: BTreeSet<LayerId>,
     pub items: BTreeSet<ItemId>,
-    pub components: BTreeSet<ComponentId>,
+    pub devices: BTreeSet<DeviceId>,
     pub terminals: BTreeSet<TerminalId>,
     pub representations: BTreeSet<RepresentationId>,
-    pub conductors: BTreeSet<ConductorId>,
+    pub wires: BTreeSet<WireId>,
     pub cables: BTreeSet<CableId>,
     pub definitions: BTreeSet<DefinitionId>,
     /// A folder was added or removed, so the folder order changed.
@@ -86,6 +85,8 @@ pub struct Touched {
     pub page_properties: BTreeSet<PageId>,
     /// The standard or a style record changed (brief 050a): the style invariants are checked.
     pub styles: bool,
+    /// The project's own data changed (design 072 §5.3): I22 is checked.
+    pub project: bool,
 }
 
 impl Touched {
@@ -119,8 +120,8 @@ impl Touched {
             Effect::Item { id, .. } => {
                 self.items.insert(*id);
             }
-            Effect::Component { id, .. } | Effect::ComponentDefinition { id, .. } => {
-                self.components.insert(*id);
+            Effect::Device { id, .. } | Effect::DeviceDefinition { id, .. } => {
+                self.devices.insert(*id);
             }
             Effect::Terminal { id, .. } => {
                 self.terminals.insert(*id);
@@ -128,18 +129,18 @@ impl Touched {
             Effect::Rep { id, .. } => {
                 self.representations.insert(*id);
             }
-            Effect::Conductor { id, .. } | Effect::End { conductor: id, .. } => {
-                self.conductors.insert(*id);
+            Effect::Wire { id, .. } | Effect::End { conductor: id, .. } => {
+                self.wires.insert(*id);
             }
             Effect::Cable { id, .. } | Effect::Member { cable: id, .. } => {
                 self.cables.insert(*id);
             }
             Effect::Prop { object, .. } => match object {
-                ObjectRef::Component(id) => {
-                    self.components.insert(*id);
+                ObjectRef::Device(id) => {
+                    self.devices.insert(*id);
                 }
-                ObjectRef::Conductor(id) => {
-                    self.conductors.insert(*id);
+                ObjectRef::Wire(id) => {
+                    self.wires.insert(*id);
                 }
                 ObjectRef::Cable(id) => {
                     self.cables.insert(*id);
@@ -161,6 +162,7 @@ impl Touched {
                 self.folders.insert(*id);
             }
             Effect::Style { .. } | Effect::Standard { .. } => self.styles = true,
+            Effect::Project { .. } => self.project = true,
         }
     }
 }
@@ -185,7 +187,7 @@ impl Document {
         for (id, t) in &self.terminals {
             self.check_terminal(*id, t)?;
         }
-        for (id, c) in &self.components {
+        for (id, c) in &self.devices {
             self.check_component(*id, c)?;
         }
         let mut owner: BTreeMap<ItemId, RepresentationId> = BTreeMap::new();
@@ -196,7 +198,7 @@ impl Document {
                 None => Ok(()),
             })?;
         }
-        for (id, c) in &self.conductors {
+        for (id, c) in &self.wires {
             self.check_conductor(*id, c)?;
         }
         for (id, c) in &self.cables {
@@ -210,7 +212,18 @@ impl Document {
             self.check_page_folder(*id)?;
         }
         self.check_styles()?;
+        self.check_project()?;
         Ok(())
+    }
+
+    /// I22 (design 072 §5.3): the location and function lists are well formed
+    /// ([`crate::project::Project::problem`]). A page or the project naming an id with no entry
+    /// is not a breach: it shows `?`.
+    fn check_project(&self) -> Result<()> {
+        match self.project.problem() {
+            Some(p) => bad(p),
+            None => Ok(()),
+        }
     }
 
     /// I-styles (brief 050a, design 050 §3.3): every catalogue word is well formed, and no
@@ -268,7 +281,7 @@ impl Document {
         }
 
         let mut terminals = touched.terminals.clone();
-        for c in &touched.components {
+        for c in &touched.devices {
             terminals.extend(referrers(&ix.component_terminals, c));
         }
         for id in &terminals {
@@ -277,19 +290,19 @@ impl Document {
             }
         }
 
-        let mut components = touched.components.clone();
+        let mut devices = touched.devices.clone();
         for d in &touched.definitions {
-            components.extend(referrers(&ix.definition_components, d));
+            devices.extend(referrers(&ix.definition_components, d));
         }
-        for id in &components {
-            if let Some(c) = self.components.get(id) {
+        for id in &devices {
+            if let Some(c) = self.devices.get(id) {
                 self.check_component(*id, c)?;
             }
         }
 
         let mut reps = touched.representations.clone();
-        let subjects = (touched.components.iter().map(|c| Subject::Component(*c)))
-            .chain(touched.conductors.iter().map(|c| Subject::Conductor(*c)))
+        let subjects = (touched.devices.iter().map(|c| Subject::Device(*c)))
+            .chain(touched.wires.iter().map(|c| Subject::Wire(*c)))
             .chain(touched.cables.iter().map(|c| Subject::Cable(*c)));
         for s in subjects {
             reps.extend(referrers(&ix.subject_reps, &s));
@@ -316,18 +329,18 @@ impl Document {
             }
         }
 
-        let mut conductors = touched.conductors.clone();
+        let mut conductors = touched.wires.clone();
         for t in &touched.terminals {
             conductors.extend(referrers(&ix.terminal_ends, t).map(|(c, _)| c));
         }
         for id in &conductors {
-            if let Some(c) = self.conductors.get(id) {
+            if let Some(c) = self.wires.get(id) {
                 self.check_conductor(*id, c)?;
             }
         }
 
         let mut cables = touched.cables.clone();
-        for c in &touched.conductors {
+        for c in &touched.wires {
             cables.extend(referrers(&ix.conductor_cables, c));
         }
         for id in &cables {
@@ -368,6 +381,9 @@ impl Document {
         if touched.styles {
             self.check_styles()?;
         }
+        if touched.project {
+            self.check_project()?;
+        }
         Ok(())
     }
 
@@ -390,12 +406,9 @@ impl Document {
 
     /// I21.
     fn check_page_folder(&self, id: PageId) -> Result<()> {
-        let Some(text) = self.pages.get(&id).and_then(|p| p.properties.text(crate::keys::FOLDER)) else {
-            return Ok(());
-        };
-        match FolderId::parse(text) {
-            Some(f) if self.folders.contains_key(&f) => Ok(()),
-            _ => bad(format!("page {id} names a missing folder")),
+        match self.pages.get(&id).and_then(|p| p.folder) {
+            Some(f) if !self.folders.contains_key(&f) => bad(format!("page {id} names a missing folder")),
+            Some(_) | None => Ok(()),
         }
     }
 
@@ -426,14 +439,14 @@ impl Document {
 
     /// I8.
     fn check_terminal(&self, id: TerminalId, t: &Terminal) -> Result<()> {
-        if !self.components.contains_key(&t.component) {
+        if !self.devices.contains_key(&t.component) {
             return bad(format!("terminal {id} belongs to a missing component"));
         }
         Ok(())
     }
 
     /// I9.
-    fn check_component(&self, id: ComponentId, c: &Component) -> Result<()> {
+    fn check_component(&self, id: DeviceId, c: &Device) -> Result<()> {
         if let Some(d) = c.definition
             && !self.definitions.contains_key(&d)
         {
@@ -445,8 +458,8 @@ impl Document {
     /// I10 to I16. `doc05` is called for each listed item, in order, and decides I13.
     fn check_representation(&self, id: RepresentationId, r: &Representation, mut doc05: impl FnMut(ItemId) -> Result<()>) -> Result<()> {
         let subject_exists = match r.subject {
-            Subject::Component(c) => self.components.contains_key(&c),
-            Subject::Conductor(c) => self.conductors.contains_key(&c),
+            Subject::Device(c) => self.devices.contains_key(&c),
+            Subject::Wire(c) => self.wires.contains_key(&c),
             Subject::Cable(c) => self.cables.contains_key(&c),
         };
         if !subject_exists {
@@ -476,13 +489,13 @@ impl Document {
                 let Some(inst) = instance else {
                     return bad(format!("symbol representation {id} must hold exactly one symbol instance"));
                 };
-                let Subject::Component(c) = r.subject else {
+                let Subject::Device(c) = r.subject else {
                     return bad(format!("symbol representation {id} must depict a component"));
                 };
                 // Without connection points its terminals are matched to the definition by key, so
                 // the symbol shown must be the component's own definition. With them (one device
                 // drawn as a coil and its contacts, brief 018), any embedded definition (I5).
-                if r.connection_points.is_empty() && self.components.get(&c).and_then(|c| c.definition) != Some(inst.definition) {
+                if r.connection_points.is_empty() && self.devices.get(&c).and_then(|c| c.definition) != Some(inst.definition) {
                     return bad(format!("symbol representation {id} shows a definition its component does not use"));
                 }
             }
@@ -493,7 +506,7 @@ impl Document {
             }
         }
         for (t, p) in &r.connection_points {
-            let Subject::Component(c) = r.subject else {
+            let Subject::Device(c) = r.subject else {
                 return bad(format!("representation {id} of a non-component has connection points"));
             };
             if self.terminals.get(t).map(|t| t.component) != Some(c) {
@@ -507,10 +520,10 @@ impl Document {
     }
 
     /// I17.
-    fn check_conductor(&self, id: ConductorId, c: &Conductor) -> Result<()> {
+    fn check_conductor(&self, id: WireId, c: &Wire) -> Result<()> {
         for t in c.ends.iter().flatten() {
             if !self.terminals.contains_key(t) {
-                return bad(format!("conductor {id} is attached to missing terminal {t}"));
+                return bad(format!("wire {id} is attached to missing terminal {t}"));
             }
         }
         Ok(())
@@ -520,7 +533,7 @@ impl Document {
     fn check_cable(&self, id: CableId, c: &Cable) -> Result<()> {
         let mut seen = BTreeSet::new();
         for m in &c.members {
-            if !self.conductors.contains_key(&m.conductor) {
+            if !self.wires.contains_key(&m.conductor) {
                 return bad(format!("cable {id} lists missing conductor {}", m.conductor));
             }
             if !seen.insert(m.conductor) {

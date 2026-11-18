@@ -14,7 +14,7 @@ use cadcraft_engine::geom::{Bounds2, Mat3, Vec2};
 use ecad_cadcraft::outputs::Outputs;
 use ecad_cadcraft::printbook::{self, Sheet};
 use ecad_cadcraft::{frame, generated, xref};
-use ecad_model::{ComponentId, Document, ObjectRef, Op, PageId};
+use ecad_model::{DeviceId, Document, ObjectRef, Op, PageId};
 use serde_json::{Value, json};
 
 use crate::common::place;
@@ -22,7 +22,7 @@ use crate::common::{H, id, pts};
 
 const AWAIT: &str = "tester 033: awaiting build";
 
-fn place_on(h: &mut H, symbol: &str, at: (f64, f64), device: ComponentId) -> Value {
+fn place_on(h: &mut H, symbol: &str, at: (f64, f64), device: DeviceId) -> Value {
     h.run("place", json!({"symbol": symbol, "at": [at.0, at.1], "device": device.hex()})).unwrap()
 }
 
@@ -68,8 +68,8 @@ fn sets(ops: &[Op], key: &str) -> bool {
     ops.iter().any(|o| matches!(o, Op::SetProperty { key: k, .. } if k == key))
 }
 
-fn tag(h: &mut H, c: ComponentId) -> String {
-    h.doc().components[&c].properties.get("tag").cloned().unwrap_or_default()
+fn tag(h: &mut H, c: DeviceId) -> String {
+    h.doc().devices[&c].properties.get("tag").cloned().unwrap_or_default()
 }
 
 /// A refusal: `cmd` fails and the head does not move.
@@ -208,7 +208,7 @@ fn ac4_a_missing_value_is_boxed_and_prints_black() {
     printbook::install_io();
     let mut h = H::new(0x33_04);
     h.run("projectprops", json!({"location": "+CP1"})).unwrap();
-    let k: ComponentId = id(&place(&mut h, "coil", (100.0, 150.0)), "component"); // no maker, no part number: missing cells
+    let k: DeviceId = id(&place(&mut h, "coil", (100.0, 150.0)), "component"); // no maker, no part number: missing cells
     // Brief 052: the project's location only proposes; the coil stores it, so the only `?` are
     // the missing maker and part number.
     h.run("setlocation", json!({"component": k.hex(), "value": "+CP1"})).unwrap();
@@ -246,10 +246,10 @@ fn ac4_a_missing_value_is_boxed_and_prints_black() {
 // ------------------------------------------------------------------------------------ AC5, AC6
 
 /// A coil `-K01` on page 1 at `at` with four NO contacts on page 2.
-fn coil_low(seed: u64, at: (f64, f64)) -> (H, PageId, ComponentId) {
+fn coil_low(seed: u64, at: (f64, f64)) -> (H, PageId, DeviceId) {
     let mut h = H::new(seed);
     let p1 = h.first_page();
-    let k1: ComponentId = id(&place(&mut h, "coil", at), "component");
+    let k1: DeviceId = id(&place(&mut h, "coil", at), "component");
     let _p2: PageId = id(&h.run("newpage", json!({"title": "Contacts"})).unwrap(), "page");
     for i in 0..4 {
         place_on(&mut h, "no", (60.0 + 40.0 * f64::from(i), 150.0), k1);
@@ -259,7 +259,7 @@ fn coil_low(seed: u64, at: (f64, f64)) -> (H, PageId, ComponentId) {
 }
 
 /// The table's drawn parts on `page`: (min x, min y, max x, max y).
-fn table_box(h: &mut H, page: PageId, coil: ComponentId) -> (f64, f64, f64, f64) {
+fn table_box(h: &mut H, page: PageId, coil: DeviceId) -> (f64, f64, f64, f64) {
     let doc = h.doc();
     let head = xref::device(&doc, coil).head.unwrap();
     let mut b = (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
@@ -341,7 +341,7 @@ fn long_plan(h: &mut H, number: &str) -> (PageId, usize) {
         h.run("wire", json!({"points": pts(&[(x, 200.0), (x, 100.0)])})).unwrap();
     }
     let v = h.run("terminals", json!({"from": [90, 150], "to": [120, 150]})).unwrap();
-    let strip: ComponentId = id(&v, "strip");
+    let strip: DeviceId = id(&v, "strip");
     h.run("setprop", json!({"component": strip.hex(), "key": "terminals", "value": "120"})).unwrap();
     let page: PageId = id(&h.run("newpage", json!({"generated": "terminals", "number": number})).unwrap(), "page");
     let doc = h.doc();
@@ -416,7 +416,7 @@ fn ac8_continuation_numbers_are_taken_and_a_clash_is_a_warning() {
     // A page right after the last sheet, then the plan grows onto it.
     let next = (400 + n).to_string();
     h.run("pageprops", json!({"page": other.hex(), "number": next})).unwrap();
-    let strip = h.doc().components.iter().find(|(_, c)| c.properties.contains_key("terminals")).map(|(k, _)| *k).unwrap();
+    let strip = h.doc().devices.iter().find(|(_, c)| c.properties.contains_key("terminals")).map(|(k, _)| *k).unwrap();
     h.run("setprop", json!({"component": strip.hex(), "key": "terminals", "value": "200"})).unwrap();
     let checks = h.run("checks", json!({})).unwrap().to_string();
     let doc = h.doc();
@@ -517,7 +517,7 @@ fn ac10_revision_columns_and_custom_fields() {
     assert_eq!(label, "Project properties");
     assert!(sets(&ops, "revisions.columns"), "{ops:?}");
     h.run("revision", json!({"fields": {"ecr": "ECR-1"}})).unwrap();
-    assert_eq!(h.doc().properties.get("rev.1.ecr").map(String::as_str), Some("ECR-1"));
+    assert_eq!(ecad_cadcraft::revisions::field_of(&h.doc().project, 1, "ecr").as_deref(), Some("ECR-1"));
     issue(&mut h, "First issue", "2026-11-10");
     let texts = frame_texts(&mut h, page);
     assert!(texts.iter().any(|t| t == "ECR") && texts.iter().any(|t| t == "ECR-1"), "{texts:?}");
@@ -543,7 +543,7 @@ fn ac10_revision_columns_and_custom_fields() {
     h.run("projectprops", json!({"revision_columns": "rev@100, date@100, description, drawn@100"})).unwrap();
     // A field removed from the columns keeps its stored value.
     h.run("projectprops", json!({"revision_columns": null})).unwrap();
-    assert_eq!(h.doc().properties.get("rev.1.ecr").map(String::as_str), Some("ECR-1"));
+    assert_eq!(ecad_cadcraft::revisions::field_of(&h.doc().project, 1, "ecr").as_deref(), Some("ECR-1"));
     h.activate(page);
     let texts = frame_texts(&mut h, page);
     // Brief 055 (FP5): the built-in columns now hold ECR, so its value shows again.
@@ -557,9 +557,9 @@ fn ac10_revision_columns_and_custom_fields() {
 #[test]
 fn ac11_tag_style_rewrites_in_one_undoable_step() {
     let mut h = H::new(0x0003_3111);
-    let k1: ComponentId = id(&place(&mut h, "coil", (60.0, 150.0)), "component");
-    let k2: ComponentId = id(&place(&mut h, "coil", (100.0, 150.0)), "component");
-    let q1: ComponentId = id(&place(&mut h, "mcb1", (200.0, 150.0)), "component");
+    let k1: DeviceId = id(&place(&mut h, "coil", (60.0, 150.0)), "component");
+    let k2: DeviceId = id(&place(&mut h, "coil", (100.0, 150.0)), "component");
+    let q1: DeviceId = id(&place(&mut h, "mcb1", (200.0, 150.0)), "component");
     assert_eq!([tag(&mut h, k1), tag(&mut h, k2), tag(&mut h, q1)], ["-K01", "-K02", "-Q01"]);
     let before = h.doc();
     let head = h.head();
@@ -570,10 +570,10 @@ fn ac11_tag_style_rewrites_in_one_undoable_step() {
     assert_eq!(v["tag_dash"], json!(false), "{v}");
     let (_, ops) = last_tx(&mut h);
     assert!(sets(&ops, "tags.dash"), "{ops:?}");
-    assert_eq!(ops.iter().filter(|o| matches!(o, Op::SetProperty { object: ObjectRef::Component(_), key, .. } if key == "tag")).count(), 3);
+    assert_eq!(ops.iter().filter(|o| matches!(o, Op::SetProperty { object: ObjectRef::Device(_), key, .. } if key == "tag")).count(), 3);
     h.run("u", Value::Null).unwrap();
     let after_undo = h.doc();
-    assert_eq!(after_undo.components, before.components, "undo restores every tag");
+    assert_eq!(after_undo.devices, before.devices, "undo restores every tag");
     assert_eq!(after_undo.properties, before.properties, "and the setting");
     h.run("redo", Value::Null).unwrap();
     // Case: typed from now on; existing tags unchanged.
@@ -587,7 +587,7 @@ fn ac11_tag_style_rewrites_in_one_undoable_step() {
     assert!(
         e.is_err()
             || tag(&mut h, k1) != "K01"
-            || h.doc().components.values().filter(|c| c.properties.get("tag").is_some_and(|t| t.eq_ignore_ascii_case("k01"))).count() == 1,
+            || h.doc().devices.values().filter(|c| c.properties.get("tag").is_some_and(|t| t.eq_ignore_ascii_case("k01"))).count() == 1,
         "conflict rules unchanged"
     );
     // Dash yes with typed case.
@@ -607,8 +607,8 @@ fn ac11_tag_style_rewrites_in_one_undoable_step() {
 fn ac12_renumber_keeps_typed_letters() {
     let mut h = H::new(0x33_12);
     h.run("projectprops", json!({"tag_dash": false, "tag_case": "typed"})).unwrap();
-    let a: ComponentId = id(&place(&mut h, "coil", (60.0, 150.0)), "component");
-    let b: ComponentId = id(&place(&mut h, "coil", (100.0, 150.0)), "component");
+    let a: DeviceId = id(&place(&mut h, "coil", (60.0, 150.0)), "component");
+    let b: DeviceId = id(&place(&mut h, "coil", (100.0, 150.0)), "component");
     for (c, t) in [(a, "k05"), (b, "k07")] {
         h.run("setprop", json!({"component": c.hex(), "key": "tag", "value": t})).unwrap();
         // Typed tags are fixed (026); free them for renumber.
@@ -645,7 +645,7 @@ fn ac13_table_and_hatch_are_refused_in_clean_words() {
 fn ac14_a_project_without_033_settings_looks_as_before() {
     let mut h = H::new(0x33_14);
     let page = h.first_page();
-    let k: ComponentId = id(&place(&mut h, "coil", (60.0, 150.0)), "component");
+    let k: DeviceId = id(&place(&mut h, "coil", (60.0, 150.0)), "component");
     assert_eq!(tag(&mut h, k), "-K01");
     issue(&mut h, "First issue", "2026-11-10");
     let texts = frame_texts(&mut h, page);

@@ -1385,7 +1385,7 @@ Windows, `~/ecad-projects/agent.ecad` on Linux or WSL. Use the line for your sys
 
 What the agent can and cannot do:
 
-- **Read** (always): `ecad_project` (pages, components and connection points, wires and their ends,
+- **Read** (always): `ecad_project` (pages, devices and connection points, wires and their ends,
   cables and their members, nets), `ecad_history` (transactions with their authors),
   `ecad_inspect`, and CADCraft's `inspect_drawing`, `query_entities`, `find_text`, `render` and
   `list_commands` (every ECAD command with its parameters). Through `execute`, the commands that

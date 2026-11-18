@@ -80,7 +80,7 @@ fn sources() -> Vec<(&'static str, Vec<(&'static str, String)>)> {
                 _ => "Print",
             };
             for (b, _) in f {
-                let name = bind::name(&Binding::parse(b));
+                let name = Binding::parse(b).map(|x| bind::name(&x)).unwrap_or_default();
                 match groups.iter_mut().find(|g| g.0 == group) {
                     Some(g) => g.1.push((*b, name)),
                     None => groups.push((group, vec![(*b, name)])),
@@ -120,7 +120,6 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
         BlockItem::Line { .. } => ("Line".to_string(), "Line"),
         BlockItem::RevTable { .. } => ("Revision table".to_string(), "Table"),
         BlockItem::Logo { name, .. } => (if name.is_empty() { "Logo".to_string() } else { name.clone() }, "Logo"),
-        BlockItem::Unknown => ("Unknown item".to_string(), "Item"),
     };
     let title = if sel.len() > 1 { format!("{} items", sel.len()) } else { title };
     ui.label(RichText::new(title).font(ecad_ui::fonts::font(ui.ctx(), ecad_ui::tokens::ui_type::OBJECT)).color(c32(s.text)));
@@ -153,16 +152,15 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                     let mut i = binds.iter().position(|x| *x == b.text()).unwrap_or(usize::MAX);
                     let r = ecad_ui::control::Select::new(&mut i, &options, SOURCE).placeholder(&current).show(ui);
                     if r.changed() {
+                        // The entry after the palette's bindings asks for a project key of one's own.
                         pick = match binds.get(i) {
-                            Some(bt) => Some(Binding::parse(bt)),
-                            None if i == binds.len() => Some(Binding::new(ecad_model::title_block::Source::Project, "")),
+                            Some(bt) => Binding::parse(bt).ok().map(Some),
+                            None if i == binds.len() => Some(None),
                             None => None,
                         };
                     }
-                    if let Some(nb) = pick {
-                        if nb.key.is_empty() {
-                            ed.project_key = Some(String::new());
-                        } else {
+                    if let Some(choice) = pick {
+                        if let Some(nb) = choice {
                             d.step();
                             for i in &sel {
                                 if let Some(BlockItem::Field { bind: x, .. }) = d.now.layout.items.get_mut(*i) {
@@ -170,6 +168,8 @@ pub fn show(ui: &mut egui::Ui, ed: &mut Editor, writable: bool) -> Vec<Act> {
                                 }
                             }
                             acts.push(Act::Resample);
+                        } else {
+                            ed.project_key = Some(String::new());
                         }
                     }
                 });
@@ -442,7 +442,7 @@ fn num(ui: &mut egui::Ui, v: &mut f64, name: &str) {
 fn set_rect(item: &mut BlockItem, r: ecad_model::title_block::Rect) {
     match item {
         BlockItem::Text { at, .. } | BlockItem::Field { at, .. } | BlockItem::RevTable { at, .. } | BlockItem::Logo { at, .. } => *at = r,
-        BlockItem::Line { .. } | BlockItem::Unknown => {}
+        BlockItem::Line { .. } => {}
     }
 }
 
@@ -474,21 +474,16 @@ pub fn make_field(d: &mut Draft, i: usize) {
         .trim()
         .to_lowercase()
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '_' })
         .collect::<String>()
         .trim_matches('_')
         .chars()
         .take(bind::MAX_KEY_CHARS)
         .collect();
     let key = if key.is_empty() { "field".to_string() } else { key };
+    let Some(key) = ecad_model::title_block::ProjectKey::new(&key) else { return };
     if let Some(x) = d.now.layout.items.get_mut(i) {
-        *x = BlockItem::Field {
-            at,
-            bind: Binding::new(ecad_model::title_block::Source::Project, &key),
-            label: Some(text),
-            look,
-            if_empty: IfEmpty::Blank,
-        };
+        *x = BlockItem::Field { at, bind: Binding::Project(key), label: Some(text), look, if_empty: IfEmpty::Blank };
     }
 }
 

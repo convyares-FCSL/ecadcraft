@@ -5,7 +5,7 @@
 use ecad_cadcraft::checks::{Fix, Kind};
 use ecad_cadcraft::outputs::{Group, Outputs};
 use ecad_cadcraft::strips::Strips;
-use ecad_model::{Author, CableId, ComponentId, ConductorId, End, Op, PageId, TerminalId};
+use ecad_model::{Author, CableId, DeviceId, End, Op, PageId, TerminalId, WireId};
 use serde_json::{Value, json};
 
 use crate::common::place;
@@ -15,10 +15,10 @@ use crate::common::{H, id, pts};
 struct T {
     h: H,
     page: PageId,
-    k1: ComponentId,
-    wires: [ConductorId; 4],
+    k1: DeviceId,
+    wires: [WireId; 4],
     cable: CableId,
-    m1: ComponentId,
+    m1: DeviceId,
 }
 
 /// Fixture T (design 028 §12): `+CP1` over the top half, `+FIELD` over the bottom half; `-K01`
@@ -30,15 +30,15 @@ fn fixture(seed: u64) -> T {
     let page = h.first_page();
     h.run("locationbox", json!({"location": "+CP1", "corners": [[20, 150], [400, 280]]})).unwrap();
     h.run("locationbox", json!({"location": "+FIELD", "corners": [[20, 20], [400, 140]]})).unwrap();
-    let k1: ComponentId = id(&place(&mut h, "coil", (100.0, 220.0)), "component");
-    let k2: ComponentId = id(&place(&mut h, "coil", (150.0, 220.0)), "component");
+    let k1: DeviceId = id(&place(&mut h, "coil", (100.0, 220.0)), "component");
+    let k2: DeviceId = id(&place(&mut h, "coil", (150.0, 220.0)), "component");
     h.run("place", json!({"symbol": "no", "at": [200, 220], "device": k1.hex()})).unwrap();
     h.run("place", json!({"symbol": "no", "at": [250, 220], "device": k2.hex()})).unwrap();
-    let m1: ComponentId = id(&place(&mut h, "motor3", (110.0, 50.0)), "component");
-    let s1: ComponentId = id(&place(&mut h, "pbno", (250.0, 60.0)), "component");
+    let m1: DeviceId = id(&place(&mut h, "motor3", (110.0, 50.0)), "component");
+    let s1: DeviceId = id(&place(&mut h, "pbno", (250.0, 60.0)), "component");
     // Brief 052: the boxes only propose; the devices store their locations.
-    h.run("setlocation", json!({"components": [k1.hex(), k2.hex()], "value": "+CP1"})).unwrap();
-    h.run("setlocation", json!({"components": [m1.hex(), s1.hex()], "value": "+FIELD"})).unwrap();
+    h.run("setlocation", json!({"devices": [k1.hex(), k2.hex()], "value": "+CP1"})).unwrap();
+    h.run("setlocation", json!({"devices": [m1.hex(), s1.hex()], "value": "+FIELD"})).unwrap();
     let routes = [
         vec![(100.0, 210.0), (100.0, 65.0)],
         vec![(150.0, 210.0), (150.0, 100.0), (110.0, 100.0), (110.0, 65.0)],
@@ -49,7 +49,7 @@ fn fixture(seed: u64) -> T {
     for r in &routes {
         let v = h.run("wire", json!({"points": pts(r)})).unwrap();
         assert_eq!(v["attached"].as_array().unwrap().len(), 2, "{v}");
-        wires.push(id::<ConductorId>(&v, "conductor"));
+        wires.push(id::<WireId>(&v, "conductor"));
     }
     let v = h.run("cableslash", json!({"from": [90, 120], "to": [260, 120], "tag": "-W01"})).unwrap();
     let cable: CableId = id(&v, "cable");
@@ -89,12 +89,12 @@ fn a_terminal_on_a_wire_splits_it_and_undo_restores_it() {
     assert_eq!(t.h.head(), head + 1, "one transaction");
     assert_eq!(v["tag"], "-X01", "{v}");
     assert!(v["message"].as_str().unwrap().starts_with("Placed -X01:1 on wire"), "{v}");
-    let new: ConductorId = id(&v["split"], "new");
-    let x1: ComponentId = id(&v, "component");
+    let new: WireId = id(&v["split"], "new");
+    let x1: DeviceId = id(&v, "component");
     let term: TerminalId = id(&v["terminals"][0], "terminal");
     let doc = t.h.doc();
-    assert_eq!(doc.conductors[&t.wires[0]].end(End::B), Some(term));
-    assert_eq!(doc.conductors[&new].end(End::A), Some(term));
+    assert_eq!(doc.wires[&t.wires[0]].end(End::B), Some(term));
+    assert_eq!(doc.wires[&new].end(End::A), Some(term));
     let conn = doc.connectivity();
     assert_eq!(conn.net_of_conductor(t.wires[0]), conn.net_of_conductor(new), "one net");
     // The cable's slash crosses the second half, so it keeps the membership.
@@ -112,8 +112,8 @@ fn a_terminal_on_a_wire_splits_it_and_undo_restores_it() {
     assert_eq!(row["inside"][0]["wire"], row["outside"][0]["wire"], "one wire number");
     t.h.cmdline("u");
     let after = t.h.doc();
-    assert_eq!(after.conductors, before.conductors);
-    assert!(!after.components.contains_key(&x1));
+    assert_eq!(after.wires, before.wires);
+    assert!(!after.devices.contains_key(&x1));
     same_as_built(&mut t.h);
     // Refusals with a way forward.
     let e = t.h.run("place", json!({"symbol": "terminal", "at": [100, 210]})).unwrap_err();
@@ -135,7 +135,7 @@ fn place_terminals_bridges_cores_and_the_plan() {
     assert_eq!(t.h.head(), head + 1, "one transaction");
     assert_eq!(v["message"], "Placed -X01:1\u{2026}4 on 4 wires.", "{v}");
     // Brief 052: the strip stores the location of the box it is drawn in.
-    let x1: ComponentId = id(&v, "strip");
+    let x1: DeviceId = id(&v, "strip");
     t.h.run("setlocation", json!({"component": x1.hex(), "value": "+CP1"})).unwrap();
     let terms: Vec<TerminalId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
     let labels: Vec<&str> = v["terminals"].as_array().unwrap().iter().map(|x| x["label"].as_str().unwrap()).collect();
@@ -143,7 +143,7 @@ fn place_terminals_bridges_cores_and_the_plan() {
     let doc = t.h.doc();
     // The cable's members are the field halves (§3.1).
     for (i, x) in v["terminals"].as_array().unwrap().iter().enumerate() {
-        let new: ConductorId = id(x, "new");
+        let new: WireId = id(x, "new");
         assert!(doc.cables[&t.cable].members.iter().any(|m| m.conductor == new), "member {i}");
     }
     same_as_built(&mut t.h);
@@ -152,7 +152,7 @@ fn place_terminals_bridges_cores_and_the_plan() {
     let b = t.h.run("bridge", json!({"from": terms[2].hex(), "to": terms[3].hex()})).unwrap();
     assert_eq!(t.h.head(), head + 1);
     assert_eq!(b["bridge"], true);
-    let bridge: ConductorId = id(&b, "conductor");
+    let bridge: WireId = id(&b, "conductor");
     let plan = strip_plan(&mut t.h);
     let rows = plan["strips"][0]["rows"].as_array().unwrap();
     assert_eq!(rows[2]["bridge_group"], json!(1), "{plan}");
@@ -181,7 +181,7 @@ fn place_terminals_bridges_cores_and_the_plan() {
     assert_eq!(r["to_devices"], json!(["-M01", "-S01"]), "{r}");
     // A fifth wire added to -W01 takes core 5.
     let w5 = t.h.run("wire", json!({"points": pts(&[(300.0, 200.0), (300.0, 50.0)])})).unwrap();
-    let w5: ConductorId = id(&w5, "conductor");
+    let w5: WireId = id(&w5, "conductor");
     t.h.run("cableadd", json!({"cable": t.cable.hex(), "conductors": [w5.hex()]})).unwrap();
     let doc = t.h.doc();
     assert_eq!(doc.cables[&t.cable].members.iter().find(|m| m.conductor == w5).unwrap().core.as_deref(), Some("5"));
@@ -194,7 +194,7 @@ fn place_terminals_bridges_cores_and_the_plan() {
     let mut more = Vec::new();
     for x in [310.0, 320.0, 330.0] {
         let w = t.h.run("wire", json!({"points": pts(&[(x, 200.0), (x, 50.0)])})).unwrap();
-        more.push(id::<ConductorId>(&w, "conductor").hex());
+        more.push(id::<WireId>(&w, "conductor").hex());
     }
     t.h.run("cableadd", json!({"cable": t.cable.hex(), "conductors": more})).unwrap();
     let checks = t.h.run("checks", json!({"kinds": ["too-many-cores"]})).unwrap();
@@ -223,14 +223,14 @@ fn setting_a_field_device_to_the_strip_location_flips_only_its_rows() {
         p.outputs();
     });
     let v = t.h.run("terminals", json!({"from": [90, 170], "to": [260, 170]})).unwrap();
-    let x1: ComponentId = id(&v, "strip");
+    let x1: DeviceId = id(&v, "strip");
     t.h.run("setlocation", json!({"component": x1.hex(), "value": "+CP1"})).unwrap();
     let lamp = place(&mut t.h, "lamp", (340.0, 60.0));
-    let h1: ComponentId = id(&lamp, "component");
+    let h1: DeviceId = id(&lamp, "component");
     t.h.run("setlocation", json!({"component": h1.hex(), "value": "+FIELD"})).unwrap();
     // A wire from -K01's coil top? Use a free wire from (330,175) to the lamp X1 (340, 70).
     let k = t.h.run("wire", json!({"points": pts(&[(330.0, 200.0), (330.0, 70.0), (340.0, 70.0)])})).unwrap();
-    let _w: ConductorId = id(&k, "conductor");
+    let _w: WireId = id(&k, "conductor");
     // Land -X01:5 on it inside +CP1.
     let x = t.h.run("place", json!({"symbol": "terminal", "at": [330, 170], "tag": "-X01"})).unwrap();
     assert_eq!(x["joined"], true, "{x}");
@@ -266,12 +266,12 @@ fn the_offer_gives_spares_and_the_bom_counts_per_terminal_type() {
         p.outputs();
     });
     let v = t.h.run("terminals", json!({"from": [90, 170], "to": [260, 170]})).unwrap();
-    let x1: ComponentId = id(&v, "strip");
+    let x1: DeviceId = id(&v, "strip");
     let e = t.h.run("setprop", json!({"component": x1.hex(), "key": "terminals", "value": "12X"})).unwrap_err();
     // Brief 036 (FP1): the refusal names the type codes too.
     assert!(e.contains("\"12X\" is not a terminal count. Write 12, 12+2PE or 12+4x3"), "{e}");
     t.h.run("setprop", json!({"component": x1.hex(), "key": "terminals", "value": "12 + 2pe"})).unwrap();
-    assert_eq!(t.h.doc().components[&x1].properties["terminals"], "12+2PE");
+    assert_eq!(t.h.doc().devices[&x1].properties["terminals"], "12+2PE");
     t.h.run("place", json!({"symbol": "terminalpe", "at": [360, 250], "device": x1.hex()})).unwrap();
     same_as_built(&mut t.h);
     let bom = t.h.run("bom", json!({})).unwrap();
@@ -337,7 +337,7 @@ fn core_rows_of_the_checks_list() {
 fn terminal_plan_and_cable_schedule_pages() {
     let mut t = fixture(0x28_06);
     let v = t.h.run("terminals", json!({"from": [90, 170], "to": [260, 170]})).unwrap();
-    let x1: ComponentId = id(&v, "strip");
+    let x1: DeviceId = id(&v, "strip");
     let p = t.h.run("newpage", json!({"generated": "terminals", "strip": x1.hex()})).unwrap();
     let plan_page: PageId = id(&p, "page");
     let doc = t.h.doc();
@@ -437,7 +437,7 @@ fn relabelling_wired_terminals_by_remove_and_add_needs_no_new_op() {
 fn hostile_strip_and_core_input_is_refused_with_a_way_forward() {
     let mut t = fixture(0x28_09);
     let v = t.h.run("terminals", json!({"from": [90, 170], "to": [260, 170]})).unwrap();
-    let x1: ComponentId = id(&v, "strip");
+    let x1: DeviceId = id(&v, "strip");
     let terms: Vec<TerminalId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
     let long = "9".repeat(10_000);
     assert!(t.h.run("setprop", json!({"component": x1.hex(), "key": "terminals", "value": long})).is_err());
@@ -491,12 +491,12 @@ fn renumbering_terminals_follows_drawing_order() {
         p.outputs();
     });
     let v = t.h.run("terminals", json!({"from": [90, 170], "to": [260, 170]})).unwrap();
-    let x1: ComponentId = id(&v, "strip");
+    let x1: DeviceId = id(&v, "strip");
     let terms: Vec<TerminalId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
     // Move terminal 4's symbol left of terminal 1 (its wires follow).
     let doc = t.h.doc();
     let rep4 = doc
-        .representations_of(ecad_model::Subject::Component(x1))
+        .representations_of(ecad_model::Subject::Device(x1))
         .find(|(_, r)| r.connection_points.contains_key(&terms[3]))
         .map(|(_, r)| r.items[0])
         .unwrap();
@@ -539,7 +539,7 @@ fn renumbering_terminals_follows_drawing_order() {
 fn generated_page_counts_need_no_walk_on_an_unrelated_edit() {
     let mut t = fixture(0x28_0c);
     t.h.run("terminals", json!({"from": [90, 170], "to": [260, 170]})).unwrap();
-    let far: ComponentId = id(&place(&mut t.h, "coil", (370.0, 260.0)), "component");
+    let far: DeviceId = id(&place(&mut t.h, "coil", (370.0, 260.0)), "component");
     let cables_page: PageId = id(&t.h.run("newpage", json!({"generated": "cables"})).unwrap(), "page");
     let plan_page: PageId = id(&t.h.run("newpage", json!({"generated": "terminals"})).unwrap(), "page");
     t.h.cfg(|p| {
@@ -570,7 +570,7 @@ fn generated_page_counts_need_no_walk_on_an_unrelated_edit() {
 fn json_forms_leave_absent_keys_out_and_page_inside_a_strip() {
     let mut t = fixture(0x28_0d);
     let v = t.h.run("terminals", json!({"from": [90, 170], "to": [260, 170]})).unwrap();
-    let x1: ComponentId = id(&v, "strip");
+    let x1: DeviceId = id(&v, "strip");
     t.h.run("setprop", json!({"component": x1.hex(), "key": "terminals", "value": "10"})).unwrap();
     let a = t.h.run("stripplan", json!({"limit": 4})).unwrap();
     assert_eq!(a["total"], 10, "{a}");
@@ -597,7 +597,7 @@ fn json_forms_leave_absent_keys_out_and_page_inside_a_strip() {
     assert!(cores.get("offer").is_none() && cores.get("spare").is_none(), "{cores}");
     // On a coil, `terminals` is ordinary free text.
     t.h.run("setprop", json!({"component": t.k1.hex(), "key": "terminals", "value": "see sheet 4"})).unwrap();
-    assert_eq!(t.h.doc().components[&t.k1].properties["terminals"], "see sheet 4");
+    assert_eq!(t.h.doc().devices[&t.k1].properties["terminals"], "see sheet 4");
     let e = t.h.run("setprop", json!({"component": x1.hex(), "key": "terminals", "value": "see sheet 4"})).unwrap_err();
     assert!(e.contains("is not a terminal count"), "{e}");
 }

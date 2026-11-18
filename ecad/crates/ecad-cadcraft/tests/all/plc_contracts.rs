@@ -6,7 +6,7 @@ mod iolist;
 mod rack;
 
 use ecad_cadcraft::outputs::Outputs;
-use ecad_model::ComponentId;
+use ecad_model::DeviceId;
 use serde_json::{Value, json};
 
 use crate::common::{H, id};
@@ -20,16 +20,16 @@ pub(crate) fn place(h: &mut H, symbol: &str, x: f64, y: f64, extra: Value) -> Re
     h.run("place", p)
 }
 
-pub(crate) fn placed(h: &mut H, symbol: &str, x: f64, y: f64) -> ComponentId {
+pub(crate) fn placed(h: &mut H, symbol: &str, x: f64, y: f64) -> DeviceId {
     let v = place(h, symbol, x, y, json!({})).unwrap_or_else(|e| panic!("place {symbol}: {e}"));
     id(&v, "component")
 }
 
-pub(crate) fn prop(h: &mut H, c: ComponentId, k: &str) -> Option<String> {
-    h.doc().components.get(&c).and_then(|x| x.properties.get(k).cloned())
+pub(crate) fn prop(h: &mut H, c: DeviceId, k: &str) -> Option<String> {
+    h.doc().devices.get(&c).and_then(|x| x.properties.get(k).cloned())
 }
 
-pub(crate) fn tag(h: &mut H, c: ComponentId) -> String {
+pub(crate) fn tag(h: &mut H, c: DeviceId) -> String {
     prop(h, c, "tag").unwrap_or_default()
 }
 

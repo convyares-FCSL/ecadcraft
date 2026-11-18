@@ -8,7 +8,7 @@ use ecad_electrical::CmdError;
 use ecad_electrical::cmd::location::{self as location_rules, MAX_DEVICES};
 use ecad_electrical::cmd::prop::{self as rules, Build, Conflict, DeviceSet, TagSet};
 use ecad_model::tag::TAG_KEY;
-use ecad_model::{CableId, ComponentId, ConductorId, ObjectRef};
+use ecad_model::{CableId, DeviceId, ObjectRef, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -30,13 +30,13 @@ pub const TYPED: &[Typed] = &[Typed::of::<SetpropParams>("setprop")];
 pub(crate) struct SetpropParams {
     /// A device (or any component).
     #[serde(default)]
-    component: Option<ComponentId>,
+    component: Option<DeviceId>,
     /// Several devices, in one transaction.
     #[serde(default)]
-    components: Option<Bounded<ComponentId, 0, MAX_HANDLES>>,
+    devices: Option<Bounded<DeviceId, 0, MAX_HANDLES>>,
     /// A wire.
     #[serde(default)]
-    conductor: Option<ConductorId>,
+    conductor: Option<WireId>,
     /// A cable.
     #[serde(default)]
     cable: Option<CableId>,
@@ -73,12 +73,12 @@ impl Command for SetpropParams {
         rules::reserved(&key).map_err(|e| err(e.to_string()))?;
         // Brief 052 (design 052 §5.9): a function or location (PROP_RULES' first row, which claims by
         // key alone) is stored as an entry key of the project's list, for all the devices at once.
-        if (self.component.is_some() || self.components.is_some())
+        if (self.component.is_some() || self.devices.is_some())
             && let Some(prop) = location_rules::aspect_property(&key)
         {
-            let objects = match self.components {
+            let objects = match self.devices {
                 Some(cs) if cs.0.len() > MAX_DEVICES => {
-                    return Err(err(format!("at most {MAX_DEVICES} entries in `components` per call")));
+                    return Err(err(format!("at most {MAX_DEVICES} entries in `devices` per call")));
                 }
                 Some(cs) => location_rules::objects(None, Some(cs.0)),
                 None => location_rules::objects(self.component, None),
@@ -87,7 +87,7 @@ impl Command for SetpropParams {
             return crate::cmd::location::apply(s, objects, prop, typed, "setprop");
         }
         // Several devices at once (brief 019, the Properties panel): one transaction for all.
-        if let Some(cs) = self.components {
+        if let Some(cs) = self.devices {
             return on_project(s, |p, pg, _| {
                 let ops = rules::plan_many(p.ledger.document(), &cs.0, &key, typed.as_deref())?;
                 if ops.is_empty() {
@@ -99,9 +99,9 @@ impl Command for SetpropParams {
             });
         }
         let object = if let Some(c) = self.component {
-            ObjectRef::Component(c)
+            ObjectRef::Device(c)
         } else if let Some(c) = self.conductor {
-            ObjectRef::Conductor(c)
+            ObjectRef::Wire(c)
         } else if let Some(c) = self.cable {
             ObjectRef::Cable(c)
         } else {
@@ -112,7 +112,7 @@ impl Command for SetpropParams {
             let doc = p.ledger.document();
             // Pack re-run, bug 7: on a PLC card with channels, `channels` is its channel count.
             let key = match object {
-                ObjectRef::Component(c) => rules::component_key(doc, c, &key),
+                ObjectRef::Device(c) => rules::component_key(doc, c, &key),
                 _ => key,
             };
             match rules::rule_for(doc, object, &key).build {
@@ -120,7 +120,7 @@ impl Command for SetpropParams {
                     let conflict = rules::conflict(word.as_deref(), merge)?;
                     match (conflict, object) {
                         // Merging two devices keeps 018's path (labels, contacts, connection points).
-                        (Some(Conflict::Merge), ObjectRef::Component(c)) => set_device(p, pg, c, TAG_KEY, typed.as_deref(), true),
+                        (Some(Conflict::Merge), ObjectRef::Device(c)) => set_device(p, pg, c, TAG_KEY, typed.as_deref(), true),
                         _ => set_tag(p, pg, object, typed.as_deref(), conflict),
                     }
                 }
@@ -131,10 +131,15 @@ impl Command for SetpropParams {
                     Ok(json!({"changed": true, "fixed": done.on}))
                 }
                 Build::Device(_) => match object {
-                    ObjectRef::Component(c) => set_device(p, pg, c, &key, typed.as_deref(), merge),
+                    ObjectRef::Device(c) => set_device(p, pg, c, &key, typed.as_deref(), merge),
                     _ => set_value(p, pg, object, &key, typed.as_deref()),
                 },
                 Build::Value(_) | Build::Aspect => set_value(p, pg, object, &key, typed.as_deref()),
+                Build::Record(_) => {
+                    let Some(op) = rules::plan_record(doc, object, &key, typed.as_deref())? else { return Ok(json!({"changed": false})) };
+                    p.apply_edit(pg, "setprop", "Set property", vec![op])?;
+                    Ok(json!({"changed": true}))
+                }
             }
         })
     }
@@ -155,7 +160,7 @@ fn set_value(p: &mut Project, pg: &mut Pages<'_>, object: ObjectRef, key: &str, 
 }
 
 /// A device property (design 018 §6), merging with `merge`.
-fn set_device(p: &mut Project, pg: &mut Pages<'_>, c: ComponentId, key: &str, typed: Option<&str>, merge: bool) -> Result<Value, CmdError> {
+fn set_device(p: &mut Project, pg: &mut Pages<'_>, c: DeviceId, key: &str, typed: Option<&str>, merge: bool) -> Result<Value, CmdError> {
     match rules::plan_device(p.ledger.document(), &mut p.ids, &p.tag_high, c, key, typed, merge)? {
         DeviceSet::Unchanged(value) => Ok(json!({"changed": false, "value": value})),
         DeviceSet::Set { op, label, value } => {
@@ -203,7 +208,7 @@ fn set_tag(p: &mut Project, pg: &mut Pages<'_>, o: ObjectRef, typed: Option<&str
 
 fn object_json(o: ObjectRef) -> Value {
     match o {
-        ObjectRef::Component(c) => json!({"component": c.hex()}),
+        ObjectRef::Device(c) => json!({"component": c.hex()}),
         ObjectRef::Cable(k) => json!({"cable": k.hex()}),
         _ => Value::Null,
     }

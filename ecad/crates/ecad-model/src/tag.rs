@@ -151,8 +151,8 @@ pub const TAG_RULE: u32 = 2;
 /// Count every tag `ops` write or remove (undone ones included), in order.
 ///
 /// # Semantics
-/// Device and cable tags share one mark per prefix (brief 026, Q7): `CreateComponent`,
-/// `DeleteComponent`, `CreateCable`, `DeleteCable` and any `SetProperty` of `tag` count (FP7). A
+/// Device and cable tags share one mark per prefix (brief 026, Q7): `CreateDevice`,
+/// `DeleteDevice`, `CreateCable`, `DeleteCable` and any `SetProperty` of `tag` count (FP7). A
 /// `SetProperty` of project property `numbering.high.<P>` to a newer generation (a renumber, or
 /// its redo) sets the mark of `P` to its number (FP4: overwrite, not max), so new tags follow a
 /// renumbered set; a later tag write raises it again as usual. One back to an older generation or
@@ -161,7 +161,7 @@ pub const TAG_RULE: u32 = 2;
 pub fn note_ops(high: &mut HighWater, ops: &[crate::Op]) {
     for op in ops {
         match op {
-            crate::Op::CreateComponent { component, .. } | crate::Op::DeleteComponent { component, .. } => {
+            crate::Op::CreateDevice { device: component, .. } | crate::Op::DeleteDevice { device: component, .. } => {
                 if let Some(t) = component.properties.get(TAG_KEY) {
                     note(high, t);
                 }

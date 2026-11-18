@@ -5,16 +5,16 @@
 use crate::common::{H, id};
 
 use ecad_cadcraft::locations;
-use ecad_model::{ComponentId, Document};
+use ecad_model::{DeviceId, Document};
 use serde_json::{Value, json};
 
 const SEED: u64 = 522;
 
-fn loc(d: &Document, c: ComponentId) -> Option<String> {
+fn loc(d: &Document, c: DeviceId) -> Option<String> {
     locations::resolve(d, c).value
 }
 
-fn func(d: &Document, c: ComponentId) -> Option<String> {
+fn func(d: &Document, c: DeviceId) -> Option<String> {
     locations::resolve_function(d, c).value
 }
 
@@ -22,7 +22,7 @@ fn conflicts(h: &mut H) -> Value {
     h.run("conflicts", json!({})).unwrap()["conflicts"].clone()
 }
 
-fn place(h: &mut H, symbol: &str, at: [i32; 2]) -> (ComponentId, Value) {
+fn place(h: &mut H, symbol: &str, at: [i32; 2]) -> (DeviceId, Value) {
     let v = h.run("place", json!({"symbol": symbol, "at": at})).unwrap();
     (id(&v, "component"), v)
 }
@@ -39,7 +39,7 @@ fn a_new_device_in_a_box_takes_its_location_in_one_step() {
     assert_eq!(loc(&h.doc(), k).as_deref(), Some("+CP1"));
     assert_eq!(v["location"]["set"][0]["value"], "+CP1", "{v}");
     h.cmdline("u");
-    assert!(!h.doc().components.contains_key(&k), "one undo removes the device and its location");
+    assert!(!h.doc().devices.contains_key(&k), "one undo removes the device and its location");
     // A device placed outside every box, with no page or project value: no location.
     let (k2, _) = place(&mut h, "coil", [300, 50]);
     assert_eq!(loc(&h.doc(), k2), None);
@@ -121,7 +121,7 @@ fn a_box_proposes_when_drawn_and_when_given_another_entry() {
     assert_eq!(loc(&d, a).as_deref(), Some("+CP1"));
     assert_eq!(loc(&d, c).as_deref(), Some("+CP2"), "never changed silently");
     // Give the box +CP3: devices at +CP1 are listed, the one at +CP2 is not.
-    let bx: ComponentId = id(&v, "component");
+    let bx: DeviceId = id(&v, "component");
     h.run("setlocation", json!({"component": bx.hex(), "value": "+CP3"})).unwrap();
     let list = conflicts(&mut h)["location"]["conflicts"].clone();
     let tags: Vec<&str> = list.as_array().unwrap().iter().filter_map(|x| x["tag"].as_str()).collect();
@@ -168,7 +168,7 @@ fn a_function_box_around_a_location_box_proposes_both() {
 fn a_connector_half_answers_half() {
     let mut h = H::new(SEED);
     let v = h.run("place", json!({"symbol": "pins", "at": [300, 40]})).unwrap();
-    let x: ComponentId = id(&v, "component");
+    let x: DeviceId = id(&v, "component");
     h.run("setlocation", json!({"component": x.hex(), "value": "+CP1"})).unwrap();
     h.run("locationbox", json!({"location": "+FIELD", "corners": [[20, 100], [200, 220]]})).unwrap();
     let v = h.run("place", json!({"symbol": "pinp", "device": x.hex(), "at": [75, 180]})).unwrap();
@@ -181,7 +181,7 @@ fn a_connector_half_answers_half() {
     assert_eq!(locations::half_location(&d, x, ecad_cadcraft::symbols::Side::Plug).value.as_deref(), Some("+FIELD"));
     // JSON: the half answered in the place's own transaction.
     let v = h.run("place", json!({"symbol": "pins", "at": [320, 40]})).unwrap();
-    let y: ComponentId = id(&v, "component");
+    let y: DeviceId = id(&v, "component");
     h.run("setlocation", json!({"component": y.hex(), "value": "+CP1"})).unwrap();
     h.run("place", json!({"symbol": "pinp", "device": y.hex(), "at": [75, 140], "location": "half"})).unwrap();
     let d = h.doc();

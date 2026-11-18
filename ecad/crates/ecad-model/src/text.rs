@@ -108,6 +108,18 @@ macro_rules! text_type {
             }
         }
 
+        impl<const N: usize> PartialEq<str> for $name<N> {
+            fn eq(&self, other: &str) -> bool {
+                &*self.0 == other
+            }
+        }
+
+        impl<const N: usize> PartialEq<&str> for $name<N> {
+            fn eq(&self, other: &&str) -> bool {
+                &*self.0 == *other
+            }
+        }
+
         impl<const N: usize> AsRef<str> for $name<N> {
             fn as_ref(&self) -> &str {
                 &self.0

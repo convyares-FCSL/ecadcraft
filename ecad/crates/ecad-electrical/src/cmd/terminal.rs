@@ -8,8 +8,8 @@ use ecad_model::units::Radians;
 use std::collections::BTreeMap;
 
 use ecad_model::{
-    ComponentId, Conductor, ConductorId, DefinitionId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Noun, Op, PageId, Placement,
-    Primitive, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId,
+    DefinitionId, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Noun, Op, PageId, Placement, Primitive, Pt,
+    Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId, Wire, WireId,
 };
 
 use crate::connectors::{Land, plan_land, segments, strip_terminal_at};
@@ -25,7 +25,7 @@ pub const MAX_FENCE: usize = 200;
 pub const BRIDGE_STANDOFF: f64 = 4.0;
 
 /// The wire `c` met at `at` on `page`: its segment there.
-pub fn on_wire_of(doc: &Document, page: PageId, c: ConductorId, at: Pt) -> Option<OnWire> {
+pub fn on_wire_of(doc: &Document, page: PageId, c: WireId, at: Pt) -> Option<OnWire> {
     let (_, _, v) = crate::wires::route_vertices(doc, c, page)?;
     let mut best: Option<(f64, usize)> = None;
     for (i, (a, b)) in segments(&v).enumerate() {
@@ -65,7 +65,7 @@ pub fn definition_for(doc: &Document, ids: &mut IdAllocator, s: &crate::symbols:
 /// the definition's own point. Every symbol's role is its starter key (design 052 §4).
 #[allow(clippy::too_many_arguments)]
 fn terminal_symbol(
-    ids: &mut IdAllocator, page: PageId, style: Style, def: DefinitionId, strip: ComponentId, label: &str, at: Pt, first: bool, role: &str,
+    ids: &mut IdAllocator, page: PageId, style: Style, def: DefinitionId, strip: DeviceId, label: &str, at: Pt, first: bool, role: &str,
     ops: &mut Vec<Op>,
 ) -> TerminalId {
     let (t, item, rep): (TerminalId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
@@ -80,7 +80,7 @@ fn terminal_symbol(
     ops.push(Op::LinkRepresentation {
         id: rep,
         rep: Representation {
-            subject: Subject::Component(strip),
+            subject: Subject::Device(strip),
             page,
             form: Form::Symbol,
             role: role.into(),
@@ -95,15 +95,15 @@ fn terminal_symbol(
 #[derive(Debug, Clone)]
 pub struct Fence {
     pub ops: Vec<Op>,
-    pub strip: ComponentId,
+    pub strip: DeviceId,
     pub tag: String,
     /// (terminal, label, wire, new half) in crossing order.
-    pub placed: Vec<(TerminalId, String, ConductorId, ConductorId)>,
+    pub placed: Vec<(TerminalId, String, WireId, WireId)>,
     /// Wires skipped because a terminal of the strip is already there.
     pub skipped: usize,
     /// Brief 036: stored wire numbers the out halves of two-point splits did not keep: (the new
     /// half, the number, whether it was fixed).
-    pub dropped: Vec<(ConductorId, String, bool)>,
+    pub dropped: Vec<(WireId, String, bool)>,
 }
 
 /// Plan Place Terminals (design 028 §3.2) from `from` to `to` on `page`.
@@ -112,7 +112,7 @@ pub struct Fence {
 /// No wire crossed, more than [`MAX_FENCE`], an unknown strip, or a refusal of one landing.
 #[allow(clippy::too_many_arguments)]
 pub fn plan_fence(
-    ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, strip: Option<ComponentId>, pe: bool, from: Pt, to: Pt,
+    ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, strip: Option<DeviceId>, pe: bool, from: Pt, to: Pt,
     tol: f64,
 ) -> Result<Fence, CmdError> {
     let ty = if pe { tt::by_code("pe") } else { Some(tt::feedthrough()) }.ok_or(CmdError::refused("no PE type"))?;
@@ -135,7 +135,7 @@ pub struct FenceKind {
 /// As [`plan_fence`], and a named position that cannot take the level.
 #[allow(clippy::too_many_arguments)]
 pub fn plan_fence_typed(
-    ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, strip: Option<ComponentId>, kind: FenceKind, from: Pt,
+    ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, page: PageId, style: Style, strip: Option<DeviceId>, kind: FenceKind, from: Pt,
     to: Pt, tol: f64,
 ) -> Result<Fence, CmdError> {
     let doc = ledger.document();
@@ -175,20 +175,23 @@ pub fn plan_fence_typed(
     let (strip, tag, mut next, mut first_main) = match strip {
         Some(c) => (c, crate::devices::tag_words(doc, c), tt::highest_number(doc, c) + 1, false),
         None => {
-            let c: ComponentId = ids.fresh();
+            let c: DeviceId = ids.fresh();
             // Brief 026: a provisional `-X?n` when provisional tags are on, as Place gives.
             let tag = high.next_auto(ledger, &crate::devices::prefix_for(doc, starter))?;
             let mut properties = ecad_model::Properties::new();
             properties.insert(ecad_model::tag::TAG_KEY.into(), tag.clone());
             properties.insert("description".into(), "Terminal".into());
-            ops.push(Op::CreateComponent { id: c, component: ecad_model::Component { properties, definition: Some(def) } });
+            ops.push(Op::CreateDevice {
+                id: c,
+                device: ecad_model::Device { properties, definition: Some(def), device_type: starter.device_type() },
+            });
             (c, tag, 1, legacy)
         }
     };
     let mut placed = Vec::new();
     let mut dropped = Vec::new();
     let mut named = kind.position.clone();
-    let on_wire = |e: CmdError, c: ConductorId| CmdError::refused(format!("{e} (wire {})", crate::slash::wire_name(doc, c)));
+    let on_wire = |e: CmdError, c: WireId| CmdError::refused(format!("{e} (wire {})", crate::slash::wire_name(doc, c)));
     for m in crossings {
         let on = on_wire_of(doc, page, m.conductor, m.at).ok_or(CmdError::refused("A crossed wire has no route here."))?;
         if legacy {
@@ -223,7 +226,7 @@ pub fn plan_fence_typed(
 /// The starter's definition could not be built.
 #[allow(clippy::too_many_arguments)]
 pub fn level_symbol(
-    ids: &mut IdAllocator, page: PageId, style: Style, def: DefinitionId, starter: &crate::symbols::Starter, strip: ComponentId, position: &str,
+    ids: &mut IdAllocator, page: PageId, style: Style, def: DefinitionId, starter: &crate::symbols::Starter, strip: DeviceId, position: &str,
     placement: Placement, ops: &mut Vec<Op>,
 ) -> Result<Vec<(String, TerminalId, Pt)>, CmdError> {
     let d = starter.definition()?;
@@ -240,7 +243,7 @@ pub fn level_symbol(
     ops.push(Op::LinkRepresentation {
         id: rep,
         rep: Representation {
-            subject: Subject::Component(strip),
+            subject: Subject::Device(strip),
             page,
             form: Form::Symbol,
             role: starter.key.to_string(),
@@ -275,11 +278,9 @@ pub fn land_level(
     for op in &mut land.ops {
         match op {
             Op::AttachEnd { conductor, end: End::B, after, .. } if *conductor == c1 => *after = Some(keep_t),
-            Op::CreateConductor { id, conductor } if *id == c2 => {
+            Op::CreateWire { id, conductor } if *id == c2 => {
                 conductor.ends[0] = Some(rest_t);
-                let number = conductor.properties.remove(ecad_model::connectivity::WIRE_NUMBER);
-                let fixed = conductor.properties.remove(ecad_model::connectivity::WIRE_NUMBER_FIXED).is_some();
-                dropped = number.map(|n| (n, fixed));
+                dropped = conductor.number.take().map(|n| (n.text.to_string(), n.fixed));
             }
             Op::ModifyItem { after, .. } => set_route_end(after, keep_p, false),
             Op::AddItem { item, .. } if matches!(item.kind, ItemKind::Primitive(_)) => set_route_end(item, rest_p, true),
@@ -315,7 +316,7 @@ fn set_route_end(item: &mut Item, p: Pt, start: bool) {
 ///
 /// # Errors
 /// A word that names no level, with the type's levels.
-pub fn level_word(doc: &Document, c: Option<ComponentId>, t: &tt::TermType, word: &str) -> Result<Option<u32>, CmdError> {
+pub fn level_word(doc: &Document, c: Option<DeviceId>, t: &tt::TermType, word: &str) -> Result<Option<u32>, CmdError> {
     let w = word.trim();
     if !t.multi() {
         return Ok(Some(1));
@@ -362,7 +363,7 @@ pub fn term_type(word: Option<&str>, pe: bool) -> Result<&'static tt::TermType, 
 #[derive(Debug, Clone)]
 pub struct TerminalsInput {
     /// The strip joined (`None`: a new strip).
-    pub strip: Option<ComponentId>,
+    pub strip: Option<DeviceId>,
     pub ty: &'static tt::TermType,
     /// The level word (`None`: level 1).
     pub level: Option<String>,
@@ -453,9 +454,9 @@ pub fn staple(a: Pt, b: Pt) -> Vec<Pt> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Bridge {
     /// A wire already joins the two: nothing to record.
-    Already { conductor: ConductorId, same: bool, message: String },
+    Already { conductor: WireId, same: bool, message: String },
     /// A new wire (a bridge when both are of one strip).
-    Drawn { ops: Vec<Op>, label: String, conductor: ConductorId, same: bool, message: String },
+    Drawn { ops: Vec<Op>, label: String, conductor: WireId, same: bool, message: String },
 }
 
 /// `bridge {from, to}` (design 028 §4): a wire between two terminals shown on `page`; of one strip
@@ -474,12 +475,12 @@ pub fn plan_bridge(doc: &Document, ids: &mut IdAllocator, page: PageId, style: S
     let (sa, sb) = (strips::strip_of_terminal(doc, a), strips::strip_of_terminal(doc, b));
     let same = sa.is_some() && sa == sb;
     if let Some((w, _)) =
-        doc.ends_at(a).into_iter().find(|(w, _)| doc.conductors.get(w).is_some_and(|c| c.ends.contains(&Some(b)) && c.ends.contains(&Some(a))))
+        doc.ends_at(a).into_iter().find(|(w, _)| doc.wires.get(w).is_some_and(|c| c.ends.contains(&Some(b)) && c.ends.contains(&Some(a))))
     {
         return Ok(Bridge::Already { conductor: w, same, message: format!("{wa} and {wb} are already bridged.") });
     }
     let pos = |t: TerminalId| {
-        doc.representations_of(Subject::Component(doc.terminals.get(&t)?.component))
+        doc.representations_of(Subject::Device(doc.terminals.get(&t)?.component))
             .find_map(|(_, r)| (r.page == page).then(|| ecad_model::derive::terminal_position(doc, page, t)).flatten())
     };
     let (Some(pa), Some(pb)) = (pos(a), pos(b)) else {
@@ -488,15 +489,15 @@ pub fn plan_bridge(doc: &Document, ids: &mut IdAllocator, page: PageId, style: S
         )));
     };
     let route = if same { staple(pa, pb) } else { vec![pa, pb] };
-    let (w, i, r): (ConductorId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
+    let (w, i, r): (WireId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
     let item = Item { page, style, kind: ItemKind::Primitive(Primitive::Polyline { vertices: route, closed: false }) };
     let ops = vec![
-        Op::CreateConductor { id: w, conductor: Conductor::default() },
+        Op::CreateWire { id: w, conductor: Wire::default() },
         Op::AddItem { id: i, item },
         Op::LinkRepresentation {
             id: r,
             rep: Representation {
-                subject: Subject::Conductor(w),
+                subject: Subject::Wire(w),
                 page,
                 form: Form::Drawn,
                 role: "route".into(),

@@ -53,8 +53,8 @@ pub fn handles_of(p: &crate::Project, page: PageId, object: Object) -> Vec<cadcr
     let Some(map) = p.pages.get(&page).map(|v| &v.map) else { return Vec::new() };
     let doc = p.ledger.document();
     let subject = match object {
-        Object::Conductor(c) => Subject::Conductor(c),
-        Object::Component(c) => Subject::Component(c),
+        Object::Wire(c) => Subject::Wire(c),
+        Object::Device(c) => Subject::Device(c),
         Object::Reference(r) => {
             return doc
                 .representations
@@ -65,7 +65,7 @@ pub fn handles_of(p: &crate::Project, page: PageId, object: Object) -> Vec<cadcr
         }
         Object::Cable(k) => Subject::Cable(k),
         Object::Terminal(t) => match doc.terminals.get(&t) {
-            Some(x) => Subject::Component(x.component),
+            Some(x) => Subject::Device(x.component),
             None => return Vec::new(),
         },
         Object::None => return Vec::new(),

@@ -19,7 +19,7 @@ use ecad_model::units::Radians;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
-    ComponentId, DefinitionId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Placement, Pt, Representation, RepresentationId,
+    DefinitionId, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Placement, Pt, Representation, RepresentationId,
     Style, Subject, SymbolInstance, Terminal, TerminalId,
 };
 
@@ -85,7 +85,7 @@ pub fn point_of(doc: &Document, t: TerminalId) -> Option<(u32, &'static str)> {
 }
 
 /// The channel points of card `c`: index → (role, terminal, pin), roles in their cell order.
-pub fn points(doc: &Document, c: ComponentId) -> BTreeMap<u32, Vec<(&'static str, TerminalId, String)>> {
+pub fn points(doc: &Document, c: DeviceId) -> BTreeMap<u32, Vec<(&'static str, TerminalId, String)>> {
     let mut out: BTreeMap<u32, Vec<(&'static str, TerminalId, String)>> = BTreeMap::new();
     for (t, term) in doc.terminals_of(c) {
         if let Some((i, role)) = point_of(doc, t) {
@@ -129,7 +129,7 @@ fn cells_words(t: CardType) -> String {
 }
 
 /// The first channel number shown on card `c` (`plc.channel.first`, 0 or 1).
-pub fn first_number(doc: &Document, c: ComponentId) -> u32 {
+pub fn first_number(doc: &Document, c: DeviceId) -> u32 {
     let at = Scope { component: Some(c), ..Scope::project() };
     u32::from(defaults::resolve(doc, &defaults::plc::CHANNEL_FIRST, at).choice() == Some(defaults::plc::ChannelFirst::One))
 }
@@ -147,7 +147,7 @@ fn drawn_words(doc: &Document, t: TerminalId) -> String {
 /// The pins a new channel `i` of card `c` gets for `roles` (design 045 §4.3): from the pin layout,
 /// or the next free whole number when the computed one is taken (`used`, which gains them).
 pub fn pins_for(
-    doc: &Document, c: Option<ComponentId>, ty: CardType, n: u32, i: u32, roles: &[&'static str], used: &mut BTreeSet<String>,
+    doc: &Document, c: Option<DeviceId>, ty: CardType, n: u32, i: u32, roles: &[&'static str], used: &mut BTreeSet<String>,
 ) -> Vec<String> {
     let at = Scope { component: c, ..Scope::project() };
     let by_channel = defaults::resolve(doc, &defaults::plc::PINS, at).choice() == Some(defaults::plc::PlcPins::Channel);
@@ -189,9 +189,7 @@ pub struct Join {
 ///
 /// # Errors
 /// The refusals of §4.4, each with the way out.
-pub fn join(
-    doc: &Document, c: ComponentId, s: &Starter, named: Option<u32>, extra: &BTreeSet<String>, taken: &BTreeSet<u32>,
-) -> Result<Join, CmdError> {
+pub fn join(doc: &Document, c: DeviceId, s: &Starter, named: Option<u32>, extra: &BTreeSet<String>, taken: &BTreeSet<u32>) -> Result<Join, CmdError> {
     let who = crate::devices::tag_words(doc, c);
     let t = cell_type(s).ok_or(CmdError::refused("That symbol is not a PLC channel."))?;
     let ct = match card_type_of(doc, c) {
@@ -242,7 +240,7 @@ pub fn join(
 ///
 /// # Errors
 /// As [`join`].
-pub fn join_labels(doc: &Document, c: ComponentId, s: &Starter, extra: &BTreeSet<String>) -> Result<Vec<String>, CmdError> {
+pub fn join_labels(doc: &Document, c: DeviceId, s: &Starter, extra: &BTreeSet<String>) -> Result<Vec<String>, CmdError> {
     join(doc, c, s, None, extra, &BTreeSet::new()).map(|j| j.pins.into_iter().map(|(_, p)| p).collect())
 }
 
@@ -260,7 +258,7 @@ pub struct Cell {
 /// points.
 #[allow(clippy::too_many_arguments)]
 pub fn plan_cell(
-    ids: &mut IdAllocator, page: PageId, style: Style, def_id: DefinitionId, s: &Starter, card: ComponentId, j: &Join, placement: Placement,
+    ids: &mut IdAllocator, page: PageId, style: Style, def_id: DefinitionId, s: &Starter, card: DeviceId, j: &Join, placement: Placement,
     ops: &mut Vec<Op>,
 ) -> Result<Cell, CmdError> {
     let def = s.definition()?;
@@ -283,7 +281,7 @@ pub fn plan_cell(
     ops.push(Op::LinkRepresentation {
         id: representation,
         rep: Representation {
-            subject: Subject::Component(card),
+            subject: Subject::Device(card),
             page,
             form: Form::Symbol,
             role: s.key.to_string(),
@@ -299,18 +297,18 @@ pub fn plan_cell(
 pub fn new_card_ops(
     ledger: &ecad_model::Ledger, ids: &mut IdAllocator, high: &mut crate::devices::TagHigh, s: &Starter, def: DefinitionId, t: CardType,
     tag: Option<String>, ops: &mut Vec<Op>,
-) -> Result<(ComponentId, String), CmdError> {
+) -> Result<(DeviceId, String), CmdError> {
     let doc = ledger.document();
     let tag = match tag {
         Some(t) => t,
         None => high.next_auto(ledger, &crate::devices::prefix_for(doc, s))?,
     };
-    let c: ComponentId = ids.fresh();
+    let c: DeviceId = ids.fresh();
     let mut properties = ecad_model::Properties::new();
     properties.insert(ecad_model::tag::TAG_KEY.into(), tag.clone());
     let name = crate::symbols::by_key(t.body()).map_or("PLC card", |b| b.name);
     properties.insert("description".into(), name.into());
-    ops.push(Op::CreateComponent { id: c, component: ecad_model::Component { properties, definition: Some(def) } });
+    ops.push(Op::CreateDevice { id: c, device: ecad_model::Device { properties, definition: Some(def), device_type: s.device_type() } });
     Ok((c, tag))
 }
 
@@ -439,7 +437,7 @@ pub fn landings(doc: &Document, page: PageId, s: &Starter, members: &[crate::sla
 /// As [`crate::connectors::plan_land`].
 pub fn land_cell(doc: &Document, ids: &mut IdAllocator, page: PageId, on: crate::wires::OnWire, t: TerminalId) -> Result<Vec<Op>, CmdError> {
     let land = crate::connectors::plan_land(doc, ids, page, on, t)?;
-    let Some(cond) = doc.conductors.get(&land.conductor) else { return Ok(land.ops) };
+    let Some(cond) = doc.wires.get(&land.conductor) else { return Ok(land.ops) };
     if !doc.cables_of(land.conductor).is_empty() {
         return Ok(land.ops);
     }
@@ -453,7 +451,7 @@ pub fn land_cell(doc: &Document, ids: &mut IdAllocator, page: PageId, on: crate:
         .ops
         .iter()
         .filter_map(|op| match op {
-            Op::LinkRepresentation { rep, .. } if rep.subject == Subject::Conductor(new) => Some(rep.items.clone()),
+            Op::LinkRepresentation { rep, .. } if rep.subject == Subject::Wire(new) => Some(rep.items.clone()),
             _ => None,
         })
         .flatten()
@@ -465,9 +463,9 @@ pub fn land_cell(doc: &Document, ids: &mut IdAllocator, page: PageId, on: crate:
     let mut out = Vec::with_capacity(land.ops.len());
     for op in land.ops {
         match op {
-            Op::CreateConductor { id, .. } if id == new => {}
+            Op::CreateWire { id, .. } if id == new => {}
             Op::AddItem { id, .. } if new_items.contains(&id) => {}
-            Op::LinkRepresentation { rep, .. } if rep.subject == Subject::Conductor(new) => {}
+            Op::LinkRepresentation { rep, .. } if rep.subject == Subject::Wire(new) => {}
             // End A's side is the loose one: the wire keeps its own ID, now drawn along the far
             // side, its end A on the point and its end B where it was.
             Op::ModifyItem { id, before, mut after } if a_loose && id_of_route(doc, land.conductor, page) == Some(id) => {
@@ -486,7 +484,7 @@ pub fn land_cell(doc: &Document, ids: &mut IdAllocator, page: PageId, on: crate:
 }
 
 /// The item drawing wire `c`'s route on `page`.
-fn id_of_route(doc: &Document, c: ecad_model::ConductorId, page: PageId) -> Option<ItemId> {
+fn id_of_route(doc: &Document, c: ecad_model::WireId, page: PageId) -> Option<ItemId> {
     crate::wires::route_vertices(doc, c, page).map(|(id, _, _)| id)
 }
 
@@ -540,7 +538,7 @@ pub fn is_channel_definition(doc: &Document, id: DefinitionId) -> bool {
 }
 
 /// `-A02 channel 3`.
-pub fn channel_words(doc: &Document, c: ComponentId, i: u32) -> String {
+pub fn channel_words(doc: &Document, c: DeviceId, i: u32) -> String {
     format!("{} channel {}", crate::devices::tag_words(doc, c), i + first_number(doc, c))
 }
 
@@ -549,7 +547,7 @@ pub fn channel_words(doc: &Document, c: ComponentId, i: u32) -> String {
 /// 20 mm apart, or place compact di symbols.` Wires exactly one width apart give abutting cells.
 pub fn spacing_refusal(doc: &Document, s: &Starter, t: CardType, members: &[crate::slash::Crossing]) -> Option<String> {
     let (w, _) = crate::symbols::cell_shape(s.key)?;
-    let mut at: Vec<(f64, f64, ecad_model::ConductorId)> = members.iter().map(|m| (m.at.x, m.at.y, m.conductor)).collect();
+    let mut at: Vec<(f64, f64, ecad_model::WireId)> = members.iter().map(|m| (m.at.x, m.at.y, m.conductor)).collect();
     at.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
     for pair in at.windows(2) {
         let (Some(a), Some(b)) = (pair.first(), pair.get(1)) else { continue };
@@ -581,7 +579,7 @@ fn fmt_mm(v: f64) -> String {
 }
 
 /// A wire in a sentence that already says "Wires": its number, without a leading `wire `.
-fn wire_words(doc: &Document, c: ecad_model::ConductorId) -> String {
+fn wire_words(doc: &Document, c: ecad_model::WireId) -> String {
     let n = crate::slash::wire_name(doc, c);
     n.strip_prefix("wire ").map(str::to_string).unwrap_or(n)
 }

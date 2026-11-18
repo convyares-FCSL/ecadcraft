@@ -5,12 +5,12 @@ use crate::common::{H, id};
 
 use cadcraft_engine::doc::EntityKind;
 use ecad_cadcraft::devices::{self, TextOf};
-use ecad_model::{ComponentId, PageId, RepresentationId, Subject};
+use ecad_model::{DeviceId, PageId, RepresentationId, Subject};
 use serde_json::{Value, json};
 
 const SEED: u64 = 0x31_03;
 
-fn place(h: &mut H, symbol: &str, at: [f64; 2], device: Option<ComponentId>) -> Value {
+fn place(h: &mut H, symbol: &str, at: [f64; 2], device: Option<DeviceId>) -> Value {
     let mut p = json!({"symbol": symbol, "at": at});
     if let Some(c) = device {
         p["device"] = json!(c.hex());
@@ -19,7 +19,7 @@ fn place(h: &mut H, symbol: &str, at: [f64; 2], device: Option<ComponentId>) -> 
 }
 
 /// `n` terminals of one strip in a row, `step` mm apart from `x0`; the strip and its symbols.
-fn strip_row(h: &mut H, x0: f64, y: f64, n: usize, step: f64, strip: Option<ComponentId>) -> (ComponentId, Vec<RepresentationId>) {
+fn strip_row(h: &mut H, x0: f64, y: f64, n: usize, step: f64, strip: Option<DeviceId>) -> (DeviceId, Vec<RepresentationId>) {
     let mut c = strip;
     for i in 0..n {
         let v = place(h, "terminal", [x0 + step * i as f64, y], c);
@@ -28,7 +28,7 @@ fn strip_row(h: &mut H, x0: f64, y: f64, n: usize, step: f64, strip: Option<Comp
     let c = c.unwrap();
     let doc = h.doc();
     let mut reps: Vec<(f64, f64, RepresentationId)> = doc
-        .representations_of(Subject::Component(c))
+        .representations_of(Subject::Device(c))
         .filter_map(|(rid, r)| {
             let at = r.items.first().and_then(|i| doc.items.get(i)).and_then(|i| match &i.kind {
                 ecad_model::ItemKind::Symbol(s) => Some(s.placement.origin),
@@ -47,9 +47,9 @@ fn tags(h: &mut H, page: PageId) -> Vec<(RepresentationId, bool)> {
     devices::all_texts_on_page(&doc, page).into_iter().filter(|t| t.text.of == TextOf::Tag).map(|t| (t.text.rep, t.shown)).collect()
 }
 
-fn shown_tags(h: &mut H, page: PageId, c: ComponentId) -> Vec<RepresentationId> {
+fn shown_tags(h: &mut H, page: PageId, c: DeviceId) -> Vec<RepresentationId> {
     let doc = h.doc();
-    let mine: Vec<RepresentationId> = doc.representations_of(Subject::Component(c)).map(|(r, _)| r).collect();
+    let mine: Vec<RepresentationId> = doc.representations_of(Subject::Device(c)).map(|(r, _)| r).collect();
     tags(h, page).into_iter().filter(|(r, s)| *s && mine.contains(r)).map(|(r, _)| r).collect()
 }
 
@@ -94,7 +94,7 @@ fn two_groups_on_a_line_and_another_device_between_split_runs() {
     // A -X02 terminal between two -X01 terminals of another line splits that line's run.
     let (_, c) = strip_row(&mut h, 60.0, 70.0, 1, 10.0, Some(x1));
     let other = place(&mut h, "terminal", [70.0, 70.0], None);
-    assert_ne!(id::<ComponentId>(&other, "component"), x1);
+    assert_ne!(id::<DeviceId>(&other, "component"), x1);
     let (_, d) = strip_row(&mut h, 80.0, 70.0, 1, 10.0, Some(x1));
     let shown = shown_tags(&mut h, page, x1);
     let _ = (c, d);
@@ -106,11 +106,11 @@ fn the_narrowest_level_wins() {
     let mut h = H::new(SEED);
     let page = h.first_page();
     let k = place(&mut h, "coil", [100.0, 150.0], None);
-    let c: ComponentId = id(&k, "component");
+    let c: DeviceId = id(&k, "component");
     let n = place(&mut h, "no", [140.0, 150.0], Some(c));
-    let c2: ComponentId = id(&n, "component");
+    let c2: DeviceId = id(&n, "component");
     assert_eq!(c, c2);
-    let reps: Vec<RepresentationId> = h.doc().representations_of(Subject::Component(c)).map(|(r, _)| r).collect();
+    let reps: Vec<RepresentationId> = h.doc().representations_of(Subject::Device(c)).map(|(r, _)| r).collect();
     assert_eq!(shown_tags(&mut h, page, c).len(), 2);
     let head = h.head();
     h.run("showtext", json!({"kind": "tag", "show": "off"})).unwrap();
@@ -140,7 +140,7 @@ fn hidden_texts_are_still_data_and_show_hidden_text_draws_them_dimmed() {
     let mut h = H::new(SEED);
     let page = h.first_page();
     let k = place(&mut h, "coil", [100.0, 150.0], None);
-    let c: ComponentId = id(&k, "component");
+    let c: DeviceId = id(&k, "component");
     let tag = h.p(|p| devices::tag_words(p.ledger.document(), c));
     h.run("showtext", json!({"kind": "tag", "show": "off"})).unwrap();
     // Still found by `devices`.
@@ -177,7 +177,7 @@ fn description_and_part_number_lines_are_hidden_until_asked_for() {
     let mut h = H::new(SEED);
     let page = h.first_page();
     let k = place(&mut h, "coil", [100.0, 150.0], None);
-    let c: ComponentId = id(&k, "component");
+    let c: DeviceId = id(&k, "component");
     h.run("setprop", json!({"component": c.hex(), "key": "description", "value": "Pump contactor"})).unwrap();
     h.run("setprop", json!({"component": c.hex(), "key": "part_number", "value": "LC1D09"})).unwrap();
     let lines = |h: &mut H| -> Vec<(TextOf, bool)> {
@@ -198,18 +198,18 @@ fn description_and_part_number_lines_are_hidden_until_asked_for() {
 fn a_symbols_keys_go_when_it_is_erased_and_move_when_its_device_merges() {
     let mut h = H::new(SEED);
     let k = place(&mut h, "coil", [100.0, 150.0], None);
-    let c: ComponentId = id(&k, "component");
+    let c: DeviceId = id(&k, "component");
     let n = place(&mut h, "no", [140.0, 150.0], Some(c));
     let no_rep: RepresentationId = h
         .doc()
-        .representations_of(Subject::Component(c))
+        .representations_of(Subject::Device(c))
         .find(|(_, r)| devices::rep_starter(&h.doc(), r).is_some_and(|s| s.key == ecad_cadcraft::symbols::StarterKey::No))
         .map(|(r, _)| r)
         .unwrap();
     let _ = n;
     h.run("showtext", json!({"kind": "tag", "show": "off", "representation": no_rep.hex()})).unwrap();
     let key = ecad_cadcraft::defaults::symbol_key("text.tag.show", no_rep);
-    assert!(h.doc().components[&c].properties.contains_key(&key));
+    assert!(h.doc().devices[&c].properties.contains_key(&key));
     // Erase the contact: its key goes in the same transaction.
     let page = h.first_page();
     let item = h.doc().representations[&no_rep].items[0];
@@ -217,20 +217,20 @@ fn a_symbols_keys_go_when_it_is_erased_and_move_when_its_device_merges() {
     let head = h.head();
     h.run("erase", json!({"handles": [hd.hex()]})).unwrap();
     assert_eq!(h.head(), head + 1);
-    assert!(!h.doc().components[&c].properties.keys().any(|k| k.contains(&no_rep.hex())), "the symbol's keys went with it");
+    assert!(!h.doc().devices[&c].properties.keys().any(|k| k.contains(&no_rep.hex())), "the symbol's keys went with it");
     h.cmdline("u");
-    assert!(h.doc().components[&c].properties.contains_key(&key), "undo brings the key back");
+    assert!(h.doc().devices[&c].properties.contains_key(&key), "undo brings the key back");
 
     // Merge another coil device's contact into this one: its keys move to the new representation.
     let k2 = place(&mut h, "no", [180.0, 150.0], None);
-    let c2: ComponentId = id(&k2, "component");
-    let r2: RepresentationId = h.doc().representations_of(Subject::Component(c2)).map(|(r, _)| r).next().unwrap();
+    let c2: DeviceId = id(&k2, "component");
+    let r2: RepresentationId = h.doc().representations_of(Subject::Device(c2)).map(|(r, _)| r).next().unwrap();
     h.run("showtext", json!({"kind": "tag", "show": "on", "representation": r2.hex()})).unwrap();
     let tag = h.p(|p| devices::tag_of(p.ledger.document(), c).map(str::to_string)).unwrap();
     h.run("setprop", json!({"component": c2.hex(), "key": "tag", "value": tag, "merge": true})).unwrap();
     let doc = h.doc();
-    assert!(!doc.components.contains_key(&c2));
-    let moved: Vec<&String> = doc.components[&c].properties.keys().filter(|k| k.starts_with("text.") && k.ends_with(".tag.show")).collect();
+    assert!(!doc.devices.contains_key(&c2));
+    let moved: Vec<&String> = doc.devices[&c].properties.keys().filter(|k| k.starts_with("text.") && k.ends_with(".tag.show")).collect();
     assert_eq!(moved.len(), 2, "{moved:?}");
     h.check();
 }
@@ -240,9 +240,9 @@ fn a_copied_symbol_carries_its_own_keys_under_the_new_representation() {
     let mut h = H::new(SEED);
     let page = h.first_page();
     let k = place(&mut h, "coil", [100.0, 150.0], None);
-    let c: ComponentId = id(&k, "component");
+    let c: DeviceId = id(&k, "component");
     place(&mut h, "no", [140.0, 150.0], Some(c));
-    let reps: Vec<RepresentationId> = h.doc().representations_of(Subject::Component(c)).map(|(r, _)| r).collect();
+    let reps: Vec<RepresentationId> = h.doc().representations_of(Subject::Device(c)).map(|(r, _)| r).collect();
     let coil = reps
         .iter()
         .copied()
@@ -262,11 +262,11 @@ fn a_copied_symbol_carries_its_own_keys_under_the_new_representation() {
         .representations
         .iter()
         .find_map(|(r, x)| match x.subject {
-            Subject::Component(n) if n != c => Some((n, *r)),
+            Subject::Device(n) if n != c => Some((n, *r)),
             _ => None,
         })
         .expect("the copy");
-    let props = &doc.components[&new_c].properties;
+    let props = &doc.devices[&new_c].properties;
     let keys: Vec<&String> = props.keys().filter(|k| k.starts_with("text.")).collect();
     let new_hex = new_rep.hex();
     assert!(keys.iter().all(|k| k.contains(&new_hex)), "only the new symbol's keys: {keys:?}");
@@ -288,11 +288,11 @@ fn text_views_are_worked_out_again_only_where_a_change_shows() {
     let mut h = H::new(SEED);
     let p1 = h.first_page();
     let k = place(&mut h, "coil", [100.0, 200.0], None);
-    let k1: ComponentId = id(&k, "component");
+    let k1: DeviceId = id(&k, "component");
     let p2: PageId = id(&h.run("newpage", json!({"title": "P2"})).unwrap(), "page");
     place(&mut h, "no", [100.0, 200.0], Some(k1));
     let p3: PageId = id(&h.run("newpage", json!({"title": "P3"})).unwrap(), "page");
-    let k2: ComponentId = id(&place(&mut h, "coil", [100.0, 200.0], None), "component");
+    let k2: DeviceId = id(&place(&mut h, "coil", [100.0, 200.0], None), "component");
     h.project.open_page(&mut h.s, p1).unwrap();
     // Run `cmd`; the passes it caused per page, and the pages it names.
     let counted = |h: &mut H, cmd: &str, params: Value| -> ([u64; 3], Option<std::collections::BTreeSet<PageId>>) {

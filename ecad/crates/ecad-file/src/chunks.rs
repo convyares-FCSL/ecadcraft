@@ -5,7 +5,7 @@
 //! - `model:project`: page order, settings, named versions, project properties, folders and
 //!   folder order, and (brief 050a, left out while empty) the standard and the project's style
 //!   records.
-//! - `model:<kind>:<b>`: the layers, components, terminals, conductors, cables or definitions
+//! - `model:<kind>:<b>`: the layers, devices, terminals, conductors, cables or definitions
 //!   whose ID falls in bucket `b` of that kind. A kind with `n` objects has `B` buckets, the
 //!   smallest power of two with `B × 1 024 ≥ n` (at least 1), and an object's bucket is a mix of
 //!   its ID modulo `B`. An edit therefore rewrites one chunk; all of a kind's chunks are rewritten
@@ -18,9 +18,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
-    Cable, CableId, Component, ComponentId, Conductor, ConductorId, Definition, DefinitionId, Document, Folder, FolderId, Item, ItemId, Layer,
-    LayerId, ObjectRef, Op, Page, PageId, ProjectSettings, Representation, RepresentationId, Standard, StyleCatalogues, Terminal, TerminalId,
-    Touched,
+    Cable, CableId, Definition, DefinitionId, Device, DeviceId, Document, Folder, FolderId, Item, ItemId, Layer, LayerId, ObjectRef, Op, Page,
+    PageId, Project, ProjectSettings, Representation, RepresentationId, Standard, StyleCatalogues, Terminal, TerminalId, Touched, Wire, WireId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -48,7 +47,7 @@ pub struct ModelMeta {
 pub const MAX_BUCKETS: u32 = 1 << 20;
 
 /// The model kinds split into chunks, by their key name.
-pub const KINDS: [&str; 6] = ["layer", "component", "terminal", "conductor", "cable", "definition"];
+pub const KINDS: [&str; 6] = ["layer", "device", "terminal", "wire", "cable", "definition"];
 
 /// The key of page `id`'s chunk.
 pub fn page_key(id: PageId) -> String {
@@ -91,7 +90,7 @@ trait RawId: Copy + Ord + std::fmt::Display {
 macro_rules! raw_id {
     ($($t:ty),*) => {$(impl RawId for $t { fn raw(self) -> u128 { self.0 } })*};
 }
-raw_id!(LayerId, ComponentId, TerminalId, ConductorId, CableId, DefinitionId);
+raw_id!(LayerId, DeviceId, TerminalId, WireId, CableId, DefinitionId);
 
 /// A version row's `chunks`: key → hex hash.
 pub type ChunkHashes = BTreeMap<String, String>;
@@ -153,14 +152,14 @@ impl Dirty {
         let t = Touched::of(ops);
         let mut add = |kind: &'static str, ids: Vec<u128>| self.objects.entry(kind).or_default().extend(ids);
         add("layer", t.layers.iter().map(|i| i.0).collect());
-        add("component", t.components.iter().map(|i| i.0).collect());
+        add("device", t.devices.iter().map(|i| i.0).collect());
         add("terminal", t.terminals.iter().map(|i| i.0).collect());
-        add("conductor", t.conductors.iter().map(|i| i.0).collect());
+        add("wire", t.wires.iter().map(|i| i.0).collect());
         add("cable", t.cables.iter().map(|i| i.0).collect());
         add("definition", t.definitions.iter().map(|i| i.0).collect());
         for op in ops {
             match op {
-                Op::AddPage { id, .. } | Op::RemovePage { id, .. } => {
+                Op::AddPage { id, .. } | Op::RemovePage { id, .. } | Op::ModifyPage { id, .. } => {
                     self.pages.insert(*id);
                 }
                 Op::SetProperty { object: ObjectRef::Page(id), .. } => {
@@ -207,6 +206,9 @@ struct ProjectChunkRef<'a> {
     settings: &'a ProjectSettings,
     versions: &'a BTreeMap<String, u64>,
     properties: &'a BTreeMap<String, String>,
+    /// Design 072 §5.3: left out while empty.
+    #[serde(skip_serializing_if = "Project::is_empty")]
+    project: &'a Project,
     folders: &'a BTreeMap<FolderId, Folder>,
     folder_order: &'a Vec<FolderId>,
     /// Brief 050a (FP1, FP2): left out while empty, so older chunks keep their hashes.
@@ -223,6 +225,8 @@ struct ProjectChunk {
     settings: ProjectSettings,
     versions: BTreeMap<String, u64>,
     properties: BTreeMap<String, String>,
+    #[serde(default)]
+    project: Project,
     folders: BTreeMap<FolderId, Folder>,
     folder_order: Vec<FolderId>,
     #[serde(default)]
@@ -250,9 +254,9 @@ fn model_chunk(doc: &Document, kind: &str, b: u32, count: u32) -> Result<NewChun
     }
     match kind {
         "layer" => encode(&pick(&doc.layers, b, count)),
-        "component" => encode(&pick(&doc.components, b, count)),
+        "device" => encode(&pick(&doc.devices, b, count)),
         "terminal" => encode(&pick(&doc.terminals, b, count)),
-        "conductor" => encode(&pick(&doc.conductors, b, count)),
+        "wire" => encode(&pick(&doc.wires, b, count)),
         "cable" => encode(&pick(&doc.cables, b, count)),
         "definition" => encode(&pick(&doc.definitions, b, count)),
         other => Err(FileError::ModelKind(other.to_string())),
@@ -262,9 +266,9 @@ fn model_chunk(doc: &Document, kind: &str, b: u32, count: u32) -> Result<NewChun
 fn kind_len(doc: &Document, kind: &str) -> usize {
     match kind {
         "layer" => doc.layers.len(),
-        "component" => doc.components.len(),
+        "device" => doc.devices.len(),
         "terminal" => doc.terminals.len(),
-        "conductor" => doc.conductors.len(),
+        "wire" => doc.wires.len(),
         "cable" => doc.cables.len(),
         "definition" => doc.definitions.len(),
         _ => 0,
@@ -302,6 +306,7 @@ fn project_chunk(doc: &Document) -> Result<NewChunk, FileError> {
         settings: &doc.settings,
         versions: &doc.versions,
         properties: &doc.properties,
+        project: &doc.project,
         folders: &doc.folders,
         folder_order: &doc.folder_order,
         standard: &doc.standard,
@@ -394,11 +399,12 @@ enum Parsed {
     Meta(ModelMeta),
     // Boxed: the project chunk holds the standard and the style records (brief 050a).
     Project(Box<ProjectChunk>),
-    Page(PageId, PageChunk),
+    // Boxed: a page carries its typed fields (design 072 §5.1).
+    Page(PageId, Box<PageChunk>),
     Layer(BTreeMap<LayerId, Layer>),
-    Component(BTreeMap<ComponentId, Component>),
+    Device(BTreeMap<DeviceId, Device>),
     Terminal(BTreeMap<TerminalId, Terminal>),
-    Conductor(BTreeMap<ConductorId, Conductor>),
+    Wire(BTreeMap<WireId, Wire>),
     Cable(BTreeMap<CableId, Cable>),
     Definition(BTreeMap<DefinitionId, Definition>),
 }
@@ -412,15 +418,15 @@ fn typed<K: RawId + serde::de::DeserializeOwned, V: serde::de::DeserializeOwned>
     Ok(m)
 }
 
-/// The components a `model:component:<b>` chunk of `set` holds (brief 020b: naming the devices a
+/// The devices a `model:device:<b>` chunk of `set` holds (brief 020b: naming the devices a
 /// version changed without building the document).
 ///
 /// # Errors
 /// Not a component chunk of `set`, or its JSON does not decode.
-pub fn components_of(set: &ChunkSet, key: &str, body: &[u8]) -> Result<BTreeMap<ComponentId, Component>, FileError> {
+pub fn devices_of(set: &ChunkSet, key: &str, body: &[u8]) -> Result<BTreeMap<DeviceId, Device>, FileError> {
     match parse_chunk(set, key, body)? {
-        Parsed::Component(m) => Ok(m),
-        _ => Err(FileError::NotComponentChunk(key.to_string())),
+        Parsed::Device(m) => Ok(m),
+        _ => Err(FileError::NotDeviceChunk(key.to_string())),
     }
 }
 
@@ -441,7 +447,7 @@ fn parse_chunk(set: &ChunkSet, key: &str, body: &[u8]) -> Result<Parsed, FileErr
         if let Some((r, _)) = p.representations.iter().find(|(_, r)| r.page != id) {
             return Err(FileError::OnAnotherPage { what: "representation", id: r.to_string(), page: id.to_string() });
         }
-        return Ok(Parsed::Page(id, p));
+        return Ok(Parsed::Page(id, Box::new(p)));
     }
     let Some((kind, b)) = key.strip_prefix("model:").and_then(|r| r.split_once(':')) else {
         return Err(FileError::ChunkKey(key.to_string()));
@@ -450,9 +456,9 @@ fn parse_chunk(set: &ChunkSet, key: &str, body: &[u8]) -> Result<Parsed, FileErr
     let count = set.buckets.get(kind).copied().ok_or_else(|| FileError::ChunkKindUnknown(key.to_string()))?;
     Ok(match kind {
         "layer" => Parsed::Layer(typed(body, key, b, count)?),
-        "component" => Parsed::Component(typed(body, key, b, count)?),
+        "device" => Parsed::Device(typed(body, key, b, count)?),
         "terminal" => Parsed::Terminal(typed(body, key, b, count)?),
-        "conductor" => Parsed::Conductor(typed(body, key, b, count)?),
+        "wire" => Parsed::Wire(typed(body, key, b, count)?),
         "cable" => Parsed::Cable(typed(body, key, b, count)?),
         "definition" => Parsed::Definition(typed(body, key, b, count)?),
         other => return Err(FileError::ChunkKind { key: key.to_string(), kind: other.to_string() }),
@@ -536,6 +542,7 @@ fn merge_parsed(parsed: Vec<Result<Parsed, FileError>>) -> Result<(Document, Opt
                 doc.settings = p.settings;
                 doc.versions = p.versions;
                 doc.properties = p.properties;
+                doc.project = p.project;
                 doc.folders = p.folders;
                 doc.folder_order = p.folder_order;
                 doc.standard = p.standard;
@@ -550,9 +557,9 @@ fn merge_parsed(parsed: Vec<Result<Parsed, FileError>>) -> Result<(Document, Opt
                 merge(&mut doc.representations, p.representations, "representation")?;
             }
             Parsed::Layer(m) => merge(&mut doc.layers, m, "layer")?,
-            Parsed::Component(m) => merge(&mut doc.components, m, "component")?,
+            Parsed::Device(m) => merge(&mut doc.devices, m, "device")?,
             Parsed::Terminal(m) => merge(&mut doc.terminals, m, "terminal")?,
-            Parsed::Conductor(m) => merge(&mut doc.conductors, m, "conductor")?,
+            Parsed::Wire(m) => merge(&mut doc.wires, m, "wire")?,
             Parsed::Cable(m) => merge(&mut doc.cables, m, "cable")?,
             Parsed::Definition(m) => merge(&mut doc.definitions, m, "definition")?,
         }
@@ -598,22 +605,22 @@ mod tests {
 
     #[test]
     fn one_insert_rewrites_one_chunk() {
-        use ecad_model::{Component, ComponentId, Document, Op};
+        use ecad_model::{Device, DeviceId, Document, Op};
         let mut doc = Document::default();
         for i in 0..5_000u128 {
-            ecad_model::Op::CreateComponent { id: ComponentId(0x1000 + i * 7), component: Component::default() }.apply(&mut doc).unwrap();
+            ecad_model::Op::CreateDevice { id: DeviceId(0x1000 + i * 7), device: Device::default() }.apply(&mut doc).unwrap();
         }
         let meta = ModelMeta::default();
         let (set, _) = build_full(&doc, &meta).unwrap();
-        assert_eq!(set.buckets.get("component"), Some(&8));
-        let add = Op::CreateComponent { id: ComponentId(0x9_9999), component: Component::default() };
+        assert_eq!(set.buckets.get("device"), Some(&8));
+        let add = Op::CreateDevice { id: DeviceId(0x9_9999), device: Device::default() };
         add.apply(&mut doc).unwrap();
         let mut dirty = Dirty::default();
         dirty.add_ops(std::slice::from_ref(&add));
         let (next, new) = build_incremental(&doc, &set, &dirty, &meta).unwrap();
         assert_eq!(new.len(), 1, "one chunk written");
         let changed: Vec<_> = next.chunks.iter().filter(|(k, h)| set.chunks.get(*k) != Some(*h)).map(|(k, _)| k).collect();
-        assert_eq!(changed, vec![&model_key("component", bucket(0x9_9999, 8))]);
+        assert_eq!(changed, vec![&model_key("device", bucket(0x9_9999, 8))]);
         // The same set as building everything again.
         assert_eq!(next, build_full(&doc, &meta).unwrap().0);
     }

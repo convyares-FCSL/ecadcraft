@@ -183,8 +183,8 @@ impl App {
                 let mut boxes = Vec::new();
                 for o in touched.iter().take(MAX_OUTLINED) {
                     let object = match o {
-                        ObjectRef::Component(c) => Object::Component(*c),
-                        ObjectRef::Conductor(c) => Object::Conductor(*c),
+                        ObjectRef::Device(c) => Object::Device(*c),
+                        ObjectRef::Wire(c) => Object::Wire(*c),
                         ObjectRef::Cable(c) => Object::Cable(*c),
                         ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard => continue,
                     };

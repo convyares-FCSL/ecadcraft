@@ -5,7 +5,7 @@
 //! listed, and drawn as `none` (CADCraft draws no fill behind other entities on a layer yet; the
 //! quick start says so).
 
-use ecad_model::{ComponentId, Document, StyleRef};
+use ecad_model::{DeviceId, Document, StyleRef};
 
 use super::{Builtin, Catalogue, Field};
 use crate::defaults::{Kind, Scope, Slot};
@@ -62,7 +62,7 @@ pub fn linetype(word: &str) -> &'static str {
 
 /// The look of location box `c` (its own `location.style`, else the project's, the standard's,
 /// the built-in `box`).
-pub fn box_look(doc: &Document, c: ComponentId) -> BoxLook {
+pub fn box_look(doc: &Document, c: DeviceId) -> BoxLook {
     let id = super::chosen(doc, &crate::defaults::styles::LOCATION, Scope::component(c));
     look_of(doc, &id)
 }

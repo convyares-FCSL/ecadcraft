@@ -627,10 +627,10 @@ fn a_batch_is_one_call_for_the_transaction_cap() {
     assert_eq!(replies[1]["result"]["isError"], json!(true), "{}", replies[1]);
     let m = replies[1]["result"]["content"][0]["text"].as_str().unwrap();
     assert!(m.contains("one request line, batches included") && m.contains("taken back"), "{m}");
-    assert_eq!(c.doc().conductors.len(), before.conductors.len() + 1, "only the first wire stays");
+    assert_eq!(c.doc().wires.len(), before.wires.len() + 1, "only the first wire stays");
     // The next line is a new call.
     c.exec("wire", json!({"points": [[0, 10], [60, 10]]}));
-    assert_eq!(c.doc().conductors.len(), before.conductors.len() + 2);
+    assert_eq!(c.doc().wires.len(), before.wires.len() + 2);
 }
 
 #[test]
@@ -646,7 +646,7 @@ fn an_overflowing_undo_is_taken_back_by_a_redo_never_by_undoing_more() {
     let replies = batch(&mut c, vec![undo(1), undo(2)]);
     assert_ne!(replies[0]["result"]["isError"], json!(true), "{}", replies[0]);
     assert_eq!(replies[1]["result"]["isError"], json!(true), "{}", replies[1]);
-    assert_eq!(c.doc().conductors.len(), 2, "exactly one wire undone; the others untouched");
+    assert_eq!(c.doc().wires.len(), 2, "exactly one wire undone; the others untouched");
     let log = c.log();
     let last = log.last().unwrap();
     assert!(matches!(last.kind, ecad_model::TxKind::Redo { .. }), "the overflowing undo was redone: {:?}", last.kind);
@@ -729,7 +729,7 @@ fn openpage_switches_the_one_active_page_and_undo_brings_back_the_page_it_change
     c.exec("openpage", json!({"page": field.hex()}));
     c.exec("u", json!({}));
     assert_eq!(active(&mut c), Some(first), "the undo brought page 1 back");
-    assert!(c.doc().conductors.keys().all(|k| k.hex() != conductor));
+    assert!(c.doc().wires.keys().all(|k| k.hex() != conductor));
     assert_eq!(c.log().last().unwrap().author, Author::Agent(AGENT.into()));
 
     // Writes off: openpage works, edits are refused.
@@ -884,7 +884,7 @@ fn sheets_through_mcp_record_as_the_agent_and_read_with_writes_off() {
     let a = c.exec("place", json!({"symbol": "coil", "at": [200, 200]}))["component"].clone();
     let b = c.exec("place", json!({"symbol": "coil", "at": [250, 200]}))["component"].clone();
     let before = c.log().len();
-    let v = c.exec("setprop", json!({"components": [a, b], "key": "maker", "value": "Generic"}));
+    let v = c.exec("setprop", json!({"devices": [a, b], "key": "maker", "value": "Generic"}));
     assert_eq!(v["devices"], json!(2));
     let log = c.log();
     assert_eq!(log.len(), before + 1, "one transaction for both");
@@ -907,7 +907,7 @@ fn sheets_through_mcp_record_as_the_agent_and_read_with_writes_off() {
         ("revision", json!({"description": "x"})),
         ("issuerevision", json!({})),
         ("undoissue", json!({})),
-        ("setprop", json!({"components": ["1", "2"], "key": "maker", "value": "x"})),
+        ("setprop", json!({"devices": ["1", "2"], "key": "maker", "value": "x"})),
     ] {
         let m = r.refused("execute", json!({"command": cmd, "params": params}));
         assert_eq!(m, policy::WRITES_OFF, "{cmd}");
@@ -923,7 +923,7 @@ fn sheets_through_mcp_record_as_the_agent_and_read_with_writes_off() {
 /// numbering pass inside it; with writes off every write is refused and the reads answer.
 #[test]
 fn wiring_through_mcp_records_the_json_forms_transactions_as_the_agent() {
-    use ecad_model::{ObjectRef, Op};
+    use ecad_model::Op;
     let mut c = writer(SEED);
     let one = |c: &mut Client, cmd: &str, params: Value| -> (Value, Transaction) {
         let before = c.log().len();
@@ -935,28 +935,34 @@ fn wiring_through_mcp_records_the_json_forms_transactions_as_the_agent() {
         (r, t)
     };
     let sets = |t: &Transaction, key: &str| {
-        t.ops.iter().filter(|op| matches!(op, Op::SetProperty { object: ObjectRef::Conductor(_), key: k, .. } if k == key)).count()
+        // A wire's value written: the `ModifyWire` ops that change it.
+        t.ops
+            .iter()
+            .filter(|op| match op {
+                Op::ModifyWire { before, after, .. } => match key {
+                    "wire_number" => before.number_text() != after.number_text(),
+                    "wire_number_fixed" => before.number_fixed() != after.number_fixed(),
+                    "potential" => before.potential != after.potential,
+                    _ => false,
+                },
+                _ => false,
+            })
+            .count()
     };
 
     // `wire` with a potential: the conductor's potential and its number in the same transaction.
     let (r, t) = one(&mut c, "wire", json!({"points": [[0, 0], [60, 0]], "potential": "24V"}));
     assert_eq!(r["number"], json!("24V-01"), "{r}");
     assert_eq!(r["potential"], json!("24V"));
-    assert!(
-        t.ops.iter().any(
-            |op| matches!(op, Op::CreateConductor { conductor, .. } if conductor.properties.get("potential").map(String::as_str) == Some("24V"))
-        )
-    );
+    assert!(t.ops.iter().any(|op| matches!(op, Op::CreateWire { conductor, .. } if conductor.potential_name() == Some("24V"))));
     assert_eq!(sets(&t, "wire_number"), 1, "{:?}", t.ops);
     let first = r["conductor"].as_str().unwrap().to_string();
 
     // `junction`: a tagless component on the wire, which is split; both halves keep the number.
     let (j, t) = one(&mut c, "junction", json!({"at": [30, 0]}));
-    assert!(
-        t.ops.iter().any(
-            |op| matches!(op, Op::CreateComponent { component, .. } if component.properties.get("kind").map(String::as_str) == Some("junction"))
-        )
-    );
+    assert!(t.ops.iter().any(
+        |op| matches!(op, Op::CreateDevice { device: component, .. } if component.properties.get("kind").map(String::as_str) == Some("junction"))
+    ));
     let net = c.exec("net", json!({"conductor": j["conductor"]}));
     assert_eq!(net["number"], json!("24V-01"));
     assert_eq!(net["conductors"].as_array().unwrap().len(), 2);
@@ -972,7 +978,7 @@ fn wiring_through_mcp_records_the_json_forms_transactions_as_the_agent() {
     assert!(
         t.ops
             .iter()
-            .any(|op| matches!(op, Op::CreateComponent { component, .. } if component.properties.get("name").map(String::as_str) == Some("0V")))
+            .any(|op| matches!(op, Op::CreateDevice { device: component, .. } if component.properties.get("name").map(String::as_str) == Some("0V")))
     );
     let (r, _) = one(&mut c, "wire", json!({"points": [[100, 0], [100, 40]]}));
     assert_eq!(r["number"], json!("0V-01"), "a net named by a continuation takes its potential");

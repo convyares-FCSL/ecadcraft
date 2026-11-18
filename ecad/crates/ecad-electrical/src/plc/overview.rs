@@ -11,7 +11,7 @@
 //! Excludes: drawing. Lists ▸ PLC draws the tiles in `ecad-app`; the sheet in
 //! [`crate::generated`] (via `sheet_parts`).
 
-use ecad_model::{ComponentId, Document, PageId, Subject};
+use ecad_model::{DeviceId, Document, PageId, Subject};
 use serde_json::{Value, json};
 
 use super::rack::{CardType, RackRef};
@@ -52,9 +52,9 @@ impl Square {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TileKind {
     /// The rack itself (its body).
-    Rack(ComponentId),
+    Rack(DeviceId),
     /// A card in a slot (or in no rack).
-    Card(ComponentId),
+    Card(DeviceId),
     /// A free slot.
     Free,
 }
@@ -114,7 +114,7 @@ impl Tile {
     }
 
     /// The card it shows, if any.
-    pub fn card(&self) -> Option<ComponentId> {
+    pub fn card(&self) -> Option<DeviceId> {
         match self.kind {
             TileKind::Card(c) => Some(c),
             _ => None,
@@ -132,8 +132,8 @@ impl Tile {
 }
 
 /// The pages `c` is drawn on, in book order.
-pub fn pages_of(doc: &Document, c: ComponentId) -> Vec<PageId> {
-    let pages: std::collections::BTreeSet<PageId> = doc.representations_of(Subject::Component(c)).map(|(_, r)| r.page).collect();
+pub fn pages_of(doc: &Document, c: DeviceId) -> Vec<PageId> {
+    let pages: std::collections::BTreeSet<PageId> = doc.representations_of(Subject::Device(c)).map(|(_, r)| r.page).collect();
     if pages.is_empty() {
         return Vec::new();
     }
@@ -141,22 +141,22 @@ pub fn pages_of(doc: &Document, c: ComponentId) -> Vec<PageId> {
 }
 
 /// The place of `c`'s first drawing in book order (its body or a cell), as `108-B-2`.
-pub fn first_place(doc: &Document, c: ComponentId) -> Option<String> {
+pub fn first_place(doc: &Document, c: DeviceId) -> Option<String> {
     let first = pages_of(doc, c).into_iter().next()?;
-    let r = doc.representations_of(Subject::Component(c)).map(|(_, r)| r).find(|r| r.page == first)?;
+    let r = doc.representations_of(Subject::Device(c)).map(|(_, r)| r).find(|r| r.page == first)?;
     super::iolist::rep_place(doc, r).0
 }
 
 /// Where `c` is first drawn on `page` (a symbol's origin), for a go-to.
-pub fn at_on(doc: &Document, c: ComponentId, page: PageId) -> Option<ecad_model::Pt> {
-    doc.representations_of(Subject::Component(c))
+pub fn at_on(doc: &Document, c: DeviceId, page: PageId) -> Option<ecad_model::Pt> {
+    doc.representations_of(Subject::Device(c))
         .filter(|(_, r)| r.page == page)
         .find_map(|(_, r)| crate::devices::rep_definition(doc, r).map(|(_, pl)| pl.origin).or_else(|| r.connection_points.values().next().copied()))
 }
 
 /// Card `card`'s Checks rows, and the channels they name (`ChannelTwice`, `ChannelOver`,
 /// `ClearTyped` carry the channel's index).
-pub fn checks_of(plc: &Plc, card: ComponentId) -> (usize, Vec<u32>) {
+pub fn checks_of(plc: &Plc, card: DeviceId) -> (usize, Vec<u32>) {
     let mut n = 0;
     let mut chans = Vec::new();
     for c in plc.checks_naming(card) {
@@ -234,7 +234,7 @@ pub fn kind_words(doc: &Document, card: &CardData) -> String {
         CardType::Cm => "comms".to_string(),
     };
     let extra = doc
-        .components
+        .devices
         .get(&card.id)
         .and_then(|x| x.properties.get(KIND_KEY))
         .map(|v| v.trim())
@@ -264,7 +264,7 @@ pub fn type_name(t: CardType) -> &'static str {
 /// The card's own description (not the body's name a placement writes), if any.
 pub fn description(doc: &Document, card: &CardData) -> Option<String> {
     let builtin = crate::symbols::by_key(card.ty.body()).map(|s| s.name);
-    doc.components
+    doc.devices
         .get(&card.id)
         .and_then(|x| x.properties.get("description"))
         .map(|v| v.trim())
@@ -277,7 +277,7 @@ pub fn what_words(doc: &Document, card: &CardData) -> String {
     // The body's own name, which placing a card writes as its description, is not the user's.
     let builtin = crate::symbols::by_key(card.ty.body()).map(|s| s.name);
     let desc =
-        doc.components.get(&card.id).and_then(|x| x.properties.get("description")).map(|v| v.trim()).filter(|v| !v.is_empty() && Some(*v) != builtin);
+        doc.devices.get(&card.id).and_then(|x| x.properties.get("description")).map(|v| v.trim()).filter(|v| !v.is_empty() && Some(*v) != builtin);
     match desc {
         Some(d) => d.to_string(),
         None if card.ty.has_channels() => format!("{} {}", card.ty.code(), card.channels),
@@ -336,7 +336,7 @@ pub fn rack_words(plc: &Plc, rack: &RackData) -> String {
 /// The tiles after a rack's own, as (head, slot, card): slots from the first to the highest
 /// occupied (gaps free), the next free slot unless the rack is full, then cards outside the range
 /// or in no slot. At most [`MAX_TILES`] − 1.
-pub fn layout(plc: &Plc, rack: &RackData) -> Vec<(String, Option<u32>, Option<ComponentId>)> {
+pub fn layout(plc: &Plc, rack: &RackData) -> Vec<(String, Option<u32>, Option<DeviceId>)> {
     let mut out = Vec::new();
     let cards = plc.cards_of(rack.id);
     let last = rack.first.saturating_add(rack.slots).saturating_sub(1);
@@ -397,7 +397,7 @@ pub fn rack_tiles(doc: &Document, plc: &Plc, rack: &RackData) -> Vec<Tile> {
         drawn: true,
         kind_words: if rack.ty == CardType::Cpu { "CPU".into() } else { "head module".into() },
         title: doc
-            .components
+            .devices
             .get(&rack.id)
             .and_then(|x| x.properties.get("description"))
             .map(|v| v.trim().to_string())
@@ -435,7 +435,7 @@ pub fn totals_words((n, used): (u64, u64)) -> String {
 /// One choice of Lists ▸ PLC's rack chips (design 051 §3.2).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Chip {
-    Rack(ComponentId, String),
+    Rack(DeviceId, String),
     /// The cards in no rack, and how many.
     NoRack(usize),
 }
@@ -494,6 +494,6 @@ pub fn chip_totals(plc: &Plc, chip: &Chip) -> (u64, u64) {
 }
 
 /// Whether a Checks row is about `c`.
-pub(crate) fn names(o: &Object, c: ComponentId) -> bool {
-    *o == Object::Component(c)
+pub(crate) fn names(o: &Object, c: DeviceId) -> bool {
+    *o == Object::Device(c)
 }

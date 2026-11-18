@@ -152,19 +152,19 @@ function render() {
 
   const termsOf = (c) => Object.entries(d.terminals).filter(([, t]) => t.component === c);
   const match = (hexes) => !q || hexes.some((x) => x.includes(q) || (idx.get(x) && (idx.get(x).label.toLowerCase().includes(q) || idx.get(x).short.includes(q))));
-  h += `<h2>Components and terminals</h2><div class="wrap"><table><tr><th>Component</th><th>Properties</th><th>Terminals</th><th>Representations</th></tr>`;
-  for (const [c, comp] of Object.entries(d.components)) {
+  h += `<h2>Devices and connection points</h2><div class="wrap"><table><tr><th>Device</th><th>Properties</th><th>Terminals</th><th>Representations</th></tr>`;
+  for (const [c, comp] of Object.entries(d.devices)) {
     const ts = termsOf(c);
     if (!match([c, ...ts.map(([t]) => t)])) continue;
-    const reps = Object.entries(d.representations).filter(([, r]) => r.subject.Component === c);
+    const reps = Object.entries(d.representations).filter(([, r]) => r.subject.Device === c);
     h += `<tr><td>${name(c)}</td><td>${esc(JSON.stringify(comp.properties))}</td><td>${ts.map(([t]) => name(t)).join("<br>")}</td>
       <td>${reps.map(([r, rep]) => `${name(r)} ${esc(rep.form)} on ${name(rep.page)}`).join("<br>") || '<span class="warn">not shown</span>'}</td></tr>`;
   }
-  h += `</table></div><h2>Conductors</h2><div class="wrap"><table><tr><th>Conductor</th><th>End A</th><th>End B</th><th>Cables</th><th>Shown</th></tr>`;
-  for (const [w, c] of Object.entries(d.conductors)) {
+  h += `</table></div><h2>Wires</h2><div class="wrap"><table><tr><th>Wire</th><th>End A</th><th>End B</th><th>Cables</th><th>Shown</th></tr>`;
+  for (const [w, c] of Object.entries(d.wires)) {
     if (!match([w, ...c.ends.filter(Boolean)])) continue;
     const cables = Object.entries(d.cables).filter(([, k]) => k.members.some((m) => m.conductor === w)).map(([k]) => name(k));
-    const shown = Object.values(d.representations).some((r) => r.subject.Conductor === w);
+    const shown = Object.values(d.representations).some((r) => r.subject.Wire === w);
     h += `<tr><td>${name(w)}</td><td>${c.ends[0] ? name(c.ends[0]) : '<span class="muted">open</span>'}</td><td>${c.ends[1] ? name(c.ends[1]) : "open"}</td>
       <td>${cables.join(", ")}</td><td>${shown ? "yes" : '<span class="warn">not shown</span>'}</td></tr>`;
   }
@@ -367,16 +367,26 @@ const views = {
     const p = await call("project");
     if (p.error) return msg(p.error, "bad");
     const pr = p.ok;
+    const info = Object.entries(pr.info || {}).map(([k, v]) => `<tr><th>${esc(k.replace(/_/g, " "))}</th><td>${esc(v)}</td></tr>`).join("");
     const props = Object.entries(pr.properties).map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join("");
-    const revs = Object.entries(pr.revisions).map(([n, f]) => `<tr><td>${esc(n)}</td><td>${esc(Object.entries(f).map(([k, v]) => `${k}: ${v}`).join(" · "))}</td></tr>`).join("");
+    const revs = Object.entries(pr.revisions).map(([n, f]) => `<tr><td>${esc(n)}</td><td>${esc(Object.entries(f).map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : v}`).join(" · "))}</td></tr>`).join("");
+    const entries = (l) => (l || []).map((e) => `<tr><td>${esc(e.code)}</td><td>${esc(e.tag)}</td><td>${esc((e.descriptions || []).join(" · "))}</td><td class="mono">${esc(e.id)}</td></tr>`).join("");
+    const locs = entries(pr.locations), funcs = entries(pr.functions);
+    const folders = (pr.folders || []).map((f) => `<tr><td>${esc(f.name)}</td><td>${esc(f.parent)}</td><td>${esc(f.start)}</td><td class="mono">${esc(f.id)}</td></tr>`).join("");
     const counts = Object.entries(pr.counts).map(([k, v]) => `<tr><th>${esc(k.replace(/_/g, " "))}</th><td>${esc(v)}</td></tr>`).join("");
     const o = info.open || {};
-    return `<div class="grid"><div><h2>Project</h2><table>${props}<tr><th>reference style</th><td>${esc(pr.reference_style)}</td></tr>
+    return `<div class="grid"><div><h2>Project</h2><table>${info}${props}<tr><th>reference style</th><td>${esc(pr.reference_style)}</td></tr>
+      <tr><th>location</th><td>${esc(pr.location)}</td></tr><tr><th>function</th><td>${esc(pr.function)}</td></tr>
       <tr><th>opened branch</th><td>${esc(o.branch)} at ${esc(o.verified_seq)} (snapshot ${esc(o.snapshot_seq)}, tail ${esc(o.tail)})</td></tr></table></div>
       <div><h2>Counts</h2><table>${counts}</table></div></div>
+      ${folders ? `<h2>Folders</h2>${table(["Folder", "In", "Start", "ID"], [folders])}` : ""}
+      ${locs ? `<h2>Locations</h2>${table(["Code", "Tag", "Descriptions", "ID"], [locs])}` : ""}
+      ${funcs ? `<h2>Functions</h2>${table(["Code", "Tag", "Descriptions", "ID"], [funcs])}` : ""}
       ${revs ? `<h2>Revisions</h2>${table(["#", "fields"], [revs])}` : ""}
-      <h2>Pages</h2>` + (await paged("pages", "pages", {}, ["Page", "Title", "Folder", "Items", "Devices", "Wires", "Properties"],
-      (r) => `<tr><td>${esc(r.number)}</td><td>${esc(r.title)}</td><td>${esc(r.folder)}</td><td>${esc(r.items)}</td><td>${esc(r.devices)}</td><td>${esc(r.wires)}</td><td class="mono">${esc(JSON.stringify(r.properties))}</td></tr>`));
+      <h2>Pages</h2>` + (await paged("pages", "pages", {}, ["Page", "Title", "Folder", "Kind", "Page type", "Sheet", "Title block", "Function", "Location", "Items", "Devices", "Wires", "Display"],
+      (r) => `<tr><td>${esc(r.number)}</td><td>${esc(r.title)}</td><td>${esc(r.folder)}</td><td>${esc(r.kind)}${r.strip ? ` (strip ${esc(r.strip)})` : ""}</td>
+        <td>${esc(r.page_type)}</td><td>${esc(r.sheet)}</td><td>${esc(r.title_block)}</td><td>${esc(r.function)}</td><td>${esc(r.location)}</td><td>${esc(r.items)}</td><td>${esc(r.devices)}</td><td>${esc(r.wires)}</td>
+        <td class="mono">${esc(JSON.stringify(r.display))}</td></tr>`));
   },
   async devices() {
     return `<h2>Devices</h2>` + (await paged("devices", "devices", { detail: true }, ["Tag", "Function", "Location", "Definition", "Pages", "Connection points", "Properties"],
@@ -388,8 +398,8 @@ const views = {
   async wiring() {
     return `<h2>Nets</h2>` + (await paged("nets", "nets", {}, ["Number", "Fixed", "Potential", "Place", "Connection points", "Wires"],
       (r) => `<tr><td>${esc(r.number ?? "(none)")}</td><td>${r.fixed ? "yes" : ""}</td><td>${esc(r.potential)}</td><td>${esc(r.place)}</td><td>${join(r.points)}</td><td>${esc(r.wires)}</td></tr>`)) +
-      `<h2>Wires</h2>` + (await paged("wires", "wires", {}, ["Number", "Ends", "Cross-section", "Colour", "Cable", "Core"],
-      (r) => `<tr><td>${esc(r.number ?? "(none)")}</td><td>${(r.ends || []).map(esc).join(" → ")}</td><td>${esc(r.cross_section)}</td><td>${esc(r.colour)}</td><td>${esc(r.cable)}</td><td>${esc(r.core)}</td></tr>`)) +
+      `<h2>Wires</h2>` + (await paged("wires", "wires", {}, ["Number", "Ends", "Size", "Colours", "Potential", "Rating and load", "Cable", "Core"],
+      (r) => `<tr><td>${esc(r.number ?? "(none)")}${r.fixed ? " (fixed)" : ""}</td><td>${(r.ends || []).map(esc).join(" → ")}</td><td>${esc(r.size)}</td><td>${esc(r.colours)}</td><td>${esc(r.potential)}</td><td>${(r.rating || []).map(esc).join("<br>")}</td><td>${esc(r.cable)}</td><td>${esc(r.core)}</td></tr>`)) +
       `<h2>Cables</h2>` + (await paged("cables", "cables", {}, ["Tag", "Members", "Ends"],
       (r) => `<tr><td>${esc(r.tag)}</td><td>${r.members.map((m) => `${esc(m.wire)}${m.core ? ` core ${esc(m.core)}` : ""}`).join("<br>")}</td><td>${(r.ends || []).map(join).join(" ↔ ")}</td></tr>`));
   },

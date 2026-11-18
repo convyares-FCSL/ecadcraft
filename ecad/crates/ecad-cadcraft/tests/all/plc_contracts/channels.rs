@@ -4,7 +4,7 @@ use ecad_cadcraft::checks::Fix;
 use ecad_cadcraft::devices::TextOf;
 use ecad_cadcraft::outputs::accessory_fix_commands;
 use ecad_cadcraft::plc::PlcFix;
-use ecad_model::{Author, ComponentId, ObjectRef, Op, Subject, Terminal, TerminalId};
+use ecad_model::{Author, DeviceId, ObjectRef, Op, Subject, Terminal, TerminalId};
 use serde_json::{Value, json};
 
 use super::{checks_of, place, placed, prop, same_as_built};
@@ -14,12 +14,12 @@ use crate::common::{H, id, pts};
 /// `-A04` (3), IOL `-A05` (4) and DQ `-A06` (5), and eight vertical drops 10 mm apart.
 struct P {
     h: H,
-    cpu: ComponentId,
-    di: ComponentId,
-    di2: ComponentId,
-    ai: ComponentId,
-    iol: ComponentId,
-    dq: ComponentId,
+    cpu: DeviceId,
+    di: DeviceId,
+    di2: DeviceId,
+    ai: DeviceId,
+    iol: DeviceId,
+    dq: DeviceId,
 }
 
 fn fixture(seed: u64) -> P {
@@ -39,12 +39,12 @@ fn fixture(seed: u64) -> P {
     P { h, cpu, di, di2, ai, iol, dq }
 }
 
-fn fence(h: &mut H, card: ComponentId) -> Value {
+fn fence(h: &mut H, card: DeviceId) -> Value {
     h.run("plcchannels", json!({"card": card.hex(), "from": [95.0, 200.0], "to": [255.0, 200.0]})).unwrap()
 }
 
 /// (key, label) of card `c`'s channel points, by key.
-fn points(h: &mut H, c: ComponentId) -> Vec<(String, String)> {
+fn points(h: &mut H, c: DeviceId) -> Vec<(String, String)> {
     let d = h.doc();
     let mut v: Vec<(String, String)> = d
         .terminals_of(c)
@@ -58,7 +58,7 @@ fn points(h: &mut H, c: ComponentId) -> Vec<(String, String)> {
     v
 }
 
-fn addr(h: &mut H, c: ComponentId, i: u32) -> Option<String> {
+fn addr(h: &mut H, c: DeviceId, i: u32) -> Option<String> {
     h.cfg(|p| {
         p.outputs();
         let o = p.outputs.as_ref().unwrap();
@@ -66,7 +66,7 @@ fn addr(h: &mut H, c: ComponentId, i: u32) -> Option<String> {
     })
 }
 
-fn out_addr(h: &mut H, c: ComponentId, i: u32) -> Option<String> {
+fn out_addr(h: &mut H, c: DeviceId, i: u32) -> Option<String> {
     h.cfg(|p| {
         p.outputs();
         let o = p.outputs.as_ref().unwrap();
@@ -82,10 +82,10 @@ fn run_fix(h: &mut H, fix: Fix, i: usize) -> Value {
 }
 
 /// The texts of `kind` on page 1 for card `c`, (value, shown).
-fn texts(h: &mut H, c: ComponentId, kind: fn(TextOf) -> bool) -> Vec<(String, bool)> {
+fn texts(h: &mut H, c: DeviceId, kind: fn(TextOf) -> bool) -> Vec<(String, bool)> {
     let d = h.doc();
     let page = d.page_order[0];
-    let reps: Vec<_> = d.representations_of(Subject::Component(c)).map(|(r, _)| r).collect();
+    let reps: Vec<_> = d.representations_of(Subject::Device(c)).map(|(r, _)| r).collect();
     ecad_cadcraft::devices::all_texts_on_page(&d, page)
         .into_iter()
         .filter(|t| reps.contains(&t.text.rep) && kind(t.text.of))
@@ -142,11 +142,11 @@ fn f_a_cell_ends_a_loose_wire_at_its_point() {
     h.run("wire", json!({"points": pts(&[(100.0, 250.0), (100.0, 150.0)])})).unwrap();
     h.run("wire", json!({"points": pts(&[(120.0, 150.0), (120.0, 250.0)])})).unwrap();
     h.run("wire", json!({"points": pts(&[(140.0, 250.0), (140.0, 150.0)])})).unwrap();
-    let wires = h.doc().conductors.len();
+    let wires = h.doc().wires.len();
     let v = h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [155.0, 200.0]})).unwrap();
     assert_eq!(v["message"], "Placed -A01 channels 0–2 on 3 wires (pins 1–3).", "{v}");
     let d = h.doc();
-    assert_eq!(d.conductors.len(), wires + 1, "only the lamp-to-lamp wire is split in two");
+    assert_eq!(d.wires.len(), wires + 1, "only the lamp-to-lamp wire is split in two");
     let page = d.page_order[0];
     let mut cells: Vec<(String, TerminalId)> =
         d.terminals_of(di).filter_map(|(t, x)| x.key.as_ref().filter(|k| k.starts_with('.')).map(|k| (k.clone(), t))).collect();
@@ -155,14 +155,14 @@ fn f_a_cell_ends_a_loose_wire_at_its_point() {
     assert_eq!(ends, [1, 1, 2], "{cells:?}");
     for (_, t) in cells.iter().take(2) {
         let (c, _) = d.ends_at(*t)[0];
-        let wire = &d.conductors[&c];
+        let wire = &d.wires[&c];
         assert!(wire.ends.iter().all(Option::is_some), "the kept half runs from the lamp to the point: {wire:?}");
         let (_, _, route) = ecad_cadcraft::wires::route_vertices(&d, c, page).unwrap();
         assert!(route.iter().all(|q| q.y >= 200.0 - 1e-9), "nothing past the point, into the cell: {route:?}");
     }
     same_as_built(&mut h);
     h.cmdline("u");
-    assert_eq!(h.doc().conductors.len(), wires);
+    assert_eq!(h.doc().wires.len(), wires);
     same_as_built(&mut h);
 }
 
@@ -202,7 +202,7 @@ fn h_a_wrong_type_is_refused_and_a_compact_di_joins_as_the_next_channel() {
     assert_eq!((v["channel"].clone(), v["terminals"][0]["label"].clone(), v["terminals"][0]["key"].clone()), (json!(8), json!("9"), json!(".8.in")));
     // A cell on its own makes a new card of its type, in no rack.
     let v = place(&mut h, "chrtd", 300.0, 100.0, json!({})).unwrap();
-    let c: ComponentId = id(&v, "component");
+    let c: DeviceId = id(&v, "component");
     assert_eq!(ecad_cadcraft::plc::card_type_of(&h.doc(), c), Some(ecad_cadcraft::plc::rack::CardType::Rtd));
     assert_eq!(v["terminals"].as_array().map(Vec::len), Some(4));
 }
@@ -368,9 +368,9 @@ fn t_hostile_keys_counts_and_values_never_panic() {
         ops.push(Op::RemoveTerminal { id: t, terminal: term.clone() });
         ops.push(Op::AddTerminal { id: t, terminal: Terminal { key: Some(k.into()), ..term } });
     }
-    ops.push(Op::SetProperty { object: ObjectRef::Component(di), key: "plc.ch.0.text".into(), before: None, after: Some("x".repeat(10_000)) });
-    ops.push(Op::SetProperty { object: ObjectRef::Component(di), key: "plc.addr.start".into(), before: None, after: Some("65535".into()) });
-    ops.push(Op::SetProperty { object: ObjectRef::Component(di), key: "plc.addr.size".into(), before: None, after: Some("4096".into()) });
+    ops.push(Op::SetProperty { object: ObjectRef::Device(di), key: "plc.ch.0.text".into(), before: None, after: Some("x".repeat(10_000)) });
+    ops.push(Op::SetProperty { object: ObjectRef::Device(di), key: "plc.addr.start".into(), before: None, after: Some("65535".into()) });
+    ops.push(Op::SetProperty { object: ObjectRef::Device(di), key: "plc.addr.size".into(), before: None, after: Some("4096".into()) });
     h.cfg(|p| p.ledger.commit(Author::User, "hand-made", ops).map(|_| ()).unwrap());
     let d = h.doc();
     let _ = ecad_cadcraft::checks::all(&d, 1e-6);

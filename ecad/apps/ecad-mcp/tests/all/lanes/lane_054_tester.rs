@@ -87,18 +87,18 @@ fn ac16_page_type_writes_by_the_agent_then_refused_with_writes_off() {
         assert_eq!(names(&ops), ["SetStyle"]);
         let (_, ops) =
             one_by_agent_then_undo(&mut c, "setdefault", json!({"key": "page.type", "level": "page", "page": page, "value": "singleline"}));
-        assert!(matches!(ops.as_slice(), [Op::SetProperty { object: ecad_model::ObjectRef::Page(_), .. }]), "{ops:?}");
+        assert!(matches!(ops.as_slice(), [Op::ModifyPage { .. }]), "{ops:?}");
         let (_, ops) = one_by_agent_then_undo(&mut c, "projectprops", json!({"props": {"cover.notes": "First note\nSecond note"}}));
-        assert!(matches!(ops.as_slice(), [Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. }] if key == "cover.notes"), "{ops:?}");
+        assert!(matches!(ops.as_slice(), [Op::ModifyProject { after, .. }] if after.info.notes.is_some()), "{ops:?}");
         let f = s(&c.exec("newfolder", json!({"name": "Schematic"}))["folder"]);
         c.exec("movepage", json!({"page": page, "folder": f}));
         let (_, ops) = one_by_agent_then_undo(&mut c, "folderprops", json!({"folder": f, "start": "100"}));
         assert!(
-            matches!(ops.as_slice(), [Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. }] if key == &format!("folder.{f}.start")),
-            "FP7: {ops:?}"
+            matches!(ops.as_slice(), [Op::ModifyFolder { after, .. }] if after.start.as_ref().map(ecad_model::PageNo::as_str) == Some("100")),
+            "Folder.start: {ops:?}"
         );
         let (_, ops) = one_by_agent_then_undo(&mut c, "renumberpages", json!({}));
-        assert!(!ops.is_empty() && ops.iter().all(|o| o.name() == "SetProperty"), "{ops:?}");
+        assert!(!ops.is_empty() && ops.iter().all(|o| o.name() == "ModifyPage"), "{ops:?}");
         let (_, ops) = one_by_agent_then_undo(&mut c, "deletepage", json!({"page": revs_id}));
         assert_eq!(names(&ops), ["RemovePage"]);
 

@@ -4,7 +4,7 @@
 use ecad_cadcraft::checks::Kind;
 use ecad_cadcraft::styles::page as ptype;
 use ecad_model::book::{Book, NUMBER_KEY};
-use ecad_model::sheet::{PAGE_TYPE_KEY, sheet_of};
+use ecad_model::sheet::sheet_of;
 use ecad_model::{FolderId, PageId, StyleRef};
 use serde_json::{Value, json};
 
@@ -53,7 +53,7 @@ fn old_pages_resolve_their_type_without_a_property() {
     let bom = page(&mut h, json!({"generated": "bom-location"}));
     let d = h.doc();
     for p in [first, cover, bom] {
-        assert!(!d.pages[&p].properties.contains_key(PAGE_TYPE_KEY), "nothing written for the derived type");
+        assert!(d.pages[&p].page_type.is_none(), "nothing written for the derived type");
     }
     assert_eq!((ty(&mut h, first), ty(&mut h, cover), ty(&mut h, bom)), ("schematic".into(), "front".into(), "report".into()));
     // The sheet is the project's, as before.
@@ -74,10 +74,10 @@ fn newpage_type_after_inserts_after_the_page_with_the_next_number() {
     assert_eq!(Book::of(&d).order, vec![p1, p2, n, p3], "the type never moves it");
     assert_eq!(number(&mut h, n), "4");
     assert_eq!(d.pages[&n].title, "Network");
-    assert_eq!(d.pages[&n].properties.get(PAGE_TYPE_KEY).map(String::as_str), Some("network"));
+    assert_eq!(d.pages[&n].page_type.as_ref().map(ecad_model::StyleRef::text).as_deref(), Some("network"));
     // A plain schematic page stays as small as today.
     let s = page(&mut h, json!({"type": "schematic", "after": p3.hex()}));
-    assert!(!h.doc().pages[&s].properties.contains_key(PAGE_TYPE_KEY));
+    assert!(h.doc().pages[&s].page_type.is_none());
     // An empty folder with start 100: its first page is 100, the next 101.
     let f: FolderId = id(&h.run("newfolder", json!({"name": "Schematic"})).unwrap(), "folder");
     h.run("folderprops", json!({"folder": f.hex(), "start": "100"})).unwrap();
@@ -214,15 +214,16 @@ fn folder_start_numbers_are_checked_and_go_with_their_folder() {
     assert_eq!(e, "`start` must be text, or null");
     h.run("folderprops", json!({"folder": f.hex(), "start": "300"})).unwrap();
     assert_eq!(h.run("folderprops", json!({"folder": f.hex()})).unwrap()["start"], "300");
-    let key = ecad_cadcraft::page_types::start_key(f);
+    // Design 072 §5.2: the start is the folder's own field, so it goes with the folder.
+    let start = |h: &mut H| ecad_cadcraft::page_types::start_of(&h.doc(), f);
     let head = h.head();
     h.run("deletefolder", json!({"folder": f.hex()})).unwrap();
     assert_eq!(h.head(), head + 1, "one transaction");
-    assert!(!h.doc().properties.contains_key(&key), "deletefolder clears the start");
+    assert!(!h.doc().folders.contains_key(&f) && start(&mut h).is_none(), "deletefolder takes the start with it");
     h.run("u", Value::Null).unwrap();
-    assert_eq!(h.doc().properties.get(&key).map(String::as_str), Some("300"));
+    assert_eq!(start(&mut h).as_deref(), Some("300"));
     h.run("folderprops", json!({"folder": f.hex(), "start": null})).unwrap();
-    assert!(!h.doc().properties.contains_key(&key));
+    assert!(start(&mut h).is_none());
 }
 
 #[test]
@@ -253,27 +254,9 @@ fn hostile_types_and_starts_read_as_absent_with_their_rows() {
     h.run("pageprops", json!({"page": p1.hex()})).unwrap();
     h.cfg(|p| {
         let d = p.ledger.document();
-        let before = d.pages[&p1].properties.get(PAGE_TYPE_KEY).cloned();
-        p.ledger
-            .commit(
-                ecad_model::Author::User,
-                "hostile",
-                vec![
-                    ecad_model::Op::SetProperty {
-                        object: ecad_model::ObjectRef::Page(p1),
-                        key: PAGE_TYPE_KEY.into(),
-                        before,
-                        after: Some("#000000000000000000000000000000ff".into()),
-                    },
-                    ecad_model::Op::SetProperty {
-                        object: ecad_model::ObjectRef::Project,
-                        key: "folder.0000000000000000000000000000beef.start".into(),
-                        before: None,
-                        after: Some("99999999999".into()),
-                    },
-                ],
-            )
-            .unwrap();
+        let before = d.pages[&p1].clone();
+        let after = ecad_model::Page { page_type: Some(ecad_model::StyleRef::Own(0xff)), ..before.clone() };
+        p.ledger.commit(ecad_model::Author::User, "hostile", vec![ecad_model::Op::ModifyPage { id: p1, before, after }]).unwrap();
     });
     assert_eq!(ty(&mut h, p1), "schematic");
     h.run("setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"holds": "x", "sheet": "A0 999x999"}})).unwrap_err();
@@ -302,7 +285,8 @@ fn hostile_types_and_starts_read_as_absent_with_their_rows() {
     assert_eq!((look.holds, look.zones, look.sheet), (ptype::Holds::None, true, None));
     assert_eq!(sheet_of(&d, p1), d.settings.sheet());
     let rows = kinds(&mut h);
-    for k in [Kind::PageTypeUnknown, Kind::PageTypeField, Kind::FolderStartUnknown] {
+    // A hostile folder start: lane_054_tester's AC15 (a start naming no folder cannot be stored).
+    for k in [Kind::PageTypeUnknown, Kind::PageTypeField] {
         assert!(rows.iter().any(|(x, _)| *x == k), "{k:?}: {rows:?}");
     }
     assert!(h.run("renumberpages", json!({})).is_ok());
@@ -315,7 +299,7 @@ fn cover_notes_are_written_one_per_line_and_bounded() {
     let head = h.head();
     h.run("projectprops", json!({"props": {"cover.notes": "a\n\n b \n"}})).unwrap();
     assert_eq!(h.head(), head + 1);
-    assert_eq!(h.doc().properties.get("cover.notes").map(String::as_str), Some("a\nb"));
+    assert_eq!(ecad_cadcraft::frames::project_text(&h.doc(), "cover.notes").as_deref(), Some("a\nb"));
     let many: Vec<String> = (0..41).map(|i| format!("note {i}")).collect();
     let e = h.run("projectprops", json!({"props": {"cover.notes": many.join("\n")}})).unwrap_err();
     assert!(e.contains("The cover takes up to 40 notes of 400 characters."), "{e}");
@@ -440,13 +424,13 @@ fn wire_categories_in_use_cross_zero_only() {
     let d0 = h.doc();
     let mut uses = ecad_cadcraft::front::Uses::build(&d0);
     let last = |h: &mut H| h.p(|p| p.ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default());
-    let w: ecad_model::ConductorId = id(&h.run("wire", json!({"points": [[0, 0], [60, 0]]})).unwrap(), "conductor");
+    let w: ecad_model::WireId = id(&h.run("wire", json!({"points": [[0, 0], [60, 0]]})).unwrap(), "conductor");
     let ops = last(&mut h);
     uses.update(&h.doc(), &ops);
     h.run("category", json!({"conductor": w.hex(), "value": "dc24"})).unwrap();
     let ops = last(&mut h);
     assert!(uses.update(&h.doc(), &ops), "the first 24 V DC wire");
-    let w2: ecad_model::ConductorId = id(&h.run("wire", json!({"points": [[0, 20], [60, 20]]})).unwrap(), "conductor");
+    let w2: ecad_model::WireId = id(&h.run("wire", json!({"points": [[0, 20], [60, 20]]})).unwrap(), "conductor");
     let ops = last(&mut h);
     uses.update(&h.doc(), &ops);
     h.run("category", json!({"conductor": w2.hex(), "value": "dc24"})).unwrap();
@@ -468,7 +452,7 @@ fn a_plain_page_gets_no_checks_numbering_or_references() {
         ecad_cadcraft::checks::all(&d, 0.01).into_iter().filter(|c| c.page == Some(p)).count()
     };
     assert!(on_page(&mut h, first) > 0, "a schematic page is checked");
-    let numbered = |h: &mut H| h.doc().conductors.values().any(|c| c.properties.contains_key(ecad_model::connectivity::WIRE_NUMBER));
+    let numbered = |h: &mut H| h.doc().wires.values().any(|c| c.number.is_some());
     // A Plain page: drawn the same, checked and numbered not at all.
     let plain = page(&mut h, json!({"type": "plain"}));
     assert_eq!(ty(&mut h, plain), "plain");
@@ -480,14 +464,14 @@ fn a_plain_page_gets_no_checks_numbering_or_references() {
     assert_eq!(on_page(&mut h, plain), 0, "no Checks row on a Plain page");
     let d = h.doc();
     let on_plain: Vec<_> =
-        d.conductors.iter().filter(|(c, _)| d.representations_of(ecad_model::Subject::Conductor(**c)).all(|(_, r)| r.page == plain)).collect();
+        d.wires.iter().filter(|(c, _)| d.representations_of(ecad_model::Subject::Wire(**c)).all(|(_, r)| r.page == plain)).collect();
     assert!(!on_plain.is_empty());
-    assert!(on_plain.iter().all(|(_, c)| !c.properties.contains_key(ecad_model::connectivity::WIRE_NUMBER)), "no wire number on a Plain page");
+    assert!(on_plain.iter().all(|(_, c)| !c.number.is_some()), "no wire number on a Plain page");
     let _ = before_numbered;
     // A coil there is in no reference group: the device has no head.
     h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap();
     let d = h.doc();
-    let coil = d.components.keys().copied().find(|c| d.representations_of(ecad_model::Subject::Component(*c)).any(|(_, r)| r.page == plain));
+    let coil = d.devices.keys().copied().find(|c| d.representations_of(ecad_model::Subject::Device(*c)).any(|(_, r)| r.page == plain));
     if let Some(c) = coil {
         assert!(ecad_cadcraft::xref::device(&d, c).head.is_none(), "no references from a Plain page");
     }
@@ -546,10 +530,10 @@ fn structure_codes_show_the_052_codes_and_follow_a_rename() {
     let first = h.first_page();
     h.activate(first);
     h.run("place", json!({"symbol": "coil", "at": [100, 100]})).unwrap();
-    let c = h.doc().components.keys().copied().next().unwrap();
+    let c = h.doc().devices.keys().copied().next().unwrap();
     h.run("setlocation", json!({"component": c.hex(), "value": "+CP1"})).unwrap();
     h.run("setdefault", json!({"key": "front.cover.structure_codes", "level": "project", "value": "on"})).unwrap();
-    let key = h.doc().components.get(&c).and_then(|x| x.properties.get("location").cloned()).unwrap();
+    let key = h.doc().devices.get(&c).and_then(|x| x.properties.get("location").cloned()).unwrap();
     assert_ne!(key, "+CP1", "052 stores the entry key");
     let t = cover_texts(&mut h, cover);
     assert!(t.iter().any(|x| x == "+CP1"), "{t:?}");

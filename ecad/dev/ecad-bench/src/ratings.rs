@@ -67,11 +67,11 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRatin
         let build = t.elapsed().as_secs_f64() * 1e3;
         let rated = p.checks().rating.results.len();
         let doc = p.ledger.document();
-        let dev = doc.components.keys().copied().find(|c| ecad_cadcraft::rating::trace::is_protective_component(doc, *c));
+        let dev = doc.devices.keys().copied().find(|c| ecad_cadcraft::rating::trace::is_protective_component(doc, *c));
         let pin = dev.and_then(|c| {
             doc.terminals_of(c).find_map(|(t, x)| {
                 let label = x.label.clone().unwrap_or_default();
-                let on = doc.representations_of(ecad_model::Subject::Component(c)).next().map(|(_, r)| r.page)?;
+                let on = doc.representations_of(ecad_model::Subject::Device(c)).next().map(|(_, r)| r.page)?;
                 let at = ecad_model::derive::terminal_position(doc, on, t)?;
                 (label.parse::<u32>().is_ok_and(|n| n % 2 == 0)).then_some((on, at))
             })

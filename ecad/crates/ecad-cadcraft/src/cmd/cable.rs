@@ -25,7 +25,7 @@ use ecad_electrical::CmdError;
 use ecad_electrical::cmd::cable::{self as rules, CableInput, EndInput};
 pub use ecad_electrical::cmd::cable::{BadReason, Drawn, assign_cores, bad_value, cable_named, check_remove, drawn, edit_ops};
 use ecad_model::{
-    CableId, CableMember, ConductorId, Document, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Representation, RepresentationId, Subject,
+    CableId, CableMember, Document, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Representation, RepresentationId, Subject, WireId,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -248,7 +248,7 @@ pub(crate) fn run_slash_assign(
     found: &crate::slash::Crossings,
 ) -> Result<Value, CmdError> {
     let doc = p.ledger.document();
-    let blocked: Vec<(ConductorId, CableId)> = crate::slash::blocked(doc, &found.members).into_iter().map(|(m, c)| (m.conductor, c)).collect();
+    let blocked: Vec<(WireId, CableId)> = crate::slash::blocked(doc, &found.members).into_iter().map(|(m, c)| (m.conductor, c)).collect();
     if !blocked.is_empty() {
         return Err(rules::already_in_cable(crate::slash::already_in_cable(doc, &blocked, "Nothing was changed.")));
     }
@@ -323,8 +323,8 @@ pub struct PickItem {
 /// not slashed on this page (032). Each group by tag. O(cables), built once when a picker opens.
 pub fn picker(doc: &Document, page: PageId) -> Vec<PickItem> {
     let mut here: BTreeSet<String> = crate::locations::boxes_on(doc, page).into_iter().filter_map(|b| b.location).collect();
-    let page_loc = doc.pages.get(&page).and_then(|x| x.properties.get(Aspect::Location.property()));
-    if let Some(code) = designations::shown(doc, Aspect::Location, page_loc.map(String::as_str)) {
+    let page_loc = doc.pages.get(&page).and_then(|x| designations::page_key(x, Aspect::Location));
+    if let Some(code) = designations::shown(doc, Aspect::Location, page_loc.as_deref()) {
         here.insert(code);
     }
     let mut out: Vec<PickItem> = Vec::new();

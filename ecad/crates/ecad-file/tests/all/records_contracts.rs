@@ -47,8 +47,8 @@ fn embedded_definitions_follow_the_owner_requirements() {
     let mut f = fixture();
     let doc = f.ledger.document().clone();
     // Embed once, many instances: c1 and c2 share d1; every terminal has its own ID.
-    assert_eq!(doc.components[&f.c1].definition, Some(f.d1));
-    assert_eq!(doc.components[&f.c2].definition, Some(f.d1));
+    assert_eq!(doc.devices[&f.c1].definition, Some(f.d1));
+    assert_eq!(doc.devices[&f.c2].definition, Some(f.d1));
     let ids: std::collections::BTreeSet<_> = f.t.iter().collect();
     assert_eq!(ids.len(), 6);
     // Versions coexist: d1 (library version 7) and d2 (version 9), different content hashes.
@@ -66,8 +66,8 @@ fn embedded_definitions_follow_the_owner_requirements() {
     let mut ops = Vec::new();
     for c in [f.c1, f.c2] {
         let doc = f.ledger.document();
-        let (rid, rep) = doc.representations_of(Subject::Component(c)).next().map(|(i, r)| (i, r.clone())).unwrap();
-        for (w, cond) in doc.conductors.iter() {
+        let (rid, rep) = doc.representations_of(Subject::Device(c)).next().map(|(i, r)| (i, r.clone())).unwrap();
+        for (w, cond) in doc.wires.iter() {
             for end in End::BOTH {
                 if let Some(t) = cond.end(end).filter(|t| doc.terminals[t].component == c) {
                     ops.push(Op::AttachEnd { conductor: *w, end, before: Some(t), after: None });
@@ -79,7 +79,7 @@ fn embedded_definitions_follow_the_owner_requirements() {
         for (t, term) in doc.terminals_of(c) {
             ops.push(Op::RemoveTerminal { id: t, terminal: term.clone() });
         }
-        ops.push(Op::DeleteComponent { id: c, component: doc.components[&c].clone() });
+        ops.push(Op::DeleteDevice { id: c, device: doc.devices[&c].clone() });
     }
     ops.push(Op::RemoveDefinition { id: f.d1, definition: doc.definitions[&f.d1].clone() });
     f.commit("Remove old version", ops);
@@ -158,7 +158,7 @@ fn wiring_settings_and_bridges_are_written_only_when_set_and_round_trip() {
 /// read back exactly; a page without properties and default settings are written as before.
 #[test]
 fn sheet_records_round_trip_and_defaults_are_left_out() {
-    let plain = ecad_file::record::op_value(&Op::AddPage { id: PageId(1), page: Page::new("1"), index: 0 }).unwrap().to_string();
+    let plain = ecad_file::record::op_value(&Op::AddPage { id: PageId(1), page: Page::titled("1").unwrap(), index: 0 }).unwrap().to_string();
     assert!(!plain.contains("properties"), "{plain}");
     let defaults = ProjectSettings::default();
     let line = ecad_file::record::op_value(&Op::SetProjectSettings { before: defaults.clone(), after: defaults }).unwrap().to_string();
@@ -173,15 +173,22 @@ fn sheet_records_round_trip_and_defaults_are_left_out() {
     after.sheet = Some(SheetSpec::parse("A2 12x8 numbers letters").unwrap());
     after.page_number_step = Some(5);
     after.reference_style = Some(ReferenceStyle::PageColumn);
+    let page = f.ledger.document().pages[&f.page].clone();
     let ops = vec![
-        Op::AddFolder { id: folder, folder: Folder { name: "Layouts".into(), parent: None }, index: 0 },
-        Op::SetProperty { object: ObjectRef::Page(f.page), key: "folder".into(), before: None, after: Some(folder.hex()) },
-        Op::SetProperty { object: ObjectRef::Project, key: "title".into(), before: None, after: Some("P7".into()) },
+        Op::AddFolder { id: folder, folder: Folder { name: "Layouts".into(), parent: None, start: None }, index: 0 },
+        Op::ModifyPage { id: f.page, before: page.clone(), after: ecad_model::Page { folder: Some(folder), ..page } },
+        Op::ModifyProject {
+            before: ecad_model::Project::default(),
+            after: ecad_model::Project {
+                info: ecad_model::ProjectInfo { title: ecad_model::text::Text::new("P7").ok(), ..Default::default() },
+                ..Default::default()
+            },
+        },
         Op::SetProjectSettings { before, after: after.clone() },
     ];
     f.ledger.commit(Author::User, "Sheets", ops).unwrap();
-    let renamed = Folder { name: "Schematics".into(), parent: None };
-    let modify = Op::ModifyFolder { id: folder, before: Folder { name: "Layouts".into(), parent: None }, after: renamed.clone() };
+    let renamed = Folder { name: "Schematics".into(), parent: None, start: None };
+    let modify = Op::ModifyFolder { id: folder, before: Folder { name: "Layouts".into(), parent: None, start: None }, after: renamed.clone() };
     f.ledger.commit(Author::User, "Rename folder", vec![modify]).unwrap();
     let opened = reopened(&mut f.ledger);
     assert!(opened.report.damage.is_none());

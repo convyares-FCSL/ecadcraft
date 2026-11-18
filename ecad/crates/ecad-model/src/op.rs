@@ -7,19 +7,17 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::doc::{
-    Cable, CableMember, Component, Conductor, Definition, Document, End, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal,
-};
+use crate::doc::{Cable, CableMember, Definition, Device, Document, End, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal, Wire};
 use crate::error::{ModelError, Result};
-use crate::id::{CableId, ComponentId, ConductorId, DefinitionId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
+use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId, WireId};
 use crate::index::Delta;
 use crate::style::{Standard, StandardHeader, StyleCatalogue, StyleLayer, StyleRecord, StyleRef};
 
 /// An object that carries properties.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ObjectRef {
-    Component(ComponentId),
-    Conductor(ConductorId),
+    Device(DeviceId),
+    Wire(WireId),
     Cable(CableId),
     /// A page's properties (brief 019, decision FP1).
     Page(PageId),
@@ -28,6 +26,21 @@ pub enum ObjectRef {
     /// The standard's registry values (brief 050a, FP3): a value at the Standard level. Refused
     /// while the project has no standard.
     Standard,
+}
+
+impl ObjectRef {
+    /// The kind of holder it is; `None` for the standard's registry values.
+    pub fn holder(self) -> Option<crate::keys::Holder> {
+        use crate::keys::Holder;
+        match self {
+            ObjectRef::Device(_) => Some(Holder::Device),
+            ObjectRef::Wire(_) => Some(Holder::Wire),
+            ObjectRef::Cable(_) => Some(Holder::Cable),
+            ObjectRef::Page(_) => Some(Holder::Page),
+            ObjectRef::Project => Some(Holder::Project),
+            ObjectRef::Standard => None,
+        }
+    }
 }
 
 /// Settle the document's nets after ops applied with [`Op::apply_unsettled`] (brief 022).
@@ -50,6 +63,13 @@ pub enum Op {
         page: Page,
         index: usize,
     },
+    /// Change a page in place (design 072 §5.1): its title, number, folder, look or display
+    /// choices. Its place in the page order and its kind stay.
+    ModifyPage {
+        id: PageId,
+        before: Page,
+        after: Page,
+    },
     AddLayer {
         id: LayerId,
         layer: Layer,
@@ -71,18 +91,25 @@ pub enum Op {
         id: ItemId,
         item: Item,
     },
-    CreateComponent {
-        id: ComponentId,
-        component: Component,
+    CreateDevice {
+        id: DeviceId,
+        device: Device,
     },
-    DeleteComponent {
-        id: ComponentId,
-        component: Component,
+    DeleteDevice {
+        id: DeviceId,
+        device: Device,
+    },
+    /// Change a device's stored fields, its type among them (design 072 F13): the whole device
+    /// before and after, so the inverse swaps them.
+    ModifyDevice {
+        id: DeviceId,
+        before: Device,
+        after: Device,
     },
     /// Change which embedded definition a component's symbols use (brief 048, FP5), keeping
     /// its properties, terminals and representations.
-    SetComponentDefinition {
-        id: ComponentId,
+    SetDeviceDefinition {
+        id: DeviceId,
         before: Option<DefinitionId>,
         after: Option<DefinitionId>,
     },
@@ -107,16 +134,23 @@ pub enum Op {
         id: RepresentationId,
         rep: Representation,
     },
-    CreateConductor {
-        id: ConductorId,
-        conductor: Conductor,
+    CreateWire {
+        id: WireId,
+        conductor: Wire,
     },
-    DeleteConductor {
-        id: ConductorId,
-        conductor: Conductor,
+    DeleteWire {
+        id: WireId,
+        conductor: Wire,
+    },
+    /// A wire's values change, the whole struct recorded (design 072 F20). Its ends are not
+    /// read or changed: [`Op::AttachEnd`] moves them, also in the same transaction.
+    ModifyWire {
+        id: WireId,
+        before: Wire,
+        after: Wire,
     },
     AttachEnd {
-        conductor: ConductorId,
+        conductor: WireId,
         end: End,
         before: Option<TerminalId>,
         after: Option<TerminalId>,
@@ -189,6 +223,12 @@ pub enum Op {
         before: Folder,
         after: Folder,
     },
+    /// Change the project's own data (design 072 §5.3): its location and function lists and
+    /// defaults, as one whole value.
+    ModifyProject {
+        before: crate::project::Project,
+        after: crate::project::Project,
+    },
     /// Write one whole style record (brief 050a, FP3): `None` is no record. A `Standard` layer
     /// write is refused while the project has no standard.
     SetStyle {
@@ -235,21 +275,24 @@ impl Op {
         match self.clone() {
             Op::AddPage { id, page, index } => Op::RemovePage { id, page, index },
             Op::RemovePage { id, page, index } => Op::AddPage { id, page, index },
+            Op::ModifyPage { id, before, after } => Op::ModifyPage { id, before: after, after: before },
             Op::AddLayer { id, layer } => Op::RemoveLayer { id, layer },
             Op::RemoveLayer { id, layer } => Op::AddLayer { id, layer },
             Op::AddItem { id, item } => Op::RemoveItem { id, item },
             Op::RemoveItem { id, item } => Op::AddItem { id, item },
             Op::ModifyItem { id, before, after } => Op::ModifyItem { id, before: after, after: before },
-            Op::CreateComponent { id, component } => Op::DeleteComponent { id, component },
-            Op::DeleteComponent { id, component } => Op::CreateComponent { id, component },
-            Op::SetComponentDefinition { id, before, after } => Op::SetComponentDefinition { id, before: after, after: before },
+            Op::CreateDevice { id, device } => Op::DeleteDevice { id, device },
+            Op::DeleteDevice { id, device } => Op::CreateDevice { id, device },
+            Op::ModifyDevice { id, before, after } => Op::ModifyDevice { id, before: after, after: before },
+            Op::SetDeviceDefinition { id, before, after } => Op::SetDeviceDefinition { id, before: after, after: before },
             Op::AddTerminal { id, terminal } => Op::RemoveTerminal { id, terminal },
             Op::RemoveTerminal { id, terminal } => Op::AddTerminal { id, terminal },
             Op::LinkRepresentation { id, rep } => Op::UnlinkRepresentation { id, rep },
             Op::UnlinkRepresentation { id, rep } => Op::LinkRepresentation { id, rep },
             Op::ModifyRepresentation { id, before, after } => Op::ModifyRepresentation { id, before: after, after: before },
-            Op::CreateConductor { id, conductor } => Op::DeleteConductor { id, conductor },
-            Op::DeleteConductor { id, conductor } => Op::CreateConductor { id, conductor },
+            Op::CreateWire { id, conductor } => Op::DeleteWire { id, conductor },
+            Op::DeleteWire { id, conductor } => Op::CreateWire { id, conductor },
+            Op::ModifyWire { id, before, after } => Op::ModifyWire { id, before: after, after: before },
             Op::AttachEnd { conductor, end, before, after } => Op::AttachEnd { conductor, end, before: after, after: before },
             Op::CreateCable { id, cable } => Op::DeleteCable { id, cable },
             Op::DeleteCable { id, cable } => Op::CreateCable { id, cable },
@@ -266,6 +309,7 @@ impl Op {
             Op::ModifyFolder { id, before, after } => Op::ModifyFolder { id, before: after, after: before },
             Op::SetStyle { layer, catalogue, id, before, after } => Op::SetStyle { layer, catalogue, id, before: after, after: before },
             Op::SetStandard { before, after } => Op::SetStandard { before: after, after: before },
+            Op::ModifyProject { before, after } => Op::ModifyProject { before: after, after: before },
         }
     }
 
@@ -343,6 +387,16 @@ impl Op {
                 }
                 doc.page_order.remove(*index);
             }
+            Op::ModifyPage { id, before, after } => {
+                holds(&doc.pages, *id, before, "page", checked)?;
+                if checked && before.kind != after.kind {
+                    return Err(pre(format!("page {id}: a page's kind is set when it is made")));
+                }
+                if let Some(old) = doc.pages.insert(*id, after.clone()) {
+                    doc.index.page(*id, &old, Delta::Remove);
+                }
+                doc.index.page(*id, after, Delta::Add);
+            }
             Op::AddLayer { id, layer } => {
                 absent(&doc.layers, *id, "layer")?;
                 doc.layers.insert(*id, layer.clone());
@@ -369,27 +423,34 @@ impl Op {
                     doc.index.item(*id, &old, Delta::Remove);
                 }
             }
-            Op::CreateComponent { id, component } => {
-                absent(&doc.components, *id, "component")?;
-                doc.index.component(*id, component, Delta::Add);
-                doc.components.insert(*id, component.clone());
+            Op::CreateDevice { id, device } => {
+                absent(&doc.devices, *id, "device")?;
+                doc.index.device(*id, device, Delta::Add);
+                doc.devices.insert(*id, device.clone());
             }
-            Op::DeleteComponent { id, component } => {
-                holds(&doc.components, *id, component, "component", checked)?;
-                if let Some(old) = doc.components.remove(id) {
-                    doc.index.component(*id, &old, Delta::Remove);
+            Op::DeleteDevice { id, device } => {
+                holds(&doc.devices, *id, device, "device", checked)?;
+                if let Some(old) = doc.devices.remove(id) {
+                    doc.index.device(*id, &old, Delta::Remove);
                 }
             }
-            Op::SetComponentDefinition { id, before, after } => {
-                let c = doc.components.get(id).ok_or_else(|| pre(format!("component {id} does not exist")))?;
+            Op::ModifyDevice { id, before, after } => {
+                holds(&doc.devices, *id, before, "device", checked)?;
+                if let Some(old) = doc.devices.insert(*id, after.clone()) {
+                    doc.index.device(*id, &old, Delta::Remove);
+                }
+                doc.index.device(*id, after, Delta::Add);
+            }
+            Op::SetDeviceDefinition { id, before, after } => {
+                let c = doc.devices.get(id).ok_or_else(|| pre(format!("device {id} does not exist")))?;
                 if checked && c.definition != *before {
-                    return Err(pre(format!("component {id}'s definition differs from the recorded value")));
+                    return Err(pre(format!("device {id}'s definition differs from the recorded value")));
                 }
-                if let Some(old) = doc.components.remove(id) {
-                    doc.index.component(*id, &old, Delta::Remove);
-                    let new = Component { definition: *after, ..old };
-                    doc.index.component(*id, &new, Delta::Add);
-                    doc.components.insert(*id, new);
+                if let Some(old) = doc.devices.remove(id) {
+                    doc.index.device(*id, &old, Delta::Remove);
+                    let new = Device { definition: *after, ..old };
+                    doc.index.device(*id, &new, Delta::Add);
+                    doc.devices.insert(*id, new);
                 }
             }
             Op::AddTerminal { id, terminal } => {
@@ -421,22 +482,32 @@ impl Op {
                     doc.index.representation(*id, &old, Delta::Remove);
                 }
             }
-            Op::CreateConductor { id, conductor } => {
-                absent(&doc.conductors, *id, "conductor")?;
+            Op::CreateWire { id, conductor } => {
+                absent(&doc.wires, *id, "wire")?;
                 doc.index.conductor(*id, conductor, Delta::Add);
-                doc.conductors.insert(*id, conductor.clone());
+                doc.wires.insert(*id, conductor.clone());
             }
-            Op::DeleteConductor { id, conductor } => {
-                holds(&doc.conductors, *id, conductor, "conductor", checked)?;
-                if let Some(old) = doc.conductors.remove(id) {
+            Op::DeleteWire { id, conductor } => {
+                holds(&doc.wires, *id, conductor, "wire", checked)?;
+                if let Some(old) = doc.wires.remove(id) {
                     doc.index.conductor(*id, &old, Delta::Remove);
                 }
             }
+            Op::ModifyWire { id, before, after } => {
+                let w = doc.wires.get_mut(id).ok_or_else(|| pre(format!("wire {id} does not exist")))?;
+                if checked && (Wire { ends: w.ends, ..before.clone() }) != *w {
+                    return Err(pre(format!("wire {id} differs from the recorded value")));
+                }
+                let new = Wire { ends: w.ends, ..after.clone() };
+                let old = std::mem::replace(w, new.clone());
+                doc.index.conductor(*id, &old, Delta::Remove);
+                doc.index.conductor(*id, &new, Delta::Add);
+            }
             Op::AttachEnd { conductor, end, before, after } => {
-                let c = doc.conductors.get_mut(conductor).ok_or_else(|| pre(format!("conductor {conductor} does not exist")))?;
+                let c = doc.wires.get_mut(conductor).ok_or_else(|| pre(format!("wire {conductor} does not exist")))?;
                 let current = c.end(*end);
                 if checked && current != *before {
-                    return Err(pre(format!("conductor {conductor} end {end:?} is not attached as recorded")));
+                    return Err(pre(format!("wire {conductor} end {end:?} is not attached as recorded")));
                 }
                 c.set_end(*end, *after);
                 doc.index.conductor_end(*conductor, *end, current, Delta::Remove);
@@ -473,11 +544,18 @@ impl Op {
                 doc.index.cable_member(*cable, &old, Delta::Remove);
             }
             Op::SetProperty { object, key, before, after } => {
+                let reserved = match object.holder() {
+                    Some(h) => crate::keys::is_reserved_on(h, key),
+                    None => crate::keys::is_reserved(key),
+                };
+                if reserved {
+                    return Err(pre(format!("property {key} is a field now (design 072); its object's Modify op changes it")));
+                }
                 let props = match object {
-                    ObjectRef::Component(id) => doc.components.get_mut(id).map(|c| &mut c.properties),
-                    ObjectRef::Conductor(id) => doc.conductors.get_mut(id).map(|c| &mut c.properties),
+                    ObjectRef::Device(id) => doc.devices.get_mut(id).map(|c| &mut c.properties),
+                    ObjectRef::Wire(id) => doc.wires.get_mut(id).map(|c| &mut c.display),
                     ObjectRef::Cable(id) => doc.cables.get_mut(id).map(|c| &mut c.properties),
-                    ObjectRef::Page(id) => doc.pages.get_mut(id).map(|p| &mut p.properties),
+                    ObjectRef::Page(id) => doc.pages.get_mut(id).map(|p| &mut p.display),
                     ObjectRef::Project => Some(&mut doc.properties),
                     ObjectRef::Standard => doc.standard.as_mut().map(|s| &mut s.values),
                 }
@@ -490,7 +568,7 @@ impl Op {
                     None => props.remove(key),
                 };
                 // A continuation's name is indexed (brief 022).
-                if let ObjectRef::Component(id) = object
+                if let ObjectRef::Device(id) = object
                     && (key == crate::connectivity::KIND || key == crate::connectivity::NAME)
                 {
                     let mut before_props = props.clone();
@@ -510,7 +588,7 @@ impl Op {
                     }
                 }
                 // A component's tag is indexed (brief 018).
-                if let ObjectRef::Component(id) = object
+                if let ObjectRef::Device(id) = object
                     && key == crate::tag::TAG_KEY
                 {
                     if let Some(old) = &old {
@@ -542,17 +620,6 @@ impl Op {
                         }
                     }
                 }
-                // A page's folder is indexed (brief 019).
-                if let ObjectRef::Page(id) = object
-                    && key == crate::book::FOLDER_KEY
-                {
-                    if let Some(old) = &old {
-                        doc.index.page_folder(*id, old, Delta::Remove);
-                    }
-                    if let Some(new) = after {
-                        doc.index.page_folder(*id, new, Delta::Add);
-                    }
-                }
             }
             Op::EmbedDefinition { id, definition } => {
                 absent(&doc.definitions, *id, "definition")?;
@@ -561,6 +628,12 @@ impl Op {
             Op::RemoveDefinition { id, definition } => {
                 holds(&doc.definitions, *id, definition, "definition", checked)?;
                 doc.definitions.remove(id);
+            }
+            Op::ModifyProject { before, after } => {
+                if checked && &doc.project != before {
+                    return Err(pre("the project's lists differ from the recorded value".into()));
+                }
+                doc.project = after.clone();
             }
             Op::SetProjectSettings { before, after } => {
                 if checked && &doc.settings != before {
@@ -646,22 +719,25 @@ impl Op {
     pub fn name(&self) -> &'static str {
         match self {
             Op::AddPage { .. } => "AddPage",
+            Op::ModifyPage { .. } => "ModifyPage",
             Op::RemovePage { .. } => "RemovePage",
             Op::AddLayer { .. } => "AddLayer",
             Op::RemoveLayer { .. } => "RemoveLayer",
             Op::AddItem { .. } => "AddItem",
             Op::ModifyItem { .. } => "ModifyItem",
             Op::RemoveItem { .. } => "RemoveItem",
-            Op::CreateComponent { .. } => "CreateComponent",
-            Op::DeleteComponent { .. } => "DeleteComponent",
-            Op::SetComponentDefinition { .. } => "SetComponentDefinition",
+            Op::CreateDevice { .. } => "CreateDevice",
+            Op::DeleteDevice { .. } => "DeleteDevice",
+            Op::ModifyDevice { .. } => "ModifyDevice",
+            Op::SetDeviceDefinition { .. } => "SetDeviceDefinition",
             Op::AddTerminal { .. } => "AddTerminal",
             Op::RemoveTerminal { .. } => "RemoveTerminal",
             Op::LinkRepresentation { .. } => "LinkRepresentation",
             Op::ModifyRepresentation { .. } => "ModifyRepresentation",
             Op::UnlinkRepresentation { .. } => "UnlinkRepresentation",
-            Op::CreateConductor { .. } => "CreateConductor",
-            Op::DeleteConductor { .. } => "DeleteConductor",
+            Op::CreateWire { .. } => "CreateWire",
+            Op::DeleteWire { .. } => "DeleteWire",
+            Op::ModifyWire { .. } => "ModifyWire",
             Op::AttachEnd { .. } => "AttachEnd",
             Op::CreateCable { .. } => "CreateCable",
             Op::DeleteCable { .. } => "DeleteCable",
@@ -678,6 +754,7 @@ impl Op {
             Op::ModifyFolder { .. } => "ModifyFolder",
             Op::SetStyle { .. } => "SetStyle",
             Op::SetStandard { .. } => "SetStandard",
+            Op::ModifyProject { .. } => "ModifyProject",
         }
     }
 }

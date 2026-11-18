@@ -6,8 +6,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use ecad_model::connectivity::{CONTINUATION, KIND, NAME};
 use ecad_model::wiring::{self, Scheme};
 use ecad_model::{
-    Author, Component, ComponentId, Conductor, ConductorId, Connectivity, Definition, DefinitionId, Document, End, IdAllocator, Ledger, ObjectRef,
-    Op, Page, PageId, Terminal, TerminalDef, TerminalId,
+    Author, Connectivity, Definition, DefinitionId, Device, DeviceId, Document, End, IdAllocator, Ledger, ObjectRef, Op, Page, PageId, Terminal,
+    TerminalDef, TerminalId, Wire, WireId,
 };
 
 /// A small project driven through the ledger, with the numbering pass as ECAD commits run it.
@@ -20,7 +20,7 @@ impl P {
     fn new() -> Self {
         let mut p = P { ledger: Ledger::new(7), ids: IdAllocator::seeded(11) };
         let page: PageId = p.ids.fresh();
-        p.commit(vec![Op::AddPage { id: page, page: Page::new("1"), index: 0 }]);
+        p.commit(vec![Op::AddPage { id: page, page: Page::titled("1").unwrap(), index: 0 }]);
         p
     }
 
@@ -38,13 +38,13 @@ impl P {
     }
 
     /// A device with `n` terminals keyed `1`..`n`.
-    fn device(&mut self, n: usize) -> (ComponentId, Vec<TerminalId>) {
-        self.device_with(n, Component::default())
+    fn device(&mut self, n: usize) -> (DeviceId, Vec<TerminalId>) {
+        self.device_with(n, Device::default())
     }
 
-    fn device_with(&mut self, n: usize, component: Component) -> (ComponentId, Vec<TerminalId>) {
-        let c: ComponentId = self.ids.fresh();
-        let mut ops = vec![Op::CreateComponent { id: c, component }];
+    fn device_with(&mut self, n: usize, component: Device) -> (DeviceId, Vec<TerminalId>) {
+        let c: DeviceId = self.ids.fresh();
+        let mut ops = vec![Op::CreateDevice { id: c, device: component }];
         let mut ts = Vec::new();
         for k in 1..=n {
             let t: TerminalId = self.ids.fresh();
@@ -55,30 +55,30 @@ impl P {
         (c, ts)
     }
 
-    fn continuation(&mut self, name: &str) -> (ComponentId, TerminalId) {
-        let mut comp = Component::default();
+    fn continuation(&mut self, name: &str) -> (DeviceId, TerminalId) {
+        let mut comp = Device::default();
         comp.properties.insert(KIND.into(), CONTINUATION.into());
         comp.properties.insert(NAME.into(), name.into());
         let (c, ts) = self.device_with(1, comp);
         (c, ts[0])
     }
 
-    fn wire(&mut self, a: Option<TerminalId>, b: Option<TerminalId>) -> ConductorId {
+    fn wire(&mut self, a: Option<TerminalId>, b: Option<TerminalId>) -> WireId {
         self.wire_props(a, b, &[])
     }
 
-    fn wire_props(&mut self, a: Option<TerminalId>, b: Option<TerminalId>, props: &[(&str, &str)]) -> ConductorId {
-        let w: ConductorId = self.ids.fresh();
-        let mut conductor = Conductor { ends: [a, b], ..Conductor::default() };
+    fn wire_props(&mut self, a: Option<TerminalId>, b: Option<TerminalId>, props: &[(&str, &str)]) -> WireId {
+        let w: WireId = self.ids.fresh();
+        let mut conductor = Wire { ends: [a, b], ..Wire::default() };
         for (k, v) in props {
-            conductor.properties.insert((*k).into(), (*v).into());
+            put(&mut conductor, k, Some(v));
         }
-        self.commit(vec![Op::CreateConductor { id: w, conductor }]);
+        self.commit(vec![Op::CreateWire { id: w, conductor }]);
         w
     }
 
-    fn delete(&mut self, w: ConductorId) {
-        let c = self.doc().conductors.get(&w).unwrap().clone();
+    fn delete(&mut self, w: WireId) {
+        let c = self.doc().wires.get(&w).unwrap().clone();
         let mut ops = Vec::new();
         for end in End::BOTH {
             if let Some(t) = c.end(end) {
@@ -87,30 +87,32 @@ impl P {
         }
         let mut bare = c.clone();
         bare.ends = [None, None];
-        ops.push(Op::DeleteConductor { id: w, conductor: bare });
+        ops.push(Op::DeleteWire { id: w, conductor: bare });
         self.commit(ops);
     }
 
-    fn number(&self, w: ConductorId) -> Option<String> {
-        self.doc().conductors.get(&w)?.properties.get(wiring::WIRE_NUMBER_KEY).cloned()
+    fn number(&self, w: WireId) -> Option<String> {
+        self.doc().wires.get(&w)?.number_text().map(str::to_string)
     }
 
-    fn fixed(&self, w: ConductorId) -> bool {
-        self.doc().conductors.get(&w).is_some_and(|c| c.properties.contains_key("wire_number_fixed"))
+    fn fixed(&self, w: WireId) -> bool {
+        self.doc().wires.get(&w).is_some_and(Wire::number_fixed)
     }
 
-    fn same_net(&self, a: ConductorId, b: ConductorId) -> bool {
+    fn same_net(&self, a: WireId, b: WireId) -> bool {
         let c = self.doc().connectivity();
         c.net_of_conductor(a).is_some() && c.net_of_conductor(a) == c.net_of_conductor(b)
     }
 
-    fn set(&mut self, w: ConductorId, key: &str, value: Option<&str>) {
-        let before = self.doc().conductors.get(&w).unwrap().properties.get(key).cloned();
-        self.commit(vec![Op::SetProperty { object: ObjectRef::Conductor(w), key: key.into(), before, after: value.map(Into::into) }]);
+    fn set(&mut self, w: WireId, key: &str, value: Option<&str>) {
+        let before = self.doc().wires.get(&w).unwrap().clone();
+        let mut after = before.clone();
+        put(&mut after, key, value);
+        self.commit(vec![Op::ModifyWire { id: w, before, after }]);
     }
 
     /// Fix `value` on the whole net of `w`, as `wirenumber` does.
-    fn fix(&mut self, w: ConductorId, value: &str) {
+    fn fix(&mut self, w: WireId, value: &str) {
         let doc = self.doc();
         let id = doc.connectivity().net_of_conductor(w).unwrap();
         let ops = wiring::write_ops(doc, doc.connectivity().net(id).unwrap(), value, true);
@@ -136,7 +138,7 @@ fn nets_join_through_attachments_continuations_and_bridges_only() {
     let c = p.wire(None, None);
     assert!(!p.same_net(a, c));
     // With a junction: one net.
-    let mut j = Component::default();
+    let mut j = Device::default();
     j.properties.insert(KIND.into(), "junction".into());
     let (_, jt) = p.device_with(1, j);
     let d = p.wire(Some(jt[0]), Some(k[1]));
@@ -167,7 +169,7 @@ fn nets_join_through_attachments_continuations_and_bridges_only() {
         ..Default::default()
     };
     p.commit(vec![Op::EmbedDefinition { id: def, definition }]);
-    let (_, bt) = p.device_with(3, Component { definition: Some(def), ..Component::default() });
+    let (_, bt) = p.device_with(3, Device { definition: Some(def), ..Device::default() });
     let b1 = p.wire(Some(bt[0]), None);
     let b2 = p.wire(Some(bt[1]), None);
     let b3 = p.wire(Some(bt[2]), None);
@@ -303,8 +305,8 @@ fn settings_changes_never_renumber_until_renumber_wires() {
 fn renumber_unnumbered_numbers_only_nets_without_a_number() {
     let mut p = P::new();
     // A conductor created without the pass (an older project).
-    let w: ConductorId = p.ids.fresh();
-    p.ledger.commit(Author::User, "old", vec![Op::CreateConductor { id: w, conductor: Conductor::default() }]).unwrap();
+    let w: WireId = p.ids.fresh();
+    p.ledger.commit(Author::User, "old", vec![Op::CreateWire { id: w, conductor: Wire::default() }]).unwrap();
     assert_eq!(p.number(w), None);
     assert_eq!(wiring::unnumbered_nets(p.doc()), 1);
     let numbered = p.wire(None, None);
@@ -326,7 +328,7 @@ fn undo_restores_numbers_exactly_and_the_pass_is_one_transaction_with_the_edit()
     assert_eq!(p.ledger.head(), head + 1, "the wire and its number are one transaction");
     assert_eq!(p.number(b).as_deref(), Some("02"));
     p.ledger.undo(Author::User).unwrap();
-    assert!(!p.doc().conductors.contains_key(&b));
+    assert!(!p.doc().wires.contains_key(&b));
     p.ledger.redo(Author::User).unwrap();
     assert_eq!(p.number(b).as_deref(), Some("02"));
     assert_eq!(p.number(a).as_deref(), Some("01"));
@@ -376,8 +378,8 @@ fn random_ops(seed: u64, steps: usize) {
     for step in 0..steps {
         let doc = p.doc();
         let terminals: Vec<TerminalId> = doc.terminals.keys().copied().collect();
-        let conductors: Vec<ConductorId> = doc.conductors.keys().copied().collect();
-        let comps: Vec<ComponentId> = doc.components.keys().copied().collect();
+        let conductors: Vec<WireId> = doc.wires.keys().copied().collect();
+        let comps: Vec<DeviceId> = doc.devices.keys().copied().collect();
         let pick_t = |i: usize| terminals.get(i % terminals.len().max(1)).copied();
         match next(10) {
             0 | 1 => {
@@ -400,7 +402,7 @@ fn random_ops(seed: u64, steps: usize) {
             6 if !conductors.is_empty() => {
                 let w = conductors[next(conductors.len())];
                 let end = if next(2) == 0 { End::A } else { End::B };
-                let before = p.doc().conductors.get(&w).unwrap().end(end);
+                let before = p.doc().wires.get(&w).unwrap().end(end);
                 let after = if next(3) == 0 { None } else { pick_t(next(101)) };
                 if before != after {
                     p.commit(vec![Op::AttachEnd { conductor: w, end, before, after }]);
@@ -409,10 +411,10 @@ fn random_ops(seed: u64, steps: usize) {
             7 if !comps.is_empty() => {
                 // Rename a continuation (or a plain device, which changes nothing).
                 let c = comps[next(comps.len())];
-                let before = p.doc().components.get(&c).unwrap().properties.get(NAME).cloned();
+                let before = p.doc().devices.get(&c).unwrap().properties.get(NAME).cloned();
                 let after = Some(names[next(names.len())].to_string());
                 if before != after {
-                    p.commit(vec![Op::SetProperty { object: ObjectRef::Component(c), key: NAME.into(), before, after }]);
+                    p.commit(vec![Op::SetProperty { object: ObjectRef::Device(c), key: NAME.into(), before, after }]);
                 }
             }
             8 if !comps.is_empty() => {
@@ -422,7 +424,7 @@ fn random_ops(seed: u64, steps: usize) {
                 let ts: Vec<(TerminalId, Terminal)> = doc.terminals_of(c).map(|(t, x)| (t, x.clone())).collect();
                 if ts.iter().all(|(t, _)| doc.ends_at(*t).is_empty()) {
                     let mut ops: Vec<Op> = ts.into_iter().map(|(id, terminal)| Op::RemoveTerminal { id, terminal }).collect();
-                    ops.push(Op::DeleteComponent { id: c, component: doc.components.get(&c).unwrap().clone() });
+                    ops.push(Op::DeleteDevice { id: c, device: doc.devices.get(&c).unwrap().clone() });
                     p.commit(ops);
                 }
             }
@@ -455,9 +457,9 @@ fn unrelated_ops_change_no_net_and_number_nothing() {
     let (c, k) = p.device(2);
     p.wire(Some(k[0]), Some(k[1]));
     let before = p.doc().connectivity().clone();
-    let tag = Op::SetProperty { object: ObjectRef::Component(c), key: "tag".into(), before: None, after: Some("-K1".into()) };
+    let tag = Op::SetProperty { object: ObjectRef::Device(c), key: "tag".into(), before: None, after: Some("-K1".into()) };
     let page: PageId = p.ids.fresh();
-    let ops = vec![tag, Op::AddPage { id: page, page: Page::new("2"), index: 1 }];
+    let ops = vec![tag, Op::AddPage { id: page, page: Page::titled("2").unwrap(), index: 1 }];
     let head = p.ledger.head();
     p.commit(ops.clone());
     let tx = &p.ledger.log()[head as usize];
@@ -472,11 +474,11 @@ fn unrelated_ops_change_no_net_and_number_nothing() {
 fn links_join_terminals_by_label_and_number_in_the_same_transaction() {
     let mut p = P::new();
     let (strip, t) = p.device(6);
-    let w: Vec<ConductorId> = t.iter().map(|x| p.wire(Some(*x), None)).collect();
+    let w: Vec<WireId> = t.iter().map(|x| p.wire(Some(*x), None)).collect();
     assert!(!p.same_net(w[0], w[3]));
     let set = |p: &mut P, key: &str, value: Option<&str>| {
-        let before = p.doc().components.get(&strip).unwrap().properties.get(key).cloned();
-        p.commit(vec![Op::SetProperty { object: ObjectRef::Component(strip), key: key.into(), before, after: value.map(Into::into) }]);
+        let before = p.doc().devices.get(&strip).unwrap().properties.get(key).cloned();
+        p.commit(vec![Op::SetProperty { object: ObjectRef::Device(strip), key: key.into(), before, after: value.map(Into::into) }]);
     };
     set(&mut p, "link.1", Some("1-4"));
     assert!(p.same_net(w[0], w[3]) && p.same_net(w[1], w[2]));
@@ -520,8 +522,8 @@ fn a_999_terminal_strip_with_long_links_builds_quickly() {
     let (strip, t) = p.device(999);
     let skip: Vec<String> = (1..=999).step_by(2).map(|n| n.to_string()).collect();
     let set = |p: &mut P, key: &str, value: &str| {
-        let before = p.doc().components.get(&strip).unwrap().properties.get(key).cloned();
-        p.commit(vec![Op::SetProperty { object: ObjectRef::Component(strip), key: key.into(), before, after: Some(value.into()) }]);
+        let before = p.doc().devices.get(&strip).unwrap().properties.get(key).cloned();
+        p.commit(vec![Op::SetProperty { object: ObjectRef::Device(strip), key: key.into(), before, after: Some(value.into()) }]);
     };
     set(&mut p, "link.1", &skip.join(", "));
     set(&mut p, "link.2", "2-998");
@@ -534,4 +536,24 @@ fn a_999_terminal_strip_with_long_links_builds_quickly() {
     assert_eq!(c.net_of(&ecad_model::Node::Terminal(t[0])), c.net_of(&ecad_model::Node::Terminal(t[1])), "joined through 3");
     eprintln!("999-terminal build: {took:?}");
     assert_eq!(p.doc().connectivity().differs_from(&built), None);
+}
+
+/// Set a wire's value by its old property name (the tests' own words): `wire_number`,
+/// `wire_number_fixed`, `potential`.
+fn put(w: &mut Wire, key: &str, value: Option<&str>) {
+    use ecad_model::text::Text;
+    use ecad_model::wire::WireNumber;
+    match key {
+        "wire_number" => {
+            let fixed = w.number_fixed();
+            w.number = value.and_then(|v| Text::new(v).ok()).map(|text| WireNumber { text, fixed });
+        }
+        "wire_number_fixed" => {
+            if let Some(n) = &mut w.number {
+                n.fixed = value.is_some();
+            }
+        }
+        "potential" => w.potential = value.and_then(|v| Text::new(v).ok()),
+        other => panic!("no wire value {other}"),
+    }
 }

@@ -55,7 +55,7 @@ fn strip_writes_by_the_agent_then_refused_with_writes_off_on_the_saved_project()
             c.exec("setprop", json!({"component": strip, "key": k, "value": v}));
             let (_, ops) = by_agent(&mut c);
             assert!(
-                matches!(&ops[..], [Op::SetProperty { object: ObjectRef::Component(_), key, after: Some(a), .. }] if key == k && a == v),
+                matches!(&ops[..], [Op::SetProperty { object: ObjectRef::Device(_), key, after: Some(a), .. }] if key == k && a == v),
                 "{k}: {ops:?}"
             );
         }

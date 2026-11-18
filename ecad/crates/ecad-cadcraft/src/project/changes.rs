@@ -65,7 +65,7 @@ impl Project {
             return None;
         }
         for c in self.changes.iter().filter(|c| c.n > n) {
-            out.components.extend(c.devices.components.iter().copied());
+            out.devices.extend(c.devices.devices.iter().copied());
             out.pages |= c.devices.pages;
             out.settings |= c.devices.settings;
         }
@@ -192,7 +192,7 @@ impl Project {
                     amended.extend(prev.ref_text_handles().chain(map.ref_text_handles()));
                     // Tag texts and terminal labels follow their symbols (brief 018).
                     amended.extend(prev.tag_text_handles().chain(map.tag_text_handles()));
-                    // Conductor labels follow their routes and nets (brief 022).
+                    // Wire labels follow their routes and nets (brief 022).
                     amended.extend(prev.label_handles().chain(map.label_handles()));
                     // Contact texts and mirror tables follow their device (brief 025).
                     amended.extend(prev.xref_handles().chain(map.xref_handles()));
@@ -481,8 +481,8 @@ impl Project {
         let extra = self.ledger.log().last().map(|t| t.ops.get(n..).unwrap_or_default()).unwrap_or_default();
         let mut out = BTreeSet::new();
         for op in extra {
-            if let Op::SetProperty { object: ecad_model::ObjectRef::Conductor(c), .. } = op {
-                out.extend(doc.representations_of(Subject::Conductor(*c)).map(|(_, r)| r.page));
+            if let Op::SetProperty { object: ecad_model::ObjectRef::Wire(c), .. } | Op::ModifyWire { id: c, .. } = op {
+                out.extend(doc.representations_of(Subject::Wire(*c)).map(|(_, r)| r.page));
             }
         }
         Some(out)
@@ -516,7 +516,7 @@ pub(super) struct Old {
 pub(super) fn pass_through(changes: &mut Changes, old: Old) {
     changes.pages.union(PageSet::from_option(old.pages));
     changes.named.extend(old.named);
-    changes.devices.components.extend(old.devices.components);
+    changes.devices.devices.extend(old.devices.devices);
     changes.devices.pages |= old.devices.pages;
     changes.devices.settings |= old.devices.settings;
     changes.props = match (changes.props.take(), old.props) {

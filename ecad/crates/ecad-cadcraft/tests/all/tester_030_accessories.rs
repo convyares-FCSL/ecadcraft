@@ -14,7 +14,7 @@ use cadcraft_engine::doc::EntityKind;
 use cadcraft_engine::geom::Vec2;
 use ecad_cadcraft::Persistence;
 use ecad_cadcraft::outputs::{Group, Outputs};
-use ecad_model::{ComponentId, Document, PageId, TerminalId};
+use ecad_model::{DeviceId, Document, PageId, TerminalId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -23,10 +23,10 @@ use crate::common::{place, reopen, tmp_dir};
 struct A {
     h: H,
     page: PageId,
-    x1: ComponentId,
+    x1: DeviceId,
     /// `-X01:1…4` at x 100, 150, 200, 250 on y 170.
     t: [TerminalId; 4],
-    coil: ComponentId,
+    coil: DeviceId,
 }
 
 /// 028's fixture T after its checks B, C and G (design 030 §12): `-X01:1…4` on the first page, a
@@ -36,8 +36,8 @@ fn fixture(seed: u64, parts: bool) -> A {
     let page = h.first_page();
     h.run("locationbox", json!({"location": "+CP1", "corners": [[20, 150], [400, 280]]})).unwrap();
     h.run("locationbox", json!({"location": "+FIELD", "corners": [[20, 20], [400, 140]]})).unwrap();
-    let k1: ComponentId = id(&place(&mut h, "coil", (100.0, 220.0)), "component");
-    let k2: ComponentId = id(&place(&mut h, "coil", (150.0, 220.0)), "component");
+    let k1: DeviceId = id(&place(&mut h, "coil", (100.0, 220.0)), "component");
+    let k2: DeviceId = id(&place(&mut h, "coil", (150.0, 220.0)), "component");
     h.run("place", json!({"symbol": "no", "at": [200, 220], "device": k1.hex()})).unwrap();
     h.run("place", json!({"symbol": "no", "at": [250, 220], "device": k2.hex()})).unwrap();
     place(&mut h, "motor3", (110.0, 50.0));
@@ -55,7 +55,7 @@ fn fixture(seed: u64, parts: bool) -> A {
     let cable: ecad_model::CableId = id(&v, "cable");
     h.run("setprop", json!({"cable": cable.hex(), "key": "type", "value": "YSLY-JZ 7G1.5"})).unwrap();
     let v = h.run("terminals", json!({"from": [90, 170], "to": [260, 170]})).unwrap();
-    let x1: ComponentId = id(&v, "strip");
+    let x1: DeviceId = id(&v, "strip");
     let t: Vec<TerminalId> = v["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
     assert_eq!(t.len(), 4, "{v}");
     h.run("bridge", json!({"from": t[2].hex(), "to": t[3].hex()})).unwrap();
@@ -79,7 +79,7 @@ fn fixture(seed: u64, parts: bool) -> A {
 }
 
 /// A second strip `-X02:1,2` on two wires of its own (x 320, 330).
-fn second_strip(h: &mut H) -> (ComponentId, Vec<TerminalId>) {
+fn second_strip(h: &mut H) -> (DeviceId, Vec<TerminalId>) {
     for x in [320.0, 330.0] {
         h.run("wire", json!({"points": pts(&[(x, 270.0), (x, 160.0)])})).unwrap();
     }
@@ -99,7 +99,7 @@ fn same_as_built(h: &mut H) {
 }
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.components, &d.terminals, &d.conductors, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.properties)
+    (&d.devices, &d.terminals, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.properties)
 }
 
 /// One write: exactly one transaction; `u` gives back the document before it and `redo` the one
@@ -120,12 +120,12 @@ fn step(h: &mut H, cmd: &str, params: Value) -> Value {
     v
 }
 
-fn props(h: &mut H, c: ComponentId) -> BTreeMap<String, String> {
-    h.doc().components[&c].properties.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+fn props(h: &mut H, c: DeviceId) -> BTreeMap<String, String> {
+    h.doc().devices[&c].properties.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
 }
 
-fn prop(h: &mut H, c: ComponentId, key: &str) -> Option<String> {
-    h.doc().components[&c].properties.get(key).cloned()
+fn prop(h: &mut H, c: DeviceId, key: &str) -> Option<String> {
+    h.doc().devices[&c].properties.get(key).cloned()
 }
 
 /// A link or accessory value without spaces, for comparing canonical forms.
@@ -133,7 +133,7 @@ fn squash(v: Option<String>) -> Option<String> {
     v.map(|s| s.chars().filter(|c| !c.is_whitespace()).collect())
 }
 
-fn plan(h: &mut H, strip: ComponentId) -> Value {
+fn plan(h: &mut H, strip: DeviceId) -> Value {
     h.run("stripplan", json!({"strip": strip.hex()})).unwrap()["strips"][0].clone()
 }
 
@@ -251,7 +251,7 @@ fn near(a: f64, b: f64) -> bool {
 }
 
 fn has_acc_or_link_key(d: &Document) -> bool {
-    d.components.values().any(|c| c.properties.keys().any(|k| k.starts_with("acc.") || k.starts_with("link.") || k.starts_with("jumper.")))
+    d.devices.values().any(|c| c.properties.keys().any(|k| k.starts_with("acc.") || k.starts_with("link.") || k.starts_with("jumper.")))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -378,11 +378,9 @@ fn e_renumber_moves_acc_and_link_keys_in_one_transaction() {
     // The strip's first symbol is of its own definition: its terminal is matched by key and its
     // `connection_points` is empty (doc.rs, brief 018); the other terminals are mapped.
     let item_of = |d: &Document, term: TerminalId| {
-        let mut reps = d.representations_of(ecad_model::Subject::Component(a.x1));
-        let mapped = d
-            .representations_of(ecad_model::Subject::Component(a.x1))
-            .find(|(_, r)| r.connection_points.contains_key(&term))
-            .map(|(_, r)| r.items[0]);
+        let mut reps = d.representations_of(ecad_model::Subject::Device(a.x1));
+        let mapped =
+            d.representations_of(ecad_model::Subject::Device(a.x1)).find(|(_, r)| r.connection_points.contains_key(&term)).map(|(_, r)| r.items[0]);
         mapped.or_else(|| reps.find(|(_, r)| r.connection_points.is_empty()).map(|(_, r)| r.items[0])).unwrap()
     };
     let (i1, i2) = (item_of(&doc, a.t[0]), item_of(&doc, a.t[1]));
@@ -520,7 +518,7 @@ fn g_update_maps_recompute_only_what_changed() {
     assert!(work(&mut a.h) <= 1);
     // Unrelated: a coil wired to no strip (028's map recomputes the strips whose rows end on a
     // device, so the fixture's coils, wired to -X01, are not unrelated): its part number, a move.
-    let free: ComponentId = id(&place(&mut a.h, "coil", (330.0, 60.0)), "component");
+    let free: DeviceId = id(&place(&mut a.h, "coil", (330.0, 60.0)), "component");
     a.h.run("setprop", json!({"component": free.hex(), "key": "part_number", "value": "K-99"})).unwrap();
     assert_eq!(work(&mut a.h), 0, "a coil's part number recomputes no strip");
     let item = a.h.symbol_item(free);

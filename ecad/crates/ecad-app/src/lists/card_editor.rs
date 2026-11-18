@@ -20,7 +20,7 @@ use std::collections::BTreeMap;
 
 use ecad_cadcraft::plc::overview;
 use ecad_cadcraft::plc::rack::{CardType, IO_TYPES, RackRef};
-use ecad_model::{ComponentId, PageId};
+use ecad_model::{DeviceId, PageId};
 use eframe::egui::{self, Rect, vec2};
 use serde_json::json;
 
@@ -45,7 +45,7 @@ pub const PAGE_NOTE: &str = "A card can be drawn across several pages. Each chan
 /// What the editor shows of one card, read from the project.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Info {
-    pub card: Option<ComponentId>,
+    pub card: Option<DeviceId>,
     pub tag: String,
     pub ty: Option<CardType>,
     /// `Output card, 16 relay · rack 1, slot 2`.
@@ -73,7 +73,7 @@ pub struct Info {
 /// The editor's state: field buffers by key (`(model value, text)`), the accessory form, a refusal.
 #[derive(Debug, Clone, Default)]
 pub struct State {
-    card: Option<ComponentId>,
+    card: Option<DeviceId>,
     fields: BTreeMap<&'static str, (String, String)>,
     /// The `+ Accessory` form: description, part number, maker.
     accessory: Option<[String; 3]>,
@@ -111,14 +111,14 @@ pub fn info(t: &mut App, i: usize) -> Option<Info> {
         let doc = p.ledger.document();
         let plc = &p.outputs.as_ref()?.plc;
         let card = plc.cards.get(&c)?;
-        let comp = doc.components.get(&c)?;
+        let comp = doc.devices.get(&c)?;
         let own = |k: &str| comp.properties.get(k).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
         let page = overview::pages_of(doc, c).first().copied();
         // Brief 052 (design 052 §9.1): function and location are entry keys stored on the device,
         // shown as their codes; nothing is inherited. The hint says where the stored code comes
         // from: the box, page or project whose code it is where one of the card's symbols is drawn
         // (a box first), else `set here`.
-        let symbols: Vec<_> = doc.representations_of(ecad_model::Subject::Component(c)).map(|(_, r)| r).take(MAX_SYMBOLS).collect();
+        let symbols: Vec<_> = doc.representations_of(ecad_model::Subject::Device(c)).map(|(_, r)| r).take(MAX_SYMBOLS).collect();
         let mut boxes = ecad_cadcraft::locations::BoxCache::default();
         let mut aspect = |a: ecad_cadcraft::designations::Aspect, l: ecad_cadcraft::locations::Located| -> (String, &'static str) {
             let mut hint = "set here";
@@ -175,7 +175,7 @@ pub fn info(t: &mut App, i: usize) -> Option<Info> {
             pinned: plc.blocks.get(&c).is_some_and(|b| b.pinned),
             rule,
             page: page
-                .map(|pg| (pg, ecad_cadcraft::references::page_number(doc, pg), doc.pages.get(&pg).map(|x| x.title.clone()).unwrap_or_default())),
+                .map(|pg| (pg, ecad_cadcraft::references::page_number(doc, pg), doc.pages.get(&pg).map(|x| x.title.to_string()).unwrap_or_default())),
             drawn: (drawn, used.len()),
             maker: own("maker").unwrap_or_default(),
             part_number: own("part_number").unwrap_or_default(),
@@ -235,7 +235,7 @@ pub fn start_byte(text: &str) -> Option<Option<u32>> {
 }
 
 /// What a field's commit runs, or `None` when nothing changed.
-pub fn field_line(c: ComponentId, key: &str, value: &str) -> Option<String> {
+pub fn field_line(c: DeviceId, key: &str, value: &str) -> Option<String> {
     let v = value.trim();
     let setprop = |k: &str| {
         format!("setprop {}", json!({"component": c.hex(), "key": k, "value": if v.is_empty() { serde_json::Value::Null } else { json!(v) }}))
@@ -253,7 +253,7 @@ pub fn field_line(c: ComponentId, key: &str, value: &str) -> Option<String> {
 /// it; a commit (Enter or leaving it) with a changed value asks for its command.
 #[allow(clippy::too_many_arguments)]
 fn field(
-    ui: &mut egui::Ui, st: &mut State, lines: &mut Vec<(&'static str, String)>, c: ComponentId, writable: bool, key: &'static str, label: &str,
+    ui: &mut egui::Ui, st: &mut State, lines: &mut Vec<(&'static str, String)>, c: DeviceId, writable: bool, key: &'static str, label: &str,
     placeholder: &str, hint: &str,
 ) {
     let invalid = st.error.as_ref().is_some_and(|(k, _)| *k == key);

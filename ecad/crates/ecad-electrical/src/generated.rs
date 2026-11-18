@@ -1,7 +1,7 @@
 //! Generated pages (brief 024, design 024 §5): a page whose content ECAD draws from the project
 //! (cover, contents, revision list, BOM by location; brief 028 adds the terminal plan and the
 //! cable schedule). It is a page like any other for numbers,
-//! folders and the book; its kind is the page property [`KEY`] (design 024 FP1), set only when it
+//! folders and the book; its kind is [`ecad_model::Page::kind`] (design 072 §5.1), set only when it
 //! is made. Nothing drawn on it is stored.
 //!
 //! # Semantics
@@ -31,10 +31,6 @@ use ecad_model::{Document, ObjectRef, Op, PageId, Pt};
 use crate::outputs::Group;
 use crate::outputs::kept::Outputs;
 
-/// The page property that names a generated page's kind.
-pub const KEY: &str = "generated";
-/// Brief 028 (FP3): the strip a `terminals` page shows (a component ID in hex); absent: every strip.
-pub const STRIP_KEY: &str = "strip";
 /// The reserved layer of generated content (`ecad.generated`), locked.
 pub const LAYER: &str = "ECAD-GENERATED";
 /// Gap between the sheets of one page, in millimetres.
@@ -74,89 +70,22 @@ pub const MISSING: &str = "?";
 /// Refusal of `pageprops` changing the kind.
 pub const KIND_FIXED: &str = "A page's kind is set when it is made; add a new page instead.";
 
-/// What a generated page shows.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum GenKind {
-    Cover,
-    Contents,
-    Revisions,
-    BomLocation,
-    /// Brief 028: the terminal plan of every strip, or of the page's `strip`.
-    Terminals,
-    /// Brief 028: the cable schedule.
-    Cables,
-    /// Brief 051 (design 051 §4.2, FP2): the rack overview, before the I/O list.
-    PlcRack,
-    /// Brief 045 (design 045 §8.2, FP5): the I/O list.
-    IoList,
-}
-
-impl GenKind {
-    pub const ALL: [GenKind; 8] = [
-        GenKind::Cover,
-        GenKind::Contents,
-        GenKind::Revisions,
-        GenKind::BomLocation,
-        GenKind::Terminals,
-        GenKind::Cables,
-        GenKind::PlcRack,
-        GenKind::IoList,
-    ];
-
-    /// Whether its content comes from the report models (built for it on first show).
-    pub fn needs_outputs(self) -> bool {
-        matches!(self, GenKind::BomLocation | GenKind::Terminals | GenKind::Cables | GenKind::PlcRack | GenKind::IoList)
-    }
-
-    /// The stored value.
-    pub fn value(self) -> &'static str {
-        match self {
-            GenKind::Cover => "cover",
-            GenKind::Contents => "contents",
-            GenKind::Revisions => "revisions",
-            GenKind::BomLocation => "bom-location",
-            GenKind::Terminals => "terminals",
-            GenKind::Cables => "cables",
-            GenKind::PlcRack => "plcrack",
-            GenKind::IoList => "iolist",
-        }
-    }
-
-    /// The kind a stored value names.
-    pub fn parse(t: &str) -> Option<GenKind> {
-        GenKind::ALL.into_iter().find(|k| k.value() == t.trim())
-    }
-
-    /// The default title.
-    pub fn title(self) -> &'static str {
-        match self {
-            GenKind::Cover => "Cover",
-            GenKind::Contents => "Contents",
-            // Brief 054 (design 054 §7): a new revisions page is the Revision history.
-            GenKind::Revisions => "Revision history",
-            GenKind::BomLocation => "BOM by location",
-            GenKind::Terminals => "Terminal plan",
-            GenKind::Cables => "Cable schedule",
-            GenKind::PlcRack => "PLC racks",
-            GenKind::IoList => "I/O list",
-        }
-    }
-}
+pub use ecad_model::GenKind;
 
 /// The kind of `page`, if it is generated.
 pub fn kind_of(doc: &Document, page: PageId) -> Option<GenKind> {
-    doc.pages.get(&page).and_then(|p| p.properties.get(KEY)).and_then(|v| GenKind::parse(v))
+    doc.pages.get(&page).and_then(|p| p.kind.generated_kind())
 }
 
 /// Whether the project has a page drawn from the report models (BOM, terminal plan, cable
 /// schedule): its sheet count needs them.
 pub fn has_bom_page(doc: &Document) -> bool {
-    doc.pages.values().any(|p| p.properties.get(KEY).and_then(|v| GenKind::parse(v)).is_some_and(GenKind::needs_outputs))
+    doc.pages.values().any(|p| p.kind.generated_kind().is_some_and(GenKind::needs_outputs))
 }
 
 /// The strip a `terminals` page shows, if it names one.
-pub fn strip_of(doc: &Document, page: PageId) -> Option<ecad_model::ComponentId> {
-    doc.pages.get(&page)?.properties.get(STRIP_KEY).and_then(|v| ecad_model::ComponentId::parse(v.trim()))
+pub fn strip_of(doc: &Document, page: PageId) -> Option<ecad_model::DeviceId> {
+    doc.pages.get(&page)?.kind.strip()
 }
 
 /// The strips a `terminals` page shows, in tag order.
@@ -360,8 +289,7 @@ pub fn continuation_checks(doc: &Document, outputs: Option<&Outputs>) -> Vec<cra
 
 /// How many sheets the whole book has (Total).
 pub fn book_sheets_of(doc: &Document, outputs: Option<&Outputs>) -> usize {
-    let extra: usize =
-        doc.pages.iter().filter(|(_, p)| p.properties.contains_key(KEY)).map(|(id, _)| sheets_of(doc, *id, outputs).saturating_sub(1)).sum();
+    let extra: usize = doc.pages.iter().filter(|(_, p)| !p.kind.is_schematic()).map(|(id, _)| sheets_of(doc, *id, outputs).saturating_sub(1)).sum();
     doc.page_order.len() + extra
 }
 
@@ -373,10 +301,14 @@ pub fn touches(ops: &[Op], kind: GenKind) -> bool {
             GenKind::Contents,
             Op::AddPage { .. } | Op::RemovePage { .. } | Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. },
         ) => true,
-        (GenKind::Contents, Op::SetProperty { object: ObjectRef::Page(_), key, .. }) => key == book::NUMBER_KEY || key == book::FOLDER_KEY,
+        (GenKind::Contents, Op::ModifyPage { before, after, .. }) => {
+            before.title != after.title || before.number != after.number || before.folder != after.folder
+        }
         // Brief 054b: the cover's own map is `crate::front::touches`, which needs the document.
         (GenKind::Revisions, Op::SetProperty { object: ObjectRef::Project, .. }) => true,
         (GenKind::Revisions, Op::NameVersion { .. } | Op::UnnameVersion { .. }) => true,
+        // Design 072 §5.3: the revision rows and the project's info are the project's own data.
+        (GenKind::Revisions, Op::ModifyProject { before, after }) => before.revisions != after.revisions || before.info != after.info,
         _ => false,
     })
 }
@@ -388,7 +320,7 @@ pub fn touches(ops: &[Op], kind: GenKind) -> bool {
 pub fn terminals_rewritten(doc: &Document, page: PageId, o: &Outputs) -> bool {
     let sp = &o.strip_pages;
     let style = &crate::defaults::strip_pages::STYLE;
-    let own_style = doc.pages.get(&page).and_then(|p| p.properties.get(style.key)).is_some_and(|v| style.parse(v).is_some());
+    let own_style = doc.pages.get(&page).and_then(|p| p.display.get(style.key)).is_some_and(|v| style.parse(v).is_some());
     if sp.style_changed && !own_style {
         return true;
     }
@@ -500,7 +432,7 @@ fn table_static(doc: &Document, kind: GenKind, outputs: Option<&Outputs>) -> (Ve
                 .iter()
                 .map(|p| {
                     let folder = book::folder_of(doc, *p).filter(|f| doc.folders.contains_key(f));
-                    let title = doc.pages.get(p).map(|x| x.title.clone()).unwrap_or_default();
+                    let title = doc.pages.get(p).map(|x| x.title.to_string()).unwrap_or_default();
                     row(vec![number_range(doc, &b, *p, outputs), title, crate::revisions::folder_path(doc, folder)])
                 })
                 .collect();
