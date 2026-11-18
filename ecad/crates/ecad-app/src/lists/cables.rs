@@ -701,7 +701,6 @@ fn cable_size(doc: &ecad_model::Document, k: CableId) -> Option<String> {
 fn beyond(doc: &ecad_model::Document, k: CableId, at: &str) -> String {
     let Some((tag, label)) = at.trim().rsplit_once(':') else { return String::new() };
     let members: Vec<ecad_model::WireId> = doc.cables.get(&k).map(|c| c.members.iter().filter_map(|m| m.wire()).collect()).unwrap_or_default();
-    let conn = doc.connectivity();
     for c in doc.components_tagged(tag) {
         for (t, x) in doc.terminals_of(c) {
             if x.label.as_deref() != Some(label) {
@@ -711,7 +710,7 @@ fn beyond(doc: &ecad_model::Document, k: CableId, at: &str) -> String {
                 if members.contains(&w) {
                     continue;
                 }
-                let n = conn.net_of_conductor(w).and_then(|n| conn.net(n)).and_then(|n| ecad_model::wiring::net_number(doc, n)).unwrap_or_default();
+                let n = ecad_model::wiring::wire_number(doc, w).unwrap_or_default();
                 // The wire on the far side, also when it shares the core's number (one point,
                 // one net).
                 if !n.is_empty() {

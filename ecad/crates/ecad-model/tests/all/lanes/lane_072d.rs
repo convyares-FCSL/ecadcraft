@@ -484,3 +484,71 @@ fn a_point_drawn_into_a_wires_line_splits_the_wire_and_a_new_net_starts_where_it
     l.commit(Author::User, "terminal", vec![Op::ModifyRoute { id: r1, before: ba, after: bt }, Op::AddRoute { id: r2, route: ta }]).unwrap();
     assert_eq!(wires(&l), want(vec![(w.net, 1, [b, t]), (w.net, 2, [t, a])]));
 }
+
+/// The wire numbers of `l`'s wires, in net order.
+fn numbers(l: &Ledger) -> Vec<Option<String>> {
+    let mut v: Vec<_> = l.document().wires.values().map(|w| (w.net, w.net_order, w.number_text().map(str::to_string))).collect();
+    v.sort();
+    v.into_iter().map(|x| x.2).collect()
+}
+
+/// One edit as the app commits it: with the numbering pass ([`ecad_model::wiring::assign`]).
+fn edit(l: &mut Ledger, label: &str, ops: Vec<Op>) {
+    l.commit_extended(Author::User, label, ops, None, ecad_model::wiring::assign).unwrap();
+}
+
+/// `l`'s project settings with `wiring.number_by` set to `by`, as one edit.
+fn number_by(l: &mut Ledger, by: ecad_model::wiring::NumberBy) {
+    let before = l.document().settings.clone();
+    let mut after = before.clone();
+    after.wiring.number_by = by;
+    edit(l, "number by", vec![Op::SetProjectSettings { before, after }]);
+}
+
+#[test]
+fn number_by_switches_every_shown_number_between_net_and_conductor_in_one_edit() {
+    use ecad_model::RouteEnd;
+    use ecad_model::wiring::{self, NumberBy};
+    let mut ids = IdAllocator::seeded(43);
+    let mut l = Ledger::new(43);
+    let (p, a, b) = page_with_points(&mut l, &mut ids);
+    let (_, c, _) = page_with_points(&mut l, &mut ids);
+    let (r1, r2): (ecad_model::RouteId, ecad_model::RouteId) = (ids.fresh(), ids.fresh());
+    let ab = route(p, &[(0.0, 0.0), (10.0, 0.0)], RouteEnd::Point(a), RouteEnd::Point(b));
+    let bc = route(p, &[(10.0, 0.0), (20.0, 0.0)], RouteEnd::Point(b), RouteEnd::Point(c));
+    edit(&mut l, "a-b-c", vec![Op::AddRoute { id: r1, route: ab }, Op::AddRoute { id: r2, route: bc }]);
+    // Per net (the default): both wires of the net show the net's one number.
+    let per_net = numbers(&l);
+    assert_eq!(per_net.len(), 2);
+    assert!(per_net[0].is_some() && per_net[0] == per_net[1], "{per_net:?}");
+    let first = per_net[0].clone();
+    // Per conductor: one edit gives each wire its own; the first in net order keeps the old one.
+    number_by(&mut l, NumberBy::Conductor);
+    let per_wire = numbers(&l);
+    assert_eq!(per_wire[0], first);
+    assert!(per_wire[1].is_some() && per_wire[1] != per_wire[0], "{per_wire:?}");
+    let tx = l.transaction(l.head()).unwrap();
+    assert!(tx.ops.iter().any(|o| matches!(o, Op::ModifyWire { .. })), "the numbers change in the settings edit itself");
+    let doc = l.document();
+    for (id, w) in &doc.wires {
+        assert_eq!(wiring::wire_number(doc, *id).as_deref(), w.number_text(), "a wire shows its own number");
+    }
+    // Undo puts the settings and the numbers back together.
+    l.undo(Author::User).unwrap();
+    assert_eq!(numbers(&l), per_net);
+    l.redo(Author::User).unwrap();
+    assert_eq!(numbers(&l), per_wire);
+    // Renumbering per conductor keeps one number per wire.
+    let ops = wiring::renumber(l.document(), true);
+    if !ops.is_empty() {
+        edit(&mut l, "renumber", ops);
+    }
+    let renumbered = numbers(&l);
+    assert!(renumbered.iter().all(Option::is_some) && renumbered[0] != renumbered[1], "{renumbered:?}");
+    // Back to per net: every wire shows the net's number again, the first wire's.
+    number_by(&mut l, NumberBy::Net);
+    let back = numbers(&l);
+    assert_eq!(back[0], renumbered[0]);
+    assert_eq!(back[0], back[1]);
+    l.document().check_index().unwrap();
+}

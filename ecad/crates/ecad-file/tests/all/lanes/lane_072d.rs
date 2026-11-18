@@ -53,3 +53,35 @@ fn core_positions_come_back_from_the_snapshot_and_the_log() {
         assert_eq!(opened.ledger.document().cables, f.ledger.document().cables, "{name}");
     }
 }
+
+#[test]
+fn number_by_is_stored_as_a_word_and_comes_back_from_the_snapshot_and_the_log() {
+    // Design 072 F40: `wiring.number_by` is `net` (left out of the file) or `conductor`.
+    use ecad_file::records::WiringSettings as Rec;
+    use ecad_model::wiring::NumberBy;
+    let mut w = ecad_model::wiring::WiringSettings::default();
+    let net = serde_json::to_value(Rec::from(&w)).unwrap();
+    assert!(net.get("number_by").is_none(), "the default is left out: {net}");
+    w.number_by = NumberBy::Conductor;
+    let mut v = serde_json::to_value(Rec::from(&w)).unwrap();
+    assert_eq!(v["number_by"], "conductor");
+    let back: ecad_model::wiring::WiringSettings = serde_json::from_value::<Rec>(v.clone()).unwrap().into();
+    assert_eq!(back.number_by, NumberBy::Conductor);
+    v["number_by"] = "wire".into();
+    let err = serde_json::from_value::<Rec>(v).unwrap_err().to_string();
+    assert!(err.contains("`wire`") && err.contains("conductor"), "an unknown word is a read error naming the words: {err}");
+
+    let dir = TempDir::new("072d-number-by");
+    let mut f = fixture();
+    let before = f.ledger.document().settings.clone();
+    let mut after = before.clone();
+    after.wiring.number_by = NumberBy::Conductor;
+    f.ledger.commit(Author::User, "number by", vec![Op::SetProjectSettings { before, after }]).unwrap();
+    let (lo, hi) = ecad_file::schema::SNAPSHOT_EVERY_RANGE;
+    for (name, every) in [("snap.ecad", lo), ("log.ecad", hi)] {
+        let p = dir.path(name);
+        ProjectV2::create(Store::create(&p).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, every).unwrap();
+        let opened = ProjectV2::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
+        assert_eq!(opened.ledger.document().settings.wiring.number_by, NumberBy::Conductor, "{name}");
+    }
+}

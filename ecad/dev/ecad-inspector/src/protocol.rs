@@ -481,6 +481,8 @@ fn project(d: &Document) -> Value {
         "function": d.project.function.map(|f| function_code(d, f)),
         "revisions": revisions,
         "reference_style": format!("{:?}", d.settings.reference_style()),
+        // Design 072 F40 (A15): what one wire number counts.
+        "number_by": ecad_model::Word::word(d.settings.wiring.number_by),
         "versions": d.versions,
         "counts": {
             "pages": d.pages.len(),

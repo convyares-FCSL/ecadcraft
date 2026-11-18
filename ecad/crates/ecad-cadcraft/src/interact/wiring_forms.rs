@@ -17,9 +17,7 @@ fn wire_under(s: &Session, p: Vec2) -> R<(WireId, Pt, String)> {
         let doc = proj.ledger.document();
         let on = crate::wires::route_at(doc, page, pt(p), tol, None).ok_or("Nothing there. Click a wire.")?;
         let w = crate::wires::wire_of_route(doc, on.route).ok_or("That line joins no connection points yet. Click a wire.")?;
-        let conn = doc.connectivity();
-        let number =
-            conn.net_of_conductor(w).and_then(|id| conn.net(id)).and_then(|n| ecad_model::wiring::net_number(doc, n)).unwrap_or_else(|| "?".into());
+        let number = ecad_model::wiring::wire_number(doc, w).unwrap_or_else(|| "?".into());
         Ok((w, on.at, number))
     })
     .map_err(other)

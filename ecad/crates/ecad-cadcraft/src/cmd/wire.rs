@@ -72,6 +72,7 @@ fn settings_json(doc: &Document) -> Value {
         "label_rule": wires::label_rule_word(doc),
         "label_min_length": wires::label_min_length(doc),
         "digits": w.digits(),
+        "number_by": ecad_model::Word::word(w.number_by),
         "unclassified_prefix": w.unclassified_prefix,
         "potentials": w.potentials.iter().map(|p| json!({
             "name": p.name, "prefix": p.prefix, "numbered": p.numbered,
@@ -340,7 +341,7 @@ struct PotentialRowParam {
 }
 
 /// `wiresettings {scheme?, digits?, unclassified_prefix?, potentials?, colour_style?,
-/// label_height?, label_rule?, label_min_length?}`: no parameters reads.
+/// label_height?, label_rule?, label_min_length?, number_by?}`: no parameters reads.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct WiresettingsParams {
@@ -368,6 +369,10 @@ pub(crate) struct WiresettingsParams {
     /// The shortest labelled wire in mm, 0 to 100.
     #[serde(default)]
     label_min_length: Option<f64>,
+    /// What one wire number counts: "net" (every wire of a net shows the net's number) or
+    /// "conductor" (every wire its own). Switching renumbers every net in the same edit.
+    #[serde(default)]
+    number_by: Option<String>,
 }
 
 impl Command for WiresettingsParams {
@@ -389,6 +394,7 @@ impl Command for WiresettingsParams {
             label_height: self.label_height,
             label_rule: self.label_rule,
             label_min_length: self.label_min_length,
+            number_by: self.number_by,
             unclassified_prefix: self.unclassified_prefix,
             potentials: rows,
         };

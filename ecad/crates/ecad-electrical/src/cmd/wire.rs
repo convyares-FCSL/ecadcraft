@@ -454,10 +454,10 @@ pub fn potential(doc: &Document, c: WireId, value: Option<&str>) -> Result<(Vec<
     Ok((ops, net.wires.len()))
 }
 
-/// The number of the net wire `c` belongs to.
+/// The number wire `c` shows ([`wiring::wire_number`]: its net's, or its own numbering per
+/// conductor).
 pub fn number_of(doc: &Document, c: WireId) -> Option<String> {
-    let conn = doc.connectivity();
-    conn.net_of_conductor(c).and_then(|id| conn.net(id)).and_then(|n| wiring::net_number(doc, n))
+    wiring::wire_number(doc, c)
 }
 
 /// The ops giving `conductors` category `value` (`None`: clear their own), with the potential
@@ -566,6 +566,8 @@ pub struct WireSettingsChange {
     pub label_height: Option<f64>,
     pub label_rule: Option<String>,
     pub label_min_length: Option<f64>,
+    /// Design 072 F40: what one wire number counts, `net` or `conductor`.
+    pub number_by: Option<String>,
     pub unclassified_prefix: Option<String>,
     /// The whole table.
     pub potentials: Option<Vec<PotentialRow>>,
@@ -606,6 +608,10 @@ pub fn wire_settings(before: &ProjectSettings, change: &WireSettingsChange) -> R
     if let Some(lv) = change.label_min_length {
         w.label_min_length =
             Some(Some(lv).filter(|x| wiring::LABEL_MIN_LENGTHS.contains(x)).ok_or(CmdError::input("Shortest labelled wire is 0 to 100 mm."))?);
+    }
+    if let Some(b) = &change.number_by {
+        w.number_by = <wiring::NumberBy as ecad_model::Word>::parse(b)
+            .ok_or(CmdError::input("`number_by` must be \"net\" (one number per net) or \"conductor\" (one number per wire)"))?;
     }
     if let Some(u) = &change.unclassified_prefix {
         w.unclassified_prefix = wiring::valid_text("prefix", Some(u)).map_err(CmdError::refused)?.unwrap_or_default();

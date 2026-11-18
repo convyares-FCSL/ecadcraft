@@ -519,6 +519,9 @@ pub struct WiringSettings {
     /// Brief 032 (FP-W1); left out at its default, like its neighbours.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label_min_length: Option<f64>,
+    /// Design 072 F40: what one wire number counts, `net` or `conductor`; left out at `net`.
+    #[serde(default, skip_serializing_if = "m::wiring::NumberBy::is_net")]
+    pub number_by: m::wiring::NumberBy,
 }
 
 impl Default for WiringSettings {
@@ -555,6 +558,7 @@ impl From<&m::wiring::WiringSettings> for WiringSettings {
             label_height: w.label_height,
             label_rule: w.label_rule.clone(),
             label_min_length: w.label_min_length,
+            number_by: w.number_by,
         }
     }
 }
@@ -614,6 +618,7 @@ impl From<WiringSettings> for m::wiring::WiringSettings {
             label_height: w.label_height,
             label_rule: w.label_rule,
             label_min_length: w.label_min_length,
+            number_by: w.number_by,
         }
     }
 }

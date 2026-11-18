@@ -300,8 +300,7 @@ fn reference(doc: &Document, map: &crate::project::HandleMap, page: PageId, mut 
 
 /// A wire as a person names it: `wire 01` (its net's number), else its tag or short ID.
 pub fn wire_words(doc: &Document, w: WireId) -> String {
-    let conn = doc.connectivity();
-    match conn.net_of_conductor(w).and_then(|n| conn.net(n)).and_then(|n| ecad_model::wiring::net_number(doc, n)) {
+    match ecad_model::wiring::wire_number(doc, w) {
         Some(n) => format!("wire {n}"),
         None => crate::slash::wire_name(doc, w),
     }

@@ -140,3 +140,47 @@ fn cableslash_across_a_loose_line_puts_the_core_on_the_line() {
     assert_eq!(m, ecad_mcp::policy::WRITES_OFF);
     assert_eq!(r.log(), before, "nothing recorded with writes off");
 }
+
+/// Brief 011's contract for design 072 F40: `wiresettings {number_by}` through `execute` records
+/// one transaction by the agent holding the settings change and the renumbered wires; each wire
+/// then shows its own number; a word it does not know is refused; with writes off it is refused.
+#[test]
+fn number_by_through_mcp_renumbers_in_the_settings_edit_as_the_agent() {
+    let mut c = Client::new(EcadMcp::in_memory("lane072d-number-by", 722, Options { write: true, agent: None }).unwrap());
+    let _ = c.points_at(&[(0.0, 0.0), (30.0, 0.0), (60.0, 0.0)]);
+    c.exec("wire", json!({"points": [[0, 0], [30, 0]]}));
+    c.exec("wire", json!({"points": [[30, 0], [60, 0]]}));
+    let numbers = |c: &mut Client| -> Vec<Option<String>> {
+        let d = c.doc();
+        let mut v: Vec<_> = d.wires.values().map(|w| (w.net, w.net_order, w.number_text().map(str::to_string))).collect();
+        v.sort();
+        v.into_iter().map(|x| x.2).collect()
+    };
+    let per_net = numbers(&mut c);
+    assert_eq!(per_net.len(), 2);
+    assert!(per_net[0].is_some() && per_net[0] == per_net[1], "{per_net:?}");
+
+    let before = c.log().len();
+    let r = c.exec("wiresettings", json!({"number_by": "conductor"}));
+    assert_eq!(r["number_by"], json!("conductor"), "{r}");
+    let log = c.log();
+    assert_eq!(log.len(), before + 1, "one transaction");
+    let t = log.last().unwrap();
+    assert_eq!(t.author, Author::Agent(AGENT.into()));
+    assert!(t.ops.iter().any(|o| matches!(o, Op::SetProjectSettings { .. })), "{:?}", t.ops);
+    assert!(t.ops.iter().any(|o| matches!(o, Op::ModifyWire { .. })), "the numbers change in the same edit: {:?}", t.ops);
+    let per_wire = numbers(&mut c);
+    assert_eq!(per_wire[0], per_net[0], "the first wire in net order keeps the number");
+    assert!(per_wire[1].is_some() && per_wire[1] != per_wire[0], "{per_wire:?}");
+
+    let before = c.log().len();
+    let m = c.refused("execute", json!({"command": "wiresettings", "params": {"number_by": "wire"}}));
+    assert!(m.contains("number_by") && m.contains("conductor"), "{m}");
+    assert_eq!(c.log().len(), before, "a refusal records nothing");
+
+    let mut r = reader();
+    let before = r.log();
+    let m = r.refused("execute", json!({"command": "wiresettings", "params": {"number_by": "conductor"}}));
+    assert_eq!(m, ecad_mcp::policy::WRITES_OFF);
+    assert_eq!(r.log(), before, "nothing recorded with writes off");
+}

@@ -81,6 +81,24 @@ pub fn route_on_page(doc: &Document, conductor: WireId, page: PageId) -> Option<
     routes.into_iter().find_map(|r| route_drawing(doc, r, page))
 }
 
+/// Where wire `w` starts: the end of a route at its first connection point (at its second when
+/// no route reaches the first), on the earliest page in book order (design 072 §4.3: routes draw,
+/// wires run between their connection points). `None` when no route reaches either point.
+pub fn wire_start(doc: &Document, w: WireId) -> Option<(PageId, Pt)> {
+    let wire = doc.wires.get(&w)?;
+    wire.ends.iter().find_map(|t| {
+        doc.routes_at(*t)
+            .filter_map(|r| doc.routes.get(&r))
+            .filter_map(|r| {
+                let at = if r.ends[0].point() == Some(*t) { r.points.first() } else { r.points.last() }?;
+                let i = doc.page_order.iter().position(|p| *p == r.page).unwrap_or(usize::MAX);
+                Some((i, r.page, *at))
+            })
+            .min_by_key(|x| x.0)
+            .map(|(_, page, at)| (page, at))
+    })
+}
+
 /// The first item path of route `r`'s drawing on `page`.
 fn route_drawing(doc: &Document, r: crate::id::RouteId, page: PageId) -> Option<(crate::id::ItemId, Primitive)> {
     doc.representations_of(Subject::Route(r)).filter(|(_, rep)| rep.page == page).find_map(|(_, rep)| {

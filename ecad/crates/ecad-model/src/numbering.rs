@@ -363,22 +363,13 @@ impl<'a> Places<'a> {
         best.map(|(_, p, a, _)| (p, a))
     }
 
-    /// The anchor of a net: its first conductor's route start, on its first page in drawing order.
+    /// The anchor of a net (or of one wire, numbering per conductor): where its first wire in net
+    /// order starts ([`crate::derive::wire_start`]).
     fn net_anchor(&mut self, net: &NetData) -> Option<(PageId, Pt, Order)> {
-        let doc = self.doc;
-        let first = net.first_conductor()?;
-        let mut best: Option<(PageId, Pt, Order)> = None;
-        for (_, r) in doc.representations_of(Subject::Wire(first)) {
-            let Some((a, _)) = crate::derive::route_ends_on(doc, first, r.page) else { continue };
-            if !a.is_finite() {
-                continue;
-            }
-            let o = self.order(r.page, a);
-            if best.as_ref().is_none_or(|b| o.cmp(&b.2).is_lt()) {
-                best = Some((r.page, a, o));
-            }
-        }
-        best
+        let first = wiring::first_wire(self.doc, net)?;
+        let (page, at) = crate::derive::wire_start(self.doc, first)?;
+        let o = self.order(page, at);
+        Some((page, at, o))
     }
 
     /// Whether `page` lies in `folder` or one of its subfolders (bounded depth).
@@ -845,48 +836,55 @@ fn row_of(places: &mut Places<'_>, it: &Tagged, old: String, new: String, mark: 
 fn plan_wires(doc: &Document, req: &Request, places: &mut Places<'_>, pages: Option<&BTreeSet<PageId>>, rows: &mut Vec<Row>, ops: &mut Vec<Op>) {
     let conn = doc.connectivity();
     let fresh = !matches!(req.scope, Scope::Provisional);
-    let mut chosen: Vec<(NetKey, &NetData, Option<(PageId, Pt, Order)>)> = Vec::new();
-    let mut fixed_rows: Vec<(NetKey, &NetData, Option<(PageId, Pt, Order)>)> = Vec::new();
-    let mut kept: BTreeSet<NetKey> = BTreeSet::new();
+    // Each numbering group (a net, or one wire numbering per conductor: wiring::units) is a row.
+    type Unit<'a> = (NetKey, std::borrow::Cow<'a, NetData>, Option<(PageId, Pt, Order)>);
+    let mut chosen: Vec<Unit<'_>> = Vec::new();
+    let mut fixed_rows: Vec<Unit<'_>> = Vec::new();
+    let mut kept: Vec<std::borrow::Cow<'_, NetData>> = Vec::new();
     let selected: Option<BTreeSet<NetKey>> = match &req.scope {
         Scope::Selection { conductors, .. } => Some(conductors.iter().filter_map(|c| conn.net_of_conductor(*c)).collect()),
         _ => None,
     };
-    for (id, net) in conn.nets() {
-        if net.wires.is_empty() {
+    let per_wire = doc.settings.wiring.number_by == wiring::NumberBy::Conductor;
+    for (id, whole) in conn.nets() {
+        if whole.wires.is_empty() {
             continue;
         }
-        let unnumbered = net.numbers.is_empty() || net.wires.iter().any(|c| wiring::unnumbered(doc, *c));
-        let mut anchor = None;
-        let in_scope = match &req.scope {
-            Scope::All => true,
-            Scope::Selection { .. } => selected.as_ref().is_some_and(|s| s.contains(&id)),
-            Scope::Prefix(p) => {
-                let pot = wiring::net_potential(doc, net);
-                pot.name.as_deref().is_some_and(|n| n.eq_ignore_ascii_case(p.trim())) || pot.prefix.eq_ignore_ascii_case(p.trim())
+        for net in wiring::units(doc, whole) {
+            let unnumbered = net.numbers.is_empty() || net.wires.iter().any(|c| wiring::unnumbered(doc, *c));
+            let mut anchor = None;
+            let in_scope = match &req.scope {
+                Scope::All => true,
+                Scope::Selection { conductors, .. } => {
+                    selected.as_ref().is_some_and(|s| s.contains(&id)) && (!per_wire || net.wires.iter().any(|w| conductors.contains(w)))
+                }
+                Scope::Prefix(p) => {
+                    let pot = wiring::net_potential(doc, &net);
+                    pot.name.as_deref().is_some_and(|n| n.eq_ignore_ascii_case(p.trim())) || pot.prefix.eq_ignore_ascii_case(p.trim())
+                }
+                Scope::Folder(_) | Scope::Pages(_) => {
+                    anchor = places.net_anchor(&net);
+                    anchor.as_ref().is_some_and(|(pg, _, _)| pages.is_some_and(|s| s.contains(pg)))
+                }
+                Scope::Provisional => unnumbered,
+            };
+            if !in_scope {
+                kept.push(net);
+                continue;
             }
-            Scope::Folder(_) | Scope::Pages(_) => {
-                anchor = places.net_anchor(net);
-                anchor.as_ref().is_some_and(|(pg, _, _)| pages.is_some_and(|s| s.contains(pg)))
+            if anchor.is_none() {
+                anchor = places.net_anchor(&net);
             }
-            Scope::Provisional => unnumbered,
-        };
-        if !in_scope {
-            kept.insert(id);
-            continue;
-        }
-        if anchor.is_none() {
-            anchor = places.net_anchor(net);
-        }
-        if net.fixed.is_empty() {
-            chosen.push((id, net, anchor));
-        } else {
-            kept.insert(id);
-            fixed_rows.push((id, net, anchor));
+            if net.fixed.is_empty() {
+                chosen.push((id, net, anchor));
+            } else {
+                kept.push(net.clone());
+                fixed_rows.push((id, net, anchor));
+            }
         }
     }
     let key = |a: &Option<(PageId, Pt, Order)>| a.map_or(Order { none: true, ..Order::default() }, |x| x.2);
-    chosen.sort_by(|a, b| key(&a.2).cmp(&key(&b.2)).then(a.1.first_conductor().cmp(&b.1.first_conductor())));
+    chosen.sort_by(|a, b| key(&a.2).cmp(&key(&b.2)).then(wiring::first_wire(doc, &a.1).cmp(&wiring::first_wire(doc, &b.1))));
     let row = |places: &mut Places<'_>, net: &NetData, anchor: Option<(PageId, Pt, Order)>, old: String, new: String, mark: Mark| {
         let (page, point, order) = match anchor {
             Some((pg, at, o)) => (Some(pg), Some(at), o),
@@ -896,33 +894,31 @@ fn plan_wires(doc: &Document, req: &Request, places: &mut Places<'_>, pages: Opt
             (Some(pg), Some(p)) => places.text(pg, p),
             _ => String::new(),
         };
-        let object = ObjectRef::Wire(net.first_conductor().unwrap_or(WireId(0)));
+        let object = ObjectRef::Wire(wiring::first_wire(doc, net).unwrap_or(WireId(0)));
         Row { object, kind: Kind::Wires, old, new, at, page, point, mark, terminal: None, order }
     };
     for (_, net, anchor) in fixed_rows {
-        let n = wiring::net_number(doc, net).unwrap_or_else(|| "?".into());
-        rows.push(row(places, net, anchor, n.clone(), n, Mark::Fixed));
+        let n = wiring::net_number(doc, &net).unwrap_or_else(|| "?".into());
+        rows.push(row(places, &net, anchor, n.clone(), n, Mark::Fixed));
     }
     let digits = req.digits.map(usize::from);
     let mut out_rows = Vec::new();
     if fresh {
         // Taken: every number of a net not renumbered, per sequence scope.
         let mut taken: BTreeMap<String, BTreeSet<u64>> = BTreeMap::new();
-        for id in &kept {
-            if let Some(net) = conn.net(*id) {
-                for n in net.numbers.keys().chain(net.fixed.keys()) {
-                    if let Some((p, s)) = split_number(n) {
-                        taken.entry(p.to_string()).or_default().insert(s);
-                    }
+        for net in &kept {
+            for n in net.numbers.keys().chain(net.fixed.keys()) {
+                if let Some((p, s)) = split_number(n) {
+                    taken.entry(p.to_string()).or_default().insert(s);
                 }
             }
         }
         let start = req.start.unwrap_or(1);
         let mut next: BTreeMap<String, u64> = BTreeMap::new();
         for (_, net, anchor) in chosen {
-            let pot = wiring::net_potential(doc, net);
+            let pot = wiring::net_potential(doc, &net);
             let number = if pot.numbered {
-                let sc = wiring::scope_of(doc, net, &pot);
+                let sc = wiring::scope_of(doc, &net, &pot);
                 let slot = next.entry(sc.clone()).or_insert(start);
                 let mut tries = 0;
                 while taken.get(&sc).is_some_and(|s| s.contains(slot)) && tries < MAX_SKIPS {
@@ -940,26 +936,26 @@ fn plan_wires(doc: &Document, req: &Request, places: &mut Places<'_>, pages: Opt
     } else {
         let mut alloc = wiring::Allocator::default();
         for (id, net, anchor) in chosen {
-            let pot = wiring::net_potential(doc, net);
+            let pot = wiring::net_potential(doc, &net);
             let number = if !pot.numbered {
                 pot.prefix.clone()
-            } else if let Some(w) = wiring::kept_number(doc, id, net) {
+            } else if let Some(w) = wiring::kept_number(doc, id, &net) {
                 w
             } else {
-                alloc.next(doc, net, &pot)
+                alloc.next(doc, &net, &pot)
             };
             out_rows.push((net, anchor, number));
         }
     }
     for (net, anchor, number) in out_rows {
-        let old = wiring::net_number(doc, net);
-        let w = wiring::write_ops(doc, net, &number, false);
+        let old = wiring::net_number(doc, &net);
+        let w = wiring::write_ops(doc, &net, &number, false);
         let shown_old = old.clone().unwrap_or_else(|| "?".into());
         if w.is_empty() {
-            rows.push(row(places, net, anchor, shown_old.clone(), shown_old, Mark::Same));
+            rows.push(row(places, &net, anchor, shown_old.clone(), shown_old, Mark::Same));
         } else {
             ops.extend(w);
-            rows.push(row(places, net, anchor, shown_old, number, Mark::Change));
+            rows.push(row(places, &net, anchor, shown_old, number, Mark::Change));
         }
     }
 }

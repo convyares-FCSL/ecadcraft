@@ -215,11 +215,7 @@ fn dropped_numbers(
 
 /// The net number of conductor `w`, else its name.
 fn wire_words(doc: &Document, w: WireId) -> String {
-    let conn = doc.connectivity();
-    conn.net_of_conductor(w)
-        .and_then(|n| conn.net(n))
-        .and_then(|n| ecad_model::wiring::net_number(doc, n))
-        .unwrap_or_else(|| crate::slash::wire_name(doc, w))
+    ecad_model::wiring::wire_number(doc, w).unwrap_or_else(|| crate::slash::wire_name(doc, w))
 }
 
 /// The words for the wire route `r` carries ([`crate::wires::wire_of_route`]), `?` for none.

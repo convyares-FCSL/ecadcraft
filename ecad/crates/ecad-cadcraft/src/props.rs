@@ -809,7 +809,7 @@ fn wiring_rows(doc: &Document, w: WireId) -> (Vec<Row>, Vec<Row>) {
     let Some(net) = conn.net_of_conductor(w).and_then(|id| conn.net(id)) else { return (Vec::new(), Vec::new()) };
     let pot = wiring::net_potential(doc, net);
     let mut top = vec![
-        Row::rw(wiring::WIRE_NUMBER_KEY, "Wire number", wiring::net_number(doc, net).unwrap_or_else(|| "?".into())),
+        Row::rw(wiring::WIRE_NUMBER_KEY, "Wire number", wiring::wire_number(doc, w).unwrap_or_else(|| "?".into())),
         Row {
             choices: vec!["yes".into(), "no".into()],
             ..Row::rw(ecad_model::connectivity::WIRE_NUMBER_FIXED, "Fixed", if wiring::net_fixed(net) { "yes" } else { "no" }.into())

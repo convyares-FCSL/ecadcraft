@@ -855,7 +855,7 @@ impl Outputs {
             w,
             WireRow {
                 conductor: w,
-                wire_number: net.and_then(|n| ecad_model::wiring::net_number(doc, n)),
+                wire_number: ecad_model::wiring::wire_number(doc, w),
                 from,
                 to,
                 cross_section,
