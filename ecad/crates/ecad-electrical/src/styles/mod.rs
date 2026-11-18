@@ -25,9 +25,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::style::{
-    self as ms, MAX_FIELD_CHARS, MAX_FIELDS_PER_STYLE, MAX_STYLES_PER_CATALOGUE, StyleBody, StyleCatalogue, StyleLayer, StyleRecord, StyleRef,
-};
+use ecad_model::style::{self as ms, MAX_STYLES_PER_CATALOGUE, StyleBody, StyleCatalogue, StyleLayer, StyleRecord, StyleRef};
 use ecad_model::{Document, ObjectRef, Op, PageId, Properties, Subject, Word};
 
 use crate::CmdError;
@@ -165,29 +163,6 @@ pub fn record<'a>(doc: &'a Document, layer: StyleLayer, catalogue: StyleCatalogu
     Some(r)
 }
 
-/// The longest value field `key` of `catalogue` may hold: [`MAX_FIELD_CHARS`], except a rating
-/// table's rows (brief 057, FP8), which hold a CSV data set of at most
-/// [`crate::rating::dataset::MAX_BYTES`]. Guard: it keeps every stored value bounded.
-pub fn field_cap(catalogue: StyleCatalogue, key: &str) -> usize {
-    match (catalogue, key) {
-        (StyleCatalogue::RatingTable, ratingtable::ROWS) => crate::rating::dataset::MAX_BYTES,
-        _ => MAX_FIELD_CHARS,
-    }
-}
-
-/// A record's stored value of `key`, within the bounds (at most [`MAX_FIELDS_PER_STYLE`] fields,
-/// values of at most [`field_cap`] characters).
-fn stored<'a>(r: &'a StyleRecord, catalogue: StyleCatalogue, key: &str) -> Option<&'a str> {
-    let fields = r.fields()?;
-    let v = fields.get(key)?;
-    if fields.len() > MAX_FIELDS_PER_STYLE
-        && fields.keys().take_while(|k| k.as_str() < key).take(MAX_FIELDS_PER_STYLE).count() >= MAX_FIELDS_PER_STYLE
-    {
-        return None;
-    }
-    (v.chars().nth(field_cap(catalogue, key)).is_none()).then_some(v.as_str())
-}
-
 /// Whether `v` is in field kind `kind`'s range (a typed body's numbers are not checked on read).
 fn in_range(kind: Kind, v: &Value<'_>) -> bool {
     match (kind, v) {
@@ -201,9 +176,8 @@ pub fn record_text(r: &StyleRecord, key: &str) -> Option<String> {
     r.body.entry(key)
 }
 
-/// The value field `f` of record `r` sets: a typed body's field (within the field's range), or a
-/// stored text that parses.
-fn record_value<'a>(doc: &'a Document, r: &'a StyleRecord, cat: &Catalogue, f: &Field) -> Option<Value<'a>> {
+/// The value field `f` of record `r` sets: its typed body's field, within the field's range.
+fn record_value<'a>(doc: &'a Document, r: &'a StyleRecord, f: &Field) -> Option<Value<'a>> {
     match &r.body {
         StyleBody::Wire(w) => wire::get(w, f.key).filter(|v| in_range(f.kind, v)),
         StyleBody::Text(t) => text::get(t, f.key).filter(|v| in_range(f.kind, v)),
@@ -214,7 +188,7 @@ fn record_value<'a>(doc: &'a Document, r: &'a StyleRecord, cat: &Catalogue, f: &
         StyleBody::RatingTable(t) => ratingtable::get(t, f.key),
         StyleBody::Page(t) => page::get(t, f.key),
         StyleBody::Frame(t) => frame::get(t, f.key).filter(|v| in_range(f.kind, v)),
-        StyleBody::Cable(_) => stored(r, cat.catalogue, f.key).and_then(|s| defaults::parse_value_in(doc, f.kind, s)),
+        StyleBody::Cable(t) => cable::get(t, f.key).filter(|v| in_range(f.kind, v)),
     }
 }
 
@@ -237,10 +211,10 @@ pub fn field<'a>(doc: &'a Document, cat: &Catalogue, id: &StyleRef, f: &Field, o
     if let Some(value) = cat.project_field.and_then(|read| read(doc, id, f.key)).filter(|v| defaults::accepts(f.kind, v)) {
         return Resolved { value, from: Source::Project };
     }
-    if let Some(value) = record(doc, StyleLayer::Project, cat.catalogue, id).and_then(|r| record_value(doc, r, cat, f)) {
+    if let Some(value) = record(doc, StyleLayer::Project, cat.catalogue, id).and_then(|r| record_value(doc, r, f)) {
         return Resolved { value, from: Source::Project };
     }
-    if let Some(value) = record(doc, StyleLayer::Standard, cat.catalogue, id).and_then(|r| record_value(doc, r, cat, f)) {
+    if let Some(value) = record(doc, StyleLayer::Standard, cat.catalogue, id).and_then(|r| record_value(doc, r, f)) {
         return Resolved { value, from: Source::Standard };
     }
     if let Some(value) = cat.builtin(id).and_then(|b| b.value(f.key)) {
@@ -522,14 +496,6 @@ pub fn check_record(doc: &Document, cat: &Catalogue, id: &StyleRef, layer: Style
     if r.catalogue() != cat.catalogue {
         return Err(CmdError::refused(format!("A {} record is not a {}.", r.catalogue(), cat.one.to_lowercase())));
     }
-    if let Some(fields) = r.fields() {
-        if fields.len() > MAX_FIELDS_PER_STYLE {
-            return Err(CmdError::refused(format!("A style holds at most {MAX_FIELDS_PER_STYLE} fields.")));
-        }
-        if let Some((k, _)) = fields.iter().find(|(k, v)| v.chars().nth(field_cap(cat.catalogue, k)).is_some()) {
-            return Err(CmdError::refused(format!("{k} is at most {} characters.", field_cap(cat.catalogue, k))));
-        }
-    }
     // Brief 057 (design 057 §3.1): a rating's reference temperature is below the conductor's
     // maximum.
     if let Some(why) = crate::rating::check_style(cat.catalogue, r) {
@@ -570,18 +536,11 @@ pub fn with_fields(
             StyleBody::Location(l) => location::set(l, k, v.as_deref())?,
             StyleBody::RatingTable(t) => ratingtable::set(t, k, v.as_deref())?,
             StyleBody::Page(t) => page::set(t, k, v.as_deref())?,
-            StyleBody::Cable(p) => set_text(p, k, v.as_deref()),
+            StyleBody::Cable(t) => cable::set(t, k, v.as_deref())?,
             StyleBody::Frame(f) => frame::set(f, k, v.as_deref())?,
         }
     }
     Ok(r)
-}
-
-fn set_text(p: &mut Properties, k: &str, v: Option<&str>) {
-    match v {
-        Some(v) => p.insert(k.to_string(), v.to_string()),
-        None => p.remove(k),
-    };
 }
 
 /// Whether `s` is a colour a style field takes (design 050 §4.1): `none`, one IEC 60757 code

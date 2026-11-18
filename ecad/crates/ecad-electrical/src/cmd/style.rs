@@ -133,6 +133,7 @@ fn field_value(doc: &Document, f: &styles::Field, v: FieldInput) -> Result<Optio
         defaults::Value::Colour(c) => c.to_string(),
         defaults::Value::Sheet(s) => s.text(),
         defaults::Value::Margins(m) => ecad_model::sheet::margins_text(&m),
+        defaults::Value::CoreColours(c) => c.to_string(),
     }))
 }
 

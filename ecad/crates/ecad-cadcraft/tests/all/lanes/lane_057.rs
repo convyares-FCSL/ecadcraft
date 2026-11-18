@@ -220,7 +220,7 @@ fn c5_volt_drop_over_names_the_larger_size() {
     let mut f = fixture();
     let t = f.h.run("ratingtable", json!({"name": "Test (synthetic)", "csv": SYNTHETIC})).unwrap();
     f.h.run("setdefault", json!({"key": "rating.table", "level": "project", "value": t["id"]})).unwrap();
-    let ty = f.h.run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Sensor 0.75", "fields": {"cross_section": "0.75", "conductor_class": "5", "max_temperature": "70"}})).unwrap();
+    let ty = f.h.run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Sensor 0.75", "fields": {"size": "0.75", "conductor_class": "5", "max_temperature": "70"}})).unwrap();
     f.h.run(
         "rating",
         json!({"cable": f.w01.hex(), "cable_type": ty["id"], "system": "dc", "voltage": 24, "load": "0.5", "basis": "manual", "manual": "10"}),
@@ -408,12 +408,9 @@ fn padded(len: usize) -> String {
 
 #[test]
 fn fp8_rows_at_the_cap_are_kept_and_one_over_is_refused_or_ignored() {
-    use ecad_cadcraft::styles::{self, ratingtable};
+    use ecad_cadcraft::styles::ratingtable;
     use ecad_model::style::StyleRef;
     let cap = dataset::MAX_BYTES;
-    assert_eq!(styles::field_cap(ecad_model::StyleCatalogue::RatingTable, ratingtable::ROWS), cap);
-    assert_eq!(styles::field_cap(ecad_model::StyleCatalogue::RatingTable, ratingtable::SOURCE), ecad_model::style::MAX_FIELD_CHARS);
-    assert_eq!(styles::field_cap(ecad_model::StyleCatalogue::Wire, "rows"), ecad_model::style::MAX_FIELD_CHARS);
     let mut f = fixture();
     // At the cap: written, read back, used.
     let t = f.h.run("ratingtable", json!({"name": "Big (synthetic)", "csv": padded(cap)})).unwrap();

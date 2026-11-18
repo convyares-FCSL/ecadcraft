@@ -118,6 +118,8 @@ pub enum Value<'a> {
     Sheet(ecad_model::sheet::SheetSpec),
     /// A typed style field's margins (design 072 §8): a frame style's.
     Margins(ecad_model::sheet::Margins),
+    /// A typed style field's core colours (design 072 §8): a cable type's.
+    CoreColours(&'a ecad_model::style::cable::CoreColours),
 }
 
 impl Value<'_> {
@@ -134,7 +136,8 @@ impl Value<'_> {
             | Value::Colours(_)
             | Value::Colour(_)
             | Value::Sheet(_)
-            | Value::Margins(_) => None,
+            | Value::Margins(_)
+            | Value::CoreColours(_) => None,
         }
     }
 
@@ -307,6 +310,7 @@ impl Resolved<'_> {
             Value::Colour(c) => c.to_string(),
             Value::Sheet(s) => s.text(),
             Value::Margins(m) => ecad_model::sheet::margins_text(&m),
+            Value::CoreColours(c) => c.to_string(),
         }
     }
 }
@@ -361,7 +365,13 @@ pub fn accepts(kind: Kind, value: &Value<'_>) -> bool {
             // A typed style field read back (design 072 §8): its text must pass the field's rule.
             (
                 Kind::Parsed { parse, .. },
-                Value::Size(_) | Value::Colours(_) | Value::Colour(_) | Value::Sheet(_) | Value::Margins(_) | Value::Number(_),
+                Value::Size(_)
+                | Value::Colours(_)
+                | Value::Colour(_)
+                | Value::Sheet(_)
+                | Value::Margins(_)
+                | Value::CoreColours(_)
+                | Value::Number(_),
             ) => parse(&Resolved { value: *value, from: Source::Builtin }.text()),
             _ => false,
         }

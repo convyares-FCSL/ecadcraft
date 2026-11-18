@@ -84,13 +84,14 @@ zones = "no"
 checks = "no"
 
 [fields.cable]
-cross_section = ""
+size = ""
 material = "cu"
 max_temperature = 70.0
 conductor_class = "5"
 rated_current = ""
 rated_at = 30.0
 core_colours = ""
+core_scheme = ""
 part_number = ""
 maker = ""
 description = ""

@@ -107,11 +107,12 @@ pub fn check_style(catalogue: ecad_model::StyleCatalogue, r: &ecad_model::style:
     if catalogue != wire::CATALOGUE.catalogue && catalogue != ecad_model::StyleCatalogue::Cable {
         return None;
     }
-    let num = |k: &str| r.field(k).and_then(|v| v.trim().parse::<f64>().ok()).filter(|x| x.is_finite());
-    let (at, max) = match r.body.wire() {
-        Some(w) => (w.rating.rated_at.map_or(30.0, |c| c.0), w.rating.max_temperature.map_or(70.0, |c| c.0)),
-        None => (num("rated_at").unwrap_or(30.0), num("max_temperature").unwrap_or(70.0)),
+    let rating = match &r.body {
+        ecad_model::style::StyleBody::Wire(w) => &w.rating,
+        ecad_model::style::StyleBody::Cable(c) => &c.rating,
+        _ => return None,
     };
+    let (at, max) = (rating.rated_at.map_or(30.0, |c| c.0), rating.max_temperature.map_or(70.0, |c| c.0));
     (at >= max).then(|| format!("Rated at {} \u{b0}C is not below the conductor's {} \u{b0}C.", dataset::fmt_num(at), dataset::fmt_num(max)))
 }
 
@@ -608,7 +609,7 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
             let sh = sheet(doc, ecad_model::StyleCatalogue::Cable, ty.as_ref());
             let from_type = ty
                 .as_ref()
-                .and_then(|id| styles::field_of(doc, ecad_model::StyleCatalogue::Cable, id, "cross_section", None))
+                .and_then(|id| styles::field_of(doc, ecad_model::StyleCatalogue::Cable, id, "size", None))
                 .and_then(|r| parse::cross_section(&r.text()));
             let size = from_type.or_else(|| props.and_then(|p| p.get("type")).and_then(|t| crate::strips::notation_size(t)));
             (sh, size, ty.is_none())

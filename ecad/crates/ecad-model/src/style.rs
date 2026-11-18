@@ -18,6 +18,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::doc::Properties;
 use crate::id::{LibraryId, StandardId};
 
+pub mod cable;
 pub mod frame;
 pub mod location;
 pub mod page;
@@ -25,6 +26,7 @@ pub mod rating;
 pub mod text;
 pub mod wire;
 
+pub use cable::CableType;
 pub use frame::FrameStyle;
 pub use location::LocationStyle;
 pub use page::PageType;
@@ -227,46 +229,6 @@ impl StyleRecord {
             | StyleBody::Wire(_) => None,
         }
     }
-
-    /// The fields of a catalogue not typed yet (lane G works through them).
-    pub fn fields(&self) -> Option<&Properties> {
-        match &self.body {
-            StyleBody::Cable(p) => Some(p),
-            StyleBody::Frame(_)
-            | StyleBody::Location(_)
-            | StyleBody::Page(_)
-            | StyleBody::RatingTable(_)
-            | StyleBody::Text(_)
-            | StyleBody::Wire(_) => None,
-        }
-    }
-
-    /// [`StyleRecord::fields`], to change.
-    pub fn fields_mut(&mut self) -> Option<&mut Properties> {
-        match &mut self.body {
-            StyleBody::Cable(p) => Some(p),
-            StyleBody::Frame(_)
-            | StyleBody::Location(_)
-            | StyleBody::Page(_)
-            | StyleBody::RatingTable(_)
-            | StyleBody::Text(_)
-            | StyleBody::Wire(_) => None,
-        }
-    }
-
-    /// Its stored value of `key` (a catalogue not typed yet), within the bounds: at most
-    /// [`MAX_FIELDS_PER_STYLE`] fields (by key order) count, and a value longer than
-    /// [`MAX_FIELD_CHARS`] counts as absent.
-    pub fn field(&self, key: &str) -> Option<&str> {
-        let fields = self.fields()?;
-        let v = fields.get(key)?;
-        if fields.len() > MAX_FIELDS_PER_STYLE
-            && fields.keys().take_while(|k| k.as_str() < key).take(MAX_FIELDS_PER_STYLE).count() >= MAX_FIELDS_PER_STYLE
-        {
-            return None;
-        }
-        (v.chars().count() <= MAX_FIELD_CHARS).then_some(v.as_str())
-    }
 }
 
 /// A style record's typed body (design 072 §8): one variant per catalogue, so a record can only
@@ -274,7 +236,7 @@ impl StyleRecord {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum StyleBody {
-    Cable(Properties),
+    Cable(CableType),
     Frame(FrameStyle),
     Location(LocationStyle),
     Page(PageType),
@@ -288,7 +250,7 @@ impl StyleBody {
     /// A body of `catalogue` that sets nothing.
     pub fn empty(catalogue: StyleCatalogue) -> StyleBody {
         match catalogue {
-            StyleCatalogue::Cable => StyleBody::Cable(Properties::new()),
+            StyleCatalogue::Cable => StyleBody::Cable(CableType::default()),
             StyleCatalogue::Frame => StyleBody::Frame(FrameStyle::default()),
             StyleCatalogue::Location => StyleBody::Location(LocationStyle::default()),
             StyleCatalogue::Page => StyleBody::Page(PageType::default()),
@@ -314,7 +276,7 @@ impl StyleBody {
     /// The fields it sets, as `(key, stored text)`: for messages and the inspector.
     pub fn entries(&self) -> Vec<(String, String)> {
         match self {
-            StyleBody::Cable(p) => p.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+            StyleBody::Cable(c) => c.entries().into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
             StyleBody::Page(p) => p.entries().into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
             StyleBody::RatingTable(r) => r.entries().into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
             StyleBody::Location(l) => l.entries().into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
@@ -327,7 +289,7 @@ impl StyleBody {
     /// Whether it sets nothing.
     pub fn is_empty(&self) -> bool {
         match self {
-            StyleBody::Cable(p) => p.is_empty(),
+            StyleBody::Cable(c) => *c == CableType::default(),
             StyleBody::Page(p) => *p == PageType::default(),
             StyleBody::RatingTable(r) => *r == RatingTable::default(),
             StyleBody::Location(l) => *l == LocationStyle::default(),
@@ -340,6 +302,19 @@ impl StyleBody {
     /// The stored text of field `key`, if the body sets it.
     pub fn entry(&self, key: &str) -> Option<String> {
         self.entries().into_iter().find(|(k, _)| k == key).map(|(_, v)| v)
+    }
+
+    /// Its cable type, if it is one.
+    pub fn cable(&self) -> Option<&CableType> {
+        match self {
+            StyleBody::Cable(c) => Some(c),
+            StyleBody::Frame(_)
+            | StyleBody::Location(_)
+            | StyleBody::Page(_)
+            | StyleBody::RatingTable(_)
+            | StyleBody::Text(_)
+            | StyleBody::Wire(_) => None,
+        }
     }
 
     /// Its frame style, if it is one.
