@@ -12,7 +12,7 @@ use ecad_model::units::Radians;
 use std::collections::BTreeMap;
 
 use ecad_cadcraft::symbol_cmds::{self, Content, POINT_GRID_MM};
-use ecad_model::{Document, Primitive, Pt, TerminalDef, TextHAlign, TextSlot, TextVAlign};
+use ecad_model::{Document, PointKey, Primitive, Pt, TerminalDef, TextHAlign, TextSlot, TextVAlign};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -325,8 +325,11 @@ impl Draft {
     }
 
     /// The key the next point gets: the lowest number not used yet.
-    pub fn next_point_key(&self) -> String {
-        (1..).map(|n: u32| n.to_string()).find(|k| !self.shape.points.iter().any(|p| p.key == *k)).unwrap_or_default()
+    pub fn next_point_key(&self) -> PointKey {
+        (1..)
+            .map(|n: u32| PointKey::Def(n.to_string()))
+            .find(|k| !self.shape.points.iter().any(|p| p.key == *k))
+            .unwrap_or_else(|| PointKey::def("1"))
     }
 
     /// Why a point cannot go at `at` (design 048 §3.3 step 3), if it cannot; `except` is a point

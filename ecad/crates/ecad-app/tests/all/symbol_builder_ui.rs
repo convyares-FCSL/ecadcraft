@@ -151,7 +151,10 @@ fn a_drawn_symbol_saves_as_version_1_and_the_browser_selects_it() {
     {
         let d = &h.state().library.builder.as_ref().unwrap().draft;
         assert_eq!(d.shape.graphics.len(), 3, "a box and two leads");
-        assert_eq!(d.shape.points.iter().map(|p| (p.key.as_str(), p.label.as_deref())).collect::<Vec<_>>(), [("1", Some("BN")), ("2", Some("BU"))]);
+        assert_eq!(
+            d.shape.points.iter().map(|p| (p.key.to_string(), p.label.as_deref())).collect::<Vec<_>>(),
+            [("1".to_string(), Some("BN")), ("2".to_string(), Some("BU"))]
+        );
         assert_eq!(d.shape.slots.first().map(|s| s.text.as_str()), Some("tag"));
     }
     fill(&mut h, details::NAME, "Float switch");

@@ -122,10 +122,10 @@ fn every_family_places_by_the_agent_then_refused_with_writes_off() {
                 let tag = format!("-{prefix}{:02}", *k);
                 assert_eq!(v["tag"], json!(tag), "{key}: {v}");
                 assert_eq!(&labels(&v), want, "{key}: labels");
-                let props = c.doc().devices[&cid(&v)].properties.clone();
+                let device = c.doc().devices[&cid(&v)].clone();
                 // Brief 044 (design 044 §4.6): a connector half's device is described `Connector`.
                 let want = if matches!(s.kind, ecad_cadcraft::symbols::Kind::ConnectorHalf { .. }) { "Connector" } else { s.name };
-                assert_eq!(props.get("description").map(String::as_str), Some(want), "{key}: default description");
+                assert_eq!(device.get("description"), Some(want), "{key}: default description");
                 assert_eq!(c.doc().devices[&cid(&v)].tag(), Some(tag.as_str()), "{key}: tag");
                 if round == 0 && key == "fusebank8" {
                     fb = Some(cid(&v));

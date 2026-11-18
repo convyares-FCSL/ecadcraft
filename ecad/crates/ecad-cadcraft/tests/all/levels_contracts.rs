@@ -145,7 +145,7 @@ fn bridged_two_level_positions_and_fuse_positions_break_the_net() {
     let conn = doc.connectivity();
     let net_of = |w: Option<WireId>| w.and_then(|w| conn.net_of_conductor(w));
     assert_ne!(net_of(kept), net_of(new), "the fuse breaks the net");
-    let tout = doc.terminals_of(x1).find(|(_, x)| x.key.as_deref() == Some(".1o")).map(|(t, _)| t).unwrap();
+    let tout = doc.terminals_of(x1).find(|(_, x)| x.key.as_ref().map(ToString::to_string).as_deref() == Some(".1o")).map(|(t, _)| t).unwrap();
     assert!(doc.ends_at(t_in).len() == 1 && doc.ends_at(tout).len() == 1, "one half on each point");
     h.run("setprop", json!({"component": x1.hex(), "key": "rating.1", "value": "2A"})).unwrap();
     let s = plan(&mut h, x1);
@@ -273,7 +273,7 @@ fn renumber_keeps_028_strips_and_numbers_colliding_keys_by_their_own_symbol() {
         let doc = p.ledger.document();
         let before = doc.terminals[&ts[1]].clone();
         let mut after = before.clone();
-        after.key = Some("1".into());
+        after.key = Some("1".parse().unwrap());
         let ops = vec![ecad_model::Op::RemoveTerminal { id: ts[1], terminal: before }, ecad_model::Op::AddTerminal { id: ts[1], terminal: after }];
         p.ledger.commit(ecad_model::Author::User, "collide", ops).unwrap();
     });

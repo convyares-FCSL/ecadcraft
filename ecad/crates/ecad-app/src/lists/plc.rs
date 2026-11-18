@@ -304,13 +304,13 @@ pub fn edit_line(r: &Row, col: ColumnId, value: &str) -> Option<String> {
             let mut pins = serde_json::Map::new();
             match r.pins.as_slice() {
                 [(role, _)] => {
-                    pins.insert((*role).to_string(), json!(v));
+                    pins.insert(ecad_model::Word::word(*role).to_string(), json!(v));
                 }
                 many => {
                     // `+:1 -:5`: each part `role:pin`; a bare value is refused by the command.
                     for part in v.split_whitespace() {
                         let (role, pin) = part.split_once(':')?;
-                        if !many.iter().any(|(r, _)| *r == role) {
+                        if !many.iter().any(|(r, _)| ecad_model::ChannelRole::exact(role) == Some(*r)) {
                             return None;
                         }
                         pins.insert(role.to_string(), json!(pin));

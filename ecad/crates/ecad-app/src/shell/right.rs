@@ -534,7 +534,7 @@ fn connector_rows(doc: &ecad_model::Document, c: ecad_model::DeviceId, rep: Repr
         });
         let side = t.and_then(|t| cn::side_of(doc, t));
         if let Some(side @ (Side::Socket | Side::Plug)) = side {
-            let mate = doc.terminals_of(c).find(|(_, x)| x.label.as_deref() == Some(name.as_str()) && x.key.as_deref() == side.other().key());
+            let mate = doc.terminals_of(c).find(|(_, x)| x.label.as_deref() == Some(name.as_str()) && x.key == side.other().key());
             let (value, goto) = match mate {
                 Some((m, _)) => {
                     let reps: Vec<RepresentationId> = doc.representations_showing(m).map(|(id, _)| id).collect();

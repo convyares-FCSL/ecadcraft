@@ -79,23 +79,6 @@ The project's own tag prefixes are stored by symbol, `starter:coil` for a built-
 The headless test `lanes::lane_072a::a_project_symbol_with_its_own_prefix_opens_writable`
 (ecad-cadcraft) runs these steps; nobody has tried them by hand yet.
 
-## Rotations (A2: F6, F7)
-
-- Every command parameter named `rotation` takes degrees, now also the symbol builder's text
-  slots (`symbolnew`/`symboledit` `slots[].rotation`), which took radians before. Files are
-  unchanged: stored angles stay radians, now typed as such.
-- The inspector's Layout tab now selects the right rotation segment for a turned symbol (it read
-  the stored radians as degrees).
-
-### Try it
-
-1. Place a coil, turn it a quarter turn (the rotate key while placing, or `place {"at": [100, 0],
-   "rotation": 90}`), select it: the Layout tab shows 90°.
-2. In the symbol builder, add a text slot and turn it: it turns a quarter turn per click, as before.
-
-The headless test `lanes::lane_072a::a_slot_rotation_is_given_in_degrees_and_stored_in_radians`
-(ecad-cadcraft) covers the slot input; nobody has tried these steps by hand yet.
-
 ## Lane B: devices have a type
 
 What changed for someone using the app:
@@ -116,6 +99,53 @@ What changed for someone using the app:
 2. Open the inspector (`cargo run -p ecad-inspector -- <file>` after saving) and look at the
    project's devices: the coil's device shows `"device_type": {"switching": {}}`, the MCB's
    `{"protection": {}}`.
+
+### Lane B, step 2: a device's text values are its own fields
+
+A device's tag, description, part number, maker, article number and type text are fields of the
+device, no longer entries in its list of properties. Commands and panels take the same keys as
+before (`setprop {"key": "maker"}`); what changes:
+
+- A part number, maker, article number or type text is at most 64 characters (was 200); a
+  description at most 256. A longer value is refused with its limit.
+- Each change records one `ModifyDevice` (the inspector shows the device before and after).
+- A file whose device holds one of these keys in its properties opens read-only.
+
+To try it: select a device, type a maker and a part number in the Properties panel, then undo
+and redo: both come back as one step each. The headless tests below cover it; nobody has tried
+it by hand yet.
+
+### Lane B, step 2c: a device's location and function, and whether they are fixed
+
+A device's location and function are fields that point at the project's lists, each with a
+**fixed** flag (design 072 §6.3). What sets the value decides the flag:
+
+- Typing a location or function (Properties panel, `setlocation`, `setfunction`, `setprop`) sets
+  it **fixed**.
+- Taking a box's, page's or the project's value (a proposal, or **Move** in the conflicts card)
+  sets it **not fixed**.
+- A file whose device holds `location` or `function` among its properties opens read-only.
+- Nothing looks different yet; lane F's box rule (a box rewrites only unfixed devices) uses the
+  flag.
+
+To try it: type a location on a device, then draw a location box around another, unset device;
+open the inspector's devices view: the first shows `"location_fixed": true`, the second `false`.
+Nobody has tried it by hand yet.
+
+### Lane B, step 3: a connector's own data
+
+A connector stores its family (from the symbol it was first placed from: a pin's is Plain), its
+pin count, its typed pin names, each half's description, maker and part number, and the Checks
+rows it ignores, as data of its type. The Properties panel and `setprop` keys are the same as
+before (`pins`, `pin_names`, `half.s.maker`, `ignore.connector-family`); what changes:
+
+- A half's field is one of `description`, `maker`, `part_number` (any other word is refused), and
+  `ignore.` takes `connector-family` or `connector-size` only.
+- Each change records one `ModifyDevice`; the inspector's log shows the connector's data.
+- A file whose device holds one of these keys among its properties opens read-only.
+
+To try it: place a D-sub 9 socket, set its Pins to 9 and a half's maker in the Properties panel,
+then undo and redo. Nobody has tried it by hand yet.
 
 The headless tests (automated, not tried by hand):
 
@@ -177,3 +207,67 @@ is made: a terminal plan of every strip, or of one strip.
 
 Tests: `lanes::lane_072e` in ecad-model, ecad-file and ecad-mcp. Agent-observed only; nobody has
 tried these steps by hand yet.
+
+## Rotations (A2: F6, F7)
+
+- Every command parameter named `rotation` takes degrees, now also the symbol builder's text
+  slots (`symbolnew`/`symboledit` `slots[].rotation`), which took radians before. Files are
+  unchanged: stored angles stay radians, now typed as such.
+- The inspector's Layout tab now selects the right rotation segment for a turned symbol (it read
+  the stored radians as degrees).
+
+### Try it
+
+1. Place a coil, turn it a quarter turn (the rotate key while placing, or `place {"at": [100, 0],
+   "rotation": 90}`), select it: the Layout tab shows 90°.
+2. In the symbol builder, add a text slot and turn it: it turns a quarter turn per click, as before.
+
+The headless test `lanes::lane_072a::a_slot_rotation_is_given_in_degrees_and_stored_in_radians`
+(ecad-cadcraft) covers the slot input; nobody has tried these steps by hand yet.
+
+## Lane G: wire types are typed records
+
+What changed for someone using the app:
+
+- **Wire categories are now wire types.** A wire type stores its values as fields, not free text:
+  potential, size (`2.5` mm² or `18 AWG`), colours as an ordered list (`GN/YE`), **insulation**
+  (new: `pvc`, `xlpe`, `epr`, `rubber`, `silicone`, `ptfe`, `lszh`), part number, maker,
+  description, allowance, rating and the drawn line.
+- In `setstyle` on the `wire` catalogue the fields are now `size` (was `cross_section`) and
+  `colours` (was `colour`). Typing is lenient as for a wire (`6 mm²`, `green/yellow`, `XLPE`); what
+  is stored is one form only.
+- Two new built-in types, **230 V AC L** (`ac230_l`) and **230 V AC N** (`ac230_n`): brown and
+  blue, 1.5 mm², no potential of their own.
+- A style record in a file now holds a body of its own catalogue (`"body": {"wire": {…}}`); a
+  field the type does not have, or a value in another form, makes the project open read-only.
+  Projects saved before this lane do not open (no compatibility before 1.0): regenerate them.
+
+- **Every style catalogue is typed** the same way: text styles, location styles, frames, page
+  types, rating tables and cable types store their fields as values, not free text. A file whose
+  style record holds an unknown field, or a value in another form, opens read-only.
+- Cable types: `cross_section` is now `size`, and a cable type can name a **core colour scheme**
+  (`core_scheme`): `harmonised` (power: brown, black, grey, blue, green/yellow; numbered black
+  cores from six up), `numbered`, `din47100` (data cables) or `icea_k2` (control cables). A
+  cable of that type takes its cores' colours from the scheme by its core offer (`5G`); the
+  type's own `core_colours` list still wins.
+
+### Try it
+
+1. Open **Standards ▸ Wire types**: the list shows the twelve built-in types, with the two
+   230 V ones.
+2. Select **Protective earth**, set Insulation to `xlpe` and Size to `6`: a wire of potential PE
+   now labels `… 6 GN/YE`.
+3. Type `paper` as the insulation: it is refused with the words it takes.
+4. In **Standards ▸ Cable types**, make a type with Cores `5G` and Core colour scheme
+   `harmonised`; give a cable that type: its cores show brown, black, grey, blue and
+   green/yellow.
+
+The headless tests (automated, not tried by hand):
+
+```sh
+cargo test -p ecad-model --test all lane_072g
+cargo test -p ecad-electrical styles::wire
+cargo test -p ecad-electrical styles::cable
+cargo test -p ecad-mcp --test all lane_072g
+cargo test -p ecad-inspector --test all lane_072g
+```

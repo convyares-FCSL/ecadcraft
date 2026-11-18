@@ -18,7 +18,6 @@ use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
 use ecad_electrical::cmd::style::{self as rules, FieldInput, StandardChange, StyleEdit};
 use ecad_model::Document;
-use ecad_model::style::StyleLayer;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Map, Number, Value, json};
@@ -112,16 +111,7 @@ pub fn style_json(doc: &Document, cat: &Catalogue, row: &styles::Row, users: boo
     if row.overridden {
         v["overridden"] = json!(true);
     }
-    let unknown: std::collections::BTreeSet<String> = [StyleLayer::Standard, StyleLayer::Project]
-        .into_iter()
-        .filter_map(|l| styles::record(doc, l, cat.catalogue, &row.id))
-        .flat_map(|r| r.fields.keys())
-        .filter(|k| cat.field(k).is_none())
-        .cloned()
-        .collect();
-    if !unknown.is_empty() {
-        v["unknown_fields"] = json!(unknown);
-    }
+    // Design 072 §8: a record holds only its catalogue's typed fields; none is unknown.
     if users {
         let c = styles::users(doc, cat.catalogue, &row.id);
         v["users"] = json!({"explicit": c.explicit, "implicit": c.implicit});
@@ -136,6 +126,12 @@ fn value_json(r: &defaults::Resolved<'_>) -> Value {
         defaults::Value::Flag(b) => json!(ecad_model::words::flag_word(b)),
         defaults::Value::Text(t) => json!(t),
         defaults::Value::OwnStyle(id) => json!(ecad_model::StyleRef::Own(id).text()),
+        defaults::Value::Size(s) => json!(s.to_string()),
+        defaults::Value::Colours(c) => json!(c.to_string()),
+        defaults::Value::Colour(c) => json!(c.to_string()),
+        defaults::Value::Sheet(s) => json!(s.text()),
+        defaults::Value::Margins(m) => json!(ecad_model::sheet::margins_text(&m)),
+        defaults::Value::CoreColours(c) => json!(c.to_string()),
     }
 }
 

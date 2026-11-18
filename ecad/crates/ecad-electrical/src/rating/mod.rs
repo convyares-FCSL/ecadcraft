@@ -45,7 +45,6 @@ pub mod trace;
 pub use circuit::*;
 pub use protection::*;
 
-use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::units::{Amps, Celsius, Percent, Volts};
@@ -116,9 +115,12 @@ pub fn check_style(catalogue: ecad_model::StyleCatalogue, r: &ecad_model::style:
     if catalogue != wire::CATALOGUE.catalogue && catalogue != ecad_model::StyleCatalogue::Cable {
         return None;
     }
-    let num = |k: &str| r.fields.get(k).and_then(|v| v.trim().parse::<f64>().ok()).filter(|x| x.is_finite());
-    let at = num("rated_at").unwrap_or(30.0);
-    let max = num("max_temperature").unwrap_or(70.0);
+    let rating = match &r.body {
+        ecad_model::style::StyleBody::Wire(w) => &w.rating,
+        ecad_model::style::StyleBody::Cable(c) => &c.rating,
+        _ => return None,
+    };
+    let (at, max) = (rating.rated_at.map_or(30.0, |c| c.0), rating.max_temperature.map_or(70.0, |c| c.0));
     (at >= max).then(|| format!("Rated at {} \u{b0}C is not below the conductor's {} \u{b0}C.", dataset::fmt_num(at), dataset::fmt_num(max)))
 }
 
@@ -295,23 +297,16 @@ impl Touch {
                 Op::SetProperty { object: ObjectRef::Cable(k), .. } => {
                     self.retrace.insert(RatedSubject::Cable(*k));
                 }
-                Op::SetProperty { object: ObjectRef::Device(c), key, before, after } => {
+                Op::SetProperty { object: ObjectRef::Device(c), key, .. } => {
                     let is_box = doc.devices.get(c).is_some_and(crate::locations::is_box_component);
                     if is_box {
                         // A box's temperature or location: the wires at its locations (§10).
-                        if key == TEMPERATURE || key == ecad_model::book::LOCATION_KEY {
+                        if key == TEMPERATURE {
                             self.boxes.insert(*c);
                             self.box_locations(doc, *c);
-                            if key == ecad_model::book::LOCATION_KEY {
-                                self.locations.extend([before, after].into_iter().flatten().map(|l| l.trim().to_string()));
-                                self.box_pages(doc, *c);
-                            }
                         }
                     } else if crate::symbols::is_rating_key(key) || key == ecad_model::tag::TAG_KEY {
                         self.devices.insert(*c);
-                    } else if key == ecad_model::book::LOCATION_KEY {
-                        // A device's own location: its wires only.
-                        self.moved.insert(*c);
                     } else if key.starts_with("link.") {
                         for (t, _) in doc.terminals_of(*c) {
                             net_of_terminal(t, self);
@@ -364,10 +359,27 @@ impl Touch {
                     if crate::locations::is_box_component(component) =>
                 {
                     self.boxes.insert(*id);
-                    if let Some(l) = component.properties.get(ecad_model::book::LOCATION_KEY) {
-                        self.locations.insert(l.trim().to_string());
+                    if let Some(l) = crate::designations::device_key(component, crate::designations::Aspect::Location) {
+                        self.locations.insert(l);
                     }
                     self.box_pages(doc, *id);
+                }
+                // Lane 072 B: a device's description, part or type text is read by no rating row.
+                Op::ModifyDevice { before, after, .. } if before.only_text_differs(after) => {}
+                // Design 072 §6.3: a box's new location reaches the wires at both locations; a
+                // device's own location its wires only.
+                Op::ModifyDevice { id, before, after } if before.only_place_differs(after) => {
+                    let loc = |d: &ecad_model::Device| crate::designations::device_key(d, crate::designations::Aspect::Location);
+                    if crate::locations::is_box_component(after) {
+                        self.boxes.insert(*id);
+                        self.box_locations(doc, *id);
+                        if before.location != after.location {
+                            self.locations.extend([loc(before), loc(after)].into_iter().flatten());
+                            self.box_pages(doc, *id);
+                        }
+                    } else if before.location != after.location {
+                        self.moved.insert(*id);
+                    }
                 }
                 Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::ModifyDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
                     self.devices.insert(*id);
@@ -770,8 +782,8 @@ fn table_issues(ctx: &Context) -> Vec<Issue> {
 
 impl Touch {
     fn box_locations(&mut self, doc: &Document, c: DeviceId) {
-        if let Some(l) = doc.devices.get(&c).and_then(|x| x.properties.get(ecad_model::book::LOCATION_KEY)) {
-            self.locations.insert(l.trim().to_string());
+        if let Some(l) = doc.devices.get(&c).and_then(|x| crate::designations::device_key(x, crate::designations::Aspect::Location)) {
+            self.locations.insert(l);
         }
     }
 
@@ -797,27 +809,7 @@ impl Touch {
 
 use crate::checks::{Check, Fix, Kind as CheckKind, Object};
 
-ecad_model::word_enum! {
-    /// A conductor material.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum Material {
-        Cu,
-    }
-}
-ecad_model::word_enum! {
-    /// A conductor class (IEC 60228).
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum ConductorClass {
-        #[strum(serialize = "1")]
-        One,
-        #[strum(serialize = "2")]
-        Two,
-        #[strum(serialize = "5")]
-        Five,
-        #[strum(serialize = "6")]
-        Six,
-    }
-}
+pub use ecad_model::style::wire::{ConductorClass, Material};
 
 /// Whether `k` is one of lane 057's kinds.
 pub fn is_rating_kind(k: CheckKind) -> bool {

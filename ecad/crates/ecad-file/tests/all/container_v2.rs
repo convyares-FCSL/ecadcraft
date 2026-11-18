@@ -377,7 +377,7 @@ fn wiring_settings_and_bridges_survive_chunks() {
     let def: DefinitionId = f.ids.fresh();
     let mut bridged = coil(2.0);
     bridged.name = "Bridged".into();
-    bridged.bridges = vec![vec!["A1".into(), "A2".into()]];
+    bridged.bridges = vec![vec!["A1".parse().unwrap(), "A2".parse().unwrap()]];
     let edits = [
         ("Wiring", vec![Op::SetProjectSettings { before, after: after.clone() }]),
         ("Embed", vec![Op::EmbedDefinition { id: def, definition: bridged.clone() }]),

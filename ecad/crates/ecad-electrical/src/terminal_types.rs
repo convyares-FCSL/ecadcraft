@@ -20,7 +20,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::links::{level_of_key, natural_key};
-use ecad_model::{DeviceId, Document, Primitive, Pt, Subject, TerminalDef, TerminalId};
+use ecad_model::{DeviceId, Document, LevelIo, PointKey, Primitive, Pt, Subject, TerminalDef, TerminalId};
 
 use crate::CmdError;
 
@@ -82,8 +82,13 @@ impl TermType {
     }
 
     /// The definition keys of level `n` (`.n`, or `.ni` and `.no`).
-    pub fn level_keys(&self, n: u32) -> Vec<String> {
-        if self.breaks { vec![format!(".{n}i"), format!(".{n}o")] } else { vec![format!(".{n}")] }
+    pub fn level_keys(&self, n: u32) -> Vec<PointKey> {
+        let level = u8::try_from(n).unwrap_or(u8::MAX);
+        if self.breaks {
+            vec![PointKey::Level { level, io: Some(LevelIo::In) }, PointKey::Level { level, io: Some(LevelIo::Out) }]
+        } else {
+            vec![PointKey::Level { level, io: None }]
+        }
     }
 
     /// The starter key of level `n` (`termlnpe.2`), or of the whole terminal (`None`).
@@ -284,7 +289,7 @@ pub fn type_of_terminal(doc: &Document, t: TerminalId) -> &'static TermType {
 
 /// A terminal's level and point (`.1i` → (1, `i`)); a hostile key is level 1.
 pub fn level_of(doc: &Document, t: TerminalId) -> (u32, Option<char>) {
-    level_of_key(doc.terminals.get(&t).and_then(|x| x.key.as_deref())).unwrap_or((1, None))
+    level_of_key(doc.terminals.get(&t).and_then(|x| x.key.as_ref())).unwrap_or((1, None))
 }
 
 /// The registry value of `terminal.level.separator` for strip `c`: strip → project → built-in;
@@ -339,7 +344,7 @@ pub fn shown_label(doc: &Document, t: TerminalId) -> Option<String> {
     if let Some(v) = doc.devices.get(&c).and_then(|x| x.properties.get(&label_key(&p, n))) {
         return Some(v.clone());
     }
-    if !term.key.as_deref().is_some_and(|k| k.starts_with('.')) {
+    if !term.key.as_ref().is_some_and(|k| k.as_def().is_none()) {
         return Some(p);
     }
     // Brief 044 (FP6): only a strip's `.`-keys are levels; a connector pin (`.s`, `.p`) is named
@@ -812,17 +817,18 @@ pub fn graphics(key: &str) -> Option<Vec<Primitive>> {
 /// The connection points of a new starter (`None` for any other key).
 pub fn terminals(key: &str) -> Option<Vec<TerminalDef>> {
     let (t, n) = of_starter(key).filter(|(t, _)| !t.legacy())?;
-    let d = |k: String, x: f64, y: f64| TerminalDef { key: k, label: None, at: p(x, y), accepts: Default::default() };
+    let d = |k: PointKey, x: f64, y: f64| TerminalDef { key: k, label: None, at: p(x, y), accepts: Default::default() };
+    let level = |n: u32, io: Option<LevelIo>| PointKey::Level { level: u8::try_from(n).unwrap_or(u8::MAX), io };
     Some(match (t.breaks, n) {
-        (true, _) => vec![d(".1i".into(), 0.0, 10.0), d(".1o".into(), 0.0, -10.0)],
-        (false, Some(_)) => vec![d(t.level_keys(n.unwrap_or(1)).into_iter().next().unwrap_or_default(), 0.0, 0.0)],
-        (false, None) => (1..=t.count()).map(|i| d(format!(".{i}"), 0.0, -5.0 * f64::from(i - 1))).collect(),
+        (true, _) => vec![d(level(1, Some(LevelIo::In)), 0.0, 10.0), d(level(1, Some(LevelIo::Out)), 0.0, -10.0)],
+        (false, Some(_)) => t.level_keys(n.unwrap_or(1)).into_iter().take(1).map(|k| d(k, 0.0, 0.0)).collect(),
+        (false, None) => (1..=t.count()).map(|i| d(level(i, None), 0.0, -5.0 * f64::from(i - 1))).collect(),
     })
 }
 
 /// The internal bridges of a new starter's definition (§6): its type's groups.
-pub fn bridges(key: &str) -> Vec<Vec<String>> {
-    of_starter(key).map(|(t, _)| t.bridges.iter().map(|g| g.iter().map(|k| k.to_string()).collect()).collect()).unwrap_or_default()
+pub fn bridges(key: &str) -> Vec<Vec<PointKey>> {
+    of_starter(key).map(|(t, _)| t.bridges.iter().map(|g| g.iter().filter_map(|k| k.parse().ok()).collect()).collect()).unwrap_or_default()
 }
 
 /// Where each level of a symbol of strip `c` sits, keyed by the definition keys it shows (the

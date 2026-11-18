@@ -444,7 +444,7 @@ fn hostile_text_comes_back_as_plain_json_strings() {
             Op::AddTerminal { id: b, terminal: Terminal { component: k, label: Some("2".into()), key: None, accepts: Default::default() } },
             Op::CreateWire { id: w, wire: Wire { display: props(&[("wire.category", X)]), ..Wire::new(ids.fresh(), ids.fresh(), a, b) } },
             Op::CreateCable { id: c, cable: Cable { properties: props(&[("tag", X)]), members: vec![CableMember::on_wire(w, Some(X.into()))] } },
-            Op::SetProperty { object: ObjectRef::Project, key: "project.title".into(), before: None, after: Some(X.into()) },
+            Op::SetProperty { object: ObjectRef::Project, key: "project.title".parse().unwrap(), before: None, after: Some(X.into()) },
         ],
     )
     .unwrap();

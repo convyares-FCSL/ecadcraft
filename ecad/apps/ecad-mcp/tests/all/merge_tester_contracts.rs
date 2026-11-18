@@ -26,7 +26,7 @@ fn project(dir: &TempDir, name: &str) -> (Client, String, String, String) {
 
 fn prop(c: &mut Client, coil: &str, key: &str) -> Option<String> {
     let id = DeviceId::parse(coil).unwrap();
-    c.doc().devices.get(&id).and_then(|x| x.properties.get(key).cloned())
+    c.doc().devices.get(&id).and_then(|x| x.value(key))
 }
 
 fn branches(c: &mut Client) -> Vec<Value> {

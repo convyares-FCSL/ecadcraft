@@ -343,8 +343,8 @@ pub fn builtin_coil() -> Definition {
         origin: None,
         graphics: vec![Primitive::Polyline { vertices: r.iter().map(|(x, y)| Pt::new(*x, *y)).collect(), closed: true }],
         terminals: vec![
-            TerminalDef { key: "A1".into(), label: Some("A1".into()), at: Pt::new(0.0, 10.0), accepts: Default::default() },
-            TerminalDef { key: "A2".into(), label: Some("A2".into()), at: Pt::new(0.0, -10.0), accepts: Default::default() },
+            TerminalDef { key: ecad_model::PointKey::def("A1"), label: Some("A1".into()), at: Pt::new(0.0, 10.0), accepts: Default::default() },
+            TerminalDef { key: ecad_model::PointKey::def("A2"), label: Some("A2".into()), at: Pt::new(0.0, -10.0), accepts: Default::default() },
         ],
         ..Default::default()
     }

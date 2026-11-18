@@ -5,8 +5,9 @@ use std::path::PathBuf;
 
 use crate::common::{PROJECT, SEED, WRITER};
 use ecad_file::{ProjectV2, Store};
+use ecad_model::style::{FrameStyle, StyleBody};
 use ecad_model::style::{StyleLayer, StyleRecord, StyleRef};
-use ecad_model::title_block::{Binding, BlockItem, IfEmpty, Ink, Newest, Rect, Source, StyleBody, TextLook, TitleBlockLayout};
+use ecad_model::title_block::{Binding, BlockItem, IfEmpty, Ink, Newest, Rect, Source, TextLook, TitleBlockLayout};
 use ecad_model::{Author, Ledger, Op, Primitive, Pt};
 
 struct TempDir(PathBuf);
@@ -58,8 +59,8 @@ fn layout() -> TitleBlockLayout {
 
 fn ledger() -> Ledger {
     let mut l = Ledger::new(SEED);
-    let mut rec = StyleRecord::new("A3 Northfield", [("sheet".to_string(), "A3".to_string())].into());
-    rec.body = Some(StyleBody::title_block(layout()));
+    let style = FrameStyle { sheet: ecad_model::style::frame::FrameSheet::parse("A3"), title_block: Some(layout()), ..FrameStyle::default() };
+    let rec = StyleRecord::new("A3 Northfield", StyleBody::Frame(style));
     l.commit(
         Author::Agent("tester".into()),
         "New title block",
@@ -73,7 +74,7 @@ fn ledger() -> Ledger {
     )
     .unwrap();
     let mut moved = rec.clone();
-    if let Some(BlockItem::Field { at, .. }) = moved.body.as_mut().and_then(|b| b.title_block.as_mut()).and_then(|l| l.items.get_mut(2)) {
+    if let Some(BlockItem::Field { at, .. }) = frame_block(&mut moved).and_then(|l| l.items.get_mut(2)) {
         at.x += 10.0;
     }
     l.commit(
@@ -108,39 +109,51 @@ fn a_title_block_round_trips_through_a_project_file_and_its_snapshots() {
     }
 }
 
+fn frame_block(r: &mut StyleRecord) -> Option<&mut TitleBlockLayout> {
+    match &mut r.body {
+        StyleBody::Frame(f) => f.title_block.as_mut(),
+        _ => None,
+    }
+}
+
 /// The op record (v1's encoding) carries the body; a record without one is unchanged from 050a.
 #[test]
 fn the_op_record_carries_the_body_and_reads_it_back() {
     let l = ledger();
     let tx = l.full_log().unwrap().into_iter().next().unwrap();
     let v = ecad_file::record::tx_value(&tx, &[0u8; 32]).unwrap();
-    assert!(v["ops"][0]["after"]["body"]["title_block"]["items"].is_array(), "{v}");
+    assert!(v["ops"][0]["after"]["body"]["frame"]["title_block"]["items"].is_array(), "{v}");
     assert_eq!(ecad_file::record::decode_tx(&v).unwrap().ops, tx.ops);
     let plain = Op::SetStyle {
         layer: StyleLayer::Project,
         catalogue: ecad_model::StyleCatalogue::Text,
         id: StyleRef::Own(1),
         before: None,
-        after: Some(StyleRecord::new("Tag", Default::default())),
+        after: Some(StyleRecord::new("Tag", StyleBody::empty(ecad_model::StyleCatalogue::Text))),
     };
     let mut t = tx.clone();
     t.ops = vec![plain];
     let v = ecad_file::record::tx_value(&t, &[0u8; 32]).unwrap();
-    assert!(v["ops"][0]["after"].get("body").is_none(), "absent bodies are left out: {v}");
+    assert!(v["ops"][0]["after"]["body"]["frame"].is_null(), "a text record has a text body: {v}");
 }
 
-/// A newer file: an unknown body kind is kept as read and written back; an unknown item kind and
-/// an unknown binding source read; a huge integer in an unknown body still writes canonically.
+/// Design 072 §8 (strict words): an unknown field in a frame body is a read error; an unknown item
+/// kind and an unknown binding source inside the title block still read (lane E's step 4 makes
+/// them strict).
 #[test]
-fn a_newer_body_opens_and_keeps_what_it_does_not_know() {
+fn an_unknown_body_field_is_refused_and_title_block_items_read() {
     let l = ledger();
     let tx = l.full_log().unwrap().into_iter().next().unwrap();
     let v0 = ecad_file::record::tx_value(&tx, &[0u8; 32]).unwrap();
+    // Design 072 §8: an unknown field in a frame body is refused.
+    let mut stamped = v0.clone();
+    stamped["ops"][0]["after"]["body"]["frame"]["stamp"] = serde_json::json!({"text": "DRAFT"});
+    assert!(ecad_file::record::decode_tx(&stamped).is_err(), "an unknown body field is refused");
     // Design 072 §5.4: an unknown item kind, an unknown binding source or a revision binding
     // naming no revision field inside a title block does not read (the project opens read-only).
     let items = |extra: serde_json::Value| {
         let mut v = v0.clone();
-        v["ops"][0]["after"]["body"]["title_block"]["items"].as_array_mut().unwrap().push(extra);
+        v["ops"][0]["after"]["body"]["frame"]["title_block"]["items"].as_array_mut().unwrap().push(extra);
         v
     };
     let field = |bind: &str| serde_json::json!({"kind": "field", "at": {"x": 1, "y": 1, "w": 10, "h": 5}, "bind": bind});
@@ -152,18 +165,13 @@ fn a_newer_body_opens_and_keeps_what_it_does_not_know() {
         let e = ecad_file::record::decode_tx(&bad).unwrap_err();
         assert!(format!("{e:?}").contains(word), "{word}: {e:?}");
     }
-    // A body kind this build does not know is still kept (lane G types the bodies).
-    let mut v = v0.clone();
-    v["ops"][0]["after"]["body"]["stamp"] = serde_json::json!({"text": "DRAFT", "angle": 45, "n": 9007199254740993u64, "deep": [[[1]]]});
-    let t = ecad_file::record::decode_tx(&v).unwrap();
-    let Op::SetStyle { after: Some(r), .. } = &t.ops[0] else { panic!("{:?}", t.ops) };
-    let body = r.body.as_ref().unwrap();
-    assert!(body.other.contains_key("stamp"), "the unknown kind is kept");
-    assert!(body.title_block.as_ref().unwrap().bindings().all(|b| b.source() != Source::Revision || b.revision_column().is_some()));
+    let mut t = ecad_file::record::decode_tx(&v0).unwrap();
+    let Op::SetStyle { after: Some(r), .. } = &mut t.ops[0] else { panic!("{:?}", t.ops) };
+    let l2 = frame_block(r).unwrap();
+    assert!(l2.bindings().all(|b| b.source() != Source::Revision || b.revision_column().is_some()));
     let _ = BlockItem::Line { a: (0.0, 0.0), b: (1.0, 1.0), weight: Default::default() };
     // It writes back (canonical form) and reads again.
     let back = ecad_file::record::tx_value(&t, &[0u8; 32]).unwrap();
-    assert_eq!(back["ops"][0]["after"]["body"]["stamp"]["text"], "DRAFT");
     assert!(ecad_file::record::decode_tx(&back).is_ok());
 }
 

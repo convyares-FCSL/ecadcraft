@@ -440,6 +440,56 @@ fn field<T: PartialEq + Clone>(ctx: &mut Ctx<'_, '_>, obj: Obj, name: &str, what
     }
 }
 
+/// Merge a device's type: a PLC station's and module's fields one by one when all three keep the
+/// same group (design 072 §3, FP1: a station is shown by its tag); otherwise the type whole.
+fn merge_device_type(
+    ctx: &mut Ctx<'_, '_>, obj: Obj, what: &str, docs: &[&Document], a: &crate::DeviceType, t: &crate::DeviceType, s: &crate::DeviceType,
+) -> crate::DeviceType {
+    use crate::DeviceType as T;
+    let words = |v: &dyn Fn() -> Option<String>| v().unwrap_or_else(|| "(none)".into());
+    match (a, t, s) {
+        (T::PlcModule(a), T::PlcModule(t), T::PlcModule(s)) => {
+            let rack_name = |r: &Option<DeviceId>| r.map_or_else(|| "no rack".into(), |r| name_of(docs, Obj::Device(r)));
+            T::PlcModule(crate::plc::PlcModule {
+                rack: field(ctx, obj, "plc.rack", format!("{what} · rack"), &a.rack, &t.rack, &s.rack, &rack_name),
+                slot: field(ctx, obj, "plc.slot", format!("{what} · slot"), &a.slot, &t.slot, &s.slot, &|x| words(&|| x.map(|n| n.to_string()))),
+                function: field(ctx, obj, "plc.function", format!("{what} · function and channels"), &a.function, &t.function, &s.function, &|f| {
+                    f.word().replace('_', " ")
+                }),
+                attributes: field(ctx, obj, "plc.attributes", format!("{what} · attributes"), &a.attributes, &t.attributes, &s.attributes, &|x| {
+                    format!("{x:?}")
+                }),
+                address: field(ctx, obj, "plc.addr", format!("{what} · pinned address"), &a.address, &t.address, &s.address, &|x| {
+                    words(&|| x.start.map(|n| n.to_string()))
+                }),
+                supply: field(ctx, obj, "plc.supply", format!("{what} · supply"), &a.supply, &t.supply, &s.supply, &|x| {
+                    words(&|| x.map(|v| v.to_string()))
+                }),
+            })
+        }
+        (T::PlcRack(a), T::PlcRack(t), T::PlcRack(s)) => T::PlcRack(crate::plc::PlcRack {
+            network: field(ctx, obj, "plc.network", format!("{what} · network"), &a.network, &t.network, &s.network, &|x| {
+                words(&|| x.as_ref().map(ToString::to_string))
+            }),
+            address: field(ctx, obj, "plc.network.address", format!("{what} · network address"), &a.address, &t.address, &s.address, &|x| {
+                words(&|| x.map(|v| v.to_string()))
+            }),
+            head: field(ctx, obj, "plc.head", format!("{what} · head"), &a.head, &t.head, &s.head, &|h| format!("{h:?}")),
+            address_style: field(
+                ctx,
+                obj,
+                "plc.address.style",
+                format!("{what} · address style"),
+                &a.address_style,
+                &t.address_style,
+                &s.address_style,
+                &|x| words(&|| x.map(|v| crate::Word::word(v).to_string())),
+            ),
+        }),
+        _ => field(ctx, obj, "device_type", format!("{what} · type"), a, t, s, &|d| d.group().label().into()),
+    }
+}
+
 /// Merge one object: whole when it resolves, else by `fields` when both sides kept it, else a
 /// removed conflict.
 fn object<T: PartialEq + Clone>(
@@ -497,7 +547,11 @@ pub fn name_of(docs: &[&Document], obj: Obj) -> String {
     match obj {
         Obj::Device(c) => tag_of(c),
         Obj::Terminal(t) => match docs.iter().find_map(|d| d.terminals.get(&t)) {
-            Some(term) => format!("{}:{}", tag_of(term.component), term.label.clone().or_else(|| term.key.clone()).unwrap_or_else(|| t.short())),
+            Some(term) => format!(
+                "{}:{}",
+                tag_of(term.component),
+                term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| t.short())
+            ),
             None => t.short(),
         },
         Obj::Wire(c) => match docs.iter().find_map(|d| d.wires.get(&c)).and_then(|w| w.number_text().map(str::to_string)) {
@@ -645,6 +699,24 @@ fn set<K: Ord + Copy, V>(map: &mut BTreeMap<K, V>, k: K, v: Option<V>) {
     };
 }
 
+/// A device's text fields as a bag keyed by their `setprop` keys, so they merge as its properties
+/// do (one conflict per key, `<id>/prop.<key>`, with an edited value offered).
+fn text_bag(d: &Device) -> Properties {
+    crate::TextField::ALL.into_iter().filter_map(|f| d.text(f).map(|v| (f.key().to_string(), v.to_string()))).collect()
+}
+
+/// `d` with the text fields of the merged bag `texts`; a value the field can't hold keeps the
+/// target's and is a problem.
+fn with_texts(ctx: &mut Ctx<'_, '_>, what: &str, mut d: Device, t: &Device, texts: &Properties) -> Device {
+    for f in crate::TextField::ALL {
+        if let Err(e) = d.set_text(f, texts.get(f.key()).map(String::as_str)) {
+            ctx.problems.push(format!("{what} · {}: {e}", key_words(f.key())));
+            let _ = d.set_text(f, t.text(f));
+        }
+    }
+    d
+}
+
 /// Merge every object of the scope into `m` (a copy of the target).
 fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
     let (a, t, s) = (ctx.inp.ancestor, ctx.inp.target, ctx.inp.source);
@@ -654,20 +726,63 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
         let what = name_of(&docs, obj);
         match obj {
             Obj::Device(id) => {
-                let v = object(ctx, obj, &what, a.devices.get(&id), t.devices.get(&id), s.devices.get(&id), |ctx, a, t, s| Device {
-                    tag: field(ctx, obj, tag::TAG_KEY, format!("{what} · tag"), &a.tag, &t.tag, &s.tag, &|v| {
-                        v.as_ref().map_or_else(|| "(none)".into(), |t| t.to_string())
-                    }),
-                    tag_fixed: field(ctx, obj, tag::FIXED_KEY, format!("{what} · tag fixed"), &a.tag_fixed, &t.tag_fixed, &s.tag_fixed, &|v| {
-                        crate::words::flag_word(*v).into()
-                    }),
-                    properties: merge_props(ctx, obj, &what, &a.properties, &t.properties, &s.properties, &all),
-                    definition: field(ctx, obj, "definition", format!("{what} · symbol"), &a.definition, &t.definition, &s.definition, &|d| {
-                        d.map_or_else(|| "(none)".into(), |d| name_of(&docs, Obj::Definition(d)))
-                    }),
-                    device_type: field(ctx, obj, "device_type", format!("{what} · type"), &a.device_type, &t.device_type, &s.device_type, &|d| {
-                        d.group().label().into()
-                    }),
+                let v = object(ctx, obj, &what, a.devices.get(&id), t.devices.get(&id), s.devices.get(&id), |ctx, a, t, s| {
+                    let texts = merge_props(ctx, obj, &what, &text_bag(a), &text_bag(t), &text_bag(s), &all);
+                    let d = Device {
+                        tag: field(ctx, obj, tag::TAG_KEY, format!("{what} · tag"), &a.tag, &t.tag, &s.tag, &|v| {
+                            v.as_ref().map_or_else(|| "(none)".into(), |t| t.to_string())
+                        }),
+                        tag_fixed: field(ctx, obj, tag::FIXED_KEY, format!("{what} · tag fixed"), &a.tag_fixed, &t.tag_fixed, &s.tag_fixed, &|v| {
+                            crate::words::flag_word(*v).into()
+                        }),
+                        location: field(
+                            ctx,
+                            obj,
+                            crate::book::LOCATION_KEY,
+                            format!("{what} · location"),
+                            &a.location,
+                            &t.location,
+                            &s.location,
+                            &|x| x.map_or_else(|| "(none)".to_string(), crate::id::LocationId::short),
+                        ),
+                        location_fixed: field(
+                            ctx,
+                            obj,
+                            crate::book::LOCATION_FIXED_KEY,
+                            format!("{what} · location fixed"),
+                            &a.location_fixed,
+                            &t.location_fixed,
+                            &s.location_fixed,
+                            &|v| crate::words::flag_word(*v).into(),
+                        ),
+                        function: field(
+                            ctx,
+                            obj,
+                            crate::book::FUNCTION_KEY,
+                            format!("{what} · function"),
+                            &a.function,
+                            &t.function,
+                            &s.function,
+                            &|x| x.map_or_else(|| "(none)".to_string(), crate::id::FunctionId::short),
+                        ),
+                        function_fixed: field(
+                            ctx,
+                            obj,
+                            crate::book::FUNCTION_FIXED_KEY,
+                            format!("{what} · function fixed"),
+                            &a.function_fixed,
+                            &t.function_fixed,
+                            &s.function_fixed,
+                            &|v| crate::words::flag_word(*v).into(),
+                        ),
+                        properties: merge_props(ctx, obj, &what, &a.properties, &t.properties, &s.properties, &all),
+                        definition: field(ctx, obj, "definition", format!("{what} · symbol"), &a.definition, &t.definition, &s.definition, &|d| {
+                            d.map_or_else(|| "(none)".into(), |d| name_of(&docs, Obj::Definition(d)))
+                        }),
+                        device_type: merge_device_type(ctx, obj, &what, &docs, &a.device_type, &t.device_type, &s.device_type),
+                        ..Device::default()
+                    };
+                    with_texts(ctx, &what, d, t, &texts)
                 });
                 set(&mut m.devices, id, v);
             }
@@ -798,7 +913,8 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
             }
             Obj::Terminal(id) => {
                 let v = object(ctx, obj, &what, a.terminals.get(&id), t.terminals.get(&id), s.terminals.get(&id), |ctx, a, t, s| {
-                    let show = |x: &Terminal| x.label.clone().or_else(|| x.key.clone()).unwrap_or_else(|| "(no label)".into());
+                    let show =
+                        |x: &Terminal| x.label.clone().or_else(|| x.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| "(no label)".into());
                     field(ctx, obj, "record", format!("{what} · changed on both"), a, t, s, &show)
                 });
                 set(&mut m.terminals, id, v);
@@ -896,7 +1012,7 @@ fn merge_standard(ctx: &mut Ctx<'_, '_>, m: &mut Document, obj: Obj) {
         _ => None,
     };
     if let Some(target_keeps) = one_sided {
-        let name = a.standard.as_ref().map_or_else(String::new, |x| x.header.name.clone());
+        let name = a.standard.as_ref().map_or_else(String::new, |x| x.header.name.to_string());
         let (on_changed, on_removed) = if target_keeps { (ctx.t(), ctx.s()) } else { (ctx.s(), ctx.t()) };
         let word = |keeps: bool| if keeps { "changed" } else { "removed" };
         let c = Conflict {
@@ -944,10 +1060,10 @@ pub fn style_words(catalogue: crate::style::StyleCatalogue, id: &StyleRef, recor
         C::Text => "Text style",
         C::Location => "Location box style",
         C::Frame => "Frame style",
-        C::Wire => "Wire category",
+        C::Wire => "Wire type",
         C::Page | C::Cable | C::RatingTable => "Style",
     };
-    match record.map(|r| r.name.as_str()).filter(|n| !n.is_empty()) {
+    match record.and_then(|r| r.name.as_ref()).map(|n| n.as_str()) {
         Some(n) => format!("{kind} \"{n}\""),
         None => format!("{kind} {id}"),
     }
@@ -970,7 +1086,7 @@ fn merge_style_layer(ctx: &mut Ctx<'_, '_>, layer: StyleLayer, a: &StyleCatalogu
                     let show = |r: Option<&StyleRecord>| match r {
                         None => "removed".to_string(),
                         Some(r) => {
-                            let f: Vec<String> = r.fields.iter().map(|(k, v)| format!("{k} {v}")).collect();
+                            let f: Vec<String> = r.body.entries().iter().map(|(k, v)| format!("{k} {v}")).collect();
                             if f.is_empty() { "no changes".into() } else { f.join(", ") }
                         }
                     };
@@ -1871,7 +1987,13 @@ fn changes(inp: &Inputs<'_>, objects: &[Obj]) -> (Vec<Change>, Vec<PageId>) {
 fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
     let props = |d: &Document| -> Option<Properties> {
         match obj {
-            Obj::Device(c) => d.devices.get(&c).map(|x| x.properties.clone()),
+            // A device's tag and text fields are listed as its keys were (design 072 §2.1).
+            Obj::Device(c) => d.devices.get(&c).map(|x| {
+                let mut p = x.properties.clone();
+                p.extend(text_bag(x));
+                p.extend(x.tag().map(|t| (tag::TAG_KEY.to_string(), t.to_string())));
+                p
+            }),
             Obj::Wire(c) => d.wires.get(&c).map(|x| x.display.clone()),
             Obj::Cable(c) => d.cables.get(&c).map(|x| x.properties.clone()),
             Obj::Page(p) => d.pages.get(&p).map(|x| x.display.clone()),
@@ -1897,6 +2019,20 @@ fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
             let q = |t: Option<String>| t.map_or_else(|| "(none)".into(), |t| format!("\"{t}\""));
             return format!("· {k} {} → {}", q(name(&vx, k)), q(name(&vy, k)));
         }
+    }
+    // Design 072 §3 (FP1): a module moved to another station shows the stations' tags.
+    if let Obj::Device(c) = obj
+        && let (Some(x), Some(y)) = (a.devices.get(&c), s.devices.get(&c))
+        && let (crate::DeviceType::PlcModule(mx), crate::DeviceType::PlcModule(my)) = (&x.device_type, &y.device_type)
+        && (mx.rack, mx.slot) != (my.rack, my.slot)
+    {
+        let docs = [s, a];
+        let at = |r: Option<DeviceId>, slot: Option<u16>| match (r, slot) {
+            (Some(r), Some(n)) => format!("{} slot {n}", name_of(&docs, Obj::Device(r))),
+            (Some(r), None) => name_of(&docs, Obj::Device(r)),
+            (None, _) => "no rack".into(),
+        };
+        return format!("· rack {} → {}", at(mx.rack, mx.slot), at(my.rack, my.slot));
     }
     match (props(a), props(s)) {
         (Some(pa), Some(ps)) => {
@@ -2116,7 +2252,7 @@ mod tests {
         let rule = |_: Obj, _: &str, v: &str| if v.trim().is_empty() { Err("empty".to_string()) } else { Ok(v.trim().to_string()) };
         // Two devices described "coil" cannot be one (a stand-in for 018's rules).
         let join = |d: &Document, from: DeviceId, into: DeviceId| -> Result<Vec<Op>, String> {
-            let coil = |c: DeviceId| d.devices.get(&c).and_then(|x| x.properties.get("description")).is_some_and(|v| v == "coil");
+            let coil = |c: DeviceId| d.devices.get(&c).and_then(|x| x.description.as_ref()).is_some_and(|v| v.as_str() == "coil");
             if coil(from) && coil(into) {
                 return Err("already has a coil.".into());
             }
@@ -2153,7 +2289,7 @@ mod tests {
         t.devices.get_mut(&DeviceId(1)).unwrap().properties.insert("rating".into(), "16 A".into());
         let mut s = a.clone();
         s.devices.get_mut(&DeviceId(1)).unwrap().properties.insert("rating".into(), "20 A".into());
-        s.devices.get_mut(&DeviceId(2)).unwrap().properties.insert("description".into(), "Pump".into());
+        s.devices.get_mut(&DeviceId(2)).unwrap().description = crate::device::Description::new("Pump").ok();
         let scope = scope_of(&[1, 2]);
         let p = run(&a, &t, &s, &scope, &BTreeMap::new());
         assert_eq!(p.conflicts.len(), 1);
@@ -2170,7 +2306,7 @@ mod tests {
             op.apply(&mut doc).unwrap();
         }
         assert_eq!(doc.devices[&DeviceId(1)].properties["rating"], "20 A");
-        assert_eq!(doc.devices[&DeviceId(2)].properties["description"], "Pump");
+        assert_eq!(doc.devices[&DeviceId(2)].text(crate::TextField::Description), Some("Pump"));
         ch.insert(id, Choice::Value("25 A".into()));
         let p = run(&a, &t, &s, &scope, &ch);
         let mut doc = t.clone();
@@ -2221,7 +2357,7 @@ mod tests {
         let mut t2 = doc_with(&[(1, "-K05")]);
         let mut s2 = doc_with(&[(2, "-K05")]);
         for (d, id) in [(&mut t2, 1), (&mut s2, 2)] {
-            d.devices.get_mut(&DeviceId(id)).unwrap().properties.insert("description".into(), "coil".into());
+            d.devices.get_mut(&DeviceId(id)).unwrap().description = crate::device::Description::new("coil").ok();
         }
         let p = run(&a, &t2, &s2, &scope, &BTreeMap::new());
         let c = p.conflicts.iter().find(|c| c.kind == ConflictKind::Tag).unwrap();
@@ -2257,7 +2393,7 @@ mod tests {
         let a = doc_with(&[(1, "-K01")]);
         let t = doc_with(&[]);
         let mut s = a.clone();
-        s.devices.get_mut(&DeviceId(1)).unwrap().properties.insert("description".into(), "x".into());
+        s.devices.get_mut(&DeviceId(1)).unwrap().description = crate::device::Description::new("x").ok();
         let scope = scope_of(&[1]);
         let p = run(&a, &t, &s, &scope, &BTreeMap::new());
         assert_eq!(p.conflicts[0].kind, ConflictKind::Removed);
@@ -2334,7 +2470,7 @@ mod tests {
         device(&mut a, 1, "-K01", &[11, 12]);
         let t = Document::default();
         let mut s = a.clone();
-        s.devices.get_mut(&DeviceId(1)).unwrap().properties.insert("description".into(), "Pump".into());
+        s.devices.get_mut(&DeviceId(1)).unwrap().description = crate::device::Description::new("Pump").ok();
         let scope = scope_all(&[Obj::Device(DeviceId(1)), Obj::Terminal(TerminalId(11)), Obj::Terminal(TerminalId(12))]);
         let p = run(&a, &t, &s, &scope, &BTreeMap::new());
         let k = p.conflicts.iter().find(|c| c.kind == ConflictKind::Removed).unwrap();
@@ -2456,7 +2592,7 @@ mod tests {
     fn an_answer_for_a_conflict_not_raised_is_reported_as_ignored() {
         let a = doc_with(&[(1, "-K01")]);
         let mut s = a.clone();
-        s.devices.get_mut(&DeviceId(1)).unwrap().properties.insert("description".into(), "Pump".into());
+        s.devices.get_mut(&DeviceId(1)).unwrap().description = crate::device::Description::new("Pump").ok();
         let p = run(&a, &a, &s, &scope_of(&[1]), &one(&format!("{}/prop.rating", DeviceId(1).hex()), Choice::Source));
         assert_eq!(p.ignored.len(), 1, "{:?}", p.ignored);
         assert!(p.ignored[0].starts_with("-K01"), "{:?}", p.ignored);

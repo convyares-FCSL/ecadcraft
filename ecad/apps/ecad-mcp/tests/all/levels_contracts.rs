@@ -47,7 +47,10 @@ fn multi_level_terminal_commands_through_execute() {
     c.exec("terminals", json!({"strip": strip, "type": "LNPE", "level": "N", "from": [0, 120], "to": [40, 120]}));
     let (label, ops) = last_by_agent(&mut c);
     assert_eq!(label, "Place terminal level");
-    assert!(ops.iter().any(|o| matches!(o, Op::AddTerminal { terminal, .. } if terminal.key.as_deref() == Some(".2"))), "level keys .n");
+    assert!(
+        ops.iter().any(|o| matches!(o, Op::AddTerminal { terminal, .. } if terminal.key.as_ref().map(ToString::to_string).as_deref() == Some(".2"))),
+        "level keys .n"
+    );
     // A level starter placed on its own joins the strip at the next free position.
     let p = c.exec("place", json!({"symbol": "termlnpe.3", "at": [200, 200], "device": strip}));
     assert_eq!(p["position"], "1", "{p}");

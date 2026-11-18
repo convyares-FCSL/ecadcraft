@@ -719,7 +719,10 @@ pub fn plan_tagless(
         id: component,
         device: Device { properties: props, definition: Some(definition), device_type: s.device_type(), ..Device::default() },
     });
-    ops.push(Op::AddTerminal { id: terminal, terminal: Terminal { component, label: None, key: Some("1".into()), accepts: Default::default() } });
+    ops.push(Op::AddTerminal {
+        id: terminal,
+        terminal: Terminal { component, label: None, key: Some(ecad_model::PointKey::def("1")), accepts: Default::default() },
+    });
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition, placement }) } });
     ops.push(Op::LinkRepresentation {
         id: representation,
@@ -881,7 +884,7 @@ pub fn point_words(doc: &Document, t: TerminalId) -> String {
         }
         _ => {}
     }
-    let label = term.label.clone().or_else(|| term.key.clone()).unwrap_or_else(|| "?".into());
+    let label = term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| "?".into());
     match crate::devices::tag_of(doc, c) {
         Some(tag) => format!("{tag}:{label}"),
         None => format!("{}\u{2026}:{label}", c.hex().get(..8).unwrap_or_default()),

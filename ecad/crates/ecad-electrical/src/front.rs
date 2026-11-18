@@ -324,7 +324,7 @@ fn generated_wire_lines(doc: &Document) -> Vec<WireLine> {
                 .and_then(|r| crate::styles::wire::filled(&r))
                 .unwrap_or_default()
         };
-        let (colour, cross_section) = (f("colour"), f("cross_section"));
+        let (colour, cross_section) = (f("colours"), f("size"));
         match out.iter_mut().find(|l| l.colour.eq_ignore_ascii_case(&colour) && l.cross_section == cross_section) {
             Some(l) => l.names.push(row.name),
             None => out.push(WireLine { names: vec![row.name], cross_section, colour, label: None }),
@@ -478,6 +478,7 @@ pub fn touches(doc: &Document, ops: &[Op]) -> bool {
         Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Device(_), key, .. } => {
             codes_on && crate::designations::Aspect::of_property(key).is_some()
         }
+        Op::ModifyDevice { before, after, .. } => codes_on && (before.location != after.location || before.function != after.function),
         // Design 072 §5.3: the revision rows, or a code the cover shows.
         Op::ModifyProject { before, after } => {
             before.revisions != after.revisions

@@ -666,7 +666,7 @@ fn tile(ui: &mut egui::Ui, b: &mut Browser, e: &Entry, sheet: &ecad_drawing_styl
     if let Some(d) = &e.def {
         resp.on_hover_ui(|ui| {
             ui.label(egui::RichText::new(&e.name).strong());
-            let keys: Vec<&str> = d.terminals.iter().map(|t| t.key.as_str()).collect();
+            let keys: Vec<String> = d.terminals.iter().map(|t| t.key.to_string()).collect();
             let n = keys.len();
             ui.label(
                 egui::RichText::new(format!("{n} connection {}: {}", if n == 1 { "point" } else { "points" }, keys.join(", ")))
@@ -746,7 +746,7 @@ pub fn details(ui: &mut egui::Ui, b: &Browser, list: &Listing, writable: bool, p
             kv(ui, "Key", &e.key);
         }
         if let Some(d) = &e.def {
-            let keys: Vec<&str> = d.terminals.iter().map(|t| t.key.as_str()).collect();
+            let keys: Vec<String> = d.terminals.iter().map(|t| t.key.to_string()).collect();
             kv(ui, "Connects at", &if keys.is_empty() { "none".to_string() } else { keys.join(", ") });
             let slots: Vec<String> = d.texts.iter().map(|sl| super::draft::slot_label(&sl.text).to_string()).collect();
             kv(ui, "Text slots", &if slots.is_empty() { "none".to_string() } else { slots.join(", ") });

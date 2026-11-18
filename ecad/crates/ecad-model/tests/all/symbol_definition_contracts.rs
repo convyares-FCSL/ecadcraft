@@ -11,7 +11,7 @@ use ecad_model::{
 fn def(name: &str) -> Definition {
     Definition {
         name: name.into(),
-        terminals: vec![TerminalDef { key: "1".into(), label: Some("1".into()), at: Pt::new(0.0, 0.0), accepts: Default::default() }],
+        terminals: vec![TerminalDef { key: "1".parse().unwrap(), label: Some("1".into()), at: Pt::new(0.0, 0.0), accepts: Default::default() }],
         ..Default::default()
     }
 }
@@ -55,11 +55,11 @@ fn set_component_definition_keeps_properties() {
     l.commit(
         Author::User,
         "prop",
-        vec![Op::SetProperty { object: ObjectRef::Device(K), key: "maker".into(), before: None, after: Some("-K01".into()) }],
+        vec![Op::SetProperty { object: ObjectRef::Device(K), key: "note".parse().unwrap(), before: None, after: Some("-K01".into()) }],
     )
     .expect("tag");
     l.commit(Author::User, "edit", vec![set(Some(A), Some(B))]).expect("set");
-    assert_eq!(l.document().devices[&K].properties.get("maker").map(String::as_str), Some("-K01"));
+    assert_eq!(l.document().devices[&K].get("note"), Some("-K01"));
 }
 
 #[test]
@@ -114,7 +114,7 @@ fn merged(ancestor: &Document, target: &Document, source: &Document, source_ops:
 #[test]
 fn merge_a_property_against_a_definition_change_does_not_conflict() {
     let a = base().document().clone();
-    let tag = Op::SetProperty { object: ObjectRef::Device(K), key: "description".into(), before: None, after: Some("Pump".into()) };
+    let tag = Op::SetProperty { object: ObjectRef::Device(K), key: "note".parse().unwrap(), before: None, after: Some("Pump".into()) };
     let mut t = a.clone();
     tag.apply(&mut t).expect("target");
     let mut s = a.clone();
@@ -129,7 +129,7 @@ fn merge_a_property_against_a_definition_change_does_not_conflict() {
         op.apply(&mut m).expect("merged op");
     }
     assert_eq!(m.devices[&K].definition, Some(B));
-    assert_eq!(m.devices[&K].properties.get("description").map(String::as_str), Some("Pump"));
+    assert_eq!(m.devices[&K].get("note"), Some("Pump"));
 
     // The other way round: the source sets the property, the target the definition.
     let plan = merged(&a, &s, &t, std::slice::from_ref(&tag));

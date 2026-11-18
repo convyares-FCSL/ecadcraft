@@ -6,7 +6,6 @@
 use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::book::LOCATION_KEY;
 use ecad_model::{CableId, DeviceId, Document, End, ObjectRef, Op, PageId, Pt, Subject, TerminalId, WireId};
 
 use super::*;
@@ -639,7 +638,7 @@ impl Outputs {
         let props = &comp.properties;
         // Brief 052: stored values are entry keys of the project's list; shown by their codes.
         let shown = |k: Option<String>| k.map(|k| (crate::designations::code_of(doc, crate::designations::Aspect::Location, &k), k));
-        let location = match shown(clean(props.get(LOCATION_KEY))) {
+        let location = match shown(crate::designations::device_key(comp, crate::designations::Aspect::Location)) {
             Some((value, key)) => Located { value, source: Source::Device, key: Some(key) },
             None => match shown(crate::designations::default_key(&doc.project, crate::designations::Aspect::Location)) {
                 Some((value, key)) => Located { value, source: Source::Project, key: Some(key) },
@@ -663,10 +662,10 @@ impl Outputs {
             item: true,
             tag: String::new(),
             location: location.value,
-            description: clean(props.get("description")),
-            maker: clean(props.get("maker")),
-            part_number: clean(props.get("part_number")),
-            article_number: clean(props.get(bom::ARTICLE_KEY)),
+            description: clean(comp.description.as_ref().map(|t| t.as_str())),
+            maker: clean(comp.manufacturer.as_ref().map(|t| t.as_str())),
+            part_number: clean(comp.part_number.as_ref().map(|t| t.as_str())),
+            article_number: clean(comp.article_number.as_ref().map(|t| t.as_str())),
             qty,
             metres,
             kit: None,
@@ -705,16 +704,15 @@ impl Outputs {
             return;
         }
         let Some(comp) = doc.devices.get(&c) else { return };
-        let props = &comp.properties;
         let location = locations::resolve_with(doc, c, cache);
         let goto = crate::reps::goto(doc, c, None).and_then(|rid| doc.representations.get(&rid).map(|r| (rid, r.page, locations::anchor(doc, r))));
         let row = DeviceRow {
             component: c,
             tag: comp.tag().unwrap_or_default().to_string(),
-            description: clean(props.get("description")),
-            maker: clean(props.get("maker")),
-            part_number: clean(props.get("part_number")),
-            article_number: clean(props.get(bom::ARTICLE_KEY)),
+            description: clean(comp.description.as_ref().map(|t| t.as_str())),
+            maker: clean(comp.manufacturer.as_ref().map(|t| t.as_str())),
+            part_number: clean(comp.part_number.as_ref().map(|t| t.as_str())),
+            article_number: clean(comp.article_number.as_ref().map(|t| t.as_str())),
             location,
             function: locations::resolve_function(doc, c),
             goto,

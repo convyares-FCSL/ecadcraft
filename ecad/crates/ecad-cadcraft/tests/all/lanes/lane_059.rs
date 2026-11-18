@@ -128,9 +128,7 @@ fn cores_in_use_are_never_reduced() {
     assert!(e.contains("has wires on cores 1, 2, 3 and GNYE; 3G has 3 cores"), "{e}");
     assert_eq!(h.head(), head);
     // A cable type with fewer cores is refused the same way.
-    let ty = h
-        .run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth three", "fields": {"cores": "3G", "cross_section": "1.5"}}))
-        .unwrap();
+    let ty = h.run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth three", "fields": {"cores": "3G", "size": "1.5"}})).unwrap();
     h.run("cableedit", json!({"cable": k.hex(), "set": {"cores": null}})).unwrap_or_else(|e| panic!("{e}"));
     let e = h.run("cableedit", json!({"cable": k.hex(), "set": {"cable_type": ty["id"]}})).unwrap_err();
     assert!(e.contains("has wires on cores"), "{e}");
@@ -139,10 +137,8 @@ fn cores_in_use_are_never_reduced() {
 #[test]
 fn a_cable_type_fills_type_only_when_empty_or_its_own() {
     let mut h = H::new(5905);
-    let a =
-        h.run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth A", "fields": {"cores": "4G", "cross_section": "1.5"}})).unwrap();
-    let b =
-        h.run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth B", "fields": {"cores": "7G", "cross_section": "2.5"}})).unwrap();
+    let a = h.run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth A", "fields": {"cores": "4G", "size": "1.5"}})).unwrap();
+    let b = h.run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth B", "fields": {"cores": "7G", "size": "2.5"}})).unwrap();
     let k = new_cable(&mut h, json!({}));
     h.run("cableedit", json!({"cable": k.hex(), "set": {"cable_type": a["id"]}})).unwrap();
     assert_eq!(h.doc().cables[&k].properties.get("type").map(String::as_str), Some("4G1.5"));
@@ -391,9 +387,8 @@ fn glands_default_from_the_cable_type_and_a_drawn_end_without_one_is_noted() {
     assert_eq!(rows.len(), 2, "{rows:?}");
     assert_eq!(rows[0]["severity"], json!("info"));
     assert!(rows.iter().any(|r| r["text"].as_str().unwrap_or_default().contains("no gland size at the field end")), "{rows:?}");
-    let ty = h
-        .run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth glanded", "fields": {"gland": "M20", "cross_section": "1.5"}}))
-        .unwrap();
+    let ty =
+        h.run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth glanded", "fields": {"gland": "M20", "size": "1.5"}})).unwrap();
     h.run("cableedit", json!({"cable": k.hex(), "set": {"cable_type": ty["id"], "to": {"gland": "M25"}}})).unwrap();
     let doc = h.doc();
     assert_eq!(cable_cmds::gland(&doc, k, Side::From), Some(("M20".to_string(), cable_cmds::Source::Type)));

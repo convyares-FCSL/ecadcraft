@@ -652,10 +652,9 @@ impl App {
     /// `Standard: <name>` (brief 050a), or [`STANDARD`] with IEC (built in) or no project. One
     /// field read, no copy of the project.
     pub fn standard_words(&mut self) -> String {
-        let name = self
-            .project
-            .clone()
-            .and_then(|p| p.read(&mut self.cad.session, |p, _| p.ledger.document().standard.as_ref().map(|s| s.header.name.clone())).ok().flatten());
+        let name = self.project.clone().and_then(|p| {
+            p.read(&mut self.cad.session, |p, _| p.ledger.document().standard.as_ref().map(|s| s.header.name.to_string())).ok().flatten()
+        });
         name.map_or_else(|| STANDARD.to_string(), |n| format!("Standard: {n}"))
     }
 

@@ -156,7 +156,7 @@ fn core_positions_are_shown_raw_and_readable() {
             Op::CreateDevice { id: d, device: Device::default() },
             Op::AddTerminal {
                 id: t,
-                terminal: Terminal { component: d, label: Some("1".into()), key: Some("1".into()), accepts: Default::default() },
+                terminal: Terminal { component: d, label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() },
             },
             Op::AddRoute { id: r, route: loose },
             Op::CreateCable { id: k, cable: Cable::default() },
@@ -213,7 +213,7 @@ fn accepts_is_shown_raw_readable_and_on_the_device_row() {
     let mut l = history();
     let mut ids = IdAllocator::seeded(74);
     let (d, t): (DeviceId, TerminalId) = (ids.fresh(), ids.fresh());
-    let bar = Terminal { component: d, label: Some("PE".into()), key: Some("PE".into()), accepts: ecad_model::Accepts::new(12).unwrap() };
+    let bar = Terminal { component: d, label: Some("PE".into()), key: Some("PE".parse().unwrap()), accepts: ecad_model::Accepts::new(12).unwrap() };
     l.commit(Author::User, "bar", vec![Op::CreateDevice { id: d, device: Device::default() }, Op::AddTerminal { id: t, terminal: bar }]).unwrap();
     let path = written(&dir, &l);
     let f = FileSource::from_path(&path);

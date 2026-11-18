@@ -31,7 +31,7 @@ pub const ITEM_KIND: &str = "bom_item";
 /// The prefix of a part line's keys.
 pub const PART_PREFIX: &str = "part.";
 /// The article number of a device's main part, an item, or (with a prefix) a line or strip part.
-pub const ARTICLE_KEY: &str = "article_number";
+pub const ARTICLE_KEY: &str = ecad_model::device::ARTICLE_KEY;
 /// An item's quantity and unit (a line's are `part.<n>.qty`, `part.<n>.unit`).
 pub const QTY_KEY: &str = "qty";
 pub const UNIT_KEY: &str = "unit";
@@ -436,8 +436,8 @@ pub struct Line {
     pub half: Option<crate::symbols::Side>,
 }
 
-fn clean(v: Option<&String>) -> Option<String> {
-    v.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+fn clean(v: Option<impl AsRef<str>>) -> Option<String> {
+    v.map(|s| s.as_ref().trim().to_string()).filter(|s| !s.is_empty())
 }
 
 /// The part lines of a component, in line order, and the `part.` keys ECAD does not read (a file
@@ -535,18 +535,17 @@ pub struct PartSetRow {
 /// shown).
 pub fn part_set(doc: &Document, c: DeviceId) -> Vec<PartSetRow> {
     let Some(comp) = doc.devices.get(&c) else { return Vec::new() };
-    let props = &comp.properties;
-    let (lines, _) = lines(props);
+    let (lines, _) = lines(&comp.properties);
     if lines.is_empty() {
         return Vec::new();
     }
     let mut out = vec![PartSetRow {
         n: 0,
         qty: "1".into(),
-        maker: clean(props.get("maker")),
-        part_number: clean(props.get("part_number")),
-        description: clean(props.get("description")),
-        article_number: clean(props.get(ARTICLE_KEY)),
+        maker: clean(comp.manufacturer.as_ref()),
+        part_number: clean(comp.part_number.as_ref()),
+        description: clean(comp.description.as_ref()),
+        article_number: clean(comp.article_number.as_ref()),
         note: None,
     }];
     for l in lines {
@@ -633,11 +632,12 @@ pub fn refuse_on_item(doc: &Document, c: DeviceId, key: &str, value: Option<&str
 
 /// Whether [`setprop_rule`] has an opinion on `key` of `c`.
 pub fn is_bom_key(doc: &Document, c: DeviceId, key: &str) -> bool {
-    key == ARTICLE_KEY || key.starts_with(PART_PREFIX) || (is_item(doc, c) && matches!(key, QTY_KEY | UNIT_KEY))
+    key.starts_with(PART_PREFIX) || (is_item(doc, c) && matches!(key, QTY_KEY | UNIT_KEY))
 }
 
-/// The `setprop` rule for 047's keys on component `c` (design §2.4): `article_number`,
-/// `part.<n>.*`, and an item's `qty` and `unit`. Returns the value to store.
+/// The `setprop` rule for 047's keys on component `c` (design §2.4): `part.<n>.*`, and an item's
+/// `qty` and `unit` (the main part's `article_number` is a device field, lane 072 B's row).
+/// Returns the value to store.
 ///
 /// # Errors
 /// Every refusal of §2.1, §2.3 and §3, in words. Clearing a part line key is always allowed.
@@ -645,9 +645,6 @@ pub fn setprop_rule(doc: &Document, c: DeviceId, key: &str, value: Option<&str>)
     refuse_on_item(doc, c, key, value)?;
     let props = doc.devices.get(&c).map(|x| &x.properties);
     let clearing = value.map(str::trim).is_none_or(str::is_empty);
-    if key == ARTICLE_KEY {
-        return plain(key, value, MAX_ARTICLE_CHARS);
-    }
     if is_item(doc, c) && key == QTY_KEY {
         if clearing {
             return Ok(None);
@@ -767,20 +764,22 @@ pub fn item_value(doc: &Document, key: &str, value: Option<&str>, metres: bool, 
 }
 
 /// `Slotted trunking 50x75, 3.6 m in +CP1` (brief 052: the location's code from the list).
-pub fn item_words(doc: &Document, props: &Properties) -> String {
-    let d = props.get("description").map_or("?", String::as_str);
+pub fn item_words(doc: &Document, item: &Device) -> String {
+    let props = &item.properties;
+    let d = item.description.as_ref().map_or("?", |t| t.as_str());
     let metres = props.get(UNIT_KEY).is_some_and(|u| parse_unit(u).unwrap_or(false));
     let q = props.get(QTY_KEY).and_then(|q| parse_qty(q, metres).ok()).unwrap_or(Qty::ONE);
     let unit = if metres { " m" } else { "" };
-    match props.get("location").map(|l| crate::designations::display(doc, "location", l)) {
+    let location = crate::designations::device_key(item, crate::designations::Aspect::Location);
+    match location.map(|l| crate::designations::display(doc, "location", &l)) {
         Some(l) => format!("{d}, {q}{unit} in {l}"),
         None => format!("{d}, {q}{unit}"),
     }
 }
 
 /// Whether a stored value equals `want` (trimmed, case-insensitive).
-fn same(v: Option<&String>, want: &str) -> bool {
-    v.is_some_and(|x| x.trim().eq_ignore_ascii_case(want))
+fn same(v: Option<impl AsRef<str>>, want: &str) -> bool {
+    v.is_some_and(|x| x.as_ref().trim().eq_ignore_ascii_case(want))
 }
 
 /// Where `article` writes one article number: the object, the key, and what it is (`device`,
@@ -799,16 +798,17 @@ pub fn article_targets(doc: &Document, pn: &str, maker: Option<&str>) -> Vec<Art
         if !(item || device) {
             continue;
         }
-        let maker_ok = |k: &str| maker.is_none_or(|m| same(props.get(k), m));
+        let maker_ok = |k: &str| maker.is_none_or(|m| same(comp.get(k), m));
         let strip = crate::strips::is_strip(doc, *c);
-        if same(props.get("part_number"), pn) && maker_ok("maker") && !strip {
+        if same(comp.part_number.as_ref(), pn) && maker_ok(ecad_model::device::MAKER_KEY) && !strip {
             out.push((ObjectRef::Device(*c), ARTICLE_KEY.to_string(), if item { "item" } else { "device" }));
         }
         if strip {
             for (part, mk, article, project_maker) in strip_slots(props) {
                 // The maker as the BOM reads it: the strip's, else the project's.
-                let maker_here = props.get(&mk).filter(|v| !v.trim().is_empty()).or_else(|| project_maker.and_then(|k| doc.properties.get(&k)));
-                if same(props.get(&part), pn) && maker.is_none_or(|m| same(maker_here, m)) {
+                let maker_here =
+                    comp.get(&mk).filter(|v| !v.trim().is_empty()).or_else(|| project_maker.and_then(|k| doc.properties.get(&k)).map(String::as_str));
+                if same(comp.get(&part), pn) && maker.is_none_or(|m| same(maker_here, m)) {
                     out.push((ObjectRef::Device(*c), article, "strip"));
                 }
             }

@@ -147,7 +147,7 @@ fn quick_start_5j_merge_cancel_merge_and_update_by_clicks() {
     assert_eq!(branch(&mut h), "Option D");
     assert!(last_label(&mut h).starts_with("Update from main"), "{}", last_label(&mut h));
     assert!(echoed(&h, "Updated \"Option D\" from main"), "{:?}", h.state().cad.session.log.last());
-    let desc = doc(&mut h).devices.get(&k1).and_then(|c| c.properties.get("description").cloned());
+    let desc = doc(&mut h).devices.get(&k1).and_then(|c| c.get("description").map(str::to_string));
     assert_eq!(desc.as_deref(), Some("Main pump"));
     let _ = std::fs::remove_dir_all(&dir);
 }

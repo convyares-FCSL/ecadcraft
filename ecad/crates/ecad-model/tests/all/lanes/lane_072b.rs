@@ -112,3 +112,128 @@ fn the_tag_is_a_field_not_a_property() {
     assert!(serde_json::from_str::<Device>(&hidden).is_err(), "a bidi character in a tag does not read");
     assert_eq!(Device::default().with_tag(Some("-K02")).value("tag").as_deref(), Some("-K02"));
 }
+
+/// Design 072 §2.1 (step 2b): description, part number, maker, article number and type text are
+/// fields; a device's bag never holds their keys, `SetProperty` refuses them, the values are
+/// validated text, and `setprop`'s keys route to them.
+#[test]
+fn the_text_fields_are_fields_not_properties() {
+    use ecad_model::TextField;
+    let mut ids = IdAllocator::seeded(12);
+    let mut l = Ledger::new(12);
+    let c: DeviceId = ids.fresh();
+    for f in TextField::ALL {
+        let mut bagged = Device::default();
+        bagged.properties.insert(f.key().into(), "x".into());
+        assert!(l.commit(Author::User, "bag", vec![Op::CreateDevice { id: c, device: bagged }]).is_err(), "{}: a bag holding it is refused", f.key());
+    }
+    l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: Device::default() }]).unwrap();
+    for f in TextField::ALL {
+        let op = Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key: f.key().into(), before: None, after: Some("x".into()) };
+        assert!(matches!(l.commit(Author::User, "set", vec![op]), Err(ModelError::Precondition(_))), "{}", f.key());
+    }
+    let mut d = Device::default();
+    for (f, v) in TextField::ALL.into_iter().zip(["Main pump", "3RT2016", "Siemens", "A-0400", "UK 2,5"]) {
+        d.set_value(f.key(), Some(v)).unwrap();
+        assert_eq!(d.text(f), Some(v));
+        assert_eq!(d.get(f.key()), Some(v));
+        assert_eq!(d.value(f.key()).as_deref(), Some(v));
+    }
+    assert!(d.properties.is_empty(), "set_value routes the keys to the fields");
+    assert_eq!(d.manufacturer.as_ref().map(|t| t.as_str()), Some("Siemens"), "`maker` is the manufacturer");
+    assert_eq!(d.type_text.as_ref().map(|t| t.as_str()), Some("UK 2,5"), "`type` is the type text");
+    // Too long, or a hidden character: refused; blank clears.
+    assert!(d.with_text(TextField::PartNumber, Some(&"9".repeat(65))).is_err());
+    assert!(d.with_text(TextField::Description, Some(&"d".repeat(256))).is_ok());
+    assert!(d.with_text(TextField::Description, Some(&"d".repeat(257))).is_err());
+    assert!(d.with_text(TextField::Manufacturer, Some("Sie\u{200b}mens")).is_err());
+    assert_eq!(d.with_text(TextField::Description, Some("  ")).unwrap().description, None);
+    let json = serde_json::to_value(&d).unwrap();
+    assert_eq!(json["manufacturer"], "Siemens");
+    let hidden = r#"{"tag":null,"tag_fixed":false,"description":"Pu\u202emp","properties":{},"definition":null,"device_type":"general"}"#;
+    assert!(serde_json::from_str::<Device>(hidden).is_err(), "a bidi character in a description does not read");
+}
+
+/// Design 072 §6.3 (step 2c): a device's location and function are list ids with a `fixed` flag;
+/// a device's bag never holds `location` or `function`, `SetProperty` refuses them and their flags,
+/// and `setprop`'s keys read and set the fields.
+#[test]
+fn location_and_function_are_fields_with_fixed() {
+    use ecad_model::{FunctionId, LocationId};
+    let mut ids = IdAllocator::seeded(13);
+    let mut l = Ledger::new(13);
+    let c: DeviceId = ids.fresh();
+    for key in ["location", "function"] {
+        let mut bagged = Device::default();
+        bagged.properties.insert(key.into(), "0".repeat(32));
+        assert!(l.commit(Author::User, "bag", vec![Op::CreateDevice { id: c, device: bagged }]).is_err(), "{key}: a bag holding it is refused");
+    }
+    l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: Device::default() }]).unwrap();
+    for key in ["location", "location_fixed", "function", "function_fixed"] {
+        let op = Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key: key.into(), before: None, after: Some("x".into()) };
+        assert!(matches!(l.commit(Author::User, "set", vec![op]), Err(ModelError::Precondition(_))), "{key}");
+    }
+    // `set_value` reads an entry's id; a value set that way is typed, so fixed.
+    let loc = LocationId(0xabc);
+    let mut d = Device::default();
+    d.set_value("location", Some(&loc.hex())).unwrap();
+    d.set_value("function", Some(&FunctionId(0xdef).hex())).unwrap();
+    assert_eq!((d.location, d.location_fixed, d.function, d.function_fixed), (Some(loc), true, Some(FunctionId(0xdef)), true));
+    assert!(d.properties.is_empty());
+    assert_eq!(d.value("location"), Some(loc.hex()));
+    assert_eq!(d.value("location_fixed").as_deref(), Some("yes"));
+    let unfixed = Device { location_fixed: false, ..d.clone() };
+    assert_eq!(unfixed.value("location_fixed"), None);
+    assert!(d.only_place_differs(&Device::default()) && !d.only_text_differs(&Device::default()));
+    let json = serde_json::to_value(&d).unwrap();
+    assert_eq!(json["location_fixed"], true);
+    let read: Device = serde_json::from_value(json).unwrap();
+    assert_eq!(read, d, "the fields round-trip");
+}
+
+/// Step 3, Connector (design 072 §2.2): a connector's family, pins, pin names, half parts and
+/// ignored rows are its type's data, strict on read and checked by the invariant; the keys are
+/// never in a device's bag and `setprop`'s keys read them.
+#[test]
+fn a_connector_s_data_is_its_type_s() {
+    use ecad_model::device::{Connector, ConnectorCheck, ConnectorFamily, PinCount, PinName};
+    let mut x = Connector::of_family(ConnectorFamily::Dsub);
+    x.pins = PinCount::new(9);
+    x.pin_names = ["L", "N", "PE"].map(|n| PinName::new(n).unwrap()).to_vec();
+    x.plug.part_number = Some(ecad_model::device::PartText::new("PLG-9").unwrap());
+    x.ignored.insert(ConnectorCheck::Family);
+    let d = Device { device_type: DeviceType::Connector(Box::new(x.clone())), ..Device::default() };
+    let json = serde_json::to_value(&d.device_type).unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!({"connector": {"family": "dsub", "pins": 9, "pin_names": ["L", "N", "PE"], "plug": {"part_number": "PLG-9"}, "ignored": ["connector-family"]}})
+    );
+    assert_eq!(serde_json::from_value::<DeviceType>(json).unwrap(), d.device_type, "round-trips");
+    for bad in [
+        serde_json::json!({"connector": {"family": "dsub9"}}),
+        serde_json::json!({"connector": {"family": "plain", "colour": "red"}}),
+        serde_json::json!({"connector": {"family": "plain", "ignored": ["wire-colour"]}}),
+        serde_json::json!({"connector": {"family": "plain", "pins": 0}}),
+    ] {
+        assert!(serde_json::from_value::<DeviceType>(bad.clone()).is_err(), "{bad}");
+    }
+    assert_eq!(d.value("pins").as_deref(), Some("9"));
+    assert_eq!(d.value("pin_names").as_deref(), Some("L,N,PE"));
+    assert_eq!(d.value("half.p.part_number").as_deref(), Some("PLG-9"));
+    assert_eq!(d.value("half.s.part_number"), None);
+    assert_eq!(d.value("ignore.connector-family").as_deref(), Some("yes"));
+    // The invariant: a name twice is refused; the keys never sit in a bag.
+    let mut ids = IdAllocator::seeded(14);
+    let mut l = Ledger::new(14);
+    let c: DeviceId = ids.fresh();
+    let mut twice = x.clone();
+    twice.pin_names.push(PinName::new("pe").unwrap());
+    let bad = Device { device_type: DeviceType::Connector(Box::new(twice)), ..Device::default() };
+    assert!(l.commit(Author::User, "twice", vec![Op::CreateDevice { id: c, device: bad }]).is_err());
+    for key in ["pins", "pin_names", "half.s.maker", "ignore.connector-size"] {
+        let mut bagged = Device::default();
+        bagged.properties.insert(key.into(), "1".into());
+        assert!(l.commit(Author::User, "bag", vec![Op::CreateDevice { id: c, device: bagged }]).is_err(), "{key}");
+    }
+    l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: d }]).unwrap();
+}

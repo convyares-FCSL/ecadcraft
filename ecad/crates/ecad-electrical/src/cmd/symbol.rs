@@ -12,6 +12,7 @@
 //! - Not here: the builder's drawing, drafts and the review drawer (048b); "update available" in
 //!   Properties and Devices (048c); the page's selection and every JSON form.
 
+use ecad_model::PointKey;
 use ecad_model::units::Radians;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -55,7 +56,7 @@ pub struct Content {
     pub points: Vec<TerminalDef>,
     pub slots: Vec<TextSlot>,
     pub defaults: BTreeMap<String, String>,
-    pub bridges: Vec<Vec<String>>,
+    pub bridges: Vec<Vec<PointKey>>,
     /// What a device this symbol starts is (design 072 §2.3).
     pub device_type: ecad_model::DeviceType,
 }
@@ -142,6 +143,7 @@ pub fn content(input: ContentInput) -> Result<Content, CmdError> {
     let mut c = Content { name, graphics: input.graphics, ..Content::default() };
     for p in input.points {
         let key = p.key.map(|k| k.trim().to_string()).ok_or(CmdError::refused("Each point needs a `key`."))?;
+        let key = PointKey::parse(&key).map_err(|e| CmdError::refused(format!("{e}.")))?;
         let label = p.label.map(|l| l.trim().to_string()).filter(|l| !l.is_empty());
         let at = p.at.ok_or_else(|| CmdError::refused(format!("Point {key} needs `at` [x, y].")))?;
         c.points.push(TerminalDef { key, label, at, accepts: Default::default() });
@@ -163,7 +165,11 @@ pub fn content(input: ContentInput) -> Result<Content, CmdError> {
     if let Some(k) = input.key.as_deref().map(str::trim).filter(|k| !k.is_empty()) {
         c.defaults.insert("key".into(), k.to_string());
     }
-    c.bridges = input.bridges.into_iter().map(|g| g.into_iter().map(|k| k.trim().to_string()).collect()).collect();
+    c.bridges = input
+        .bridges
+        .into_iter()
+        .map(|g| g.into_iter().map(|k| PointKey::parse(k.trim()).map_err(|e| CmdError::refused(format!("{e}.")))).collect())
+        .collect::<Result<_, _>>()?;
     Ok(c)
 }
 
@@ -251,13 +257,13 @@ pub fn problems(c: &Content, rules: &Rules<'_>) -> Vec<String> {
     }
     let grid = crate::defaults::symbols::point_grid(rules.doc);
     let mut keys = BTreeSet::new();
-    let mut spots: Vec<(Pt, &str)> = Vec::new();
+    let mut spots: Vec<(Pt, &PointKey)> = Vec::new();
     for p in &c.points {
-        if !text_ok(&p.key, MAX_POINT_TEXT) || p.label.as_deref().is_some_and(|l| !text_ok(l, MAX_POINT_TEXT)) {
+        if !text_ok(&p.key.to_string(), MAX_POINT_TEXT) || p.label.as_deref().is_some_and(|l| !text_ok(l, MAX_POINT_TEXT)) {
             out.push(format!("Point {} needs a short key and label ({MAX_POINT_TEXT} characters at most).", p.key));
             continue;
         }
-        if !keys.insert(p.key.as_str()) {
+        if !keys.insert(&p.key) {
             out.push(format!("Two points have the key {}.", p.key));
         }
         if !finite_in(p.at) {
@@ -270,7 +276,7 @@ pub fn problems(c: &Content, rules: &Rules<'_>) -> Vec<String> {
         if let Some((_, k)) = spots.iter().find(|(q, _)| q.near(p.at, TOL)) {
             out.push(format!("Point {k} is already here (point {}).", p.key));
         }
-        spots.push((p.at, p.key.as_str()));
+        spots.push((p.at, &p.key));
     }
     let mut texts = BTreeSet::new();
     for s in &c.slots {
@@ -283,7 +289,7 @@ pub fn problems(c: &Content, rules: &Rules<'_>) -> Vec<String> {
             out.push(format!("The {} slot lies outside ±{MAX_EXTENT} mm.", s.text));
         }
     }
-    if let Some(k) = c.bridges.iter().flatten().find(|k| !keys.contains(k.as_str())) {
+    if let Some(k) = c.bridges.iter().flatten().find(|k| !keys.contains(k)) {
         out.push(format!("A bridge names point {k}, which the symbol does not have."));
     }
     out.dedup();
@@ -375,11 +381,11 @@ fn copies_of(doc: &Document, defs: &[DefinitionId]) -> Vec<(ItemId, Representati
 }
 
 /// The terminal of component `c` a representation shows for definition key `key`.
-fn shown_terminal(doc: &Document, c: DeviceId, r: &Representation, old: &Definition, key: &str) -> Option<TerminalId> {
+fn shown_terminal(doc: &Document, c: DeviceId, r: &Representation, old: &Definition, key: &PointKey) -> Option<TerminalId> {
     if r.connection_points.is_empty() {
-        return doc.terminals_of(c).find(|(_, t)| t.key.as_deref() == Some(key)).map(|(t, _)| t);
+        return doc.terminals_of(c).find(|(_, t)| t.key.as_ref() == Some(key)).map(|(t, _)| t);
     }
-    let at = old.terminals.iter().find(|td| td.key == key)?.at;
+    let at = old.terminals.iter().find(|td| td.key == *key)?.at;
     r.connection_points.iter().find(|(_, p)| p.near(at, 1e-9)).map(|(t, _)| *t)
 }
 
@@ -412,8 +418,8 @@ fn row(doc: &Document, item: ItemId, rid: RepresentationId, old_id: DefinitionId
     };
     let mut changes = Vec::new();
     let mut clash = None;
-    let new_keys: BTreeMap<&str, &TerminalDef> = new.terminals.iter().map(|t| (t.key.as_str(), t)).collect();
-    let old_keys: BTreeMap<&str, &TerminalDef> = old.terminals.iter().map(|t| (t.key.as_str(), t)).collect();
+    let new_keys: BTreeMap<&PointKey, &TerminalDef> = new.terminals.iter().map(|t| (&t.key, t)).collect();
+    let old_keys: BTreeMap<&PointKey, &TerminalDef> = old.terminals.iter().map(|t| (&t.key, t)).collect();
     let mut labels_after: BTreeMap<String, usize> = BTreeMap::new();
     for (_, t) in doc.terminals_of(c) {
         if let Some(l) = &t.label {
@@ -451,7 +457,7 @@ fn row(doc: &Document, item: ItemId, rid: RepresentationId, old_id: DefinitionId
                     }
                 }
                 if nd.label != td.label {
-                    let (a, b) = (td.label.clone().unwrap_or_else(|| td.key.clone()), nd.label.clone().unwrap_or_else(|| nd.key.clone()));
+                    let (a, b) = (td.label.clone().unwrap_or_else(|| td.key.to_string()), nd.label.clone().unwrap_or_else(|| nd.key.to_string()));
                     changes.push(format!("label {a} → {b}"));
                     // Rule 3: a relabel that makes two of the device's points share a label.
                     let term = t.and_then(|t| doc.terminals.get(&t));
@@ -527,12 +533,12 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
             ops.push(Op::SetDeviceDefinition { id: c, before: comp.definition, after: Some(new_id) });
             ops.extend(crate::devices::retype(c, comp, new_id, &new.device_type));
         }
-        let new_keys: BTreeMap<&str, &TerminalDef> = new.terminals.iter().map(|t| (t.key.as_str(), t)).collect();
+        let new_keys: BTreeMap<&PointKey, &TerminalDef> = new.terminals.iter().map(|t| (&t.key, t)).collect();
         let mut cps = r.connection_points.clone();
         for td in &old.terminals {
             let Some(t) = shown_terminal(doc, c, r, old, &td.key) else { continue };
             let term = doc.terminals.get(&t).ok_or(CmdError::refused("A connection point is gone."))?;
-            match new_keys.get(td.key.as_str()) {
+            match new_keys.get(&td.key) {
                 None => {
                     // Rows with a wired removal clash, so this one is unwired.
                     ops.push(Op::RemoveTerminal { id: t, terminal: term.clone() });
@@ -555,7 +561,7 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
         }
         for nd in new.terminals.iter().filter(|nd| !old.terminals.iter().any(|td| td.key == nd.key)) {
             let t: TerminalId = ids.fresh();
-            let key = if r.connection_points.is_empty() { nd.key.clone() } else { nd.label.clone().unwrap_or_else(|| nd.key.clone()) };
+            let key = if r.connection_points.is_empty() { nd.key.clone() } else { nd.label.clone().map_or_else(|| nd.key.clone(), PointKey::Def) };
             ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: nd.label.clone(), key: Some(key), accepts: nd.accepts } });
             if !r.connection_points.is_empty() {
                 cps.insert(t, nd.at);
@@ -1008,16 +1014,16 @@ pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: DeviceId, mut cont
     content.graphics = prims.iter().map(|x| shifted(x, origin)).collect();
     // Points: the drawing's connection points, keyed by terminal key, else label, else 1…n.
     let mut points = Vec::new();
-    let mut rekey: Vec<(TerminalId, String)> = Vec::new();
+    let mut rekey: Vec<(TerminalId, PointKey)> = Vec::new();
     let mut used = BTreeSet::new();
     for (n, (t, at)) in rep.connection_points.iter().enumerate() {
         let term = doc.terminals.get(t).ok_or(CmdError::refused("A connection point is gone."))?;
-        let mut key = term.key.clone().or_else(|| term.label.clone()).unwrap_or_else(|| (n + 1).to_string());
+        let mut key = term.key.clone().or_else(|| term.label.clone().map(PointKey::Def)).unwrap_or_else(|| PointKey::Def((n + 1).to_string()));
         if !used.insert(key.clone()) {
-            key = format!("{}", n + 1);
+            key = PointKey::Def(format!("{}", n + 1));
             used.insert(key.clone());
         }
-        if term.key.as_deref() != Some(key.as_str()) {
+        if term.key.as_ref() != Some(&key) {
             rekey.push((*t, key.clone()));
         }
         points.push(TerminalDef { key, label: term.label.clone(), at: Pt::new(at.x - origin.x, at.y - origin.y), accepts: Default::default() });
@@ -1107,7 +1113,7 @@ pub fn plan_place(
             let have: BTreeSet<String> = doc.terminals_of(c).map(|(t, _)| crate::devices::label_of(doc, t)).collect();
             let mut cps = BTreeMap::new();
             for td in &def.terminals {
-                let label = td.label.clone().unwrap_or_else(|| td.key.clone());
+                let label = td.label.clone().unwrap_or_else(|| td.key.to_string());
                 if have.contains(&label) {
                     return Err(CmdError::refused(format!("{} already has a connection point {label}.", crate::devices::tag_words(doc, c))));
                 }
@@ -1115,7 +1121,12 @@ pub fn plan_place(
                 // A point drawn without a label stays unlabelled: it prints no label (bug 1).
                 ops.push(Op::AddTerminal {
                     id: t,
-                    terminal: Terminal { component: c, label: td.label.clone(), key: Some(label), accepts: td.accepts },
+                    terminal: Terminal {
+                        component: c,
+                        label: td.label.clone(),
+                        key: Some(td.label.clone().map_or_else(|| td.key.clone(), PointKey::Def)),
+                        accepts: td.accepts,
+                    },
                 });
                 cps.insert(t, td.at);
             }
@@ -1137,7 +1148,6 @@ pub fn plan_place(
             let c: DeviceId = ids.fresh();
             let mut properties = ecad_model::Properties::new();
             let description = field_value(doc, &key, def, Field::Description).unwrap_or_else(|| def.name.clone());
-            properties.insert("description".into(), description);
             if let Some(r) = field_value(doc, &key, def, Field::Rating) {
                 properties.insert(symbols::RATING_KEY.into(), r);
             }
@@ -1145,10 +1155,11 @@ pub fn plan_place(
                 id: c,
                 device: Device {
                     tag: Some(crate::devices::stored_tag(&tag)?),
+                    description: crate::devices::description_of(&description),
                     properties,
-                    tag_fixed: false,
                     definition: Some(def_id),
                     device_type: def.device_type.clone(),
+                    ..Device::default()
                 },
             });
             for td in &def.terminals {

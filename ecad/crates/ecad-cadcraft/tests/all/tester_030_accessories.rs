@@ -125,7 +125,7 @@ fn props(h: &mut H, c: DeviceId) -> BTreeMap<String, String> {
 }
 
 fn prop(h: &mut H, c: DeviceId, key: &str) -> Option<String> {
-    h.doc().devices[&c].properties.get(key).cloned()
+    h.doc().devices[&c].value(key)
 }
 
 /// A link or accessory value without spaces, for comparing canonical forms.

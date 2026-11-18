@@ -6,8 +6,8 @@
 
 use std::collections::BTreeMap;
 
-use ecad_model::style::{BASED_ON_IEC, MAX_STYLES_PER_CATALOGUE, is_name};
-use ecad_model::{Document, IdAllocator, ObjectRef, Op, Standard, StandardHeader, StandardId, StyleLayer, StyleRecord, StyleRef};
+use ecad_model::style::{BasedOn, MAX_STYLES_PER_CATALOGUE, StyleName, is_name};
+use ecad_model::{Document, IdAllocator, ObjectRef, Op, Standard, StandardHeader, StandardId, StyleLayer, StyleRef};
 
 use crate::defaults::{self, Entry, Kind};
 use crate::error::CmdError;
@@ -128,6 +128,12 @@ fn field_value(doc: &Document, f: &styles::Field, v: FieldInput) -> Result<Optio
         defaults::Value::Flag(b) => ecad_model::words::flag_word(b).to_string(),
         defaults::Value::Text(t) => t.to_string(),
         defaults::Value::OwnStyle(id) => ecad_model::StyleRef::Own(id).text(),
+        defaults::Value::Size(s) => s.to_string(),
+        defaults::Value::Colours(c) => c.to_string(),
+        defaults::Value::Colour(c) => c.to_string(),
+        defaults::Value::Sheet(s) => s.text(),
+        defaults::Value::Margins(m) => ecad_model::sheet::margins_text(&m),
+        defaults::Value::CoreColours(c) => c.to_string(),
     }))
 }
 
@@ -262,6 +268,10 @@ fn clear_standard(doc: &Document) -> Vec<Op> {
 }
 
 /// A standard name as given, checked.
+fn standard_text(name: &str) -> Result<StyleName, CmdError> {
+    StyleName::new(name).map_err(|e| CmdError::refused(format!("A standard's name: {e}.")))
+}
+
 fn standard_name(name: &str) -> Result<&str, CmdError> {
     Some(name.trim()).filter(|n| is_name(n)).ok_or(CmdError::refused(NEEDS_NAME))
 }
@@ -283,7 +293,7 @@ pub fn plan_standard(doc: &Document, ids: &mut IdAllocator, change: StandardChan
                 )));
             }
             let id: StandardId = ids.fresh();
-            let header = StandardHeader { id, name: name.to_string(), based_on: BASED_ON_IEC.into(), origin: None };
+            let header = StandardHeader { id, name: standard_text(name)?, based_on: BasedOn::Iec, origin: None };
             plan(
                 vec![Op::SetStandard { before: None, after: Some(header) }],
                 format!("Make standard {name}"),
@@ -293,10 +303,10 @@ pub fn plan_standard(doc: &Document, ids: &mut IdAllocator, change: StandardChan
         StandardChange::Rename(name) => {
             let name = standard_name(&name)?;
             let cur = doc.standard.as_ref().ok_or(CmdError::refused(STANDARD_FIRST))?;
-            if cur.header.name == name {
+            if cur.header.name.as_str() == name {
                 return Ok(None);
             }
-            let after = StandardHeader { name: name.to_string(), ..cur.header.clone() };
+            let after = StandardHeader { name: standard_text(name)?, ..cur.header.clone() };
             plan(
                 vec![Op::SetStandard { before: Some(cur.header.clone()), after: Some(after) }],
                 format!("Rename standard {name}"),
@@ -418,19 +428,20 @@ pub fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue, edit: 
             None => cat.builtins.first().map(|b| StyleRef::Builtin(b.id.to_string())),
         };
         let id = StyleRef::Own(ids.fresh::<u128>());
-        let mut rec = StyleRecord { name: name.clone(), fields: Default::default(), body: None };
+        let mut copied: Vec<(String, Option<String>)> = Vec::new();
         for f in cat.fields {
             let Some(from) = &from else { break };
-            // 050b: a copy is no potential's default (one category per potential).
+            // 050b: a copy is no potential's default (one type per potential).
             if cat.catalogue == ecad_model::StyleCatalogue::Wire && f.key == "potential" {
                 continue;
             }
             let v = styles::field(doc, cat, from, f, None).text();
             if !v.is_empty() {
-                rec.fields.insert(f.key.to_string(), v);
+                copied.push((f.key.to_string(), Some(v)));
             }
         }
-        let rec = styles::with_fields(Some(&rec), None, &fields);
+        copied.extend(fields.iter().cloned());
+        let rec = styles::with_fields(cat.catalogue, None, Some(&name), &copied)?;
         styles::check_record(doc, cat, &id, layer, &rec)?;
         let op = Op::SetStyle { layer, catalogue: cat.catalogue, id: id.clone(), before: None, after: Some(rec) };
         return Ok(StylePlan { ops: vec![op], id, label: format!("New {} {name}", cat.one.to_lowercase()) });
@@ -452,7 +463,7 @@ pub fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue, edit: 
         return Err(CmdError::input("Give `fields` to set, `rename`, or `new: true`."));
     }
     // A rename goes to the layer holding the style's name.
-    let name_layer = if styles::record(doc, StyleLayer::Standard, cat.catalogue, &id).is_some_and(|r| !r.name.is_empty()) {
+    let name_layer = if styles::record(doc, StyleLayer::Standard, cat.catalogue, &id).is_some_and(|r| r.name.is_some()) {
         StyleLayer::Standard
     } else {
         StyleLayer::Project
@@ -465,10 +476,10 @@ pub fn plan_style(doc: &Document, ids: &mut IdAllocator, cat: &Catalogue, edit: 
             continue;
         }
         let before = styles::record(doc, l, cat.catalogue, &id).cloned();
-        let rec = styles::with_fields(before.as_ref(), n, &f);
+        let rec = styles::with_fields(cat.catalogue, before.as_ref(), n, &f)?;
         // A built-in's override with nothing left is no record; an own style keeps its named
         // record.
-        let keep = !rec.fields.is_empty() || !rec.name.is_empty();
+        let keep = !rec.body.is_empty() || rec.name.is_some();
         let after = keep.then_some(rec);
         if let Some(r) = &after {
             styles::check_record(doc, cat, &id, l, r)?;

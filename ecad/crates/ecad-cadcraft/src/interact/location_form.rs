@@ -92,7 +92,7 @@ impl LocationBox {
                     let own = crate::designations::shown(
                         doc,
                         self.aspect,
-                        doc.devices.get(&c).and_then(|x| x.properties.get(self.aspect.property())).map(String::as_str),
+                        doc.devices.get(&c).and_then(|x| crate::designations::device_key(x, self.aspect)).as_deref(),
                     );
                     Some((crate::locations::anchor(doc, r)?, own))
                 })
