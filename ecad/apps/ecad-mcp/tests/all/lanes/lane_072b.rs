@@ -189,3 +189,25 @@ fn setprop_of_a_strip_fuse_position_rating_records_modify_device() {
     let mut r = reader();
     r.refused("execute", json!({"command": "setprop", "params": {"component": id, "key": "rating.1", "value": "4A"}}));
 }
+
+/// Step 3, Motor: `setprop rating` on a motor through MCP records one `ModifyDevice` with the
+/// typed nameplate as the agent, answers what it read, and is refused with writes off.
+#[test]
+fn setprop_of_a_motor_rating_records_modify_device() {
+    let mut c = Client::new(EcadMcp::in_memory("lane072b-motor", 79, Options { write: true, agent: None }).unwrap());
+    let placed = c.exec("place", json!({"symbol": "motor3", "at": [50, 50]}));
+    let id = placed["component"].as_str().unwrap().to_string();
+    let before = c.log().len();
+    let r = c.exec("setprop", json!({"component": id, "key": "rating", "value": "4 kW 8.2 A DOL"}));
+    assert_eq!(r["message"], json!("Read: 4 kW, 8.2 A, DOL."), "{r}");
+    let log = c.log();
+    assert_eq!(log.len(), before + 1);
+    let last = log.last().unwrap();
+    assert_eq!(last.author, Author::Agent(AGENT.into()));
+    match last.ops.as_slice() {
+        [Op::ModifyDevice { after, .. }] => assert_eq!(after.value("rating").as_deref(), Some("4 kW, 8.2 A, DOL")),
+        other => panic!("{other:?}"),
+    }
+    let mut r = reader();
+    r.refused("execute", json!({"command": "setprop", "params": {"component": id, "key": "rating", "value": "4 kW"}}));
+}

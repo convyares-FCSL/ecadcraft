@@ -148,8 +148,8 @@ impl DeviceType {
             DeviceType::Switching(s) => s.operator_kind() != OperatorKind::Manual,
             // A contact or a thermocouple has no supply: only a powered sensor is warned about.
             DeviceType::Sensor(s) => s.output.is_powered(),
+            DeviceType::Motor(_) => true,
             DeviceType::PowerSupply(_)
-            | DeviceType::Motor(_)
             | DeviceType::Load(_)
             | DeviceType::Indicator(_)
             | DeviceType::TerminalStrip(_)
@@ -166,8 +166,8 @@ impl DeviceType {
             DeviceType::Protection(p) => (!p.is_unrated()).then(|| p.to_string()),
             DeviceType::Switching(s) => (!s.is_unrated()).then(|| s.to_string()),
             DeviceType::Sensor(s) => (!s.is_unrated()).then(|| s.to_string()),
+            DeviceType::Motor(m) => (!m.is_unrated()).then(|| m.to_string()),
             DeviceType::PowerSupply(_)
-            | DeviceType::Motor(_)
             | DeviceType::Load(_)
             | DeviceType::Indicator(_)
             | DeviceType::TerminalStrip(_)
@@ -184,10 +184,10 @@ impl DeviceType {
             DeviceType::Protection(p) => DeviceType::Protection(p.kind().empty()),
             DeviceType::Switching(s) => DeviceType::Switching(s.operator_kind().empty()),
             DeviceType::Sensor(s) => DeviceType::Sensor(s.unrated()),
+            DeviceType::Motor(m) => DeviceType::Motor(m.unrated()),
             // A strip's ratings are its fuse positions'.
             DeviceType::TerminalStrip(_) => DeviceType::TerminalStrip(TerminalStrip::default()),
             DeviceType::PowerSupply(_)
-            | DeviceType::Motor(_)
             | DeviceType::Load(_)
             | DeviceType::Indicator(_)
             | DeviceType::Connector(_)
@@ -205,8 +205,8 @@ impl DeviceType {
             DeviceType::Switching(s) => s.problem(),
             DeviceType::Sensor(s) => s.problem(),
             DeviceType::TerminalStrip(s) => s.problem(),
+            DeviceType::Motor(m) => m.problem(),
             DeviceType::PowerSupply(_)
-            | DeviceType::Motor(_)
             | DeviceType::Load(_)
             | DeviceType::Indicator(_)
             | DeviceType::PlcRack(_)
@@ -235,10 +235,8 @@ pub use switching::{Control, Operator, OperatorKind, Switching};
 pub mod sensor;
 pub use sensor::{Output, Sensing, Sensor};
 
-/// A motor (group 5). Its fields come with lane B step 3.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Motor {}
+pub mod motor;
+pub use motor::{Motor, Phases, Starting};
 
 /// A consumer with a power and a demand (group 6). Its fields come with lane B step 3.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]

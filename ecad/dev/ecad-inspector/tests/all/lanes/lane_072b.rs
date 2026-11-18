@@ -197,6 +197,18 @@ fn a_strip_fuse_position_rating_is_shown_raw_and_readable() {
     shown_raw_and_readable("072b-strip", 79, before, after, &["terminal_strip", "fuses", "rated_current"], "fuses");
 }
 
+/// Step 3, Motor (A15): a motor's phases and typed nameplate show in the readable log and the
+/// Readable row view, and the Raw view is the stored bytes.
+#[test]
+fn a_motor_rating_is_shown_raw_and_readable() {
+    use ecad_model::device::{Motor, Phases, Starting};
+    use ecad_model::units::Watts;
+    let before = Device { device_type: DeviceType::Motor(Motor::empty(Phases::Three)), ..Device::default() };
+    let m = Motor { rated_power: Some(Watts(7500.0)), starting: Some(Starting::StarDelta), ..Motor::empty(Phases::Three) };
+    let after = Device { device_type: DeviceType::Motor(m), ..before.clone() };
+    shown_raw_and_readable("072b-motor", 79, before, after, &["motor", "phases", "three", "rated_power", "star_delta"], "rated_power");
+}
+
 /// One device created as `before` and changed to `after`: the readable log names `log_words`,
 /// the Readable row view names `readable_word`, and the Raw view is the stored bytes.
 fn shown_raw_and_readable(name: &str, seed: u64, before: Device, after: Device, log_words: &[&str], readable_word: &str) {
