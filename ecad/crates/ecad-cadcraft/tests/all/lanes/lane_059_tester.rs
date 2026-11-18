@@ -656,8 +656,9 @@ fn r7_a_file_with_hostile_cable_values_reads_as_absent_without_a_panic() {
     ] {
         h.run("setprop", json!({"cable": k.hex(), "key": key, "value": v})).unwrap();
     }
-    // Design 072 §4.5: the shield is a typed field, never a property.
-    assert!(h.run("setprop", json!({"cable": k.hex(), "key": "shield", "value": "OVERALL "})).is_err());
+    // Design 072 §4.5: the shield is a typed field, never a property; a word it is not is refused.
+    assert!(h.run("setprop", json!({"cable": k.hex(), "key": "shield", "value": "tartan"})).is_err());
+    assert!(!h.doc().cables[&k].properties.contains_key("shield"));
     let doc = h.doc();
     assert!(cable_cmds::read(&doc, k, CableField::Length).is_none());
     assert!(cable_cmds::part_value(&doc, k, CableField::Maker).is_none());

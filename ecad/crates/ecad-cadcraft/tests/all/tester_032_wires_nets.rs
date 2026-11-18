@@ -527,7 +527,8 @@ fn t13_a_cable_continued_on_a_second_page() {
     assert_eq!(k.cores.len(), 6);
     for (i, w) in f.w2.iter().enumerate() {
         let m = k.cores.iter().find(|m| m.wire() == Some(*w)).expect("member");
-        assert_eq!(m.label_str().map(str::to_string), labels[i], "page-2 member takes its chain's core label");
+        // Design 072 §4.5: setting the offer gave the unlabelled page-1 cores its labels.
+        assert_eq!(m.label_str(), offer.get(i).map(String::as_str), "page-2 member takes its chain's core label");
     }
     let pages: Vec<PageId> = slash_reps(&doc, f.cable).into_iter().map(|(_, p)| p).collect();
     assert!(pages.contains(&f.p1) && pages.contains(&f.p2), "{pages:?}");

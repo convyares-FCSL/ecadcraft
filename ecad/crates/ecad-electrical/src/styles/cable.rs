@@ -157,9 +157,9 @@ pub fn offer_of_props(doc: &Document, props: &ecad_model::Properties) -> Option<
 }
 
 /// Store the cores `after`'s offer names (design 072 §4.5, a write rule): every offered core no
-/// core of the cable is (by label, or counted as it by [`crate::strips::count_cores`]) becomes an
-/// unplaced in-use core, and an unplaced core the old offer
-/// (`before`'s properties) named and the new one does not goes. Placed cores never change. Run by
+/// core of the cable holds by label goes to a placed core with no label (in core order), else
+/// becomes an unplaced in-use core, and an unplaced core the old offer
+/// (`before`'s properties) named and the new one does not goes. Placed cores never move. Run by
 /// the commands that set `cores`, `type` or `cable_type`; reading never does it. Labels compare
 /// without case.
 pub fn sync_offered_cores(doc: &Document, before: &ecad_model::Properties, after: &mut ecad_model::Cable) {
@@ -167,8 +167,22 @@ pub fn sync_offered_cores(doc: &Document, before: &ecad_model::Properties, after
     let (old, new) = (labels(before), labels(&after.properties));
     let named = |list: &[String], l: &str| list.iter().any(|x| x.eq_ignore_ascii_case(l.trim()));
     after.cores.retain(|m| m.position != ecad_model::CorePosition::Unplaced || m.label_str().is_none_or(|l| !named(&old, l) || named(&new, l)));
-    let free = crate::strips::count_cores(offer_of_props(doc, &after.properties), &after.cores).spare;
-    for l in free.iter().take(crate::slash::MAX_CABLE_MEMBERS) {
+    let held = |cores: &[ecad_model::Core], l: &str| cores.iter().any(|m| m.label_str().is_some_and(|x| x.trim().eq_ignore_ascii_case(l)));
+    // A placed core with no label takes the next offered label no core holds, in core order.
+    for i in 0..after.cores.len() {
+        let unlabelled = after.cores.get(i).is_some_and(|m| m.position != ecad_model::CorePosition::Unplaced && m.label.is_none());
+        if !unlabelled {
+            continue;
+        }
+        let Some(label) = new.iter().find(|l| !held(&after.cores, l)).and_then(|l| ecad_model::CoreLabel::new(l).ok()) else { break };
+        if let Some(m) = after.cores.get_mut(i) {
+            m.label = Some(label);
+        }
+    }
+    for l in &new {
+        if after.cores.len() >= crate::slash::MAX_CABLE_MEMBERS {
+            break;
+        }
         let has = after.cores.iter().any(|m| m.label_str().is_some_and(|x| x.trim().eq_ignore_ascii_case(l)));
         if !has && let Ok(label) = ecad_model::CoreLabel::new(l) {
             after.cores.push(ecad_model::Core::unplaced(Some(label)));
@@ -227,33 +241,14 @@ pub fn is_unused(doc: &Document, k: CableId, label: &str) -> bool {
     doc.cables.get(&k).is_some_and(|c| c.cores.iter().any(|m| m.is_spare() && m.label_str() == Some(label)))
 }
 
-/// The cores of cable `k`, by label: its offer (`4G1.5`: 1, 2, 3, GNYE) and each core chain's
-/// label (a stored core label, or its place `1`, `2`… when it has none). Bounded by the cable's
-/// member bound.
+/// The cores of cable `k`, by label: its offer (`4G1.5`: 1, 2, 3, GNYE), then each stored core's
+/// label not in it (its place `1`, `2`… when it has none). Read as stored (design 072 §4.5).
 pub fn core_labels(doc: &Document, k: CableId) -> Vec<String> {
     let Some(cab) = doc.cables.get(&k) else { return Vec::new() };
-    let chains = crate::references::core_chains(doc, k);
-    let heads: Vec<ecad_model::Core> = chains
-        .iter()
-        .filter_map(|ch| {
-            let first = *ch.first()?;
-            let core = ch.iter().find_map(|w| cab.cores.iter().find(|m| m.wire() == Some(*w)).and_then(|m| m.label.clone()));
-            Some(ecad_model::Core::on_wire(first, core))
-        })
-        // Design 072: a core on a loose line (no wire yet) is a core of the cable too.
-        .chain(cab.cores.iter().take(crate::slash::MAX_CABLE_MEMBERS).filter(|m| m.wire().is_none()).cloned())
-        .collect();
-    let count = crate::strips::count_cores(offer(doc, k), &heads);
-    let mut out: Vec<String> = count.offer.clone().unwrap_or_default();
-    for i in 0..heads.len() {
-        let l = count
-            .matched
-            .get(i)
-            .cloned()
-            .flatten()
-            .or_else(|| heads.get(i).and_then(|h| h.label_str().map(str::to_string)))
-            .unwrap_or_else(|| (i + 1).to_string());
-        if !out.contains(&l) {
+    let mut out: Vec<String> = offer(doc, k).map(|(o, _, _)| o).unwrap_or_default();
+    for (i, m) in cab.cores.iter().enumerate().take(crate::slash::MAX_CABLE_MEMBERS) {
+        let l = m.label_str().map(str::trim).filter(|l| !l.is_empty()).map_or_else(|| (i + 1).to_string(), str::to_string);
+        if !out.iter().any(|o| o.eq_ignore_ascii_case(&l)) {
             out.push(l);
         }
     }
@@ -282,7 +277,9 @@ pub fn unused_ops(doc: &Document, k: CableId, key: &str, value: Option<&str>) ->
         )));
     };
     let cab = doc.cables.get(&k).ok_or_else(|| CmdError::refused("No cable with that ID."))?;
-    let stored = cab.cores.iter().position(|m| m.label.as_ref() == Some(&text));
+    // A core with no label is named by its place (`core_labels`): ticking it labels it so.
+    let by_place = label.parse::<usize>().ok().and_then(|n| n.checked_sub(1)).filter(|i| cab.cores.get(*i).is_some_and(|m| m.label.is_none()));
+    let stored = cab.cores.iter().position(|m| m.label.as_ref() == Some(&text)).or(by_place.filter(|_| tick));
     if stored.is_none() && tick {
         let cores = core_labels(doc, k);
         if !cores.iter().any(|c| c == label) {
@@ -304,6 +301,7 @@ pub fn unused_ops(doc: &Document, k: CableId, key: &str, value: Option<&str>) ->
         Some(i) => {
             if let Some(m) = after.cores.get_mut(i) {
                 m.purpose = purpose;
+                m.label.get_or_insert(text);
             }
         }
         None if tick => after.cores.push(Core { purpose, ..Core::unplaced(Some(text)) }),
@@ -312,34 +310,29 @@ pub fn unused_ops(doc: &Document, k: CableId, key: &str, value: Option<&str>) ->
     Ok(Op::modify_cable(k, cab, after).into_iter().collect())
 }
 
-/// An offered core no member uses (neither a wire nor a loose line, design 072 §4.2) and not
-/// ticked Not used. (A wire always runs between two connection points, so a core with a wire is
+/// A stored core on no line (neither a wire nor a loose line, design 072 §4.2) and in use (not
+/// ticked Not used). (A wire always runs between two connection points, so a core with a wire is
 /// never open at an end.)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpenCore {
     pub label: String,
 }
 
-/// The open cores of cable `k` (owner rule): offered cores no member uses, unless ticked Not
-/// used. Bounded by the cable's member bound.
+/// The open cores of cable `k` (owner rule): its stored in-use cores on no line, in core order.
+/// Read as stored (design 072 §4.5); bounded by the cable's member bound.
 pub fn open_cores(doc: &Document, k: CableId) -> Vec<OpenCore> {
     let Some(cab) = doc.cables.get(&k) else { return Vec::new() };
-    let chains = crate::references::core_chains(doc, k);
-    let heads: Vec<ecad_model::Core> = chains
+    cab.cores
         .iter()
-        .filter_map(|ch| {
-            let first = *ch.first()?;
-            let core = ch.iter().find_map(|w| cab.cores.iter().find(|m| m.wire() == Some(*w)).and_then(|m| m.label.clone()));
-            Some(ecad_model::Core::on_wire(first, core))
-        })
-        // Design 072: a core on a loose line is placed, so used.
-        .chain(cab.cores.iter().take(crate::slash::MAX_CABLE_MEMBERS).filter(|m| m.wire().is_none()).cloned())
-        .collect();
-    let count = crate::strips::count_cores(offer(doc, k), &heads);
-    count.spare.iter().filter(|label| !is_unused(doc, k, label)).map(|label| OpenCore { label: label.clone() }).collect()
+        .take(crate::slash::MAX_CABLE_MEMBERS)
+        .filter(|m| m.position == ecad_model::CorePosition::Unplaced && !m.is_spare())
+        .filter_map(|m| m.label_str().map(|l| OpenCore { label: l.to_string() }))
+        .collect()
 }
 
 /// The cables that name cable type `id` (one pass over the cables, asked for one type at a time).
+/// A catalogue edit of the type's cores syncs none of their stored cores yet (design 072 §4.5):
+/// they follow when the cable's own `cores`, `type` or `cable_type` is next set.
 pub fn users(doc: &Document, id: &StyleRef) -> Vec<CableId> {
     let want = id.text();
     doc.cables.iter().filter(|(_, c)| c.properties.get(CABLE_TYPE).is_some_and(|v| v.trim() == want)).map(|(k, _)| *k).collect()

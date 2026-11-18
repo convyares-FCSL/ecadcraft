@@ -184,3 +184,81 @@ fn number_by_through_mcp_renumbers_in_the_settings_edit_as_the_agent() {
     assert_eq!(m, ecad_mcp::policy::WRITES_OFF);
     assert_eq!(r.log(), before, "nothing recorded with writes off");
 }
+
+/// The `ModifyCable` of the last transaction, with its author.
+fn last_cable(c: &mut Client) -> (Author, ecad_model::Cable) {
+    let log = c.log();
+    let last = log.last().unwrap();
+    let after = last
+        .ops
+        .iter()
+        .find_map(|o| match o {
+            Op::ModifyCable { after, .. } => Some(after.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("a ModifyCable: {:?}", last.ops));
+    assert!(!last.ops.iter().any(|o| matches!(o, Op::SetProperty { object: ecad_model::ObjectRef::Cable(_), .. })), "{:?}", last.ops);
+    (last.author.clone(), after)
+}
+
+/// Brief 011's contract for lane 072 D c3 (design 072 §4.5): a cable is written whole. `cableedit`,
+/// `cablecore`, `rating` and `setprop` on a cable (its offer, a core's Not used, its shield, its
+/// design current, its tag) through `execute` each record one transaction by the agent holding one
+/// `ModifyCable` and no `SetProperty`; the offer stores the cores it offers; with writes off each
+/// is refused.
+#[test]
+fn a_cables_values_set_through_mcp_record_one_modify_cable() {
+    use ecad_model::{CorePosition, Purpose};
+    let mut c = Client::new(EcadMcp::in_memory("lane072d-cable", 723, Options { write: true, agent: None }).unwrap());
+    for x in [0, 10] {
+        c.exec("wire", json!({"points": [[x, 0], [x, 50]]}));
+    }
+    let k = c.exec("cablenew", json!({"cores": "3G"}))["cable"].as_str().unwrap().to_string();
+
+    let step = |c: &mut Client, cmd: &str, params: Value| -> ecad_model::Cable {
+        let before = c.log().len();
+        c.exec(cmd, params.clone());
+        assert_eq!(c.log().len(), before + 1, "{cmd} {params}: one transaction");
+        let (author, after) = last_cable(c);
+        assert_eq!(author, Author::Agent(AGENT.into()), "{cmd}");
+        after
+    };
+    let after = step(&mut c, "cableedit", json!({"cable": k, "set": {"length": 12}}));
+    assert_eq!(after.properties.get("length").map(String::as_str), Some("12"));
+    // The offer stores the cores it offers, on no line yet.
+    let after = step(&mut c, "setprop", json!({"cable": k, "key": "cores", "value": "4G"}));
+    assert_eq!(after.cores.iter().filter(|m| m.position == CorePosition::Unplaced).count(), 4, "{:?}", after.cores);
+    let after = step(&mut c, "setprop", json!({"cable": k, "key": "unused.GNYE", "value": "yes"}));
+    assert!(after.cores.iter().any(|m| m.label_str() == Some("GNYE") && m.purpose == Purpose::Spare), "{:?}", after.cores);
+    let after = step(&mut c, "setprop", json!({"cable": k, "key": "shield", "value": "overall"}));
+    assert!(after.shield.is_some() && !after.properties.contains_key("shield"));
+    let after = step(&mut c, "setprop", json!({"cable": k, "key": "load", "value": "4 A"}));
+    assert_eq!((after.load, after.properties.contains_key("load")), (Some(Amps(4.0)), false));
+    let after = step(&mut c, "rating", json!({"cable": k, "basis": "manual", "manual": "20 A"}));
+    assert_eq!((after.rating.basis, after.rating.manual), (Some(Basis::Manual), Some(Amps(20.0))));
+    let after = step(&mut c, "setprop", json!({"cable": k, "key": "tag", "value": "-W50"}));
+    assert_eq!(after.properties.get("tag").map(String::as_str), Some("-W50"));
+    // A slash places two stored cores; `cablecore` relabels one, still one ModifyCable.
+    c.exec("cableslash", json!({"from": [-5, 25], "to": [15, 25], "cable": k}));
+    let after = step(&mut c, "cablecore", json!({"cable": k, "cores": ["2", "1", "3", "GNYE"]}));
+    let on: Vec<_> = after.cores.iter().filter(|m| m.position != CorePosition::Unplaced).filter_map(|m| m.label_str()).collect();
+    assert_eq!(on, ["2", "1"], "{:?}", after.cores);
+
+    let before = c.log().len();
+    let m = c.refused("execute", json!({"command": "setprop", "params": {"cable": k, "key": "shield", "value": "tinfoil"}}));
+    assert!(m.contains("not a shield"), "{m}");
+    assert_eq!(c.log().len(), before, "a refusal records nothing");
+
+    let mut r = reader();
+    for (cmd, params) in [
+        ("cableedit", json!({"cable": "-W01", "set": {"length": 5}})),
+        ("cablecore", json!({"cable": k, "cores": ["1"]})),
+        ("setprop", json!({"cable": k, "key": "cores", "value": "5G"})),
+        ("setprop", json!({"cable": k, "key": "unused.1", "value": "yes"})),
+    ] {
+        let before = r.log();
+        let m = r.refused("execute", json!({"command": cmd, "params": params}));
+        assert_eq!(m, ecad_mcp::policy::WRITES_OFF, "{cmd}");
+        assert_eq!(r.log(), before, "{cmd}: nothing recorded with writes off");
+    }
+}

@@ -712,7 +712,7 @@ pub fn tag_case(word: &str) -> Result<Case, CmdError> {
 }
 
 /// The ops of `tag_dash` and `tag_case` in `projectprops` (design 033 §8.4): the settings, and
-/// one `SetProperty(tag)` per component or cable tag whose stored text changes (a new dash, or
+/// one `ModifyDevice` or `ModifyCable` per component or cable tag whose stored text changes (a new dash, or
 /// back to upper case). The echo in words. Tags are identities by `tag::key`, which ignores the
 /// dash and the case, so no index changes key; each rewrite is an ordinary tag op that every
 /// tag-showing view already maps. Merging two branches with different dash settings: the merged
@@ -756,6 +756,7 @@ pub fn tag_style_ops(doc: &Document, dash: Option<bool>, case: Option<Case>) -> 
                             ops.push(Op::ModifyDevice { id: c, before: d.clone(), after: d.with_tag(Some(&new)) });
                         }
                     }
+                    ObjectRef::Cable(k) => Op::set_cable_property(doc, &mut ops, k, TAG_KEY, Some(new)),
                     _ => ops.push(Op::SetProperty { object, key: TAG_KEY.into(), before: Some(old.to_string()), after: Some(new) }),
                 }
                 n += 1;

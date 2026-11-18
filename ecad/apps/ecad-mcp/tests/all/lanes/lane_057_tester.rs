@@ -55,7 +55,8 @@ fn rating_writes_by_the_agent_then_refused_with_writes_off() {
         let n = c.log().len();
         c.exec("rating", json!({"cable": "-W01", "basis": "table", "method": "E", "ambient": 37, "grouped": 3, "load": "3 A"}));
         let ops = assert_one_by_agent(&mut c, n, "rating cable").ops;
-        assert!(ops.iter().all(|o| matches!(o, Op::SetProperty { .. })), "only SetProperty: {ops:?}");
+        // Design 072 §4.5 (lane D c3): a cable's rating inputs are its fields, written whole.
+        assert!(matches!(ops.as_slice(), [Op::ModifyCable { .. }]), "one ModifyCable: {ops:?}");
         let n = c.log().len();
         c.exec("rating", json!({"wire": w, "basis": "manual", "manual": "10 A", "bundling": 0.85}));
         assert_one_by_agent(&mut c, n, "rating wire");

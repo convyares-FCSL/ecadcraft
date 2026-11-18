@@ -998,18 +998,8 @@ fn h01_hostile_values_are_refused_by_the_command_and_ignored_from_a_file() {
     ] {
         refused(&mut h, "rating", json!({"cable": "-W01", k: v}));
     }
-    // The same values in a file made elsewhere (setprop): ignored, an Info row, never a panic.
-    for (k, v) in [("rating.ambient", "hot"), ("rating.grouped", "999999999999"), ("load", "NaN"), ("rating.voltage", "-0")] {
-        let id = ecad_model::CableId::parse(&s(&cable_r(&mut h, "-W01")["subject"]["id"])).unwrap();
-        let before = h.doc().cables.get(&id).and_then(|c| c.properties.get(k).cloned());
-        h.cfg(|p| {
-            let op = ecad_model::Op::SetProperty { object: ecad_model::ObjectRef::Cable(id), key: k.into(), before, after: Some(v.into()) };
-            p.ledger.commit(ecad_model::Author::User, "a file made elsewhere", vec![op]).unwrap();
-        });
-        let _ = h.run("ratings", json!({}));
-    }
-    assert!(!checks_of(&mut h, "rating-bad-value").is_empty());
-    assert!(rows_text(&mut h, "rating-bad-value").iter().any(|r| r.contains("rating.ambient 'hot'")));
+    // Design 072 §4.5 (lane D c3): a cable's rating inputs are typed fields, so a file can no
+    // longer hold one that does not read.
     for v in ["", "1e999", "NaN", "-273", "35 °F", &"9".repeat(10_000)] {
         box_temp(&mut h, cab, v);
         let _ = h.run("ratings", json!({}));

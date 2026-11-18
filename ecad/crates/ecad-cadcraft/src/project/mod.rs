@@ -1287,19 +1287,9 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
             Op::SetProperty { object: ecad_model::ObjectRef::Wire(c), .. } | Op::ModifyWire { id: c, .. } => {
                 out.extend(crate::wires::wire_pages(doc, *c));
             }
-            // Brief 026: a cable's tag is drawn by its slashes and its members' labels: their
-            // pages (its references elsewhere are the reference snapshot's part). A high-water
-            // reset is drawn nowhere.
-            Op::SetProperty { object: ecad_model::ObjectRef::Cable(k), .. } => {
-                out.extend(doc.representations_of(Subject::Cable(*k)).map(|(_, r)| r.page));
-                if let Some(cable) = doc.cables.get(k) {
-                    for m in &cable.cores {
-                        out.extend(crate::cables::member_pages(doc, m));
-                    }
-                }
-            }
-            // Design 072 §4.5: a cable's fields are drawn by its slashes and its cores' lines; a
-            // change of its cores redraws every page, as the core ops did.
+            // Design 072 §4.5: a cable's fields (its tag, brief 026) are drawn by its slashes and its
+            // cores' lines (its references elsewhere are the reference snapshot's part); a change
+            // of its cores redraws every page, as the core ops did.
             Op::ModifyCable { id, before, after } => {
                 if before.cores != after.cores {
                     return None;

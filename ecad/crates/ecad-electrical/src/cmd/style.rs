@@ -190,7 +190,10 @@ pub fn rewrite_users(doc: &Document, cat: &Catalogue, id: &StyleRef, to: &StyleR
     let mut put = |o: ObjectRef, key: &str| {
         let before = props_of(doc, o).and_then(|p| p.get(key)).cloned();
         if before.as_deref().and_then(StyleRef::parse).as_ref() == Some(id) {
-            out.push(Op::SetProperty { object: o, key: key.to_string(), before, after: Some(to.text()) });
+            match o {
+                ObjectRef::Cable(k) => Op::set_cable_property(doc, &mut out, k, key, Some(to.text())),
+                _ => out.push(Op::SetProperty { object: o, key: key.to_string(), before, after: Some(to.text()) }),
+            }
         }
     };
     for (key, o) in styles::explicit_users(doc, cat.catalogue, id) {

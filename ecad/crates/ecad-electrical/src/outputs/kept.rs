@@ -961,7 +961,11 @@ impl Outputs {
                 length: p("length"),
                 designation: p("designation"),
                 go,
-                count: crate::strips::count_cores(crate::styles::cable::offer(doc, k), &heads),
+                // The chains' heads, then the stored cores with no wire (spare or on a loose line).
+                count: crate::strips::count_cores(
+                    crate::styles::cable::offer(doc, k),
+                    &heads.iter().cloned().chain(cab.cores.iter().filter(|m| m.wire().is_none()).cloned()).collect::<Vec<_>>(),
+                ),
                 members: heads.iter().filter_map(|m| m.wire()).collect(),
                 member_cores: heads.iter().map(|m| m.label_str().map(str::to_string)).collect(),
                 tails,

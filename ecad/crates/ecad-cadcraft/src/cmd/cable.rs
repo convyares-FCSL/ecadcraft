@@ -11,7 +11,7 @@
 //! - Every key this module reads or writes is named by [`CableField::key`] (design 059 §2.3): no
 //!   other string literal names a cable key here.
 //! - `cablenew` is one `CreateCable` (plus the project list entries a new planned code adds);
-//!   `cableedit` is `SetProperty` ops in one transaction; `cableremove` is one `DeleteCable` and is
+//!   `cableedit` is one `ModifyCable`; `cableremove` is one `DeleteCable` and is
 //!   refused for a drawn cable.
 //!
 //! This module excludes the UI (the Cables tab, the slash picker) and computed glands.

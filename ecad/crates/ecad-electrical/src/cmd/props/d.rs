@@ -1,9 +1,12 @@
-//! Lane 072 D's rows of `setprop` (design 072 §4.2, brief 072 "Lanes"): a wire's keys. The keys
-//! that became [`ecad_model::Wire`] fields build one `ModifyWire`; the wire number and the
-//! potential belong to the whole net and keep their own commands; a wire's other keys are its
-//! display choices and defaults-registry values, or refused.
+//! Lane 072 D's rows of `setprop` (design 072 §4.2, brief 072 "Lanes"): a wire's and a cable's
+//! keys. The keys that became [`ecad_model::Wire`] fields build one `ModifyWire`; the wire number
+//! and the potential belong to the whole net and keep their own commands; a wire's other keys are
+//! its display choices and defaults-registry values, or refused. A cable is written whole: every
+//! key but its tag and fixed flag (the tag rows' conflicts) builds one `ModifyCable`.
 
+use ecad_model::tag::{FIXED_KEY, TAG_KEY};
 use ecad_model::wire::{Colours, WireSize};
+use ecad_model::words::Word;
 use ecad_model::{Document, ObjectRef, Op, Wire, WireId};
 
 use super::super::prop::{Build, PropRule};
@@ -33,7 +36,58 @@ pub static RULES: &[PropRule] = &[
         build: Build::Record(wire_rating),
     },
     PropRule { what: "wire display choices and registry values (072 §9.2)", claims: |_, o, _| is_wire(o), build: Build::Value(wire_display) },
+    PropRule {
+        what: "cable values, cores and Not used (059, 072 D)",
+        claims: |_, o, k| matches!(o, ObjectRef::Cable(_)) && k != TAG_KEY && k != FIXED_KEY,
+        build: Build::Record(cable_value),
+    },
 ];
+
+/// A cable's value by `setprop` (design 072 §4.5): one `ModifyCable`. `cores` stores the cores it
+/// offers, `unused.<label>` a core's purpose, `shield` the typed field; any other key is stored as
+/// typed.
+///
+/// # Errors
+/// A cable that is not there; a bad offer; a shield that is not a word of [`crate::cables::Shield`];
+/// an `unused.` key naming no core.
+pub fn cable_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
+    let ObjectRef::Cable(k) = o else { return Err(CmdError::refused(super::super::prop::NO_SUCH_OBJECT)) };
+    let cab = doc.cables.get(&k).ok_or(CmdError::refused(super::super::prop::NO_SUCH_OBJECT))?;
+    if key.starts_with(crate::styles::cable::UNUSED_PREFIX) {
+        return Ok(crate::styles::cable::unused_ops(doc, k, key, value)?.into_iter().next());
+    }
+    let value = value.map(str::trim).filter(|v| !v.is_empty());
+    let mut after = cab.clone();
+    if let Some(r) = cable_rating_key(key) {
+        let checked = value.map(|v| super::super::rating::check_value(doc, r, v)).transpose()?;
+        super::super::rating::set_cable(&mut after, r, checked.as_deref());
+        return Ok(Op::modify_cable(k, cab, after));
+    }
+    if key == crate::cables::CableField::Shield.key() {
+        after.shield = match value {
+            None => None,
+            Some(v) => Some(<crate::cables::Shield as Word>::parse(v).ok_or_else(|| {
+                CmdError::refused(format!("{:?} is not a shield: give none, overall, pairs or overall+pairs.", crate::cables::clip(v)))
+            })?),
+        };
+        return Ok(Op::modify_cable(k, cab, after));
+    }
+    let stored = if key == crate::strips::CORES_KEY { crate::strips::cores_value(value)? } else { value.map(str::to_string) };
+    match stored {
+        Some(v) => after.properties.insert(key.to_string(), v),
+        None => after.properties.remove(key),
+    };
+    if key == crate::strips::CORES_KEY || key == crate::cables::CableField::Type.key() || key == crate::cables::CableField::CableType.key() {
+        crate::styles::cable::sync_offered_cores(doc, &cab.properties, &mut after);
+    }
+    Ok(Op::modify_cable(k, cab, after))
+}
+
+/// The `rating` key a `setprop` key on a cable names: `load`, or a rating input by its stored key
+/// (`rating.basis`); `protected_by` and the cable type stay properties of their own.
+fn cable_rating_key(key: &str) -> Option<&'static str> {
+    super::super::rating::KEYS.iter().find(|r| r.3 && r.1 == key && r.0 != "protected_by" && r.0 != "cable_type").map(|r| r.0)
+}
 
 fn is_wire(o: ObjectRef) -> bool {
     matches!(o, ObjectRef::Wire(_))

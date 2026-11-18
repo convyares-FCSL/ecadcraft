@@ -20,7 +20,7 @@
 //! | `SetProperty(Page P, number)` | conductors routed on P |
 //! | `SetProperty(Project, designation.<a>.<key>.code)` (a rename in the list, brief 052) | the devices, connectors and items storing that key (the one wide case, by intent) |
 //! | `CreateWire` / `DeleteWire` / `SetProperty` conductor (the commit's wire rewrite included) / route ops | that conductor and its net's conductors (before and after); their cables |
-//! | `CreateCable` / `DeleteCable` / members / `SetProperty` cable | that cable; its cores |
+//! | `CreateCable` / `DeleteCable` / `ModifyCable` | that cable; its cores |
 //! | `SetProperty` of a continuation's `name` (brief 032) | the cables with a member attached to its old or new name group: their core chains |
 //! | `SetProjectSettings` changing the potentials table | conductors on the potentials whose row changed (potential index); with a row added or removed, also those with no potential |
 //! | `SetProjectSettings` changing the sheet | conductors routed on pages that use the project's sheet (their Page cell and ends' places) |
@@ -522,10 +522,8 @@ impl Scope {
                 Op::SetProperty { object: ObjectRef::Wire(w), .. } | Op::ModifyWire { id: w, .. } => {
                     self.wires.insert(*w);
                 }
-                Op::SetProperty { object: ObjectRef::Cable(k), .. } => {
-                    self.cables.insert(*k);
-                }
-                Op::SetProperty { object: ObjectRef::Page(_), .. } => {}
+                // A cable is written whole (`ModifyCable`); `SetProperty` on one is refused.
+                Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Cable(_), .. } => {}
                 Op::ModifyProject { before, after } => {
                     use crate::designations::{Aspect, changed_codes, default_key};
                     // Brief 047: an item without its own location shows the project's.

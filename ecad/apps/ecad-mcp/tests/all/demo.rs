@@ -206,8 +206,9 @@ fn the_demo_locations_reports_and_generated_pages() {
     let row: Vec<String> = cables.rows[0].iter().map(|c| c.text.clone()).collect();
     // Brief 028: Cores is the offer read from the type (4G). Until lane F step F4 -W01 is not
     // continued on page 3: its cores sit on lines ending at the reference (no wires), so its ends
-    // have no location and no core is used (with F4: +CP1, +JB1, 3 used, 1 open (GNYE)).
-    assert_eq!(row[..7], ["-W01", "4G1.5", "4", "?", "?", "0", "4 (1, 2, 3, GNYE)"], "{row:?}");
+    // have no location. A core on a line is placed, so used (design 072 §4.5, lane D c3: counted as
+    // stored): 3 used, GNYE spare (with F4: +CP1, +JB1).
+    assert_eq!(row[..7], ["-W01", "4G1.5", "4", "?", "?", "3", "1 (GNYE)"], "{row:?}");
     let s01 = o.bom_table(ecad_cadcraft::outputs::Group::Location);
     assert!(s01.rows.iter().any(|r| r[2].text == "-S01" && r[4].text == "?" && r[4].flag.is_some()), "-S01 has no maker");
     // The generated pages.

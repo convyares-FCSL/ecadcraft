@@ -655,7 +655,7 @@ fn hostile_documents_derive_without_panicking() {
     doc.pages.insert(page, Page::titled("1").unwrap());
     doc.page_order.push(page);
     doc.layers.insert(layer, Layer { name: "0".into() });
-    doc.cables.insert(cable, Cable { properties: Default::default(), cores: Vec::<Core>::new(), shield: None });
+    doc.cables.insert(cable, Cable::default());
     let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     for (i, x) in [0.0, 50.0, 100.0, 150.0, f64::NAN].into_iter().enumerate() {
         let item = ItemId::from(100 + i as u128);
@@ -694,7 +694,7 @@ fn hostile_documents_derive_without_panicking() {
     two.pages.insert(lost_page, Page::titled("lost").unwrap());
     two.page_order.push(page);
     two.layers.insert(layer, Layer { name: "0".into() });
-    two.cables.insert(cable, Cable { properties: Default::default(), cores: Vec::new(), shield: None });
+    two.cables.insert(cable, Cable::default());
     for (i, pg) in [page, lost_page].into_iter().enumerate() {
         let item = ItemId::from(300 + i as u128);
         two.items.insert(item, Item { page: pg, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(10.0, 0.0) }) });
@@ -733,7 +733,7 @@ fn twenty_thousand_references_of_one_cable_stay_bounded_and_fast() {
     doc.pages.insert(page, Page::titled("1").unwrap());
     doc.page_order.push(page);
     doc.layers.insert(layer, Layer { name: "0".into() });
-    doc.cables.insert(cable, Cable { properties: Default::default(), cores: Vec::new(), shield: None });
+    doc.cables.insert(cable, Cable::default());
     let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     let n: usize = 20_000;
     for i in 0..n {

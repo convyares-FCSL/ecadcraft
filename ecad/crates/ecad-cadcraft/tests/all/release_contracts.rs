@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use ecad_cadcraft::checks::{Checks, Kind};
 use ecad_cadcraft::release::{self, Step};
-use ecad_model::{CableId, ObjectRef, Op, PageId};
+use ecad_model::{CableId, Op, PageId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id};
@@ -527,11 +527,11 @@ fn with_finalise_the_errors_gate_reads_the_finalised_rows() {
         let doc = p.ledger.document();
         let ops: Vec<Op> = [c1, c2]
             .iter()
-            .map(|k| Op::SetProperty {
-                object: ObjectRef::Cable(*k),
-                key: "tag".into(),
-                before: doc.cables[k].properties.get("tag").cloned(),
-                after: Some("-W?1".into()),
+            .map(|k| {
+                let before = doc.cables[k].clone();
+                let mut after = before.clone();
+                after.properties.insert("tag".into(), "-W?1".into());
+                Op::ModifyCable { id: *k, before, after }
             })
             .collect();
         p.ledger.commit(ecad_model::Author::User, "shared provisional tag", ops).unwrap();

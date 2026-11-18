@@ -11,7 +11,7 @@
 //! | Op or change | Recomputed |
 //! | --- | --- |
 //! | a strip in `Strips::last_changed` | that strip (sheet count, indexes) |
-//! | `SetProperty(Cable k, …)` | strips in `by_cable[k]` marked changed (box texts) |
+//! | `ModifyCable k` | strips in `by_cable[k]` marked changed (box texts) |
 //! | `SetProperty(Device d, …)`, `d` in `by_far` | strips in `by_far[d]` marked changed |
 //! | `SetProperty(Project, strippage.*)`, the project's sheet | every strip (a layout setting) |
 //! | `SetProperty(Project, terminal.plan.style)` | nothing here; `style_changed` is set |
@@ -320,7 +320,7 @@ impl StripPages {
                 Op::SetProperty { object: ObjectRef::Project, key, .. } if entries::is_layout_key(key) => layout = true,
                 Op::SetProperty { object: ObjectRef::Project, key, .. } if key == entries::STYLE.key => self.style_changed = true,
                 Op::SetProjectSettings { before, after } if before.sheet != after.sheet => layout = true,
-                Op::SetProperty { object: ObjectRef::Cable(k), .. } | Op::ModifyCable { id: k, .. } => {
+                Op::ModifyCable { id: k, .. } => {
                     self.last_changed.extend(self.by_cable.get(k).into_iter().flatten().copied());
                 }
                 // A far device's tag or description (design 072: its fields) shows in the strip's rows.

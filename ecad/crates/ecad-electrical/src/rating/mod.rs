@@ -47,8 +47,7 @@ pub use protection::*;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::units::{Amps, Celsius, Percent, Volts};
-use ecad_model::wire::{CircuitInputs, InstallMethod, SupplySystem};
+use ecad_model::wire::CircuitInputs;
 use ecad_model::{CableId, DeviceId, Document, NetKey, ObjectRef, Op, StyleRef, WireId, Word};
 
 use crate::defaults::{self, Scope};
@@ -146,26 +145,11 @@ impl RatedSubject {
         }
     }
 
-    /// Its own rating inputs and load: a wire's fields; a cable's stored values (lane D step 2
-    /// types them), a value that does not read raising [`Issue::BadValue`] in `issues`.
-    pub fn inputs(self, doc: &Document, issues: &mut Vec<Issue>) -> (CircuitInputs, Option<f64>) {
+    /// Its own rating inputs and load: a wire's or a cable's fields (design 072 §4.2, §4.5).
+    pub fn inputs(self, doc: &Document) -> (CircuitInputs, Option<f64>) {
         match self {
             RatedSubject::Wire(c) => doc.wires.get(&c).map_or_else(Default::default, |w| (w.rating, w.load.map(|a| a.0))),
-            RatedSubject::Cable(_) => {
-                let props = self.props(doc);
-                let inputs = CircuitInputs {
-                    basis: own(props, BASIS, Basis::parse, issues),
-                    manual: own(props, MANUAL, parse::current, issues).map(Amps),
-                    bundling: None,
-                    method: own(props, METHOD, InstallMethod::parse, issues),
-                    ambient: own(props, AMBIENT, parse::ambient, issues).map(Celsius),
-                    grouped: own(props, GROUPED, |v| parse::count(v).and_then(|n| u8::try_from(n).ok()), issues),
-                    voltage: own(props, VOLTAGE, parse::voltage, issues).map(Volts),
-                    system: own(props, SYSTEM, SupplySystem::parse, issues),
-                    vd_limit: own(props, VD_LIMIT, parse::percent, issues).map(Percent),
-                };
-                (inputs, props.and_then(|p| p.get(LOAD)).and_then(|v| parse::current(v)))
-            }
+            RatedSubject::Cable(k) => doc.cables.get(&k).map_or_else(Default::default, |x| (x.rating, x.load.map(|a| a.0))),
         }
     }
 
@@ -293,9 +277,6 @@ impl Touch {
                     for k in doc.cables_of(*c) {
                         self.retrace.insert(RatedSubject::Cable(k));
                     }
-                }
-                Op::SetProperty { object: ObjectRef::Cable(k), .. } => {
-                    self.retrace.insert(RatedSubject::Cable(*k));
                 }
                 Op::SetProperty { object: ObjectRef::Device(c), key, .. } => {
                     let is_box = doc.devices.get(c).is_some_and(crate::locations::is_box_component);
