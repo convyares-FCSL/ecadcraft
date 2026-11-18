@@ -11,7 +11,7 @@ use ecad_model::{
 fn def(name: &str) -> Definition {
     Definition {
         name: name.into(),
-        terminals: vec![TerminalDef { key: "1".into(), label: Some("1".into()), at: Pt::new(0.0, 0.0) }],
+        terminals: vec![TerminalDef { key: "1".into(), label: Some("1".into()), at: Pt::new(0.0, 0.0), accepts: Default::default() }],
         ..Default::default()
     }
 }

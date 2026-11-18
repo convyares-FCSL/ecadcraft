@@ -287,7 +287,10 @@ fn place_definition(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Re
         let mut terminals = Vec::new();
         for td in &def.terminals {
             let t: TerminalId = p.ids.fresh();
-            ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()) } });
+            ops.push(Op::AddTerminal {
+                id: t,
+                terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
+            });
             terminals.push(json!({"key": td.key, "terminal": t.hex()}));
         }
         let placement = Placement { origin: at, rotation: Radians::from(degrees), mirror, scale: 1.0 };

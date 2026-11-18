@@ -2289,7 +2289,8 @@ mod tests {
     fn device(d: &mut Document, c: u128, tag_text: &str, terminals: &[u128]) {
         d.devices.insert(DeviceId(c), Device::default().with_tag(Some(tag_text)));
         for t in terminals {
-            d.terminals.insert(TerminalId(*t), Terminal { component: DeviceId(c), label: Some(format!("A{t}")), key: None });
+            d.terminals
+                .insert(TerminalId(*t), Terminal { component: DeviceId(c), label: Some(format!("A{t}")), key: None, accepts: Default::default() });
         }
     }
 

@@ -152,7 +152,7 @@ fn modify_wire_changes_values_undoes_and_never_moves_the_ends() {
 fn page_with_points(l: &mut Ledger, ids: &mut IdAllocator) -> (ecad_model::PageId, TerminalId, TerminalId) {
     use ecad_model::{Device, DeviceId, Page, PageId, Terminal};
     let (p, d, a, b): (PageId, DeviceId, TerminalId, TerminalId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
-    let t = |label: &str| Terminal { component: d, label: Some(label.into()), key: Some(label.into()) };
+    let t = |label: &str| Terminal { component: d, label: Some(label.into()), key: Some(label.into()), accepts: Default::default() };
     l.commit(
         Author::User,
         "setup",
@@ -551,4 +551,70 @@ fn number_by_switches_every_shown_number_between_net_and_conductor_in_one_edit()
     assert_eq!(back[0], renumbered[0]);
     assert_eq!(back[0], back[1]);
     l.document().check_index().unwrap();
+}
+
+#[test]
+fn accepts_is_one_to_sixty_four_and_anything_else_is_a_read_error() {
+    use ecad_model::{Accepts, Terminal};
+    let read = |json: &str| serde_json::from_str::<Terminal>(json).map(|t| t.accepts.get()).map_err(|e| e.to_string());
+    let base = r#"{"component":"00000000000000000000000000000001","label":null,"key":null"#;
+    assert_eq!(read(&format!("{base}}}")), Ok(2), "left out: two");
+    assert_eq!(read(&format!(r#"{base},"accepts":6}}"#)), Ok(6));
+    assert_eq!(read(&format!(r#"{base},"accepts":64}}"#)), Ok(64));
+    for hostile in ["0", "65", "255", "256", "18446744073709551615", "-1", "2.5", "\"2\""] {
+        let e = read(&format!(r#"{base},"accepts":{hostile}}}"#));
+        assert!(e.is_err(), "{hostile} must not read: {e:?}");
+    }
+    assert!(read(&format!(r#"{base},"accepts":0}}"#)).unwrap_err().contains("1 to 64"));
+    let t = Terminal { component: ecad_model::DeviceId(1), label: None, key: None, accepts: Accepts::TWO };
+    assert!(!serde_json::to_string(&t).unwrap().contains("accepts"), "two is left out");
+}
+
+/// A page with a device of two points, the first accepting `n` conductors.
+fn page_with_bar(l: &mut Ledger, ids: &mut IdAllocator, n: u64) -> (ecad_model::PageId, TerminalId, TerminalId) {
+    use ecad_model::{Accepts, Device, DeviceId, Page, PageId, Terminal};
+    let (p, d, a, b): (PageId, DeviceId, TerminalId, TerminalId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
+    let t = |label: &str, accepts| Terminal { component: d, label: Some(label.into()), key: Some(label.into()), accepts };
+    l.commit(
+        Author::User,
+        "setup",
+        vec![
+            Op::AddPage { id: p, page: Page::titled("1").unwrap(), index: 0 },
+            Op::CreateDevice { id: d, device: Device::default() },
+            Op::AddTerminal { id: a, terminal: t("PE", Accepts::new(n).unwrap()) },
+            Op::AddTerminal { id: b, terminal: t("2", Accepts::TWO) },
+        ],
+    )
+    .unwrap();
+    (p, a, b)
+}
+
+#[test]
+fn a_point_accepting_more_than_two_fans_out_and_one_accepting_two_chains() {
+    // Design 072 §4.4 (F38, A17): Ts onto A–B near A join from A while A has room (a star at a
+    // point accepting four); at a point accepting two the second T goes to the far end.
+    use ecad_model::{Pt, RouteEnd, RouteId};
+    for (n, want_far) in [(4u64, false), (2, true)] {
+        let mut ids = IdAllocator::seeded(44 + n);
+        let mut l = Ledger::new(44 + n);
+        let (p, a, b) = page_with_bar(&mut l, &mut ids, n);
+        let (_, c, d) = page_with_points(&mut l, &mut ids);
+        let (r1, r2, r3): (RouteId, RouteId, RouteId) = (ids.fresh(), ids.fresh(), ids.fresh());
+        l.commit(
+            Author::User,
+            "a-b",
+            vec![Op::AddRoute { id: r1, route: route(p, &[(0.0, 0.0), (10.0, 0.0)], RouteEnd::Point(a), RouteEnd::Point(b)) }],
+        )
+        .unwrap();
+        let tee = |q: TerminalId, x: f64| route(p, &[(x, 5.0), (x, 0.0)], RouteEnd::Point(q), RouteEnd::On { route: r1, at: Pt::new(x, 0.0) });
+        l.commit(Author::User, "c", vec![Op::AddRoute { id: r2, route: tee(c, 2.0) }]).unwrap();
+        l.commit(Author::User, "d", vec![Op::AddRoute { id: r3, route: tee(d, 3.0) }]).unwrap();
+        let w = wires(&l);
+        let net = w[0].0;
+        let third = if want_far { [b, d] } else { [a, d] };
+        assert_eq!(w, want(vec![(net, 1, [a, b]), (net, 2, [a, c]), (net, 3, third)]), "accepts {n}");
+        let doc = l.document();
+        assert_eq!(ecad_model::wire_order::accepts(doc, a), n as usize);
+        assert!(doc.ends_at(a).len() <= n as usize, "never more than it accepts here");
+    }
 }

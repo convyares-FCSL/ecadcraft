@@ -690,7 +690,10 @@ pub fn symbol_ops(
         let name = if pin { names.first() } else { names.get(i) }.ok_or(CmdError::refused("Not enough pin names for this symbol."))?;
         let t: TerminalId = ids.fresh();
         let key = side.key().ok_or(CmdError::refused("A connector symbol's point has no side."))?;
-        ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: Some(name.clone()), key: Some(key.to_string()) } });
+        ops.push(Op::AddTerminal {
+            id: t,
+            terminal: Terminal { component: c, label: Some(name.clone()), key: Some(key.to_string()), accepts: td.accepts },
+        });
         cps.insert(t, td.at);
         shown.push(Shown { side, name: name.clone(), terminal: t, local: td.at });
     }

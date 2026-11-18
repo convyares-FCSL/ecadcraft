@@ -48,7 +48,10 @@ impl P {
         let mut ts = Vec::new();
         for k in 1..=n {
             let t: TerminalId = self.ids.fresh();
-            ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: Some(k.to_string()), key: Some(k.to_string()) } });
+            ops.push(Op::AddTerminal {
+                id: t,
+                terminal: Terminal { component: c, label: Some(k.to_string()), key: Some(k.to_string()), accepts: Default::default() },
+            });
             ts.push(t);
         }
         self.commit(ops);
@@ -178,7 +181,10 @@ fn nets_join_through_attachments_continuations_and_bridges_only() {
         name: "bridged".into(),
         origin: None,
         graphics: vec![],
-        terminals: ["1", "2", "3"].iter().map(|k| TerminalDef { key: (*k).into(), label: None, at: ecad_model::Pt::new(0.0, 0.0) }).collect(),
+        terminals: ["1", "2", "3"]
+            .iter()
+            .map(|k| TerminalDef { key: (*k).into(), label: None, at: ecad_model::Pt::new(0.0, 0.0), accepts: Default::default() })
+            .collect(),
         bridges: vec![vec!["1".into(), "2".into()]],
         ..Default::default()
     };

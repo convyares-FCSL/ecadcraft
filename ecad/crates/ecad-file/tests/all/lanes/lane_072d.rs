@@ -85,3 +85,37 @@ fn number_by_is_stored_as_a_word_and_comes_back_from_the_snapshot_and_the_log() 
         assert_eq!(opened.ledger.document().settings.wiring.number_by, NumberBy::Conductor, "{name}");
     }
 }
+
+#[test]
+fn accepts_comes_back_and_a_hostile_count_is_a_read_error() {
+    // Design 072 F38: a point's and a definition terminal's `accepts`, 1 to 64, left out at two.
+    use ecad_file::records::{Terminal as Rec, TerminalDef as DefRec};
+    let dir = TempDir::new("072d-accepts");
+    let mut f = fixture();
+    let (d, t): (DeviceId, TerminalId) = (f.ids.fresh(), f.ids.fresh());
+    let bar = Terminal { component: d, label: Some("PE".into()), key: Some("PE".into()), accepts: Accepts::new(12).unwrap() };
+    f.ledger
+        .commit(Author::User, "bar", vec![Op::CreateDevice { id: d, device: Device::default() }, Op::AddTerminal { id: t, terminal: bar.clone() }])
+        .unwrap();
+    let (lo, hi) = ecad_file::schema::SNAPSHOT_EVERY_RANGE;
+    for (name, every) in [("snap.ecad", lo), ("log.ecad", hi)] {
+        let p = dir.path(name);
+        ProjectV2::create(Store::create(&p).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, every).unwrap();
+        let opened = ProjectV2::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
+        assert_eq!(opened.ledger.document().terminals.get(&t), Some(&bar), "{name}");
+    }
+    let mut v = serde_json::to_value(Rec::from(&bar)).unwrap();
+    assert_eq!(v["accepts"], 12);
+    let two = serde_json::to_value(Rec::from(&Terminal { accepts: Accepts::TWO, ..bar.clone() })).unwrap();
+    assert!(two.get("accepts").is_none(), "two is left out: {two}");
+    for hostile in [serde_json::json!(0), serde_json::json!(65), serde_json::json!(100_000), serde_json::json!(-3)] {
+        v["accepts"] = hostile.clone();
+        assert!(serde_json::from_value::<Rec>(v.clone()).is_err(), "{hostile} must not read");
+    }
+    let def = serde_json::json!({"key": "PE", "label": null, "at": [0.0, 0.0], "accepts": 8});
+    let read = serde_json::from_value::<DefRec>(def.clone()).unwrap_or_else(|e| panic!("{e}: {def}"));
+    assert_eq!(read.accepts.get(), 8);
+    let mut bad = def;
+    bad["accepts"] = serde_json::json!(0);
+    assert!(serde_json::from_value::<DefRec>(bad).is_err());
+}

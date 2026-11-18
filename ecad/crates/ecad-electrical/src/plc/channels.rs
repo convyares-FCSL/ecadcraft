@@ -272,7 +272,10 @@ pub fn plan_cell(
             .map(|td| td.at)
             .ok_or(CmdError::refused("The channel symbol has no point for that role."))?;
         let t: TerminalId = ids.fresh();
-        ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: card, label: Some(pin.clone()), key: Some(key(j.index, role)) } });
+        ops.push(Op::AddTerminal {
+            id: t,
+            terminal: Terminal { component: card, label: Some(pin.clone()), key: Some(key(j.index, role)), accepts: Default::default() },
+        });
         cps.insert(t, at);
         terminals.push((*role, t, pin.clone(), at));
     }

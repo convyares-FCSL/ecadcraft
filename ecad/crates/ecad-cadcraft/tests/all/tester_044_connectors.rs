@@ -1414,13 +1414,18 @@ fn r12_hand_made_connectors_never_panic() {
     {
         ops.push(Op::AddTerminal {
             id: TerminalId::from(0x7044_00c1_u128 << 64 | i as u128),
-            terminal: ecad_model::Terminal { component: x, label: label.map(str::to_string), key: key.map(str::to_string) },
+            terminal: ecad_model::Terminal {
+                component: x,
+                label: label.map(str::to_string),
+                key: key.map(str::to_string),
+                accepts: Default::default(),
+            },
         });
     }
     for i in 0..2_000u128 {
         ops.push(Op::AddTerminal {
             id: TerminalId::from(0x7044_00c2_u128 << 64 | i),
-            terminal: ecad_model::Terminal { component: x, label: Some(format!("{}", 100 + i)), key: Some(".p".into()) },
+            terminal: ecad_model::Terminal { component: x, label: Some(format!("{}", 100 + i)), key: Some(".p".into()), accepts: Default::default() },
         });
     }
     c.h.cfg(|p| p.ledger.commit(Author::User, "hand-made", ops)).unwrap();

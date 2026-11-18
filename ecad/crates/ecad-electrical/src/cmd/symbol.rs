@@ -144,7 +144,7 @@ pub fn content(input: ContentInput) -> Result<Content, CmdError> {
         let key = p.key.map(|k| k.trim().to_string()).ok_or(CmdError::refused("Each point needs a `key`."))?;
         let label = p.label.map(|l| l.trim().to_string()).filter(|l| !l.is_empty());
         let at = p.at.ok_or_else(|| CmdError::refused(format!("Point {key} needs `at` [x, y].")))?;
-        c.points.push(TerminalDef { key, label, at });
+        c.points.push(TerminalDef { key, label, at, accepts: Default::default() });
     }
     for s in input.slots {
         let text = s.text.map(|t| t.trim().to_string()).ok_or(CmdError::refused("Each slot needs a `text`."))?;
@@ -556,7 +556,7 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
         for nd in new.terminals.iter().filter(|nd| !old.terminals.iter().any(|td| td.key == nd.key)) {
             let t: TerminalId = ids.fresh();
             let key = if r.connection_points.is_empty() { nd.key.clone() } else { nd.label.clone().unwrap_or_else(|| nd.key.clone()) };
-            ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: nd.label.clone(), key: Some(key) } });
+            ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: nd.label.clone(), key: Some(key), accepts: nd.accepts } });
             if !r.connection_points.is_empty() {
                 cps.insert(t, nd.at);
             }
@@ -1020,7 +1020,7 @@ pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: DeviceId, mut cont
         if term.key.as_deref() != Some(key.as_str()) {
             rekey.push((*t, key.clone()));
         }
-        points.push(TerminalDef { key, label: term.label.clone(), at: Pt::new(at.x - origin.x, at.y - origin.y) });
+        points.push(TerminalDef { key, label: term.label.clone(), at: Pt::new(at.x - origin.x, at.y - origin.y), accepts: Default::default() });
     }
     content.points = points;
     for sl in &mut content.slots {
@@ -1113,7 +1113,10 @@ pub fn plan_place(
                 }
                 let t: TerminalId = ids.fresh();
                 // A point drawn without a label stays unlabelled: it prints no label (bug 1).
-                ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: td.label.clone(), key: Some(label) } });
+                ops.push(Op::AddTerminal {
+                    id: t,
+                    terminal: Terminal { component: c, label: td.label.clone(), key: Some(label), accepts: td.accepts },
+                });
                 cps.insert(t, td.at);
             }
             ops.push(Op::AddItem { id: item, item: instance });
@@ -1150,7 +1153,10 @@ pub fn plan_place(
             });
             for td in &def.terminals {
                 let t: TerminalId = ids.fresh();
-                ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()) } });
+                ops.push(Op::AddTerminal {
+                    id: t,
+                    terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
+                });
             }
             ops.push(Op::AddItem { id: item, item: instance });
             ops.push(Op::LinkRepresentation {

@@ -156,10 +156,10 @@ impl Order {
     }
 }
 
-/// How many conductors connection point `t` accepts (design 072 §4.4, F38). Until points store
-/// it (lane B's `Terminal.accepts`), every point accepts two.
-pub fn accepts(_doc: &Document, _t: TerminalId) -> usize {
-    2
+/// How many conductors connection point `t` accepts (design 072 §4.4, F38): its stored
+/// [`crate::Accepts`]; two for a point that does not exist.
+pub fn accepts(doc: &Document, t: TerminalId) -> usize {
+    doc.terminals.get(&t).map_or(2, |x| x.accepts.get())
 }
 
 /// The rewrite pass (design 072 §4.4): the ops that bring the wires of every net whose points

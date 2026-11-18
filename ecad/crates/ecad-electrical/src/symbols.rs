@@ -2475,7 +2475,7 @@ fn graphics(key: StarterKey) -> Vec<Primitive> {
 }
 
 fn terminals(key: StarterKey) -> Vec<TerminalDef> {
-    let t = |k: &str, x: f64, y: f64| TerminalDef { key: k.into(), label: Some(k.into()), at: p(x, y) };
+    let t = |k: &str, x: f64, y: f64| TerminalDef { key: k.into(), label: Some(k.into()), at: p(x, y), accepts: Default::default() };
     match key {
         K::Coil => vec![t("A1", 0.0, 10.0), t("A2", 0.0, -10.0)],
         K::No | K::Pbno | K::Sel | K::Floatno | K::Rollerno | K::Interlockno => vec![t("13", 0.0, 10.0), t("14", 0.0, -10.0)],
@@ -2492,7 +2492,7 @@ fn terminals(key: StarterKey) -> Vec<TerminalDef> {
         K::Trafo => vec![t("1U1", -5.0, 15.0), t("1U2", 5.0, 15.0), t("2U1", -5.0, -15.0), t("2U2", 5.0, -15.0)],
         K::Terminal | K::Terminalpe => vec![t("1", 0.0, 0.0)],
         // No label: a junction or continuation shows no connection point name.
-        K::Junction | K::Continuation => vec![TerminalDef { key: "1".into(), label: None, at: p(0.0, 0.0) }],
+        K::Junction | K::Continuation => vec![TerminalDef { key: "1".into(), label: None, at: p(0.0, 0.0), accepts: Default::default() }],
         K::Di => vec![t("I0.0", 0.0, 10.0)],
         K::Do => vec![t("Q0.0", 0.0, -10.0)],
         // ---- Brief 034 stage 1: definition order is common, NC, NO (design 034 §2.3).
@@ -2535,7 +2535,14 @@ fn terminals(key: StarterKey) -> Vec<TerminalDef> {
         // label given when it joins a card.
         k @ (K::Chdi | K::Chdq | K::Chai | K::Chao | K::Chrtd | K::Chiol) => cell_shape(k)
             .map(|(_, pts)| {
-                pts.iter().map(|(role, x)| TerminalDef { key: format!(".{role}"), label: Some((*role).to_string()), at: p(*x, 5.0) }).collect()
+                pts.iter()
+                    .map(|(role, x)| TerminalDef {
+                        key: format!(".{role}"),
+                        label: Some((*role).to_string()),
+                        at: p(*x, 5.0),
+                        accepts: Default::default(),
+                    })
+                    .collect()
             })
             .unwrap_or_default(),
         // ---- Brief 044: a pin's definition keys are its side keys.

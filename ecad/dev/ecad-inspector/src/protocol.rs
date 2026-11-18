@@ -584,7 +584,8 @@ fn devices(d: &Document, detail: bool) -> Vec<Value> {
                 .map(|(t, term)| {
                     let name = term.label.clone().or_else(|| term.key.clone()).unwrap_or_else(|| t.short());
                     let wires: Vec<String> = attached.get(&t).into_iter().flatten().map(|w| wire_name(d, *w)).collect();
-                    json!({"name": name, "wires": wires})
+                    // Design 072 F38 (A15): how many conductors it accepts.
+                    json!({"name": name, "wires": wires, "accepts": term.accepts.get()})
                 })
                 .collect();
             let pages: Vec<String> =

@@ -109,17 +109,17 @@ pub(crate) fn base() -> Base {
         name: "K".into(),
         origin: None,
         graphics: vec![Primitive::Circle { center: Pt::new(0.0, 0.0), radius: 2.0 }],
-        terminals: vec![TerminalDef { key: "1".into(), label: None, at: Pt::new(0.0, 2.0) }],
+        terminals: vec![TerminalDef { key: "1".into(), label: None, at: Pt::new(0.0, 2.0), accepts: Default::default() }],
         ..Default::default()
     };
     let comp = ids.fresh();
     let mut comp_v = Device { definition: Some(def), ..Device::default() };
     comp_v.properties.insert("maker".into(), "K1".into());
     let term = ids.fresh();
-    let term_v = Terminal { component: comp, label: Some("1".into()), key: Some("1".into()) };
+    let term_v = Terminal { component: comp, label: Some("1".into()), key: Some("1".into()), accepts: Default::default() };
     // More connection points of the device, for the wires' other ends.
     let (term2, term3, term4) = (ids.fresh(), ids.fresh(), ids.fresh());
-    let point = |label: &str| Terminal { component: comp, label: Some(label.into()), key: None };
+    let point = |label: &str| Terminal { component: comp, label: Some(label.into()), key: None, accepts: Default::default() };
     let sym = ids.fresh();
     let sym_v = Item { page, style: style(layer), kind: ItemKind::Symbol(SymbolInstance { definition: def, placement: Placement::default() }) };
     let item = ids.fresh();
@@ -251,7 +251,7 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
             before: b.comp_v.clone(),
             after: Device { device_type: ecad_model::DeviceType::of_group(ecad_model::DeviceGroup::Motor), ..b.comp_v.clone() },
         },
-        Op::AddTerminal { id: b.ids.fresh(), terminal: Terminal { component: b.comp, label: None, key: None } },
+        Op::AddTerminal { id: b.ids.fresh(), terminal: Terminal { component: b.comp, label: None, key: None, accepts: Default::default() } },
         Op::RemoveTerminal { id: b.term, terminal: b.term_v.clone() },
         Op::LinkRepresentation { id: b.ids.fresh(), rep: b.rep_wire_v.clone() },
         Op::ModifyRepresentation { id: b.rep_wire, before: b.rep_wire_v.clone(), after: rep_after },
@@ -481,7 +481,7 @@ fn a_later_op_sees_what_an_earlier_op_created() {
     let wire = b.ids.fresh();
     let ops = vec![
         Op::CreateDevice { id: comp, device: Device::default() },
-        Op::AddTerminal { id: term, terminal: Terminal { component: comp, label: None, key: None } },
+        Op::AddTerminal { id: term, terminal: Terminal { component: comp, label: None, key: None, accepts: Default::default() } },
         Op::CreateWire { id: wire, wire: Wire::new(b.ids.fresh(), b.ids.fresh(), term, b.term3) },
         Op::AddCableMember { cable: b.cable, index: 1, member: CableMember::on_wire(wire, None) },
     ];
@@ -760,10 +760,10 @@ impl Gen {
     }
 
     fn definition(&mut self) -> Definition {
-        let mut terminals = vec![TerminalDef { key: "1".into(), label: None, at: Pt::new(0.0, 1.0) }];
+        let mut terminals = vec![TerminalDef { key: "1".into(), label: None, at: Pt::new(0.0, 1.0), accepts: Default::default() }];
         if self.rng.chance(20) {
             let key = if self.rng.chance(50) { "1" } else { "2" };
-            terminals.push(TerminalDef { key: key.into(), label: None, at: Pt::new(0.0, -1.0) });
+            terminals.push(TerminalDef { key: key.into(), label: None, at: Pt::new(0.0, -1.0), accepts: Default::default() });
         }
         let r = if self.rng.chance(5) { f64::NAN } else { 1.0 };
         Definition {
@@ -835,14 +835,22 @@ impl Gen {
             },
             16..=17 => {
                 let component = if self.rng.chance(85) { self.rng.pick_key(&doc.devices).unwrap_or_else(|| self.comp()) } else { self.comp() };
-                Op::AddTerminal { id: fresh_in!(self, terms), terminal: Terminal { component, label: None, key: None } }
+                Op::AddTerminal { id: fresh_in!(self, terms), terminal: Terminal { component, label: None, key: None, accepts: Default::default() } }
             }
             18 => match self.rng.pick_key(&doc.terminals) {
                 Some(id) => Op::RemoveTerminal {
                     id,
-                    terminal: doc.terminals.get(&id).cloned().unwrap_or(Terminal { component: self.comp(), label: None, key: None }),
+                    terminal: doc.terminals.get(&id).cloned().unwrap_or(Terminal {
+                        component: self.comp(),
+                        label: None,
+                        key: None,
+                        accepts: Default::default(),
+                    }),
                 },
-                None => Op::AddTerminal { id: fresh_in!(self, terms), terminal: Terminal { component: self.comp(), label: None, key: None } },
+                None => Op::AddTerminal {
+                    id: fresh_in!(self, terms),
+                    terminal: Terminal { component: self.comp(), label: None, key: None, accepts: Default::default() },
+                },
             },
             19..=21 => Op::LinkRepresentation { id: fresh_in!(self, reps), rep: self.rep(doc) },
             22 => match self.rng.pick_key(&doc.representations) {
