@@ -666,11 +666,19 @@ fn wires(d: &Document) -> Vec<Value> {
                 "fixed": w.number_fixed(),
                 "potential": w.potential_name(),
                 "rating": w.rating.values().into_iter().map(|(k, v)| format!("{k}: {v}")).chain(w.load.map(|a| format!("load: {a}"))).collect::<Vec<_>>(),
+                "protected_by": w.protected_by.map(|p| protected_name(d, p)),
                 "cable": cable.map(|c| c.0.clone()),
                 "core": cable.and_then(|c| c.1.clone()),
             })
         })
         .collect()
+}
+
+/// The device a wire or cable names as its protection, in words: `-F01:3`, or the id of a device
+/// that is not there.
+fn protected_name(d: &Document, p: ecad_model::wire::ProtectedBy) -> String {
+    let device = if d.devices.contains_key(&p.device) { device_name(d, p.device) } else { format!("{} (not in the project)", p.device.short()) };
+    p.position.map_or_else(|| device.clone(), |n| format!("{device}:{n}"))
 }
 
 /// Where a cable core is, in words: its wire, or the line it waits on with its landed end
@@ -712,7 +720,14 @@ fn cables(d: &Document) -> Vec<Value> {
                     }
                 }
             }
-            json!({"id": id.to_string(), "tag": k.properties.get(ecad_model::tag::TAG_KEY), "shield": k.shield.map(ecad_model::words::Word::word), "members": members, "ends": ends})
+            json!({
+                "id": id.to_string(),
+                "tag": k.properties.get(ecad_model::tag::TAG_KEY),
+                "shield": k.shield.map(ecad_model::words::Word::word),
+                "protected_by": k.protected_by.map(|p| protected_name(d, p)),
+                "members": members,
+                "ends": ends,
+            })
         })
         .collect()
 }

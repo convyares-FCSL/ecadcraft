@@ -171,6 +171,8 @@ manual Iz, bundling) and its load.
   note) is refused: a wire has no free properties. Its number and potential still belong to its
   net (`wirenumber`, `potential`).
 - Labels write two-colour wires with a slash: `GN/YE` (three-letter style `GRN/YEL`).
+- The colour setting's words are `code2`, `code3` and `name` (were `iec`, `three-letter`):
+  Project settings ▸ Wires ▸ Colours has a third choice, `Brown Blue Green/Yellow`.
 - Projects saved before this lane do not open (no compatibility before 1.0): regenerate them.
 
 ### Try it

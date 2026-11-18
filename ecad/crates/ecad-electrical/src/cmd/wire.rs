@@ -588,10 +588,9 @@ pub fn wire_settings(before: &ProjectSettings, change: &WireSettingsChange) -> R
         w.digits = Some(d as u8);
     }
     if let Some(c) = &change.colour_style {
-        w.colour_style = Some(
-            wiring::ColourStyle::parse(c)
-                .ok_or(CmdError::input("`colour_style` must be \"iec\" (BN, BU, GNYE) or \"three-letter\" (BRN, BLU, GRN/YEL)"))?,
-        );
+        w.colour_style = Some(<ecad_model::colour::ColourWords as ecad_model::words::Word>::parse(c).ok_or(CmdError::input(
+            "`colour_style` must be \"code2\" (BN, BU, GN/YE), \"code3\" (BRN, BLU, GRN/YEL) or \"name\" (Brown, Blue, Green/Yellow)",
+        ))?);
     }
     if let Some(hv) = change.label_height {
         w.label_height =

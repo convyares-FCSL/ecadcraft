@@ -721,6 +721,9 @@ pub struct Cable {
     /// The design current typed for the cable (`load`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub load: Option<crate::units::Amps>,
+    /// The device named as its protection (`rating {protected_by}`), over the trace's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protected_by: Option<crate::wire::ProtectedBy>,
 }
 
 /// SHA-256 of a definition's canonical form (proposal §20.10), as 64 lower-case hex digits.

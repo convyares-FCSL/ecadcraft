@@ -830,7 +830,7 @@ fn wiring_rows(doc: &Document, w: WireId) -> (Vec<Row>, Vec<Row>) {
     let (cs_default, colour_default) = (cat_value(&look.cross_section), cat_value(&look.colour));
     let wire = doc.wires.get(&w);
     let own_size = wire.and_then(|x| x.size).map(|s| s.to_string());
-    let own_colours = wire.and_then(|x| x.colours.as_ref()).map(|c| c.shown(doc.settings.wiring.colour_style().words()));
+    let own_colours = wire.and_then(|x| x.colours.as_ref()).map(|c| c.shown(doc.settings.wiring.colour_style()));
     let rows = [
         (ecad_electrical::cmd::props::d::SIZE, "Cross-section", own_size, &cs_default),
         (ecad_electrical::cmd::props::d::COLOURS, "Colour", own_colours, &colour_default),
@@ -839,8 +839,7 @@ fn wiring_rows(doc: &Document, w: WireId) -> (Vec<Row>, Vec<Row>) {
         let shown = |v: &str| if key == ecad_electrical::cmd::props::d::COLOURS { doc.settings.wiring.colour(v) } else { v.to_string() };
         let mut row = Row::rw(key, label, stored.clone().unwrap_or_default());
         if key == ecad_electrical::cmd::props::d::COLOURS {
-            row.choices =
-                ecad_model::colour::ConductorColour::ALL.iter().map(|c| c.shown(doc.settings.wiring.colour_style().words()).to_string()).collect();
+            row.choices = ecad_model::colour::ConductorColour::ALL.iter().map(|c| c.shown(doc.settings.wiring.colour_style()).to_string()).collect();
         }
         if stored.is_none()
             && let (Some(d), Some(n)) = (default, &cat_name)

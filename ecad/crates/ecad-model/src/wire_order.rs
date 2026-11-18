@@ -837,6 +837,33 @@ impl<'a> Rewrite<'a> {
     }
 }
 
+/// The ops clearing every `protected_by` that names a device `ops` deleted (design 072 §4.5,
+/// overseer ruling 2026-11-18), on `doc` as `ops` left it: the same transaction, so one undo
+/// brings them back. Nothing unless `ops` delete a device.
+pub fn unprotect(doc: &Document, ops: &[Op]) -> Vec<Op> {
+    let gone: BTreeSet<crate::id::DeviceId> = ops
+        .iter()
+        .filter_map(|o| if let Op::DeleteDevice { id, .. } = o { Some(*id) } else { None })
+        .filter(|d| !doc.devices.contains_key(d))
+        .collect();
+    if gone.is_empty() {
+        return Vec::new();
+    }
+    let hit = |p: Option<crate::wire::ProtectedBy>| p.is_some_and(|p| gone.contains(&p.device));
+    let mut out = Vec::new();
+    for (id, w) in &doc.wires {
+        if hit(w.protected_by) {
+            out.push(Op::ModifyWire { id: *id, before: w.clone(), after: Wire { protected_by: None, ..w.clone() } });
+        }
+    }
+    for (id, c) in &doc.cables {
+        if hit(c.protected_by) {
+            out.extend(Op::modify_cable(*id, c, Cable { protected_by: None, ..c.clone() }));
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

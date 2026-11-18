@@ -53,7 +53,7 @@ pub struct Outputs {
     loc_rows: BTreeMap<LocKey, usize>,
     /// The styles the tables write codes and places in.
     style: ecad_model::ReferenceStyle,
-    colour_style: ecad_model::wiring::ColourStyle,
+    colour_style: ecad_model::colour::ColourWords,
     /// Location box checks by page.
     box_checks: BTreeMap<PageId, Vec<Check>>,
     no_part_number: usize,

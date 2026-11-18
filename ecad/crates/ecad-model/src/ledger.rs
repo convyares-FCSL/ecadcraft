@@ -591,6 +591,12 @@ fn apply_tx_extended(
             journal.extend(cores.clone(), &mut touched)?;
             wires.extend(cores);
         }
+        // A deleted device's `protected_by`s are cleared (overseer ruling, 2026-11-18).
+        let unprotected = crate::wire_order::unprotect(journal.doc, ops);
+        if !unprotected.is_empty() {
+            journal.extend(unprotected.clone(), &mut touched)?;
+            wires.extend(unprotected);
+        }
         let extra = if wires.is_empty() {
             extend(journal.doc, ops)
         } else {

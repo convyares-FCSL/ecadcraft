@@ -270,8 +270,10 @@ fn c12_protected_by() {
     rate_category(&mut f.h);
     let e = f.h.run("rating", json!({"wire": f.l2.hex(), "protected_by": "-Q09"})).unwrap_err();
     assert!(e.contains("-Q09"), "{e}");
-    setprop(&mut f.h, "conductor", f.l2.hex(), "protected_by", json!("-Q09"));
-    assert_eq!(checks_of(&mut f.h, "rating-device-missing").len(), 1);
+    // Design 072 step d: `protected_by` stores the device itself, so setprop refuses it too; a
+    // dangling one comes only from a file (ecad-electrical's protection tests).
+    assert!(f.h.run("setprop", json!({"conductor": f.l2.hex(), "key": "protected_by", "value": "-Q09"})).is_err());
+    assert!(checks_of(&mut f.h, "rating-device-missing").is_empty());
 }
 
 #[test]

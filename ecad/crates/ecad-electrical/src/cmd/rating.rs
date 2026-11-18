@@ -108,7 +108,7 @@ pub fn check_value(doc: &Document, key: &str, value: &str) -> Result<String, Cmd
         "bundling" => parse::bundling(v)
             .map(|_| v.to_string())
             .ok_or_else(|| no("bundling is a factor 0.30 to 1.00, or a circuit count 1 to 20 (\"3 bunched\").")),
-        "protected_by" => match rating::trace::named(doc, v) {
+        "protected_by" => match rating::trace::protected_by(doc, v).map(|p| (p.device, p.position.map(|n| n.to_string()))) {
             Some((c, fuse)) => {
                 let tag = rating::trace::device_words(doc, c, fuse.as_deref());
                 if rating::trace::amps_of(doc, c, fuse.as_deref()).is_none() {
@@ -116,7 +116,9 @@ pub fn check_value(doc: &Document, key: &str, value: &str) -> Result<String, Cmd
                 }
                 Ok(tag)
             }
-            None => Err(CmdError::refused(format!("There is no device or fuse {shown:?}; give a tag such as -Q01, or -F01:3 for a fuse of a bank."))),
+            None => Err(CmdError::refused(format!(
+                "There is no device or fuse {shown:?}; give a tag such as -Q01, or -F01:3 for a fuse of a bank (positions 1 to 255)."
+            ))),
         },
         "method" => dataset::method(v)
             .map(str::to_string)
@@ -168,7 +170,7 @@ pub fn item_ops(doc: &Document, item: &RatingItem) -> Result<(Vec<Op>, Vec<Rated
                 let Some(w) = doc.wires.get(c) else { continue };
                 let mut after = w.clone();
                 for (key, _, value) in &sets {
-                    set_wire(&mut after, key, value.as_deref());
+                    set_wire(doc, &mut after, key, value.as_deref());
                 }
                 if after != *w {
                     ops.push(Op::ModifyWire { id: *c, before: w.clone(), after });
@@ -178,7 +180,7 @@ pub fn item_ops(doc: &Document, item: &RatingItem) -> Result<(Vec<Op>, Vec<Rated
                 let Some(cab) = doc.cables.get(k) else { continue };
                 let mut after = cab.clone();
                 for (key, _, value) in &sets {
-                    set_cable(&mut after, key, value.as_deref());
+                    set_cable(doc, &mut after, key, value.as_deref());
                 }
                 ops.extend(Op::modify_cable(*k, cab, after));
             }
@@ -189,25 +191,20 @@ pub fn item_ops(doc: &Document, item: &RatingItem) -> Result<(Vec<Op>, Vec<Rated
 
 /// Set a wire's input `key` (a JSON key of [`KEYS`] for wires) to `value`, already checked by
 /// [`check_value`] (`None` clears it).
-pub fn set_wire(w: &mut Wire, key: &str, value: Option<&str>) {
+pub fn set_wire(doc: &Document, w: &mut Wire, key: &str, value: Option<&str>) {
     match key {
         "basis" => w.rating.basis = value.and_then(Basis::parse),
         "manual" => w.rating.manual = value.and_then(parse::current).map(Amps),
         "bundling" => w.rating.bundling = value.and_then(parse::bundling),
         "load" => w.load = value.and_then(parse::current).map(Amps),
-        "protected_by" => {
-            match value {
-                Some(v) => w.display.insert(rating::PROTECTED_BY.into(), v.to_string()),
-                None => w.display.remove(rating::PROTECTED_BY),
-            };
-        }
+        "protected_by" => w.protected_by = value.and_then(|v| rating::trace::protected_by(doc, v)),
         _ => {}
     }
 }
 
 /// Set a cable's input `key` (a JSON key of [`KEYS`] for cables) to `value`, already checked by
-/// [`check_value`] (`None` clears it): a field, or the cable type and `protected_by` properties.
-pub fn set_cable(c: &mut ecad_model::Cable, key: &str, value: Option<&str>) {
+/// [`check_value`] (`None` clears it): a field, or the cable type property.
+pub fn set_cable(doc: &Document, c: &mut ecad_model::Cable, key: &str, value: Option<&str>) {
     let r = &mut c.rating;
     match key {
         "basis" => r.basis = value.and_then(Basis::parse),
@@ -219,11 +216,11 @@ pub fn set_cable(c: &mut ecad_model::Cable, key: &str, value: Option<&str>) {
         "system" => r.system = value.and_then(SupplySystem::parse),
         "vd_limit" => r.vd_limit = value.and_then(parse::percent).map(Percent),
         "load" => c.load = value.and_then(parse::current).map(Amps),
-        "protected_by" | "cable_type" => {
-            let prop = if key == "cable_type" { cable::CABLE_TYPE } else { rating::PROTECTED_BY };
+        "protected_by" => c.protected_by = value.and_then(|v| rating::trace::protected_by(doc, v)),
+        "cable_type" => {
             match value {
-                Some(v) => c.properties.insert(prop.into(), v.to_string()),
-                None => c.properties.remove(prop),
+                Some(v) => c.properties.insert(cable::CABLE_TYPE.into(), v.to_string()),
+                None => c.properties.remove(cable::CABLE_TYPE),
             };
         }
         _ => {}

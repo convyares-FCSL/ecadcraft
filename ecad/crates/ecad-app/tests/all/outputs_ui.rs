@@ -176,9 +176,9 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
     let cables = h.state().reports.as_ref().unwrap().table().clone();
     let row: Vec<String> = cables.rows[0].iter().map(|c| c.text.clone()).collect();
     // Brief 028: Cores is the offer read from the type. Until lane F step F4 -W01's cores sit on
-    // lines ending at the reference (no wires), so its ends have no location and no core is used
-    // (with F4: +CP1, +JB1, 3 used, 1 open (GNYE)).
-    assert_eq!(row[..7], ["-W01", "4G1.5", "4", "?", "?", "0", "4 (1, 2, 3, GNYE)"], "{row:?}");
+    // lines ending at the reference (no wires), so its ends have no location; a core on a line is
+    // used (lane 072 D c3), so 3 used and 1 open (GNYE) (with F4 the ends read +CP1, +JB1).
+    assert_eq!(row[..7], ["-W01", "4G1.5", "4", "?", "?", "3", "1 (GNYE)"], "{row:?}");
     h.state_mut().reports = None;
 
     // 5. Generated pages: a cover and contents, the BOM page.
