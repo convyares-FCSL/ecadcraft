@@ -310,3 +310,60 @@ fn the_connectors_view_reaches_the_change_log() {
     let inh = h.p(|p| p.connectors().inheriting(ecad_cadcraft::defaults::connectors::SIDE_SOCKET.key));
     assert!(inh.contains(&a));
 }
+
+// ---------------------------------------------------------------- step 4: the frame
+
+/// Step 4, `FrameView`'s update map (design 064 §4.1): which ops make the kept frame of the first
+/// of three pages stale, through `Views::begin` and `finish`; with no frame shown, none does.
+#[test]
+fn the_frame_view_follows_its_update_map() {
+    use ecad_electrical::derived::{EngineInputs, Views};
+    use ecad_electrical::frames::{FrameInput, FrameText};
+    use ecad_model::{Page, PageTitle};
+    let b = ecad_cadcraft::test_support::ProjectBuilder::new(644).page().page().page().coil("K1", (20.0, 20.0)).build();
+    let (first, second, third) = (b.added_pages[0], b.added_pages[1], b.added_pages[2]);
+    let k1 = b.device("K1");
+    let mut h = crate::common::H::from_built(b);
+    let doc = h.doc();
+    let metrics = ecad_electrical::text_style::fonts::FixedWidth;
+    let input = FrameInput::with(&doc, first, &ecad_model::book::Book::of(&doc), FrameText::with(&doc, &metrics));
+    let index = |p: PageId| doc.page_order.iter().position(|x| *x == p).unwrap();
+    let page = |p: PageId| doc.pages[&p].clone();
+    let retitle = |p: PageId| Op::ModifyPage { id: p, before: page(p), after: Page { title: PageTitle::new("Other").unwrap(), ..page(p) } };
+    let note = |object| Op::SetProperty { object, key: "note".into(), before: None, after: Some("x".into()) };
+    let settings = doc.settings.clone();
+    let mut sheet = settings.clone();
+    sheet.sheet = ecad_model::SheetSpec::parse("A2").ok();
+    let mut info = doc.project.clone();
+    info.info.title = ecad_model::project::InfoText::new("Plant").ok();
+    let moved =
+        |p: PageId, to: usize| vec![Op::RemovePage { id: p, page: page(p), index: index(p) }, Op::AddPage { id: p, page: page(p), index: to }];
+    let folder = ecad_model::Folder { name: "A".into(), parent: None, start: None };
+    let cases: Vec<(&str, Vec<Op>, bool)> = vec![
+        ("its page's property", vec![note(ObjectRef::Page(first))], true),
+        ("another page's property", vec![note(ObjectRef::Page(third))], false),
+        ("its page retitled", vec![retitle(first)], true),
+        ("another page retitled", vec![retitle(third)], false),
+        ("another page removed and added in place", moved(third, index(third)), false),
+        ("another page moved", moved(third, index(second)), true),
+        ("a page appended", vec![Op::AddPage { id: PageId(9_999), page: Page::titled("New").unwrap(), index: doc.page_order.len() }], true),
+        ("a folder added", vec![Op::AddFolder { id: ecad_model::FolderId(9), folder, index: 0 }], true),
+        ("the sheet setting", vec![Op::SetProjectSettings { before: settings.clone(), after: sheet }], true),
+        ("settings unchanged", vec![Op::SetProjectSettings { before: settings.clone(), after: settings }], false),
+        ("the project's info", vec![Op::ModifyProject { before: doc.project.clone(), after: info }], true),
+        ("a version named", vec![Op::NameVersion { name: "v".into(), at: 1, description: None }], true),
+        ("a device property", vec![note(ObjectRef::Device(k1))], false),
+        ("a free project property", vec![note(ObjectRef::Project)], false),
+        ("nothing", vec![], false),
+    ];
+    let metrics = std::sync::Arc::new(ecad_electrical::text_style::fonts::FixedWidth);
+    for (what, ops, want) in cases {
+        let after = crate::common::applied(&doc, &ops);
+        let mut views = Views::new(EngineInputs { metrics: metrics.clone() });
+        let pending = views.begin(&doc, &ops);
+        assert!(!views.finish(&after, &ops, pending).frame_stale, "{what}: no frame shown");
+        views.frame_mut().show(first, input.clone());
+        let pending = views.begin(&doc, &ops);
+        assert_eq!(views.finish(&after, &ops, pending).frame_stale, want, "{what}");
+    }
+}
