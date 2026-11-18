@@ -451,14 +451,11 @@ fn wire_name(d: &Document, c: WireId) -> String {
 
 fn project(d: &Document) -> Value {
     let mut props = Map::new();
-    let mut revisions: BTreeMap<String, Map<String, Value>> = BTreeMap::new();
     for (k, v) in &d.properties {
-        if let Some((n, field)) = k.strip_prefix("rev.").and_then(|r| r.split_once('.')) {
-            revisions.entry(n.to_string()).or_default().insert(field.to_string(), json!(v));
-        } else {
-            props.insert(k.clone(), json!(v));
-        }
+        props.insert(k.clone(), json!(v));
     }
+    // Design 072 §5.3 (A15): the revision rows, numbered from 1.
+    let revisions: BTreeMap<String, Value> = d.project.revisions.iter().zip(1u32..).map(|(r, n)| (n.to_string(), json!(r))).collect();
     // Design 072 §5.3 (A15): the location and function lists and the project's defaults.
     let list = |l: Vec<(String, String, Option<String>, Vec<String>)>| -> Vec<Value> {
         l.into_iter().map(|(id, code, tag, descriptions)| json!({"id": id, "code": code, "tag": tag, "descriptions": descriptions})).collect()
@@ -470,6 +467,14 @@ fn project(d: &Document) -> Value {
     let functions = list(d.project.functions.iter().map(|e| entry(e.id.to_string(), &e.code, &e.tag, &e.descriptions)).collect());
     json!({
         "properties": props,
+        "info": d.project.info,
+        // Design 072 §5.2 (A15): each folder with its place and start number.
+        "folders": d.folder_order.iter().filter_map(|id| d.folders.get(id).map(|f| json!({
+            "id": id.to_string(),
+            "name": f.name,
+            "parent": f.parent.and_then(|p| d.folders.get(&p)).map(|p| p.name.clone()),
+            "start": f.start,
+        }))).collect::<Vec<_>>(),
         "locations": locations,
         "functions": functions,
         "location": d.project.location.map(|l| location_code(d, l)),

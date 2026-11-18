@@ -565,7 +565,7 @@ fn check_definition(id: DefinitionId, d: &Definition) -> Result<()> {
     }
     // Brief 044 (overseer condition on FP2): a bridge names keys a placement can write.
     if let Some(k) = d.bridges.iter().flatten().find(|k| !keys.contains(k) && !is_placement_key(k)) {
-        return bad(format!("definition {id} bridges key {k:?}, which it has no terminal for and no placement writes"));
+        return bad(format!("definition {id} bridges key {k}, which it has no terminal for and no placement writes"));
     }
     // Brief 048 (FP1, FP2, FP4).
     let mut texts = BTreeSet::new();

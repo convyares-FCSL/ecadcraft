@@ -190,8 +190,8 @@ fn release_issues_saves_and_writes_a_stamped_folder() {
     });
     assert_eq!(label, "Issue Rev B");
     assert!(
-        ops.iter().any(|o| matches!(o, Op::SetProperty { object: ObjectRef::Project, key, after: Some(a), .. }
-        if key == "rev.2.released" && a == "release/Rev B")),
+        ops.iter().any(|o| matches!(o, Op::ModifyProject { after, .. }
+        if ecad_cadcraft::revisions::field_of(after, 2, "released").as_deref() == Some("release/Rev B"))),
         "{ops:?}"
     );
     assert!(f.h.p(|p| !p.unsaved()), "saved");
@@ -229,7 +229,7 @@ fn release_issues_saves_and_writes_a_stamped_folder() {
     let e = f.h.run("u", Value::Null).unwrap_err();
     assert!(e.contains("Undo the issue? This removes the release mark. Its release folder stays on disk."), "{e}");
     f.h.run("undoissue", json!({})).unwrap();
-    assert!(!f.h.doc().properties.contains_key("rev.2.released"));
+    assert!(!ecad_cadcraft::revisions::field_of(&f.h.doc().project, 2, "released").is_some());
     assert!(out.join("release.json").exists());
     let _ = std::fs::remove_dir_all(&f.dir);
 }
@@ -467,14 +467,11 @@ fn a_release_never_lands_on_the_project_or_a_foreign_folder() {
         // Write FP1 past the commands, as a hostile file could hold it.
         f.h.cfg(|p| {
             let doc = p.ledger.document();
-            let before = doc.properties.get("rev.1.released").cloned();
-            p.ledger
-                .commit(
-                    ecad_model::Author::User,
-                    "hostile",
-                    vec![Op::SetProperty { object: ObjectRef::Project, key: "rev.1.released".into(), before, after: Some(v.into()) }],
-                )
-                .unwrap();
+            let after = ecad_cadcraft::revisions::with_field(&doc.project, 1, "released", Some(v)).unwrap();
+            let ops: Vec<Op> = ecad_cadcraft::revisions::modify(&doc.project, after).into_iter().collect();
+            if !ops.is_empty() {
+                p.ledger.commit(ecad_model::Author::User, "hostile", ops).unwrap();
+            }
         });
         let pre = f.h.run("prerelease", json!({"rev": "A"})).unwrap();
         assert_eq!(pre["folder"], json!(folder(&f, "A").to_string_lossy()), "FP1 {v:?}");
