@@ -141,10 +141,10 @@ pub struct Project {
     /// The Checks tab's go-to ring (design 022 §8): page, point and the row's severity, until the
     /// next change. Display only, never recorded.
     pub goto_ring: Option<(PageId, Pt, crate::checks::Severity)>,
-    /// The active page's frame as last drawn (brief 019): page, what it showed, its parts. Kept
-    /// until an op of the frame's update map ([`crate::frame::touches`]) or another page.
-    frame: Option<(PageId, crate::frame::FrameInput, Arc<Vec<crate::frame::Part>>)>,
-    /// An op of the update map was committed since the frame was drawn.
+    /// The active page's frame as last drawn (brief 019): page and parts. What it showed is the
+    /// frame view's (`ecad_electrical::derived::FrameView`), whose update map sets `frame_stale`.
+    frame: Option<(PageId, Arc<Vec<crate::frame::Part>>)>,
+    /// An effect of the frame's update map was committed since the frame was drawn.
     frame_stale: bool,
     /// Brief 054b: the wire categories in use, kept while the project has a cover.
     cover_uses: Option<crate::front::Uses>,
@@ -690,7 +690,7 @@ impl Project {
 
     /// The frame parts of `page`, from the kept copy when nothing it shows can have changed.
     fn frame_parts(&mut self, page: PageId) -> Arc<Vec<crate::frame::Part>> {
-        if let Some((p, _, parts)) = &self.frame
+        if let Some((p, parts)) = &self.frame
             && *p == page
             && !self.frame_stale
         {
@@ -709,33 +709,18 @@ impl Project {
         let input = input.with_pending(doc, self.pending);
         self.frame_stale = false;
         let generated = crate::generated::kind_of(doc, page).is_some();
-        if let Some((p, old, parts)) = &self.frame
+        if let Some((p, parts)) = &self.frame
             && *p == page
-            && *old == input
+            && self.derived.frame().shown().is_some_and(|(q, old)| q == page && *old == input.0)
             && !generated
         {
             return parts.clone();
         }
         self.frame_builds += 1;
         let parts = Arc::new(crate::generated::page_parts(doc, page, &input, self.outputs.as_ref(), total));
-        self.frame = Some((page, input, parts.clone()));
+        self.frame = Some((page, parts.clone()));
+        self.derived.frame_mut().show(page, input.0);
         parts
-    }
-
-    /// Mark the kept frame stale when `ops` (about to be committed) can change it.
-    pub(crate) fn note_frame_ops(&mut self, ops: &[Op]) {
-        if let Some((p, input, _)) = &self.frame
-            && crate::frame::touches(ops, *p, input)
-        {
-            self.frame_stale = true;
-        }
-        // A generated page's content (brief 024) has its own map.
-        if let Some((p, _, _)) = &self.frame
-            && let Some(kind) = crate::generated::kind_of(self.ledger.document(), *p)
-            && crate::generated::touches(ops, kind)
-        {
-            self.frame_stale = true;
-        }
     }
 
     /// The view `cable` is shown in.
@@ -989,7 +974,7 @@ impl Project {
             out.extend(doc.page_order.iter().copied().filter(|p| crate::generated::kind_of(doc, *p).is_some_and(|k| kinds.contains(&k))));
         }
         if cover
-            && let Some((p, _, _)) = &self.frame
+            && let Some((p, _)) = &self.frame
             && crate::generated::kind_of(doc, *p) == Some(GenKind::Cover)
         {
             self.frame_stale = true;
@@ -1059,7 +1044,7 @@ impl Project {
             _ => false,
         };
         let changed: BTreeSet<PageId> = o.generated_pages().iter().copied().filter(|p| doc.pages.contains_key(p) && rewritten(*p)).collect();
-        let shown_changed = self.frame.as_ref().is_some_and(|(p, _, _)| rewritten(*p));
+        let shown_changed = self.frame.as_ref().is_some_and(|(p, _)| rewritten(*p));
         if sheets(&o) != before || shown_changed || o.numbers_moved {
             self.frame_stale = true;
         }

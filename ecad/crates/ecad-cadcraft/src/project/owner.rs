@@ -353,7 +353,6 @@ impl Project {
             return Err(EngineError::Other(format!("{} Use Undo Merge (`undomerge`) to confirm.", q.replace('\n', " "))));
         }
         self.merge_undo_question = None;
-        self.note_frame_ops(&ops);
         let pending = self.derived.begin(self.ledger.document(), &ops);
         let r = if undo { self.ledger.undo_at(self.author.clone(), now_ms()) } else { self.ledger.redo_at(self.author.clone(), now_ms()) };
         match r {

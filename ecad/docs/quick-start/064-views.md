@@ -23,6 +23,11 @@ Progress (automated checks only, not owner-tried):
   `/page.column`) follows each change, and undo puts it back. Renaming another page or editing
   a wire leaves the list alone. The Properties feed follows once lane 072 B has moved each
   group's data into fields.
+- Step 4, the frame (`FrameView`): what the active page's frame showed is now one of the views,
+  and every commit path (a drawing edit too, which it skipped before) decides from it whether
+  the title block is drawn again. To try it: with a page open, change the project's title in
+  Project properties, renumber the next page, and add a revision; the title block follows each
+  change, and undo puts it back. Drawing a wire leaves the title block alone.
 - Step 5, first index: the connector index (`ConnectorsView`) is now one of the views, built on
   open and branch switch and kept from each commit. To try it: place two connectors (Connector,
   both halves) on different pages, give one its own socket side name in Properties, then set the

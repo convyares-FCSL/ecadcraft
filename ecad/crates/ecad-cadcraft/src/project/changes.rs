@@ -266,7 +266,7 @@ impl Project {
     /// kept for another page means the active page's frame is not kept, so it is drawn.
     pub(super) fn redraw_touched(&mut self, pg: &mut Pages<'_>, command: Option<&str>, pages: Option<&BTreeSet<PageId>>) {
         let active = self.active_page();
-        let frame_other = self.frame.as_ref().is_none_or(|(p, _, _)| Some(*p) != active);
+        let frame_other = self.frame.as_ref().is_none_or(|(p, _)| Some(*p) != active);
         let touched = match (pages, active) {
             (Some(set), Some(a)) => set.contains(&a),
             _ => true,
@@ -341,8 +341,6 @@ impl Project {
         let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &ops));
         let outputs = self.outputs.as_ref().map(|o| o.scope(self.ledger.document(), &ops));
         let n = ops.len();
-        let frame_before = self.frame_stale;
-        self.note_frame_ops(&ops);
         // The numbering pass (brief 022) extends the same transaction.
         let pass = |d: &ecad_model::Document, o: &[Op]| if numbering { ecad_model::wiring::assign(d, o) } else { Vec::new() };
         let pending = self.derived.begin(self.ledger.document(), &ops);
@@ -351,7 +349,6 @@ impl Project {
             None => self.ledger.commit_extended(self.author.clone(), label, ops, now_ms(), pass),
         };
         let tx = committed.map_err(|e| {
-            self.frame_stale = frame_before;
             self.events.record(EventKind::Refused, Some(command), self.ledger.head(), None, e.to_string());
             e.to_string()
         })?;
