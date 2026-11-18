@@ -1770,18 +1770,16 @@ pub fn terminal_words(doc: &Document, t: TerminalId) -> String {
     format!("{tag}:{}", crate::terminal_types::terminal_name(doc, t))
 }
 
-/// Whether `c` is a brief 034 fuse terminal device (its own definition is `fuseterm`).
+/// Whether `c` is a brief 034 fuse terminal device: its stored kind is
+/// [`ecad_model::device::Protection::FuseTerminal`] (design 072 §2.2), set by the `fuseterm` starter.
 pub fn is_fuse_device(doc: &Document, c: DeviceId) -> bool {
-    doc.devices
-        .get(&c)
-        .and_then(|x| x.definition)
-        .and_then(|d| doc.definitions.get(&d))
-        .and_then(crate::symbols::of_definition)
-        .is_some_and(|s| s.key == FUSE_DEVICE)
+    doc.devices.get(&c).is_some_and(|d| {
+        matches!(
+            &d.device_type,
+            ecad_model::DeviceType::Protection(p) if p.kind() == ecad_model::device::ProtectionKind::FuseTerminal
+        )
+    })
 }
-
-/// The starter key of a fuse terminal device (brief 034).
-pub const FUSE_DEVICE: crate::symbols::StarterKey = crate::symbols::StarterKey::Fuseterm;
 
 #[cfg(test)]
 mod tests {

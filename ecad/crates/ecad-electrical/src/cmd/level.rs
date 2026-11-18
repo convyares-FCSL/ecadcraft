@@ -347,7 +347,11 @@ pub fn plan_toposition(
     // Design 072 §2.2 and §2.5: the fuse's typed rating becomes the position's. A note is no fuse
     // rating and a position has no note: it goes with the device and is listed.
     let typed = match &comp.device_type {
-        ecad_model::DeviceType::Protection(ecad_model::device::Protection::Fuse(f)) if *f != ecad_model::device::Fuse::default() => Some(f),
+        ecad_model::DeviceType::Protection(ecad_model::device::Protection::Fuse(f) | ecad_model::device::Protection::FuseTerminal(f))
+            if *f != ecad_model::device::Fuse::default() =>
+        {
+            Some(f)
+        }
         _ => None,
     };
     let label = ecad_model::device::PositionLabel::new(&pos).ok();

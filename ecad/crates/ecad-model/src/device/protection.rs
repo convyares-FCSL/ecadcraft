@@ -3,7 +3,7 @@
 //!
 //! # Semantics
 //! Each kind holds only the fields it has: a fuse its rated current, class and breaking capacity;
-//! an MCB its rated current, curve, breaking capacity and poles; an RCD its rated current, residual
+//! a fuse terminal a fuse's; an MCB its rated current, curve, breaking capacity and poles; an RCD its rated current, residual
 //! current and poles; an RCBO an MCB's fields and a residual current; a fuse bank a fuse per output.
 //! Every field may be empty (not typed yet); [`Protection::is_unrated`] says when all are.
 //! [`fmt::Display`] writes the set fields in a fixed order (`curve B, 16 A, 6 kA, 2P`), which is
@@ -42,8 +42,10 @@ pub const MAX_OUTPUT: u8 = 99;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Protection {
-    /// A fuse or a fuse terminal.
+    /// A fuse.
     Fuse(Fuse),
+    /// A fuse terminal: a fuse in a DIN-rail terminal housing, set by the `fuseterm` starter.
+    FuseTerminal(Fuse),
     /// A miniature circuit breaker.
     Mcb(Breaker),
     /// A residual current device (no overcurrent protection).
@@ -64,6 +66,7 @@ impl Default for Protection {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ProtectionKind {
     Fuse,
+    FuseTerminal,
     Mcb,
     Rcd,
     Rcbo,
@@ -75,6 +78,7 @@ impl ProtectionKind {
     pub fn label(self) -> &'static str {
         match self {
             ProtectionKind::Fuse => "fuse",
+            ProtectionKind::FuseTerminal => "fuse terminal",
             ProtectionKind::Mcb => "MCB",
             ProtectionKind::Rcd => "RCD",
             ProtectionKind::Rcbo => "RCBO",
@@ -86,6 +90,7 @@ impl ProtectionKind {
     pub fn empty(self) -> Protection {
         match self {
             ProtectionKind::Fuse => Protection::Fuse(Fuse::default()),
+            ProtectionKind::FuseTerminal => Protection::FuseTerminal(Fuse::default()),
             ProtectionKind::Mcb => Protection::Mcb(Breaker::default()),
             ProtectionKind::Rcd => Protection::Rcd(Rcd::default()),
             ProtectionKind::Rcbo => Protection::Rcbo(Rcbo::default()),
@@ -99,6 +104,7 @@ impl Protection {
     pub fn kind(&self) -> ProtectionKind {
         match self {
             Protection::Fuse(_) => ProtectionKind::Fuse,
+            Protection::FuseTerminal(_) => ProtectionKind::FuseTerminal,
             Protection::Mcb(_) => ProtectionKind::Mcb,
             Protection::Rcd(_) => ProtectionKind::Rcd,
             Protection::Rcbo(_) => ProtectionKind::Rcbo,
@@ -116,7 +122,7 @@ impl Protection {
         match (self, output) {
             (Protection::FuseBank(b), Some(n)) => b.outputs.get(&n).and_then(|f| f.rated_current),
             (Protection::FuseBank(_), None) => None,
-            (Protection::Fuse(f), _) => f.rated_current,
+            (Protection::Fuse(f) | Protection::FuseTerminal(f), _) => f.rated_current,
             (Protection::Mcb(b), _) => b.rated_current,
             (Protection::Rcd(r), _) => r.rated_current,
             (Protection::Rcbo(r), _) => r.rated_current,
@@ -131,7 +137,7 @@ impl Protection {
         let ma = |m: Option<MilliAmps>| m.is_some_and(|m| !(m.0.is_finite() && m.0 > 0.0 && m.0 <= MAX_RESIDUAL_MA));
         let fuse = |f: &Fuse| amps(f.rated_current) || ka(f.breaking);
         let bad = match self {
-            Protection::Fuse(f) => fuse(f),
+            Protection::Fuse(f) | Protection::FuseTerminal(f) => fuse(f),
             Protection::Mcb(b) => amps(b.rated_current) || ka(b.breaking),
             Protection::Rcd(r) => amps(r.rated_current) || ma(r.residual),
             Protection::Rcbo(r) => amps(r.rated_current) || ka(r.breaking) || ma(r.residual),
@@ -149,7 +155,7 @@ impl Protection {
 impl fmt::Display for Protection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Protection::Fuse(x) => x.fmt(f),
+            Protection::Fuse(x) | Protection::FuseTerminal(x) => x.fmt(f),
             Protection::Mcb(x) => x.fmt(f),
             Protection::Rcd(x) => x.fmt(f),
             Protection::Rcbo(x) => x.fmt(f),

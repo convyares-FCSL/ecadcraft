@@ -20,7 +20,9 @@ use std::collections::BTreeSet;
 use ecad_model::{DeviceId, Document, NetId, Node, Subject, TerminalId};
 
 use super::RatedSubject;
-use crate::symbols::{Kind, StarterKey, StarterKey as K};
+use ecad_model::device::ProtectionKind;
+
+use crate::symbols::{Kind, StarterKey as K};
 
 /// Most nets one subject's trace visits (design 057 §4.2).
 pub const MAX_TRACE_NETS: usize = 64;
@@ -50,30 +52,31 @@ pub struct Found {
     pub bounded: bool,
 }
 
-/// The overcurrent device starters (design 057 §4.1). `rcd2` and `rcd4` are not: they are crossed.
-pub fn is_protective_key(key: StarterKey) -> bool {
-    matches!(key, K::Mcb1 | K::Mcb2 | K::Rcbo2 | K::Fuse | K::Fuseterm) || key.fuse_bank_ways().is_some()
-}
-
-/// The load-side pins of a protective starter (design 057 §4.2), from its pin labels
-/// (`symbols.rs`): the even-numbered pins of `mcb*`, `rcbo2`, `fuse`, `fuseterm` (and `rcbo2`'s
-/// `N2`); a fuse bank's numbered outputs.
-pub fn load_side(key: StarterKey, label: &str) -> bool {
+/// The load-side pins of an overcurrent protective device (design 057 §4.2), by its stored kind
+/// (design 072 §2.2) and the pin label: the even-numbered pins of a fuse, a fuse terminal, an MCB
+/// and an RCBO (and an RCBO's `N2`); a fuse bank's numbered outputs. An RCD has none: it is crossed.
+pub fn load_side(kind: ProtectionKind, label: &str) -> bool {
     let n = label.parse::<u32>().ok();
-    if key.fuse_bank_ways().is_some() {
-        return n.is_some_and(|n| n >= 1);
-    }
-    match key {
-        K::Mcb1 | K::Mcb2 | K::Fuse | K::Fuseterm => n.is_some_and(|n| n % 2 == 0 && n > 0),
-        K::Rcbo2 => label == "N2" || n.is_some_and(|n| n % 2 == 0 && n > 0),
-        _ => false,
+    let even = n.is_some_and(|n| n % 2 == 0 && n > 0);
+    match kind {
+        ProtectionKind::FuseBank => n.is_some_and(|n| n >= 1),
+        ProtectionKind::Fuse | ProtectionKind::FuseTerminal | ProtectionKind::Mcb => even,
+        ProtectionKind::Rcbo => label == "N2" || even,
+        ProtectionKind::Rcd => false,
     }
 }
 
-/// The starters a device's symbols show: which pins are on the load side is the symbol's (step 4's
-/// connection points replace it).
+/// The starters a device's symbols show: which pins are crossed is the symbol's (step 4's
+/// part roles replace it).
 fn starters(doc: &Document, c: DeviceId) -> Vec<&'static crate::symbols::Starter> {
     doc.representations_of(Subject::Device(c)).filter_map(|(_, r)| crate::devices::rep_starter(doc, r)).collect()
+}
+
+/// The kind of device `c` when it is an overcurrent protective device (design 072 §2.4).
+fn overcurrent_kind(doc: &Document, c: DeviceId) -> Option<ProtectionKind> {
+    use crate::traits::Protects;
+    let ecad_model::DeviceType::Protection(p) = &doc.devices.get(&c)?.device_type else { return None };
+    p.overcurrent().then(|| p.kind())
 }
 
 /// Whether device `c` is an overcurrent protective device: its typed kind (design 072 §2.4), never
@@ -152,14 +155,14 @@ fn step(doc: &Document, t: TerminalId) -> Step {
         let other = d.side(side.other()).and_then(|m| m.get(&name)).cloned().unwrap_or_default();
         return Step::Cross(other);
     }
-    let ss = starters(doc, c);
-    if let Some(p) = ss.iter().find(|s| is_protective_key(s.key)) {
-        if load_side(p.key, &label) {
-            let fuse = p.key.fuse_bank_ways().is_some().then(|| label.clone());
+    if let Some(kind) = overcurrent_kind(doc, c) {
+        if load_side(kind, &label) {
+            let fuse = (kind == ProtectionKind::FuseBank).then(|| label.clone());
             return Step::Found(c, fuse);
         }
         return Step::Stop;
     }
+    let ss = starters(doc, c);
     if ss.iter().any(|s| crossed(s))
         && let Some(other) = pair(&label)
     {

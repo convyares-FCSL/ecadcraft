@@ -262,7 +262,7 @@ impl Protects for Protection {
     fn overcurrent(&self) -> bool {
         match self.kind() {
             ProtectionKind::Rcd => false,
-            ProtectionKind::Fuse | ProtectionKind::Mcb | ProtectionKind::Rcbo | ProtectionKind::FuseBank => true,
+            ProtectionKind::Fuse | ProtectionKind::FuseTerminal | ProtectionKind::Mcb | ProtectionKind::Rcbo | ProtectionKind::FuseBank => true,
         }
     }
 }
@@ -352,7 +352,14 @@ mod tests {
 
     #[test]
     fn an_rcd_protects_but_not_against_overcurrent() {
-        for kind in [ProtectionKind::Fuse, ProtectionKind::Mcb, ProtectionKind::Rcd, ProtectionKind::Rcbo, ProtectionKind::FuseBank] {
+        for kind in [
+            ProtectionKind::Fuse,
+            ProtectionKind::FuseTerminal,
+            ProtectionKind::Mcb,
+            ProtectionKind::Rcd,
+            ProtectionKind::Rcbo,
+            ProtectionKind::FuseBank,
+        ] {
             let t = DeviceType::Protection(kind.empty());
             let p = t.as_protects().unwrap();
             assert_eq!(p.overcurrent(), kind != ProtectionKind::Rcd, "{kind:?}");
