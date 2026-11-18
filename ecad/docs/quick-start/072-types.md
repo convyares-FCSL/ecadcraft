@@ -228,6 +228,28 @@ no warning, and `250 V AC 5 A` is kept as typed. Nobody has tried it by hand yet
 Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector
 (`…sensor…`), and `rating::reader::sensor` in ecad-electrical (automated, not tried by hand).
 
+### Lane B, step 3: a strip's fuse position ratings are typed
+
+A fuse position's rating (`setprop rating.<position>`, or the Rating cell of the terminal list)
+is now the strip's own typed field: a fuse's rated current, class and breaking capacity, read by
+the same reader as a fuse. `6,3A T` reads as **6.3 A, T**.
+
+- Text that is no fuse rating (`see datasheet`, `B16`) is refused: a position has no note.
+- A position that is not a fuse position is refused; clearing always works.
+- Renumbering or relabelling a position moves its rating; erasing the position's last terminal
+  removes it (with a note, `U` brings it back). **Make strip position** moves a fuse terminal
+  device's typed rating onto the position; a rating kept only as a note is listed as lost.
+- A project whose strip still holds `rating.<p>` as a property opens read-only (pre-v1, no
+  conversion).
+
+To try it: draw a FUSE fence across two wires, open the terminal list, type `6,3A T` in a
+position's Rating (shown as `6.3 A, T`; the **no-fuse-rating** warning goes when every fuse
+position is rated), then `see datasheet` (refused). Nobody has tried it by hand yet.
+
+Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector
+(`…strip…`), and `levels_contracts::relabel_moves_every_position_keyed_property` (automated, not
+tried by hand).
+
 ## Lane D: wires carry typed values
 
 A conductor is now a **wire** in code and files (`Wire`, ops `CreateWire`, `DeleteWire` and the

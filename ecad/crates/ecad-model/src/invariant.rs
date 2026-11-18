@@ -469,8 +469,9 @@ impl Document {
         if let Some(p) = c.device_type.problem() {
             return bad(format!("device {id}: {p}"));
         }
-        // Design 072 §2.2: a protective device's ratings (a fuse bank's per output) are fields.
-        if let crate::device::DeviceType::Protection(_) = &c.device_type
+        // Design 072 §2.2 and §2.5: a protective device's ratings (a fuse bank's per output) and a
+        // strip's fuse position ratings are fields.
+        if let crate::device::DeviceType::Protection(_) | crate::device::DeviceType::TerminalStrip(_) = &c.device_type
             && let Some(k) = c.properties.keys().find(|k| k.starts_with(crate::device::RATING_OF_PREFIX))
         {
             return bad(format!("device {id} holds {k} in its properties; it is a field"));

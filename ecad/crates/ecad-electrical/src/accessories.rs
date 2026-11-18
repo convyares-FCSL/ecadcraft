@@ -865,7 +865,12 @@ pub fn renumber_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {
     let mut out = Vec::new();
     let mut lines = Vec::new();
     for (c, map) in maps {
-        renumber_strip(doc, c, &map, &mut out, &mut lines);
+        // The strip as the plan leaves it (a renumber may retag it in the same plan).
+        let planned = ops.iter().rev().find_map(|o| match o {
+            Op::ModifyDevice { id, after, .. } if *id == c => Some(after),
+            _ => None,
+        });
+        renumber_strip(doc, c, planned.or(doc.devices.get(&c)), &map, &mut out, &mut lines);
     }
     (out, lines)
 }
@@ -895,8 +900,11 @@ pub fn relabels(ops: &[Op]) -> BTreeMap<DeviceId, BTreeMap<String, String>> {
     maps
 }
 
-/// One strip's part of [`renumber_ops`]: `map` is its relabels (old → new).
-fn renumber_strip(doc: &Document, c: DeviceId, map: &BTreeMap<String, String>, out: &mut Vec<Op>, lines: &mut Vec<String>) {
+/// One strip's part of [`renumber_ops`]: `base` is the strip as the plan leaves it, `map` its
+/// relabels (old → new).
+fn renumber_strip(
+    doc: &Document, c: DeviceId, base: Option<&ecad_model::Device>, map: &BTreeMap<String, String>, out: &mut Vec<Op>, lines: &mut Vec<String>,
+) {
     if !crate::strips::is_strip(doc, c) {
         return;
     }
@@ -944,8 +952,8 @@ fn renumber_strip(doc: &Document, c: DeviceId, map: &BTreeMap<String, String>, o
             }
         }
     }
-    // Brief 036 (FP7): a level's own label and a fuse position's rating move with their position.
-    // The rest of the position-keyed list (`acc.*` above, with its merge rule).
+    // Brief 036 (FP7): a level's own label moves with its position. The rest of the
+    // position-keyed list (`acc.*` above, with its merge rule).
     for prefix in crate::terminal_types::POSITION_KEYED.iter().copied().filter(|p| !p.starts_with(ACC_PREFIX)) {
         for (k, v) in props.range(prefix.to_string()..).take_while(|(k, _)| k.starts_with(prefix)) {
             let Some(rest) = k.strip_prefix(prefix) else { continue };
@@ -964,6 +972,15 @@ fn renumber_strip(doc: &Document, c: DeviceId, map: &BTreeMap<String, String>, o
                 lines.push(format!("{tag}: {} {} \u{2192} {}", if tail.is_empty() { "rating" } else { "label" }, k, nk));
             }
             now.insert(nk, v.clone());
+        }
+    }
+    // Design 072 §2.5: a fuse position's rating (the strip's field) moves with its position; one
+    // `ModifyDevice` on the strip as the plan leaves it, before its property ops.
+    if let Some(d) = base.filter(|d| crate::terminal_types::fuses_move(d, map)) {
+        let (after, moves) = crate::terminal_types::moved_fuses(d, map);
+        lines.extend(moves.into_iter().map(|m| format!("{tag}: {m}")));
+        if after != *d {
+            out.push(Op::ModifyDevice { id: c, before: d.clone(), after });
         }
     }
     for k in was.keys().chain(now.keys()).collect::<BTreeSet<_>>() {

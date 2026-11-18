@@ -1566,16 +1566,16 @@ pub fn is_fuse_bank(s: &Starter) -> bool {
     s.key.fuse_bank_ways().is_some()
 }
 
-/// Check a `rating.<n>` value set on `object` that is not a protective device (design 034 §7.3;
-/// a device's own rating and a fuse bank's fuses are typed fields, `cmd::props::b`).
+/// Check a `rating.<n>` value set on `object` that is neither a protective device nor a terminal
+/// strip (design 034 §7.3; a device's own rating, a fuse bank's fuses and a strip's fuse positions
+/// are typed fields, `cmd::props::b`).
 ///
 /// # Semantics
-/// `rating.<p>` on a terminal strip is a fuse position's rating and follows the 018 §6.1 value
-/// rules; on any other device it is refused, and clearing it is always allowed. Any other key, or
+/// `rating.<n>` on such a device is refused, and clearing it is always allowed. Any other key, or
 /// an object that is not a device: no opinion, the value comes back unchanged.
 ///
 /// # Errors
-/// A value the 018 rules refuse; `rating.<n>` on a device that is not a strip's fuse position.
+/// `rating.<n>` set on a device that is not a fuse bank or a strip.
 pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     let ObjectRef::Device(c) = object else { return Ok(value.map(str::to_string)) };
     if !is_rating_key(key) {
@@ -1586,20 +1586,9 @@ pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<
     let clearing = value.map(str::trim).is_none_or(str::is_empty);
     if let Some(n) = key.strip_prefix(RATING_OF_PREFIX).filter(|_| !clearing) {
         let who = crate::devices::tag_words(doc, c);
-        // Capped before any lookup: only the first 12 characters are ever read.
+        // Capped: only the first 12 characters are ever shown.
         let shown: String = n.chars().take(MAX_FUSE_LABEL).collect();
-        let long = n.chars().nth(MAX_FUSE_LABEL).is_some();
-        let more = if long { "…" } else { "" };
-        // Brief 036 (FP5): on a terminal strip, `rating.<p>` is a fuse position's rating.
-        if crate::strips::is_strip(doc, c) {
-            let fuse = !long && crate::terminal_types::positions(doc, c).iter().any(|p| p.label == n && p.ty.code == "fuse");
-            if !fuse {
-                return Err(CmdError::refused(format!(
-                    "{who}:{shown}{more} is not a fuse position; rating.<position> is the rating of a fuse position."
-                )));
-            }
-            return crate::devices::property_value(doc, key, value);
-        }
+        let more = if n.chars().nth(MAX_FUSE_LABEL).is_some() { "…" } else { "" };
         return Err(CmdError::refused(format!("rating.{shown}{more} is for a fuse bank's fuses; {who} is not a fuse bank.")));
     }
     crate::devices::property_value(doc, key, value)

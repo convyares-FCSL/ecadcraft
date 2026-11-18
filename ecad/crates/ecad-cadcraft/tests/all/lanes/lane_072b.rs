@@ -350,3 +350,49 @@ fn a_sensor_rating_is_read_into_typed_fields() {
     let e = h.run("setprop", json!({"component": b.hex(), "key": "rating", "value": "24"})).unwrap_err();
     assert!(e.contains("a unit for 24"), "{e}");
 }
+
+/// Step 3, TerminalStrip (design 072 §2.5): `setprop rating.<p>` reads a fuse position's rating
+/// into the strip's typed field (one `ModifyDevice`, nothing in its properties); text that is no
+/// fuse rating, or a position that is no fuse position, is refused; the Checks row reads the
+/// field; clearing works.
+#[test]
+fn a_strip_fuse_position_rating_is_typed() {
+    use ecad_model::Op;
+    use ecad_model::device::{DeviceType, FuseClass};
+    let mut h = H::new(7209);
+    for i in 1..=3 {
+        let x = 10.0 * f64::from(i);
+        h.run("wire", json!({"points": [[x, 0.0], [x, 40.0]]})).unwrap();
+    }
+    let f = h.run("terminals", json!({"type": "FUSE", "level": "1", "from": [0, 20], "to": [40, 20]})).unwrap();
+    let x1: DeviceId = id(&f, "strip");
+    let no_fuse_rating = |h: &mut H| h.run("checks", json!({})).unwrap().to_string().contains("no-fuse-rating");
+    assert!(no_fuse_rating(&mut h));
+    let r = h.run("setprop", json!({"component": x1.hex(), "key": "rating.2", "value": "6,3A T"})).unwrap();
+    assert_eq!(r["message"], json!("Read: 6.3 A, T."), "{r}");
+    let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());
+    assert!(matches!(ops.as_slice(), [Op::ModifyDevice { .. }]), "{ops:?}");
+    let strip = h.doc().devices[&x1].clone();
+    let DeviceType::TerminalStrip(s) = &strip.device_type else { panic!("{:?}", strip.device_type) };
+    let fuse = s.fuse("2").unwrap();
+    assert_eq!((fuse.rated_current.map(|a| a.0), fuse.class), (Some(6.3), Some(FuseClass::T)));
+    assert!(strip.properties.keys().all(|k| !k.starts_with("rating.")), "{:?}", strip.properties);
+    assert_eq!(strip.value("rating.2").as_deref(), Some("6.3 A, T"));
+    // Text that is no fuse rating, and a position that is no fuse position, are refused.
+    let e = h.run("setprop", json!({"component": x1.hex(), "key": "rating.1", "value": "see datasheet"})).unwrap_err();
+    assert!(e.contains("is not a fuse rating"), "{e}");
+    let e = h.run("setprop", json!({"component": x1.hex(), "key": "rating.1", "value": "B16"})).unwrap_err();
+    assert!(e.contains("rating 'B16'"), "{e}");
+    let e = h.run("setprop", json!({"component": x1.hex(), "key": "rating.9", "value": "4A"})).unwrap_err();
+    assert!(e.contains("is not a fuse position"), "{e}");
+    // Every fuse position rated: no Checks row.
+    for p in ["1", "3"] {
+        h.run("setprop", json!({"component": x1.hex(), "key": format!("rating.{p}"), "value": "4 A"})).unwrap();
+    }
+    assert!(!no_fuse_rating(&mut h));
+    // Clearing works, also on a label that is no fuse position.
+    h.run("setprop", json!({"component": x1.hex(), "key": "rating.3", "value": ""})).unwrap();
+    h.run("setprop", json!({"component": x1.hex(), "key": "rating.9", "value": ""})).unwrap();
+    assert_eq!(h.doc().devices[&x1].value("rating.3"), None);
+    assert!(no_fuse_rating(&mut h));
+}

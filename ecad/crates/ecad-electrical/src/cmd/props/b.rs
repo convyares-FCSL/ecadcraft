@@ -25,7 +25,9 @@ pub static RULES: &[PropRule] = &[
             ObjectRef::Device(c) => {
                 k == ecad_model::device::RATING_KEY
                     || (k.starts_with(ecad_model::device::RATING_OF_PREFIX)
-                        && doc.devices.get(&c).is_some_and(|d| matches!(d.device_type, ecad_model::DeviceType::Protection(_))))
+                        && doc.devices.get(&c).is_some_and(|d| {
+                            matches!(d.device_type, ecad_model::DeviceType::Protection(_) | ecad_model::DeviceType::TerminalStrip(_))
+                        }))
             }
             _ => false,
         },
@@ -33,8 +35,8 @@ pub static RULES: &[PropRule] = &[
     },
 ];
 
-/// A device's rating (its typed fields, or its note) or a fuse bank's fuse rating, read by its
-/// group's reader ([`crate::rating::reader`]): one `ModifyDevice`.
+/// A device's rating (its typed fields, or its note), a fuse bank's fuse rating or a strip's fuse
+/// position rating, read by its group's reader ([`crate::rating::reader`]): one `ModifyDevice`.
 ///
 /// # Errors
 /// The reader's refusals: ambiguous text (what is missing), a value the group does not have.
@@ -42,6 +44,9 @@ pub fn rating_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>
     let (c, d) = device_of(doc, o)?;
     let who = crate::devices::tag_words(doc, c);
     let after = match key.strip_prefix(ecad_model::device::RATING_OF_PREFIX) {
+        Some(p) if matches!(d.device_type, ecad_model::DeviceType::TerminalStrip(_)) => {
+            crate::rating::reader::with_position_rating(d, &who, &crate::terminal_types::fuse_positions(doc, c), p, value)
+        }
         Some(n) => crate::rating::reader::with_output_rating(d, &who, &crate::symbols::bank_outputs(doc, c), n, value),
         None => crate::rating::reader::with_rating(d, &who, value),
     }?;

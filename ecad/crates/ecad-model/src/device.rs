@@ -184,11 +184,12 @@ impl DeviceType {
             DeviceType::Protection(p) => DeviceType::Protection(p.kind().empty()),
             DeviceType::Switching(s) => DeviceType::Switching(s.operator_kind().empty()),
             DeviceType::Sensor(s) => DeviceType::Sensor(s.unrated()),
+            // A strip's ratings are its fuse positions'.
+            DeviceType::TerminalStrip(_) => DeviceType::TerminalStrip(TerminalStrip::default()),
             DeviceType::PowerSupply(_)
             | DeviceType::Motor(_)
             | DeviceType::Load(_)
             | DeviceType::Indicator(_)
-            | DeviceType::TerminalStrip(_)
             | DeviceType::Connector(_)
             | DeviceType::PlcRack(_)
             | DeviceType::PlcModule(_)
@@ -203,11 +204,11 @@ impl DeviceType {
             DeviceType::Connector(c) => c.problem(),
             DeviceType::Switching(s) => s.problem(),
             DeviceType::Sensor(s) => s.problem(),
+            DeviceType::TerminalStrip(s) => s.problem(),
             DeviceType::PowerSupply(_)
             | DeviceType::Motor(_)
             | DeviceType::Load(_)
             | DeviceType::Indicator(_)
-            | DeviceType::TerminalStrip(_)
             | DeviceType::PlcRack(_)
             | DeviceType::PlcModule(_)
             | DeviceType::General => None,
@@ -249,10 +250,8 @@ pub struct Load {}
 #[serde(deny_unknown_fields)]
 pub struct Indicator {}
 
-/// A strip of DIN-rail terminals (group 8, design 072 §2.5). Its fields come with lane B step 3.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct TerminalStrip {}
+pub mod terminal_strip;
+pub use terminal_strip::{PositionLabel, TerminalStrip};
 
 /// A connector: its family, pins and the part of each half (group 9, design 072 §2.2, design 044).
 ///
@@ -450,7 +449,7 @@ pub type RatingNote = crate::text::Text<64>;
 
 /// The `setprop` key of a device's rating (its typed rating fields, or its note).
 pub const RATING_KEY: &str = "rating";
-/// A fuse bank's output rating: `rating.<n>`.
+/// A fuse bank's output rating, or a strip's fuse position rating: `rating.<n>`.
 pub const RATING_OF_PREFIX: &str = "rating.";
 
 /// A device's description (design 072 §2.1).

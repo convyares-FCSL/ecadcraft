@@ -392,3 +392,42 @@ fn a_sensor_s_rating_is_typed() {
     let c: DeviceId = ids.fresh();
     l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: d }]).unwrap();
 }
+
+/// Step 3, TerminalStrip (design 072 §2.5): a strip's fuse position ratings are typed fields by
+/// position label, shown from them (`rating.<p>`); an unknown field, a fuse with no value, a value
+/// out of range, or a `rating.<p>` left in the strip's properties is refused.
+#[test]
+fn a_strip_s_fuse_position_ratings_are_typed() {
+    use ecad_model::device::{Fuse, FuseClass, PositionLabel, TerminalStrip};
+    use ecad_model::units::Amps;
+    let mut s = TerminalStrip::default();
+    s.fuses.insert(PositionLabel::new("3").unwrap(), Fuse { rated_current: Some(Amps(6.3)), class: Some(FuseClass::T), breaking: None });
+    let d = Device { device_type: DeviceType::TerminalStrip(s.clone()), ..Device::default() };
+    let json = serde_json::to_value(&d.device_type).unwrap();
+    assert_eq!(json, serde_json::json!({"terminal_strip": {"fuses": {"3": {"rated_current": 6.3, "class": "t"}}}}));
+    assert_eq!(serde_json::from_value::<DeviceType>(json).unwrap(), d.device_type, "round-trips");
+    assert_eq!(serde_json::to_value(DeviceType::TerminalStrip(TerminalStrip::default())).unwrap(), serde_json::json!({"terminal_strip": {}}));
+    assert_eq!(d.value("rating.3").as_deref(), Some("6.3 A, T"));
+    assert_eq!((d.value("rating.4"), d.value("rating")), (None, None));
+    assert!(!d.has_no_rating(), "a strip itself is not warned about");
+    for bad in [
+        serde_json::json!({"terminal_strip": {"accepts": []}}),
+        serde_json::json!({"terminal_strip": {"fuses": {"3": {"curve": "b"}}}}),
+        serde_json::json!({"terminal_strip": {"fuses": {" 3": {"rated_current": 4.0}}}}),
+    ] {
+        assert!(serde_json::from_value::<DeviceType>(bad.clone()).is_err(), "{bad}");
+    }
+    // The invariant: a fuse with no value, a value out of range, or the old property is refused.
+    let mut ids = IdAllocator::seeded(19);
+    let mut l = Ledger::new(19);
+    let label = PositionLabel::new("1").unwrap();
+    let wild = |f: Fuse| Device { device_type: DeviceType::TerminalStrip(TerminalStrip { fuses: [(label.clone(), f)].into() }), ..Device::default() };
+    let mut old = d.clone();
+    old.properties.insert("rating.3".into(), "4 A".into());
+    for bad in [wild(Fuse::default()), wild(Fuse { rated_current: Some(Amps(-1.0)), ..Fuse::default() }), old] {
+        let c: DeviceId = ids.fresh();
+        assert!(l.commit(Author::User, "wild", vec![Op::CreateDevice { id: c, device: bad }]).is_err());
+    }
+    let c: DeviceId = ids.fresh();
+    l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: d }]).unwrap();
+}
