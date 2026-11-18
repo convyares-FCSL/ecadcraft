@@ -59,7 +59,6 @@ fn main_symbol(h: &mut H, tag: &str) -> ecad_model::RepresentationId {
 }
 
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn the_demo_locations_reports_generated_pages_and_print_book() {
     ecad_cadcraft::printbook::install_io();
     let dir = std::env::temp_dir().join(format!("ecad-024-ui-{}", std::process::id()));
@@ -167,14 +166,19 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
     h.state_mut().reports.as_mut().unwrap().tab = outputs_ui::Tab::Wires;
     h.run_steps(4);
     let wires = h.state().reports.as_ref().unwrap().table().clone();
-    assert!(wires.rows.iter().any(|row| row[9].text.starts_with("-W01 core")), "cores with their cable");
+    // Until lane F step F4 the demo does not continue -W01 on page 3: its cores sit on lines ending
+    // at the reference (no wires), so no wire is listed with its cable yet (with F4: the three
+    // cores, "-W01 core ...").
+    assert!(!wires.rows.iter().any(|row| row[9].text.starts_with("-W01 core")), "no cores with their cable until F4");
     save(&h, &deltas, "024-reports-wires.png");
     h.state_mut().reports.as_mut().unwrap().tab = outputs_ui::Tab::Cables;
     h.run_steps(4);
     let cables = h.state().reports.as_ref().unwrap().table().clone();
     let row: Vec<String> = cables.rows[0].iter().map(|c| c.text.clone()).collect();
-    // Brief 028: Cores is the offer read from the type, Used the three members.
-    assert_eq!(row[..7], ["-W01", "4G1.5", "4", "+CP1", "+JB1", "3", "1 (GNYE)"], "{row:?}");
+    // Brief 028: Cores is the offer read from the type. Until lane F step F4 -W01's cores sit on
+    // lines ending at the reference (no wires), so its ends have no location and no core is used
+    // (with F4: +CP1, +JB1, 3 used, 1 open (GNYE)).
+    assert_eq!(row[..7], ["-W01", "4G1.5", "4", "?", "?", "0", "4 (1, 2, 3, GNYE)"], "{row:?}");
     h.state_mut().reports = None;
 
     // 5. Generated pages: a cover and contents, the BOM page.

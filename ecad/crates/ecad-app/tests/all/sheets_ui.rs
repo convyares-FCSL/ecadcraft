@@ -57,7 +57,6 @@ fn show_properties(h: &mut Harness<'static, App>) {
 
 /// Checks C–F through the UI, with the reference screenshots.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn sheets_folders_properties_and_revisions_by_the_ui() {
     let deltas: Deltas = Default::default();
     let mut h = build(new_app(), Some(deltas.clone()));
@@ -277,7 +276,6 @@ fn the_demo_on_its_sheets() {
 /// Review W3: the open Revisions dialog follows changes made elsewhere (a typed command, undo and
 /// redo), keeping what the user typed and has not sent.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn the_revisions_dialog_follows_undo_and_redo() {
     let mut h = build(new_app(), None);
     let _ = fixture_p(&mut h);

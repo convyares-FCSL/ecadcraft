@@ -439,7 +439,6 @@ fn a_go_to_keeps_its_view_on_a_page_seen_before() {
 /// Review defect 3: ECAD's hover (and the zone) react only over the page shown, not over a
 /// hosted view laid over the hidden page.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn hover_tooltips_stay_off_hosted_views() {
     let mut h = shell_harness();
     crate::project_panel::fixture_p(&mut h);

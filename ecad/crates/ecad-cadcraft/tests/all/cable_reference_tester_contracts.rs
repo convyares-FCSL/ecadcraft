@@ -101,6 +101,17 @@ fn referenced(seed: u64) -> R {
     r
 }
 
+/// [`referenced`] with C1's other reference end on Field at (20,5), written as `cablecontinue`
+/// writes it ([`H::reference_end`]) but without its stubs: a continuation needs wires leaving the
+/// page through the reference, which form only with lane F step F4. For tests about the
+/// references themselves (texts, orphans, hostile documents, bounded derivation), not the wires.
+fn paired(seed: u64) -> R {
+    let mut r = referenced(seed);
+    let field = r.field;
+    r.h.reference_end(r.c1, field, (20.0, 5.0));
+    r
+}
+
 fn continued(seed: u64) -> R {
     let mut r = referenced(seed);
     r.h.activate(r.field);
@@ -320,9 +331,8 @@ fn ac1_two_page_cable_has_the_nets_of_the_one_page_circuit() {
 /// both drawn texts, the derivation and `cablerefs` follow with no transaction of their own; undo
 /// of a move puts the texts back.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn ac2_page_moves_and_renames_update_drawn_texts_with_no_transaction_of_their_own() {
-    let mut r = connected(SEED + 4);
+    let mut r = paired(SEED + 4);
     let spare: PageId = id(&r.h.run("newpage", json!({"title": "Spare"})).unwrap(), "page");
     r.h.activate(r.supply);
     let (s, f, x) = (r.supply.hex(), r.field.hex(), spare.hex());
@@ -401,9 +411,8 @@ fn ac2_moving_a_reference_point_changes_the_other_ends_column() {
 /// AC3: erasing only the other end's reference point makes this end an orphan (red ring, red
 /// `?`, diagnostic); undo restores the link with the same IDs; redo orphans it again.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn ac3_erasing_the_other_end_orphans_this_one_and_undo_redo_round_trip() {
-    let mut r = connected(SEED + 6);
+    let mut r = paired(SEED + 6);
     let ring = |h: &mut H, page: PageId| {
         let u = uid(h, page);
         h.p(|p| overlay_marks(p, u)).into_iter().filter(|m| m.shape == MarkShape::Ring && m.stroke == 2.0).collect::<Vec<_>>()
@@ -428,7 +437,7 @@ fn ac3_erasing_the_other_end_orphans_this_one_and_undo_redo_round_trip() {
     let e = r.h.pv(|p, pg| pg.entities_of(p, r.supply)).into_iter().find(|e| e.handle == text).unwrap();
     assert_eq!(format!("{:?}", e.common.color), format!("{:?}", cadcraft_engine::doc::color::Color::Index(1)), "red text");
     assert_eq!(diagnostics(&orphaned), vec!["Orphan: cable -C01 on page 1 (?)".to_string()]);
-    // The Field stubs, slash and attachments stay: only the reference went.
+    // The wires and their attachments stay: only the reference went.
     assert_eq!(orphaned.wires, linked.wires);
     assert_eq!(nets(&orphaned), nets(&linked));
     r.h.cmdline("u");
@@ -774,9 +783,8 @@ fn add_ref(doc: &mut Document, n: u128, at: Pt, page: PageId, subject: Subject) 
 /// a missing cable, a missing member conductor, several on one page, a page in no page order,
 /// one item shared by two references, and many references of one cable (bounded time).
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn ac6_hostile_documents_never_panic() {
-    let base = continued(SEED + 14).h.doc();
+    let base = paired(SEED + 14).h.doc();
     let cable = *base.cables.keys().next().unwrap();
     let page = base.page_order[0];
     type Mutate = Box<dyn Fn(&mut Document)>;
@@ -1021,9 +1029,8 @@ fn ac5_clicking_the_continued_ends_point_or_text_jumps() {
 /// most 3 partner IDs and a count, so time and memory are linear; the debugger's diagnostics stay
 /// quick too.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn many_references_of_one_cable_derive_in_bounded_time() {
-    let base = continued(SEED + 19).h.doc();
+    let base = paired(SEED + 19).h.doc();
     let cable = *base.cables.keys().next().unwrap();
     let page = base.page_order[0];
     // (references added, seconds allowed for one derivation)
