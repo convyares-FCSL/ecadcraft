@@ -39,8 +39,8 @@ pub fn coil(graphics_scale: f64) -> Definition {
             Primitive::Circle { center: Pt::new(0.0, 0.0), radius: graphics_scale },
         ],
         terminals: vec![
-            TerminalDef { key: "A1".into(), label: Some("A1".into()), at: Pt::new(0.0, 10.0) },
-            TerminalDef { key: "A2".into(), label: Some("A2".into()), at: Pt::new(0.0, -10.0) },
+            TerminalDef { key: "A1".parse().unwrap(), label: Some("A1".into()), at: Pt::new(0.0, 10.0) },
+            TerminalDef { key: "A2".parse().unwrap(), label: Some("A2".into()), at: Pt::new(0.0, -10.0) },
         ],
         ..Default::default()
     }
@@ -64,9 +64,9 @@ impl Fixture {
         let (c, t1, t2, item, rep): (DeviceId, TerminalId, TerminalId, ItemId, RepresentationId) =
             (self.ids.fresh(), self.ids.fresh(), self.ids.fresh(), self.ids.fresh(), self.ids.fresh());
         let ops = vec![
-            Op::CreateDevice { id: c, device: Device { properties: Default::default(), definition: Some(def), device_type: Default::default() } },
-            Op::AddTerminal { id: t1, terminal: Terminal { component: c, label: Some("A1".into()), key: Some("A1".into()) } },
-            Op::AddTerminal { id: t2, terminal: Terminal { component: c, label: Some("A2".into()), key: Some("A2".into()) } },
+            Op::CreateDevice { id: c, device: Device { definition: Some(def), ..Device::default() } },
+            Op::AddTerminal { id: t1, terminal: Terminal { component: c, label: Some("A1".into()), key: Some("A1".parse().unwrap()) } },
+            Op::AddTerminal { id: t2, terminal: Terminal { component: c, label: Some("A2".into()), key: Some("A2".parse().unwrap()) } },
             Op::AddItem {
                 id: item,
                 item: Item {
@@ -205,7 +205,7 @@ pub fn fixture() -> Fixture {
         ],
     );
     // Keys whose UTF-8 and UTF-16 orders differ (U+FF5E sorts before U+1F600 in UTF-8 only).
-    for (key, value) in [("tag", "-K1"), ("\u{FF5E}wave", "w"), ("\u{1F600}smile", "s"), ("Bezeichnung-ä", "ä")] {
+    for (key, value) in [("note", "-K1"), ("\u{FF5E}wave", "w"), ("\u{1F600}smile", "s"), ("Bezeichnung-ä", "ä")] {
         f.commit("Set property", vec![Op::SetProperty { object: ObjectRef::Device(c1), key: key.into(), before: None, after: Some(value.into()) }]);
     }
     let at = f.ledger.head();

@@ -127,7 +127,7 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
                 let card = plan.component;
                 ops.extend(plan.ops);
                 let slot = u32::try_from(i + 1).map_err(|e| e.to_string())?;
-                ops.extend(ecad_cadcraft::plc::rack::new_card_ops(card, rack, slot));
+                ecad_cadcraft::plc::rack::put_new_card(p.ledger.document(), &mut ops, card, rack, slot);
                 p.ledger.commit(Author::User, "bench card", std::mem::take(&mut ops)).map_err(|e| e.to_string())?;
             }
         }

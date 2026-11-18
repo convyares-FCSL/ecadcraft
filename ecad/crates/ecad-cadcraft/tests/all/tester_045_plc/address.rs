@@ -119,9 +119,9 @@ fn i_each_address_style() {
     step(&mut p.h, "plcaddress", json!({"rack": rack, "style": "none"}));
     let t = all_texts(&mut p);
     assert!(!t.iter().any(|x| x.starts_with("I:") || x.starts_with("%I") || x == "I0.0"), "style none: typed addresses only");
-    // The style is the rack's object-level registry value (setdefault), shown with its source.
-    let d = p.h.run("defaults", json!({"key": "plc.address.style", "component": rack})).unwrap();
-    assert!(d.to_string().contains("none"), "{d}");
+    // Design 072 §3: the style is the station's own field.
+    let st = crate::common::plc_station(&p.h.doc(), p.rack).address_style;
+    assert_eq!(st, Some(ecad_model::plc::AddressStyle::None));
     p.h.check();
 }
 
@@ -295,9 +295,6 @@ fn t_hostile_addresses() {
         survives(&mut p.h, "setprop", json!({"component": a03, "key": "plc.addr.size", "value": v}));
         survives(&mut p.h, "setprop", json!({"component": a03, "key": "plc.addr.start", "value": v}));
     }
-    raw_setprop(&mut p.h, c["-A04"], "plc.addr.start", Some("99999999999999999999"));
-    raw_setprop(&mut p.h, c["-A05"], "plc.addr.size", Some("-7"));
-    raw_setprop(&mut p.h, p.rack, "plc.address.style", Some("\u{0}"));
     raw_setprop(&mut p.h, p.rack, "plc.address.start.input", Some("65535"));
     let mut h = reload(p.h, "hostile addresses", 0x7045_ae402);
     read_everything(&mut h);

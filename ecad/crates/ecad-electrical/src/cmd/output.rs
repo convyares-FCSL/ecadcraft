@@ -108,7 +108,7 @@ pub fn plan_box(
     let spots = proposals::spots_inside(doc, &b);
     let modes = [if b.function_key.is_some() { mode.clone() } else { Mode::Keep }, if b.location_key.is_some() { mode.clone() } else { Mode::Keep }];
     let mut pending = Pending::default();
-    let proposed = proposals::plan(doc, ids, &spots, &modes, std::slice::from_ref(&b), &mut pending)?;
+    let proposed = proposals::plan(doc, &planned.ops, ids, &spots, &modes, std::slice::from_ref(&b), &mut pending)?;
     let inside: BTreeSet<_> = spots.iter().map(|s| s.device).collect();
     let mut ops = planned.ops.clone();
     ops.extend(proposed.ops.iter().cloned());

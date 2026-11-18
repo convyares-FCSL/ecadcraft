@@ -188,6 +188,20 @@ pub struct Item {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Device {
+    /// Design 072 §2.1: validated on read (1 to 40 characters, no hidden character).
+    pub tag: Option<m::tag::Tag>,
+    pub tag_fixed: bool,
+    /// Design 072 §2.1: the text fields, validated on read.
+    pub description: Option<m::device::Description>,
+    pub part_number: Option<m::device::PartText>,
+    pub manufacturer: Option<m::device::PartText>,
+    pub article_number: Option<m::device::PartText>,
+    pub type_text: Option<m::device::PartText>,
+    /// Design 072 §6.3: ids of the project's lists, and whether each was set by hand.
+    pub location: Option<m::LocationId>,
+    pub location_fixed: bool,
+    pub function: Option<m::FunctionId>,
+    pub function_fixed: bool,
     pub properties: BTreeMap<String, String>,
     pub definition: Option<DefinitionId>,
     /// What the device is (design 072 F15): the model's own type, whose words and fields are
@@ -200,7 +214,7 @@ pub struct Device {
 pub struct Terminal {
     pub component: DeviceId,
     pub label: Option<String>,
-    pub key: Option<String>,
+    pub key: Option<m::PointKey>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -291,7 +305,7 @@ pub struct Origin {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TerminalDef {
-    pub key: String,
+    pub key: m::PointKey,
     pub label: Option<String>,
     pub at: Pt,
 }
@@ -306,7 +320,7 @@ pub struct Definition {
     /// Groups of terminal keys joined inside the device (brief 022, FP5). Left out when empty, so
     /// a definition without bridges is written, and hashed, exactly as before.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub bridges: Vec<Vec<String>>,
+    pub bridges: Vec<Vec<m::PointKey>>,
     /// Text slots (brief 048, FP1). Left out when empty, so existing hashes hold.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub texts: Vec<TextSlot>,
@@ -942,7 +956,22 @@ impl From<&m::Item> for Item {
 
 impl From<&m::Device> for Device {
     fn from(c: &m::Device) -> Self {
-        Device { properties: c.properties.clone(), definition: c.definition, device_type: c.device_type.clone() }
+        Device {
+            tag: c.tag.clone(),
+            tag_fixed: c.tag_fixed,
+            description: c.description.clone(),
+            part_number: c.part_number.clone(),
+            manufacturer: c.manufacturer.clone(),
+            article_number: c.article_number.clone(),
+            type_text: c.type_text.clone(),
+            location: c.location,
+            location_fixed: c.location_fixed,
+            function: c.function,
+            function_fixed: c.function_fixed,
+            properties: c.properties.clone(),
+            definition: c.definition,
+            device_type: c.device_type.clone(),
+        }
     }
 }
 
@@ -1242,7 +1271,22 @@ impl From<Item> for m::Item {
 
 impl From<Device> for m::Device {
     fn from(c: Device) -> Self {
-        m::Device { properties: c.properties, definition: c.definition, device_type: c.device_type }
+        m::Device {
+            tag: c.tag,
+            tag_fixed: c.tag_fixed,
+            description: c.description,
+            part_number: c.part_number,
+            manufacturer: c.manufacturer,
+            article_number: c.article_number,
+            type_text: c.type_text,
+            location: c.location,
+            location_fixed: c.location_fixed,
+            function: c.function,
+            function_fixed: c.function_fixed,
+            properties: c.properties,
+            definition: c.definition,
+            device_type: c.device_type,
+        }
     }
 }
 

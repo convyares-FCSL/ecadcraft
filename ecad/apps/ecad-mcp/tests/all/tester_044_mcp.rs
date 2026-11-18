@@ -21,7 +21,9 @@ fn conn(v: &Value) -> String {
 fn sides(ops: &[Op]) -> Vec<(String, String)> {
     ops.iter()
         .filter_map(|o| match o {
-            Op::AddTerminal { terminal, .. } => Some((terminal.key.clone().unwrap_or_default(), terminal.label.clone().unwrap_or_default())),
+            Op::AddTerminal { terminal, .. } => {
+                Some((terminal.key.as_ref().map(ToString::to_string).unwrap_or_default(), terminal.label.clone().unwrap_or_default()))
+            }
             _ => None,
         })
         .collect()
@@ -32,7 +34,9 @@ fn pin(c: &mut Client, x: &str, side: &str, label: &str) -> String {
     let d = c.doc();
     d.terminals
         .iter()
-        .find(|(_, t)| t.component.hex() == x && t.key.as_deref() == Some(side) && t.label.as_deref() == Some(label))
+        .find(|(_, t)| {
+            t.component.hex() == x && t.key.as_ref().map(ToString::to_string).as_deref() == Some(side) && t.label.as_deref() == Some(label)
+        })
         .map(|(id, _)| id.hex())
         .unwrap_or_else(|| panic!("{x} {side}:{label} missing"))
 }
@@ -68,11 +72,8 @@ fn connector_writes_by_the_agent_then_refused_with_writes_off() {
         let embeds: Vec<&ecad_model::Definition> =
             ops.iter().filter_map(|o| if let Op::EmbedDefinition { definition, .. } = o { Some(definition) } else { None }).collect();
         assert_eq!(embeds.len(), 2, "socket4 and plug4: {ops:?}");
-        assert!(
-            embeds
-                .iter()
-                .all(|d| d.origin.as_ref().is_some_and(|o| o.library_seq == 2) && d.bridges == vec![vec![".s".to_string(), ".p".to_string()]])
-        );
+        assert!(embeds.iter().all(|d| d.origin.as_ref().is_some_and(|o| o.library_seq == 2)
+            && d.bridges == vec![vec![".s".parse::<ecad_model::PointKey>().unwrap(), ".p".parse::<ecad_model::PointKey>().unwrap()]]));
         let mut got = sides(&ops);
         got.sort();
         let mut want: Vec<(String, String)> = [".p", ".s"].iter().flat_map(|k| (1..=4).map(move |i| (k.to_string(), i.to_string()))).collect();

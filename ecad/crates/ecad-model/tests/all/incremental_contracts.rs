@@ -105,14 +105,14 @@ pub(crate) fn base() -> Base {
         name: "K".into(),
         origin: None,
         graphics: vec![Primitive::Circle { center: Pt::new(0.0, 0.0), radius: 2.0 }],
-        terminals: vec![TerminalDef { key: "1".into(), label: None, at: Pt::new(0.0, 2.0) }],
+        terminals: vec![TerminalDef { key: "1".parse().unwrap(), label: None, at: Pt::new(0.0, 2.0) }],
         ..Default::default()
     };
     let comp = ids.fresh();
     let mut comp_v = Device { definition: Some(def), ..Device::default() };
-    comp_v.properties.insert("tag".into(), "K1".into());
+    comp_v.properties.insert("note".into(), "K1".into());
     let term = ids.fresh();
-    let term_v = Terminal { component: comp, label: Some("1".into()), key: Some("1".into()) };
+    let term_v = Terminal { component: comp, label: Some("1".into()), key: Some("1".parse().unwrap()) };
     let sym = ids.fresh();
     let sym_v = Item { page, style: style(layer), kind: ItemKind::Symbol(SymbolInstance { definition: def, placement: Placement::default() }) };
     let item = ids.fresh();
@@ -244,7 +244,7 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
         Op::DeleteCable { id: b.cable, cable: b.cable_v.clone() },
         Op::AddCableMember { cable: b.cable, index: 1, member: CableMember { conductor: b.wire2, core: Some("2".into()) } },
         Op::RemoveCableMember { cable: b.cable, index: 0, member: CableMember { conductor: b.wire, core: None } },
-        Op::SetProperty { object: ObjectRef::Device(b.comp), key: "tag".into(), before: Some("K1".into()), after: None },
+        Op::SetProperty { object: ObjectRef::Device(b.comp), key: "note".parse().unwrap(), before: Some("K1".into()), after: None },
         Op::EmbedDefinition { id: b.ids.fresh(), definition: b.def_v.clone() },
         Op::RemoveDefinition { id: b.def, definition: b.def_v.clone() },
         Op::SetProjectSettings {
@@ -311,8 +311,8 @@ fn failing(b: &mut Base) -> Vec<Op> {
         Op::DeleteCable { id: b.ids.fresh(), cable: b.cable_v.clone() },
         Op::AddCableMember { cable: b.cable, index: 5, member: CableMember { conductor: b.wire2, core: None } },
         Op::RemoveCableMember { cable: b.cable, index: 0, member: CableMember { conductor: b.wire2, core: None } },
-        Op::SetProperty { object: ObjectRef::Device(b.comp), key: "tag".into(), before: None, after: None },
-        Op::SetProperty { object: ObjectRef::Device(missing_comp), key: "tag".into(), before: None, after: None },
+        Op::SetProperty { object: ObjectRef::Device(b.comp), key: "note".parse().unwrap(), before: None, after: None },
+        Op::SetProperty { object: ObjectRef::Device(missing_comp), key: "note".parse().unwrap(), before: None, after: None },
         Op::EmbedDefinition { id: b.def, definition: b.def_v.clone() },
         Op::RemoveDefinition { id: b.def, definition: Definition { name: "other".into(), ..b.def_v.clone() } },
         Op::SetProjectSettings {
@@ -700,10 +700,10 @@ impl Gen {
     }
 
     fn definition(&mut self) -> Definition {
-        let mut terminals = vec![TerminalDef { key: "1".into(), label: None, at: Pt::new(0.0, 1.0) }];
+        let mut terminals = vec![TerminalDef { key: "1".parse().unwrap(), label: None, at: Pt::new(0.0, 1.0) }];
         if self.rng.chance(20) {
             let key = if self.rng.chance(50) { "1" } else { "2" };
-            terminals.push(TerminalDef { key: key.into(), label: None, at: Pt::new(0.0, -1.0) });
+            terminals.push(TerminalDef { key: key.parse().unwrap(), label: None, at: Pt::new(0.0, -1.0) });
         }
         let r = if self.rng.chance(5) { f64::NAN } else { 1.0 };
         Definition {
@@ -853,15 +853,15 @@ impl Gen {
             }
             35 => match self.rng.pick_key(&doc.devices) {
                 Some(id) => {
-                    let current = doc.devices.get(&id).and_then(|c| c.properties.get("tag").cloned());
-                    let before = if spoil { Some("spoilt".into()) } else { current };
+                    let current = doc.devices.get(&id).cloned().unwrap_or_default();
+                    let before = if spoil { current.with_tag(Some("spoilt")) } else { current.clone() };
                     // Written two ways (`K3`, `-K03`) so the tag index sees the same tag under two values.
                     let after = match self.rng.below(3) {
-                        0 => None,
-                        1 => Some(format!("K{}", self.rng.below(9))),
-                        _ => Some(format!("-K0{}", self.rng.below(9))),
+                        0 => current.with_tag(None),
+                        1 => current.with_tag(Some(&format!("K{}", self.rng.below(9)))),
+                        _ => current.with_tag(Some(&format!("-K0{}", self.rng.below(9)))),
                     };
-                    Op::SetProperty { object: ObjectRef::Device(id), key: "tag".into(), before, after }
+                    Op::ModifyDevice { id, before, after }
                 }
                 None => Op::CreateDevice { id: fresh_in!(self, comps), device: Device::default() },
             },
@@ -1009,7 +1009,7 @@ fn a_refused_transaction_holding_nan_rolls_back() {
     let ops = vec![
         Op::AddItem { id: b.ids.fresh(), item: nan },
         Op::ModifyItem { id: b.item, before: b.item_v.clone(), after: moved },
-        Op::SetProperty { object: ObjectRef::Device(b.comp), key: "tag".into(), before: Some("K1".into()), after: None },
+        Op::SetProperty { object: ObjectRef::Device(b.comp), key: "note".parse().unwrap(), before: Some("K1".into()), after: None },
     ];
     let r = b.ledger.commit(Author::User, "nan", ops);
     assert!(matches!(r, Err(ModelError::Invariant(_))), "{r:?}");
@@ -1080,7 +1080,7 @@ fn a_panic_inside_the_preview_closure_leaves_document_indexes_and_log_unchanged(
         Op::AddItem { id: b.ids.fresh(), item: line(b.page, b.layer, 1.0) },
         Op::ModifyItem { id: b.item, before: b.item_v.clone(), after: line(b.page, b.layer, 7.0) },
         Op::AddCableMember { cable: b.cable, index: 1, member: CableMember { conductor: b.wire2, core: None } },
-        Op::SetProperty { object: ObjectRef::Device(b.comp), key: "tag".into(), before: Some("K1".into()), after: Some("K2".into()) },
+        Op::SetProperty { object: ObjectRef::Device(b.comp), key: "note".parse().unwrap(), before: Some("K1".into()), after: Some("K2".into()) },
         Op::AddPage { id: b.ids.fresh(), page: Page::titled("2").unwrap(), index: 1 },
     ];
     let mut cases: Vec<(String, Vec<Op>)> = vec![("valid transaction".into(), valid.clone())];

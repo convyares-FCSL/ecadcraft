@@ -5,9 +5,9 @@
 //!   id (allocated when the entry is made and recorded in the op), a **code** (`+CP1`, `=F1`),
 //!   unique within its aspect, and optional descriptions. The lists change through
 //!   `ModifyProject`.
-//! - Pages and the project store **the id** (`Page.location`/`function`,
-//!   `Project.location`/`function`); devices and boxes store its 32-hex form in `function`,
-//!   `location` and `location.<type>` until lane 072 B moves them (FP8). Everything a person sees
+//! - Pages, the project and devices store **the id** (`Page.location`/`function`,
+//!   `Project.location`/`function`, `Device.location`/`function` with their `fixed` flags, design
+//!   072 §6.3); a device's per-type override `location.<type>` keeps its 32-hex form in the bag. Everything a person sees
 //!   shows the code ([`code_of`]), so renaming an entry is one edit of the list.
 //! - A typed code is stored through [`Pending::store`]: a known code gives its key; an unknown one
 //!   adds an entry in the same transaction. A stored value with no entry (a key whose entry a merge
@@ -22,7 +22,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::CmdError;
 use ecad_model::book::{FUNCTION_KEY, LOCATION_KEY};
-use ecad_model::{Document, FunctionId, IdAllocator, Ledger, ListCode, ListDescription, ListEntry, LocationId, ObjectRef, Op, Page, Project};
+use ecad_model::{Device, Document, FunctionId, IdAllocator, Ledger, ListCode, ListDescription, ListEntry, LocationId, ObjectRef, Op, Page, Project};
 
 /// Function (`=`) or location (`+`), the two IEC 81346 aspects a device carries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -202,6 +202,49 @@ pub fn with_page_key(page: &Page, a: Aspect, key: Option<&str>) -> Page {
         Aspect::Location => p.location = id.map(LocationId),
     }
     p
+}
+
+/// Device `d`'s own value of aspect `a`, as a key.
+pub fn device_key(d: &Device, a: Aspect) -> Option<String> {
+    match a {
+        Aspect::Function => d.function.map(FunctionId::hex),
+        Aspect::Location => d.location.map(LocationId::hex),
+    }
+}
+
+/// Whether device `d`'s value of aspect `a` was set by hand (design 072 §6.3).
+pub fn device_fixed(d: &Device, a: Aspect) -> bool {
+    match a {
+        Aspect::Function => d.function_fixed,
+        Aspect::Location => d.location_fixed,
+    }
+}
+
+/// `d` with its value of aspect `a` set to `key` (`None`, or text that is not a key, clears it)
+/// and its `fixed` flag set to `fixed` (cleared with the value).
+pub fn with_device_key(d: &Device, a: Aspect, key: Option<&str>, fixed: bool) -> Device {
+    let mut x = d.clone();
+    let id = key.and_then(raw);
+    let fixed = fixed && id.is_some();
+    match a {
+        Aspect::Function => {
+            x.function = id.map(FunctionId);
+            x.function_fixed = fixed;
+        }
+        Aspect::Location => {
+            x.location = id.map(LocationId);
+            x.location_fixed = fixed;
+        }
+    }
+    x
+}
+
+/// Every key device `d` stores, with the property it is under: its own location and function,
+/// and its location overrides (`location.<type>`, still in its bag).
+pub fn device_keys(d: &Device) -> Vec<(String, String)> {
+    let own = Aspect::ALL.into_iter().filter_map(|a| device_key(d, a).map(|k| (a.property().to_string(), k)));
+    let overrides = d.properties.iter().filter(|(k, _)| Aspect::of_property(k).is_some()).map(|(k, v)| (k.clone(), v.clone()));
+    own.chain(overrides).collect()
 }
 
 /// `project` with its default of aspect `a` set to `key` (`None` clears it).
@@ -492,7 +535,7 @@ impl Uses {
     pub fn of(doc: &Document) -> Uses {
         let mut u = Uses::default();
         for (c, x) in &doc.devices {
-            u.add_props(ObjectRef::Device(*c), &x.properties);
+            u.device(*c, x, true);
         }
         for (p, x) in &doc.pages {
             u.page(*p, x, true);
@@ -534,8 +577,12 @@ impl Uses {
                         self.note(a, v, *object, key, true);
                     }
                 }
-                Op::CreateDevice { id, device: component } => self.add_props(ObjectRef::Device(*id), &component.properties),
-                Op::DeleteDevice { id, device: component } => self.remove_props(ObjectRef::Device(*id), &component.properties),
+                Op::CreateDevice { id, device } => self.device(*id, device, true),
+                Op::DeleteDevice { id, device } => self.device(*id, device, false),
+                Op::ModifyDevice { id, before, after } => {
+                    self.device(*id, before, false);
+                    self.device(*id, after, true);
+                }
                 Op::AddPage { id, page, .. } => self.page(*id, page, true),
                 Op::RemovePage { id, page, .. } => self.page(*id, page, false),
                 Op::ModifyPage { id, before, after } => {
@@ -569,18 +616,11 @@ impl Uses {
         }
     }
 
-    fn add_props(&mut self, o: ObjectRef, props: &ecad_model::Properties) {
-        for (k, v) in props {
-            if let Some(a) = Aspect::of_property(k) {
-                self.note(a, v, o, k, true);
-            }
-        }
-    }
-
-    fn remove_props(&mut self, o: ObjectRef, props: &ecad_model::Properties) {
-        for (k, v) in props {
-            if let Some(a) = Aspect::of_property(k) {
-                self.note(a, v, o, k, false);
+    /// Note (or forget) every key a device stores ([`device_keys`]).
+    fn device(&mut self, id: ecad_model::DeviceId, d: &Device, add: bool) {
+        for (prop, k) in device_keys(d) {
+            if let Some(a) = Aspect::of_property(&prop) {
+                self.note(a, &k, ObjectRef::Device(id), &prop, add);
             }
         }
     }
@@ -631,18 +671,4 @@ impl Uses {
         c.overrides = overrides.iter().filter(|x| !devices.contains(x)).count();
         c
     }
-}
-
-/// A stored `function` or `location` (or override) of any object, with what it shows.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Stored {
-    pub key: String,
-    /// The entry's code, or `None` when the list has no such entry.
-    pub code: Option<String>,
-}
-
-/// The stored value of `prop` on `props`, resolved through the list.
-pub fn stored(doc: &Document, a: Aspect, props: &ecad_model::Properties, prop: &str) -> Option<Stored> {
-    let key = props.get(prop)?;
-    Some(Stored { key: key.clone(), code: code_of(doc, a, key) })
 }

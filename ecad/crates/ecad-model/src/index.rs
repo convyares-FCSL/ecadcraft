@@ -69,6 +69,8 @@ pub(crate) struct Index {
     pub(crate) conductor_cables: Multi<WireId, CableId>,
     /// Device → its terminals.
     pub(crate) component_terminals: Multi<DeviceId, TerminalId>,
+    /// PLC station → the modules naming it (design 072 §3).
+    pub(crate) station_modules: Multi<DeviceId, DeviceId>,
     /// Subject → representations depicting it.
     pub(crate) subject_reps: Multi<Subject, RepresentationId>,
     /// Page → representations on it.
@@ -222,7 +224,12 @@ impl Index {
         if let Some(d) = c.definition {
             bump(&mut self.definition_components, d, id, delta);
         }
-        if let Some(t) = c.properties.get(crate::tag::TAG_KEY) {
+        if let crate::DeviceType::PlcModule(m) = &c.device_type
+            && let Some(r) = m.rack
+        {
+            bump(&mut self.station_modules, r, id, delta);
+        }
+        if let Some(t) = c.tag() {
             self.tag(id, t, delta);
         }
         if let Some(k) = crate::connectivity::continuation_key(&c.properties) {

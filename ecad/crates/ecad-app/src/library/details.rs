@@ -185,7 +185,7 @@ pub fn show(ui: &mut egui::Ui, b: &mut Builder, info: &Info) -> Vec<Act> {
         let name = format!("library.details.points.row.{}", p.key);
         let r = ui.horizontal(|ui| {
             let chosen = b.selected == Some(Picked::Point(i));
-            if ui.selectable_label(chosen, RichText::new(&p.key).monospace()).clicked() {
+            if ui.selectable_label(chosen, RichText::new(p.key.to_string()).monospace()).clicked() {
                 b.selected = Some(Picked::Point(i));
             }
             let mut label = p.label.clone().unwrap_or_default();

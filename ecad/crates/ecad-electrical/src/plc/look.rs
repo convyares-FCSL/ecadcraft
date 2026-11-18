@@ -101,7 +101,7 @@ fn piece(doc: &Document, c: DeviceId, rid: RepresentationId, r: &ecad_model::Rep
         let i = crate::devices::shown_terminals(doc, c, r).iter().find_map(|(t, _)| super::channels::point_of(doc, *t)).map(|x| x.0);
         (-w / 2.0, w / 2.0, CELL_TOP, Some(i?))
     } else {
-        let ty = CardType::of_body(s.key)?;
+        let ty = CardType::of_symbol(s)?;
         if ty.is_rack() {
             return None;
         }
@@ -209,7 +209,7 @@ fn name_block(doc: &Document, c: DeviceId) -> Vec<(String, TextKind)> {
     if let Some((caption, true)) = super::caption(doc, c) {
         out.push((caption, TextKind::PartNumber));
     }
-    let prop = |k: &str| doc.devices.get(&c).and_then(|x| x.properties.get(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+    let prop = |k: &str| doc.devices.get(&c).and_then(|x| x.get(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
     for k in ["maker", "part_number"] {
         if let Some(v) = prop(k) {
             out.push((v, TextKind::PartNumber));
@@ -221,11 +221,11 @@ fn name_block(doc: &Document, c: DeviceId) -> Vec<(String, TextKind)> {
 /// The type text: the card's own description, else `DI 16`.
 pub fn type_text(doc: &Document, c: DeviceId) -> String {
     let Some(ty) = super::card_type_of(doc, c) else { return String::new() };
-    let builtin = crate::symbols::by_key(ty.body()).map(|s| s.name);
-    let desc = doc.devices.get(&c).and_then(|x| x.properties.get("description")).map(|v| v.trim()).filter(|v| !v.is_empty() && Some(*v) != builtin);
+    let builtin = ty.body().map(crate::symbols::starter).map(|s| s.name);
+    let desc = doc.devices.get(&c).and_then(|x| x.description.as_ref()).map(|v| v.as_str()).filter(|v| !v.is_empty() && Some(*v) != builtin);
     match desc {
         Some(d) => d.to_string(),
-        None if ty.has_channels() => format!("{} {}", ty.code(), rack::channel_count(doc, c, ty)),
+        None if ty.has_channels() => format!("{} {}", ty.code(), rack::channel_count(doc, c)),
         None => ty.code().to_string(),
     }
 }
@@ -250,10 +250,10 @@ pub fn parts_on_page_measured(doc: &Document, page: PageId, m: &dyn TextMetrics)
 fn frame_parts(doc: &Document, run: &Run, m: &dyn TextMetrics, out: &mut Vec<Part>) {
     let c = run.card;
     let Some(ty) = super::card_type_of(doc, c) else { return };
-    let n = if ty.has_channels() { rack::channel_count(doc, c, ty) } else { 0 };
+    let n = if ty.has_channels() { rack::channel_count(doc, c) } else { 0 };
     let has_body = doc
         .representations_of(Subject::Device(c))
-        .any(|(_, r)| crate::devices::rep_starter(doc, r).is_some_and(|s| CardType::of_body(s.key).is_some()));
+        .any(|(_, r)| crate::devices::rep_starter(doc, r).is_some_and(|s| CardType::of_symbol(s).is_some()));
     let lines = name_block(doc, c);
     let ttext = type_text(doc, c);
     let band = name_band(doc, &lines);
@@ -343,7 +343,7 @@ pub const FRAME_DERIVED: &str = "The card's frame is derived; move the card's ce
 /// card frame's: a cell or body has no cross-reference parts of its own).
 pub fn is_frame_rep(doc: &Document, rid: RepresentationId) -> bool {
     let Some(s) = doc.representations.get(&rid).and_then(|r| crate::devices::rep_starter(doc, r)) else { return false };
-    crate::symbols::cell_shape(s.key).is_some() || CardType::of_body(s.key).is_some_and(|t| !t.is_rack())
+    crate::symbols::cell_shape(s.key).is_some() || CardType::of_symbol(s).is_some_and(|t| !t.is_rack())
 }
 
 /// Whether representation `r` (id `rid`) of `c` is in a framed run that is drawn: its own tag

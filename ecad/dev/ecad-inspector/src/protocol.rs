@@ -423,18 +423,18 @@ fn page_number(d: &Document, p: ecad_model::PageId) -> String {
     ecad_model::book::page_number(d, p)
 }
 
-fn tag_of(props: &ecad_model::doc::Properties) -> Option<&String> {
-    props.get(ecad_model::tag::TAG_KEY)
+fn tag_of(d: &ecad_model::Device) -> Option<&str> {
+    d.tag()
 }
 
 fn device_name(d: &Document, c: DeviceId) -> String {
-    d.devices.get(&c).and_then(|x| tag_of(&x.properties)).cloned().unwrap_or_else(|| format!("({})", c.short()))
+    d.devices.get(&c).and_then(tag_of).map(str::to_string).unwrap_or_else(|| format!("({})", c.short()))
 }
 
 fn point_name(d: &Document, t: TerminalId) -> String {
     match d.terminals.get(&t) {
         Some(term) => {
-            let own = term.label.clone().or_else(|| term.key.clone()).unwrap_or_else(|| t.short());
+            let own = term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| t.short());
             format!("{}:{own}", device_name(d, term.component))
         }
         None => format!("({})", t.short()),
@@ -551,9 +551,9 @@ fn pages(d: &Document) -> Vec<Value> {
 }
 
 fn devices(d: &Document, detail: bool) -> Vec<Value> {
-    let mut tags: BTreeMap<&String, usize> = BTreeMap::new();
+    let mut tags: BTreeMap<&str, usize> = BTreeMap::new();
     for c in d.devices.values() {
-        if let Some(t) = tag_of(&c.properties) {
+        if let Some(t) = tag_of(c) {
             *tags.entry(t).or_default() += 1;
         }
     }
@@ -576,11 +576,11 @@ fn devices(d: &Document, detail: bool) -> Vec<Value> {
         .devices
         .iter()
         .map(|(id, c)| {
-            let tag = tag_of(&c.properties).cloned();
+            let tag = tag_of(c);
             let points: Vec<Value> = d
                 .terminals_of(*id)
                 .map(|(t, term)| {
-                    let name = term.label.clone().or_else(|| term.key.clone()).unwrap_or_else(|| t.short());
+                    let name = term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| t.short());
                     let wires: Vec<String> = attached.get(&t).into_iter().flatten().map(|w| wire_name(d, *w)).collect();
                     json!({"name": name, "wires": wires})
                 })
@@ -591,16 +591,22 @@ fn devices(d: &Document, detail: bool) -> Vec<Value> {
                 "id": id.to_string(),
                 "tag": tag,
                 "duplicate": tag.as_ref().is_some_and(|t| tags.get(t).copied().unwrap_or(0) > 1),
-                "function": c.properties.get(ecad_model::book::FUNCTION_KEY),
-                "location": c.properties.get(ecad_model::book::LOCATION_KEY),
+                "function": c.function.map(|f| function_code(d, f)),
+                "function_fixed": c.function_fixed,
+                "location": c.location.map(|l| location_code(d, l)),
+                "location_fixed": c.location_fixed,
                 "definition": c.definition.and_then(|def| d.definitions.get(&def)).map(|def| def.name.clone()),
                 "pages": pages,
                 "points": points,
             });
             if detail {
+                // Design 072 §2.1: the device's text fields, then what is left in its bag.
+                for f in ecad_model::TextField::ALL {
+                    row[f.key()] = json!(c.text(f));
+                }
                 row["properties"] = json!(c.properties);
             }
-            (tag.unwrap_or_default(), row)
+            (tag.unwrap_or_default().to_string(), row)
         })
         .collect();
     out.sort_by(|a, b| a.0.cmp(&b.0));
@@ -634,7 +640,7 @@ fn nets(d: &Document) -> Vec<Value> {
 fn wires(d: &Document) -> Vec<Value> {
     let mut in_cable: BTreeMap<WireId, (String, Option<String>)> = BTreeMap::new();
     for (id, k) in &d.cables {
-        let tag = tag_of(&k.properties).cloned().unwrap_or_else(|| format!("({})", id.short()));
+        let tag = k.properties.get(ecad_model::tag::TAG_KEY).cloned().unwrap_or_else(|| format!("({})", id.short()));
         for m in &k.members {
             in_cable.insert(m.conductor, (tag.clone(), m.core.clone()));
         }
@@ -675,7 +681,7 @@ fn cables(d: &Document) -> Vec<Value> {
                     }
                 }
             }
-            json!({"id": id.to_string(), "tag": tag_of(&k.properties), "members": members, "ends": ends})
+            json!({"id": id.to_string(), "tag": k.properties.get(ecad_model::tag::TAG_KEY), "members": members, "ends": ends})
         })
         .collect()
 }

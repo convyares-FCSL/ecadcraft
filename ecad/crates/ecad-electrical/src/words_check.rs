@@ -182,16 +182,17 @@ mod tests {
     #[test]
     fn stored_flags_hold_only_yes_or_no() {
         let mut d = doc();
-        let c = DeviceId(3);
-        d.devices.insert(c, Device::default());
+        // A cable's bag still holds `tag_fixed` (a device's is a field, design 072 §2.1).
+        let c = ecad_model::CableId(3);
+        d.cables.insert(c, ecad_model::Cable::default());
         d.properties.insert(keys::NUMBERING_PROVISIONAL.as_str().into(), "yes".into());
-        if let Some(comp) = d.devices.get_mut(&c) {
-            comp.properties.insert(keys::TAG_FIXED.as_str().into(), "no".into());
+        if let Some(cable) = d.cables.get_mut(&c) {
+            cable.properties.insert(keys::TAG_FIXED.as_str().into(), "no".into());
         }
         assert!(check(&d).is_empty(), "the written words pass");
         for typed in ["on", "true", "1", "off", "Yes", " no"] {
-            if let Some(comp) = d.devices.get_mut(&c) {
-                comp.properties.insert(keys::TAG_FIXED.as_str().into(), typed.into());
+            if let Some(cable) = d.cables.get_mut(&c) {
+                cable.properties.insert(keys::TAG_FIXED.as_str().into(), typed.into());
             }
             let found = check(&d);
             assert_eq!(found.len(), 1, "{typed:?} in a file is refused");

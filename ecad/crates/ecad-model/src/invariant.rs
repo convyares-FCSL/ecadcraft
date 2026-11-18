@@ -59,6 +59,7 @@ use crate::error::{ModelError, Result};
 use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId, WireId};
 use crate::index::referrers;
 use crate::op::{ObjectRef, Op};
+use crate::point::PointKey;
 
 /// What a transaction created, modified or removed: the input of [`Document::check_touched`].
 ///
@@ -439,8 +440,17 @@ impl Document {
 
     /// I8.
     fn check_terminal(&self, id: TerminalId, t: &Terminal) -> Result<()> {
-        if !self.devices.contains_key(&t.component) {
+        let Some(c) = self.devices.get(&t.component) else {
             return bad(format!("terminal {id} belongs to a missing component"));
+        };
+        // Design 072 §3: a PLC module's point is a channel's (`.3.in`) or one of its own symbol's
+        // (`L+`). Any other definition key (an old `I1.3`) is unknown: nothing reads a channel
+        // out of its text.
+        if let crate::device::DeviceType::PlcModule(_) = &c.device_type
+            && let Some(crate::PointKey::Def(k)) = &t.key
+            && !c.definition.and_then(|d| self.definitions.get(&d)).is_some_and(|d| d.terminals.iter().any(|td| td.key.as_def() == Some(k)))
+        {
+            return bad(format!("terminal {id} of PLC module {} is keyed {k}: neither a channel point nor a point of its symbol", t.component));
         }
         Ok(())
     }
@@ -450,7 +460,16 @@ impl Document {
         if let Some(d) = c.definition
             && !self.definitions.contains_key(&d)
         {
-            return bad(format!("component {id} uses a missing definition"));
+            return bad(format!("device {id} uses a missing definition"));
+        }
+        // Design 072 §2.1: a key that became a device field is never in the device's bag.
+        if let Some(k) = c.properties.keys().find(|k| crate::keys::is_reserved_on(crate::keys::Holder::Device, k)) {
+            return bad(format!("device {id} holds {k} in its properties; it is a field"));
+        }
+        if let crate::device::DeviceType::Connector(x) = &c.device_type
+            && let Some(p) = x.problem()
+        {
+            return bad(format!("device {id}: {p}"));
         }
         Ok(())
     }
@@ -549,13 +568,13 @@ fn check_definition(id: DefinitionId, d: &Definition) -> Result<()> {
     if !d.graphics.iter().all(Primitive::is_finite) || !d.terminals.iter().all(|t| t.at.is_finite()) {
         return bad(format!("definition {id} has non-finite geometry"));
     }
-    let keys: BTreeSet<&str> = d.terminals.iter().map(|t| t.key.as_str()).collect();
+    let keys: BTreeSet<&PointKey> = d.terminals.iter().map(|t| &t.key).collect();
     if keys.len() != d.terminals.len() {
         return bad(format!("definition {id} repeats a terminal key"));
     }
     // Brief 044 (overseer condition on FP2): a bridge names keys a placement can write.
-    if let Some(k) = d.bridges.iter().flatten().find(|k| !keys.contains(k.as_str()) && !is_placement_key(k)) {
-        return bad(format!("definition {id} bridges key {k:?}, which it has no terminal for and no placement writes"));
+    if let Some(k) = d.bridges.iter().flatten().find(|k| !keys.contains(k) && !is_placement_key(k)) {
+        return bad(format!("definition {id} bridges key {k}, which it has no terminal for and no placement writes"));
     }
     // Brief 048 (FP1, FP2, FP4).
     let mut texts = BTreeSet::new();
@@ -586,6 +605,6 @@ fn check_definition(id: DefinitionId, d: &Definition) -> Result<()> {
 /// A terminal key a placement writes that need not be one of the definition's own keys (brief
 /// 044, FP2): a connector side key (`.s`, `.p`) or a strip level key (`.1`, `.2`, `.1i`, brief
 /// 036). A bridge may name these; any other key it names must be one of the definition's own.
-pub fn is_placement_key(k: &str) -> bool {
-    k == ".s" || k == ".p" || (k.starts_with('.') && crate::links::level_of_key(Some(k)).is_some())
+pub fn is_placement_key(k: &PointKey) -> bool {
+    matches!(k, PointKey::Side(_)) || (matches!(k, PointKey::Level { .. }) && crate::links::level_of_key(Some(k)).is_some())
 }

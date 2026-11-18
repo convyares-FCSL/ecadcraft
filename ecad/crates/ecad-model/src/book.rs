@@ -28,6 +28,10 @@ pub const NUMBER_KEY: &str = "number";
 pub const FUNCTION_KEY: &str = "function";
 /// Page and project property: the `+` location.
 pub const LOCATION_KEY: &str = "location";
+/// `setprop` key of a device's [`crate::Device::location_fixed`] (yes/no).
+pub const LOCATION_FIXED_KEY: &str = "location_fixed";
+/// `setprop` key of a device's [`crate::Device::function_fixed`] (yes/no).
+pub const FUNCTION_FIXED_KEY: &str = "function_fixed";
 
 /// Folders nest at most this deep (a top-level folder is depth 1).
 pub const MAX_FOLDER_DEPTH: usize = 8;

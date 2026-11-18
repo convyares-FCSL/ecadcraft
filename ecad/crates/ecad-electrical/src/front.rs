@@ -478,6 +478,7 @@ pub fn touches(doc: &Document, ops: &[Op]) -> bool {
         Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Device(_), key, .. } => {
             codes_on && crate::designations::Aspect::of_property(key).is_some()
         }
+        Op::ModifyDevice { before, after, .. } => codes_on && (before.location != after.location || before.function != after.function),
         // Design 072 §5.3: the revision rows, or a code the cover shows.
         Op::ModifyProject { before, after } => {
             before.revisions != after.revisions
