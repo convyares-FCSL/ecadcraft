@@ -7,3 +7,10 @@ crates/ecad-file/tests/golden/*.ecad -text
 **/tests/all/lanes/mod.rs merge=union
 crates/ecad-cadcraft/src/lanes.rs merge=union
 crates/ecad-cadcraft/src/defaults/mod.rs merge=union
+
+# Store ECAD text sources with LF line endings, whatever the editor writes (2026-11-17).
+# Stops whole-file CRLF/LF churn that made every lane merge conflict.
+*.rs   text eol=lf
+*.md   text eol=lf
+*.toml text eol=lf
+*.json text eol=lf

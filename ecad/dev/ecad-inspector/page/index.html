@@ -369,15 +369,20 @@ const views = {
     const pr = p.ok;
     const props = Object.entries(pr.properties).map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join("");
     const revs = Object.entries(pr.revisions).map(([n, f]) => `<tr><td>${esc(n)}</td><td>${esc(Object.entries(f).map(([k, v]) => `${k}: ${v}`).join(" · "))}</td></tr>`).join("");
+    const entries = (l) => (l || []).map((e) => `<tr><td>${esc(e.code)}</td><td>${esc(e.tag)}</td><td>${esc((e.descriptions || []).join(" · "))}</td><td class="mono">${esc(e.id)}</td></tr>`).join("");
+    const locs = entries(pr.locations), funcs = entries(pr.functions);
     const counts = Object.entries(pr.counts).map(([k, v]) => `<tr><th>${esc(k.replace(/_/g, " "))}</th><td>${esc(v)}</td></tr>`).join("");
     const o = info.open || {};
     return `<div class="grid"><div><h2>Project</h2><table>${props}<tr><th>reference style</th><td>${esc(pr.reference_style)}</td></tr>
+      <tr><th>location</th><td>${esc(pr.location)}</td></tr><tr><th>function</th><td>${esc(pr.function)}</td></tr>
       <tr><th>opened branch</th><td>${esc(o.branch)} at ${esc(o.verified_seq)} (snapshot ${esc(o.snapshot_seq)}, tail ${esc(o.tail)})</td></tr></table></div>
       <div><h2>Counts</h2><table>${counts}</table></div></div>
+      ${locs ? `<h2>Locations</h2>${table(["Code", "Tag", "Descriptions", "ID"], [locs])}` : ""}
+      ${funcs ? `<h2>Functions</h2>${table(["Code", "Tag", "Descriptions", "ID"], [funcs])}` : ""}
       ${revs ? `<h2>Revisions</h2>${table(["#", "fields"], [revs])}` : ""}
-      <h2>Pages</h2>` + (await paged("pages", "pages", {}, ["Page", "Title", "Folder", "Kind", "Page type", "Sheet", "Title block", "Items", "Devices", "Wires", "Display"],
+      <h2>Pages</h2>` + (await paged("pages", "pages", {}, ["Page", "Title", "Folder", "Kind", "Page type", "Sheet", "Title block", "Function", "Location", "Items", "Devices", "Wires", "Display"],
       (r) => `<tr><td>${esc(r.number)}</td><td>${esc(r.title)}</td><td>${esc(r.folder)}</td><td>${esc(r.kind)}${r.strip ? ` (strip ${esc(r.strip)})` : ""}</td>
-        <td>${esc(r.page_type)}</td><td>${esc(r.sheet)}</td><td>${esc(r.title_block)}</td><td>${esc(r.items)}</td><td>${esc(r.devices)}</td><td>${esc(r.wires)}</td>
+        <td>${esc(r.page_type)}</td><td>${esc(r.sheet)}</td><td>${esc(r.title_block)}</td><td>${esc(r.function)}</td><td>${esc(r.location)}</td><td>${esc(r.items)}</td><td>${esc(r.devices)}</td><td>${esc(r.wires)}</td>
         <td class="mono">${esc(JSON.stringify(r.display))}</td></tr>`));
   },
   async devices() {

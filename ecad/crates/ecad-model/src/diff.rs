@@ -22,7 +22,7 @@ use crate::doc::{Document, End, Properties, Wire};
 use crate::id::{FolderId, PageId};
 use crate::invariant::Touched;
 use crate::op::{ObjectRef, Op};
-use crate::style::{StyleCatalogues, StyleLayer, StyleRef};
+use crate::style::{StyleCatalogue, StyleCatalogues, StyleLayer, StyleRef};
 
 /// `SetProperty` ops turning `a` into `b` on `object`, for the keys `keep` accepts.
 fn props(object: ObjectRef, a: &Properties, b: &Properties, keep: &dyn Fn(&str) -> bool, out: &mut Vec<Op>) {
@@ -146,7 +146,7 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
     // 072 F13).
     for id in ids(&from.devices, &to.devices, scope.map(|s| &s.devices)) {
         match (from.devices.get(&id), to.devices.get(&id)) {
-            (Some(a), Some(b)) if a.device_type != b.device_type => {
+            (Some(a), Some(b)) if a.fields_differ(b) => {
                 changes.push(Op::ModifyDevice { id, before: a.clone(), after: b.clone() });
             }
             (Some(a), Some(b)) => {
@@ -256,6 +256,9 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
     // The project.
     if project {
         props(ObjectRef::Project, &from.properties, &to.properties, keep_project_key, &mut changes);
+        if from.project != to.project {
+            changes.push(Op::ModifyProject { before: from.project.clone(), after: to.project.clone() });
+        }
         if from.settings != to.settings {
             changes.push(Op::SetProjectSettings { before: from.settings.clone(), after: to.settings.clone() });
         }
@@ -275,14 +278,14 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
 
 /// `SetStyle` ops turning `a`'s records into `b`'s, for `layer`.
 fn style_records(layer: StyleLayer, a: &StyleCatalogues, b: &StyleCatalogues, out: &mut Vec<Op>) {
-    let cats: BTreeSet<&String> = a.keys().chain(b.keys()).collect();
+    let cats: BTreeSet<StyleCatalogue> = a.keys().chain(b.keys()).copied().collect();
     for cat in cats {
-        let (ra, rb) = (a.get(cat), b.get(cat));
+        let (ra, rb) = (a.get(&cat), b.get(&cat));
         let ids: BTreeSet<&StyleRef> = ra.into_iter().flat_map(|m| m.keys()).chain(rb.into_iter().flat_map(|m| m.keys())).collect();
         for id in ids {
             let (before, after) = (ra.and_then(|m| m.get(id)).cloned(), rb.and_then(|m| m.get(id)).cloned());
             if before != after {
-                out.push(Op::SetStyle { layer, catalogue: cat.clone(), id: id.clone(), before, after });
+                out.push(Op::SetStyle { layer, catalogue: cat, id: id.clone(), before, after });
             }
         }
     }
@@ -349,6 +352,7 @@ pub fn objects(ops: &[Op]) -> BTreeMap<(&'static str, u128), usize> {
                 StyleRef::Builtin(w) => ("style", w.bytes().fold(0u128, |h, b| h.wrapping_mul(31).wrapping_add(u128::from(b)))),
             },
             Op::SetProjectSettings { .. } => ("settings", 0),
+            Op::ModifyProject { .. } => ("project", 0),
             Op::NameVersion { .. } | Op::UnnameVersion { .. } => continue,
         };
         *out.entry(key).or_insert(0) += 1;

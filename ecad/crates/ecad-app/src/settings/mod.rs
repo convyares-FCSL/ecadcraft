@@ -165,7 +165,7 @@ impl App {
     }
 
     /// Open Settings ▸ Standards at a style catalogue (brief 050a: a Checks row's Go to).
-    pub fn open_standards_at(&mut self, catalogue: &str) {
+    pub fn open_standards_at(&mut self, catalogue: ecad_model::StyleCatalogue) {
         self.open_settings(Section::Standards);
         let v = &mut self.settings.standards;
         if let Some(i) = standards::CATALOGUES.iter().position(|(w, _, _)| *w == catalogue) {

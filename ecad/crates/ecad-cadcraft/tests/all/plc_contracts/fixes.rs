@@ -163,7 +163,7 @@ fn review_3_the_io_sheet_count_comes_from_kept_row_counts() {
     for (i, key) in ["plcdi", "plcai", "plcdq"].iter().enumerate() {
         placed(&mut h, key, 100.0 + 40.0 * i as f64, 400.0);
     }
-    let di = h.doc().devices.iter().find(|(_, c)| c.properties.get("tag").map(String::as_str) == Some("-A02")).map(|(c, _)| *c).unwrap();
+    let di = h.doc().devices.iter().find(|(_, c)| c.tag() == Some("-A02")).map(|(c, _)| *c).unwrap();
     for n in ["16", "64", "120"] {
         h.run("setprop", json!({"component": di.hex(), "key": "plc.channels", "value": n})).unwrap();
         let (kept, laid) = h.cfg(|p| {

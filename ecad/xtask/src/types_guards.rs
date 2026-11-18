@@ -38,10 +38,12 @@ pub enum Scan {
 pub const GUARDS: &[Guard] = &[
     Guard { name: "G2", what: "boolean words compared or matched", allowed: 0, fix: "read it with ecad_model::words::flag", scan: Scan::Line(g2) },
     Guard { name: "G3", what: "`.all(…is_ascii_digit…)` digit checks", allowed: 0, fix: "use ecad_model::words::is_digits, uint or uint_canonical", scan: Scan::Line(g3) },
+    Guard { name: "G7", what: "angle conversions outside units.rs", allowed: 6, fix: "convert with Radians::from(Degrees) or Degrees::from(Radians) (ecad_model::units)", scan: Scan::Line(g7) },
+    Guard { name: "G9", what: "`catalogue` or `role` held as text", allowed: 9, fix: "hold a StyleCatalogue (or the typed role, design 072 §2)", scan: Scan::Line(g9) },
     Guard { name: "G8a", what: "`Kind::Choice(&[` word lists", allowed: 0, fix: "declare the words as a word_enum! and use a typed choice", scan: Scan::Line(g8_choice) },
     Guard { name: "G8b", what: "`.word() == \"` comparisons", allowed: 0, fix: "compare the typed value, not its word", scan: Scan::Line(g8_word) },
     Guard { name: "G10", what: "catch-all words or bodies (`Unknown(`, `Stored<`, `Raw`)", allowed: 4, fix: "an unknown word is a read error (design 072 §9.4); type it", scan: Scan::Line(g10) },
-    Guard { name: "G13", what: "`String` or `&str` fields in stored structs", allowed: 25, fix: "store a Text<N>, LongText<N> or a typed value (design 072 §9.4)", scan: Scan::File(g13) },
+    Guard { name: "G13", what: "`String` or `&str` fields in stored structs", allowed: 22, fix: "store a Text<N>, LongText<N> or a typed value (design 072 §9.4)", scan: Scan::File(g13) },
     Guard { name: "G14", what: "hidden-character checks outside words.rs", allowed: 0, fix: "use ecad_model::text::Text<N> (or words::is_hidden in ecad-model's text types)", scan: Scan::Line(g14) },
 ];
 
@@ -56,6 +58,25 @@ fn g2(rel: &str, line: &str) -> bool {
 
 fn g3(rel: &str, line: &str) -> bool {
     rel != WORDS_FILE && line.find(".all(").is_some_and(|i| line.get(i..).is_some_and(|rest| rest.contains("is_ascii_digit")))
+}
+
+/// The one file where angles change unit (design 072 §9.3, F6/F7).
+const UNITS_FILE: &str = "crates/ecad-model/src/units.rs";
+
+fn g7(rel: &str, line: &str) -> bool {
+    rel != UNITS_FILE && (line.contains(".to_radians()") || line.contains(".to_degrees()"))
+}
+
+/// The text types G9 looks for after `catalogue: ` or `role: `.
+const TEXT_TYPES: &[&str] = &["&str", "String", "&'static str", "Option<String>", "Option<&str>"];
+
+fn g9(_: &str, line: &str) -> bool {
+    ["catalogue: ", "role: "].iter().any(|name| {
+        line.match_indices(name).any(|(i, _)| {
+            let word_start = line.get(..i).and_then(|b| b.chars().last()).is_none_or(|c| !(c.is_ascii_alphanumeric() || c == '_'));
+            word_start && line.get(i + name.len()..).is_some_and(|rest| TEXT_TYPES.iter().any(|t| rest.starts_with(t)))
+        })
+    })
 }
 
 fn g8_choice(_: &str, line: &str) -> bool {
@@ -212,6 +233,12 @@ mod tests {
             ("G2", "crates/c/src/a.rs", "// v == \"yes\"", 0),
             ("G3", "crates/c/src/a.rs", "t.bytes().all(|b| b.is_ascii_digit())", 1),
             ("G3", "crates/c/src/a.rs", "t.chars().take_while(char::is_ascii_digit)", 0),
+            ("G7", "crates/c/src/a.rs", "let r = degrees.to_radians();", 1),
+            ("G7", UNITS_FILE, "Radians(d.0.to_radians())", 0),
+            ("G9", "crates/c/src/a.rs", "    catalogue: String,", 1),
+            ("G9", "crates/c/src/a.rs", "fn f(role: &str) {}", 1),
+            ("G9", "crates/c/src/a.rs", "    catalogue: StyleCatalogue,", 0),
+            ("G9", "crates/c/src/a.rs", "    sub_role: String,", 0),
             ("G8a", "crates/c/src/a.rs", "kind: Kind::Choice(&[\"a\", \"b\"]),", 1),
             ("G8b", "crates/c/src/a.rs", "if v.word() == \"left\" {}", 1),
             ("G10", "crates/c/src/a.rs", "    Unknown(String),", 1),

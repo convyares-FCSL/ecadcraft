@@ -51,7 +51,7 @@ fn setprop_on_several_components_walks_the_single_component_rules() {
         h.run("setprop", json!({"devices": many, "key": key, "value": good})).unwrap();
         let d = h.doc();
         for c in &cs {
-            assert_eq!(crate::common::plc_view(&d, *c).get(key).map(String::as_str), Some(stored), "{key} on {}", c.hex());
+            assert_eq!(crate::common::plc_value(&d, *c, key).as_deref(), Some(stored), "{key} on {}", c.hex());
         }
     }
 }

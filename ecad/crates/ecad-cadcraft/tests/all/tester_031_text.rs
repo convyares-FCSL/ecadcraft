@@ -479,7 +479,11 @@ fn t3_font_fallback_never_refuses_and_keeps_the_stored_name() {
 /// The project's record of the tag text style's `field` (brief 050a).
 fn tag_field(h: &mut H, field: &str) -> Option<String> {
     let d = h.doc();
-    d.styles.get("text").and_then(|m| m.get(&ecad_model::StyleRef::Builtin("tag".into()))).and_then(|r| r.fields.get(field)).cloned()
+    d.styles
+        .get(&ecad_model::StyleCatalogue::Text)
+        .and_then(|m| m.get(&ecad_model::StyleRef::Builtin("tag".into())))
+        .and_then(|r| r.fields.get(field))
+        .cloned()
 }
 
 /// T4 (AC 1): `textstyle {kind: tag, height: 3, weight: regular}` is one transaction; the open
@@ -493,7 +497,10 @@ fn t4_one_transaction_per_change_and_the_page_redraws() {
     assert_eq!(last_label(&mut f.h), "Text styles");
     // Brief 050a: one record of the tag's text style, at project level.
     let ops = last_ops(&mut f.h);
-    assert!(ops.iter().all(|o| matches!(o, Op::SetStyle { catalogue, id, .. } if catalogue == "text" && id.text() == "tag")), "{ops:?}");
+    assert!(
+        ops.iter().all(|o| matches!(o, Op::SetStyle { catalogue, id, .. } if *catalogue == ecad_model::StyleCatalogue::Text && id.text() == "tag")),
+        "{ops:?}"
+    );
     assert_eq!(tag_field(&mut f.h, "height").map(|s| s.parse::<f64>().ok()), Some(Some(3.0)));
     assert_eq!(tag_field(&mut f.h, "weight").as_deref(), Some("regular"));
     let tag = textstyle_kind(&v, "tag");
@@ -725,8 +732,8 @@ fn t6_runs_once_per_run_symbol_override_and_another_device_splits() {
     let (s1, _) = strip_at(&mut h, &[100.0], 60.0, None);
     let (s2, _) = strip_at(&mut h, &[110.0], 60.0, None);
     strip_at(&mut h, &[120.0], 60.0, Some(s1));
-    let tag1 = h.doc().devices[&s1].properties.get("tag").cloned().unwrap();
-    let tag2 = h.doc().devices[&s2].properties.get("tag").cloned().unwrap();
+    let tag1 = h.doc().devices[&s1].tag().map(str::to_string).unwrap();
+    let tag2 = h.doc().devices[&s2].tag().map(str::to_string).unwrap();
     let rows = texts(&mut h, page);
     let on_line = |t: &str| rows.iter().filter(|r| r["kind"] == "tag" && r["value"] == t && shown(r) && (at(r).1 - 60.0).abs() < 15.0).count();
     assert_eq!(on_line(&tag1), 2, "{tag1} split by {tag2}: {rows:?}");
@@ -761,7 +768,7 @@ fn t6_plc_channels_in_a_row_show_the_tag_once() {
     let a: DeviceId = id(&first, "component");
     place_on(&mut h, "di", (120.0, 150.0), a);
     place_on(&mut h, "di", (140.0, 150.0), a);
-    let tag = h.doc().devices[&a].properties.get("tag").cloned().unwrap();
+    let tag = h.doc().devices[&a].tag().map(str::to_string).unwrap();
     let rows = texts(&mut h, page);
     let s = shown_tags(&rows, &tag);
     assert_eq!(s.len(), 1, "{rows:?}");
@@ -770,7 +777,7 @@ fn t6_plc_channels_in_a_row_show_the_tag_once() {
     let k = place(&mut h, "coil", (100.0, 60.0));
     let k1: DeviceId = id(&k, "component");
     place_on(&mut h, "no", (115.0, 60.0), k1);
-    let kt = h.doc().devices[&k1].properties.get("tag").cloned().unwrap();
+    let kt = h.doc().devices[&k1].tag().map(str::to_string).unwrap();
     assert_eq!(shown_tags(&texts(&mut h, page), &kt).len(), 2);
     h.check();
 }

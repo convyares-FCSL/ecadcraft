@@ -28,6 +28,7 @@
 
 use crate::CmdError;
 use ecad_model::Noun;
+use ecad_model::units::Radians;
 use std::collections::BTreeMap;
 
 use ecad_model::connectivity::{CONTINUATION, JUNCTION, KIND, NAME};
@@ -69,13 +70,13 @@ pub const LABEL_DERIVED: &str = "The wire label is derived; change the number wi
 pub const NAME_RULE: &str = "A continuation name is 1 to 16 letters, digits or + - / . _";
 
 /// The starter of a junction.
-pub fn junction_starter() -> Option<&'static Starter> {
-    symbols::by_key(JUNCTION)
+pub fn junction_starter() -> &'static Starter {
+    symbols::starter(symbols::StarterKey::Junction)
 }
 
 /// The starter of a continuation.
-pub fn continuation_starter() -> Option<&'static Starter> {
-    symbols::by_key(CONTINUATION)
+pub fn continuation_starter() -> &'static Starter {
+    symbols::starter(symbols::StarterKey::Continuation)
 }
 
 /// What a tagless component is (`junction`, `continuation`), from its `kind` property.
@@ -446,8 +447,11 @@ pub fn plan_tagless(
     };
     let (component, terminal, item, representation): (DeviceId, TerminalId, ItemId, RepresentationId) =
         (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
-    ops.push(Op::CreateDevice { id: component, device: Device { properties: props, definition: Some(definition), device_type: s.device_type() } });
-    ops.push(Op::AddTerminal { id: terminal, terminal: Terminal { component, label: None, key: Some("1".into()) } });
+    ops.push(Op::CreateDevice {
+        id: component,
+        device: Device { properties: props, definition: Some(definition), device_type: s.device_type(), ..Device::default() },
+    });
+    ops.push(Op::AddTerminal { id: terminal, terminal: Terminal { component, label: None, key: Some(ecad_model::PointKey::def("1")) } });
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition, placement }) } });
     ops.push(Op::LinkRepresentation {
         id: representation,
@@ -564,10 +568,10 @@ pub fn plan_junction(doc: &Document, ids: &mut IdAllocator, page: PageId, style:
     if on.at.near(first, ON_WIRE) || on.at.near(last, ON_WIRE) {
         return Err(CmdError::refused("Click on a wire, not its end: an end can attach to a connection point."));
     }
-    let starter = junction_starter().ok_or(CmdError::refused("the junction symbol is missing"))?;
+    let starter = junction_starter();
     let mut props = ecad_model::Properties::new();
     props.insert(KIND.into(), JUNCTION.into());
-    let placement = Placement { origin: on.at, rotation: 0.0, mirror: false, scale: 1.0 };
+    let placement = Placement { origin: on.at, rotation: Radians(0.0), mirror: false, scale: 1.0 };
     let mut tagless = plan_tagless(doc, ids, page, style, starter, placement, props)?;
     let j = tagless.terminal;
     // Split: C keeps its vertices up to the point; C2 runs from the point to C's old end B.
@@ -621,7 +625,7 @@ pub fn point_words(doc: &Document, t: TerminalId) -> String {
         }
         _ => {}
     }
-    let label = term.label.clone().or_else(|| term.key.clone()).unwrap_or_else(|| "?".into());
+    let label = term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| "?".into());
     match crate::devices::tag_of(doc, c) {
         Some(tag) => format!("{tag}:{label}"),
         None => format!("{}\u{2026}:{label}", c.hex().get(..8).unwrap_or_default()),
@@ -682,7 +686,7 @@ pub fn hover_lines(doc: &Document, w: WireId) -> Vec<String> {
     // Brief 050b: the wire's own values, else its category's (named).
     let look = crate::styles::wire::wire_look(doc, w);
     let w = &doc.settings.wiring;
-    let cat = look.category.as_ref().map(|id| crate::styles::name(doc, "wire", id));
+    let cat = look.category.as_ref().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id));
     let shown = |key: &str, v: &Option<(String, crate::defaults::Source)>| {
         let text = |v: &str| if key == ecad_model::wiring::COLOUR { w.colour(v) } else { v.to_string() };
         match (v, &cat) {
@@ -938,10 +942,10 @@ pub fn has_fixed_number(doc: &Document, c: WireId) -> bool {
 
 /// A junction made at `at` (no wire split): it attaches the open ends there.
 fn junction_here(doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, at: Pt) -> Result<Tagless, CmdError> {
-    let starter = junction_starter().ok_or(CmdError::refused("the junction symbol is missing"))?;
+    let starter = junction_starter();
     let mut props = ecad_model::Properties::new();
     props.insert(KIND.into(), JUNCTION.into());
-    plan_tagless(doc, ids, page, style, starter, Placement { origin: at, rotation: 0.0, mirror: false, scale: 1.0 }, props)
+    plan_tagless(doc, ids, page, style, starter, Placement { origin: at, rotation: Radians(0.0), mirror: false, scale: 1.0 }, props)
 }
 
 /// The point of end `e` of `c`'s route on `page`.

@@ -157,6 +157,18 @@ impl Mul<f64> for Mm {
     }
 }
 
+impl Radians {
+    /// The sine and cosine of this angle.
+    pub fn sin_cos(self) -> (f64, f64) {
+        self.0.sin_cos()
+    }
+
+    /// Whether the angle is a finite number.
+    pub fn is_finite(self) -> bool {
+        self.0.is_finite()
+    }
+}
+
 /// The one degrees-to-radians conversion (G7: no `to_radians` elsewhere).
 impl From<Degrees> for Radians {
     fn from(d: Degrees) -> Radians {

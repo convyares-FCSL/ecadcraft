@@ -229,7 +229,7 @@ impl Index {
         {
             bump(&mut self.station_modules, r, id, delta);
         }
-        if let Some(t) = c.properties.get(crate::tag::TAG_KEY) {
+        if let Some(t) = c.tag() {
             self.tag(id, t, delta);
         }
         if let Some(k) = crate::connectivity::continuation_key(&c.properties) {

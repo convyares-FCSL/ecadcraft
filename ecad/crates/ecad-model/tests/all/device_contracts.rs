@@ -3,8 +3,8 @@
 
 use ecad_model::derive::terminal_positions;
 use ecad_model::{
-    Author, Color, Definition, DefinitionId, Device, DeviceId, IdAllocator, Item, ItemId, ItemKind, Layer, Ledger, ObjectRef, Op, Page, PageId,
-    Placement, Primitive, Pt, Representation, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId,
+    Author, Color, Definition, DefinitionId, Device, DeviceId, IdAllocator, Item, ItemId, ItemKind, Layer, Ledger, Op, Page, PageId, Placement,
+    Primitive, Pt, Representation, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId,
 };
 
 struct Fx {
@@ -24,8 +24,8 @@ fn def(name: &str, keys: [&str; 2]) -> Definition {
         origin: None,
         graphics: vec![Primitive::Line { a: Pt::new(0.0, 10.0), b: Pt::new(0.0, -10.0) }],
         terminals: vec![
-            TerminalDef { key: keys[0].into(), label: Some(keys[0].into()), at: Pt::new(0.0, 10.0) },
-            TerminalDef { key: keys[1].into(), label: Some(keys[1].into()), at: Pt::new(0.0, -10.0) },
+            TerminalDef { key: keys[0].parse().unwrap(), label: Some(keys[0].into()), at: Pt::new(0.0, 10.0) },
+            TerminalDef { key: keys[1].parse().unwrap(), label: Some(keys[1].into()), at: Pt::new(0.0, -10.0) },
         ],
         ..Default::default()
     }
@@ -35,7 +35,10 @@ fn symbol(fx: &Fx, definition: DefinitionId, at: Pt) -> Item {
     Item {
         page: fx.page,
         style: Style { layer: fx.layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 },
-        kind: ItemKind::Symbol(SymbolInstance { definition, placement: Placement { origin: at, rotation: 0.0, mirror: false, scale: 1.0 } }),
+        kind: ItemKind::Symbol(SymbolInstance {
+            definition,
+            placement: Placement { origin: at, rotation: ecad_model::units::Radians(0.0), mirror: false, scale: 1.0 },
+        }),
     }
 }
 
@@ -43,8 +46,6 @@ fn fixture() -> Fx {
     let mut ids = IdAllocator::seeded(18);
     let mut l = Ledger::new(18);
     let (page, layer, coil, contact, k1) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
-    let mut props = ecad_model::Properties::new();
-    props.insert("tag".into(), "-K01".into());
     l.commit(
         Author::User,
         "setup",
@@ -53,7 +54,7 @@ fn fixture() -> Fx {
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
             Op::EmbedDefinition { id: coil, definition: def("coil", ["A1", "A2"]) },
             Op::EmbedDefinition { id: contact, definition: def("no", ["13", "14"]) },
-            Op::CreateDevice { id: k1, device: Device { properties: props, definition: Some(coil), device_type: Default::default() } },
+            Op::CreateDevice { id: k1, device: Device { definition: Some(coil), ..Device::default() }.with_tag(Some("-K01")) },
         ],
     )
     .unwrap();
@@ -71,7 +72,7 @@ fn contact_ops(fx: &mut Fx, definition: DefinitionId, at: Pt, labels: [&str; 2],
         connection_points.insert(t2, Pt::new(0.0, -10.0));
     }
     let k1 = fx.k1;
-    let term = |l: &str| Terminal { component: k1, label: Some(l.into()), key: Some(l.into()) };
+    let term = |l: &str| Terminal { component: k1, label: Some(l.into()), key: Some(l.parse().unwrap()) };
     let ops = vec![
         Op::AddTerminal { id: t1, terminal: term(labels[0]) },
         Op::AddTerminal { id: t2, terminal: term(labels[1]) },
@@ -159,12 +160,8 @@ fn the_tag_index_finds_one_tag_however_it_is_written() {
         assert_eq!(fx.l.document().components_tagged(written), vec![fx.k1], "{written}");
     }
     assert!(fx.l.document().components_tagged("-K10").is_empty());
-    let rename = |before: &str, after: &str| Op::SetProperty {
-        object: ObjectRef::Device(fx.k1),
-        key: "tag".into(),
-        before: Some(before.into()),
-        after: Some(after.into()),
-    };
+    let k1 = fx.l.document().devices[&fx.k1].clone();
+    let rename = |before: &str, after: &str| Op::ModifyDevice { id: fx.k1, before: k1.with_tag(Some(before)), after: k1.with_tag(Some(after)) };
     fx.l.commit(Author::User, "Set tag", vec![rename("-K01", "-K05")]).unwrap();
     let doc = fx.l.document();
     assert!(doc.components_tagged("-K1").is_empty());

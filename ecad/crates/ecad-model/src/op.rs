@@ -11,7 +11,7 @@ use crate::doc::{Cable, CableMember, Definition, Device, Document, End, Folder, 
 use crate::error::{ModelError, Result};
 use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId, WireId};
 use crate::index::Delta;
-use crate::style::{Standard, StandardHeader, StyleLayer, StyleRecord, StyleRef};
+use crate::style::{Standard, StandardHeader, StyleCatalogue, StyleLayer, StyleRecord, StyleRef};
 
 /// An object that carries properties.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -26,6 +26,21 @@ pub enum ObjectRef {
     /// The standard's registry values (brief 050a, FP3): a value at the Standard level. Refused
     /// while the project has no standard.
     Standard,
+}
+
+impl ObjectRef {
+    /// The kind of holder it is; `None` for the standard's registry values.
+    pub fn holder(self) -> Option<crate::keys::Holder> {
+        use crate::keys::Holder;
+        match self {
+            ObjectRef::Device(_) => Some(Holder::Device),
+            ObjectRef::Wire(_) => Some(Holder::Wire),
+            ObjectRef::Cable(_) => Some(Holder::Cable),
+            ObjectRef::Page(_) => Some(Holder::Page),
+            ObjectRef::Project => Some(Holder::Project),
+            ObjectRef::Standard => None,
+        }
+    }
 }
 
 /// Settle the document's nets after ops applied with [`Op::apply_unsettled`] (brief 022).
@@ -208,11 +223,17 @@ pub enum Op {
         before: Folder,
         after: Folder,
     },
+    /// Change the project's own data (design 072 §5.3): its location and function lists and
+    /// defaults, as one whole value.
+    ModifyProject {
+        before: crate::project::Project,
+        after: crate::project::Project,
+    },
     /// Write one whole style record (brief 050a, FP3): `None` is no record. A `Standard` layer
     /// write is refused while the project has no standard.
     SetStyle {
         layer: StyleLayer,
-        catalogue: String,
+        catalogue: StyleCatalogue,
         id: StyleRef,
         before: Option<StyleRecord>,
         after: Option<StyleRecord>,
@@ -288,6 +309,7 @@ impl Op {
             Op::ModifyFolder { id, before, after } => Op::ModifyFolder { id, before: after, after: before },
             Op::SetStyle { layer, catalogue, id, before, after } => Op::SetStyle { layer, catalogue, id, before: after, after: before },
             Op::SetStandard { before, after } => Op::SetStandard { before: after, after: before },
+            Op::ModifyProject { before, after } => Op::ModifyProject { before: after, after: before },
         }
     }
 
@@ -522,7 +544,11 @@ impl Op {
                 doc.index.cable_member(*cable, &old, Delta::Remove);
             }
             Op::SetProperty { object, key, before, after } => {
-                if crate::keys::is_reserved(key) {
+                let reserved = match object.holder() {
+                    Some(h) => crate::keys::is_reserved_on(h, key),
+                    None => crate::keys::is_reserved(key),
+                };
+                if reserved {
                     return Err(pre(format!("property {key} is a field now (design 072); its object's Modify op changes it")));
                 }
                 let props = match object {
@@ -561,17 +587,6 @@ impl Op {
                         }
                     }
                 }
-                // A component's tag is indexed (brief 018).
-                if let ObjectRef::Device(id) = object
-                    && key == crate::tag::TAG_KEY
-                {
-                    if let Some(old) = &old {
-                        doc.index.tag(*id, old, Delta::Remove);
-                    }
-                    if let Some(new) = after {
-                        doc.index.tag(*id, new, Delta::Add);
-                    }
-                }
                 if let ObjectRef::Cable(id) = object
                     && key == crate::tag::TAG_KEY
                 {
@@ -602,6 +617,12 @@ impl Op {
             Op::RemoveDefinition { id, definition } => {
                 holds(&doc.definitions, *id, definition, "definition", checked)?;
                 doc.definitions.remove(id);
+            }
+            Op::ModifyProject { before, after } => {
+                if checked && &doc.project != before {
+                    return Err(pre("the project's lists differ from the recorded value".into()));
+                }
+                doc.project = after.clone();
             }
             Op::SetProjectSettings { before, after } => {
                 if checked && &doc.settings != before {
@@ -658,7 +679,7 @@ impl Op {
                 if checked && current != before.as_ref() {
                     return Err(pre(format!("style {catalogue}/{id} ({}) differs from the recorded value", layer.word())));
                 }
-                crate::style::put(cats, catalogue, id, after.as_ref());
+                crate::style::put(cats, *catalogue, id, after.as_ref());
             }
             Op::SetStandard { before, after } => {
                 let current = doc.standard.as_ref().map(|s| &s.header);
@@ -722,6 +743,7 @@ impl Op {
             Op::ModifyFolder { .. } => "ModifyFolder",
             Op::SetStyle { .. } => "SetStyle",
             Op::SetStandard { .. } => "SetStandard",
+            Op::ModifyProject { .. } => "ModifyProject",
         }
     }
 }

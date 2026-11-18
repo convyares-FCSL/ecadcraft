@@ -11,8 +11,10 @@ use crate::common::{H, id, pts};
 
 /// The connector's terminals by (side key, pin name).
 fn pins(d: &Document, c: DeviceId) -> Vec<(String, String, TerminalId)> {
-    let mut v: Vec<(String, String, TerminalId)> =
-        d.terminals_of(c).map(|(t, x)| (x.key.clone().unwrap_or_default(), x.label.clone().unwrap_or_default(), t)).collect();
+    let mut v: Vec<(String, String, TerminalId)> = d
+        .terminals_of(c)
+        .map(|(t, x)| (x.key.as_ref().map(ToString::to_string).unwrap_or_default(), x.label.clone().unwrap_or_default(), t))
+        .collect();
     v.sort();
     v
 }
@@ -111,7 +113,7 @@ fn pin_pairs_across_wires_split_them_and_keep_one_net() {
     assert_eq!(h.head(), before + 1);
     let c: DeviceId = id(&v, "component");
     let d = h.doc();
-    assert_eq!(d.devices[&c].properties.get("pins").map(String::as_str), Some("4"));
+    assert_eq!(d.devices[&c].value("pins").as_deref(), Some("4"));
     assert_eq!(v["split"].as_array().map(Vec::len), Some(3));
     for (i, n) in ["1", "2", "3"].iter().enumerate() {
         let (s, p) = (pin(&d, c, ".s", n), pin(&d, c, ".p", n));
@@ -354,8 +356,8 @@ fn every_starter_bridges_only_keys_a_placement_writes() {
         }
     }
     let mut d = symbols::by_key("plug4").unwrap().definition().unwrap().clone();
-    d.bridges = vec![vec![".s".into(), ".x".into()]];
-    assert!(!symbols::bridge_key_ok(&d, ".x"));
+    d.bridges = vec![vec![".s".parse().unwrap(), ".in".parse().unwrap()]];
+    assert!(!symbols::bridge_key_ok(&d, &".in".parse().unwrap()));
 }
 
 // ------------------------------------------------------------------------------- fix round 1
@@ -449,14 +451,14 @@ fn a_typed_pin_list_is_kept_in_order() {
         .run("connector", json!({"halves": "socket", "pins": 4, "names": ["L", "N", "PE", "SH"], "layout": "pins", "line": [[90, 200], [125, 200]]}))
         .unwrap();
     let c: DeviceId = id(&v, "component");
-    assert_eq!(h.doc().devices[&c].properties.get("pin_names").map(String::as_str), Some("L,N,PE,SH"));
+    assert_eq!(h.doc().devices[&c].value("pin_names").as_deref(), Some("L,N,PE,SH"));
     let v = h.run("place", json!({"symbol": "pins", "device": c.hex(), "at": [200, 50]})).unwrap();
     assert_eq!(v["terminals"][0]["pin"], "PE", "the next listed name, never lost");
     h.run("place", json!({"symbol": "pins", "device": c.hex(), "at": [220, 50]})).unwrap();
     let e = h.run("place", json!({"symbol": "pins", "device": c.hex(), "at": [240, 50]})).unwrap_err();
     assert!(e.contains("(L, N, PE, SH)"), "names in pin order: {e}");
     h.run("pinlabel", json!({"device": c.hex(), "pin": "SH", "to": "S"})).unwrap();
-    assert_eq!(h.doc().devices[&c].properties.get("pin_names").map(String::as_str), Some("L,N,PE,S"));
+    assert_eq!(h.doc().devices[&c].value("pin_names").as_deref(), Some("L,N,PE,S"));
 }
 
 /// Fix round 1: Ignore and Place mates on the Checks rows; Ctrl+K's device search finds a typed
@@ -479,8 +481,8 @@ fn checks_fixes_and_typed_search() {
     assert_eq!(ecad_cadcraft::devices::devices(&d, Some(&format!("{tag}.P"))), vec![c]);
 }
 
-/// Overseer ruling (fix round 1): `pin_names` and `ignore.<check kind>` are plain properties that
-/// survive saving and opening, and still act after it.
+/// Overseer ruling (fix round 1): `pin_names` and `ignore.<check kind>` survive saving and
+/// opening, and still act after it (lane 072 B: fields of the connector's type).
 #[test]
 fn pin_names_and_ignore_keys_round_trip() {
     let mut h = H::new(4425);
@@ -492,7 +494,7 @@ fn pin_names_and_ignore_keys_round_trip() {
     let path = dir.join("roundtrip.ecad").display().to_string();
     h.cfg(|p| p.persistence = ecad_cadcraft::Persistence::File);
     h.s.execute("saveas", &json!({"path": path})).unwrap();
-    let before = h.doc().devices[&c].properties.clone();
+    let before = h.doc().devices[&c].clone();
     while !h.s.docs.is_empty() {
         h.s.execute("close", &json!({"index": 0})).unwrap();
     }
@@ -500,9 +502,9 @@ fn pin_names_and_ignore_keys_round_trip() {
     let mut s = cadcraft_engine::Session::empty();
     let (project, _) = ecad_cadcraft::ProjectHandle::open_file(&mut s, &path, 4426).unwrap();
     let doc = project.read(&mut s, |p, _| p.ledger.document().clone()).unwrap();
-    let after = &doc.devices[&c].properties;
-    assert_eq!(after.get("pin_names"), before.get("pin_names"));
-    assert_eq!(after.get("ignore.connector-family").map(String::as_str), Some("yes"));
+    let after = &doc.devices[&c];
+    assert_eq!(after.device_type, before.device_type);
+    assert_eq!(after.value("ignore.connector-family").as_deref(), Some("yes"));
     assert_eq!(connectors::pin_names(&doc, c), Some(["A", "B", "C", "D", "E", "F", "G", "H", "J"].map(String::from).to_vec()));
     assert!(connectors::ignores(&doc, c, ecad_cadcraft::checks::Kind::ConnectorFamily));
     drop(project);

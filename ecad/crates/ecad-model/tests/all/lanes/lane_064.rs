@@ -26,6 +26,7 @@ fn expected(op: &Op) -> EffectKind {
         "AddFolder" | "RemoveFolder" | "ModifyFolder" => EffectKind::Folder,
         "SetStyle" => EffectKind::Style,
         "SetStandard" => EffectKind::Standard,
+        "ModifyProject" => EffectKind::Project,
         other => panic!("op {other} has no expected effect kind: add it here and to design 064 §3.2"),
     }
 }
@@ -57,7 +58,7 @@ fn pairs_fold() {
     let other = b.ids.fresh();
     let mut renamed = b.page_v.clone();
     renamed.title = ecad_model::PageTitle::new("renamed").unwrap();
-    let set = |page| Op::SetProperty { object: ObjectRef::Page(page), key: "number".into(), before: None, after: Some("9".into()) };
+    let set = |page| Op::SetProperty { object: ObjectRef::Page(page), key: "number".parse().unwrap(), before: None, after: Some("9".into()) };
     let page_pair =
         vec![Op::RemovePage { id: b.page, page: b.page_v.clone(), index: 0 }, Op::AddPage { id: b.page, page: renamed.clone(), index: 1 }];
     let term_pair = vec![Op::RemoveTerminal { id: b.term, terminal: b.term_v.clone() }, Op::AddTerminal { id: b.term, terminal: b.term_v.clone() }];
@@ -161,6 +162,7 @@ fn old_touched(ops: &[Op]) -> Touched {
                 t.folders.insert(*id);
             }
             Op::SetStyle { .. } | Op::SetStandard { .. } => t.styles = true,
+            Op::ModifyProject { .. } => t.project = true,
         }
     }
     t

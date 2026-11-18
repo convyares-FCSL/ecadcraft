@@ -411,9 +411,9 @@ fn fp8_rows_at_the_cap_are_kept_and_one_over_is_refused_or_ignored() {
     use ecad_cadcraft::styles::{self, ratingtable};
     use ecad_model::style::{StyleLayer, StyleRecord, StyleRef};
     let cap = dataset::MAX_BYTES;
-    assert_eq!(styles::field_cap(ratingtable::WORD, ratingtable::ROWS), cap);
-    assert_eq!(styles::field_cap(ratingtable::WORD, ratingtable::SOURCE), ecad_model::style::MAX_FIELD_CHARS);
-    assert_eq!(styles::field_cap("wire", "rows"), ecad_model::style::MAX_FIELD_CHARS);
+    assert_eq!(styles::field_cap(ecad_model::StyleCatalogue::RatingTable, ratingtable::ROWS), cap);
+    assert_eq!(styles::field_cap(ecad_model::StyleCatalogue::RatingTable, ratingtable::SOURCE), ecad_model::style::MAX_FIELD_CHARS);
+    assert_eq!(styles::field_cap(ecad_model::StyleCatalogue::Wire, "rows"), ecad_model::style::MAX_FIELD_CHARS);
     let mut f = fixture();
     // At the cap: written, read back, used.
     let t = f.h.run("ratingtable", json!({"name": "Big (synthetic)", "csv": padded(cap)})).unwrap();
@@ -430,7 +430,7 @@ fn fp8_rows_at_the_cap_are_kept_and_one_over_is_refused_or_ignored() {
     assert_eq!(f.h.head(), head);
     // One over in a file made elsewhere: ignored with a Checks row, never a crash.
     let doc = f.h.doc();
-    let before = styles::record(&doc, StyleLayer::Project, ratingtable::WORD, &id).cloned();
+    let before = styles::record(&doc, StyleLayer::Project, ecad_model::StyleCatalogue::RatingTable, &id).cloned();
     let mut rec: StyleRecord = before.clone().unwrap();
     rec.fields.insert(ratingtable::ROWS.into(), padded(cap + 1));
     f.h.cfg(|p| {
@@ -439,7 +439,7 @@ fn fp8_rows_at_the_cap_are_kept_and_one_over_is_refused_or_ignored() {
             "hostile rows",
             vec![ecad_model::Op::SetStyle {
                 layer: StyleLayer::Project,
-                catalogue: ratingtable::WORD.into(),
+                catalogue: ecad_model::StyleCatalogue::RatingTable,
                 id: id.clone(),
                 before,
                 after: Some(rec),

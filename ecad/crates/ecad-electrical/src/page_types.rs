@@ -243,7 +243,7 @@ pub fn newpage_type(doc: &Document, ty: Option<&str>, kind: Option<GenKind>) -> 
     let Some(t) = ty.map(str::trim).filter(|t| !t.is_empty()) else {
         return Ok(kind.map(|k| ptype::derived(Some(k))));
     };
-    let id = crate::styles::find(doc, ptype::WORD, t)?;
+    let id = crate::styles::find(doc, ecad_model::StyleCatalogue::Page, t)?;
     match kind {
         None if ptype::generated_only(&id) => Err(CmdError::refused(ptype::generated_refusal(doc, &id))),
         Some(k) if ptype::look_of(doc, &id).holds != ptype::Holds::of_kind(k) => Err(CmdError::refused(ptype::kind_refusal(k))),
@@ -304,7 +304,7 @@ impl PageFix {
             }
             PageFix::Reset(t, f) => {
                 let key = ptype::CATALOGUE.fields.get(usize::from(f)).map_or("", |f| f.key);
-                ("setstyle", json!({"catalogue": ptype::WORD, "id": t.id(), "fields": {key: null}}))
+                ("setstyle", json!({"catalogue": ecad_model::StyleCatalogue::Page, "id": t.id(), "fields": {key: null}}))
             }
             PageFix::RemoveStart(f) => ("folderprops", json!({"folder": f.hex(), "start": null})),
         }
@@ -325,7 +325,7 @@ pub fn checks_changed(doc: &Document, ops: &[Op]) -> bool {
     ops.iter().any(|op| match op {
         Op::ModifyPage { before, after, .. } => before.page_type != after.page_type && (off(before) || off(after)),
         Op::AddPage { page, .. } | Op::RemovePage { page, .. } => off(page),
-        Op::SetStyle { catalogue, before, after, .. } if catalogue == ptype::WORD => {
+        Op::SetStyle { catalogue, before, after, .. } if *catalogue == ecad_model::StyleCatalogue::Page => {
             let c = |r: &Option<ecad_model::StyleRecord>| r.as_ref().and_then(|r| r.fields.get("checks").cloned());
             c(before) != c(after)
         }
@@ -340,7 +340,7 @@ pub fn touches_checks(op: &Op) -> bool {
         Op::ModifyPage { before, after, .. } => before.folder != after.folder || before.number != after.number || before.page_type != after.page_type,
         Op::AddPage { .. } | Op::RemovePage { .. } | Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => true,
         Op::SetProjectSettings { before, after } => before.page_number_step != after.page_number_step,
-        Op::SetStyle { catalogue, .. } => catalogue == ptype::WORD,
+        Op::SetStyle { catalogue, .. } => *catalogue == ecad_model::StyleCatalogue::Page,
         _ => false,
     }
 }
@@ -359,7 +359,7 @@ pub fn check_rows(doc: &Document) -> Vec<Check> {
         if StyleRef::parse(value).is_some_and(|id| ecad_model::sheet::page_type_exists(doc, &id)) {
             continue;
         }
-        let used = crate::styles::name(doc, ptype::WORD, &ptype::type_of(doc, p));
+        let used = crate::styles::name(doc, ecad_model::StyleCatalogue::Page, &ptype::type_of(doc, p));
         let which = format!("Page {}: page type {value:?} not found; drawn as {used}", book::page_number(doc, p));
         let mut r = row(Kind::PageTypeUnknown, Some(p), which);
         r.fix = Some(crate::checks::Fix::Page(PageFix::UseDerived(p)));
@@ -367,11 +367,11 @@ pub fn check_rows(doc: &Document) -> Vec<Check> {
     }
     // Type records holding values their fields do not take.
     for layer in [StyleLayer::Standard, StyleLayer::Project] {
-        for (id, r) in crate::styles::records(doc, layer, ptype::WORD) {
+        for (id, r) in crate::styles::records(doc, layer, ecad_model::StyleCatalogue::Page) {
             for (i, f) in ptype::CATALOGUE.fields.iter().enumerate() {
                 let Some(v) = r.fields.get(f.key) else { continue };
                 if crate::defaults::parse_value(f.kind, v).is_none() {
-                    let name = crate::styles::name(doc, ptype::WORD, id);
+                    let name = crate::styles::name(doc, ecad_model::StyleCatalogue::Page, id);
                     let shown: String = v.chars().take(24).filter(|c| !c.is_control()).collect();
                     let mut c = row(Kind::PageTypeField, None, format!("Page type {name}: {} {shown:?} not read; its usual value is used", f.label));
                     // Reset writes the project's record; a standard's value is changed in Standards.

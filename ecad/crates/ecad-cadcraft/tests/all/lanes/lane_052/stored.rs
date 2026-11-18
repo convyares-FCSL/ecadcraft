@@ -51,7 +51,7 @@ fn a_box_never_changes_a_stored_location() {
     assert_eq!(code(&d, k).as_deref(), Some("+CP1"));
     assert!(texts(&d, p110).contains(&"+CP1-K01".to_string()), "{:?}", texts(&d, p110));
     // The stored value is the entry's key, not its code (FP8).
-    let stored = d.devices[&k].properties.get("location").cloned().unwrap_or_default();
+    let stored = d.devices[&k].value("location").unwrap_or_default();
     assert_ne!(stored, "+CP1");
     assert_eq!(designations::code_of(&d, Aspect::Location, &stored).as_deref(), Some("+CP1"));
     // Neither the coil's page (no location) nor the box (+FIELD) is +CP1: Checks says so.
@@ -202,10 +202,12 @@ fn missing_and_duplicate_entries_are_listed() {
     let (k, _, _) = k01(&mut h);
     let mut d = h.doc();
     if let Some(c) = d.devices.get_mut(&k) {
-        c.properties.insert("location".into(), "+CP1".into());
+        c.location = Some(ecad_model::LocationId(0xdead)); // an id the list has no entry for
     }
-    d.properties.insert(designations::code_property(Aspect::Function, "aa"), "=F1".into());
-    d.properties.insert(designations::code_property(Aspect::Function, "bb"), "=f1".into());
+    // Design 072 §5.3: the ops refuse a code twice (I22); a hand-built document still shows it.
+    for (id, code) in [(0xaa, "=F1"), (0xbb, "=f1")] {
+        d.project.functions.push(ecad_model::Function::new(ecad_model::FunctionId(id), ecad_model::ListCode::new(code).unwrap()));
+    }
     d.rebuild_index();
     assert_eq!(code(&d, k), None, "a v0.2.0 code shows ?");
     assert!(locations::resolve(&d, k).missing());

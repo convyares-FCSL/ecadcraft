@@ -275,7 +275,7 @@ pub(crate) fn part_entity(look: &crate::text_style::Look, part: &crate::look::Pa
         Shape::Text { at, rotation, value } => kind_for_primitive(&Primitive::Text {
             at: *at,
             height: look.style(text_kind).height,
-            rotation: *rotation,
+            rotation: ecad_model::units::Radians(*rotation),
             value: value.clone(),
             halign: Default::default(),
             valign: Default::default(),
@@ -1263,11 +1263,17 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
             Op::SetDeviceDefinition { id: c, .. } => {
                 out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
             }
-            // Design 072 §3: a PLC station's or module's fields: its own pages, and its station's
-            // cards' (their captions and addresses read it).
-            Op::ModifyDevice { id: c, before, after } if crate::plc::is_plc(before) || crate::plc::is_plc(after) => {
+            // Design 072: a device's typed fields (its tag, its type) show beside its symbols; a
+            // rack's tag also in its cards' captions. A PLC station's or module's fields (§3): its
+            // station's cards' pages (their captions and addresses read it).
+            Op::ModifyDevice { id: c, before, after } => {
                 out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
-                out.extend(crate::plc::pages_modified(doc, plc, *c, before, after));
+                if before.tag != after.tag {
+                    out.extend(crate::plc::pages_touched(doc, plc, *c, ecad_model::tag::TAG_KEY, after.tag()));
+                }
+                if crate::plc::is_plc(before) || crate::plc::is_plc(after) {
+                    out.extend(crate::plc::pages_modified(doc, plc, *c, before, after));
+                }
             }
             // Brief 048 (FP8): a superseded version nothing shows after the transaction is drawn
             // nowhere. Its last copies move off it in the same transaction (review of PR #86,
@@ -1292,21 +1298,23 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
             // Brief 052 (design 052 §8.2a): a rename in the project's list redraws the pages of
             // the devices, boxes and pages storing that entry (every page when it is the project's
             // default); a description is drawn on no page.
-            Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } if crate::designations::is_list_property(key) => {
-                let (_, entry, is_code) = crate::designations::parse_list_property(key)?;
-                if is_code {
-                    if doc.properties.iter().any(|(k, v)| crate::designations::Aspect::of_property(k).is_some() && v == entry) {
+            Op::ModifyProject { before, after } => {
+                use crate::designations::{Aspect, changed_codes, default_key, page_key};
+                for a in Aspect::ALL {
+                    // A new default is drawn on every page that sets none.
+                    if default_key(before, a) != default_key(after, a) {
                         return None;
                     }
-                    for (c, x) in &doc.devices {
-                        if x.properties.iter().any(|(k, v)| crate::designations::Aspect::of_property(k).is_some() && v == entry) {
-                            out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
+                    for entry in changed_codes(before, after, a) {
+                        if default_key(after, a).as_deref() == Some(entry.as_str()) {
+                            return None;
                         }
-                    }
-                    for (pid, x) in &doc.pages {
-                        if x.display.iter().any(|(k, v)| crate::designations::Aspect::of_property(k).is_some() && v == entry) {
-                            out.insert(*pid);
+                        for (c, x) in &doc.devices {
+                            if crate::designations::device_keys(x).iter().any(|(_, v)| *v == entry) {
+                                out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
+                            }
                         }
+                        out.extend(doc.pages.iter().filter(|(_, x)| page_key(x, a).as_deref() == Some(entry.as_str())).map(|(p, _)| *p));
                     }
                 }
             }

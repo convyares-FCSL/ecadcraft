@@ -566,10 +566,11 @@ pub fn is_wide_key(key: &str) -> bool {
 
 /// Brief 050a: whether a change of text style `id` redraws every page with an arrow: it is the
 /// style the reference or the caption text uses.
-pub fn is_wide_style(doc: &Document, catalogue: &str, id: &ecad_model::StyleRef) -> bool {
+pub fn is_wide_style(doc: &Document, catalogue: ecad_model::StyleCatalogue, id: &ecad_model::StyleRef) -> bool {
     use crate::text_style::{TextKind, style_of};
     let at = crate::defaults::Scope::project();
-    catalogue == "text" && (*id == style_of(doc, TextKind::Reference, at) || *id == style_of(doc, TextKind::ContinuationCaption, at))
+    catalogue == ecad_model::StyleCatalogue::Text
+        && (*id == style_of(doc, TextKind::Reference, at) || *id == style_of(doc, TextKind::ContinuationCaption, at))
 }
 
 // ---------------------------------------------------------------- captions (design 049 §3.1)
@@ -664,6 +665,7 @@ pub fn arrows_among(doc: &Document, cs: &[DeviceId]) -> (Vec<DeviceId>, usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ecad_model::units::{Degrees, Radians};
 
     #[test]
     fn the_caption_rule() {
@@ -678,12 +680,13 @@ mod tests {
 
     #[test]
     fn the_directions() {
-        let at = |deg: f64, mirror: bool| direction(&Placement { origin: Pt::new(10.0, 10.0), rotation: deg.to_radians(), mirror, scale: 1.0 });
+        let at =
+            |deg: f64, mirror: bool| direction(&Placement { origin: Pt::new(10.0, 10.0), rotation: Radians::from(Degrees(deg)), mirror, scale: 1.0 });
         assert_eq!(at(0.0, false), Some(Direction::Down));
         assert_eq!(at(180.0, false), Some(Direction::Up));
         assert_eq!(at(90.0, false), Some(Direction::Right));
         assert_eq!(at(270.0, false), Some(Direction::Left));
-        assert_eq!(direction(&Placement { origin: Pt::new(0.0, 0.0), rotation: 0.0, mirror: false, scale: 0.0 }), None);
+        assert_eq!(direction(&Placement { origin: Pt::new(0.0, 0.0), rotation: Radians(0.0), mirror: false, scale: 0.0 }), None);
     }
 
     #[test]

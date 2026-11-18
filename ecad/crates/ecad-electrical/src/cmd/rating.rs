@@ -127,7 +127,7 @@ pub fn check_value(doc: &Document, key: &str, value: &str) -> Result<String, Cmd
             ["ac1", "ac3", "dc"].into_iter().find(|w| w.eq_ignore_ascii_case(v)).map(str::to_string).ok_or_else(|| no("system is ac1, ac3 or dc."))
         }
         "vd_limit" => parse::percent(v).map(|_| v.to_string()).ok_or_else(|| no("vd_limit is 0.5 to 20 %.")),
-        "cable_type" => styles::find(doc, cable::WORD, v).map(|id| id.text()),
+        "cable_type" => styles::find(doc, ecad_model::StyleCatalogue::Cable, v).map(|id| id.text()),
         _ => Err(CmdError::refused(format!("{key} is not a rating key."))),
     }
 }
@@ -269,7 +269,8 @@ pub fn plan_temperature(doc: &Document, typed: &str, after: Option<&str>) -> Res
             .devices
             .iter()
             .filter(|(_, x)| {
-                crate::locations::is_box_component(x) && x.properties.get(ecad_model::book::LOCATION_KEY).is_some_and(|l| l.trim() == e.key)
+                crate::locations::is_box_component(x)
+                    && crate::designations::device_key(x, crate::designations::Aspect::Location).is_some_and(|l| l == e.key)
             })
             .map(|(c, _)| *c)
             .collect(),
@@ -298,7 +299,7 @@ pub fn plan_temperature(doc: &Document, typed: &str, after: Option<&str>) -> Res
 /// No such table, or none chosen and no name.
 pub fn export_table(doc: &Document, name: Option<&str>) -> Result<ratingtable::Table, CmdError> {
     let id = match name {
-        Some(n) => styles::find(doc, ratingtable::WORD, n)?,
+        Some(n) => styles::find(doc, ecad_model::StyleCatalogue::RatingTable, n)?,
         None => ratingtable::chosen(doc).ok_or(CmdError::refused("No rating table chosen; give `name`."))?,
     };
     Ok(ratingtable::read(doc, &id))
@@ -371,7 +372,7 @@ pub fn plan_table(doc: &Document, ids: &mut IdAllocator, w: &TableWrite) -> Resu
     let cat = &ratingtable::CATALOGUE;
     let existing = styles::rows(doc, cat).into_iter().find(|r| r.name.eq_ignore_ascii_case(&w.name)).map(|r| r.id);
     let id = existing.clone().unwrap_or_else(|| StyleRef::Own(ids.fresh::<u128>()));
-    let before = styles::record(doc, w.layer, cat.word, &id).cloned();
+    let before = styles::record(doc, w.layer, cat.catalogue, &id).cloned();
     let mut rec = before.clone().unwrap_or(StyleRecord { name: w.name.clone(), fields: Default::default(), body: None });
     if rec.name.is_empty() && existing.is_none() {
         rec.name = w.name.clone();
@@ -386,7 +387,7 @@ pub fn plan_table(doc: &Document, ids: &mut IdAllocator, w: &TableWrite) -> Resu
     let ops = if before.as_ref() == Some(&rec) {
         Vec::new()
     } else {
-        vec![Op::SetStyle { layer: w.layer, catalogue: cat.word.into(), id: id.clone(), before, after: Some(rec) }]
+        vec![Op::SetStyle { layer: w.layer, catalogue: cat.catalogue, id: id.clone(), before, after: Some(rec) }]
     };
     Ok(TablePlan { ops, id, rows, odd: data.odd(), label })
 }

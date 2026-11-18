@@ -11,7 +11,7 @@ use ecad_model::{
 fn def(name: &str) -> Definition {
     Definition {
         name: name.into(),
-        terminals: vec![TerminalDef { key: "1".into(), label: Some("1".into()), at: Pt::new(0.0, 0.0) }],
+        terminals: vec![TerminalDef { key: "1".parse().unwrap(), label: Some("1".into()), at: Pt::new(0.0, 0.0) }],
         ..Default::default()
     }
 }
@@ -55,11 +55,11 @@ fn set_component_definition_keeps_properties() {
     l.commit(
         Author::User,
         "prop",
-        vec![Op::SetProperty { object: ObjectRef::Device(K), key: "tag".into(), before: None, after: Some("-K01".into()) }],
+        vec![Op::SetProperty { object: ObjectRef::Device(K), key: "note".parse().unwrap(), before: None, after: Some("-K01".into()) }],
     )
     .expect("tag");
     l.commit(Author::User, "edit", vec![set(Some(A), Some(B))]).expect("set");
-    assert_eq!(l.document().devices[&K].properties.get("tag").map(String::as_str), Some("-K01"));
+    assert_eq!(l.document().devices[&K].get("note"), Some("-K01"));
 }
 
 #[test]
@@ -114,7 +114,7 @@ fn merged(ancestor: &Document, target: &Document, source: &Document, source_ops:
 #[test]
 fn merge_a_property_against_a_definition_change_does_not_conflict() {
     let a = base().document().clone();
-    let tag = Op::SetProperty { object: ObjectRef::Device(K), key: "description".into(), before: None, after: Some("Pump".into()) };
+    let tag = Op::SetProperty { object: ObjectRef::Device(K), key: "note".parse().unwrap(), before: None, after: Some("Pump".into()) };
     let mut t = a.clone();
     tag.apply(&mut t).expect("target");
     let mut s = a.clone();
@@ -129,7 +129,7 @@ fn merge_a_property_against_a_definition_change_does_not_conflict() {
         op.apply(&mut m).expect("merged op");
     }
     assert_eq!(m.devices[&K].definition, Some(B));
-    assert_eq!(m.devices[&K].properties.get("description").map(String::as_str), Some("Pump"));
+    assert_eq!(m.devices[&K].get("note"), Some("Pump"));
 
     // The other way round: the source sets the property, the target the definition.
     let plan = merged(&a, &s, &t, std::slice::from_ref(&tag));
@@ -162,7 +162,7 @@ fn embed(d: Definition) -> Result<(), String> {
 }
 
 fn slot(text: &str, x: f64) -> TextSlot {
-    TextSlot { text: text.into(), at: Pt::new(x, 0.0), h: Default::default(), v: Default::default(), rotation: 0.0 }
+    TextSlot { text: text.into(), at: Pt::new(x, 0.0), h: Default::default(), v: Default::default(), rotation: ecad_model::units::Radians(0.0) }
 }
 
 #[test]
@@ -172,7 +172,11 @@ fn invariant_i7_covers_slots_defaults_and_derived_from() {
         ("plain", |_| {}, None),
         ("tag and rating slots", |d| d.texts = vec![slot("tag", 0.0), slot("rating", 2.0), slot("rating.A1", 4.0)], None),
         ("a NaN slot", |d| d.texts = vec![slot("tag", f64::NAN)], Some("non-finite")),
-        ("an infinite rotation", |d| d.texts = vec![TextSlot { rotation: f64::INFINITY, ..slot("tag", 0.0) }], Some("non-finite")),
+        (
+            "an infinite rotation",
+            |d| d.texts = vec![TextSlot { rotation: ecad_model::units::Radians(f64::INFINITY), ..slot("tag", 0.0) }],
+            Some("non-finite"),
+        ),
         ("two tag slots", |d| d.texts = vec![slot("tag", 0.0), slot("tag", 1.0)], Some("two slots")),
         ("an unknown text", |d| d.texts = vec![slot("colour", 0.0)], Some("not a device text")),
         ("an empty rating label", |d| d.texts = vec![slot("rating.", 0.0)], Some("not a device text")),

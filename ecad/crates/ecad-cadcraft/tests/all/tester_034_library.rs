@@ -243,7 +243,7 @@ fn set(v: &[&str]) -> BTreeSet<String> {
 }
 
 fn prop(h: &mut H, c: DeviceId, key: &str) -> Option<String> {
-    h.doc().devices.get(&c).and_then(|x| x.properties.get(key).cloned())
+    h.doc().devices.get(&c).and_then(|x| x.value(key))
 }
 
 fn tag(n: usize, prefix: &str) -> String {
@@ -335,7 +335,7 @@ fn a1_every_new_symbol_is_in_the_catalogue_as_designed() {
         assert!(s.name.to_lowercase().contains(e.word), "{}: name {:?} should contain {:?}", e.key, s.name, e.word);
         let d = s.definition().unwrap_or_else(|err| panic!("{}: {err}", e.key));
         // Points: keys in definition order at the design's positions, on the grid.
-        let got: Vec<(String, f64, f64)> = d.terminals.iter().map(|t| (t.key.clone(), t.at.x, t.at.y)).collect();
+        let got: Vec<(String, f64, f64)> = d.terminals.iter().map(|t| (t.key.to_string(), t.at.x, t.at.y)).collect();
         assert_eq!(got.len(), e.points.len(), "{}: points {got:?}", e.key);
         for ((gk, gx, gy), (wk, wx, wy)) in got.iter().zip(&e.points) {
             assert_eq!(gk, wk, "{}: point order {got:?}", e.key);
@@ -779,8 +779,7 @@ fn j_quiet_spare_points_are_not_flagged() {
 fn k_bom_one_row_per_device() {
     let mut h = fixture_all(0x7034_000e);
     let d = h.doc();
-    let devices: BTreeSet<DeviceId> =
-        d.devices.iter().filter(|(_, c)| c.properties.get("tag").is_some_and(|t| !t.is_empty())).map(|(id, _)| *id).collect();
+    let devices: BTreeSet<DeviceId> = d.devices.iter().filter(|(_, c)| c.tag().is_some_and(|t| !t.is_empty())).map(|(id, _)| *id).collect();
     let bom = h.run("bom", json!({"limit": 5000})).unwrap();
     let rows = bom["rows"].as_array().unwrap().clone();
     let mut seen: BTreeMap<String, usize> = BTreeMap::new();
@@ -795,12 +794,7 @@ fn k_bom_one_row_per_device() {
         }
     }
     for c in &devices {
-        assert_eq!(
-            seen.get(&c.hex()).copied(),
-            Some(1),
-            "{} on one BOM row: {rows:?}",
-            d.devices[c].properties.get("tag").cloned().unwrap_or_default()
-        );
+        assert_eq!(seen.get(&c.hex()).copied(), Some(1), "{} on one BOM row: {rows:?}", d.devices[c].tag().map(str::to_string).unwrap_or_default());
     }
     assert_eq!(seen.len(), devices.len(), "nothing but devices on the BOM: {seen:?}");
     let qty: u64 = rows.iter().map(|r| r["qty"].as_u64().unwrap_or(0)).sum();

@@ -35,6 +35,7 @@
 //! | I19 | The folder order lists each folder exactly once (brief 019) | folders, folder order | any folder added or removed (whole order, which is short) |
 //! | I20 | A folder's parent exists, the parents form no cycle and it nests at most 8 deep | folder → parent folders | touched folders, their sub-folders (all levels) and the sub-folders of a removed one |
 //! | I21 | A page's `folder` property names an existing folder | page → folder | touched pages and pages whose properties changed; pages in a touched folder |
+//! | I22 | The location and function lists hold each id and code once, codes with their sign | project | any change to the project's own data |
 //!
 //! Not invariants of the document: properties (other than a page's `folder`), layer names, project
 //! settings. Named versions are
@@ -58,6 +59,7 @@ use crate::error::{ModelError, Result};
 use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId, WireId};
 use crate::index::referrers;
 use crate::op::{ObjectRef, Op};
+use crate::point::PointKey;
 
 /// What a transaction created, modified or removed: the input of [`Document::check_touched`].
 ///
@@ -84,6 +86,8 @@ pub struct Touched {
     pub page_properties: BTreeSet<PageId>,
     /// The standard or a style record changed (brief 050a): the style invariants are checked.
     pub styles: bool,
+    /// The project's own data changed (design 072 §5.3): I22 is checked.
+    pub project: bool,
 }
 
 impl Touched {
@@ -159,6 +163,7 @@ impl Touched {
                 self.folders.insert(*id);
             }
             Effect::Style { .. } | Effect::Standard { .. } => self.styles = true,
+            Effect::Project { .. } => self.project = true,
         }
     }
 }
@@ -208,7 +213,18 @@ impl Document {
             self.check_page_folder(*id)?;
         }
         self.check_styles()?;
+        self.check_project()?;
         Ok(())
+    }
+
+    /// I22 (design 072 §5.3): the location and function lists are well formed
+    /// ([`crate::project::Project::problem`]). A page or the project naming an id with no entry
+    /// is not a breach: it shows `?`.
+    fn check_project(&self) -> Result<()> {
+        match self.project.problem() {
+            Some(p) => bad(p),
+            None => Ok(()),
+        }
     }
 
     /// I-styles (brief 050a, design 050 §3.3): every catalogue word is well formed, and no
@@ -218,9 +234,6 @@ impl Document {
         let layers = std::iter::once(&self.styles).chain(self.standard.as_ref().map(|s| &s.styles));
         for cats in layers {
             for (word, styles) in cats {
-                if !crate::style::is_word(word) {
-                    return bad(format!("style catalogue word {word:?} is not 1-32 characters of a-z, 0-9 and _"));
-                }
                 if styles.is_empty() {
                     return bad(format!("style catalogue {word} is listed with no styles"));
                 }
@@ -369,6 +382,9 @@ impl Document {
         if touched.styles {
             self.check_styles()?;
         }
+        if touched.project {
+            self.check_project()?;
+        }
         Ok(())
     }
 
@@ -435,7 +451,16 @@ impl Document {
         if let Some(d) = c.definition
             && !self.definitions.contains_key(&d)
         {
-            return bad(format!("component {id} uses a missing definition"));
+            return bad(format!("device {id} uses a missing definition"));
+        }
+        // Design 072 §2.1: a key that became a device field is never in the device's bag.
+        if let Some(k) = c.properties.keys().find(|k| crate::keys::is_reserved_on(crate::keys::Holder::Device, k)) {
+            return bad(format!("device {id} holds {k} in its properties; it is a field"));
+        }
+        if let crate::device::DeviceType::Connector(x) = &c.device_type
+            && let Some(p) = x.problem()
+        {
+            return bad(format!("device {id}: {p}"));
         }
         Ok(())
     }
@@ -534,12 +559,12 @@ fn check_definition(id: DefinitionId, d: &Definition) -> Result<()> {
     if !d.graphics.iter().all(Primitive::is_finite) || !d.terminals.iter().all(|t| t.at.is_finite()) {
         return bad(format!("definition {id} has non-finite geometry"));
     }
-    let keys: BTreeSet<&str> = d.terminals.iter().map(|t| t.key.as_str()).collect();
+    let keys: BTreeSet<&PointKey> = d.terminals.iter().map(|t| &t.key).collect();
     if keys.len() != d.terminals.len() {
         return bad(format!("definition {id} repeats a terminal key"));
     }
     // Brief 044 (overseer condition on FP2): a bridge names keys a placement can write.
-    if let Some(k) = d.bridges.iter().flatten().find(|k| !keys.contains(k.as_str()) && !is_placement_key(k)) {
+    if let Some(k) = d.bridges.iter().flatten().find(|k| !keys.contains(k) && !is_placement_key(k)) {
         return bad(format!("definition {id} bridges key {k:?}, which it has no terminal for and no placement writes"));
     }
     // Brief 048 (FP1, FP2, FP4).
@@ -571,6 +596,6 @@ fn check_definition(id: DefinitionId, d: &Definition) -> Result<()> {
 /// A terminal key a placement writes that need not be one of the definition's own keys (brief
 /// 044, FP2): a connector side key (`.s`, `.p`) or a strip level key (`.1`, `.2`, `.1i`, brief
 /// 036). A bridge may name these; any other key it names must be one of the definition's own.
-pub fn is_placement_key(k: &str) -> bool {
-    k == ".s" || k == ".p" || (k.starts_with('.') && crate::links::level_of_key(Some(k)).is_some())
+pub fn is_placement_key(k: &PointKey) -> bool {
+    matches!(k, PointKey::Side(_)) || (matches!(k, PointKey::Level { .. }) && crate::links::level_of_key(Some(k)).is_some())
 }

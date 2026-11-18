@@ -11,7 +11,7 @@ fn record(sheet: &str) -> StyleRecord {
 }
 
 fn set_style(id: &str, after: Option<StyleRecord>, before: Option<StyleRecord>) -> Op {
-    Op::SetStyle { layer: StyleLayer::Project, catalogue: "page".into(), id: StyleRef::Builtin(id.into()), before, after }
+    Op::SetStyle { layer: StyleLayer::Project, catalogue: ecad_model::StyleCatalogue::Page, id: StyleRef::Builtin(id.into()), before, after }
 }
 
 #[test]
@@ -37,7 +37,8 @@ fn a_page_takes_its_types_sheet_between_its_own_and_the_projects() {
     assert_eq!(sheet_of(doc, pages[3]), a3, "a network page is not a schematic one");
     // `project` and anything unreadable fall through.
     for v in ["project", "A0 999x999", "x"] {
-        let before = ledger.document().styles.get("page").and_then(|c| c.get(&StyleRef::Builtin("schematic".into()))).cloned();
+        let before =
+            ledger.document().styles.get(&ecad_model::StyleCatalogue::Page).and_then(|c| c.get(&StyleRef::Builtin("schematic".into()))).cloned();
         ledger.commit(Author::User, v, vec![set_style("schematic", Some(record(v)), before)]).unwrap();
         assert_eq!(sheet_of(ledger.document(), pages[0]), a3, "{v}");
     }

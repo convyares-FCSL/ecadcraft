@@ -106,6 +106,10 @@ typed_id!(/// An embedded definition.
     DefinitionId, "def");
 typed_id!(/// A transaction.
     TxId, "tx");
+typed_id!(/// An entry of the project's location list (design 072 §5.3).
+    LocationId, "loc");
+typed_id!(/// An entry of the project's function list (design 072 §5.3).
+    FunctionId, "fn");
 typed_id!(/// A library (`.ecadlib`), stable across renaming its file.
     LibraryId, "lib");
 typed_id!(/// A project, stable across renaming or moving its file (the file header records it).

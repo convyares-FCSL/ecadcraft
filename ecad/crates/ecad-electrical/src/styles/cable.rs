@@ -14,8 +14,6 @@ use crate::CmdError;
 use crate::defaults::{Kind, Slot};
 use crate::rating::fields;
 
-/// The catalogue word.
-pub const WORD: &str = "cable";
 /// The cable property naming its cable type (FP2).
 pub const CABLE_TYPE: &str = "cable_type";
 
@@ -106,18 +104,25 @@ fn choices() -> Vec<&'static crate::defaults::Entry> {
 }
 
 /// The cable type catalogue: no built-in entries.
-pub static CATALOGUE: Catalogue =
-    Catalogue { word: WORD, plural: "Cable types", one: "Cable type", fields: &FIELDS, builtins: &[], choices, project_field: None };
+pub static CATALOGUE: Catalogue = Catalogue {
+    catalogue: ecad_model::StyleCatalogue::Cable,
+    plural: "Cable types",
+    one: "Cable type",
+    fields: &FIELDS,
+    builtins: &[],
+    choices,
+    project_field: None,
+};
 
 /// The cable type cable `k` names, when it names one that exists.
 pub fn of(doc: &Document, k: CableId) -> Option<StyleRef> {
     let v = doc.cables.get(&k)?.properties.get(CABLE_TYPE)?;
-    StyleRef::parse(v).filter(|id| super::exists(doc, WORD, id))
+    StyleRef::parse(v).filter(|id| super::exists(doc, ecad_model::StyleCatalogue::Cable, id))
 }
 
 /// The text of cable type `id`'s field `key`, when set (empty counts as unset).
 pub fn type_text(doc: &Document, id: &StyleRef, key: &str) -> Option<String> {
-    super::field_of(doc, WORD, id, key, None).map(|r| r.text()).map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
+    super::field_of(doc, ecad_model::StyleCatalogue::Cable, id, key, None).map(|r| r.text()).map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
 }
 
 /// Brief 059 (design 059 §2.2): cable `k`'s core offer and where it comes from: its own `cores`,
@@ -134,7 +139,7 @@ pub fn offer_of_props(doc: &Document, props: &ecad_model::Properties) -> Option<
     {
         return Some((c, crate::strips::OfferSource::Cores, v.to_string()));
     }
-    let ty = props.get(CABLE_TYPE).and_then(|v| StyleRef::parse(v)).filter(|id| super::exists(doc, WORD, id));
+    let ty = props.get(CABLE_TYPE).and_then(|v| StyleRef::parse(v)).filter(|id| super::exists(doc, ecad_model::StyleCatalogue::Cable, id));
     if let Some(v) = ty.as_ref().and_then(|id| type_text(doc, id, TYPE_CORES))
         && let Ok(c) = crate::strips::parse_cores(&v)
     {
@@ -146,7 +151,10 @@ pub fn offer_of_props(doc: &Document, props: &ecad_model::Properties) -> Option<
 /// The core colours of cable `k`'s cable type, in core order; empty when it has no type or no
 /// colours.
 pub fn core_colours(doc: &Document, k: CableId) -> Vec<String> {
-    of(doc, k).and_then(|id| super::field_of(doc, WORD, &id, CORE_COLOURS, None)).and_then(|r| colour_list(&r.text())).unwrap_or_default()
+    of(doc, k)
+        .and_then(|id| super::field_of(doc, ecad_model::StyleCatalogue::Cable, &id, CORE_COLOURS, None))
+        .and_then(|r| colour_list(&r.text()))
+        .unwrap_or_default()
 }
 
 /// A cable property ticking core `<label>` as **Not used** (owner rule, board 2.06): `unused.<label>`
