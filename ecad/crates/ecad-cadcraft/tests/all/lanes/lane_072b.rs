@@ -297,3 +297,56 @@ fn a_switching_rating_is_read_into_typed_fields() {
     let r = h.run("setprop", json!({"component": u.hex(), "key": "rating", "value": "24 V DC"})).unwrap();
     assert_eq!(r["value"], json!("input 24 V DC"), "{r}");
 }
+
+/// Step 3, Sensor (design 072 §2.2 row 4, "Ratings"): the symbol says what a sensor senses and
+/// outputs; `setprop rating` reads a PNP sensor's supply into a typed field; a voltage without AC
+/// or DC is asked; a contact or a thermocouple keeps its text as the note and is not warned about.
+#[test]
+fn a_sensor_rating_is_read_into_typed_fields() {
+    use ecad_model::Op;
+    use ecad_model::device::{DeviceType, Output, Sensing};
+    use ecad_model::units::Current;
+    let mut h = H::new(7207);
+    let kind = |h: &mut H, c: DeviceId| match &h.doc().devices[&c].device_type {
+        DeviceType::Sensor(s) => Some((s.sensing, s.output)),
+        _ => None,
+    };
+    for (symbol, want) in [
+        ("prox3", (Sensing::Proximity, Output::Pnp)),
+        ("floatno", (Sensing::Float, Output::Contact)),
+        ("rollernc", (Sensing::Limit, Output::Contact)),
+        ("interlockno", (Sensing::Interlock, Output::Contact)),
+        ("tc", (Sensing::Temperature, Output::Thermocouple)),
+    ] {
+        let mut g = H::new(7208);
+        let c: DeviceId = id(&crate::common::place(&mut g, symbol, (100.0, 100.0)), "component");
+        assert_eq!(kind(&mut g, c), Some(want), "{symbol}");
+    }
+    let no_rating = |h: &mut H| h.run("checks", json!({})).unwrap().to_string().contains("no-rating");
+    // A contact and a thermocouple are not warned about; their text is the note.
+    let f: DeviceId = id(&crate::common::place(&mut h, "floatno", (200.0, 100.0)), "component");
+    let t: DeviceId = id(&crate::common::place(&mut h, "tc", (300.0, 100.0)), "component");
+    assert!(!no_rating(&mut h));
+    let r = h.run("setprop", json!({"component": f.hex(), "key": "rating", "value": "250 V AC 5 A"})).unwrap();
+    assert_eq!(r["value"], json!("250 V AC 5 A"), "{r}");
+    let r = h.run("setprop", json!({"component": t.hex(), "key": "rating", "value": "K"})).unwrap();
+    assert_eq!(r["value"], json!("K"), "{r}");
+    assert!(h.doc().devices[&t].rating_note.is_some());
+    // An unrated PNP sensor has the Checks row `no-rating`; a rated one does not.
+    let b: DeviceId = id(&crate::common::place(&mut h, "prox3", (100.0, 100.0)), "component");
+    assert!(no_rating(&mut h));
+    let r = h.run("setprop", json!({"component": b.hex(), "key": "rating", "value": "24VDC"})).unwrap();
+    assert_eq!(r["message"], json!("Read: 24 V DC."), "{r}");
+    assert_eq!(r["value"], json!("24 V DC"));
+    let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());
+    assert!(matches!(ops.as_slice(), [Op::ModifyDevice { .. }]), "{ops:?}");
+    let DeviceType::Sensor(s) = &h.doc().devices[&b].device_type else { panic!() };
+    assert_eq!(s.supply.map(|v| (v.volts.0, v.current)), Some((24.0, Current::Dc)));
+    assert!(h.doc().devices[&b].properties.is_empty());
+    assert!(!no_rating(&mut h));
+    // Ambiguous text is asked, never guessed.
+    let e = h.run("setprop", json!({"component": b.hex(), "key": "rating", "value": "24 V"})).unwrap_err();
+    assert!(e.contains("AC or DC"), "{e}");
+    let e = h.run("setprop", json!({"component": b.hex(), "key": "rating", "value": "24"})).unwrap_err();
+    assert!(e.contains("a unit for 24"), "{e}");
+}

@@ -341,3 +341,54 @@ fn a_switching_device_s_rating_is_typed() {
     assert!(l.commit(Author::User, "wild", vec![Op::CreateDevice { id: c, device: bad }]).is_err());
     l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: d }]).unwrap();
 }
+
+/// Step 3, Sensor (design 072 §2.2 row 4, "Ratings"): a sensor's sensing, output and supply are
+/// typed fields, shown from them; only a powered (PNP or NPN) sensor without a supply has no
+/// rating; a supply on a contact, or out of range, is refused.
+#[test]
+fn a_sensor_s_rating_is_typed() {
+    use ecad_model::device::{Output, RatingNote, Sensing, Sensor};
+    use ecad_model::units::{Current, RatedVoltage, Volts};
+    let v24 = RatedVoltage { volts: Volts(24.0), current: Current::Dc };
+    let b = Sensor { sensing: Sensing::Proximity, output: Output::Pnp, supply: Some(v24) };
+    let d = Device { device_type: DeviceType::Sensor(b), ..Device::default() };
+    let json = serde_json::to_value(&d.device_type).unwrap();
+    assert_eq!(json, serde_json::json!({"sensor": {"sensing": "proximity", "output": "pnp", "supply": {"volts": 24.0, "current": "dc"}}}));
+    assert_eq!(serde_json::from_value::<DeviceType>(json).unwrap(), d.device_type, "round-trips");
+    assert_eq!(d.value("rating").as_deref(), Some("24 V DC"));
+    assert!(!d.has_no_rating());
+    for bad in [
+        serde_json::json!({"sensor": {}}),
+        serde_json::json!({"sensor": {"sensing": "smell", "output": "pnp"}}),
+        serde_json::json!({"sensor": {"sensing": "float", "output": "relay"}}),
+        serde_json::json!({"sensor": {"sensing": "float", "output": "contact", "range": "4-20"}}),
+    ] {
+        assert!(serde_json::from_value::<DeviceType>(bad.clone()).is_err(), "{bad}");
+    }
+    // An unrated PNP sensor has no rating, also with a note; an unrated contact is not warned about.
+    let prox = Device {
+        device_type: DeviceType::Sensor(Sensor::empty(Sensing::Proximity, Output::Npn)),
+        rating_note: Some(RatingNote::new("see datasheet").unwrap()),
+        ..Device::default()
+    };
+    assert!(prox.has_no_rating());
+    assert_eq!(prox.value("rating").as_deref(), Some("see datasheet"));
+    let float = Device { device_type: DeviceType::Sensor(Sensor::empty(Sensing::Float, Output::Contact)), ..Device::default() };
+    assert!(!float.has_no_rating());
+    assert!(
+        !Device { device_type: DeviceType::Sensor(Sensor::empty(Sensing::Temperature, Output::Thermocouple)), ..Device::default() }.has_no_rating()
+    );
+    // The invariant: a supply on a contact, or out of range, is refused.
+    let mut ids = IdAllocator::seeded(17);
+    let mut l = Ledger::new(17);
+    for wild in [
+        Sensor { supply: Some(v24), ..Sensor::empty(Sensing::Float, Output::Contact) },
+        Sensor { supply: Some(RatedVoltage { volts: Volts(f64::NAN), current: Current::Dc }), ..Sensor::empty(Sensing::Proximity, Output::Pnp) },
+    ] {
+        let c: DeviceId = ids.fresh();
+        let bad = Device { device_type: DeviceType::Sensor(wild), ..Device::default() };
+        assert!(l.commit(Author::User, "wild", vec![Op::CreateDevice { id: c, device: bad }]).is_err());
+    }
+    let c: DeviceId = ids.fresh();
+    l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: d }]).unwrap();
+}

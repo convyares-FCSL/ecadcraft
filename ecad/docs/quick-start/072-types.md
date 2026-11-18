@@ -171,7 +171,7 @@ shown back from them:
 - Text that is no rating at all (`see datasheet`) is kept as the device's rating note, and the
   device gets the Checks warning **no-rating**, because the checks read only the typed fields.
 - A fuse bank takes `rating.<n>` per fuse (`rating.3` `6.3 A T`); its own `rating` is refused.
-- Other groups (sensors, motors, loads, indicators, power supplies) keep what you type
+- Other groups (motors, loads, indicators, power supplies) keep what you type
   as the note until their own step; a symbol's default rating is read the same way when it is
   placed, and a symbol whose default rating does not read for its group cannot be saved.
 - A file whose device holds `rating` among its properties, or a protective device holding
@@ -207,6 +207,26 @@ push button and type `24 V DC` (refused: no coil). Nobody has tried it by hand y
 Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector
 (`…switching…`), and `rating::reader::switching` in ecad-electrical (automated, not tried by
 hand).
+
+### Lane B, step 3: sensors' ratings are typed
+
+A sensor now says what it senses and what it outputs, from its symbol: `prox3` is a **proximity**
+switch with a **PNP** output; `floatno`/`floatnc` (**float**), `rollerno`/`rollernc` (**limit**)
+and `interlockno`/`interlocknc` (**interlock**) are volt-free **contacts**; `tc` is a
+**temperature** sensor with a **thermocouple** output. Only a PNP or NPN sensor is powered: its
+rating is its supply voltage, a typed field.
+
+- `24VDC` on a proximity switch reads as **24 V DC**. Asked, never guessed: `24 V` (AC or DC?), a
+  bare `24` (which unit?). `10-30 V DC` and other text that does not read are kept as the note.
+- A contact or a thermocouple has no supply: what you type on it (`250 V AC 5 A`, `K`) is kept as
+  the note, and an unrated one gets no **no-rating** warning. An unrated proximity switch does.
+
+To try it: place a proximity switch (Checks shows "no rating"), type `24VDC` as its rating (shown
+as `24 V DC`, and the warning goes), then `24 V` (refused, asks AC or DC). Place a float switch:
+no warning, and `250 V AC 5 A` is kept as typed. Nobody has tried it by hand yet.
+
+Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector
+(`…sensor…`), and `rating::reader::sensor` in ecad-electrical (automated, not tried by hand).
 
 ## Lane D: wires carry typed values
 
