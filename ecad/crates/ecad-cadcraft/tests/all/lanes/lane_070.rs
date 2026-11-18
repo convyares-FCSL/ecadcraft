@@ -1708,9 +1708,9 @@ fn place_keeps_its_rule_words() {
         (json!({"symbol": "coil", "at": [0, 0], "device": coil, "tag": "-K9"}), "`tag` is for a new device; `device` joins an existing one"),
         (json!({"symbol": "coil", "at": [0, 0], "device": "ab"}), "No such device."),
         (json!({"symbol": "coil", "at": [0, 0], "location": " "}), "`location` is \"propose\", \"move\", \"keep\" or a code"),
-        (json!({"symbol": "junction", "at": [0, 0], "tag": "-K9"}), "A junction has no tag and is not part of a device."),
+        (json!({"symbol": "continuation", "at": [0, 0], "name": "24V", "tag": "-K9"}), "A continuation has no tag and is not part of a device."),
         (json!({"symbol": "continuation", "at": [0, 0]}), "`name` is required for a continuation"),
-        (json!({"symbol": "junction", "at": [0, 0], "caption": "Up"}), "Only continuation arrows have a caption; that is a junction."),
+        (json!({"symbol": "junction", "at": [0, 0]}), "No symbol \"junction\". Type List to see them."),
         (
             json!({"symbol": "termlnpe.2", "at": [0, 0], "device": coil}),
             "is not a terminal strip. Name a strip (-X01), or leave it out for a new one.",

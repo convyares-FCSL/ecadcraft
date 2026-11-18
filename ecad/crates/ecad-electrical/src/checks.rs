@@ -32,7 +32,7 @@
 use ecad_model::numbering::Places;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use ecad_model::connectivity::{CONTINUATION, JUNCTION, NAME, name_key};
+use ecad_model::connectivity::{CONTINUATION, NAME, name_key};
 use ecad_model::wiring;
 use ecad_model::{CableId, DeviceId, Document, End, NetData, NetKey, ObjectRef, Op, PageId, Pt, RouteEnd, RouteId, Subject, TerminalId, WireId};
 use serde_json::{Value, json};
@@ -900,7 +900,7 @@ pub fn net_checks(doc: &Document, id: NetKey, net: &NetData) -> Vec<Check> {
     if !net.wires.is_empty() && net.terminals.len() == 1 && net.names.is_empty() {
         let t = net.terminals.first().copied();
         let jc = t.and_then(|t| doc.terminals.get(&t)).map(|x| kind_of(doc, x.component));
-        if !matches!(jc, Some(Some(JUNCTION | CONTINUATION)))
+        if !matches!(jc, Some(Some(CONTINUATION)))
             && let Some(t) = t
         {
             let (p, a) = terminal_place(doc, t);
@@ -1068,7 +1068,7 @@ pub fn terminal_checks(doc: &Document, t: TerminalId) -> Vec<Check> {
         let which = format!("{} takes {takes} conductors; {wired} are connected", wires::point_words(doc, t));
         out.push(Check { kind: Kind::OverCount, page, at, object: Object::Terminal(t), which, fix: None });
     }
-    if matches!(kind_of(doc, term.component), Some(JUNCTION | CONTINUATION)) || doc.has_ends(t) || doc.routes_at(t).next().is_some() {
+    if matches!(kind_of(doc, term.component), Some(CONTINUATION)) || doc.has_ends(t) || doc.routes_at(t).next().is_some() {
         return out;
     }
     // Bridged inside its device to an attached point: connected.

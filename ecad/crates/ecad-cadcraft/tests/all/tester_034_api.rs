@@ -44,7 +44,6 @@ fn families() {
         "terminal",
         "di",
         "do",
-        "junction",
         "continuation",
         "terminalpe",
     ];
@@ -170,13 +169,13 @@ fn changeover_rule() {
     assert_eq!(symbols::changeover_labels(&set(&["99", "15", "0", "1234", "I0.0", "\u{1F642}"]), "-K01"), Ok(used(&["11", "12", "14"])));
 }
 
-/// §10: the default rule for the 21 starters (none for junction and continuation) and every
+/// §10: the default rule for the 20 starters (none for the continuation) and every
 /// override of the new families.
 #[test]
 fn anchors() {
     for st in STARTERS {
         let v = symbols::anchors(st);
-        if matches!(st.key.word(), "junction" | "continuation") {
+        if st.key.word() == "continuation" {
             assert!(v.is_empty(), "{}", st.key);
             continue;
         }

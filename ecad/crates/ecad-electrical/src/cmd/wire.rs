@@ -5,7 +5,7 @@
 use ecad_model::units::Radians;
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::connectivity::{CONTINUATION, JUNCTION, KIND, NAME};
+use ecad_model::connectivity::{CONTINUATION, KIND, NAME};
 use ecad_model::text::Text;
 use ecad_model::wiring::{self, Scheme};
 use ecad_model::{
@@ -57,7 +57,7 @@ pub struct NetView {
     /// The categories, when the net's wires resolve to different ones (or some have none).
     pub categories: Option<Vec<CategoryName>>,
     pub wires: Vec<WireId>,
-    /// Its device connection points (not junctions or continuations), with their words.
+    /// Its device connection points (not continuations), with their words.
     pub points: Vec<(TerminalId, String)>,
     /// The names of its continuations.
     pub continuations: BTreeSet<String>,
@@ -84,7 +84,7 @@ pub fn net_view(doc: &Document, net: &NetData) -> NetView {
     let points = net
         .terminals
         .iter()
-        .filter(|t| doc.terminals.get(t).is_none_or(|x| !matches!(wires::kind_of(doc, x.component), Some(JUNCTION | CONTINUATION))))
+        .filter(|t| doc.terminals.get(t).is_none_or(|x| !matches!(wires::kind_of(doc, x.component), Some(CONTINUATION))))
         .map(|t| (*t, wires::point_words(doc, *t)))
         .collect();
     let continuations = net
@@ -735,14 +735,14 @@ pub fn wire(ledger: &Ledger, ids: &mut IdAllocator, input: wires::WireInput<'_>,
 /// (checked), `Err` to refuse; `Ok(None)` when the key is not one of brief 022's.
 ///
 /// # Errors
-/// A wire number or potential (they belong to the whole net), a junction's or continuation's kind,
+/// A wire number or potential (they belong to the whole net), a continuation's kind,
 /// a continuation without a name, or a value that does not read.
 pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Option<String>>, CmdError> {
     match object {
         // Brief 049 (design 049 §3.1): a caption only on a continuation, checked.
         ObjectRef::Device(c) if key == crate::continuations::CAPTION_KEY => Ok(Some(crate::continuations::caption_value(doc, c, value)?)),
         ObjectRef::Device(c) if wires::kind_of(doc, c).is_some() => match key {
-            k if k == KIND => Err(CmdError::refused("A junction or continuation keeps its kind; erase it and place another.")),
+            k if k == KIND => Err(CmdError::refused("A continuation keeps its kind; erase it and place another.")),
             k if k == NAME && wires::kind_of(doc, c) == Some(CONTINUATION) => {
                 let v = value.ok_or(CmdError::refused("A continuation needs a name."))?;
                 Ok(Some(Some(wires::valid_name(v)?)))

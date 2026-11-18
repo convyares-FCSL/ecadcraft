@@ -49,5 +49,10 @@ What changed for someone using the app:
    OK. The two wires of the net from step 5 now show different numbers on the page and in the
    wire list; the first keeps the old one. Undo: both show the net's number again.
 
+8. The junction symbol is gone: a T is a line drawn onto another line (step 5). The symbol
+   picker no longer lists **Junction**, and `place {"symbol":"junction", …}` says there is no
+   such symbol. A project file from an earlier build that holds a junction opens read-only, and
+   the message names the word `junction` in setting `kind`.
+
 Not yet tried by the owner. Checked by the headless tests named in the lane's tests
 (`lanes::lane_072d`, ecad-model, ecad-file, ecad-inspector, ecad-cadcraft, ecad-mcp, ecad-app).

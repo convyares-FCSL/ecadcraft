@@ -156,13 +156,11 @@ fn nets_join_through_attachments_continuations_and_bridges_only() {
     let a = p.loose(k[0]);
     let b = p.loose(k[0]);
     assert!(p.same_net(a, b));
-    // A T without a junction (the end merely lies on the other wire): two nets.
+    // An end merely lying on another wire: two nets.
     let c = p.free_props(&[]);
     assert!(!p.same_net(a, c));
-    // With a junction: one net.
-    let mut j = Device::default();
-    j.properties.insert(KIND.into(), "junction".into());
-    let (_, jt) = p.device_with(1, j);
+    // Both ends on one shared point: one net.
+    let (_, jt) = p.device_with(1, Device::default());
     let d = p.wire(jt[0], k[1]);
     let e = p.loose(jt[0]);
     assert!(p.same_net(d, e));

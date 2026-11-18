@@ -204,10 +204,8 @@ fn loc_key(v: Option<&str>) -> LocKey {
 /// One end of a wire as the report shows it.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct EndCell {
-    /// `-K01:A1`, `24V >`; `None` for a loose end or a junction.
+    /// `-K01:A1`, `24V >`; `None` for a loose end.
     pub name: Option<String>,
-    /// A junction end: where it is (shown as `junction 105-C-4` in the reference style).
-    pub junction: Option<Option<ecad_model::derive::Place>>,
     /// The device's location; `None` with `device` set means the device has none.
     pub location: Option<String>,
     pub device: Option<DeviceId>,
@@ -219,11 +217,8 @@ pub struct EndCell {
 
 impl EndCell {
     /// The end as shown, in reference style `style`.
-    pub fn text(&self, style: ecad_model::ReferenceStyle) -> Option<String> {
-        match &self.junction {
-            Some(p) => Some(format!("junction {}", p.as_ref().map_or_else(|| "?".to_string(), |x| x.text(style)))),
-            None => self.name.clone(),
-        }
+    pub fn text(&self, _style: ecad_model::ReferenceStyle) -> Option<String> {
+        self.name.clone()
     }
 }
 

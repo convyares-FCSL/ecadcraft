@@ -28,7 +28,7 @@
 //! | In scope (from the ops) | Recomputed |
 //! | --- | --- |
 //! | a device that is a strip (its create, delete, terminals, symbols, items, properties) | that strip |
-//! | a device or tagless component (tag, location, junction place, continuation name) | the strips whose rows end on it (`Strips::far`) |
+//! | a device or tagless component (tag, location, continuation name) | the strips whose rows end on it (`Strips::far`) |
 //! | a conductor (create, delete, attach, route, properties) and its net mates (wire numbers) | the strips it was on (kept) and is on now |
 //! | a cable (create, delete, members, properties) | the strips its members were on (kept) and are on now |
 //! | a page whose number or position changed (`SetProperty` number, book order, the sheet) | the strips with terminals on it (their Place) |
@@ -625,13 +625,13 @@ pub fn next_free_label(doc: &Document, k: CableId) -> Option<String> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SideCell {
     pub conductor: WireId,
-    /// The far end as shown (`-K01:A1`, `junction 105-C-4`, `24V >`); `None` for a loose end.
+    /// The far end as shown (`-K01:A1`, `24V >`); `None` for a loose end.
     pub target: Option<String>,
     pub wire: Option<String>,
     pub cable: Option<(CableId, Option<String>)>,
     /// The member's stored core label.
     pub core: Option<String>,
-    /// The far end's component (a device, a junction, a continuation).
+    /// The far end's component (a device or a continuation).
     pub far: Option<DeviceId>,
 }
 
@@ -1629,7 +1629,7 @@ impl StripData {
 
 // ---------------------------------------------------------------- hover (§7.1)
 
-/// The far end of `w` from end `mine`, in words (`-K01:A1`, `junction`, `24V >`, `loose`).
+/// The far end of `w` from end `mine`, in words (`-K01:A1`, `24V >`, `loose`).
 fn far_words(doc: &Document, w: WireId, mine: End) -> (String, Option<DeviceId>) {
     let far = match mine {
         End::A => End::B,
@@ -1638,7 +1638,6 @@ fn far_words(doc: &Document, w: WireId, mine: End) -> (String, Option<DeviceId>)
     let Some(t) = doc.wires.get(&w).map(|c| c.end(far)) else { return ("loose".into(), None) };
     let Some(c) = doc.terminals.get(&t).map(|x| x.component) else { return ("loose".into(), None) };
     match crate::wires::kind_of(doc, c) {
-        Some(ecad_model::connectivity::JUNCTION) => ("junction".into(), Some(c)),
         Some(ecad_model::connectivity::CONTINUATION) => {
             let name = doc.devices.get(&c).and_then(|x| x.properties.get(ecad_model::connectivity::NAME)).cloned().unwrap_or_default();
             (format!("{name} >"), Some(c))
