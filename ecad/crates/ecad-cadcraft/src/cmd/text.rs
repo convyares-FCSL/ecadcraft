@@ -200,6 +200,7 @@ fn value_json(r: &Resolved<'_>) -> Value {
         defaults::Value::OwnStyle(id) => json!(ecad_model::StyleRef::Own(id).text()),
         defaults::Value::Size(s) => json!(s.to_string()),
         defaults::Value::Colours(c) => json!(c.to_string()),
+        defaults::Value::Colour(c) => json!(c.to_string()),
     }
 }
 

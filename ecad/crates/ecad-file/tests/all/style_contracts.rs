@@ -33,7 +33,10 @@ fn header(name: &str) -> StandardHeader {
 }
 
 fn rec(name: &str, fields: &[(&str, &str)]) -> StyleRecord {
-    StyleRecord::new(name, ecad_model::style::StyleBody::Text(fields.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()))
+    // A text style's fields, as a file holds them (numbers as numbers).
+    let body: serde_json::Map<String, serde_json::Value> =
+        fields.iter().map(|(k, v)| (k.to_string(), v.parse::<f64>().map_or_else(|_| serde_json::json!(v), |x| serde_json::json!(x)))).collect();
+    StyleRecord::new(name, ecad_model::style::StyleBody::Text(serde_json::from_value(serde_json::Value::Object(body)).unwrap()))
 }
 
 /// A ledger with a standard, values, records in both layers, and one undo.

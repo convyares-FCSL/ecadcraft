@@ -70,3 +70,27 @@ fn a_record_is_filed_only_under_its_own_catalogue() {
     let r = ecad_model::style::record(l.document(), StyleLayer::Project, StyleCatalogue::Wire, &id).unwrap();
     assert_eq!(r.body.wire().and_then(|w| w.insulation), Some(Insulation::Pvc));
 }
+
+/// Text styles (design 072 §8): typed font, cap height, weight and colour; a value in any other
+/// form does not read.
+#[test]
+fn a_text_style_reads_its_typed_fields_only() {
+    use ecad_model::style::TextStyle;
+    use ecad_model::style::text::{Font, StyleColour, Weight};
+    let t = TextStyle { font: Font::parse("Plex"), height: Some(Mm(3.5)), weight: Some(Weight::Bold), colour: StyleColour::parse("#C62828") };
+    let v = serde_json::to_value(StyleRecord::new("Big", StyleBody::Text(t.clone()))).unwrap();
+    assert_eq!(v["body"]["text"], serde_json::json!({"font": "Plex", "height": 3.5, "weight": "bold", "colour": "#c62828"}));
+    assert_eq!(serde_json::from_value::<StyleRecord>(v.clone()).unwrap().body, StyleBody::Text(t));
+    for (k, bad) in [
+        ("height", serde_json::json!("3")),
+        ("weight", serde_json::json!("heavy")),
+        ("colour", serde_json::json!("blue")),
+        ("size", serde_json::json!(1)),
+    ] {
+        let mut w = v.clone();
+        w["body"]["text"][k] = bad;
+        assert!(serde_json::from_value::<StyleRecord>(w).is_err(), "{k}");
+    }
+    assert_eq!(StyleColour::parse("none"), Some(StyleColour::None));
+    assert_eq!(StyleColour::parse("blu").map(|c| c.to_string()).as_deref(), Some("BU"));
+}

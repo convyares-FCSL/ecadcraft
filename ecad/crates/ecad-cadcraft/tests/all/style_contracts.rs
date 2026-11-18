@@ -252,7 +252,10 @@ fn a_style_change_marks_only_the_pages_of_its_users() {
         catalogue: ecad_model::StyleCatalogue::Text,
         id,
         before: None,
-        after: Some(StyleRecord::new("", ecad_model::style::StyleBody::Text([("height".to_string(), "4".to_string())].into()))),
+        after: Some(StyleRecord::new(
+            "",
+            ecad_model::style::StyleBody::Text(ecad_model::style::TextStyle { height: Some(ecad_model::units::Mm(4.0)), ..Default::default() }),
+        )),
     };
     // Nobody uses it: no page.
     assert_eq!(styles::pages_touched(&doc, &set(large.clone())), Some(Default::default()));

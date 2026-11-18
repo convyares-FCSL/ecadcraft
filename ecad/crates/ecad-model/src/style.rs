@@ -18,8 +18,10 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::doc::Properties;
 use crate::id::{LibraryId, StandardId};
 
+pub mod text;
 pub mod wire;
 
+pub use text::{StyleColour, TextStyle};
 pub use wire::WireType;
 
 /// The most styles a layer may hold per catalogue. Guard, not a default: it keeps a hostile
@@ -221,18 +223,18 @@ impl StyleRecord {
     /// The fields of a catalogue not typed yet (lane G works through them).
     pub fn fields(&self) -> Option<&Properties> {
         match &self.body {
-            StyleBody::Cable(p) | StyleBody::Location(p) | StyleBody::Page(p) | StyleBody::RatingTable(p) | StyleBody::Text(p) => Some(p),
+            StyleBody::Cable(p) | StyleBody::Location(p) | StyleBody::Page(p) | StyleBody::RatingTable(p) => Some(p),
             StyleBody::Frame(f) => Some(&f.fields),
-            StyleBody::Wire(_) => None,
+            StyleBody::Text(_) | StyleBody::Wire(_) => None,
         }
     }
 
     /// [`StyleRecord::fields`], to change.
     pub fn fields_mut(&mut self) -> Option<&mut Properties> {
         match &mut self.body {
-            StyleBody::Cable(p) | StyleBody::Location(p) | StyleBody::Page(p) | StyleBody::RatingTable(p) | StyleBody::Text(p) => Some(p),
+            StyleBody::Cable(p) | StyleBody::Location(p) | StyleBody::Page(p) | StyleBody::RatingTable(p) => Some(p),
             StyleBody::Frame(f) => Some(&mut f.fields),
-            StyleBody::Wire(_) => None,
+            StyleBody::Text(_) | StyleBody::Wire(_) => None,
         }
     }
 
@@ -262,7 +264,7 @@ pub enum StyleBody {
     Page(Properties),
     #[serde(rename = "ratingtable")]
     RatingTable(Properties),
-    Text(Properties),
+    Text(TextStyle),
     Wire(WireType),
 }
 
@@ -275,7 +277,7 @@ impl StyleBody {
             StyleCatalogue::Location => StyleBody::Location(Properties::new()),
             StyleCatalogue::Page => StyleBody::Page(Properties::new()),
             StyleCatalogue::RatingTable => StyleBody::RatingTable(Properties::new()),
-            StyleCatalogue::Text => StyleBody::Text(Properties::new()),
+            StyleCatalogue::Text => StyleBody::Text(TextStyle::default()),
             StyleCatalogue::Wire => StyleBody::Wire(WireType::default()),
         }
     }
@@ -296,9 +298,10 @@ impl StyleBody {
     /// The fields it sets, as `(key, stored text)`: for messages and the inspector.
     pub fn entries(&self) -> Vec<(String, String)> {
         match self {
-            StyleBody::Cable(p) | StyleBody::Location(p) | StyleBody::Page(p) | StyleBody::RatingTable(p) | StyleBody::Text(p) => {
+            StyleBody::Cable(p) | StyleBody::Location(p) | StyleBody::Page(p) | StyleBody::RatingTable(p) => {
                 p.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
             }
+            StyleBody::Text(t) => t.entries().into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
             StyleBody::Frame(f) => f.fields.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
             StyleBody::Wire(w) => w.entries().into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
         }
@@ -307,9 +310,28 @@ impl StyleBody {
     /// Whether it sets nothing.
     pub fn is_empty(&self) -> bool {
         match self {
-            StyleBody::Cable(p) | StyleBody::Location(p) | StyleBody::Page(p) | StyleBody::RatingTable(p) | StyleBody::Text(p) => p.is_empty(),
+            StyleBody::Cable(p) | StyleBody::Location(p) | StyleBody::Page(p) | StyleBody::RatingTable(p) => p.is_empty(),
+            StyleBody::Text(t) => *t == TextStyle::default(),
             StyleBody::Frame(f) => f.fields.is_empty() && f.title_block.is_none(),
             StyleBody::Wire(w) => *w == WireType::default(),
+        }
+    }
+
+    /// The stored text of field `key`, if the body sets it.
+    pub fn entry(&self, key: &str) -> Option<String> {
+        self.entries().into_iter().find(|(k, _)| k == key).map(|(_, v)| v)
+    }
+
+    /// Its text style, if it is one.
+    pub fn text(&self) -> Option<&TextStyle> {
+        match self {
+            StyleBody::Text(t) => Some(t),
+            StyleBody::Cable(_)
+            | StyleBody::Frame(_)
+            | StyleBody::Location(_)
+            | StyleBody::Page(_)
+            | StyleBody::RatingTable(_)
+            | StyleBody::Wire(_) => None,
         }
     }
 
