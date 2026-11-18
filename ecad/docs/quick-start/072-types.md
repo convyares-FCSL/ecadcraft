@@ -171,7 +171,7 @@ shown back from them:
 - Text that is no rating at all (`see datasheet`) is kept as the device's rating note, and the
   device gets the Checks warning **no-rating**, because the checks read only the typed fields.
 - A fuse bank takes `rating.<n>` per fuse (`rating.3` `6.3 A T`); its own `rating` is refused.
-- Other groups (motors, loads, indicators, power supplies) keep what you type
+- Other groups (loads, indicators, power supplies) keep what you type
   as the note until their own step; a symbol's default rating is read the same way when it is
   placed, and a symbol whose default rating does not read for its group cannot be saved.
 - A file whose device holds `rating` among its properties, or a protective device holding
@@ -249,6 +249,25 @@ position is rated), then `see datasheet` (refused). Nobody has tried it by hand 
 Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector
 (`…strip…`), and `levels_contracts::relabel_moves_every_position_keyed_property` (automated, not
 tried by hand).
+
+### Lane B, step 3: motors' ratings are typed
+
+A motor now says its phases, from its symbol: `motor1` is **single-phase**, `motor3`
+**three-phase**. Its rating is its nameplate, in typed fields: rated power (shown in kW), rated
+current, power factor (`cos φ 0.85`, also `pf 0.85`), efficiency (`eff 91 %`) and how it starts
+(`DOL`, `star-delta` or `Y-D`, `soft start`, `VFD`).
+
+- `7,5kW 15.2A Y-D` reads as **7.5 kW, 15.2 A, star-delta**; `370 W` as **0.37 kW**.
+- Asked, never guessed: a bare `7.5` (kW or A?), `91 %` without `eff`. A voltage (`400 V`) is
+  refused: a motor has no voltage field. Other text (`IE3`, `see datasheet`) is kept as the note.
+- An unrated motor now gets the Checks warning **no-rating** (the demo's `-M01` too).
+
+To try it: place a 3-phase motor (Checks shows "no rating"), type `7,5kW 15.2A Y-D` as its rating
+(shown as `7.5 kW, 15.2 A, star-delta`, and the warning goes), then `7.5` (refused, asks kW or A).
+Nobody has tried it by hand yet.
+
+Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector
+(`…motor…`), and `rating::reader::motor` in ecad-electrical (automated, not tried by hand).
 
 ## Lane D: wires carry typed values
 

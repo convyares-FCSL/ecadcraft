@@ -632,6 +632,11 @@ impl Starter {
             }
             return t;
         }
+        // A motor's phases are its symbol's (design 072 §2.2).
+        if let DeviceType::Motor(_) = t {
+            use ecad_model::device::{Motor, Phases};
+            return DeviceType::Motor(Motor::empty(if self.key == K::Motor1 { Phases::Single } else { Phases::Three }));
+        }
         // A connector's family is its symbol's (a pin's: plain).
         if let DeviceType::Connector(_) = t {
             return DeviceType::Connector(Box::new(ecad_model::device::Connector::of_family(crate::connectors::family_of(self).unwrap_or_default())));
@@ -2841,8 +2846,8 @@ mod tests {
             ("pbnc", "5e0403a445f7a49f5473931d6570baf1dd138341cce9c16324073bb13f613f57"),
             ("sel", "6e5f96694929a0f5cfadcbd5dc0f6369f31e5a4c6ad5271786974417a8a10619"),
             ("lamp", "43370ffbca5feb202311b0a7f9308659fab76005655b2e016d2b45c2cd6a5df0"),
-            ("motor3", "079e25164ab9a2fb0b5f1c5b867d65728ec8f152c5becd62db9cd22c7326f414"),
-            ("motor1", "24661cd6e3ad00d4433ce1c31f45107b31e31b8c39730ee9af81d968939af812"),
+            ("motor3", "0b9ef31129c1c87535c7cb4cfe3a5614dd2997d2ad73fa31c8a5e0f8fd1defd7"),
+            ("motor1", "922fed0ffb4dbb4dc3521a05dcd9484801c994406e27ab2db4804d4a365b820d"),
             ("trafo", "b93505f2eab3aad42fbc8c2f647632effceeda5a6e1e06e634d3f53467dd92fd"),
             ("terminal", "c5c7b47bbddcd35973ad00f1dd8906db9602290ce0b955f0fd7ee1c2bf403a1f"),
             ("terminalpe", "d38f6429abbaf0e8e110505625b467b6531504a762e11205542230148f9f1c00"),

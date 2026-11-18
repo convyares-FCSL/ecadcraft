@@ -396,3 +396,44 @@ fn a_strip_fuse_position_rating_is_typed() {
     assert_eq!(h.doc().devices[&x1].value("rating.3"), None);
     assert!(no_fuse_rating(&mut h));
 }
+
+/// Step 3, Motor (design 072 §2.2 row 5, "Ratings"): the symbol says a motor's phases;
+/// `setprop rating` reads its nameplate into typed fields; a bare number is asked, a voltage
+/// refused, and other text kept as the note; an unrated motor is warned about.
+#[test]
+fn a_motor_rating_is_read_into_typed_fields() {
+    use ecad_model::Op;
+    use ecad_model::device::{DeviceType, Phases, Starting};
+    use ecad_model::units::{Amps, Watts};
+    let mut h = H::new(7209);
+    let phases = |h: &mut H, c: DeviceId| match &h.doc().devices[&c].device_type {
+        DeviceType::Motor(m) => Some(m.phases),
+        _ => None,
+    };
+    let no_rating = |h: &mut H| h.run("checks", json!({})).unwrap().to_string().contains("no-rating");
+    let m1: DeviceId = id(&crate::common::place(&mut h, "motor1", (200.0, 100.0)), "component");
+    assert_eq!(phases(&mut h, m1), Some(Phases::Single));
+    let m: DeviceId = id(&crate::common::place(&mut h, "motor3", (100.0, 100.0)), "component");
+    assert_eq!(phases(&mut h, m), Some(Phases::Three));
+    assert!(no_rating(&mut h));
+    let r = h.run("setprop", json!({"component": m.hex(), "key": "rating", "value": "7,5kW 15.2A Y-D"})).unwrap();
+    assert_eq!(r["message"], json!("Read: 7.5 kW, 15.2 A, star-delta."), "{r}");
+    assert_eq!(r["value"], json!("7.5 kW, 15.2 A, star-delta"));
+    let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());
+    assert!(matches!(ops.as_slice(), [Op::ModifyDevice { .. }]), "{ops:?}");
+    let DeviceType::Motor(got) = &h.doc().devices[&m].device_type else { panic!() };
+    assert_eq!((got.rated_power, got.rated_current, got.starting), (Some(Watts(7500.0)), Some(Amps(15.2)), Some(Starting::StarDelta)));
+    assert!(h.doc().devices[&m].properties.is_empty());
+    let r = h.run("setprop", json!({"component": m1.hex(), "key": "rating", "value": "0.37 kW"})).unwrap();
+    assert_eq!(r["value"], json!("0.37 kW"), "{r}");
+    assert!(!no_rating(&mut h));
+    // Ambiguous text is asked, never guessed; a voltage is refused; other text is the note.
+    let e = h.run("setprop", json!({"component": m.hex(), "key": "rating", "value": "7.5"})).unwrap_err();
+    assert!(e.contains("kW (rated power) or A"), "{e}");
+    let e = h.run("setprop", json!({"component": m.hex(), "key": "rating", "value": "7.5 kW 400 V"})).unwrap_err();
+    assert!(e.contains("no voltage"), "{e}");
+    let r = h.run("setprop", json!({"component": m.hex(), "key": "rating", "value": "IE3"})).unwrap();
+    assert_eq!(r["value"], json!("IE3"), "{r}");
+    assert!(h.doc().devices[&m].rating_note.is_some());
+    assert!(no_rating(&mut h));
+}

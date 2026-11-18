@@ -56,7 +56,7 @@ fn a_symbol_writes_its_type_unless_general() -> Result<(), serde_json::Error> {
     assert!(!serde_json::to_string(&general)?.contains("device_type"));
     let motor = Definition { device_type: DeviceType::of_group(DeviceGroup::Motor), ..general };
     let text = serde_json::to_string(&motor)?;
-    assert!(text.contains(r#""device_type":{"motor":{}}"#), "{text}");
+    assert!(text.contains(r#""device_type":{"motor":{"phases":"three"}}"#), "{text}");
     assert_eq!(serde_json::from_str::<Definition>(&text)?, motor);
     Ok(())
 }
@@ -426,6 +426,62 @@ fn a_strip_s_fuse_position_ratings_are_typed() {
     old.properties.insert("rating.3".into(), "4 A".into());
     for bad in [wild(Fuse::default()), wild(Fuse { rated_current: Some(Amps(-1.0)), ..Fuse::default() }), old] {
         let c: DeviceId = ids.fresh();
+        assert!(l.commit(Author::User, "wild", vec![Op::CreateDevice { id: c, device: bad }]).is_err());
+    }
+    let c: DeviceId = ids.fresh();
+    l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: d }]).unwrap();
+}
+
+/// Step 3, Motor (design 072 §2.2 row 5, "Ratings"): a motor's phases and nameplate are typed
+/// fields, shown from them; a motor with none of them set has no rating; a value out of range is
+/// refused.
+#[test]
+fn a_motor_s_rating_is_typed() {
+    use ecad_model::device::{Motor, Phases, RatingNote, Starting};
+    use ecad_model::units::{Amps, Percent, Watts};
+    let m = Motor {
+        rated_power: Some(Watts(7500.0)),
+        rated_current: Some(Amps(15.2)),
+        power_factor: Some(0.85),
+        efficiency: Some(Percent(91.0)),
+        starting: Some(Starting::StarDelta),
+        ..Motor::empty(Phases::Three)
+    };
+    let d = Device { device_type: DeviceType::Motor(m), ..Device::default() };
+    let json = serde_json::to_value(&d.device_type).unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!({"motor": {"phases": "three", "rated_power": 7500.0, "rated_current": 15.2, "power_factor": 0.85, "efficiency": 91.0, "starting": "star_delta"}})
+    );
+    assert_eq!(serde_json::from_value::<DeviceType>(json).unwrap(), d.device_type, "round-trips");
+    assert_eq!(d.value("rating").as_deref(), Some("7.5 kW, 15.2 A, cos φ 0.85, eff 91 %, star-delta"));
+    assert!(!d.has_no_rating());
+    for bad in [
+        serde_json::json!({"motor": {}}),
+        serde_json::json!({"motor": {"phases": "two"}}),
+        serde_json::json!({"motor": {"phases": "three", "starting": "wye"}}),
+        serde_json::json!({"motor": {"phases": "three", "voltage": 400.0}}),
+    ] {
+        assert!(serde_json::from_value::<DeviceType>(bad.clone()).is_err(), "{bad}");
+    }
+    // An unrated motor has no rating, also with a note.
+    let unrated = Device {
+        device_type: DeviceType::Motor(Motor::empty(Phases::Single)),
+        rating_note: Some(RatingNote::new("IE3").unwrap()),
+        ..Device::default()
+    };
+    assert!(unrated.has_no_rating());
+    assert_eq!(unrated.value("rating").as_deref(), Some("IE3"));
+    // The invariant: a value out of range or not a number is refused.
+    let mut ids = IdAllocator::seeded(18);
+    let mut l = Ledger::new(18);
+    for wild in [
+        Motor { power_factor: Some(1.5), ..Motor::empty(Phases::Three) },
+        Motor { rated_power: Some(Watts(f64::NAN)), ..Motor::empty(Phases::Three) },
+        Motor { efficiency: Some(Percent(0.0)), ..Motor::empty(Phases::Single) },
+    ] {
+        let c: DeviceId = ids.fresh();
+        let bad = Device { device_type: DeviceType::Motor(wild), ..Device::default() };
         assert!(l.commit(Author::User, "wild", vec![Op::CreateDevice { id: c, device: bad }]).is_err());
     }
     let c: DeviceId = ids.fresh();

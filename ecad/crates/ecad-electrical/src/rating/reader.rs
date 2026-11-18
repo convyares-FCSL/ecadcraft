@@ -26,8 +26,10 @@ use ecad_model::device::{Breaker, Fuse, FuseClass, Poles, Protection, Protection
 use ecad_model::device::{DeviceType, RatingNote};
 use ecad_model::units::{Amps, KiloAmps, MilliAmps};
 
+mod motor;
 mod sensor;
 mod switching;
+pub use motor::read_motor;
 pub use sensor::read_sensor;
 pub use switching::read_switching;
 
@@ -359,10 +361,18 @@ pub fn rated(t: &DeviceType, who: &str, text: Option<&str>) -> Result<(DeviceTyp
                 Read::NotARating => Ok((DeviceType::Sensor(s.unrated()), Some(note(text)?))),
             }
         }
+        DeviceType::Motor(m) => {
+            let Some(text) = text else { return Ok((DeviceType::Motor(m.unrated()), None)) };
+            match read_motor(m, text) {
+                Read::Rating(m) => Ok((DeviceType::Motor(m), None)),
+                Read::Ask(q) => Err(CmdError::refused(format!("{who}'s rating '{text}' needs {q}"))),
+                Read::Refused(m) => Err(CmdError::refused(format!("{who}'s rating '{text}': {m}."))),
+                Read::NotARating => Ok((DeviceType::Motor(m.unrated()), Some(note(text)?))),
+            }
+        }
         // Groups whose typed rating is still to come (lane 072 B step 3), and groups with none:
         // the text is the note.
         DeviceType::PowerSupply(_)
-        | DeviceType::Motor(_)
         | DeviceType::Load(_)
         | DeviceType::Indicator(_)
         | DeviceType::TerminalStrip(_)
