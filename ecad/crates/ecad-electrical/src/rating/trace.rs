@@ -70,14 +70,17 @@ pub fn load_side(key: StarterKey, label: &str) -> bool {
     }
 }
 
-/// The starter keys a component's symbols show.
+/// The starters a device's symbols show: which pins are on the load side is the symbol's (step 4's
+/// connection points replace it).
 fn starters(doc: &Document, c: DeviceId) -> Vec<&'static crate::symbols::Starter> {
     doc.representations_of(Subject::Device(c)).filter_map(|(_, r)| crate::devices::rep_starter(doc, r)).collect()
 }
 
-/// Whether component `c` shows a protective starter.
+/// Whether device `c` is an overcurrent protective device: its typed kind (design 072 §2.4), never
+/// its symbols.
 pub fn is_protective_component(doc: &Document, c: DeviceId) -> bool {
-    starters(doc, c).iter().any(|s| is_protective_key(s.key))
+    use crate::traits::DeviceKind;
+    doc.devices.get(&c).and_then(|d| d.device_type.as_protects()).is_some_and(|p| p.overcurrent())
 }
 
 /// The paired pin of a contact or RCD pole (IEC 60947): 1–2, 3–4, 5–6, 7–8 and their two-digit
@@ -257,7 +260,9 @@ pub fn named(doc: &Document, text: &str) -> Option<(DeviceId, Option<String>)> {
     if let Some(f) = &fuse {
         let has = crate::terminal_types::positions(doc, c).iter().any(|p| &p.label == f && p.ty.code == "fuse")
             || doc.terminals_of(c).any(|(_, x)| x.label.as_deref() == Some(f.as_str()))
-                && starters(doc, c).iter().any(|s| s.key.fuse_bank_ways().is_some());
+                && doc.devices.get(&c).is_some_and(
+                    |d| matches!(&d.device_type, ecad_model::DeviceType::Protection(p) if p.kind() == ecad_model::device::ProtectionKind::FuseBank),
+                );
         if !has {
             return None;
         }

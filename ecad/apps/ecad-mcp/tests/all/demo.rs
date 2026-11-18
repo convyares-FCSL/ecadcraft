@@ -126,8 +126,6 @@ fn the_demo_nets_and_wire_numbers() {
             "CoreOpen 2/E3 -W01 core GNYE is not assigned: slash or add a wire, or tick Not used.",
             // Design 072 §2.2: the demo's MCBs have no typed rating.
             "NoRating 1/D1 -Q01 has no rating",
-            // Design 072 §2.2: the demo's power supply has no typed rating either.
-            "NoRating 1/E1 -G01 has no rating",
             "NoRating 2/C1 -Q02 has no rating",
             "FunctionUnused 2/E1 -K01 is =PUMP, but none of its symbols is in =PUMP",
             // Design 072 §2.2: the demo's coil has no typed rating either.

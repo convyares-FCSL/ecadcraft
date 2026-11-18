@@ -50,7 +50,6 @@ use ecad_model::{CableId, CableMember, DeviceId, Document, End, PageId, Pt, Repr
 use crate::CmdError;
 use crate::outputs::PageCx;
 use crate::outputs::kept::Outputs;
-use crate::symbols::Kind;
 
 /// The strip property that offers positions (FP1).
 pub const OFFER_KEY: &str = "terminals";
@@ -70,14 +69,9 @@ pub const PE_KEY: crate::symbols::StarterKey = crate::symbols::StarterKey::Termi
 
 // ---------------------------------------------------------------- strips and terminals
 
-/// Whether `c` is a terminal strip: its definition is a terminal starter.
+/// Whether `c` is a terminal strip: its typed kind (design 072 §2.2), never its symbol.
 pub fn is_strip(doc: &Document, c: DeviceId) -> bool {
-    doc.devices
-        .get(&c)
-        .and_then(|x| x.definition)
-        .and_then(|d| doc.definitions.get(&d))
-        .and_then(crate::symbols::of_definition)
-        .is_some_and(|s| s.kind == Kind::Terminal)
+    doc.devices.get(&c).is_some_and(|x| matches!(x.device_type, ecad_model::DeviceType::TerminalStrip(_)))
 }
 
 /// Whether representation `r` draws a PE terminal.
