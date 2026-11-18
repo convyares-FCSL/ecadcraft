@@ -388,3 +388,93 @@ fn the_frame_view_follows_its_update_map() {
         assert_eq!(views.finish(&after, &ops, pending).frame_stale, want, "{what}");
     }
 }
+
+/// Whether `ops` make the frame of `page` (as `doc` shows it) stale, through `Views`.
+fn frame_stale_after(doc: &Document, page: PageId, ops: &[Op]) -> bool {
+    use ecad_electrical::derived::{EngineInputs, Views};
+    use ecad_electrical::frames::{FrameInput, FrameText};
+    let metrics = ecad_electrical::text_style::fonts::FixedWidth;
+    let input = FrameInput::with(doc, page, &ecad_model::book::Book::of(doc), FrameText::with(doc, &metrics));
+    let mut views = Views::new(EngineInputs { metrics: std::sync::Arc::new(metrics) });
+    views.frame_mut().show(page, input);
+    let after = crate::common::applied(doc, ops);
+    let pending = views.begin(doc, ops);
+    views.finish(&after, ops, pending).frame_stale
+}
+
+/// Step 4 (tester note 4), the rest of `FrameView`'s map: style records, the standard, the next
+/// page's number, and the Contents and Revisions pages' own maps (a schematic frame ignores both).
+#[test]
+fn the_frame_view_follows_the_rest_of_its_map() {
+    use ecad_model::{Page, PageNo, PageTitle, StandardHeader, StandardId, StyleCatalogue, StyleLayer, StyleRecord, StyleRef};
+    use serde_json::json;
+    let b = ecad_cadcraft::test_support::ProjectBuilder::new(645).page().page().page().build();
+    let (first, second, third) = (b.added_pages[0], b.added_pages[1], b.added_pages[2]);
+    let mut h = crate::common::H::from_built(b);
+    let contents: PageId = crate::common::id(&h.run("newpage", json!({"generated": "contents"})).unwrap(), "page");
+    let revisions: PageId = crate::common::id(&h.run("newpage", json!({"type": "front", "generated": "revisions"})).unwrap(), "page");
+    let doc = h.doc();
+    let page = |p: PageId| doc.pages[&p].clone();
+    let renumber = |p: PageId| Op::ModifyPage { id: p, before: page(p), after: Page { number: PageNo::parse("77"), ..page(p) } };
+    let retitle = |p: PageId| Op::ModifyPage { id: p, before: page(p), after: Page { title: PageTitle::new("Other").unwrap(), ..page(p) } };
+    let style = |catalogue| Op::SetStyle {
+        layer: StyleLayer::Project,
+        catalogue,
+        id: StyleRef::parse("mine").unwrap(),
+        before: None,
+        after: Some(StyleRecord::default()),
+    };
+    let current = doc.standard.as_ref().map(|s| s.header.clone());
+    let other = Some(StandardHeader { id: StandardId(99), name: "S".into(), based_on: "iec".into(), origin: None });
+    let note = Op::SetProperty { object: ObjectRef::Project, key: "note".into(), before: None, after: Some("x".into()) };
+    let cases: Vec<(&str, PageId, Vec<Op>, bool)> = vec![
+        ("a frame style record", first, vec![style(StyleCatalogue::Frame)], true),
+        ("a text style record", first, vec![style(StyleCatalogue::Text)], true),
+        ("a wire style record", first, vec![style(StyleCatalogue::Wire)], false),
+        ("the standard switched", first, vec![Op::SetStandard { before: current.clone(), after: other }], true),
+        ("the standard unchanged", first, vec![Op::SetStandard { before: current.clone(), after: current.clone() }], false),
+        ("the next page renumbered", first, vec![renumber(second)], true),
+        ("a later page renumbered", first, vec![renumber(third)], false),
+        ("Contents: another page retitled", contents, vec![retitle(third)], true),
+        ("a schematic: another page retitled", first, vec![retitle(third)], false),
+        ("Revisions: a project property", revisions, vec![note.clone()], true),
+        ("a schematic: a project property", first, vec![note], false),
+    ];
+    for (what, shown, ops, want) in cases {
+        assert_eq!(frame_stale_after(&doc, shown, &ops), want, "{what}");
+    }
+}
+
+/// Step 4 (tester note 4): a commit refused after `begin` drops its `Pending`, which carries
+/// nothing into the next commit; nothing is set before `finish`.
+#[test]
+fn a_dropped_pending_leaves_the_frame_alone() {
+    use ecad_electrical::derived::{EngineInputs, Views};
+    use ecad_electrical::frames::{FrameInput, FrameText};
+    let b = ecad_cadcraft::test_support::ProjectBuilder::new(646).page().build();
+    let page = b.added_pages[0];
+    let mut h = crate::common::H::from_built(b);
+    let doc = h.doc();
+    let metrics = ecad_electrical::text_style::fonts::FixedWidth;
+    let input = FrameInput::with(&doc, page, &ecad_model::book::Book::of(&doc), FrameText::with(&doc, &metrics));
+    let mut views = Views::new(EngineInputs { metrics: std::sync::Arc::new(metrics) });
+    views.frame_mut().show(page, input);
+    let touching = [Op::SetProperty { object: ObjectRef::Page(page), key: "note".into(), before: None, after: Some("x".into()) }];
+    drop(views.begin(&doc, &touching));
+    let pending = views.begin(&doc, &[]);
+    assert!(!views.finish(&doc, &[], pending).frame_stale);
+}
+
+/// Step 4, D1: a drawing commit now runs the frame's map too; a drawn line is not on it, so the
+/// frame is not worked out again (today's drawing commits never reach the map: items,
+/// representations and the numbering pass's wire numbers only).
+#[test]
+fn a_drawing_commit_runs_the_frame_map_and_leaves_the_frame() {
+    let b = ecad_cadcraft::test_support::ProjectBuilder::new(647).page().build();
+    let mut h = crate::common::H::from_built(b);
+    let builds = h.p(|p| p.frame_builds);
+    let head = h.head();
+    h.cmdline("line 0,100 40,100 ");
+    assert_eq!(h.head(), head + 1, "the line is a drawing commit");
+    assert_eq!(h.p(|p| p.frame_builds), builds, "a line is not on the frame's map");
+}
