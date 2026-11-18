@@ -192,7 +192,7 @@ fn fixture(seed: u64) -> R {
     let category = own_id(
         &h.run(
             "setstyle",
-            json!({"catalogue": "wire", "new": true, "name": "Synth power", "fields": {"cross_section": 2.5, "rated_current": 33, "rated_at": 20, "max_temperature": 80}}),
+            json!({"catalogue": "wire", "new": true, "name": "Synth power", "fields": {"size": 2.5, "rated_current": 33, "rated_at": 20, "max_temperature": 80}}),
         )
         .unwrap(),
     );
@@ -454,11 +454,8 @@ fn t03_missing_table_data_says_what_is_missing() {
     assert!(rows.iter().any(|r| r.contains("no grouping factor for 5 circuits, E")), "{rows:?}");
     // A cable type with class 2: no resistance row → no volt drop.
     let ct = own_id(
-        &h.run(
-            "setstyle",
-            json!({"catalogue": "cable", "new": true, "name": "Synth class 2", "fields": {"cross_section": 1.5, "conductor_class": "2"}}),
-        )
-        .unwrap(),
+        &h.run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth class 2", "fields": {"size": 1.5, "conductor_class": "2"}}))
+            .unwrap(),
     );
     h.run("rating", json!({"cable": "-W01", "grouped": 2, "cable_type": ct})).unwrap();
     let rows = rows_text(&mut h, "rating-no-table");
@@ -570,7 +567,7 @@ fn v02_volt_drop_over_the_limit_names_the_next_size() {
     let ct = own_id(
         &h.run(
             "setstyle",
-            json!({"catalogue": "cable", "new": true, "name": "Synth sensor 0.75", "fields": {"cross_section": 0.75, "conductor_class": "5", "max_temperature": 70}}),
+            json!({"catalogue": "cable", "new": true, "name": "Synth sensor 0.75", "fields": {"size": 0.75, "conductor_class": "5", "max_temperature": 70}}),
         )
         .unwrap(),
     );
@@ -592,7 +589,7 @@ fn v02_volt_drop_over_the_limit_names_the_next_size() {
         refused(&mut h, "rating", json!({"cable": "-W12", "vd_limit": bad}));
     }
     // Above 16 mm²: not computed.
-    let big = own_id(&h.run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth 25", "fields": {"cross_section": 25}})).unwrap());
+    let big = own_id(&h.run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth 25", "fields": {"size": 25}})).unwrap());
     h.run("rating", json!({"cable": "-W12", "cable_type": big})).unwrap();
     let r = cable_r(&mut h, "-W12");
     let why = format!("{r} {:?}", rows_text(&mut h, "rating-no-table"));

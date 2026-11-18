@@ -7,8 +7,8 @@
 use std::collections::BTreeSet;
 
 use ecad_model::sheet::{FRAME_CATALOGUE, FRAME_SHEET_FIELD, SheetSpec};
-use ecad_model::style::{StyleLayer, StyleRecord, StyleRef, is_name};
-use ecad_model::title_block::{StyleBody, TitleBlockLayout};
+use ecad_model::style::{StyleBody, StyleLayer, StyleRef, is_name};
+use ecad_model::title_block::TitleBlockLayout;
 use ecad_model::{Document, IdAllocator, Op};
 
 use crate::cmd::style::{FieldInput, STANDARD_FIRST, STYLE_NEEDS_NAME, fields};
@@ -105,9 +105,9 @@ pub fn plan_edit(doc: &Document, id: &StyleRef, edit: FrameEdit) -> Result<EditP
             return Err(name_taken(n));
         }
     }
-    let mut after = styles::with_fields(before.as_ref(), rename, &fields);
-    if let Some(b) = edit.body {
-        after.body = Some(StyleBody::title_block(b));
+    let mut after = styles::with_fields(FRAME_CATALOGUE, before.as_ref(), rename, &fields)?;
+    if let (Some(b), StyleBody::Frame(f)) = (edit.body, &mut after.body) {
+        f.title_block = Some(b);
     }
     styles::check_record(doc, cat, id, layer, &after)?;
     let name = rename.map_or(current, str::to_string);
@@ -192,18 +192,21 @@ pub struct NewFrame<'a> {
 /// A record the catalogue refuses.
 pub fn plan_new(doc: &Document, ids: &mut IdAllocator, new: NewFrame<'_>) -> Result<(Vec<Op>, StyleRef), CmdError> {
     let cat = catalogue();
-    let mut rec = StyleRecord::new(new.name, Default::default());
+    let mut set: Vec<(String, Option<String>)> = Vec::new();
     if let Some(src) = new.source {
         for f in cat.fields {
             let v = styles::field(doc, cat, src, f, None).text();
             if !v.is_empty() {
-                rec.fields.insert(f.key.to_string(), v);
+                set.push((f.key.to_string(), Some(v)));
             }
         }
     }
-    rec.fields.insert(FRAME_SHEET_FIELD.into(), new.spec.text());
-    rec.fields.insert("block".into(), "bottom_right".into());
-    rec.body = Some(StyleBody::title_block(new.layout));
+    set.push((FRAME_SHEET_FIELD.into(), Some(new.spec.text())));
+    set.push(("block".into(), Some("bottom_right".into())));
+    let mut rec = styles::with_fields(FRAME_CATALOGUE, None, Some(&new.name), &set)?;
+    if let StyleBody::Frame(f) = &mut rec.body {
+        f.title_block = Some(new.layout);
+    }
     let id = StyleRef::Own(ids.fresh::<u128>());
     styles::check_record(doc, cat, &id, new.layer, &rec)?;
     let ops = vec![Op::SetStyle { layer: new.layer, catalogue: FRAME_CATALOGUE, id: id.clone(), before: None, after: Some(rec) }];

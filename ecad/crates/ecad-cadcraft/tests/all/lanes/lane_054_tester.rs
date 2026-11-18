@@ -497,7 +497,7 @@ fn ac6_a_types_sheet_reaches_its_pages_and_undo_restores() {
 }
 
 /// FP3, §3.1: the chain page `sheet` → type's stored sheet (project record, then standard record)
-/// → `settings.sheet()` → A3; a malformed stored sheet falls through and Checks has `page-type-field`.
+/// → `settings.sheet()` → A3; a malformed stored sheet does not read (design 072 §8).
 #[test]
 fn fp3_sheet_of_reads_the_type_record_then_falls_through() {
     let (mut h, p) = pages(0x54_0602, 2);
@@ -518,34 +518,20 @@ fn fp3_sheet_of_reads_the_type_record_then_falls_through() {
     assert!(sheet_text(&mut h, p[1]).starts_with("A1"), "`project`: settings.sheet()");
 }
 
-/// FP3: a stored type record whose `sheet` does not parse or is out of limits (`A0 999x999`, a
-/// 10 000-character text) reads as absent: the page keeps the project's sheet, nothing panics,
-/// `page-type-field` reports it; commands refuse writing it.
+/// FP3, design 072 §8: a type record whose `sheet` does not parse or is out of limits (`A0
+/// 999x999`, a 10 000-character text) does not read; commands refuse writing it.
 #[test]
 fn fp3_a_malformed_type_sheet_reads_as_absent() {
     let (mut h, p) = pages(0x54_0603, 1);
     refused(&mut h, "setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"sheet": "A0 999x999"}}));
     refused(&mut h, "setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"holds": "x"}}));
+    // Design 072 §8: a malformed value in a file is a read error (the project opens read-only),
+    // so the pages keep their sheet.
     for bad in ["A0 999x999", "A9", &"x".repeat(10_000), "-1x-1", "nan"] {
-        let sch = ecad_model::style::StyleRef::builtin("schematic").unwrap();
-        let before = h.doc().styles.get(&ecad_model::StyleCatalogue::Page).and_then(|m| m.get(&sch)).cloned();
-        inject(
-            &mut h,
-            vec![ecad_model::Op::SetStyle {
-                layer: ecad_model::style::StyleLayer::Project,
-                catalogue: ecad_model::StyleCatalogue::Page,
-                id: ecad_model::style::StyleRef::builtin("schematic").unwrap(),
-                before,
-                after: Some(ecad_model::style::StyleRecord {
-                    fields: [("sheet".to_string(), bad.to_string()), ("holds".to_string(), "x".to_string())].into_iter().collect(),
-                    ..Default::default()
-                }),
-            }],
-        );
-        assert!(sheet_text(&mut h, p[0]).starts_with("A3"), "{bad:.20}: falls through");
-        let rows = checks_of(&mut h, "page-type-field");
-        assert!(!rows.is_empty(), "{bad:.20}: reported");
+        let hostile = json!({"name": "", "body": {"page": {"sheet": bad, "holds": "x"}}});
+        assert!(serde_json::from_value::<ecad_model::style::StyleRecord>(hostile).is_err(), "{bad:.20}");
     }
+    assert!(sheet_text(&mut h, p[0]).starts_with("A3"));
 }
 
 /// FP3 round trip: a type's sheet survives save and reopen (v2 file), and every page resolves the
@@ -902,7 +888,7 @@ fn ac15_ten_thousand_categories_in_use_are_bounded() {
     let (mut h, cover, sch) = with_cover(0x54_1502);
     h.activate(sch);
     for i in 0..10_000u32 {
-        let id = h.run("setstyle", json!({"catalogue": "wire", "new": true, "name": format!("C{i}"), "copy_of": "dc24", "fields": {"colour": "BU", "cross_section": format!("{}.5", i % 50)}}));
+        let id = h.run("setstyle", json!({"catalogue": "wire", "new": true, "name": format!("C{i}"), "copy_of": "dc24", "fields": {"colours": "BU", "size": format!("{}.5", i % 50)}}));
         let Ok(id) = id else { break };
         let w = h.run("wire", json!({"points": [[0.0, i as f64 * 0.01], [10.0, i as f64 * 0.01]]})).unwrap();
         h.run("category", json!({"conductor": s(&w["conductor"]), "value": s(&id["id"])})).ok();
