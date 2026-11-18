@@ -520,3 +520,57 @@ fn a_load_s_rating_is_typed() {
     let c: DeviceId = ids.fresh();
     l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: d }]).unwrap();
 }
+
+/// Step 3, Indicator (design 072 §2.2 row 7, "Ratings"): an indicator's signal is stored, and its
+/// colour, rated voltage and power are typed fields, shown from them; an indicator with none of
+/// them has no rating; a value out of range is refused.
+#[test]
+fn an_indicator_s_rating_is_typed() {
+    use ecad_model::device::{Indicator, IndicatorColour, RatingNote, SignalType};
+    use ecad_model::units::{Current, RatedVoltage, Volts, Watts};
+    let i = Indicator {
+        colour: Some(IndicatorColour::Red),
+        rated_voltage: Some(RatedVoltage { volts: Volts(24.0), current: Current::Dc }),
+        power: Some(Watts(2.0)),
+        ..Indicator::empty(SignalType::Flashing)
+    };
+    let d = Device { device_type: DeviceType::Indicator(i), ..Device::default() };
+    let json = serde_json::to_value(&d.device_type).unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!({"indicator": {"signal": "flashing", "colour": "red", "rated_voltage": {"volts": 24.0, "current": "dc"}, "power": 2.0}})
+    );
+    assert_eq!(serde_json::from_value::<DeviceType>(json).unwrap(), d.device_type, "round-trips");
+    assert_eq!(serde_json::to_value(DeviceType::of_group(DeviceGroup::Indicator)).unwrap(), serde_json::json!({"indicator": {"signal": "steady"}}));
+    assert_eq!(d.value("rating").as_deref(), Some("red, flashing, 24 V DC, 2 W"));
+    assert!(!d.has_no_rating());
+    for bad in [
+        serde_json::json!({"indicator": {}}),
+        serde_json::json!({"indicator": {"signal": "blinking"}}),
+        serde_json::json!({"indicator": {"signal": "steady", "colour": "black"}}),
+        serde_json::json!({"indicator": {"signal": "steady", "rated_voltage": 24.0}}),
+    ] {
+        assert!(serde_json::from_value::<DeviceType>(bad.clone()).is_err(), "{bad}");
+    }
+    // An unrated indicator has no rating, also with a note.
+    let unrated = Device {
+        device_type: DeviceType::Indicator(Indicator::empty(SignalType::Steady)),
+        rating_note: Some(RatingNote::new("LED").unwrap()),
+        ..Device::default()
+    };
+    assert!(unrated.has_no_rating());
+    assert_eq!(unrated.value("rating").as_deref(), Some("LED"));
+    // The invariant: a value out of range or not a number is refused.
+    let mut ids = IdAllocator::seeded(16);
+    let mut l = Ledger::new(16);
+    for wild in [
+        Indicator { power: Some(Watts(0.0)), ..Indicator::empty(SignalType::Steady) },
+        Indicator { rated_voltage: Some(RatedVoltage { volts: Volts(f64::NAN), current: Current::Ac }), ..Indicator::empty(SignalType::Steady) },
+    ] {
+        let c: DeviceId = ids.fresh();
+        let bad = Device { device_type: DeviceType::Indicator(wild), ..Device::default() };
+        assert!(l.commit(Author::User, "wild", vec![Op::CreateDevice { id: c, device: bad }]).is_err());
+    }
+    let c: DeviceId = ids.fresh();
+    l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: d }]).unwrap();
+}

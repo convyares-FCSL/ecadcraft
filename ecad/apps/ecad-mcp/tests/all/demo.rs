@@ -130,6 +130,9 @@ fn the_demo_nets_and_wire_numbers() {
             "FunctionUnused 2/E1 -K01 is =PUMP, but none of its symbols is in =PUMP",
             // Design 072 §2.2: the demo's coil has no typed rating either.
             "NoRating 2/E1 -K01 has no rating",
+            // Design 072 §2.2: the demo's lamps have no typed rating either.
+            "NoRating 2/E2 -H01 has no rating",
+            "NoRating 3/E1 -H02 has no rating",
             // Design 072 §2.2: the demo's motor has no typed rating either.
             "NoRating 3/E3 -M01 has no rating",
             "LonelyContinuation 2/D3 L1",

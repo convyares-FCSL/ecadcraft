@@ -148,9 +148,8 @@ impl DeviceType {
             DeviceType::Switching(s) => s.operator_kind() != OperatorKind::Manual,
             // A contact or a thermocouple has no supply: only a powered sensor is warned about.
             DeviceType::Sensor(s) => s.output.is_powered(),
-            DeviceType::Motor(_) | DeviceType::Load(_) => true,
+            DeviceType::Motor(_) | DeviceType::Load(_) | DeviceType::Indicator(_) => true,
             DeviceType::PowerSupply(_)
-            | DeviceType::Indicator(_)
             | DeviceType::TerminalStrip(_)
             | DeviceType::Connector(_)
             | DeviceType::PlcRack(_)
@@ -167,8 +166,8 @@ impl DeviceType {
             DeviceType::Sensor(s) => (!s.is_unrated()).then(|| s.to_string()),
             DeviceType::Motor(m) => (!m.is_unrated()).then(|| m.to_string()),
             DeviceType::Load(l) => (!l.is_unrated()).then(|| l.to_string()),
+            DeviceType::Indicator(i) => (!i.is_unrated()).then(|| i.to_string()),
             DeviceType::PowerSupply(_)
-            | DeviceType::Indicator(_)
             | DeviceType::TerminalStrip(_)
             | DeviceType::Connector(_)
             | DeviceType::PlcRack(_)
@@ -185,14 +184,12 @@ impl DeviceType {
             DeviceType::Sensor(s) => DeviceType::Sensor(s.unrated()),
             DeviceType::Motor(m) => DeviceType::Motor(m.unrated()),
             DeviceType::Load(l) => DeviceType::Load(l.unrated()),
+            DeviceType::Indicator(i) => DeviceType::Indicator(i.unrated()),
             // A strip's ratings are its fuse positions'.
             DeviceType::TerminalStrip(_) => DeviceType::TerminalStrip(TerminalStrip::default()),
-            DeviceType::PowerSupply(_)
-            | DeviceType::Indicator(_)
-            | DeviceType::Connector(_)
-            | DeviceType::PlcRack(_)
-            | DeviceType::PlcModule(_)
-            | DeviceType::General => self.clone(),
+            DeviceType::PowerSupply(_) | DeviceType::Connector(_) | DeviceType::PlcRack(_) | DeviceType::PlcModule(_) | DeviceType::General => {
+                self.clone()
+            }
         }
     }
 
@@ -206,7 +203,8 @@ impl DeviceType {
             DeviceType::TerminalStrip(s) => s.problem(),
             DeviceType::Motor(m) => m.problem(),
             DeviceType::Load(l) => l.problem(),
-            DeviceType::PowerSupply(_) | DeviceType::Indicator(_) | DeviceType::PlcRack(_) | DeviceType::PlcModule(_) | DeviceType::General => None,
+            DeviceType::Indicator(i) => i.problem(),
+            DeviceType::PowerSupply(_) | DeviceType::PlcRack(_) | DeviceType::PlcModule(_) | DeviceType::General => None,
         }
     }
 
@@ -236,10 +234,8 @@ pub use motor::{Motor, Phases, Starting};
 pub mod load;
 pub use load::Load;
 
-/// An indicator (group 7). Its fields come with lane B step 3.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Indicator {}
+pub mod indicator;
+pub use indicator::{Indicator, IndicatorColour, SignalType};
 
 pub mod terminal_strip;
 pub use terminal_strip::{PositionLabel, TerminalStrip};
