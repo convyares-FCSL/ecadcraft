@@ -117,3 +117,18 @@ fn a_location_style_reads_its_typed_fields_only() {
         assert!(serde_json::from_value::<StyleRecord>(w).is_err(), "{k}");
     }
 }
+
+/// Rating tables (design 072 §8): the source is one line, the rows validated text; strict read.
+#[test]
+fn a_rating_table_reads_its_typed_fields_only() {
+    use ecad_model::style::RatingTable;
+    use ecad_model::text::{LongText, Text};
+    let t = RatingTable { source: Text::new("made up").ok(), rows: LongText::new("kind,a\ncapacity,1").ok() };
+    let v = serde_json::to_value(StyleRecord::new("T1", StyleBody::RatingTable(t.clone()))).unwrap();
+    assert_eq!(serde_json::from_value::<StyleRecord>(v.clone()).unwrap().body, StyleBody::RatingTable(t));
+    for (k, bad) in [("source", serde_json::json!("two\nlines")), ("rows", serde_json::json!("a\u{202e}b")), ("rated", serde_json::json!(1))] {
+        let mut w = v.clone();
+        w["body"]["ratingtable"][k] = bad;
+        assert!(serde_json::from_value::<StyleRecord>(w).is_err(), "{k}");
+    }
+}
