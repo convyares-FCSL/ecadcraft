@@ -132,9 +132,18 @@ pub fn plan(doc: &Document, ids: &mut IdAllocator, objects: &[DeviceId], prop: &
                 Aspect::Function => Aspect::Location,
                 Aspect::Location => Aspect::Function,
             };
-            if !comp.properties.contains_key(other.property()) {
+            if designations::device_key(comp, other).is_none() {
                 return Err(CmdError::refused(crate::locations::NO_VALUE));
             }
+        }
+        if prop == a.property() {
+            // A typed value is set by hand: fixed (design 072 §6.3).
+            let after = designations::with_device_key(comp, a, key.as_deref(), true);
+            if after != *comp {
+                out.ops.push(Op::ModifyDevice { id: *c, before: comp.clone(), after });
+                out.changed += 1;
+            }
+            continue;
         }
         let before = comp.properties.get(prop).cloned();
         if before != key {
@@ -200,7 +209,7 @@ pub fn plan_set(doc: &Document, ids: &mut IdAllocator, objects: &[DeviceId], pro
         && let Some(lb) = doc.representations_of(ecad_model::Subject::Device(*b)).find_map(|(rid, r)| crate::locations::box_of_rep(doc, rid, r))
     {
         let spots = proposals::spots_inside(doc, &lb);
-        let proposed = proposals::plan_change(doc, a, &spots, lb.key(a), key, code, &proposals::Mode::Propose);
+        let proposed = proposals::plan_change(doc, &out.ops, a, &spots, lb.key(a), key, code, &proposals::Mode::Propose);
         out.ops.extend(proposed.ops);
         out.conflicts = proposed.conflicts.clone();
         out.proposals = Some(proposals::Planned { set: proposed.set, conflicts: proposed.conflicts, ..Default::default() });

@@ -1147,9 +1147,9 @@ fn designation_checks(places: &mut Places<'_>, c: DeviceId, out: &mut Vec<Check>
     } else {
         crate::reps::goto_place_in(places, c).map_or((None, None), |(p, a)| (Some(p), a))
     };
-    for (k, v) in &comp.properties {
-        let Some(a) = Aspect::of_property(k) else { continue };
-        if d::code_of(doc, a, v).is_none() {
+    for (k, v) in d::device_keys(comp) {
+        let Some(a) = Aspect::of_property(&k) else { continue };
+        if d::code_of(doc, a, &v).is_none() {
             out.push(Check {
                 kind: Kind::DesignationMissing,
                 page,
@@ -1429,6 +1429,21 @@ impl Scope {
                     for (t, _) in doc.terminals_of(*id) {
                         node(self, Node::Terminal(t));
                     }
+                    // Design 072 §6.3: a device's location and function are fields; a box's are
+                    // contexts for the devices on its pages, a device's are where the cables at its
+                    // points are drawn (as the `SetProperty` arm below).
+                    if before.location != after.location || before.function != after.function {
+                        if crate::locations::is_box(doc, *id) {
+                            for p in doc.representations_of(Subject::Device(*id)).map(|(_, r)| r.page).collect::<Vec<_>>() {
+                                self.devices_on(doc, p);
+                            }
+                        }
+                        for (t, _) in doc.terminals_of(*id) {
+                            for (w, _) in doc.ends_at(t) {
+                                self.cables.extend(doc.cables_of(w));
+                            }
+                        }
+                    }
                 }
                 Op::SetProperty { object: ObjectRef::Device(c), key, before, after } => {
                     // Brief 052 (design 052 §6): a box's value is a context for the devices on its
@@ -1567,7 +1582,7 @@ impl Scope {
                             // Brief 059: the cables planning an end there (their rows name its code).
                             self.cables.extend(crate::cables::planning(doc, entry));
                             for (c, x) in &doc.devices {
-                                if x.properties.iter().any(|(k, v)| Aspect::of_property(k).is_some() && v == entry) {
+                                if crate::designations::device_keys(x).iter().any(|(_, v)| v == entry) {
                                     self.devices.insert(*c);
                                 }
                             }

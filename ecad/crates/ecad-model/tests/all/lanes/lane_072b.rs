@@ -153,3 +153,40 @@ fn the_text_fields_are_fields_not_properties() {
     let hidden = r#"{"tag":null,"tag_fixed":false,"description":"Pu\u202emp","properties":{},"definition":null,"device_type":"general"}"#;
     assert!(serde_json::from_str::<Device>(hidden).is_err(), "a bidi character in a description does not read");
 }
+
+/// Design 072 §6.3 (step 2c): a device's location and function are list ids with a `fixed` flag;
+/// a device's bag never holds `location` or `function`, `SetProperty` refuses them and their flags,
+/// and `setprop`'s keys read and set the fields.
+#[test]
+fn location_and_function_are_fields_with_fixed() {
+    use ecad_model::{FunctionId, LocationId};
+    let mut ids = IdAllocator::seeded(13);
+    let mut l = Ledger::new(13);
+    let c: DeviceId = ids.fresh();
+    for key in ["location", "function"] {
+        let mut bagged = Device::default();
+        bagged.properties.insert(key.into(), "0".repeat(32));
+        assert!(l.commit(Author::User, "bag", vec![Op::CreateDevice { id: c, device: bagged }]).is_err(), "{key}: a bag holding it is refused");
+    }
+    l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: Device::default() }]).unwrap();
+    for key in ["location", "location_fixed", "function", "function_fixed"] {
+        let op = Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key: key.into(), before: None, after: Some("x".into()) };
+        assert!(matches!(l.commit(Author::User, "set", vec![op]), Err(ModelError::Precondition(_))), "{key}");
+    }
+    // `set_value` reads an entry's id; a value set that way is typed, so fixed.
+    let loc = LocationId(0xabc);
+    let mut d = Device::default();
+    d.set_value("location", Some(&loc.hex())).unwrap();
+    d.set_value("function", Some(&FunctionId(0xdef).hex())).unwrap();
+    assert_eq!((d.location, d.location_fixed, d.function, d.function_fixed), (Some(loc), true, Some(FunctionId(0xdef)), true));
+    assert!(d.properties.is_empty());
+    assert_eq!(d.value("location"), Some(loc.hex()));
+    assert_eq!(d.value("location_fixed").as_deref(), Some("yes"));
+    let unfixed = Device { location_fixed: false, ..d.clone() };
+    assert_eq!(unfixed.value("location_fixed"), None);
+    assert!(d.only_place_differs(&Device::default()) && !d.only_text_differs(&Device::default()));
+    let json = serde_json::to_value(&d).unwrap();
+    assert_eq!(json["location_fixed"], true);
+    let read: Device = serde_json::from_value(json).unwrap();
+    assert_eq!(read, d, "the fields round-trip");
+}

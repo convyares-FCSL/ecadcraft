@@ -475,6 +475,7 @@ pub fn touches(doc: &Document, ops: &[Op]) -> bool {
         Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Device(_), key, .. } => {
             codes_on && crate::designations::Aspect::of_property(key).is_some()
         }
+        Op::ModifyDevice { before, after, .. } => codes_on && (before.location != after.location || before.function != after.function),
         Op::ModifyProject { before, after } => {
             codes_on && crate::designations::Aspect::ALL.into_iter().any(|a| crate::designations::shown_changed(before, after, a))
         }

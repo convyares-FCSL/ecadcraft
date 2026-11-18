@@ -1306,7 +1306,7 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
                             return None;
                         }
                         for (c, x) in &doc.devices {
-                            if x.properties.iter().any(|(k, v)| Aspect::of_property(k).is_some() && *v == entry) {
+                            if crate::designations::device_keys(x).iter().any(|(_, v)| *v == entry) {
                                 out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
                             }
                         }

@@ -261,7 +261,7 @@ pub(crate) fn place_level(
             ops.extend(l.ops.clone());
         }
         // Brief 052d (design 052 §5.3): the place proposes for the strip.
-        let proposed = crate::draw::proposals::plan_place(p, modes, c, page, origin, None).map_err(CmdError::refused)?;
+        let proposed = crate::draw::proposals::plan_place(p, &ops, modes, c, page, origin, None).map_err(CmdError::refused)?;
         ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", "Place terminal level", ops)?;
         p.last_placed = Some((starter.key.to_string(), c));

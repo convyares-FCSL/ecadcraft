@@ -85,7 +85,7 @@ pub(crate) fn place_channel(
             ops.extend(land.ops);
         }
         // Brief 052d (design 052 §5.3): the place proposes for the card.
-        let proposed = crate::draw::proposals::plan_place(p, modes, card, page, pl.origin, None).map_err(CmdError::refused)?;
+        let proposed = crate::draw::proposals::plan_place(p, &ops, modes, card, page, pl.origin, None).map_err(CmdError::refused)?;
         ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", "Place channel", ops)?;
         p.last_placed = Some((starter.key.to_string(), card));

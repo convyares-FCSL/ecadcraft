@@ -231,6 +231,10 @@ pub const WIRE_NUMBER_FIXED: PropKey = PropKey(crate::connectivity::WIRE_NUMBER_
 pub const FUNCTION: PropKey = PropKey(crate::book::FUNCTION_KEY);
 /// The `+` location code of a page or the project.
 pub const LOCATION: PropKey = PropKey(crate::book::LOCATION_KEY);
+/// Whether a device's location was set by hand (yes/no).
+pub const LOCATION_FIXED: PropKey = PropKey(crate::book::LOCATION_FIXED_KEY);
+/// Whether a device's function was set by hand (yes/no).
+pub const FUNCTION_FIXED: PropKey = PropKey(crate::book::FUNCTION_FIXED_KEY);
 
 /// The fixed keys the program stores outside the defaults registry. One key per line; lanes add or
 /// remove lines.
@@ -239,8 +243,8 @@ pub const KEYS: &[KeySpec] = &[
     KeySpec { key: TAG, area: Area::Identity, holders: &[Holder::Cable], value: ValueSpec::Ruled },
     KeySpec { key: TAG_FIXED, area: Area::Identity, holders: &[Holder::Cable], value: ValueSpec::Flag },
     KeySpec { key: NUMBERING_PROVISIONAL, area: Area::Numbering, holders: &[Holder::Project], value: ValueSpec::Flag },
-    KeySpec { key: FUNCTION, area: Area::Designation, holders: &[Holder::Page, Holder::Project, Holder::Device], value: ValueSpec::Ruled },
-    KeySpec { key: LOCATION, area: Area::Designation, holders: &[Holder::Page, Holder::Project, Holder::Device], value: ValueSpec::Ruled },
+    KeySpec { key: FUNCTION, area: Area::Designation, holders: &[Holder::Page, Holder::Project], value: ValueSpec::Ruled },
+    KeySpec { key: LOCATION, area: Area::Designation, holders: &[Holder::Page, Holder::Project], value: ValueSpec::Ruled },
 ];
 
 /// The key families. One family per line.
@@ -270,8 +274,7 @@ pub const RESERVED: &[PropKey] = &[
 ];
 
 /// Keys that became struct fields on one holder only (design 072 §5.3): a page's and the
-/// project's location and function are ids now; a device's stay in its bag until lane B moves them.
-/// A device's own fields are [`DEVICE_FIELDS`].
+/// project's location and function are ids now. A device's own fields are [`DEVICE_FIELDS`].
 #[rustfmt::skip]
 pub const RESERVED_ON: &[(Holder, PropKey)] = &[
     (Holder::Page, LOCATION),
@@ -311,7 +314,8 @@ pub fn is_reserved(key: &str) -> bool {
 /// Keys that became fields of [`crate::Device`] (design 072 §2.1) while other holders still keep
 /// them in their bags (a cable's `tag` until lane D): a device's bag holding one is a read error,
 /// and `SetProperty` refuses them on a device.
-pub const DEVICE_FIELDS: &[PropKey] = &[TAG, TAG_FIXED, DESCRIPTION, PART_NUMBER, MAKER, ARTICLE_NUMBER, TYPE_TEXT];
+pub const DEVICE_FIELDS: &[PropKey] =
+    &[TAG, TAG_FIXED, DESCRIPTION, PART_NUMBER, MAKER, ARTICLE_NUMBER, TYPE_TEXT, LOCATION, LOCATION_FIXED, FUNCTION, FUNCTION_FIXED];
 
 /// The area `key` belongs to.
 ///

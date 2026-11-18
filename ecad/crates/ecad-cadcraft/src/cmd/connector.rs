@@ -250,7 +250,7 @@ pub(crate) fn place_half(
         }
         let label = if new { format!("Place connector {tag_text}") } else { format!("Add symbol to {tag_text}") };
         // Brief 052d (design 052 §5.3): the place proposes; a half's conflict may answer Half.
-        let proposed = crate::draw::proposals::plan_place(p, modes, c, page, origin, starter.side()).map_err(CmdError::refused)?;
+        let proposed = crate::draw::proposals::plan_place(p, &ops, modes, c, page, origin, starter.side()).map_err(CmdError::refused)?;
         ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", &label, ops)?;
         p.last_placed = Some((starter.key.to_string(), c));
