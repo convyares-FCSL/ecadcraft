@@ -550,7 +550,14 @@ fn a02_hostile_standard_level_values_resolve_to_the_built_in() {
     h.run("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"height": 3}})).unwrap();
     let template = last_tx_json(&mut h);
     h.run("setstyle", json!({"catalogue": "text", "id": "tag", "fields": {"height": null}})).unwrap();
-    for (k, v) in [("height", "NaN"), ("height", "11"), ("height", "-1"), ("height", "1e308"), ("weight", "heavy"), ("colour", "PURPLISH\u{7}")] {
+    // Design 072 §8: a value of the wrong form does not read (the record is damaged); a number
+    // outside the field's range reads and counts as absent.
+    for (k, v) in [("height", json!("NaN")), ("weight", json!("heavy")), ("colour", json!("PURPLISH\u{7}")), ("height", json!("3"))] {
+        let mut tx = template.clone();
+        find_obj_mut(&mut tx, "body").expect("a record with a body").insert("body".into(), json!({"text": {k: v}}));
+        assert!(ecad_file::record::decode_tx(&tx).is_err(), "{k}={v}");
+    }
+    for (k, v) in [("height", json!(11.0)), ("height", json!(-1.0)), ("height", json!(1e308))] {
         let mut tx = template.clone();
         find_obj_mut(&mut tx, "body").expect("a record with a body").insert("body".into(), json!({"text": {k: v}}));
         let ops = decoded_ops(&tx);
@@ -1049,15 +1056,17 @@ fn a08_a_hostile_style_file_opens_draws_and_reports() {
         let after = find_obj_mut(&mut v, "body").expect("a record");
         after.insert("name".into(), json!(name));
         after.insert("body".into(), json!({ cat: fields }));
-        decoded_ops(&v)
+        v
     };
     for i in 0..2000u32 {
-        ops.extend(make(format!("#{:032x}", 0xbad0_0000u64 + u64::from(i)), "text", format!("S{i}"), json!({"height": "3"})));
+        ops.extend(decoded_ops(&make(format!("#{:032x}", 0xbad0_0000u64 + u64::from(i)), "text", format!("S{i}"), json!({"height": 3.0}))));
     }
+    ops.extend(decoded_ops(&make(format!("#{:032x}", 0xfeed_0002u64), "text", "N".repeat(10_000), json!({"height": 1e308}))));
+    // Design 072 §8 (strict words): unknown fields are a read error, not kept and listed.
     let many: serde_json::Map<String, Value> = (0..100).map(|i| (format!("f{i}"), json!("x"))).collect();
-    ops.extend(make(format!("#{:032x}", 0xfeed_0001u64), "text", "Many".into(), Value::Object(many)));
-    ops.extend(make(format!("#{:032x}", 0xfeed_0002u64), "text", "N".repeat(10_000), json!({"height": "1e308"})));
-    ops.extend(make(format!("#{:032x}", 0xfeed_0004u64), "text", "Unknown field".into(), json!({"height": "3", "wobble": "on"})));
+    assert!(ecad_file::record::decode_tx(&make(format!("#{:032x}", 0xfeed_0001u64), "text", "Many".into(), Value::Object(many))).is_err());
+    let wobble = make(format!("#{:032x}", 0xfeed_0004u64), "text", "Unknown field".into(), json!({"height": 3.0, "wobble": "on"}));
+    assert!(ecad_file::record::decode_tx(&wobble).is_err());
     ops.push(Op::SetProperty {
         object: ObjectRef::Device(k),
         key: "text.tag.style".into(),

@@ -200,7 +200,8 @@ fn in_range(kind: Kind, v: &Value<'_>) -> bool {
 pub fn record_text(r: &StyleRecord, key: &str) -> Option<String> {
     match &r.body {
         StyleBody::Wire(w) => wire::get(w, key).map(|value| Resolved { value, from: Source::Project }.text()),
-        StyleBody::Cable(_) | StyleBody::Frame(_) | StyleBody::Location(_) | StyleBody::Page(_) | StyleBody::RatingTable(_) | StyleBody::Text(_) => {
+        StyleBody::Text(t) => text::get(t, key).map(|value| Resolved { value, from: Source::Project }.text()),
+        StyleBody::Cable(_) | StyleBody::Frame(_) | StyleBody::Location(_) | StyleBody::Page(_) | StyleBody::RatingTable(_) => {
             r.field(key).map(str::to_string)
         }
     }
@@ -211,7 +212,8 @@ pub fn record_text(r: &StyleRecord, key: &str) -> Option<String> {
 fn record_value<'a>(doc: &'a Document, r: &'a StyleRecord, cat: &Catalogue, f: &Field) -> Option<Value<'a>> {
     match &r.body {
         StyleBody::Wire(w) => wire::get(w, f.key).filter(|v| in_range(f.kind, v)),
-        StyleBody::Cable(_) | StyleBody::Frame(_) | StyleBody::Location(_) | StyleBody::Page(_) | StyleBody::RatingTable(_) | StyleBody::Text(_) => {
+        StyleBody::Text(t) => text::get(t, f.key).filter(|v| in_range(f.kind, v)),
+        StyleBody::Cable(_) | StyleBody::Frame(_) | StyleBody::Location(_) | StyleBody::Page(_) | StyleBody::RatingTable(_) => {
             stored(r, cat.catalogue, f.key).and_then(|s| defaults::parse_value_in(doc, f.kind, s))
         }
     }
@@ -565,9 +567,8 @@ pub fn with_fields(
     for (k, v) in fields {
         match &mut r.body {
             StyleBody::Wire(w) => wire::set(w, k, v.as_deref())?,
-            StyleBody::Cable(p) | StyleBody::Location(p) | StyleBody::Page(p) | StyleBody::RatingTable(p) | StyleBody::Text(p) => {
-                set_text(p, k, v.as_deref())
-            }
+            StyleBody::Text(t) => text::set(t, k, v.as_deref())?,
+            StyleBody::Cable(p) | StyleBody::Location(p) | StyleBody::Page(p) | StyleBody::RatingTable(p) => set_text(p, k, v.as_deref()),
             StyleBody::Frame(f) => set_text(&mut f.fields, k, v.as_deref()),
         }
     }
