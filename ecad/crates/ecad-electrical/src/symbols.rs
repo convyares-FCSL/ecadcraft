@@ -2499,8 +2499,9 @@ fn terminals(key: StarterKey) -> Vec<TerminalDef> {
         K::Terminal | K::Terminalpe => vec![t("1", 0.0, 0.0)],
         // No label: a junction or continuation shows no connection point name.
         K::Junction | K::Continuation => vec![TerminalDef { key: PointKey::def("1"), label: None, at: p(0.0, 0.0) }],
-        K::Di => vec![t("I0.0", 0.0, 10.0)],
-        K::Do => vec![t("Q0.0", 0.0, -10.0)],
+        // Design 072 §3: a channel symbol's point is keyed by its role; the label is what it shows.
+        K::Di => vec![TerminalDef { key: PointKey::Role(ecad_model::ChannelRole::In), label: Some("I0.0".into()), at: p(0.0, 10.0) }],
+        K::Do => vec![TerminalDef { key: PointKey::Role(ecad_model::ChannelRole::Out), label: Some("Q0.0".into()), at: p(0.0, -10.0) }],
         // ---- Brief 034 stage 1: definition order is common, NC, NO (design 034 §2.3).
         K::Co | K::Swco => vec![t("11", 0.0, 10.0), t("12", 5.0, -10.0), t("14", 0.0, -10.0)],
         K::Power4 => vec![
@@ -2831,8 +2832,8 @@ mod tests {
             ("trafo", "b93505f2eab3aad42fbc8c2f647632effceeda5a6e1e06e634d3f53467dd92fd"),
             ("terminal", "c5c7b47bbddcd35973ad00f1dd8906db9602290ce0b955f0fd7ee1c2bf403a1f"),
             ("terminalpe", "d38f6429abbaf0e8e110505625b467b6531504a762e11205542230148f9f1c00"),
-            ("di", "aea5bde9161fa1c8b923a5767b9f995055b14c08102b6ded6c59487760c9c1bb"),
-            ("do", "37c93f7a1135b9a06a92121a44942ead0f3267adb65ef0533173c7346b288ae9"),
+            ("di", "92732e642b7d5109705f643341f4d9ee02bb3729275a570182e63b6d126bf7b9"),
+            ("do", "caeab16ca1a100e4c5b4a49a878ebf666a634ef6365db7111ab237ba1e936307"),
             ("junction", "8a6e36eab66ded66ec4ef470682d2d5cecf536a0d1fe6c148c632154232a4868"),
             ("continuation", "7289a1f63b563b3f0ceb6959fd7fb34763daf4c1c6e56bb2366e01129ae7afaf"),
         ];

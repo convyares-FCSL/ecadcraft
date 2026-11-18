@@ -264,7 +264,7 @@ pub fn type_name(t: CardType) -> &'static str {
 
 /// The card's own description (not the body's name a placement writes), if any.
 pub fn description(doc: &Document, card: &CardData) -> Option<String> {
-    let builtin = crate::symbols::by_key(card.ty.body()).map(|s| s.name);
+    let builtin = card.ty.body().map(crate::symbols::starter).map(|s| s.name);
     doc.devices
         .get(&card.id)
         .and_then(|x| x.description.as_ref())
@@ -276,7 +276,7 @@ pub fn description(doc: &Document, card: &CardData) -> Option<String> {
 /// `DQ 16`, or the card's description when it has one.
 pub fn what_words(doc: &Document, card: &CardData) -> String {
     // The body's own name, which placing a card writes as its description, is not the user's.
-    let builtin = crate::symbols::by_key(card.ty.body()).map(|s| s.name);
+    let builtin = card.ty.body().map(crate::symbols::starter).map(|s| s.name);
     let desc = doc.devices.get(&card.id).and_then(|x| x.description.as_ref()).map(|v| v.as_str()).filter(|v| !v.is_empty() && Some(*v) != builtin);
     match desc {
         Some(d) => d.to_string(),
@@ -401,7 +401,7 @@ pub fn rack_tiles(doc: &Document, plc: &Plc, rack: &RackData) -> Vec<Tile> {
             .get(&rack.id)
             .and_then(|x| x.description.as_ref())
             .map(|v| v.to_string())
-            .filter(|v| !v.is_empty() && crate::symbols::by_key(rack.ty.body()).is_none_or(|s| s.name != v))
+            .filter(|v| !v.is_empty() && rack.ty.body().map(crate::symbols::starter).is_none_or(|s| s.name != v))
             .unwrap_or_else(|| type_name(rack.ty).to_string()),
     }];
     for (head, slot, card) in layout(plc, rack) {

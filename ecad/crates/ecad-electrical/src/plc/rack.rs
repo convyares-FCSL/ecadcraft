@@ -16,7 +16,8 @@
 use crate::CmdError;
 use std::collections::BTreeSet;
 
-use ecad_model::{DeviceId, Document, Op};
+use crate::symbols::StarterKey;
+use ecad_model::{ChannelRole, DeviceId, Document, Op};
 
 use super::edit;
 
@@ -100,22 +101,22 @@ impl CardType {
         CardType::ALL.into_iter().find(|t| t.code().eq_ignore_ascii_case(w) || (w.eq_ignore_ascii_case("do") && *t == CardType::Dq))
     }
 
-    /// Its card body's starter key.
-    pub fn body(self) -> &'static str {
-        match self {
-            CardType::Cpu => "plccpu",
-            CardType::Im => "plcim",
-            CardType::Di => "plcdi",
-            CardType::Dq => "plcdq",
-            CardType::Ai => "plcai",
-            CardType::Ao => "plcao",
-            CardType::Rtd => "plcrtd",
-            CardType::Iol => "plciol",
-            CardType::Ps => "plcps",
-            CardType::Pm => "plcpm",
-            CardType::Cm => "plccm",
-            CardType::Module => "",
-        }
+    /// Its card body's starter; `None` for a module of no built-in type.
+    pub fn body(self) -> Option<StarterKey> {
+        Some(match self {
+            CardType::Cpu => StarterKey::Plccpu,
+            CardType::Im => StarterKey::Plcim,
+            CardType::Di => StarterKey::Plcdi,
+            CardType::Dq => StarterKey::Plcdq,
+            CardType::Ai => StarterKey::Plcai,
+            CardType::Ao => StarterKey::Plcao,
+            CardType::Rtd => StarterKey::Plcrtd,
+            CardType::Iol => StarterKey::Plciol,
+            CardType::Ps => StarterKey::Plcps,
+            CardType::Pm => StarterKey::Plcpm,
+            CardType::Cm => StarterKey::Plccm,
+            CardType::Module => return None,
+        })
     }
 
     /// The card type a card body symbol `s` draws, from the type it declares (design 072 §2.3);
@@ -144,27 +145,28 @@ impl CardType {
 
     /// The roles of one channel, in the cell's order (design 045 §4.1); empty for a type without
     /// channels.
-    pub fn roles(self) -> &'static [&'static str] {
+    pub fn roles(self) -> &'static [ChannelRole] {
+        use ChannelRole as R;
         match self {
-            CardType::Di => &["in"],
-            CardType::Dq => &["out"],
-            CardType::Ai | CardType::Ao => &["+", "-"],
-            CardType::Rtd => &["I+", "S+", "S-", "I-"],
-            CardType::Iol => &["L+", "C/Q", "L-"],
+            CardType::Di => &[R::In],
+            CardType::Dq => &[R::Out],
+            CardType::Ai | CardType::Ao => &[R::Plus, R::Minus],
+            CardType::Rtd => &[R::CurrentPlus, R::SensePlus, R::SenseMinus, R::CurrentMinus],
+            CardType::Iol => &[R::SupplyPlus, R::Cq, R::SupplyMinus],
             _ => &[],
         }
     }
 
-    /// Its channel cell's starter key (design 045 §4.1); empty for a type without channels.
-    pub fn cell(self) -> &'static str {
+    /// Its channel cell's starter (design 045 §4.1); `None` for a type without channels.
+    pub fn cell(self) -> Option<StarterKey> {
         match self {
-            CardType::Di => "chdi",
-            CardType::Dq => "chdq",
-            CardType::Ai => "chai",
-            CardType::Ao => "chao",
-            CardType::Rtd => "chrtd",
-            CardType::Iol => "chiol",
-            _ => "",
+            CardType::Di => Some(StarterKey::Chdi),
+            CardType::Dq => Some(StarterKey::Chdq),
+            CardType::Ai => Some(StarterKey::Chai),
+            CardType::Ao => Some(StarterKey::Chao),
+            CardType::Rtd => Some(StarterKey::Chrtd),
+            CardType::Iol => Some(StarterKey::Chiol),
+            _ => None,
         }
     }
 

@@ -837,7 +837,7 @@ impl Plc {
         json!({
             "rack": r.id.hex(),
             "tag": r.tag,
-            "body": r.ty.body(),
+            "body": r.ty.body().map(ecad_model::Word::word),
             "type": r.ty.code(),
             "first": r.first,
             "slots": r.slots,

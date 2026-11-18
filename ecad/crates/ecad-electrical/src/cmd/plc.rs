@@ -11,7 +11,9 @@ use ecad_model::units::{Degrees, Radians};
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::book::Book;
-use ecad_model::{DeviceId, Document, IdAllocator, Ledger, ObjectRef, Op, PageId, Placement, Pt, Style, Subject, Terminal, TerminalId};
+use ecad_model::{
+    ChannelRole, DeviceId, Document, IdAllocator, Ledger, ObjectRef, Op, PageId, Placement, Pt, Style, Subject, Terminal, TerminalId, Word,
+};
 
 use crate::defaults;
 use crate::devices::TagHigh;
@@ -123,7 +125,7 @@ pub fn plan_card_type(doc: &Document, ids: &mut IdAllocator, card: &str, to: Car
             n(outside, "signal", "signals")
         )));
     }
-    let new_starter = crate::symbols::by_key(to.body()).ok_or(CmdError::refused("No card body for that type."))?;
+    let new_starter = to.body().map(crate::symbols::starter).ok_or(CmdError::refused("No card body for that type."))?;
     let mut ops = Vec::new();
     let def = match crate::symbols::embedded(doc, new_starter) {
         Some(d) => d,
@@ -178,7 +180,7 @@ pub fn plan_card_type(doc: &Document, ids: &mut IdAllocator, card: &str, to: Car
     }
     crate::plc::edit::module(doc, &mut ops, c, |m| m.function = function);
     // A description that was the old body's name (placing writes it) follows the type.
-    let old_name = crate::symbols::by_key(from.body()).map(|s| s.name);
+    let old_name = from.body().map(crate::symbols::starter).map(|s| s.name);
     if comp.description.as_ref().is_some_and(|d| Some(d.as_str()) == old_name) {
         // The device as the definition swap and retype above leave it.
         let swapped = comp.definition.is_some_and(|d| old_defs.contains(&d));
@@ -418,7 +420,7 @@ pub fn plan_channels(
     if found.members.is_empty() {
         return Err(CmdError::refused("The line crosses no wire. Draw it across the wires to land."));
     }
-    let starter = crate::symbols::by_key(t.cell()).ok_or(CmdError::refused("No channel symbol for that type."))?;
+    let starter = t.cell().map(crate::symbols::starter).ok_or(CmdError::refused("No channel symbol for that type."))?;
     let point_role = match &input.point {
         Some(w) => Some(role_named(starter, w)?),
         None => None,
@@ -468,7 +470,7 @@ pub fn plan_channels(
         let pl = Placement { origin: Pt::new(m0.at.x - turn.x, m0.at.y - turn.y), rotation: l.rotation, mirror: false, scale: 1.0 };
         let cell = plan_cell(ids, page, style.clone(), def, starter, card, &j, pl, &mut ops)?;
         for (role, m) in &l.points {
-            let at = role_at(def_terms, role).map(|q| pl.apply(q)).ok_or(CmdError::refused(NO_ROLE))?;
+            let at = role_at(def_terms, *role).map(|q| pl.apply(q)).ok_or(CmdError::refused(NO_ROLE))?;
             let on = crate::cmd::terminal::on_wire_of(doc, page, m.conductor, at).ok_or(CmdError::refused("A crossed wire has no route here."))?;
             let tid = cell.terminals.iter().find(|x| x.0 == *role).map(|x| x.1).ok_or(CmdError::refused(NO_POINT))?;
             let land = land_cell(doc, ids, page, on, tid)
@@ -498,7 +500,7 @@ pub fn plan_rest(
     if missing.is_empty() {
         return Err(CmdError::refused(format!("Every channel of {tag} is drawn ({n}).")));
     }
-    let starter = crate::symbols::by_key(t.cell()).ok_or(CmdError::refused("No channel symbol for that type."))?;
+    let starter = t.cell().map(crate::symbols::starter).ok_or(CmdError::refused("No channel symbol for that type."))?;
     let width = starter.size().0;
     // To the right of the card's last cell on this page, else at `at`, else under the body.
     let start = match at {
@@ -617,7 +619,7 @@ pub fn plan_channel(doc: &Document, card: &str, input: &ChannelInput) -> Result<
             if pin.is_empty() || pin.chars().count() > MAX_PIN || pin.chars().any(|ch| ch.is_whitespace() || ch.is_control()) {
                 return Err(CmdError::refused(format!("A pin is 1 to {MAX_PIN} characters, with no spaces.")));
             }
-            let Some((_, tid, old)) = mine.iter().find(|(r, _, _)| *r == role.as_str()) else {
+            let Some((_, tid, old)) = mine.iter().find(|(r, _, _)| ChannelRole::exact(role) == Some(*r)) else {
                 return Err(CmdError::refused(format!("Channel {shown} of {who} has no {role} point.")));
             };
             if old == pin {
@@ -625,7 +627,7 @@ pub fn plan_channel(doc: &Document, card: &str, input: &ChannelInput) -> Result<
             }
             if labels.contains(pin) {
                 let holder = pts.iter().flat_map(|(j, v)| v.iter().map(move |(r, _, l)| (*j, *r, l))).find(|(_, _, l)| *l == pin);
-                let what = holder.map_or_else(String::new, |(j, r, _)| format!(" (channel {}, {r})", j + first));
+                let what = holder.map_or_else(String::new, |(j, r, _)| format!(" (channel {}, {})", j + first, r.word()));
                 return Err(CmdError::refused(format!("{who} already has pin {pin}{what}. Pick another label.")));
             }
             labels.remove(old);
@@ -800,7 +802,7 @@ pub fn plan_page_contents(
     let mut y = y0;
     let mut cell_point: Option<Pt> = None;
     if !pc.missing.is_empty() {
-        let starter = crate::symbols::by_key(ty.cell()).ok_or(CmdError::refused("No channel symbol for that type."))?;
+        let starter = ty.cell().map(crate::symbols::starter).ok_or(CmdError::refused("No channel symbol for that type."))?;
         let def = crate::cmd::terminal::definition_for(doc, ids, starter, ops)?;
         let w = starter.size().0;
         let per_row = (((r - l - LEFT_MM) / w).floor() as usize).max(1);
@@ -822,7 +824,7 @@ pub fn plan_page_contents(
         }
     }
     if pc.body {
-        let starter = crate::symbols::by_key(ty.body()).ok_or(CmdError::refused("No body symbol for that type."))?;
+        let starter = ty.body().map(crate::symbols::starter).ok_or(CmdError::refused("No body symbol for that type."))?;
         let def = starter.definition()?;
         let (bw, _) = starter.size();
         // Its points on the line of the cells' points (it is the run's power end).

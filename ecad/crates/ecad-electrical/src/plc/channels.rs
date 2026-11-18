@@ -6,8 +6,8 @@
 //!   typed after the tag, `-A02:4`), its **key is `.<i>.<role>`** (the 0-based channel index and
 //!   the role, FP2). The channel number shown is `i + plc.channel.first`, so changing the first
 //!   number never rewrites a terminal.
-//! - Old `di`/`do` terminals keyed `I<a>.<b>`/`Q<a>.<b>` read as channel `a × 8 + b`, role
-//!   `in`/`out` (FP2: not compatibility work, it keeps today's symbols working).
+//! - A channel symbol's own points are keyed by role alone (`.in`, [`PointKey::Role`]); joining
+//!   a card gives each the channel's index ([`PointKey::Channel`], design 072 §3).
 //! - Pins come from the card's pin layout (`plc.pins`, §4.3) once, when drawn, and are never
 //!   recomputed; `plcchannel {pins}` relabels them.
 //! - Spare and reserved are derived, never stored (§6).
@@ -42,63 +42,28 @@ pub const MAX_FENCE: usize = 256;
 /// The highest channel index read from a key (larger keys are not channel points).
 pub const MAX_INDEX: u32 = 9_999;
 
-/// Every role a channel point may have (design 045 §4.1).
-pub const ROLES: [&str; 11] = ["in", "out", "+", "-", "I+", "S+", "S-", "I-", "L+", "C/Q", "L-"];
-
-/// A channel point's key: `.<i>.<role>`; `None` for an index over [`MAX_INDEX`] or a role not
-/// in [`ROLES`].
-pub fn key(i: u32, role: &str) -> Option<PointKey> {
+/// A channel point's key: `.<i>.<role>`; `None` for an index over [`MAX_INDEX`].
+pub fn key(i: u32, role: ChannelRole) -> Option<PointKey> {
     let index = u16::try_from(i).ok().filter(|n| u32::from(*n) <= MAX_INDEX)?;
-    Some(PointKey::Channel { index, role: ChannelRole::exact(role)? })
+    Some(PointKey::Channel { index, role })
 }
 
-/// The channel index and role of a channel key; `None` for any other key.
-pub fn parse_key(k: &PointKey) -> Option<(u32, &'static str)> {
-    let (i, role) = k.channel()?;
-    Some((u32::from(i), role.word()))
-}
-
-/// The role a channel symbol's definition point has: its role key (`.in`), or an old `di`/`do`
-/// key's.
-fn def_role(k: &PointKey) -> Option<&'static str> {
-    match k {
-        PointKey::Role(r) => Some(r.word()),
-        _ => parse_legacy(k.as_def()?).map(|x| x.1),
-    }
-}
-
-/// An old `di`/`do` key (`I<a>.<b>`, `Q<a>.<b>`): channel `a × 8 + b`, role `in`/`out`.
-pub fn parse_legacy(k: &str) -> Option<(u32, &'static str)> {
-    let (role, rest) = match k.as_bytes().first()? {
-        b'I' => ("in", k.get(1..)?),
-        b'Q' => ("out", k.get(1..)?),
-        _ => return None,
-    };
-    let (a, b) = rest.split_once('.')?;
-    if a.len() > 4 || b.len() != 1 || !ecad_model::words::is_digits(a) {
-        return None;
-    }
-    let (a, b): (u32, u32) = (a.parse().ok()?, b.parse().ok()?);
-    let i = a.checked_mul(8)?.checked_add(b).filter(|i| b < 8 && *i <= MAX_INDEX)?;
-    Some((i, role))
-}
-
-/// The channel and role of terminal `t` of a card: from its key, or an old `di`/`do` key.
-pub fn point_of(doc: &Document, t: TerminalId) -> Option<(u32, &'static str)> {
-    let k = doc.terminals.get(&t)?.key.as_ref()?;
-    parse_key(k).or_else(|| parse_legacy(k.as_def()?))
+/// The channel and role of terminal `t` of a card; `None` for a point that is not a channel's.
+pub fn point_of(doc: &Document, t: TerminalId) -> Option<(u32, ChannelRole)> {
+    let (i, role) = doc.terminals.get(&t)?.key.as_ref()?.channel()?;
+    Some((u32::from(i), role))
 }
 
 /// The channel points of card `c`: index → (role, terminal, pin), roles in their cell order.
-pub fn points(doc: &Document, c: DeviceId) -> BTreeMap<u32, Vec<(&'static str, TerminalId, String)>> {
-    let mut out: BTreeMap<u32, Vec<(&'static str, TerminalId, String)>> = BTreeMap::new();
+pub fn points(doc: &Document, c: DeviceId) -> BTreeMap<u32, Vec<(ChannelRole, TerminalId, String)>> {
+    let mut out: BTreeMap<u32, Vec<(ChannelRole, TerminalId, String)>> = BTreeMap::new();
     for (t, term) in doc.terminals_of(c) {
         if let Some((i, role)) = point_of(doc, t) {
             out.entry(i).or_default().push((role, t, term.label.clone().unwrap_or_default()));
         }
     }
     for v in out.values_mut() {
-        v.sort_by_key(|(r, t, _)| (ROLES.iter().position(|x| x == r), *t));
+        v.sort_by_key(|(r, t, _)| (*r, *t));
     }
     out
 }
@@ -111,19 +76,19 @@ pub fn cell_type(s: &Starter) -> Option<CardType> {
     }
 }
 
-/// The roles a channel symbol has, in its definition order: the cell's, or one for `di`/`do`.
-pub fn roles_of(s: &Starter) -> Vec<&'static str> {
+/// The roles a channel symbol has, in its definition order.
+pub fn roles_of(s: &Starter) -> Vec<ChannelRole> {
     let Some(t) = cell_type(s) else { return Vec::new() };
     let Ok(def) = s.definition() else { return Vec::new() };
-    def.terminals.iter().filter_map(|td| def_role(&td.key)).filter(|r| t.roles().contains(r)).collect()
+    def.terminals.iter().filter_map(|td| td.key.role()).filter(|r| t.roles().contains(r)).collect()
 }
 
 /// `chdi`, `di` for a DI card: the symbols that draw its channels.
 fn cells_words(t: CardType) -> String {
-    let mut v = vec![t.cell().to_string()];
+    let mut v: Vec<String> = t.cell().map(|k| k.word().to_string()).into_iter().collect();
     match t {
-        CardType::Di => v.push("di".into()),
-        CardType::Dq => v.push("do".into()),
+        CardType::Di => v.push(crate::symbols::StarterKey::Di.word().into()),
+        CardType::Dq => v.push(crate::symbols::StarterKey::Do.word().into()),
         _ => {}
     }
     v.join(", ")
@@ -148,7 +113,7 @@ fn drawn_words(doc: &Document, t: TerminalId) -> String {
 /// The pins a new channel `i` of card `c` gets for `roles` (design 045 §4.3): from the pin layout,
 /// or the next free whole number when the computed one is taken (`used`, which gains them).
 pub fn pins_for(
-    doc: &Document, c: Option<DeviceId>, ty: CardType, n: u32, i: u32, roles: &[&'static str], used: &mut BTreeSet<String>,
+    doc: &Document, c: Option<DeviceId>, ty: CardType, n: u32, i: u32, roles: &[ChannelRole], used: &mut BTreeSet<String>,
 ) -> Vec<String> {
     let at = Scope { component: c, ..Scope::project() };
     let by_channel = defaults::resolve(doc, &defaults::plc::PINS, at).choice() == Some(defaults::plc::PlcPins::Channel);
@@ -181,7 +146,7 @@ pub fn pins_for(
 pub struct Join {
     pub index: u32,
     /// (role, pin), in the symbol's definition order.
-    pub pins: Vec<(&'static str, String)>,
+    pub pins: Vec<(ChannelRole, String)>,
 }
 
 /// The channel and pins symbol `s` gets joining card `c` (design 045 §4.4): the channel numbered
@@ -249,7 +214,7 @@ pub fn join_labels(doc: &Document, c: DeviceId, s: &Starter, extra: &BTreeSet<St
 #[derive(Debug, Clone)]
 pub struct Cell {
     pub index: u32,
-    pub terminals: Vec<(&'static str, TerminalId, String, Pt)>,
+    pub terminals: Vec<(ChannelRole, TerminalId, String, Pt)>,
     pub representation: RepresentationId,
     pub item: ItemId,
 }
@@ -269,7 +234,7 @@ pub fn plan_cell(
         let at = def
             .terminals
             .iter()
-            .find(|td| def_role(&td.key) == Some(*role))
+            .find(|td| td.key.role() == Some(*role))
             .map(|td| td.at)
             .ok_or(CmdError::refused("The channel symbol has no point for that role."))?;
         let t: TerminalId = ids.fresh();
@@ -278,7 +243,7 @@ pub fn plan_cell(
             terminal: Terminal {
                 component: card,
                 label: Some(pin.clone()),
-                key: Some(key(j.index, role).ok_or(CmdError::refused("That channel has no such point."))?),
+                key: Some(key(j.index, *role).ok_or(CmdError::refused("That channel has no such point."))?),
             },
         });
         cps.insert(t, at);
@@ -312,7 +277,7 @@ pub fn new_card_ops(
         None => high.next_auto(ledger, &crate::devices::prefix_for(doc, s))?,
     };
     let c: DeviceId = ids.fresh();
-    let name = crate::symbols::by_key(t.body()).map_or("PLC card", |b| b.name);
+    let name = t.body().map(crate::symbols::starter).map_or("PLC card", |b| b.name);
     ops.push(Op::CreateDevice {
         id: c,
         device: ecad_model::Device {
@@ -358,32 +323,33 @@ pub fn first_point(s: &Starter, pl: &Placement) -> Option<Pt> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Landing {
     pub rotation: Radians,
-    pub points: Vec<(&'static str, crate::slash::Crossing)>,
+    pub points: Vec<(ChannelRole, crate::slash::Crossing)>,
 }
 
 /// The local place of point `role` in a channel symbol's definition terminals.
-pub fn role_at(terms: &[ecad_model::TerminalDef], role: &str) -> Option<Pt> {
-    terms.iter().find(|td| def_role(&td.key) == Some(role)).map(|td| td.at)
+pub fn role_at(terms: &[ecad_model::TerminalDef], role: ChannelRole) -> Option<Pt> {
+    terms.iter().find(|td| td.key.role() == Some(role)).map(|td| td.at)
 }
 
 /// The role `word` names among channel symbol `s`'s points (case ignored).
 ///
 /// # Errors
 /// No such point, naming the cell's points.
-pub fn role_named(s: &Starter, word: &str) -> Result<&'static str, CmdError> {
+pub fn role_named(s: &Starter, word: &str) -> Result<ChannelRole, CmdError> {
     let roles = roles_of(s);
     let w = word.trim();
-    roles.iter().copied().find(|r| r.eq_ignore_ascii_case(w)).ok_or_else(|| {
-        CmdError::refused(format!("A {} cell has no point \"{}\". Its points: {}.", s.key, w.chars().take(16).collect::<String>(), roles.join(", ")))
+    ChannelRole::parse(w).filter(|r| roles.contains(r)).ok_or_else(|| {
+        let names: Vec<&str> = roles.iter().map(|r| r.word()).collect();
+        CmdError::refused(format!("A {} cell has no point \"{}\". Its points: {}.", s.key, w.chars().take(16).collect::<String>(), names.join(", ")))
     })
 }
 
 /// The point a cell lands on a single wire by default (pack re-run, bug 10): an IO-Link port's
 /// C/Q (its signal; L+ and L- are its supply), else its first point.
-pub fn landing_role(s: &Starter) -> Option<&'static str> {
+pub fn landing_role(s: &Starter) -> Option<ChannelRole> {
     let roles = roles_of(s);
-    if cell_type(s) == Some(CardType::Iol) && roles.contains(&"C/Q") {
-        return Some("C/Q");
+    if cell_type(s) == Some(CardType::Iol) && roles.contains(&ChannelRole::Cq) {
+        return Some(ChannelRole::Cq);
     }
     roles.first().copied()
 }
@@ -406,7 +372,7 @@ const POINT_MATCH: f64 = 0.5;
 /// its point count spaced as its points are (pack re-run, bug 6); otherwise, or when `role` names
 /// one point, one cell per wire with that point (else [`landing_role`]) on it. Each cell is turned
 /// 180° when its first wire runs down (`runs_down`).
-pub fn landings(doc: &Document, page: PageId, s: &Starter, members: &[crate::slash::Crossing], role: Option<&'static str>) -> Vec<Landing> {
+pub fn landings(doc: &Document, page: PageId, s: &Starter, members: &[crate::slash::Crossing], role: Option<ChannelRole>) -> Vec<Landing> {
     let roles = roles_of(s);
     let terms = s.definition().map(|d| d.terminals.clone()).unwrap_or_default();
     let rotation = |m: &crate::slash::Crossing| if runs_down(doc, page, m) { Radians(std::f64::consts::PI) } else { Radians(0.0) };
@@ -421,7 +387,7 @@ pub fn landings(doc: &Document, page: PageId, s: &Starter, members: &[crate::sla
                 let rot = rotation(&first);
                 // The points as they lie left to right at that rotation.
                 let turn = Placement { origin: Pt::new(0.0, 0.0), rotation: rot, mirror: false, scale: 1.0 };
-                let mut lie: Vec<(&'static str, Pt)> = roles.iter().filter_map(|r| Some((*r, turn.apply(role_at(&terms, r)?)))).collect();
+                let mut lie: Vec<(ChannelRole, Pt)> = roles.iter().filter_map(|r| Some((*r, turn.apply(role_at(&terms, *r)?)))).collect();
                 lie.sort_by(|a, b| a.1.x.total_cmp(&b.1.x));
                 let p0 = lie.first()?.1;
                 let fits = lie.len() == chunk.len()
@@ -645,19 +611,15 @@ mod tests {
 
     #[test]
     fn keys_parse_only_their_own_form() {
-        let parse = |k: &str| k.parse::<PointKey>().ok().and_then(|k| parse_key(&k));
-        assert_eq!(parse(".3.in"), Some((3, "in")));
-        assert_eq!(parse(".0.+"), Some((0, "+")));
-        assert_eq!(parse(".2.C/Q"), Some((2, "C/Q")));
+        let parse = |k: &str| k.parse::<PointKey>().ok().and_then(|k| k.channel());
+        assert_eq!(parse(".3.in"), Some((3, ChannelRole::In)));
+        assert_eq!(parse(".0.+"), Some((0, ChannelRole::Plus)));
+        assert_eq!(parse(".2.C/Q"), Some((2, ChannelRole::Cq)));
         for bad in [".3", ".-1.in", ".3.nope", ".99999.in", "3.in", "..in", ".3.in.x", ""] {
             assert_eq!(parse(bad), None, "{bad}");
         }
-        assert_eq!(key(3, "in").map(|k| k.to_string()).as_deref(), Some(".3.in"));
-        assert_eq!(parse_legacy("I1.3"), Some((11, "in")));
-        assert_eq!(parse_legacy("Q0.0"), Some((0, "out")));
-        for bad in ["I1.8", "I.3", "X1.1", "I99999.1", "I1.", "I1.33"] {
-            assert_eq!(parse_legacy(bad), None, "{bad}");
-        }
+        assert_eq!(key(3, ChannelRole::In).map(|k| k.to_string()).as_deref(), Some(".3.in"));
+        assert_eq!(key(MAX_INDEX + 1, ChannelRole::In), None);
         assert_eq!(parse_ch_key("plc.ch.12.text"), Some((12, "text")));
         assert_eq!(parse_ch_key("plc.ch.x.text"), None);
         assert_eq!(parse_ch_key("plc.ch.1.other"), None);
@@ -667,12 +629,12 @@ mod tests {
     fn pin_layouts() {
         let doc = Document::default();
         let mut used = BTreeSet::new();
-        assert_eq!(pins_for(&doc, None, CardType::Ai, 4, 0, &["+", "-"], &mut used), ["1", "5"]);
-        assert_eq!(pins_for(&doc, None, CardType::Ai, 4, 1, &["+", "-"], &mut used), ["2", "6"]);
+        assert_eq!(pins_for(&doc, None, CardType::Ai, 4, 0, &[ChannelRole::Plus, ChannelRole::Minus], &mut used), ["1", "5"]);
+        assert_eq!(pins_for(&doc, None, CardType::Ai, 4, 1, &[ChannelRole::Plus, ChannelRole::Minus], &mut used), ["2", "6"]);
         let mut used = BTreeSet::new();
-        assert_eq!(pins_for(&doc, None, CardType::Di, 16, 3, &["in"], &mut used), ["4"]);
+        assert_eq!(pins_for(&doc, None, CardType::Di, 16, 3, &[ChannelRole::In], &mut used), ["4"]);
         // A taken pin moves on to the next free whole number.
         let mut used: BTreeSet<String> = ["4".to_string()].into();
-        assert_eq!(pins_for(&doc, None, CardType::Di, 16, 3, &["in"], &mut used), ["5"]);
+        assert_eq!(pins_for(&doc, None, CardType::Di, 16, 3, &[ChannelRole::In], &mut used), ["5"]);
     }
 }
