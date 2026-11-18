@@ -173,6 +173,34 @@ cargo test -p ecad-inspector --test all lane_072b
 cargo test -p ecad-mcp --test all lane_072b
 ```
 
+### Lane B, step 3: ratings are typed (Protection first)
+
+A device's `rating` is no longer free text. A protective device (fuse, MCB, RCD, RCBO, fuse bank)
+stores its rating as typed fields: rated current, curve, breaking capacity, poles, residual
+current, and a fuse bank one fuse rating per output. What you type is read into those fields and
+shown back from them:
+
+- `B16` on an MCB reads as **curve B, 16 A**; the Properties panel, the status line and the
+  command's answer all say what was read.
+- Ambiguous text is refused with a question, never guessed: a bare `16` on an MCB asks for the
+  curve; a bare `30` on an RCD asks whether it is A or mA. A value the device does not have is
+  refused (a curve on a fuse, a residual current on an MCB).
+- Text that is no rating at all (`see datasheet`) is kept as the device's rating note, and the
+  device gets the Checks warning **no-rating**, because the checks read only the typed fields.
+- A fuse bank takes `rating.<n>` per fuse (`rating.3` `6.3 A T`); its own `rating` is refused.
+- Other groups (switching, sensors, motors, loads, indicators, power supplies) keep what you type
+  as the note until their own step; a symbol's default rating is read the same way when it is
+  placed, and a symbol whose default rating does not read for its group cannot be saved.
+- A file whose device holds `rating` among its properties, or a protective device holding
+  `rating.<n>`, opens read-only.
+
+To try it: place an MCB, type `B16` as its rating in the Properties panel (shown as
+`curve B, 16 A`), then `16` (refused, asks for the curve), then `see datasheet` (kept as a note,
+and Checks shows "no rating"). Nobody has tried it by hand yet.
+
+Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector, and
+`rating::reader` in ecad-electrical (automated, not tried by hand).
+
 ## Lane D: wires carry typed values
 
 A conductor is now a **wire** in code and files (`Wire`, ops `CreateWire`, `DeleteWire` and the

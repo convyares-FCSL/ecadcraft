@@ -329,6 +329,8 @@ pub fn is_reserved(key: &str) -> bool {
 pub const PINS: PropKey = PropKey("pins");
 /// A connector's typed pin names.
 pub const PIN_NAMES: PropKey = PropKey("pin_names");
+/// A device's rating (lane 072 B: its group's typed fields, or its note; design 072 §2.2).
+pub const RATING: PropKey = PropKey(crate::device::RATING_KEY);
 
 /// Keys that became fields of [`crate::Device`] (design 072 §2.1) while other holders still keep
 /// them in their bags (a cable's `tag` until lane D): a device's bag holding one is a read error,
@@ -347,6 +349,7 @@ pub const DEVICE_FIELDS: &[PropKey] = &[
     FUNCTION_FIXED,
     PINS,
     PIN_NAMES,
+    RATING,
 ];
 
 /// The area `key` belongs to.

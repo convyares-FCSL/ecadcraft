@@ -591,7 +591,7 @@ fn h_toposition_converts_a_fuse_device() {
     before.sort();
     after.sort();
     assert_eq!(before, after, "nets keep their conductors");
-    assert_eq!(prop(&mut m.h, x2, &format!("rating.{p}")).as_deref(), Some("4A"), "rating carried");
+    assert_eq!(prop(&mut m.h, x2, &format!("rating.{p}")).as_deref(), Some("4 A"), "rating carried");
     let label = m.h.p(|p| p.ledger.log().last().map(|t| t.label.clone())).unwrap_or_default();
     assert!(label.starts_with("-F01 \u{2192} -X") && label.ends_with(":5"), "transaction label `-F05 → -X01:7`: {label}");
     // The device's symbol now draws `termfuse` and is a symbol of the strip.

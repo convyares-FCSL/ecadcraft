@@ -129,3 +129,29 @@ fn a_connector_s_data_is_shown() {
         assert!(log.contains(want), "{want} in the readable log: {log}");
     }
 }
+
+/// Step 3, Protection (A15): a protective device's typed rating and its note show in the readable
+/// log.
+#[test]
+fn a_protective_rating_is_shown() {
+    use ecad_model::device::{Breaker, Protection, RatingNote, TripCurve};
+    use ecad_model::units::Amps;
+    let dir = TempDir::new("072b-rating");
+    let mut l = history();
+    let mut ids = IdAllocator::seeded(76);
+    let c: DeviceId = ids.fresh();
+    let before = Device {
+        device_type: DeviceType::Protection(Protection::Mcb(Breaker::default())),
+        rating_note: Some(RatingNote::new("see datasheet").unwrap()),
+        ..Device::default()
+    };
+    let b = Breaker { rated_current: Some(Amps(16.0)), curve: Some(TripCurve::C), ..Breaker::default() };
+    let after = Device { device_type: DeviceType::Protection(Protection::Mcb(b)), rating_note: None, ..before.clone() };
+    l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: before.clone() }]).unwrap();
+    l.commit(Author::User, "rating", vec![Op::ModifyDevice { id: c, before, after }]).unwrap();
+    let path = written(&dir, &l);
+    let log = run(&[path.to_str().unwrap(), "log", "main", "--last", "1"]).unwrap();
+    for want in ["ModifyDevice", "protection", "mcb", "rated_current", "see datasheet"] {
+        assert!(log.contains(want), "{want} in the readable log: {log}");
+    }
+}

@@ -340,12 +340,13 @@ pub fn plan_toposition(
         ops.push(Op::RemoveTerminal { id: *t, terminal: x.clone() });
     }
     let props = comp.properties.clone();
-    if let Some(r) = props.get("rating").filter(|r| !r.trim().is_empty()) {
+    // Design 072 §2.2: the fuse's typed rating (or its note), as shown.
+    if let Some(r) = comp.rating_shown() {
         let key = tt::rating_key(&pos);
         let before = doc.devices.get(&strip).and_then(|x| x.properties.get(&key)).cloned();
-        ops.push(Op::SetProperty { object: ObjectRef::Device(strip), key, before, after: Some(r.clone()) });
+        ops.push(Op::SetProperty { object: ObjectRef::Device(strip), key, before, after: Some(r) });
     }
-    let keep = ["rating"];
+    let keep: [&str; 0] = [];
     // Everything else goes with the device and is listed (review M1: no silent loss), its own
     // text placements included.
     let mut lost: Vec<String> = props.keys().filter(|k| !keep.contains(&k.as_str())).cloned().collect();

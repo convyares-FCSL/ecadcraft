@@ -457,10 +457,14 @@ impl Document {
         if let Some(k) = c.properties.keys().find(|k| crate::keys::is_reserved_on(crate::keys::Holder::Device, k)) {
             return bad(format!("device {id} holds {k} in its properties; it is a field"));
         }
-        if let crate::device::DeviceType::Connector(x) = &c.device_type
-            && let Some(p) = x.problem()
-        {
+        if let Some(p) = c.device_type.problem() {
             return bad(format!("device {id}: {p}"));
+        }
+        // Design 072 §2.2: a protective device's ratings (a fuse bank's per output) are fields.
+        if let crate::device::DeviceType::Protection(_) = &c.device_type
+            && let Some(k) = c.properties.keys().find(|k| k.starts_with(crate::device::RATING_OF_PREFIX))
+        {
+            return bad(format!("device {id} holds {k} in its properties; it is a field"));
         }
         Ok(())
     }

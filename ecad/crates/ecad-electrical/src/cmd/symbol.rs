@@ -241,6 +241,12 @@ pub fn problems(c: &Content, rules: &Rules<'_>) -> Vec<String> {
             out.push(format!("The {k} is too long ({} characters at most).", f.max_chars()));
         }
     }
+    // Design 072 §2.2: a default rating reads as the declared group's (ambiguous text is asked).
+    if let Some(r) = c.defaults.get("rating")
+        && let Err(m) = crate::rating::reader::rated(&c.device_type, "The symbol", Some(r))
+    {
+        out.push(m.to_string());
+    }
     if let Some(a) = c.defaults.get("aliases")
         && (a.split(',').count() > 8 || a.chars().count() > 200 || a.chars().any(char::is_control))
     {
@@ -1154,19 +1160,20 @@ pub fn plan_place(
                 }
             };
             let c: DeviceId = ids.fresh();
-            let mut properties = ecad_model::Properties::new();
             let description = field_value(doc, &key, def, Field::Description).unwrap_or_else(|| def.name.clone());
-            if let Some(r) = field_value(doc, &key, def, Field::Rating) {
-                properties.insert(symbols::RATING_KEY.into(), r);
-            }
+            // Design 072 §2.2: the default rating is read by the group's reader; text it cannot
+            // read (ambiguous since it was saved) is kept as the note, never guessed.
+            let rating = field_value(doc, &key, def, Field::Rating);
+            let (device_type, rating_note) = crate::rating::reader::rated(&def.device_type, &tag, rating.as_deref())
+                .unwrap_or_else(|_| (def.device_type.clone(), rating.as_deref().and_then(|r| ecad_model::device::RatingNote::new(r).ok())));
             ops.push(Op::CreateDevice {
                 id: c,
                 device: Device {
                     tag: Some(crate::devices::stored_tag(&tag)?),
                     description: crate::devices::description_of(&description),
-                    properties,
+                    rating_note,
                     definition: Some(def_id),
-                    device_type: def.device_type.clone(),
+                    device_type,
                     ..Device::default()
                 },
             });

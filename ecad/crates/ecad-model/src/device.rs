@@ -68,7 +68,7 @@ impl DeviceGroup {
 /// use ecad_model::device::{DeviceGroup, DeviceType, Protection};
 /// let t = DeviceType::Protection(Protection::default());
 /// assert_eq!(t.group(), DeviceGroup::Protection);
-/// assert_eq!(serde_json::to_string(&t).unwrap(), r#"{"protection":{}}"#);
+/// assert_eq!(serde_json::to_string(&t).unwrap(), r#"{"protection":{"fuse":{}}}"#);
 /// assert_eq!(serde_json::to_string(&DeviceType::General).unwrap(), r#""general""#);
 /// ```
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -139,6 +139,79 @@ impl DeviceType {
         }
     }
 
+    /// Whether its group holds a rating in typed fields (design 072 §2.2, "Ratings"): a device of
+    /// such a group with none of them set has no rating, whatever its note says.
+    pub fn has_rating_fields(&self) -> bool {
+        match self {
+            DeviceType::Protection(_) => true,
+            DeviceType::PowerSupply(_)
+            | DeviceType::Switching(_)
+            | DeviceType::Sensor(_)
+            | DeviceType::Motor(_)
+            | DeviceType::Load(_)
+            | DeviceType::Indicator(_)
+            | DeviceType::TerminalStrip(_)
+            | DeviceType::Connector(_)
+            | DeviceType::PlcRack(_)
+            | DeviceType::PlcModule(_)
+            | DeviceType::General => false,
+        }
+    }
+
+    /// Its typed rating as shown (`curve B, 16 A`), when a rating field is set.
+    pub fn rating(&self) -> Option<String> {
+        match self {
+            DeviceType::Protection(p) => (!p.is_unrated()).then(|| p.to_string()),
+            DeviceType::PowerSupply(_)
+            | DeviceType::Switching(_)
+            | DeviceType::Sensor(_)
+            | DeviceType::Motor(_)
+            | DeviceType::Load(_)
+            | DeviceType::Indicator(_)
+            | DeviceType::TerminalStrip(_)
+            | DeviceType::Connector(_)
+            | DeviceType::PlcRack(_)
+            | DeviceType::PlcModule(_)
+            | DeviceType::General => None,
+        }
+    }
+
+    /// The same type with its rating fields empty (its kind kept).
+    pub fn unrated(&self) -> DeviceType {
+        match self {
+            DeviceType::Protection(p) => DeviceType::Protection(p.kind().empty()),
+            DeviceType::PowerSupply(_)
+            | DeviceType::Switching(_)
+            | DeviceType::Sensor(_)
+            | DeviceType::Motor(_)
+            | DeviceType::Load(_)
+            | DeviceType::Indicator(_)
+            | DeviceType::TerminalStrip(_)
+            | DeviceType::Connector(_)
+            | DeviceType::PlcRack(_)
+            | DeviceType::PlcModule(_)
+            | DeviceType::General => self.clone(),
+        }
+    }
+
+    /// Why its data is not well formed, if it is not.
+    pub fn problem(&self) -> Option<String> {
+        match self {
+            DeviceType::Protection(p) => p.problem(),
+            DeviceType::Connector(c) => c.problem(),
+            DeviceType::PowerSupply(_)
+            | DeviceType::Switching(_)
+            | DeviceType::Sensor(_)
+            | DeviceType::Motor(_)
+            | DeviceType::Load(_)
+            | DeviceType::Indicator(_)
+            | DeviceType::TerminalStrip(_)
+            | DeviceType::PlcRack(_)
+            | DeviceType::PlcModule(_)
+            | DeviceType::General => None,
+        }
+    }
+
     /// Whether this is [`DeviceType::General`] (left out of a definition's file record).
     pub fn is_general(&self) -> bool {
         matches!(self, DeviceType::General)
@@ -150,10 +223,8 @@ impl DeviceType {
 #[serde(deny_unknown_fields)]
 pub struct PowerSupply {}
 
-/// A protective device (group 2). Its fields come with lane B step 3.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Protection {}
+pub mod protection;
+pub use protection::{Breaker, Fuse, FuseBank, FuseClass, Poles, Protection, ProtectionKind, Rcbo, Rcd, TripCurve};
 
 /// A switching device and what operates it (group 3). Its fields come with lane B step 3.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -382,6 +453,15 @@ pub struct PlcRack {}
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlcModule {}
+
+/// A device's rating note (design 072 §2.2, "Ratings"): text that does not read as its group's
+/// rating ("see datasheet", a vendor code), never a second copy of the rating.
+pub type RatingNote = crate::text::Text<64>;
+
+/// The `setprop` key of a device's rating (its typed rating fields, or its note).
+pub const RATING_KEY: &str = "rating";
+/// A fuse bank's output rating: `rating.<n>`.
+pub const RATING_OF_PREFIX: &str = "rating.";
 
 /// A device's description (design 072 §2.1).
 pub type Description = crate::text::Text<256>;

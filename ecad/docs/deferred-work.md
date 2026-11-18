@@ -67,6 +67,14 @@ started.
   build (and how a person sees them), and the **explicit import step** for files from other tools,
   which is where foreign words are mapped or refused.
 
+## The part sets a device's rating: with a parts library (design 072 §2.2, owner 2026-11-18)
+
+- **What:** when a part number's library entry carries a rating, it fills the device's typed
+  rating fields; a value typed on the device is an override, and a Checks row reports an override
+  that differs from the part.
+- **Not built until** a parts library with ratings exists: no stub and no override handling now.
+  Until then the typed rating fields are stored plainly (lane 072 B's rating step).
+
 ## Company standard file and later defaults-to-data moves (brief 066, owner 2026-11-15)
 
 - **Company standard file** (design 066 §4): loading a house standard from a TOML file into the

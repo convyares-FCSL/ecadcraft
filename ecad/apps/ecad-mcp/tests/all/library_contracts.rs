@@ -77,7 +77,7 @@ fn a_change_over_join_and_ratings_record_as_the_agent() {
     let n = c.log().len();
     c.exec("setprop", json!({"component": f, "key": "rating.3", "value": "2A"}));
     let tx = assert_one_by_agent(&mut c, n, "write");
-    assert!(tx.ops.iter().any(|o| matches!(o, Op::SetProperty { key, after: Some(v), .. } if key == "rating.3" && v == "2A")));
+    assert!(tx.ops.iter().any(|o| matches!(o, Op::ModifyDevice { after, .. } if after.value("rating.3").as_deref() == Some("2 A"))));
     let before = c.log();
     let m = c.refused("execute", json!({"command": "setprop", "params": {"component": f, "key": "rating.13", "value": "2A"}}));
     assert!(m.contains("-F01 has no fuse 13."), "{m}");
@@ -86,7 +86,7 @@ fn a_change_over_join_and_ratings_record_as_the_agent() {
     let n = c.log().len();
     c.exec("setprop", json!({"component": q, "key": "rating", "value": "13A C 30mA"}));
     let tx = assert_one_by_agent(&mut c, n, "write");
-    assert!(tx.ops.iter().any(|o| matches!(o, Op::SetProperty { key, after: Some(v), .. } if key == "rating" && v == "13A C 30mA")));
+    assert!(tx.ops.iter().any(|o| matches!(o, Op::ModifyDevice { after, .. } if after.value("rating").as_deref() == Some("curve C, 13 A, 30 mA"))));
 }
 
 #[test]

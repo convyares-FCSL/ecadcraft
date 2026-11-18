@@ -208,7 +208,7 @@ fn toposition_turns_a_fuse_terminal_device_into_a_fuse_position() {
     assert_eq!(v["position"], "4", "{v}");
     let doc = h.doc();
     assert!(!doc.devices.contains_key(&f5), "-F05 gone");
-    assert_eq!(doc.devices[&x1].properties.get("rating.4").map(String::as_str), Some("4A"));
+    assert_eq!(doc.devices[&x1].properties.get("rating.4").map(String::as_str), Some("4 A"));
     let c = doc.connectivity();
     assert_eq!((c.net_of_conductor(w1).is_some(), c.net_of_conductor(w1) == c.net_of_conductor(w2)), nets_before, "nets unchanged");
     let ends: Vec<_> = doc.terminals_of(x1).filter(|(_, x)| x.label.as_deref() == Some("4")).map(|(t, _)| doc.ends_at(t).len()).collect();

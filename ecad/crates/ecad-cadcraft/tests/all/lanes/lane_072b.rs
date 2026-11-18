@@ -209,3 +209,40 @@ fn connector_fields_are_written_as_modify_device() {
     let k: DeviceId = id(&crate::common::place(&mut h, "coil", (200.0, 100.0)), "component");
     assert!(h.run("setprop", json!({"component": k.hex(), "key": "pins", "value": "4"})).is_err());
 }
+
+/// Step 3, Protection (design 072 §2.2, "Ratings"): `setprop rating` reads the text into the
+/// group's typed fields and says what it read; ambiguous text is asked, never guessed; text that is
+/// no rating is the note, and the device then has the Checks row `no-rating`.
+#[test]
+fn a_rating_is_read_into_typed_fields() {
+    use ecad_model::Op;
+    use ecad_model::device::{DeviceType, Protection, TripCurve};
+    let mut h = H::new(7205);
+    let q: DeviceId = id(&crate::common::place(&mut h, "mcb1", (100.0, 100.0)), "component");
+    let r = h.run("setprop", json!({"component": q.hex(), "key": "rating", "value": "B16"})).unwrap();
+    assert_eq!(r["message"], json!("Read: curve B, 16 A."), "{r}");
+    assert_eq!(r["value"], json!("curve B, 16 A"));
+    let ops = h.p(|p| p.ledger.log().last().unwrap().ops.clone());
+    assert!(matches!(ops.as_slice(), [Op::ModifyDevice { .. }]), "{ops:?}");
+    let DeviceType::Protection(Protection::Mcb(b)) = &h.doc().devices[&q].device_type else { panic!() };
+    assert_eq!((b.curve, b.rated_current.map(|a| a.0)), (Some(TripCurve::B), Some(16.0)));
+    assert!(h.doc().devices[&q].properties.is_empty());
+    // A bare number on a breaker asks for the curve; a residual current is refused.
+    let e = h.run("setprop", json!({"component": q.hex(), "key": "rating", "value": "16"})).unwrap_err();
+    assert!(e.contains("curve"), "{e}");
+    let e = h.run("setprop", json!({"component": q.hex(), "key": "rating", "value": "C16 30mA"})).unwrap_err();
+    assert!(e.contains("RCBO"), "{e}");
+    // No rating: a note, and a warning.
+    let no_rating = |h: &mut H| h.run("checks", json!({})).unwrap().to_string().contains("no-rating");
+    assert!(!no_rating(&mut h));
+    let r = h.run("setprop", json!({"component": q.hex(), "key": "rating", "value": "see datasheet"})).unwrap();
+    assert!(r["message"].as_str().unwrap().contains("note"), "{r}");
+    assert_eq!(h.doc().devices[&q].rating_note.as_ref().map(|n| n.to_string()).as_deref(), Some("see datasheet"));
+    assert!(no_rating(&mut h));
+    // A fuse bank's fuse.
+    let f: DeviceId = id(&crate::common::place(&mut h, "fusebank4", (200.0, 100.0)), "component");
+    let r = h.run("setprop", json!({"component": f.hex(), "key": "rating.2", "value": "6.3A T"})).unwrap();
+    assert_eq!(r["value"], json!("6.3 A, T"), "{r}");
+    assert!(h.run("setprop", json!({"component": f.hex(), "key": "rating.9", "value": "4 A"})).is_err());
+    assert!(h.run("setprop", json!({"component": f.hex(), "key": "rating", "value": "4 A"})).is_err());
+}

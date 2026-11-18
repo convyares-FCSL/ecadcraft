@@ -2225,15 +2225,15 @@ mod tests {
     fn one_sided_changes_merge_and_two_sided_ones_conflict() {
         let a = doc_with(&[(1, "-K01"), (2, "-K02")]);
         let mut t = a.clone();
-        t.devices.get_mut(&DeviceId(1)).unwrap().properties.insert("rating".into(), "16 A".into());
+        t.devices.get_mut(&DeviceId(1)).unwrap().properties.insert("remark".into(), "16 A".into());
         let mut s = a.clone();
-        s.devices.get_mut(&DeviceId(1)).unwrap().properties.insert("rating".into(), "20 A".into());
+        s.devices.get_mut(&DeviceId(1)).unwrap().properties.insert("remark".into(), "20 A".into());
         s.devices.get_mut(&DeviceId(2)).unwrap().description = crate::device::Description::new("Pump").ok();
         let scope = scope_of(&[1, 2]);
         let p = run(&a, &t, &s, &scope, &BTreeMap::new());
         assert_eq!(p.conflicts.len(), 1);
         let id = p.conflicts[0].id.clone();
-        assert!(id.ends_with("/prop.rating"), "{id}");
+        assert!(id.ends_with("/prop.remark"), "{id}");
         assert!(p.ops.is_empty());
         assert_eq!(p.unanswered, vec![id.clone()]);
         let mut ch = BTreeMap::new();
@@ -2244,7 +2244,7 @@ mod tests {
         for op in &p.ops {
             op.apply(&mut doc).unwrap();
         }
-        assert_eq!(doc.devices[&DeviceId(1)].properties["rating"], "20 A");
+        assert_eq!(doc.devices[&DeviceId(1)].properties["remark"], "20 A");
         assert_eq!(doc.devices[&DeviceId(2)].text(crate::TextField::Description), Some("Pump"));
         ch.insert(id, Choice::Value("25 A".into()));
         let p = run(&a, &t, &s, &scope, &ch);
@@ -2252,7 +2252,7 @@ mod tests {
         for op in &p.ops {
             op.apply(&mut doc).unwrap();
         }
-        assert_eq!(doc.devices[&DeviceId(1)].properties["rating"], "25 A");
+        assert_eq!(doc.devices[&DeviceId(1)].properties["remark"], "25 A");
     }
 
     #[test]
@@ -2390,15 +2390,15 @@ mod tests {
     fn a_value_conflict_keeps_main_and_an_empty_or_refused_edit_is_a_problem() {
         let a = doc_with(&[(1, "-K01")]);
         let mut t = a.clone();
-        t.devices.get_mut(&DeviceId(1)).unwrap().properties.insert("rating".into(), "16 A".into());
+        t.devices.get_mut(&DeviceId(1)).unwrap().properties.insert("remark".into(), "16 A".into());
         let mut s = a.clone();
-        s.devices.get_mut(&DeviceId(1)).unwrap().properties.insert("rating".into(), "20 A".into());
+        s.devices.get_mut(&DeviceId(1)).unwrap().properties.insert("remark".into(), "20 A".into());
         let scope = scope_of(&[1]);
-        let id = format!("{}/prop.rating", DeviceId(1).hex());
+        let id = format!("{}/prop.remark", DeviceId(1).hex());
         let p = run(&a, &t, &s, &scope, &one(&id, Choice::Target));
-        assert_eq!(applied(&t, &p).devices[&DeviceId(1)].properties["rating"], "16 A");
+        assert_eq!(applied(&t, &p).devices[&DeviceId(1)].properties["remark"], "16 A");
         let p = run(&a, &t, &s, &scope, &one(&id, Choice::Value("  ".into())));
-        assert!(p.problem.as_deref().is_some_and(|m| m.contains("Rating")), "{:?}", p.problem);
+        assert!(p.problem.as_deref().is_some_and(|m| m.to_lowercase().contains("remark")), "{:?}", p.problem);
         assert!(p.ops.is_empty());
     }
 
