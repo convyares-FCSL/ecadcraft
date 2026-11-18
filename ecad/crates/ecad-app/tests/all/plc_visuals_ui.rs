@@ -163,7 +163,7 @@ fn j_k_l_m_lists_plc_tiles_filter_the_table_and_edit_it() {
 #[test]
 fn edit_lines_follow_the_column() {
     use ecad_cadcraft::plc::iolist::Row;
-    let row = |pins: Vec<(&'static str, String)>| Row {
+    let row = |pins: Vec<(ecad_model::ChannelRole, String)>| Row {
         card: DeviceId(1),
         card_tag: "-A02".into(),
         rack: None,
@@ -188,8 +188,8 @@ fn edit_lines_follow_the_column() {
         safe_default: None,
         test: Default::default(),
     };
-    let one = row(vec![("in", "4".into())]);
-    let two = row(vec![("+", "1".into()), ("-", "5".into())]);
+    let one = row(vec![(ecad_model::ChannelRole::In, "4".into())]);
+    let two = row(vec![(ecad_model::ChannelRole::Plus, "1".into()), (ecad_model::ChannelRole::Minus, "5".into())]);
     let cases: Vec<(&Row, ecad_ui::table::ColumnId, &str, Option<&str>)> = vec![
         (&one, plc::TEXT, "Pump", Some(r#""text":"Pump""#)),
         (&one, plc::TEXT, "  ", Some(r#""text":null"#)),

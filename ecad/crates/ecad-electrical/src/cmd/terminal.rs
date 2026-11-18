@@ -5,6 +5,7 @@
 //! build the reports, commit and answer in JSON.
 
 use ecad_model::units::Radians;
+use ecad_model::{LevelIo, PointKey};
 use std::collections::BTreeMap;
 
 use ecad_model::{
@@ -69,7 +70,7 @@ fn terminal_symbol(
     ops: &mut Vec<Op>,
 ) -> TerminalId {
     let (t, item, rep): (TerminalId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
-    let key = if first { "1".to_string() } else { label.to_string() };
+    let key = PointKey::Def(if first { "1".to_string() } else { label.to_string() });
     ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: strip, label: Some(label.to_string()), key: Some(key) } });
     let placement = Placement { origin: at, rotation: Radians(0.0), mirror: false, scale: 1.0 };
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition: def, placement }) } });
@@ -178,12 +179,15 @@ pub fn plan_fence_typed(
             let c: DeviceId = ids.fresh();
             // Brief 026: a provisional `-X?n` when provisional tags are on, as Place gives.
             let tag = high.next_auto(ledger, &crate::devices::prefix_for(doc, starter))?;
-            let mut properties = ecad_model::Properties::new();
-            properties.insert(ecad_model::tag::TAG_KEY.into(), tag.clone());
-            properties.insert("description".into(), "Terminal".into());
             ops.push(Op::CreateDevice {
                 id: c,
-                device: ecad_model::Device { properties, definition: Some(def), device_type: starter.device_type() },
+                device: ecad_model::Device {
+                    tag: Some(crate::devices::stored_tag(&tag)?),
+                    description: crate::devices::description_of("Terminal"),
+                    definition: Some(def),
+                    device_type: starter.device_type(),
+                    ..ecad_model::Device::default()
+                },
             });
             (c, tag, 1, legacy)
         }
@@ -228,7 +232,7 @@ pub fn plan_fence_typed(
 pub fn level_symbol(
     ids: &mut IdAllocator, page: PageId, style: Style, def: DefinitionId, starter: &crate::symbols::Starter, strip: DeviceId, position: &str,
     placement: Placement, ops: &mut Vec<Op>,
-) -> Result<Vec<(String, TerminalId, Pt)>, CmdError> {
+) -> Result<Vec<(PointKey, TerminalId, Pt)>, CmdError> {
     let d = starter.definition()?;
     let (item, rep): (ItemId, RepresentationId) = (ids.fresh(), ids.fresh());
     let mut cps = BTreeMap::new();
@@ -261,10 +265,11 @@ pub fn level_symbol(
 /// # Errors
 /// [`plan_land`]'s.
 pub fn land_level(
-    doc: &Document, ids: &mut IdAllocator, page: PageId, on: OnWire, shown: &[(String, TerminalId, Pt)], placement: Placement,
+    doc: &Document, ids: &mut IdAllocator, page: PageId, on: OnWire, shown: &[(PointKey, TerminalId, Pt)], placement: Placement,
 ) -> Result<Land, CmdError> {
     let first = shown.first().map(|(_, t, _)| *t).ok_or(CmdError::refused("The symbol has no connection point."))?;
-    let (Some(tin), Some(tout)) = (shown.iter().find(|(k, _, _)| k.ends_with('i')), shown.iter().find(|(k, _, _)| k.ends_with('o'))) else {
+    let io = |want: LevelIo| shown.iter().find(|(k, _, _)| matches!(k.level(), Some((_, Some(io))) if io == want));
+    let (Some(tin), Some(tout)) = (io(LevelIo::In), io(LevelIo::Out)) else {
         return plan_land(doc, ids, page, on, first);
     };
     let mut land = plan_land(doc, ids, page, on, tin.1)?;

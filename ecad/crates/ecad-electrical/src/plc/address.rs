@@ -20,14 +20,14 @@ use ecad_model::{DeviceId, Document};
 use super::rack::{self, CardType, Direction, RackRef};
 use crate::defaults::{self, Scope};
 
-/// A card's pinned start byte (FP3).
+/// The `setprop` name of a module's pinned start byte (FP3).
 pub const START_KEY: &str = "plc.addr.start";
-/// A card's own block size in bytes (FP3).
+/// The `setprop` name of a module's own block size in bytes (FP3).
 pub const SIZE_KEY: &str = "plc.addr.size";
 /// The highest byte an address may use.
-pub const MAX_BYTE: u32 = 65_535;
+pub const MAX_BYTE: u32 = ecad_model::plc::MAX_BYTE;
 /// The largest block size a card may set.
-pub const MAX_SIZE: u32 = 4_096;
+pub const MAX_SIZE: u32 = ecad_model::plc::MAX_SIZE;
 
 /// An address style (design 045 §5.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,16 +41,47 @@ pub enum Style {
 }
 
 impl Style {
-    /// Rack `r`'s style (registry, rack level allowed).
+    /// Rack `r`'s style: the station's own, else the project's `plc.address.style`.
     pub fn of(doc: &Document, r: DeviceId) -> Style {
-        let at = Scope { component: Some(r), ..Scope::project() };
-        match defaults::resolve(doc, &defaults::plc::ADDRESS_STYLE, at).word() {
+        if let Some(s) = super::edit::station_of(doc, r).and_then(|x| x.address_style) {
+            return Style::of_stored(s);
+        }
+        match defaults::resolve(doc, &defaults::plc::ADDRESS_STYLE, Scope::project()).word() {
             "iec" => Style::Iec,
             "percent" => Style::Percent,
             "slot" => Style::Slot,
             "none" => Style::None,
             _ => Style::ByteBit,
         }
+    }
+
+    /// The style a station stores.
+    pub fn of_stored(s: ecad_model::plc::AddressStyle) -> Style {
+        use ecad_model::plc::AddressStyle as A;
+        match s {
+            A::ByteBit => Style::ByteBit,
+            A::Iec => Style::Iec,
+            A::Percent => Style::Percent,
+            A::Slot => Style::Slot,
+            A::None => Style::None,
+        }
+    }
+
+    /// The style as a station stores it.
+    pub fn stored(self) -> ecad_model::plc::AddressStyle {
+        use ecad_model::plc::AddressStyle as A;
+        match self {
+            Style::ByteBit => A::ByteBit,
+            Style::Iec => A::Iec,
+            Style::Percent => A::Percent,
+            Style::Slot => A::Slot,
+            Style::None => A::None,
+        }
+    }
+
+    /// The style a typed word names: `byte.bit`, `iec`, `percent`, `slot`, `none`.
+    pub fn parse(word: &str) -> Option<Style> {
+        [Style::ByteBit, Style::Iec, Style::Percent, Style::Slot, Style::None].into_iter().find(|s| s.word().eq_ignore_ascii_case(word.trim()))
     }
 
     pub fn word(self) -> &'static str {
@@ -64,15 +95,9 @@ impl Style {
     }
 }
 
-/// A whole number property 0..=`max`, digits only.
-fn number(doc: &Document, c: DeviceId, key: &str, max: u32) -> Option<u32> {
-    let t = doc.devices.get(&c)?.properties.get(key)?.trim();
-    (t.len() <= 5 && ecad_model::words::is_digits(t)).then(|| t.parse::<u32>().ok()).flatten().filter(|n| *n <= max)
-}
-
 /// A card's pinned start, when set.
 pub fn pinned(doc: &Document, c: DeviceId) -> Option<u32> {
-    number(doc, c, START_KEY, MAX_BYTE)
+    super::edit::module_of(doc, c).and_then(|m| m.address.start).filter(|n| *n <= MAX_BYTE)
 }
 
 /// The bytes one analogue or IO-Link channel of card `c` takes.
@@ -85,7 +110,7 @@ pub fn word_size(doc: &Document, c: DeviceId, ty: CardType) -> u32 {
 
 /// Card `c`'s (input, output) block size in bytes for `n` channels (design 045 §5.1).
 pub fn sizes(doc: &Document, c: DeviceId, ty: CardType, n: u32) -> (u32, u32) {
-    let own = number(doc, c, SIZE_KEY, MAX_SIZE).filter(|s| *s >= 1);
+    let own = super::edit::module_of(doc, c).and_then(|m| m.address.size).filter(|s| (1..=MAX_SIZE).contains(s));
     let digital = n.div_ceil(8);
     let word = word_size(doc, c, ty).saturating_mul(n);
     let (i, o) = match ty {
@@ -198,12 +223,7 @@ pub fn block_words(style: Style, output: bool, (start, size): (u32, u32)) -> Str
 /// The address of channel `i` of card `c` as shown: the typed one (`typed: true`), else the
 /// automatic input address (an output card's output address).
 pub fn shown(doc: &Document, c: DeviceId, i: u32, auto: Option<String>) -> (Option<String>, bool) {
-    let typed = doc
-        .devices
-        .get(&c)
-        .and_then(|x| x.properties.get(&super::channels::ch_key(i, "address")))
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty());
+    let typed = super::edit::module_of(doc, c).and_then(|m| m.channel(i)).and_then(|x| x.address.as_ref()).map(ToString::to_string);
     match typed {
         Some(t) => (Some(t), true),
         None => (auto, false),
@@ -213,13 +233,61 @@ pub fn shown(doc: &Document, c: DeviceId, i: u32, auto: Option<String>) -> (Opti
 /// The members of rack `r` read straight from the document (texts and commands, which have no
 /// kept model): its cards with a slot, in slot order.
 pub fn members_of(doc: &Document, r: DeviceId) -> Vec<Member> {
-    rack::cards_naming(doc, r)
+    let Some(station) = super::edit::station_of(doc, r) else { return Vec::new() };
+    station
+        .modules(doc, r)
         .into_iter()
         .filter_map(|(c, s)| {
             let ty = super::card_type_of(doc, c)?;
-            (!ty.is_rack()).then_some((c, ty, rack::channel_count(doc, c, ty), s?))
+            (!ty.is_rack()).then_some((c, ty, rack::channel_count(doc, c), s?))
         })
         .collect()
+}
+
+/// What has a PLC address (design 072 §2.4, A10): a module's block is its own method, so the
+/// Checks, the I/O list and the overview read it rather than work it out again.
+pub trait Addressed {
+    /// Module `id`'s address block in its station; `None` when it is in no station's slot.
+    fn address_block(&self, doc: &Document, id: DeviceId) -> Option<Block>;
+}
+
+impl Addressed for ecad_model::plc::PlcModule {
+    fn address_block(&self, doc: &Document, id: DeviceId) -> Option<Block> {
+        let r = self.rack.filter(|r| super::edit::station_of(doc, *r).is_some())?;
+        self.slot?;
+        blocks(doc, r, &members_of(doc, r)).get(&id).copied()
+    }
+}
+
+/// A station's own reads (design 072 §3): its modules, from the index's station → modules map.
+pub trait Station {
+    /// Station `id`'s modules with their slots, by slot then tag.
+    fn modules(&self, doc: &Document, id: DeviceId) -> Vec<(DeviceId, Option<u32>)>;
+    /// How many input and output channels its modules have.
+    fn io_count(&self, doc: &Document, id: DeviceId) -> (u32, u32);
+}
+
+impl Station for ecad_model::plc::PlcRack {
+    fn modules(&self, doc: &Document, id: DeviceId) -> Vec<(DeviceId, Option<u32>)> {
+        rack::cards_naming(doc, id)
+    }
+
+    fn io_count(&self, doc: &Document, id: DeviceId) -> (u32, u32) {
+        let mut io = (0u32, 0u32);
+        for (c, _) in self.modules(doc, id) {
+            let (Some(ty), n) = (super::card_type_of(doc, c), rack::channel_count(doc, c)) else { continue };
+            match ty.direction() {
+                Direction::Input => io.0 = io.0.saturating_add(n),
+                Direction::Output => io.1 = io.1.saturating_add(n),
+                Direction::Both => {
+                    io.0 = io.0.saturating_add(n);
+                    io.1 = io.1.saturating_add(n);
+                }
+                Direction::None => {}
+            }
+        }
+        io
+    }
 }
 
 /// The direction of channel addresses a card shows first: its input, else its output.

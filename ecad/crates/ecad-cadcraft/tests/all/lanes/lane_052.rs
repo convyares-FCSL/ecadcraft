@@ -133,7 +133,7 @@ fn renumber_orders_a_device_by_its_head() {
     h.run("place", json!({"symbol": "coil", "at": [50, 150], "device": x.hex()})).unwrap();
     h.run("renumber", json!({"kind": "devices", "scope": "all", "start": 1})).unwrap();
     let d = h.doc();
-    let tag = |c: DeviceId| d.devices[&c].properties.get("tag").cloned().unwrap_or_default();
+    let tag = |c: DeviceId| d.devices[&c].tag().map(str::to_string).unwrap_or_default();
     assert_eq!(tag(y), "-K01", "Y's coil is on page 1");
     assert_eq!(tag(x), "-K02", "X is numbered by its coil on page 2, not its contact on page 1");
 }

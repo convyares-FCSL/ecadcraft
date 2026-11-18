@@ -23,7 +23,7 @@ fn the_demo_command_list_builds_the_control_panel() {
     let k1 = doc.components_tagged("-K01")[0];
     assert_eq!(doc.representations_of(Subject::Device(k1)).count(), 4);
     assert_eq!(ecad_cadcraft::devices::page_numbers(&doc, k1), [2, 3]);
-    assert_eq!(doc.devices[&k1].properties.get("part_number").map(String::as_str), Some("CT-9A-24VDC"));
+    assert_eq!(doc.devices[&k1].get("part_number"), Some("CT-9A-24VDC"));
     // Cable -W01 runs from page 2 to page 3 with linked references, three members connected to
     // -X02 on page 3.
     assert_eq!(doc.cables.len(), 1);

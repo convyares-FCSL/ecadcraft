@@ -161,7 +161,7 @@ fn conductor_at(h: &mut H, component: DeviceId, label: &str) -> WireId {
     let d = h.doc();
     let t = d
         .terminals_of(component)
-        .find(|(_, t)| t.label.as_deref() == Some(label) || t.key.as_deref() == Some(label))
+        .find(|(_, t)| t.label.as_deref() == Some(label) || t.key.as_ref().map(ToString::to_string).as_deref() == Some(label))
         .map(|(i, _)| i)
         .unwrap_or_else(|| panic!("no pin {label}"));
     d.wires.iter().find(|(_, c)| c.ends.contains(&Some(t))).map(|(i, _)| *i).unwrap_or_else(|| panic!("no conductor at {label}"))
@@ -207,7 +207,7 @@ fn box_temp(h: &mut H, cab: DeviceId, v: &str) {
         return;
     }
     // Fix round: `rating {location, temperature}` writes it on the location's boxes.
-    let loc = h.doc().devices.get(&cab).and_then(|c| c.properties.get(ecad_model::book::LOCATION_KEY).cloned()).unwrap_or_default();
+    let loc = h.doc().devices.get(&cab).and_then(|c| c.value(ecad_model::book::LOCATION_KEY)).unwrap_or_default();
     let t = v.trim().parse::<f64>().map_or_else(|_| json!(v), |n| json!(n));
     if h.run("rating", json!({"location": loc, "temperature": t})).is_ok() {
         return;

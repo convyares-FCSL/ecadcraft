@@ -171,7 +171,7 @@ fn ac10_revision_columns_and_custom_fields() {
 }
 
 fn tags(c: &mut Client) -> Vec<String> {
-    c.doc().devices.values().filter_map(|x| x.properties.get("tag").cloned()).collect()
+    c.doc().devices.values().filter_map(|x| x.tag().map(str::to_string)).collect()
 }
 
 #[test]
@@ -187,7 +187,7 @@ fn ac11_the_tag_style_rewrites_in_one_undoable_step() {
     assert_eq!((v["tag_dash"].clone(), v["tag_case"].clone(), v["tag_padding"].clone()), (json!(false), json!("upper"), json!(2)));
     let last = last_by_agent(&mut c);
     assert_eq!(last.label, "Project properties");
-    assert_eq!(last.ops.iter().filter(|o| matches!(o, Op::SetProperty { key, .. } if key == "tag")).count(), 3);
+    assert_eq!(last.ops.iter().filter(|o| matches!(o, Op::ModifyDevice { before, after, .. } if before.tag != after.tag)).count(), 3);
     assert_eq!(tags(&mut c), ["K01", "K02", "K03"]);
     // Identity is unchanged: the index still finds the device by either form.
     let doc = c.doc();

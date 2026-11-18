@@ -15,6 +15,7 @@ use crate::error::{ModelError, Result};
 use crate::geom::{Placement, Pt};
 use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, TerminalId, WireId};
 use crate::page::{PageKind, PageTitle};
+use crate::point::PointKey;
 use crate::sheet::SheetSpec;
 use crate::style::StyleRef;
 use crate::units::Radians;
@@ -312,6 +313,29 @@ pub struct Item {
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Device {
+    /// Its tag (`-K01`), if it has one (design 026; the identity of the device).
+    pub tag: Option<crate::tag::Tag>,
+    /// Whether the tag was typed and is kept by renumbering (design 026 FP1).
+    pub tag_fixed: bool,
+    /// What it is for, in words (`setprop` key `description`).
+    pub description: Option<crate::device::Description>,
+    /// Its main part's number (`part_number`).
+    pub part_number: Option<crate::device::PartText>,
+    /// Its main part's maker (`maker`).
+    pub manufacturer: Option<crate::device::PartText>,
+    /// Its main part's article number (`article_number`).
+    pub article_number: Option<crate::device::PartText>,
+    /// Its type text (`type`): a terminal strip's type notation reads it.
+    pub type_text: Option<crate::device::PartText>,
+    /// Its location (an entry of the project's list, design 072 §6.3); `None` has none.
+    pub location: Option<crate::id::LocationId>,
+    /// Whether the location was set by hand (typed, or a box drawn around it) and is kept when a
+    /// box around it changes; `false` when it came from its page or a box (design 072 §6.3).
+    pub location_fixed: bool,
+    /// Its function (an entry of the project's list); `None` has none.
+    pub function: Option<crate::id::FunctionId>,
+    /// Whether the function was set by hand, as [`Device::location_fixed`].
+    pub function_fixed: bool,
     pub properties: Properties,
     /// The embedded definition its symbol representations use, if any.
     pub definition: Option<DefinitionId>,
@@ -322,7 +346,151 @@ pub struct Device {
 impl Device {
     /// A new device drawn by `definition` (`id`), with the type the symbol declares.
     pub fn of_definition(id: DefinitionId, definition: &Definition, properties: Properties) -> Device {
-        Device { properties, definition: Some(id), device_type: definition.device_type.clone() }
+        Device { properties, definition: Some(id), device_type: definition.device_type.clone(), ..Device::default() }
+    }
+
+    /// Whether its tag is fixed (FP1): flagged, and not provisional (a provisional tag never
+    /// counts as fixed, overseer ruling, tester 026 bug 2).
+    pub fn is_fixed(&self) -> bool {
+        self.tag_fixed && !self.tag().is_some_and(crate::tag::is_provisional)
+    }
+
+    /// Whether `other` differs in a typed field (anything but the property bag and the
+    /// definition, which have ops of their own).
+    pub fn fields_differ(&self, other: &Device) -> bool {
+        let typed = |d: &Device| Device { properties: Properties::new(), definition: None, ..d.clone() };
+        typed(self) != typed(other)
+    }
+
+    /// Whether `other` differs from this device in its text fields only ([`crate::TextField`]):
+    /// what a view that reads none of them (rating, connectivity) can skip.
+    pub fn only_text_differs(&self, other: &Device) -> bool {
+        let bare =
+            |d: &Device| Device { description: None, part_number: None, manufacturer: None, article_number: None, type_text: None, ..d.clone() };
+        bare(self) == bare(other)
+    }
+
+    /// Whether `other` differs from this device in its location and function (and their `fixed`
+    /// flags) only: what a view that reads neither can skip.
+    pub fn only_place_differs(&self, other: &Device) -> bool {
+        let bare = |d: &Device| Device { location: None, location_fixed: false, function: None, function_fixed: false, ..d.clone() };
+        bare(self) == bare(other)
+    }
+
+    /// The value `setprop`'s key `key` names on this device (design 072 §10: the key stays a
+    /// string and routes to the field): a typed field as its stored text, else the property.
+    pub fn value(&self, key: &str) -> Option<String> {
+        match key {
+            crate::tag::FIXED_KEY => self.tag_fixed.then(|| crate::words::flag_word(true).to_string()),
+            crate::book::LOCATION_KEY => self.location.map(crate::id::LocationId::hex),
+            crate::book::FUNCTION_KEY => self.function.map(crate::id::FunctionId::hex),
+            crate::book::LOCATION_FIXED_KEY => self.location_fixed.then(|| crate::words::flag_word(true).to_string()),
+            crate::book::FUNCTION_FIXED_KEY => self.function_fixed.then(|| crate::words::flag_word(true).to_string()),
+            _ if crate::device::Connector::is_key(key) => match &self.device_type {
+                DeviceType::Connector(x) => x.value(key),
+                _ => None,
+            },
+            _ => self.get(key).map(str::to_string),
+        }
+    }
+
+    /// The text `setprop`'s key `key` names on this device: its tag, a text field
+    /// ([`crate::TextField`]), else the property. (The tag's fixed flag is not text: [`Device::value`].)
+    pub fn get(&self, key: &str) -> Option<&str> {
+        if key == crate::tag::TAG_KEY {
+            return self.tag();
+        }
+        match crate::TextField::of_key(key) {
+            Some(f) => self.text(f),
+            None => self.properties.get(key).map(String::as_str),
+        }
+    }
+
+    /// Its text field `f`.
+    pub fn text(&self, f: crate::TextField) -> Option<&str> {
+        use crate::TextField as F;
+        match f {
+            F::Description => self.description.as_ref().map(|t| t.as_str()),
+            F::PartNumber => self.part_number.as_ref().map(|t| t.as_str()),
+            F::Manufacturer => self.manufacturer.as_ref().map(|t| t.as_str()),
+            F::ArticleNumber => self.article_number.as_ref().map(|t| t.as_str()),
+            F::TypeText => self.type_text.as_ref().map(|t| t.as_str()),
+        }
+    }
+
+    /// Set its text field `f` to `value` (`None`, or text that is blank once trimmed, clears it).
+    ///
+    /// # Errors
+    /// The [`crate::text::TextError`] of a value that is too long or holds a hidden character.
+    pub fn set_text(&mut self, f: crate::TextField, value: Option<&str>) -> std::result::Result<(), crate::text::TextError> {
+        use crate::TextField as F;
+        use crate::device::{Description, PartText};
+        let value = value.map(str::trim).filter(|v| !v.is_empty());
+        let part = |v: Option<&str>| v.map(PartText::new).transpose();
+        match f {
+            F::Description => self.description = value.map(Description::new).transpose()?,
+            F::PartNumber => self.part_number = part(value)?,
+            F::Manufacturer => self.manufacturer = part(value)?,
+            F::ArticleNumber => self.article_number = part(value)?,
+            F::TypeText => self.type_text = part(value)?,
+        }
+        Ok(())
+    }
+
+    /// This device with text field `f` set to `value` ([`Device::set_text`]).
+    ///
+    /// # Errors
+    /// As [`Device::set_text`].
+    pub fn with_text(&self, f: crate::TextField, value: Option<&str>) -> std::result::Result<Device, crate::text::TextError> {
+        let mut d = self.clone();
+        d.set_text(f, value)?;
+        Ok(d)
+    }
+
+    /// Set the value `setprop`'s key `key` names: a text field, the location or function (an
+    /// entry's 32-hex id, fixed), else the property bag (the tag and its flag have their own rules
+    /// and are not set here). Used where a bag of values (a
+    /// symbol's defaults, an item's columns) becomes a device.
+    ///
+    /// # Errors
+    /// As [`Device::set_text`].
+    pub fn set_value(&mut self, key: &str, value: Option<&str>) -> std::result::Result<(), crate::text::TextError> {
+        // A location or function given as an entry's id (32 hex): set by hand, so fixed.
+        let id = || value.and_then(|v| u128::from_str_radix(v.trim(), 16).ok().filter(|_| v.trim().len() == 32));
+        match key {
+            crate::book::LOCATION_KEY => {
+                self.location = id().map(crate::id::LocationId);
+                self.location_fixed = self.location.is_some();
+                return Ok(());
+            }
+            crate::book::FUNCTION_KEY => {
+                self.function = id().map(crate::id::FunctionId);
+                self.function_fixed = self.function.is_some();
+                return Ok(());
+            }
+            _ => {}
+        }
+        match crate::TextField::of_key(key) {
+            Some(f) => self.set_text(f, value),
+            None => {
+                match value {
+                    Some(v) => self.properties.insert(key.to_string(), v.to_string()),
+                    None => self.properties.remove(key),
+                };
+                Ok(())
+            }
+        }
+    }
+
+    /// Its tag as text.
+    pub fn tag(&self) -> Option<&str> {
+        self.tag.as_ref().map(|t| t.as_str())
+    }
+
+    /// This device with tag `tag` (`None` clears it; text that is not a valid tag clears it too,
+    /// which callers rule out with [`crate::tag::Tag::new`] first).
+    pub fn with_tag(&self, tag: Option<&str>) -> Device {
+        Device { tag: tag.and_then(|t| crate::tag::Tag::new(t).ok()), ..self.clone() }
     }
 }
 
@@ -331,8 +499,8 @@ impl Device {
 pub struct Terminal {
     pub component: DeviceId,
     pub label: Option<String>,
-    /// The definition terminal this one was created from (LIB-02).
-    pub key: Option<String>,
+    /// The definition terminal this one was created from (LIB-02; design 072 §2.7).
+    pub key: Option<PointKey>,
 }
 
 /// What a representation depicts.
@@ -590,7 +758,7 @@ impl ProjectSettings {
 /// A terminal of a definition, in the symbol's local frame.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TerminalDef {
-    pub key: String,
+    pub key: PointKey,
     pub label: Option<String>,
     pub at: Pt,
 }
@@ -638,7 +806,7 @@ pub struct Definition {
     /// than one of the definition's own (brief 044, FP2: a connector half bridges the side keys
     /// `.s` and `.p`; [`crate::invariant::is_placement_key`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub bridges: Vec<Vec<String>>,
+    pub bridges: Vec<Vec<PointKey>>,
     /// Where the device texts of a placed copy go (brief 048, FP1). Empty for the starters, whose
     /// anchors are catalogue code; left out of the file when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -659,8 +827,8 @@ pub struct Definition {
 
 impl Definition {
     /// The keys bridged to `key` inside the device (not `key` itself), from [`Definition::bridges`].
-    pub fn bridged_with<'a>(&'a self, key: &'a str) -> impl Iterator<Item = &'a str> + 'a {
-        self.bridges.iter().filter(move |g| g.iter().any(|k| k == key)).flat_map(|g| g.iter().map(String::as_str)).filter(move |k| *k != key)
+    pub fn bridged_with<'a>(&'a self, key: &'a PointKey) -> impl Iterator<Item = &'a PointKey> + 'a {
+        self.bridges.iter().filter(move |g| g.contains(key)).flat_map(|g| g.iter()).filter(move |k| *k != key)
     }
 }
 

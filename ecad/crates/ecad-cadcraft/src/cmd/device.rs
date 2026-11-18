@@ -202,12 +202,12 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
             _ => None,
         };
         // Brief 045 (design 045 §2.4): a new card goes in a rack's slot when the project has a rack.
-        let card_slot = match crate::plc::rack::CardType::of_body(starter.key) {
+        let card_slot = match crate::plc::rack::CardType::of_symbol(starter) {
             Some(t) if !t.is_rack() && !plan.joined => {
                 let last = p.last_placed.as_ref().map(|(_, c)| *c);
                 let at = crate::plc::rack::place_target(p.ledger.document(), rack.as_ref().map(Option::as_deref), slot.as_deref(), last)?;
                 if let Some((r, s)) = at {
-                    plan.ops.extend(crate::plc::rack::new_card_ops(plan.component, r, s));
+                    crate::plc::rack::put_new_card(p.ledger.document(), &mut plan.ops, plan.component, r, s);
                 }
                 at.map(|x| (t, x))
             }
@@ -215,7 +215,7 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
         };
         // Brief 052d (design 052 §5.3): the context here proposes a function and a location; an
         // unset device takes it in this transaction, a device with another value is asked about.
-        let proposed = crate::draw::proposals::plan_place(p, modes, plan.component, page, origin, None).map_err(CmdError::refused)?;
+        let proposed = crate::draw::proposals::plan_place(p, &plan.ops, modes, plan.component, page, origin, None).map_err(CmdError::refused)?;
         plan.ops.extend(proposed.ops.iter().cloned());
         let label = if land.is_some() { "Place terminal".to_string() } else { plan.label.clone() };
         p.apply_edit(pg, "place", &label, plan.ops.clone())?;

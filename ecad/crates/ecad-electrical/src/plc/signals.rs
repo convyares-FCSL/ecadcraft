@@ -20,10 +20,10 @@
 use crate::CmdError;
 use std::collections::BTreeSet;
 
-use ecad_model::{DeviceId, Document, ObjectRef, Op};
+use ecad_model::{DeviceId, Document, Op};
 use serde_json::{Value, json};
 
-use super::channels::{CH_PREFIX, ch_key, first_number};
+use super::channels::first_number;
 use super::iolist::Target;
 use super::rack::{self, CardType, RackRef};
 use crate::defaults::plc::SafeState;
@@ -149,24 +149,12 @@ pub fn name_key(tag: &str) -> String {
 pub fn tags_of_plc(doc: &Document, plc: Option<DeviceId>) -> Vec<(DeviceId, u32, String)> {
     let mut out = Vec::new();
     for (id, x) in &doc.devices {
-        let mut found = false;
-        for (k, v) in x.properties.range(CH_PREFIX.to_string()..) {
-            if !k.starts_with(CH_PREFIX) {
-                break;
-            }
-            if let Some((i, TAG)) = super::channels::parse_ch_key(k) {
-                let v = v.trim();
-                if !v.is_empty() {
-                    if !found {
-                        if plc_of(doc, *id) != plc || super::card_type_of(doc, *id).is_none_or(CardType::is_rack) {
-                            break;
-                        }
-                        found = true;
-                    }
-                    out.push((*id, i, v.to_string()));
-                }
-            }
+        let ecad_model::DeviceType::PlcModule(m) = &x.device_type else { continue };
+        let tags: Vec<(u32, String)> = m.channels().into_iter().filter_map(|(i, ch)| ch.tag.as_ref().map(|t| (i, t.to_string()))).collect();
+        if tags.is_empty() || plc_of(doc, *id) != plc {
+            continue;
         }
+        out.extend(tags.into_iter().map(|(i, t)| (*id, i, t)));
     }
     out
 }
@@ -299,6 +287,7 @@ impl TestState {
 /// description, unique in its PLC. Returns the ops and how many tags per card.
 pub fn make_tags_ops(doc: &Document, cards: &[DeviceId]) -> (Vec<Op>, Vec<(DeviceId, usize)>) {
     let mut ops = Vec::new();
+    let mut made = 0usize;
     let mut counts = Vec::new();
     let mut taken_by_plc: std::collections::BTreeMap<Option<DeviceId>, BTreeSet<String>> = std::collections::BTreeMap::new();
     for c in cards {
@@ -307,7 +296,7 @@ pub fn make_tags_ops(doc: &Document, cards: &[DeviceId]) -> (Vec<Op>, Vec<(Devic
         let chans = super::channel_data(doc, *c);
         let mut n = 0;
         for (i, ch) in &chans {
-            if ops.len() >= MAX_MADE {
+            if made >= MAX_MADE {
                 break;
             }
             if ch.tag.is_some() || !(ch.used || ch.text.is_some()) {
@@ -316,8 +305,11 @@ pub fn make_tags_ops(doc: &Document, cards: &[DeviceId]) -> (Vec<Op>, Vec<(Devic
             let Some(base) = ch.text.as_deref().and_then(make_tag) else { continue };
             let t = unique_tag(&base, taken);
             taken.insert(name_key(&t));
-            ops.push(Op::SetProperty { object: ObjectRef::Device(*c), key: ch_key(*i, TAG), before: None, after: Some(t) });
+            if super::channels::set_field(doc, &mut ops, *c, *i, TAG, Some(&t)).is_err() {
+                continue;
+            }
             n += 1;
+            made += 1;
         }
         counts.push((*c, n));
     }

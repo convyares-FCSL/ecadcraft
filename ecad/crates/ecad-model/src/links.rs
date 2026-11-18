@@ -24,6 +24,7 @@ use std::cmp::Ordering;
 use crate::doc::{Document, Properties};
 use crate::error::{ParseError, Parsed};
 use crate::id::{DeviceId, TerminalId};
+use crate::point::{LevelIo, PointKey};
 
 /// What every link key starts with.
 pub const PREFIX: &str = "link.";
@@ -42,9 +43,15 @@ pub const MAX_LEVEL: u32 = 99;
 /// A terminal's level from its key (brief 036, FP2): `.2` → (2, none), `.1i` → (1, `i`). Any key
 /// that does not start with `.` is level 1 of a one-level position; a dotted key that does not
 /// read (`.0`, `.-1`, `.x`) is `None`.
-pub fn level_of_key(key: Option<&str>) -> Option<(u32, Option<char>)> {
-    let Some(k) = key.and_then(|k| k.strip_prefix('.')) else { return Some((1, None)) };
-    level_text(k)
+pub fn level_of_key(key: Option<&PointKey>) -> Option<(u32, Option<char>)> {
+    match key {
+        None | Some(PointKey::Def(_)) => Some((1, None)),
+        Some(PointKey::Level { level, io }) => {
+            let n = u32::from(*level);
+            (1..=MAX_LEVEL).contains(&n).then_some((n, io.map(|io| if io == LevelIo::In { 'i' } else { 'o' })))
+        }
+        Some(_) => None,
+    }
 }
 
 /// `2`, `1i`, `1o` → (level, point); `None` when it does not read or is out of range.
@@ -423,7 +430,7 @@ impl Matcher {
     /// [`Matcher::matches_level`] for a terminal: its label and its key's level.
     pub fn matches_terminal(&self, t: &crate::doc::Terminal) -> bool {
         let Some(l) = t.label.as_deref() else { return false };
-        let Some((n, p)) = level_of_key(t.key.as_deref()) else { return false };
+        let Some((n, p)) = level_of_key(t.key.as_ref()) else { return false };
         self.matches_level(l, n, p)
     }
 }

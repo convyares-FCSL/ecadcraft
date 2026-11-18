@@ -27,8 +27,78 @@ use ecad_model::{
     Definition, DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Placement, Pt,
     Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId,
 };
-use ecad_model::{DeviceType, Noun, TextHAlign as HAlign, TextVAlign as VAlign};
+use ecad_model::{DeviceType, Noun, PointKey, TextHAlign as HAlign, TextVAlign as VAlign};
 
+/// `t` as a device's stored tag (design 072 §2.1): refused when it is not 1 to 40 printable
+/// characters.
+///
+/// # Errors
+/// [`tag::BAD_TAG`]'s words.
+pub fn stored_tag(t: &str) -> Result<tag::Tag, CmdError> {
+    tag::Tag::new(t).map_err(|_| CmdError::refused(tag::BAD_TAG))
+}
+
+/// A new device's description from a symbol's or default's name: `None` when the name is not a
+/// valid description (blank, too long, a hidden character).
+pub fn description_of(name: &str) -> Option<ecad_model::device::Description> {
+    ecad_model::device::Description::new(name).ok()
+}
+
+/// Device `id` as the planned `ops` (not committed) leave it on `doc`: created, modified or
+/// deleted there, or its properties set; `None` when it does not exist.
+pub fn planned_device(doc: &Document, ops: &[Op], id: DeviceId) -> Option<Device> {
+    planned_device_on(doc, &[], ops, id)
+}
+
+/// [`planned_device`] after `base` and then `ops`.
+fn planned_device_on(doc: &Document, base: &[Op], ops: &[Op], id: DeviceId) -> Option<Device> {
+    let mut d = doc.devices.get(&id).cloned();
+    for op in base.iter().chain(ops) {
+        match op {
+            Op::CreateDevice { id: x, device } | Op::ModifyDevice { id: x, after: device, .. } if *x == id => d = Some(device.clone()),
+            Op::DeleteDevice { id: x, .. } if *x == id => d = None,
+            Op::SetProperty { object: ecad_model::ObjectRef::Device(x), key, after, .. } if *x == id => {
+                if let Some(d) = d.as_mut() {
+                    match after {
+                        Some(v) => d.properties.insert(key.clone(), v.clone()),
+                        None => d.properties.remove(key),
+                    };
+                }
+            }
+            _ => {}
+        }
+    }
+    d
+}
+
+/// Change device `id`'s typed fields with `f` within the planned `ops` (design 072: one
+/// `ModifyDevice` records the whole device): folded into the `CreateDevice` or `ModifyDevice` of
+/// it already in `ops` when no property op on it follows that one, else a new `ModifyDevice`.
+/// Returns whether anything changed (`false` also when the device does not exist).
+pub fn edit_planned(doc: &Document, ops: &mut Vec<Op>, id: DeviceId, f: impl FnOnce(&mut Device)) -> bool {
+    edit_planned_on(doc, &[], ops, id, f)
+}
+
+/// [`edit_planned`] for ops that will follow `base` (planned by the caller, such as the ops
+/// creating the device): the device is read after `base`, and only `ops` are changed.
+pub fn edit_planned_on(doc: &Document, base: &[Op], ops: &mut Vec<Op>, id: DeviceId, f: impl FnOnce(&mut Device)) -> bool {
+    let Some(before) = planned_device_on(doc, base, ops, id) else { return false };
+    let mut after = before.clone();
+    f(&mut after);
+    if after == before {
+        return false;
+    }
+    let touches = |op: &Op| match op {
+        Op::CreateDevice { id: x, .. } | Op::ModifyDevice { id: x, .. } | Op::DeleteDevice { id: x, .. } => *x == id,
+        Op::SetProperty { object: ecad_model::ObjectRef::Device(x), .. } => *x == id,
+        _ => false,
+    };
+    match ops.iter_mut().rev().find(|op| touches(op)) {
+        Some(Op::CreateDevice { device, .. } | Op::ModifyDevice { after: device, .. }) => *device = after,
+        _ => ops.push(Op::ModifyDevice { id, before, after }),
+    }
+    true
+}
 /// After device `c`'s symbol is swapped for `definition` (a `SetDeviceDefinition` already in the
 /// plan), the op giving it the type that symbol declares (design 072 §2.3): `None` while the group
 /// stays, so the data the device has is kept.
@@ -242,7 +312,7 @@ impl TagHigh {
 
 /// A component's tag as stored.
 pub fn tag_of(doc: &Document, c: DeviceId) -> Option<&str> {
-    doc.devices.get(&c)?.properties.get(TAG_KEY).map(String::as_str)
+    doc.devices.get(&c)?.tag()
 }
 
 /// A component's tag, or `(no tag)`.
@@ -266,8 +336,8 @@ pub fn rep_definition<'a>(doc: &'a Document, r: &Representation) -> Option<(&'a 
 
 /// A device's description: its `description`, else its first symbol's name, else `no description`.
 pub fn description(doc: &Document, c: DeviceId) -> String {
-    if let Some(d) = doc.devices.get(&c).and_then(|x| x.properties.get("description")) {
-        return d.clone();
+    if let Some(d) = doc.devices.get(&c).and_then(|x| x.description.as_ref()) {
+        return d.to_string();
     }
     doc.representations_of(Subject::Device(c))
         .find_map(|(_, r)| rep_definition(doc, r).map(|(d, _)| d.name.clone()))
@@ -481,7 +551,7 @@ pub struct Placed {
     pub tag: String,
     pub joined: bool,
     /// (definition key, label, terminal), in definition order.
-    pub terminals: Vec<(String, String, TerminalId)>,
+    pub terminals: Vec<(PointKey, String, TerminalId)>,
 }
 
 /// Plan placing starter symbol `s` at `placement` on `page` (design 018 §10).
@@ -530,14 +600,20 @@ pub fn plan_place(
                 None => high.next_auto(ledger, &prefix_for(doc, s))?,
             };
             let c: DeviceId = ids.fresh();
-            let mut properties = ecad_model::Properties::new();
-            properties.insert(TAG_KEY.into(), t.clone());
-            properties.insert("description".into(), s.name.into());
-            ops.push(Op::CreateDevice { id: c, device: Device { properties, definition: Some(definition), device_type: s.device_type() } });
+            ops.push(Op::CreateDevice {
+                id: c,
+                device: Device {
+                    tag: Some(crate::devices::stored_tag(&t)?),
+                    description: description_of(s.name),
+                    definition: Some(definition),
+                    device_type: crate::plc::types::new_type(doc, &s.device_type()),
+                    ..Device::default()
+                },
+            });
             for td in &def.terminals {
                 let tid: TerminalId = ids.fresh();
                 ops.push(Op::AddTerminal { id: tid, terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()) } });
-                terminals.push((td.key.clone(), td.label.clone().unwrap_or_else(|| td.key.clone()), tid));
+                terminals.push((td.key.clone(), td.label.clone().unwrap_or_else(|| td.key.to_string()), tid));
             }
             ops.push(Op::AddItem { id: item, item: instance });
             ops.push(Op::LinkRepresentation {
@@ -561,7 +637,10 @@ pub fn plan_place(
             let mut cps = BTreeMap::new();
             for (td, label) in def.terminals.iter().zip(&labels) {
                 let tid: TerminalId = ids.fresh();
-                ops.push(Op::AddTerminal { id: tid, terminal: Terminal { component: c, label: Some(label.clone()), key: Some(label.clone()) } });
+                ops.push(Op::AddTerminal {
+                    id: tid,
+                    terminal: Terminal { component: c, label: Some(label.clone()), key: Some(PointKey::Def(label.clone())) },
+                });
                 cps.insert(tid, td.at);
                 terminals.push((td.key.clone(), label.clone(), tid));
             }
@@ -577,6 +656,15 @@ pub fn plan_place(
                     connection_points: cps,
                 },
             });
+            // Design 072 §3: a PLC card's body is its symbol (a card a channel cell made had the
+            // cell's), so its points are its symbol's.
+            if crate::plc::rack::CardType::of_symbol(s).is_some()
+                && let Some(d) = doc.devices.get(&c)
+                && matches!(d.device_type, ecad_model::DeviceType::PlcModule(_) | ecad_model::DeviceType::PlcRack(_))
+                && d.definition != Some(definition)
+            {
+                ops.push(Op::SetDeviceDefinition { id: c, before: d.definition, after: Some(definition) });
+            }
             let t = tag_words(doc, c);
             Ok(Placed { ops, label: format!("Add symbol to {t}"), component: c, representation, item, definition, tag: t, joined: true, terminals })
         }
@@ -599,7 +687,7 @@ pub(crate) fn shown_terminals(doc: &Document, c: DeviceId, r: &Representation) -
                     .iter()
                     .filter_map(|td| {
                         let with_key: Vec<TerminalId> =
-                            doc.terminals_of(c).filter(|(_, t)| t.key.as_deref() == Some(td.key.as_str())).map(|(t, _)| t).collect();
+                            doc.terminals_of(c).filter(|(_, t)| t.key.as_ref() == Some(&td.key)).map(|(t, _)| t).collect();
                         let t = with_key.iter().find(|t| doc.representations_showing(**t).next().is_none()).or(with_key.first())?;
                         Some((*t, td.at))
                     })
@@ -660,7 +748,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
                map: &mut BTreeMap<TerminalId, TerminalId>|
      -> TerminalId {
         let nt: TerminalId = ids.fresh();
-        ops.push(Op::AddTerminal { id: nt, terminal: Terminal { component: into, label, key: Some(name) } });
+        ops.push(Op::AddTerminal { id: nt, terminal: Terminal { component: into, label, key: Some(PointKey::Def(name)) } });
         map.insert(old, nt);
         nt
     };
@@ -751,7 +839,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
     }
     // Brief 045 (FP1 condition 2, review of #84, 1): a rack merged away hands its cards to `into`,
     // which takes its rack body (or already is a rack); otherwise they leave it, in this transaction.
-    ops.extend(crate::plc::rack::merge_ops(doc, from, into));
+    crate::plc::rack::merge_into(doc, &mut ops, from, into);
     ops.push(Op::DeleteDevice { id: from, device: from_c });
     Ok(ops)
 }
@@ -764,7 +852,7 @@ const MAX_RENAMED: u32 = 999;
 /// its 32-digit ID (pack re-run, bug 1).
 pub fn label_of(doc: &Document, t: TerminalId) -> String {
     let term = doc.terminals.get(&t);
-    term.and_then(|x| x.label.clone()).or_else(|| term.and_then(|x| x.key.clone())).unwrap_or_else(|| t.hex())
+    term.and_then(|x| x.label.clone()).or_else(|| term.and_then(|x| x.key.as_ref()).map(ToString::to_string)).unwrap_or_else(|| t.hex())
 }
 
 // ---------------------------------------------------------------- erasing (§3.3)
@@ -827,7 +915,8 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
         }
         if remaining.is_empty() {
             // Brief 045 (design 045 §2.2, FP1): a rack's cards leave it in the same transaction.
-            let (released, n) = if crate::plc::rack::is_rack(doc, c) { crate::plc::rack::release_cards(doc, c) } else { (Vec::new(), 0) };
+            let (released, n) =
+                if crate::plc::edit::station_of(doc, c).is_some() { crate::plc::rack::release_cards(doc, c) } else { (Vec::new(), 0) };
             ops.extend(released);
             ops.push(Op::DeleteDevice { id: c, device: component.clone() });
             if n > 0 {
@@ -870,7 +959,7 @@ fn shown_pages_words(doc: &Document, reps: &[&Representation]) -> String {
 /// The tag a copy of device `c` gets (design 018 §3.3): the next automatic number of its prefix;
 /// `None` when its tag is not of the usual form (the copy then has no tag).
 pub fn copy_tag(doc: &Document, high: &mut TagHigh, c: &Device) -> Option<String> {
-    let t = c.properties.get(TAG_KEY)?;
+    let t = c.tag()?;
     let (prefix, _) = tag::parse(t).or_else(|| tag::provisional(t))?;
     high.next_auto_in(doc, &prefix).ok()
 }
@@ -1203,7 +1292,7 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
             let value = match half {
                 Some(side @ (crate::symbols::Side::Socket | crate::symbols::Side::Plug)) => crate::connectors::half_prop(doc, c, side, key),
                 Some(crate::symbols::Side::Both) => None,
-                None => props.and_then(|p| p.get(key)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
+                None => doc.devices.get(&c).and_then(|d| d.get(key)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
             };
             if let Some(v) = value {
                 lines.push((of, v, height_of(c, kind, text_style(doc, kind).height), shown(kind), None));
@@ -1274,8 +1363,8 @@ fn slot_texts(
 ) -> Vec<PageText> {
     use crate::text_style::fonts::width_in;
     use crate::text_style::{TextKind, text_style};
-    let props = doc.devices.get(&c).map(|x| &x.properties);
-    let prop = |k: &str| props.and_then(|p| p.get(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+    let device = doc.devices.get(&c);
+    let prop = |k: &str| device.and_then(|d| d.get(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
     let (h, v) = (|a: HAlign| a, |a: VAlign| a);
     let mut out = Vec::new();
     for (i, slot) in def.texts.iter().enumerate().take(usize::from(u8::MAX)) {
@@ -1323,7 +1412,7 @@ fn slot_texts(
 /// label.
 pub fn point_label_key(doc: &Document, rep: RepresentationId, t: TerminalId) -> String {
     let term = doc.terminals.get(&t);
-    let key = term.and_then(|x| x.key.clone()).or_else(|| term.and_then(|x| x.label.clone())).unwrap_or_else(|| t.hex());
+    let key = term.and_then(|x| x.key.as_ref()).map(ToString::to_string).or_else(|| term.and_then(|x| x.label.clone())).unwrap_or_else(|| t.hex());
     format!("{}point_label.{key}.at", crate::text_style::symbol_prefix(rep))
 }
 
@@ -1350,12 +1439,12 @@ pub fn devices(doc: &Document, query: Option<&str>) -> Vec<DeviceId> {
     let mut v: Vec<(String, u64, String, DeviceId)> = doc
         .tagged()
         .filter_map(|(_, id)| {
-            let t = doc.devices.get(&id)?.properties.get(TAG_KEY)?;
+            let t = doc.devices.get(&id)?.tag()?;
             if query.is_some_and(|q| !tag_matches(t, q)) {
                 return None;
             }
             let (p, n) = tag::parse(t).unwrap_or_else(|| (tag::key(t), 0));
-            Some((p, n, t.clone(), id))
+            Some((p, n, t.to_string(), id))
         })
         .collect();
     v.sort();
@@ -1416,7 +1505,7 @@ pub fn devices_json(doc: &Document, query: Option<&str>) -> Value {
 
 /// One device in JSON.
 pub fn device_json(doc: &Document, c: DeviceId) -> Value {
-    let props = doc.devices.get(&c).map(|x| x.properties.clone()).unwrap_or_default();
+    let comp = doc.devices.get(&c).cloned().unwrap_or_default();
     let order: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i + 1)).collect();
     let mut reps: Vec<(usize, RepresentationId, Value)> = doc
         .representations_of(Subject::Device(c))
@@ -1437,9 +1526,10 @@ pub fn device_json(doc: &Document, c: DeviceId) -> Value {
     let mut v = json!({ "component": c.hex() });
     for (key, _) in PROPERTIES {
         // Brief 052: a function or location shows its code; its stored key is `<key>_key`.
-        v[key] = props.get(key).map_or(Value::Null, |x| Value::String(crate::designations::display(doc, key, x)));
+        let stored = comp.value(key);
+        v[key] = stored.as_ref().map_or(Value::Null, |x| Value::String(crate::designations::display(doc, key, x)));
         if crate::designations::Aspect::of_property(key).is_some() {
-            v[format!("{key}_key")] = props.get(key).map_or(Value::Null, |x| Value::String(x.clone()));
+            v[format!("{key}_key")] = stored.map_or(Value::Null, Value::String);
         }
     }
     // Brief 052 (design 052 §5.1): the location stored (never derived), and each symbol's own
@@ -1457,8 +1547,8 @@ pub fn device_json(doc: &Document, c: DeviceId) -> Value {
     }
     v["representations"] = Value::Array(reps.into_iter().map(|(_, _, x)| x).collect());
     // Brief 026.
-    v["tag_fixed"] = Value::Bool(ecad_model::numbering::is_fixed(&props));
-    v["provisional"] = Value::Bool(props.get(TAG_KEY).is_some_and(|t| tag::is_provisional(t)));
+    v["tag_fixed"] = Value::Bool(comp.is_fixed());
+    v["provisional"] = Value::Bool(comp.tag().is_some_and(tag::is_provisional));
     v
 }
 
@@ -1519,12 +1609,12 @@ pub const MAX_ALSO: usize = 4;
 ///
 /// `m` measures the page's texts (the C wrapper `hover_lines` passes CADCraft's fonts).
 pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId, m: &dyn TextMetrics) -> Vec<String> {
-    let props = doc.devices.get(&c).map(|x| x.properties.clone()).unwrap_or_default();
-    let get = |k: &str| props.get(k).cloned().unwrap_or_else(|| "?".into());
-    let head = match props.get(TAG_KEY) {
+    let device = doc.devices.get(&c).cloned().unwrap_or_default();
+    let get = |k: &str| device.value(k).unwrap_or_else(|| "?".into());
+    let head = match device.tag() {
         // Brief 026 (design §9): `(fixed)` or `(provisional)` after the tag.
         Some(t) if tag::is_provisional(t) => format!("Device {t} (provisional)   {}", description(doc, c)),
-        Some(t) if ecad_model::numbering::is_fixed(&props) => format!("Device {t} (fixed)   {}", description(doc, c)),
+        Some(t) if device.is_fixed() => format!("Device {t} (fixed)   {}", description(doc, c)),
         Some(t) => format!("Device {t}   {}", description(doc, c)),
         None => format!("Device (no tag)   {}", description(doc, c)),
     };
@@ -1553,7 +1643,7 @@ pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId,
             words.push_str(&format!("; this symbol is inside {}", ctx.text()));
         }
     }
-    if loc.key.is_some() || props.contains_key("function") {
+    if loc.key.is_some() || device.function.is_some() {
         let function = crate::locations::resolve_function(doc, c);
         let function = if function.key.is_some() { function.text() } else { String::new() };
         lines.push(format!("Location: {words}   Function: {function}"));

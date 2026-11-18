@@ -573,11 +573,9 @@ fn copy_batch(
         let new_comp: DeviceId = cx.ids.fresh();
         // A copied device gets the next tag of its prefix (design 018 §3.3).
         let mut comp = comp;
-        if comp.properties.contains_key(ecad_model::tag::TAG_KEY) {
-            match crate::devices::copy_tag(cx.ledger.document(), cx.tags, &comp) {
-                Some(tag) => comp.properties.insert(ecad_model::tag::TAG_KEY.into(), tag),
-                None => comp.properties.remove(ecad_model::tag::TAG_KEY),
-            };
+        if comp.tag.is_some() {
+            let tag = crate::devices::copy_tag(cx.ledger.document(), cx.tags, &comp);
+            comp = comp.with_tag(tag.as_deref());
         }
         t.ops.push(Op::CreateDevice { id: new_comp, device: Device { ..comp } });
         for (src_t, term) in sdoc.terminals_of(src_comp) {

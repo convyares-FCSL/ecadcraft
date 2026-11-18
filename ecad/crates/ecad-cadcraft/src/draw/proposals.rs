@@ -11,12 +11,14 @@ use crate::proposals::*;
 /// Plan a placement's proposal (design 052 §5.3) for the symbol of device `c` at `at` on `page`,
 /// with the `function` and `location` modes the place gave (function first). `half`: the side a
 /// connector half or pin draws (its location conflict can then be answered **Half**; JSON
-/// `location: "half"` answers it).
+/// `location: "half"` answers it). `base` are the placement's own ops (creating the device), which
+/// the proposal's follow.
 ///
 /// # Errors
 /// A mode or a typed code that is not valid.
 pub(crate) fn plan_place(
-    p: &mut crate::project::Project, mut modes: [Mode; 2], c: DeviceId, page: PageId, at: Pt, half: Option<crate::symbols::Side>,
+    p: &mut crate::project::Project, base: &[ecad_model::Op], mut modes: [Mode; 2], c: DeviceId, page: PageId, at: Pt,
+    half: Option<crate::symbols::Side>,
 ) -> Result<Planned, String> {
     let half_mode = modes[1] == Mode::Half;
     if half_mode {
@@ -25,7 +27,7 @@ pub(crate) fn plan_place(
     let half = half.filter(|s| *s != crate::symbols::Side::Both);
     let spot = Spot { device: c, page, at: Some(at) };
     let mut pending = Pending::default();
-    let mut planned = plan(p.ledger.document(), &mut p.ids, &[spot], &modes, &[], &mut pending)?;
+    let mut planned = plan(p.ledger.document(), base, &mut p.ids, &[spot], &modes, &[], &mut pending)?;
     for x in planned.conflicts.iter_mut().filter(|x| x.aspect == Aspect::Location) {
         x.half = half;
     }

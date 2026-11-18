@@ -112,8 +112,8 @@ impl Plc {
             return;
         }
         let r = rack::rack_ref(doc, c);
-        let props = doc.devices.get(&c).map(|x| &x.properties);
-        let text = |k: &str| props.and_then(|p| p.get(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+        let device = doc.devices.get(&c);
+        let text = |k: &str| device.and_then(|d| d.get(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
         if let RackRef::Rack(x) | RackRef::Missing(x) = r {
             self.naming.entry(x).or_default().insert(c);
             groups.insert(x);
@@ -129,13 +129,13 @@ impl Plc {
                 ty,
                 rack: r,
                 slot: rack::slot_of(doc, c),
-                channels: rack::channel_count(doc, c, ty),
+                channels: rack::channel_count(doc, c),
                 page,
                 part_number: text("part_number"),
                 maker: text("maker"),
                 rows: {
                     let chans = channel_data(doc, c);
-                    let n = rack::channel_count(doc, c, ty);
+                    let n = rack::channel_count(doc, c);
                     usize::try_from(n).unwrap_or(0) + chans.keys().filter(|i| **i >= n).count()
                 },
                 chans: channel_data(doc, c),
@@ -155,8 +155,13 @@ impl Plc {
                 Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } => {
                     out.insert(*id);
                 }
+                // Design 072: a device's tag, type, or a station's or module's own fields (§3).
+                Op::ModifyDevice { id, .. } => {
+                    out.insert(*id);
+                    out.extend(self.naming.get(id).into_iter().flatten().copied());
+                }
                 Op::SetProperty { object: ObjectRef::Device(c), key, .. } => {
-                    if key.starts_with("plc.") || key == ecad_model::tag::TAG_KEY || key == "part_number" || key == "maker" {
+                    if key.starts_with("plc.") || key == ecad_model::tag::TAG_KEY {
                         if self.cards.contains_key(c) || self.racks.contains_key(c) || key.starts_with("plc.") {
                             out.insert(*c);
                         }
@@ -246,7 +251,7 @@ impl Plc {
         // the cards on its nets.
         for op in ops {
             match op {
-                Op::SetProperty { object: ObjectRef::Device(c), key, .. } if key == ecad_model::tag::TAG_KEY && !self.cards.contains_key(c) => {
+                Op::ModifyDevice { id: c, before, after } if before.tag != after.tag && !self.cards.contains_key(c) => {
                     self.rows_changed.extend(iolist::cards_on_nets_of(doc, self, Some(*c), None));
                 }
                 Op::SetProperty { object: ObjectRef::Wire(w), .. } | Op::ModifyWire { id: w, .. } => {
@@ -376,7 +381,7 @@ impl Plc {
             look::wide_checks(doc, card.id, &card.tag, |i| self.address_of(doc, card.id, i).0, m, &mut out);
         }
         if let Some(card) = self.cards.get(&g)
-            && matches!(card.rack, RackRef::Missing(_) | RackRef::Bad)
+            && matches!(card.rack, RackRef::Missing(_))
         {
             out.push(Check {
                 kind: Kind::RackMissing,
@@ -782,7 +787,7 @@ impl Plc {
         let (inputs, outputs) = overview::spans(doc, self, card);
         let rack = match card.rack {
             RackRef::Rack(r) => json!(self.tag_of(r)),
-            RackRef::Missing(_) | RackRef::Bad => json!("missing"),
+            RackRef::Missing(_) => json!("missing"),
             RackRef::None => Value::Null,
         };
         json!({
@@ -832,7 +837,7 @@ impl Plc {
         json!({
             "rack": r.id.hex(),
             "tag": r.tag,
-            "body": r.ty.body(),
+            "body": r.ty.body().map(ecad_model::Word::word),
             "type": r.ty.code(),
             "first": r.first,
             "slots": r.slots,

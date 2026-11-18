@@ -153,8 +153,8 @@ fn coil() -> Definition {
         origin: None,
         graphics: vec![Primitive::Polyline { vertices: r.iter().map(|(x, y)| Pt::new(*x, *y)).collect(), closed: true }],
         terminals: vec![
-            TerminalDef { key: "A1".into(), label: Some("A1".into()), at: Pt::new(0.0, 10.0) },
-            TerminalDef { key: "A2".into(), label: Some("A2".into()), at: Pt::new(0.0, -10.0) },
+            TerminalDef { key: ecad_model::PointKey::def("A1"), label: Some("A1".into()), at: Pt::new(0.0, 10.0) },
+            TerminalDef { key: ecad_model::PointKey::def("A2"), label: Some("A2".into()), at: Pt::new(0.0, -10.0) },
         ],
         ..Default::default()
     }
@@ -356,8 +356,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             if comp_no == 1 {
                 ops.push(Op::EmbedDefinition { id: definition, definition: def.clone() });
             }
-            let mut component = Device { definition: Some(definition), ..Device::default() };
-            component.properties.insert("tag".into(), format!("-K{comp_no}"));
+            let component = Device { definition: Some(definition), ..Device::default() }.with_tag(Some(&format!("-K{comp_no}")));
             ops.push(Op::CreateDevice { id: c, device: component });
             let mut keyed = Vec::new();
             for td in &def.terminals {

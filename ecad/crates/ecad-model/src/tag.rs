@@ -18,6 +18,10 @@ pub const TAG_KEY: &str = "tag";
 /// Most characters in a tag.
 pub const MAX_TAG_CHARS: usize = 40;
 
+/// A device's tag as stored (design 072 §2.1): validated text of 1 to [`MAX_TAG_CHARS`]
+/// characters.
+pub type Tag = crate::text::Text<MAX_TAG_CHARS>;
+
 /// Most digits in a tag's number (larger numbers are compared as text).
 pub const MAX_TAG_DIGITS: usize = 9;
 
@@ -161,8 +165,13 @@ pub const TAG_RULE: u32 = 2;
 pub fn note_ops(high: &mut HighWater, ops: &[crate::Op]) {
     for op in ops {
         match op {
-            crate::Op::CreateDevice { device: component, .. } | crate::Op::DeleteDevice { device: component, .. } => {
-                if let Some(t) = component.properties.get(TAG_KEY) {
+            crate::Op::CreateDevice { device, .. } | crate::Op::DeleteDevice { device, .. } => {
+                if let Some(t) = device.tag() {
+                    note(high, t);
+                }
+            }
+            crate::Op::ModifyDevice { before, after, .. } => {
+                for t in before.tag().into_iter().chain(after.tag()) {
                     note(high, t);
                 }
             }
