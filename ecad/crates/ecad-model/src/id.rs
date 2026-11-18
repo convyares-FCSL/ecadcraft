@@ -99,13 +99,17 @@ typed_id!(/// A terminal of a component.
 typed_id!(/// A representation (depiction) of a component, conductor or cable.
     RepresentationId, "rep");
 typed_id!(/// A conductor.
-    ConductorId, "cnd");
+    WireId, "cnd");
 typed_id!(/// A cable.
     CableId, "cbl");
 typed_id!(/// An embedded definition.
     DefinitionId, "def");
 typed_id!(/// A transaction.
     TxId, "tx");
+typed_id!(/// An entry of the project's location list (design 072 §5.3).
+    LocationId, "loc");
+typed_id!(/// An entry of the project's function list (design 072 §5.3).
+    FunctionId, "fn");
 typed_id!(/// A library (`.ecadlib`), stable across renaming its file.
     LibraryId, "lib");
 typed_id!(/// A project, stable across renaming or moving its file (the file header records it).

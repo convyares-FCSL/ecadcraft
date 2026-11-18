@@ -117,7 +117,7 @@ pub fn plan_edit(doc: &Document, id: &StyleRef, edit: FrameEdit) -> Result<EditP
     let ops = if before.as_ref() == Some(&after) {
         Vec::new()
     } else {
-        vec![Op::SetStyle { layer, catalogue: FRAME_CATALOGUE.into(), id: id.clone(), before, after: Some(after) }]
+        vec![Op::SetStyle { layer, catalogue: FRAME_CATALOGUE, id: id.clone(), before, after: Some(after) }]
     };
     Ok(EditPlan { ops, label: format!("Title block {name}") })
 }
@@ -209,6 +209,6 @@ pub fn plan_new(doc: &Document, ids: &mut IdAllocator, new: NewFrame<'_>) -> Res
     rec.body = Some(StyleBody::title_block(new.layout));
     let id = StyleRef::Own(ids.fresh::<u128>());
     styles::check_record(doc, cat, &id, new.layer, &rec)?;
-    let ops = vec![Op::SetStyle { layer: new.layer, catalogue: FRAME_CATALOGUE.into(), id: id.clone(), before: None, after: Some(rec) }];
+    let ops = vec![Op::SetStyle { layer: new.layer, catalogue: FRAME_CATALOGUE, id: id.clone(), before: None, after: Some(rec) }];
     Ok((ops, id))
 }

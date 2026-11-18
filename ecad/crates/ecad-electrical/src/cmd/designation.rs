@@ -3,7 +3,7 @@
 //! the document (and the use index, [`Uses`], caught up by the caller) and returns the ops to
 //! commit and what to report.
 
-use ecad_model::{DeviceId, Document, IdAllocator, ObjectRef, Op};
+use ecad_model::{Document, IdAllocator, ListDescription, ObjectRef, Op};
 
 use crate::designations::{self, Aspect, Entry, Uses};
 use crate::error::CmdError;
@@ -47,12 +47,13 @@ pub fn named_key_or_code(doc: &Document, a: Aspect, key: Option<&str>, code: Opt
 }
 
 /// A description as typed: trimmed; empty clears it.
-fn description_value(doc: &Document, t: Option<&str>) -> Result<Option<String>, CmdError> {
-    crate::devices::property_value(doc, "description", t)
+fn description_value(doc: &Document, t: Option<&str>) -> Result<Option<ListDescription>, CmdError> {
+    crate::devices::property_value(doc, "description", t)?.map(|d| designations::list_description(&d)).transpose()
 }
 
-fn set(key: String, before: Option<String>, after: Option<String>) -> Option<Op> {
-    (before != after).then_some(Op::SetProperty { object: ObjectRef::Project, key, before, after })
+/// The `ModifyProject` from `doc`'s project to `after`, if they differ.
+fn modify(doc: &Document, after: ecad_model::Project) -> Option<Op> {
+    (doc.project != after).then(|| Op::ModifyProject { before: doc.project.clone(), after })
 }
 
 /// A code refused because another entry has it.
@@ -82,13 +83,11 @@ pub fn plan_add(doc: &Document, ids: &mut IdAllocator, a: Aspect, typed: &str, d
     if taken(doc, a, &code, None).is_some() {
         return Err(CmdError::refused(format!("{code} is already in the list.")));
     }
-    let id: DeviceId = ids.fresh();
-    let key = id.hex();
-    let mut ops =
-        vec![Op::SetProperty { object: ObjectRef::Project, key: designations::code_property(a, &key), before: None, after: Some(code.clone()) }];
-    if let Some(d) = description_value(doc, description)? {
-        ops.push(Op::SetProperty { object: ObjectRef::Project, key: designations::description_property(a, &key), before: None, after: Some(d) });
-    }
+    let typed = designations::list_code(&code)?;
+    let id: u128 = ids.fresh();
+    let key = format!("{id:032x}");
+    let after = designations::with_new_entry(&doc.project, a, id, typed, description_value(doc, description)?);
+    let ops = modify(doc, after).into_iter().collect();
     Ok(ListPlan { ops, label: format!("Add {} {code}", a.word()), key, code })
 }
 
@@ -118,7 +117,6 @@ pub fn plan_edit(doc: &Document, a: Aspect, edit: EditInput) -> Result<ListPlan,
     // `new_code`) is the new one.
     let (named_code, new_code) = if edit.key.is_some() { (None, edit.code) } else { (edit.code, edit.to.or(edit.new_code)) };
     let e = named_key_or_code(doc, a, edit.key.as_deref(), named_code.as_deref())?;
-    let mut ops = Vec::new();
     let mut label = format!("Describe {} {}", a.word(), e.code);
     let mut code = e.code.clone();
     if let Some(t) = new_code.as_deref() {
@@ -128,23 +126,21 @@ pub fn plan_edit(doc: &Document, a: Aspect, edit: EditInput) -> Result<ListPlan,
         }
         if code != e.code {
             label = format!("Rename {} {} → {code}", a.word(), e.code);
-            ops.extend(set(designations::code_property(a, &e.key), Some(e.code.clone()), Some(code.clone())));
         }
     }
-    if let Some(d) = edit.description {
-        let after = description_value(doc, d.as_deref())?;
-        let prop = designations::description_property(a, &e.key);
-        ops.extend(set(prop.clone(), doc.properties.get(&prop).cloned(), after));
-    }
+    let description = match edit.description {
+        Some(d) => description_value(doc, d.as_deref())?,
+        None => e.description.as_deref().map(designations::list_description).transpose()?,
+    };
+    let after = designations::with_entry(&doc.project, a, &e.key, designations::list_code(&code)?, description);
+    let ops = modify(doc, after).into_iter().collect();
     Ok(ListPlan { ops, label, key: e.key, code })
 }
 
-/// The value of property `prop` on object `o`.
+/// The value of property `prop` on device `o` (pages and the project store typed ids).
 fn property_of(doc: &Document, o: ObjectRef, prop: &str) -> Option<String> {
     match o {
         ObjectRef::Device(c) => doc.devices.get(&c).and_then(|x| x.properties.get(prop)).cloned(),
-        ObjectRef::Page(pg) => doc.pages.get(&pg).and_then(|x| x.display.get(prop)).cloned(),
-        ObjectRef::Project => doc.properties.get(prop).cloned(),
         _ => None,
     }
 }
@@ -176,56 +172,54 @@ pub fn plan_merge(doc: &Document, uses: &Uses, a: Aspect, from: &str, into: &str
     }
     let counts = uses.counts(doc, a, &from.key);
     let mut ops = Vec::new();
+    let mut project = doc.project.clone();
     for (o, prop) in uses.users(a, &from.key).map(|u| u.refs.clone()).unwrap_or_default() {
-        let before = property_of(doc, o, &prop);
-        if before.as_deref() == Some(from.key.as_str()) {
-            ops.push(Op::SetProperty { object: o, key: prop, before, after: Some(into.key.clone()) });
+        match o {
+            ObjectRef::Page(pg) => {
+                if let Some(page) = doc.pages.get(&pg).filter(|p| designations::page_key(p, a).as_deref() == Some(from.key.as_str())) {
+                    let after = designations::with_page_key(page, a, Some(&into.key));
+                    ops.push(Op::ModifyPage { id: pg, before: page.clone(), after });
+                }
+            }
+            ObjectRef::Project => {
+                if designations::default_key(&project, a).as_deref() == Some(from.key.as_str()) {
+                    project = designations::with_default_key(&project, a, Some(&into.key));
+                }
+            }
+            _ => {
+                let before = property_of(doc, o, &prop);
+                if before.as_deref() == Some(from.key.as_str()) {
+                    ops.push(Op::SetProperty { object: o, key: prop, before, after: Some(into.key.clone()) });
+                }
+            }
         }
     }
     if into.description.is_none()
         && let Some(d) = &from.description
     {
-        ops.push(Op::SetProperty {
-            object: ObjectRef::Project,
-            key: designations::description_property(a, &into.key),
-            before: None,
-            after: Some(d.clone()),
-        });
+        let code = designations::list_code(&into.code)?;
+        project = designations::with_entry(&project, a, &into.key, code, Some(designations::list_description(d)?));
     }
-    ops.extend(remove_ops(a, &from));
+    project = designations::without_entry(&project, a, &from.key);
+    ops.extend(modify(doc, project));
     let label = format!("Merge {} {} into {} ({})", a.word(), from.code, into.code, counts.words());
     Ok(Merged { ops, label, from: from.code, into: into.code, key: into.key, moved: counts.words() })
-}
-
-/// The ops removing entry `e`.
-fn remove_ops(a: Aspect, e: &Entry) -> Vec<Op> {
-    let mut ops =
-        vec![Op::SetProperty { object: ObjectRef::Project, key: designations::code_property(a, &e.key), before: Some(e.code.clone()), after: None }];
-    if let Some(d) = &e.description {
-        ops.push(Op::SetProperty {
-            object: ObjectRef::Project,
-            key: designations::description_property(a, &e.key),
-            before: Some(d.clone()),
-            after: None,
-        });
-    }
-    ops
 }
 
 /// `designationremove {aspect?, unused: true}` (design 052 §9.4, **Remove unused**): the ops
 /// removing every entry nothing uses (of `only`, else of both lists), and their codes.
 pub fn plan_remove_unused(doc: &Document, uses: &Uses, only: Option<Aspect>) -> (Vec<Op>, Vec<String>) {
-    let mut ops = Vec::new();
+    let mut project = doc.project.clone();
     let mut codes = Vec::new();
     for a in Aspect::ALL.into_iter().filter(|a| only.is_none_or(|o| o == *a)) {
         for e in designations::entries(doc, a) {
             if uses.counts(doc, a, &e.key).unused() {
-                ops.extend(remove_ops(a, &e));
+                project = designations::without_entry(&project, a, &e.key);
                 codes.push(e.code);
             }
         }
     }
-    (ops, codes)
+    (modify(doc, project).into_iter().collect(), codes)
 }
 
 /// `designationremove {aspect, key | code}`: the ops removing an entry nothing uses, and its code.
@@ -238,5 +232,5 @@ pub fn plan_remove(doc: &Document, uses: &Uses, a: Aspect, key: Option<&str>, co
     if !counts.unused() {
         return Err(CmdError::refused(format!("{} is used by {}. Give them another {} first.", e.code, counts.words(), a.word())));
     }
-    Ok((remove_ops(a, &e), e.code))
+    Ok((modify(doc, designations::without_entry(&doc.project, a, &e.key)).into_iter().collect(), e.code))
 }

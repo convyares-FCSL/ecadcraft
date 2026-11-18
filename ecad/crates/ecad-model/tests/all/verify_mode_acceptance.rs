@@ -105,7 +105,7 @@ fn replay_verified_runs_the_full_check_in_any_build() {
 #[test]
 fn indexes_match_a_rebuild_after_every_rolled_back_transaction() {
     let mut l = Ledger::new(7);
-    let (page, layer, c, t1, t2, w, cable) = (PageId(1), LayerId(2), DeviceId(3), TerminalId(4), TerminalId(5), ConductorId(6), CableId(7));
+    let (page, layer, c, t1, t2, w, cable) = (PageId(1), LayerId(2), DeviceId(3), TerminalId(4), TerminalId(5), WireId(6), CableId(7));
     l.commit(
         Author::User,
         "setup",
@@ -115,7 +115,7 @@ fn indexes_match_a_rebuild_after_every_rolled_back_transaction() {
             Op::CreateDevice { id: c, device: Device::default() },
             Op::AddTerminal { id: t1, terminal: Terminal { component: c, label: None, key: None } },
             Op::AddTerminal { id: t2, terminal: Terminal { component: c, label: None, key: None } },
-            Op::CreateConductor { id: w, conductor: Conductor::default() },
+            Op::CreateWire { id: w, conductor: Wire::default() },
             Op::AttachEnd { conductor: w, end: End::A, before: None, after: Some(t1) },
             Op::CreateCable { id: cable, cable: Cable::default() },
             Op::AddCableMember { cable, index: 0, member: CableMember { conductor: w, core: None } },

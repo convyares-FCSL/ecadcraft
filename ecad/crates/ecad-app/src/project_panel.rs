@@ -216,10 +216,10 @@ pub enum Action {
     OfferDrawn(ecad_model::DeviceId),
     RenumberStrip(ecad_model::DeviceId),
     SetCores(ecad_model::CableId),
-    NextFreeCore(ecad_model::ConductorId),
+    NextFreeCore(ecad_model::WireId),
     ShowCables,
     /// Brief 050a: **Go to** Settings ▸ Standards at a style catalogue (`text`, `wire`…).
-    OpenStandards(&'static str),
+    OpenStandards(ecad_model::StyleCatalogue),
     /// Brief 057: a rating row's fix (Show rating, Use a size, Use Datasheet, Clear Protected by,
     /// Choose a table, Show the rated wires).
     RatingFix(ecad_cadcraft::checks::Fix),

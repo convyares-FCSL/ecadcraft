@@ -153,10 +153,20 @@ fn named_versions_and_revisions_get_rows_with_their_snapshot() {
     f.commit("Name", vec![Op::NameVersion { name: "Before".into(), at, description: None }]);
     edits(&mut f, 2);
     let at2 = f.ledger.head();
-    let set = |key: &str, after: &str| Op::SetProperty { object: ObjectRef::Project, key: key.into(), before: None, after: Some(after.into()) };
-    f.commit("Rev fields", vec![set("rev.1.rev", "A"), set("rev.1.description", "First issue"), set("rev.1.drawn", "CV")]);
+    let row = |issued: bool| ecad_model::Revision {
+        rev: ecad_model::Rev::new("A").ok(),
+        description: ecad_model::RevValue::new("First issue").ok(),
+        drawn: ecad_model::RevValue::new("CV").ok(),
+        issued: issued.then(|| ecad_model::RevValue::new("Rev A").ok()).flatten(),
+        ..ecad_model::Revision::default()
+    };
+    let with = |issued: bool| ecad_model::Project { revisions: vec![row(issued)], ..ecad_model::Project::default() };
+    f.commit("Rev fields", vec![Op::ModifyProject { before: ecad_model::Project::default(), after: with(false) }]);
     let at3 = f.ledger.head();
-    f.commit("Issue", vec![set("rev.1.issued", "Rev A"), Op::NameVersion { name: "Rev A".into(), at: at3, description: None }]);
+    f.commit(
+        "Issue",
+        vec![Op::ModifyProject { before: with(false), after: with(true) }, Op::NameVersion { name: "Rev A".into(), at: at3, description: None }],
+    );
     edits(&mut f, 2);
     proj.save(&mut f.ledger).unwrap();
     let r = proj.store().reader().unwrap();

@@ -13,7 +13,7 @@
 //! # Update map (design 022 §11)
 //! | Op | Re-checked |
 //! | --- | --- |
-//! | `CreateConductor` / `DeleteConductor` / `AttachEnd` | that conductor; the connection points at its ends before and after; their nets (before and after) and the nets sharing their numbers |
+//! | `CreateWire` / `DeleteWire` / `AttachEnd` | that conductor; the connection points at its ends before and after; their nets (before and after) and the nets sharing their numbers |
 //! | `AddTerminal` / `RemoveTerminal` | that point and its net |
 //! | `CreateDevice` / `DeleteDevice` / `SetProperty` component | that component (its contact count against its part's `contacts`, brief 025); its points' nets; continuations with its name (partners) |
 //! | `SetProperty` conductor | that conductor's net, and the nets sharing its old and new number |
@@ -33,7 +33,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use ecad_model::connectivity::{CONTINUATION, JUNCTION, NAME, name_key};
 use ecad_model::wiring;
-use ecad_model::{CableId, ConductorId, DeviceId, Document, End, NetData, NetId, ObjectRef, Op, PageId, Pt, Subject, TerminalId};
+use ecad_model::{CableId, DeviceId, Document, End, NetData, NetId, ObjectRef, Op, PageId, Pt, Subject, TerminalId, WireId};
 use serde_json::{Value, json};
 
 use crate::text_style::fonts::TextMetrics;
@@ -357,7 +357,7 @@ impl Kind {
 /// What a row points at.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Object {
-    Conductor(ConductorId),
+    Wire(WireId),
     Terminal(TerminalId),
     Device(DeviceId),
     /// A cable reference end (brief 027).
@@ -393,7 +393,7 @@ pub enum Fix {
     /// Brief 028: focus Properties ▸ Cores on the cable.
     SetCores(ecad_model::CableId),
     /// Brief 028: give the member the next free core (`cablecore`).
-    NextFreeCore(ConductorId),
+    NextFreeCore(WireId),
     /// Brief 028: open Reports on the Cables tab with Only ? on.
     ShowCables,
     /// Brief 030: the strip's orphan key (index into its kept orphans): **Move to end** (items
@@ -440,13 +440,13 @@ pub enum Fix {
     /// (`partline set for`).
     DropMissingFor(DeviceId, u8),
     /// Brief 050a: **Go to** Settings ▸ Standards at this catalogue (`text`, `wire`…).
-    OpenStandards(&'static str),
+    OpenStandards(ecad_model::StyleCatalogue),
     /// Brief 054 (design 054 §9): a page type or folder start row's fix.
     Page(crate::page_types::PageFix),
     /// Brief 057: **Show rating**: select the subject in Project ▸ Wires or Cables, Rating unfolded.
     ShowRating(crate::rating::RatedSubject),
     /// Brief 057: **Use 2.5 mm²**: the conductor's own `cross_section`.
-    UseSize(ConductorId, f64),
+    UseSize(WireId, f64),
     /// Brief 057: **Change cable type…** filtered to this size (mm²).
     PickCableType(CableId, f64),
     /// Brief 057: **Use Datasheet** (`rating {basis}`).
@@ -557,7 +557,7 @@ impl Check {
 
     pub fn to_json(&self, doc: &Document) -> Value {
         let object = match self.object {
-            Object::Conductor(c) => json!({"conductor": c.hex()}),
+            Object::Wire(c) => json!({"conductor": c.hex()}),
             Object::Terminal(t) => json!({"terminal": t.hex()}),
             Object::Device(c) => json!({"component": c.hex()}),
             Object::Reference(r) => json!({"reference": r.hex()}),
@@ -592,7 +592,7 @@ impl Check {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Key {
     Net(NetId),
-    Conductor(ConductorId),
+    Wire(WireId),
     Terminal(TerminalId),
     Device(DeviceId),
     /// The reference ends of a cable (brief 027: orphans).
@@ -684,10 +684,10 @@ fn cells_of_segment(page: PageId, a: Pt, b: Pt) -> Vec<Cell> {
 /// The per-page grid of route segments and loose ends.
 #[derive(Debug, Clone, Default)]
 pub struct Grid {
-    segments: HashMap<Cell, BTreeSet<(ConductorId, usize)>>,
-    ends: HashMap<Cell, BTreeSet<(ConductorId, End)>>,
+    segments: HashMap<Cell, BTreeSet<(WireId, usize)>>,
+    ends: HashMap<Cell, BTreeSet<(WireId, End)>>,
     /// What each conductor put in the grid, to take it out again.
-    placed: HashMap<ConductorId, Placed>,
+    placed: HashMap<WireId, Placed>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -700,9 +700,9 @@ struct Placed {
 }
 
 /// The route vertices of `c` on each page it is drawn on.
-fn routes_of(doc: &Document, c: ConductorId) -> Vec<(PageId, Vec<Pt>)> {
+fn routes_of(doc: &Document, c: WireId) -> Vec<(PageId, Vec<Pt>)> {
     let mut out = Vec::new();
-    for (_, r) in doc.representations_of(Subject::Conductor(c)) {
+    for (_, r) in doc.representations_of(Subject::Wire(c)) {
         if let Some((_, _, v)) = wires::route_vertices(doc, c, r.page)
             && !out.iter().any(|(p, _)| *p == r.page)
         {
@@ -713,7 +713,7 @@ fn routes_of(doc: &Document, c: ConductorId) -> Vec<(PageId, Vec<Pt>)> {
 }
 
 impl Grid {
-    fn remove(&mut self, c: ConductorId) {
+    fn remove(&mut self, c: WireId) {
         let Some(p) = self.placed.remove(&c) else { return };
         for (page, i, a, b) in &p.segments {
             for cell in cells_of_segment(*page, *a, *b) {
@@ -737,9 +737,9 @@ impl Grid {
         }
     }
 
-    fn insert(&mut self, doc: &Document, c: ConductorId) {
+    fn insert(&mut self, doc: &Document, c: WireId) {
         self.remove(c);
-        let Some(cond) = doc.conductors.get(&c) else { return };
+        let Some(cond) = doc.wires.get(&c) else { return };
         let mut placed = Placed::default();
         for (page, v) in routes_of(doc, c) {
             for (i, w) in v.windows(2).enumerate() {
@@ -765,12 +765,12 @@ impl Grid {
     }
 
     /// The cells `c` occupies now.
-    fn cells(&self, c: ConductorId) -> BTreeSet<Cell> {
+    fn cells(&self, c: WireId) -> BTreeSet<Cell> {
         self.placed.get(&c).map(|p| p.cells.clone()).unwrap_or_default()
     }
 
     /// Conductors with a loose end in any of `cells` (and the 8 cells round each).
-    fn loose_near(&self, cells: &BTreeSet<Cell>) -> BTreeSet<ConductorId> {
+    fn loose_near(&self, cells: &BTreeSet<Cell>) -> BTreeSet<WireId> {
         let mut out = BTreeSet::new();
         for (page, x, y) in cells {
             for dx in -1..=1 {
@@ -786,7 +786,7 @@ impl Grid {
 
     /// Whether `at` on `page` lies on the interior of another conductor's route, or on another
     /// loose end: the conductor it lies on.
-    fn under(&self, page: PageId, at: Pt, me: ConductorId) -> Option<(ConductorId, bool)> {
+    fn under(&self, page: PageId, at: Pt, me: WireId) -> Option<(WireId, bool)> {
         let cell = cell_of(page, at)?;
         for (c, i) in self.segments.get(&cell).into_iter().flatten() {
             if *c == me {
@@ -826,7 +826,7 @@ fn net_words(doc: &Document, net: &NetData) -> String {
 
 /// Where a conductor is: its first page in book order and the midpoint of its longest segment
 /// there, or a given end.
-pub fn conductor_place(doc: &Document, c: ConductorId, end: Option<End>) -> (Option<PageId>, Option<Pt>) {
+pub fn conductor_place(doc: &Document, c: WireId, end: Option<End>) -> (Option<PageId>, Option<Pt>) {
     let order: HashMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i)).collect();
     let routes = routes_of(doc, c);
     let Some((page, v)) = routes.iter().min_by_key(|(p, _)| order.get(p).copied().unwrap_or(usize::MAX)) else {
@@ -853,7 +853,7 @@ fn terminal_place(doc: &Document, t: TerminalId) -> (Option<PageId>, Option<Pt>)
 }
 
 /// A conductor's words: its cable and core, or its net's number.
-fn conductor_words(doc: &Document, c: ConductorId) -> String {
+fn conductor_words(doc: &Document, c: WireId) -> String {
     if let Some(k) = doc.cables_of(c).first() {
         let core = doc.cables.get(k).and_then(|x| x.members.iter().find(|m| m.conductor == c)).and_then(|m| m.core.clone()).unwrap_or_default();
         return format!("{} {core}", crate::references::cable_words(doc, *k)).trim().to_string();
@@ -867,7 +867,7 @@ pub fn net_checks(doc: &Document, id: NetId, net: &NetData) -> Vec<Check> {
     let mut out = Vec::new();
     let first = net.first_conductor();
     let (page, at) = first.map_or((None, None), |c| conductor_place(doc, c, None));
-    let object = first.map_or(Object::None, Object::Conductor);
+    let object = first.map_or(Object::None, Object::Wire);
     let joined = wiring::joined_potentials(doc, net);
     if !joined.is_empty() {
         // Point at a continuation in it, when it has one.
@@ -890,7 +890,7 @@ pub fn net_checks(doc: &Document, id: NetId, net: &NetData) -> Vec<Check> {
         out.push(Check { kind: Kind::SharedNumber, page, at, object, which: number, fix: None });
     }
     // A net with conductors, one connection point and no continuation.
-    if !net.conductors.is_empty() && net.terminals.len() == 1 && net.names.is_empty() {
+    if !net.wires.is_empty() && net.terminals.len() == 1 && net.names.is_empty() {
         let t = net.terminals.first().copied();
         let jc = t.and_then(|t| doc.terminals.get(&t)).map(|x| kind_of(doc, x.component));
         if !matches!(jc, Some(Some(JUNCTION | CONTINUATION)))
@@ -902,16 +902,13 @@ pub fn net_checks(doc: &Document, id: NetId, net: &NetData) -> Vec<Check> {
     }
     if net.potentials.len() > 1 {
         let main = wiring::net_potential(doc, net).name;
-        let odd = net
-            .conductors
-            .iter()
-            .find(|c| doc.conductors.get(c).and_then(|x| x.properties.get(wiring::POTENTIAL_KEY)).is_some_and(|p| Some(p) != main.as_ref()));
+        let odd = net.wires.iter().find(|c| doc.wires.get(c).and_then(|x| x.potential_name()).is_some_and(|p| Some(p) != main.as_deref()));
         let (p, a) = odd.map_or((page, at), |c| conductor_place(doc, *c, None));
         out.push(Check {
             kind: Kind::MixedPotentials,
             page: p,
             at: a,
-            object: odd.map_or(object, |c| Object::Conductor(*c)),
+            object: odd.map_or(object, |c| Object::Wire(*c)),
             which: net.potentials.keys().cloned().collect::<Vec<_>>().join(", "),
             fix: None,
         });
@@ -954,19 +951,19 @@ fn looks_connected_fix(at: Pt) -> Fix {
 }
 
 /// The checks of conductor `c`: open end, loose wire, looks connected, drawn away.
-pub fn conductor_checks(doc: &Document, c: ConductorId, grid: &Grid, tol: f64) -> Vec<Check> {
+pub fn conductor_checks(doc: &Document, c: WireId, grid: &Grid, tol: f64) -> Vec<Check> {
     let mut out = Vec::new();
-    let Some(cond) = doc.conductors.get(&c) else { return out };
+    let Some(cond) = doc.wires.get(&c) else { return out };
     let which = conductor_words(doc, c);
     let loose: Vec<End> = End::BOTH.into_iter().filter(|e| cond.end(*e).is_none()).collect();
     match loose.len() {
         2 => {
             let (page, at) = conductor_place(doc, c, None);
-            out.push(Check { kind: Kind::LooseWire, page, at, object: Object::Conductor(c), which: which.clone(), fix: None });
+            out.push(Check { kind: Kind::LooseWire, page, at, object: Object::Wire(c), which: which.clone(), fix: None });
         }
         1 => {
             let (page, at) = conductor_place(doc, c, loose.first().copied());
-            out.push(Check { kind: Kind::OpenEnd, page, at, object: Object::Conductor(c), which: which.clone(), fix: None });
+            out.push(Check { kind: Kind::OpenEnd, page, at, object: Object::Wire(c), which: which.clone(), fix: None });
         }
         _ => {}
     }
@@ -984,7 +981,7 @@ pub fn conductor_checks(doc: &Document, c: ConductorId, grid: &Grid, tol: f64) -
                     kind: Kind::LooksConnected,
                     page: Some(page),
                     at: Some(at),
-                    object: Object::Conductor(c),
+                    object: Object::Wire(c),
                     which: which.clone(),
                     fix: Some(looks_connected_fix(at)),
                 });
@@ -996,14 +993,7 @@ pub fn conductor_checks(doc: &Document, c: ConductorId, grid: &Grid, tol: f64) -
             if let Some(tp) = ecad_model::derive::terminal_position(doc, page, t)
                 && !tp.near(*at, tol.max(1e-6))
             {
-                out.push(Check {
-                    kind: Kind::DrawnAway,
-                    page: Some(page),
-                    at: Some(*at),
-                    object: Object::Conductor(c),
-                    which: which.clone(),
-                    fix: None,
-                });
+                out.push(Check { kind: Kind::DrawnAway, page: Some(page), at: Some(*at), object: Object::Wire(c), which: which.clone(), fix: None });
             }
         }
     }
@@ -1011,7 +1001,7 @@ pub fn conductor_checks(doc: &Document, c: ConductorId, grid: &Grid, tol: f64) -
     if let Some(code) = crate::words::conductor_colour(doc, c).filter(|code| crate::words::colour_code(code).is_none()) {
         let (page, at) = conductor_place(doc, c, None);
         let code = crate::words::shorten(code.trim(), crate::words::MAX_CODE_CHARS);
-        out.push(Check { kind: Kind::UnknownColour, page, at, object: Object::Conductor(c), which: format!("{which} {code}"), fix: None });
+        out.push(Check { kind: Kind::UnknownColour, page, at, object: Object::Wire(c), which: format!("{which} {code}"), fix: None });
     }
     out
 }
@@ -1051,7 +1041,7 @@ pub fn terminal_checks(doc: &Document, t: TerminalId) -> Vec<Check> {
     }
     // Bridged inside its device to an attached point: connected.
     let conn = doc.connectivity();
-    if conn.net_of_terminal(t).and_then(|id| conn.net(id)).is_some_and(|n| !n.conductors.is_empty()) {
+    if conn.net_of_terminal(t).and_then(|id| conn.net(id)).is_some_and(|n| !n.wires.is_empty()) {
         return Vec::new();
     }
     if is_quiet_point(doc, t) {
@@ -1342,8 +1332,8 @@ pub struct Scope {
     nodes: BTreeSet<ecad_model::Node>,
     old_nets: BTreeSet<NetId>,
     numbers: BTreeSet<String>,
-    conductors: BTreeSet<ConductorId>,
-    routes: BTreeSet<ConductorId>,
+    wires: BTreeSet<WireId>,
+    routes: BTreeSet<WireId>,
     terminals: BTreeSet<TerminalId>,
     devices: BTreeSet<DeviceId>,
     /// Cables whose reference ends to re-check (brief 027: orphans).
@@ -1389,12 +1379,12 @@ impl Scope {
             self.styles |= crate::styles::checks::touches(op);
             self.title_blocks |= crate::title_block::checks::touches(op);
             match op {
-                Op::CreateConductor { id, conductor } | Op::DeleteConductor { id, conductor } => {
+                Op::CreateWire { id, conductor } | Op::DeleteWire { id, conductor } => {
                     // Brief 057: a member's ends decide its cable's open cores.
                     self.cables.extend(doc.cables_of(*id));
-                    self.conductors.insert(*id);
+                    self.wires.insert(*id);
                     self.routes.insert(*id);
-                    node(self, Node::Conductor(*id));
+                    node(self, Node::Wire(*id));
                     for t in conductor.ends.iter().flatten() {
                         self.terminals.insert(*t);
                         node(self, Node::Terminal(*t));
@@ -1403,9 +1393,9 @@ impl Scope {
                 }
                 Op::AttachEnd { conductor, before, after, .. } => {
                     self.cables.extend(doc.cables_of(*conductor));
-                    self.conductors.insert(*conductor);
+                    self.wires.insert(*conductor);
                     self.routes.insert(*conductor);
-                    node(self, Node::Conductor(*conductor));
+                    node(self, Node::Wire(*conductor));
                     for t in [before, after].into_iter().flatten() {
                         self.terminals.insert(*t);
                         node(self, Node::Terminal(*t));
@@ -1469,10 +1459,14 @@ impl Scope {
                         node(self, Node::Terminal(t));
                     }
                 }
-                Op::SetProperty { object: ObjectRef::Conductor(c), before, after, .. } => {
-                    node(self, Node::Conductor(*c));
-                    self.conductors.insert(*c);
-                    self.numbers.extend(before.iter().chain(after.iter()).cloned());
+                Op::SetProperty { object: ObjectRef::Wire(c), .. } => {
+                    node(self, Node::Wire(*c));
+                    self.wires.insert(*c);
+                }
+                Op::ModifyWire { id: c, before, after } => {
+                    node(self, Node::Wire(*c));
+                    self.wires.insert(*c);
+                    self.numbers.extend([before, after].into_iter().filter_map(|w| w.number_text().map(str::to_string)));
                 }
                 Op::SetProperty { object: ObjectRef::Cable(k), .. }
                 | Op::CreateCable { id: k, .. }
@@ -1494,10 +1488,10 @@ impl Scope {
                     }
                     // A cable's tag and cores are part of its members' words.
                     if let Some(cable) = doc.cables.get(k) {
-                        self.conductors.extend(cable.members.iter().map(|m| m.conductor));
+                        self.wires.extend(cable.members.iter().map(|m| m.conductor));
                     }
                     if let Op::AddCableMember { member, .. } | Op::RemoveCableMember { member, .. } = op {
-                        self.conductors.insert(member.conductor);
+                        self.wires.insert(member.conductor);
                     }
                 }
                 Op::AddItem { id, .. } | Op::RemoveItem { id, .. } => self.item(doc, *id),
@@ -1550,30 +1544,32 @@ impl Scope {
                             }
                         }
                     }
-                    if ch.display.iter().any(|k| crate::designations::Aspect::of_property(k).is_some()) {
+                    if ch.location || ch.function {
                         self.devices_on(doc, *p);
                     }
                 }
                 // Brief 052 (design 052 §6): a page's function or location is a context for the
                 // devices on it; the project's for every device (rare); the list's codes for the
                 // objects storing that entry, and the duplicate rows.
-                Op::SetProperty { object: ObjectRef::Page(p), key, .. } if crate::designations::Aspect::of_property(key).is_some() => {
-                    self.relocate = true;
-                    self.devices_on(doc, *p);
-                }
-                Op::SetProperty { object: ObjectRef::Project, key, .. } if crate::designations::Aspect::of_property(key).is_some() => {
-                    self.relocate = true;
-                    self.devices.extend(doc.devices.keys().copied());
-                }
-                Op::SetProperty { object: ObjectRef::Project, key, .. } if crate::designations::is_list_property(key) => {
-                    self.relocate = true;
-                    self.designations = true;
-                    if let Some((_, entry, true)) = crate::designations::parse_list_property(key) {
-                        // Brief 059: the cables planning an end there (their rows name its code).
-                        self.cables.extend(crate::cables::planning(doc, entry));
-                        for (c, x) in &doc.devices {
-                            if x.properties.iter().any(|(k, v)| crate::designations::Aspect::of_property(k).is_some() && v == entry) {
-                                self.devices.insert(*c);
+                Op::ModifyProject { before, after } => {
+                    use crate::designations::{Aspect, changed_codes, default_key};
+                    for a in Aspect::ALL {
+                        if default_key(before, a) != default_key(after, a) {
+                            self.relocate = true;
+                            self.devices.extend(doc.devices.keys().copied());
+                        }
+                        let changed = changed_codes(before, after, a);
+                        if !changed.is_empty() {
+                            self.relocate = true;
+                            self.designations = true;
+                        }
+                        for entry in &changed {
+                            // Brief 059: the cables planning an end there (their rows name its code).
+                            self.cables.extend(crate::cables::planning(doc, entry));
+                            for (c, x) in &doc.devices {
+                                if x.properties.iter().any(|(k, v)| Aspect::of_property(k).is_some() && v == entry) {
+                                    self.devices.insert(*c);
+                                }
                             }
                         }
                     }
@@ -1596,7 +1592,7 @@ impl Scope {
                 }
                 Op::AddLayer { .. } | Op::RemoveLayer { .. } | Op::NameVersion { .. } | Op::UnnameVersion { .. } => {}
                 // Brief 059 (design 059 §8): a cable type's cores and gland reach its users' rows.
-                Op::SetStyle { catalogue, id, .. } if catalogue == crate::styles::cable::WORD => {
+                Op::SetStyle { catalogue, id, .. } if *catalogue == ecad_model::StyleCatalogue::Cable => {
                     self.cables.extend(crate::styles::cable::users(doc, id));
                 }
                 // Brief 050a: style records and the standard reach only the style rows (above).
@@ -1652,8 +1648,8 @@ impl Scope {
 
     fn rep(&mut self, doc: &Document, r: &ecad_model::Representation) {
         match r.subject {
-            Subject::Conductor(c) => {
-                self.conductors.insert(c);
+            Subject::Wire(c) => {
+                self.wires.insert(c);
                 self.routes.insert(c);
             }
             Subject::Device(c) => {
@@ -1665,7 +1661,7 @@ impl Scope {
                 // continuation's place moves its partners' rows.
                 self.component(doc, c, None);
                 for (t, _) in doc.terminals_of(c) {
-                    self.conductors.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+                    self.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
                 }
             }
             // A cable's drawing moves its rows (brief 026); a reference end linked, changed or

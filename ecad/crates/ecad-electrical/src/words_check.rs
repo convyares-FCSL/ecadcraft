@@ -42,8 +42,8 @@ pub fn check(doc: &Document) -> Vec<UnknownWord> {
     for (id, c) in &doc.devices {
         bag(&c.properties, WordPlace::Device(*id), Level::Object, &mut out);
     }
-    for (id, c) in &doc.conductors {
-        bag(&c.properties, WordPlace::Wire(*id), Level::Object, &mut out);
+    for (id, c) in &doc.wires {
+        bag(&c.display, WordPlace::Wire(*id), Level::Object, &mut out);
     }
     for (id, c) in &doc.cables {
         reserved(&c.properties, WordPlace::Cable(*id), &mut out);
@@ -98,7 +98,16 @@ fn flags(props: &Properties, place: WordPlace, out: &mut Vec<UnknownWord>) {
 
 /// A property that became a struct field.
 fn reserved(props: &Properties, place: WordPlace, out: &mut Vec<UnknownWord>) {
-    out.extend(props.keys().filter(|k| keys::is_reserved(k)).map(|k| UnknownWord::ReservedKey { place, key: k.clone() }));
+    let holder = match place {
+        WordPlace::Project => Some(keys::Holder::Project),
+        WordPlace::Page(_) => Some(keys::Holder::Page),
+        WordPlace::Device(_) => Some(keys::Holder::Device),
+        WordPlace::Wire(_) => Some(keys::Holder::Wire),
+        WordPlace::Cable(_) => Some(keys::Holder::Cable),
+        WordPlace::Settings | WordPlace::Standard => None,
+    };
+    let reserved = |k: &str| holder.map_or_else(|| keys::is_reserved(k), |h| keys::is_reserved_on(h, k));
+    out.extend(props.keys().filter(|k| reserved(k)).map(|k| UnknownWord::ReservedKey { place, key: k.clone() }));
 }
 
 /// The registry entry stored under `key` at `level`: the entry itself, or on an object a

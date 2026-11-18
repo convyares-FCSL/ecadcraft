@@ -18,7 +18,7 @@ fn project(dir: &TempDir) -> Client {
 }
 
 fn conductors(c: &mut Client) -> usize {
-    c.doc().conductors.len()
+    c.doc().wires.len()
 }
 
 #[test]

@@ -101,7 +101,7 @@ fn the_cover_and_its_page_tab_with_the_board_screenshots() {
         let y = 60 + 8 * i;
         ok(&mut h, &format!(r#"wire {{"points":[[40,{y}],[340,{y}]]}}"#));
         let d = doc(&mut h);
-        let c = d.conductors.keys().copied().find(|c| !wires.contains(c)).unwrap();
+        let c = d.wires.keys().copied().find(|c| !wires.contains(c)).unwrap();
         wires.push(c);
         ok(&mut h, &format!(r#"category {{"conductor":"{}","value":"{cat}"}}"#, c.hex()));
     }
@@ -151,7 +151,7 @@ fn the_cover_and_its_page_tab_with_the_board_screenshots() {
     h.run_steps(2);
     click(&mut h, ecad_app::shell::table_editor::SAVE);
     assert_eq!(head(&mut h), before + 1, "Save is one transaction");
-    let notes = doc(&mut h).properties.get("cover.notes").cloned().unwrap_or_default();
+    let notes = ecad_cadcraft::frames::project_text(&doc(&mut h), "cover.notes").unwrap_or_default();
     assert!(notes.starts_with("Line colours") && notes.ends_with("Fifth note"), "{notes}");
     ok(&mut h, "u");
     // The symbol legend's editor: generated rows, hide and relabel.

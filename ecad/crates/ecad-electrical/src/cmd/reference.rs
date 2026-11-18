@@ -9,8 +9,8 @@
 use std::collections::BTreeMap;
 
 use ecad_model::{
-    CableId, ConductorId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId,
-    Style, Subject,
+    CableId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId, Style, Subject,
+    WireId,
 };
 
 use crate::error::CmdError;
@@ -57,7 +57,7 @@ pub fn reference(doc: &Document, ids: &mut IdAllocator, page: PageId, style: Sty
 /// One continued member's stub route.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StubRoute {
-    pub conductor: ConductorId,
+    pub conductor: WireId,
     pub rep: RepresentationId,
     pub item: ItemId,
     pub free_end: End,
@@ -86,7 +86,7 @@ pub struct Continued {
 /// `members` longer than a cable holds (R9); the refusals of design 010 §4.4 and §7.2.
 #[allow(clippy::too_many_arguments)]
 pub fn continue_cable(
-    doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, cable: CableId, members: Option<&[ConductorId]>, at: Pt, toward: Pt, tol: f64,
+    doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, cable: CableId, members: Option<&[WireId]>, at: Pt, toward: Pt, tol: f64,
 ) -> Result<Continued, CmdError> {
     if members.is_some_and(|m| m.len() > crate::slash::MAX_CABLE_MEMBERS) {
         return Err(CmdError::refused(references::too_many_members()));
@@ -104,7 +104,7 @@ pub fn continue_cable(
         ops.push(Op::LinkRepresentation {
             id: r,
             rep: Representation {
-                subject: Subject::Conductor(stub.conductor),
+                subject: Subject::Wire(stub.conductor),
                 page,
                 form: Form::Drawn,
                 role: "route".into(),

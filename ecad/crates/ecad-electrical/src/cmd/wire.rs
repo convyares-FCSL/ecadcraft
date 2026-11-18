@@ -2,13 +2,15 @@
 //! numbers, potentials and categories, the wiring settings, junctions, joins and the wire itself.
 //! Each function reads the document and returns the ops to commit and what to report.
 
+use ecad_model::units::Radians;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::connectivity::{CONTINUATION, JUNCTION, KIND, NAME};
+use ecad_model::text::Text;
 use ecad_model::wiring::{self, Scheme};
 use ecad_model::{
-    ConductorId, DeviceId, Document, End, IdAllocator, Ledger, NetData, NetId, Noun, ObjectRef, Op, PageId, Placement, ProjectSettings, Pt, Style,
-    StyleRef, Subject, TerminalId,
+    DeviceId, Document, End, IdAllocator, Ledger, NetData, NetId, Noun, ObjectRef, Op, PageId, Placement, ProjectSettings, Pt, Style, StyleRef,
+    Subject, TerminalId, Wire, WireId,
 };
 
 use crate::error::{CmdError, msg};
@@ -25,7 +27,7 @@ pub const MAX_POTENTIALS: usize = 200;
 /// (the first such net, in listing order). The first given wins, in that order.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct NetChoice {
-    pub conductor: Option<ConductorId>,
+    pub conductor: Option<WireId>,
     pub terminal: Option<TerminalId>,
     pub number: Option<String>,
 }
@@ -54,7 +56,7 @@ pub struct NetView {
     pub category: Option<CategoryName>,
     /// The categories, when the net's wires resolve to different ones (or some have none).
     pub categories: Option<Vec<CategoryName>>,
-    pub conductors: Vec<ConductorId>,
+    pub wires: Vec<WireId>,
     /// Its device connection points (not junctions or continuations), with their words.
     pub points: Vec<(TerminalId, String)>,
     /// The names of its continuations.
@@ -69,8 +71,8 @@ pub fn net_view(doc: &Document, net: &NetData) -> NetView {
     let pot = wiring::net_potential(doc, net);
     let order: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i + 1)).collect();
     let mut pages: BTreeMap<usize, (String, Option<String>)> = BTreeMap::new();
-    for c in &net.conductors {
-        for (_, r) in doc.representations_of(Subject::Conductor(*c)) {
+    for c in &net.wires {
+        for (_, r) in doc.representations_of(Subject::Wire(*c)) {
             let Some(n) = order.get(&r.page) else { continue };
             let col = ecad_model::derive::route_ends_on(doc, *c, r.page).and_then(|(a, _)| wiring::place(doc, r.page, a)).map(|p| p.column_label);
             let slot = pages.entry(*n).or_insert_with(|| (ecad_model::book::page_number(doc, r.page), None));
@@ -93,9 +95,9 @@ pub fn net_view(doc: &Document, net: &NetData) -> NetView {
         .filter_map(|x| doc.devices.get(&x.component).and_then(|c| c.properties.get(NAME)).cloned())
         .collect();
     let looks = crate::styles::wire::WireLooks::new(doc);
-    let cats: BTreeSet<StyleRef> = net.conductors.iter().filter_map(|c| looks.category(doc, *c).0).collect();
-    let named = |id: &StyleRef| CategoryName { id: id.text(), name: crate::styles::name(doc, "wire", id) };
-    let uncategorised = net.conductors.iter().any(|c| looks.category(doc, *c).0.is_none());
+    let cats: BTreeSet<StyleRef> = net.wires.iter().filter_map(|c| looks.category(doc, *c).0).collect();
+    let named = |id: &StyleRef| CategoryName { id: id.text(), name: crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id) };
+    let uncategorised = net.wires.iter().any(|c| looks.category(doc, *c).0.is_none());
     let (category, categories) = match (cats.len(), uncategorised) {
         (1, false) => (cats.first().map(named), None),
         (0, _) => (None, None),
@@ -107,7 +109,7 @@ pub fn net_view(doc: &Document, net: &NetData) -> NetView {
         potential: pot.name,
         category,
         categories,
-        conductors: net.conductors.iter().copied().collect(),
+        wires: net.wires.iter().copied().collect(),
         points,
         continuations,
         pages: pages.into_values().collect(),
@@ -190,7 +192,7 @@ pub fn nets(doc: &Document, q: &NetsQuery) -> Result<NetsPage, CmdError> {
         }
         let mut set = BTreeSet::new();
         for (_, r) in doc.representations_on(pg) {
-            if let Subject::Conductor(c) = r.subject
+            if let Subject::Wire(c) = r.subject
                 && let Some(id) = conn.net_of_conductor(c)
             {
                 set.insert(id);
@@ -200,7 +202,7 @@ pub fn nets(doc: &Document, q: &NetsQuery) -> Result<NetsPage, CmdError> {
     } else {
         conn.nets().map(|(id, _)| id).collect()
     };
-    ids.retain(|id| conn.net(*id).is_some_and(|n| q.all || !n.conductors.is_empty()));
+    ids.retain(|id| conn.net(*id).is_some_and(|n| q.all || !n.wires.is_empty()));
     let mut keyed: Vec<((u8, u128), NetId)> = ids.into_iter().filter_map(|id| conn.net(id).map(|n| (sort_key(n), id))).collect();
     keyed.sort();
     if let Some(a) = &q.after {
@@ -218,7 +220,7 @@ pub fn nets(doc: &Document, q: &NetsQuery) -> Result<NetsPage, CmdError> {
 fn where_words(doc: &Document, net: &NetData) -> String {
     let point = wires::net_points(doc, net).into_iter().next();
     let place = net.first_conductor().and_then(|c| {
-        doc.representations_of(Subject::Conductor(c)).find_map(|(_, r)| {
+        doc.representations_of(Subject::Wire(c)).find_map(|(_, r)| {
             let (a, _) = ecad_model::derive::route_ends_on(doc, c, r.page)?;
             Some(wiring::place(doc, r.page, a)?.text(doc.settings.reference_style()))
         })
@@ -276,10 +278,10 @@ fn merge_sense(doc: &Document, a: &NetData, b: &NetData) -> Result<(), Unmergeab
 }
 
 /// The loose end of a net to continue from: (conductor, end, page, point, direction away).
-fn open_end(doc: &Document, net: &NetData) -> Option<(ConductorId, End, PageId, Pt, Pt)> {
-    for c in &net.conductors {
-        let cond = doc.conductors.get(c)?;
-        for (_, r) in doc.representations_of(Subject::Conductor(*c)) {
+fn open_end(doc: &Document, net: &NetData) -> Option<(WireId, End, PageId, Pt, Pt)> {
+    for c in &net.wires {
+        let cond = doc.wires.get(c)?;
+        for (_, r) in doc.representations_of(Subject::Wire(*c)) {
             let Some((_, _, v)) = wires::route_vertices(doc, *c, r.page) else { continue };
             for end in End::BOTH {
                 if cond.end(end).is_some() {
@@ -296,11 +298,11 @@ fn open_end(doc: &Document, net: &NetData) -> Option<(ConductorId, End, PageId, 
 }
 
 /// The rotation that points a continuation's arrow along `d` (snapped to 90°).
-fn arrow_rotation(d: Pt) -> f64 {
+fn arrow_rotation(d: Pt) -> Radians {
     // The arrow runs to local (0, −5): rotation θ maps it to (sin θ, −cos θ).
     let theta = d.x.atan2(-d.y);
     let q = std::f64::consts::FRAC_PI_2;
-    (theta / q).round() * q
+    Radians((theta / q).round() * q)
 }
 
 /// The number the net `choice` names has now, to fix it as it is (the Properties panel's Fixed
@@ -361,10 +363,10 @@ pub fn wirenumber(
 ) -> Result<Numbered, CmdError> {
     let id = chosen_net(doc, choice)?;
     let net = doc.connectivity().net(id).ok_or(CmdError::NotFound(Noun::Net))?.clone();
-    if net.conductors.is_empty() {
+    if net.wires.is_empty() {
         return Err(CmdError::refused("That net has no wire to number."));
     }
-    let conductors = net.conductors.len();
+    let conductors = net.wires.len();
     let Some(v) = value else {
         let number = wiring::net_number(doc, &net).ok_or(CmdError::refused("That net has no number to release."))?;
         let ops = wiring::write_ops(doc, &net, &number, false);
@@ -410,7 +412,7 @@ pub fn wirenumber(
             sense.map_err(|why| CmdError::refused(format!("The nets can't be merged: {why}.")))?;
             let name = wires::valid_name(&v)
                 .map_err(|_| CmdError::refused(format!("The nets can't be merged: {v} is not a continuation name ({}).", wires::NAME_RULE)))?;
-            let starter = wires::continuation_starter().ok_or(CmdError::refused("the continuation symbol is missing"))?;
+            let starter = wires::continuation_starter();
             let mut ops = wiring::write_ops(doc, &net, &v, true);
             let mut continuations = Vec::new();
             for n in [&net, &other] {
@@ -439,26 +441,23 @@ pub fn wirenumber(
 ///
 /// # Errors
 /// No such wire.
-pub fn potential(doc: &Document, c: ConductorId, value: Option<&str>) -> Result<(Vec<Op>, usize), CmdError> {
+pub fn potential(doc: &Document, c: WireId, value: Option<&str>) -> Result<(Vec<Op>, usize), CmdError> {
     let conn = doc.connectivity();
     let net = conn.net_of_conductor(c).and_then(|id| conn.net(id)).ok_or(CmdError::NotFound(Noun::Wire))?;
+    let value = value.map(Text::new).transpose().map_err(|e| CmdError::refused(format!("Potential: {e}")))?;
     let mut ops = Vec::new();
-    for w in &net.conductors {
-        let before = doc.conductors.get(w).and_then(|x| x.properties.get(wiring::POTENTIAL_KEY)).cloned();
-        if before.as_deref() != value {
-            ops.push(Op::SetProperty {
-                object: ObjectRef::Conductor(*w),
-                key: wiring::POTENTIAL_KEY.into(),
-                before,
-                after: value.map(str::to_string),
-            });
+    for w in &net.wires {
+        let Some(before) = doc.wires.get(w) else { continue };
+        if before.potential != value {
+            let after = Wire { potential: value.clone(), ..before.clone() };
+            ops.push(Op::ModifyWire { id: *w, before: before.clone(), after });
         }
     }
-    Ok((ops, net.conductors.len()))
+    Ok((ops, net.wires.len()))
 }
 
 /// The number of the net wire `c` belongs to.
-pub fn number_of(doc: &Document, c: ConductorId) -> Option<String> {
+pub fn number_of(doc: &Document, c: WireId) -> Option<String> {
     let conn = doc.connectivity();
     conn.net_of_conductor(c).and_then(|id| conn.net(id)).and_then(|n| wiring::net_number(doc, n))
 }
@@ -469,36 +468,31 @@ pub fn number_of(doc: &Document, c: ConductorId) -> Option<String> {
 ///
 /// # Errors
 /// No such wire.
-pub fn category_ops(doc: &Document, conductors: &[ConductorId], value: Option<&StyleRef>) -> Result<(Vec<Op>, Option<String>), CmdError> {
+pub fn category_ops(doc: &Document, conductors: &[WireId], value: Option<&StyleRef>) -> Result<(Vec<Op>, Option<String>), CmdError> {
     let key = wiring::WIRE_CATEGORY;
-    let pot = value.and_then(|id| crate::styles::field_of(doc, "wire", id, "potential", None)).and_then(|r| crate::styles::wire::filled(&r));
+    let pot = value
+        .and_then(|id| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, id, "potential", None))
+        .and_then(|r| crate::styles::wire::filled(&r));
     let conn = doc.connectivity();
     let mut ops = Vec::new();
     let mut kept: Option<String> = None;
     for c in conductors {
-        let cond = doc.conductors.get(c).ok_or(CmdError::NotFound(Noun::Wire))?;
-        let before = cond.properties.get(key).cloned();
-        let after = value.map(StyleRef::text);
-        if before != after {
-            ops.push(Op::SetProperty { object: ObjectRef::Conductor(*c), key: key.into(), before, after });
-        }
+        let cond = doc.wires.get(c).ok_or(CmdError::NotFound(Noun::Wire))?;
+        let mut after = cond.clone();
+        match value {
+            Some(v) => after.display.insert(key.into(), v.text()),
+            None => after.display.remove(key),
+        };
         if let Some(p) = &pot {
             let net_pot = conn.net_of_conductor(*c).and_then(|id| conn.net(id)).and_then(|n| wiring::net_potential(doc, n).name);
             match net_pot {
-                None => {
-                    let before = cond.properties.get(wiring::POTENTIAL_KEY).cloned();
-                    if before.as_deref() != Some(p.as_str()) {
-                        ops.push(Op::SetProperty {
-                            object: ObjectRef::Conductor(*c),
-                            key: wiring::POTENTIAL_KEY.into(),
-                            before,
-                            after: Some(p.clone()),
-                        });
-                    }
-                }
+                None => after.potential = Text::new(p).ok(),
                 Some(n) if !n.eq_ignore_ascii_case(p) => kept = Some(n),
                 Some(_) => {}
             }
+        }
+        if after != *cond {
+            ops.push(Op::ModifyWire { id: *c, before: cond.clone(), after });
         }
     }
     Ok((ops, kept.map(|n| format!("Category set; the net keeps potential {n}."))))
@@ -508,11 +502,11 @@ pub fn category_ops(doc: &Document, conductors: &[ConductorId], value: Option<&S
 #[derive(Debug, Clone, PartialEq)]
 pub enum Wires {
     /// One wire.
-    One(ConductorId),
+    One(WireId),
     /// Every wire of the net this one belongs to.
-    Net(ConductorId),
+    Net(WireId),
     /// These wires.
-    Many(Vec<ConductorId>),
+    Many(Vec<WireId>),
 }
 
 /// What `category` did.
@@ -521,7 +515,7 @@ pub struct Categorised {
     pub ops: Vec<Op>,
     /// The history label.
     pub label: String,
-    pub conductors: usize,
+    pub wires: usize,
     /// The category set (`None`: cleared).
     pub category: Option<StyleRef>,
     /// What to tell the person, when a net keeps its own potential.
@@ -534,27 +528,24 @@ pub struct Categorised {
 /// # Errors
 /// No such wire; no such category.
 pub fn category(doc: &Document, wires: Wires, value: Option<&str>) -> Result<Categorised, CmdError> {
-    let conductors: Vec<ConductorId> = match wires {
+    let conductors: Vec<WireId> = match wires {
         Wires::One(c) => vec![c],
         Wires::Net(c) => {
             let conn = doc.connectivity();
-            conn.net_of_conductor(c)
-                .and_then(|id| conn.net(id))
-                .map(|n| n.conductors.iter().copied().collect())
-                .ok_or(CmdError::NotFound(Noun::Wire))?
+            conn.net_of_conductor(c).and_then(|id| conn.net(id)).map(|n| n.wires.iter().copied().collect()).ok_or(CmdError::NotFound(Noun::Wire))?
         }
         Wires::Many(v) => v,
     };
     let id = match value {
-        Some(v) => Some(crate::styles::find(doc, "wire", v)?),
+        Some(v) => Some(crate::styles::find(doc, ecad_model::StyleCatalogue::Wire, v)?),
         None => None,
     };
     let (ops, message) = category_ops(doc, &conductors, id.as_ref())?;
     let label = match &id {
-        Some(i) => format!("Category {}", crate::styles::name(doc, "wire", i)),
+        Some(i) => format!("Category {}", crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, i)),
         None => "Clear category".into(),
     };
-    Ok(Categorised { ops, label, conductors: conductors.len(), category: id, message })
+    Ok(Categorised { ops, label, wires: conductors.len(), category: id, message })
 }
 
 /// One row of the potentials table as given: words not given are empty.
@@ -659,7 +650,7 @@ pub fn renumber(doc: &Document, all: bool) -> (Vec<Op>, usize) {
     let nets: BTreeSet<NetId> = ops
         .iter()
         .filter_map(|op| match op {
-            Op::SetProperty { object: ObjectRef::Conductor(c), .. } => doc.connectivity().net_of_conductor(*c),
+            Op::ModifyWire { id, .. } => doc.connectivity().net_of_conductor(*id),
             _ => None,
         })
         .collect();
@@ -672,7 +663,7 @@ pub struct Junctioned {
     pub junction: DeviceId,
     pub terminal: TerminalId,
     /// The new second half of the wire split at it (`None`: loose ends that only met).
-    pub conductor: Option<ConductorId>,
+    pub conductor: Option<WireId>,
     pub at: Pt,
     /// The loose ends attached (only when they only met).
     pub attached: Option<usize>,
@@ -689,7 +680,7 @@ pub fn junction_at(doc: &Document, ids: &mut IdAllocator, style: Style, page: Pa
     let loose = wires::loose_ends_at(doc, page, at, ON_WIRE);
     let through = wires::interior_wire_at(doc, page, at);
     if through.is_none() && loose.len() >= 2 {
-        let starter = wires::junction_starter().ok_or(CmdError::refused("the junction symbol is missing"))?;
+        let starter = wires::junction_starter();
         let mut props = ecad_model::Properties::new();
         props.insert(KIND.into(), JUNCTION.into());
         let snapped = loose
@@ -698,7 +689,7 @@ pub fn junction_at(doc: &Document, ids: &mut IdAllocator, style: Style, page: Pa
                 wires::route_vertices(doc, *c, page).and_then(|(_, _, v)| if *e == End::A { v.first().copied() } else { v.last().copied() })
             })
             .unwrap_or(at);
-        let placement = Placement { origin: snapped, rotation: 0.0, mirror: false, scale: 1.0 };
+        let placement = Placement { origin: snapped, rotation: Radians(0.0), mirror: false, scale: 1.0 };
         let t = wires::plan_tagless(doc, ids, page, style, starter, placement, props)?;
         let done = Junctioned { junction: t.component, terminal: t.terminal, conductor: None, at: snapped, attached: Some(t.attached.len()) };
         return Ok((t.ops, done));
@@ -713,7 +704,7 @@ pub fn junction_at(doc: &Document, ids: &mut IdAllocator, style: Style, page: Pa
 #[derive(Debug, Clone)]
 pub enum Joined {
     /// Two open ends became one wire.
-    Merged { ops: Vec<Op>, survivor: ConductorId, removed: ConductorId, at: Pt },
+    Merged { ops: Vec<Op>, survivor: WireId, removed: WireId, at: Pt },
     /// The ends got a junction.
     Junction { ops: Vec<Op>, junction: Junctioned },
 }
@@ -755,7 +746,7 @@ pub fn wire(ledger: &Ledger, ids: &mut IdAllocator, input: wires::WireInput<'_>,
     let doc = ledger.document();
     let mut plan = wires::plan_wire(doc, ids, input)?;
     if let Some(c) = category {
-        let id = crate::styles::find(doc, "wire", c)?;
+        let id = crate::styles::find(doc, ecad_model::StyleCatalogue::Wire, c)?;
         let after = ledger.preview(&plan.ops)?;
         let (more, _) = category_ops(&after, &[plan.conductor], Some(&id))?;
         plan.ops.extend(more);
@@ -771,13 +762,6 @@ pub fn wire(ledger: &Ledger, ids: &mut IdAllocator, input: wires::WireInput<'_>,
 /// a continuation without a name, or a value that does not read.
 pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Option<String>>, CmdError> {
     match object {
-        ObjectRef::Conductor(_) => match key {
-            k if k == wiring::WIRE_NUMBER_KEY || k == ecad_model::connectivity::WIRE_NUMBER_FIXED => Err(CmdError::refused(msg::USE_WIRENUMBER)),
-            k if k == wiring::POTENTIAL_KEY => Err(CmdError::refused(msg::USE_POTENTIAL)),
-            k if k == wiring::CROSS_SECTION => Ok(Some(wiring::valid_text("cross-section", value).map_err(CmdError::refused)?)),
-            k if k == wiring::COLOUR => Ok(Some(wiring::valid_text("colour", value).map_err(CmdError::refused)?)),
-            _ => Ok(None),
-        },
         // Brief 049 (design 049 §3.1): a caption only on a continuation, checked.
         ObjectRef::Device(c) if key == crate::continuations::CAPTION_KEY => Ok(Some(crate::continuations::caption_value(doc, c, value)?)),
         ObjectRef::Device(c) if wires::kind_of(doc, c).is_some() => match key {

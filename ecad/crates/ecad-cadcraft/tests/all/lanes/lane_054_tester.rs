@@ -529,12 +529,12 @@ fn fp3_a_malformed_type_sheet_reads_as_absent() {
     refused(&mut h, "setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"holds": "x"}}));
     for bad in ["A0 999x999", "A9", &"x".repeat(10_000), "-1x-1", "nan"] {
         let sch = ecad_model::style::StyleRef::builtin("schematic").unwrap();
-        let before = h.doc().styles.get("page").and_then(|m| m.get(&sch)).cloned();
+        let before = h.doc().styles.get(&ecad_model::StyleCatalogue::Page).and_then(|m| m.get(&sch)).cloned();
         inject(
             &mut h,
             vec![ecad_model::Op::SetStyle {
                 layer: ecad_model::style::StyleLayer::Project,
-                catalogue: "page".into(),
+                catalogue: ecad_model::StyleCatalogue::Page,
                 id: ecad_model::style::StyleRef::builtin("schematic").unwrap(),
                 before,
                 after: Some(ecad_model::style::StyleRecord {
@@ -654,7 +654,7 @@ fn ac8_wire_colours_show_only_categories_in_use() {
     h.activate(sch);
     let _ = w;
     undo(&mut h);
-    assert!(h.doc().conductors.is_empty(), "the undo removed the only conductor");
+    assert!(h.doc().wires.is_empty(), "the undo removed the only conductor");
     let t = gen_texts(&mut h, cover);
     assert!(t.iter().any(|x| x == "No wires yet."), "a count crossing 0 removes the line: {t:?}");
 }
@@ -852,21 +852,27 @@ fn ac15_hostile_values_read_as_absent_with_checks_rows() {
     }
 }
 
-/// AC15 (054b): 1 MB of stored notes read cut at 40 with a `cover-notes-cut` row.
+/// AC15 (054b): more stored notes than the cover holds read cut at 40 with a `cover-notes-cut`
+/// row (design 072 §5.3: a stored text longer than the notes' bound is a read error instead).
 #[test]
 fn ac15_hostile_notes_read_cut_with_a_checks_row() {
-    use ecad_model::{ObjectRef, Op};
+    use ecad_model::Op;
     let (mut h, cover, _) = with_cover(0x54_1503);
-    let notes: String = (0..5000)
+    let notes: String = (0..200)
         .map(|i| {
             format!(
                 "note {i} {}
 ",
-                "x".repeat(200)
+                "x".repeat(40)
             )
         })
         .collect();
-    inject(&mut h, vec![Op::SetProperty { object: ObjectRef::Project, key: "cover.notes".into(), before: None, after: Some(notes) }]);
+    let before = h.doc().project.clone();
+    let after = ecad_model::Project {
+        info: ecad_model::ProjectInfo { notes: Some(ecad_model::project::Notes::new(&notes).unwrap()), ..before.info.clone() },
+        ..before.clone()
+    };
+    inject(&mut h, vec![Op::ModifyProject { before, after }]);
     let t = gen_texts(&mut h, cover);
     assert!(t.iter().filter(|x| x.starts_with(|c: char| c.is_ascii_digit()) && x.contains(". note")).count() <= 40, "notes read cut at 40");
     assert!(!checks_of(&mut h, "cover-notes-cut").is_empty());

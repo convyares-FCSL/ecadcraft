@@ -17,7 +17,7 @@
 
 use std::collections::BTreeMap;
 
-use ecad_model::book::{Book, FUNCTION_KEY, LOCATION_KEY};
+use ecad_model::book::Book;
 use ecad_model::sheet;
 use ecad_model::style::StyleLayer;
 use ecad_model::title_block::BlockItem;
@@ -76,8 +76,8 @@ fn unknown_rows(doc: &Document) -> Vec<Check> {
         for (cat, records) in cats {
             for (id, r) in records.iter().take(ecad_model::style::MAX_STYLES_PER_CATALOGUE) {
                 let Some(body) = &r.body else { continue };
-                let name = crate::styles::name(doc, cat, id);
-                if cat != sheet::FRAME_CATALOGUE {
+                let name = crate::styles::name(doc, *cat, id);
+                if *cat != sheet::FRAME_CATALOGUE {
                     let which = format!("{name} carries a title block; only frames draw one.");
                     out.push(Check { kind: Kind::TitleBindingUnknown, page: None, at: None, object: Object::None, which, fix: None });
                     continue;
@@ -150,19 +150,17 @@ fn sheet_rows(doc: &Document) -> Vec<Check> {
 /// page's own values.
 fn page_input(doc: &Document, book: &Book, base: &FrameInput, page: PageId) -> FrameInput {
     let mut inp = base.clone();
-    let pprops = doc.pages.get(&page).map(|p| &p.display);
-    let inherited = |k: &str| pprops.and_then(|p| p.get(k)).or_else(|| doc.properties.get(k)).cloned().unwrap_or_default();
     inp.page_title = doc.pages.get(&page).map(|p| p.title.to_string()).unwrap_or_default();
     inp.page = book.number(doc, page);
     inp.next_page = book.next(page);
     inp.next = inp.next_page.map_or_else(|| "-".to_string(), |n| book.number(doc, n));
     // Brief 052: stored as entry keys of the project's list; shown as codes.
-    let shown = |k: &str| {
-        let v = inherited(k);
-        if v.is_empty() { v } else { crate::designations::display(doc, k, &v) }
+    // Design 072 §5.3: the page's own id, else the project's.
+    let shown = |a: crate::designations::Aspect| {
+        crate::designations::inherited_key(doc, page, a).map(|k| crate::designations::display(doc, a.property(), &k)).unwrap_or_default()
     };
-    inp.function = shown(FUNCTION_KEY);
-    inp.location = shown(LOCATION_KEY);
+    inp.function = shown(crate::designations::Aspect::Function);
+    inp.location = shown(crate::designations::Aspect::Location);
     inp
 }
 

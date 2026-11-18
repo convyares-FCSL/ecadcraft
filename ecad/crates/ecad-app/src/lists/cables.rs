@@ -689,7 +689,7 @@ pub fn undrawn_line(r: &ecad_cadcraft::outputs::CableRow) -> String {
 fn cable_size(doc: &ecad_model::Document, k: CableId) -> Option<String> {
     use ecad_cadcraft::styles::{self, cable};
     let from_type = cable::of(doc, k)
-        .and_then(|id| styles::field_of(doc, cable::WORD, &id, "cross_section", None))
+        .and_then(|id| styles::field_of(doc, ecad_model::StyleCatalogue::Cable, &id, "cross_section", None))
         .and_then(|r| ecad_cadcraft::rating::parse::cross_section(&r.text()));
     from_type
         .or_else(|| doc.cables.get(&k).and_then(|x| x.properties.get("type")).and_then(|t| ecad_cadcraft::strips::notation_size(t)))
@@ -700,7 +700,7 @@ fn cable_size(doc: &ecad_model::Document, k: CableId) -> Option<String> {
 /// `k`'s cores, else empty.
 fn beyond(doc: &ecad_model::Document, k: CableId, at: &str) -> String {
     let Some((tag, label)) = at.trim().rsplit_once(':') else { return String::new() };
-    let members: Vec<ecad_model::ConductorId> = doc.cables.get(&k).map(|c| c.members.iter().map(|m| m.conductor).collect()).unwrap_or_default();
+    let members: Vec<ecad_model::WireId> = doc.cables.get(&k).map(|c| c.members.iter().map(|m| m.conductor).collect()).unwrap_or_default();
     let conn = doc.connectivity();
     for c in doc.components_tagged(tag) {
         for (t, x) in doc.terminals_of(c) {

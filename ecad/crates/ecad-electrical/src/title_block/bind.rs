@@ -70,7 +70,7 @@ pub fn read(doc: &Document, layout: &TitleBlockLayout) -> (BTreeMap<String, Stri
     let project = pk
         .into_iter()
         .map(|k| {
-            let v = doc.properties.get(&k).map(|v| crate::designations::display(doc, &k, v)).unwrap_or_default();
+            let v = crate::frames::project_text(doc, &k).map(|v| crate::designations::display(doc, &k, &v)).unwrap_or_default();
             (k, v)
         })
         .collect();

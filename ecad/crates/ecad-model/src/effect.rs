@@ -12,11 +12,12 @@
 //! document lookups.
 #![deny(clippy::wildcard_enum_match_arm)]
 
-use crate::doc::{Cable, CableMember, Conductor, Definition, Device, End, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal};
-use crate::id::{CableId, ConductorId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId};
+use crate::doc::{Cable, CableMember, Definition, Device, End, Folder, Item, Layer, Page, ProjectSettings, Representation, Terminal, Wire};
+use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId, WireId};
 use crate::keys::{Area, area_of};
 use crate::op::{ObjectRef, Op};
-use crate::style::{StandardHeader, StyleLayer, StyleRecord, StyleRef};
+use crate::project::Project;
+use crate::style::{StandardHeader, StyleCatalogue, StyleLayer, StyleRecord, StyleRef};
 
 /// A property key with its area, classified once ([`area_of`], design 064 §3.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,14 +70,14 @@ pub enum Effect<'a> {
         before: Option<&'a Representation>,
         after: Option<&'a Representation>,
     },
-    Conductor {
-        id: ConductorId,
-        before: Option<&'a Conductor>,
-        after: Option<&'a Conductor>,
+    Wire {
+        id: WireId,
+        before: Option<&'a Wire>,
+        after: Option<&'a Wire>,
     },
     /// A conductor end attached or detached.
     End {
-        conductor: ConductorId,
+        conductor: WireId,
         end: End,
         before: Option<TerminalId>,
         after: Option<TerminalId>,
@@ -123,11 +124,10 @@ pub enum Effect<'a> {
         index_before: Option<usize>,
         index_after: Option<usize>,
     },
-    /// A style record set. `catalogue` is the catalogue's stored word until `SetStyle` carries a
-    /// `StyleCatalogue` (lane 072 A2).
+    /// A style record set.
     Style {
         layer: StyleLayer,
-        catalogue: &'a str,
+        catalogue: StyleCatalogue,
         id: &'a StyleRef,
         before: Option<&'a StyleRecord>,
         after: Option<&'a StyleRecord>,
@@ -135,6 +135,11 @@ pub enum Effect<'a> {
     Standard {
         before: Option<&'a StandardHeader>,
         after: Option<&'a StandardHeader>,
+    },
+    /// The project's own data changed (`ModifyProject`, design 072 §5.3).
+    Project {
+        before: &'a Project,
+        after: &'a Project,
     },
 }
 
@@ -149,7 +154,7 @@ pub enum EffectKind {
     DeviceDefinition,
     Terminal,
     Rep,
-    Conductor,
+    Wire,
     End,
     Cable,
     Member,
@@ -160,11 +165,12 @@ pub enum EffectKind {
     Folder,
     Style,
     Standard,
+    Project,
 }
 
 impl EffectKind {
     /// Every kind, in declaration order.
-    pub const ALL: [EffectKind; 18] = [
+    pub const ALL: [EffectKind; 19] = [
         EffectKind::Page,
         EffectKind::Layer,
         EffectKind::Item,
@@ -172,7 +178,7 @@ impl EffectKind {
         EffectKind::DeviceDefinition,
         EffectKind::Terminal,
         EffectKind::Rep,
-        EffectKind::Conductor,
+        EffectKind::Wire,
         EffectKind::End,
         EffectKind::Cable,
         EffectKind::Member,
@@ -183,6 +189,7 @@ impl EffectKind {
         EffectKind::Folder,
         EffectKind::Style,
         EffectKind::Standard,
+        EffectKind::Project,
     ];
 
     fn bit(self) -> u32 {
@@ -249,7 +256,7 @@ impl Effect<'_> {
             Effect::DeviceDefinition { .. } => EffectKind::DeviceDefinition,
             Effect::Terminal { .. } => EffectKind::Terminal,
             Effect::Rep { .. } => EffectKind::Rep,
-            Effect::Conductor { .. } => EffectKind::Conductor,
+            Effect::Wire { .. } => EffectKind::Wire,
             Effect::End { .. } => EffectKind::End,
             Effect::Cable { .. } => EffectKind::Cable,
             Effect::Member { .. } => EffectKind::Member,
@@ -260,6 +267,7 @@ impl Effect<'_> {
             Effect::Folder { .. } => EffectKind::Folder,
             Effect::Style { .. } => EffectKind::Style,
             Effect::Standard { .. } => EffectKind::Standard,
+            Effect::Project { .. } => EffectKind::Project,
         }
     }
 }
@@ -379,8 +387,9 @@ fn classify(op: &Op) -> Effect<'_> {
         Op::LinkRepresentation { id, rep } => Effect::Rep { id: *id, before: None, after: Some(rep) },
         Op::ModifyRepresentation { id, before, after } => Effect::Rep { id: *id, before: Some(before), after: Some(after) },
         Op::UnlinkRepresentation { id, rep } => Effect::Rep { id: *id, before: Some(rep), after: None },
-        Op::CreateConductor { id, conductor } => Effect::Conductor { id: *id, before: None, after: Some(conductor) },
-        Op::DeleteConductor { id, conductor } => Effect::Conductor { id: *id, before: Some(conductor), after: None },
+        Op::CreateWire { id, conductor } => Effect::Wire { id: *id, before: None, after: Some(conductor) },
+        Op::DeleteWire { id, conductor } => Effect::Wire { id: *id, before: Some(conductor), after: None },
+        Op::ModifyWire { id, before, after } => Effect::Wire { id: *id, before: Some(before), after: Some(after) },
         Op::AttachEnd { conductor, end, before, after } => Effect::End { conductor: *conductor, end: *end, before: *before, after: *after },
         Op::CreateCable { id, cable } => Effect::Cable { id: *id, before: None, after: Some(cable) },
         Op::DeleteCable { id, cable } => Effect::Cable { id: *id, before: Some(cable), after: None },
@@ -404,9 +413,10 @@ fn classify(op: &Op) -> Effect<'_> {
             Effect::Folder { id: *id, before: Some(before), after: Some(after), index_before: None, index_after: None }
         }
         Op::SetStyle { layer, catalogue, id, before, after } => {
-            Effect::Style { layer: *layer, catalogue, id, before: before.as_ref(), after: after.as_ref() }
+            Effect::Style { layer: *layer, catalogue: *catalogue, id, before: before.as_ref(), after: after.as_ref() }
         }
         Op::SetStandard { before, after } => Effect::Standard { before: before.as_ref(), after: after.as_ref() },
+        Op::ModifyProject { before, after } => Effect::Project { before, after },
     }
 }
 
@@ -426,7 +436,7 @@ fn fold_key(e: &Effect<'_>, remove: bool) -> Option<Open> {
         | Effect::DeviceDefinition { .. }
         | Effect::Terminal { .. }
         | Effect::Rep { .. }
-        | Effect::Conductor { .. }
+        | Effect::Wire { .. }
         | Effect::End { .. }
         | Effect::Cable { .. }
         | Effect::Member { .. }
@@ -436,7 +446,8 @@ fn fold_key(e: &Effect<'_>, remove: bool) -> Option<Open> {
         | Effect::Version { .. }
         | Effect::Folder { .. }
         | Effect::Style { .. }
-        | Effect::Standard { .. } => None,
+        | Effect::Standard { .. }
+        | Effect::Project { .. } => None,
     }
 }
 

@@ -20,6 +20,7 @@
 
 #![deny(clippy::wildcard_enum_match_arm)]
 
+use ecad_model::units::Radians;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
@@ -1165,8 +1166,8 @@ const KEYED_IN_ORDER: () = {
 };
 const _: () = KEYED_IN_ORDER;
 
-/// The starter symbol whose key word is `key` (case-insensitive, trimmed). A delegate for the
-/// command files until they parse a [`StarterKey`] themselves (design 072 A2).
+/// The starter symbol a key word names (case-insensitive, trimmed): for a word someone typed or a
+/// file holds. Code that knows which starter it means uses [`starter`] with its [`StarterKey`].
 pub fn by_key(key: &str) -> Option<&'static Starter> {
     <StarterKey as ecad_model::Word>::parse(key).map(starter)
 }
@@ -1803,7 +1804,7 @@ fn circle(c: (f64, f64), radius: f64) -> Primitive {
 }
 
 fn text(at: (f64, f64), height: f64, value: &str) -> Primitive {
-    Primitive::Text { at: p(at.0, at.1), height, rotation: 0.0, value: value.into(), halign: Default::default(), valign: Default::default() }
+    Primitive::Text { at: p(at.0, at.1), height, rotation: Radians(0.0), value: value.into(), halign: Default::default(), valign: Default::default() }
 }
 
 fn shifted(prims: Vec<Primitive>, dx: f64) -> Vec<Primitive> {

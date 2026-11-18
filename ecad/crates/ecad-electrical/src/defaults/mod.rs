@@ -24,7 +24,7 @@
 //! in its catalogue.
 
 pub use data::{DefaultsError, Slot};
-use ecad_model::{ConductorId, DeviceId, Document, LengthUnit, PageId, ProjectSettings, RepresentationId, Subject};
+use ecad_model::{DeviceId, Document, LengthUnit, PageId, ProjectSettings, RepresentationId, Subject, WireId};
 
 /// The areas a key may start with (overseer ruling, 2026-11-12): the words of
 /// [`ecad_model::keys::Area::REGISTRY`], in its order (design 064 §3.3). Keys already approved
@@ -89,7 +89,7 @@ pub enum Kind {
     Parsed { max_chars: usize, parse: fn(&str) -> bool },
     /// A style of this catalogue (brief 050a, design 050 §2.4): its ID, a built-in word or
     /// `#<32 hex>`. A stored ID naming no style of the catalogue counts as absent.
-    Style(&'static str),
+    Style(ecad_model::StyleCatalogue),
 }
 
 /// A value of an entry: its built-in, or a stored value that parsed.
@@ -102,8 +102,31 @@ pub enum Value<'a> {
     Choice(&'static str),
     /// A [`Kind::Flag`] entry's switch.
     Flag(bool),
-    /// A [`Kind::Text`] or [`Kind::Parsed`] value.
+    /// A [`Kind::Text`] or [`Kind::Parsed`] value, or a [`Kind::Style`] value naming a built-in
+    /// style by its word.
     Text(&'a str),
+    /// A [`Kind::Style`] value naming an own style (a standard's or the project's) by its ID
+    /// (design 072 §5.1): held as the ID, so a value read from a typed field needs no stored text.
+    OwnStyle(u128),
+}
+
+impl Value<'_> {
+    /// The style a [`Kind::Style`] value names: a built-in word or an own style's ID.
+    pub fn style(&self) -> Option<ecad_model::StyleRef> {
+        match *self {
+            Value::Text(t) => ecad_model::StyleRef::builtin(t),
+            Value::OwnStyle(id) => Some(ecad_model::StyleRef::Own(id)),
+            Value::Length(_) | Value::Number(_) | Value::Choice(_) | Value::Flag(_) => None,
+        }
+    }
+
+    /// The value a style reference is as a [`Kind::Style`] value.
+    pub fn of_style(id: &ecad_model::StyleRef) -> Value<'_> {
+        match id {
+            ecad_model::StyleRef::Builtin(w) => Value::Text(w.as_str()),
+            ecad_model::StyleRef::Own(n) => Value::OwnStyle(*n),
+        }
+    }
 }
 
 /// A level that may override an entry's built-in.
@@ -175,7 +198,7 @@ pub struct Scope {
     pub page: Option<PageId>,
     pub component: Option<DeviceId>,
     pub rep: Option<RepresentationId>,
-    pub conductor: Option<ConductorId>,
+    pub conductor: Option<WireId>,
 }
 
 impl Scope {
@@ -260,6 +283,7 @@ impl Resolved<'_> {
             Value::Choice(w) => w.to_string(),
             Value::Flag(b) => ecad_model::words::flag_word(b).to_string(),
             Value::Text(t) => t.to_string(),
+            Value::OwnStyle(id) => ecad_model::StyleRef::Own(id).text(),
         }
     }
 }
@@ -310,6 +334,7 @@ pub fn accepts(kind: Kind, value: &Value<'_>) -> bool {
             (Kind::Choice(words), Value::Choice(w)) => words.contains(w),
             (Kind::Flag, Value::Flag(_)) => true,
             (Kind::Text { .. } | Kind::Parsed { .. } | Kind::Style(_), Value::Text(t)) => parse_value(kind, t) == Some(Value::Text(t)),
+            (Kind::Style(_), Value::OwnStyle(_)) => true,
             _ => false,
         }
     }
@@ -342,7 +367,10 @@ pub fn parse_value(kind: Kind, stored: &str) -> Option<Value<'_>> {
         Kind::Flag => [true, false].into_iter().find(|b| ecad_model::words::flag_word(*b) == stored).map(Value::Flag),
         Kind::Text { max_chars } => plain_text(s, max_chars).then_some(Value::Text(s)),
         Kind::Parsed { max_chars, parse } => (plain_text(s, max_chars) && parse(s)).then_some(Value::Text(s)),
-        Kind::Style(_) => ecad_model::StyleRef::parse(s).is_some().then_some(Value::Text(s)),
+        Kind::Style(_) => match ecad_model::StyleRef::parse(s)? {
+            ecad_model::StyleRef::Builtin(_) => Some(Value::Text(s)),
+            ecad_model::StyleRef::Own(id) => Some(Value::OwnStyle(id)),
+        },
     }
 }
 
@@ -365,7 +393,7 @@ pub fn parse_input(kind: Kind, typed: &str) -> Option<Value<'_>> {
 pub fn parse_value_in<'a>(doc: &Document, kind: Kind, stored: &'a str) -> Option<Value<'a>> {
     let v = parse_value(kind, stored)?;
     match (kind, v) {
-        (Kind::Style(cat), Value::Text(t)) => ecad_model::StyleRef::parse(t).filter(|id| crate::styles::exists(doc, cat, id)).map(|_| v),
+        (Kind::Style(cat), _) => v.style().filter(|id| crate::styles::exists(doc, cat, id)).map(|_| v),
         _ => Some(v),
     }
 }
@@ -432,7 +460,7 @@ pub fn resolve<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Resolved<'a> 
                 return Resolved { value, from: Source::Object };
             }
         }
-        if let Some(value) = at.conductor.and_then(|c| doc.conductors.get(&c)).and_then(|c| stored(&c.properties, entry.key)) {
+        if let Some(value) = at.conductor.and_then(|c| doc.wires.get(&c)).and_then(|c| stored(&c.display, entry.key)) {
             return Resolved { value, from: Source::Object };
         }
     }
@@ -459,15 +487,11 @@ pub fn resolve<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Resolved<'a> 
 }
 
 /// `entry`'s value stored on `page`: its display bag, or for the page type the page's field
-/// (design 072 §5.1). A [`Value`] borrows its text, so only a built-in page type reads here; an
-/// own one (`#<id>`) has no stored text and reads as absent in this chain. The page's resolved
-/// type is `ecad_model::sheet::page_type_of`, which reads both.
+/// (design 072 §5.1), read with the same rule as `ecad_model::sheet::page_type_of` (a type that
+/// does not exist reads as absent), so the two never disagree.
 fn page_value<'a>(doc: &Document, entry: &Entry, page: &'a ecad_model::Page) -> Option<Value<'a>> {
     if entry.key == ecad_model::sheet::PAGE_TYPE_KEY {
-        return match &page.page_type {
-            Some(ecad_model::StyleRef::Builtin(w)) => entry.parse_in(doc, w.as_str()),
-            Some(ecad_model::StyleRef::Own(_)) | None => None,
-        };
+        return page.page_type.as_ref().filter(|id| ecad_model::sheet::page_type_exists(doc, id)).map(Value::of_style);
     }
     page.display.get(entry.key).and_then(|v| entry.parse_in(doc, v.as_str()))
 }
@@ -506,7 +530,7 @@ pub fn chain<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Vec<(Source, Op
     let symbol = component.zip(at.rep).and_then(|(c, rep)| stored(&c.properties, &symbol_key(entry.key, rep)));
     let object = component
         .and_then(|c| stored(&c.properties, entry.key))
-        .or_else(|| at.conductor.and_then(|c| doc.conductors.get(&c)).and_then(|c| stored(&c.properties, entry.key)));
+        .or_else(|| at.conductor.and_then(|c| doc.wires.get(&c)).and_then(|c| stored(&c.display, entry.key)));
     if entry.allows(Level::Object) || object.is_some() {
         out.push((Source::Object, object.filter(|_| entry.allows(Level::Object))));
     }
@@ -559,7 +583,7 @@ pub fn users(doc: &Document, entry: &Entry) -> usize {
     let own = |props: &ecad_model::Properties| entry.allows(Level::Object) && props.get(entry.key).is_some_and(|v| entry.parse(v.as_str()).is_some());
     match users_noun(entry) {
         "devices" => doc.devices.values().filter(|c| !own(&c.properties)).count(),
-        "wires" => doc.conductors.values().filter(|c| !own(&c.properties)).count(),
+        "wires" => doc.wires.values().filter(|c| !own(&c.display)).count(),
         _ => doc.pages.len(),
     }
 }

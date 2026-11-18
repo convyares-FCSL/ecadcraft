@@ -445,10 +445,10 @@ fn the_update_maps_follow_frame_choices_and_frame_geometry() {
     }
     // A frame record: its sheet reaches its pages; its weight reaches nothing.
     let own = ecad_model::StyleRef::parse(&id).unwrap();
-    let rec = doc.styles.get("frame").and_then(|m| m.get(&own)).cloned().unwrap();
+    let rec = doc.styles.get(&ecad_model::StyleCatalogue::Frame).and_then(|m| m.get(&own)).cloned().unwrap();
     let set = |after: ecad_model::StyleRecord| Op::SetStyle {
         layer: ecad_model::StyleLayer::Project,
-        catalogue: "frame".into(),
+        catalogue: ecad_model::StyleCatalogue::Frame,
         id: own.clone(),
         before: Some(rec.clone()),
         after: Some(after),
@@ -470,7 +470,7 @@ fn an_out_of_bounds_block_size_is_reported() {
     let mut doc = ecad_model::Document::default();
     let mut rec = ecad_model::StyleRecord::new("Huge", Default::default());
     rec.body = Some(ecad_model::title_block::StyleBody::title_block(TitleBlockLayout { size: (1e308, 1e308), items: Vec::new() }));
-    doc.styles.entry("frame".into()).or_default().insert(ecad_model::StyleRef::Own(5), rec);
+    doc.styles.entry(ecad_model::StyleCatalogue::Frame).or_default().insert(ecad_model::StyleRef::Own(5), rec);
     let rows = ecad_cadcraft::title_block::checks::rows(&doc);
     assert!(rows.iter().any(|r| r.which.contains("Huge's title block size is out of bounds")), "{rows:?}");
 }

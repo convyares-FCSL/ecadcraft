@@ -42,7 +42,7 @@ fn other_value(e: &Entry) -> Option<String> {
             .collect()
         }
         // Brief 050a: a style choice takes another built-in style of its catalogue.
-        Kind::Style(cat) => ecad_cadcraft::styles::catalogue(cat).map(|c| c.builtins.iter().map(|b| b.id.to_string()).collect()).unwrap_or_default(),
+        Kind::Style(cat) => ecad_cadcraft::styles::catalogue(cat).builtins.iter().map(|b| b.id.to_string()).collect(),
     };
     candidates.into_iter().find(|c| e.parse(c).is_some() && !c.eq_ignore_ascii_case(&builtin))
 }
@@ -75,7 +75,7 @@ fn target_json(t: Target) -> Value {
         Target::Project => json!({}),
         Target::Page(p) => json!({"page": p.hex()}),
         Target::Device(c) => json!({"component": c.hex()}),
-        Target::Conductor(c) => json!({"conductor": c.hex()}),
+        Target::Wire(c) => json!({"conductor": c.hex()}),
         Target::Symbol(r) => json!({"representation": r.hex()}),
     }
 }
@@ -104,7 +104,7 @@ fn every_allowed_level_of_every_entry_writes_reads_back_and_resets() {
             // A one-word choice, or a style choice whose catalogue has one built-in style (050a):
             // only its built-in exists.
             // Brief 057: a catalogue with no built-in styles (rating tables) has none to choose.
-            let single = |c: &str| ecad_cadcraft::styles::catalogue(c).is_some_and(|c| c.builtins.len() <= 1);
+            let single = |c: ecad_model::StyleCatalogue| ecad_cadcraft::styles::catalogue(c).builtins.len() <= 1;
             assert!(matches!(e.kind, Kind::Choice(w) if w.len() == 1) || matches!(e.kind, Kind::Style(c) if single(c)), "{}: no test value", e.key);
             continue;
         };

@@ -53,7 +53,7 @@ pub fn handles_of(p: &crate::Project, page: PageId, object: Object) -> Vec<cadcr
     let Some(map) = p.pages.get(&page).map(|v| &v.map) else { return Vec::new() };
     let doc = p.ledger.document();
     let subject = match object {
-        Object::Conductor(c) => Subject::Conductor(c),
+        Object::Wire(c) => Subject::Wire(c),
         Object::Device(c) => Subject::Device(c),
         Object::Reference(r) => {
             return doc

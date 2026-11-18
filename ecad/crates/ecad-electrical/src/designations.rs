@@ -1,16 +1,17 @@
-//! The project's list of functions and locations (brief 052, design 052 §5.9, FP7, FP8).
+//! The project's list of functions and locations (brief 052, design 052 §5.9; design 072 §5.3).
 //!
 //! # Semantics
-//! - The project holds one list per [`Aspect`]. Each entry has a stable **key** (a fresh ID in hex,
-//!   allocated when the entry is made and recorded in the op), a **code** (`+CP1`, `=F1`), unique
-//!   within its aspect, and an optional **description**. They are project properties
-//!   `designation.<f|l>.<key>.code` and `.description`: no new object kind, no new op (FP7).
-//! - Devices, boxes, pages and the project store **the key** in `function`, `location` and
-//!   `location.<type>` (FP8). Everything a person sees shows the code ([`code_of`]), so renaming an
-//!   entry is one `SetProperty`.
+//! - The project holds one list per [`Aspect`] in [`ecad_model::Project`]. Each entry has a stable
+//!   id (allocated when the entry is made and recorded in the op), a **code** (`+CP1`, `=F1`),
+//!   unique within its aspect, and optional descriptions. The lists change through
+//!   `ModifyProject`.
+//! - Pages and the project store **the id** (`Page.location`/`function`,
+//!   `Project.location`/`function`); devices and boxes store its 32-hex form in `function`,
+//!   `location` and `location.<type>` until lane 072 B moves them (FP8). Everything a person sees
+//!   shows the code ([`code_of`]), so renaming an entry is one edit of the list.
 //! - A typed code is stored through [`Pending::store`]: a known code gives its key; an unknown one
-//!   adds an entry in the same transaction. A stored value with no entry (a v0.2.0 code, or a key
-//!   whose entry a merge removed) shows `?` (design 052 §7).
+//!   adds an entry in the same transaction. A stored value with no entry (a key whose entry a merge
+//!   removed) shows `?` (design 052 §7).
 //! - The **use index** ([`Uses`]) maps each key to the objects storing it, kept from the ledger's
 //!   ops (never a rescan on an ordinary commit) and rebuilt on open and branch switch.
 //!
@@ -21,10 +22,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::CmdError;
 use ecad_model::book::{FUNCTION_KEY, LOCATION_KEY};
-use ecad_model::{DeviceId, Document, IdAllocator, Ledger, ObjectRef, Op};
-
-/// The prefix of every list property.
-pub const PREFIX: &str = "designation.";
+use ecad_model::{Document, FunctionId, IdAllocator, Ledger, ListCode, ListDescription, ListEntry, LocationId, ObjectRef, Op, Page, Project};
 
 /// Function (`=`) or location (`+`), the two IEC 81346 aspects a device carries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -99,70 +97,204 @@ impl Aspect {
     }
 }
 
-/// One entry of the list.
+/// One entry of the list, as a person reads it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Entry {
     pub aspect: Aspect,
+    /// The entry's id in its 32-hex form (what a device stores).
     pub key: String,
     pub code: String,
+    /// Description 1, if any.
     pub description: Option<String>,
 }
 
-/// The property holding entry `key`'s code.
-pub fn code_property(a: Aspect, key: &str) -> String {
-    format!("{PREFIX}{}.{key}.code", a.letter())
-}
-
-/// The property holding entry `key`'s description.
-pub fn description_property(a: Aspect, key: &str) -> String {
-    format!("{PREFIX}{}.{key}.description", a.letter())
-}
-
-/// Whether `key` is a list property (`designation.…`).
-pub fn is_list_property(key: &str) -> bool {
-    key.starts_with(PREFIX)
-}
-
-/// The aspect and entry key of a list property, and whether it is the code (else the
-/// description).
-pub fn parse_list_property(prop: &str) -> Option<(Aspect, &str, bool)> {
-    let rest = prop.strip_prefix(PREFIX)?;
-    let (letter, rest) = rest.split_once('.')?;
-    let a = match letter {
-        "f" => Aspect::Function,
-        "l" => Aspect::Location,
-        _ => return None,
-    };
-    if let Some(key) = rest.strip_suffix(".code") {
-        return (!key.is_empty()).then_some((a, key, true));
+impl Entry {
+    fn of<I>(aspect: Aspect, id: u128, e: &ListEntry<I>) -> Entry {
+        Entry { aspect, key: format!("{id:032x}"), code: e.code.to_string(), description: e.description().map(ToString::to_string) }
     }
-    rest.strip_suffix(".description").filter(|k| !k.is_empty()).map(|key| (a, key, false))
+}
+
+/// Every entry of aspect `a` in list order.
+fn listed(project: &Project, a: Aspect) -> Vec<Entry> {
+    match a {
+        Aspect::Function => project.functions.iter().map(|e| Entry::of(a, e.id.0, e)).collect(),
+        Aspect::Location => project.locations.iter().map(|e| Entry::of(a, e.id.0, e)).collect(),
+    }
+}
+
+/// The raw id a stored key names, if it is a key.
+fn raw(key: &str) -> Option<u128> {
+    let t = key.trim();
+    (t.len() == 32).then(|| u128::from_str_radix(t, 16).ok()).flatten()
+}
+
+/// The entry of `project` with raw id `id`.
+fn entry_by_id(project: &Project, a: Aspect, id: u128) -> Option<Entry> {
+    match a {
+        Aspect::Function => project.function(FunctionId(id)).map(|e| Entry::of(a, id, e)),
+        Aspect::Location => project.location(LocationId(id)).map(|e| Entry::of(a, id, e)),
+    }
+}
+
+/// The code of entry `id` in `project`.
+fn code_in(project: &Project, a: Aspect, id: u128) -> Option<String> {
+    match a {
+        Aspect::Function => project.function(FunctionId(id)).map(|e| e.code.to_string()),
+        Aspect::Location => project.location(LocationId(id)).map(|e| e.code.to_string()),
+    }
+}
+
+/// The code of entry `key` in `project` (a `ModifyProject`'s side), if it has one.
+pub fn code_in_project(project: &Project, a: Aspect, key: &str) -> Option<String> {
+    code_in(project, a, raw(key)?)
+}
+
+/// Description 1 of entry `key`, if it has one.
+pub fn description_of(doc: &Document, a: Aspect, key: &str) -> Option<String> {
+    entry_by_id(&doc.project, a, raw(key)?)?.description
+}
+
+/// The keys of the entries of aspect `a` whose code differs between `before` and `after` (added,
+/// removed or renamed): what the views that show codes redraw for a `ModifyProject`.
+pub fn changed_codes(before: &Project, after: &Project, a: Aspect) -> Vec<String> {
+    let ids = |p: &Project| -> BTreeSet<u128> {
+        match a {
+            Aspect::Function => p.functions.iter().map(|e| e.id.0).collect(),
+            Aspect::Location => p.locations.iter().map(|e| e.id.0).collect(),
+        }
+    };
+    ids(before).union(&ids(after)).filter(|id| code_in(before, a, **id) != code_in(after, a, **id)).map(|id| format!("{id:032x}")).collect()
+}
+
+/// Whether a `ModifyProject` from `before` to `after` changed what aspect `a` shows anywhere: a
+/// code, or the project's default.
+pub fn shown_changed(before: &Project, after: &Project, a: Aspect) -> bool {
+    default_key(before, a) != default_key(after, a) || !changed_codes(before, after, a).is_empty()
+}
+
+/// The project's default of aspect `a`, as a key.
+pub fn default_key(project: &Project, a: Aspect) -> Option<String> {
+    match a {
+        Aspect::Function => project.function.map(FunctionId::hex),
+        Aspect::Location => project.location.map(LocationId::hex),
+    }
+}
+
+/// Page `page`'s value of aspect `a` as a key: its own, else the project's.
+pub fn inherited_key(doc: &Document, page: ecad_model::PageId, a: Aspect) -> Option<String> {
+    doc.pages.get(&page).and_then(|p| page_key(p, a)).or_else(|| default_key(&doc.project, a))
+}
+
+/// Page `page`'s own value of aspect `a`, as a key.
+pub fn page_key(page: &Page, a: Aspect) -> Option<String> {
+    match a {
+        Aspect::Function => page.function.map(FunctionId::hex),
+        Aspect::Location => page.location.map(LocationId::hex),
+    }
+}
+
+/// `page` with its value of aspect `a` set to `key` (`None`, or text that is not a key, clears it).
+pub fn with_page_key(page: &Page, a: Aspect, key: Option<&str>) -> Page {
+    let mut p = page.clone();
+    let id = key.and_then(raw);
+    match a {
+        Aspect::Function => p.function = id.map(FunctionId),
+        Aspect::Location => p.location = id.map(LocationId),
+    }
+    p
+}
+
+/// `project` with its default of aspect `a` set to `key` (`None` clears it).
+pub fn with_default_key(project: &Project, a: Aspect, key: Option<&str>) -> Project {
+    let mut p = project.clone();
+    let id = key.and_then(raw);
+    match a {
+        Aspect::Function => p.function = id.map(FunctionId),
+        Aspect::Location => p.location = id.map(LocationId),
+    }
+    p
+}
+
+/// A code as typed, checked against the list's text bounds.
+///
+/// # Errors
+/// Longer than [`ecad_model::project::MAX_CODE`] or with a hidden character.
+pub fn list_code(code: &str) -> Result<ListCode, CmdError> {
+    ListCode::new(code).map_err(|e| CmdError::refused(format!("\"{code}\" is not a code: {e}.")))
+}
+
+/// A description as typed, checked against the list's text bounds.
+///
+/// # Errors
+/// Too long, several lines or a hidden character.
+pub fn list_description(text: &str) -> Result<ListDescription, CmdError> {
+    ListDescription::new(text).map_err(|e| CmdError::refused(format!("That description is refused: {e}.")))
+}
+
+/// `project` with entry `key` of aspect `a` given `code` and `description` (description 1;
+/// `None` removes every description). Nothing changes when it has no such entry.
+pub fn with_entry(project: &Project, a: Aspect, key: &str, code: ListCode, description: Option<ListDescription>) -> Project {
+    let mut p = project.clone();
+    let Some(id) = raw(key) else { return p };
+    let set = |c: &mut ListCode, d: &mut Vec<ListDescription>| {
+        *c = code;
+        match description {
+            Some(x) if d.is_empty() => d.push(x),
+            Some(x) => {
+                if let Some(first) = d.first_mut() {
+                    *first = x;
+                }
+            }
+            None => d.clear(),
+        }
+    };
+    match a {
+        Aspect::Function => {
+            if let Some(e) = p.functions.iter_mut().find(|e| e.id.0 == id) {
+                set(&mut e.code, &mut e.descriptions);
+            }
+        }
+        Aspect::Location => {
+            if let Some(e) = p.locations.iter_mut().find(|e| e.id.0 == id) {
+                set(&mut e.code, &mut e.descriptions);
+            }
+        }
+    }
+    p
+}
+
+/// `project` with a new entry of aspect `a`.
+pub fn with_new_entry(project: &Project, a: Aspect, id: u128, code: ListCode, description: Option<ListDescription>) -> Project {
+    let mut p = project.clone();
+    let descriptions: Vec<ListDescription> = description.into_iter().collect();
+    match a {
+        Aspect::Function => p.functions.push(ListEntry { id: FunctionId(id), code, tag: None, descriptions }),
+        Aspect::Location => p.locations.push(ListEntry { id: LocationId(id), code, tag: None, descriptions }),
+    }
+    p
+}
+
+/// `project` without entry `key` of aspect `a`.
+pub fn without_entry(project: &Project, a: Aspect, key: &str) -> Project {
+    let mut p = project.clone();
+    let id = raw(key);
+    match a {
+        Aspect::Function => p.functions.retain(|e| Some(e.id.0) != id),
+        Aspect::Location => p.locations.retain(|e| Some(e.id.0) != id),
+    }
+    p
 }
 
 /// Every entry of aspect `a`, in natural order of codes (`+CP2` before `+CP10`). O(entries).
 pub fn entries(doc: &Document, a: Aspect) -> Vec<Entry> {
-    let start = format!("{PREFIX}{}.", a.letter());
-    let mut out: Vec<Entry> = doc
-        .properties
-        .range(start.clone()..)
-        .take_while(|(k, _)| k.starts_with(&start))
-        .filter_map(|(k, v)| {
-            let (_, key, is_code) = parse_list_property(k)?;
-            is_code.then(|| Entry {
-                aspect: a,
-                key: key.to_string(),
-                code: v.clone(),
-                description: doc.properties.get(&description_property(a, key)).filter(|d| !d.is_empty()).cloned(),
-            })
-        })
-        .collect();
+    let mut out = listed(&doc.project, a);
     out.sort_by(|x, y| crate::locations::natural_cmp(&x.code, &y.code).then(x.key.cmp(&y.key)));
     out
 }
 
 /// The code of entry `key`, or `None` when the list has no such entry.
 pub fn code_of(doc: &Document, a: Aspect, key: &str) -> Option<String> {
-    doc.properties.get(&code_property(a, key)).cloned()
+    code_in(&doc.project, a, raw(key)?)
 }
 
 /// The entry `key_or_code` names: a code (starting with the aspect's sign) or a key.
@@ -175,13 +307,10 @@ pub fn find(doc: &Document, a: Aspect, key_or_code: &str) -> Option<Entry> {
     if t.starts_with(a.sign()) {
         return by_code(t);
     }
-    let Some(code) = code_of(doc, a, t) else { return by_code(&format!("{}{t}", a.sign())) };
-    Some(Entry {
-        aspect: a,
-        key: t.to_string(),
-        code,
-        description: doc.properties.get(&description_property(a, t)).filter(|d| !d.is_empty()).cloned(),
-    })
+    match raw(t).and_then(|id| entry_by_id(&doc.project, a, id)) {
+        Some(e) => Some(e),
+        None => by_code(&format!("{}{t}", a.sign())),
+    }
 }
 
 /// The key of the entry with `code` (case-insensitive), if any.
@@ -233,16 +362,18 @@ pub fn display(doc: &Document, prop: &str, value: &str) -> String {
 #[derive(Debug, Default)]
 pub struct Pending {
     added: BTreeMap<(Aspect, String), String>,
+    /// The project as the entries added so far leave it.
+    working: Option<Project>,
     /// The codes added, in order, for the echo.
     pub new_codes: Vec<(Aspect, String)>,
 }
 
 impl Pending {
     /// The key to store for `text` typed as aspect `a`: a known code's key, else a new entry's
-    /// (its `SetProperty` appended to `ops`).
+    /// (its `ModifyProject` appended to `ops`).
     ///
     /// # Errors
-    /// As [`normalise`].
+    /// As [`normalise`] and [`list_code`].
     pub fn store(&mut self, doc: &Document, ids: &mut IdAllocator, a: Aspect, text: &str, ops: &mut Vec<Op>) -> Result<String, CmdError> {
         let code = normalise(doc, a, text)?;
         if let Some(k) = key_of_code(doc, a, &code) {
@@ -252,12 +383,28 @@ impl Pending {
         if let Some(k) = self.added.get(&(a, upper.clone())) {
             return Ok(k.clone());
         }
-        let id: DeviceId = ids.fresh();
-        let key = id.hex();
-        ops.push(Op::SetProperty { object: ObjectRef::Project, key: code_property(a, &key), before: None, after: Some(code.clone()) });
+        let typed = list_code(&code)?;
+        let id: u128 = ids.fresh();
+        let key = format!("{id:032x}");
+        let before = self.working.take().unwrap_or_else(|| doc.project.clone());
+        let after = with_new_entry(&before, a, id, typed, None);
+        ops.push(Op::ModifyProject { before, after: after.clone() });
+        self.working = Some(after);
         self.added.insert((a, upper), key.clone());
         self.new_codes.push((a, code));
         Ok(key)
+    }
+
+    /// Note a `ModifyProject` the caller recorded in the same transaction, so a later entry
+    /// starts from it.
+    pub fn set_project(&mut self, project: Project) {
+        self.working = Some(project);
+    }
+
+    /// The project as the entries added so far leave it (`doc`'s when none were added): what a
+    /// later `ModifyProject` in the same transaction starts from.
+    pub fn project<'a>(&'a self, doc: &'a Document) -> &'a Project {
+        self.working.as_ref().unwrap_or(&doc.project)
     }
 
     /// The echo for the entries added: `New location +CP4 added to the project's list.`
@@ -348,13 +495,9 @@ impl Uses {
             u.add_props(ObjectRef::Device(*c), &x.properties);
         }
         for (p, x) in &doc.pages {
-            u.add_props(ObjectRef::Page(*p), &x.display);
+            u.page(*p, x, true);
         }
-        for (k, v) in &doc.properties {
-            if let Some(a) = Aspect::of_property(k) {
-                u.note(a, v, ObjectRef::Project, k, true);
-            }
-        }
+        u.project(&doc.project, true);
         u
     }
 
@@ -393,9 +536,35 @@ impl Uses {
                 }
                 Op::CreateDevice { id, device: component } => self.add_props(ObjectRef::Device(*id), &component.properties),
                 Op::DeleteDevice { id, device: component } => self.remove_props(ObjectRef::Device(*id), &component.properties),
-                Op::AddPage { id, page, .. } => self.add_props(ObjectRef::Page(*id), &page.display),
-                Op::RemovePage { id, page, .. } => self.remove_props(ObjectRef::Page(*id), &page.display),
+                Op::AddPage { id, page, .. } => self.page(*id, page, true),
+                Op::RemovePage { id, page, .. } => self.page(*id, page, false),
+                Op::ModifyPage { id, before, after } => {
+                    self.page(*id, before, false);
+                    self.page(*id, after, true);
+                }
+                Op::ModifyProject { before, after } => {
+                    self.project(before, false);
+                    self.project(after, true);
+                }
                 _ => {}
+            }
+        }
+    }
+
+    /// Note (or forget) a page's own location and function.
+    fn page(&mut self, id: ecad_model::PageId, page: &Page, add: bool) {
+        for a in Aspect::ALL {
+            if let Some(k) = page_key(page, a) {
+                self.note(a, &k, ObjectRef::Page(id), a.property(), add);
+            }
+        }
+    }
+
+    /// Note (or forget) the project's defaults.
+    fn project(&mut self, project: &Project, add: bool) {
+        for a in Aspect::ALL {
+            if let Some(k) = default_key(project, a) {
+                self.note(a, &k, ObjectRef::Project, a.property(), add);
             }
         }
     }

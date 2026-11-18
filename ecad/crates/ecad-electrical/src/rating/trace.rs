@@ -223,7 +223,7 @@ pub fn trace_nets(doc: &Document, start: impl IntoIterator<Item = NetId>) -> Fou
 pub fn trace_subject(doc: &Document, s: RatedSubject) -> Found {
     let conn = doc.connectivity();
     match s {
-        RatedSubject::Conductor(c) => trace_nets(doc, conn.net_of_conductor(c)),
+        RatedSubject::Wire(c) => trace_nets(doc, conn.net_of_conductor(c)),
         RatedSubject::Cable(k) => {
             let mut all = Found::default();
             let Some(cable) = doc.cables.get(&k) else { return all };

@@ -45,11 +45,11 @@ fn f_rest_draws_the_remaining_channels_as_spare() {
     let (mut p, c) = with_cards(0x7045_f102);
     let a03 = c["-A03"];
     fence_inputs(&mut p, a03);
-    let wires = p.h.doc().conductors.len();
+    let wires = p.h.doc().wires.len();
     step(&mut p.h, "plcchannels", json!({"card": a03.hex(), "rest": true}));
     let d = p.h.doc();
     assert_eq!(drawn_channels(&d, a03), (0..16).collect::<Vec<_>>());
-    assert_eq!(d.conductors.len(), wires, "rest draws no wires");
+    assert_eq!(d.wires.len(), wires, "rest draws no wires");
     assert_eq!(pin(&d, a03, 15, "in").as_deref(), Some("16"));
     let e = echo(&p.h, 3);
     assert!(e.contains("Drew -A03 channels 8\u{2013}15 (8 spare)."), "{e}");

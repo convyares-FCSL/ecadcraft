@@ -134,7 +134,7 @@ fn canon(d: &Document) -> Vec<String> {
                     "symbol at {},{} rot {} mirror {} scale {}",
                     r6(s.placement.origin.x),
                     r6(s.placement.origin.y),
-                    r6(s.placement.rotation),
+                    r6(s.placement.rotation.0),
                     s.placement.mirror,
                     s.placement.scale
                 ),
@@ -147,9 +147,8 @@ fn canon(d: &Document) -> Vec<String> {
         pts.sort();
         let subject = match r.subject {
             Subject::Device(_) => "component".to_string(),
-            Subject::Conductor(c) => {
-                let ends: Vec<String> =
-                    End::BOTH.iter().map(|e| d.conductors.get(&c).and_then(|x| x.end(*e)).map_or("loose".into(), label)).collect();
+            Subject::Wire(c) => {
+                let ends: Vec<String> = End::BOTH.iter().map(|e| d.wires.get(&c).and_then(|x| x.end(*e)).map_or("loose".into(), label)).collect();
                 format!("wire ends {ends:?}")
             }
             Subject::Cable(_) => "cable".into(),
@@ -282,7 +281,7 @@ fn q4_a_typed_point_near_a_terminal_does_not_attach_in_the_ui() {
         type_enter(&mut h, "");
     }
     let d = doc(&mut h);
-    let c = d.conductors.values().next().expect("a wire was drawn");
+    let c = d.wires.values().next().expect("a wire was drawn");
     assert!(c.end(End::B).is_none() && !ended_by_capture, "typed {near} (3 px from A1) was captured: Q4 says typed points are literal");
 }
 

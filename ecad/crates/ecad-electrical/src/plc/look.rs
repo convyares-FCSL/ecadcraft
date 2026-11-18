@@ -16,6 +16,7 @@
 //!
 //! Excludes: the cells' own graphics ([`crate::symbols`]) and texts ([`super::channel_texts`]).
 
+use ecad_model::units::Degrees;
 use std::collections::BTreeMap;
 
 use ecad_model::{DeviceId, Document, PageId, Pt, RepresentationId, Subject};
@@ -87,7 +88,7 @@ fn piece(doc: &Document, c: DeviceId, rid: RepresentationId, r: &ecad_model::Rep
     if !pl.origin.is_finite() || !pl.rotation.is_finite() {
         return None;
     }
-    let deg = pl.rotation.to_degrees().rem_euclid(360.0);
+    let deg = Degrees::from(pl.rotation).0.rem_euclid(360.0);
     let up = if deg.abs() < 0.5 || (deg - 360.0).abs() < 0.5 {
         false
     } else if (deg - 180.0).abs() < 0.5 {
@@ -199,7 +200,8 @@ fn make_run(card: DeviceId, dir: f64, pieces: &[Piece]) -> Run {
 fn name_block(doc: &Document, c: DeviceId) -> Vec<(String, TextKind)> {
     let mut out = Vec::new();
     let at = crate::defaults::Scope { component: Some(c), ..crate::defaults::Scope::project() };
-    if crate::text_style::Shown::from_word(crate::defaults::resolve(doc, &crate::defaults::text::TAG_SHOW, at).word())
+    if <crate::text_style::Shown as ecad_model::Word>::parse(crate::defaults::resolve(doc, &crate::defaults::text::TAG_SHOW, at).word())
+        .unwrap_or_default()
         != crate::text_style::Shown::Off
     {
         out.push((crate::devices::tag_words(doc, c), TextKind::Tag));
@@ -418,7 +420,7 @@ pub fn through_checks(doc: &Document, c: DeviceId, tag: &str, out: &mut Vec<crat
                 if !seen.insert(w) {
                     continue;
                 }
-                let Some(cond) = doc.conductors.get(&w) else { continue };
+                let Some(cond) = doc.wires.get(&w) else { continue };
                 if cond.ends.iter().any(Option::is_none) {
                     continue;
                 }
@@ -456,7 +458,7 @@ pub fn through_checks(doc: &Document, c: DeviceId, tag: &str, out: &mut Vec<crat
                     kind: crate::checks::Kind::WireThroughCard,
                     page: Some(page),
                     at: route.first().copied(),
-                    object: crate::checks::Object::Conductor(w),
+                    object: crate::checks::Object::Wire(w),
                     which: format!(
                         "Wire {} runs through {tag} channel {} to {other}",
                         crate::slash::wire_name(doc, w).trim_start_matches("wire "),

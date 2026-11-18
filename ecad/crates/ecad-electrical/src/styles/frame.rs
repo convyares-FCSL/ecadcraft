@@ -46,8 +46,15 @@ fn choices() -> Vec<&'static crate::defaults::Entry> {
 }
 
 /// The frame style catalogue.
-pub static CATALOGUE: Catalogue =
-    Catalogue { word: "frame", plural: "Frames", one: "Frame style", fields: &FIELDS, builtins: &BUILTINS, choices, project_field: None };
+pub static CATALOGUE: Catalogue = Catalogue {
+    catalogue: ecad_model::StyleCatalogue::Frame,
+    plural: "Frames",
+    one: "Frame style",
+    fields: &FIELDS,
+    builtins: &BUILTINS,
+    choices,
+    project_field: None,
+};
 
 ecad_model::word_enum! {
     /// Where a frame's block sits (design 055 §1.4).
@@ -111,7 +118,7 @@ pub fn frame_look(doc: &Document, page: PageId) -> FrameLook {
 
 /// The look of frame style `id`.
 pub fn look_of(doc: &Document, id: &StyleRef) -> FrameLook {
-    let f = |k: &str| super::field_of(doc, "frame", id, k, None);
+    let f = |k: &str| super::field_of(doc, ecad_model::StyleCatalogue::Frame, id, k, None);
     FrameLook {
         border: weight(f("border_weight").map_or(0.5, |r| r.number())),
         inner: weight(f("inner_weight").map_or(0.25, |r| r.number())),

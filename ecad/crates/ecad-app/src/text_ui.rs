@@ -2,6 +2,7 @@
 //! `textstyle {}` taken when the popout opens; OK writes every changed field as one `textstyle`
 //! call (one transaction, "Text styles"); Cancel or Esc writes nothing.
 
+use ecad_model::Word;
 use eframe::egui::{self, RichText};
 use serde_json::{Map, Value, json};
 
@@ -80,7 +81,7 @@ fn label_of(k: TextKind) -> &'static str {
 
 /// The visibility words a Shown drop-down shows.
 fn show_words(w: &str) -> &'static str {
-    Shown::from_word(w).label()
+    <Shown as ecad_model::Word>::parse(w).unwrap_or_default().label()
 }
 
 /// A number as a field shows it.
@@ -98,7 +99,7 @@ impl TextSection {
     pub fn from_json(v: &Value) -> Self {
         let mut rows = Vec::new();
         for k in v.get("kinds").and_then(Value::as_array).into_iter().flatten() {
-            let Some(kind) = k.get("kind").and_then(Value::as_str).and_then(TextKind::from_word) else { continue };
+            let Some(kind) = k.get("kind").and_then(Value::as_str).and_then(<TextKind as ecad_model::Word>::parse) else { continue };
             if kind == TextKind::Free {
                 continue;
             }

@@ -12,7 +12,8 @@
 //!
 //! This module draws nothing and stores nothing.
 
-use ecad_model::{ConductorId, DeviceId, Document, PageId, RepresentationId, StyleRef, TextHAlign, TextVAlign};
+use ecad_model::Word;
+use ecad_model::{DeviceId, Document, PageId, RepresentationId, StyleRef, TextHAlign, TextVAlign, WireId};
 
 use crate::defaults::{self, Entry, Scope, text as d};
 
@@ -104,7 +105,7 @@ pub enum TextKind {
     Reference,
     /// Brief 049 (FP2): a continuation caption.
     ContinuationCaption,
-    /// Conductor labels (height stored in `settings.wiring.label_height`).
+    /// Wire labels (height stored in `settings.wiring.label_height`).
     WireLabel,
     /// Cable look: core labels, wire numbers at the slash, label box lines.
     CableText,
@@ -168,16 +169,6 @@ impl TextKind {
         TextKind::Address,
     ];
 
-    /// The key word (`tag`, `point_label`…), as in `text.<word>.height` and the commands.
-    pub fn word(self) -> &'static str {
-        <Self as ecad_model::Word>::word(self)
-    }
-
-    /// The kind with this key word.
-    pub fn from_word(word: &str) -> Option<TextKind> {
-        <Self as ecad_model::Word>::parse(word)
-    }
-
     /// The registry entry choosing this kind's text style (`text.<kind>.style`, brief 050a).
     pub fn style_entry(self) -> &'static Entry {
         let i = TextKind::ALL.iter().position(|k| *k == self).unwrap_or(0);
@@ -238,7 +229,7 @@ pub fn text_style(doc: &Document, kind: TextKind) -> TextStyle {
 /// object's style changes height, weight and colour).
 pub fn text_style_at(doc: &Document, kind: TextKind, at: Scope) -> TextStyle {
     let id = style_of(doc, kind, at);
-    let f = |k: &str| crate::styles::field_of(doc, "text", &id, k, None);
+    let f = |k: &str| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Text, &id, k, None);
     let height = f("height").map_or_else(|| builtin_height(doc), |r| r.length(doc));
     let weight = match f("weight").map(|r| r.word()) {
         Some("bold") => Weight::Bold,
@@ -288,7 +279,7 @@ pub fn own_style(doc: &Document, kind: TextKind, at: Scope, props: &ecad_model::
 /// colour, and the CADCraft style naming its font, as [`own_style`] gives an object's own style.
 /// For a text whose style is chosen by something other than its kind (a location box's label).
 pub fn own_style_of(doc: &Document, id: &StyleRef) -> OwnStyle {
-    let f = |k: &str| crate::styles::field_of(doc, "text", id, k, None);
+    let f = |k: &str| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Text, id, k, None);
     let height = f("height").map_or_else(|| builtin_height(doc), |r| r.length(doc));
     let weight = match f("weight").map(|r| r.word()) {
         Some("bold") => Weight::Bold,
@@ -309,7 +300,7 @@ fn builtin_height(doc: &Document) -> f64 {
 
 /// [`OwnStyle`] for `style` of text style `id`: its font family when not the project font.
 fn own_with(doc: &Document, style: TextStyle, id: &StyleRef) -> OwnStyle {
-    let font = crate::styles::field_of(doc, "text", id, "font", None).map(|r| r.text()).unwrap_or_default();
+    let font = crate::styles::field_of(doc, ecad_model::StyleCatalogue::Text, id, "font", None).map(|r| r.text()).unwrap_or_default();
     let project = match defaults::resolve(doc, &d::FONT, Scope::project()).value {
         defaults::Value::Text(t) => t.to_string(),
         _ => default_family().to_string(),
@@ -371,7 +362,7 @@ pub fn kind_style_name(kind: TextKind, weight: Weight) -> &'static str {
 /// built-in).
 pub fn kind_font(doc: &Document, kind: TextKind) -> Option<&str> {
     let id = style_of(doc, kind, Scope::project());
-    let r = crate::styles::field_of(doc, "text", &id, "font", None)?;
+    let r = crate::styles::field_of(doc, ecad_model::StyleCatalogue::Text, &id, "font", None)?;
     let defaults::Value::Text(f) = r.value else { return None };
     if f.eq_ignore_ascii_case(crate::styles::text::PROJECT_FONT) {
         return None;
@@ -398,16 +389,6 @@ ecad_model::word_enum! {
 }
 
 impl Shown {
-    /// The stored word: `yes`, `no` or `first` (design 072 F4).
-    pub fn word(self) -> &'static str {
-        <Self as ecad_model::Word>::word(self)
-    }
-
-    /// The value a stored word names; anything else is shown ([`Shown::On`]).
-    pub fn from_word(w: &str) -> Shown {
-        <Self as ecad_model::Word>::parse(w).unwrap_or_default()
-    }
-
     /// The value typed in a box: a stored word, any yes/no word ([`ecad_model::words::flag`]), or
     /// its words in the panels (`Shown`, `Hidden`, `Once per run`), in any case.
     pub fn from_input(text: &str) -> Option<Shown> {
@@ -449,7 +430,7 @@ pub struct TextTarget {
     pub page: Option<PageId>,
     pub component: Option<DeviceId>,
     pub representation: Option<RepresentationId>,
-    pub conductor: Option<ConductorId>,
+    pub conductor: Option<WireId>,
     /// The symbol's run rule (only for a tag).
     pub run: RunRule,
 }
@@ -472,7 +453,7 @@ impl TextTarget {
     }
 
     /// A conductor drawn on `page` (lane W: wire labels).
-    pub fn conductor(conductor: ConductorId, page: Option<PageId>) -> Self {
+    pub fn conductor(conductor: WireId, page: Option<PageId>) -> Self {
         TextTarget { page, conductor: Some(conductor), ..TextTarget::default() }
     }
 
@@ -495,10 +476,10 @@ pub fn text_shown(doc: &Document, target: TextTarget, kind: TextKind) -> Shown {
             RunRule::Plc => Some(&d::TAG_SHOW_PLC),
         };
         if let Some(rule) = rule {
-            return Shown::from_word(defaults::resolve(doc, rule, Scope::project()).word());
+            return <Shown as ecad_model::Word>::parse(defaults::resolve(doc, rule, Scope::project()).word()).unwrap_or_default();
         }
     }
-    Shown::from_word(r.word())
+    <Shown as ecad_model::Word>::parse(r.word()).unwrap_or_default()
 }
 
 // ---------------------------------------------------------------- Fonts (§2)
@@ -806,7 +787,7 @@ fn page_obstacles(doc: &Document, page: PageId, fixed: &[TextBox]) -> Obstacles 
                     obs.add(b);
                 }
             }
-            ecad_model::Subject::Conductor(_) => {
+            ecad_model::Subject::Wire(_) => {
                 for item in r.items.iter().filter_map(|i| doc.items.get(i)) {
                     let pts: Vec<ecad_model::Pt> = match &item.kind {
                         ecad_model::ItemKind::Primitive(ecad_model::Primitive::Line { a, b }) => vec![*a, *b],
@@ -1101,7 +1082,7 @@ mod tests {
             // Brief 050a: the kind's built-in text style carries exactly these values.
             let b = crate::styles::text::CATALOGUE.builtin(&kind.builtin_style());
             assert_eq!(b.and_then(|b| b.value("height")), Some(Value::Length(h)), "{kind:?}");
-            assert_eq!(TextKind::from_word(kind.word()), Some(kind));
+            assert_eq!(<TextKind as ecad_model::Word>::parse(kind.word()), Some(kind));
             assert_eq!(kind.style_entry().key, format!("text.{}.style", kind.word()));
         }
     }
@@ -1115,7 +1096,7 @@ mod tests {
                 fields: [("height".to_string(), bad.to_string()), ("weight".into(), "heavy".into())].into_iter().collect(),
                 body: None,
             };
-            doc.styles.entry("text".into()).or_default().insert(TextKind::Tag.builtin_style(), rec);
+            doc.styles.entry(ecad_model::StyleCatalogue::Text).or_default().insert(TextKind::Tag.builtin_style(), rec);
             let want = TextStyle { height: 2.5, weight: Weight::Bold, style_name: STYLE_BOLD, colour: None };
             assert_eq!(text_style(&doc, TextKind::Tag), want, "{bad:?}");
         }
@@ -1138,7 +1119,7 @@ mod tests {
             fields: [("height".to_string(), "3".to_string()), ("weight".into(), "Regular".into())].into_iter().collect(),
             body: None,
         };
-        doc.styles.entry("text".into()).or_default().insert(TextKind::Tag.builtin_style(), rec);
+        doc.styles.entry(ecad_model::StyleCatalogue::Text).or_default().insert(TextKind::Tag.builtin_style(), rec);
         assert_eq!(text_style(&doc, TextKind::Tag), TextStyle { height: 3.0, weight: Weight::Regular, style_name: STYLE_REGULAR, colour: None });
         doc.settings.length_unit = LengthUnit::Inch;
         assert!((text_style(&doc, TextKind::Tag).height - 3.0 / 25.4).abs() < 1e-12);

@@ -12,12 +12,13 @@
 //! - Not here: the builder's drawing, drafts and the review drawer (048b); "update available" in
 //!   Properties and Devices (048c); the page's selection and every JSON form.
 
+use ecad_model::units::Radians;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
-    ConductorId, Definition, DefinitionId, Device, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Noun, Op, Origin,
-    PageId, Placement, Primitive, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId,
-    TextHAlign, TextSlot, TextVAlign,
+    Definition, DefinitionId, Device, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Noun, Op, Origin, PageId,
+    Placement, Primitive, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId, TextHAlign,
+    TextSlot, TextVAlign, WireId,
 };
 
 use crate::defaults::symbols::Field;
@@ -109,8 +110,7 @@ pub struct SlotInput {
     pub at: Option<Pt>,
     pub h: TextHAlign,
     pub v: TextVAlign,
-    /// Radians.
-    pub rotation: f64,
+    pub rotation: Radians,
 }
 
 /// The content fields of a call, as given (lists already bounded by the reader).
@@ -389,7 +389,7 @@ fn mm(d: f64) -> String {
 }
 
 /// A wire as people read it: its net's number (`24V-05`), else its tag, else its short ID.
-fn wire_number(doc: &Document, c: ConductorId) -> String {
+fn wire_number(doc: &Document, c: WireId) -> String {
     let conn = doc.connectivity();
     conn.net_of_conductor(c)
         .and_then(|n| conn.net(n))
@@ -582,7 +582,7 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
 
 /// Move the end of conductor `c`'s route on `page` that lies at `from` to `to` (the route's other
 /// vertices stay), accumulating several moves of one route.
-fn follow(doc: &Document, c: ConductorId, page: PageId, from: Pt, to: Pt, before: &mut BTreeMap<ItemId, Item>, after: &mut BTreeMap<ItemId, Item>) {
+fn follow(doc: &Document, c: WireId, page: PageId, from: Pt, to: Pt, before: &mut BTreeMap<ItemId, Item>, after: &mut BTreeMap<ItemId, Item>) {
     let Some((id, _)) = ecad_model::derive::route_on_page(doc, c, page) else { return };
     let Some(orig) = doc.items.get(&id) else { return };
     let cur = after.get(&id).cloned().unwrap_or_else(|| orig.clone());
@@ -902,7 +902,7 @@ pub fn shifted(p: &Primitive, o: Pt) -> Primitive {
 /// object: `Wire 24V-05 is not plain geometry; Make symbol takes lines, arcs and text.`
 pub fn not_plain(doc: &Document, i: ItemId) -> String {
     let what = match doc.representation_of_item(i).map(|(_, r)| r.subject) {
-        Some(Subject::Conductor(c)) => format!("Wire {}", wire_number(doc, c)),
+        Some(Subject::Wire(c)) => format!("Wire {}", wire_number(doc, c)),
         Some(Subject::Device(c)) => crate::devices::tag_words(doc, c),
         Some(Subject::Cable(k)) => crate::references::cable_words(doc, k),
         None => "Part of the selection".to_string(),
@@ -973,7 +973,7 @@ pub fn plan_make(
                 ops.push(Op::RemoveItem { id: *i, item: it.clone() });
             }
         }
-        let pl = Placement { origin, rotation: 0.0, mirror: false, scale: 1.0 };
+        let pl = Placement { origin, rotation: Radians(0.0), mirror: false, scale: 1.0 };
         let plan = plan_place(ledger, ids, tag_high, at.page, at.style, id, &def, pl, None, None)?;
         placed = Some((plan.component, plan.representation, plan.tag.clone()));
         ops.extend(plan.ops);
@@ -1052,7 +1052,10 @@ pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: DeviceId, mut cont
         item: Item {
             page: rep.page,
             style,
-            kind: ItemKind::Symbol(SymbolInstance { definition: id, placement: Placement { origin, rotation: 0.0, mirror: false, scale: 1.0 } }),
+            kind: ItemKind::Symbol(SymbolInstance {
+                definition: id,
+                placement: Placement { origin, rotation: Radians(0.0), mirror: false, scale: 1.0 },
+            }),
         },
     });
     ops.push(Op::LinkRepresentation {

@@ -223,7 +223,7 @@ fn valid(doc: &Document, field: CableField, v: &str) -> bool {
         CableField::Cores => crate::strips::parse_cores(v).is_ok(),
         CableField::EndLocation(_) => designations::code_of(doc, Aspect::Location, v.trim()).is_some(),
         CableField::EndFunction(_) => designations::code_of(doc, Aspect::Function, v.trim()).is_some(),
-        CableField::CableType => StyleRef::parse(v).is_some_and(|id| styles::exists(doc, cable::WORD, &id)),
+        CableField::CableType => StyleRef::parse(v).is_some_and(|id| styles::exists(doc, ecad_model::StyleCatalogue::Cable, &id)),
         CableField::Tag => !v.trim().is_empty(),
     }
 }
@@ -360,7 +360,7 @@ pub fn drawn_pages(doc: &Document, k: CableId) -> Vec<(PageId, String)> {
         && let Some(c) = doc.cables.get(&k)
     {
         for m in c.members.iter().take(MAX_CABLE_MEMBERS) {
-            for (_, r) in doc.representations_of(Subject::Conductor(m.conductor)) {
+            for (_, r) in doc.representations_of(Subject::Wire(m.conductor)) {
                 out.entry(r.page).or_insert_with(|| crate::references::page_number(doc, r.page));
             }
         }
@@ -398,8 +398,8 @@ pub fn drawn_ends(doc: &Document, k: CableId) -> [DrawnEnd; 2] {
     let mut out = [DrawnEnd::default(), DrawnEnd::default()];
     for chain in crate::references::core_chains(doc, k).iter().take(MAX_CABLE_MEMBERS) {
         let ends = [
-            chain.first().and_then(|w| doc.conductors.get(w)).and_then(|c| c.ends[0]),
-            chain.last().and_then(|w| doc.conductors.get(w)).and_then(|c| c.ends[1]),
+            chain.first().and_then(|w| doc.wires.get(w)).and_then(|c| c.ends[0]),
+            chain.last().and_then(|w| doc.wires.get(w)).and_then(|c| c.ends[1]),
         ];
         for (slot, t) in out.iter_mut().zip(ends) {
             let Some(c) = t.and_then(|t| doc.terminals.get(&t)).map(|x| x.component) else { continue };
@@ -509,7 +509,7 @@ pub fn value_checks(doc: &Document, k: CableId, drawn: bool) -> Vec<Check> {
 /// The notation a cable type gives `type` (`H07RN-F 4G1.5`): its name when it carries a core
 /// notation, else its cores and cross-section (`4G1.5`).
 pub fn type_notation(doc: &Document, id: &StyleRef) -> Option<String> {
-    let name = styles::name(doc, cable::WORD, id);
+    let name = styles::name(doc, ecad_model::StyleCatalogue::Cable, id);
     if crate::strips::offer_from_type(&name).is_some() {
         return Some(name);
     }

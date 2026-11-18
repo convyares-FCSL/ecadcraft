@@ -6,7 +6,7 @@
 //! - A page changed in place (`ModifyPage`): the tree changes when its title, number or folder
 //!   does; any other field (kind, sheet, display choices) leaves it.
 //! - Any folder effect: the tree changes.
-//! - Every other effect, and every property write (the feed reads no area), changes nothing.
+//! - Every other effect (the project's own data included: the tree shows none of it), and every property write (the feed reads no area), changes nothing.
 //!
 //! It keeps nothing: its scope is the change log's record.
 
@@ -54,7 +54,7 @@ impl<'i> DerivedView<Inputs<'i>> for TreeFeed {
             | Effect::DeviceDefinition { .. }
             | Effect::Terminal { .. }
             | Effect::Rep { .. }
-            | Effect::Conductor { .. }
+            | Effect::Wire { .. }
             | Effect::End { .. }
             | Effect::Cable { .. }
             | Effect::Member { .. }
@@ -63,7 +63,8 @@ impl<'i> DerivedView<Inputs<'i>> for TreeFeed {
             | Effect::Settings { .. }
             | Effect::Version { .. }
             | Effect::Style { .. }
-            | Effect::Standard { .. } => false,
+            | Effect::Standard { .. }
+            | Effect::Project { .. } => false,
         };
         scope.0 |= touched;
     }

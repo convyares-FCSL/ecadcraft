@@ -9,8 +9,8 @@
 use std::collections::BTreeMap;
 
 use ecad_model::{
-    CableId, Conductor, ConductorId, Device, DeviceId, Document, End, Form, IdAllocator, ItemId, Op, PageId, ProjectSettings, Pt, Representation,
-    RepresentationId, Subject, Terminal, TerminalId,
+    CableId, Device, DeviceId, Document, End, Form, IdAllocator, ItemId, Op, PageId, ProjectSettings, Pt, Representation, RepresentationId, Subject,
+    Terminal, TerminalId, Wire, WireId,
 };
 
 use crate::devices;
@@ -74,7 +74,7 @@ pub fn apply_tag_settings(after: &mut ProjectSettings, settings: TagSettings) {
 /// What `ecaddelete` deletes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Doomed {
-    Conductor(ConductorId),
+    Wire(WireId),
     Device(DeviceId),
     Cable(CableId),
 }
@@ -123,8 +123,8 @@ fn kept_words(n: usize) -> String {
 pub fn plan_delete(doc: &Document, doomed: Doomed) -> Result<Deleted, CmdError> {
     let mut ops = Vec::new();
     match doomed {
-        Doomed::Conductor(c) => {
-            let conductor = doc.conductors.get(&c).ok_or(CmdError::refused("no such conductor"))?;
+        Doomed::Wire(c) => {
+            let conductor = doc.wires.get(&c).ok_or(CmdError::refused("no such conductor"))?;
             for end in End::BOTH {
                 if let Some(t) = conductor.end(end) {
                     ops.push(Op::AttachEnd { conductor: c, end, before: Some(t), after: None });
@@ -135,8 +135,8 @@ pub fn plan_delete(doc: &Document, doomed: Doomed) -> Result<Deleted, CmdError> 
                     ops.push(Op::RemoveCableMember { cable, index: i, member: m.clone() });
                 }
             }
-            ops.extend(remove_representations(doc, Subject::Conductor(c)));
-            ops.push(Op::DeleteConductor { id: c, conductor: Conductor { ends: [None, None], ..conductor.clone() } });
+            ops.extend(remove_representations(doc, Subject::Wire(c)));
+            ops.push(Op::DeleteWire { id: c, conductor: Wire { ends: [None, None], ..conductor.clone() } });
             Ok(Deleted { ops, released: 0, kept: None, message: None })
         }
         Doomed::Device(c) => {

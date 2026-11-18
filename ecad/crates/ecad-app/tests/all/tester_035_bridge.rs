@@ -126,8 +126,8 @@ impl Live {
         p.read(&mut t.cad.session, |p, _| p.ledger.full_log().unwrap()).unwrap()
     }
 
-    fn conductors(&mut self) -> usize {
-        crate::mouse_tester::doc(&mut self.h).conductors.len()
+    fn wires(&mut self) -> usize {
+        crate::mouse_tester::doc(&mut self.h).wires.len()
     }
 
     /// The project's author and transaction budget now (the frame invariant, §5.2).
@@ -480,7 +480,7 @@ fn ac2_three_wires_by_the_agent_appear_with_the_banner() {
     assert_eq!(conn["writer"], json!(true), "{conn}");
     assert_eq!(conn["app"]["writes"], json!(true), "{conn}");
     let start = live.log().len();
-    let wires_before = live.conductors();
+    let wires_before = live.wires();
     let mut last_seq = 0;
     for y in [0.0, 5.0, 10.0] {
         let n = live.log().len();
@@ -494,7 +494,7 @@ fn ac2_three_wires_by_the_agent_appear_with_the_banner() {
         last_seq = t.seq;
     }
     assert_eq!(live.log().len(), start + 3);
-    assert_eq!(live.conductors(), wires_before + 3, "the wires are on the app's project");
+    assert_eq!(live.wires(), wires_before + 3, "the wires are on the app's project");
     // The banner (§7.1, §7.2).
     let b = banner(&live.h).expect("a banner while an agent is connected");
     assert_eq!(b.agent, AGENT);
@@ -635,7 +635,7 @@ fn ac4_a_batch_is_one_call_and_records_at_most_one() {
     lock();
     let mut live = Live::new("write");
     let mut a = Agent::start(&mut live, AGENT, true);
-    let wires = live.conductors();
+    let wires = live.wires();
     let batch = json!([
         {"jsonrpc": "2.0", "id": 900, "method": "tools/call", "params": {"name": "execute", "arguments": {"command": "wire", "params": {"points": [[0, 0], [60, 0]]}}}},
         {"jsonrpc": "2.0", "id": 901, "method": "tools/call", "params": {"name": "execute", "arguments": {"command": "wire", "params": {"points": [[0, 5], [60, 5]]}}}}
@@ -647,10 +647,10 @@ fn ac4_a_batch_is_one_call_and_records_at_most_one() {
     assert_eq!(replies[1]["result"]["isError"], json!(true), "{}", replies[1]);
     let m = replies[1]["result"]["content"][0]["text"].as_str().unwrap();
     assert!(m.contains("one request line, batches included") && m.contains("taken back"), "011's wording: {m}");
-    assert_eq!(live.conductors(), wires + 1, "only the first wire stays");
+    assert_eq!(live.wires(), wires + 1, "only the first wire stays");
     // The next line is a new call.
     a.wire(&mut live, 10.0);
-    assert_eq!(live.conductors(), wires + 2);
+    assert_eq!(live.wires(), wires + 2);
     // Several steps in one call are refused before anything runs (011).
     let before = live.log();
     for (cmd, params) in [("undo", json!({"count": 2})), ("redo", json!({"count": 3}))] {
@@ -927,15 +927,15 @@ fn ac8_an_agent_undoes_only_its_own_steps() {
     assert_eq!(live.log(), before, "nothing undone");
     // Its own step on top: undone, one Undo transaction by the agent.
     a.wire(&mut live, 10.0);
-    let wires = live.conductors();
+    let wires = live.wires();
     a.exec(&mut live, "u", json!({}));
     let last = live.log().last().cloned().unwrap();
     assert!(matches!(last.kind, TxKind::Undo { .. }), "{:?}", last.kind);
     assert_eq!(last.author, agent_author());
-    assert_eq!(live.conductors(), wires - 1);
+    assert_eq!(live.wires(), wires - 1);
     // Its own redo.
     a.exec(&mut live, "redo", json!({}));
-    assert_eq!(live.conductors(), wires);
+    assert_eq!(live.wires(), wires);
     // A redo of the person's undo is refused.
     let _ = live.h.state_mut().submit_command("u");
     live.h.run_steps(2);
@@ -955,7 +955,7 @@ fn ac9_undo_session_takes_back_the_agents_steps_as_the_person() {
     lock();
     let mut live = Live::new("write");
     let mut a = Agent::start(&mut live, AGENT, true);
-    let wires = live.conductors();
+    let wires = live.wires();
     let first = live.log().len();
     for y in [0.0, 5.0, 10.0] {
         a.wire(&mut live, y);
@@ -966,7 +966,7 @@ fn ac9_undo_session_takes_back_the_agents_steps_as_the_person() {
     let log = live.log();
     let undos = &log[log.len() - 3..];
     assert!(undos.iter().all(|t| matches!(t.kind, TxKind::Undo { .. }) && t.author == Author::User), "{:?}", authors(undos));
-    assert_eq!(live.conductors(), wires);
+    assert_eq!(live.wires(), wires);
     let said = format!("Undid 3 agent steps (#{}–#{}).", seqs[0], seqs[2]);
     assert!(live.echoes().iter().any(|e| e == &said), "{said}");
     assert_eq!(banner(&live.h).unwrap().steps, 0);

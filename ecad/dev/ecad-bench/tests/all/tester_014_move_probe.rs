@@ -20,7 +20,7 @@ fn page_items(doc: &Document, page: PageId) -> BTreeMap<String, String> {
 }
 
 fn ends(doc: &Document) -> BTreeMap<String, String> {
-    doc.conductors.iter().map(|(id, c)| (format!("{id:?}"), format!("{:?}", c.ends))).collect()
+    doc.wires.iter().map(|(id, c)| (format!("{id:?}"), format!("{:?}", c.ends))).collect()
 }
 
 fn chosen_first(picks: &[(Handle, DeviceId, [f64; 2], usize)]) -> DeviceId {
@@ -216,8 +216,8 @@ fn move_components_with_wires_on_the_kept_small_project() {
             for e in pg.entities_of(p, page) {
                 let Some(Mapped::Item(item)) = map.get(e.handle) else { continue };
                 let Some((_, r)) = doc.representation_of_item(item) else { continue };
-                let Subject::Conductor(c) = r.subject else { continue };
-                let Some(cond) = doc.conductors.get(&c) else { continue };
+                let Subject::Wire(c) = r.subject else { continue };
+                let Some(cond) = doc.wires.get(&c) else { continue };
                 let attached = cond.ends.iter().flatten().any(|t| doc.terminals.get(t).is_some_and(|x| x.component == first));
                 if !attached {
                     continue;
