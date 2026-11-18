@@ -233,45 +233,123 @@ pub enum BindingError {
     NoSource(String),
     #[error("\"{0}\" is not a binding source; use project, page, revision or print")]
     Source(String),
-    #[error("\"{0}\" is not a revision field")]
-    RevisionField(String),
+    #[error("\"{key}\" is not a {of} key")]
+    Key { of: &'static str, key: String },
 }
 
-/// What a field shows: a source and a key, written `source:key`.
+crate::word_enum! {
+    /// A page value a field shows (design 055 §7).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum PageField {
+        Title,
+        Number,
+        Next,
+        Total,
+        Function,
+        Location,
+    }
+}
+
+crate::word_enum! {
+    /// A print value a field shows.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub enum PrintField {
+        Sheet,
+    }
+}
+
+/// Longest project key a field may name, in characters (design 055 §4.3).
+pub const MAX_PROJECT_KEY: usize = 32;
+
+/// A project key a field shows (`title`, `drawing_number`, `company`, any project property):
+/// 1 to [`MAX_PROJECT_KEY`] characters of `a-z 0-9 _ .`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Binding {
-    pub source: Source,
-    pub key: String,
+pub struct ProjectKey(Box<str>);
+
+impl ProjectKey {
+    /// `key`, if a field may name it.
+    pub fn new(key: &str) -> Option<ProjectKey> {
+        let ok = !key.is_empty() && key.len() <= MAX_PROJECT_KEY && key.bytes().all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'_' | b'.'));
+        ok.then(|| ProjectKey(key.into()))
+    }
+
+    /// The key of a field of the project's info (its words are keys by construction).
+    pub fn of_info(f: crate::project::InfoField) -> ProjectKey {
+        ProjectKey(crate::Word::word(f).into())
+    }
+
+    /// The key.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// What a field shows (design 072 §5.4): each source with its own typed key, written
+/// `source:key`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Binding {
+    Project(ProjectKey),
+    Page(PageField),
+    Revision(RevisionColumn),
+    Print(PrintField),
 }
 
 impl Binding {
-    pub fn new(source: Source, key: &str) -> Binding {
-        Binding { source, key: key.to_string() }
+    /// The binding of `key` under `source`.
+    ///
+    /// # Errors
+    /// [`BindingError::Key`] when `key` is not a key of `source`.
+    pub fn of(source: Source, key: &str) -> Result<Binding, BindingError> {
+        let bad = || BindingError::Key { of: crate::Word::word(source), key: key.to_string() };
+        Ok(match source {
+            Source::Project => Binding::Project(ProjectKey::new(key).ok_or_else(bad)?),
+            Source::Page => Binding::Page(<PageField as crate::Word>::parse(key).ok_or_else(bad)?),
+            Source::Revision => Binding::Revision(RevisionColumn::parse(key).ok_or_else(bad)?),
+            Source::Print => Binding::Print(<PrintField as crate::Word>::parse(key).ok_or_else(bad)?),
+        })
     }
 
     /// Read `source:key`.
     ///
     /// # Errors
-    /// [`BindingError`]: no colon, an unknown source word, or a revision binding naming no
-    /// revision field.
+    /// [`BindingError`]: no colon, an unknown source word, or a key its source does not have.
     pub fn parse(text: &str) -> Result<Binding, BindingError> {
         let (s, k) = text.split_once(':').ok_or_else(|| BindingError::NoSource(text.to_string()))?;
         let source = <Source as crate::Word>::parse(s.trim()).ok_or_else(|| BindingError::Source(s.trim().to_string()))?;
-        let key = k.trim();
-        if source == Source::Revision && RevisionColumn::parse(key).is_none() {
-            return Err(BindingError::RevisionField(key.to_string()));
-        }
-        Ok(Binding { source, key: key.to_string() })
+        Binding::of(source, k.trim())
     }
 
-    /// The revision column a revision binding shows (design 072 §5.4).
-    pub fn revision_column(&self) -> Option<RevisionColumn> {
-        (self.source == Source::Revision).then(|| RevisionColumn::parse(&self.key)).flatten()
+    /// Its source.
+    pub fn source(&self) -> Source {
+        match self {
+            Binding::Project(_) => Source::Project,
+            Binding::Page(_) => Source::Page,
+            Binding::Revision(_) => Source::Revision,
+            Binding::Print(_) => Source::Print,
+        }
+    }
+
+    /// Its key's word (`drawing_number`, `number`, `ecr`, `sheet`).
+    pub fn key(&self) -> &str {
+        match self {
+            Binding::Project(k) => k.as_str(),
+            Binding::Page(f) => crate::Word::word(*f),
+            Binding::Revision(c) => c.word(),
+            Binding::Print(f) => crate::Word::word(*f),
+        }
+    }
+
+    /// The revision column a revision binding shows.
+    pub fn revision_column(&self) -> Option<&RevisionColumn> {
+        match self {
+            Binding::Revision(c) => Some(c),
+            Binding::Project(_) | Binding::Page(_) | Binding::Print(_) => None,
+        }
     }
 
     /// `source:key`.
     pub fn text(&self) -> String {
-        format!("{}:{}", crate::Word::word(self.source), self.key)
+        format!("{}:{}", crate::Word::word(self.source()), self.key())
     }
 }
 
@@ -385,7 +463,7 @@ impl BlockItem {
             BlockItem::Field { at, bind, label, look, if_empty } => {
                 if !at.sane() {
                     Some(box_words())
-                } else if long(&bind.key) || bind.key.is_empty() || label.as_deref().is_some_and(long) {
+                } else if long(bind.key()) || bind.key().is_empty() || label.as_deref().is_some_and(long) {
                     Some(format!("A field's key must be 1 to {MAX_BODY_TEXT} characters, and its label at most {MAX_BODY_TEXT}."))
                 } else if !look_ok(look) {
                     Some(size_words())
@@ -655,9 +733,11 @@ mod tests {
     #[test]
     fn bindings_read_and_write() {
         let b = Binding::parse("project:drawing_number").unwrap();
-        assert_eq!(b, Binding::new(Source::Project, "drawing_number"));
+        assert_eq!(b, Binding::Project(ProjectKey::new("drawing_number").unwrap()));
         assert_eq!(b.text(), "project:drawing_number");
-        for bad in ["weather:today", "nocolon", "revision:Bad Name", "revision:issued"] {
+        assert_eq!(Binding::parse("page:number").unwrap(), Binding::Page(PageField::Number));
+        assert_eq!(Binding::parse("print:sheet").unwrap(), Binding::Print(PrintField::Sheet));
+        for bad in ["weather:today", "nocolon", "revision:Bad Name", "revision:issued", "page:weather", "print:x", "project:Bad"] {
             assert!(Binding::parse(bad).is_err(), "{bad}");
         }
         let r = Binding::parse("revision:ecr").unwrap();
