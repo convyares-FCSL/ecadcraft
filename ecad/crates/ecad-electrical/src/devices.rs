@@ -175,7 +175,7 @@ pub fn set_symbol_prefix(s: &mut ecad_model::ProjectSettings, of: ecad_model::pr
 /// project's own (`tag_prefixes`), else the built-in IEC 81346 default. A value a hostile file
 /// stored that is not a valid prefix is ignored.
 pub fn prefix_for(doc: &Document, s: &Starter) -> String {
-    crate::defaults::symbols::prefix(doc, s.key.word())
+    crate::defaults::symbols::prefix(doc, s.key)
 }
 
 // ---------------------------------------------------------------- numbering

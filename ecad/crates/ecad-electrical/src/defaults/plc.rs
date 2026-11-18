@@ -180,7 +180,7 @@ fn prefix_ok(t: &str) -> bool {
 }
 
 macro_rules! prefixes {
-    ($($name:ident = $key:literal, $symbol:literal;)*) => {
+    ($($name:ident = $var:ident $key:literal, $symbol:literal;)*) => {
         $(
             pub static $name: Entry = Entry {
                 key: concat!("plc.", $key, ".prefix"),
@@ -200,9 +200,9 @@ macro_rules! prefixes {
         )*
 
         /// The prefix entry of this brief's starter `key`.
-        pub fn prefix_entry(key: &str) -> Option<&'static Entry> {
+        pub fn prefix_entry(key: crate::symbols::StarterKey) -> Option<&'static Entry> {
             match key {
-                $($key => Some(&$name),)*
+                $(crate::symbols::StarterKey::$var => Some(&$name),)*
                 _ => None,
             }
         }
@@ -213,15 +213,15 @@ macro_rules! prefixes {
 }
 
 prefixes! {
-    PLCIM = "plcim", "PLC head module";
-    PLCPM = "plcpm", "PLC power module";
-    PLCCM = "plccm", "PLC communication module";
-    CHDI = "chdi", "PLC digital input channel";
-    CHDQ = "chdq", "PLC digital output channel";
-    CHAI = "chai", "PLC analogue input channel";
-    CHAO = "chao", "PLC analogue output channel";
-    CHRTD = "chrtd", "PLC RTD channel";
-    CHIOL = "chiol", "PLC IO-Link port";
+    PLCIM = Plcim "plcim", "PLC head module";
+    PLCPM = Plcpm "plcpm", "PLC power module";
+    PLCCM = Plccm "plccm", "PLC communication module";
+    CHDI = Chdi "chdi", "PLC digital input channel";
+    CHDQ = Chdq "chdq", "PLC digital output channel";
+    CHAI = Chai "chai", "PLC analogue input channel";
+    CHAO = Chao "chao", "PLC analogue output channel";
+    CHRTD = Chrtd "chrtd", "PLC RTD channel";
+    CHIOL = Chiol "chiol", "PLC IO-Link port";
 }
 
 pub static CHANNEL_FIRST: Entry = Entry {

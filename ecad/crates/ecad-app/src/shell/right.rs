@@ -703,7 +703,7 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
             }
             let starter =
                 doc.devices.get(&c).and_then(|c| c.definition).and_then(|d| doc.definitions.get(&d)).and_then(ecad_cadcraft::symbols::of_definition);
-            es.extend(starter.and_then(|s| defaults::symbols::prefix_entry(ecad_model::Word::word(s.key))));
+            es.extend(starter.and_then(|s| defaults::symbols::prefix_entry(s.key)));
             (Scope::symbol(doc, rep), es, Some((Level::Object, Target::Symbol(rep))))
         }
         What::Wire(w) => {

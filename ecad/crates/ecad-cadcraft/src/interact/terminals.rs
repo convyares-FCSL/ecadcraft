@@ -27,7 +27,7 @@ pub(crate) fn terminals(s: &Session) -> R<Box<dyn Interactive>> {
     let (last, last_type) = read(s, |p, _| {
         let doc = p.ledger.document();
         let strip = p.last_placed.as_ref().map(|(_, c)| *c).filter(|c| strips::is_strip(doc, *c)).map(|c| (c, crate::devices::tag_words(doc, c)));
-        let ty = p.last_placed.as_ref().and_then(|(k, _)| tt::of_starter(k)).map(|(t, _)| t);
+        let ty = p.last_placed.as_ref().and_then(|(k, _)| tt::of_starter(ecad_model::Word::parse(k)?)).map(|(t, _)| t);
         Ok((strip, ty))
     })
     .unwrap_or((None, None));

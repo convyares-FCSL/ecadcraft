@@ -1283,7 +1283,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripDat
     }
     let mut bridged: BTreeSet<TerminalId> = BTreeSet::new();
     let separator = tt::separator(doc, c);
-    let mut names_of: BTreeMap<&'static str, Vec<String>> = BTreeMap::new();
+    let mut names_of: BTreeMap<crate::symbols::StarterKey, Vec<String>> = BTreeMap::new();
     let mut inherits: BTreeSet<String> = BTreeSet::new();
     let own = |k: &str| props.get(k).is_some_and(|v| !v.trim().is_empty());
     // The conductors on one terminal, sorted into inside and outside cells (§5.2; two-point levels
@@ -1422,11 +1422,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripDat
                 row.internal_bridge = ty
                     .bridges
                     .iter()
-                    .position(|g| {
-                        g.iter()
-                            .filter_map(|key| key.parse::<ecad_model::PointKey>().ok())
-                            .any(|key| ecad_model::links::level_of_key(Some(&key)).is_some_and(|(m, _)| m == n))
-                    })
+                    .position(|g| g.iter().any(|key| ecad_model::links::level_of_key(Some(key)).is_some_and(|(m, _)| m == n)))
                     .map(|i| i + 1);
                 row.place = page.zip(at).and_then(|(p, a)| {
                     let grid = grids.entry(p).or_insert_with(|| ecad_model::sheet::Grid::of(doc, p));

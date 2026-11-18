@@ -124,18 +124,19 @@ fn quiet_lists() {
 fn prefixes_are_registered_defaults() {
     use ecad_cadcraft::defaults;
     for e in catalogue() {
-        let entry = defaults::symbols::prefix_entry(&e.key).unwrap_or_else(|| panic!("{}: no registry entry", e.key));
+        let entry =
+            defaults::symbols::prefix_entry(ecad_model::Word::parse(&e.key).unwrap()).unwrap_or_else(|| panic!("{}: no registry entry", e.key));
         assert_eq!(entry.key, format!("symbol.{}.prefix", e.key));
         assert!(defaults::find(entry.key).is_some_and(|x| std::ptr::eq(x, entry)), "{}: listed in the registry", e.key);
         assert_eq!(defaults::symbols::builtin_prefix(entry), e.prefix, "{}", e.key);
         assert_eq!(s(&e.key).prefix(), e.prefix, "{}: Starter::prefix reads the registry", e.key);
     }
     let mut doc = ecad_model::Document::default();
-    assert_eq!(defaults::symbols::prefix(&doc, "valve"), "MB");
+    assert_eq!(defaults::symbols::prefix(&doc, ecad_cadcraft::symbols::StarterKey::Valve), "MB");
     let valve = ecad_model::prefix::PrefixOf::Starter("valve".into());
     doc.settings.tag_prefixes.insert(valve, ecad_model::prefix::TagPrefix::typed("Y").unwrap());
-    assert_eq!(defaults::symbols::prefix(&doc, "valve"), "Y");
-    assert_eq!(defaults::symbols::prefix(&doc, "valve2"), "MB", "only that key");
+    assert_eq!(defaults::symbols::prefix(&doc, ecad_cadcraft::symbols::StarterKey::Valve), "Y");
+    assert_eq!(defaults::symbols::prefix(&doc, ecad_cadcraft::symbols::StarterKey::Valve2), "MB", "only that key");
     // Design 072 F5: a bad prefix cannot be held at all (the file read refuses it).
     for bad in ["", "1", "K\u{0}", "TOOLONGPREFIXX", "\u{1F642}"] {
         assert!(ecad_model::prefix::TagPrefix::typed(bad).is_none(), "{bad:?} refused");

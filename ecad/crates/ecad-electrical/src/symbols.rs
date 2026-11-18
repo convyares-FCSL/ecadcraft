@@ -568,7 +568,7 @@ impl Starter {
         let bridges = match self.kind {
             Kind::ConnectorHalf { .. } => vec![vec![SOCKET_KEY, PLUG_KEY]],
             Kind::Contact { .. } | Kind::Terminal | Kind::Channel(_) | Kind::ChangeOver | Kind::Fixed { .. } | Kind::Tagless => {
-                crate::terminal_types::bridges(self.key.word())
+                crate::terminal_types::bridges(self.key)
             }
         };
         let mut d = Definition {
@@ -623,7 +623,7 @@ impl Starter {
     /// (`symbol.<key>.prefix`, [`crate::defaults::symbols`]); empty for a tagless symbol. A
     /// project's own prefix is [`crate::devices::prefix_for`].
     pub fn prefix(&self) -> &'static str {
-        crate::defaults::symbols::prefix_entry(self.key.word()).map_or("", crate::defaults::symbols::builtin_prefix)
+        crate::defaults::symbols::prefix_entry(self.key).map_or("", crate::defaults::symbols::builtin_prefix)
     }
 
     /// Whether it can join an existing device (every starter symbol can, within §3.1's rules).
@@ -1406,7 +1406,7 @@ pub fn bridge_key_ok(d: &Definition, k: &PointKey) -> bool {
     }
     match of_definition(d) {
         Some(s) if matches!(s.kind, Kind::ConnectorHalf { .. }) => *k == SOCKET_KEY || *k == PLUG_KEY,
-        Some(s) => crate::terminal_types::of_starter(s.key.word()).is_some_and(|(t, _)| t.bridges.iter().any(|g| g.iter().any(|x| k == *x))),
+        Some(s) => crate::terminal_types::of_starter(s.key).is_some_and(|(t, _)| t.bridges.iter().any(|g| g.contains(k))),
         None => false,
     }
 }
@@ -2475,7 +2475,7 @@ fn graphics(key: StarterKey) -> Vec<Primitive> {
         | K::TermsensorL3
         | K::Termsensor
         | K::Termdisc
-        | K::Termfuse => crate::terminal_types::graphics(key.word()).unwrap_or_else(|| sized_graphics(key)),
+        | K::Termfuse => crate::terminal_types::graphics(key).unwrap_or_else(|| sized_graphics(key)),
     }
 }
 
@@ -2604,7 +2604,7 @@ fn terminals(key: StarterKey) -> Vec<TerminalDef> {
         | K::TermsensorL3
         | K::Termsensor
         | K::Termdisc
-        | K::Termfuse => crate::terminal_types::terminals(key.word()).unwrap_or_else(|| sized_terminals(key, &t)),
+        | K::Termfuse => crate::terminal_types::terminals(key).unwrap_or_else(|| sized_terminals(key, &t)),
     }
 }
 
