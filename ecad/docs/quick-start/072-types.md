@@ -79,6 +79,23 @@ The project's own tag prefixes are stored by symbol, `starter:coil` for a built-
 The headless test `lanes::lane_072a::a_project_symbol_with_its_own_prefix_opens_writable`
 (ecad-cadcraft) runs these steps; nobody has tried them by hand yet.
 
+## Rotations (A2: F6, F7)
+
+- Every command parameter named `rotation` takes degrees, now also the symbol builder's text
+  slots (`symbolnew`/`symboledit` `slots[].rotation`), which took radians before. Files are
+  unchanged: stored angles stay radians, now typed as such.
+- The inspector's Layout tab now selects the right rotation segment for a turned symbol (it read
+  the stored radians as degrees).
+
+### Try it
+
+1. Place a coil, turn it a quarter turn (the rotate key while placing, or `place {"at": [100, 0],
+   "rotation": 90}`), select it: the Layout tab shows 90°.
+2. In the symbol builder, add a text slot and turn it: it turns a quarter turn per click, as before.
+
+The headless test `lanes::lane_072a::a_slot_rotation_is_given_in_degrees_and_stored_in_radians`
+(ecad-cadcraft) covers the slot input; nobody has tried these steps by hand yet.
+
 ## Lane B: devices have a type
 
 What changed for someone using the app:
@@ -137,3 +154,26 @@ manual Iz, bundling) and its load.
 
 The headless tests `lanes::lane_072d` in ecad-model, ecad-mcp and ecad-inspector cover these
 steps; nobody has tried them by hand yet.
+
+## Lane E, step 1: typed pages (design 072 §5.1)
+
+A page's title, number, folder, kind, page type, sheet and borrowed title block are fields of the
+page now, not keys in its property bag. Renaming, renumbering, moving to another folder or
+setting a page's sheet or type records one `ModifyPage`. A generated page's kind is fixed when it
+is made: a terminal plan of every strip, or of one strip.
+
+- Nothing should look different: page numbers, folders, the Pages panel, the title block and
+  references follow every change as before.
+- A file whose page holds one of the old keys (`number`, `folder`, `sheet`, `title_block`,
+  `generated`, `strip`, `page.type`) in its property bag opens read-only and names the key.
+- The inspector's Pages view shows each page's kind, page type, sheet and title block.
+
+### Try it
+
+1. Make a page, rename it from the Pages panel, set its number and sheet in its properties, and
+   move it into a folder: each is one undo step, and the title block follows.
+2. New page ▸ Terminal plan, once with no strip and once for one strip: both show their strips.
+3. Open the project in the inspector: the Pages view lists the kinds.
+
+Tests: `lanes::lane_072e` in ecad-model, ecad-file and ecad-mcp. Agent-observed only; nobody has
+tried these steps by hand yet.

@@ -195,6 +195,7 @@ the brief's precondition fails (§9, step 0).
 | Op | Effect |
 |---|---|
 | `AddPage` / `RemovePage` | `Page` (after / before). **A `RemovePage` and an `AddPage` of one id in one transaction fold into one `Page` with both sides**: a rename keeps the index, a move changes it. This replaces the pair detection in `frame::touches` and `front_after_history`'s callers. |
+| `ModifyPage` (design 072 §5.1) | `Page` with both sides and no index: a page changed in place (title, number, folder, page type, sheet, title block, display). Renames and renumbers are this op, not a pair. |
 | `AddLayer` / `RemoveLayer` | `Layer` |
 | `AddItem` / `ModifyItem` / `RemoveItem` | `Item` |
 | `CreateDevice` / `DeleteDevice` / `ModifyDevice` | `Device` (design 072: renamed from `Component`; a type change is a `ModifyDevice`) |

@@ -399,7 +399,7 @@ fn an_old_project_opens_unchanged_and_shows_its_strips() {
     let d = h.doc();
     for key in ["cores", "terminals", "part_number.pe", "maker.pe", "strip", "generated"] {
         assert!(d.devices.values().all(|c| !c.properties.contains_key(key)), "an 018-style project stores no {key}");
-        assert!(d.pages.values().all(|p| !p.properties.contains_key(key)), "an 018-style project stores no page {key}");
+        assert!(d.pages.values().all(|p| !p.display.contains_key(key)), "an 018-style project stores no page {key}");
     }
     let bytes = std::fs::read(&path).unwrap();
     let head = h.head();

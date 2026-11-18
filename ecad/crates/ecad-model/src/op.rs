@@ -12,7 +12,7 @@ use crate::error::{ModelError, Result};
 use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, TerminalId, WireId};
 use crate::index::Delta;
 use crate::route::Route;
-use crate::style::{Standard, StandardHeader, StyleLayer, StyleRecord, StyleRef};
+use crate::style::{Standard, StandardHeader, StyleCatalogue, StyleLayer, StyleRecord, StyleRef};
 
 /// An object that carries properties.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -29,6 +29,21 @@ pub enum ObjectRef {
     Standard,
 }
 
+impl ObjectRef {
+    /// The kind of holder it is; `None` for the standard's registry values.
+    pub fn holder(self) -> Option<crate::keys::Holder> {
+        use crate::keys::Holder;
+        match self {
+            ObjectRef::Device(_) => Some(Holder::Device),
+            ObjectRef::Wire(_) => Some(Holder::Wire),
+            ObjectRef::Cable(_) => Some(Holder::Cable),
+            ObjectRef::Page(_) => Some(Holder::Page),
+            ObjectRef::Project => Some(Holder::Project),
+            ObjectRef::Standard => None,
+        }
+    }
+}
+
 /// Settle the document's nets after ops applied with [`Op::apply_unsettled`] (brief 022).
 pub(crate) fn settle(doc: &mut Document) {
     let mut conn = std::mem::take(&mut doc.conn);
@@ -38,10 +53,6 @@ pub(crate) fn settle(doc: &mut Document) {
 
 /// One recorded change.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "ops record whole objects before and after (design 072 F20); a transaction holds few, and boxing one variant only moves the size"
-)]
 pub enum Op {
     AddPage {
         id: PageId,
@@ -52,6 +63,13 @@ pub enum Op {
         id: PageId,
         page: Page,
         index: usize,
+    },
+    /// Change a page in place (design 072 §5.1): its title, number, folder, look or display
+    /// choices. Its place in the page order and its kind stay.
+    ModifyPage {
+        id: PageId,
+        before: Page,
+        after: Page,
     },
     AddLayer {
         id: LayerId,
@@ -216,11 +234,17 @@ pub enum Op {
         before: Folder,
         after: Folder,
     },
+    /// Change the project's own data (design 072 §5.3): its location and function lists and
+    /// defaults, as one whole value.
+    ModifyProject {
+        before: crate::project::Project,
+        after: crate::project::Project,
+    },
     /// Write one whole style record (brief 050a, FP3): `None` is no record. A `Standard` layer
     /// write is refused while the project has no standard.
     SetStyle {
         layer: StyleLayer,
-        catalogue: String,
+        catalogue: StyleCatalogue,
         id: StyleRef,
         before: Option<StyleRecord>,
         after: Option<StyleRecord>,
@@ -262,6 +286,7 @@ impl Op {
         match self.clone() {
             Op::AddPage { id, page, index } => Op::RemovePage { id, page, index },
             Op::RemovePage { id, page, index } => Op::AddPage { id, page, index },
+            Op::ModifyPage { id, before, after } => Op::ModifyPage { id, before: after, after: before },
             Op::AddLayer { id, layer } => Op::RemoveLayer { id, layer },
             Op::RemoveLayer { id, layer } => Op::AddLayer { id, layer },
             Op::AddItem { id, item } => Op::RemoveItem { id, item },
@@ -297,6 +322,7 @@ impl Op {
             Op::ModifyFolder { id, before, after } => Op::ModifyFolder { id, before: after, after: before },
             Op::SetStyle { layer, catalogue, id, before, after } => Op::SetStyle { layer, catalogue, id, before: after, after: before },
             Op::SetStandard { before, after } => Op::SetStandard { before: after, after: before },
+            Op::ModifyProject { before, after } => Op::ModifyProject { before: after, after: before },
         }
     }
 
@@ -373,6 +399,16 @@ impl Op {
                     doc.index.page(*id, &old, Delta::Remove);
                 }
                 doc.page_order.remove(*index);
+            }
+            Op::ModifyPage { id, before, after } => {
+                holds(&doc.pages, *id, before, "page", checked)?;
+                if checked && before.kind != after.kind {
+                    return Err(pre(format!("page {id}: a page's kind is set when it is made")));
+                }
+                if let Some(old) = doc.pages.insert(*id, after.clone()) {
+                    doc.index.page(*id, &old, Delta::Remove);
+                }
+                doc.index.page(*id, after, Delta::Add);
             }
             Op::AddLayer { id, layer } => {
                 absent(&doc.layers, *id, "layer")?;
@@ -536,14 +572,18 @@ impl Op {
                 doc.index.cable_member(*cable, &old, Delta::Remove);
             }
             Op::SetProperty { object, key, before, after } => {
-                if matches!(object, ObjectRef::Device(_)) && crate::keys::is_reserved_on(key, crate::keys::Holder::Device) {
-                    return Err(pre(format!("{key} is a field of the device: change it with ModifyDevice")));
+                let reserved = match object.holder() {
+                    Some(h) => crate::keys::is_reserved_on(h, key),
+                    None => crate::keys::is_reserved(key),
+                };
+                if reserved {
+                    return Err(pre(format!("property {key} is a field now (design 072); its object's Modify op changes it")));
                 }
                 let props = match object {
                     ObjectRef::Device(id) => doc.devices.get_mut(id).map(|c| &mut c.properties),
                     ObjectRef::Wire(id) => doc.wires.get_mut(id).map(|c| &mut c.display),
                     ObjectRef::Cable(id) => doc.cables.get_mut(id).map(|c| &mut c.properties),
-                    ObjectRef::Page(id) => doc.pages.get_mut(id).map(|p| &mut p.properties),
+                    ObjectRef::Page(id) => doc.pages.get_mut(id).map(|p| &mut p.display),
                     ObjectRef::Project => Some(&mut doc.properties),
                     ObjectRef::Standard => doc.standard.as_mut().map(|s| &mut s.values),
                 }
@@ -597,17 +637,6 @@ impl Op {
                         }
                     }
                 }
-                // A page's folder is indexed (brief 019).
-                if let ObjectRef::Page(id) = object
-                    && key == crate::book::FOLDER_KEY
-                {
-                    if let Some(old) = &old {
-                        doc.index.page_folder(*id, old, Delta::Remove);
-                    }
-                    if let Some(new) = after {
-                        doc.index.page_folder(*id, new, Delta::Add);
-                    }
-                }
             }
             Op::EmbedDefinition { id, definition } => {
                 absent(&doc.definitions, *id, "definition")?;
@@ -616,6 +645,12 @@ impl Op {
             Op::RemoveDefinition { id, definition } => {
                 holds(&doc.definitions, *id, definition, "definition", checked)?;
                 doc.definitions.remove(id);
+            }
+            Op::ModifyProject { before, after } => {
+                if checked && &doc.project != before {
+                    return Err(pre("the project's lists differ from the recorded value".into()));
+                }
+                doc.project = after.clone();
             }
             Op::SetProjectSettings { before, after } => {
                 if checked && &doc.settings != before {
@@ -672,7 +707,7 @@ impl Op {
                 if checked && current != before.as_ref() {
                     return Err(pre(format!("style {catalogue}/{id} ({}) differs from the recorded value", layer.word())));
                 }
-                crate::style::put(cats, catalogue, id, after.as_ref());
+                crate::style::put(cats, *catalogue, id, after.as_ref());
             }
             Op::SetStandard { before, after } => {
                 let current = doc.standard.as_ref().map(|s| &s.header);
@@ -701,6 +736,7 @@ impl Op {
     pub fn name(&self) -> &'static str {
         match self {
             Op::AddPage { .. } => "AddPage",
+            Op::ModifyPage { .. } => "ModifyPage",
             Op::RemovePage { .. } => "RemovePage",
             Op::AddLayer { .. } => "AddLayer",
             Op::RemoveLayer { .. } => "RemoveLayer",
@@ -737,6 +773,7 @@ impl Op {
             Op::ModifyFolder { .. } => "ModifyFolder",
             Op::SetStyle { .. } => "SetStyle",
             Op::SetStandard { .. } => "SetStandard",
+            Op::ModifyProject { .. } => "ModifyProject",
         }
     }
 }

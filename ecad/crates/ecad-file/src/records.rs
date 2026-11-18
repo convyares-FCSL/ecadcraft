@@ -26,11 +26,26 @@ fn mpt(p: Pt) -> m::Pt {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Page {
-    pub title: String,
-    /// Brief 019 (decision FP1): left out while empty, so a page without properties is written
-    /// exactly as before.
+    pub title: m::PageTitle,
+    /// Design 072 §5.1: every optional field is left out while unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub number: Option<m::PageNo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<FolderId>,
+    #[serde(default, skip_serializing_if = "m::PageKind::is_schematic")]
+    pub kind: m::PageKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_type: Option<m::StyleRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sheet: Option<SheetSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title_block: Option<m::StyleRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<m::LocationId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub function: Option<m::FunctionId>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub properties: BTreeMap<String, String>,
+    pub display: BTreeMap<String, String>,
 }
 
 /// A folder of pages (brief 019, decision FP3).
@@ -39,6 +54,9 @@ pub struct Page {
 pub struct Folder {
     pub name: String,
     pub parent: Option<FolderId>,
+    /// Design 072 §5.2: left out while unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start: Option<m::PageNo>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -117,7 +135,7 @@ pub enum Primitive {
     Text {
         at: Pt,
         height: f64,
-        rotation: f64,
+        rotation: m::units::Radians,
         value: String,
         #[serde(default, skip_serializing_if = "is_left")]
         halign: m::TextHAlign,
@@ -141,8 +159,8 @@ fn is_baseline(v: &m::TextVAlign) -> bool {
 #[serde(deny_unknown_fields)]
 pub struct Placement {
     pub origin: Pt,
-    /// Radians, counter-clockwise.
-    pub rotation: f64,
+    /// Counter-clockwise.
+    pub rotation: m::units::Radians,
     pub mirror: bool,
     pub scale: f64,
 }
@@ -362,13 +380,13 @@ pub struct TextSlot {
     #[serde(default, skip_serializing_if = "is_baseline")]
     pub v: m::TextVAlign,
     #[serde(default, skip_serializing_if = "is_zero")]
-    pub rotation: f64,
+    pub rotation: m::units::Radians,
 }
 
-fn is_zero(x: &f64) -> bool {
+fn is_zero(x: &m::units::Radians) -> bool {
     // -0.0 too: the canonical form does not keep its sign, so writing it would give a content hash
     // that the read-back value (0.0, left out) does not match.
-    *x == 0.0
+    x.0 == 0.0
 }
 
 fn origin(o: &m::Origin) -> Origin {
@@ -700,7 +718,6 @@ impl<'de, const N: usize> Deserialize<'de> for Hex<N> {
 /// `{"op": "<Name>", "v": 1, …fields…}` (see [`crate::record`]).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-#[expect(clippy::large_enum_variant, reason = "mirrors `ecad_model::Op`: ops record whole objects before and after")]
 pub enum Op {
     AddPage {
         id: PageId,
@@ -711,6 +728,12 @@ pub enum Op {
         id: PageId,
         page: Page,
         index: u64,
+    },
+    /// Design 072 §5.1.
+    ModifyPage {
+        id: PageId,
+        before: Page,
+        after: Page,
     },
     AddLayer {
         id: LayerId,
@@ -870,7 +893,7 @@ pub enum Op {
     /// Brief 050a (FP3): one whole style record; `null` is no record.
     SetStyle {
         layer: StyleLayer,
-        catalogue: String,
+        catalogue: m::StyleCatalogue,
         id: m::StyleRef,
         before: Option<StyleRecord>,
         after: Option<StyleRecord>,
@@ -879,6 +902,11 @@ pub enum Op {
     SetStandard {
         before: Option<StandardHeader>,
         after: Option<StandardHeader>,
+    },
+    /// Design 072 §5.3: the project's own data, the model's strict record.
+    ModifyProject {
+        before: m::Project,
+        after: m::Project,
     },
 }
 
@@ -1133,25 +1161,47 @@ impl From<&m::Definition> for Definition {
 
 impl From<&m::Page> for Page {
     fn from(p: &m::Page) -> Self {
-        Page { title: p.title.clone(), properties: p.properties.clone() }
+        Page {
+            title: p.title.clone(),
+            number: p.number.clone(),
+            folder: p.folder,
+            kind: p.kind,
+            page_type: p.page_type.clone(),
+            sheet: p.sheet.as_ref().map(SheetSpec::from),
+            title_block: p.title_block.clone(),
+            location: p.location,
+            function: p.function,
+            display: p.display.clone(),
+        }
     }
 }
 
 impl From<Page> for m::Page {
     fn from(p: Page) -> Self {
-        m::Page { title: p.title, properties: p.properties }
+        m::Page {
+            title: p.title,
+            number: p.number,
+            folder: p.folder,
+            kind: p.kind,
+            page_type: p.page_type,
+            sheet: p.sheet.map(m::SheetSpec::from),
+            title_block: p.title_block,
+            location: p.location,
+            function: p.function,
+            display: p.display,
+        }
     }
 }
 
 impl From<&m::Folder> for Folder {
     fn from(f: &m::Folder) -> Self {
-        Folder { name: f.name.clone(), parent: f.parent }
+        Folder { name: f.name.clone(), parent: f.parent, start: f.start.clone() }
     }
 }
 
 impl From<Folder> for m::Folder {
     fn from(f: Folder) -> Self {
-        m::Folder { name: f.name, parent: f.parent }
+        m::Folder { name: f.name, parent: f.parent, start: f.start }
     }
 }
 
@@ -1200,6 +1250,7 @@ impl From<&m::Op> for Op {
         match op {
             m::Op::AddPage { id, page, index } => Op::AddPage { id: *id, page: page.into(), index: ix(*index) },
             m::Op::RemovePage { id, page, index } => Op::RemovePage { id: *id, page: page.into(), index: ix(*index) },
+            m::Op::ModifyPage { id, before, after } => Op::ModifyPage { id: *id, before: before.into(), after: after.into() },
             m::Op::AddLayer { id, layer } => Op::AddLayer { id: *id, layer: Layer { name: layer.name.clone() } },
             m::Op::RemoveLayer { id, layer } => Op::RemoveLayer { id: *id, layer: Layer { name: layer.name.clone() } },
             m::Op::AddItem { id, item } => Op::AddItem { id: *id, item: item.into() },
@@ -1237,7 +1288,7 @@ impl From<&m::Op> for Op {
             m::Op::ModifyFolder { id, before, after } => Op::ModifyFolder { id: *id, before: before.into(), after: after.into() },
             m::Op::SetStyle { layer: l, catalogue, id, before, after } => Op::SetStyle {
                 layer: layer(*l),
-                catalogue: catalogue.clone(),
+                catalogue: *catalogue,
                 id: id.clone(),
                 before: before.as_ref().map(Into::into),
                 after: after.as_ref().map(Into::into),
@@ -1245,6 +1296,7 @@ impl From<&m::Op> for Op {
             m::Op::SetStandard { before, after } => {
                 Op::SetStandard { before: before.as_ref().map(Into::into), after: after.as_ref().map(Into::into) }
             }
+            m::Op::ModifyProject { before, after } => Op::ModifyProject { before: before.clone(), after: after.clone() },
         }
     }
 }
@@ -1456,6 +1508,7 @@ impl TryFrom<Op> for m::Op {
         Ok(match op {
             Op::AddPage { id, page, index: i } => m::Op::AddPage { id, page: page.into(), index: index(i)? },
             Op::RemovePage { id, page, index: i } => m::Op::RemovePage { id, page: page.into(), index: index(i)? },
+            Op::ModifyPage { id, before, after } => m::Op::ModifyPage { id, before: before.into(), after: after.into() },
             Op::AddLayer { id, layer } => m::Op::AddLayer { id, layer: m::Layer { name: layer.name } },
             Op::RemoveLayer { id, layer } => m::Op::RemoveLayer { id, layer: m::Layer { name: layer.name } },
             Op::AddItem { id, item } => m::Op::AddItem { id, item: item.into() },
@@ -1493,6 +1546,7 @@ impl TryFrom<Op> for m::Op {
                 m::Op::SetStyle { layer: mlayer(l), catalogue, id, before: before.map(Into::into), after: after.map(Into::into) }
             }
             Op::SetStandard { before, after } => m::Op::SetStandard { before: before.map(Into::into), after: after.map(Into::into) },
+            Op::ModifyProject { before, after } => m::Op::ModifyProject { before, after },
         })
     }
 }

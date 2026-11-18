@@ -611,7 +611,7 @@ const SYMBOL_KINDS: [TextKind; 4] = [TextKind::Tag, TextKind::PointLabel, TextKi
 fn shown(e: &Entry, r: &defaults::Resolved<'_>) -> String {
     if e.key.ends_with(".show") {
         use ecad_cadcraft::text_style::Shown;
-        return match Shown::from_word(r.word()) {
+        return match <Shown as ecad_model::Word>::parse(r.word()).unwrap_or_default() {
             Shown::Off => "Hidden".into(),
             Shown::First => "Shown on the first of each run".into(),
             Shown::On => "Shown on the page".into(),
@@ -623,7 +623,7 @@ fn shown(e: &Entry, r: &defaults::Resolved<'_>) -> String {
 /// A style choice's row (brief 050a): the chosen style's name, the catalogue's styles, and the
 /// warning of an own choice naming no style.
 fn style_row(
-    doc: &ecad_model::Document, e: &Entry, cat: &str, scope: Scope, r: &defaults::Resolved<'_>,
+    doc: &ecad_model::Document, e: &Entry, cat: ecad_model::StyleCatalogue, scope: Scope, r: &defaults::Resolved<'_>,
 ) -> (String, Vec<(String, String)>, Option<String>) {
     use ecad_cadcraft::styles;
     // Brief 050b (design 050 §7.5): a wire's category with where it comes from.
@@ -632,7 +632,7 @@ fn style_row(
     {
         let looks = styles::wire::WireLooks::new(doc);
         let (id, from) = looks.category(doc, c);
-        let list = styles::catalogue(cat).map(|x| styles::rows(doc, x).into_iter().map(|r| (r.id.text(), r.name)).collect()).unwrap_or_default();
+        let list = styles::rows(doc, styles::catalogue(cat)).into_iter().map(|r| (r.id.text(), r.name)).collect();
         let name = id.as_ref().map(|i| styles::name(doc, cat, i));
         let value = match (name, from) {
             (Some(n), styles::wire::CategoryFrom::Potential(p)) => format!("{n} (from potential {p})"),
@@ -647,10 +647,10 @@ fn style_row(
         return (value, list, dangling);
     }
     let id = styles::chosen(doc, e, scope);
-    let list = styles::catalogue(cat).map(|c| styles::rows(doc, c).into_iter().map(|x| (x.id.text(), x.name)).collect()).unwrap_or_default();
+    let list = styles::rows(doc, styles::catalogue(cat)).into_iter().map(|x| (x.id.text(), x.name)).collect();
     let own = match scope.component {
         Some(c) => doc.devices.get(&c).and_then(|x| x.properties.get(e.key)),
-        None => scope.page.and_then(|p| doc.pages.get(&p)).and_then(|x| x.properties.get(e.key)),
+        None => scope.page.and_then(|p| doc.pages.get(&p)).and_then(|x| x.display.get(e.key)),
     };
     let dangling = own.filter(|v| e.parse_in(doc, v).is_none()).map(|_| format!("Not found: drawn as {}", styles::name(doc, cat, &id)));
     let _ = r;

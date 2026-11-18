@@ -157,7 +157,7 @@ fn page_with_points(l: &mut Ledger, ids: &mut IdAllocator) -> (ecad_model::PageI
         Author::User,
         "setup",
         vec![
-            Op::AddPage { id: p, page: Page::new("1"), index: 0 },
+            Op::AddPage { id: p, page: Page::titled("1").unwrap(), index: 0 },
             Op::CreateDevice { id: d, device: Device::default() },
             Op::AddTerminal { id: a, terminal: t("1") },
             Op::AddTerminal { id: b, terminal: t("2") },

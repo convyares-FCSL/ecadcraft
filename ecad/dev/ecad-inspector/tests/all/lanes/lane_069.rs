@@ -75,7 +75,7 @@ fn every_op_ledger() -> Ledger {
     let mut ids = IdAllocator::seeded(0x069);
     let mut ledger = Ledger::new(0x069);
     let page: PageId = ids.fresh();
-    let page_v = Page::new("1");
+    let page_v = Page::titled("1").unwrap();
     let layer: LayerId = ids.fresh();
     let layer_v = Layer { name: "0".into() };
     let def: ecad_model::DefinitionId = ids.fresh();
@@ -126,7 +126,7 @@ fn every_op_ledger() -> Ledger {
     let cable: ecad_model::CableId = ids.fresh();
     let cable_v = Cable { members: vec![CableMember::on_wire(wire, None)], ..Cable::default() };
     let folder: ecad_model::FolderId = ids.fresh();
-    let folder_v = Folder { name: "F".into(), parent: None };
+    let folder_v = Folder { name: "F".into(), parent: None, start: None };
     let route_v = ecad_model::Route::new(
         page,
         vec![Pt::new(0.0, 0.0), Pt::new(9.0, 0.0)],
@@ -163,8 +163,14 @@ fn every_op_ledger() -> Ledger {
     rep_after.role = "moved".into();
     let header = StandardHeader { id: ids.fresh(), name: "S".into(), based_on: "iec".into(), origin: None };
     let ops = vec![
-        Op::AddPage { id: ids.fresh(), page: Page::new("2"), index: 1 },
+        Op::AddPage { id: ids.fresh(), page: Page::titled("2").unwrap(), index: 1 },
         Op::RemovePage { id: page, page: page_v.clone(), index: 0 },
+        // Lane 072 E (A15): a page changed in place.
+        Op::ModifyPage {
+            id: page,
+            before: page_v.clone(),
+            after: Page { number: ecad_model::PageNo::parse("7"), sheet: ecad_model::SheetSpec::parse("A2").ok(), ..page_v.clone() },
+        },
         Op::AddLayer { id: ids.fresh(), layer: Layer { name: "x".into() } },
         Op::RemoveLayer { id: layer, layer: layer_v.clone() },
         Op::AddItem { id: ids.fresh(), item: line(page, layer, 1.0) },
@@ -206,17 +212,25 @@ fn every_op_ledger() -> Ledger {
         Op::NameVersion { name: "w".into(), at: 2, description: None },
         Op::UnnameVersion { name: "v".into(), at: 1, description: None },
         Op::SetDeviceDefinition { id: comp, before: Some(def), after: None },
-        Op::AddFolder { id: ids.fresh(), folder: Folder { name: "G".into(), parent: Some(folder) }, index: 1 },
+        Op::AddFolder { id: ids.fresh(), folder: Folder { name: "G".into(), parent: Some(folder), start: None }, index: 1 },
         Op::RemoveFolder { id: folder, folder: folder_v.clone(), index: 0 },
-        Op::ModifyFolder { id: folder, before: folder_v.clone(), after: Folder { name: "Renamed".into(), parent: None } },
+        Op::ModifyFolder { id: folder, before: folder_v.clone(), after: Folder { name: "Renamed".into(), parent: None, start: None } },
         Op::SetStyle {
             layer: StyleLayer::Project,
-            catalogue: "line".into(),
+            catalogue: ecad_model::StyleCatalogue::Wire,
             id: StyleRef::Builtin("thin".into()),
             before: None,
             after: Some(StyleRecord { name: "Thin".into(), ..StyleRecord::default() }),
         },
         Op::SetStandard { before: None, after: Some(header) },
+        // Lane 072 E (A15): the project's lists changed.
+        Op::ModifyProject {
+            before: ecad_model::Project::default(),
+            after: ecad_model::Project {
+                locations: vec![ecad_model::Location::new(ids.fresh(), ecad_model::ListCode::new("+CP1").unwrap())],
+                ..ecad_model::Project::default()
+            },
+        },
     ];
     for op in ops {
         let name = op.name();

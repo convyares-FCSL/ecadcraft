@@ -16,15 +16,9 @@ use crate::doc::{Cable, CableMember, Definition, Device, Folder, Item, Layer, Pa
 use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, TerminalId, WireId};
 use crate::keys::{Area, area_of};
 use crate::op::{ObjectRef, Op};
+use crate::project::Project;
 use crate::route::Route;
-use crate::style::{StandardHeader, StyleLayer, StyleRecord, StyleRef};
-
-/// A placed object of an ordered list: its index and value.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Placed<'a, T> {
-    pub index: usize,
-    pub value: &'a T,
-}
+use crate::style::{StandardHeader, StyleCatalogue, StyleLayer, StyleRecord, StyleRef};
 
 /// A property key with its area, classified once ([`area_of`], design 064 §3.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,12 +30,14 @@ pub struct Key<'a> {
 /// One thing a transaction changed. `before: None` = created, `after: None` = removed.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Effect<'a> {
-    /// A page added, removed, or both in one transaction (a rename keeps the index, a move
-    /// changes it).
+    /// A page added, removed, changed in place (`ModifyPage`, which states no index), or removed
+    /// and added in one transaction (a move: the indexes differ).
     Page {
         id: PageId,
-        before: Option<Placed<'a, Page>>,
-        after: Option<Placed<'a, Page>>,
+        before: Option<&'a Page>,
+        after: Option<&'a Page>,
+        index_before: Option<usize>,
+        index_after: Option<usize>,
     },
     Layer {
         id: LayerId,
@@ -128,11 +124,10 @@ pub enum Effect<'a> {
         index_before: Option<usize>,
         index_after: Option<usize>,
     },
-    /// A style record set. `catalogue` is the catalogue's stored word until `SetStyle` carries a
-    /// `StyleCatalogue` (lane 072 A2).
+    /// A style record set.
     Style {
         layer: StyleLayer,
-        catalogue: &'a str,
+        catalogue: StyleCatalogue,
         id: &'a StyleRef,
         before: Option<&'a StyleRecord>,
         after: Option<&'a StyleRecord>,
@@ -140,6 +135,11 @@ pub enum Effect<'a> {
     Standard {
         before: Option<&'a StandardHeader>,
         after: Option<&'a StandardHeader>,
+    },
+    /// The project's own data changed (`ModifyProject`, design 072 §5.3).
+    Project {
+        before: &'a Project,
+        after: &'a Project,
     },
 }
 
@@ -165,11 +165,12 @@ pub enum EffectKind {
     Folder,
     Style,
     Standard,
+    Project,
 }
 
 impl EffectKind {
     /// Every kind, in declaration order.
-    pub const ALL: [EffectKind; 18] = [
+    pub const ALL: [EffectKind; 19] = [
         EffectKind::Page,
         EffectKind::Layer,
         EffectKind::Item,
@@ -188,6 +189,7 @@ impl EffectKind {
         EffectKind::Folder,
         EffectKind::Style,
         EffectKind::Standard,
+        EffectKind::Project,
     ];
 
     fn bit(self) -> u32 {
@@ -265,6 +267,7 @@ impl Effect<'_> {
             Effect::Folder { .. } => EffectKind::Folder,
             Effect::Style { .. } => EffectKind::Style,
             Effect::Standard { .. } => EffectKind::Standard,
+            Effect::Project { .. } => EffectKind::Project,
         }
     }
 }
@@ -363,8 +366,13 @@ impl<'e, 'a> IntoIterator for &'e Effects<'a> {
 /// The one classification of an op.
 fn classify(op: &Op) -> Effect<'_> {
     match op {
-        Op::AddPage { id, page, index } => Effect::Page { id: *id, before: None, after: Some(Placed { index: *index, value: page }) },
-        Op::RemovePage { id, page, index } => Effect::Page { id: *id, before: Some(Placed { index: *index, value: page }), after: None },
+        Op::AddPage { id, page, index } => Effect::Page { id: *id, before: None, after: Some(page), index_before: None, index_after: Some(*index) },
+        Op::RemovePage { id, page, index } => {
+            Effect::Page { id: *id, before: Some(page), after: None, index_before: Some(*index), index_after: None }
+        }
+        Op::ModifyPage { id, before, after } => {
+            Effect::Page { id: *id, before: Some(before), after: Some(after), index_before: None, index_after: None }
+        }
         Op::AddLayer { id, layer } => Effect::Layer { id: *id, before: None, after: Some(layer) },
         Op::RemoveLayer { id, layer } => Effect::Layer { id: *id, before: Some(layer), after: None },
         Op::AddItem { id, item } => Effect::Item { id: *id, before: None, after: Some(item) },
@@ -407,17 +415,18 @@ fn classify(op: &Op) -> Effect<'_> {
             Effect::Folder { id: *id, before: Some(before), after: Some(after), index_before: None, index_after: None }
         }
         Op::SetStyle { layer, catalogue, id, before, after } => {
-            Effect::Style { layer: *layer, catalogue, id, before: before.as_ref(), after: after.as_ref() }
+            Effect::Style { layer: *layer, catalogue: *catalogue, id, before: before.as_ref(), after: after.as_ref() }
         }
         Op::SetStandard { before, after } => Effect::Standard { before: before.as_ref(), after: after.as_ref() },
+        Op::ModifyProject { before, after } => Effect::Project { before, after },
     }
 }
 
 /// The object a removing (`remove`) or adding (`!remove`) effect may fold on, if it is one.
 fn fold_key(e: &Effect<'_>, remove: bool) -> Option<Open> {
     match e {
-        Effect::Page { id, before: Some(_), after: None } if remove => Some(Open::Page(*id)),
-        Effect::Page { id, before: None, after: Some(_) } if !remove => Some(Open::Page(*id)),
+        Effect::Page { id, before: Some(_), after: None, .. } if remove => Some(Open::Page(*id)),
+        Effect::Page { id, before: None, after: Some(_), .. } if !remove => Some(Open::Page(*id)),
         Effect::Terminal { id, before: Some(_), after: None } if remove => Some(Open::Terminal(*id)),
         Effect::Terminal { id, before: None, after: Some(_) } if !remove => Some(Open::Terminal(*id)),
         Effect::Folder { id, before: Some(_), after: None, .. } if remove => Some(Open::Folder(*id)),
@@ -439,7 +448,8 @@ fn fold_key(e: &Effect<'_>, remove: bool) -> Option<Open> {
         | Effect::Version { .. }
         | Effect::Folder { .. }
         | Effect::Style { .. }
-        | Effect::Standard { .. } => None,
+        | Effect::Standard { .. }
+        | Effect::Project { .. } => None,
     }
 }
 
@@ -457,7 +467,10 @@ fn names(e: &Effect<'_>, o: Open) -> bool {
 /// Fill the `after` side of a waiting remove with the add `add`.
 fn fill_after<'a>(slot: &mut Effect<'a>, add: Effect<'a>) {
     match (slot, add) {
-        (Effect::Page { after, .. }, Effect::Page { after: a, .. }) => *after = a,
+        (Effect::Page { after, index_after, .. }, Effect::Page { after: a, index_after: i, .. }) => {
+            *after = a;
+            *index_after = i;
+        }
         (Effect::Terminal { after, .. }, Effect::Terminal { after: a, .. }) => *after = a,
         (Effect::Folder { after, index_after, .. }, Effect::Folder { after: a, index_after: i, .. }) => {
             *after = a;

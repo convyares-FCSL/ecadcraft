@@ -507,6 +507,14 @@ title_block, location: Option<LocationId>, function: Option<FunctionId>, descrip
 strip, form }, PlcDetail { module } }`. Place on a page: `Place { page: PageNo, column:
 PageColumn, row: PageRow }`.
 
+**Deviations in lane E (overseer, 2026-11-17).** The title is `Text<200>`, today's limit, not 80.
+`PageKind` is `{ Schematic, Generated(GenKind), TerminalStrip { strip } }`: the one strip lives on
+the variant that needs it; there is no `Panel` (the page type `panel` says that), no `StripPage`
+(the graphic or table form stays the registry's `terminal.plan.style`, which has a project level)
+and no `PlcDetail` (no such page exists yet). `page.type` (page level only) is
+`Page.page_type`; `print.frame.style` (standard, project and page levels) stays a display value,
+so there is no `Page.frame`.
+
 ### 5.2 Folder
 
 `Folder { name, parent, start: Option<PageNo> }`.
@@ -528,6 +536,17 @@ pub struct Location { pub id: LocationId, pub code: Text<16>, pub tag: Option<Te
 
 The project holds the lists (code `L1`, `F1`…, tag, description 1, description 2, …); devices,
 pages, boxes and cable ends refer by id, so renaming a code is one edit.
+
+**Deviations in lane E (overseer, 2026-11-17).** The project's default location and function are
+`Project.location`/`Project.function` (ids), a holder the design did not list. `Revisions` holds
+only the rows (`Project.revisions: Vec<Revision>`): the table's columns, marker and custom column
+width stay registry values, because they have a standard level (as `print.frame.style`). The info
+has no `notes` other than the cover's (`cover.notes`). The project-level settings bag stays outside
+`Project`: `Project` holds typed project data and changes through `ModifyProject`; the bag holds
+project-level setting overrides and changes through `SetProperty` (one writer each). It is renamed
+`Document.properties` → `Document.display` with the 073 crate rename, when no lane is in flight
+(overseer, 2026-11-18). The "Symbol tied to multiple
+locations" check is lane F's (it needs boxes and the devices' fixed flags).
 
 ### 5.4 Title block
 

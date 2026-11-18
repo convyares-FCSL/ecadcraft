@@ -37,7 +37,7 @@ pub static CABLE_BASIS: Entry = entry("rating.cable_basis", "Field cable basis",
 pub static PANEL_TEMPERATURE: Entry = entry("rating.panel_temperature", "Panel temperature (\u{b0}C)", Kind::Number { min: -40.0, max: 90.0 });
 pub static AMBIENT: Entry = entry("rating.ambient", "Field ambient (\u{b0}C)", Kind::Number { min: -40.0, max: 90.0 });
 /// The project's rating table (FP8): none until the user enters or imports one.
-pub static TABLE: Entry = entry("rating.table", "Rating table", Kind::Style("ratingtable"));
+pub static TABLE: Entry = entry("rating.table", "Rating table", Kind::Style(ecad_model::StyleCatalogue::RatingTable));
 /// Not set: × 1.00 is used, with a warning (Q7).
 pub static BUNDLING: Entry = entry("rating.bundling", "Bundling", Kind::Parsed { max_chars: 32, parse: bundling_or_none });
 pub static METHOD: Entry = entry("rating.method", "Installation method", Kind::Choice(&crate::rating::dataset::METHODS));

@@ -2,6 +2,7 @@
 //! numbers, potentials and categories, the wiring settings, joins and the wire itself.
 //! Each function reads the document and returns the ops to commit and what to report.
 
+use ecad_model::units::Radians;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::connectivity::{CONTINUATION, JUNCTION, KIND, NAME};
@@ -95,7 +96,7 @@ pub fn net_view(doc: &Document, net: &NetData) -> NetView {
         .collect();
     let looks = crate::styles::wire::WireLooks::new(doc);
     let cats: BTreeSet<StyleRef> = net.wires.iter().filter_map(|c| looks.category(doc, *c).0).collect();
-    let named = |id: &StyleRef| CategoryName { id: id.text(), name: crate::styles::name(doc, "wire", id) };
+    let named = |id: &StyleRef| CategoryName { id: id.text(), name: crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id) };
     let uncategorised = net.wires.iter().any(|c| looks.category(doc, *c).0.is_none());
     let (category, categories) = match (cats.len(), uncategorised) {
         (1, false) => (cats.first().map(named), None),
@@ -295,11 +296,11 @@ fn open_end(doc: &Document, net: &NetData) -> Option<(RouteId, End, PageId, Pt, 
 }
 
 /// The rotation that points a continuation's arrow along `d` (snapped to 90°).
-fn arrow_rotation(d: Pt) -> f64 {
+fn arrow_rotation(d: Pt) -> Radians {
     // The arrow runs to local (0, −5): rotation θ maps it to (sin θ, −cos θ).
     let theta = d.x.atan2(-d.y);
     let q = std::f64::consts::FRAC_PI_2;
-    (theta / q).round() * q
+    Radians((theta / q).round() * q)
 }
 
 /// The number the net `choice` names has now, to fix it as it is (the Properties panel's Fixed
@@ -409,7 +410,7 @@ pub fn wirenumber(
             sense.map_err(|why| CmdError::refused(format!("The nets can't be merged: {why}.")))?;
             let name = wires::valid_name(&v)
                 .map_err(|_| CmdError::refused(format!("The nets can't be merged: {v} is not a continuation name ({}).", wires::NAME_RULE)))?;
-            let starter = wires::continuation_starter().ok_or(CmdError::refused("the continuation symbol is missing"))?;
+            let starter = wires::continuation_starter();
             let mut ops = wiring::write_ops(doc, &net, &v, true);
             let mut continuations = Vec::new();
             for n in [&net, &other] {
@@ -467,7 +468,9 @@ pub fn number_of(doc: &Document, c: WireId) -> Option<String> {
 /// No such wire.
 pub fn category_ops(doc: &Document, conductors: &[WireId], value: Option<&StyleRef>) -> Result<(Vec<Op>, Option<String>), CmdError> {
     let key = wiring::WIRE_CATEGORY;
-    let pot = value.and_then(|id| crate::styles::field_of(doc, "wire", id, "potential", None)).and_then(|r| crate::styles::wire::filled(&r));
+    let pot = value
+        .and_then(|id| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, id, "potential", None))
+        .and_then(|r| crate::styles::wire::filled(&r));
     let conn = doc.connectivity();
     let mut ops = Vec::new();
     let mut kept: Option<String> = None;
@@ -532,12 +535,12 @@ pub fn category(doc: &Document, wires: Wires, value: Option<&str>) -> Result<Cat
         Wires::Many(v) => v,
     };
     let id = match value {
-        Some(v) => Some(crate::styles::find(doc, "wire", v)?),
+        Some(v) => Some(crate::styles::find(doc, ecad_model::StyleCatalogue::Wire, v)?),
         None => None,
     };
     let (ops, message) = category_ops(doc, &conductors, id.as_ref())?;
     let label = match &id {
-        Some(i) => format!("Category {}", crate::styles::name(doc, "wire", i)),
+        Some(i) => format!("Category {}", crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, i)),
         None => "Clear category".into(),
     };
     Ok(Categorised { ops, label, wires: conductors.len(), category: id, message })
@@ -710,7 +713,7 @@ pub fn wire(ledger: &Ledger, ids: &mut IdAllocator, input: wires::WireInput<'_>,
     let doc = ledger.document();
     let mut plan = wires::plan_wire(doc, ids, input)?;
     if let Some(c) = category {
-        let id = crate::styles::find(doc, "wire", c)?;
+        let id = crate::styles::find(doc, ecad_model::StyleCatalogue::Wire, c)?;
         let drawn = ledger.preview(&plan.ops)?;
         let rewritten = ecad_model::wire_order::rewrite(&drawn, &plan.ops);
         let after = if rewritten.is_empty() { drawn } else { ledger.preview(&[plan.ops.clone(), rewritten.clone()].concat())? };

@@ -14,7 +14,7 @@ fn fixture(syms: &[(u128, u128, &str, usize, f64, f64, &str)]) -> Document {
     let mut d = Document::default();
     for i in 0..2u128 {
         let p = PageId(1000 + i);
-        d.pages.insert(p, Page::new(format!("P{i}")));
+        d.pages.insert(p, Page::titled(format!("P{i}")).unwrap());
         d.page_order.push(p);
     }
     let style = Style { layer: LayerId(1), color: ecad_model::doc::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
@@ -25,7 +25,7 @@ fn fixture(syms: &[(u128, u128, &str, usize, f64, f64, &str)]) -> Document {
         let pg = d.page_order[*page];
         let kind = ItemKind::Symbol(SymbolInstance {
             definition: DefinitionId(9),
-            placement: Placement { origin: Pt::new(*x, *y), rotation: 0.0, mirror: false, scale: 1.0 },
+            placement: Placement { origin: Pt::new(*x, *y), rotation: ecad_model::units::Radians(0.0), mirror: false, scale: 1.0 },
         });
         d.items.insert(item, Item { page: pg, style: style.clone(), kind });
         let rep = Representation {

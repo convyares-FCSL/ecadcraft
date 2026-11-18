@@ -75,8 +75,8 @@ pub const LABEL_DERIVED: &str = "The wire label is derived; change the number wi
 pub const NAME_RULE: &str = "A continuation name is 1 to 16 letters, digits or + - / . _";
 
 /// The starter of a continuation.
-pub fn continuation_starter() -> Option<&'static Starter> {
-    symbols::by_key(CONTINUATION)
+pub fn continuation_starter() -> &'static Starter {
+    symbols::starter(symbols::StarterKey::Continuation)
 }
 
 /// What a tagless component is (`junction`, `continuation`), from its `kind` property.
@@ -942,7 +942,7 @@ pub fn hover_lines(doc: &Document, w: WireId) -> Vec<String> {
     // Brief 050b: the wire's own values, else its category's (named).
     let look = crate::styles::wire::wire_look(doc, w);
     let w = &doc.settings.wiring;
-    let cat = look.category.as_ref().map(|id| crate::styles::name(doc, "wire", id));
+    let cat = look.category.as_ref().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id));
     let shown = |key: &str, v: &Option<(String, crate::defaults::Source)>| {
         let text = |v: &str| if key == ecad_model::wiring::COLOUR { w.colour(v) } else { v.to_string() };
         match (v, &cat) {
@@ -1694,7 +1694,9 @@ mod tests {
     fn page_doc() -> (Document, PageId, Style) {
         let mut doc = Document::default();
         let (page, layer) = (PageId::from(1u128), LayerId::from(2u128));
-        for op in [Op::AddLayer { id: layer, layer: Layer { name: "0".into() } }, Op::AddPage { id: page, page: Page::new("1"), index: 0 }] {
+        for op in
+            [Op::AddLayer { id: layer, layer: Layer { name: "0".into() } }, Op::AddPage { id: page, page: Page::titled("1").unwrap(), index: 0 }]
+        {
             op.apply(&mut doc).expect("setup");
         }
         doc.rebuild_index();

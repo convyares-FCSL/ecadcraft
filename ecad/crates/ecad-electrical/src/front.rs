@@ -47,7 +47,7 @@ const LEGEND_COLUMNS: usize = 5;
 
 /// The cover's notes as stored, cut to the bounds: (notes, whether anything was cut).
 pub fn notes(doc: &Document) -> (Vec<String>, bool) {
-    let Some(text) = doc.properties.get(NOTES_KEY) else { return (Vec::new(), false) };
+    let Some(text) = crate::frames::project_text(doc, NOTES_KEY) else { return (Vec::new(), false) };
     let mut cut = false;
     let mut out = Vec::new();
     for line in text.lines() {
@@ -319,7 +319,11 @@ fn generated_wire_lines(doc: &Document) -> Vec<WireLine> {
         if !used.contains(&row.id) {
             continue;
         }
-        let f = |k: &str| crate::styles::field_of(doc, "wire", &row.id, k, None).and_then(|r| crate::styles::wire::filled(&r)).unwrap_or_default();
+        let f = |k: &str| {
+            crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, &row.id, k, None)
+                .and_then(|r| crate::styles::wire::filled(&r))
+                .unwrap_or_default()
+        };
         let (colour, cross_section) = (f("colour"), f("cross_section"));
         match out.iter_mut().find(|l| l.colour.eq_ignore_ascii_case(&colour) && l.cross_section == cross_section) {
             Some(l) => l.names.push(row.name),
@@ -395,13 +399,13 @@ fn generated_cells(doc: &Document) -> Vec<Cell> {
 /// §6.6, design 052 FP8): each stored entry key as its code and description (`=F1 Pumps`), `?` for
 /// a key with no entry, naturally sorted, at most 200 of each.
 pub fn structure_codes(doc: &Document) -> (Vec<String>, Vec<String>) {
-    use crate::designations::{Aspect, Uses, code_of, description_property};
+    use crate::designations::{Aspect, Uses, code_of, description_of};
     let uses = Uses::of(doc);
     let list = |a: Aspect| {
         let shown: BTreeSet<String> = uses
             .keys(a)
             .take(200)
-            .map(|k| match (code_of(doc, a, k), doc.properties.get(&description_property(a, k)).filter(|d| !d.trim().is_empty())) {
+            .map(|k| match (code_of(doc, a, k), description_of(doc, a, k).filter(|d| !d.trim().is_empty())) {
                 (Some(code), Some(d)) => format!("{code} {d}"),
                 (Some(code), None) => code,
                 (None, _) => "?".to_string(),
@@ -456,17 +460,16 @@ pub fn touches(doc: &Document, ops: &[Op]) -> bool {
     let codes_on = Block::StructureCodes.on(doc);
     ops.iter().any(|op| match op {
         Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => {
-            matches!(key.as_str(), crate::frames::TITLE | crate::frames::CUSTOMER | "site" | NOTES_KEY | WIRE_ROWS_KEY | LEGEND_ROWS_KEY)
+            matches!(key.as_str(), WIRE_ROWS_KEY | LEGEND_ROWS_KEY)
                 || key.starts_with("front.cover.")
-                || key.starts_with(crate::revisions::PREFIX)
                 || key == crate::revisions::COLUMNS_KEY
                 || key == crate::revisions::PENDING_KEY
-                || (codes_on && (crate::designations::Aspect::of_property(key).is_some() || crate::designations::is_list_property(key)))
+                || (codes_on && crate::designations::Aspect::of_property(key).is_some())
         }
         Op::NameVersion { .. } | Op::UnnameVersion { .. } => true,
         // A text style's size changes the cover's texts; a wire category's name, colour or
         // cross-section its legend line.
-        Op::SetStyle { catalogue, .. } => catalogue == "text" || catalogue == "wire",
+        Op::SetStyle { catalogue, .. } => *catalogue == ecad_model::StyleCatalogue::Text || *catalogue == ecad_model::StyleCatalogue::Wire,
         // A definition in use redrawn or renamed (048's Edit symbol), or a device re-pointed.
         Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => !doc.items_using(*id).is_empty(),
         Op::SetDeviceDefinition { .. } => true,
@@ -474,6 +477,16 @@ pub fn touches(doc: &Document, ops: &[Op]) -> bool {
         Op::DeleteCable { .. } => doc.cables.is_empty(),
         Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Device(_), key, .. } => {
             codes_on && crate::designations::Aspect::of_property(key).is_some()
+        }
+        // Design 072 §5.3: the revision rows, or a code the cover shows.
+        Op::ModifyProject { before, after } => {
+            before.revisions != after.revisions
+                || before.info != after.info
+                || (codes_on && crate::designations::Aspect::ALL.into_iter().any(|a| crate::designations::shown_changed(before, after, a)))
+        }
+        Op::ModifyPage { before, after, .. } => {
+            let ch = before.change(after);
+            codes_on && (ch.location || ch.function)
         }
         Op::CreateDevice { device: component, .. } | Op::DeleteDevice { device: component, .. } => {
             ecad_model::connectivity::continuation_key(&component.properties).is_some()
@@ -532,7 +545,7 @@ impl Uses {
     /// cover's `touches` and a full rebuild handle those).
     pub fn update(&mut self, doc: &Document, ops: &[Op]) -> bool {
         let wide = ops.iter().any(|op| match op {
-            Op::SetStyle { catalogue, .. } => catalogue == "wire",
+            Op::SetStyle { catalogue, .. } => *catalogue == ecad_model::StyleCatalogue::Wire,
             Op::SetProjectSettings { before, after } => before.wiring.potentials != after.wiring.potentials,
             Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => key == crate::defaults::styles::WIRE_CATEGORY.key,
             Op::CreateDevice { device: component, .. } | Op::DeleteDevice { device: component, .. } => {

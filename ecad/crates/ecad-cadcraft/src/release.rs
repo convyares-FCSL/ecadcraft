@@ -32,7 +32,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use ecad_model::{Document, ObjectRef, Op};
+use ecad_model::{Document, Op};
 use serde_json::{Map, Value, json};
 
 use crate::access::Pages;
@@ -313,9 +313,7 @@ fn chosen(params: &Value) -> Result<Option<BTreeSet<String>>, String> {
 /// `\ / : * ? " < > |` and control characters become `-`; at most [`MAX_STEM`] characters.
 pub fn stem(p: &Project) -> String {
     let doc = p.ledger.document();
-    let raw = doc
-        .properties
-        .get(crate::frame::DRAWING_NUMBER)
+    let raw = crate::frames::project_text(doc, crate::frame::DRAWING_NUMBER)
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .or_else(|| p.path.as_deref().and_then(|x| Path::new(x).file_stem()).map(|s| s.to_string_lossy().into_owned()))
@@ -845,7 +843,7 @@ pub struct Issued {
 pub fn manifest(
     doc: &Document, row: &revisions::Revision, issued: &Issued, b: &Build<'_>, st: &Staged, rows: &[Check], fan_tags: &[String],
 ) -> Value {
-    let prop = |k: &str| doc.properties.get(k).cloned().unwrap_or_default();
+    let prop = |k: &str| crate::frames::project_text(doc, k).unwrap_or_default();
     let (e, w, i) = counts(rows);
     let mut iss = json!({"branch": issued.branch, "transaction": issued.transaction, "point": issued.point});
     if let Some(c) = &issued.chain {
@@ -955,7 +953,12 @@ pub fn nothing_changed(p: &Project) -> Option<String> {
     let at = *doc.versions.get(&name)?;
     let head = p.ledger.head();
     let only_revisions = |t: &ecad_model::Transaction| {
-        t.ops.iter().all(|o| matches!(o, Op::SetProperty { object: ObjectRef::Project, key, .. } if key.starts_with(revisions::PREFIX)))
+        t.ops.iter().all(|o| match o {
+            Op::ModifyProject { before, after } => {
+                ecad_model::Project { revisions: Vec::new(), ..before.clone() } == ecad_model::Project { revisions: Vec::new(), ..after.clone() }
+            }
+            _ => false,
+        })
     };
     let mut seq = at.saturating_add(2);
     while seq <= head {
@@ -1237,15 +1240,7 @@ pub(crate) fn release_pending(
     let rev = plan.rev.clone();
     let target = if rev == rev0 { target } else { folder_param(p, params, default_folder(p, &rev))? };
     let staging = partial_of(&target);
-    plan.ops.insert(
-        plan.ops.len().saturating_sub(1),
-        Op::SetProperty {
-            object: ObjectRef::Project,
-            key: revisions::key(plan.n, revisions::RELEASED),
-            before: None,
-            after: Some(recorded(p, &target)),
-        },
-    );
+    revisions::set_released(&mut plan.ops, plan.n, &recorded(p, &target));
     let all_ops: Vec<Op> = finalise.iter().flat_map(|f| f.ops.iter().cloned()).chain(plan.ops.iter().cloned()).collect();
     let issued_doc = p.ledger.preview(&all_ops).map_err(|e| e.to_string())?;
     // With Finalise, the lists and the check are those of the finalised state (built on this
@@ -1283,13 +1278,7 @@ pub(crate) fn release_pending(
     let ((st, mut l), stem, o) = staged;
     // Keep both lands elsewhere: FP1 names the folder it lands in.
     if l.folder != target {
-        for op in plan.ops.iter_mut() {
-            if let Op::SetProperty { key, after, .. } = op
-                && *key == revisions::key(plan.n, revisions::RELEASED)
-            {
-                *after = Some(recorded(p, &l.folder));
-            }
-        }
+        revisions::set_released(&mut plan.ops, plan.n, &recorded(p, &l.folder));
     }
     // 4. Finalise (when asked), then the issue. An issue that fails takes Finalise back with it.
     let mut finalise_tx = None;

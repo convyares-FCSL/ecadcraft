@@ -177,7 +177,7 @@ fn ac2_old_pages_resolve_their_type_and_keep_numbers_folders_and_sheets() {
     let before_sheets: Vec<String> = order(&mut h).into_iter().map(|p| sheet_text(&mut h, p)).collect();
     let d = h.doc();
     for p in d.page_order.iter() {
-        assert!(!d.pages[p].properties.contains_key("page.type"), "plain newpage writes no page.type (§4.2)");
+        assert!(d.pages[p].page_type.is_none(), "plain newpage writes no page.type (§4.2)");
     }
     let head = h.head();
     for (p, want) in [(p1, "schematic"), (p2, "schematic"), (cover, "front"), (revs, "front"), (bom, "report")] {
@@ -218,7 +218,7 @@ fn ac3_plus_inserts_after_the_current_page_with_the_next_free_number() {
     assert!(!["1", "2", "3", "4", "5"].contains(&n.as_str()), "a free number: {n}");
     assert_eq!(n, "6", "the next available number after 3 (4 and 5 are taken)");
     assert_eq!(type_of(&mut h, net), "network");
-    assert_eq!(h.doc().pages[&net].properties.get("page.type").map(String::as_str), Some("network"), "§4.2: written when it differs");
+    assert_eq!(h.doc().pages[&net].page_type.as_ref().map(ecad_model::StyleRef::text).as_deref(), Some("network"), "§4.2: written when it differs");
     // Back and front types do not force placement (Q1).
     let rep = new_page(&mut h, json!({"type": "report", "generated": "bom-location", "after": p[0].hex()}));
     assert_eq!(order(&mut h).iter().position(|x| *x == rep), Some(1), "a Report page goes where it is asked, not to the back");
@@ -226,7 +226,7 @@ fn ac3_plus_inserts_after_the_current_page_with_the_next_free_number() {
     assert_eq!(order(&mut h).last(), Some(&cov), "a cover after the last page stays last");
     // A schematic `newpage {type}` writes no page.type (the derived type).
     let sch = new_page(&mut h, json!({"type": "schematic", "after": p[1].hex()}));
-    assert!(!h.doc().pages[&sch].properties.contains_key("page.type"), "§4.2: as small as today");
+    assert!(h.doc().pages[&sch].page_type.is_none(), "§4.2: as small as today");
     // In a folder: after a page in a folder lands in that folder.
     let f = folder(&mut h, "Motors");
     move_into(&mut h, p[3], f);
@@ -257,7 +257,7 @@ fn ac3_a_folder_start_numbers_its_first_page() {
     let (mut h, _) = pages(0x54_0304, 2);
     let f = folder(&mut h, "Schematic");
     one_tx(&mut h, "folderprops", json!({"folder": f.hex(), "start": "100"}));
-    assert_eq!(h.doc().properties.get(&format!("folder.{}.start", f.hex())).map(String::as_str), Some("100"), "FP7 key");
+    assert_eq!(h.doc().folders[&f].start.as_ref().map(ecad_model::PageNo::as_str), Some("100"), "Folder.start (design 072 §5.2)");
     let a = new_page(&mut h, json!({"type": "schematic", "folder": f.hex()}));
     assert_eq!(number(&mut h, a), "100");
     let b = new_page(&mut h, json!({"type": "schematic", "after": a.hex()}));
@@ -291,15 +291,14 @@ fn ac5_folder_start_refusals_clear_and_delete() {
         assert!(m.contains("A start number is 1 to 6 digits."), "{bad:?}: {m}");
     }
     refused(&mut h, "folderprops", json!({"folder": "0000000000000000000000000000beef", "start": "100"}));
-    let key = format!("folder.{}.start", f.hex());
     h.run("folderprops", json!({"folder": f.hex(), "start": "100"})).unwrap();
     one_tx(&mut h, "folderprops", json!({"folder": f.hex(), "start": null}));
-    assert!(!h.doc().properties.contains_key(&key), "null clears");
+    assert!(h.doc().folders[&f].start.is_none(), "null clears");
     h.run("folderprops", json!({"folder": f.hex(), "start": "100"})).unwrap();
     let (_, tx) = one_tx(&mut h, "deletefolder", json!({"folder": f.hex()}));
-    assert!(!h.doc().properties.contains_key(&key), "deletefolder clears the start in the same transaction: {:?}", tx.ops);
+    assert!(!h.doc().folders.contains_key(&f), "deletefolder takes the start with the folder: {:?}", tx.ops);
     undo(&mut h);
-    assert_eq!(h.doc().properties.get(&key).map(String::as_str), Some("100"), "one u brings folder and start back");
+    assert_eq!(h.doc().folders[&f].start.as_ref().map(ecad_model::PageNo::as_str), Some("100"), "one u brings folder and start back");
 }
 
 /// AC5 (the owner's flow), §4.4: pages 1–50; folders Schematic (100) and Terminal (300); 40 pages
@@ -323,11 +322,7 @@ fn ac5_renumber_pages_numbers_each_folder_from_its_start() {
     h.run("place", json!({"symbol": "no", "at": [100, 100], "device": k.hex()})).ok();
     let before = numbers(&mut h);
     let (v, tx) = one_tx(&mut h, "renumberpages", json!({}));
-    assert!(
-        tx.ops.iter().all(|o| matches!(o, ecad_model::Op::SetProperty { object: ecad_model::ObjectRef::Page(_), key, .. } if key == "number")),
-        "{:?}",
-        tx.ops
-    );
+    assert!(tx.ops.iter().all(|o| matches!(o, ecad_model::Op::ModifyPage { before, after, .. } if before.change(after).number)), "{:?}", tx.ops);
     assert_eq!(tx.ops.len(), 50, "every page's number changes");
     let want: Vec<String> = (100..140).chain(300..310).map(|n| n.to_string()).collect();
     assert_eq!(numbers(&mut h), want);
@@ -454,7 +449,7 @@ fn ac4_front_pages_after_the_cover_and_their_refusals() {
     // `generated` with no `type`: rule 2's type, and no page.type stored.
     let c = new_page(&mut h, json!({"generated": "contents", "after": revs.hex()}));
     assert_eq!(type_of(&mut h, c), "front");
-    assert!(!h.doc().pages[&c].properties.contains_key("page.type"));
+    assert!(h.doc().pages[&c].page_type.is_none());
     // An own type copied from Cover sheet may hold a cover (§2.3).
     let own = s(&h.run("setstyle", json!({"catalogue": "page", "new": true, "name": "Cover A4", "copy_of": "front"})).unwrap()["id"]);
     new_page(&mut h, json!({"type": own, "generated": "cover", "after": sch.hex()}));
@@ -533,12 +528,12 @@ fn fp3_a_malformed_type_sheet_reads_as_absent() {
     refused(&mut h, "setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"holds": "x"}}));
     for bad in ["A0 999x999", "A9", &"x".repeat(10_000), "-1x-1", "nan"] {
         let sch = ecad_model::style::StyleRef::builtin("schematic").unwrap();
-        let before = h.doc().styles.get("page").and_then(|m| m.get(&sch)).cloned();
+        let before = h.doc().styles.get(&ecad_model::StyleCatalogue::Page).and_then(|m| m.get(&sch)).cloned();
         inject(
             &mut h,
             vec![ecad_model::Op::SetStyle {
                 layer: ecad_model::style::StyleLayer::Project,
-                catalogue: "page".into(),
+                catalogue: ecad_model::StyleCatalogue::Page,
                 id: ecad_model::style::StyleRef::builtin("schematic").unwrap(),
                 before,
                 after: Some(ecad_model::style::StyleRecord {
@@ -818,33 +813,29 @@ fn map_the_cover_follows_only_its_keys() {
 // ------------------------------------------------------------------------ AC15: hostile
 
 /// AC15, §9: hostile stored values read as absent or cut, each with its Checks row, never a panic:
-/// a type record with `holds: x` and `sheet: A0 999x999`; a `folder.<id>.start` of
-/// `99999999999` and one naming no folder; a `page.type` naming nothing (1 MB of notes: the 054b test below).
+/// a type record with `holds: x` and `sheet: A0 999x999`; a folder start of `99999999999` (a start
+/// naming no folder cannot be stored since design 072 §5.2); a `page.type` naming nothing (1 MB of notes: the 054b test below).
 #[test]
 fn ac15_hostile_values_read_as_absent_with_checks_rows() {
-    use ecad_model::{ObjectRef, Op};
+    use ecad_model::Op;
     let (mut h, cover, sch) = with_cover(0x54_1501);
     let f = folder(&mut h, "Field");
-    let ghost = "#0000000000000000000000000000dead".to_string();
-    inject(
-        &mut h,
-        vec![
-            Op::SetProperty { object: ObjectRef::Project, key: format!("folder.{}.start", f.hex()), before: None, after: Some("99999999999".into()) },
-            Op::SetProperty {
-                object: ObjectRef::Project,
-                key: "folder.0000000000000000000000000000beef.start".into(),
-                before: None,
-                after: Some("100".into()),
-            },
-            Op::SetProperty { object: ObjectRef::Page(sch), key: "page.type".into(), before: None, after: Some(ghost) },
-        ],
-    );
+    let ghost = h.doc().pages[&sch].clone();
+    let ghost =
+        Op::ModifyPage { id: sch, before: ghost.clone(), after: ecad_model::Page { page_type: Some(ecad_model::StyleRef::Own(0xdead)), ..ghost } };
+    let start = {
+        let before = h.doc().folders[&f].clone();
+        let after = ecad_model::Folder { start: ecad_model::PageNo::parse("99999999999"), ..before.clone() };
+        assert!(after.start.is_some(), "a page number too long for a start");
+        Op::ModifyFolder { id: f, before, after }
+    };
+    inject(&mut h, vec![start, ghost]);
     assert_eq!(type_of(&mut h, sch), "schematic", "a page.type naming nothing falls to rule 3");
     let _ = gen_texts(&mut h, cover);
     for kind in ["folder-start-unknown", "page-type-unknown"] {
         assert!(!checks_of(&mut h, kind).is_empty(), "{kind} row");
     }
-    assert_eq!(checks_of(&mut h, "folder-start-unknown").len(), 2, "both start keys");
+    assert_eq!(checks_of(&mut h, "folder-start-unknown").len(), 1, "the folder's start");
     // Renumber with a hostile start never panics and never writes a 11-digit number.
     h.run("renumberpages", json!({})).unwrap();
     assert!(numbers(&mut h).iter().all(|n| n.len() <= 6), "{:?}", numbers(&mut h));
@@ -856,21 +847,27 @@ fn ac15_hostile_values_read_as_absent_with_checks_rows() {
     }
 }
 
-/// AC15 (054b): 1 MB of stored notes read cut at 40 with a `cover-notes-cut` row.
+/// AC15 (054b): more stored notes than the cover holds read cut at 40 with a `cover-notes-cut`
+/// row (design 072 §5.3: a stored text longer than the notes' bound is a read error instead).
 #[test]
 fn ac15_hostile_notes_read_cut_with_a_checks_row() {
-    use ecad_model::{ObjectRef, Op};
+    use ecad_model::Op;
     let (mut h, cover, _) = with_cover(0x54_1503);
-    let notes: String = (0..5000)
+    let notes: String = (0..200)
         .map(|i| {
             format!(
                 "note {i} {}
 ",
-                "x".repeat(200)
+                "x".repeat(40)
             )
         })
         .collect();
-    inject(&mut h, vec![Op::SetProperty { object: ObjectRef::Project, key: "cover.notes".into(), before: None, after: Some(notes) }]);
+    let before = h.doc().project.clone();
+    let after = ecad_model::Project {
+        info: ecad_model::ProjectInfo { notes: Some(ecad_model::project::Notes::new(&notes).unwrap()), ..before.info.clone() },
+        ..before.clone()
+    };
+    inject(&mut h, vec![Op::ModifyProject { before, after }]);
     let t = gen_texts(&mut h, cover);
     assert!(t.iter().filter(|x| x.starts_with(|c: char| c.is_ascii_digit()) && x.contains(". note")).count() <= 40, "notes read cut at 40");
     assert!(!checks_of(&mut h, "cover-notes-cut").is_empty());

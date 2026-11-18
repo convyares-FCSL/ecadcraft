@@ -16,8 +16,7 @@ use std::sync::Arc;
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
 use ecad_electrical::cmd::sheet::{self as rules, PageChange, ProjectChange, PropsPlan, RevisionFields};
-use ecad_model::book::{self, Book, FOLDER_KEY, FUNCTION_KEY, LOCATION_KEY, NUMBER_KEY, Node};
-use ecad_model::sheet::SHEET_KEY;
+use ecad_model::book::{self, Book, FUNCTION_KEY, LOCATION_KEY, Node};
 use ecad_model::{Document, FolderId, Op, Page, PageId, ReferenceStyle};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -338,11 +337,9 @@ pub(crate) fn new_page_ops_at(
         }
         None => next_number(doc, &book, folder, place, outputs),
     };
-    let mut page = Page::new(title);
-    page.properties.insert(NUMBER_KEY.into(), number.clone());
-    if let Some(f) = folder {
-        page.properties.insert(FOLDER_KEY.into(), f.hex());
-    }
+    let mut page = Page::new(rules::page_title(&title)?);
+    page.number = Some(ecad_model::PageNo::parse(&number).ok_or(CmdError::refused(rules::NUMBER_WORDS))?);
+    page.folder = folder;
     let id: PageId = p.ids.fresh();
     Ok((id, number, vec![Op::AddPage { id, page, index }]))
 }
@@ -350,15 +347,16 @@ pub(crate) fn new_page_ops_at(
 /// The page's properties as `pageprops` reports them.
 pub fn page_json(doc: &Document, book: &Book, page: PageId, outputs: Option<&crate::outputs::Outputs>) -> Value {
     let pg = doc.pages.get(&page);
-    let prop = |k: &str| pg.and_then(|x| x.properties.get(k)).cloned();
-    let project = |k: &str| doc.properties.get(k).cloned();
+    use crate::designations::{Aspect, default_key, page_key};
+    let prop = |k: &str| Aspect::of_property(k).and_then(|a| pg.and_then(|x| page_key(x, a)));
+    let project = |k: &str| Aspect::of_property(k).and_then(|a| default_key(&doc.project, a));
     let folder = book::folder_of(doc, page).filter(|f| doc.folders.contains_key(f));
     json!({
         "page": page.hex(),
         "number": book.number(doc, page),
-        "number_stored": prop(NUMBER_KEY),
+        "number_stored": pg.and_then(|x| x.number.as_ref()).map(ecad_model::PageNo::as_str),
         "position": book.position(page),
-        "title": pg.map(|x| x.title.clone()),
+        "title": pg.map(|x| x.title.as_str()),
         // Brief 052: stored as entry keys of the project's list, shown as codes.
         "function": prop(FUNCTION_KEY).map(|v| crate::designations::display(doc, FUNCTION_KEY, &v)),
         "location": prop(LOCATION_KEY).map(|v| crate::designations::display(doc, LOCATION_KEY, &v)),
@@ -366,11 +364,11 @@ pub fn page_json(doc: &Document, book: &Book, page: PageId, outputs: Option<&cra
         "location_key": prop(LOCATION_KEY),
         "function_shown": prop(FUNCTION_KEY).or_else(|| project(FUNCTION_KEY)).map(|v| crate::designations::display(doc, FUNCTION_KEY, &v)),
         "location_shown": prop(LOCATION_KEY).or_else(|| project(LOCATION_KEY)).map(|v| crate::designations::display(doc, LOCATION_KEY, &v)),
-        "sheet": prop(SHEET_KEY),
+        "sheet": pg.and_then(|x| x.sheet).map(|s| s.text()),
         "sheet_shown": ecad_model::sheet::sheet_of(doc, page).summary(),
         "folder": folder.map(FolderId::hex),
         "folder_path": folder_path(doc, folder),
-        "generated": prop(crate::generated::KEY),
+        "generated": pg.and_then(|x| x.kind.generated_kind()).map(ecad_model::Word::word),
         // Brief 054: the page's type, resolved (design 054 §2.3).
         "type": crate::styles::page::type_of(doc, page).text(),
         "sheets": crate::generated::sheets(doc, page, outputs),
@@ -506,9 +504,20 @@ fn style_word(s: ReferenceStyle) -> &'static str {
 pub fn project_json(doc: &Document) -> Value {
     let mut fields = Map::new();
     for k in PROJECT_KEYS {
-        // Brief 052: the function and location show their codes.
-        fields.insert(k.into(), doc.properties.get(k).map_or(Value::Null, |v| Value::String(crate::designations::display(doc, k, v))));
+        // Brief 052: the function and location show their codes (design 072 §5.3: fields of the
+        // project).
+        let v = match crate::designations::Aspect::of_property(k) {
+            Some(a) => crate::designations::default_key(&doc.project, a).map(|v| crate::designations::display(doc, k, &v)),
+            None => crate::frames::project_text(doc, k),
+        };
+        fields.insert(k.into(), v.map_or(Value::Null, Value::String));
     }
+    // The site and the cover's notes are written as free properties and stored as the project's
+    // info (design 072 §5.3): reported with the free ones.
+    let written_free = [ecad_model::InfoField::Site, ecad_model::InfoField::Notes];
+    let info = written_free
+        .into_iter()
+        .filter_map(|f| doc.project.info.get(f).map(|v| (ecad_model::Word::word(f).to_string(), Value::String(v.to_string()))));
     let free: Map<String, Value> = doc
         .properties
         .iter()
@@ -518,9 +527,9 @@ pub fn project_json(doc: &Document) -> Value {
                 && !k.starts_with("numbering.")
                 && !k.starts_with("tags.")
                 && !k.starts_with("revisions.")
-                && !crate::designations::is_list_property(k)
         })
         .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+        .chain(info)
         .collect();
     let revs: Vec<Value> = revisions::list(doc)
         .iter()
@@ -553,7 +562,7 @@ pub fn project_json(doc: &Document) -> Value {
     // Brief 033: the tag style, the revision columns and the pending marker.
     let style = crate::defaults::print::tag_style(doc);
     v["tag_dash"] = json!(style.dash);
-    v["tag_case"] = json!(if style.case == ecad_model::tag::Case::Typed { "typed" } else { "upper" });
+    v["tag_case"] = json!(ecad_model::Word::word(style.case));
     let cols = revisions::columns(doc);
     v["revision_columns"] = json!(cols.iter().map(|c| json!({"field": c.field, "header": c.header, "width": c.width})).collect::<Vec<_>>());
     v["revision_columns_stored"] = json!(doc.properties.get(revisions::COLUMNS_KEY));
@@ -712,11 +721,13 @@ impl Command for ProjectpropsParams {
             revision_columns: self.revision_columns,
             revision_pending: self.revision_pending.flatten(),
             tag_dash: self.tag_dash.flatten(),
-            tag_case: self.tag_case.flatten(),
+            tag_case: None,
             mode: Default::default(),
         };
+        let case_word = self.tag_case.flatten();
         on_project(s, |p, pg, _| {
             change.mode = rules::proposal_mode(proposal.as_deref())?;
+            change.tag_case = case_word.as_deref().map(rules::tag_case).transpose()?;
             let plan = rules::project_props(p.ledger.document(), &mut p.ids, &change)?;
             if plan.ops.is_empty() {
                 let mut v = project_json(p.ledger.document());

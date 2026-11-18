@@ -210,7 +210,7 @@ fn resized(start: BRect, h: u8, p: (f64, f64)) -> BRect {
 fn set_rect(item: &mut BlockItem, r: BRect) {
     match item {
         BlockItem::Text { at, .. } | BlockItem::Field { at, .. } | BlockItem::RevTable { at, .. } | BlockItem::Logo { at, .. } => *at = r,
-        BlockItem::Line { .. } | BlockItem::Unknown => {}
+        BlockItem::Line { .. } => {}
     }
 }
 
@@ -310,7 +310,6 @@ fn paint_items(ui: &egui::Ui, v: View, d: &Draft, sample: Option<&Sample>, sampl
                     paint_logo(p, v, at, prims, ink);
                 }
             }
-            BlockItem::Unknown => {}
         }
         if marks
             && outside.contains(&i)
@@ -424,7 +423,6 @@ fn tag_of(item: &BlockItem) -> String {
         BlockItem::Logo { .. } => "Logo · image".to_string(),
         BlockItem::Text { .. } => "Text".to_string(),
         BlockItem::Line { .. } => "Line".to_string(),
-        BlockItem::Unknown => "Unknown item".to_string(),
     }
 }
 
@@ -591,8 +589,9 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, sheet: &ecad_drawing
         });
         if let Some(choice) = pick {
             ed.canvas.field_menu = None;
-            if let (Some(b), Some(d)) = (choice, ed.draft.as_mut()) {
-                let bind = ecad_model::title_block::Binding::parse(b);
+            if let (Some(b), Some(d)) = (choice, ed.draft.as_mut())
+                && let Ok(bind) = ecad_model::title_block::Binding::parse(b)
+            {
                 let label = PALETTE
                     .iter()
                     .find_map(|row| match row.drops {

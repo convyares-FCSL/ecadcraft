@@ -4,6 +4,7 @@
 use cadcraft_engine::Session;
 use ecad_electrical::CmdError;
 use ecad_electrical::cmd::plc as rules;
+use ecad_model::units::{Degrees, Radians};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -20,7 +21,7 @@ use std::collections::{BTreeMap, BTreeSet};
 /// §4.4): joins card `device` (or the card tagged `tag`, or a new card) as its next free channel or
 /// the channel numbered `channel`; on a wire its first point lands there. One transaction.
 pub(crate) fn place_channel(
-    s: &mut Session, params: &crate::cmd::device::PlaceParams, starter: &'static Starter, at: Pt, degrees: f64, mirror: bool,
+    s: &mut Session, params: &crate::cmd::device::PlaceParams, starter: &'static Starter, at: Pt, degrees: Degrees, mirror: bool,
 ) -> cadcraft_engine::Result<Value> {
     let t = cell_type(starter).ok_or_else(|| err("That symbol is not a PLC channel."))?;
     let device = params.device_id()?;
@@ -58,11 +59,11 @@ pub(crate) fn place_channel(
         } else {
             join(doc, card, starter, named, &BTreeSet::new(), &BTreeSet::new())?
         };
-        let mut pl = Placement { origin: at, rotation: degrees.to_radians(), mirror, scale: 1.0 };
+        let mut pl = Placement { origin: at, rotation: Radians::from(degrees), mirror, scale: 1.0 };
         // Pack re-run, bug 5: a cell placed near the line of its card's cells on this page goes onto
         // that line, so the card keeps one frame.
         if !new && let Some(q) = first_point(starter, &pl) {
-            let dir = if (degrees.rem_euclid(360.0) - 180.0).abs() < 0.5 { 1.0 } else { -1.0 };
+            let dir = if (degrees.0.rem_euclid(360.0) - 180.0).abs() < 0.5 { 1.0 } else { -1.0 };
             let line = crate::plc::look::runs_of_card(doc, card, page)
                 .iter()
                 .filter(|r| r.dir == dir && (r.top - q.y).abs() <= SNAP_TO_LINE)

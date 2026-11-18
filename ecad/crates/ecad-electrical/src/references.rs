@@ -514,7 +514,8 @@ pub fn linked(doc: &Document) -> BTreeSet<RepresentationId> {
 // ---------------------------------------------------------------- per commit (brief 014)
 
 /// Style catalogues no cable reference reads (brief 053): a change of one reaches no reference.
-const NO_REFERENCE_STYLES: &[&str] = &["text", "wire", "location"];
+const NO_REFERENCE_STYLES: &[ecad_model::StyleCatalogue] =
+    &[ecad_model::StyleCatalogue::Text, ecad_model::StyleCatalogue::Wire, ecad_model::StyleCatalogue::Location];
 
 /// The cables whose references, or whose drawing at a reference end on any page, `ops` could
 /// change; `None` when that could be any cable (op kinds a drawing edit does not produce, such as
@@ -583,13 +584,17 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
             Op::SetProperty { object: ecad_model::ObjectRef::Device(_), .. } => {}
             // Brief 019 (design 019 §9): a page's number or sheet changes what the references on it
             // say about themselves, so their cables (whose other ends show it).
-            Op::SetProperty { object: ecad_model::ObjectRef::Page(p), key, .. }
-                if key == ecad_model::book::NUMBER_KEY || key == ecad_model::sheet::SHEET_KEY || key == ecad_model::sheet::PAGE_TYPE_KEY =>
-            {
-                out.extend(cables_on(doc, *p));
+            Op::ModifyPage { id: p, before, after } => {
+                let ch = before.change(after);
+                if ch.number || ch.sheet || ch.page_type {
+                    out.extend(cables_on(doc, *p));
+                }
+                if ch.folder {
+                    moved_cables(doc, ops, &mut moved, &mut out);
+                }
             }
             // Brief 054 (design 054 §10.2): a page type's sheet, on its pages only.
-            Op::SetStyle { catalogue, .. } if catalogue == crate::styles::page::WORD => {
+            Op::SetStyle { catalogue, .. } if *catalogue == ecad_model::StyleCatalogue::Page => {
                 if let Some((pages, true)) = crate::styles::page::touched_by(doc, op) {
                     for p in pages {
                         out.extend(cables_on(doc, p));
@@ -599,9 +604,6 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
             // A page moved between folders, a page added, removed or moved, a folder op: only the
             // pages whose book position changed may read differently (an unnumbered page's
             // number, the order of a cable's partners); a rename in place or an append moves none.
-            Op::SetProperty { object: ecad_model::ObjectRef::Page(_), key, .. } if key == ecad_model::book::FOLDER_KEY => {
-                moved_cables(doc, ops, &mut moved, &mut out);
-            }
             Op::SetProperty { object: ecad_model::ObjectRef::Page(_) | ecad_model::ObjectRef::Project, .. } => {}
             Op::AddPage { .. } | Op::RemovePage { .. } | Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => {
                 moved_cables(doc, ops, &mut moved, &mut out)
@@ -627,7 +629,7 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
             // so they reach none (before, every cable: `textstyle` derived every reference twice).
             // Any other catalogue (the frame, one added later) and a standard, which may come to
             // carry sheets, still reach every cable.
-            Op::SetStyle { catalogue, .. } if NO_REFERENCE_STYLES.contains(&catalogue.as_str()) => {}
+            Op::SetStyle { catalogue, .. } if NO_REFERENCE_STYLES.contains(catalogue) => {}
             // Brief 053: a deleted component has no terminals and no representations left (the
             // model's invariants I8 and I10); removing those is its own op above, so the record
             // itself reaches no reference (`toposition` derived every one twice).

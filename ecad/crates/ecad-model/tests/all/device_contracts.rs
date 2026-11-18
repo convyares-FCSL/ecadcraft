@@ -35,7 +35,10 @@ fn symbol(fx: &Fx, definition: DefinitionId, at: Pt) -> Item {
     Item {
         page: fx.page,
         style: Style { layer: fx.layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 },
-        kind: ItemKind::Symbol(SymbolInstance { definition, placement: Placement { origin: at, rotation: 0.0, mirror: false, scale: 1.0 } }),
+        kind: ItemKind::Symbol(SymbolInstance {
+            definition,
+            placement: Placement { origin: at, rotation: ecad_model::units::Radians(0.0), mirror: false, scale: 1.0 },
+        }),
     }
 }
 
@@ -47,7 +50,7 @@ fn fixture() -> Fx {
         Author::User,
         "setup",
         vec![
-            Op::AddPage { id: page, page: Page::new("1"), index: 0 },
+            Op::AddPage { id: page, page: Page::titled("1").unwrap(), index: 0 },
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
             Op::EmbedDefinition { id: coil, definition: def("coil", ["A1", "A2"]) },
             Op::EmbedDefinition { id: contact, definition: def("no", ["13", "14"]) },
