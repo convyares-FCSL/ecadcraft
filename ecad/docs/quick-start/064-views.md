@@ -23,3 +23,8 @@ Progress (automated checks only, not owner-tried):
   `/page.column`) follows each change, and undo puts it back. Renaming another page or editing
   a wire leaves the list alone. The Properties feed follows once lane 072 B has moved each
   group's data into fields.
+- Step 5, first index: the connector index (`ConnectorsView`) is now one of the views, built on
+  open and branch switch and kept from each commit. To try it: place two connectors (Connector,
+  both halves) on different pages, give one its own socket side name in Properties, then set the
+  project's socket side name in Settings; only the other connector's half tags change, on its
+  page, and undo puts them back.

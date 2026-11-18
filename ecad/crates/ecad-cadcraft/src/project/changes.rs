@@ -32,6 +32,12 @@ impl Project {
         self.page_list_version
     }
 
+    /// The kept connector index (brief 044, design 044 §11.1), kept by the views' pipeline
+    /// (`ecad_electrical::derived::ConnectorsView`).
+    pub fn connectors(&self) -> &crate::connectors::Index {
+        self.derived.connectors()
+    }
+
     /// Number of the last change the project went through (a transaction, an undo or redo, a view
     /// switch); 0 before the first. Cheap: callers compare it every frame.
     pub fn change_count(&self) -> u64 {
@@ -375,7 +381,12 @@ impl Project {
     /// What follows every commit, on all three paths (design 064 §5): the change log entry, the
     /// redraw the path calls for, and the lines for the command line.
     pub(super) fn apply_changes(&mut self, pg: &mut Pages<'_>, command: &str, changes: Changes, path: Path<'_>) {
-        let Changes { mut pages, named, devices, props, list, frame_stale, echo, problems: _ } = changes;
+        let Changes { mut pages, named, devices, props, list, frame_stale, echo, problems } = changes;
+        // Verify mode: a kept view that differed from a fresh build (it was rebuilt).
+        let head = self.ledger.head();
+        for line in problems {
+            self.events.record(EventKind::IndexRebuilt, None, head, None, line);
+        }
         if let Path::Interactive { page } = path {
             // The edited page was drawn by the commit itself.
             pages.insert(page);
@@ -421,22 +432,6 @@ impl Project {
         let ops = ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
         let mut out = watch.finish(ledger.document(), &mut self.xref, ops, &crate::draw::text_style::EngineMetrics);
         let head = ledger.head();
-        // Brief 044 (design 044 §11.1): the connector index, from the ops; verify mode compares it
-        // with a rebuild.
-        let touched = crate::connectors::Index::touched(ledger.document(), ops);
-        self.connectors.update(ledger.document(), &touched);
-        if ecad_model::ledger::verify_mode() && self.connectors != crate::connectors::Index::build(ledger.document()) {
-            self.connectors = crate::connectors::Index::build(ledger.document());
-            out.problems.push("the kept connector index differed from a rebuild; rebuilt".into());
-        }
-        // A project naming or description default redraws the connectors that inherit it.
-        let named = self.connectors.pages_for(ops);
-        if !named.is_empty() {
-            out.pages = out.pages.map(|mut p| {
-                p.extend(named);
-                p
-            });
-        }
         for line in std::mem::take(&mut out.problems) {
             self.events.record(EventKind::IndexRebuilt, None, head, None, line);
         }
