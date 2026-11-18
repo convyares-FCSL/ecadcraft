@@ -17,7 +17,7 @@ pub struct Device {
 
 /// The device of subject `s`: its `protected_by`, else the trace's.
 pub(super) fn device_of(doc: &Document, s: RatedSubject, found: &Found, issues: &mut Vec<Issue>) -> Option<Device> {
-    if let Some(named) = s.props(doc).and_then(|p| p.get(PROTECTED_BY)).filter(|v| !v.trim().is_empty()) {
+    if let Some(named) = s.circuit(doc).and_then(|c| c.protected_by()) {
         return match trace::named(doc, named) {
             Some((c, fuse)) => {
                 let amps = trace::amps_of(doc, c, fuse.as_deref());

@@ -277,7 +277,7 @@ pub fn wire_is_rated(doc: &Document, ctx: &Context, c: WireId) -> bool {
         return false;
     }
     let Some(x) = doc.wires.get(&c) else { return false };
-    if !x.rating.is_empty() || x.load.is_some() || x.display.contains_key(PROTECTED_BY) {
+    if !x.rating.is_empty() || x.load.is_some() || x.protected_by().is_some() {
         return true;
     }
     let (cat, _) = ctx.looks.category(doc, c);
@@ -287,10 +287,10 @@ pub fn wire_is_rated(doc: &Document, ctx: &Context, c: WireId) -> bool {
 /// Whether cable `k` is a rated subject (design 057 §7).
 pub fn cable_is_rated(doc: &Document, ctx: &Context, k: CableId) -> bool {
     let Some(x) = doc.cables.get(&k) else { return false };
-    if !x.rating.is_empty() || x.load.is_some() || x.properties.contains_key(PROTECTED_BY) || cable::of(doc, k).is_some() {
+    if !x.rating.is_empty() || x.load.is_some() || x.protected_by().is_some() || cable::of(doc, k).is_some() {
         return true;
     }
-    ctx.table.is_some() && x.properties.get("type").and_then(|t| crate::strips::notation_size(t)).is_some()
+    ctx.table.is_some() && x.type_text().and_then(crate::strips::notation_size).is_some()
 }
 
 /// The panel temperature of a wire (design 057 §4.4): the hottest of its ends' locations, else
@@ -334,12 +334,12 @@ pub(super) fn panel_temperature_at(doc: &Document, ctx: &mut Context, c: WireId)
 
 /// Evaluate subject `s` with its trace result `found`.
 pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Found) -> Rating {
-    let props = s.props(doc);
+    let circuit = s.circuit(doc);
     let mut issues = Vec::new();
     let mut factors = Vec::new();
     let is_cable = matches!(s, RatedSubject::Cable(_));
     // Basis.
-    let (inp, _) = s.inputs(doc);
+    let inp = circuit.map(|c| *c.inputs()).unwrap_or_default();
     let own_basis = inp.basis;
     let default_basis = Basis::parse(project_word(doc, if is_cable { &defaults::rating::CABLE_BASIS } else { &defaults::rating::WIRE_BASIS }))
         .unwrap_or(if is_cable { Basis::Table } else { Basis::Datasheet });
@@ -358,7 +358,7 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
                 .as_ref()
                 .and_then(|id| styles::field_of(doc, ecad_model::StyleCatalogue::Cable, id, "size", None))
                 .and_then(|r| parse::cross_section(&r.text()));
-            let size = from_type.or_else(|| props.and_then(|p| p.get("type")).and_then(|t| crate::strips::notation_size(t)));
+            let size = from_type.or_else(|| circuit.and_then(|c| c.type_text()).and_then(crate::strips::notation_size));
             (sh, size, ty.is_none())
         }
     };
@@ -573,7 +573,7 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
     }
     // Volt drop (cables only, §3.5).
     let voltdrop =
-        if is_cable { volt_drop_of(doc, ctx, s, props, &inp, &sh, size, system, load.as_ref(), device.as_ref(), &mut issues) } else { None };
+        if is_cable { volt_drop_of(doc, ctx, circuit, &inp, &sh, size, system, load.as_ref(), device.as_ref(), &mut issues) } else { None };
     Rating {
         subject: s,
         basis,
@@ -604,10 +604,10 @@ pub(super) fn larger_size(ctx: &Context, size: Option<f64>, method: &str, max: f
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn volt_drop_of(
-    doc: &Document, ctx: &Context, s: RatedSubject, props: Option<&ecad_model::Properties>, inp: &CircuitInputs, sh: &Sheet, size: Option<f64>,
-    system: &str, load: Option<&Load>, device: Option<&Device>, issues: &mut Vec<Issue>,
+    doc: &Document, ctx: &Context, circuit: Option<&dyn Circuit>, inp: &CircuitInputs, sh: &Sheet, size: Option<f64>, system: &str,
+    load: Option<&Load>, device: Option<&Device>, issues: &mut Vec<Issue>,
 ) -> Option<VoltDrop> {
-    let metres = props.and_then(|p| p.get("length")).and_then(|v| parse::length_m(v))?;
+    let metres = circuit.and_then(|c| c.length()).and_then(parse::length_m)?;
     let (amps, why) = match (load, device.and_then(|d| d.amps.map(|a| (a, d.tag.clone())))) {
         (Some(l), _) => (l.amps, if l.from == LoadFrom::Typed { "typed".to_string() } else { "from Power".to_string() }),
         (None, Some((a, tag))) => (a, format!("{tag} rating")),
@@ -653,7 +653,6 @@ pub(super) fn volt_drop_of(
             .filter_map(|x| t.data.resistance(sh.class, x).and_then(|r| volt_drop(r, sh.max, three, amps, metres, volts)).map(|(_, p)| (x, p)))
             .find(|(_, p)| *p <= limit);
     }
-    let _ = s;
     Some(VoltDrop { volts: du, percent: pc, amps, why, limit, limit_from, larger })
 }
 

@@ -322,7 +322,7 @@ impl Colours {
     }
 
     /// The colours `text` names, in any form and case, separated by `/`, `-`, `+`, spaces or
-    /// commas; two-letter codes may run together (`GNYE`).
+    /// commas; two- or three-letter codes may run together (`GNYE`, `GRNYEL`).
     ///
     /// # Example
     /// ```
@@ -330,6 +330,7 @@ impl Colours {
     /// assert_eq!(Colours::parse("GNYE").map(|c| c.to_string()), Some("GN/YE".into()));
     /// assert_eq!(Colours::parse("green / yellow").map(|c| c.to_string()), Some("GN/YE".into()));
     /// assert_eq!(Colours::parse("blu").map(|c| c.to_string()), Some("BU".into()));
+    /// assert_eq!(Colours::parse("GRNYEL").map(|c| c.to_string()), Some("GN/YE".into()));
     /// assert_eq!(Colours::parse("tartan"), None);
     /// ```
     pub fn parse(text: &str) -> Option<Colours> {
@@ -343,15 +344,22 @@ impl Colours {
                 list.push(c);
                 continue;
             }
-            // Two-letter codes run together (`GNYE`).
+            // Codes of one length run together (`GNYE`, `GRNYEL`).
             let chars: Vec<char> = part.chars().collect();
-            if !chars.len().is_multiple_of(2) {
-                return None;
-            }
-            for pair in chars.chunks(2) {
-                let code: String = pair.iter().collect();
-                list.push(ConductorColour::ALL.iter().copied().find(|c| c.forms().code2.eq_ignore_ascii_case(&code))?);
-            }
+            let run = |n: usize| -> Option<Vec<ConductorColour>> {
+                if !chars.len().is_multiple_of(n) {
+                    return None;
+                }
+                chars
+                    .chunks(n)
+                    .map(|code| {
+                        let code: String = code.iter().collect();
+                        let form = |c: &ConductorColour| if n == 2 { &c.forms().code2 } else { &c.forms().code3 };
+                        ConductorColour::ALL.iter().copied().find(|c| form(c).eq_ignore_ascii_case(&code))
+                    })
+                    .collect()
+            };
+            list.extend(run(2).or_else(|| run(3))?);
         }
         Colours::new(list)
     }

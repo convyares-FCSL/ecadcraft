@@ -71,7 +71,7 @@ fn title(d: &mut Draw, r: R, text: &str, look: TextLook, s: f64) -> f64 {
 /// A filled swatch (the insulation colour) with a thin ink outline; a two-colour code as halves.
 fn swatch(d: &mut Draw, at: (f64, f64), w: f64, h: f64, code: &str) {
     let rgb = |i: usize| {
-        crate::words::CODE_COLOURS.get(i).map(|(_, _, paper, _)| {
+        crate::words::CODE_COLOURS.get(i).map(|(_, paper, _)| {
             let c = crate::look::rgb(*paper);
             cadcraft_engine::doc::color::nearest_aci(c)
         })

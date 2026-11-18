@@ -227,19 +227,11 @@ impl Block {
     }
 }
 
-/// The colour words of an IEC 60757 code (design 054 §6.2): `BK` black, `GNYE` green / yellow; a
-/// free text as typed.
+/// The colour words of a colour code (design 054 §6.2): `BK` black, `GNYE` green / yellow, from
+/// [`ecad_model::colour::ConductorColour::forms`]; a free text as typed.
 pub fn colour_words(code: &str) -> String {
-    const WORDS: [&str; 14] =
-        ["black", "brown", "red", "orange", "yellow", "green", "blue", "violet", "grey", "white", "pink", "gold", "turquoise", "silver"];
-    match crate::words::colour_code(code) {
-        Some((a, b)) => {
-            let w = |i: usize| WORDS.get(i).copied().unwrap_or_default();
-            match b {
-                Some(b) => format!("{} / {}", w(a), w(b)),
-                None => w(a).to_string(),
-            }
-        }
+    match ecad_model::wire::Colours::parse(code) {
+        Some(c) => c.list().iter().map(|x| x.shown(ecad_model::colour::ColourWords::Name).to_lowercase()).collect::<Vec<_>>().join(" / "),
         None => code.trim().to_string(),
     }
 }
