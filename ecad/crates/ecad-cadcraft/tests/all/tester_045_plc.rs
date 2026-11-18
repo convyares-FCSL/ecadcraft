@@ -205,7 +205,7 @@ pub(crate) fn raw(h: &mut H, ops: Vec<Op>) {
 
 pub(crate) fn raw_setprop(h: &mut H, c: DeviceId, key: &str, value: Option<&str>) {
     let d = h.doc();
-    if ecad_model::keys::is_reserved(key) {
+    if ecad_model::keys::is_reserved_on(ecad_model::keys::Holder::Device, key) {
         raw(h, vec![crate::common::plc_raw(&d, c, key, value)]);
         return;
     }
