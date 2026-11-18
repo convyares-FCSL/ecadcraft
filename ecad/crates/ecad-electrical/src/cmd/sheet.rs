@@ -152,7 +152,7 @@ pub fn new_folder(doc: &Document, ids: &mut IdAllocator, name: &str, parent: Opt
     }
     let id: FolderId = ids.fresh();
     let index = doc.folder_order.len();
-    Ok((id, Op::AddFolder { id, folder: Folder { name: name.to_string(), parent }, index }))
+    Ok((id, Op::AddFolder { id, folder: Folder::new(name, parent), index }))
 }
 
 /// `renamefolder`: the op renaming `folder` to `name`; `None` when it already has that name.
@@ -165,7 +165,7 @@ pub fn rename_folder(doc: &Document, f: FolderId, name: &str) -> Result<Option<O
         return Ok(None);
     }
     check_sibling_name(doc, old.parent, name, Some(f))?;
-    let after = Folder { name: name.to_string(), parent: old.parent };
+    let after = Folder { name: name.to_string(), ..old.clone() };
     Ok(Some(Op::ModifyFolder { id: f, before: old, after }))
 }
 
@@ -213,7 +213,7 @@ pub fn move_folder(doc: &Document, f: FolderId, parent: Option<FolderId>, index:
     if to == from && parent == old.parent {
         return Ok(Vec::new());
     }
-    let after = Folder { name: old.name.clone(), parent };
+    let after = Folder { parent, ..old.clone() };
     Ok(vec![Op::RemoveFolder { id: f, folder: old, index: from }, Op::AddFolder { id: f, folder: after, index: to }])
 }
 
@@ -246,13 +246,11 @@ pub fn delete_folder(doc: &Document, f: FolderId) -> Result<DeletedFolder, CmdEr
         if check_sibling_name(doc, old.parent, &before.name, Some(f)).is_err() {
             return Err(CmdError::refused(format!("Rename sub-folder \"{}\" first: its new place already has a folder of that name.", before.name)));
         }
-        let after = Folder { name: before.name.clone(), parent: old.parent };
+        let after = Folder { parent: old.parent, ..before.clone() };
         ops.push(Op::ModifyFolder { id: sub, before, after });
     }
     let index = doc.folder_order.iter().position(|x| *x == f).ok_or(CmdError::refused(msg::NO_SUCH_FOLDER))?;
     ops.push(Op::RemoveFolder { id: f, folder: old.clone(), index });
-    // Brief 054 (design 054 §4.3): its start number goes with it.
-    ops.extend(set(ObjectRef::Project, Some(&doc.properties), &crate::page_types::start_key(f), None));
     let to = match old.parent.and_then(|x| doc.folders.get(&x)) {
         Some(x) => format!("\"{}\"", x.name),
         None => "the top level".into(),

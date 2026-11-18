@@ -281,7 +281,8 @@ pub const RESERVED_ON: &[(Holder, PropKey)] = &[
 
 /// Key prefixes that became struct fields on one holder: the project's location and function
 /// lists (`designation.l.<id>.code`) and revision rows (`rev.<n>.<field>`), design 072 §5.3.
-pub const RESERVED_PREFIXES: &[(Holder, &str)] = &[(Holder::Project, "designation."), (Holder::Project, crate::project::REVISIONS_KEY)];
+pub const RESERVED_PREFIXES: &[(Holder, &str)] =
+    &[(Holder::Project, "designation."), (Holder::Project, crate::project::REVISIONS_KEY), (Holder::Project, "folder.")];
 
 /// Whether `key` became a struct field on `holder` ([`RESERVED`], [`RESERVED_ON`],
 /// [`RESERVED_PREFIXES`]).

@@ -94,8 +94,8 @@ fn ac16_page_type_writes_by_the_agent_then_refused_with_writes_off() {
         c.exec("movepage", json!({"page": page, "folder": f}));
         let (_, ops) = one_by_agent_then_undo(&mut c, "folderprops", json!({"folder": f, "start": "100"}));
         assert!(
-            matches!(ops.as_slice(), [Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. }] if key == &format!("folder.{f}.start")),
-            "FP7: {ops:?}"
+            matches!(ops.as_slice(), [Op::ModifyFolder { after, .. }] if after.start.as_ref().map(ecad_model::PageNo::as_str) == Some("100")),
+            "Folder.start: {ops:?}"
         );
         let (_, ops) = one_by_agent_then_undo(&mut c, "renumberpages", json!({}));
         assert!(!ops.is_empty() && ops.iter().all(|o| o.name() == "ModifyPage"), "{ops:?}");

@@ -54,6 +54,9 @@ pub struct Page {
 pub struct Folder {
     pub name: String,
     pub parent: Option<FolderId>,
+    /// Design 072 §5.2: left out while unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start: Option<m::PageNo>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -1112,13 +1115,13 @@ impl From<Page> for m::Page {
 
 impl From<&m::Folder> for Folder {
     fn from(f: &m::Folder) -> Self {
-        Folder { name: f.name.clone(), parent: f.parent }
+        Folder { name: f.name.clone(), parent: f.parent, start: f.start.clone() }
     }
 }
 
 impl From<Folder> for m::Folder {
     fn from(f: Folder) -> Self {
-        m::Folder { name: f.name, parent: f.parent }
+        m::Folder { name: f.name, parent: f.parent, start: f.start }
     }
 }
 

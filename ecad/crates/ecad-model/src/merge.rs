@@ -746,6 +746,7 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                     parent: field(ctx, obj, "parent", format!("{what} · placed in"), &a.parent, &t.parent, &s.parent, &|x| {
                         x.map_or_else(|| "the top level".into(), |f| name_of(&docs, Obj::Folder(f)))
                     }),
+                    start: field(ctx, obj, "start", format!("{what} · start number"), &a.start, &t.start, &s.start, &|x| shown_value(x.as_ref())),
                 });
                 set(&mut m.folders, id, v);
             }
