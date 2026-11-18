@@ -213,7 +213,8 @@ fn record_value<'a>(doc: &'a Document, r: &'a StyleRecord, cat: &Catalogue, f: &
         }
         StyleBody::RatingTable(t) => ratingtable::get(t, f.key),
         StyleBody::Page(t) => page::get(t, f.key),
-        StyleBody::Cable(_) | StyleBody::Frame(_) => stored(r, cat.catalogue, f.key).and_then(|s| defaults::parse_value_in(doc, f.kind, s)),
+        StyleBody::Frame(t) => frame::get(t, f.key).filter(|v| in_range(f.kind, v)),
+        StyleBody::Cable(_) => stored(r, cat.catalogue, f.key).and_then(|s| defaults::parse_value_in(doc, f.kind, s)),
     }
 }
 
@@ -570,7 +571,7 @@ pub fn with_fields(
             StyleBody::RatingTable(t) => ratingtable::set(t, k, v.as_deref())?,
             StyleBody::Page(t) => page::set(t, k, v.as_deref())?,
             StyleBody::Cable(p) => set_text(p, k, v.as_deref()),
-            StyleBody::Frame(f) => set_text(&mut f.fields, k, v.as_deref()),
+            StyleBody::Frame(f) => frame::set(f, k, v.as_deref())?,
         }
     }
     Ok(r)

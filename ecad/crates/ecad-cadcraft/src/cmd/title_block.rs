@@ -73,7 +73,7 @@ pub fn pages_using(doc: &Document, id: &StyleRef) -> Vec<PageId> {
 
 /// The margins of frame `id` (its field, else 019's).
 fn margins(doc: &Document, id: &StyleRef) -> Margins {
-    sheet::frame_field(doc, id, sheet::FRAME_MARGINS_FIELD).and_then(sheet::parse_margins).unwrap_or_default()
+    sheet::frame_margins(doc, id).unwrap_or_default()
 }
 
 /// The layout frame `id` draws on `spec`: its own, or the house block for that sheet.
@@ -93,14 +93,12 @@ pub fn own_keys(layout: &TitleBlockLayout) -> BTreeSet<String> {
 
 /// The sheet frame `id` is drawn for (`page` for the page's own).
 fn frame_sheet_text(doc: &Document, id: &StyleRef) -> String {
-    sheet::frame_field(doc, id, sheet::FRAME_SHEET_FIELD)
-        .and_then(sheet::parse_frame_sheet)
-        .map_or_else(|| crate::styles::frame::PAGE_SHEET.to_string(), |s| s.text())
+    sheet::frame_spec(doc, id).map_or_else(|| crate::styles::frame::PAGE_SHEET.to_string(), |s| s.text())
 }
 
 /// One row of `titleblocks`.
 fn row_json(doc: &Document, row: &styles::Row) -> Value {
-    let spec = sheet::frame_field(doc, &row.id, sheet::FRAME_SHEET_FIELD).and_then(sheet::parse_frame_sheet).unwrap_or(doc.settings.sheet());
+    let spec = sheet::frame_spec(doc, &row.id).unwrap_or(doc.settings.sheet());
     let layout = layout_of(doc, &row.id, &spec);
     let keys: Vec<String> = own_keys(&layout).into_iter().collect();
     json!({

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use crate::common::{PROJECT, SEED, WRITER};
 use ecad_file::{ProjectV2, Store};
-use ecad_model::style::{FrameFields, StyleBody};
+use ecad_model::style::{FrameStyle, StyleBody};
 use ecad_model::style::{StyleLayer, StyleRecord, StyleRef};
 use ecad_model::title_block::{Binding, BlockItem, IfEmpty, Ink, Newest, Rect, Source, TextLook, TitleBlockLayout};
 use ecad_model::{Author, Ledger, Op, Primitive, Pt};
@@ -59,8 +59,8 @@ fn layout() -> TitleBlockLayout {
 
 fn ledger() -> Ledger {
     let mut l = Ledger::new(SEED);
-    let fields = [("sheet".to_string(), "A3".to_string())].into();
-    let rec = StyleRecord::new("A3 Northfield", StyleBody::Frame(FrameFields { fields, title_block: Some(layout()) }));
+    let style = FrameStyle { sheet: ecad_model::style::frame::FrameSheet::parse("A3"), title_block: Some(layout()), ..FrameStyle::default() };
+    let rec = StyleRecord::new("A3 Northfield", StyleBody::Frame(style));
     l.commit(
         Author::Agent("tester".into()),
         "New title block",

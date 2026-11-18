@@ -17,7 +17,7 @@ use cadcraft_engine::Session;
 use cadcraft_engine::doc::{Drawing, Entity, EntityKind};
 use cadcraft_engine::geom::{Mat3, Vec2};
 use ecad_electrical::CmdError;
-use ecad_model::sheet::{self, FRAME_CATALOGUE, SheetSpec};
+use ecad_model::sheet::{FRAME_CATALOGUE, SheetSpec};
 use ecad_model::style::{StyleLayer, StyleRecord, StyleRef};
 use ecad_model::title_block::{
     Align, BlockItem, LineWeight, MAX_BODY_PRIMS, MAX_ITEMS, MAX_LOGO_PRIMS, MAX_TEXT_MM, MIN_TEXT_MM, Rect, TextLook, TitleBlockLayout, logo_words,
@@ -322,8 +322,12 @@ pub fn run_import(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
                         .unwrap_or(base)
                 }
             };
-            let fields = [(sheet::FRAME_SHEET_FIELD.to_string(), spec.text()), ("block".to_string(), "bottom_right".to_string())].into();
-            let body = ecad_model::style::StyleBody::Frame(ecad_model::style::FrameFields { fields, title_block: Some(layout) });
+            let body = ecad_model::style::StyleBody::Frame(ecad_model::style::FrameStyle {
+                sheet: Some(ecad_model::style::frame::FrameSheet::Sheet(spec)),
+                block: Some(ecad_model::style::frame::BlockAt::BottomRight),
+                title_block: Some(layout),
+                ..Default::default()
+            });
             let rec = StyleRecord::new(name.clone(), body);
             let id = StyleRef::Own(p.ids.fresh::<u128>());
             crate::styles::check_record(doc, &crate::styles::frame::CATALOGUE, &id, StyleLayer::Project, &rec)?;

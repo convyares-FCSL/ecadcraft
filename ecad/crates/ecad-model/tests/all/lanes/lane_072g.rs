@@ -155,3 +155,33 @@ fn a_page_type_reads_its_typed_fields_only() {
         assert!(serde_json::from_value::<StyleRecord>(w).is_err(), "{k}");
     }
 }
+
+/// Frame styles (design 072 §8): typed weights, colour, switches, sheet, margins, block and title
+/// block; strict read.
+#[test]
+fn a_frame_style_reads_its_typed_fields_only() {
+    use ecad_model::style::FrameStyle;
+    use ecad_model::style::frame::{BlockAt, FrameMargins, FrameSheet};
+    let f = FrameStyle {
+        border_weight: Some(Mm(0.7)),
+        grid_labels: Some(false),
+        sheet: FrameSheet::parse("page"),
+        margins: ecad_model::sheet::parse_margins("15,10,12,8").map(FrameMargins),
+        block: Some(BlockAt::BottomRight),
+        title_block: Some(ecad_model::title_block::TitleBlockLayout::blank(180.0, 40.0)),
+        ..FrameStyle::default()
+    };
+    let v = serde_json::to_value(StyleRecord::new("A2", StyleBody::Frame(f.clone()))).unwrap();
+    assert_eq!(v["body"]["frame"]["margins"], "15,10,12,8");
+    assert_eq!(serde_json::from_value::<StyleRecord>(v.clone()).unwrap().body, StyleBody::Frame(f));
+    for (k, bad) in [
+        ("margins", serde_json::json!("1,2")),
+        ("sheet", serde_json::json!("A9")),
+        ("block", serde_json::json!("top")),
+        ("stamp", serde_json::json!({})),
+    ] {
+        let mut w = v.clone();
+        w["body"]["frame"][k] = bad;
+        assert!(serde_json::from_value::<StyleRecord>(w).is_err(), "{k}");
+    }
+}

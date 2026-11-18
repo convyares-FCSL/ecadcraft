@@ -18,12 +18,14 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::doc::Properties;
 use crate::id::{LibraryId, StandardId};
 
+pub mod frame;
 pub mod location;
 pub mod page;
 pub mod rating;
 pub mod text;
 pub mod wire;
 
+pub use frame::FrameStyle;
 pub use location::LocationStyle;
 pub use page::PageType;
 pub use rating::RatingTable;
@@ -230,8 +232,12 @@ impl StyleRecord {
     pub fn fields(&self) -> Option<&Properties> {
         match &self.body {
             StyleBody::Cable(p) => Some(p),
-            StyleBody::Frame(f) => Some(&f.fields),
-            StyleBody::Location(_) | StyleBody::Page(_) | StyleBody::RatingTable(_) | StyleBody::Text(_) | StyleBody::Wire(_) => None,
+            StyleBody::Frame(_)
+            | StyleBody::Location(_)
+            | StyleBody::Page(_)
+            | StyleBody::RatingTable(_)
+            | StyleBody::Text(_)
+            | StyleBody::Wire(_) => None,
         }
     }
 
@@ -239,8 +245,12 @@ impl StyleRecord {
     pub fn fields_mut(&mut self) -> Option<&mut Properties> {
         match &mut self.body {
             StyleBody::Cable(p) => Some(p),
-            StyleBody::Frame(f) => Some(&mut f.fields),
-            StyleBody::Location(_) | StyleBody::Page(_) | StyleBody::RatingTable(_) | StyleBody::Text(_) | StyleBody::Wire(_) => None,
+            StyleBody::Frame(_)
+            | StyleBody::Location(_)
+            | StyleBody::Page(_)
+            | StyleBody::RatingTable(_)
+            | StyleBody::Text(_)
+            | StyleBody::Wire(_) => None,
         }
     }
 
@@ -265,7 +275,7 @@ impl StyleRecord {
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum StyleBody {
     Cable(Properties),
-    Frame(FrameFields),
+    Frame(FrameStyle),
     Location(LocationStyle),
     Page(PageType),
     #[serde(rename = "ratingtable")]
@@ -279,7 +289,7 @@ impl StyleBody {
     pub fn empty(catalogue: StyleCatalogue) -> StyleBody {
         match catalogue {
             StyleCatalogue::Cable => StyleBody::Cable(Properties::new()),
-            StyleCatalogue::Frame => StyleBody::Frame(FrameFields::default()),
+            StyleCatalogue::Frame => StyleBody::Frame(FrameStyle::default()),
             StyleCatalogue::Location => StyleBody::Location(LocationStyle::default()),
             StyleCatalogue::Page => StyleBody::Page(PageType::default()),
             StyleCatalogue::RatingTable => StyleBody::RatingTable(RatingTable::default()),
@@ -309,7 +319,7 @@ impl StyleBody {
             StyleBody::RatingTable(r) => r.entries().into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
             StyleBody::Location(l) => l.entries().into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
             StyleBody::Text(t) => t.entries().into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
-            StyleBody::Frame(f) => f.fields.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+            StyleBody::Frame(f) => f.entries().into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
             StyleBody::Wire(w) => w.entries().into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
         }
     }
@@ -322,7 +332,7 @@ impl StyleBody {
             StyleBody::RatingTable(r) => *r == RatingTable::default(),
             StyleBody::Location(l) => *l == LocationStyle::default(),
             StyleBody::Text(t) => *t == TextStyle::default(),
-            StyleBody::Frame(f) => f.fields.is_empty() && f.title_block.is_none(),
+            StyleBody::Frame(f) => *f == FrameStyle::default(),
             StyleBody::Wire(w) => *w == WireType::default(),
         }
     }
@@ -330,6 +340,19 @@ impl StyleBody {
     /// The stored text of field `key`, if the body sets it.
     pub fn entry(&self, key: &str) -> Option<String> {
         self.entries().into_iter().find(|(k, _)| k == key).map(|(_, v)| v)
+    }
+
+    /// Its frame style, if it is one.
+    pub fn frame(&self) -> Option<&FrameStyle> {
+        match self {
+            StyleBody::Frame(f) => Some(f),
+            StyleBody::Cable(_)
+            | StyleBody::Location(_)
+            | StyleBody::Page(_)
+            | StyleBody::RatingTable(_)
+            | StyleBody::Text(_)
+            | StyleBody::Wire(_) => None,
+        }
     }
 
     /// Its page type, if it is one.
@@ -370,16 +393,6 @@ impl StyleBody {
             | StyleBody::Text(_) => None,
         }
     }
-}
-
-/// A frame style's fields and its title block (brief 055, FP1).
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct FrameFields {
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub fields: Properties,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub title_block: Option<crate::title_block::TitleBlockLayout>,
 }
 
 /// A layer's style records: catalogue → style → record.
