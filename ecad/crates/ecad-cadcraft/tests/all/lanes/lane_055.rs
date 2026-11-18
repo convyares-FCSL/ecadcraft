@@ -407,8 +407,18 @@ fn references_follow_the_frames_sheet() {
 #[test]
 fn a_standard_switch_redraws_the_frame() {
     let page = PageId(0);
-    let a = ecad_model::StandardHeader { id: ecad_model::StandardId(1), name: "A".into(), based_on: "iec".into(), origin: None };
-    let b = ecad_model::StandardHeader { id: ecad_model::StandardId(2), name: "B".into(), based_on: "iec".into(), origin: None };
+    let a = ecad_model::StandardHeader {
+        id: ecad_model::StandardId(1),
+        name: ecad_model::style::StyleName::new("A").unwrap(),
+        based_on: ecad_model::style::BasedOn::Iec,
+        origin: None,
+    };
+    let b = ecad_model::StandardHeader {
+        id: ecad_model::StandardId(2),
+        name: ecad_model::style::StyleName::new("B").unwrap(),
+        based_on: ecad_model::style::BasedOn::Iec,
+        origin: None,
+    };
     let doc = ecad_model::Document::default();
     let shown = FrameInput::of(&doc, page, &Book::of(&doc));
     let op = ecad_model::Op::SetStandard { before: Some(a), after: Some(b) };
@@ -458,10 +468,10 @@ fn the_update_maps_follow_frame_choices_and_frame_geometry() {
         after: Some(after),
     };
     let mut heavier = rec.clone();
-    heavier.fields.insert("border_weight".into(), "0.7".into());
+    ecad_cadcraft::styles::frame::set(frame_of(&mut heavier), "border_weight", Some("0.7")).unwrap();
     assert_eq!(references::cables_touched(&doc, &[set(heavier)]), Some(Default::default()), "a weight moves no reference");
     let mut a1 = rec.clone();
-    a1.fields.insert("sheet".into(), "A1".into());
+    ecad_cadcraft::styles::frame::set(frame_of(&mut a1), "sheet", Some("A1")).unwrap();
     let mut used = doc.clone();
     used.properties.insert("print.frame.style".into(), id.clone());
     assert!(references::cables_touched(&used, &[set(a1)]).is_some_and(|s| s.contains(&c1)), "its pages' cables");
@@ -472,9 +482,19 @@ fn the_update_maps_follow_frame_choices_and_frame_geometry() {
 #[test]
 fn an_out_of_bounds_block_size_is_reported() {
     let mut doc = ecad_model::Document::default();
-    let mut rec = ecad_model::StyleRecord::new("Huge", Default::default());
-    rec.body = Some(ecad_model::title_block::StyleBody::title_block(TitleBlockLayout { size: (1e308, 1e308), items: Vec::new() }));
+    let title_block = Some(TitleBlockLayout { size: (1e308, 1e308), items: Vec::new() });
+    let rec = ecad_model::StyleRecord::new(
+        "Huge",
+        ecad_model::style::StyleBody::Frame(ecad_model::style::FrameStyle { title_block, ..Default::default() }),
+    );
     doc.styles.entry(ecad_model::StyleCatalogue::Frame).or_default().insert(ecad_model::StyleRef::Own(5), rec);
     let rows = ecad_cadcraft::title_block::checks::rows(&doc);
     assert!(rows.iter().any(|r| r.which.contains("Huge's title block size is out of bounds")), "{rows:?}");
+}
+
+fn frame_of(r: &mut ecad_model::StyleRecord) -> &mut ecad_model::style::FrameStyle {
+    match &mut r.body {
+        ecad_model::style::StyleBody::Frame(f) => f,
+        other => panic!("not a frame: {other:?}"),
+    }
 }

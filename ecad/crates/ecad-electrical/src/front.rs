@@ -324,7 +324,7 @@ fn generated_wire_lines(doc: &Document) -> Vec<WireLine> {
                 .and_then(|r| crate::styles::wire::filled(&r))
                 .unwrap_or_default()
         };
-        let (colour, cross_section) = (f("colour"), f("cross_section"));
+        let (colour, cross_section) = (f("colours"), f("size"));
         match out.iter_mut().find(|l| l.colour.eq_ignore_ascii_case(&colour) && l.cross_section == cross_section) {
             Some(l) => l.names.push(row.name),
             None => out.push(WireLine { names: vec![row.name], cross_section, colour, label: None }),

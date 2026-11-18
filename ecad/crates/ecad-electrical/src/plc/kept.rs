@@ -129,13 +129,13 @@ impl Plc {
                 ty,
                 rack: r,
                 slot: rack::slot_of(doc, c),
-                channels: rack::channel_count(doc, c, ty),
+                channels: rack::channel_count(doc, c),
                 page,
                 part_number: text("part_number"),
                 maker: text("maker"),
                 rows: {
                     let chans = channel_data(doc, c);
-                    let n = rack::channel_count(doc, c, ty);
+                    let n = rack::channel_count(doc, c);
                     usize::try_from(n).unwrap_or(0) + chans.keys().filter(|i| **i >= n).count()
                 },
                 chans: channel_data(doc, c),
@@ -155,7 +155,7 @@ impl Plc {
                 Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } => {
                     out.insert(*id);
                 }
-                // Design 072: a device's tag (or type) changed.
+                // Design 072: a device's tag, type, or a station's or module's own fields (§3).
                 Op::ModifyDevice { id, .. } => {
                     out.insert(*id);
                     out.extend(self.naming.get(id).into_iter().flatten().copied());
@@ -381,7 +381,7 @@ impl Plc {
             look::wide_checks(doc, card.id, &card.tag, |i| self.address_of(doc, card.id, i).0, m, &mut out);
         }
         if let Some(card) = self.cards.get(&g)
-            && matches!(card.rack, RackRef::Missing(_) | RackRef::Bad)
+            && matches!(card.rack, RackRef::Missing(_))
         {
             out.push(Check {
                 kind: Kind::RackMissing,
@@ -787,7 +787,7 @@ impl Plc {
         let (inputs, outputs) = overview::spans(doc, self, card);
         let rack = match card.rack {
             RackRef::Rack(r) => json!(self.tag_of(r)),
-            RackRef::Missing(_) | RackRef::Bad => json!("missing"),
+            RackRef::Missing(_) => json!("missing"),
             RackRef::None => Value::Null,
         };
         json!({
@@ -837,7 +837,7 @@ impl Plc {
         json!({
             "rack": r.id.hex(),
             "tag": r.tag,
-            "body": r.ty.body(),
+            "body": r.ty.body().map(ecad_model::Word::word),
             "type": r.ty.code(),
             "first": r.first,
             "slots": r.slots,

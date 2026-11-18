@@ -107,7 +107,7 @@ fn t3_cable_manager_edits_undone_and_redone_save_reopen_and_replay_the_same() {
     for x in [0, 10, 20] {
         c.exec("wire", json!({"points": [[x, 0], [x, 50]]}));
     }
-    let ty = c.exec("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth Round", "fields": {"cores": "4G", "cross_section": "1.5", "maker": "Synthmaker", "gland": "M20"}}));
+    let ty = c.exec("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth Round", "fields": {"cores": "4G", "size": "1.5", "maker": "Synthmaker", "gland": "M20"}}));
     let a = c.exec(
         "cablenew",
         json!({"cable_type": ty["id"], "length": 12, "shield": "overall", "part_number": "SYN-R4",

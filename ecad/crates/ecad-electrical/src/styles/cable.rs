@@ -7,11 +7,19 @@
 //! [`CABLE_TYPE`] (a style ID): a plain cable property, since the registry has no cable level.
 //! The cable's free `type` text (028) is unchanged and still drives its core offer.
 
-use ecad_model::{CableId, Document, StyleRef};
+use std::collections::BTreeMap;
+use std::sync::OnceLock;
+
+use ecad_model::style::cable::{CoreColours, CoreScheme};
+use ecad_model::style::{CableType, StyleLayer};
+use ecad_model::units::{Amps, Celsius, Mm};
+use ecad_model::wire::{Colours, WireSize};
+use ecad_model::{CableId, Document, StyleRef, Word};
+use serde::Deserialize;
 
 use super::{Catalogue, Field};
 use crate::CmdError;
-use crate::defaults::{Kind, Slot};
+use crate::defaults::{Kind, Slot, Value};
 use crate::rating::fields;
 
 /// The cable property naming its cable type (FP2).
@@ -23,29 +31,29 @@ fn any_text(_: &str) -> bool {
 
 const TEXT64: Kind = Kind::Parsed { max_chars: 64, parse: any_text };
 
-/// The field naming the cores' colours, in core order (`BN,BK,GY,GNYE`): board 2.06's drawn cable.
+/// The field naming the cores' colours, in core order (`BN,BK,GY,GN/YE`): board 2.06's drawn cable.
 pub const CORE_COLOURS: &str = "core_colours";
-/// Most cores a colour list names (the core offer's own bound).
-pub const MAX_COLOURS: usize = 64;
-
-/// A comma-separated list of IEC 60757 colour codes, 1 to [`MAX_COLOURS`] of them.
-pub fn colour_list(s: &str) -> Option<Vec<String>> {
-    let v: Vec<String> = s.split(',').map(|c| c.trim().to_ascii_uppercase()).collect();
-    (!v.is_empty() && v.len() <= MAX_COLOURS && v.iter().all(|c| crate::words::colour_code(c).is_some())).then_some(v)
-}
 
 fn is_colour_list(s: &str) -> bool {
-    colour_list(s).is_some()
+    CoreColours::parse(s).is_some()
 }
 
-static FIELDS: [Field; 14] = [
-    fields::CROSS_SECTION,
+/// The field naming a scheme the cores' colours come from (design 072 F37).
+pub const CORE_SCHEME: &str = "core_scheme";
+
+fn is_size(s: &str) -> bool {
+    WireSize::parse(s).is_some()
+}
+
+static FIELDS: [Field; 15] = [
+    Field { key: "size", label: "Size", kind: Kind::Parsed { max_chars: 24, parse: is_size }, slot: Slot::new(), over: None },
     fields::MATERIAL,
     fields::MAX_TEMPERATURE,
     fields::CONDUCTOR_CLASS,
     fields::RATED_CURRENT,
     fields::RATED_AT,
     Field { key: CORE_COLOURS, label: "Core colours", kind: Kind::Parsed { max_chars: 256, parse: is_colour_list }, slot: Slot::new(), over: None },
+    Field { key: CORE_SCHEME, label: "Core colour scheme", kind: Kind::Choice(<CoreScheme as Word>::WORDS), slot: Slot::new(), over: None },
     Field { key: "part_number", label: "Part number", kind: TEXT64, slot: Slot::new(), over: None },
     Field { key: "maker", label: "Maker", kind: TEXT64, slot: Slot::new(), over: None },
     Field { key: "description", label: "Description", kind: TEXT64, slot: Slot::new(), over: None },
@@ -148,13 +156,22 @@ pub fn offer_of_props(doc: &Document, props: &ecad_model::Properties) -> Option<
     crate::strips::cable_offer(props)
 }
 
-/// The core colours of cable `k`'s cable type, in core order; empty when it has no type or no
-/// colours.
+/// The core colours of cable `k`, in core order, from its cable type: the type's own list, else
+/// its scheme's colours for the cable's core offer (design 072 F37); empty when neither gives any.
 pub fn core_colours(doc: &Document, k: CableId) -> Vec<String> {
-    of(doc, k)
-        .and_then(|id| super::field_of(doc, ecad_model::StyleCatalogue::Cable, &id, CORE_COLOURS, None))
-        .and_then(|r| colour_list(&r.text()))
-        .unwrap_or_default()
+    let Some(id) = of(doc, k) else { return Vec::new() };
+    let own = |get: &dyn Fn(&CableType) -> bool| -> Option<&CableType> {
+        [StyleLayer::Project, StyleLayer::Standard]
+            .into_iter()
+            .filter_map(|l| super::record(doc, l, ecad_model::StyleCatalogue::Cable, &id).and_then(|r| r.body.cable()))
+            .find(|t| get(t))
+    };
+    if let Some(list) = own(&|t| t.core_colours.is_some()).and_then(|t| t.core_colours.as_ref()) {
+        return list.list().iter().map(ToString::to_string).collect();
+    }
+    let Some(scheme) = own(&|t| t.core_scheme.is_some()).and_then(|t| t.core_scheme) else { return Vec::new() };
+    let Some((labels, _, text)) = offer(doc, k) else { return Vec::new() };
+    scheme_colours(scheme, labels.len(), offer_has_earth(&text)).map(|v| v.iter().map(ToString::to_string).collect()).unwrap_or_default()
 }
 
 /// A cable property ticking core `<label>` as **Not used** (owner rule, board 2.06): `unused.<label>`
@@ -319,4 +336,195 @@ pub fn open_cores(doc: &Document, k: CableId) -> Vec<OpenCore> {
 pub fn users(doc: &Document, id: &StyleRef) -> Vec<CableId> {
     let want = id.text();
     doc.cables.iter().filter(|(_, c)| c.properties.get(CABLE_TYPE).is_some_and(|v| v.trim() == want)).map(|(k, _)| *k).collect()
+}
+
+/// The value of field `key` that `t` sets, if it sets one.
+pub fn get<'a>(t: &'a CableType, key: &str) -> Option<Value<'a>> {
+    let r = &t.rating;
+    let text = |v: Option<&'a str>| v.map(Value::Text);
+    match key {
+        "size" => t.size.map(Value::Size),
+        "material" => r.material.map(|v| Value::Choice(v.word())),
+        "max_temperature" => r.max_temperature.map(|v| Value::Number(v.0)),
+        "conductor_class" => r.conductor_class.map(|v| Value::Choice(v.word())),
+        "rated_current" => r.rated_current.map(|v| Value::Number(v.0)),
+        "rated_at" => r.rated_at.map(|v| Value::Number(v.0)),
+        CORE_COLOURS => t.core_colours.as_ref().map(Value::CoreColours),
+        CORE_SCHEME => t.core_scheme.map(|v| Value::Choice(v.word())),
+        "part_number" => text(t.part_number.as_ref().map(|v| v.as_str())),
+        "maker" => text(t.maker.as_ref().map(|v| v.as_str())),
+        "description" => text(t.description.as_ref().map(|v| v.as_str())),
+        TYPE_CORES => text(t.cores.as_ref().map(|v| v.as_str())),
+        TYPE_SHIELD => t.shield.map(|v| Value::Choice(v.word())),
+        TYPE_GLAND => text(t.gland.as_ref().map(|v| v.as_str())),
+        TYPE_OUTER_DIAMETER => t.outer_diameter.map(|v| Value::Number(v.0)),
+        _ => None,
+    }
+}
+
+fn text_of<const N: usize>(key: &str, v: &str) -> Result<ecad_model::text::Text<N>, CmdError> {
+    ecad_model::text::Text::new(v).map_err(|e| CmdError::refused(format!("{key}: {e}")))
+}
+
+/// Set (`Some`) or clear (`None`) field `key` of `t` from its text, as the `style` command
+/// checked it.
+///
+/// # Errors
+/// An unknown field, or text the field does not take, in words.
+pub fn set(t: &mut CableType, key: &str, value: Option<&str>) -> Result<(), CmdError> {
+    let bad = |what: &str| CmdError::refused(format!("{key} takes {what}, not {:?}.", value.unwrap_or_default()));
+    let number = |v: &str| v.trim().parse::<f64>().ok().filter(|x| x.is_finite()).ok_or_else(|| bad("a number"));
+    let r = &mut t.rating;
+    match (key, value) {
+        ("size", None) => t.size = None,
+        ("material", None) => r.material = None,
+        ("max_temperature", None) => r.max_temperature = None,
+        ("conductor_class", None) => r.conductor_class = None,
+        ("rated_current", None) => r.rated_current = None,
+        ("rated_at", None) => r.rated_at = None,
+        (CORE_COLOURS, None) => t.core_colours = None,
+        (CORE_SCHEME, None) => t.core_scheme = None,
+        ("part_number", None) => t.part_number = None,
+        ("maker", None) => t.maker = None,
+        ("description", None) => t.description = None,
+        (TYPE_CORES, None) => t.cores = None,
+        (TYPE_SHIELD, None) => t.shield = None,
+        (TYPE_GLAND, None) => t.gland = None,
+        (TYPE_OUTER_DIAMETER, None) => t.outer_diameter = None,
+        ("size", Some(v)) => t.size = Some(WireSize::parse(v).ok_or_else(|| bad("a wire size"))?),
+        ("material", Some(v)) => r.material = Some(Word::parse(v).ok_or_else(|| bad("cu"))?),
+        ("max_temperature", Some(v)) => r.max_temperature = Some(Celsius(number(v)?)),
+        ("conductor_class", Some(v)) => r.conductor_class = Some(Word::parse(v).ok_or_else(|| bad("1, 2, 5 or 6"))?),
+        ("rated_current", Some(v)) => r.rated_current = Some(Amps(crate::rating::parse::current(v).ok_or_else(|| bad("a current"))?)),
+        ("rated_at", Some(v)) => r.rated_at = Some(Celsius(number(v)?)),
+        (CORE_COLOURS, Some(v)) => t.core_colours = Some(CoreColours::parse(v).ok_or_else(|| bad("a list of core colours"))?),
+        (CORE_SCHEME, Some(v)) => t.core_scheme = Some(Word::parse(v).ok_or_else(|| bad(&<CoreScheme as Word>::WORDS.join(", ")))?),
+        ("part_number", Some(v)) => t.part_number = Some(text_of(key, v)?),
+        ("maker", Some(v)) => t.maker = Some(text_of(key, v)?),
+        ("description", Some(v)) => t.description = Some(text_of(key, v)?),
+        (TYPE_CORES, Some(v)) => {
+            crate::strips::parse_cores(v)?;
+            t.cores = Some(text_of(key, v)?);
+        }
+        (TYPE_SHIELD, Some(v)) => t.shield = Some(Word::parse(v).ok_or_else(|| bad(&SHIELDS.join(", ")))?),
+        (TYPE_GLAND, Some(v)) => t.gland = Some(text_of(key, v)?),
+        (TYPE_OUTER_DIAMETER, Some(v)) => t.outer_diameter = Some(Mm(outer_diameter(v).ok_or_else(|| bad("1 to 200 mm"))?)),
+        _ => return Err(CmdError::refused(format!("Cable types have no field {key:?}."))),
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------- core colour schemes (F37)
+
+/// The built-in core colour schemes' data.
+pub const SCHEMES: &str = include_str!("../../defaults/core_schemes.toml");
+/// Its name, for messages.
+pub const SCHEMES_FILE: &str = "core_schemes.toml";
+
+/// One scheme's data (see the file's own description).
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SchemeData {
+    #[serde(default)]
+    pub with_earth: BTreeMap<String, Vec<Colours>>,
+    #[serde(default)]
+    pub without_earth: BTreeMap<String, Vec<Colours>>,
+    #[serde(default)]
+    pub sequence: Vec<Colours>,
+    #[serde(default)]
+    pub core: Option<Colours>,
+    #[serde(default)]
+    pub earth: Option<Colours>,
+    #[serde(default)]
+    pub then: Option<CoreScheme>,
+}
+
+/// Read the built-in schemes.
+///
+/// # Errors
+/// The data's first problem ([`SCHEMES_FILE`]'s key, value or syntax).
+pub fn read_schemes(text: &str) -> Result<BTreeMap<CoreScheme, SchemeData>, toml::de::Error> {
+    toml::from_str(text)
+}
+
+fn schemes() -> &'static BTreeMap<CoreScheme, SchemeData> {
+    static READ: OnceLock<BTreeMap<CoreScheme, SchemeData>> = OnceLock::new();
+    // A damaged built-in file gives no scheme colours; `core_schemes_data_reads` keeps it from
+    // shipping.
+    READ.get_or_init(|| read_schemes(SCHEMES).unwrap_or_default())
+}
+
+/// The colours scheme `scheme` gives a cable of `n` cores, with an earth core (`G`) or without
+/// (`X`); `None` when the scheme (and the ones it hands on to) does not cover `n`.
+pub fn scheme_colours(scheme: CoreScheme, n: usize, earth: bool) -> Option<Vec<Colours>> {
+    scheme_colours_in(schemes(), scheme, n, earth, 0)
+}
+
+fn scheme_colours_in(all: &BTreeMap<CoreScheme, SchemeData>, scheme: CoreScheme, n: usize, earth: bool, depth: usize) -> Option<Vec<Colours>> {
+    let d = all.get(&scheme)?;
+    let then = || d.then.filter(|_| depth < <CoreScheme as Word>::ALL.len()).and_then(|t| scheme_colours_in(all, t, n, earth, depth + 1));
+    let table = if earth { &d.with_earth } else { &d.without_earth };
+    if let Some(v) = table.get(&n.to_string()) {
+        return (v.len() == n).then(|| v.clone());
+    }
+    let body = if earth { n.checked_sub(1)? } else { n };
+    let mut out: Vec<Colours> = if let Some(core) = &d.core {
+        vec![core.clone(); body]
+    } else if !d.sequence.is_empty() && body <= d.sequence.len() {
+        d.sequence.iter().take(body).cloned().collect()
+    } else {
+        return then();
+    };
+    if earth {
+        match &d.earth {
+            Some(e) => out.push(e.clone()),
+            None => return then(),
+        }
+    }
+    Some(out)
+}
+
+/// Whether a core offer's text has an earth core: `4G`, `4G1.5` (`X`, or a list of labels, has
+/// none).
+fn offer_has_earth(text: &str) -> bool {
+    text.trim().trim_start_matches(|c: char| c.is_ascii_digit()).starts_with(['G', 'g'])
+}
+
+#[cfg(test)]
+mod scheme_tests {
+    use super::*;
+
+    fn codes(v: Option<Vec<Colours>>) -> Vec<String> {
+        v.unwrap_or_default().iter().map(ToString::to_string).collect()
+    }
+
+    /// Design 072 F37: the schemes read as typed data, every scheme has data, and a misspelt key
+    /// or a colour in another form is refused.
+    #[test]
+    fn core_schemes_data_reads() {
+        let all = read_schemes(SCHEMES).unwrap();
+        for s in <CoreScheme as Word>::ALL {
+            assert!(all.contains_key(s), "{} has no data in {SCHEMES_FILE}", s.word());
+        }
+        for (s, d) in &all {
+            for (n, v) in d.with_earth.iter().chain(&d.without_earth) {
+                assert_eq!(n.parse::<usize>().ok(), Some(v.len()), "{}: {n} cores", s.word());
+            }
+        }
+        assert!(read_schemes("[numbered]\ncolour = \"BK\"\n").is_err());
+        assert!(read_schemes("[numbered]\ncore = \"GNYE\"\n").is_err());
+        assert!(read_schemes("[rainbow]\ncore = \"BK\"\n").is_err());
+    }
+
+    #[test]
+    fn a_scheme_gives_colours_by_core_count() {
+        assert_eq!(codes(scheme_colours(CoreScheme::Harmonised, 5, true)), ["BN", "BK", "GY", "BU", "GN/YE"]);
+        assert_eq!(codes(scheme_colours(CoreScheme::Harmonised, 3, false)), ["BN", "BK", "GY"]);
+        // Six cores and up: numbered black cores and the earth.
+        assert_eq!(codes(scheme_colours(CoreScheme::Harmonised, 7, true)), ["BK", "BK", "BK", "BK", "BK", "BK", "GN/YE"]);
+        assert_eq!(codes(scheme_colours(CoreScheme::Din47100, 4, false)), ["WH", "BN", "GN", "YE"]);
+        assert_eq!(codes(scheme_colours(CoreScheme::IceaK2, 3, true)), ["BK", "RD", "GN/YE"]);
+        assert_eq!(scheme_colours(CoreScheme::Din47100, 61, false).map(|v| v.len()), Some(61));
+        assert!(offer_has_earth("4G1.5") && offer_has_earth("3g") && !offer_has_earth("4X") && !offer_has_earth("BN,BK"));
+    }
 }

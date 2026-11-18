@@ -4,7 +4,7 @@ use ecad_cadcraft::checks::Fix;
 use ecad_cadcraft::devices::TextOf;
 use ecad_cadcraft::outputs::accessory_fix_commands;
 use ecad_cadcraft::plc::PlcFix;
-use ecad_model::{Author, DeviceId, ObjectRef, Op, Subject, Terminal, TerminalId};
+use ecad_model::{Author, DeviceId, Op, Subject, Terminal, TerminalId};
 use serde_json::{Value, json};
 
 use super::{checks_of, place, placed, prop, same_as_built};
@@ -372,9 +372,13 @@ fn t_hostile_keys_counts_and_values_never_panic() {
         ops.push(Op::RemoveTerminal { id: t, terminal: term.clone() });
         ops.push(Op::AddTerminal { id: t, terminal: Terminal { key: k.parse().ok(), ..term } });
     }
-    ops.push(Op::SetProperty { object: ObjectRef::Device(di), key: "plc.ch.0.text".parse().unwrap(), before: None, after: Some("x".repeat(10_000)) });
-    ops.push(Op::SetProperty { object: ObjectRef::Device(di), key: "plc.addr.start".parse().unwrap(), before: None, after: Some("65535".into()) });
-    ops.push(Op::SetProperty { object: ObjectRef::Device(di), key: "plc.addr.size".parse().unwrap(), before: None, after: Some("4096".into()) });
+    // The longest values the module's fields hold.
+    let mut d2 = d.clone();
+    for (k, v) in [("plc.ch.0.text", "x".repeat(80)), ("plc.addr.start", "65535".into()), ("plc.addr.size", "4096".into())] {
+        let op = crate::common::plc_raw(&d2, di, k, Some(&v));
+        op.apply(&mut d2).unwrap();
+        ops.push(op);
+    }
     h.cfg(|p| p.ledger.commit(Author::User, "hand-made", ops).map(|_| ()).unwrap());
     let d = h.doc();
     let _ = ecad_cadcraft::checks::all(&d, 1e-6);

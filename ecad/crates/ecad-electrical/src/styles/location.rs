@@ -5,10 +5,14 @@
 //! listed, and drawn as `none` (CADCraft draws no fill behind other entities on a layer yet; the
 //! quick start says so).
 
-use ecad_model::{DeviceId, Document, StyleRef};
+use ecad_model::style::LocationStyle;
+use ecad_model::style::text::StyleColour;
+use ecad_model::units::Mm;
+use ecad_model::{DeviceId, Document, StyleRef, Word};
 
 use super::{Builtin, Catalogue, Field};
-use crate::defaults::{Kind, Scope, Slot};
+use crate::CmdError;
+use crate::defaults::{Kind, Scope, Slot, Value};
 
 /// The line types a box may take, as the field stores them.
 pub const LINE_TYPES: &[&str] = &["dashed", "continuous", "dashdot"];
@@ -83,4 +87,42 @@ pub fn look_of(doc: &Document, id: &StyleRef) -> BoxLook {
 pub fn labels_with(doc: &Document, id: &StyleRef) -> bool {
     let project = super::chosen(doc, &crate::defaults::styles::LOCATION, Scope::project());
     look_of(doc, &project).label_style == *id
+}
+
+/// The value of field `key` that `l` sets, if it sets one.
+pub fn get<'a>(l: &'a LocationStyle, key: &str) -> Option<Value<'a>> {
+    match key {
+        "line_type" => l.line_type.map(|v| Value::Choice(v.word())),
+        "line_weight" => l.line_weight.map(|v| Value::Length(v.0)),
+        "line_colour" => l.line_colour.map(Value::Colour),
+        "label_style" => l.label_style.as_ref().map(Value::of_style),
+        "fill" => l.fill.map(Value::Colour),
+        _ => None,
+    }
+}
+
+/// Set (`Some`) or clear (`None`) field `key` of `l` from its text, as the `style` command
+/// checked it.
+///
+/// # Errors
+/// An unknown field, or text the field does not take, in words.
+pub fn set(l: &mut LocationStyle, key: &str, value: Option<&str>) -> Result<(), CmdError> {
+    let bad = |what: &str| CmdError::refused(format!("{key} takes {what}, not {:?}.", value.unwrap_or_default()));
+    let colour = |v: &str| StyleColour::parse(v).ok_or_else(|| bad("none, a colour code or #rrggbb"));
+    match (key, value) {
+        ("line_type", None) => l.line_type = None,
+        ("line_weight", None) => l.line_weight = None,
+        ("line_colour", None) => l.line_colour = None,
+        ("label_style", None) => l.label_style = None,
+        ("fill", None) => l.fill = None,
+        ("line_type", Some(v)) => l.line_type = Some(Word::parse(v).ok_or_else(|| bad(&LINE_TYPES.join(", ")))?),
+        ("line_weight", Some(v)) => {
+            l.line_weight = Some(Mm(v.trim().parse::<f64>().ok().filter(|x| x.is_finite()).ok_or_else(|| bad("a length"))?))
+        }
+        ("line_colour", Some(v)) => l.line_colour = Some(colour(v)?),
+        ("label_style", Some(v)) => l.label_style = Some(StyleRef::parse(v).ok_or_else(|| bad("a text style"))?),
+        ("fill", Some(v)) => l.fill = Some(colour(v)?),
+        _ => return Err(CmdError::refused(format!("Location styles have no field {key:?}."))),
+    }
+    Ok(())
 }

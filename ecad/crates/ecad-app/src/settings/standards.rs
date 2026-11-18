@@ -546,7 +546,7 @@ fn header_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
         p.read(&mut t.cad.session, |p, _| {
             let doc = p.ledger.document();
             let (v, n) = ecad_cadcraft::style_cmds::standard_counts(doc);
-            (doc.standard.as_ref().map(|s| s.header.name.clone()), v, n)
+            (doc.standard.as_ref().map(|s| s.header.name.to_string()), v, n)
         })
         .ok()
     });
@@ -640,7 +640,7 @@ fn header_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
             } else if t.settings.standards.header != HeaderMode::Idle {
                 let fresh = if look {
                     match ecad_cadcraft::style_cmds::read_standard(path.trim()) {
-                        Ok(s) => Some((s.header.name.clone(), s.values.len(), s.styles.values().map(|m| m.len()).sum())),
+                        Ok(s) => Some((s.header.name.to_string(), s.values.len(), s.styles.values().map(|m| m.len()).sum())),
                         Err(e) => {
                             t.settings.standards.header_error = Some(e.to_string());
                             None

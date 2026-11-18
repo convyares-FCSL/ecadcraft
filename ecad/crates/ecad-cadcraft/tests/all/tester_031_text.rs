@@ -482,8 +482,7 @@ fn tag_field(h: &mut H, field: &str) -> Option<String> {
     d.styles
         .get(&ecad_model::StyleCatalogue::Text)
         .and_then(|m| m.get(&ecad_model::StyleRef::Builtin("tag".into())))
-        .and_then(|r| r.fields.get(field))
-        .cloned()
+        .and_then(|r| r.body.entry(field))
 }
 
 /// T4 (AC 1): `textstyle {kind: tag, height: 3, weight: regular}` is one transaction; the open
