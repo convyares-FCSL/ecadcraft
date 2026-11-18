@@ -132,7 +132,7 @@ pub enum Primitive {
     Text {
         at: Pt,
         height: f64,
-        rotation: f64,
+        rotation: m::units::Radians,
         value: String,
         #[serde(default, skip_serializing_if = "is_left")]
         halign: m::TextHAlign,
@@ -156,8 +156,8 @@ fn is_baseline(v: &m::TextVAlign) -> bool {
 #[serde(deny_unknown_fields)]
 pub struct Placement {
     pub origin: Pt,
-    /// Radians, counter-clockwise.
-    pub rotation: f64,
+    /// Counter-clockwise.
+    pub rotation: m::units::Radians,
     pub mirror: bool,
     pub scale: f64,
 }
@@ -345,13 +345,13 @@ pub struct TextSlot {
     #[serde(default, skip_serializing_if = "is_baseline")]
     pub v: m::TextVAlign,
     #[serde(default, skip_serializing_if = "is_zero")]
-    pub rotation: f64,
+    pub rotation: m::units::Radians,
 }
 
-fn is_zero(x: &f64) -> bool {
+fn is_zero(x: &m::units::Radians) -> bool {
     // -0.0 too: the canonical form does not keep its sign, so writing it would give a content hash
     // that the read-back value (0.0, left out) does not match.
-    *x == 0.0
+    x.0 == 0.0
 }
 
 fn origin(o: &m::Origin) -> Origin {
@@ -850,7 +850,7 @@ pub enum Op {
     /// Brief 050a (FP3): one whole style record; `null` is no record.
     SetStyle {
         layer: StyleLayer,
-        catalogue: String,
+        catalogue: m::StyleCatalogue,
         id: m::StyleRef,
         before: Option<StyleRecord>,
         after: Option<StyleRecord>,
@@ -1234,7 +1234,7 @@ impl From<&m::Op> for Op {
             m::Op::ModifyFolder { id, before, after } => Op::ModifyFolder { id: *id, before: before.into(), after: after.into() },
             m::Op::SetStyle { layer: l, catalogue, id, before, after } => Op::SetStyle {
                 layer: layer(*l),
-                catalogue: catalogue.clone(),
+                catalogue: *catalogue,
                 id: id.clone(),
                 before: before.as_ref().map(Into::into),
                 after: after.as_ref().map(Into::into),

@@ -440,7 +440,7 @@ pub enum Fix {
     /// (`partline set for`).
     DropMissingFor(DeviceId, u8),
     /// Brief 050a: **Go to** Settings ▸ Standards at this catalogue (`text`, `wire`…).
-    OpenStandards(&'static str),
+    OpenStandards(ecad_model::StyleCatalogue),
     /// Brief 054 (design 054 §9): a page type or folder start row's fix.
     Page(crate::page_types::PageFix),
     /// Brief 057: **Show rating**: select the subject in Project ▸ Wires or Cables, Rating unfolded.
@@ -1607,7 +1607,7 @@ impl Scope {
                 }
                 Op::AddLayer { .. } | Op::RemoveLayer { .. } | Op::NameVersion { .. } | Op::UnnameVersion { .. } => {}
                 // Brief 059 (design 059 §8): a cable type's cores and gland reach its users' rows.
-                Op::SetStyle { catalogue, id, .. } if catalogue == crate::styles::cable::WORD => {
+                Op::SetStyle { catalogue, id, .. } if *catalogue == ecad_model::StyleCatalogue::Cable => {
                     self.cables.extend(crate::styles::cable::users(doc, id));
                 }
                 // Brief 050a: style records and the standard reach only the style rows (above).

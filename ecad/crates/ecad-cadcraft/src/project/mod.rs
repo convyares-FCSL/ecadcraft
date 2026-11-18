@@ -275,7 +275,7 @@ pub(crate) fn part_entity(look: &crate::text_style::Look, part: &crate::look::Pa
         Shape::Text { at, rotation, value } => kind_for_primitive(&Primitive::Text {
             at: *at,
             height: look.style(text_kind).height,
-            rotation: *rotation,
+            rotation: ecad_model::units::Radians(*rotation),
             value: value.clone(),
             halign: Default::default(),
             valign: Default::default(),

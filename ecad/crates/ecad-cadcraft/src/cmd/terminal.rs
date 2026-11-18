@@ -14,6 +14,7 @@ use ecad_electrical::cmd::terminal::{self as rules, Bridge, TerminalsInput};
 pub use ecad_electrical::cmd::terminal::{
     BRIDGE_STANDOFF, Fence, FenceKind, MAX_FENCE, definition_for, land_level, level_symbol, on_wire_of, plan_fence, plan_fence_typed, staple,
 };
+use ecad_model::units::{Degrees, Radians};
 use ecad_model::{CableId, DeviceId, Document, End, Noun, Op, PageId, Placement, Pt, Style, TerminalId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -212,7 +213,7 @@ fn wire_words(doc: &Document, w: WireId) -> String {
 /// (or the strip tagged `tag`, or a new strip) at the next position of its type that lacks its
 /// level, or at `position`; on a wire it lands there. One transaction.
 pub(crate) fn place_level(
-    s: &mut Session, params: &crate::cmd::device::PlaceParams, starter: &'static crate::symbols::Starter, at: Pt, degrees: f64, mirror: bool,
+    s: &mut Session, params: &crate::cmd::device::PlaceParams, starter: &'static crate::symbols::Starter, at: Pt, degrees: Degrees, mirror: bool,
 ) -> cadcraft_engine::Result<Value> {
     let (ty, level) = tt::of_starter(ecad_model::Word::word(starter.key)).ok_or_else(|| err("That symbol is not a terminal level."))?;
     let device = params.device_id()?;
@@ -251,7 +252,7 @@ pub(crate) fn place_level(
         };
         let landing = landing_point(doc, page, at);
         let origin = landing.map_or(at, |on| on.at);
-        let placement = Placement { origin, rotation: degrees.to_radians(), mirror, scale: 1.0 };
+        let placement = Placement { origin, rotation: Radians::from(degrees), mirror, scale: 1.0 };
         let shown = level_symbol(&mut p.ids, page, style, def, starter, c, &position, placement, &mut ops)?;
         let land = match landing {
             Some(on) => Some(land_level(doc, &mut p.ids, page, on, &shown, placement)?),

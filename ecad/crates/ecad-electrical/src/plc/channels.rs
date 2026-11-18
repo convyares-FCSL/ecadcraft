@@ -15,6 +15,7 @@
 //! Every write (the commands, in ecad-cadcraft's `cmd::plc`) is one transaction.
 
 use crate::CmdError;
+use ecad_model::units::Radians;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
@@ -348,7 +349,7 @@ pub fn first_point(s: &Starter, pl: &Placement) -> Option<Pt> {
 /// wire, the first being the one the cell is placed by.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Landing {
-    pub rotation: f64,
+    pub rotation: Radians,
     pub points: Vec<(&'static str, crate::slash::Crossing)>,
 }
 
@@ -400,7 +401,7 @@ const POINT_MATCH: f64 = 0.5;
 pub fn landings(doc: &Document, page: PageId, s: &Starter, members: &[crate::slash::Crossing], role: Option<&'static str>) -> Vec<Landing> {
     let roles = roles_of(s);
     let terms = s.definition().map(|d| d.terminals.clone()).unwrap_or_default();
-    let rotation = |m: &crate::slash::Crossing| if runs_down(doc, page, m) { std::f64::consts::PI } else { 0.0 };
+    let rotation = |m: &crate::slash::Crossing| if runs_down(doc, page, m) { Radians(std::f64::consts::PI) } else { Radians(0.0) };
     let n = roles.len();
     if role.is_none() && n > 1 && members.len().is_multiple_of(n) {
         let groups: Option<Vec<Landing>> = members

@@ -17,7 +17,7 @@ use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, Page
 use crate::keys::{Area, area_of};
 use crate::op::{ObjectRef, Op};
 use crate::project::Project;
-use crate::style::{StandardHeader, StyleLayer, StyleRecord, StyleRef};
+use crate::style::{StandardHeader, StyleCatalogue, StyleLayer, StyleRecord, StyleRef};
 
 /// A property key with its area, classified once ([`area_of`], design 064 §3.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -124,11 +124,10 @@ pub enum Effect<'a> {
         index_before: Option<usize>,
         index_after: Option<usize>,
     },
-    /// A style record set. `catalogue` is the catalogue's stored word until `SetStyle` carries a
-    /// `StyleCatalogue` (lane 072 A2).
+    /// A style record set.
     Style {
         layer: StyleLayer,
-        catalogue: &'a str,
+        catalogue: StyleCatalogue,
         id: &'a StyleRef,
         before: Option<&'a StyleRecord>,
         after: Option<&'a StyleRecord>,
@@ -414,7 +413,7 @@ fn classify(op: &Op) -> Effect<'_> {
             Effect::Folder { id: *id, before: Some(before), after: Some(after), index_before: None, index_after: None }
         }
         Op::SetStyle { layer, catalogue, id, before, after } => {
-            Effect::Style { layer: *layer, catalogue, id, before: before.as_ref(), after: after.as_ref() }
+            Effect::Style { layer: *layer, catalogue: *catalogue, id, before: before.as_ref(), after: after.as_ref() }
         }
         Op::SetStandard { before, after } => Effect::Standard { before: before.as_ref(), after: after.as_ref() },
         Op::ModifyProject { before, after } => Effect::Project { before, after },

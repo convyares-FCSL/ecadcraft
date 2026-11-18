@@ -25,7 +25,7 @@ fn fixture(syms: &[(u128, u128, &str, usize, f64, f64, &str)]) -> Document {
         let pg = d.page_order[*page];
         let kind = ItemKind::Symbol(SymbolInstance {
             definition: DefinitionId(9),
-            placement: Placement { origin: Pt::new(*x, *y), rotation: 0.0, mirror: false, scale: 1.0 },
+            placement: Placement { origin: Pt::new(*x, *y), rotation: ecad_model::units::Radians(0.0), mirror: false, scale: 1.0 },
         });
         d.items.insert(item, Item { page: pg, style: style.clone(), kind });
         let rep = Representation {

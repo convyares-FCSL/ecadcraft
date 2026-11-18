@@ -291,7 +291,7 @@ pub fn run_import(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
                 layout.check()?;
                 after.body = Some(StyleBody::title_block(layout));
                 let name = crate::styles::name(doc, FRAME_CATALOGUE, &id);
-                let ops = vec![Op::SetStyle { layer, catalogue: FRAME_CATALOGUE.into(), id: id.clone(), before, after: Some(after) }];
+                let ops = vec![Op::SetStyle { layer, catalogue: FRAME_CATALOGUE, id: id.clone(), before, after: Some(after) }];
                 p.apply_edit(pg, "titleblockimport", &format!("Logo of {name}"), ops)?;
                 Ok(json!({"changed": true, "id": id.text(), "item": n, "shapes": count}))
             })()
@@ -327,8 +327,7 @@ pub fn run_import(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
             rec.body = Some(StyleBody::title_block(layout));
             let id = StyleRef::Own(p.ids.fresh::<u128>());
             crate::styles::check_record(doc, &crate::styles::frame::CATALOGUE, &id, StyleLayer::Project, &rec)?;
-            let ops =
-                vec![Op::SetStyle { layer: StyleLayer::Project, catalogue: FRAME_CATALOGUE.into(), id: id.clone(), before: None, after: Some(rec) }];
+            let ops = vec![Op::SetStyle { layer: StyleLayer::Project, catalogue: FRAME_CATALOGUE, id: id.clone(), before: None, after: Some(rec) }];
             p.apply_edit(pg, "titleblockimport", &format!("Import title block {name}"), ops)?;
             Ok(json!({"changed": true, "id": id.text(), "name": name, "items": items, "skipped": skipped}))
         })()

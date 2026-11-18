@@ -4,6 +4,7 @@
 //! and returns the ops to commit and what to report; the engine crate's shims read the parameters,
 //! build the reports, commit and answer in JSON.
 
+use ecad_model::units::Radians;
 use std::collections::BTreeMap;
 
 use ecad_model::{
@@ -70,7 +71,7 @@ fn terminal_symbol(
     let (t, item, rep): (TerminalId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
     let key = if first { "1".to_string() } else { label.to_string() };
     ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: strip, label: Some(label.to_string()), key: Some(key) } });
-    let placement = Placement { origin: at, rotation: 0.0, mirror: false, scale: 1.0 };
+    let placement = Placement { origin: at, rotation: Radians(0.0), mirror: false, scale: 1.0 };
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition: def, placement }) } });
     let mut cps = BTreeMap::new();
     if !first {
@@ -207,7 +208,7 @@ pub fn plan_fence_typed(
             continue;
         }
         let position = chooser.choose(doc, existing, kind.ty, kind.level, named.take().as_deref())?;
-        let placement = Placement { origin: m.at, rotation: 0.0, mirror: false, scale: 1.0 };
+        let placement = Placement { origin: m.at, rotation: Radians(0.0), mirror: false, scale: 1.0 };
         let shown = level_symbol(ids, page, style.clone(), def, starter, strip, &position, placement, &mut ops)?;
         let land = land_level(doc, ids, page, on, &shown, placement).map_err(|e| on_wire(e, m.conductor))?;
         if let Some((n, fixed)) = land.dropped_number.clone() {

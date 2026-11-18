@@ -48,7 +48,9 @@ fn words_round_trip() -> Result<(), serde_json::Error> {
 
 #[test]
 fn words_are_the_stored_ones() {
-    assert_eq!(StyleCatalogue::WORDS, ["text", "location", "frame", "wire", "page", "cable", "ratingtable"]);
+    assert_eq!(StyleCatalogue::WORDS, ["cable", "frame", "location", "page", "ratingtable", "text", "wire"]);
+    // In word order, so maps keyed by catalogue keep the file's order (F2: same bytes).
+    assert!(StyleCatalogue::WORDS.is_sorted());
     assert_eq!(Side::WORDS, ["socket", "plug"]);
     assert_eq!(Side::Socket.other(), Side::Plug);
     let registry: Vec<&str> = Area::REGISTRY.iter().map(|a| a.word()).collect();
