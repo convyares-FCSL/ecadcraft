@@ -9,8 +9,8 @@
 //!   `revision:ecr`, `print:sheet`). It is written as that text. Strict (design 072 §5.4): an
 //!   unknown source word, a binding without its `source:`, a revision binding naming no revision
 //!   field, or an unknown item kind is a read error.
-//! - [`StyleBody`] keeps unknown body kinds as they were read ([`Raw`]) until lane 072 G types the
-//!   style bodies.
+//! - The frame style holding a title block is typed (design 072 §8, `crate::style::FrameStyle`):
+//!   an unknown body field is a read error too.
 //! - Bounds (house rule 12): [`TitleBlockLayout::check`] refuses a breach in words (commands);
 //!   [`TitleBlockLayout::usable`] is what drawing uses: items past [`MAX_ITEMS`] or breaking a
 //!   bound are skipped and counted, never a panic.
@@ -18,10 +18,8 @@
 //! This module only holds data and its shape rules. Drawing, binding values and the built-in
 //! house block are `ecad-cadcraft`'s (`title_block`).
 
-use std::collections::BTreeMap;
 use std::fmt;
 
-use serde::de::{self, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::doc::Primitive;
@@ -50,8 +48,6 @@ pub const SIZES: [f64; 5] = [1.8, 2.5, 3.5, 5.0, 7.0];
 /// Smallest and largest text size a block accepts, in millimetres.
 pub const MIN_TEXT_MM: f64 = 1.0;
 pub const MAX_TEXT_MM: f64 = 20.0;
-/// Deepest nesting of a kept unknown body ([`Raw`]). Guard: recursion on hostile input.
-pub const MAX_RAW_DEPTH: usize = 32;
 
 /// A title block: its size (width × height, mm) and its items in drawing order.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -601,110 +597,6 @@ impl TitleBlockLayout {
             BlockItem::Field { bind, .. } => Some(bind),
             _ => None,
         })
-    }
-}
-
-/// A body kind this build does not know, kept as read (a JSON-like value). Its depth is bounded
-/// by [`MAX_RAW_DEPTH`]; deeper input is refused like any unreadable file.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Raw {
-    Null,
-    Bool(bool),
-    Int(i64),
-    UInt(u64),
-    Float(f64),
-    Str(String),
-    Seq(Vec<Raw>),
-    Map(BTreeMap<String, Raw>),
-}
-
-impl Serialize for Raw {
-    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        match self {
-            Raw::Null => s.serialize_unit(),
-            Raw::Bool(b) => s.serialize_bool(*b),
-            Raw::Int(i) => s.serialize_i64(*i),
-            Raw::UInt(u) => s.serialize_u64(*u),
-            Raw::Float(f) => s.serialize_f64(*f),
-            Raw::Str(t) => s.serialize_str(t),
-            Raw::Seq(v) => v.serialize(s),
-            Raw::Map(m) => m.serialize(s),
-        }
-    }
-}
-
-/// 2^53 − 1: the largest integer a double holds exactly with all smaller ones.
-const SAFE_INT: u64 = (1 << 53) - 1;
-
-struct RawVisitor {
-    depth: usize,
-}
-
-struct RawAt {
-    depth: usize,
-}
-
-impl<'de> de::DeserializeSeed<'de> for RawAt {
-    type Value = Raw;
-    fn deserialize<D: Deserializer<'de>>(self, d: D) -> Result<Raw, D::Error> {
-        if self.depth > MAX_RAW_DEPTH {
-            return Err(de::Error::custom("a body is nested too deeply"));
-        }
-        d.deserialize_any(RawVisitor { depth: self.depth })
-    }
-}
-
-impl<'de> Visitor<'de> for RawVisitor {
-    type Value = Raw;
-    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("any value")
-    }
-    fn visit_unit<E>(self) -> Result<Raw, E> {
-        Ok(Raw::Null)
-    }
-    fn visit_none<E>(self) -> Result<Raw, E> {
-        Ok(Raw::Null)
-    }
-    fn visit_bool<E>(self, v: bool) -> Result<Raw, E> {
-        Ok(Raw::Bool(v))
-    }
-    // Integers a double cannot hold exactly are kept as doubles, so the canonical form (RFC 8785)
-    // can always write the record back.
-    fn visit_i64<E>(self, v: i64) -> Result<Raw, E> {
-        Ok(if v.unsigned_abs() <= SAFE_INT { Raw::Int(v) } else { Raw::Float(v as f64) })
-    }
-    fn visit_u64<E>(self, v: u64) -> Result<Raw, E> {
-        Ok(if v <= SAFE_INT { Raw::UInt(v) } else { Raw::Float(v as f64) })
-    }
-    fn visit_f64<E>(self, v: f64) -> Result<Raw, E> {
-        Ok(Raw::Float(v))
-    }
-    fn visit_str<E>(self, v: &str) -> Result<Raw, E> {
-        Ok(Raw::Str(v.to_string()))
-    }
-    fn visit_string<E>(self, v: String) -> Result<Raw, E> {
-        Ok(Raw::Str(v))
-    }
-    fn visit_seq<A: SeqAccess<'de>>(self, mut a: A) -> Result<Raw, A::Error> {
-        let mut v = Vec::new();
-        while let Some(x) = a.next_element_seed(RawAt { depth: self.depth + 1 })? {
-            v.push(x);
-        }
-        Ok(Raw::Seq(v))
-    }
-    fn visit_map<A: MapAccess<'de>>(self, mut a: A) -> Result<Raw, A::Error> {
-        let mut m = BTreeMap::new();
-        while let Some(k) = a.next_key::<String>()? {
-            let v = a.next_value_seed(RawAt { depth: self.depth + 1 })?;
-            m.insert(k, v);
-        }
-        Ok(Raw::Map(m))
-    }
-}
-
-impl<'de> Deserialize<'de> for Raw {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        de::DeserializeSeed::deserialize(RawAt { depth: 0 }, d)
     }
 }
 
