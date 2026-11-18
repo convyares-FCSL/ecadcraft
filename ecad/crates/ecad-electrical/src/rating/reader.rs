@@ -1,7 +1,7 @@
 //! Reading a typed rating into a group's typed fields (design 072 §2.2, "Ratings", owner decisions
 //! 2026-11-18): one reader per group (protection here, switching in [`read_switching`], sensors in
-//! [`read_sensor`]), used by `setprop` (the UI, the CLI and MCP alike) and by a
-//! symbol's default rating.
+//! [`read_sensor`], a strip's fuse positions in [`with_position_rating`]), used by `setprop` (the
+//! UI, the CLI and MCP alike) and by a symbol's default rating.
 //!
 //! # Semantics
 //! - Text that reads as the group's rating fills its fields: `B16` on an MCB is curve B, 16 A.
@@ -428,6 +428,48 @@ pub fn with_output_rating(
         },
     }
     Ok(Device { device_type: DeviceType::Protection(Protection::FuseBank(bank)), ..d.clone() })
+}
+
+/// Terminal strip `d` with fuse position `p`'s rating set from `text` (`None` clears it);
+/// `fuse_positions` are the strip's fuse position labels (design 072 §2.5).
+///
+/// # Semantics
+/// The text is read as one fuse ([`read_fuse`]); text that is no fuse rating is refused, never
+/// kept as a note (a position has no note). Clearing always works, also on a position that is no
+/// longer a fuse position.
+///
+/// # Errors
+/// Not a terminal strip, not a fuse position, or text that does not read as a fuse's rating.
+pub fn with_position_rating(
+    d: &Device, who: &str, fuse_positions: &std::collections::BTreeSet<String>, p: &str, text: Option<&str>,
+) -> Result<Device, CmdError> {
+    // Capped before any lookup: only the first 12 characters are ever shown.
+    let max = crate::symbols::MAX_FUSE_LABEL;
+    let shown: String = p.chars().take(max).collect();
+    let more = if p.chars().nth(max).is_some() { "…" } else { "" };
+    let DeviceType::TerminalStrip(strip) = &d.device_type else {
+        return Err(CmdError::refused(format!("rating.{shown}{more} is for a strip's fuse positions; {who} is not a terminal strip.")));
+    };
+    let mut strip = strip.clone();
+    match text.map(str::trim).filter(|s| !s.is_empty()) {
+        None => strip.fuses.retain(|l, _| l.as_str() != p),
+        Some(t) => {
+            let not_fuse = || format!("{who}:{shown}{more} is not a fuse position; rating.<position> is the rating of a fuse position.");
+            let label = ecad_model::device::PositionLabel::new(p).ok().filter(|_| fuse_positions.contains(p));
+            let label = label.ok_or_else(|| CmdError::refused(not_fuse()))?;
+            let unread = || CmdError::refused(format!("{who}:{label}'s rating '{t}' is not a fuse rating; write it as 4 A or 6.3 A T."));
+            match read_fuse(t) {
+                Read::Rating(f) if f == Fuse::default() => return Err(unread()),
+                Read::Rating(f) => {
+                    strip.fuses.insert(label, f);
+                }
+                Read::Ask(q) => return Err(CmdError::refused(format!("{who}:{label}'s rating '{t}' needs {q}"))),
+                Read::Refused(m) => return Err(CmdError::refused(format!("{who}:{label}'s rating '{t}': {m}."))),
+                Read::NotARating => return Err(unread()),
+            }
+        }
+    }
+    Ok(Device { device_type: DeviceType::TerminalStrip(strip), ..d.clone() })
 }
 
 /// What a command that set `key` on `d` says it read: `Read: curve B, 16 A.`, or that the text

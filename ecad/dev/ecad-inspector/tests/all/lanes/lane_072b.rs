@@ -184,6 +184,19 @@ fn a_sensor_rating_is_shown_raw_and_readable() {
     shown_raw_and_readable("072b-sensor", 78, before, after, &["sensor", "sensing", "proximity", "pnp", "supply", "dc"], "supply");
 }
 
+/// Step 3, TerminalStrip (A15): a strip's typed fuse position rating shows in the readable log
+/// and the Readable row view, and the Raw view is the stored bytes.
+#[test]
+fn a_strip_fuse_position_rating_is_shown_raw_and_readable() {
+    use ecad_model::device::{Fuse, PositionLabel, TerminalStrip};
+    use ecad_model::units::Amps;
+    let before = Device { device_type: DeviceType::TerminalStrip(TerminalStrip::default()), ..Device::default() };
+    let fuse = Fuse { rated_current: Some(Amps(4.0)), ..Fuse::default() };
+    let s = TerminalStrip { fuses: [(PositionLabel::new("3").unwrap(), fuse)].into() };
+    let after = Device { device_type: DeviceType::TerminalStrip(s), ..before.clone() };
+    shown_raw_and_readable("072b-strip", 79, before, after, &["terminal_strip", "fuses", "rated_current"], "fuses");
+}
+
 /// One device created as `before` and changed to `after`: the readable log names `log_words`,
 /// the Readable row view names `readable_word`, and the Raw view is the stored bytes.
 fn shown_raw_and_readable(name: &str, seed: u64, before: Device, after: Device, log_words: &[&str], readable_word: &str) {

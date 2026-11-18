@@ -162,3 +162,30 @@ fn setprop_of_a_sensor_rating_records_modify_device() {
     let mut r = reader();
     r.refused("execute", json!({"command": "setprop", "params": {"component": id, "key": "rating", "value": "24 V DC"}}));
 }
+
+/// Step 3, TerminalStrip: `setprop rating.<p>` on a strip's fuse position through MCP records one
+/// `ModifyDevice` with the typed fuse as the agent, answers what it read, and is refused with
+/// writes off.
+#[test]
+fn setprop_of_a_strip_fuse_position_rating_records_modify_device() {
+    let mut c = Client::new(EcadMcp::in_memory("lane072b-strip", 79, Options { write: true, agent: None }).unwrap());
+    for i in 1..=2 {
+        let x = 10 * i;
+        c.exec("wire", json!({"points": [[x, 0], [x, 40]]}));
+    }
+    let f = c.exec("terminals", json!({"type": "FUSE", "level": "1", "from": [0, 20], "to": [30, 20]}));
+    let id = f["strip"].as_str().unwrap().to_string();
+    let before = c.log().len();
+    let r = c.exec("setprop", json!({"component": id, "key": "rating.1", "value": "4A"}));
+    assert_eq!(r["message"], json!("Read: 4 A."), "{r}");
+    let log = c.log();
+    assert_eq!(log.len(), before + 1);
+    let last = log.last().unwrap();
+    assert_eq!(last.author, Author::Agent(AGENT.into()));
+    match last.ops.as_slice() {
+        [Op::ModifyDevice { after, .. }] => assert_eq!(after.value("rating.1").as_deref(), Some("4 A")),
+        other => panic!("{other:?}"),
+    }
+    let mut r = reader();
+    r.refused("execute", json!({"command": "setprop", "params": {"component": id, "key": "rating.1", "value": "4A"}}));
+}

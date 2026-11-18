@@ -406,6 +406,7 @@ impl Device {
                     let n = n.parse::<u8>().ok()?;
                     b.outputs.get(&n).map(ToString::to_string).filter(|t| !t.is_empty())
                 }
+                (DeviceType::TerminalStrip(s), Some(p)) => s.fuse_rating(p),
                 _ => self.get(key).map(str::to_string),
             },
         }

@@ -27,13 +27,16 @@ use crate::symbols::StarterKey;
 
 /// The strip property prefix of a level's own label (FP4): `term_label.<p>.<n>`.
 pub const LABEL_PREFIX: &str = "term_label.";
-/// The strip property prefix of a fuse position's rating (FP5): `rating.<p>`.
-pub const RATING_PREFIX: &str = "rating.";
+/// The `setprop` key prefix of a fuse position's rating (FP5): `rating.<p>`. The rating is the
+/// strip's typed field ([`ecad_model::device::TerminalStrip::fuses`], design 072 §2.5), not a
+/// property.
+pub const RATING_PREFIX: &str = ecad_model::device::RATING_OF_PREFIX;
 /// Every strip property keyed by a position label (review M1): what renumbering and `termlabel`
 /// move with a position, in one list, so a prefix added later is never left behind. `acc.after.`
-/// and `acc.on.` are brief 030's placements, the next two this brief's; `link.` values name
-/// positions inside and are rewritten, not moved ([`crate::accessories::renumber_ops`]).
-pub const POSITION_KEYED: &[&str] = &[crate::accessories::AFTER_PREFIX, crate::accessories::ON_PREFIX, LABEL_PREFIX, RATING_PREFIX];
+/// and `acc.on.` are brief 030's placements, `term_label.` this brief's; `link.` values name
+/// positions inside and are rewritten, not moved ([`crate::accessories::renumber_ops`]). A fuse
+/// position's rating is the strip's field and moves with [`moved_fuses`].
+pub const POSITION_KEYED: &[&str] = &[crate::accessories::AFTER_PREFIX, crate::accessories::ON_PREFIX, LABEL_PREFIX];
 
 /// Most characters of a position label (`termlabel {position}`).
 pub const MAX_POSITION_CHARS: usize = 16;
@@ -341,6 +344,42 @@ pub fn rating_key(position: &str) -> String {
     format!("{RATING_PREFIX}{position}")
 }
 
+/// Whether strip `d` has a fuse position rating on a label `map` (old → new) moves.
+pub fn fuses_move(d: &ecad_model::Device, map: &BTreeMap<String, String>) -> bool {
+    match &d.device_type {
+        ecad_model::DeviceType::TerminalStrip(s) => s.fuses.keys().any(|l| map.contains_key(l.as_str())),
+        _ => false,
+    }
+}
+
+/// Strip `d` with its fuse position ratings relabelled by `map` (old → new), and a preview line
+/// per move (`rating rating.2 → rating.7`). A rating whose new label is no valid position label
+/// stays where it is, and says so.
+pub fn moved_fuses(d: &ecad_model::Device, map: &BTreeMap<String, String>) -> (ecad_model::Device, Vec<String>) {
+    let ecad_model::DeviceType::TerminalStrip(s) = &d.device_type else { return (d.clone(), Vec::new()) };
+    let mut lines = Vec::new();
+    let mut fuses = BTreeMap::new();
+    for (l, f) in &s.fuses {
+        let label = match map.get(l.as_str()) {
+            Some(n) => match ecad_model::device::PositionLabel::new(n) {
+                Ok(nl) => {
+                    lines.push(format!("rating {} → {}", rating_key(l.as_str()), rating_key(nl.as_str())));
+                    nl
+                }
+                Err(_) => {
+                    let shown: String = n.chars().take(MAX_POSITION_CHARS).collect();
+                    lines.push(format!("rating {} stays: {shown} is no position label", rating_key(l.as_str())));
+                    l.clone()
+                }
+            },
+            None => l.clone(),
+        };
+        fuses.insert(label, f.clone());
+    }
+    let strip = ecad_model::device::TerminalStrip { fuses };
+    (ecad_model::Device { device_type: ecad_model::DeviceType::TerminalStrip(strip), ..d.clone() }, lines)
+}
+
 /// The derived label of level `n` of position `p` of type `t` on strip `c` (no override).
 pub fn derived_label(doc: &Document, c: DeviceId, t: &TermType, p: &str, n: u32) -> String {
     if !t.multi() {
@@ -371,7 +410,8 @@ pub fn shown_label(doc: &Document, t: TerminalId) -> Option<String> {
 
 /// The ops removing strip `c`'s position-keyed properties that `dropped` terminals leave without
 /// a terminal (review M1, no silent data loss): `term_label.<p>.<n>` when level `n` of `p` has no
-/// terminal left, `rating.<p>` when position `p` has none; with a note for each.
+/// terminal left, and the fuse rating of position `p` (the strip's field) when `p` has none; with
+/// a note for each.
 pub fn orphaned_key_ops(doc: &Document, c: DeviceId, dropped: &[TerminalId]) -> (Vec<ecad_model::Op>, Vec<String>) {
     let (mut ops, mut notes) = (Vec::new(), Vec::new());
     let Some(props) = doc.devices.get(&c).map(|x| &x.properties) else { return (ops, notes) };
@@ -390,6 +430,7 @@ pub fn orphaned_key_ops(doc: &Document, c: DeviceId, dropped: &[TerminalId]) -> 
             ops.push(ecad_model::Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key, before: Some(v.clone()), after: None });
         }
     };
+    let mut gone_positions: BTreeSet<String> = BTreeSet::new();
     for t in dropped {
         let Some(p) = doc.terminals.get(t).and_then(|x| x.label.clone()) else { continue };
         let n = level_of(doc, *t).0;
@@ -397,7 +438,23 @@ pub fn orphaned_key_ops(doc: &Document, c: DeviceId, dropped: &[TerminalId]) -> 
             remove(label_key(&p, n), &mut ops, &mut notes);
         }
         if !left.iter().any(|(l, _)| *l == p) {
-            remove(rating_key(&p), &mut ops, &mut notes);
+            gone_positions.insert(p);
+        }
+    }
+    // Design 072 §2.5: a fuse position's rating is the strip's field; one `ModifyDevice`, first.
+    if let Some(d) = doc.devices.get(&c)
+        && let ecad_model::DeviceType::TerminalStrip(s) = &d.device_type
+    {
+        let mut strip = s.clone();
+        for (l, f) in &s.fuses {
+            if gone_positions.contains(l.as_str()) {
+                notes.push(format!("{tag}: {} ({f}) removed with its terminal; U brings it back.", rating_key(l.as_str())));
+                strip.fuses.remove(l);
+            }
+        }
+        if strip != *s {
+            let after = ecad_model::Device { device_type: ecad_model::DeviceType::TerminalStrip(strip), ..d.clone() };
+            ops.insert(0, ecad_model::Op::ModifyDevice { id: c, before: d.clone(), after });
         }
     }
     (ops, notes)
@@ -452,6 +509,11 @@ pub fn positions(doc: &Document, c: DeviceId) -> Vec<Position> {
         .collect();
     out.sort_by_cached_key(|p| natural_key(&p.label));
     out
+}
+
+/// The labels of strip `c`'s fuse positions (the positions a `rating.<p>` names).
+pub fn fuse_positions(doc: &Document, c: DeviceId) -> BTreeSet<String> {
+    positions(doc, c).into_iter().filter(|p| p.ty.code == "fuse").map(|p| p.label).collect()
 }
 
 /// The position groups the numbering planner numbers (design 036 §10.3, FP8c): terminals with one

@@ -32,7 +32,7 @@
 //! | a conductor (create, delete, attach, route, properties) and its net mates (wire numbers) | the strips it was on (kept) and is on now |
 //! | a cable (create, delete, members, properties) | the strips its members were on (kept) and are on now |
 //! | a page whose number or position changed (`SetProperty` number, book order, the sheet) | the strips with terminals on it (their Place) |
-//! | brief 036: a strip's `term_label.*`, `rating.*`, `terminal.*`, `part_number.<code>` (its own properties: a device in scope) | that strip |
+//! | brief 036: a strip's `term_label.*`, `terminal.*`, `part_number.<code>` (its own properties), and its fuse position ratings (its `ModifyDevice`, design 072 §2.5): a device in scope | that strip |
 //! | brief 036: project `terminal.level.separator` or `terminal.<code>.levels` | the strips inheriting it (`inherits`, recorded only by strips with a multi-level position): rebuilt |
 //! | brief 036: project `strip_<code>_*` or `terminal.<code>.description` | the strips inheriting it: their type part data and accessories only ([`Strips::recompute_acc`]) |
 //! | brief 036: a fuse terminal device created, changed or deleted | the `fuse-device` set ([`Strips::note_devices`]) |
@@ -1354,7 +1354,11 @@ fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripDat
             d.mixed.push((pos.label.clone(), *t));
             d.mixed_types.insert(*t, tt::type_of_terminal(doc, *t).word);
         }
-        if ty.code == "fuse" && clean(props.get(&tt::rating_key(&pos.label))).is_none() {
+        let fuse_rating = match &strip.device_type {
+            ecad_model::DeviceType::TerminalStrip(s) => s.fuse_rating(&pos.label),
+            _ => None,
+        };
+        if ty.code == "fuse" && fuse_rating.is_none() {
             d.no_rating += 1;
         }
         let names = names_of.entry(ty.key).or_insert_with(|| tt::level_names(doc, c, ty)).clone();
@@ -1368,7 +1372,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripDat
                 inherits.insert(e.key.to_string());
             }
         }
-        let rating = ty.breaks.then(|| clean(props.get(&tt::rating_key(&pos.label)))).flatten();
+        let rating = ty.breaks.then_some(fuse_rating).flatten();
         let mut seen_levels: BTreeSet<u32> = BTreeSet::new();
         // One row per level, free levels included; a level drawn twice adds a row (and a Checks row).
         let max_level = ty.count().max(pos.levels.keys().copied().max().unwrap_or(1));

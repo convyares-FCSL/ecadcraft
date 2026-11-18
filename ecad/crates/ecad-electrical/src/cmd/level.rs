@@ -340,16 +340,28 @@ pub fn plan_toposition(
         ops.push(Op::RemoveTerminal { id: *t, terminal: x.clone() });
     }
     let props = comp.properties.clone();
-    // Design 072 §2.2: the fuse's typed rating (or its note), as shown.
-    if let Some(r) = comp.rating_shown() {
-        let key = tt::rating_key(&pos);
-        let before = doc.devices.get(&strip).and_then(|x| x.properties.get(&key)).cloned();
-        ops.push(Op::SetProperty { object: ObjectRef::Device(strip), key, before, after: Some(r) });
-    }
     let keep: [&str; 0] = [];
     // Everything else goes with the device and is listed (review M1: no silent loss), its own
     // text placements included.
     let mut lost: Vec<String> = props.keys().filter(|k| !keep.contains(&k.as_str())).cloned().collect();
+    // Design 072 §2.2 and §2.5: the fuse's typed rating becomes the position's. A note is no fuse
+    // rating and a position has no note: it goes with the device and is listed.
+    let typed = match &comp.device_type {
+        ecad_model::DeviceType::Protection(ecad_model::device::Protection::Fuse(f)) if *f != ecad_model::device::Fuse::default() => Some(f),
+        _ => None,
+    };
+    let label = ecad_model::device::PositionLabel::new(&pos).ok();
+    let sd = doc.devices.get(&strip);
+    if let (Some(f), Some(label), Some(sd)) = (typed, label, sd)
+        && let ecad_model::DeviceType::TerminalStrip(s) = &sd.device_type
+    {
+        let mut s = s.clone();
+        s.fuses.insert(label, f.clone());
+        let after = ecad_model::Device { device_type: ecad_model::DeviceType::TerminalStrip(s), ..sd.clone() };
+        ops.push(Op::ModifyDevice { id: strip, before: sd.clone(), after });
+    } else if comp.rating_shown().is_some() {
+        lost.push(ecad_model::device::RATING_KEY.into());
+    }
     // Design 072 §2.1: the tag is a field of the device, and goes with it too.
     if comp.tag.is_some() {
         lost.push(ecad_model::tag::TAG_KEY.into());

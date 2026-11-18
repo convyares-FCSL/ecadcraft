@@ -266,15 +266,14 @@ pub fn named(doc: &Document, text: &str) -> Option<(DeviceId, Option<String>)> {
 }
 
 /// The rating of a device (or its fuse) as shown: its typed rating, else its note (design 072
-/// §2.2); a strip's fuse position: its text.
+/// §2.2); a strip's fuse position: its typed fuse rating.
 pub fn rating_text(doc: &Document, c: DeviceId, fuse: Option<&str>) -> String {
     let key = fuse.map_or_else(|| ecad_model::device::RATING_KEY.to_string(), |f| format!("{}{f}", ecad_model::device::RATING_OF_PREFIX));
     doc.devices.get(&c).and_then(|d| d.value(&key)).map(|v| v.chars().take(64).collect()).unwrap_or_default()
 }
 
-/// In of a device (or its fuse): a protective device's typed rated current (design 072 §2.2,
-/// checks read only the typed fields); a strip's fuse position: read from its text (design 057
-/// §4.1).
+/// In of a device (or its fuse): a protective device's or a strip's fuse position's typed rated
+/// current (design 072 §2.2 and §2.5: checks read only the typed fields).
 pub fn amps_of(doc: &Document, c: DeviceId, fuse: Option<&str>) -> Option<f64> {
     let d = doc.devices.get(&c)?;
     match &d.device_type {
@@ -285,7 +284,7 @@ pub fn amps_of(doc: &Document, c: DeviceId, fuse: Option<&str>) -> Option<f64> {
             };
             p.rated_current(output).map(|a| a.0)
         }
-        _ if crate::strips::is_strip(doc, c) => super::parse::amps(&rating_text(doc, c, fuse)),
+        ecad_model::DeviceType::TerminalStrip(s) => s.fuse(fuse?)?.rated_current.map(|a| a.0),
         _ => None,
     }
 }
