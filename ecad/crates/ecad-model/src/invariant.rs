@@ -456,6 +456,11 @@ impl Document {
         if let Some(k) = c.properties.keys().find(|k| crate::keys::is_reserved_on(crate::keys::Holder::Device, k)) {
             return bad(format!("device {id} holds {k} in its properties; it is a field"));
         }
+        if let crate::device::DeviceType::Connector(x) = &c.device_type
+            && let Some(p) = x.problem()
+        {
+            return bad(format!("device {id}: {p}"));
+        }
         Ok(())
     }
 

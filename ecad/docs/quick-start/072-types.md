@@ -149,6 +149,21 @@ To try it: type a location on a device, then draw a location box around another,
 open the inspector's devices view: the first shows `"location_fixed": true`, the second `false`.
 Nobody has tried it by hand yet.
 
+### Lane B, step 3: a connector's own data
+
+A connector stores its family (from the symbol it was first placed from: a pin's is Plain), its
+pin count, its typed pin names, each half's description, maker and part number, and the Checks
+rows it ignores, as data of its type. The Properties panel and `setprop` keys are the same as
+before (`pins`, `pin_names`, `half.s.maker`, `ignore.connector-family`); what changes:
+
+- A half's field is one of `description`, `maker`, `part_number` (any other word is refused), and
+  `ignore.` takes `connector-family` or `connector-size` only.
+- Each change records one `ModifyDevice`; the inspector's log shows the connector's data.
+- A file whose device holds one of these keys among its properties opens read-only.
+
+To try it: place a D-sub 9 socket, set its Pins to 9 and a half's maker in the Properties panel,
+then undo and redo. Nobody has tried it by hand yet.
+
 The headless tests (automated, not tried by hand):
 
 ```sh

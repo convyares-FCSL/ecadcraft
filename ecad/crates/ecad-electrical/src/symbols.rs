@@ -588,7 +588,12 @@ impl Starter {
 
     /// What a device this starter begins is: the type its definition declares (design 072 §2.3).
     pub fn device_type(&self) -> DeviceType {
-        DeviceType::of_group(self.key.device_group())
+        let t = DeviceType::of_group(self.key.device_group());
+        // A connector's family is its symbol's (a pin's: plain).
+        if let DeviceType::Connector(_) = t {
+            return DeviceType::Connector(Box::new(ecad_model::device::Connector::of_family(crate::connectors::family_of(self).unwrap_or_default())));
+        }
+        t
     }
 
     /// The version of this starter's definition (`library_seq`): 2 for the 24 mating halves brief

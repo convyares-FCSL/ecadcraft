@@ -292,8 +292,14 @@ pub const RESERVED_ON: &[(Holder, PropKey)] = &[
 
 /// Key prefixes that became struct fields on one holder: the project's location and function
 /// lists (`designation.l.<id>.code`) and revision rows (`rev.<n>.<field>`), design 072 §5.3.
-pub const RESERVED_PREFIXES: &[(Holder, &str)] =
-    &[(Holder::Project, "designation."), (Holder::Project, crate::project::REVISIONS_KEY), (Holder::Project, "folder.")];
+pub const RESERVED_PREFIXES: &[(Holder, &str)] = &[
+    (Holder::Project, "designation."),
+    (Holder::Project, crate::project::REVISIONS_KEY),
+    (Holder::Project, "folder."),
+    // Lane 072 B: a connector's halves and ignored rows are fields of its type (design 072 §2.2).
+    (Holder::Device, "half."),
+    (Holder::Device, "ignore."),
+];
 
 /// Whether `key` became a struct field on `holder` ([`RESERVED`], [`RESERVED_ON`],
 /// [`RESERVED_PREFIXES`], [`DEVICE_FIELDS`]).
@@ -319,11 +325,29 @@ pub fn is_reserved(key: &str) -> bool {
     RESERVED.iter().any(|k| k.0 == key)
 }
 
+/// A connector's pin count (lane 072 B: a field of its type).
+pub const PINS: PropKey = PropKey("pins");
+/// A connector's typed pin names.
+pub const PIN_NAMES: PropKey = PropKey("pin_names");
+
 /// Keys that became fields of [`crate::Device`] (design 072 §2.1) while other holders still keep
 /// them in their bags (a cable's `tag` until lane D): a device's bag holding one is a read error,
 /// and `SetProperty` refuses them on a device.
-pub const DEVICE_FIELDS: &[PropKey] =
-    &[TAG, TAG_FIXED, DESCRIPTION, PART_NUMBER, MAKER, ARTICLE_NUMBER, TYPE_TEXT, LOCATION, LOCATION_FIXED, FUNCTION, FUNCTION_FIXED];
+pub const DEVICE_FIELDS: &[PropKey] = &[
+    TAG,
+    TAG_FIXED,
+    DESCRIPTION,
+    PART_NUMBER,
+    MAKER,
+    ARTICLE_NUMBER,
+    TYPE_TEXT,
+    LOCATION,
+    LOCATION_FIXED,
+    FUNCTION,
+    FUNCTION_FIXED,
+    PINS,
+    PIN_NAMES,
+];
 
 /// The area `key` belongs to.
 ///

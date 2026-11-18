@@ -490,7 +490,7 @@ fn r03_pin_pairs_across_wires_split_and_keep_the_number() {
     assert_eq!(tag(&d, x), "-X02", "{v}");
     assert_eq!(side_labels(&d, x, ".s"), ["1", "2", "3"], "{v}");
     assert_eq!(side_labels(&d, x, ".p"), ["1", "2", "3"], "{v}");
-    assert_eq!(d.devices[&x].properties.get("pins").map(String::as_str), Some("4"), "pins = 4 (FP4)");
+    assert_eq!(d.devices[&x].value("pins").as_deref(), Some("4"), "pins = 4 (FP4)");
     assert_eq!(reps_on(&d, x, c.p100).len(), 3, "one pin pair per wire");
     let mut nets = Vec::new();
     for (i, label) in ["1", "2", "3"].iter().enumerate() {
