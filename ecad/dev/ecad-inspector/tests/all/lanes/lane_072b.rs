@@ -130,6 +130,17 @@ fn a_connector_s_data_is_shown() {
     }
 }
 
+/// Step 4, Connector (A15): a connector's `mating` shows in the readable log and the Readable row
+/// view, and the Raw view is the stored bytes.
+#[test]
+fn a_connector_s_mating_is_shown_raw_and_readable() {
+    use ecad_model::device::{Connector, ConnectorFamily};
+    let before = Device { device_type: DeviceType::Connector(Box::new(Connector::of_family(ConnectorFamily::M12))), ..Device::default() };
+    let x = Connector { mating: true, ..Connector::of_family(ConnectorFamily::M12) };
+    let after = Device { device_type: DeviceType::Connector(Box::new(x)), ..before.clone() };
+    shown_raw_and_readable("072b-mating", 83, before, after, &["connector", "m12", "mating"], "mating");
+}
+
 /// Step 3, Protection (A15): a protective device's typed rating and its note show in the readable
 /// log.
 #[test]

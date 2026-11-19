@@ -1,9 +1,9 @@
 //! Connector devices (brief 044, design 044): a plug and its socket drawn as one device that mates.
 //!
 //! # Semantics
-//! - A **connector** is one component (`-X10`) whose definition is a brief-044 connector half or
-//!   pin ([`crate::symbols::is_mating`]). Each pin of each half is one terminal: label = the pin
-//!   name, key = the side key `.s` (socket) or `.p` (plug) (FP1). Nothing new is stored.
+//! - A **connector** is one component (`-X10`) whose stored type is a Connector with `mating` set
+//!   (its first half's or pin's starter sets it, [`is_connector`]). Each pin of each half is one
+//!   terminal: label = the pin name, key = the side key `.s` (socket) or `.p` (plug) (FP1).
 //! - **Mating** is 036's per-position bridge rule (FP8a): every half definition bridges `.s` with
 //!   `.p`, so pin `n` of the socket half and pin `n` of the plug half are one net (FP2).
 //! - A **half** is shown and typed as the connector's tag, a separator and a side name (`-X10.S`),
@@ -182,11 +182,11 @@ pub fn size_of(s: &Starter) -> Option<usize> {
 
 // ---------------------------------------------------------------- what is a connector
 
-/// Whether component `c` is a connector with mating halves: its definition is a brief-044 half or
-/// pin. A one-piece connector (a bulkhead) is Connector-typed but not this (lane 072 B: a typed
-/// `mating` field replaces this walk).
+/// Whether component `c` is a connector with mating halves: its stored [`Connector::mating`] (set
+/// by a half's or pin's starter). A one-piece connector (a bulkhead) is Connector-typed but not
+/// this.
 pub fn is_connector(doc: &Document, c: DeviceId) -> bool {
-    doc.devices.get(&c).and_then(|x| x.definition).and_then(|d| doc.definitions.get(&d)).is_some_and(symbols::is_mating)
+    connector_of(doc, c).is_some_and(|x| x.mating)
 }
 
 /// The side of terminal `t` when it is a connector pin.
