@@ -300,3 +300,50 @@ fn protected_by_through_mcp_is_the_device_and_deleting_it_clears_it() {
     let mut r = reader();
     r.refused("execute", json!({"command": "rating", "params": {"wire": w, "protected_by": tag}}));
 }
+
+/// Brief 011's contract for lane 072 D e2/e4 (design 072 §4.5, §4.6): `setprop wire.category`
+/// records one `ModifyWire` writing `wire_type`, and `cableedit` / `setprop cable_type` one
+/// `ModifyCable` writing `cable_type`, each by the agent; with writes off both are refused.
+#[test]
+fn wire_and_cable_types_set_through_mcp_record_typed_fields_as_the_agent() {
+    let mut c = Client::new(EcadMcp::in_memory("lane072d-types", 724, Options { write: true, agent: None }).unwrap());
+    let v = c.wire_pp(json!({"points": [[0, 0], [50, 0]]}));
+    let w = v["conductor"].as_str().unwrap().to_string();
+    let before = c.log().len();
+    c.exec("setprop", json!({"conductor": w, "key": "wire.category", "value": "dc24"}));
+    assert_eq!(c.log().len(), before + 1);
+    let (author, after) = last_modified(&mut c);
+    assert_eq!(author, Author::Agent(AGENT.into()));
+    assert_eq!(after.wire_type.as_ref().map(ecad_model::StyleRef::text).as_deref(), Some("dc24"));
+    assert!(!after.display.contains_key("wire.category"));
+
+    let ty = c.exec("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth MCP", "fields": {"cores": "3G", "size": "1.5"}}));
+    let t = ty["id"].as_str().unwrap().to_string();
+    let k = c.exec("cablenew", json!({}))["cable"].as_str().unwrap().to_string();
+    for (cmd, params, want) in [
+        ("cableedit", json!({"cable": k, "set": {"cable_type": "Synth MCP"}}), Some(t.clone())),
+        ("setprop", json!({"cable": k, "key": "cable_type", "value": null}), None),
+        ("setprop", json!({"cable": k, "key": "cable_type", "value": t}), Some(t.clone())),
+    ] {
+        let before = c.log().len();
+        c.exec(cmd, params);
+        let log = c.log();
+        assert_eq!(log.len(), before + 1, "{cmd}");
+        let last = log.last().unwrap();
+        assert_eq!(last.author, Author::Agent(AGENT.into()));
+        let after = last
+            .ops
+            .iter()
+            .find_map(|o| match o {
+                Op::ModifyCable { after, .. } => Some(after.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("a ModifyCable: {:?}", last.ops));
+        assert!(!after.properties.contains_key("cable_type"), "{cmd}: never a property");
+        assert_eq!(after.cable_type.as_ref().map(ecad_model::StyleRef::text), want, "{cmd}");
+    }
+
+    let mut r = reader();
+    r.refused("execute", json!({"command": "setprop", "params": {"conductor": w, "key": "wire.category", "value": "signal"}}));
+    r.refused("execute", json!({"command": "cableedit", "params": {"cable": k, "set": {"cable_type": null}}}));
+}

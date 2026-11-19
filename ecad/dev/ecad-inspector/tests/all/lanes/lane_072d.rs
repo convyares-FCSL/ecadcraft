@@ -44,6 +44,7 @@ fn a_wires_values_and_its_modify_op_are_shown_raw_and_readable() {
     after.rating.basis = Some(Basis::Manual);
     after.rating.manual = Some(Amps(16.0));
     after.load = Some(Amps(4.0));
+    after.wire_type = ecad_model::StyleRef::parse("dc24");
     l.commit(Author::User, "values", vec![Op::ModifyWire { id: w, before, after }]).unwrap();
     let path = written(&dir, &l);
 
@@ -75,7 +76,7 @@ fn a_wires_values_and_its_modify_op_are_shown_raw_and_readable() {
     };
     // The ModifyWire record (the last) and the CreateWire record (the one before it).
     for (back, wants) in [
-        (0, &["ModifyWire", "colours", "GN/YE", "size", "rating", "load"][..]),
+        (0, &["ModifyWire", "colours", "GN/YE", "size", "rating", "load", "wire_type", "dc24"][..]),
         (1, &["CreateWire", "net", "conductor", "net_order", "order_fixed", "ends", &net.hex(), &conductor.hex(), &a.hex(), &b.hex()][..]),
     ] {
         let key = key_of(back);
