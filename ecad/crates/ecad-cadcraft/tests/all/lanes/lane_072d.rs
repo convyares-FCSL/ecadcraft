@@ -125,7 +125,6 @@ fn continued(seed: u64) -> Continued {
 /// core stays on the line (no wire yet); connecting the line on its own page forms the wire and
 /// moves the core onto it.
 #[test]
-#[ignore = "until F4"]
 fn cablecontinue_of_a_loose_line_keeps_the_core_on_the_line_until_it_connects() {
     let mut c = continued(SEED + 2);
     assert!(c.h.doc().wires.is_empty(), "no wire yet: {}", c.v);
@@ -146,7 +145,6 @@ fn cablecontinue_of_a_loose_line_keeps_the_core_on_the_line_until_it_connects() 
 /// Workflow 4: Continuing a cable across two pages through its cable reference and connecting the stub to
 /// a device point on the second page gives one wire across the pages, and one net.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn cablecontinue_across_two_pages_gives_one_wire_and_one_net() {
     let mut c = continued(SEED + 3);
     let b = point(&mut c.h, (100.0, 0.0));

@@ -35,8 +35,11 @@ pub fn terminal_positions(doc: &Document, page: PageId) -> Vec<(TerminalId, Repr
 /// representation's connection points are its component's terminals). Both read a
 /// representation through the same helper, so they cannot drift apart.
 pub fn terminal_position(doc: &Document, page: PageId, terminal: TerminalId) -> Option<Pt> {
-    let component = doc.terminals.get(&terminal)?.component;
-    doc.representations_of(Subject::Device(component))
+    let subject = match doc.terminals.get(&terminal) {
+        Some(t) => Subject::Device(t.component),
+        None => Subject::Cable(doc.cable_point(terminal)?.0),
+    };
+    doc.representations_of(subject)
         .filter(|(_, r)| r.page == page)
         .find_map(|(_, r)| shown_by(doc, r).into_iter().find(|(t, _)| *t == terminal).map(|(_, p)| p))
 }
@@ -44,6 +47,10 @@ pub fn terminal_position(doc: &Document, page: PageId, terminal: TerminalId) -> 
 /// The terminals a component representation shows, with their positions, in the order
 /// [`terminal_positions`] lists them.
 fn shown_by(doc: &Document, r: &Representation) -> Vec<(TerminalId, Pt)> {
+    // A cable reference shows its cores' named points (design 072 §4.4, F4).
+    if let Subject::Cable(_) = r.subject {
+        return r.connection_points.iter().map(|(t, p)| (*t, *p)).collect();
+    }
     let Subject::Device(component) = r.subject else { return Vec::new() };
     match r.form {
         Form::Drawn => r.connection_points.iter().map(|(t, p)| (*t, *p)).collect(),
@@ -424,10 +431,19 @@ fn references_from(doc: &Document, refs: Vec<(RepresentationId, &Representation)
             continue;
         }
         let members = doc.cables.get(&cable).map(|c| c.cores.as_slice()).unwrap_or_default();
+        let line = |route: &crate::route::Route| route.end_points().filter(|_| route.page == r.page).map(|[a, b]| (a, b));
         let ends: Vec<(Pt, Pt)> = members
             .iter()
-            .filter_map(|m| m.wire())
-            .filter_map(|w| *routes.entry((w, r.page)).or_insert_with(|| route_ends_on(doc, w, r.page)))
+            .filter_map(|m| {
+                // The line landing on the core's named point on this page (F4), else its wire's
+                // route here, else the loose line it sits on.
+                let through = m.through.iter().flat_map(|t| doc.routes_at(*t)).filter_map(|x| doc.routes.get(&x)).find_map(line);
+                through.or_else(|| match m.position {
+                    crate::doc::CorePosition::Wire(w) => *routes.entry((w, r.page)).or_insert_with(|| route_ends_on(doc, w, r.page)),
+                    crate::doc::CorePosition::Route { route, .. } => doc.routes.get(&route).and_then(line),
+                    crate::doc::CorePosition::Unplaced => None,
+                })
+            })
             .collect();
         here.insert((cable, r.page), ends);
     }

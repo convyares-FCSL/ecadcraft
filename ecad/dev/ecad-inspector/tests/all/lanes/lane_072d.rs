@@ -267,3 +267,55 @@ fn a_cores_label_colours_and_purpose_are_shown_raw_readable_and_on_the_cable_row
     assert_eq!(member["purpose"], "spare");
     assert_eq!(member["colours"], "GN/YE");
 }
+
+#[test]
+fn cable_reference_points_are_shown_raw_and_readable() {
+    // Design 072 §4.4 (F4, overseer ruling): a cable reference places one named point per core, and
+    // the core lists its points. The .ecad is never a black box: both views show them.
+    use ecad_model::{Cable, CableId, Core, Form, Item, ItemId, ItemKind, PageId, Primitive, Pt, Representation, RepresentationId, Style, Subject};
+    let dir = TempDir::new("072d-ref-points");
+    let mut l = history();
+    let page: PageId = *l.document().page_order.first().unwrap();
+    let mut ids = IdAllocator::seeded(75);
+    let (k, item, rep, point): (CableId, ItemId, RepresentationId, TerminalId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
+    let core = Core { through: vec![point], ..Core::unplaced(ecad_model::CoreLabel::new("1").ok()) };
+    let layer = *l.document().layers.keys().next().unwrap();
+    let style = Style { layer, color: ecad_model::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
+    l.commit(
+        Author::User,
+        "cablecontinue",
+        vec![
+            Op::CreateCable { id: k, cable: Cable { cores: vec![core], ..Cable::default() } },
+            Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(65.0, 5.0) }) } },
+            Op::LinkRepresentation {
+                id: rep,
+                rep: Representation {
+                    subject: Subject::Cable(k),
+                    page,
+                    form: Form::Drawn,
+                    role: ecad_model::derive::REFERENCE_ROLE.into(),
+                    items: vec![item],
+                    connection_points: [(point, Pt::new(60.0, 5.0))].into(),
+                },
+            },
+        ],
+    )
+    .unwrap();
+    let path = written(&dir, &l);
+    let f = FileSource::from_path(&path);
+    assert!(matches!(f.wait_verified(Duration::from_secs(60)), VerifyState::Done { .. }));
+    let s = Some(&f as &dyn Source);
+    let rows = ask(s, serde_json::json!({"op": "rows", "table": "transactions", "count": 1000}));
+    let rows = rows["ok"]["rows"].as_array().cloned().unwrap_or_default();
+    let key = rows.last().and_then(|r| r["key"].as_str().map(str::to_string)).unwrap();
+    let readable = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "readable"}));
+    let text = readable["ok"]["decoded"].to_string();
+    for want in ["through", "connection_points", &point.hex()] {
+        assert!(text.contains(want), "{want} in the readable records: {text}");
+    }
+    let raw = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "raw"}));
+    assert!(raw["ok"]["hex"].as_str().is_some_and(|h| !h.is_empty()), "the raw row");
+    let cables = ask(s, serde_json::json!({"op": "cables"}));
+    let member = &cables["ok"]["rows"][0]["members"][0];
+    assert_eq!(member["through"], serde_json::json!([point.to_string()]), "the cable row lists the core's point: {cables}");
+}

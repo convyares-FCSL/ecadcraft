@@ -514,7 +514,7 @@ impl Document {
         }
         for e in r.ends {
             match e {
-                crate::route::RouteEnd::Point(t) if !self.terminals.contains_key(&t) => {
+                crate::route::RouteEnd::Point(t) if !self.has_point(t) => {
                     return bad(format!("route {id} lands on a missing connection point {t}"));
                 }
                 crate::route::RouteEnd::On { route, .. } if self.routes.get(&route).is_none_or(|o| o.page != r.page) => {
@@ -578,6 +578,16 @@ impl Document {
             }
         }
         for (t, p) in &r.connection_points {
+            // A cable reference places the named points of its cable's cores (design 072 §4.4, F4).
+            if let Subject::Cable(k) = r.subject {
+                if r.role != crate::derive::REFERENCE_ROLE || self.cable_point(*t).map(|(c, _)| c) != Some(k) {
+                    return bad(format!("representation {id} places point {t}, which is not a point of its cable's cores"));
+                }
+                if !p.is_finite() {
+                    return bad(format!("representation {id} has a non-finite connection point"));
+                }
+                continue;
+            }
             let Subject::Device(c) = r.subject else {
                 return bad(format!("representation {id} of a non-component has connection points"));
             };
@@ -614,7 +624,21 @@ impl Document {
             return bad(format!("cable {id} holds {k} in its properties; it is a field"));
         }
         let mut seen = BTreeSet::new();
+        let mut points = BTreeSet::new();
         for m in &c.cores {
+            // Design 072 §4.4 (F4): each named point is one core's, placed by one reference of the cable.
+            for t in &m.through {
+                if !points.insert(*t) || self.terminals.contains_key(t) {
+                    return bad(format!("cable {id} lists point {t} twice, or a component's terminal as a named point"));
+                }
+                let placed = self
+                    .representations_showing(*t)
+                    .filter(|(_, r)| r.subject == Subject::Cable(id) && r.role == crate::derive::REFERENCE_ROLE)
+                    .count();
+                if placed != 1 {
+                    return bad(format!("cable {id}'s point {t} is placed by {placed} references, not one"));
+                }
+            }
             match m.position {
                 crate::doc::CorePosition::Unplaced => continue,
                 crate::doc::CorePosition::Wire(w) if !self.wires.contains_key(&w) => {
@@ -623,7 +647,7 @@ impl Document {
                 crate::doc::CorePosition::Route { route, .. } if !self.routes.contains_key(&route) => {
                     return bad(format!("cable {id} has a core on missing route {route}"));
                 }
-                crate::doc::CorePosition::Route { landed: Some(t), .. } if !self.terminals.contains_key(&t) => {
+                crate::doc::CorePosition::Route { landed: Some(t), .. } if !self.has_point(t) => {
                     return bad(format!("cable {id} has a core landed at missing point {t}"));
                 }
                 crate::doc::CorePosition::Wire(_) | crate::doc::CorePosition::Route { .. } => {}

@@ -73,5 +73,17 @@ What changed for someone using the app:
     the cables using it (`-W01 uses …`). A cable whose type is not in the project shows
     **Style not found** in Checks, naming the cable.
 
+11. A cable across two pages (step F4). On page 1 draw lines from a device's points into free
+    space toward the right, slash them into cable `-W01` and put its reference at their free
+    ends (`cableref`). Add a page, make it active and continue the cable there (`cablecontinue`,
+    at the left, toward the right): page 1's lines now end on the reference (no square, no dot)
+    and each stub starts on the new reference. Connect each stub's free end to a device point
+    on page 2: each core becomes **one wire from page 1's point to page 2's**, in one net, and
+    the core moves onto it. The inspector's cable row lists each core's two points
+    (`through …`), in Raw and Readable. Erasing page 2's drawing leaves page 1's lines loose
+    again, the cores on them. Not yet: continuations still end wires at their own point (F5),
+    and some cable-reference views (hover text of a line ending on a reference, the debugger
+    trail) still describe the old drawing.
+
 Not yet tried by the owner. Checked by the headless tests named in the lane's tests
 (`lanes::lane_072d`, ecad-model, ecad-file, ecad-inspector, ecad-cadcraft, ecad-mcp, ecad-app).

@@ -661,17 +661,24 @@ pub struct Core {
     pub colours: Option<crate::wire::Colours>,
     pub purpose: Purpose,
     pub position: CorePosition,
+    /// The core's named points on the cable's references (design 072 §4.4, F4): one connection
+    /// point per reference end, positioned by that reference's representation. Every point listed
+    /// here joins the others, so a line landing on one page's point and a line landing on the other
+    /// page's are one net, and the wire runs from device point to device point across the pages.
+    /// They are aids: never a wire's end.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub through: Vec<TerminalId>,
 }
 
 impl Core {
     /// An in-use core on wire `w`.
     pub fn on_wire(w: WireId, label: Option<CoreLabel>) -> Self {
-        Core { label, colours: None, purpose: Purpose::InUse, position: CorePosition::Wire(w) }
+        Core { label, colours: None, purpose: Purpose::InUse, position: CorePosition::Wire(w), through: Vec::new() }
     }
 
     /// An in-use core on no line yet.
     pub fn unplaced(label: Option<CoreLabel>) -> Self {
-        Core { label, colours: None, purpose: Purpose::InUse, position: CorePosition::Unplaced }
+        Core { label, colours: None, purpose: Purpose::InUse, position: CorePosition::Unplaced, through: Vec::new() }
     }
 
     /// The label's text, when it has one.
@@ -688,7 +695,8 @@ impl Core {
     /// of the cable's core set and stays, unplaced; an unlabelled in-use core was only that line's
     /// membership and goes. `None` too when `others` already hold an unplaced core of that label.
     pub fn off_line(&self, others: &[Core]) -> Option<Core> {
-        if self.label.is_none() && !self.is_spare() {
+        // A core with named points on the cable's references stays (F4): they are placed there.
+        if self.label.is_none() && !self.is_spare() && self.through.is_empty() {
             return None;
         }
         let taken = self.label.is_some() && others.iter().any(|o| o.position == CorePosition::Unplaced && o.label == self.label);
@@ -1416,5 +1424,27 @@ impl Document {
     /// The cables with a core on route `r` (a line with no wire yet).
     pub fn cables_on_route(&self, r: RouteId) -> Vec<CableId> {
         referrers(&self.index.route_cables, &r).collect()
+    }
+
+    /// The cable and core index whose named point `t` is (a point of a cable reference, design 072
+    /// §4.4, F4), through the index.
+    pub fn cable_point(&self, t: TerminalId) -> Option<(CableId, usize)> {
+        let cable = referrers(&self.index.cable_points, &t).next()?;
+        let index = self.cables.get(&cable)?.cores.iter().position(|c| c.through.contains(&t))?;
+        Some((cable, index))
+    }
+
+    /// Whether `t` is a connection point: a component's terminal or a cable reference's point.
+    pub fn has_point(&self, t: TerminalId) -> bool {
+        self.terminals.contains_key(&t) || self.cable_point(t).is_some()
+    }
+
+    /// The named points joined to `t` (`t` included), when `t` is one (design 072 §4.4, F4): a
+    /// cable reference's point joins the core's points on the cable's other references. `None` for
+    /// a device's own point. Named points are aids: a wire runs through them, never to them.
+    /// (Continuations still end wires at their own point until they become named points too.)
+    pub fn named_points(&self, t: TerminalId) -> Option<Vec<TerminalId>> {
+        let (cable, i) = self.cable_point(t)?;
+        self.cables.get(&cable)?.cores.get(i).map(|c| c.through.clone())
     }
 }

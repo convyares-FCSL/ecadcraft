@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 
 use ecad_model::{
     CableId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId, RouteEnd,
-    RouteId, Style, Subject, WireId,
+    RouteId, Style, Subject, TerminalId, WireId,
 };
 
 use crate::error::CmdError;
@@ -54,11 +54,14 @@ pub fn reference(doc: &Document, ids: &mut IdAllocator, page: PageId, style: Sty
     Ok(reference_ops(ids, page, style, cable, at))
 }
 
-/// One continued member's stub: a route with both ends free (design 072 §4.3), drawn for the
-/// wire it continues.
+/// One continued core's stub: a route from the core's named point on the new reference to a free
+/// end (design 072 §4.4, F4).
 #[derive(Debug, Clone, PartialEq)]
 pub struct StubRoute {
-    pub conductor: WireId,
+    /// The core's index in the cable.
+    pub core: usize,
+    /// The core's named points: on the source page's reference, and on the new one.
+    pub points: [TerminalId; 2],
     pub route: RouteId,
     pub item: ItemId,
     pub free_end: End,
@@ -78,10 +81,13 @@ pub struct Continued {
     pub ops: Vec<Op>,
 }
 
-/// `cablecontinue` (design 010 §2.2, §5, §7.2): the second drawing of `cable` on `page`. A
-/// reference end at `at`, then for each continued member (`members` restricts and orders them) a
-/// stub, a new route with free ends, then a slash across the stubs. No wire or membership
-/// changes, so the nets are unchanged.
+/// `cablecontinue` (design 010 §2.2, §5, §7.2; design 072 §4.4, F4): the second drawing of
+/// `cable` on `page`. A reference end at `at`; then, for each continued core (`members`, its wire
+/// or its loose line, restricts and orders them), one named point on each of the cable's two
+/// references: the source page's loose line lands on the one there, and a stub, a new route from
+/// the one here to a free end, is drawn; then a slash across the stubs. Cross-page joins go only
+/// through these points: once the stub lands on a device point, the rewrite makes one wire from
+/// device point to device point across the pages.
 ///
 /// # Errors
 /// `members` longer than a cable holds (R9); the refusals of design 010 §4.4 and §7.2.
@@ -93,14 +99,39 @@ pub fn continue_cable(
         return Err(CmdError::refused(references::too_many_members()));
     }
     let plan = references::plan_continue(doc, page, cable, members, at, toward, tol)?;
-    let reference = reference_ops(ids, page, style.clone(), cable, at);
-    let mut ops = reference.ops.clone();
+    let source = doc.representations.get(&plan.source).ok_or(CmdError::refused(references::no_reference(doc, cable)))?;
+    let c = doc.cables.get(&cable).ok_or(CmdError::refused(crate::msg::NO_SUCH_CABLE))?;
+    let mut reference = reference_ops(ids, page, style.clone(), cable, at);
+    let mut source_after = source.clone();
+    let mut cable_after = c.clone();
+    let mut lines = Vec::new();
     let mut routes = Vec::with_capacity(plan.stubs.len());
+    let mut stub_ops = Vec::new();
     for stub in &plan.stubs {
-        let (r, i, add) = crate::wires::add_route(ids, page, style.clone(), vec![stub.a, stub.b], [RouteEnd::Free, RouteEnd::Free]);
-        ops.extend(add);
-        routes.push(StubRoute { conductor: stub.conductor, route: r, item: i, free_end: stub.free_end });
+        let points: [TerminalId; 2] = [ids.fresh(), ids.fresh()];
+        source_after.connection_points.insert(points[0], stub.line_at);
+        if let Some(Op::LinkRepresentation { rep, .. }) = reference.ops.get_mut(1) {
+            rep.connection_points.insert(points[1], stub.a);
+        }
+        if let Some(core) = cable_after.cores.get_mut(stub.core) {
+            core.through = points.to_vec();
+        }
+        if let Some(line) = doc.routes.get(&stub.line) {
+            let mut after = line.clone();
+            if let Some(e) = after.ends.get_mut(stub.line_end) {
+                *e = RouteEnd::Point(points[0]);
+            }
+            lines.push(Op::ModifyRoute { id: stub.line, before: line.clone(), after });
+        }
+        let (r, i, add) = crate::wires::add_route(ids, page, style.clone(), vec![stub.a, stub.b], [RouteEnd::Point(points[1]), RouteEnd::Free]);
+        stub_ops.extend(add);
+        routes.push(StubRoute { core: stub.core, points, route: r, item: i, free_end: stub.free_end });
     }
+    let mut ops = reference.ops.clone();
+    ops.extend(Op::modify_cable(cable, c, cable_after));
+    ops.push(Op::ModifyRepresentation { id: plan.source, before: source.clone(), after: source_after });
+    ops.extend(lines);
+    ops.extend(stub_ops);
     let (slash_item, slash_rep): (ItemId, RepresentationId) = (ids.fresh(), ids.fresh());
     ops.push(Op::AddItem {
         id: slash_item,

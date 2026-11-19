@@ -307,6 +307,9 @@ pub struct Core {
     pub colours: Option<m::wire::Colours>,
     pub purpose: Purpose,
     pub position: CorePosition,
+    /// The core's named points on the cable's references (design 072 §4.4, F4).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub through: Vec<m::TerminalId>,
 }
 
 /// What a cable core is for, as written.
@@ -1136,7 +1139,13 @@ impl From<Route> for m::Route {
 
 impl From<&m::Core> for Core {
     fn from(c: &m::Core) -> Self {
-        Core { label: c.label.clone(), colours: c.colours.clone(), purpose: c.purpose.into(), position: c.position.into() }
+        Core {
+            label: c.label.clone(),
+            colours: c.colours.clone(),
+            purpose: c.purpose.into(),
+            position: c.position.into(),
+            through: c.through.clone(),
+        }
     }
 }
 
@@ -1462,7 +1471,7 @@ impl From<Wire> for m::Wire {
 
 impl From<Core> for m::Core {
     fn from(c: Core) -> Self {
-        m::Core { label: c.label, colours: c.colours, purpose: c.purpose.into(), position: c.position.into() }
+        m::Core { label: c.label, colours: c.colours, purpose: c.purpose.into(), position: c.position.into(), through: c.through }
     }
 }
 

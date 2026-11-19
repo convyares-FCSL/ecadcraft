@@ -356,8 +356,10 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
     let doc = p.ledger.document();
     let positions = terminal_positions(doc, page);
     let ring = colour(ecad_drawing_style::Meaning::ConnectionPoint);
+    // A cable reference's named points are drawn by its marker, never as rings or dots (F4).
     let mut out: Vec<Mark> = positions
         .iter()
+        .filter(|(t, _, _)| doc.named_points(*t).is_none())
         .map(|(_, _, at)| Mark { at: v2(*at), shape: MarkShape::Ring, size: CONNECTION_POINT_PX, stroke: 1.0, color: ring })
         .collect();
     // Rings at the reference ends (brief 010); loose-end squares are left out where a cable stops
@@ -371,7 +373,7 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
             match landed {
                 // An end on a connection point shown on this page: a dot on the point.
                 RouteEnd::Point(t) => {
-                    if let Some((_, _, q)) = positions.iter().find(|(x, _, _)| *x == t) {
+                    if let Some((_, _, q)) = positions.iter().find(|(x, _, _)| *x == t && doc.named_points(t).is_none()) {
                         let color = colour(ecad_drawing_style::Meaning::WireEndAttached);
                         out.push(Mark { at: v2(*q), shape: MarkShape::Dot, size: WIRE_END_ATTACHED_PX, stroke: 0.0, color });
                     }

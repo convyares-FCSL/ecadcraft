@@ -38,6 +38,7 @@ fn core_positions_come_back_from_the_snapshot_and_the_log() {
         colours: ecad_model::wire::Colours::parse("BN"),
         purpose: Purpose::Spare,
         position: CorePosition::Unplaced,
+        through: Vec::new(),
     };
     f.ledger
         .commit(

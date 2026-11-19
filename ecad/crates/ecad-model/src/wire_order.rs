@@ -203,7 +203,9 @@ pub fn rewrite(doc: &Document, ops: &[Op]) -> Vec<Op> {
 /// A loose route (one with a free end) that has landed at one of `ends`, with the point it landed
 /// at: the line that carried a wire whose other end came away.
 fn loose_route_at(doc: &Document, ends: [TerminalId; 2]) -> Option<(RouteId, TerminalId)> {
-    ends.into_iter().find_map(|e| doc.routes_at(e).find(|r| doc.routes.get(r).is_some_and(|x| x.ends.contains(&RouteEnd::Free))).map(|r| (r, e)))
+    // A line ending at a named point (F4) is loose too once the wire through it went.
+    let open = |e: &RouteEnd| *e == RouteEnd::Free || e.point().is_some_and(|t| doc.named_points(t).is_some());
+    ends.into_iter().find_map(|e| doc.routes_at(e).find(|r| doc.routes.get(r).is_some_and(|x| x.ends.iter().any(open))).map(|r| (r, e)))
 }
 
 /// The wire route `r` carries, once the rewrite has run: the wire between its two connection
@@ -237,8 +239,10 @@ pub fn core_position(doc: &Document, r: RouteId) -> CorePosition {
     if let Some(w) = wire_of_route(doc, r) {
         return CorePosition::Wire(w);
     }
+    // A named point (a cable reference's, a continuation's) is an aid, not a landing (F4).
+    let open = |e: RouteEnd| e == RouteEnd::Free || e.point().is_some_and(|t| doc.named_points(t).is_some());
     let landed = match route.ends {
-        [RouteEnd::Point(t), RouteEnd::Free] | [RouteEnd::Free, RouteEnd::Point(t)] => Some(t),
+        [RouteEnd::Point(t), o] | [o, RouteEnd::Point(t)] if open(o) && doc.named_points(t).is_none() => Some(t),
         _ => None,
     };
     CorePosition::Route { route: r, landed }
@@ -256,6 +260,16 @@ pub fn cores(doc: &Document, ops: &[Op]) -> Vec<Op> {
             routes.insert(*id);
         }
     }
+    // A line joined through a named point (F4) may now carry a wire: the lines at its partners too.
+    let partners: Vec<RouteId> = routes
+        .iter()
+        .filter_map(|r| doc.routes.get(r))
+        .flat_map(|r| r.ends)
+        .filter_map(|e| doc.named_points(e.point()?))
+        .flatten()
+        .flat_map(|t| doc.routes_at(t).collect::<Vec<_>>())
+        .collect();
+    routes.extend(partners);
     // Each cable once, with every core on any of the routes: indices then stay right.
     let after: BTreeMap<RouteId, CorePosition> = routes.iter().map(|r| (*r, core_position(doc, *r))).collect();
     let cables: BTreeSet<crate::id::CableId> = routes.iter().flat_map(|r| doc.cables_on_route(*r)).collect();
@@ -323,6 +337,8 @@ impl Seeds {
 struct Component {
     points: BTreeSet<TerminalId>,
     routes: BTreeSet<RouteId>,
+    /// The named points it runs through (F4).
+    named: BTreeSet<TerminalId>,
 }
 
 impl Component {
@@ -426,12 +442,20 @@ impl<'a> Rewrite<'a> {
     /// The routes and points joined to `start` by routes.
     fn component(&self, start: Start) -> Component {
         let doc = self.doc;
-        let mut c = Component { points: BTreeSet::new(), routes: BTreeSet::new() };
+        let mut c = Component { points: BTreeSet::new(), routes: BTreeSet::new(), named: BTreeSet::new() };
         let mut todo = vec![start];
         while let Some(n) = todo.pop() {
             match n {
                 Start::Point(t) => {
-                    if doc.terminals.contains_key(&t) && c.points.insert(t) {
+                    // A named point is an aid (design 072 §4.4, F4): the net runs on through its
+                    // partners, on any page, and no wire ends there.
+                    if let Some(group) = doc.named_points(t) {
+                        for g in group {
+                            if c.named.insert(g) {
+                                todo.extend(doc.routes_at(g).map(Start::Route));
+                            }
+                        }
+                    } else if doc.terminals.contains_key(&t) && c.points.insert(t) {
                         todo.extend(doc.routes_at(t).map(Start::Route));
                     }
                 }
@@ -476,7 +500,7 @@ impl<'a> Rewrite<'a> {
             match s {
                 Start::Point(t) if placed.contains(&t) => continue,
                 Start::Route(r) if seen_routes.contains(&r) => continue,
-                Start::Point(t) if !doc.terminals.contains_key(&t) => {
+                Start::Point(t) if !doc.has_point(t) => {
                     // A point that is gone: its wires' nets are rewritten without it.
                     placed.insert(t);
                     for (w, _) in doc.ends_at(t) {
@@ -497,6 +521,7 @@ impl<'a> Rewrite<'a> {
                 }
             }
             placed.extend(c.points.iter().copied());
+            placed.extend(c.named.iter().copied());
             seen_routes.extend(c.routes.iter().copied());
             comps.push(c);
         }
@@ -779,6 +804,12 @@ impl<'a> Rewrite<'a> {
             let Some(route) = doc.routes.get(&r) else { continue };
             for e in route.ends {
                 match e {
+                    // Through a named point to the lines at its partners (F4).
+                    RouteEnd::Point(q) if c.named.contains(&q) => {
+                        for g in doc.named_points(q).unwrap_or_default() {
+                            todo.extend(doc.routes_at(g).filter(|x| c.routes.contains(x)));
+                        }
+                    }
                     RouteEnd::Point(q) if q != t => {
                         out.insert(q);
                     }
@@ -800,6 +831,12 @@ impl<'a> Rewrite<'a> {
             let Some(here) = route.ends.iter().position(|e| *e == RouteEnd::Point(p)) else { continue };
             match route.ends.get(1 - here).copied() {
                 Some(RouteEnd::Point(q)) if o.has(q) => return Some(Join::From(q)),
+                // Through a named point: from a point beyond it already in the order (F4).
+                Some(RouteEnd::Point(q)) if c.named.contains(&q) => {
+                    if let Some(x) = o.points().iter().copied().find(|x| self.neighbours(c, p).contains(x)) {
+                        return Some(Join::From(x));
+                    }
+                }
                 Some(RouteEnd::On { route: h, at }) => {
                     if let Some(j) = self.on_route(o, h, at) {
                         return Some(j);

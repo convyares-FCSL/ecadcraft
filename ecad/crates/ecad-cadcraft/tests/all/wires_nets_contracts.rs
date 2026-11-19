@@ -490,7 +490,6 @@ fn wire_labels_take_the_wire_label_text_style() {
 /// Review of #65, finding 5: the quiet ends (a cable reference end) come from the document, the
 /// same with no projected page as the page map gives, and a wire ending there stays open.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn quiet_ends_come_from_the_document() {
     let mut h = H::new(0x32_17);
     let page = h.first_page();

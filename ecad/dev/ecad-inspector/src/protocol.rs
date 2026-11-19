@@ -702,12 +702,17 @@ fn cables(d: &Document) -> Vec<Value> {
                 .cores
                 .iter()
                 .map(|m| {
-                    json!({
+                    let mut v = json!({
                         "wire": core_place(d, m.position),
                         "core": m.label_str(),
                         "purpose": if m.is_spare() { "spare" } else { "in use" },
                         "colours": m.colours.as_ref().map(ToString::to_string),
-                    })
+                    });
+                    // Its named points on the cable's references (design 072 §4.4, F4).
+                    if !m.through.is_empty() {
+                        v["through"] = json!(m.through.iter().map(ToString::to_string).collect::<Vec<_>>());
+                    }
+                    v
                 })
                 .collect();
             let mut ends: [BTreeSet<String>; 2] = [BTreeSet::new(), BTreeSet::new()];

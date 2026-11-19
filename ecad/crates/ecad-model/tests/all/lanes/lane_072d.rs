@@ -623,8 +623,13 @@ fn a_cores_purpose_is_kept_apart_from_its_position() {
     let (r, r2, k): (RouteId, RouteId, CableId) = (ids.fresh(), ids.fresh(), ids.fresh());
     let loose = route(p, &[(0.0, 0.0), (5.0, 0.0)], RouteEnd::Point(a), RouteEnd::Free);
     let other = route(p, &[(0.0, 9.0), (5.0, 9.0)], RouteEnd::Free, RouteEnd::Free);
-    let spare =
-        Core { label: None, colours: Colours::parse("BU"), purpose: Purpose::Spare, position: CorePosition::Route { route: r, landed: Some(a) } };
+    let spare = Core {
+        label: None,
+        colours: Colours::parse("BU"),
+        purpose: Purpose::Spare,
+        position: CorePosition::Route { route: r, landed: Some(a) },
+        through: Vec::new(),
+    };
     let plain = Core { position: CorePosition::Route { route: r2, landed: None }, ..Core::unplaced(None) };
     l.commit(
         Author::User,

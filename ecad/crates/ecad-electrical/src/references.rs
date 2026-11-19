@@ -23,7 +23,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::CmdError;
 use ecad_model::derive::{CableReference, cable_references, cable_references_of};
-use ecad_model::{CableId, Document, End, ItemId, LengthUnit, Op, PageId, Pt, Representation, RepresentationId, Subject, TerminalId, WireId};
+use ecad_model::{
+    CableId, Document, End, ItemId, LengthUnit, Op, PageId, Pt, Representation, RepresentationId, RouteEnd, RouteId, Subject, TerminalId, WireId,
+};
 
 pub use ecad_model::derive::{MAX_REFERENCES_PER_CABLE, REFERENCE_ROLE};
 
@@ -315,10 +317,17 @@ impl Skip {
     }
 }
 
-/// One continued member: its stub and which end is free (the outer one).
+/// One continued core: the source page's loose line it sits on, that line's free end (which lands
+/// on the core's named point there), its stub here and which of the stub's ends is free (the outer
+/// one; the other lands on the core's named point here). Design 072 §4.4, F4.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Stub {
-    pub conductor: WireId,
+    /// The core's index in the cable.
+    pub core: usize,
+    /// The source page's line, and the index (0 or 1) and position of its free end.
+    pub line: RouteId,
+    pub line_end: usize,
+    pub line_at: Pt,
     /// The stub's first vertex (End A) and last (End B).
     pub a: Pt,
     pub b: Pt,
@@ -332,7 +341,8 @@ pub struct Plan {
     pub source: RepresentationId,
     pub source_page: PageId,
     pub stubs: Vec<Stub>,
-    pub skipped: Vec<(WireId, Skip)>,
+    /// The cores that do not continue: the wire (or line) each is on, and why.
+    pub skipped: Vec<(String, Skip)>,
     /// The slash across the stubs.
     pub slash: (Pt, Pt),
 }
@@ -374,55 +384,59 @@ pub fn plan_continue(
         ecad_model::ItemKind::Primitive(ecad_model::Primitive::Point { at }) if at.is_finite() => Some(*at),
         _ => None,
     });
-    let in_cable: BTreeSet<WireId> = c.cores.iter().filter_map(|m| m.wire()).collect();
-    let candidates: Vec<WireId> = match members {
-        None => c.cores.iter().filter_map(|m| m.wire()).collect(),
+    // A core is named by its wire, or by its line while it has no wire yet (F4).
+    let core_id = |m: &ecad_model::Core| m.wire().map(WireId::hex).or_else(|| m.route().map(RouteId::hex));
+    let placed: Vec<(usize, String)> = c.cores.iter().enumerate().filter_map(|(i, m)| Some((i, core_id(m)?))).collect();
+    let candidates: Vec<(usize, String)> = match members {
+        None => placed.clone(),
         Some(list) => {
             if list.len() > crate::slash::MAX_CABLE_MEMBERS {
                 return Err(CmdError::refused(too_many_members()));
             }
             let mut seen = BTreeSet::new();
+            let mut out = Vec::with_capacity(list.len());
             for w in list {
-                if !in_cable.contains(w) {
+                let Some(found) = placed.iter().find(|(_, h)| *h == w.hex()) else {
                     return Err(CmdError::refused(format!("conductor {} is not a member of cable {}", w.hex(), cable.hex())));
-                }
-                if !seen.insert(*w) {
+                };
+                if !seen.insert(w.hex()) {
                     return Err(CmdError::refused(format!("conductor {} is listed twice", w.hex())));
                 }
+                out.push(found.clone());
             }
-            list.to_vec()
+            out
         }
     };
-    let drawn_on = |w: WireId, pg: PageId| crate::wires::wire_pages(doc, w).contains(&pg);
-    if !candidates.is_empty() && candidates.iter().all(|w| drawn_on(*w, page)) {
+    let drawn_on = |i: usize, pg: PageId| match c.cores.get(i).map(|m| m.position) {
+        Some(ecad_model::CorePosition::Wire(w)) => crate::wires::wire_pages(doc, w).contains(&pg),
+        Some(ecad_model::CorePosition::Route { route, .. }) => doc.routes.get(&route).is_some_and(|r| r.page == pg),
+        _ => false,
+    };
+    if !candidates.is_empty() && candidates.iter().all(|(i, _)| drawn_on(*i, page)) {
         return Err(CmdError::refused(drawn_here(doc, cable)));
     }
-    let mut going: Vec<(WireId, End)> = Vec::new();
+    // Only a core on a loose line of the source page continues: its free end goes on through the
+    // reference. A wire already runs between two device points (design 072 §4.2).
+    let mut going: Vec<(usize, RouteId, usize, Pt)> = Vec::new();
     let mut skipped = Vec::new();
-    for w in &candidates {
-        if drawn_on(*w, page) {
-            skipped.push((*w, Skip::DrawnHere));
+    for (i, h) in &candidates {
+        if drawn_on(*i, page) {
+            skipped.push((h.clone(), Skip::DrawnHere));
             continue;
         }
-        let Some(conductor) = doc.wires.get(w) else { continue };
-        // The end drawn on the source page is the one already there; the other continues here.
-        let on_source = |e: End| crate::wires::drawn_ends_at(doc, conductor.end(e)).iter().any(|(p, _)| *p == s.page);
-        let free = match (on_source(End::A), on_source(End::B)) {
-            (true, true) => {
-                skipped.push((*w, Skip::BothConnected));
-                continue;
-            }
-            (true, false) => End::B,
-            (false, true) => End::A,
-            (false, false) => {
-                let near = |e: End| crate::wires::drawn_ends_at(doc, conductor.end(e)).first().map(|(_, p)| *p);
-                match (near(End::A), near(End::B), source_at) {
-                    (Some(ra), Some(rb), Some(p)) if ra.dist(p) < rb.dist(p) => End::A,
-                    _ => End::B,
-                }
-            }
-        };
-        going.push((*w, free));
+        let line = c.cores.get(*i).and_then(|m| m.route()).and_then(|r| Some((r, doc.routes.get(&r)?)));
+        let free = line.filter(|(_, r)| r.page == s.page).and_then(|(id, r)| {
+            let ends = r.end_points()?;
+            let k = (0..2).filter(|k| r.ends[*k] == RouteEnd::Free).min_by(|x, y| {
+                let d = |k: usize| source_at.map_or(0.0, |p| ends[k].dist(p));
+                d(*x).total_cmp(&d(*y))
+            })?;
+            Some((id, k, ends[k]))
+        });
+        match free {
+            Some((id, k, at)) => going.push((*i, id, k, at)),
+            None => skipped.push((h.clone(), Skip::BothConnected)),
+        }
     }
     if going.is_empty() {
         return Err(CmdError::refused(none_can_continue(doc, cable)));
@@ -437,15 +451,14 @@ pub fn plan_continue(
     let n = Pt::new(-d.y, d.x);
     let k = going.len() as f64;
     let mut stubs = Vec::with_capacity(going.len());
-    for (i, (w, free)) in going.iter().enumerate() {
+    for (i, (core, line, line_end, line_at)) in going.iter().enumerate() {
         let off = spacing * (i as f64 - (k - 1.0) / 2.0);
         let s0 = Pt::new(at.x + n.x * off, at.y + n.y * off);
         let o = Pt::new(s0.x + d.x * l, s0.y + d.y * l);
         if !(in_range(s0) && in_range(o)) {
             return Err(CmdError::refused(crate::words::OUT_OF_RANGE));
         }
-        let (a, b) = if *free == End::B { (s0, o) } else { (o, s0) };
-        stubs.push(Stub { conductor: *w, a, b, free_end: *free });
+        stubs.push(Stub { core: *core, line: *line, line_end: *line_end, line_at: *line_at, a: s0, b: o, free_end: End::B });
     }
     let m = Pt::new(at.x + d.x * l / 2.0, at.y + d.y * l / 2.0);
     let h = spacing * (k - 1.0) / 2.0 + spacing / 2.0;
@@ -472,7 +485,12 @@ pub fn continued_lines(doc: &Document, page: PageId, plan: &Plan, this: Represen
         page_number_words(doc, plan.source_page),
         there.map_or("/?", |r| r.text.as_str()),
     )];
-    let both: Vec<String> = plan.skipped.iter().filter(|(_, s)| *s == Skip::BothConnected).map(|(w, _)| crate::slash::wire_name(doc, *w)).collect();
+    let both: Vec<String> = plan
+        .skipped
+        .iter()
+        .filter(|(_, s)| *s == Skip::BothConnected)
+        .map(|(w, _)| WireId::parse(w).map_or_else(|| "a line".to_string(), |w| crate::slash::wire_name(doc, w)))
+        .collect();
     match both.as_slice() {
         [] => {}
         [one] => out.push(format!("1 wire was not continued: {one} is connected at both ends.")),
@@ -1051,11 +1069,51 @@ pub fn slash_erase_followups(doc: &Document, erased: &[(RepresentationId, Repres
             continue;
         }
         let only_there = |m: &ecad_model::Core| {
+            // A continued core runs on through its named points: it stays (F4).
+            if !m.through.is_empty() {
+                return false;
+            }
             let on = crate::cables::member_pages(doc, m);
             !on.is_empty() && on.iter().all(|p| pages.contains(p))
         };
-        let after = ecad_model::Cable { cores: c.cores.iter().filter(|m| !only_there(m)).cloned().collect(), ..c.clone() };
-        ops.extend(Op::modify_cable(k, c, after));
+        let cores: Vec<ecad_model::Core> = c.cores.iter().filter(|m| !only_there(m)).cloned().collect();
+        Op::edit_cable(doc, &mut ops, k, |c| c.cores = cores);
     }
+    reference_erase_followups(doc, erased, &mut ops);
     ops
+}
+
+/// The follow-ups of erasing cable references (design 072 §4.4, F4): their named points go, so
+/// each core forgets them and a line landing on one is left with a free end there.
+fn reference_erase_followups(doc: &Document, erased: &[(RepresentationId, Representation)], ops: &mut Vec<Op>) {
+    let removed: BTreeSet<RouteId> = erased
+        .iter()
+        .filter_map(|(_, r)| match r.subject {
+            Subject::Route(x) => Some(x),
+            _ => None,
+        })
+        .collect();
+    for (_, r) in erased {
+        let Subject::Cable(k) = r.subject else { continue };
+        if r.role != REFERENCE_ROLE || r.connection_points.is_empty() {
+            continue;
+        }
+        let gone: BTreeSet<TerminalId> = r.connection_points.keys().copied().collect();
+        Op::edit_cable(doc, ops, k, |c| {
+            for core in &mut c.cores {
+                core.through.retain(|t| !gone.contains(t));
+            }
+        });
+        let lines: BTreeSet<RouteId> = gone.iter().flat_map(|t| doc.routes_at(*t)).filter(|x| !removed.contains(x)).collect();
+        for id in lines {
+            let Some(before) = doc.routes.get(&id) else { continue };
+            let mut after = before.clone();
+            for e in &mut after.ends {
+                if e.point().is_some_and(|t| gone.contains(&t)) {
+                    *e = RouteEnd::Free;
+                }
+            }
+            ops.push(Op::ModifyRoute { id, before: before.clone(), after });
+        }
+    }
 }
