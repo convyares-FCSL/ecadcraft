@@ -64,9 +64,9 @@ pub use book::PageNo;
 pub use connectivity::{Connectivity, NetData, NetId, Node};
 pub use device::{DeviceGroup, DeviceType, TextField};
 pub use doc::{
-    Cable, CableMember, Color, ContactMirror, ContentHash, DEFINITION_DEFAULT_KEYS, Definition, Device, Document, End, Folder, Form, Item, ItemKind,
-    Layer, LengthUnit, Origin, Page, Primitive, ProjectSettings, Properties, ReferenceStyle, Representation, Style, Subject, SymbolInstance,
-    Terminal, TerminalDef, TextHAlign, TextSlot, TextVAlign, Wire,
+    Cable, CableMember, Color, ContactMirror, ContentHash, Definition, Device, Document, End, Folder, Form, Item, ItemKind, Join, Layer, LengthUnit,
+    NotASlotText, Origin, Page, Primitive, ProjectSettings, Properties, ReferenceStyle, Representation, SlotText, Style, Subject, SymbolDefault,
+    SymbolDefaultError, SymbolDefaults, SymbolInstance, Terminal, TerminalDef, TextHAlign, TextSlot, TextVAlign, Wire,
 };
 pub use error::{ModelError, Noun, ParseError, Parsed, Result};
 pub use geom::{Placement, Pt};

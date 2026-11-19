@@ -624,8 +624,8 @@ pub fn slot_height(text: &str) -> f64 {
 }
 
 fn slot_box(s: &ecad_model::TextSlot, prefix: &str) -> SlotBox {
-    let h = slot_height(&s.text);
-    let (w, _) = text_size(&draft::slot_sample(&s.text, prefix), h);
+    let h = slot_height(&s.text.word());
+    let (w, _) = text_size(&draft::slot_sample(&s.text.word(), prefix), h);
     let dx = match s.h {
         TextHAlign::Left => 0.0,
         TextHAlign::Center => -w / 2.0,
@@ -808,11 +808,11 @@ pub fn show(ui: &mut egui::Ui, rect: Rect, b: &mut Builder, sheet: &ecad_drawing
     // Text slots: the sample in ink_2, a dashed box, the anchor dot (ecad.slot-anchor).
     for (i, s) in b.draft.shape.slots.iter().enumerate() {
         let chosen = b.selected == Some(Picked::Slot(i));
-        let h = slot_height(&s.text);
+        let h = slot_height(&s.text.word());
         let corners = paint_text(
             &p,
             b.to_screen(rect, s.at),
-            &draft::slot_sample(&s.text, &b.draft.prefix),
+            &draft::slot_sample(&s.text.word(), &b.draft.prefix),
             (h as f32) * b.scale * 1.25,
             s.rotation.0,
             s.h,

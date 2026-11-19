@@ -10,22 +10,27 @@ fn symbol() -> Definition {
     let mut d = coil(3.0);
     d.texts = vec![
         TextSlot {
-            text: "tag".into(),
+            text: ecad_model::SlotText::Tag,
             at: Pt::new(-6.0, 0.0),
             h: TextHAlign::Right,
             v: TextVAlign::Middle,
             rotation: ecad_model::units::Radians(0.0),
         },
         TextSlot {
-            text: "rating".into(),
+            text: ecad_model::SlotText::Rating,
             at: Pt::new(6.0, -2.5),
             h: TextHAlign::Left,
             v: TextVAlign::Top,
             rotation: ecad_model::units::Radians(-0.0),
         },
     ];
-    d.defaults =
-        [("key", "float1"), ("prefix", "B"), ("description", "Float switch"), ("join", "device")].map(|(k, v)| (k.to_string(), v.to_string())).into();
+    d.defaults = ecad_model::SymbolDefaults {
+        key: Some(ecad_model::text::Text::new("float1").unwrap()),
+        prefix: Some(ecad_model::text::Text::new("B").unwrap()),
+        description: Some(ecad_model::text::Text::new("Float switch").unwrap()),
+        join: Some(ecad_model::Join::Device),
+        ..Default::default()
+    };
     d.derived_from = from_library(coil(3.0), DefinitionId(0x77), 7).origin;
     d
 }

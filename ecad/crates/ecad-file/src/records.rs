@@ -326,9 +326,9 @@ pub struct Definition {
     /// Text slots (brief 048, FP1). Left out when empty, so existing hashes hold.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub texts: Vec<TextSlot>,
-    /// The symbol's own defaults (brief 048, FP2). Left out when empty.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub defaults: BTreeMap<String, String>,
+    /// The symbol's own defaults (brief 048, FP2; design 072 §7). Left out when empty.
+    #[serde(default, skip_serializing_if = "m::SymbolDefaults::is_empty")]
+    pub defaults: m::SymbolDefaults,
     /// The origin an edited copy came from (brief 048, FP4). Left out when none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub derived_from: Option<Origin>,
@@ -341,7 +341,7 @@ pub struct Definition {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TextSlot {
-    pub text: String,
+    pub text: m::SlotText,
     pub at: Pt,
     #[serde(default, skip_serializing_if = "is_left")]
     pub h: m::TextHAlign,

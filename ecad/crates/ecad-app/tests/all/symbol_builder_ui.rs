@@ -155,7 +155,7 @@ fn a_drawn_symbol_saves_as_version_1_and_the_browser_selects_it() {
             d.shape.points.iter().map(|p| (p.key.to_string(), p.label.as_deref())).collect::<Vec<_>>(),
             [("1".to_string(), Some("BN")), ("2".to_string(), Some("BU"))]
         );
-        assert_eq!(d.shape.slots.first().map(|s| s.text.as_str()), Some("tag"));
+        assert_eq!(d.shape.slots.first().map(|s| s.text.clone()), Some(ecad_model::SlotText::Tag));
     }
     fill(&mut h, details::NAME, "Float switch");
     fill(&mut h, details::KEY, "float1");

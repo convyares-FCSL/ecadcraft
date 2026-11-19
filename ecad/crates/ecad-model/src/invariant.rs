@@ -51,9 +51,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::doc::{
-    Cable, DEFINITION_DEFAULT_KEYS, Definition, Device, Document, Form, Item, ItemKind, Primitive, Representation, Subject, Terminal, TextSlot, Wire,
-};
+use crate::doc::{Cable, Definition, Device, Document, Form, Item, ItemKind, Primitive, Representation, Subject, Terminal, Wire};
 use crate::effect::{Effect, Effects};
 use crate::error::{ModelError, Result};
 use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId, WireId};
@@ -587,15 +585,9 @@ fn check_definition(id: DefinitionId, d: &Definition) -> Result<()> {
         if !slot.at.is_finite() || !slot.rotation.is_finite() {
             return bad(format!("definition {id} has a text slot at a non-finite position"));
         }
-        if !TextSlot::is_known_text(&slot.text) {
-            return bad(format!("definition {id} has a slot for {:?}, which is not a device text", slot.text));
+        if !texts.insert(&slot.text) {
+            return bad(format!("definition {id} has two slots for {:?}", slot.text.word()));
         }
-        if !texts.insert(slot.text.as_str()) {
-            return bad(format!("definition {id} has two slots for {:?}", slot.text));
-        }
-    }
-    if let Some(k) = d.defaults.keys().find(|k| !DEFINITION_DEFAULT_KEYS.contains(&k.as_str())) {
-        return bad(format!("definition {id} has a default {k:?}, which a definition does not hold"));
     }
     if let (Some(from), Some(own)) = (&d.derived_from, &d.origin)
         && from.library == own.library
