@@ -305,6 +305,10 @@ impl Index {
         if let Some(t) = c.properties.get(crate::tag::TAG_KEY) {
             self.cable_tag(id, t, delta);
         }
+        // Design 072 §4.5: a cable's type is a style user, though no registry level chooses one.
+        if let Some(t) = &c.cable_type {
+            bump(&mut self.style_users, (t.text(), crate::doc::CABLE_TYPE_KEY.to_string()), ObjectRef::Cable(id), delta);
+        }
         self.style_choices(ObjectRef::Cable(id), &c.properties, delta);
     }
 

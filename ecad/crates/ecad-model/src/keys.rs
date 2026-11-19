@@ -297,6 +297,8 @@ pub const RESERVED_ON: &[(Holder, PropKey)] = &[
     (Holder::Project, PropKey("cover.notes")),
     // Lane 072 D: a wire's own type is `Wire.wire_type` (design 072 §4.6, F36).
     (Holder::Wire, PropKey(crate::wiring::WIRE_CATEGORY)),
+    // Lane 072 D: a cable's type is `Cable.cable_type` (design 072 §4.5).
+    (Holder::Cable, PropKey(crate::doc::CABLE_TYPE_KEY)),
     // Lane 072 D: a cable's own shield (design 072 §4.5).
     (Holder::Cable, PropKey("shield")),
     // Lane 072 D: a cable's design current is its field (design 072 §4.5).

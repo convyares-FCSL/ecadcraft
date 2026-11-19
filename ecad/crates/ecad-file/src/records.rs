@@ -374,6 +374,8 @@ pub struct Cable {
     pub properties: BTreeMap<String, String>,
     pub cores: Vec<Core>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cable_type: Option<m::StyleRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shield: Option<m::style::cable::Shield>,
     #[serde(default, skip_serializing_if = "m::wire::CircuitInputs::is_empty")]
     pub rating: m::wire::CircuitInputs,
@@ -1143,6 +1145,7 @@ impl From<&m::Cable> for Cable {
         Cable {
             properties: c.properties.clone(),
             cores: c.cores.iter().map(Into::into).collect(),
+            cable_type: c.cable_type.clone(),
             shield: c.shield,
             rating: c.rating,
             load: c.load,
@@ -1468,6 +1471,7 @@ impl From<Cable> for m::Cable {
         m::Cable {
             properties: c.properties,
             cores: c.cores.into_iter().map(Into::into).collect(),
+            cable_type: c.cable_type,
             shield: c.shield,
             rating: c.rating,
             load: c.load,

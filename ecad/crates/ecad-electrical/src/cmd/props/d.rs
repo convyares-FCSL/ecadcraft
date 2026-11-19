@@ -49,8 +49,8 @@ pub static RULES: &[PropRule] = &[
 ];
 
 /// A cable's value by `setprop` (design 072 §4.5): one `ModifyCable`. `cores` stores the cores it
-/// offers, `unused.<label>` a core's purpose, `shield` the typed field; any other key is stored as
-/// typed.
+/// offers, `unused.<label>` a core's purpose, `shield` and `cable_type` the typed fields; any other
+/// key is stored as typed.
 ///
 /// # Errors
 /// A cable that is not there; a bad offer; a shield that is not a word of [`crate::cables::Shield`];
@@ -68,6 +68,21 @@ pub fn cable_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>)
         super::super::rating::set_cable(doc, &mut after, r, checked.as_deref());
         return Ok(Op::modify_cable(k, cab, after));
     }
+    // Design 072 §4.5: the cable type is a field; its cores follow it. A type's name or ID; an ID
+    // naming no type is kept, as wire types are (a check row).
+    if key == crate::styles::cable::CABLE_TYPE {
+        after.cable_type = match value {
+            None => None,
+            Some(v) => Some(
+                crate::styles::find(doc, ecad_model::StyleCatalogue::Cable, v)
+                    .ok()
+                    .or_else(|| ecad_model::StyleRef::parse(v))
+                    .ok_or_else(|| CmdError::refused(format!("No cable type {:?} in this project's standards.", crate::cables::clip(v))))?,
+            ),
+        };
+        crate::styles::cable::sync_offered_cores(doc, cab, &mut after);
+        return Ok(Op::modify_cable(k, cab, after));
+    }
     if key == crate::cables::CableField::Shield.key() {
         after.shield = match value {
             None => None,
@@ -82,14 +97,14 @@ pub fn cable_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>)
         Some(v) => after.properties.insert(key.to_string(), v),
         None => after.properties.remove(key),
     };
-    if key == crate::strips::CORES_KEY || key == crate::cables::CableField::Type.key() || key == crate::cables::CableField::CableType.key() {
-        crate::styles::cable::sync_offered_cores(doc, &cab.properties, &mut after);
+    if key == crate::strips::CORES_KEY || key == crate::cables::CableField::Type.key() {
+        crate::styles::cable::sync_offered_cores(doc, cab, &mut after);
     }
     Ok(Op::modify_cable(k, cab, after))
 }
 
 /// The `rating` key a `setprop` key on a cable names: `load`, or a rating input by its stored key
-/// (`rating.basis`), `protected_by`; the cable type stays a property of its own.
+/// (`rating.basis`), `protected_by`; the cable type has its own row (its cores follow it).
 fn cable_rating_key(key: &str) -> Option<&'static str> {
     super::super::rating::KEYS.iter().find(|r| r.3 && r.1 == key && r.0 != "cable_type").map(|r| r.0)
 }

@@ -3,8 +3,8 @@
 //! A cable type holds what a field cable's rating needs from its datasheet: the size, the
 //! conductor's material, maximum temperature and class, and a rated current at a reference
 //! temperature; and the part number, maker and description, shown only (2.7 and the BOM later).
-//! There are **no built-in cable types**. A cable chooses one with its own property
-//! [`CABLE_TYPE`] (a style ID): a plain cable property, since the registry has no cable level.
+//! There are **no built-in cable types**. A cable chooses one with its field
+//! [`ecad_model::Cable::cable_type`] (design 072 §4.5); the registry has no cable level.
 //! The cable's free `type` text (028) is unchanged and still drives its core offer.
 
 use std::collections::BTreeMap;
@@ -22,8 +22,9 @@ use crate::CmdError;
 use crate::defaults::{Kind, Slot, Value};
 use crate::rating::fields;
 
-/// The cable property naming its cable type (FP2).
-pub const CABLE_TYPE: &str = "cable_type";
+/// The input word (and style-choice index key) naming a cable's cable type (FP2); stored in
+/// [`ecad_model::Cable::cable_type`], never as a property.
+pub const CABLE_TYPE: &str = ecad_model::doc::CABLE_TYPE_KEY;
 
 fn any_text(_: &str) -> bool {
     true
@@ -124,8 +125,7 @@ pub static CATALOGUE: Catalogue = Catalogue {
 
 /// The cable type cable `k` names, when it names one that exists.
 pub fn of(doc: &Document, k: CableId) -> Option<StyleRef> {
-    let v = doc.cables.get(&k)?.properties.get(CABLE_TYPE)?;
-    StyleRef::parse(v).filter(|id| super::exists(doc, ecad_model::StyleCatalogue::Cable, id))
+    doc.cables.get(&k)?.cable_type.clone().filter(|id| super::exists(doc, ecad_model::StyleCatalogue::Cable, id))
 }
 
 /// The text of cable type `id`'s field `key`, when set (empty counts as unset).
@@ -136,18 +136,18 @@ pub fn type_text(doc: &Document, id: &StyleRef, key: &str) -> Option<String> {
 /// Brief 059 (design 059 §2.2): cable `k`'s core offer and where it comes from: its own `cores`,
 /// else its cable type's `cores`, else its `type` notation; `None` when unknown.
 pub fn offer(doc: &Document, k: CableId) -> Option<(Vec<String>, crate::strips::OfferSource, String)> {
-    let cab = doc.cables.get(&k)?;
-    offer_of_props(doc, &cab.properties)
+    offer_of(doc, doc.cables.get(&k)?)
 }
 
-/// [`offer`] for a cable holding `props` (a cable about to be edited).
-pub fn offer_of_props(doc: &Document, props: &ecad_model::Properties) -> Option<(Vec<String>, crate::strips::OfferSource, String)> {
+/// [`offer`] for cable `cab` (one about to be written).
+pub fn offer_of(doc: &Document, cab: &ecad_model::Cable) -> Option<(Vec<String>, crate::strips::OfferSource, String)> {
+    let props = &cab.properties;
     if let Some(v) = props.get(crate::strips::CORES_KEY).map(|v| v.trim()).filter(|v| !v.is_empty())
         && let Ok(c) = crate::strips::parse_cores(v)
     {
         return Some((c, crate::strips::OfferSource::Cores, v.to_string()));
     }
-    let ty = props.get(CABLE_TYPE).and_then(|v| StyleRef::parse(v)).filter(|id| super::exists(doc, ecad_model::StyleCatalogue::Cable, id));
+    let ty = cab.cable_type.as_ref().filter(|id| super::exists(doc, ecad_model::StyleCatalogue::Cable, id));
     if let Some(v) = ty.as_ref().and_then(|id| type_text(doc, id, TYPE_CORES))
         && let Ok(c) = crate::strips::parse_cores(&v)
     {
@@ -159,12 +159,12 @@ pub fn offer_of_props(doc: &Document, props: &ecad_model::Properties) -> Option<
 /// Store the cores `after`'s offer names (design 072 §4.5, a write rule): every offered core no
 /// core of the cable holds by label goes to a placed core with no label (in core order), else
 /// becomes an unplaced in-use core, and an unplaced core the old offer
-/// (`before`'s properties) named and the new one does not goes. Placed cores never move. Run by
+/// (`before`'s) named and the new one does not goes. Placed cores never move. Run by
 /// the commands that set `cores`, `type` or `cable_type`; reading never does it. Labels compare
 /// without case.
-pub fn sync_offered_cores(doc: &Document, before: &ecad_model::Properties, after: &mut ecad_model::Cable) {
-    let labels = |props: &ecad_model::Properties| -> Vec<String> { offer_of_props(doc, props).map(|(o, _, _)| o).unwrap_or_default() };
-    let (old, new) = (labels(before), labels(&after.properties));
+pub fn sync_offered_cores(doc: &Document, before: &ecad_model::Cable, after: &mut ecad_model::Cable) {
+    let labels = |cab: &ecad_model::Cable| -> Vec<String> { offer_of(doc, cab).map(|(o, _, _)| o).unwrap_or_default() };
+    let (old, new) = (labels(before), labels(after));
     let named = |list: &[String], l: &str| list.iter().any(|x| x.eq_ignore_ascii_case(l.trim()));
     after.cores.retain(|m| m.position != ecad_model::CorePosition::Unplaced || m.label_str().is_none_or(|l| !named(&old, l) || named(&new, l)));
     let held = |cores: &[ecad_model::Core], l: &str| cores.iter().any(|m| m.label_str().is_some_and(|x| x.trim().eq_ignore_ascii_case(l)));
@@ -330,12 +330,16 @@ pub fn open_cores(doc: &Document, k: CableId) -> Vec<OpenCore> {
         .collect()
 }
 
-/// The cables that name cable type `id` (one pass over the cables, asked for one type at a time).
+/// The cables that name cable type `id`, through the style-choice index.
 /// A catalogue edit of the type's cores syncs none of their stored cores yet (design 072 §4.5):
 /// they follow when the cable's own `cores`, `type` or `cable_type` is next set.
 pub fn users(doc: &Document, id: &StyleRef) -> Vec<CableId> {
-    let want = id.text();
-    doc.cables.iter().filter(|(_, c)| c.properties.get(CABLE_TYPE).is_some_and(|v| v.trim() == want)).map(|(k, _)| *k).collect()
+    doc.style_users(CABLE_TYPE, &id.text())
+        .filter_map(|o| match o {
+            ecad_model::ObjectRef::Cable(k) => Some(k),
+            _ => None,
+        })
+        .collect()
 }
 
 /// The value of field `key` that `t` sets, if it sets one.
