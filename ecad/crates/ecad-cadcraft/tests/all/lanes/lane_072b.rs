@@ -553,3 +553,32 @@ fn a_power_supply_rating_is_read_into_typed_fields() {
     let err = h.run("setprop", json!({"component": t.hex(), "key": "rating", "value": "400/24 V DC"})).unwrap_err();
     assert!(err.contains("AC on both sides"), "{err}");
 }
+
+/// Step 4 (design 072 §2.2 row 9): a half's or pin's starter stores `mating`; a bulkhead (`rj45`)
+/// is Connector-typed and one piece; `is_connector` reads the stored field, not the symbol.
+#[test]
+fn a_connector_s_mating_is_stored_by_its_starter() {
+    use ecad_cadcraft::connectors;
+    use ecad_model::DeviceType;
+    let mut h = H::new(0x72_b9);
+    let mut placed = Vec::new();
+    for (n, sym) in ["socket2", "pinpair", "rj45"].into_iter().enumerate() {
+        let v = h.run("place", json!({"symbol": sym, "at": [40.0 + 60.0 * n as f64, 40]})).unwrap();
+        placed.push((sym, id::<DeviceId>(&v, "component")));
+    }
+    let doc = h.doc();
+    for (sym, c) in &placed {
+        let DeviceType::Connector(x) = &doc.devices[c].device_type else { panic!("{sym} is Connector-typed") };
+        assert_eq!(x.mating, *sym != "rj45", "{sym}");
+        assert_eq!(connectors::is_connector(&doc, *c), x.mating, "{sym}: is_connector reads the field");
+    }
+    // The field, not the symbol: a mating half's device with `mating` cleared is not a connector.
+    let (_, c) = placed[0];
+    let mut d = doc.devices[&c].clone();
+    if let DeviceType::Connector(x) = &mut d.device_type {
+        x.mating = false;
+    }
+    let mut cleared = doc.clone();
+    cleared.devices.insert(c, d);
+    assert!(!connectors::is_connector(&cleared, c));
+}

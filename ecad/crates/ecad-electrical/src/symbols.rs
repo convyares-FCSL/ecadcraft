@@ -654,9 +654,12 @@ impl Starter {
                 PowerSupply::Psu(Psu::default())
             });
         }
-        // A connector's family is its symbol's (a pin's: plain).
+        // A connector's family is its symbol's (a pin's: plain); a half or pin has mating halves, a
+        // bulkhead is one piece.
         if let DeviceType::Connector(_) = t {
-            return DeviceType::Connector(Box::new(ecad_model::device::Connector::of_family(crate::connectors::family_of(self).unwrap_or_default())));
+            let mut x = ecad_model::device::Connector::of_family(crate::connectors::family_of(self).unwrap_or_default());
+            x.mating = matches!(self.kind, Kind::ConnectorHalf { .. });
+            return DeviceType::Connector(Box::new(x));
         }
         t
     }

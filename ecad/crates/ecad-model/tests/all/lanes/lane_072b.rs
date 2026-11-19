@@ -238,6 +238,20 @@ fn a_connector_s_data_is_its_type_s() {
     l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: d }]).unwrap();
 }
 
+/// Step 4 (design 072 §2.2 row 9): whether a connector has mating halves is its stored `mating`,
+/// written only when set; a one-piece connector leaves it out.
+#[test]
+fn a_connector_s_mating_is_stored() {
+    use ecad_model::device::{Connector, ConnectorFamily};
+    let one_piece = DeviceType::Connector(Box::new(Connector::of_family(ConnectorFamily::Rj45)));
+    assert_eq!(serde_json::to_value(&one_piece).unwrap(), serde_json::json!({"connector": {"family": "rj45"}}));
+    let mating = DeviceType::Connector(Box::new(Connector { mating: true, ..Connector::of_family(ConnectorFamily::M12) }));
+    let json = serde_json::to_value(&mating).unwrap();
+    assert_eq!(json, serde_json::json!({"connector": {"family": "m12", "mating": true}}));
+    assert_eq!(serde_json::from_value::<DeviceType>(json).unwrap(), mating, "round-trips");
+    assert!(serde_json::from_value::<DeviceType>(serde_json::json!({"connector": {"family": "m12", "mating": "yes"}})).is_err());
+}
+
 /// Step 3, Protection (design 072 §2.2, "Ratings"): a protective device's rating is typed fields
 /// per kind, shown from them; the note is separate; a bad value or a rating in a bag is refused.
 #[test]

@@ -241,6 +241,9 @@ pub use terminal_strip::{PositionLabel, TerminalStrip};
 /// - `pin_names` is a typed list of pin names in pin order (each 1 to [`MAX_PIN_NAME`]
 ///   characters, all different ignoring case, at most [`MAX_PINS`]); names not drawn yet are kept.
 /// - `socket` and `plug` are each half's own part (the BOM lists a half with a part number).
+/// - `mating` is whether it has mating halves (a socket and a plug, design 044): set by its
+///   starter (a half or pin) or the `connector` command, never worked out from its symbol. A
+///   one-piece connector (a bulkhead, `rj45`) is Connector-typed with `mating` false.
 /// - `ignored` are the Checks rows its person chose to ignore.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -254,6 +257,8 @@ pub struct Connector {
     pub socket: HalfPart,
     #[serde(default, skip_serializing_if = "HalfPart::is_empty")]
     pub plug: HalfPart,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub mating: bool,
     #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
     pub ignored: std::collections::BTreeSet<ConnectorCheck>,
 }
