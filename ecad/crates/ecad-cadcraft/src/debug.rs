@@ -1095,11 +1095,14 @@ pub fn resolve(doc: &Document, mapped: Mapped) -> Resolved {
         Mapped::Xref(rep) => r.representation = Some(rep),
         // A link line (brief 030) stands for its strip.
         Mapped::Link(..) => {}
+        // A T's dot (lane 072 D) stands for the route that ends there.
+        Mapped::Tee(_) => {}
     }
     r.subject = match mapped {
         Mapped::Fan(k) => Some(Subject::Cable(k)),
         Mapped::Label(c) => Some(Subject::Wire(c)),
         Mapped::Link(c, _) => Some(Subject::Device(c)),
+        Mapped::Tee(r) => Some(Subject::Route(r)),
         _ => r.representation.and_then(|id| doc.representations.get(&id)).map(|rep| rep.subject),
     };
     r.terminals = match r.subject {

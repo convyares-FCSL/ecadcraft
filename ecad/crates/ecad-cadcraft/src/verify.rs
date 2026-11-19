@@ -116,6 +116,7 @@ pub fn verify_page_pending(
     let hidden: BTreeSet<ItemId> = fans.values().flat_map(|f| f.hidden.iter().copied()).collect();
     let mut fan_shown: BTreeMap<String, usize> = BTreeMap::new();
     let mut fan_expected: BTreeMap<String, usize> = BTreeMap::new();
+    let mut tees_shown: Vec<(ecad_model::RouteId, Pt)> = Vec::new();
     let look = crate::text_style::Look::new(doc);
     for f in fans.values() {
         for part in &f.parts {
@@ -231,6 +232,14 @@ pub fn verify_page_pending(
             *fan_shown.entry(computed_key(e)).or_default() += 1;
             continue;
         }
+        // A T's dot (lane 072 D): a ring at a point where its route ends on another route.
+        if let Some(Mapped::Tee(r)) = map.get(e.handle) {
+            match &e.kind {
+                EntityKind::Circle(c) => tees_shown.push((r, Pt::new(c.center.x, c.center.y))),
+                _ => problems.push(format!("a T dot of {r} is not a circle")),
+            }
+            continue;
+        }
         if let Some(Mapped::Frame(_) | Mapped::Link(..)) = map.get(e.handle) {
             *fan_shown.entry(computed_key(e)).or_default() += 1;
             continue;
@@ -262,6 +271,16 @@ pub fn verify_page_pending(
     if shown != expected {
         let missing = expected.iter().filter(|(k, n)| shown.get(*k) != Some(n)).count();
         problems.push(format!("drawn items differ from the document's items ({missing} kinds of item differ)"));
+    }
+    // T dots (lane 072 D): one dot of rings per route end on another route, where it lands.
+    let tees: Vec<(ecad_model::RouteId, Pt)> = crate::wires::tees_on_page(doc, page)
+        .into_iter()
+        .filter(|(r, _, _)| crate::wires::route_item(doc, *r).is_some_and(|(_, i, _)| !hidden.contains(&i)))
+        .map(|(r, _, at)| (r, at))
+        .collect();
+    let rings = crate::wires::TEE_DOT_RADII.len();
+    if tees_shown.len() != tees.len() * rings || !tees_shown.iter().all(|(r, at)| tees.iter().any(|(x, p)| x == r && near(*p, *at))) {
+        problems.push("the T dots drawn differ from the T's of the document".into());
     }
     if fan_shown != fan_expected {
         problems.push("the cable fans drawn differ from the fans computed from the document".into());

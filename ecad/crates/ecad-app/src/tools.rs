@@ -469,6 +469,12 @@ impl Picked {
                 Some(Mapped::Label(w)) => {
                     subjects.insert(Subject::Wire(w));
                 }
+                // A T's dot names the wire its line carries (lane 072 D).
+                Some(Mapped::Tee(r)) => {
+                    if let Some(w) = ecad_cadcraft::wires::wire_of_route(doc, r) {
+                        subjects.insert(Subject::Wire(w));
+                    }
+                }
                 // The sheet frame (brief 019) names nothing.
                 Some(Mapped::Frame(_)) | None => {}
             }
