@@ -1363,20 +1363,26 @@ fn slot_texts(
 ) -> Vec<PageText> {
     use crate::text_style::fonts::width_in;
     use crate::text_style::{TextKind, text_style};
+    use ecad_model::SlotText;
     let device = doc.devices.get(&c);
     let prop = |k: &str| device.and_then(|d| d.value(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
     let (h, v) = (|a: HAlign| a, |a: VAlign| a);
     let mut out = Vec::new();
     for (i, slot) in def.texts.iter().enumerate().take(usize::from(u8::MAX)) {
-        let (of, kind, value, aci) = match slot.text.as_str() {
-            "tag" => {
+        let (of, kind, value, aci) = match &slot.text {
+            SlotText::Tag => {
                 let t = tag_of(doc, c).map(|t| crate::locations::shown_tag(doc, c, r, t, boxes));
                 let prov = tag_of(doc, c).is_some_and(tag::is_provisional);
                 (TextOf::Tag, TextKind::Tag, t, prov.then_some(PROVISIONAL_ACI))
             }
-            "description" => (TextOf::Description, TextKind::Description, prop("description"), None),
-            "part_number" => (TextOf::PartNumber, TextKind::PartNumber, prop("part_number"), None),
-            other => (TextOf::Slot(u8::try_from(i).unwrap_or(u8::MAX)), TextKind::Description, prop(other), None),
+            SlotText::Description => (TextOf::Description, TextKind::Description, prop("description"), None),
+            SlotText::PartNumber => (TextOf::PartNumber, TextKind::PartNumber, prop("part_number"), None),
+            other @ (SlotText::Rating
+            | SlotText::Maker
+            | SlotText::ArticleNumber
+            | SlotText::Function
+            | SlotText::Location
+            | SlotText::PointRating(_)) => (TextOf::Slot(u8::try_from(i).unwrap_or(u8::MAX)), TextKind::Description, prop(&other.word()), None),
         };
         let Some(value) = value else { continue };
         let style = text_style(doc, kind);

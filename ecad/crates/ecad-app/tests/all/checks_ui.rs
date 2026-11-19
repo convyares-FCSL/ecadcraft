@@ -166,8 +166,10 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     // Four rows of brief 022, brief 024's count of devices without a part number, brief 052's two
     // function rows (-K01 is =PUMP, which no page or box says; the others have none) and brief
     // 057's open core (the owner rule: -W01's unwired GNYE core is an error until ticked Not used),
-    // and brief 059's two `no-gland` rows (-W01 has no gland size at either end).
-    assert_eq!(rows.len(), 10, "{rows:?}");
+    // and brief 059's two `no-gland` rows (-W01 has no gland size at either end). Design 072 §2.2:
+    // six `no-rating` rows, for the demo's devices with no typed rating (as the MCP demo test lists).
+    assert_eq!(rows.len(), 16, "{rows:?}");
+    assert_eq!(rows.iter().filter(|r| r.check.kind == Kind::NoRating).count(), 6, "{rows:?}");
     assert_eq!(rows.iter().filter(|r| r.check.kind == Kind::NoGland).count(), 2, "{rows:?}");
     assert!(rows.iter().any(|r| r.check.kind == Kind::FunctionUnused), "{rows:?}");
     assert!(rows.iter().any(|r| r.check.kind == Kind::NoFunction), "{rows:?}");

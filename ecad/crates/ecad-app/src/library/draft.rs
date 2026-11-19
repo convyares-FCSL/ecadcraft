@@ -234,15 +234,15 @@ impl Draft {
 
     /// A draft of stored content `c` (Edit symbol, or a promoted drawing) from `source`.
     pub fn of_content(c: &Content, source: Source) -> Self {
-        let get = |k: &str| c.defaults.get(k).cloned().unwrap_or_default();
+        let get = |k: ecad_model::SymbolDefault| c.defaults.get(k).unwrap_or_default();
         let mut d = Draft {
             source,
             name: c.name.clone(),
-            key: get("key"),
-            prefix: get("prefix"),
-            description: get("description"),
-            rating: get("rating"),
-            part: get("join").eq_ignore_ascii_case("part"),
+            key: get(ecad_model::SymbolDefault::Key),
+            prefix: get(ecad_model::SymbolDefault::Prefix),
+            description: get(ecad_model::SymbolDefault::Description),
+            rating: get(ecad_model::SymbolDefault::Rating),
+            part: c.defaults.join == Some(ecad_model::Join::Part),
             shape: Shape { graphics: c.graphics.clone(), points: c.points.clone(), slots: c.slots.clone(), offers: Vec::new() },
             ..Draft::default()
         };
@@ -377,7 +377,14 @@ impl Draft {
 
     /// The slot texts already used (greyed in the chips).
     pub fn used_slot_texts(&self) -> Vec<&str> {
-        self.shape.slots.iter().map(|s| s.text.as_str()).collect()
+        self.shape
+            .slots
+            .iter()
+            .filter_map(|s| match s.text.word() {
+                std::borrow::Cow::Borrowed(w) => Some(w),
+                std::borrow::Cow::Owned(_) => None,
+            })
+            .collect()
     }
 
     /// Add a slot for device text `text` at `at`.
@@ -385,14 +392,15 @@ impl Draft {
     /// # Errors
     /// The text has a slot already, or there are as many slots as allowed.
     pub fn add_slot(&mut self, text: &str, at: Pt) -> Result<usize, String> {
-        if self.shape.slots.iter().any(|s| s.text == text) {
+        let slot = ecad_model::SlotText::parse(text).ok_or_else(|| format!("{text} is not a device text."))?;
+        if self.shape.slots.iter().any(|s| s.text == slot) {
             return Err(format!("The {} already has a slot.", slot_label(text)));
         }
         if self.shape.slots.len() >= symbol_cmds::MAX_SLOTS {
             return Err(format!("The symbol has too many text slots ({} at most).", symbol_cmds::MAX_SLOTS));
         }
         self.step();
-        self.shape.slots.push(TextSlot { text: text.to_string(), at, h: TextHAlign::Left, v: TextVAlign::Baseline, rotation: Radians(0.0) });
+        self.shape.slots.push(TextSlot { text: slot, at, h: TextHAlign::Left, v: TextVAlign::Baseline, rotation: Radians(0.0) });
         Ok(self.shape.slots.len() - 1)
     }
 
@@ -587,6 +595,18 @@ impl Draft {
         d
     }
 
+    /// [`Draft::defaults`] as the symbol stores them.
+    fn typed_defaults(&self) -> ecad_model::SymbolDefaults {
+        let mut d = ecad_model::SymbolDefaults::default();
+        for (k, v) in self.defaults() {
+            if let Some(which) = ecad_model::SymbolDefault::of_word(&k) {
+                // The draft writes only `device` or `part` for `join`; every other value is text.
+                let _ = d.set(which, &v);
+            }
+        }
+        d
+    }
+
     /// The content the commands check and save.
     pub fn content(&self) -> Content {
         Content {
@@ -594,7 +614,7 @@ impl Draft {
             graphics: self.shape.graphics.clone(),
             points: self.shape.points.clone(),
             slots: self.shape.slots.clone(),
-            defaults: self.defaults(),
+            defaults: self.typed_defaults(),
             bridges: Vec::new(),
             device_type: ecad_model::DeviceType::General,
         }
@@ -768,7 +788,7 @@ mod tests {
         d.shape = Shape { graphics: g, offers: o, ..Shape::default() };
         d.accept_all().unwrap();
         assert!(d.shape.offers.is_empty());
-        assert!(d.shape.slots.iter().any(|s| s.text == "tag"));
+        assert!(d.shape.slots.iter().any(|s| s.text == ecad_model::SlotText::Tag));
         assert!(!d.shape.graphics.iter().any(|g| matches!(g, Primitive::Text { .. })), "the tag text became the slot");
     }
 

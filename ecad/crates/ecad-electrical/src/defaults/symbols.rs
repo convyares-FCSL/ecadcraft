@@ -312,8 +312,9 @@ pub fn project_value(doc: &Document, symbol: &str, field: Field) -> Option<Strin
 pub fn definition_value(d: &ecad_model::Definition, field: Field) -> Option<String> {
     match field {
         Field::Join => Some(crate::symbols::join_of(d).word().to_string()),
-        Field::Prefix => d.defaults.get("prefix").and_then(|p| crate::devices::valid_prefix(p)),
-        _ => d.defaults.get(field.word()).filter(|v| field.accepts(v)).map(|v| v.trim().to_string()),
+        Field::Prefix => d.defaults.prefix.as_ref().map(|t| t.as_str()).and_then(crate::devices::valid_prefix),
+        Field::Description => d.defaults.description.as_ref().map(|t| t.as_str()).filter(|v| field.accepts(v)).map(|v| v.trim().to_string()),
+        Field::Rating => d.defaults.rating.as_ref().map(|t| t.as_str()).filter(|v| field.accepts(v)).map(|v| v.trim().to_string()),
     }
 }
 
@@ -329,11 +330,11 @@ pub fn own_value(doc: &Document, symbol: &str, field: Field) -> Option<(String, 
         };
     }
     let v = crate::symbols::project_by_key(doc, symbol)?;
-    let own = v.def.defaults.get(field.word()).and_then(|x| ok(x));
     let own = match field {
-        Field::Prefix => own.and_then(|p| crate::devices::valid_prefix(&p)),
+        Field::Prefix => v.def.defaults.prefix.as_ref().map(|t| t.as_str()).and_then(ok).and_then(|p| crate::devices::valid_prefix(&p)),
         Field::Join => Some(crate::symbols::join_of(v.def).word().to_string()),
-        _ => own,
+        Field::Description => v.def.defaults.description.as_ref().map(|t| t.as_str()).and_then(ok),
+        Field::Rating => v.def.defaults.rating.as_ref().map(|t| t.as_str()).and_then(ok),
     };
     own.map(|x| (x, super::Source::Definition))
 }

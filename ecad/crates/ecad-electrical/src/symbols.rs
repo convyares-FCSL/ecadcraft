@@ -1297,23 +1297,7 @@ pub const PROJECT_SYMBOLS: LibraryId = LibraryId(0x0000_ecad_0048_5ea1_0000_0000
 pub const MAX_KEY: usize = 16;
 
 /// How a project symbol joins a device (design 048 §5.2).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Join {
-    /// A device of its own: a new tag on each placement.
-    Device,
-    /// Part of a named device.
-    Part,
-}
-
-impl Join {
-    /// The word stored in `defaults.join`.
-    pub fn word(self) -> &'static str {
-        match self {
-            Join::Device => "device",
-            Join::Part => "part",
-        }
-    }
-}
+pub use ecad_model::Join;
 
 /// Whether `d` is a symbol made or edited in a project (its origin is [`PROJECT_SYMBOLS`]).
 pub fn is_project_symbol(d: &Definition) -> bool {
@@ -1322,10 +1306,7 @@ pub fn is_project_symbol(d: &Definition) -> bool {
 
 /// How project symbol `d` joins a device: `part` only when its defaults say so.
 pub fn join_of(d: &Definition) -> Join {
-    match d.defaults.get("join").map(|j| j.trim().to_ascii_lowercase()) {
-        Some(j) if j == "part" => Join::Part,
-        _ => Join::Device,
-    }
+    d.defaults.join.unwrap_or_default()
 }
 
 /// The starter an origin names (by library and ID).
@@ -1361,7 +1342,7 @@ impl<'a> Version<'a> {
 
     /// Its key (`defaults.key`), if it has one.
     pub fn key(&self) -> Option<&'a str> {
-        self.def.defaults.get("key").map(|k| k.trim()).filter(|k| !k.is_empty())
+        self.def.defaults.key.as_ref().map(|k| k.as_str())
     }
 }
 
@@ -1452,7 +1433,7 @@ pub fn registry_key(d: &Definition) -> Option<String> {
     if let Some(s) = of_definition(d) {
         return Some(s.key.to_string());
     }
-    d.defaults.get("key").map(|k| k.trim().to_string()).filter(|k| !k.is_empty())
+    d.defaults.key.as_ref().map(|k| k.to_string())
 }
 
 /// Whether `d` is a brief-044 connector half or pin: a connector starter whose bridges join the

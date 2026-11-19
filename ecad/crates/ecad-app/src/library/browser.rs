@@ -337,7 +337,7 @@ pub fn paint_symbol(p: &egui::Painter, rect: Rect, d: &Definition, ink: Color32,
             p.text(
                 at(sl.at) + vec2(4.0, 0.0),
                 Align2::LEFT_CENTER,
-                super::draft::slot_label(&sl.text),
+                super::draft::slot_label(&sl.text.word()),
                 ecad_ui::style::ui_font(ecad_ui::tokens::ui_type::MICRO.size),
                 slot,
             );
@@ -673,7 +673,7 @@ fn tile(ui: &mut egui::Ui, b: &mut Browser, e: &Entry, sheet: &ecad_drawing_styl
                     .color(c32(ecad_ui::SHELL.connect)),
             );
             if !d.texts.is_empty() {
-                let slots: Vec<String> = d.texts.iter().map(|sl| super::draft::slot_label(&sl.text).to_string()).collect();
+                let slots: Vec<String> = d.texts.iter().map(|sl| super::draft::slot_label(&sl.text.word()).to_string()).collect();
                 ui.label(format!("{} text {}: {}", slots.len(), if slots.len() == 1 { "slot" } else { "slots" }, slots.join(", ")));
             }
             if let Some(px) = e.prefix {
@@ -748,7 +748,7 @@ pub fn details(ui: &mut egui::Ui, b: &Browser, list: &Listing, writable: bool, p
         if let Some(d) = &e.def {
             let keys: Vec<String> = d.terminals.iter().map(|t| t.key.to_string()).collect();
             kv(ui, "Connects at", &if keys.is_empty() { "none".to_string() } else { keys.join(", ") });
-            let slots: Vec<String> = d.texts.iter().map(|sl| super::draft::slot_label(&sl.text).to_string()).collect();
+            let slots: Vec<String> = d.texts.iter().map(|sl| super::draft::slot_label(&sl.text.word()).to_string()).collect();
             kv(ui, "Text slots", &if slots.is_empty() { "none".to_string() } else { slots.join(", ") });
         }
         if let Some(v) = &e.versions {

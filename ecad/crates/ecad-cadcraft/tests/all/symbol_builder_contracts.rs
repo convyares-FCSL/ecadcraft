@@ -68,7 +68,7 @@ fn row_1_symbolnew_embeds_version_1_in_one_transaction() {
     let mut bare = definition.clone();
     bare.origin = None;
     assert_eq!(ecad_file::definition_hash(&bare).unwrap(), o.content_hash);
-    assert_eq!(definition.defaults.get("key").map(String::as_str), Some("float1"));
+    assert_eq!(definition.defaults.key.as_ref().map(|k| k.as_str()), Some("float1"));
     h.cmdline("u");
     assert!(symbols::project_by_key(&h.doc(), "float1").is_none(), "u removes it");
 }

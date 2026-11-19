@@ -232,7 +232,7 @@ fn result(doc: &Document, id: DefinitionId) -> Value {
         "definition": id.hex(),
         "lineage": o.map(|o| o.definition.hex()),
         "version": o.map(|o| o.library_seq),
-        "key": d.and_then(|d| d.defaults.get("key")),
+        "key": d.and_then(|d| d.defaults.key.as_ref().map(|k| k.as_str())),
         "name": d.map(|d| d.name.clone()),
     })
 }

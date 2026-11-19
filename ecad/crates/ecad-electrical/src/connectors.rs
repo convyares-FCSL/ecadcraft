@@ -182,10 +182,11 @@ pub fn size_of(s: &Starter) -> Option<usize> {
 
 // ---------------------------------------------------------------- what is a connector
 
-/// Whether device `c` is a connector: its stored type is [`ecad_model::DeviceType::Connector`]
-/// (design 072 §2.2), never its symbol.
+/// Whether component `c` is a connector with mating halves: its definition is a brief-044 half or
+/// pin. A one-piece connector (a bulkhead) is Connector-typed but not this (lane 072 B: a typed
+/// `mating` field replaces this walk).
 pub fn is_connector(doc: &Document, c: DeviceId) -> bool {
-    doc.devices.get(&c).is_some_and(|x| matches!(x.device_type, ecad_model::DeviceType::Connector(_)))
+    doc.devices.get(&c).and_then(|x| x.definition).and_then(|d| doc.definitions.get(&d)).is_some_and(symbols::is_mating)
 }
 
 /// The side of terminal `t` when it is a connector pin.
