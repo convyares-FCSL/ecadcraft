@@ -7,9 +7,11 @@ What changed for someone using the app:
   (a T) joins that net: the new wire runs from the new point to the nearer end of the wire the
   other line carries (the far end when the nearer one is full). Wires are numbered in drawing
   order.
-- **The Junction tool is gone.** A T is made by drawing onto a line. **No dot is drawn at a T
-  yet**, on screen or in print: lane F's step F3 draws junction dots and T indicators from the
-  lines (they are never stored). Until then a T looks like a line ending on another line.
+- **The Junction tool is gone.** A T is made by drawing onto a line, and a dot is drawn where a
+  line ends on another line, on screen and in print. The dot is drawn from the lines (never
+  stored): it moves and goes with its line, and cannot be erased or moved on its own. Hovering
+  the line says which wire its end joins (`End B joins wire 3 (a T).`), never "Open end". The T
+  indicator (which way the wire order runs) is not drawn yet.
 - **A loose line has no wire yet.** A line with a free end is drawn, can be slashed by a cable,
   continued and given terminals, but carries no wire. The Checks list shows **Line not connected
   at both ends: no wire yet** for it, with its page and position. When both ends land on
@@ -53,6 +55,10 @@ What changed for someone using the app:
    picker no longer lists **Junction**, and `place {"symbol":"junction", …}` says there is no
    such symbol. A project file from an earlier build that holds a junction opens read-only, and
    the message names the word `junction` in setting `kind`.
+   At the T from step 5 a dot is drawn where the new line meets the first one. Hover the new
+   line: its end says it joins the first line's wire (a T). Move the new line off the first
+   one: the dot goes; undo brings it back. Select the dot alone and press Delete: it is refused
+   (the dot is drawn from its lines). Print Book shows the dot too.
 
 9. Draw a line from a device's point into free space and slash it into a cable. Checks lists
    **Core landed at one end only** for the cable (`-W01 core 1 is landed at -K01:2 only.`).

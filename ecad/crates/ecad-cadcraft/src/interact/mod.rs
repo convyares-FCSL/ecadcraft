@@ -376,7 +376,7 @@ pub fn overlay_marks(p: &Project, uid: u64) -> Vec<Mark> {
                         out.push(Mark { at: v2(*q), shape: MarkShape::Dot, size: WIRE_END_ATTACHED_PX, stroke: 0.0, color });
                     }
                 }
-                // A T: its dot is a drawing aid (design 072 §4.4, lane F).
+                // A T: its dot is drawn with the page (design 072 §4.4, `wires::tees_on_page`).
                 RouteEnd::On { .. } => {}
                 RouteEnd::Free if quiet.iter().any(|q| q.near(at, p.tolerance)) => {}
                 RouteEnd::Free => {
@@ -461,6 +461,8 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
         }
         // A conductor label (brief 022): its wire's lens.
         Mapped::Label(w) => wire_lines(doc, Some(w), crate::wires::route_of_wire_on(doc, w, page), page),
+        // A T's dot (lane 072 D): the lens of the line that ends there.
+        Mapped::Tee(r) => wire_lines(doc, crate::wires::wire_of_route(doc, r), Some(r), page),
         // A link line (brief 030, design 030 §5.3).
         Mapped::Link(c, n) => vec![crate::link_lines::hover(doc, p.outputs.as_ref().and_then(|o| o.strips.get(c)), c, n)],
         Mapped::Item(i) => match doc.representation_of_item(i)? {
@@ -709,9 +711,16 @@ fn wire_lines(doc: &Document, w: Option<WireId>, route: Option<RouteId>, page: P
     if let Some(r) = route
         && let Some(line) = doc.routes.get(&r)
     {
-        for (at, landed) in line.end_points().into_iter().flatten().zip(line.ends) {
+        for ((at, landed), end) in line.end_points().into_iter().flatten().zip(line.ends).zip(End::BOTH) {
             match landed {
-                RouteEnd::On { .. } => lines.push("End joins another line (a T).".into()),
+                // A T (design 072 §4.4) is joined, not open: it names the line it lands on.
+                RouteEnd::On { route: on, .. } => {
+                    let joined = match crate::wires::wire_of_route(doc, on) {
+                        Some(w) => format!("wire {}", ecad_model::wiring::wire_number(doc, w).unwrap_or_else(|| "(no number)".into())),
+                        None => "a line with no wire yet".into(),
+                    };
+                    lines.push(format!("End {end:?} joins {joined} (a T)."));
+                }
                 RouteEnd::Free => {
                     if let Some(on) = crate::wires::route_at(doc, page, at, crate::wires::ON_WIRE, Some(r)) {
                         let number = crate::wires::wire_of_route(doc, on.route)
@@ -760,6 +769,7 @@ pub(crate) fn drawn_component(p: &Project, page: PageId, h: Handle) -> Result<(D
         Some(Mapped::Fan(k)) => return Err(crate::views::refusal(map, k).into()),
         Some(Mapped::Frame(_)) => return Err(crate::frame::DERIVED.into()),
         Some(Mapped::Link(..)) => return Err(crate::link_lines::LINK_DERIVED.into()),
+        Some(Mapped::Tee(_)) => return Err(crate::wires::TEE_DERIVED.into()),
         Some(Mapped::RefText(_)) | None => return Err(NOT_COMPONENT.into()),
     };
     let Some((_, rep)) = doc.representation_of_item(item) else { return Err(NOT_COMPONENT.into()) };

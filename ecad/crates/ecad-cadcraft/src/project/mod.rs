@@ -634,6 +634,26 @@ pub fn project_page_kept(
         map.insert_link(part.strip, part.n, *i, h);
         *i += 1;
     }
+    // T dots (design 072 §4.4): where a route ends on another route, derived on every draw of the
+    // page, never stored; in the T route's own colour, layer and weight. A route hidden by a fan
+    // view draws none.
+    for (r, end, at) in crate::wires::tees_on_page(doc, page) {
+        let Some((_, item, _)) = crate::wires::route_item(doc, r) else { continue };
+        if hidden.contains(&item) {
+            continue;
+        }
+        let common = map
+            .item(item)
+            .and_then(|h| ents.iter().find(|e| e.handle == h))
+            .map(|e| Common { linetype: "Continuous".into(), ..e.common.clone() })
+            .unwrap_or_default();
+        for (ring, radius) in (0u8..).zip(crate::wires::TEE_DOT_RADII) {
+            let h = prev.tee(r, end, ring).unwrap_or_else(|| d.new_handle());
+            let kind = kind_for_primitive(&ecad_model::Primitive::Circle { center: at, radius });
+            ents.push(Entity { handle: h, common: common.clone(), kind });
+            map.insert_tee(r, end, ring, h);
+        }
+    }
     // Location box labels (brief 024): derived on every draw, never stored.
     for (rep, value, at) in crate::locations::labels_on_page(doc, page) {
         let h = prev.tag_text(rep, crate::devices::TextOf::Tag).unwrap_or_else(|| d.new_handle());

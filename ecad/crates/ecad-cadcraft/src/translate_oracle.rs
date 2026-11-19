@@ -248,7 +248,8 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
     // Wire labels (brief 022) are left out the same way: drawn again from the document.
     // Device cross-references (brief 025) too.
     let drawn = |map: &HandleMap, h: Handle| {
-        matches!(map.get(h), Some(Mapped::Fan(k)) if !map.is_fan(k)) || matches!(map.get(h), Some(Mapped::Label(_) | Mapped::Xref(_)))
+        matches!(map.get(h), Some(Mapped::Fan(k)) if !map.is_fan(k))
+            || matches!(map.get(h), Some(Mapped::Label(_) | Mapped::Xref(_) | Mapped::Tee(_)))
     };
     // Device tag texts and terminal labels (brief 018) are left out the same way when changed or
     // copied with other objects; erasing one erases its symbol (below).
@@ -297,6 +298,11 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
         if skipped.iter().all(|h| link(cx.map, *h) || copied_source(h, &link)) {
             return Err(crate::link_lines::LINK_DERIVED.into());
         }
+        // Lane 072 D: a T's dot alone.
+        let tee = |m: &HandleMap, x: Handle| matches!(m.get(x), Some(Mapped::Tee(_)));
+        if skipped.iter().all(|h| tee(cx.map, *h) || copied_source(h, &tee)) {
+            return Err(crate::wires::TEE_DERIVED.into());
+        }
         return Err(if tags_only {
             crate::devices::TAG_DERIVED
         } else if labels_only {
@@ -334,8 +340,9 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
                 counts[2] += 1;
             }
             // Left out (above); drawn again from the document.
-            Some(Mapped::Fan(_) | Mapped::Label(_) | Mapped::Xref(_)) if skipped.contains(h) => {}
+            Some(Mapped::Fan(_) | Mapped::Label(_) | Mapped::Xref(_) | Mapped::Tee(_)) if skipped.contains(h) => {}
             Some(Mapped::Label(_)) => return Err(crate::wires::LABEL_DERIVED.into()),
+            Some(Mapped::Tee(_)) => return Err(crate::wires::TEE_DERIVED.into()),
             Some(m @ Mapped::Xref(_)) => return Err(crate::xref::refusal(cx.doc, Some(m)).into()),
             // Briefs 005, 009: a fan is a view, not an object; it cannot be erased.
             Some(Mapped::Fan(k)) => return Err(crate::views::refusal(cx.map, k).into()),
@@ -410,8 +417,9 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
                     counts[1] += 1;
                 }
             }
-            Some(Mapped::Fan(_) | Mapped::Label(_) | Mapped::Xref(_)) if skipped.contains(h) => {}
+            Some(Mapped::Fan(_) | Mapped::Label(_) | Mapped::Xref(_) | Mapped::Tee(_)) if skipped.contains(h) => {}
             Some(Mapped::Label(_)) => return Err(crate::wires::LABEL_DERIVED.into()),
+            Some(Mapped::Tee(_)) => return Err(crate::wires::TEE_DERIVED.into()),
             Some(m @ Mapped::Xref(_)) => return Err(crate::xref::refusal(cx.doc, Some(m)).into()),
             Some(Mapped::Fan(k)) => return Err(crate::views::refusal(cx.map, k).into()),
             Some(Mapped::RefText(_)) => return Err(crate::references::TEXT_DERIVED.into()),
@@ -528,6 +536,7 @@ fn copy_batch(
             Some(Mapped::Fan(k)) => return Err(crate::views::refusal(map, k).into()),
             Some(Mapped::RefText(_)) => return Err(crate::references::TEXT_DERIVED.into()),
             Some(Mapped::Frame(_)) => return Err(crate::frame::DERIVED.into()),
+            Some(Mapped::Tee(_)) => return Err(crate::wires::TEE_DERIVED.into()),
             _ => {}
         }
         src_doc = Some(doc);

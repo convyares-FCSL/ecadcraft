@@ -347,3 +347,22 @@ fn wire_and_cable_types_set_through_mcp_record_typed_fields_as_the_agent() {
     r.refused("execute", json!({"command": "setprop", "params": {"conductor": w, "key": "wire.category", "value": "signal"}}));
     r.refused("execute", json!({"command": "cableedit", "params": {"cable": k, "set": {"cable_type": null}}}));
 }
+
+/// Lane 072 D step F3: the junction is gone for agents too. `place {"symbol": "junction"}`
+/// through `execute` is refused and records nothing; no listed ECAD command offers a junction (a T is
+/// a line drawn onto a line, its dot drawn with the page).
+#[test]
+fn place_junction_through_mcp_is_refused_and_no_command_offers_one() {
+    let mut c = Client::new(EcadMcp::in_memory("lane072d-junction", 724, Options { write: true, agent: None }).unwrap());
+    let before = c.log();
+    let m = c.refused("execute", json!({"command": "place", "params": {"symbol": "junction", "at": [10, 10]}}));
+    assert!(m.contains("No symbol \"junction\""), "{m}");
+    assert_eq!(c.log(), before, "nothing recorded");
+    // ECAD's own commands (CADCraft's geometry commands may use the word for line ends).
+    let ecad: Vec<&str> = ecad_cadcraft::commands::specs().iter().map(|s| s.id).collect();
+    let catalog = c.ok("list_commands", json!({}));
+    for info in catalog.as_array().unwrap().iter().filter(|i| i["id"].as_str().is_some_and(|id| ecad.contains(&id))) {
+        let text = info.to_string().to_lowercase();
+        assert!(!text.contains("junction"), "a listed command still offers a junction: {info}");
+    }
+}

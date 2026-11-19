@@ -71,6 +71,13 @@ pub const MAX_NAME_CHARS: usize = 16;
 /// Why a conductor label alone cannot be edited.
 pub const LABEL_DERIVED: &str = "The wire label is derived; change the number with Fix Wire Number, or the wire's cross-section and colour.";
 
+/// Why a T's dot alone cannot be edited (design 072 §4.4).
+pub const TEE_DERIVED: &str = "A T's dot is drawn from its lines; move or erase the line instead.";
+
+/// The radii (mm) of a T's dot: concentric circles, so it reads as filled at any lineweight
+/// setting (the old junction glyph's look, design 022 §3.1).
+pub const TEE_DOT_RADII: [f64; 3] = [0.5, 0.33, 0.17];
+
 /// The continuation name rule, in words (design 022 §3.2).
 pub const NAME_RULE: &str = "A continuation name is 1 to 16 letters, digits or + - / . _";
 
@@ -398,6 +405,25 @@ pub fn route_item(doc: &Document, r: RouteId) -> Option<(RepresentationId, ItemI
         let id = *rep.items.first()?;
         Some((rid, id, doc.items.get(&id)?))
     })
+}
+
+/// The T's on `page` (design 072 §4.4): each route end that lands on another route
+/// (`RouteEnd::On`), as (route, end index, point). Derived from the routes, never stored; a page
+/// is drawn again when a route op touches it, so the dots follow AddRoute, ModifyRoute and
+/// RemoveRoute of that page's routes and nothing else.
+pub fn tees_on_page(doc: &Document, page: PageId) -> Vec<(RouteId, u8, Pt)> {
+    let mut out = Vec::new();
+    for r in doc.routes_on(page) {
+        let Some(route) = doc.routes.get(&r) else { continue };
+        for (i, end) in (0u8..).zip(route.ends) {
+            if let RouteEnd::On { at, .. } = end
+                && at.is_finite()
+            {
+                out.push((r, i, at));
+            }
+        }
+    }
+    out
 }
 
 /// Route `r`'s item, the item and the route's points.

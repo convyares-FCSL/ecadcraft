@@ -153,6 +153,8 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
         Some(Mapped::Xref(r)) if crate::plc::look::is_frame_rep(doc, r) => {
             doc.representations.get(&r).and_then(|x| x.items.first()).and_then(|i| map.item(*i)).unwrap_or(h)
         }
+        // Lane 072 D: a T's dot stands for the line that ends there.
+        Some(Mapped::Tee(r)) => crate::wires::route_item(doc, r).and_then(|(_, i, _)| map.item(i)).unwrap_or(h),
         _ => h,
     };
     match map.get(h) {
@@ -167,7 +169,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
             t.name = "drawing".into();
             t.handles = vec![h];
         }
-        Some(Mapped::Frame(_)) => {}
+        Some(Mapped::Frame(_) | Mapped::Tee(_)) => {}
         Some(Mapped::RefText(r) | Mapped::Xref(r)) => return reference(doc, map, page, t, r),
         Some(Mapped::Fan(k)) => match map.reference_of(h) {
             Some(r) => return reference(doc, map, page, t, r),

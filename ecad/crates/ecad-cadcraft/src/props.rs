@@ -192,6 +192,8 @@ fn pick(p: &Project, page: PageId, selection: &[Handle]) -> Picked {
         let rep = match map.get(*h) {
             Some(Mapped::Item(i)) => doc.representation_of_item(i).map(|(id, _)| id),
             Some(Mapped::Marker(r, _) | Mapped::Tag(r) | Mapped::RefText(r) | Mapped::Xref(r)) => Some(r),
+            // Lane 072 D: a T's dot stands for the line that ends there.
+            Some(Mapped::Tee(r)) => crate::wires::route_item(doc, r).map(|(rid, _, _)| rid),
             // Brief 030: a link line shows its strip (Properties ▸ Link).
             Some(Mapped::Link(c, n)) => {
                 out.links.insert((c, n));
