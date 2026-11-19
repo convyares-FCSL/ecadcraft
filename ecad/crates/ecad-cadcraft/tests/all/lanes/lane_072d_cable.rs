@@ -101,3 +101,47 @@ fn the_shield_is_the_cables_field() {
     assert_eq!(h.head(), head);
     h.check();
 }
+
+/// Lane 072 D e4 (design 072 §4.5, overseer ruling): a cable's type is its field
+/// `Cable.cable_type`, set by `cablenew`, `cableedit` and `setprop`, never a property; an ID naming
+/// no type is kept and is a check row; deleting a type in use is refused naming the cables.
+#[test]
+fn the_cable_type_is_the_cables_field() {
+    let mut h = H::new(0x72_e4);
+    let ty = h.run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth four", "fields": {"cores": "4G", "size": "1.5"}})).unwrap();
+    let t = ty["id"].as_str().unwrap().to_string();
+    let k: CableId = id(&h.run("cablenew", json!({"cable_type": "Synth four"})).unwrap(), "cable");
+    let c = h.doc().cables[&k].clone();
+    assert_eq!(c.cable_type.as_ref().map(ecad_model::StyleRef::text).as_deref(), Some(t.as_str()));
+    assert!(!c.properties.contains_key("cable_type"), "{:?}", c.properties);
+    assert_eq!(c.cores.len(), 4, "the type's offer is stored");
+    h.check();
+
+    // A second cable through setprop: one ModifyCable writing the field.
+    let k2: CableId = id(&h.run("cablenew", json!({})).unwrap(), "cable");
+    h.run("setprop", json!({"cable": k2.hex(), "key": "cable_type", "value": t})).unwrap();
+    let ops = last_ops(&mut h);
+    assert!(matches!(ops.as_slice(), [Op::ModifyCable { after, .. }] if after.cable_type.is_some() && after.cores.len() == 4), "{ops:?}");
+
+    // Deleting the type in use is refused, naming both cables; nothing is written.
+    let head = h.head();
+    let e: String = h.run("deletestyle", json!({"catalogue": "cable", "id": t})).unwrap_err();
+    assert!(e.contains("-W01") && e.contains("-W02"), "{e}");
+    assert_eq!(h.head(), head);
+
+    // Cleared by cableedit; another field leaves it.
+    h.run("cableedit", json!({"cable": k.hex(), "set": {"length": 10}})).unwrap();
+    assert!(h.doc().cables[&k].cable_type.is_some());
+    h.run("cableedit", json!({"cable": k.hex(), "set": {"cable_type": null}})).unwrap();
+    assert_eq!(h.doc().cables[&k].cable_type, None);
+
+    // An ID naming no type is kept and shown as a check row on the cable.
+    let gone = "#0123456789abcdef0123456789abcdef";
+    h.run("setprop", json!({"cable": k2.hex(), "key": "cable_type", "value": gone})).unwrap();
+    let rows = h.run("checks", json!({"kinds": ["style-unknown"], "limit": 100})).unwrap();
+    let text = rows.to_string();
+    assert!(text.contains("-W02") && text.contains("Cable type"), "{text}");
+    // A name that is no type is refused.
+    assert!(h.run("setprop", json!({"cable": k2.hex(), "key": "cable_type", "value": "No such"})).is_err());
+    h.check();
+}

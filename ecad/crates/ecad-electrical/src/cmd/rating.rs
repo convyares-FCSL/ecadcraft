@@ -203,7 +203,7 @@ pub fn set_wire(doc: &Document, w: &mut Wire, key: &str, value: Option<&str>) {
 }
 
 /// Set a cable's input `key` (a JSON key of [`KEYS`] for cables) to `value`, already checked by
-/// [`check_value`] (`None` clears it): a field, or the cable type property.
+/// [`check_value`] (`None` clears it): a field (the cable type is [`ecad_model::Cable::cable_type`]).
 pub fn set_cable(doc: &Document, c: &mut ecad_model::Cable, key: &str, value: Option<&str>) {
     let r = &mut c.rating;
     match key {
@@ -217,12 +217,7 @@ pub fn set_cable(doc: &Document, c: &mut ecad_model::Cable, key: &str, value: Op
         "vd_limit" => r.vd_limit = value.and_then(parse::percent).map(Percent),
         "load" => c.load = value.and_then(parse::current).map(Amps),
         "protected_by" => c.protected_by = value.and_then(|v| rating::trace::protected_by(doc, v)),
-        "cable_type" => {
-            match value {
-                Some(v) => c.properties.insert(cable::CABLE_TYPE.into(), v.to_string()),
-                None => c.properties.remove(cable::CABLE_TYPE),
-            };
-        }
+        "cable_type" => c.cable_type = value.and_then(ecad_model::StyleRef::parse),
         _ => {}
     }
 }

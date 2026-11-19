@@ -706,12 +706,19 @@ impl Core {
     }
 }
 
+/// The style-choice index key of a cable's cable type ([`Cable::cable_type`]); never a property.
+pub const CABLE_TYPE_KEY: &str = "cable_type";
+
 /// A cable groups existing conductors (DOC-04).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Cable {
     pub properties: Properties,
     /// The whole core set, in core order (design 072 §4.5).
     pub cores: Vec<Core>,
+    /// Its cable type (a style of catalogue `cable`, design 072 §4.5): what its size, colours and
+    /// shield come from when it has none of its own. A reference to no type is kept (a check row).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cable_type: Option<crate::style::StyleRef>,
     /// The cable's own shield; `None` takes its cable type's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shield: Option<crate::style::cable::Shield>,

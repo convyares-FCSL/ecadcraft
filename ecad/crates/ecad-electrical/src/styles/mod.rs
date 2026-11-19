@@ -373,9 +373,9 @@ pub fn users(doc: &Document, catalogue: StyleCatalogue, id: &StyleRef) -> Count 
     let cat = self::catalogue(catalogue);
     let value = id.text();
     let mut c = Count::default();
-    // Brief 057: a cable's `cable_type` is a plain cable property (cables have no registry level).
+    // Design 072 §4.5: a cable's type is its field (cables have no registry level).
     if cat.catalogue == StyleCatalogue::Cable {
-        c.explicit = cable::users(doc, id).len();
+        c.explicit = doc.style_users(cable::CABLE_TYPE, &value).count();
     }
     for entry in (cat.choices)() {
         c.explicit += doc.style_users(entry.key, &value).count();
@@ -424,6 +424,10 @@ pub fn explicit_users(doc: &Document, catalogue: StyleCatalogue, id: &StyleRef) 
     let cat = self::catalogue(catalogue);
     let value = id.text();
     let mut out = Vec::new();
+    // Design 072 §4.5: a cable's type is its field (cables have no registry level).
+    if cat.catalogue == StyleCatalogue::Cable {
+        out.extend(doc.style_users(cable::CABLE_TYPE, &value).map(|o| (cable::CABLE_TYPE, o)));
+    }
     for entry in (cat.choices)() {
         out.extend(doc.style_users(entry.key, &value).map(|o| (entry.key, o)));
     }

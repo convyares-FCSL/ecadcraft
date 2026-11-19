@@ -1,7 +1,8 @@
 //! The style rows of the Checks list (brief 050a, design 050 §3.2, §3.4, §5.7).
 //!
 //! - `style-unknown` (Info): an object's (or the project's, or the standard's) style choice names
-//!   no style of its catalogue; the object is drawn with the next level's style.
+//!   no style of its catalogue; the object is drawn with the next level's style. A cable's
+//!   `cable_type` naming no cable type is one too (design 072 §4.5).
 //! - `ignored-old-setting` (Info, overseer ruling on FP4): one row per kind of 031 key
 //!   (`text.<kind>.height`, `.weight`, `.font`) still in the project's properties.
 //! - `style-limits` (Info): style records past the bounds, which are ignored.
@@ -9,8 +10,8 @@
 //!
 //! # Update map
 //! The rows are worked out on open, reload or first show, and again only after an op
-//! [`touches`] names: a style record or the standard, a style choice on any object, or a
-//! project property of the old kinds. Every other op leaves them. Working them out reads the
+//! [`touches`] names: a style record or the standard, a style choice on any object (a wire's or a
+//! cable's type included), or a project property of the old kinds. Every other op leaves them. Working them out reads the
 //! style-choice index (explicit choices only), the project's properties and the style records.
 
 use ecad_model::style::{MAX_FIELD_CHARS, MAX_FIELDS_PER_STYLE, MAX_STYLES_PER_CATALOGUE, StyleLayer, StyleRef, is_choice_key, is_name};
@@ -53,6 +54,9 @@ pub fn touches(op: &Op) -> bool {
         Op::ModifyWire { before, after, .. } => before.wire_type != after.wire_type || before.display != after.display,
         Op::RemovePage { page, .. } => page.page_type.is_some() || page.display.keys().any(|k| is_choice_key(k)),
         Op::ModifyPage { before, after, .. } => before.page_type != after.page_type,
+        // Design 072 §4.5: a cable's type (a dangling one is a row).
+        Op::CreateCable { cable, .. } | Op::DeleteCable { cable, .. } => cable.cable_type.is_some(),
+        Op::ModifyCable { before, after, .. } => before.cable_type != after.cable_type,
         // Brief 054: the page type and folder rows.
         op if crate::page_types::touches_checks(op) => true,
         _ => false,
@@ -64,6 +68,7 @@ pub fn touches(op: &Op) -> bool {
 fn catalogue_of(key: &str) -> Option<ecad_model::StyleCatalogue> {
     match key {
         "location.style" => Some(ecad_model::StyleCatalogue::Location),
+        super::cable::CABLE_TYPE => Some(ecad_model::StyleCatalogue::Cable),
         "print.frame.style" => Some(ecad_model::StyleCatalogue::Frame),
         k if k.starts_with("text.") && k.ends_with(".style") => Some(ecad_model::StyleCatalogue::Text),
         _ => None,
@@ -203,6 +208,7 @@ pub fn rows(doc: &Document) -> Vec<Check> {
                 (Object::Wire(c), page, "Wire".to_string())
             }
             ObjectRef::Page(p) => (Object::None, Some(p), format!("Page {}", ecad_model::book::page_number(doc, p))),
+            ObjectRef::Cable(k) => (Object::Cable(k), None, crate::cables::cable_title(doc, k)),
             _ => continue,
         };
         out.push(Check { kind: Kind::StyleUnknown, page, at: None, object, which: words(doc, key, value, &whose), fix: None });

@@ -219,16 +219,17 @@ fn cores_in_use(doc: &Document, k: CableId) -> Vec<String> {
     cab.cores.iter().enumerate().filter(|(_, m)| placed(m)).map(|(i, m)| m.label_str().map_or_else(|| (i + 1).to_string(), str::to_string)).collect()
 }
 
-/// Q6: a new offer (from `props`) must hold every core cable `k`'s members use.
-fn check_offer(doc: &Document, k: CableId, props: &Properties) -> Result<(), CmdError> {
+/// Q6: a new offer (from `next`, the cable as it would be written) must hold every core cable
+/// `k`'s members use.
+fn check_offer(doc: &Document, k: CableId, next: &ecad_model::Cable) -> Result<(), CmdError> {
     let Some(cab) = doc.cables.get(&k) else { return Ok(()) };
     if !cab.cores.iter().any(placed) {
         return Ok(());
     }
-    let Some((offer, _, text)) = cable::offer_of_props(doc, props) else { return Ok(()) };
+    let Some((offer, _, text)) = cable::offer_of(doc, next) else { return Ok(()) };
     // Counted as the offer's write would leave the cores (unlabelled ones take free labels).
-    let mut synced = ecad_model::Cable { properties: props.clone(), ..cab.clone() };
-    cable::sync_offered_cores(doc, &cab.properties, &mut synced);
+    let mut synced = next.clone();
+    cable::sync_offered_cores(doc, cab, &mut synced);
     let count = crate::strips::count_cores(Some((offer.clone(), crate::strips::OfferSource::Cores, text.clone())), &synced.cores);
     if count.over.is_empty() {
         return Ok(());
@@ -262,10 +263,11 @@ fn refuse_taken(doc: &Document, typed: &str, except: Option<CableId>) -> Result<
     }
 }
 
-/// `cable` with the shield moved from its properties (where the checked inputs put it) to its
-/// field (design 072 §4.5): the field is cleared when the properties hold none.
-fn take_shield(mut cable: ecad_model::Cable) -> ecad_model::Cable {
+/// `cable` with the shield and the cable type moved from its properties (where the checked inputs
+/// put them) to their fields (design 072 §4.5): a field is cleared when the properties hold none.
+fn take_fields(mut cable: ecad_model::Cable) -> ecad_model::Cable {
     cable.shield = cable.properties.remove(CableField::Shield.key()).and_then(|w| <Shield as Word>::parse(&w));
+    cable.cable_type = cable.properties.remove(CableField::CableType.key()).and_then(|v| StyleRef::parse(&v));
     cable
 }
 
@@ -314,8 +316,8 @@ pub fn plan_new(ledger: &Ledger, ids: &mut IdAllocator, high: &mut TagHigh, fiel
     let tag = crate::devices::new_cable_tag(ledger, high, typed_tag.as_deref())?;
     props.insert(CableField::Tag.key().to_string(), tag.clone());
     let id: CableId = ids.fresh();
-    let mut cable = take_shield(ecad_model::Cable { properties: props, ..ecad_model::Cable::default() });
-    crate::styles::cable::sync_offered_cores(doc, &Properties::new(), &mut cable);
+    let mut cable = take_fields(ecad_model::Cable { properties: props, ..ecad_model::Cable::default() });
+    crate::styles::cable::sync_offered_cores(doc, &ecad_model::Cable::default(), &mut cable);
     ops.push(Op::CreateCable { id, cable });
     Ok(NewCable { id, tag, ops, added: pending.words() })
 }
@@ -332,6 +334,9 @@ pub fn edit_ops(
     let mut ops = Vec::new();
     let mut pending = designations::Pending::default();
     let mut after = cab.properties.clone();
+    // The typed fields are read back from the properties at the end (`take_fields`).
+    after.extend(cab.cable_type.as_ref().map(|t| (CableField::CableType.key().to_string(), t.text())));
+    after.extend(cab.shield.map(|s| (CableField::Shield.key().to_string(), s.word().to_string())));
     let mut changed = Vec::new();
     for (field, v) in set.entries() {
         let value = if field == CableField::Tag {
@@ -360,7 +365,7 @@ pub fn edit_ops(
     // Design 059 §3: choosing a cable type sets `type` from its notation when `type` was empty or
     // came from the old type (and `type` was not given here).
     if set.cable_type.is_some() && set.kind.is_none() {
-        let old_type = cab.properties.get(CableField::CableType.key()).and_then(|v| StyleRef::parse(v));
+        let old_type = cab.cable_type.clone();
         let old_notation = old_type.as_ref().and_then(|id| type_notation(doc, id));
         let current = cab.properties.get(CableField::Type.key()).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
         if current.is_none() || current == old_notation {
@@ -373,7 +378,7 @@ pub fn edit_ops(
         }
     }
     // Q6: never fewer cores than those in use.
-    check_offer(doc, k, &after)?;
+    check_offer(doc, k, &take_fields(ecad_model::Cable { properties: after.clone(), ..cab.clone() }))?;
     // A typed tag is fixed (026), as Set property on `tag` makes it.
     if set.tag.is_some() {
         let fixed = after.get(CableField::Tag.key()).is_some_and(|t| !ecad_model::tag::is_provisional(t));
@@ -382,11 +387,8 @@ pub fn edit_ops(
             false => after.remove(ecad_model::tag::FIXED_KEY),
         };
     }
-    let mut cable = take_shield(ecad_model::Cable { properties: after, ..cab.clone() });
-    if set.shield.is_none() {
-        cable.shield = cab.shield;
-    }
-    crate::styles::cable::sync_offered_cores(doc, &cab.properties, &mut cable);
+    let mut cable = take_fields(ecad_model::Cable { properties: after, ..cab.clone() });
+    crate::styles::cable::sync_offered_cores(doc, cab, &mut cable);
     ops.extend(Op::modify_cable(k, cab, cable));
     Ok((ops, changed, pending.words()))
 }

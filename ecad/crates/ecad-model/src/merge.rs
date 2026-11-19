@@ -851,6 +851,9 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                 let v = object(ctx, obj, &what, a.cables.get(&id), t.cables.get(&id), s.cables.get(&id), |ctx, a, t, s| Cable {
                     properties: merge_props(ctx, obj, &what, &a.properties, &t.properties, &s.properties, &all),
                     cores: merge_members(&a.cores, &t.cores, &s.cores),
+                    cable_type: field(ctx, obj, "cable_type", format!("{what} · cable type"), &a.cable_type, &t.cable_type, &s.cable_type, &|x| {
+                        x.as_ref().map_or_else(|| "(none)".to_string(), StyleRef::text)
+                    }),
                     shield: field(ctx, obj, "shield", format!("{what} · shield"), &a.shield, &t.shield, &s.shield, &|x| {
                         x.map_or_else(|| "(none)".to_string(), |v| crate::words::Word::word(v).to_string())
                     }),
@@ -2047,7 +2050,11 @@ fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
                 p.extend(x.wire_type.as_ref().map(|t| (crate::wiring::WIRE_CATEGORY.to_string(), t.text())));
                 p
             }),
-            Obj::Cable(c) => d.cables.get(&c).map(|x| x.properties.clone()),
+            Obj::Cable(c) => d.cables.get(&c).map(|x| {
+                let mut p = x.properties.clone();
+                p.extend(x.cable_type.as_ref().map(|t| (crate::doc::CABLE_TYPE_KEY.to_string(), t.text())));
+                p
+            }),
             Obj::Page(p) => d.pages.get(&p).map(|x| x.display.clone()),
             Obj::Project => Some(d.properties.clone()),
             _ => None,

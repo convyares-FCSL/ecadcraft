@@ -50,7 +50,8 @@ impl Side {
     }
 }
 
-/// A cable field the manager edits; [`CableField::key`] is its stored property.
+/// A cable field the manager edits; [`CableField::key`] is its stored property (its input word for
+/// the typed fields: the cable type and the shield).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum CableField {
     Tag,
@@ -190,6 +191,9 @@ pub fn read(doc: &Document, k: CableId, field: CableField) -> Option<String> {
     let c = doc.cables.get(&k)?;
     if field == CableField::Shield {
         return c.shield.map(|s| ecad_model::words::Word::word(s).to_string());
+    }
+    if field == CableField::CableType {
+        return c.cable_type.as_ref().filter(|id| styles::exists(doc, ecad_model::StyleCatalogue::Cable, id)).map(StyleRef::text);
     }
     let v = c.properties.get(field.key())?;
     valid(doc, field, v).then(|| v.trim().to_string())

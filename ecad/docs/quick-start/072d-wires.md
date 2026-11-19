@@ -60,5 +60,12 @@ What changed for someone using the app:
    row goes. A file whose stored core place disagrees with its line reports **Core's stored
    place disagrees with the drawing** (an error) and is not changed.
 
+10. Cable types (a cable's type is now its own field, not a property). In **Standards ▸ Cable
+    types** add one (cores `4G`, size 1.5). In the cable list pick a cable, choose the type in
+    **Cable type**: its cores and size follow the type, and a value typed on the cable wins
+    over the type's. Try to delete the type in Standards: it is refused and the message names
+    the cables using it (`-W01 uses …`). A cable whose type is not in the project shows
+    **Style not found** in Checks, naming the cable.
+
 Not yet tried by the owner. Checked by the headless tests named in the lane's tests
 (`lanes::lane_072d`, ecad-model, ecad-file, ecad-inspector, ecad-cadcraft, ecad-mcp, ecad-app).

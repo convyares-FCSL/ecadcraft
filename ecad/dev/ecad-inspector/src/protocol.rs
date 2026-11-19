@@ -723,6 +723,7 @@ fn cables(d: &Document) -> Vec<Value> {
             json!({
                 "id": id.to_string(),
                 "tag": k.properties.get(ecad_model::tag::TAG_KEY),
+                "cable_type": k.cable_type.as_ref().map(ecad_model::StyleRef::text),
                 "shield": k.shield.map(ecad_model::words::Word::word),
                 "protected_by": k.protected_by.map(|p| protected_name(d, p)),
                 "members": members,
