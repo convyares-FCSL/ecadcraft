@@ -66,9 +66,11 @@ impl Command for CablerefParams {
 }
 
 /// `cablecontinue {cable, at, toward, members?}` (design 010 §2.2, §5, §7.2): the second drawing of
-/// `cable` on the active page. One transaction: a reference end at `at`, then for each continued
-/// member a stub that is a new route of the **same** conductor, then a slash across the stubs.
-/// No conductor, attachment or membership changes, so the nets are unchanged.
+/// `cable` on the active page. One transaction: a reference end at `at`; for each continued core
+/// (one on a loose line of the source page) a named point on each reference, the source line
+/// landed on the one there and a stub from the one here to a free end (design 072 §4.4, F4);
+/// then a slash across the stubs. Once a stub lands on a device point, one wire runs from device
+/// point to device point across the pages.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct CablecontinueParams {
@@ -78,7 +80,8 @@ pub(crate) struct CablecontinueParams {
     at: Point,
     /// The direction the stubs leave in.
     toward: Point,
-    /// The members that continue, in order (default every one that can).
+    /// The cores that continue, in order, each by its wire or, with no wire yet, its line (default
+    /// every one that can).
     #[serde(default)]
     members: Option<Vec<WireId>>,
 }
@@ -100,14 +103,15 @@ impl Command for CablecontinueParams {
                 .iter()
                 .map(|r| {
                     json!({
-                        "conductor": r.conductor.hex(),
+                        "core": r.core + 1,
+                        "points": [r.points[0].hex(), r.points[1].hex()],
                         "route": r.route.hex(),
                         "item": r.item.hex(),
                         "free_end": if r.free_end == End::A { "A" } else { "B" },
                     })
                 })
                 .collect();
-            let skipped: Vec<Value> = done.plan.skipped.iter().map(|(w, why)| json!({"conductor": w.hex(), "reason": why.reason()})).collect();
+            let skipped: Vec<Value> = done.plan.skipped.iter().map(|(w, why)| json!({"conductor": w, "reason": why.reason()})).collect();
             Ok(json!({
                 "reference": rep.hex(),
                 "item": done.reference.item.hex(),

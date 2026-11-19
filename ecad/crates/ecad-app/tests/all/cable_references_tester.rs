@@ -291,7 +291,6 @@ fn tag_page(h: &mut Harness<'static, App>, page: PageId, name: &str) {
 
 /// Design §11 fixture R built by clicks, the reference screenshots, AC2, AC3 and AC5 in the UI.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn fixture_r_by_label_and_canvas_clicks_with_reference_screenshots() {
     let out = std::env::var_os("ECAD_TESTER_SHOTS").map(PathBuf::from);
     if let Some(dir) = &out {

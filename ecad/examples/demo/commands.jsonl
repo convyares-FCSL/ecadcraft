@@ -82,7 +82,7 @@
 // ---------------------------------------------------------------- page 3: Field
 {"command":"newpage","params":{"title":"Field"}}
 {"command":"pageprops","params":{"location":"+FIELD"}}
-// -W01 is continued here once wires form across pages through cable references (lane F, step F4):
+// -W01 is continued here at F5: its page-2 lines must first end loose at the reference (lane D, F4 named points);
 // then `cablecontinue` at [130,150] toward [130,130] and the three stubs connected to X02.
 {"command":"place","params":{"symbol":"terminal","at":[110,110],"tag":"X02"},"as":"x2a"}
 {"command":"place","params":{"symbol":"terminal","at":[130,110],"tag":"X02"},"as":"x2b"}

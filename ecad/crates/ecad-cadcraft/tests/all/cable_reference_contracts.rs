@@ -74,10 +74,12 @@ fn before_reference() -> R {
     h.run("renamepage", json!({"page": supply.hex(), "title": "Supply"})).unwrap();
     component(&mut h, supply, "line -10,-5 0,-5 0,15 -10,15 c", [(0.0, 0.0), (0.0, 5.0), (0.0, 10.0)], "K1");
     let mut w = Vec::new();
+    // Loose lines leaving the page (design 072 §4.4, F4): no wire until each is continued through
+    // the cable's references and lands on K2; until then a core is named by its line.
     for y in [0.0, 5.0, 10.0] {
-        let c: WireId = id(&wire_pp(&mut h, json!([[0.0, y], [60.0, y]])).unwrap(), "conductor");
-        tag(&mut h, "conductor", &c.hex(), &format!("W{y}"));
-        w.push(c);
+        let v = h.run("wire", json!({"points": [[0.0, y], [60.0, y]]})).unwrap();
+        let line: ecad_model::RouteId = id(&v, "route");
+        w.push(WireId::parse(&line.hex()).unwrap());
     }
     let c1: CableId = id(&h.run("cableslash", json!({"from": [28, -3], "to": [32, 18], "tag": "C1"})).unwrap(), "cable");
     let field: PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
@@ -114,6 +116,13 @@ fn connected() -> R {
     // Each stub's free end onto K2 (design 072 §4.3: the stubs are routes).
     for (s, t) in v["routes"].as_array().cloned().unwrap_or_default().iter().zip(r.k2) {
         r.h.run("connect", json!({"route": s["route"], "end": s["free_end"], "terminal": t.hex()})).unwrap();
+    }
+    // Now each core is a wire, from K1 to K2 across the pages: name them W0, W5, W10.
+    let doc = r.h.doc();
+    let wires: Vec<WireId> = doc.cables[&r.c1].cores.iter().filter_map(|c| c.wire()).collect();
+    for (i, (w, y)) in wires.iter().zip(["0", "5", "10"]).enumerate() {
+        tag(&mut r.h, "conductor", &w.hex(), &format!("W{y}"));
+        r.w[i] = *w;
     }
     r
 }
@@ -168,7 +177,6 @@ fn shape(ops: &[Op]) -> Vec<String> {
 /// Check A: `cablecontinue` is one transaction with the §2.2 ops in order; the stubs and slash are
 /// §5.3's; the cable's ID, members, conductors and nets are unchanged.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn continuing_a_cable_adds_routes_of_the_same_conductors_in_one_transaction() {
     let mut r = before_reference();
     r.h.run("cableref", json!({"cable": r.c1.hex(), "at": [65, 5]})).unwrap();
@@ -179,15 +187,26 @@ fn continuing_a_cable_adds_routes_of_the_same_conductors_in_one_transaction() {
     assert_eq!(r.h.head(), head + 1, "one transaction");
     let ops = last_ops(&mut r.h);
     let names: Vec<&str> = ops.iter().map(Op::name).collect();
+    // Design 072 §4.4 (F4): the reference here with a named point per core, the cores listing
+    // their points, Supply's reference placing its points, Supply's lines landing on them, the
+    // stubs from the points here, the slash.
     assert_eq!(
         names,
         [
             "AddItem",
             "LinkRepresentation",
+            "ModifyCable",
+            "ModifyRepresentation",
+            "ModifyRoute",
+            "ModifyRoute",
+            "ModifyRoute",
+            "AddRoute",
             "AddItem",
             "LinkRepresentation",
+            "AddRoute",
             "AddItem",
             "LinkRepresentation",
+            "AddRoute",
             "AddItem",
             "LinkRepresentation",
             "AddItem",
@@ -220,8 +239,10 @@ fn continuing_a_cable_adds_routes_of_the_same_conductors_in_one_transaction() {
     let any = Subject::Route(ecad_model::RouteId::from(0u128));
     assert_eq!(roles, vec![("reference".into(), k), ("route".into(), any), ("route".into(), any), ("route".into(), any), ("slash".into(), k)]);
     let after = r.h.doc();
-    assert_eq!(after.cables, before.cables, "same cable, same members");
-    assert_eq!(after.wires, before.wires, "no conductor or attachment changed");
+    let positions = |d: &Document| d.cables[&r.c1].cores.iter().map(|c| c.position).collect::<Vec<_>>();
+    assert_eq!(positions(&after), positions(&before), "same cable, same cores where they were");
+    assert!(after.cables[&r.c1].cores.iter().all(|c| c.through.len() == 2), "each core has a point on each reference");
+    assert_eq!(after.wires, before.wires, "no wire until a stub lands on a device point");
     assert_eq!(nets(&after), nets(&before), "nets unchanged");
     assert_eq!(v["text"], "1/F2");
     assert_eq!(v["partner"], json!(reference_on(&mut r.h, r.supply).hex()));
@@ -233,7 +254,6 @@ fn continuing_a_cable_adds_routes_of_the_same_conductors_in_one_transaction() {
 /// Check B: after connecting, each net is {K1 terminal i, Wi, K2 terminal i}: the same structure
 /// as the circuit drawn on one page; `cablerefs` lists two partners with three wires each.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn a_cable_on_two_pages_gives_the_nets_of_one_page() {
     let mut r = connected();
     let doc = r.h.doc();
@@ -257,7 +277,6 @@ fn a_cable_on_two_pages_gives_the_nets_of_one_page() {
 /// Check C: each end shows the other's page and column, placed beyond it away from the wires; no
 /// end mark where a continued wire leaves toward a reference.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn each_reference_shows_the_other_end_away_from_its_wires() {
     let mut r = connected();
     let doc = r.h.doc();
@@ -323,7 +342,6 @@ fn texts_follow_page_moves_renames_and_point_moves_live() {
 /// Check E: erasing the whole Field drawing makes Supply's end an orphan (red, diagnostic, echo);
 /// conductors and their Field attachments stay; undo restores the link with the same IDs.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn erasing_one_drawing_makes_the_other_end_an_orphan_and_undo_restores_it() {
     let mut r = connected();
     r.h.activate(r.field);
@@ -398,7 +416,6 @@ fn the_text_is_derived_erasing_it_erases_the_reference_and_moving_it_is_refused(
 
 /// Check F: save, reopen and replay give the same cable, drawings and references.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn save_reopen_and_replay_keep_cable_drawings_and_references() {
     let mut r = connected();
     r.h.run("qsave", Value::Null).unwrap();
@@ -419,7 +436,6 @@ fn save_reopen_and_replay_keep_cable_drawings_and_references() {
 /// Check G: the hover lens names the other end and its terminals; `cablegoto` opens it centred
 /// with its point selected, and back; an orphan is refused.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn hover_previews_the_target_and_cablegoto_jumps_there_and_back() {
     let mut r = connected();
     r.h.activate(r.supply);
@@ -451,7 +467,6 @@ fn hover_previews_the_target_and_cablegoto_jumps_there_and_back() {
 
 /// Check H: the interactive forms commit exactly the JSON forms' transactions (apart from IDs).
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn interactive_forms_record_the_json_forms_transactions() {
     // JSON forms.
     let (mut j, _) = continued();
@@ -490,7 +505,6 @@ fn interactive_forms_record_the_json_forms_transactions() {
 
 /// Check I: refusals R1 to R6, each with its words and the head unchanged.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn refusals_say_why_and_change_nothing() {
     let (mut r, _) = continued();
     let c1 = r.c1.hex();
@@ -536,7 +550,6 @@ fn refusals_say_why_and_change_nothing() {
 /// The JSON forms of every new or changed command, as an agent drives them (brief 011 rule):
 /// result or refusal, and whether a transaction was recorded.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn json_forms_of_the_reference_and_page_commands() {
     let mut r = before_reference();
     let c1 = r.c1.hex();
@@ -585,7 +598,6 @@ fn reference_hex(h: &mut H, page: PageId) -> String {
 
 /// Check J: hostile input never panics; each refusal is in words and records nothing.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn hostile_input_is_refused_in_words() {
     let (mut r, _) = continued();
     r.h.activate(r.supply);
@@ -769,7 +781,6 @@ fn twenty_thousand_references_of_one_cable_stay_bounded_and_fast() {
 /// stub whose other end is connected on the first page never detaches that end, and dropping that
 /// end on a terminal here connects nothing and says why.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn moving_a_stub_never_detaches_the_end_connected_on_the_other_page() {
     let (mut r, _) = continued();
     r.h.activate(r.field);
@@ -792,7 +803,6 @@ fn moving_a_stub_never_detaches_the_end_connected_on_the_other_page() {
 /// Check M: the trail from a reference reaches its cable and partner; a cable lists its
 /// representations by page; a conductor its route on each page.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn the_debugger_trail_follows_references_across_pages() {
     use ecad_cadcraft::debug::{ObjectId, used_by};
     let mut r = connected();
@@ -817,7 +827,6 @@ fn the_debugger_trail_follows_references_across_pages() {
 
 /// Check L: fan view of C1 draws on both pages with the reference marker and text still shown.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn fan_view_keeps_the_reference_drawn() {
     let mut r = connected();
     r.h.run("cableview", json!({"cable": r.c1.hex(), "view": "fan"})).unwrap();
@@ -946,7 +955,6 @@ fn the_flag_points_right_when_the_wires_come_from_the_left() {
 /// Fixture R's page 2 (the continued end): the wires leave to the right, the flag points left and
 /// `1/F2` sits left of the point, clear of the wires.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn the_flag_points_left_when_the_wires_leave_to_the_right() {
     let (mut r, _) = continued();
     assert_flag_away(&mut r.h, r.field, r.c1, Pt::new(-1.0, 0.0));
@@ -993,7 +1001,6 @@ fn drawn_texts(h: &mut H, page: PageId) -> Vec<String> {
 /// text draws nothing of Supply (it has no drawing); Supply shows the new text once it is made
 /// active. A commit that changes nothing Supply shows logs a change that leaves Supply out.
 #[test]
-#[ignore = "until F4: cross-page wires through cable-reference points"]
 fn only_the_active_page_is_drawn_and_another_page_shows_the_new_text_when_made_active() {
     let mut r = connected();
     r.h.activate(r.supply);

@@ -1274,6 +1274,7 @@ fn merge_members(a: &[Core], t: &[Core], s: &[Core]) -> Vec<Core> {
             colours: field(am, m, sm, |x| &x.colours),
             purpose: field(am, m, sm, |x| &x.purpose),
             position: m.position,
+            through: field(am, m, sm, |x| &x.through),
         });
     }
     for m in s {

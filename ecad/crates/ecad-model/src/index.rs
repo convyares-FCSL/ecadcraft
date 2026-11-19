@@ -69,6 +69,8 @@ pub(crate) struct Index {
     pub(crate) conductor_cables: Multi<WireId, CableId>,
     /// Route → the cables with a core on it (a line with no wire yet).
     pub(crate) route_cables: Multi<RouteId, CableId>,
+    /// A cable reference's named point → the cable whose core lists it (design 072 §4.4, F4).
+    pub(crate) cable_points: Multi<TerminalId, CableId>,
     /// Device → its terminals.
     pub(crate) component_terminals: Multi<DeviceId, TerminalId>,
     /// PLC station → the modules naming it (design 072 §3).
@@ -323,6 +325,9 @@ impl Index {
         }
         if let Some(r) = m.route() {
             bump(&mut self.route_cables, r, id, delta);
+        }
+        for t in &m.through {
+            bump(&mut self.cable_points, *t, id, delta);
         }
     }
 
