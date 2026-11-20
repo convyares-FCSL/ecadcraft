@@ -3,7 +3,7 @@
 //! agent's transactions and are refused with writes off.
 
 use ecad_mcp::policy;
-use ecad_model::{Author, ObjectRef, Op};
+use ecad_model::{Author, Op};
 use serde_json::{Value, json};
 
 use crate::common::writer;
@@ -57,7 +57,7 @@ fn a_table_the_user_placed_stays_and_is_a_check() {
     c.exec("mirrormove", json!({"component": k, "at": [75.0, 45.0]}));
     let last = c.log().last().cloned().unwrap();
     assert_eq!(last.author, Author::Agent(AGENT.into()));
-    assert!(matches!(&last.ops[..], [Op::SetProperty { object: ObjectRef::Device(_), key, .. }] if key == "mirror"), "{:?}", last.ops);
+    assert!(matches!(&last.ops[..], [Op::ModifyDevice { .. }]), "{:?}", last.ops);
     let t = c.exec("contacts", json!({"component": k}));
     assert_eq!(t["table"]["shown"], json!("as placed"), "{t}");
     assert_eq!(t["table"]["top"], json!([75.0, 45.0]), "{t}");

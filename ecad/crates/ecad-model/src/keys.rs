@@ -271,6 +271,9 @@ pub const RESERVED: &[PropKey] = &[
     // Lane D: a wire's number and its fixed flag are `Wire.number` (design 072 §4.2).
     WIRE_NUMBER,
     WIRE_NUMBER_FIXED,
+    // Lane 072 B: the contacts a part offers and where its table goes (design 072 §2.2).
+    PropKey("contacts"),
+    PropKey("mirror"),
     // Lane C (design 072 §3): a PLC module's and station's fields.
     PropKey("plc.rack"),
     PropKey("plc.slot"),

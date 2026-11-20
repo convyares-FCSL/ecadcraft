@@ -30,7 +30,7 @@ pub const MAX_SUPPLY_VOLTS: f64 = 1000.0;
 /// ```
 /// use ecad_model::device::{Output, Sensing, Sensor};
 /// use ecad_model::units::{Current, RatedVoltage, Volts};
-/// let b = Sensor { sensing: Sensing::Proximity, output: Output::Pnp, supply: Some(RatedVoltage { volts: Volts(24.0), current: Current::Dc }) };
+/// let b = Sensor { sensing: Sensing::Proximity, output: Output::Pnp, supply: Some(RatedVoltage { volts: Volts(24.0), current: Current::Dc }), ..Sensor::default() };
 /// assert_eq!(b.to_string(), "24 V DC");
 /// assert_eq!(
 ///     serde_json::to_string(&b).unwrap(),
@@ -45,6 +45,9 @@ pub struct Sensor {
     /// A powered sensor's supply voltage; always empty on a contact or a thermocouple.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supply: Option<RatedVoltage>,
+    /// The contacts a switching sensor offers (limit, pressure and float switches).
+    #[serde(default, skip_serializing_if = "super::ContactSet::is_empty")]
+    pub contacts: super::ContactSet,
 }
 
 crate::word_enum! {
@@ -105,12 +108,12 @@ impl Sensing {
 impl Sensor {
     /// A sensor sensing `sensing` with `output`, with nothing rated.
     pub fn empty(sensing: Sensing, output: Output) -> Sensor {
-        Sensor { sensing, output, supply: None }
+        Sensor { sensing, output, supply: None, contacts: super::ContactSet::default() }
     }
 
-    /// The same sensor with nothing rated.
+    /// The same sensor with nothing rated (its contacts kept).
     pub fn unrated(&self) -> Sensor {
-        Sensor::empty(self.sensing, self.output)
+        Sensor { contacts: self.contacts.clone(), ..Sensor::empty(self.sensing, self.output) }
     }
 
     /// Whether no rating field is set.
@@ -121,6 +124,9 @@ impl Sensor {
     /// Why it is not well formed, if it is not: a supply on an unpowered sensor, or a value out of
     /// range or not a number.
     pub fn problem(&self) -> Option<String> {
+        if let Some(p) = self.contacts.problem() {
+            return Some(p);
+        }
         let v = self.supply?;
         if !self.output.is_powered() {
             return Some(format!("a {} with a {} output has no supply", self.sensing.label(), self.output.word()));

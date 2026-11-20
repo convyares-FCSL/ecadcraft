@@ -11,13 +11,18 @@
 //!   [`fmt::Display`] writes the set fields in a fixed order (`coil 24 V DC, 3 W, AC-3 9 A, 4 kW`),
 //!   which is what the drawing and every command's answer show.
 //!
-//! This module excludes reading a typed rating text (`ecad-electrical`'s rating reader), the
-//! contacts a device offers and its contact table (later steps of lane B).
+//! - `contacts` is what the part offers ([`ContactSet`]) and `contact_table` where its contact
+//!   table goes (none: the project's default); neither is part of the rating.
+//!
+//! This module excludes reading a typed rating text (`ecad-electrical`'s rating reader) and
+//! numbering the contacts a device offers (`ecad-electrical`'s `xref`).
 #![deny(clippy::wildcard_enum_match_arm)]
 
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
+
+use super::contacts::{ContactSet, ContactTable};
 
 use crate::units::{Amps, RatedVoltage, Watts};
 
@@ -40,6 +45,7 @@ pub const MAX_AC3_WATTS: f64 = 4_000_000.0;
 ///     operator: Operator::Coil(Control { voltage: Some(RatedVoltage { volts: Volts(24.0), current: Current::Dc }), power: None }),
 ///     ac3_current: Some(Amps(9.0)),
 ///     ac3_power: None,
+///     ..Switching::default()
 /// };
 /// assert_eq!(k.to_string(), "coil 24 V DC, AC-3 9 A");
 /// assert_eq!(
@@ -57,6 +63,12 @@ pub struct Switching {
     /// The AC-3 motor power it switches.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ac3_power: Option<Watts>,
+    /// The contacts it offers (design 025 FP1).
+    #[serde(default, skip_serializing_if = "ContactSet::is_empty")]
+    pub contacts: ContactSet,
+    /// Where its contact table goes; none takes the project's default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contact_table: Option<ContactTable>,
 }
 
 /// What operates a switching device.
@@ -102,7 +114,7 @@ impl OperatorKind {
             OperatorKind::SolidState => Operator::SolidState(Control::default()),
             OperatorKind::Manual => Operator::Manual,
         };
-        Switching { operator, ac3_current: None, ac3_power: None }
+        Switching { operator, ac3_current: None, ac3_power: None, contacts: ContactSet::default(), contact_table: None }
     }
 }
 
@@ -134,9 +146,14 @@ impl Switching {
         }
     }
 
-    /// Whether no rating field is set.
+    /// Whether no rating field is set (its contacts and table are not rating fields).
     pub fn is_unrated(&self) -> bool {
-        *self == self.operator_kind().empty()
+        *self == self.unrated()
+    }
+
+    /// The same device with nothing rated: its operator kind, contacts and table kept.
+    pub fn unrated(&self) -> Switching {
+        Switching { contacts: self.contacts.clone(), contact_table: self.contact_table, ..self.operator_kind().empty() }
     }
 
     /// Why it is not well formed, if it is not: a value out of range or not a number.
@@ -148,7 +165,10 @@ impl Switching {
         let bad = control_bad
             || self.ac3_current.is_some_and(|a| !within(a.0, MAX_AC3_AMPS))
             || self.ac3_power.is_some_and(|w| !within(w.0, MAX_AC3_WATTS));
-        bad.then(|| format!("a rating value of a {} is out of range", self.operator_kind().label()))
+        if bad {
+            return Some(format!("a rating value of a {} is out of range", self.operator_kind().label()));
+        }
+        self.contacts.problem().or_else(|| self.contact_table.and_then(|t| t.problem()))
     }
 }
 

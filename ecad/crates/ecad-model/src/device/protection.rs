@@ -112,9 +112,39 @@ impl Protection {
         }
     }
 
-    /// Whether no rating field is set (a fuse bank: no output rated).
+    /// Whether no rating field is set (a fuse bank: no output rated). Its contacts are not
+    /// rating fields.
     pub fn is_unrated(&self) -> bool {
-        self.clone() == self.kind().empty()
+        *self == self.unrated()
+    }
+
+    /// The same device with nothing rated: its kind and contacts kept.
+    pub fn unrated(&self) -> Protection {
+        let mut out = self.kind().empty();
+        if let (Some(c), Some(to)) = (self.contacts(), out.contacts_mut()) {
+            *to = c.clone();
+        }
+        out
+    }
+
+    /// Its auxiliary contacts, when its kind has them (a breaker, an RCD, an RCBO).
+    pub fn contacts(&self) -> Option<&super::ContactSet> {
+        match self {
+            Protection::Mcb(b) => Some(&b.contacts),
+            Protection::Rcd(r) => Some(&r.contacts),
+            Protection::Rcbo(r) => Some(&r.contacts),
+            Protection::Fuse(_) | Protection::FuseTerminal(_) | Protection::FuseBank(_) => None,
+        }
+    }
+
+    /// Its auxiliary contacts, to change, when its kind has them.
+    pub fn contacts_mut(&mut self) -> Option<&mut super::ContactSet> {
+        match self {
+            Protection::Mcb(b) => Some(&mut b.contacts),
+            Protection::Rcd(r) => Some(&mut r.contacts),
+            Protection::Rcbo(r) => Some(&mut r.contacts),
+            Protection::Fuse(_) | Protection::FuseTerminal(_) | Protection::FuseBank(_) => None,
+        }
     }
 
     /// The rated current of the device, or of a fuse bank's output `output`.
@@ -148,7 +178,10 @@ impl Protection {
                 b.outputs.values().any(fuse)
             }
         };
-        bad.then(|| format!("a rating value of a {} is out of range", self.kind().label()))
+        if bad {
+            return Some(format!("a rating value of a {} is out of range", self.kind().label()));
+        }
+        self.contacts().and_then(super::ContactSet::problem)
     }
 }
 
@@ -208,6 +241,9 @@ pub struct Breaker {
     pub breaking: Option<KiloAmps>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub poles: Option<Poles>,
+    /// Its auxiliary contacts (design 025 FP1).
+    #[serde(default, skip_serializing_if = "super::ContactSet::is_empty")]
+    pub contacts: super::ContactSet,
 }
 
 impl fmt::Display for Breaker {
@@ -226,6 +262,9 @@ pub struct Rcd {
     pub residual: Option<MilliAmps>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub poles: Option<Poles>,
+    /// Its auxiliary contacts (design 025 FP1).
+    #[serde(default, skip_serializing_if = "super::ContactSet::is_empty")]
+    pub contacts: super::ContactSet,
 }
 
 impl fmt::Display for Rcd {
@@ -248,6 +287,9 @@ pub struct Rcbo {
     pub breaking: Option<KiloAmps>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub poles: Option<Poles>,
+    /// Its auxiliary contacts (design 025 FP1).
+    #[serde(default, skip_serializing_if = "super::ContactSet::is_empty")]
+    pub contacts: super::ContactSet,
 }
 
 impl fmt::Display for Rcbo {

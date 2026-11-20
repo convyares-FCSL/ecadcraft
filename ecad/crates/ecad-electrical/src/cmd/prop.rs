@@ -79,16 +79,6 @@ pub static PROP_RULES: &[PropRule] = &[
         build: Build::Value(wire_value),
     },
     PropRule {
-        what: "contacts (brief 025)",
-        claims: |_, o, k| is_component(o) && k == crate::xref::CONTACTS_KEY,
-        build: Build::Value(contacts_value),
-    },
-    PropRule {
-        what: "contact table mirror (brief 025)",
-        claims: |_, o, k| is_component(o) && k == crate::xref::MIRROR_KEY,
-        build: Build::Value(mirror_value),
-    },
-    PropRule {
         what: "strip offer (brief 028)",
         claims: |doc, o, k| k == crate::strips::OFFER_KEY && strip(doc, o).is_some(),
         build: Build::Value(offer_value),
@@ -196,14 +186,6 @@ fn device_value(doc: &Document, _: ObjectRef, key: &str, value: Option<&str>) ->
 
 fn wire_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     Ok(super::wire::setprop_rule(doc, o, key, value)?.unwrap_or_else(|| value.map(str::to_string)))
-}
-
-fn contacts_value(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    crate::xref::offer_value(value)
-}
-
-fn mirror_value(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    crate::xref::mirror_value(value)
 }
 
 fn offer_value(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {

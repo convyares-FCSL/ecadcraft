@@ -258,7 +258,13 @@ fn a_connector_s_mating_is_stored() {
 fn a_protective_device_s_rating_is_typed() {
     use ecad_model::device::{Breaker, Fuse, FuseBank, Protection, RatingNote, TripCurve};
     use ecad_model::units::{Amps, KiloAmps};
-    let mcb = Protection::Mcb(Breaker { rated_current: Some(Amps(16.0)), curve: Some(TripCurve::B), breaking: Some(KiloAmps(6.0)), poles: None });
+    let mcb = Protection::Mcb(Breaker {
+        rated_current: Some(Amps(16.0)),
+        curve: Some(TripCurve::B),
+        breaking: Some(KiloAmps(6.0)),
+        poles: None,
+        ..Breaker::default()
+    });
     let d = Device { device_type: DeviceType::Protection(mcb.clone()), ..Device::default() };
     let json = serde_json::to_value(&d.device_type).unwrap();
     assert_eq!(json, serde_json::json!({"protection": {"mcb": {"rated_current": 16.0, "curve": "b", "breaking": 6.0}}}));
@@ -316,6 +322,7 @@ fn a_switching_device_s_rating_is_typed() {
         operator: Operator::Coil(Control { voltage: Some(RatedVoltage { volts: Volts(24.0), current: Current::Dc }), power: Some(Watts(3.0)) }),
         ac3_current: Some(Amps(9.0)),
         ac3_power: Some(Watts(4000.0)),
+        ..Switching::default()
     };
     let d = Device { device_type: DeviceType::Switching(k), ..Device::default() };
     let json = serde_json::to_value(&d.device_type).unwrap();
@@ -364,7 +371,7 @@ fn a_sensor_s_rating_is_typed() {
     use ecad_model::device::{Output, RatingNote, Sensing, Sensor};
     use ecad_model::units::{Current, RatedVoltage, Volts};
     let v24 = RatedVoltage { volts: Volts(24.0), current: Current::Dc };
-    let b = Sensor { sensing: Sensing::Proximity, output: Output::Pnp, supply: Some(v24) };
+    let b = Sensor { sensing: Sensing::Proximity, output: Output::Pnp, supply: Some(v24), ..Sensor::default() };
     let d = Device { device_type: DeviceType::Sensor(b), ..Device::default() };
     let json = serde_json::to_value(&d.device_type).unwrap();
     assert_eq!(json, serde_json::json!({"sensor": {"sensing": "proximity", "output": "pnp", "supply": {"volts": 24.0, "current": "dc"}}}));
@@ -643,4 +650,62 @@ fn a_power_supply_s_rating_is_typed() {
     }
     let c: DeviceId = ids.fresh();
     l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: td }]).unwrap();
+}
+
+/// Step 4 (design 072 §2.2, design 025 FP1/FP2): the contacts a switching device, a breaker or a
+/// sensor offers are a typed set, and a switching device's table placement a typed field; neither
+/// is a rating; a bad set or offset is refused; `contacts` and `mirror` never sit in a bag.
+#[test]
+fn contacts_and_the_contact_table_are_typed() {
+    use ecad_model::device::{
+        Breaker, ContactEntry, ContactLabel, ContactPoles, ContactSet, ContactTable, OperatorKind, PoleKind, Protection, Switching,
+    };
+    let n = |n| ContactPoles::Count(std::num::NonZeroU8::new(n).unwrap());
+    let pair = |a, b| ContactPoles::Labels([ContactLabel::new(a).unwrap(), ContactLabel::new(b).unwrap()]);
+    let set = ContactSet::new(vec![
+        ContactEntry { poles: n(3), kind: PoleKind::No, power: true },
+        ContactEntry { poles: pair("13", "14"), kind: PoleKind::No, power: false },
+    ]);
+    assert_eq!(set.to_string(), "3P+13/14 NO");
+    let mut k = OperatorKind::Coil.empty();
+    k.contacts = set.clone();
+    k.contact_table = Some(ContactTable::At { dx: 12.0, dy: -30.0 });
+    let d = Device { device_type: DeviceType::Switching(k.clone()), ..Device::default() };
+    let json = serde_json::to_value(&d.device_type).unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!({"switching": {"operator": {"coil": {}}, "contacts": [
+            {"poles": {"count": 3}, "kind": "no", "power": true},
+            {"poles": {"labels": ["13", "14"]}, "kind": "no"}
+        ], "contact_table": {"at": {"dx": 12.0, "dy": -30.0}}}})
+    );
+    assert_eq!(serde_json::from_value::<DeviceType>(json).unwrap(), d.device_type, "round-trips");
+    // Not a rating: the device is unrated, and clearing its rating keeps them.
+    assert!(d.has_no_rating());
+    assert_eq!(d.device_type.unrated(), d.device_type);
+    let b = Protection::Mcb(Breaker { contacts: set.clone(), ..Breaker::default() });
+    assert!(b.is_unrated());
+    assert_eq!(b.contacts(), Some(&set));
+    assert_eq!(Protection::Fuse(Default::default()).contacts(), None);
+    // The invariant: too many poles, a bad label or a far table is refused; bags never hold them.
+    let mut ids = IdAllocator::seeded(17);
+    let mut l = Ledger::new(17);
+    let c: DeviceId = ids.fresh();
+    for wild in [
+        Switching { contacts: ContactSet::new(vec![ContactEntry { poles: n(33), kind: PoleKind::No, power: false }]), ..OperatorKind::Coil.empty() },
+        Switching {
+            contacts: ContactSet::new(vec![ContactEntry { poles: pair("1 3", "14"), kind: PoleKind::No, power: false }]),
+            ..OperatorKind::Coil.empty()
+        },
+        Switching { contact_table: Some(ContactTable::At { dx: 5000.0, dy: 0.0 }), ..OperatorKind::Coil.empty() },
+    ] {
+        let bad = Device { device_type: DeviceType::Switching(wild), ..Device::default() };
+        assert!(l.commit(Author::User, "wild", vec![Op::CreateDevice { id: c, device: bad }]).is_err());
+    }
+    for key in ["contacts", "mirror"] {
+        let mut bagged = Device::default();
+        bagged.properties.insert(key.into(), "1NO".into());
+        assert!(l.commit(Author::User, "bag", vec![Op::CreateDevice { id: c, device: bagged }]).is_err(), "{key}");
+    }
+    l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: d }]).unwrap();
 }

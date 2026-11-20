@@ -582,3 +582,39 @@ fn a_connector_s_mating_is_stored_by_its_starter() {
     cleared.devices.insert(c, d);
     assert!(!connectors::is_connector(&cleared, c));
 }
+
+/// Step 4 (design 072 §2.2, design 025): `setprop`'s `contacts` and `mirror` write the typed fields
+/// as one `ModifyDevice`; a breaker's auxiliaries are its own; a group without contacts, and a
+/// table on anything but a switching device, are refused; a rating edit keeps the contacts.
+#[test]
+fn contacts_and_the_table_are_written_as_modify_device() {
+    use ecad_cadcraft::xref;
+    use ecad_model::Op;
+    let mut h = H::new(0x72_ba);
+    let k = id::<DeviceId>(&h.run("place", json!({"symbol": "coil", "at": [40, 40], "tag": "-K01"})).unwrap(), "component");
+    let q = id::<DeviceId>(&h.run("place", json!({"symbol": "mcb1", "at": [80, 40]})).unwrap(), "component");
+    let f = id::<DeviceId>(&h.run("place", json!({"symbol": "fuse", "at": [120, 40]})).unwrap(), "component");
+    let last = |h: &mut H| h.p(|p| p.ledger.log().last().unwrap().ops.clone());
+    h.run("setprop", json!({"component": k.hex(), "key": "contacts", "value": "3p + 1no, 21/22 nc"})).unwrap();
+    assert!(matches!(last(&mut h).as_slice(), [Op::ModifyDevice { id, .. }] if *id == k));
+    let doc = h.doc();
+    assert_eq!(xref::offer_of(&doc, k).map(|(t, _)| t).as_deref(), Some("3P+1NO+21/22 NC"));
+    assert!(!doc.devices[&k].properties.contains_key("contacts"), "nothing in the bag");
+    h.run("setprop", json!({"component": k.hex(), "key": "mirror", "value": "below"})).unwrap();
+    assert_eq!(xref::placement_of(&h.doc(), k), (xref::Placement::Below, true));
+    // A rating edit keeps the contacts and the table.
+    h.run("setprop", json!({"component": k.hex(), "key": "rating", "value": "coil 24 V DC"})).unwrap();
+    assert!(xref::offer_of(&h.doc(), k).is_some());
+    assert!(xref::placement_of(&h.doc(), k).1);
+    // An MCB's auxiliaries; it has no table of its own.
+    h.run("setprop", json!({"component": q.hex(), "key": "contacts", "value": "1NO+1NC"})).unwrap();
+    assert_eq!(xref::offer_of(&h.doc(), q).map(|(_, p)| p.len()), Some(2));
+    assert!(h.run("setprop", json!({"component": q.hex(), "key": "mirror", "value": "below"})).is_err());
+    // A fuse has no contacts.
+    assert!(h.run("setprop", json!({"component": f.hex(), "key": "contacts", "value": "1NO"})).is_err());
+    // Cleared: nothing offered, the project default.
+    h.run("setprop", json!({"component": k.hex(), "key": "contacts", "value": ""})).unwrap();
+    h.run("setprop", json!({"component": k.hex(), "key": "mirror", "value": "default"})).unwrap();
+    assert!(xref::offer_of(&h.doc(), k).is_none());
+    assert!(!xref::placement_of(&h.doc(), k).1);
+}

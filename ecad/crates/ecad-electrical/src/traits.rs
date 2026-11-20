@@ -1,6 +1,6 @@
 //! What a device does, as calculations on its typed data (design 072 §2.4): [`Supply`], [`Load`],
-//! [`Protects`], [`Senses`] and [`Signals`], and [`DeviceKind`], which gives a [`DeviceType`]'s
-//! view as each of them.
+//! [`Protects`], [`Senses`], [`Signals`] and [`Contacts`], and [`DeviceKind`], which gives a
+//! [`DeviceType`]'s view as each of them.
 //!
 //! # Semantics
 //! - Every answer is read or worked out from the device's typed fields (`Device.device_type`),
@@ -13,13 +13,17 @@
 //!   efficiency are typed.
 //! - [`DeviceKind`]'s views are exhaustive over the groups: a new group must say what it is.
 //!
+//! - [`Contacts`] is every group that physically has contacts: switching devices, breakers, RCDs
+//!   and RCBOs (their auxiliaries) and switching sensors. Their offer is a typed [`ContactSet`].
+//!
 //! This module excludes the circuit side (the rating checks' `Circuit`, lane D), trip curves,
-//! contact sets, connection points (`Connects`, step 4) and PLC addresses (lane C).
+//! numbering an offer's poles (`crate::xref`), connection points (`Connects`, step 4) and PLC addresses (lane C).
 #![deny(clippy::wildcard_enum_match_arm)]
 
 use ecad_model::DeviceType;
 use ecad_model::device::{
-    Indicator, IndicatorColour, Motor, Output, Phases, PowerSupply, Protection, ProtectionKind, Sensing, Sensor, SignalType, Switching,
+    Breaker, ContactSet, ContactTable, Indicator, IndicatorColour, Motor, Output, Phases, PowerSupply, Protection, ProtectionKind, Rcbo, Rcd,
+    Sensing, Sensor, SignalType, Switching,
 };
 use ecad_model::units::{Amps, Current, RatedVoltage, Watts};
 
@@ -93,7 +97,48 @@ pub trait DeviceKind {
     fn as_protects(&self) -> Option<&dyn Protects>;
     fn as_senses(&self) -> Option<&dyn Senses>;
     fn as_signals(&self) -> Option<&dyn Signals>;
+    fn as_contacts(&self) -> Option<&dyn Contacts>;
+    fn as_contacts_mut(&mut self) -> Option<&mut dyn Contacts>;
 }
+
+/// A device that has contacts (design 025 FP1, design 072 §2.4): what the part offers.
+pub trait Contacts {
+    /// The contacts it offers; empty when none are typed.
+    fn contacts(&self) -> &ContactSet;
+    /// The contacts it offers, to change.
+    fn contacts_mut(&mut self) -> &mut ContactSet;
+    /// Where its contact table goes, when it has a table of its own (a switching device's); `None`
+    /// takes the project's default.
+    fn contact_table(&self) -> Option<ContactTable> {
+        None
+    }
+}
+
+impl Contacts for Switching {
+    fn contacts(&self) -> &ContactSet {
+        &self.contacts
+    }
+    fn contacts_mut(&mut self) -> &mut ContactSet {
+        &mut self.contacts
+    }
+    fn contact_table(&self) -> Option<ContactTable> {
+        self.contact_table
+    }
+}
+
+macro_rules! contacts_field {
+    ($($t:ty),*) => {$(
+        impl Contacts for $t {
+            fn contacts(&self) -> &ContactSet {
+                &self.contacts
+            }
+            fn contacts_mut(&mut self) -> &mut ContactSet {
+                &mut self.contacts
+            }
+        }
+    )*};
+}
+contacts_field!(Breaker, Rcd, Rcbo, Sensor);
 
 impl DeviceKind for DeviceType {
     fn as_supply(&self) -> Option<&dyn Supply> {
@@ -173,6 +218,46 @@ impl DeviceKind for DeviceType {
             | DeviceType::Sensor(_)
             | DeviceType::Motor(_)
             | DeviceType::Load(_)
+            | DeviceType::TerminalStrip(_)
+            | DeviceType::Connector(_)
+            | DeviceType::PlcRack(_)
+            | DeviceType::PlcModule(_)
+            | DeviceType::General => None,
+        }
+    }
+
+    fn as_contacts(&self) -> Option<&dyn Contacts> {
+        match self {
+            DeviceType::Switching(s) => Some(s),
+            DeviceType::Sensor(s) => Some(s),
+            DeviceType::Protection(Protection::Mcb(b)) => Some(b),
+            DeviceType::Protection(Protection::Rcd(r)) => Some(r),
+            DeviceType::Protection(Protection::Rcbo(r)) => Some(r),
+            DeviceType::Protection(Protection::Fuse(_) | Protection::FuseTerminal(_) | Protection::FuseBank(_))
+            | DeviceType::PowerSupply(_)
+            | DeviceType::Motor(_)
+            | DeviceType::Load(_)
+            | DeviceType::Indicator(_)
+            | DeviceType::TerminalStrip(_)
+            | DeviceType::Connector(_)
+            | DeviceType::PlcRack(_)
+            | DeviceType::PlcModule(_)
+            | DeviceType::General => None,
+        }
+    }
+
+    fn as_contacts_mut(&mut self) -> Option<&mut dyn Contacts> {
+        match self {
+            DeviceType::Switching(s) => Some(s),
+            DeviceType::Sensor(s) => Some(s),
+            DeviceType::Protection(Protection::Mcb(b)) => Some(b),
+            DeviceType::Protection(Protection::Rcd(r)) => Some(r),
+            DeviceType::Protection(Protection::Rcbo(r)) => Some(r),
+            DeviceType::Protection(Protection::Fuse(_) | Protection::FuseTerminal(_) | Protection::FuseBank(_))
+            | DeviceType::PowerSupply(_)
+            | DeviceType::Motor(_)
+            | DeviceType::Load(_)
+            | DeviceType::Indicator(_)
             | DeviceType::TerminalStrip(_)
             | DeviceType::Connector(_)
             | DeviceType::PlcRack(_)

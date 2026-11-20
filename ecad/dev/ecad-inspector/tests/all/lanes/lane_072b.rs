@@ -141,6 +141,27 @@ fn a_connector_s_mating_is_shown_raw_and_readable() {
     shown_raw_and_readable("072b-mating", 83, before, after, &["connector", "m12", "mating"], "mating");
 }
 
+/// Step 4, contacts (A15): a switching device's typed contacts and table placement show in the
+/// readable log and the Readable row view, and the Raw view is the stored bytes.
+#[test]
+fn contacts_and_the_contact_table_are_shown_raw_and_readable() {
+    use ecad_model::device::{ContactEntry, ContactPoles, ContactSet, ContactTable, OperatorKind, PoleKind};
+    let before = Device { device_type: DeviceType::Switching(OperatorKind::Coil.empty()), ..Device::default() };
+    let mut k = OperatorKind::Coil.empty();
+    k.contacts =
+        ContactSet::new(vec![ContactEntry { poles: ContactPoles::Count(std::num::NonZeroU8::new(3).unwrap()), kind: PoleKind::No, power: true }]);
+    k.contact_table = Some(ContactTable::Below);
+    let after = Device { device_type: DeviceType::Switching(k), ..before.clone() };
+    shown_raw_and_readable(
+        "072b-contacts",
+        84,
+        before,
+        after,
+        &["switching", "contacts", "count", "power", "contact_table", "below"],
+        "contact_table",
+    );
+}
+
 /// Step 3, Protection (A15): a protective device's typed rating and its note show in the readable
 /// log.
 #[test]
@@ -178,6 +199,7 @@ fn a_switching_rating_is_shown_raw_and_readable() {
         operator: Operator::Coil(Control { voltage: Some(RatedVoltage { volts: Volts(24.0), current: Current::Dc }), power: None }),
         ac3_current: Some(Amps(9.0)),
         ac3_power: None,
+        ..Switching::default()
     };
     let after = Device { device_type: DeviceType::Switching(k), ..before.clone() };
     shown_raw_and_readable("072b-switching", 77, before, after, &["switching", "operator", "coil", "voltage", "dc", "ac3_current"], "ac3_current");
