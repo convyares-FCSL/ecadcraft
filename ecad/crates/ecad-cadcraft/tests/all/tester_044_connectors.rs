@@ -885,7 +885,7 @@ fn fp6_a_connector_pin_never_shows_a_strip_level_label() {
             assert_eq!(ecad_cadcraft::terminal_types::shown_label(&d, t).as_deref(), Some(want.as_str()), "shown_label of {want}");
             assert_eq!(ecad_cadcraft::interact::terminal_name(&d, t), want);
         }
-        assert!(!ecad_cadcraft::strips::is_strip(&d, x), "{tg} is not a strip");
+        assert!(ecad_cadcraft::strips::strip_of(&d, x).is_none(), "{tg} is not a strip");
     }
     let plan = c.h.run("stripplan", json!({"limit": 5000})).unwrap();
     let strips = plan["strips"].as_array().cloned().unwrap_or_default();

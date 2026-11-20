@@ -675,7 +675,8 @@ fn h_bulkhead_pin_joins_both_sides() {
 // AC 4: ratings
 
 /// AC 4, §7.3, §13 check 9: `rating` on any device; `rating.<n>` only on a fuse bank's fuse
-/// outputs; 018 §6.1's value rules.
+/// outputs. Design 072 §2.2: a protective device's or a load's rating is read into its typed fields
+/// and shown from them; other groups keep the text as the note (at most 64 characters, one line).
 #[test]
 fn i_ratings_set_and_refused_as_designed() {
     let mut h = H::new(0x7034_000c);
@@ -687,19 +688,27 @@ fn i_ratings_set_and_refused_as_designed() {
     let k1: DeviceId = id(&place(&mut h, "coil", (150.0, 50.0)), "component");
 
     // `rating` on any device, one transaction each; trimmed; `null` and empty clear.
-    for (c, value) in [(q1, "13A C 30mA"), (e1, "235W"), (b1, "K"), (f2, "6.3A T"), (k1, "24V DC"), (f1, "16A")] {
+    for (c, value, shown) in [
+        (q1, "13A C 30mA", "curve C, 13 A, 30 mA"),
+        (e1, "235W", "235 W"),
+        (b1, "K", "K"),
+        (f2, "6.3A T", "6.3 A, T"),
+        (k1, "24V DC", "coil 24 V DC"),
+    ] {
         let head = h.head();
         setprop(&mut h, c, "rating", json!(value)).unwrap();
         assert_eq!(h.head(), head + 1);
-        assert_eq!(prop(&mut h, c, "rating").as_deref(), Some(value));
+        assert_eq!(prop(&mut h, c, "rating").as_deref(), Some(shown));
     }
+    // A fuse bank's ratings are per fuse.
+    refused(&mut h, "setprop", json!({"component": f1.hex(), "key": "rating", "value": "16A"}), "per fuse");
     setprop(&mut h, e1, "rating", json!("  300W  ")).unwrap();
-    assert_eq!(prop(&mut h, e1, "rating").as_deref(), Some("300W"), "trimmed");
+    assert_eq!(prop(&mut h, e1, "rating").as_deref(), Some("300 W"), "trimmed");
     setprop(&mut h, e1, "rating", Value::Null).unwrap();
     assert_eq!(prop(&mut h, e1, "rating"), None, "null clears");
     setprop(&mut h, b1, "rating", json!("")).unwrap();
     assert_eq!(prop(&mut h, b1, "rating"), None, "empty clears");
-    let max = "A".repeat(200);
+    let max = "A".repeat(64);
     setprop(&mut h, k1, "rating", json!(max.as_str())).unwrap();
     assert_eq!(prop(&mut h, k1, "rating"), Some(max));
 
@@ -707,9 +716,9 @@ fn i_ratings_set_and_refused_as_designed() {
     for n in 1..=8 {
         setprop(&mut h, f1, &format!("rating.{n}"), json!(format!("{n}A"))).unwrap();
     }
-    assert_eq!(prop(&mut h, f1, "rating.3").as_deref(), Some("3A"));
+    assert_eq!(prop(&mut h, f1, "rating.3").as_deref(), Some("3 A"));
     setprop(&mut h, f1, "rating.3", json!("2A")).unwrap();
-    assert_eq!(prop(&mut h, f1, "rating.3").as_deref(), Some("2A"));
+    assert_eq!(prop(&mut h, f1, "rating.3").as_deref(), Some("2 A"));
     setprop(&mut h, f1, "rating.3", Value::Null).unwrap();
     assert_eq!(prop(&mut h, f1, "rating.3"), None);
 
@@ -724,7 +733,7 @@ fn i_ratings_set_and_refused_as_designed() {
     refused(&mut h, "setprop", json!({"component": q1.hex(), "key": "rating.3", "value": "2A"}), "is not a fuse bank");
     refused(&mut h, "setprop", json!({"component": q1.hex(), "key": "rating.1", "value": "2A"}), "-Q01 is not a fuse bank");
     refused(&mut h, "setprop", json!({"component": f2.hex(), "key": "rating.1", "value": "2A"}), "is not a fuse bank");
-    refused(&mut h, "setprop", json!({"component": k1.hex(), "key": "rating", "value": "A".repeat(201)}), "");
+    refused(&mut h, "setprop", json!({"component": k1.hex(), "key": "rating", "value": "A".repeat(65)}), "");
     refused(&mut h, "setprop", json!({"component": k1.hex(), "key": "rating", "value": "13A\u{7}"}), "");
     refused(&mut h, "setprop", json!({"component": k1.hex(), "key": "rating", "value": "13A\nC"}), "");
     refused(&mut h, "setprop", json!({"component": f, "key": "rating.2", "value": "2A\u{0}"}), "");
@@ -956,25 +965,25 @@ fn o_hostile_input_never_panics() {
 #[test]
 fn p_old_starters_keep_their_content_hash() {
     const PINNED: &[(&str, &str)] = &[
-        ("coil", "2af1b6d8286ce742810433538c9d705fd4d803259ff4302a4a335b8d791b95b0"),
-        ("no", "531a8952f3ab6faba59b2d92203e50b9a28e3ec6681b851089ad4f8a85bfa2b6"),
-        ("nc", "fb1755ecef8a01cbadc9fa1c00d3b47d6293b2598bf46e9763a108e40ec69e92"),
-        ("power3", "ddbafd55a10cf51b16178c304773cdc02a1cb104c672f708bc75f396cbc54d95"),
-        ("mcb1", "0449072e772d3becc698699b2168dbe8e85039ddc0ec60d67f28c0232cb2ce6a"),
-        ("mcb2", "577a656074a2f6685ab58cc4a12eca204a34367881c0dd37017399357f8867cf"),
-        ("fuse", "97e67e1b287d5c724cf004c2f84bcf55a24ce963ad8c0381d57014d744503766"),
-        ("psu", "ffe540113081227903544a5dd6ffd9fe7ff7a87f4b606a6eab35274c91ef87fe"),
-        ("pbno", "de7eb0aad4424b97477e5df51f974ce66c558d7e4457e56ac58d1ac54911f27e"),
-        ("pbnc", "e75283fe7b81d39d8dee2ab724a89ae120dc883a60602629cf0bca9d2ea0c4f6"),
-        ("sel", "1e9c869fcf4da31ff024f9d60f1e06168aa1757f2f2b2d4a66681e0af4ee5600"),
-        ("lamp", "43370ffbca5feb202311b0a7f9308659fab76005655b2e016d2b45c2cd6a5df0"),
-        ("motor3", "079e25164ab9a2fb0b5f1c5b867d65728ec8f152c5becd62db9cd22c7326f414"),
-        ("motor1", "24661cd6e3ad00d4433ce1c31f45107b31e31b8c39730ee9af81d968939af812"),
-        ("trafo", "b93505f2eab3aad42fbc8c2f647632effceeda5a6e1e06e634d3f53467dd92fd"),
-        ("terminal", "c5c7b47bbddcd35973ad00f1dd8906db9602290ce0b955f0fd7ee1c2bf403a1f"),
-        ("terminalpe", "d38f6429abbaf0e8e110505625b467b6531504a762e11205542230148f9f1c00"),
-        ("di", "92732e642b7d5109705f643341f4d9ee02bb3729275a570182e63b6d126bf7b9"),
-        ("do", "caeab16ca1a100e4c5b4a49a878ebf666a634ef6365db7111ab237ba1e936307"),
+        ("coil", "b01ce659fb3212b18fd235c62e7734263c26382682d7c7dc44d79b53d86521be"),
+        ("no", "de4cdf567f36a022fc66c69d302a96657cbab1e21184d6c700786d268b3cf668"),
+        ("nc", "9cb053ab1f7fa513eeb50bd306a749a36755ab2b012911d881fc7bbf4fe38c39"),
+        ("power3", "937b224a059a08464f22c3222dec0431879afb944df2bce59e37e913f0e47bb3"),
+        ("mcb1", "30110cad09d8eb4e3bbf594fbada91f08087023172607207a8f8a6339c9404a4"),
+        ("mcb2", "729b8b2d385555123c129c78cd42320e4b7d454629668a0cb92b8f21d6503763"),
+        ("fuse", "65c17e3bdd137685591b73b5900de645cbbaee8c5ba158d1650464199cbcbc1d"),
+        ("psu", "f0e8a98d18a2b5d5267e4ceb47379debca60a4b41bef72f853f3be170c89c9e8"),
+        ("pbno", "5188bd56e397980ea66886d9d3782b37c98ce727bb090bf0c80fb9ac9fe88c8a"),
+        ("pbnc", "a4b0f928ce469c761d79e1e6130a3da527108ed51341bf456cbaceef54734064"),
+        ("sel", "7866d97802dce3c5f60dd778432ad668962365edf84cdb6a32da281b866a2320"),
+        ("lamp", "ed1b3a984e1bd21c4f506c49e36cfc1c0b2eaca7aeac05645816efa0ea46c8b7"),
+        ("motor3", "8b9285a9c54393f2662969fd682b740aa9e3bfe23d025d7472ad4f35140f74b3"),
+        ("motor1", "155bd8445ceaf3a663703fc3ef3deeeffcca4387a9aa7aca4f83e04362066778"),
+        ("trafo", "be61de549fbf9fcffc34049d185831e4d7759a93f46e1fb2ffd10012db9c6090"),
+        ("terminal", "065f33dc2121ecf3399489981a3b83e0b670295a2c65ea762a4c416c4a83a84f"),
+        ("terminalpe", "e49dfa23a7aec81f0327f1ec5e7143b9bc60216a4ca47c76508d3ea87d939df5"),
+        ("di", "11ac9ed468c7b43d9c6243e847655c0bdb4182c7f02680657539edef57f04827"),
+        ("do", "3eb4db530b04231c3df246d6da2847f48d86d2dc89ad4b8a037cd0a246d6e2fe"),
         ("continuation", "7289a1f63b563b3f0ceb6959fd7fb34763daf4c1c6e56bb2366e01129ae7afaf"),
     ];
     assert_eq!(PINNED.len(), 20, "pin every old starter");

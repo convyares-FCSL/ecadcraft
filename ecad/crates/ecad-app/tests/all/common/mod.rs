@@ -186,7 +186,7 @@ pub(crate) fn points_at(t: &mut App, at: &[(f64, f64)]) -> Vec<ecad_model::Termi
                 subject: Subject::Device(device),
                 page,
                 form: Form::Drawn,
-                role: "main".into(),
+                role: ecad_model::Role::Part(ecad_model::PartRole::Head),
                 items: Vec::new(),
                 connection_points: cps,
             },
@@ -234,7 +234,7 @@ pub(crate) fn reference_end(t: &mut App, cable: ecad_model::CableId, page: ecad_
             let doc = p.ledger.document();
             let style = doc
                 .representations_of(Subject::Cable(cable))
-                .filter(|(_, r)| r.role == ecad_model::derive::REFERENCE_ROLE)
+                .filter(|(_, r)| r.role == ecad_model::Role::Reference)
                 .find_map(|(_, r)| r.items.first().and_then(|i| doc.items.get(i)).map(|i| i.style.clone()))
                 .expect("the cable has a reference to pair with");
             let (item, rep): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
@@ -249,7 +249,7 @@ pub(crate) fn reference_end(t: &mut App, cable: ecad_model::CableId, page: ecad_
                 subject: Subject::Cable(cable),
                 page,
                 form: Form::Drawn,
-                role: ecad_model::derive::REFERENCE_ROLE.into(),
+                role: ecad_model::Role::Reference,
                 items: vec![item],
                 connection_points: Default::default(),
             },

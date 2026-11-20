@@ -154,7 +154,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredConne
         let c = project
             .read(&mut s, |p, _| {
                 let doc = p.ledger.document();
-                doc.devices.keys().copied().find(|c| ecad_cadcraft::connectors::is_connector(doc, *c))
+                doc.devices.keys().copied().find(|c| ecad_cadcraft::connectors::connector_of(doc, *c).is_some_and(|x| x.mating))
             })?
             .ok_or("no connector was added")?;
         let mut label = Vec::new();

@@ -204,11 +204,16 @@ pub struct Device {
     pub location_fixed: bool,
     pub function: Option<m::FunctionId>,
     pub function_fixed: bool,
+    /// Design 072 §2.2: text that did not read as the group's typed rating.
+    pub rating_note: Option<m::device::RatingNote>,
     pub properties: BTreeMap<String, String>,
     pub definition: Option<DefinitionId>,
     /// What the device is (design 072 F15): the model's own type, whose words and fields are
     /// strict.
     pub device_type: m::DeviceType,
+    /// Design 072 §2.8: its values of the project's user fields; left out while empty.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub user: BTreeMap<m::UserFieldId, m::UserValue>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -262,7 +267,7 @@ pub struct Representation {
     pub subject: Subject,
     pub page: PageId,
     pub form: Form,
-    pub role: String,
+    pub role: m::Role,
     pub items: Vec<ItemId>,
     pub connection_points: BTreeMap<TerminalId, Pt>,
 }
@@ -423,22 +428,25 @@ pub struct Definition {
     /// Text slots (brief 048, FP1). Left out when empty, so existing hashes hold.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub texts: Vec<TextSlot>,
-    /// The symbol's own defaults (brief 048, FP2). Left out when empty.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub defaults: BTreeMap<String, String>,
+    /// The symbol's own defaults (brief 048, FP2; design 072 §7). Left out when empty.
+    #[serde(default, skip_serializing_if = "m::SymbolDefaults::is_empty")]
+    pub defaults: m::SymbolDefaults,
     /// The origin an edited copy came from (brief 048, FP4). Left out when none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub derived_from: Option<Origin>,
     /// What a device this symbol starts is (design 072 F15). Left out for `general`.
     #[serde(default, skip_serializing_if = "m::DeviceType::is_general")]
     pub device_type: m::DeviceType,
+    /// A placed copy's part in its device (design 072 F3′). Left out for `other`.
+    #[serde(default, skip_serializing_if = "m::PartRole::is_other")]
+    pub part_role: m::PartRole,
 }
 
 /// A text slot of a definition (brief 048, FP1).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TextSlot {
-    pub text: String,
+    pub text: m::SlotText,
     pub at: Pt,
     #[serde(default, skip_serializing_if = "is_left")]
     pub h: m::TextHAlign,
@@ -958,6 +966,15 @@ pub enum Op {
         before: m::Project,
         after: m::Project,
     },
+    /// Design 072 §2.6: a link between two devices made or removed, the model's strict record.
+    AddDeviceLink {
+        id: m::LinkId,
+        link: m::DeviceLink,
+    },
+    RemoveDeviceLink {
+        id: m::LinkId,
+        link: m::DeviceLink,
+    },
 }
 
 /// Where a style record lives (brief 050a).
@@ -1060,9 +1077,11 @@ impl From<&m::Device> for Device {
             location_fixed: c.location_fixed,
             function: c.function,
             function_fixed: c.function_fixed,
+            rating_note: c.rating_note.clone(),
             properties: c.properties.clone(),
             definition: c.definition,
             device_type: c.device_type.clone(),
+            user: c.user.clone(),
         }
     }
 }
@@ -1087,7 +1106,7 @@ impl From<&m::Representation> for Representation {
                 m::Form::Drawn => Form::Drawn,
                 m::Form::Symbol => Form::Symbol,
             },
-            role: r.role.clone(),
+            role: r.role,
             items: r.items.clone(),
             connection_points: r.connection_points.iter().map(|(k, v)| (*k, pt(*v))).collect(),
         }
@@ -1179,6 +1198,7 @@ impl From<&m::Definition> for Definition {
             defaults: d.defaults.clone(),
             derived_from: d.derived_from.as_ref().map(origin),
             device_type: d.device_type.clone(),
+            part_role: d.part_role,
         }
     }
 }
@@ -1314,6 +1334,8 @@ impl From<&m::Op> for Op {
             }
             m::Op::SetStandard { before, after } => Op::SetStandard { before: before.clone(), after: after.clone() },
             m::Op::ModifyProject { before, after } => Op::ModifyProject { before: before.clone(), after: after.clone() },
+            m::Op::AddDeviceLink { id, link } => Op::AddDeviceLink { id: *id, link: *link },
+            m::Op::RemoveDeviceLink { id, link } => Op::RemoveDeviceLink { id: *id, link: *link },
         }
     }
 }
@@ -1414,9 +1436,11 @@ impl From<Device> for m::Device {
             location_fixed: c.location_fixed,
             function: c.function,
             function_fixed: c.function_fixed,
+            rating_note: c.rating_note,
             properties: c.properties,
             definition: c.definition,
             device_type: c.device_type,
+            user: c.user,
         }
     }
 }
@@ -1501,6 +1525,7 @@ impl From<Definition> for m::Definition {
             defaults: d.defaults,
             derived_from: d.derived_from.map(morigin),
             device_type: d.device_type,
+            part_role: d.part_role,
         }
     }
 }
@@ -1586,6 +1611,8 @@ impl TryFrom<Op> for m::Op {
             Op::SetStyle { layer: l, catalogue, id, before, after } => m::Op::SetStyle { layer: mlayer(l), catalogue, id, before, after },
             Op::SetStandard { before, after } => m::Op::SetStandard { before, after },
             Op::ModifyProject { before, after } => m::Op::ModifyProject { before, after },
+            Op::AddDeviceLink { id, link } => m::Op::AddDeviceLink { id, link },
+            Op::RemoveDeviceLink { id, link } => m::Op::RemoveDeviceLink { id, link },
         })
     }
 }

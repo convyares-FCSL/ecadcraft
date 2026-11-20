@@ -107,7 +107,7 @@ pub fn slash_new(
             subject: Subject::Cable(cable),
             page,
             form: Form::Drawn,
-            role: "slash".into(),
+            role: ecad_model::Role::Slash,
             items: vec![item],
             connection_points: BTreeMap::new(),
         },

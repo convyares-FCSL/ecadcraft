@@ -52,9 +52,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::doc::{
-    Cable, DEFINITION_DEFAULT_KEYS, Definition, Device, Document, Form, Item, ItemKind, Primitive, Representation, Subject, Terminal, TextSlot, Wire,
-};
+use crate::doc::{Cable, Definition, Device, Document, Form, Item, ItemKind, Primitive, Representation, Subject, Terminal, Wire};
 use crate::effect::{Effect, Effects};
 use crate::error::{ModelError, Result};
 use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, TerminalId, WireId};
@@ -170,6 +168,10 @@ impl Touched {
                 self.definitions.insert(*id);
             }
             Effect::Settings { .. } | Effect::Version { .. } => {}
+            // Links are checked with the project (I24).
+            Effect::DeviceLink { .. } => {
+                self.project = true;
+            }
             Effect::Folder { id, index_before, index_after, .. } => {
                 // An add or a remove changes the folder order; a change in place does not.
                 if index_before.is_some() || index_after.is_some() {
@@ -238,11 +240,43 @@ impl Document {
     /// I22 (design 072 §5.3): the location and function lists are well formed
     /// ([`crate::project::Project::problem`]). A page or the project naming an id with no entry
     /// is not a breach: it shows `?`.
+    ///
+    /// I24 (design 072 §2.8, §2.6): every device's user values name a field the project defines
+    /// and are of its kind; every device link joins two different devices that exist, once.
     fn check_project(&self) -> Result<()> {
-        match self.project.problem() {
-            Some(p) => bad(p),
-            None => Ok(()),
+        if let Some(p) = self.project.problem() {
+            return bad(p);
         }
+        for (id, d) in self.devices.iter().filter(|(_, d)| !d.user.is_empty()) {
+            self.check_user_values(*id, d)?;
+        }
+        self.check_device_links()
+    }
+
+    fn check_user_values(&self, id: DeviceId, c: &Device) -> Result<()> {
+        for (f, v) in &c.user {
+            match self.project.user_field(*f) {
+                None => return bad(format!("device {id} has a value of user field {f}, which the project does not define")),
+                Some(def) if !v.fits(&def.kind) => {
+                    return bad(format!("device {id}'s value of user field \"{}\" is not a {} value", def.name.as_str(), def.kind.word()));
+                }
+                Some(_) => {}
+            }
+        }
+        Ok(())
+    }
+
+    fn check_device_links(&self) -> Result<()> {
+        let links: Vec<_> = self.device_links.iter().collect();
+        for (i, (id, l)) in links.iter().enumerate() {
+            if l.a == l.b || !self.devices.contains_key(&l.a) || !self.devices.contains_key(&l.b) {
+                return bad(format!("device link {id} does not join two different devices that exist"));
+            }
+            if links.get(..i).unwrap_or_default().iter().any(|(_, k)| k.same_as(l)) {
+                return bad(format!("device link {id} repeats another link"));
+            }
+        }
+        Ok(())
     }
 
     /// I-styles (brief 050a, design 050 §3.3): every catalogue word is well formed, and no
@@ -504,10 +538,16 @@ impl Document {
         if let Some(k) = c.properties.keys().find(|k| crate::keys::is_reserved_on(crate::keys::Holder::Device, k)) {
             return bad(format!("device {id} holds {k} in its properties; it is a field"));
         }
-        if let crate::device::DeviceType::Connector(x) = &c.device_type
-            && let Some(p) = x.problem()
-        {
+        self.check_user_values(id, c)?;
+        if let Some(p) = c.device_type.problem() {
             return bad(format!("device {id}: {p}"));
+        }
+        // Design 072 §2.2 and §2.5: a protective device's ratings (a fuse bank's per output) and a
+        // strip's fuse position ratings are fields.
+        if let crate::device::DeviceType::Protection(_) | crate::device::DeviceType::TerminalStrip(_) = &c.device_type
+            && let Some(k) = c.properties.keys().find(|k| k.starts_with(crate::device::RATING_OF_PREFIX))
+        {
+            return bad(format!("device {id} holds {k} in its properties; it is a field"));
         }
         Ok(())
     }
@@ -589,7 +629,7 @@ impl Document {
         for (t, p) in &r.connection_points {
             // A cable reference places the named points of its cable's cores (design 072 §4.4, F4).
             if let Subject::Cable(k) = r.subject {
-                if r.role != crate::derive::REFERENCE_ROLE || self.cable_point(*t).map(|(c, _)| c) != Some(k) {
+                if r.role != crate::Role::Reference || self.cable_point(*t).map(|(c, _)| c) != Some(k) {
                     return bad(format!("representation {id} places point {t}, which is not a point of its cable's cores"));
                 }
                 if !p.is_finite() {
@@ -640,10 +680,8 @@ impl Document {
                 if !points.insert(*t) || self.terminals.contains_key(t) {
                     return bad(format!("cable {id} lists point {t} twice, or a component's terminal as a named point"));
                 }
-                let placed = self
-                    .representations_showing(*t)
-                    .filter(|(_, r)| r.subject == Subject::Cable(id) && r.role == crate::derive::REFERENCE_ROLE)
-                    .count();
+                let placed =
+                    self.representations_showing(*t).filter(|(_, r)| r.subject == Subject::Cable(id) && r.role == crate::Role::Reference).count();
                 if placed != 1 {
                     return bad(format!("cable {id}'s point {t} is placed by {placed} references, not one"));
                 }
@@ -688,15 +726,9 @@ fn check_definition(id: DefinitionId, d: &Definition) -> Result<()> {
         if !slot.at.is_finite() || !slot.rotation.is_finite() {
             return bad(format!("definition {id} has a text slot at a non-finite position"));
         }
-        if !TextSlot::is_known_text(&slot.text) {
-            return bad(format!("definition {id} has a slot for {:?}, which is not a device text", slot.text));
+        if !texts.insert(&slot.text) {
+            return bad(format!("definition {id} has two slots for {:?}", slot.text.word()));
         }
-        if !texts.insert(slot.text.as_str()) {
-            return bad(format!("definition {id} has two slots for {:?}", slot.text));
-        }
-    }
-    if let Some(k) = d.defaults.keys().find(|k| !DEFINITION_DEFAULT_KEYS.contains(&k.as_str())) {
-        return bad(format!("definition {id} has a default {k:?}, which a definition does not hold"));
     }
     if let (Some(from), Some(own)) = (&d.derived_from, &d.origin)
         && from.library == own.library

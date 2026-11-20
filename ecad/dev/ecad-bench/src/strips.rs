@@ -321,7 +321,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
             let doc = p.ledger.document();
             doc.representations_on(page1).find_map(|(_, r)| {
                 let Subject::Device(c) = r.subject else { return None };
-                if ecad_cadcraft::strips::is_strip(doc, c) || !ecad_cadcraft::locations::is_device(doc, c) {
+                if ecad_cadcraft::strips::strip_of(doc, c).is_some() || !ecad_cadcraft::locations::is_device(doc, c) {
                     return None;
                 }
                 let t = doc.terminals_of(c).map(|(t, _)| t).next()?;

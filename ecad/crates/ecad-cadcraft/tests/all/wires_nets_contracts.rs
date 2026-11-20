@@ -294,7 +294,7 @@ fn a_cable_is_shown_on_another_page_by_its_tag() {
         assert_eq!(c["conductor"], json!(w.hex()));
         assert_eq!(c["core"], json!(format!("{}", i + 1)));
     }
-    let slashes = doc.representations_of(ecad_model::Subject::Cable(f.cable)).filter(|(_, r)| r.role == "slash").count();
+    let slashes = doc.representations_of(ecad_model::Subject::Cable(f.cable)).filter(|(_, r)| r.role == ecad_model::Role::Slash).count();
     assert_eq!(slashes, 2, "one slash on each page");
     let cc = f.h.run("cablecores", json!({"cable": f.cable.hex()})).unwrap();
     let rows = cc["cores"].as_array().unwrap();

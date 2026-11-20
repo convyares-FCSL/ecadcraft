@@ -149,7 +149,7 @@ fn bridged_two_level_positions_and_fuse_positions_break_the_net() {
     assert!(doc.ends_at(t_in).len() == 1 && doc.ends_at(tout).len() == 1, "one half on each point");
     h.run("setprop", json!({"component": x1.hex(), "key": "rating.1", "value": "2A"})).unwrap();
     let s = plan(&mut h, x1);
-    assert_eq!((s["rows"][0]["rating"].as_str(), s["rows"][0]["breaks"].as_bool()), (Some("2A"), Some(true)), "{s}");
+    assert_eq!((s["rows"][0]["rating"].as_str(), s["rows"][0]["breaks"].as_bool()), (Some("2 A"), Some(true)), "{s}");
     same_as_built(&mut h);
     h.check();
 }
@@ -214,7 +214,7 @@ fn toposition_turns_a_fuse_terminal_device_into_a_fuse_position() {
     assert_eq!(v["position"], "4", "{v}");
     let doc = h.doc();
     assert!(!doc.devices.contains_key(&f5), "-F05 gone");
-    assert_eq!(doc.devices[&x1].properties.get("rating.4").map(String::as_str), Some("4A"));
+    assert_eq!(doc.devices[&x1].value("rating.4").as_deref(), Some("4 A"));
     let c = doc.connectivity();
     // Design 072 §4.4: the wires now end on the position's points, so they are new wires (the
     // rewrite carries their values); their nets are as before: two, one on each point.
@@ -341,6 +341,8 @@ fn relabel_moves_every_position_keyed_property() {
     for prefix in ecad_cadcraft::terminal_types::POSITION_KEYED {
         h.run("setprop", json!({"component": x1.hex(), "key": format!("{prefix}{}", suffix(prefix, "2")), "value": value(prefix)})).unwrap();
     }
+    // Design 072 §2.5: a fuse position's rating is the strip's field and moves too.
+    h.run("setprop", json!({"component": x1.hex(), "key": "rating.2", "value": "2A"})).unwrap();
     h.run("setprop", json!({"component": x1.hex(), "key": "link.1", "value": "1-2"})).unwrap();
     let head = h.head();
     h.run("termlabel", json!({"terminal": t2.hex(), "position": "7"})).unwrap();
@@ -351,6 +353,8 @@ fn relabel_moves_every_position_keyed_property() {
         assert_eq!(props.get(&format!("{prefix}{}", suffix(prefix, "7"))).map(String::as_str), Some(value(prefix)), "{prefix} moved to 7");
     }
     assert_eq!(props.get("link.1").map(String::as_str), Some("1, 7"));
+    let strip = &h.doc().devices[&x1];
+    assert_eq!((strip.value("rating.2"), strip.value("rating.7").as_deref()), (None, Some("2 A")), "the fuse rating moved to 7");
     same_as_built(&mut h);
 }
 

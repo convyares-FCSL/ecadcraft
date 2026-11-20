@@ -20,7 +20,7 @@ use std::collections::BTreeSet;
 use ecad_model::{DeviceId, Document, NetKey, Node, Subject, TerminalId};
 
 use super::RatedSubject;
-use crate::symbols::{Kind, StarterKey, StarterKey as K};
+use ecad_model::device::ProtectionKind;
 
 /// Most nets one subject's trace visits (design 057 §4.2).
 pub const MAX_TRACE_NETS: usize = 64;
@@ -50,34 +50,32 @@ pub struct Found {
     pub bounded: bool,
 }
 
-/// The overcurrent device starters (design 057 §4.1). `rcd2` and `rcd4` are not: they are crossed.
-pub fn is_protective_key(key: StarterKey) -> bool {
-    matches!(key, K::Mcb1 | K::Mcb2 | K::Rcbo2 | K::Fuse | K::Fuseterm) || key.fuse_bank_ways().is_some()
-}
-
-/// The load-side pins of a protective starter (design 057 §4.2), from its pin labels
-/// (`symbols.rs`): the even-numbered pins of `mcb*`, `rcbo2`, `fuse`, `fuseterm` (and `rcbo2`'s
-/// `N2`); a fuse bank's numbered outputs.
-pub fn load_side(key: StarterKey, label: &str) -> bool {
+/// The load-side pins of an overcurrent protective device (design 057 §4.2), by its stored kind
+/// (design 072 §2.2) and the pin label: the even-numbered pins of a fuse, a fuse terminal, an MCB
+/// and an RCBO (and an RCBO's `N2`); a fuse bank's numbered outputs. An RCD has none: it is crossed.
+pub fn load_side(kind: ProtectionKind, label: &str) -> bool {
     let n = label.parse::<u32>().ok();
-    if key.fuse_bank_ways().is_some() {
-        return n.is_some_and(|n| n >= 1);
-    }
-    match key {
-        K::Mcb1 | K::Mcb2 | K::Fuse | K::Fuseterm => n.is_some_and(|n| n % 2 == 0 && n > 0),
-        K::Rcbo2 => label == "N2" || n.is_some_and(|n| n % 2 == 0 && n > 0),
-        _ => false,
+    let even = n.is_some_and(|n| n % 2 == 0 && n > 0);
+    match kind {
+        ProtectionKind::FuseBank => n.is_some_and(|n| n >= 1),
+        ProtectionKind::Fuse | ProtectionKind::FuseTerminal | ProtectionKind::Mcb => even,
+        ProtectionKind::Rcbo => label == "N2" || even,
+        ProtectionKind::Rcd => false,
     }
 }
 
-/// The starter keys a component's symbols show.
-fn starters(doc: &Document, c: DeviceId) -> Vec<&'static crate::symbols::Starter> {
-    doc.representations_of(Subject::Device(c)).filter_map(|(_, r)| crate::devices::rep_starter(doc, r)).collect()
+/// The kind of device `c` when it is an overcurrent protective device (design 072 §2.4).
+fn overcurrent_kind(doc: &Document, c: DeviceId) -> Option<ProtectionKind> {
+    use crate::traits::Protects;
+    let ecad_model::DeviceType::Protection(p) = &doc.devices.get(&c)?.device_type else { return None };
+    p.overcurrent().then(|| p.kind())
 }
 
-/// Whether component `c` shows a protective starter.
+/// Whether device `c` is an overcurrent protective device: its typed kind (design 072 §2.4), never
+/// its symbols.
 pub fn is_protective_component(doc: &Document, c: DeviceId) -> bool {
-    starters(doc, c).iter().any(|s| is_protective_key(s.key))
+    use crate::traits::DeviceKind;
+    doc.devices.get(&c).and_then(|d| d.device_type.as_protects()).is_some_and(|p| p.overcurrent())
 }
 
 /// The paired pin of a contact or RCD pole (IEC 60947): 1–2, 3–4, 5–6, 7–8 and their two-digit
@@ -106,9 +104,18 @@ pub fn pair(label: &str) -> Option<String> {
     }
 }
 
-/// Whether a starter is crossed by pin pairs: contacts, power contacts, SSR outputs and RCDs.
-fn crossed(s: &crate::symbols::Starter) -> bool {
-    matches!(s.kind, Kind::Contact { .. }) || matches!(s.key, K::Power3 | K::Power4 | K::Ssrout | K::Rcd2 | K::Rcd4)
+/// Whether device `c` is crossed by pin pairs (design 072 §4.4: its stored parts and its type,
+/// never its starters): a device with a contact (contacts, change-overs, power contacts), a
+/// solid-state relay with its output, and an RCD.
+fn crossed(doc: &Document, c: DeviceId) -> bool {
+    use ecad_model::device::Operator;
+    use ecad_model::{DeviceType, PartRole, Role};
+    let has = |p: PartRole| doc.representations_of(Subject::Device(c)).any(|(_, r)| r.role == Role::Part(p));
+    match doc.devices.get(&c).map(|d| &d.device_type) {
+        Some(DeviceType::Protection(p)) if p.kind() == ProtectionKind::Rcd => true,
+        Some(DeviceType::Switching(s)) if matches!(s.operator, Operator::SolidState(_)) && has(PartRole::Pole) => true,
+        _ => has(PartRole::Contact),
+    }
 }
 
 /// What reaching terminal `t` means.
@@ -125,7 +132,7 @@ fn step(doc: &Document, t: TerminalId) -> Step {
     let c = term.component;
     let label = term.label.clone().unwrap_or_default();
     // A strip: the other terminals of this position and level; a fuse position protects.
-    if crate::strips::is_strip(doc, c) {
+    if crate::strips::strip_of(doc, c).is_some() {
         for p in crate::terminal_types::positions(doc, c) {
             if let Some(ts) = p.levels.values().find(|ts| ts.contains(&t)) {
                 // Review of #108: a fuse position protects only what is on its out point (`.no`); its
@@ -143,21 +150,20 @@ fn step(doc: &Document, t: TerminalId) -> Step {
         return Step::Stop;
     }
     // A connector: the same pin on the other half.
-    if crate::connectors::is_connector(doc, c) {
+    if crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating) {
         let (Some(side), Some(name)) = (crate::connectors::side_of(doc, t), crate::connectors::pin_name(doc, t)) else { return Step::Stop };
         let d = crate::connectors::drawn(doc, c);
         let other = d.side(side.other()).and_then(|m| m.get(&name)).cloned().unwrap_or_default();
         return Step::Cross(other);
     }
-    let ss = starters(doc, c);
-    if let Some(p) = ss.iter().find(|s| is_protective_key(s.key)) {
-        if load_side(p.key, &label) {
-            let fuse = p.key.fuse_bank_ways().is_some().then(|| label.clone());
+    if let Some(kind) = overcurrent_kind(doc, c) {
+        if load_side(kind, &label) {
+            let fuse = (kind == ProtectionKind::FuseBank).then(|| label.clone());
             return Step::Found(c, fuse);
         }
         return Step::Stop;
     }
-    if ss.iter().any(|s| crossed(s))
+    if crossed(doc, c)
         && let Some(other) = pair(&label)
     {
         return Step::Cross(doc.terminals_of(c).filter(|(_, x)| x.label.as_deref() == Some(other.as_str())).map(|(id, _)| id).collect());
@@ -257,7 +263,9 @@ pub fn named(doc: &Document, text: &str) -> Option<(DeviceId, Option<String>)> {
     if let Some(f) = &fuse {
         let has = crate::terminal_types::positions(doc, c).iter().any(|p| &p.label == f && p.ty.code == "fuse")
             || doc.terminals_of(c).any(|(_, x)| x.label.as_deref() == Some(f.as_str()))
-                && starters(doc, c).iter().any(|s| s.key.fuse_bank_ways().is_some());
+                && doc.devices.get(&c).is_some_and(
+                    |d| matches!(&d.device_type, ecad_model::DeviceType::Protection(p) if p.kind() == ecad_model::device::ProtectionKind::FuseBank),
+                );
         if !has {
             return None;
         }
@@ -291,16 +299,28 @@ pub fn cleared_words(doc: &Document, c: DeviceId) -> Option<String> {
     (!parts.is_empty()).then(|| format!("protected_by cleared on {}", parts.join(" and ")))
 }
 
-/// The rating text of a device (or its fuse).
+/// The rating of a device (or its fuse) as shown: its typed rating, else its note (design 072
+/// §2.2); a strip's fuse position: its typed fuse rating.
 pub fn rating_text(doc: &Document, c: DeviceId, fuse: Option<&str>) -> String {
-    let props = doc.devices.get(&c).map(|x| &x.properties);
-    let key = fuse.map_or_else(|| crate::symbols::RATING_KEY.to_string(), |f| format!("{}{f}", crate::symbols::RATING_OF_PREFIX));
-    props.and_then(|p| p.get(&key)).map(|v| v.chars().take(64).collect()).unwrap_or_default()
+    let key = fuse.map_or_else(|| ecad_model::device::RATING_KEY.to_string(), |f| format!("{}{f}", ecad_model::device::RATING_OF_PREFIX));
+    doc.devices.get(&c).and_then(|d| d.value(&key)).map(|v| v.chars().take(64).collect()).unwrap_or_default()
 }
 
-/// In of a device (or its fuse), when its rating reads (design 057 §4.1).
+/// In of a device (or its fuse): a protective device's or a strip's fuse position's typed rated
+/// current (design 072 §2.2 and §2.5: checks read only the typed fields).
 pub fn amps_of(doc: &Document, c: DeviceId, fuse: Option<&str>) -> Option<f64> {
-    super::parse::amps(&rating_text(doc, c, fuse))
+    let d = doc.devices.get(&c)?;
+    match &d.device_type {
+        ecad_model::DeviceType::Protection(p) => {
+            let output = match fuse {
+                Some(f) => Some(f.parse::<u8>().ok()?),
+                None => None,
+            };
+            p.rated_current(output).map(|a| a.0)
+        }
+        ecad_model::DeviceType::TerminalStrip(s) => s.fuse(fuse?)?.rated_current.map(|a| a.0),
+        _ => None,
+    }
 }
 
 /// A device in words: `-Q01`, `-F01:3`.

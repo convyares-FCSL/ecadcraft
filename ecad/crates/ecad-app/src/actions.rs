@@ -904,6 +904,11 @@ const fn search_only(
 /// ECAD commands no action shows, each with the reason (design §7.2: nothing is defined twice,
 /// and nothing a person needs is reachable only by typing).
 pub const PROGRAMMATIC_ONLY: &[(&str, &str)] = &[
+    // Lane 072 B step 5 (design 072 §2.6, §2.8): no panel shows user fields or device links yet;
+    // the R9 device inspector takes them. Until then, commands and MCP only.
+    ("userfield", "None yet: the R9 device inspector's user fields (design 072 §2.8)"),
+    ("linkdevices", "None yet: the R9 device inspector's links (design 072 §2.6)"),
+    ("unlinkdevices", "None yet: the R9 device inspector's links (design 072 §2.6)"),
     // Brief 052 (design 052 §5.7, §9.1, §9.4): the inspector's Location and Function rows, and
     // Settings ▸ Project info's Functions and locations card.
     ("setlocation", "Inspector ▸ Device: Location rows"),

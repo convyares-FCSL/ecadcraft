@@ -1,9 +1,9 @@
 //! Connector devices (brief 044, design 044): a plug and its socket drawn as one device that mates.
 //!
 //! # Semantics
-//! - A **connector** is one component (`-X10`) whose definition is a brief-044 connector half or
-//!   pin ([`crate::symbols::is_mating`]). Each pin of each half is one terminal: label = the pin
-//!   name, key = the side key `.s` (socket) or `.p` (plug) (FP1). Nothing new is stored.
+//! - A **connector** is one component (`-X10`) whose stored type is a Connector with `mating` set
+//!   (its first half's or pin's starter sets it, [`Connector::mating`]). Each pin of each half is one
+//!   terminal: label = the pin name, key = the side key `.s` (socket) or `.p` (plug) (FP1).
 //! - **Mating** is 036's per-position bridge rule (FP8a): every half definition bridges `.s` with
 //!   `.p`, so pin `n` of the socket half and pin `n` of the plug half are one net (FP2).
 //! - A **half** is shown and typed as the connector's tag, a separator and a side name (`-X10.S`),
@@ -58,10 +58,7 @@ pub const IGNORE_PREFIX: &str = "ignore.";
 
 /// Connector `c`'s own data (its type's), when it is a connector.
 pub fn connector_of(doc: &Document, c: DeviceId) -> Option<&Connector> {
-    match &doc.devices.get(&c)?.device_type {
-        DeviceType::Connector(x) => Some(x),
-        _ => None,
-    }
+    doc.devices.get(&c)?.device_type.as_connector()
 }
 
 /// The ignorable Checks row of `kind`, if it is one.
@@ -182,16 +179,11 @@ pub fn size_of(s: &Starter) -> Option<usize> {
 
 // ---------------------------------------------------------------- what is a connector
 
-/// Whether component `c` is a connector: its definition is a brief-044 half or pin.
-pub fn is_connector(doc: &Document, c: DeviceId) -> bool {
-    doc.devices.get(&c).and_then(|x| x.definition).and_then(|d| doc.definitions.get(&d)).is_some_and(symbols::is_mating)
-}
-
 /// The side of terminal `t` when it is a connector pin.
 pub fn side_of(doc: &Document, t: TerminalId) -> Option<Side> {
     let term = doc.terminals.get(&t)?;
     let side = Side::of_key(term.key.as_ref()?)?;
-    is_connector(doc, term.component).then_some(side)
+    connector_of(doc, term.component).is_some_and(|x| x.mating).then_some(side)
 }
 
 /// The starter a representation draws when it is a brief-044 half or pin.
@@ -285,7 +277,7 @@ pub fn resolve(doc: &Document, text: &str) -> Option<Result<(DeviceId, Option<Si
     };
     // The connector and side: a tag as is, else a tag followed by the separator and a side name.
     let found = doc.devices.keys().copied().find_map(|c| {
-        if !is_connector(doc, c) {
+        if !connector_of(doc, c).is_some_and(|x| x.mating) {
             return None;
         }
         let t = crate::devices::tag_of(doc, c)?;
@@ -634,8 +626,8 @@ pub struct Shown {
 
 /// Plan one connector symbol of `starter` on connector `c`, its pins named `names` (a whole half:
 /// one name per point; a pin: one name): one terminal per point keyed by its side, shown through
-/// explicit connection points (design 044 §3.1, §4.6). Its role is the starter key, whichever
-/// symbol of the connector it is (design 052 §4).
+/// explicit connection points (design 044 §3.1, §4.6). Its role is the part its starter
+/// declares (design 072 §4.4).
 ///
 /// # Errors
 /// Fewer names than points; the definition could not be built.
@@ -668,7 +660,7 @@ pub fn symbol_ops(
             subject: Subject::Device(c),
             page,
             form: Form::Symbol,
-            role: starter.key.to_string(),
+            role: ecad_model::Role::Part(starter.part_role()),
             items: vec![item],
             connection_points: cps,
         },
@@ -808,7 +800,7 @@ pub fn land_pin(
 /// A pin count out of range, an unknown side letter, a value the rules refuse.
 pub fn setprop_value(doc: &Document, c: DeviceId, key: &str, value: Option<&str>) -> Option<Result<Option<String>, CmdError>> {
     if crate::defaults::connectors::is_naming_key(key) {
-        if !is_connector(doc, c) {
+        if !connector_of(doc, c).is_some_and(|x| x.mating) {
             return None;
         }
         return crate::defaults::connectors::setprop_value(key, value);
@@ -959,7 +951,7 @@ pub fn default_description(doc: &Document, family: Family, side: Side, n: usize)
 /// One row per drawn half of connector `c` (design 044 §8.1): its half tag, own fields or the
 /// registry's description, and its location (§8.2). Empty for a connector with nothing drawn.
 pub fn half_rows(doc: &Document, c: DeviceId, _cache: &mut BoxCache) -> Vec<HalfRow> {
-    if !is_connector(doc, c) {
+    if !connector_of(doc, c).is_some_and(|x| x.mating) {
         return Vec::new();
     }
     let d = drawn(doc, c);
@@ -1004,7 +996,7 @@ fn rep_at(doc: &Document, rid: Option<RepresentationId>) -> (Option<PageId>, Opt
 
 /// The Checks rows of connector `c` (design 044 §6.3); none for any other component.
 pub fn checks(doc: &Document, c: DeviceId) -> Vec<Check> {
-    if !is_connector(doc, c) {
+    if !connector_of(doc, c).is_some_and(|x| x.mating) {
         return Vec::new();
     }
     let d = drawn(doc, c);
@@ -1125,7 +1117,7 @@ pub fn checks(doc: &Document, c: DeviceId) -> Vec<Check> {
 /// keep their mate edges.
 pub fn ref_classes(doc: &Document, c: DeviceId) -> Vec<(RepresentationId, crate::xref::Class)> {
     use crate::xref::Class;
-    if !is_connector(doc, c) {
+    if !connector_of(doc, c).is_some_and(|x| x.mating) {
         return Vec::new();
     }
     let halves: BTreeMap<RepresentationId, Side> =
@@ -1187,7 +1179,7 @@ pub fn ref_edges(doc: &Document, c: DeviceId, list: &[(RepresentationId, crate::
 /// The hover line of a connector half (design 044 §7): `-X10.S (socket, 4 pins) mates with -X10.P
 /// on 102 C4.`, or `-X10.S has no plug half.`
 pub fn hover_words(doc: &Document, c: DeviceId, side: Side) -> Option<String> {
-    if !is_connector(doc, c) || side == Side::Both {
+    if !connector_of(doc, c).is_some_and(|x| x.mating) || side == Side::Both {
         return None;
     }
     let d = drawn(doc, c);
@@ -1316,7 +1308,7 @@ impl Index {
             set.remove(&c);
         }
         self.inherits.retain(|_, s| !s.is_empty());
-        if !is_connector(doc, c) {
+        if !connector_of(doc, c).is_some_and(|x| x.mating) {
             return;
         }
         let pages: BTreeSet<PageId> = doc.representations_of(Subject::Device(c)).map(|(_, r)| r.page).collect();
@@ -1464,9 +1456,7 @@ pub fn strip_terminal_at(doc: &Document, page: PageId, at: Pt) -> Option<Termina
     // Each terminal symbol shows its own connection point: O(representations on the page).
     doc.representations_on(page).find_map(|(_, r)| {
         let Subject::Device(c) = r.subject else { return None };
-        if !strips::is_strip(doc, c) {
-            return None;
-        }
+        strips::strip_of(doc, c)?;
         let placement = crate::devices::rep_definition(doc, r).map(|(_, pl)| pl);
         crate::devices::shown_terminals(doc, c, r).into_iter().find_map(|(t, p)| {
             let p = match (r.form, placement) {

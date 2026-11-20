@@ -112,7 +112,7 @@ pub fn check_value(doc: &Document, key: &str, value: &str) -> Result<String, Cmd
             Some((c, fuse)) => {
                 let tag = rating::trace::device_words(doc, c, fuse.as_deref());
                 if rating::trace::amps_of(doc, c, fuse.as_deref()).is_none() {
-                    return Err(CmdError::refused(format!("{tag}'s rating has no current; write it as 16 A first.")));
+                    return Err(CmdError::refused(format!("{tag} has no rated current; set its rating first (for example C16).")));
                 }
                 Ok(tag)
             }
