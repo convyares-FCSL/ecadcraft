@@ -1182,7 +1182,7 @@ fn author_pill(ui: &mut egui::Ui, agent: Option<&str>) {
 /// while `live`. Returns (expand or collapse clicked, Undo session clicked).
 fn group_row(ui: &mut egui::Ui, g: &history::SessionGroup, open: bool, live: bool) -> (bool, bool) {
     let shell = ecad_ui::SHELL;
-    let text = g.text();
+    let text = history::group_text(g);
     let agent = match &g.author {
         ecad_model::Author::Agent(n) => n.clone(),
         ecad_model::Author::User => String::new(),
