@@ -4,9 +4,8 @@
 //! - **wopen**: a two-point wire drawn in open space with `join: false` (nothing to join), the
 //!   baseline; **wmerge**: the same wire drawn from another wire's open end (it merges). Target:
 //!   within 10% of wopen.
-//! - **jjoin**: `joinwires` at two open ends that meet (two nets become one); **junction**:
-//!   `junction` at the same place (design 022's repair of the same two ends), the baseline.
-//!   Target: as junction.
+//! - **jjoin**: `joinwires` at two open ends that meet (two nets become one). Reported; its old
+//!   baseline, a junction placed there, went with the junction symbol (design 072 D).
 //! - **lnet** / **leach**: the wire labels of the page with the most routes worked out under the
 //!   `net` and `each` rules. Target: lnet within 10% of leach.
 //! - **ccont**: `cableslash` continuing a 50-core cable on a second page through continuation
@@ -39,7 +38,6 @@ const X0: f64 = 600.0;
 pub struct MeasuredWires {
     pub wopen_ms: f64,
     pub wmerge_ms: f64,
-    pub junction_ms: f64,
     pub jjoin_ms: f64,
     pub lnet_ms: f64,
     pub leach_ms: f64,
@@ -108,15 +106,13 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredWires
         run(&mut s, "wire", json!({"points": [[X0, 0.0], [X0 + 50.0, 0.0]]}))?;
         run(&mut s, "wire", json!({"points": [[X0, 40.0], [X0 + 50.0, 40.0]]}))?;
         run(&mut s, "wire", json!({"points": [[X0 + 50.0, 40.0], [X0 + 50.0, 20.0]], "join": false}))?;
-        let (mut wopen, mut wmerge, mut junction, mut jjoin) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        let (mut wopen, mut wmerge, mut jjoin) = (Vec::new(), Vec::new(), Vec::new());
         for _ in 0..runs {
             wopen.push(timed(&mut s, "wire", json!({"points": [[X0 + 200.0, 0.0], [X0 + 200.0, -20.0]], "join": false}))?);
             wmerge.push(timed(&mut s, "wire", json!({"points": [[X0 + 50.0, 0.0], [X0 + 50.0, -20.0]]}))?);
-            junction.push(timed(&mut s, "junction", json!({"at": [X0 + 50.0, 40.0]}))?);
             jjoin.push(timed(&mut s, "joinwires", json!({"at": [X0 + 50.0, 40.0]}))?);
         }
-        (out.wopen_ms, out.wmerge_ms, out.junction_ms, out.jjoin_ms) =
-            (median(&mut wopen), median(&mut wmerge), median(&mut junction), median(&mut jjoin));
+        (out.wopen_ms, out.wmerge_ms, out.jjoin_ms) = (median(&mut wopen), median(&mut wmerge), median(&mut jjoin));
         // A 50-core cable ending on continuations, continued on a second page.
         let y = |i: usize| 100.0 + 5.0 * i as f64;
         for i in 0..CORES {

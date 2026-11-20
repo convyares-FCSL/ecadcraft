@@ -86,7 +86,7 @@ clears; no fields: the current values, read only)",
             .params(
                 "{title?, drawing_number?, customer?, status?, function?, location?, sheet?: \"A3\"|\"A2 12x8\"|…, \
 page_number_step?: n, reference_style?: \"page-zone\"|\"page-column-row\"|\"page-column\", contact_mirror?: \"auto\"|\"below\"|\"right\"|\"off\", tag_padding?: 1..6, \
-tag_prefixes?: {symbol: prefix|null}, colour_style?: \"iec\"|\"three-letter\", label_height?: mm, \
+tag_prefixes?: {symbol: prefix|null}, colour_style?: \"code2\"|\"code3\"|\"name\", label_height?: mm, \
 tag_dash?: bool, tag_case?: \"upper\"|\"typed\", revision_columns?: \"rev, date, ecr:ECR@20, description\"|null, \
 revision_pending?: \"star\"|\"draft\"|\"off\", props?: {key: value|null}} (one transaction; no fields: everything, read only)",
             )
@@ -573,7 +573,7 @@ pub fn project_json(doc: &Document) -> Value {
     });
     v["tag_prefixes"] = Value::Object(crate::cmd::device::prefixes_json(doc));
     // Brief 022: the wiring settings the Project settings popout edits.
-    v["colour_style"] = json!(doc.settings.wiring.colour_style().name());
+    v["colour_style"] = json!(ecad_model::words::Word::word(doc.settings.wiring.colour_style()));
     v["label_height"] = json!(wire_label_height(doc));
     // Brief 026: Project settings → Numbering.
     v["provisional"] = json!(ecad_model::numbering::provisional_on(doc));
@@ -640,7 +640,7 @@ pub(crate) struct ProjectpropsParams {
     /// Tag prefixes by symbol: a prefix, or null for the built-in one.
     #[serde(default, deserialize_with = "nullable")]
     tag_prefixes: Option<Option<BTreeMap<String, Option<String>>>>,
-    /// How label colours are written: "iec" (BN, BU, GNYE) or "three-letter" (BRN, BLU, GRN/YEL).
+    /// How label colours are written: "code2" (BN, BU, GN/YE), "code3" (BRN, BLU, GRN/YEL) or "name".
     #[serde(default, deserialize_with = "nullable")]
     colour_style: Option<Option<String>>,
     /// Wire label height in mm, 0.5 to 10.

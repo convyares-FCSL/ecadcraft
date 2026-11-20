@@ -16,9 +16,8 @@ fn expected(op: &Op) -> EffectKind {
         "AddTerminal" | "RemoveTerminal" => EffectKind::Terminal,
         "LinkRepresentation" | "ModifyRepresentation" | "UnlinkRepresentation" => EffectKind::Rep,
         "CreateWire" | "DeleteWire" | "ModifyWire" => EffectKind::Wire,
-        "AttachEnd" => EffectKind::End,
-        "CreateCable" | "DeleteCable" => EffectKind::Cable,
-        "AddCableMember" | "RemoveCableMember" => EffectKind::Member,
+        "AddRoute" | "RemoveRoute" | "ModifyRoute" => EffectKind::Route,
+        "CreateCable" | "DeleteCable" | "ModifyCable" => EffectKind::Cable,
         "SetProperty" => EffectKind::Prop,
         "EmbedDefinition" | "RemoveDefinition" => EffectKind::Definition,
         "SetProjectSettings" => EffectKind::Settings,
@@ -126,14 +125,11 @@ fn old_touched(ops: &[Op]) -> Touched {
             Op::CreateWire { id, .. } | Op::DeleteWire { id, .. } | Op::ModifyWire { id, .. } => {
                 t.wires.insert(*id);
             }
-            Op::AttachEnd { conductor, .. } => {
-                t.wires.insert(*conductor);
+            Op::AddRoute { id, .. } | Op::RemoveRoute { id, .. } | Op::ModifyRoute { id, .. } => {
+                t.routes.insert(*id);
             }
-            Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
+            Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } | Op::ModifyCable { id, .. } => {
                 t.cables.insert(*id);
-            }
-            Op::AddCableMember { cable, .. } | Op::RemoveCableMember { cable, .. } => {
-                t.cables.insert(*cable);
             }
             Op::SetProperty { object, .. } => match object {
                 ObjectRef::Device(id) => {

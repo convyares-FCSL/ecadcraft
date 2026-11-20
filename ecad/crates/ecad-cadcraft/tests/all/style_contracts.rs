@@ -321,6 +321,7 @@ fn a_hostile_style_document_opens_draws_and_reports() {
 // ------------------------------------------------------------------------- 050b: wire categories
 
 fn wire(h: &mut H, y: f64, potential: Option<&str>) -> ecad_model::WireId {
+    h.points_at(&[(10.0, y), (60.0, y)]);
     let mut p = json!({"points": [[10, y], [60, y]]});
     if let Some(pot) = potential {
         p["potential"] = json!(pot);
@@ -343,7 +344,7 @@ fn a_24v_wire_takes_the_24_v_dc_category() {
     let label = label_of(&mut h, page, w).unwrap();
     assert!(label.ends_with(" 0.5 BU") && label.starts_with("24V-"), "{label}");
     let doc = h.doc();
-    assert_eq!(ecad_cadcraft::look::conductor_colour(&doc, w).as_deref(), Some("BU"), "drawn blue (line colour: wire)");
+    assert_eq!(ecad_cadcraft::look::conductor_colour(&doc, w).map(|c| c.to_string()).as_deref(), Some("BU"), "drawn blue (line colour: wire)");
     let rows = h.run("wirelist", json!({})).unwrap();
     assert!(rows.to_string().contains("24 V DC"), "{rows}");
     // A power wire is drawn in ink, heavier.
@@ -361,14 +362,14 @@ fn a_category_change_reaches_its_wires_but_not_an_own_colour() {
     h.run("setprop", json!({"conductor": b.hex(), "key": "colours", "value": "WH"})).unwrap();
     h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colours": "RD"}})).unwrap();
     let doc = h.doc();
-    assert_eq!(ecad_cadcraft::look::conductor_colour(&doc, a).as_deref(), Some("RD"));
-    assert_eq!(ecad_cadcraft::look::conductor_colour(&doc, b).as_deref(), Some("WH"), "its own colour stays");
+    assert_eq!(ecad_cadcraft::look::conductor_colour(&doc, a).map(|c| c.to_string()).as_deref(), Some("RD"));
+    assert_eq!(ecad_cadcraft::look::conductor_colour(&doc, b).map(|c| c.to_string()).as_deref(), Some("WH"), "its own colour stays");
     assert!(label_of(&mut h, page, a).unwrap().ends_with(" RD"));
     let look = styles::wire::wire_look(&doc, b);
     assert_eq!(look.colour.map(|c| c.1), Some(Source::Object), "overridden");
     // Reset: it follows the category again.
     h.run("setprop", json!({"conductor": b.hex(), "key": "colours", "value": null})).unwrap();
-    assert_eq!(ecad_cadcraft::look::conductor_colour(&h.doc(), b).as_deref(), Some("RD"));
+    assert_eq!(ecad_cadcraft::look::conductor_colour(&h.doc(), b).map(|c| c.to_string()).as_deref(), Some("RD"));
 }
 
 #[test]
@@ -395,6 +396,7 @@ fn choosing_a_category_sets_a_missing_potential_and_keeps_another() {
     let v = h.run("category", json!({"conductor": a.hex(), "value": "Power L1"})).unwrap();
     assert_eq!(v["message"], json!("Category set; the net keeps potential 24V."));
     // `wire {category}` gives the new wire its category in the same transaction.
+    h.points_at(&[(10.0, 190.0), (60.0, 190.0)]);
     let before = h.head();
     let r = h.run("wire", json!({"points": [[10, 190], [60, 190]], "category": "analogue"})).unwrap();
     assert_eq!(h.head(), before + 1);

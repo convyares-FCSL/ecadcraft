@@ -199,7 +199,10 @@ pub fn plan_merge(doc: &Document, uses: &Uses, a: Aspect, from: &str, into: &str
             _ => {
                 let before = property_of(doc, o, &prop);
                 if before.as_deref() == Some(from.key.as_str()) {
-                    ops.push(Op::SetProperty { object: o, key: prop, before, after: Some(into.key.clone()) });
+                    match o {
+                        ObjectRef::Cable(k) => Op::set_cable_property(doc, &mut ops, k, &prop, Some(into.key.clone())),
+                        _ => ops.push(Op::SetProperty { object: o, key: prop, before, after: Some(into.key.clone()) }),
+                    }
                 }
             }
         }

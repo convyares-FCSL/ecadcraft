@@ -28,7 +28,7 @@ fn sets(ops: &[Op], key: &str) -> bool {
 fn accessory_and_jumper_commands_through_execute() {
     let mut c = writer(WRITER_SEED);
     for x in [100, 120, 140, 160] {
-        c.exec("wire", json!({"points": [[x, 200], [x, 100]]}));
+        c.wire_pp(json!({"points": [[x, 200], [x, 100]]}));
     }
     let f = c.exec("terminals", json!({"from": [90, 150], "to": [170, 150]}));
     let strip = f["strip"].as_str().unwrap().to_string();

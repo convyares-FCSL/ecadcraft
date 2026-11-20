@@ -151,7 +151,10 @@ pub(crate) fn rgb(c: ecad_drawing_style::Color) -> Rgb {
 
 /// The paper colour an IEC code draws in (040's table).
 pub(crate) fn code_colour(code: &str) -> Color {
-    Color::True(rgb(ecad_cadcraft::look::wire_colours(code, &PAPER).unwrap_or_else(|| panic!("{code} is a colour")).solid))
+    Color::True(rgb(ecad_model::wire::Colours::parse(code)
+        .and_then(|c| ecad_cadcraft::look::wire_colours(&c, &PAPER))
+        .unwrap_or_else(|| panic!("{code} is a colour"))
+        .solid))
 }
 
 pub(crate) const INK: Color = Color::Index(7);
@@ -1227,6 +1230,7 @@ fn a04_an_objects_own_text_style_sets_its_font_too() {
 fn a04_a_conductors_own_wire_label_style_draws() {
     let mut h = H::new(0x50a_0413);
     let page = h.first_page();
+    h.points_at(&[(0.0, 50.0), (60.0, 50.0)]);
     let w: ecad_model::WireId = id(&h.run("wire", json!({"points": pts(&[(0.0, 50.0), (60.0, 50.0)]), "potential": "24V"})).unwrap(), "conductor");
     let big = own_id(
         &h.run("setstyle", json!({"catalogue": "text", "new": true, "name": "Label big", "copy_of": "wire_label", "fields": {"height": 3}})).unwrap(),

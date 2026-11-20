@@ -8,7 +8,7 @@ use cadcraft_engine::geom::Vec2;
 use common::{H, id};
 use ecad_cadcraft::devices::{self, TextOf};
 use ecad_cadcraft::symbols::{self, STARTERS};
-use ecad_model::{DeviceId, End, ItemId, Op, PageId, Subject, TerminalId, WireId};
+use ecad_model::{DeviceId, ItemId, Op, PageId, Subject, TerminalId};
 use serde_json::{Value, json};
 
 const SEED: u64 = 18;
@@ -108,7 +108,7 @@ fn a_every_starter_symbol_gets_its_prefix_and_the_next_number() {
         ("di", "-A01"),
         ("do", "-A02"),
     ];
-    // Every starter but the tagless junction and continuation (brief 022); brief 034's families
+    // Every starter but the tagless continuation (brief 022); brief 034's families
     // are covered by `library_contracts`.
     assert_eq!(
         want.len(),
@@ -241,15 +241,15 @@ fn d_merging_a_renamed_device_moves_its_symbols_terminals_and_wires() {
     let k2v = place(&mut f.h, "no", [100.0, 0.0]);
     let k2: DeviceId = id(&k2v, "component");
     assert_eq!(labels(&k2v), ["13", "14"]);
-    let w: WireId = id(&f.h.run("wire", json!({"points": [[100, 10], [140, 10]]})).unwrap(), "conductor");
-    assert!(f.h.doc().wires[&w].end(End::A).is_some());
+    let w: ecad_model::RouteId = id(&f.h.run("wire", json!({"points": [[100, 10], [140, 10]]})).unwrap(), "route");
+    assert!(f.h.doc().routes[&w].ends[0].point().is_some());
     let r = f.h.run("setprop", json!({"component": k2.hex(), "key": "tag", "value": "-K01", "merge": true})).unwrap();
     assert_eq!(r["merged"], json!(true));
     let doc = f.h.doc();
     assert!(!doc.devices.contains_key(&k2), "the merged device is gone");
     let reps = doc.representations_of(Subject::Device(f.k1)).count();
     assert_eq!(reps, 4);
-    let t = doc.wires[&w].end(End::A).unwrap();
+    let t = doc.routes[&w].ends[0].point().unwrap();
     assert_eq!(doc.terminals[&t].component, f.k1, "the wire stays attached, now to -K01");
     assert_eq!(doc.terminals[&t].label.as_deref(), Some("33"), "renumbered as when joining");
     assert!(f.h.p(|p| p.ledger.log().last().unwrap().label.clone()).starts_with("Merge into -K01"));
@@ -541,13 +541,13 @@ fn i_delete_device_asks_first() {
 #[test]
 fn i_moving_a_contact_moves_its_terminals_and_copying_a_device_gives_the_next_tag() {
     let mut f = k1();
-    let w: WireId = id(&f.h.run("wire", json!({"points": [[0, 10], [0, 40]]})).unwrap(), "conductor");
+    let w: ecad_model::RouteId = id(&f.h.run("wire", json!({"points": [[0, 10], [0, 40]]})).unwrap(), "route");
     let t13: TerminalId = id(&f.no["terminals"][0], "terminal");
-    assert_eq!(f.h.doc().wires[&w].end(End::A), Some(t13));
+    assert_eq!(f.h.doc().routes[&w].ends[0], ecad_model::RouteEnd::Point(t13));
     let item: ItemId = id(&f.no, "item");
     let h = f.h.handle_of(f.p2, item);
     f.h.run("move", json!({"handles": [h.hex()], "delta": [5, 0]})).unwrap();
-    let a = f.h.route_ends(f.p2, w).0;
+    let a = f.h.doc().routes[&w].points[0];
     assert!(a.near(ecad_model::Pt::new(5.0, 10.0), 1e-9), "the wire end followed its terminal: {a:?}");
     f.h.activate(f.p1);
     let coil = f.h.symbol_item(f.k1);

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use ecad_cadcraft::checks::{Checks, Kind};
 use ecad_cadcraft::release::{self, Step};
-use ecad_model::{CableId, ObjectRef, Op, PageId, WireId};
+use ecad_model::{CableId, Op, PageId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id};
@@ -36,7 +36,8 @@ fn fixture(name: &str) -> F {
     let supply = h.first_page();
     h.run("renamepage", json!({"page": supply.hex(), "title": "Supply"})).unwrap();
     for y in [0.0, 5.0, 10.0] {
-        let _: WireId = id(&h.run("wire", json!({"points": [[60.0, y], [120.0, y]]})).unwrap(), "conductor");
+        // Design 072: a line with a free end carries no wire; the cable's cores sit on the lines.
+        h.run("wire", json!({"points": [[60.0, y], [120.0, y]]})).unwrap();
     }
     let c1: CableId = id(&h.run("cableslash", json!({"from": [88, -3], "to": [92, 18], "tag": "C1"})).unwrap(), "cable");
     // Brief 057 (owner rule): the fixture's cores run over loose wires on purpose; ticked Not
@@ -112,9 +113,11 @@ fn an_orphan_reference_is_a_check_kept_by_its_update_map() {
     assert_eq!(v["total"], 1, "{v}");
     assert_eq!(v["checks"][0]["which"], "-C01 /?");
     assert!(v["checks"][0]["object"]["reference"].is_string(), "{v}");
-    // Continued on another page: the end has a partner.
-    h.run("newpage", json!({"title": "Field"})).unwrap();
-    h.run("cablecontinue", json!({"cable": c1.hex(), "at": [20, 5], "toward": [40, 5]})).unwrap();
+    // Its other end on another page: the end has a partner. Written as `cablecontinue` writes
+    // it (`H::reference_end`): a continuation needs wires leaving the page through the reference,
+    // which form only with lane F step F4.
+    let field: ecad_model::PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
+    h.reference_end(c1, field, (20.0, 5.0));
     assert!(orphans(&mut h).is_empty());
     kept_is_built(&mut h);
     h.cmdline("u");
@@ -434,7 +437,7 @@ fn nothing_changed_since_the_last_issue_is_a_warning() {
 fn reopening_a_revision_shows_it_in_its_title_block() {
     let mut f = fixture("reopen");
     f.h.run("issuerevision", json!({})).unwrap();
-    f.h.run("wire", json!({"points": [[60, 40], [120, 40]]})).unwrap();
+    f.h.wire_pp(&[(60.0, 40.0), (120.0, 40.0)]).unwrap();
     for (cmd, params) in [("openrevision", json!({"rev": "B"})), ("showpoint", json!({"revision": "B"}))] {
         f.h.run(cmd, params).unwrap();
         let doc = f.h.p(|p| p.revision_view.as_ref().unwrap().doc.clone());
@@ -524,11 +527,11 @@ fn with_finalise_the_errors_gate_reads_the_finalised_rows() {
         let doc = p.ledger.document();
         let ops: Vec<Op> = [c1, c2]
             .iter()
-            .map(|k| Op::SetProperty {
-                object: ObjectRef::Cable(*k),
-                key: "tag".into(),
-                before: doc.cables[k].properties.get("tag").cloned(),
-                after: Some("-W?1".into()),
+            .map(|k| {
+                let before = doc.cables[k].clone();
+                let mut after = before.clone();
+                after.properties.insert("tag".into(), "-W?1".into());
+                Op::ModifyCable { id: *k, before, after }
             })
             .collect();
         p.ledger.commit(ecad_model::Author::User, "shared provisional tag", ops).unwrap();

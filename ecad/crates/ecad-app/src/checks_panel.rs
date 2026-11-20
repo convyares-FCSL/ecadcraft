@@ -20,7 +20,6 @@ pub const CHECKS_TAB: &str = "Checks";
 /// What an empty list says.
 pub const NO_PROBLEMS: &str = "No problems found.";
 /// The fix buttons.
-pub const ADD_JUNCTION: &str = "Add junction";
 /// Brief 032: the Looks connected row's fix (`joinwires {at}`).
 pub const JOIN: &str = "Join";
 pub const NUMBER_THEM: &str = "Number them";
@@ -237,7 +236,6 @@ impl ChecksPanel {
             return Some(Action::AccessoryFix(f, k));
         }
         Some(match (f, r.check.page) {
-            (Fix::AddJunction(at), Some(page)) => Action::AddJunction(page, at),
             (Fix::Join(at), Some(page)) => Action::JoinWires(page, at),
             (Fix::NumberThem, _) => Action::NumberThem,
             (Fix::Finalise, _) => Action::Finalise,
@@ -287,7 +285,7 @@ impl ChecksPanel {
             (Fix::Page(f), _) => Action::RunLine(f.line()),
             (Fix::EditTitleBlock(page, item), _) => Action::EditTitleBlock(page, item),
             (Fix::ClearPageSheet(page), _) => Action::ClearPageSheet(page),
-            (Fix::AddJunction(_) | Fix::Join(_), None) => return None,
+            (Fix::Join(_), None) => return None,
             (Fix::AssignCable(_) | Fix::UseDrawing(..) | Fix::ShowCableField(..), _) => Action::CableFix(f, k),
         })
     }

@@ -47,13 +47,24 @@ pub fn all_with(doc: &Document, tol: f64, outputs: &crate::outputs::Outputs) -> 
     crate::checks::all_measured(doc, tol, outputs, &EngineMetrics)
 }
 
-/// The drawn handles of `object` on `page` (for a go-to's selection): a conductor's route, a
+/// The drawn handles of `object` on `page` (for a go-to's selection): a wire's lines, a route's line, a
 /// component's symbols, a connection point's symbol.
 pub fn handles_of(p: &crate::Project, page: PageId, object: Object) -> Vec<cadcraft_engine::doc::Handle> {
     let Some(map) = p.pages.get(&page).map(|v| &v.map) else { return Vec::new() };
     let doc = p.ledger.document();
     let subject = match object {
-        Object::Wire(c) => Subject::Wire(c),
+        // A wire's lines on the page: the routes drawing it (design 072 §4.3).
+        Object::Wire(c) => {
+            let routes: Vec<_> =
+                crate::wires::routes_of_wire(doc, c).into_iter().filter(|r| doc.routes.get(r).is_some_and(|x| x.page == page)).collect();
+            return routes
+                .into_iter()
+                .flat_map(|r| {
+                    doc.representations_of(Subject::Route(r)).flat_map(|(_, x)| x.items.iter().filter_map(|i| map.item(*i))).collect::<Vec<_>>()
+                })
+                .collect();
+        }
+        Object::Route(r) => Subject::Route(r),
         Object::Device(c) => Subject::Device(c),
         Object::Reference(r) => {
             return doc

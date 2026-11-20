@@ -33,7 +33,7 @@ fn a_bom_page_lays_its_table_out_once_per_draw() {
 #[test]
 fn ops_that_read_no_reference_touch_no_cable() {
     use ecad_model::style::{StyleLayer, StyleRecord, StyleRef};
-    use ecad_model::{CableId, Device, DeviceId, ObjectRef, Op};
+    use ecad_model::{CableId, Device, DeviceId, Op};
     let doc = ecad_model::Document::default();
     let touched = |ops: Vec<Op>| ecad_cadcraft::references::cables_touched(&doc, &ops);
     let style = |catalogue: ecad_model::StyleCatalogue| Op::SetStyle {
@@ -51,12 +51,17 @@ fn ops_that_read_no_reference_touch_no_cable() {
     let gone = Op::DeleteDevice { id: DeviceId(7), device: Device::default() };
     assert_eq!(touched(vec![gone]), Some(Default::default()), "a deleted component");
     let k = CableId(9);
-    let typed = Op::SetProperty { object: ObjectRef::Cable(k), key: "type".into(), before: None, after: Some("5G1.5".into()) };
+    let mut typed_cable = ecad_model::Cable::default();
+    typed_cable.properties.insert("type".into(), "5G1.5".into());
+    let typed = Op::ModifyCable { id: k, before: ecad_model::Cable::default(), after: typed_cable };
     assert_eq!(touched(vec![typed]), Some([k].into()), "a cable's own property");
 }
 
-/// A cable continued from page Supply onto page Field: (harness, cable, Supply, Field).
-fn continued_cable(seed: u64) -> (H, ecad_model::CableId, ecad_model::PageId, ecad_model::PageId) {
+/// A cable slashed on page Supply with a reference there, and its other end on page Field:
+/// (harness, cable, Supply, Field). The other end is written as `cablecontinue` writes it
+/// ([`H::reference_end`]): a continuation needs wires leaving the page through the reference,
+/// which form only with lane F step F4, and these tests are about the references, not the wires.
+fn paired_cable(seed: u64) -> (H, ecad_model::CableId, ecad_model::PageId, ecad_model::PageId) {
     let mut h = H::new(seed);
     let supply = h.first_page();
     for y in [0.0, 5.0, 10.0] {
@@ -66,7 +71,7 @@ fn continued_cable(seed: u64) -> (H, ecad_model::CableId, ecad_model::PageId, ec
     h.run("cableref", json!({"cable": c1.hex(), "at": [65, 5]})).unwrap();
     let field: ecad_model::PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
     h.activate(field);
-    h.run("cablecontinue", json!({"cable": c1.hex(), "at": [20, 5], "toward": [40, 5]})).unwrap();
+    h.reference_end(c1, field, (20.0, 5.0));
     (h, c1, supply, field)
 }
 
@@ -74,7 +79,7 @@ fn continued_cable(seed: u64) -> (H, ecad_model::CableId, ecad_model::PageId, ec
 /// each reference's zone afterwards is the one a fresh derivation gives.
 #[test]
 fn a_standard_change_retraces_every_cable_reference() {
-    let (mut h, c1, supply, _) = continued_cable(0x53_03);
+    let (mut h, c1, supply, _) = paired_cable(0x53_03);
     let zone = |doc: &ecad_model::Document| {
         ecad_cadcraft::references::all(doc)
             .into_iter()
@@ -99,7 +104,7 @@ fn a_standard_change_retraces_every_cable_reference() {
 /// on it, and equal the markers taken from every reference of the project.
 #[test]
 fn a_page_s_markers_equal_those_of_every_reference() {
-    let (mut h, _, supply, field) = continued_cable(0x53_02);
+    let (mut h, _, supply, field) = paired_cable(0x53_02);
     let doc = h.doc();
     let every = ecad_cadcraft::references::all(&doc);
     for page in [supply, field] {

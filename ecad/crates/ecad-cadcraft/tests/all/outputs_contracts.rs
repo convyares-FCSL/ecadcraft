@@ -412,7 +412,7 @@ fn settings_changes_update_only_the_rows_they_reach() {
     let table = h.cfg(|p| p.outputs().wire_table());
     assert!(table.rows.iter().any(|r| r[6].text == "RD"), "{table:?}");
     // Styles: nothing recomputed, the tables follow.
-    h.run("wiresettings", json!({"colour_style": "three-letter"})).unwrap();
+    h.run("wiresettings", json!({"colour_style": "code3"})).unwrap();
     h.run("projectprops", json!({"reference_style": "page-column"})).unwrap();
     same_as_built(&mut h);
     let table = h.cfg(|p| p.outputs().wire_table());

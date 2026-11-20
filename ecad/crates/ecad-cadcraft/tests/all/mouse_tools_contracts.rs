@@ -20,7 +20,7 @@ use cadcraft_engine::Input;
 use cadcraft_engine::doc::{EntityKind, Handle};
 use cadcraft_engine::geom::Vec2;
 use common::H;
-use ecad_model::{DeviceId, Document, End, PageId, TerminalId, Transaction, WireId};
+use ecad_model::{DeviceId, Document, PageId, TerminalId, Transaction};
 use serde_json::json;
 
 const SEED: u64 = 80_08;
@@ -77,14 +77,10 @@ fn terminal_at(d: &Document, page: PageId, x: f64, y: f64) -> TerminalId {
         .unwrap_or_else(|| panic!("no terminal at {x},{y}"))
 }
 
-fn conductor_from(d: &Document, page: PageId, x: f64, y: f64) -> WireId {
-    *d.wires
-        .keys()
-        .find(|c| {
-            ecad_model::derive::route_on_page(d, **c, page)
-                .and_then(|(_, r)| r.path_ends())
-                .is_some_and(|(a, _)| a.near(ecad_model::Pt::new(x, y), 1e-9))
-        })
+/// The route on `page` whose first point is at (x, y) (design 072 §4.3).
+fn route_from(d: &Document, page: PageId, x: f64, y: f64) -> ecad_model::RouteId {
+    d.routes_on(page)
+        .find(|r| d.routes[r].points.first().is_some_and(|a| a.near(ecad_model::Pt::new(x, y), 1e-9)))
         .unwrap_or_else(|| panic!("no wire from {x},{y}"))
 }
 
@@ -224,9 +220,9 @@ fn ac1_each_interactive_case_records_the_json_forms_transaction() {
             |h| {
                 let pg = h.first_page();
                 let d = h.doc();
-                let w = conductor_from(&d, pg, 0.0, 30.0);
+                let w = route_from(&d, pg, 0.0, 30.0);
                 let t = terminal_at(&d, pg, 40.0, 10.0);
-                h.run("connect", json!({"conductor": w.hex(), "end": "B", "terminal": t.hex()})).unwrap();
+                h.run("connect", json!({"route": w.hex(), "end": "B", "terminal": t.hex()})).unwrap();
             },
         ),
         (
@@ -238,8 +234,8 @@ fn ac1_each_interactive_case_records_the_json_forms_transaction() {
             },
             |h| {
                 let pg = h.first_page();
-                let w = conductor_from(&h.doc(), pg, 40.0, 10.0);
-                h.run("disconnect", json!({"conductor": w.hex(), "end": "B"})).unwrap();
+                let w = route_from(&h.doc(), pg, 40.0, 10.0);
+                h.run("disconnect", json!({"route": w.hex(), "end": "B"})).unwrap();
             },
         ),
         (
@@ -419,7 +415,7 @@ fn ac4_preview_and_click_agree_inside_and_outside_the_aperture() {
             let pg = h.first_page();
             let d = h.doc();
             let a2 = terminal_at(&d, pg, 110.0, 0.0);
-            let attached = d.wires.values().any(|c| End::BOTH.iter().any(|e| c.end(*e) == Some(a2)));
+            let attached = d.routes_at(a2).next().is_some();
             assert_eq!(attached, inside, "{tool} at {pixels} px: click");
             h.check();
         }
@@ -652,7 +648,7 @@ fn built_by_prompts_saved_and_reopened_keeps_everything_and_still_captures() {
     assert!(h2.p(|p| p.ledger.replay_matches().unwrap()), "replay gives the same state");
     h2.check();
     let pg = h2.first_page();
-    let ends = h2.doc().wires.len();
+    let ends = h2.doc().routes.len();
     start(&mut h2, "wire");
     typed(&mut h2, "0,200");
     let px = h2.s.pixel_size();
@@ -662,9 +658,9 @@ fn built_by_prompts_saved_and_reopened_keeps_everything_and_still_captures() {
     click(&mut h2, near);
     assert!(h2.s.running.is_none());
     let d = h2.doc();
-    assert_eq!(d.wires.len(), ends + 1);
+    assert_eq!(d.routes.len(), ends + 1);
     let t1 = terminal_at(&d, pg, 40.0, 10.0);
-    assert!(d.wires.values().filter(|c| c.end(End::B) == Some(t1)).count() >= 1);
+    assert!(d.routes.values().any(|r| r.ends[1] == ecad_model::RouteEnd::Point(t1)));
     h2.check();
     while !h2.s.docs.is_empty() {
         h2.s.execute("close", &json!({"index": 0})).unwrap();

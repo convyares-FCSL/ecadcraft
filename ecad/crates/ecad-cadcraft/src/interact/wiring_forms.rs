@@ -1,4 +1,4 @@
-//! Brief 022's click-based forms (design 022 §10): Junction, Fix Wire Number and Renumber Wires.
+//! Brief 022's click-based forms (design 022 §10): Join Wires, Fix Wire Number and Renumber Wires.
 //! Each resolves its values from clicks and typed text, then commits the command's JSON form.
 
 use cadcraft_engine::doc::{Entity, EntityKind};
@@ -15,69 +15,26 @@ fn wire_under(s: &Session, p: Vec2) -> R<(WireId, Pt, String)> {
     let tol = pick_radius(s).unwrap_or(crate::wires::ON_WIRE).max(crate::wires::ON_WIRE);
     read(s, |proj, page| {
         let doc = proj.ledger.document();
-        let on = crate::wires::wire_at(doc, page, pt(p), tol, None).ok_or("Nothing there. Click a wire.")?;
-        let conn = doc.connectivity();
-        let number = conn
-            .net_of_conductor(on.conductor)
-            .and_then(|id| conn.net(id))
-            .and_then(|n| ecad_model::wiring::net_number(doc, n))
-            .unwrap_or_else(|| "?".into());
-        Ok((on.conductor, on.at, number))
+        let on = crate::wires::route_at(doc, page, pt(p), tol, None).ok_or("Nothing there. Click a wire.")?;
+        let w = crate::wires::wire_of_route(doc, on.route).ok_or("That line joins no connection points yet. Click a wire.")?;
+        let number = ecad_model::wiring::wire_number(doc, w).unwrap_or_else(|| "?".into());
+        Ok((w, on.at, number))
     })
     .map_err(other)
 }
 
 /// The route of `w` on the active page, highlighted.
 fn highlight(s: &Session, w: WireId) -> Vec<Entity> {
-    let route = read(s, |p, page| Ok(ecad_model::derive::route_on_page(p.ledger.document(), w, page).map(|(_, x)| x)));
+    let route = read(s, |p, page| {
+        let doc = p.ledger.document();
+        Ok(crate::wires::route_of_wire_on(doc, w, page).and_then(|r| doc.routes.get(&r)).map(|r| r.points.clone()))
+    });
     match route {
-        Ok(Some(prim)) => vec![preview_entity(s, crate::convert::kind_for_primitive(&prim), ATTACHED_ACI)],
-        _ => Vec::new(),
-    }
-}
-
-// ---------------------------------------------------------------- Junction
-
-/// `junction`: click wires where junctions go, until Enter.
-pub(crate) fn junction(s: &Session) -> R<Box<dyn Interactive>> {
-    can_start(s)?;
-    Ok(Box::new(Safe(Junction)))
-}
-
-struct Junction;
-
-impl Junction {
-    fn step(&mut self, s: &mut Session, i: Input) -> R<Step> {
-        match i {
-            Input::Point(p) => {
-                if !in_range(p) {
-                    return Err(other(OUT_OF_RANGE));
-                }
-                let (_, at, number) = wire_under(s, p)?;
-                commit(s, "junction", &json!({"at": [at.x, at.y]}))?;
-                s.echo(format!("Junction added on wire {number}; it is split there."));
-                Ok(Step::Continue)
-            }
-            Input::Enter | Input::Cancel => Ok(Step::Done),
-            Input::Text(t) => Err(not_a_point(&t)),
-            _ => Ok(Step::Continue),
+        Ok(Some(points)) => {
+            let prim = ecad_model::Primitive::Polyline { vertices: points, closed: false };
+            vec![preview_entity(s, crate::convert::kind_for_primitive(&prim), ATTACHED_ACI)]
         }
-    }
-}
-
-impl Interactive for Junction {
-    fn name(&self) -> &'static str {
-        "JUNCTION"
-    }
-    fn prompt(&self, _s: &Session) -> Prompt {
-        Prompt::new("Click a wire where the junction goes", Accept::POINT)
-    }
-    fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
-        paper_guard(s, &i)?;
-        safely(s, "junction", |s| self.step(s, i))
-    }
-    fn preview(&self, _s: &Session, _cursor: Vec2) -> Vec<EntityKind> {
-        Vec::new()
+        _ => Vec::new(),
     }
 }
 
@@ -102,7 +59,7 @@ impl JoinWires {
                 let line = if r.get("how").and_then(Value::as_str) == Some("merged") {
                     "The two wires are now one wire."
                 } else {
-                    "A junction joins the wires there."
+                    "The wire ends there now land on the line."
                 };
                 s.echo(line);
                 Ok(Step::Continue)

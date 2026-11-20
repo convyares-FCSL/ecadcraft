@@ -60,7 +60,7 @@ fn connector_writes_by_the_agent_then_refused_with_writes_off() {
     let (x1, x2, before) = {
         let mut c = Client::new(EcadMcp::create(&path, Options { write: true, agent: None }).unwrap());
         for x in [100, 110, 120] {
-            c.exec("wire", json!({"points": [[x, 250], [x, 150]]}));
+            c.wire_pp(json!({"points": [[x, 250], [x, 150]]}));
         }
 
         // (1) The row form: one transaction, §4.6's ops.

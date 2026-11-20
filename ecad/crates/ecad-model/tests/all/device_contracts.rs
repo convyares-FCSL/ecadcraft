@@ -24,8 +24,8 @@ fn def(name: &str, keys: [&str; 2]) -> Definition {
         origin: None,
         graphics: vec![Primitive::Line { a: Pt::new(0.0, 10.0), b: Pt::new(0.0, -10.0) }],
         terminals: vec![
-            TerminalDef { key: keys[0].parse().unwrap(), label: Some(keys[0].into()), at: Pt::new(0.0, 10.0) },
-            TerminalDef { key: keys[1].parse().unwrap(), label: Some(keys[1].into()), at: Pt::new(0.0, -10.0) },
+            TerminalDef { key: keys[0].parse().unwrap(), label: Some(keys[0].into()), at: Pt::new(0.0, 10.0), accepts: Default::default() },
+            TerminalDef { key: keys[1].parse().unwrap(), label: Some(keys[1].into()), at: Pt::new(0.0, -10.0), accepts: Default::default() },
         ],
         ..Default::default()
     }
@@ -72,7 +72,7 @@ fn contact_ops(fx: &mut Fx, definition: DefinitionId, at: Pt, labels: [&str; 2],
         connection_points.insert(t2, Pt::new(0.0, -10.0));
     }
     let k1 = fx.k1;
-    let term = |l: &str| Terminal { component: k1, label: Some(l.into()), key: Some(l.parse().unwrap()) };
+    let term = |l: &str| Terminal { component: k1, label: Some(l.into()), key: Some(l.parse().unwrap()), accepts: Default::default() };
     let ops = vec![
         Op::AddTerminal { id: t1, terminal: term(labels[0]) },
         Op::AddTerminal { id: t2, terminal: term(labels[1]) },
@@ -140,7 +140,7 @@ fn connection_points_must_name_the_components_own_terminals() {
         "other",
         vec![
             Op::CreateDevice { id: other, device: Device::default() },
-            Op::AddTerminal { id: foreign, terminal: Terminal { component: other, label: None, key: None } },
+            Op::AddTerminal { id: foreign, terminal: Terminal { component: other, label: None, key: None, accepts: Default::default() } },
         ],
     )
     .unwrap();

@@ -357,16 +357,30 @@ fn fixture_r_by_label_and_canvas_clicks_with_reference_screenshots() {
     assert!(h.state().cad.session.running.is_none(), "{}", said(&h));
     assert_eq!(head(&mut h), before + 1, "one transaction");
     assert!(said(&h).contains("Cable -C01 continued on page 2 with 3 wires"), "{}", said(&h));
-    // Connect each stub's free end to K2 (JSON form; Connect's clicks are brief 008's).
+    // Connect each stub's free end to K2 (JSON form; Connect's clicks are brief 008's). The stubs
+    // are lines on Field from the cores' named points to a free end (design 072 §4.4, F4): no
+    // wire until they land on K2.
+    let d = doc(&mut h);
+    // K2's points (the reference's named points are shown on Field too).
+    let k2: Vec<_> = ecad_model::derive::terminal_positions(&d, field)
+        .into_iter()
+        .filter(|(t, _, _)| d.terminals.contains_key(t))
+        .map(|(t, _, p)| (t, p))
+        .collect();
+    let stubs: Vec<_> = d
+        .routes
+        .iter()
+        .filter(|(_, r)| r.page == field && r.ends[1] == ecad_model::RouteEnd::Free)
+        .filter_map(|(id, r)| Some((*id, *r.points.last()?)))
+        .collect();
+    assert_eq!(stubs.len(), 3, "a stub per core");
+    for (route, end) in &stubs {
+        let t = k2.iter().find(|(_, p)| (p.y - end.y).abs() < 1e-9).unwrap().0;
+        ok(&mut h, &format!(r#"connect {{"route":"{}","end":"B","terminal":"{}"}}"#, route.hex(), t.hex()));
+    }
     let d = doc(&mut h);
     let cable = *d.cables.keys().next().unwrap();
-    let wires: Vec<_> = d.cables[&cable].members.iter().map(|m| m.conductor).collect();
-    let k2: Vec<_> = ecad_model::derive::terminal_positions(&d, field).into_iter().map(|(t, _, p)| (t, p)).collect();
-    for w in &wires {
-        let end = ecad_model::derive::route_on_page(&d, *w, field).unwrap().1.path_ends().unwrap().1;
-        let t = k2.iter().find(|(_, p)| (p.y - end.y).abs() < 1e-9).unwrap().0;
-        ok(&mut h, &format!(r#"connect {{"conductor":"{}","end":"B","terminal":"{}"}}"#, w.hex(), t.hex()));
-    }
+    assert_eq!(d.cables[&cable].cores.iter().filter_map(|m| m.wire()).count(), 3, "a wire per core, K1 to K2");
     zoom_e(&mut h);
     assert_eq!(shown_text(&mut h), "1/F2");
     park(&mut h);

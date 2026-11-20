@@ -586,11 +586,11 @@ fn old_cable_tags_are_kept_at_reopen_and_still_count() {
         let doc = p.ledger.document();
         let ops: Vec<Op> = old
             .iter()
-            .map(|(k, t)| Op::SetProperty {
-                object: ObjectRef::Cable(*k),
-                key: "tag".into(),
-                before: doc.cables[k].properties.get("tag").cloned(),
-                after: Some((*t).into()),
+            .map(|(k, t)| {
+                let before = doc.cables[k].clone();
+                let mut after = before.clone();
+                after.properties.insert("tag".into(), (*t).into());
+                Op::ModifyCable { id: *k, before, after }
             })
             .collect();
         p.ledger.commit(Author::User, "old tags", ops).unwrap();

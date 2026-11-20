@@ -74,7 +74,7 @@ fn pin(of: &str) -> &str {
 /// true (paper) colour on either sheet, so black stays black; [`core_line`] gives a dark core an
 /// outline that keeps it readable on the dark sheet (owner look check).
 fn colours(code: Option<&str>) -> (Color32, Option<Color32>) {
-    match code.and_then(|c| ecad_cadcraft::look::wire_colours(c, &ecad_drawing_style::sheet::PAPER)) {
+    match code.and_then(ecad_model::wire::Colours::parse).and_then(|c| ecad_cadcraft::look::wire_colours(&c, &ecad_drawing_style::sheet::PAPER)) {
         Some(w) => (ecad_ui::color(w.solid), w.dashes.map(ecad_ui::color)),
         None => (ecad_ui::color(ecad_ui::SHELL.text_2), None),
     }
@@ -82,7 +82,7 @@ fn colours(code: Option<&str>) -> (Color32, Option<Color32>) {
 
 /// The bars of colour code `code` (one, or two for a two-colour code), in its true colours.
 pub fn bars(code: &str) -> Vec<ecad_ui::tokens::Color> {
-    match ecad_cadcraft::look::wire_colours(code, &ecad_drawing_style::sheet::PAPER) {
+    match ecad_model::wire::Colours::parse(code).and_then(|c| ecad_cadcraft::look::wire_colours(&c, &ecad_drawing_style::sheet::PAPER)) {
         Some(w) => std::iter::once(w.solid).chain(w.dashes).collect(),
         None => Vec::new(),
     }
@@ -90,7 +90,7 @@ pub fn bars(code: &str) -> Vec<ecad_ui::tokens::Color> {
 
 impl crate::App {
     /// An open core's fix (brief 057, owner): `0` ticks it Not used (one `setprop`); `1` goes to
-    /// its open end (its page, the end selected), or to the cable when the core has no wire.
+    /// the cable (an open core has no wire of its own).
     pub(crate) fn core_fix(&mut self, f: ecad_cadcraft::checks::Fix, k: usize) {
         use ecad_cadcraft::checks::{Check, Fix, Kind, Object};
         let Fix::CoreOpen(cable, i) = f else { return };
@@ -98,17 +98,11 @@ impl crate::App {
         let read = p.read(&mut self.cad.session, |p, _| {
             let doc = p.ledger.document();
             let open = ecad_cadcraft::styles::cable::open_cores(doc, cable).into_iter().nth(usize::from(i))?;
-            let place = match open.end {
-                Some((c, end)) => {
-                    let (page, at) = ecad_cadcraft::checks::conductor_place(doc, c, Some(end));
-                    (page, at, Object::Wire(c))
-                }
-                None => {
-                    let (page, at) =
-                        ecad_model::numbering::rep_anchor(doc, ecad_model::Subject::Cable(cable)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
-                    (page, at, Object::Cable(cable))
-                }
-            };
+            // An open core is an offered core no member uses: it has no end of its own, so the
+            // go-to shows the cable.
+            let (page, at) =
+                ecad_model::numbering::rep_anchor(doc, ecad_model::Subject::Cable(cable)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
+            let place = (page, at, Object::Cable(cable));
             Some((open.label, place))
         });
         let Ok(Some((label, (page, at, object)))) = read else { return };

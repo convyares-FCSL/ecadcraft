@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 
 use ecad_bench::generate::{Generated, REFERENCE_ROLE, Tier, Variant, generate, tier};
-use ecad_model::{Document, Subject};
+use ecad_model::{Document, RouteEnd, Subject};
 
 const TINY: Tier = Tier { name: "tiny", pages: 3, devices: 9, wires: 18, cables: 6 };
 
@@ -25,7 +25,12 @@ fn check_shape(g: &Generated, doc: &Document) {
     assert_eq!(doc.terminals.len(), 2 * t.devices);
     assert_eq!(doc.wires.len(), t.wires);
     assert_eq!(doc.cables.len(), t.cables);
-    assert!(doc.wires.values().all(|c| c.ends.iter().all(Option::is_some)), "every wire attached at both ends");
+    assert!(
+        doc.wires
+            .values()
+            .all(|w| doc.routes_at(w.ends[0]).any(|r| doc.routes.get(&r).is_some_and(|x| x.ends.contains(&RouteEnd::Point(w.ends[1]))))),
+        "every wire is drawn by a route between its two connection points"
+    );
     assert!(ecad_model::derive::mismatches(doc, 1e-9).is_empty(), "every route ends on its terminals");
 
     let nets = ecad_model::derive::nets(doc);
@@ -38,8 +43,8 @@ fn check_shape(g: &Generated, doc: &Document) {
 
     let per_pair = t.wires / t.devices;
     for cable in doc.cables.values() {
-        assert_eq!(cable.members.len(), per_pair);
-        let cores: Vec<_> = cable.members.iter().map(|m| m.core.clone()).collect();
+        assert_eq!(cable.cores.len(), per_pair);
+        let cores: Vec<_> = cable.cores.iter().map(|m| m.label_str().map(str::to_string)).collect();
         let want: Vec<_> = (1..=per_pair).map(|i| Some(i.to_string())).collect();
         assert_eq!(cores, want, "core labels 1, 2, …");
     }
@@ -62,11 +67,16 @@ fn check_shape(g: &Generated, doc: &Document) {
             let r = doc.representations.get(rep).unwrap();
             assert_eq!(r.page, if i == 0 { c.from } else { c.to });
         }
-        for m in &doc.cables.get(&c.cable).unwrap().members {
-            for page in [c.from, c.to] {
-                assert!(ecad_model::derive::route_on_page(doc, m.conductor, page).is_some(), "a continued member is drawn on both pages");
-            }
+        // Drawn on the first page by its routes; on the next page one stub each, a route with
+        // free ends (cross-page wires form in lane F).
+        let members = &doc.cables.get(&c.cable).unwrap().cores;
+        for m in members {
+            let w = doc.wires.get(&m.wire().expect("a core on a wire")).expect("its wire");
+            let drawn = doc.routes_at(w.ends[0]).any(|r| doc.routes.get(&r).is_some_and(|x| x.page == c.from));
+            assert!(drawn, "a continued member is drawn on its first page");
         }
+        let stubs = doc.routes.values().filter(|r| r.page == c.to && r.ends == [RouteEnd::Free, RouteEnd::Free]).count();
+        assert!(stubs >= members.len(), "one stub per continued member on the next page");
     }
 }
 

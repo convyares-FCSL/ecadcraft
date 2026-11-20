@@ -86,7 +86,7 @@ fn t1_plus_cable_edit_and_remove_are_one_transaction_each_with_exact_undo() {
         assert!(made.is_some_and(|k| !before.contains(&k)), "the new cable is selected at once");
     });
     let k = *after.cables.keys().find(|k| !before.contains(k)).expect("a new cable");
-    assert!(after.cables[&k].members.is_empty(), "not drawn");
+    assert!(after.cables[&k].cores.is_empty(), "not drawn");
     one_exact(&mut h, "Edit cable", |h| h.state_mut().cable_ask(k, Ask::Edit(CableField::Length, json!({"length": 12}))));
     one_exact(&mut h, "Edit cable", |h| {
         h.state_mut().cable_ask(k, Ask::Edit(CableField::Gland(ecad_cadcraft::cable_cmds::Side::To), json!({"to": {"gland": "M20"}})))

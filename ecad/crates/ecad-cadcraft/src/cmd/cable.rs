@@ -11,7 +11,7 @@
 //! - Every key this module reads or writes is named by [`CableField::key`] (design 059 §2.3): no
 //!   other string literal names a cable key here.
 //! - `cablenew` is one `CreateCable` (plus the project list entries a new planned code adds);
-//!   `cableedit` is `SetProperty` ops in one transaction; `cableremove` is one `DeleteCable` and is
+//!   `cableedit` is one `ModifyCable`; `cableremove` is one `DeleteCable` and is
 //!   refused for a drawn cable.
 //!
 //! This module excludes the UI (the Cables tab, the slash picker) and computed glands.
@@ -24,9 +24,7 @@ use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
 use ecad_electrical::cmd::cable::{self as rules, CableInput, EndInput};
 pub use ecad_electrical::cmd::cable::{BadReason, Drawn, assign_cores, bad_value, cable_named, check_remove, drawn, edit_ops};
-use ecad_model::{
-    CableId, CableMember, Document, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Representation, RepresentationId, Subject, WireId,
-};
+use ecad_model::{CableId, CorePosition, Document, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Representation, RepresentationId, Subject};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -238,6 +236,17 @@ impl Command for CableremoveParams {
 // ---------------------------------------------------------------------------------------------
 // The assign rule (design 059 §4.3, FD5)
 
+/// The hex of the wires a slash crossed, in crossing order (the `conductors` of a result).
+pub(crate) fn crossing_wires(members: &[crate::slash::Crossing]) -> Vec<String> {
+    members.iter().filter_map(|m| m.wire()).map(|w| w.hex()).collect()
+}
+
+/// The hex of the loose lines (no wire yet) a slash crossed, in crossing order (the `lines` of a
+/// result).
+pub(crate) fn crossing_lines(members: &[crate::slash::Crossing]) -> Vec<String> {
+    members.iter().filter_map(|m| m.position.route()).map(|r| r.hex()).collect()
+}
+
 /// `cableslash` onto cable `k` that is not drawn (FD5): the crossed wires become its members in
 /// crossing order with its free cores' labels, plus the slash. One transaction, `Cable slash`.
 ///
@@ -248,7 +257,7 @@ pub(crate) fn run_slash_assign(
     found: &crate::slash::Crossings,
 ) -> Result<Value, CmdError> {
     let doc = p.ledger.document();
-    let blocked: Vec<(WireId, CableId)> = crate::slash::blocked(doc, &found.members).into_iter().map(|(m, c)| (m.conductor, c)).collect();
+    let blocked: Vec<(CorePosition, CableId)> = crate::slash::blocked(doc, &found.members).into_iter().map(|(m, c)| (m.position, c)).collect();
     if !blocked.is_empty() {
         return Err(rules::already_in_cable(crate::slash::already_in_cable(doc, &blocked, "Nothing was changed.")));
     }
@@ -258,8 +267,13 @@ pub(crate) fn run_slash_assign(
     let cores = assign_cores(doc, k, found.members.len())?;
     let (item, rep): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
     let mut ops = Vec::new();
-    for (index, (m, core)) in found.members.iter().zip(cores.iter()).enumerate() {
-        ops.push(Op::AddCableMember { cable: k, index, member: CableMember { conductor: m.conductor, core: core.clone() } });
+    // Design 072 §4.5: each crossed line takes its core, the stored unplaced one of that label.
+    if let Some(before) = doc.cables.get(&k) {
+        let mut after = before.clone();
+        for (m, core) in found.members.iter().zip(cores.iter()) {
+            ecad_electrical::styles::cable::place_core(&mut after, core.as_deref().and_then(|c| ecad_model::CoreLabel::new(c).ok()), m.position);
+        }
+        ops.extend(Op::modify_cable(k, before, after));
     }
     let style = crate::cmd::plain_style(p);
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Line { a: from, b: to }) } });
@@ -280,7 +294,8 @@ pub(crate) fn run_slash_assign(
         "item": item.hex(),
         "representation": rep.hex(),
         "assigned": true,
-        "conductors": found.members.iter().map(|m| m.conductor.hex()).collect::<Vec<_>>(),
+        "conductors": crossing_wires(&found.members),
+        "lines": crossing_lines(&found.members),
         "cores": cores,
         "ignored": found.ignored.iter().map(|(i, _)| i.hex()).collect::<Vec<_>>(),
         "touched": found.touched.iter().map(|c| c.hex()).collect::<Vec<_>>(),
@@ -290,7 +305,7 @@ pub(crate) fn run_slash_assign(
 /// Board 2.06's **Add a core** (design 059 §3): cable `k`'s offer plus one core (`4G` → `5G`,
 /// `7X` → `8X`; a list gains the next number), or its member count plus one with no offer.
 pub fn next_offer(doc: &Document, k: CableId) -> String {
-    let members = doc.cables.get(&k).map_or(0, |c| c.members.len());
+    let members = doc.cables.get(&k).map_or(0, |c| c.cores.len());
     let Some((cores, _, text)) = cable::offer(doc, k) else { return (members + 1).to_string() };
     let t = text.trim();
     let digits: String = t.chars().take_while(char::is_ascii_digit).collect();

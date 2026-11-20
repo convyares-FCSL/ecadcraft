@@ -410,7 +410,7 @@ pub fn holder_words_of(doc: &Document, h: Holder) -> String {
     match h {
         Holder::Device(c) => holder_words(doc, c),
         Holder::Cable(k) => {
-            let n = doc.cables.get(&k).map_or(0, |c| c.members.len());
+            let n = doc.cables.get(&k).map_or(0, |c| c.cores.len());
             format!("{} (cable, {n} wire{})", cable_tag_of(doc, k).unwrap_or("(no tag)"), if n == 1 { "" } else { "s" })
         }
     }
@@ -612,7 +612,10 @@ pub fn plan_place(
             });
             for td in &def.terminals {
                 let tid: TerminalId = ids.fresh();
-                ops.push(Op::AddTerminal { id: tid, terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()) } });
+                ops.push(Op::AddTerminal {
+                    id: tid,
+                    terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
+                });
                 terminals.push((td.key.clone(), td.label.clone().unwrap_or_else(|| td.key.to_string()), tid));
             }
             ops.push(Op::AddItem { id: item, item: instance });
@@ -639,7 +642,7 @@ pub fn plan_place(
                 let tid: TerminalId = ids.fresh();
                 ops.push(Op::AddTerminal {
                     id: tid,
-                    terminal: Terminal { component: c, label: Some(label.clone()), key: Some(PointKey::Def(label.clone())) },
+                    terminal: Terminal { component: c, label: Some(label.clone()), key: Some(PointKey::Def(label.clone())), accepts: td.accepts },
                 });
                 cps.insert(tid, td.at);
                 terminals.push((td.key.clone(), label.clone(), tid));
@@ -748,7 +751,10 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
                map: &mut BTreeMap<TerminalId, TerminalId>|
      -> TerminalId {
         let nt: TerminalId = ids.fresh();
-        ops.push(Op::AddTerminal { id: nt, terminal: Terminal { component: into, label, key: Some(PointKey::Def(name)) } });
+        ops.push(Op::AddTerminal {
+            id: nt,
+            terminal: Terminal { component: into, label, key: Some(PointKey::Def(name)), accepts: Default::default() },
+        });
         map.insert(old, nt);
         nt
     };
@@ -819,11 +825,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
     let (unlinks, links): (Vec<Op>, Vec<Op>) = ops_reps.into_iter().unzip();
     ops.extend(unlinks);
     ops.extend(links);
-    for (old, nt) in &new_terminal {
-        for (w, end) in doc.ends_at(*old) {
-            ops.push(Op::AttachEnd { conductor: w, end, before: Some(*old), after: Some(*nt) });
-        }
-    }
+    ops.extend(crate::wires::repoint_ops(doc, &new_terminal.iter().map(|(old, nt)| (*old, *nt)).collect()));
     for (t, term) in doc.terminals_of(from) {
         ops.push(Op::RemoveTerminal { id: t, terminal: term.clone() });
     }
@@ -903,11 +905,7 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
                 .into_iter()
                 .collect()
         };
-        for t in &drop {
-            for (w, end) in doc.ends_at(*t) {
-                ops.push(Op::AttachEnd { conductor: w, end, before: Some(*t), after: None });
-            }
-        }
+        ops.extend(crate::wires::free_points_ops(doc, drop.iter().copied()));
         for t in &drop {
             if let Some(term) = doc.terminals.get(t) {
                 ops.push(Op::RemoveTerminal { id: *t, terminal: term.clone() });
@@ -923,6 +921,7 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
                 notes.push(format!("Deleted {who}; {}", crate::plc::rack::released_words(n)));
             }
             notes.push(format!("Deleted {who} with its last symbol; U brings it back."));
+            notes.extend(crate::rating::trace::cleared_words(doc, c).map(|w| format!("{who}: {w}")));
         } else {
             // Brief 036 (review M1): a level's own label and a fuse position's rating go with
             // the last terminal of their level or position, never left to come back later.
