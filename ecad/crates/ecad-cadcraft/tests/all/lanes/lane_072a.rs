@@ -119,7 +119,7 @@ fn a_project_symbol_with_its_own_prefix_opens_writable() {
     let (project, summary) = ProjectHandle::open_file(&mut s, &saved, 0x72_a9).unwrap();
     assert!(!summary.contains("read-only"), "{summary}");
     let mut h = H { s, project, trail: Vec::new() };
-    let float = h.cfg(|p| ecad_cadcraft::defaults::symbols::prefix(p.ledger.document(), "float1"));
+    let float = h.cfg(|p| ecad_cadcraft::defaults::symbols::project_prefix(p.ledger.document(), "float1"));
     assert_eq!(float, "BL");
 }
 

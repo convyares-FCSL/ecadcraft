@@ -125,7 +125,7 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
             Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => {
                 subject(rep.subject, &mut out);
                 // A location box (brief 024) changes the location its page's devices inherit.
-                if matches!(rep.subject, Subject::Device(c) if crate::locations::is_box(doc, c) || rep.role == crate::locations::ROLE) {
+                if matches!(rep.subject, Subject::Device(c) if crate::locations::is_box(doc, c) || rep.role == ecad_model::Role::LocationBox) {
                     out.insert(ObjectRef::Page(rep.page));
                 }
             }
@@ -162,7 +162,9 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
             | Op::ModifyFolder { .. }
             | Op::SetProjectSettings { .. }
             // Design 072 §5.3: a code renamed in the project's list shows on every object storing it.
-            | Op::ModifyProject { .. } => return None,
+            | Op::ModifyProject { .. }
+            | Op::AddDeviceLink { .. }
+            | Op::RemoveDeviceLink { .. } => return None,
         }
     }
     Some(out)
@@ -341,7 +343,7 @@ pub fn device_section(
     let mut buttons = Vec::new();
     match (one, devices.iter().next().copied()) {
         // Brief 028 (design 028 §7.2): a strip's offer, its counts and the PE row's part.
-        (true, Some(c)) if crate::strips::is_strip(doc, c) => strip_rows(doc, c, &mut rows, &mut buttons),
+        (true, Some(c)) if crate::strips::strip_of(doc, c).is_some() => strip_rows(doc, c, &mut rows, &mut buttons),
         // Brief 049 (design 049 §5.2): a continuation's Caption and Other ends.
         (true, Some(c)) if crate::continuations::is_continuation(doc, c) => continuation_rows(doc, devices, symbol, &mut rows, &mut buttons),
         (true, Some(c)) => {
@@ -392,11 +394,11 @@ fn override_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>) {
         r.choices = codes(doc, LOCATION_KEY);
         rows.push(r);
     };
-    if crate::connectors::is_connector(doc, c) {
+    if crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating) {
         row("location.socket", "Location (socket)");
         row("location.plug", "Location (plug)");
-    } else if !crate::strips::is_strip(doc, c)
-        && doc.representations_of(Subject::Device(c)).any(|(_, r)| crate::reps::rep_type(doc, r) == crate::reps::RepType::Terminal)
+    } else if crate::strips::strip_of(doc, c).is_none()
+        && doc.representations_of(Subject::Device(c)).any(|(_, r)| crate::reps::rep_type(doc, r) == ecad_model::PartRole::Terminal)
     {
         row("location.terminal", "Terminals in");
     }
@@ -407,23 +409,20 @@ fn override_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>) {
 /// (`refgoto:<source>:<target>:<label>` buttons).
 fn xref_rows(doc: &Document, c: DeviceId, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<Row>, buttons: &mut Vec<String>) {
     use crate::xref;
-    let props = doc.devices.get(&c).map(|x| &x.properties);
-    rows.push(Row::rw(xref::CONTACTS_KEY, "Contacts offered", props.and_then(|p| p.get(xref::CONTACTS_KEY)).cloned().unwrap_or_default()));
+    let offered = xref::contacts_of(doc, c).map(|s| s.to_string()).unwrap_or_default();
+    rows.push(Row::rw(xref::CONTACTS_KEY, "Contacts offered", offered));
     let dev = xref::device(doc, c);
     if dev.head.is_some() {
         let project = doc.settings.contact_mirror.word();
         let default = format!("Project default ({project})");
-        let value = match props.and_then(|p| p.get(xref::MIRROR_KEY)) {
-            None => default.clone(),
-            Some(w) => match xref::parse_mirror(w) {
-                Ok(xref::Placement::At(_)) => "Moved".into(),
-                Ok(p) => {
-                    let w = p.word();
-                    let mut ch = w.chars();
-                    ch.next().map(|f| f.to_uppercase().chain(ch).collect()).unwrap_or_default()
-                }
-                Err(_) => default.clone(),
-            },
+        let value = match xref::placement_of(doc, c) {
+            (_, false) => default.clone(),
+            (xref::Placement::At(_), true) => "Moved".into(),
+            (p, true) => {
+                let w = p.word();
+                let mut ch = w.chars();
+                ch.next().map(|f| f.to_uppercase().chain(ch).collect()).unwrap_or_default()
+            }
         };
         let mut r = Row::rw(xref::MIRROR_KEY, "Contact table", value);
         r.choices = vec![default, "Auto".into(), "Below".into(), "Right".into(), "Off".into()];
@@ -442,7 +441,7 @@ fn xref_rows(doc: &Document, c: DeviceId, symbol: Option<ecad_model::Representat
                     xref::State::Spare => " (spare)",
                     xref::State::Over => " (beyond the part)",
                 };
-                format!("{} {} {}{state}", r.label_pair(), r.kind.word(), r.place)
+                format!("{} {} {}{state}", r.label_pair(), r.kind.upper(), r.place)
             })
             .collect();
         rows.push(Row::ro("contactrows", "Contacts", if text.is_empty() { "none drawn".into() } else { text.join("; ") }));

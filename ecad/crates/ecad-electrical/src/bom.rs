@@ -278,7 +278,7 @@ fn head(doc: &Document, c: DeviceId) -> Option<&'static crate::symbols::Starter>
 
 /// What `for` may name on `c`.
 pub fn sub_items(doc: &Document, c: DeviceId) -> Subs {
-    if crate::strips::is_strip(doc, c) {
+    if crate::strips::strip_of(doc, c).is_some() {
         let ps = crate::terminal_types::positions(doc, c);
         let fuses = ps.iter().filter(|p| p.ty.code == "fuse").map(|p| p.label.clone()).collect();
         return Subs::Positions { all: ps.into_iter().map(|p| p.label).collect(), fuses };
@@ -287,11 +287,6 @@ pub fn sub_items(doc: &Document, c: DeviceId) -> Subs {
         Some(bank) => Subs::Fuses(bank.labels().into_iter().filter(|l| ecad_model::words::is_digits(l)).collect()),
         None => Subs::None,
     }
-}
-
-/// Whether `c` is a fuse terminal device (034's `fuseterm`): covered by a part line with no `for`.
-pub fn is_fuse_terminal(doc: &Document, c: DeviceId) -> bool {
-    head(doc, c).is_some_and(|s| s.key == crate::symbols::StarterKey::Fuseterm)
 }
 
 /// The names a `for` value lists, ranges of whole numbers expanded (`1-4, 7`), in order, each
@@ -387,7 +382,7 @@ pub fn renumber_for_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {
     let mut out = Vec::new();
     let mut lines = Vec::new();
     for (c, map) in crate::accessories::relabels(ops) {
-        if !crate::strips::is_strip(doc, c) {
+        if crate::strips::strip_of(doc, c).is_none() {
             continue;
         }
         let Some(props) = doc.devices.get(&c).map(|x| &x.properties) else { continue };
@@ -693,7 +688,7 @@ fn field_value(doc: &Document, c: DeviceId, f: Field, value: Option<&str>, metre
         // Brief 044 (design 044 §8.3): only on a connector, `s` or `p`.
         Field::Half => match value.map(str::trim).filter(|v| !v.is_empty()) {
             None => Ok(None),
-            Some(_) if !crate::connectors::is_connector(doc, c) => {
+            Some(_) if !crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating) => {
                 Err(CmdError::refused(format!("`half` is for a connector's part lines; {} is not a connector.", crate::devices::tag_words(doc, c))))
             }
             Some(v) if v.eq_ignore_ascii_case("s") || v.eq_ignore_ascii_case("p") => Ok(Some(v.to_ascii_lowercase())),
@@ -799,7 +794,7 @@ pub fn article_targets(doc: &Document, pn: &str, maker: Option<&str>) -> Vec<Art
             continue;
         }
         let maker_ok = |k: &str| maker.is_none_or(|m| same(comp.get(k), m));
-        let strip = crate::strips::is_strip(doc, *c);
+        let strip = crate::strips::strip_of(doc, *c).is_some();
         if same(comp.part_number.as_ref(), pn) && maker_ok(ecad_model::device::MAKER_KEY) && !strip {
             out.push((ObjectRef::Device(*c), ARTICLE_KEY.to_string(), if item { "item" } else { "device" }));
         }

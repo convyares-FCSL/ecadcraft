@@ -219,7 +219,7 @@ pub fn plan_connector(
     let page = page(doc, input.page, active)?;
     let device = device(doc, input.device.as_deref())?;
     if let Some(c) = device
-        && !cn::is_connector(doc, c)
+        && !cn::connector_of(doc, c).is_some_and(|x| x.mating)
     {
         return Err(CmdError::refused(cn::not_a_connector(doc, c)));
     }
@@ -579,7 +579,7 @@ pub fn plan_pinlabel(doc: &Document, input: PinlabelInput) -> Result<Pinlabel, C
         (None, Some(c)) => (c, pin.map(|p| p.trim().to_string()).ok_or(CmdError::input("`pin` (the pin's current name) is required with `device`"))?),
         (None, None) => return Err(CmdError::input("`device` and `pin`, or `terminal`, is required")),
     };
-    if !cn::is_connector(doc, c) {
+    if !cn::connector_of(doc, c).is_some_and(|x| x.mating) {
         return Err(CmdError::refused(format!(
             "{} is not a connector; rename its connection points in Properties.",
             crate::devices::tag_words(doc, c)

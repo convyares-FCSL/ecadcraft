@@ -138,7 +138,7 @@ impl PlaceConnector {
             let tag = ecad_model::tag::normalise(t, crate::defaults::print::tag_style(doc))?;
             let c = crate::devices::holder_of(doc, &tag, None)
                 .ok_or_else(|| format!("No device {tag}. Type a connector's tag, or Enter for a new one."))?;
-            if !cn::is_connector(doc, c) {
+            if !cn::connector_of(doc, c).is_some_and(|x| x.mating) {
                 return Err(cn::not_a_connector(doc, c));
             }
             let d = cn::drawn(doc, c);

@@ -273,7 +273,7 @@ fn protected_by_through_mcp_is_the_device_and_deleting_it_clears_it() {
     let v = c.wire_pp(json!({"points": [[0, 0], [50, 0]]}));
     let w = v["conductor"].as_str().unwrap().to_string();
     let q = c.exec("place", json!({"symbol": "mcb1", "at": [200, 100]}))["component"].as_str().unwrap().to_string();
-    c.exec("setprop", json!({"component": q, "key": "rating", "value": "16 A"}));
+    c.exec("setprop", json!({"component": q, "key": "rating", "value": "C16"}));
     let q_id = c.doc().devices.keys().copied().find(|d| d.hex() == q).unwrap();
     let tag = c.doc().devices[&q_id].tag().unwrap_or_default().to_string();
 

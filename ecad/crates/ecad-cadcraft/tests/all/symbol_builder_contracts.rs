@@ -68,7 +68,7 @@ fn row_1_symbolnew_embeds_version_1_in_one_transaction() {
     let mut bare = definition.clone();
     bare.origin = None;
     assert_eq!(ecad_file::definition_hash(&bare).unwrap(), o.content_hash);
-    assert_eq!(definition.defaults.get("key").map(String::as_str), Some("float1"));
+    assert_eq!(definition.defaults.key.as_ref().map(|k| k.as_str()), Some("float1"));
     h.cmdline("u");
     assert!(symbols::project_by_key(&h.doc(), "float1").is_none(), "u removes it");
 }
@@ -83,7 +83,7 @@ fn row_2_place_makes_a_device_with_its_prefix_description_and_points() {
     let d = h.doc();
     let comp = &d.devices[&c];
     assert_eq!(comp.get("description"), Some("Float switch"));
-    assert_eq!(comp.properties.get("rating").map(String::as_str), Some("24 V"));
+    assert_eq!(comp.value("rating").as_deref(), Some("24 V"));
     let labels: Vec<(String, String)> = d.terminals_of(c).map(|(_, t)| (t.key.as_ref().unwrap().to_string(), t.label.clone().unwrap())).collect();
     assert!(labels.contains(&("1".into(), "BN".into())) && labels.contains(&("2".into(), "BU".into())), "{labels:?}");
     // The tag sits at its slot (-4, 0) from the origin, right-aligned; the rating at (4, 0).

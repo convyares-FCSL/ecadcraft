@@ -85,7 +85,21 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRatin
     for i in 0..runs.max(1) {
         // A project with no protective device measures only the default change.
         if let Some(dev) = dev {
-            let value = if i % 2 == 0 { "20 A" } else { "4A C" };
+            // Design 072 §2.2: a breaker's rating needs its curve; a fuse's does not.
+            let breaker = project.configure(&mut s, |p| {
+                p.ledger.document().devices.get(&dev).is_some_and(|x| {
+                    matches!(
+                        x.device_type,
+                        ecad_model::DeviceType::Protection(ecad_model::device::Protection::Mcb(_) | ecad_model::device::Protection::Rcbo(_))
+                    )
+                })
+            })?;
+            let value = match (breaker, i % 2 == 0) {
+                (true, true) => "C20",
+                (true, false) => "C4",
+                (false, true) => "20 A",
+                (false, false) => "4 A",
+            };
             d.push(exec(&mut s, "setprop", json!({"component": dev.hex(), "key": "rating", "value": value}))?);
             let (e, r) = project.configure(&mut s, |p| (p.checks().rating.evaluated, p.checks().rating.retraced))?;
             out.device_evaluated = e;

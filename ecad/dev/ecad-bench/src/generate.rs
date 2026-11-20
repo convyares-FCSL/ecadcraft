@@ -8,7 +8,7 @@
 //!   taking every wire of pair `c` with core labels `1, 2, …` and a slash across them.
 //! - The first cable of each page except the last is continued on the next page as brief 010's
 //!   `cableref` and `cablecontinue` record it: a reference end on each page (an ordinary drawn
-//!   representation of the cable with role [`REFERENCE_ROLE`] and one Point item), one stub per
+//!   representation of the cable with role [`ecad_model::Role::Reference`] and one Point item), one stub per
 //!   member on the next page (a route with free ends: cross-page wires form in lane F) and a
 //!   slash there.
 //! - Only existing ops are used, shaped as the commands record them (`place`, `wire`,
@@ -36,7 +36,6 @@ use ecad_model::{
 
 /// The role brief 010 gives a cable reference end: its own constant, so the generated references
 /// are the ones `ecad_model::derive::cable_references` derives.
-pub use ecad_model::derive::REFERENCE_ROLE;
 /// Seed of every ID the generator allocates.
 pub const SEED: u64 = 0x0ECA_D012;
 /// What the file header names as its writer.
@@ -238,8 +237,8 @@ fn renamed_cable(k: CableId, cable: &Cable, tag: &str) -> Op {
     Op::ModifyCable { id: k, before: cable.clone(), after }
 }
 
-fn drawn(subject: Subject, page: PageId, role: &str, items: Vec<ItemId>) -> Representation {
-    Representation { subject, page, form: Form::Drawn, role: role.into(), items, connection_points: BTreeMap::new() }
+fn drawn(subject: Subject, page: PageId, role: ecad_model::Role, items: Vec<ItemId>) -> Representation {
+    Representation { subject, page, form: Form::Drawn, role, items, connection_points: BTreeMap::new() }
 }
 
 /// The ops of one route as `wire` records it (design 072 §4.3): a route on `page` through
@@ -253,7 +252,7 @@ pub fn route_ops(ids: &mut IdAllocator, page: PageId, style: &Style, vertices: V
             id: item,
             item: Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Polyline { vertices, closed: false }) },
         },
-        Op::LinkRepresentation { id: rep, rep: drawn(Subject::Route(r), page, "route", vec![item]) },
+        Op::LinkRepresentation { id: rep, rep: drawn(Subject::Route(r), page, ecad_model::Role::Route, vec![item]) },
     ];
     (r, ops)
 }
@@ -396,7 +395,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
                     subject: Subject::Device(c),
                     page,
                     form: Form::Symbol,
-                    role: "coil".into(),
+                    role: ecad_model::Role::Part(ecad_model::PartRole::Head),
                     items: vec![item],
                     connection_points: BTreeMap::new(),
                 },
@@ -473,7 +472,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
                 id: item,
                 item: Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Line { a: from, b: to }) },
             });
-            ops.push(Op::LinkRepresentation { id: rep, rep: drawn(Subject::Cable(cable), page, "slash", vec![item]) });
+            ops.push(Op::LinkRepresentation { id: rep, rep: drawn(Subject::Cable(cable), page, ecad_model::Role::Slash, vec![item]) });
             b.step("Cable slash", ops, "Rename", vec![rename])?;
             if c == 0 {
                 first_cable = Some((cable, members, Pt::new(x + PITCH / 4.0, lowest - 6.0)));
@@ -488,7 +487,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
                 "Cable reference",
                 vec![
                     Op::AddItem { id: item, item: point.clone() },
-                    Op::LinkRepresentation { id: rep, rep: drawn(Subject::Cable(cable), from_page, REFERENCE_ROLE, vec![item]) },
+                    Op::LinkRepresentation { id: rep, rep: drawn(Subject::Cable(cable), from_page, ecad_model::Role::Reference, vec![item]) },
                 ],
                 "Move",
                 vec![moved(item, point, 5.0)],
@@ -498,7 +497,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             let ref_point = Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at: here }) };
             let mut ops = vec![
                 Op::AddItem { id: ref_item, item: ref_point.clone() },
-                Op::LinkRepresentation { id: ref_rep, rep: drawn(Subject::Cable(cable), page, REFERENCE_ROLE, vec![ref_item]) },
+                Op::LinkRepresentation { id: ref_rep, rep: drawn(Subject::Cable(cable), page, ecad_model::Role::Reference, vec![ref_item]) },
             ];
             // One stub per member: a route with free ends (cross-page wires form in lane F).
             for lane in 0..members.len() {
@@ -517,7 +516,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
                     kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(here.x + 13.0, here.y + 3.0), b: Pt::new(here.x + 17.0, here.y - span) }),
                 },
             });
-            ops.push(Op::LinkRepresentation { id: slash_rep, rep: drawn(Subject::Cable(cable), page, "slash", vec![slash_item]) });
+            ops.push(Op::LinkRepresentation { id: slash_rep, rep: drawn(Subject::Cable(cable), page, ecad_model::Role::Slash, vec![slash_item]) });
             b.step("Continue cable", ops, "Move", vec![moved(ref_item, ref_point, 5.0)])?;
             continuations.push(Continuation { cable, from: from_page, to: page, references: [rep, ref_rep] });
         }

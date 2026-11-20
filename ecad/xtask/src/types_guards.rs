@@ -39,11 +39,11 @@ pub const GUARDS: &[Guard] = &[
     Guard { name: "G2", what: "boolean words compared or matched", allowed: 0, fix: "read it with ecad_model::words::flag", scan: Scan::Line(g2) },
     Guard { name: "G3", what: "`.all(…is_ascii_digit…)` digit checks", allowed: 0, fix: "use ecad_model::words::is_digits, uint or uint_canonical", scan: Scan::Line(g3) },
     Guard { name: "G7", what: "angle conversions outside units.rs", allowed: 6, fix: "convert with Radians::from(Degrees) or Degrees::from(Radians) (ecad_model::units)", scan: Scan::Line(g7) },
-    Guard { name: "G9", what: "`catalogue` or `role` held as text", allowed: 7, fix: "hold a StyleCatalogue (or the typed role, design 072 §2)", scan: Scan::Line(g9) },
+    Guard { name: "G9", what: "`catalogue` or `role` held as text", allowed: 4, fix: "hold a StyleCatalogue (or the typed role, design 072 §2)", scan: Scan::Line(g9) },
     Guard { name: "G8a", what: "`Kind::Choice(&[` word lists", allowed: 0, fix: "declare the words as a word_enum! and use a typed choice", scan: Scan::Line(g8_choice) },
     Guard { name: "G8b", what: "`.word() == \"` comparisons", allowed: 0, fix: "compare the typed value, not its word", scan: Scan::Line(g8_word) },
     Guard { name: "G10", what: "catch-all words or bodies (`Unknown(`, `Stored<`, `Raw`)", allowed: 0, fix: "an unknown word is a read error (design 072 §9.4); type it", scan: Scan::Line(g10) },
-    Guard { name: "G13", what: "`String` or `&str` fields in stored structs", allowed: 17, fix: "store a Text<N>, LongText<N> or a typed value (design 072 §9.4)", scan: Scan::File(g13) },
+    Guard { name: "G13", what: "`String` or `&str` fields in stored structs", allowed: 14, fix: "store a Text<N>, LongText<N> or a typed value (design 072 §9.4)", scan: Scan::File(g13) },
     Guard { name: "G14", what: "hidden-character checks outside words.rs", allowed: 0, fix: "use ecad_model::text::Text<N> (or words::is_hidden in ecad-model's text types)", scan: Scan::Line(g14) },
 ];
 

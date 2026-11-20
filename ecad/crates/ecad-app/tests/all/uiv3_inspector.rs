@@ -148,7 +148,7 @@ fn the_layout_tab_reads_the_placement_and_sets_the_texts_and_contact_table() {
     h.get_by_label(&format!("{}.right", ecad_app::shell::right::CONTACT_TABLE)).click();
     h.run_steps(4);
     let k1 = h.state().settings.inspector.device.as_ref().and_then(|d| d.component).unwrap();
-    assert_eq!(doc(&mut h).devices[&k1].properties.get(ecad_cadcraft::xref::MIRROR_KEY).map(String::as_str), Some("right"));
+    assert_eq!(ecad_cadcraft::xref::placement_of(&doc(&mut h), k1), (ecad_cadcraft::xref::Placement::Right, true));
     let _ = std::fs::remove_dir_all(&dir);
 }
 

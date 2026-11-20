@@ -179,7 +179,7 @@ fn ac1_one_transaction_with_members_in_crossing_order_and_conductors_unchanged()
                 assert_eq!(rep.subject, Subject::Cable(k));
                 assert_eq!(rep.page, f.page);
                 assert_eq!(rep.form, Form::Drawn);
-                assert_eq!(rep.role, "slash");
+                assert_eq!(rep.role, ecad_model::Role::Slash);
                 assert_eq!(rep.items, vec![item]);
                 assert!(rep.connection_points.is_empty());
             }
@@ -336,7 +336,7 @@ fn ac3_save_close_reopen_keeps_cable_members_order_and_slash() {
     h2.check();
     let (rid, rep) = d.representations_of(Subject::Cable(k)).next().unwrap();
     assert_eq!(rid.hex(), r["representation"].as_str().unwrap());
-    assert_eq!(rep.role, "slash");
+    assert_eq!(rep.role, ecad_model::Role::Slash);
     // The reopened slash still refuses a second cable over the same wire and undoes in one step.
     let head = h2.head();
     let e = h2.run("cableslash", json!({"from": [40, 3], "to": [40, 7]})).unwrap_err();

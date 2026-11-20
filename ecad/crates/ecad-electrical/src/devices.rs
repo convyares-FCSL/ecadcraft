@@ -175,7 +175,7 @@ pub fn set_symbol_prefix(s: &mut ecad_model::ProjectSettings, of: ecad_model::pr
 /// project's own (`tag_prefixes`), else the built-in IEC 81346 default. A value a hostile file
 /// stored that is not a valid prefix is ignored.
 pub fn prefix_for(doc: &Document, s: &Starter) -> String {
-    crate::defaults::symbols::prefix(doc, s.key.word())
+    crate::defaults::symbols::prefix(doc, s.key)
 }
 
 // ---------------------------------------------------------------- numbering
@@ -487,7 +487,7 @@ pub fn join_labels(doc: &Document, c: DeviceId, s: &Starter, extra: &BTreeSet<St
     used.extend(extra.iter().cloned());
     let who = tag_words(doc, c);
     // Brief 044: a connector holds connector halves and pins only.
-    if crate::connectors::is_connector(doc, c) && !matches!(s.kind, Kind::ConnectorHalf { .. }) {
+    if crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating) && !matches!(s.kind, Kind::ConnectorHalf { .. }) {
         return Err(CmdError::refused(format!("{who} is a connector; place a connector half or pin on it, or Enter for a new device.")));
     }
     match s.kind {
@@ -625,7 +625,7 @@ pub fn plan_place(
                     subject: Subject::Device(c),
                     page,
                     form: Form::Symbol,
-                    role: s.key.to_string(),
+                    role: ecad_model::Role::Part(s.part_role()),
                     items: vec![item],
                     connection_points: BTreeMap::new(),
                 },
@@ -654,7 +654,7 @@ pub fn plan_place(
                     subject: Subject::Device(c),
                     page,
                     form: Form::Symbol,
-                    role: s.key.to_string(),
+                    role: ecad_model::Role::Part(s.part_role()),
                     items: vec![item],
                     connection_points: cps,
                 },
@@ -804,7 +804,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
             };
             cps.insert(nt, *at);
         }
-        let role = r.role.clone();
+        let role = r.role;
         let nr: RepresentationId = ids.fresh();
         renamed.push((*rid, nr));
         ops_reps.push((
@@ -842,6 +842,8 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
     // Brief 045 (FP1 condition 2, review of #84, 1): a rack merged away hands its cards to `into`,
     // which takes its rack body (or already is a rack); otherwise they leave it, in this transaction.
     crate::plc::rack::merge_into(doc, &mut ops, from, into);
+    // Design 072 §2.6: its links move to `into`.
+    ops.extend(crate::cmd::device_link::repoint_ops(doc, from, into));
     ops.push(Op::DeleteDevice { id: from, device: from_c });
     Ok(ops)
 }
@@ -885,6 +887,7 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
         if doc.representations_of(Subject::Device(c)).all(|(id, _)| gone.contains(&id))
             && let Some(component) = doc.devices.get(&c)
         {
+            ops.extend(crate::cmd::device_link::unlink_ops(doc, c));
             ops.push(Op::DeleteDevice { id: c, device: component.clone() });
         }
     }
@@ -916,6 +919,7 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
             let (released, n) =
                 if crate::plc::edit::station_of(doc, c).is_some() { crate::plc::rack::release_cards(doc, c) } else { (Vec::new(), 0) };
             ops.extend(released);
+            ops.extend(crate::cmd::device_link::unlink_ops(doc, c));
             ops.push(Op::DeleteDevice { id: c, device: component.clone() });
             if n > 0 {
                 notes.push(format!("Deleted {who}; {}", crate::plc::rack::released_words(n)));
@@ -1362,20 +1366,26 @@ fn slot_texts(
 ) -> Vec<PageText> {
     use crate::text_style::fonts::width_in;
     use crate::text_style::{TextKind, text_style};
+    use ecad_model::SlotText;
     let device = doc.devices.get(&c);
-    let prop = |k: &str| device.and_then(|d| d.get(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+    let prop = |k: &str| device.and_then(|d| d.value(k)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
     let (h, v) = (|a: HAlign| a, |a: VAlign| a);
     let mut out = Vec::new();
     for (i, slot) in def.texts.iter().enumerate().take(usize::from(u8::MAX)) {
-        let (of, kind, value, aci) = match slot.text.as_str() {
-            "tag" => {
+        let (of, kind, value, aci) = match &slot.text {
+            SlotText::Tag => {
                 let t = tag_of(doc, c).map(|t| crate::locations::shown_tag(doc, c, r, t, boxes));
                 let prov = tag_of(doc, c).is_some_and(tag::is_provisional);
                 (TextOf::Tag, TextKind::Tag, t, prov.then_some(PROVISIONAL_ACI))
             }
-            "description" => (TextOf::Description, TextKind::Description, prop("description"), None),
-            "part_number" => (TextOf::PartNumber, TextKind::PartNumber, prop("part_number"), None),
-            other => (TextOf::Slot(u8::try_from(i).unwrap_or(u8::MAX)), TextKind::Description, prop(other), None),
+            SlotText::Description => (TextOf::Description, TextKind::Description, prop("description"), None),
+            SlotText::PartNumber => (TextOf::PartNumber, TextKind::PartNumber, prop("part_number"), None),
+            other @ (SlotText::Rating
+            | SlotText::Maker
+            | SlotText::ArticleNumber
+            | SlotText::Function
+            | SlotText::Location
+            | SlotText::PointRating(_)) => (TextOf::Slot(u8::try_from(i).unwrap_or(u8::MAX)), TextKind::Description, prop(&other.word()), None),
         };
         let Some(value) = value else { continue };
         let style = text_style(doc, kind);
@@ -1628,7 +1638,7 @@ pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId,
         lines.extend(sides.iter().filter_map(|s| crate::connectors::hover_words(doc, c, *s)));
     }
     // Brief 028 (design 028 §7.1): a terminal's sides and its strip's positions.
-    if crate::strips::is_strip(doc, c) {
+    if crate::strips::strip_of(doc, c).is_some() {
         lines.extend(crate::strips::terminal_hover(doc, c, here));
     }
     // Brief 024 (design 024 §3.3): the location shown, where it comes from, and this symbol's own

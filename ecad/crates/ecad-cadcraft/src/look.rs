@@ -52,11 +52,7 @@ pub use crate::words::{
 };
 pub use crate::words::{FlagShape, FlagSide, WIRE_WEIGHT, flag_shape, label_height};
 /// The representation role of a cable's reference end: brief 010's, one definition for both briefs.
-pub use ecad_model::derive::{MAX_REFERENCES_PER_CABLE, REFERENCE_ROLE};
-/// The representation role of a stored fan join (owner request, 2026-11-07): one Point item per
-/// fanned cable end per page, where the trunk joins the spine. Without one the trunk joins the
-/// middle of the spine.
-pub const ANCHOR_ROLE: &str = "fan-anchor";
+pub use ecad_model::derive::MAX_REFERENCES_PER_CABLE;
 /// The text a reference end shows when brief 010 cannot derive one (a hostile file): an orphan.
 pub const REFERENCE_PLACEHOLDER: &str = "/?";
 /// `ecad.orphan`: a reference end with no other end shows its text in red.
@@ -402,7 +398,7 @@ impl Marker {
 fn markers_of(doc: &Document, idx: &PageIndex<'_>, cable: CableId, measure: &dyn Fn(&str) -> f64) -> Vec<Marker> {
     idx.cable_reps(cable)
         .iter()
-        .filter(|(_, r)| r.role == REFERENCE_ROLE)
+        .filter(|(_, r)| r.role == ecad_model::Role::Reference)
         .filter_map(|(id, r)| {
             let at = r.items.iter().find_map(|i| match doc.items.get(i).map(|x| &x.kind) {
                 Some(ItemKind::Primitive(Primitive::Point { at } | Primitive::Text { at, .. })) => Some(*at),
@@ -842,7 +838,7 @@ fn cable_unfiltered(doc: &Document, idx: &PageIndex<'_>, cable: CableId, fan: bo
         None => out.parts = slash_labels(doc, idx, cable, tol),
     }
     // Stored fan joins are not drawn: the trunk shows where the cable joins (owner request).
-    out.hidden.extend(idx.cable_reps(cable).iter().filter(|(_, r)| r.role == ANCHOR_ROLE).flat_map(|(_, r)| r.items.iter().copied()));
+    out.hidden.extend(idx.cable_reps(cable).iter().filter(|(_, r)| r.role == ecad_model::Role::FanAnchor).flat_map(|(_, r)| r.items.iter().copied()));
     for (m, (flag, _)) in markers.iter().zip(&flags) {
         out.parts.push(Part::new(Role::Flag, Shape::Path { points: flag.clone(), closed: true }, Weight::Wire).of_reference(m.id));
         let mut text = Part::new(Role::ReferenceText, Shape::Text { at: m.shape().text_at, rotation: 0.0, value: m.text.clone() }, Weight::Text)
@@ -917,7 +913,10 @@ fn fan_parts(
         hidden.extend(m.route.into_iter().flat_map(|r| idx.route_reps(r)).flat_map(|r| r.items.iter().copied()));
     }
     hidden.extend(
-        idx.cable_reps(cable).iter().filter(|(_, r)| r.role != REFERENCE_ROLE && r.role != ANCHOR_ROLE).flat_map(|(_, r)| r.items.iter().copied()),
+        idx.cable_reps(cable)
+            .iter()
+            .filter(|(_, r)| r.role != ecad_model::Role::Reference && r.role != ecad_model::Role::FanAnchor)
+            .flat_map(|(_, r)| r.items.iter().copied()),
     );
     Some((parts, hidden, m))
 }
@@ -930,7 +929,7 @@ fn anchors_by_side(doc: &Document, idx: &PageIndex<'_>, cable: CableId, spines: 
     let found: Vec<(RepresentationId, ItemId, Pt)> = idx
         .cable_reps(cable)
         .iter()
-        .filter(|(_, r)| r.role == ANCHOR_ROLE)
+        .filter(|(_, r)| r.role == ecad_model::Role::FanAnchor)
         .filter_map(|(id, r)| {
             r.items.iter().find_map(|i| match doc.items.get(i).map(|x| &x.kind) {
                 Some(ItemKind::Primitive(Primitive::Point { at })) if at.is_finite() => Some((*id, *i, *at)),

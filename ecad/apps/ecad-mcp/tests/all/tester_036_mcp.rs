@@ -20,7 +20,12 @@ fn hex(v: &Value, key: &str) -> String {
 }
 
 fn sets_key(ops: &[Op], key: &str) -> bool {
-    ops.iter().any(|o| matches!(o, Op::SetProperty { key: k, .. } if k == key))
+    // Design 072 §2.5: a fuse position's rating is the strip's typed field (a `ModifyDevice`).
+    ops.iter().any(|o| match o {
+        Op::SetProperty { key: k, .. } => k == key,
+        Op::ModifyDevice { before, after, .. } => before.value(key) != after.value(key),
+        _ => false,
+    })
 }
 
 fn reads(c: &mut Client) -> Value {

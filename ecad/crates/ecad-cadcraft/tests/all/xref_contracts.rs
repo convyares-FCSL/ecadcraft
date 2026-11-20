@@ -207,9 +207,7 @@ fn d_moving_hiding_and_following_the_table() {
     let v = x.h.run("mirrormove", json!({"component": x.k1.hex(), "at": [60, 120]})).unwrap();
     assert_eq!(v["mirror"], json!("at -15,-60"), "{v}");
     assert_eq!(x.h.head(), head + 1);
-    assert!(
-        matches!(x.h.p(|p| p.ledger.log().last().unwrap().ops.clone()).as_slice(), [Op::SetProperty { object: ObjectRef::Device(_), key, .. }] if key == "mirror")
-    );
+    assert!(matches!(x.h.p(|p| p.ledger.log().last().unwrap().ops.clone()).as_slice(), [Op::ModifyDevice { id, .. }] if *id == x.k1));
     let top = |h: &mut H| {
         h.p(|p| {
             xref::table(p.ledger.document(), &mut xref::Places::new(p.ledger.document()), &xref::device(p.ledger.document(), x.k1)).map(|t| t.top)
@@ -230,7 +228,7 @@ fn d_moving_hiding_and_following_the_table() {
     assert!(contact_text(&mut x.h, x.p105, x.no).is_some());
     // Project default: cleared.
     x.h.run("setprop", json!({"component": x.k1.hex(), "key": "mirror", "value": "Project default (auto)"})).unwrap();
-    assert!(!x.h.doc().devices[&x.k1].properties.contains_key("mirror"));
+    assert!(!xref::placement_of(&x.h.doc(), x.k1).1);
     assert!(top(&mut x.h).is_some());
     // A bad value is refused with a way forward.
     let e = x.h.run("setprop", json!({"component": x.k1.hex(), "key": "mirror", "value": "at NaN,1"})).unwrap_err();
@@ -345,9 +343,9 @@ fn j_save_and_reopen_keep_contacts_and_mirror() {
     let mut h2 = H { s, project, trail: Vec::new() };
     assert_eq!(h2.doc(), live);
     assert_eq!(h2.p(|p| p.xref.clone()), idx, "the index rebuilt on open is the kept one");
-    let c = &h2.doc().devices[&x.k1];
-    assert_eq!(c.properties.get("contacts").map(String::as_str), Some("3P+1NO+1NC"));
-    assert_eq!(c.properties.get("mirror").map(String::as_str), Some("right"));
+    let d = h2.doc();
+    assert_eq!(xref::offer_of(&d, x.k1).map(|(t, _)| t).as_deref(), Some("3P+1NO+1NC"));
+    assert_eq!(xref::placement_of(&d, x.k1), (xref::Placement::Right, true));
     drop(h2);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -361,23 +359,18 @@ fn k_hostile_values() {
         let key = if v.starts_with("at") { "mirror" } else { "contacts" };
         assert!(x.h.run("setprop", json!({"component": x.k1.hex(), "key": key, "value": v})).is_err(), "{key} {v:.20}");
     }
-    // Stored unreadable values (a hostile file) count as absent.
-    let before = x.h.doc().devices[&x.k1].properties.clone();
-    let ops = vec![
-        Op::SetProperty {
-            object: ObjectRef::Device(x.k1),
-            key: "contacts".into(),
-            before: before.get("contacts").cloned(),
-            after: Some("3X".into()),
-        },
-        Op::SetProperty {
-            object: ObjectRef::Device(x.k1),
-            key: "mirror".into(),
-            before: before.get("mirror").cloned(),
-            after: Some("at inf,0".into()),
-        },
-    ];
-    x.h.project.apply_ops(&mut x.h.s, "hostile", ops).unwrap();
+    // A hostile file cannot store them: they are typed fields, never in a bag, and a bad typed
+    // value is refused by the model (design 072 §9.4).
+    let before = x.h.doc().devices[&x.k1].clone();
+    let mut bagged = before.clone();
+    bagged.properties.insert("contacts".into(), "3X".into());
+    let ops = vec![Op::ModifyDevice { id: x.k1, before: before.clone(), after: bagged }];
+    assert!(x.h.project.apply_ops(&mut x.h.s, "hostile", ops).is_err());
+    let mut far = before.clone();
+    if let ecad_model::DeviceType::Switching(k) = &mut far.device_type {
+        k.contact_table = Some(ecad_model::device::ContactTable::At { dx: f64::INFINITY, dy: 0.0 });
+    }
+    assert!(x.h.project.apply_ops(&mut x.h.s, "hostile", vec![Op::ModifyDevice { id: x.k1, before, after: far }]).is_err());
     assert_eq!(rows(&mut x.h, x.k1).len(), 5);
     // A second head is refused by Place (a file may still hold one; the index takes the lower
     // ID as the head, see `xref::device`).

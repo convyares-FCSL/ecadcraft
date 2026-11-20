@@ -204,7 +204,7 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
         Some(Mapped::Item(i)) => match doc.representation_of_item(i) {
             Some((rid, r)) if crate::references::is_reference(r) => return reference(doc, map, page, t, rid),
             Some((rid, r)) => match r.subject {
-                Subject::Device(c) if crate::strips::is_strip(doc, c) => return terminal(p, page, t, c, None),
+                Subject::Device(c) if crate::strips::strip_of(doc, c).is_some() => return terminal(p, page, t, c, None),
                 Subject::Device(c) => return device(p, page, t, c, Some(rid)),
                 Subject::Wire(w) => {
                     t.kind = ObjectKind::Wire;

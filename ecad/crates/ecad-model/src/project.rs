@@ -89,6 +89,9 @@ pub struct Project {
     /// The revision rows, in issue order (row `n` is at `n - 1`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub revisions: Vec<Revision>,
+    /// The project-defined user fields (design 072 §2.8), in the order they were made.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub user_fields: Vec<crate::user::UserFieldDef>,
 }
 
 /// The project-property key a `keep_project_key` filter (Restore, merge) is asked about for the
@@ -117,6 +120,12 @@ impl Project {
         list_problem(&self.locations, '+', "location")
             .or_else(|| list_problem(&self.functions, '=', "function"))
             .or_else(|| revisions_problem(&self.revisions))
+            .or_else(|| crate::user::fields_problem(&self.user_fields))
+    }
+
+    /// The user field `id`, if the project defines it.
+    pub fn user_field(&self, id: crate::id::UserFieldId) -> Option<&crate::user::UserFieldDef> {
+        self.user_fields.iter().find(|f| f.id == id)
     }
 }
 

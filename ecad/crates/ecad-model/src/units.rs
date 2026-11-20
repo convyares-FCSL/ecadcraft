@@ -90,6 +90,11 @@ unit!(
     "W"
 );
 unit!(
+    /// An apparent power in volt-amperes: a transformer's rating (VA is not W).
+    VoltAmps,
+    "VA"
+);
+unit!(
     /// A conductor cross-section in square millimetres.
     Mm2,
     "mm²"

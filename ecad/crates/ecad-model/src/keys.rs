@@ -271,6 +271,9 @@ pub const RESERVED: &[PropKey] = &[
     // Lane D: a wire's number and its fixed flag are `Wire.number` (design 072 §4.2).
     WIRE_NUMBER,
     WIRE_NUMBER_FIXED,
+    // Lane 072 B: the contacts a part offers and where its table goes (design 072 §2.2).
+    PropKey("contacts"),
+    PropKey("mirror"),
     // Lane C (design 072 §3): a PLC module's and station's fields.
     PropKey("plc.rack"),
     PropKey("plc.slot"),
@@ -314,6 +317,8 @@ pub const RESERVED_PREFIXES: &[(Holder, &str)] = &[
     // Lane 072 B: a connector's halves and ignored rows are fields of its type (design 072 §2.2).
     (Holder::Device, "half."),
     (Holder::Device, "ignore."),
+    // Lane 072 B: a device's user field values are its `user` map (design 072 §2.8).
+    (Holder::Device, "user."),
     // Lane 072 C: a PLC channel's own data (`plc.ch.<i>.<field>`, design 072 §3).
     (Holder::Device, "plc.ch."),
     // Lane 072 D: a core's Not used is its purpose (design 072 §4.5).
@@ -350,6 +355,8 @@ pub fn is_reserved(key: &str) -> bool {
 pub const PINS: PropKey = PropKey("pins");
 /// A connector's typed pin names.
 pub const PIN_NAMES: PropKey = PropKey("pin_names");
+/// A device's rating (lane 072 B: its group's typed fields, or its note; design 072 §2.2).
+pub const RATING: PropKey = PropKey(crate::device::RATING_KEY);
 
 /// Keys that became fields of [`crate::Device`] (design 072 §2.1) while other holders still keep
 /// them in their bags (a cable's `tag` until lane D): a device's bag holding one is a read error,
@@ -368,6 +375,7 @@ pub const DEVICE_FIELDS: &[PropKey] = &[
     FUNCTION_FIXED,
     PINS,
     PIN_NAMES,
+    RATING,
 ];
 
 /// The area `key` belongs to.

@@ -473,7 +473,7 @@ pub struct ConnectorRow {
 fn connector_rows(doc: &ecad_model::Document, c: ecad_model::DeviceId, rep: RepresentationId) -> Vec<ConnectorRow> {
     use ecad_cadcraft::connectors as cn;
     use ecad_cadcraft::symbols::Side;
-    if !cn::is_connector(doc, c) {
+    if !cn::connector_of(doc, c).is_some_and(|x| x.mating) {
         return Vec::new();
     }
     let comp = json_id(c);
@@ -703,7 +703,7 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
             }
             let starter =
                 doc.devices.get(&c).and_then(|c| c.definition).and_then(|d| doc.definitions.get(&d)).and_then(ecad_cadcraft::symbols::of_definition);
-            es.extend(starter.and_then(|s| defaults::symbols::prefix_entry(ecad_model::Word::word(s.key))));
+            es.extend(starter.and_then(|s| defaults::symbols::prefix_entry(s.key)));
             (Scope::symbol(doc, rep), es, Some((Level::Object, Target::Symbol(rep))))
         }
         What::Wire(w) => {

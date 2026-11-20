@@ -376,7 +376,7 @@ pub fn new_page_type(
     doc: &Document, kind: &NewPageKind, after: Option<PageId>, ty: Option<&str>,
 ) -> Result<(Option<StyleRef>, Option<String>), CmdError> {
     if let Some(c) = kind.strip
-        && !crate::strips::is_strip(doc, c)
+        && crate::strips::strip_of(doc, c).is_none()
     {
         return Err(CmdError::refused("That device is not a terminal strip; leave `strip` out to show every strip."));
     }
