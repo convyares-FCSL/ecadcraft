@@ -325,7 +325,7 @@ impl Outputs {
         }
         for op in ops {
             let Op::SetProperty { object: ObjectRef::Device(c), key, .. } = op else { continue };
-            if crate::defaults::connectors::is_naming_key(key) && crate::connectors::is_connector(doc, *c) {
+            if crate::defaults::connectors::is_naming_key(key) && crate::connectors::connector_of(doc, *c).is_some_and(|x| x.mating) {
                 for (t, _) in doc.terminals_of(*c) {
                     scope.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
                 }
@@ -719,7 +719,7 @@ impl Outputs {
         };
         // Brief 044 (design 044 §8.1): a connector has one BOM row per drawn half, kept apart;
         // its part lines are entries (brief 047), each under its half (`part.<n>.half`).
-        let connector = crate::connectors::is_connector(doc, c);
+        let connector = crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating);
         if connector {
             let rows = connector_rows(doc, c, cache);
             self.set_connector(c, rows);

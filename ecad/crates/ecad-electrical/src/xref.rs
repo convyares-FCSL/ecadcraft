@@ -526,7 +526,7 @@ pub fn class_in(doc: &Document, rid: RepresentationId) -> Option<(Group, Class)>
     }
     // Brief 044: a connector's members.
     if let Subject::Device(c) = r.subject
-        && crate::connectors::is_connector(doc, c)
+        && crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating)
     {
         return crate::connectors::ref_classes(doc, c).into_iter().find(|(x, _)| *x == rid).map(|(_, k)| (Group::Device(c), k));
     }
@@ -1169,7 +1169,7 @@ pub fn parts_on_page_measured(doc: &Document, page: PageId, m: &dyn TextMetrics)
     let mut tables: Vec<Table> = Vec::new();
     for (c, here) in by_component {
         // Brief 044 (design 044 §7): a connector's half and pin references.
-        if crate::connectors::is_connector(doc, c) {
+        if crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating) {
             out.extend(connector_parts(doc, &mut places, c).into_iter().filter(|(_, p)| here.contains(&p.rep)).map(|(_, p)| p));
             continue;
         }
@@ -1272,7 +1272,7 @@ pub fn drawn_table(doc: &Document, places: &mut Places<'_>, dev: &Device, m: &dy
     }
     let mut tables: Vec<Table> = others
         .into_iter()
-        .filter(|c| !crate::connectors::is_connector(doc, *c))
+        .filter(|c| !crate::connectors::connector_of(doc, *c).is_some_and(|x| x.mating))
         .map(|c| device(doc, c))
         .filter(|d| d.head.is_some_and(|h| doc.representations.get(&h).is_some_and(|r| r.page == own.page)))
         .filter_map(|d| table_measured(doc, places, &d, m))
@@ -1288,7 +1288,7 @@ pub fn drawn_table(doc: &Document, places: &mut Places<'_>, dev: &Device, m: &dy
 fn shown(doc: &Document, places: &mut Places<'_>, c: DeviceId, m: &dyn TextMetrics) -> BTreeMap<PageId, Vec<Part>> {
     let mut out: BTreeMap<PageId, Vec<Part>> = BTreeMap::new();
     // Brief 044: a connector's references.
-    if crate::connectors::is_connector(doc, c) {
+    if crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating) {
         for (page, p) in connector_parts(doc, places, c) {
             out.entry(page).or_default().push(p);
         }
@@ -1346,7 +1346,7 @@ impl RefIndex {
         }
         // Brief 044: connectors' members and edges (design 044 §7).
         for c in doc.devices.keys() {
-            if crate::connectors::is_connector(doc, *c) {
+            if crate::connectors::connector_of(doc, *c).is_some_and(|x| x.mating) {
                 idx.insert_connector(doc, *c);
             }
         }
@@ -1417,7 +1417,7 @@ impl RefIndex {
             return;
         }
         if let Group::Device(c) = g
-            && crate::connectors::is_connector(doc, c)
+            && crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating)
         {
             self.insert_connector(doc, c);
             return;

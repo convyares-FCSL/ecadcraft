@@ -19,7 +19,7 @@ fn predicates_say(doc: &Document, c: DeviceId) -> Option<DeviceGroup> {
     if strips::strip_of(doc, c).is_some() {
         return Some(DeviceGroup::TerminalStrip);
     }
-    if connectors::is_connector(doc, c) {
+    if connectors::connector_of(doc, c).is_some_and(|x| x.mating) {
         return Some(DeviceGroup::Connector);
     }
     // Lane C (design 072 §3) removed the PLC predicates; the oracle reads the card body drawn.
@@ -555,7 +555,7 @@ fn a_power_supply_rating_is_read_into_typed_fields() {
 }
 
 /// Step 4 (design 072 §2.2 row 9): a half's or pin's starter stores `mating`; a bulkhead (`rj45`)
-/// is Connector-typed and one piece; `is_connector` reads the stored field, not the symbol.
+/// is Connector-typed and one piece; a pin's side follows the stored field, not the symbol.
 #[test]
 fn a_connector_s_mating_is_stored_by_its_starter() {
     use ecad_cadcraft::connectors;
@@ -570,17 +570,18 @@ fn a_connector_s_mating_is_stored_by_its_starter() {
     for (sym, c) in &placed {
         let DeviceType::Connector(x) = &doc.devices[c].device_type else { panic!("{sym} is Connector-typed") };
         assert_eq!(x.mating, *sym != "rj45", "{sym}");
-        assert_eq!(connectors::is_connector(&doc, *c), x.mating, "{sym}: is_connector reads the field");
     }
-    // The field, not the symbol: a mating half's device with `mating` cleared is not a connector.
+    // The field, not the symbol: with `mating` cleared, a mating half's pins have no side.
     let (_, c) = placed[0];
+    let pin = doc.terminals.iter().find(|(_, t)| t.component == c).map(|(t, _)| *t).unwrap();
+    assert!(connectors::side_of(&doc, pin).is_some(), "a socket pin has its side");
     let mut d = doc.devices[&c].clone();
     if let DeviceType::Connector(x) = &mut d.device_type {
         x.mating = false;
     }
     let mut cleared = doc.clone();
     cleared.devices.insert(c, d);
-    assert!(!connectors::is_connector(&cleared, c));
+    assert!(connectors::side_of(&cleared, pin).is_none());
 }
 
 /// Step 4 (design 072 §2.2, design 025): `setprop`'s `contacts` and `mirror` write the typed fields

@@ -473,7 +473,7 @@ pub struct ConnectorRow {
 fn connector_rows(doc: &ecad_model::Document, c: ecad_model::DeviceId, rep: RepresentationId) -> Vec<ConnectorRow> {
     use ecad_cadcraft::connectors as cn;
     use ecad_cadcraft::symbols::Side;
-    if !cn::is_connector(doc, c) {
+    if !cn::connector_of(doc, c).is_some_and(|x| x.mating) {
         return Vec::new();
     }
     let comp = json_id(c);

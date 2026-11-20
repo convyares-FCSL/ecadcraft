@@ -688,7 +688,7 @@ fn field_value(doc: &Document, c: DeviceId, f: Field, value: Option<&str>, metre
         // Brief 044 (design 044 §8.3): only on a connector, `s` or `p`.
         Field::Half => match value.map(str::trim).filter(|v| !v.is_empty()) {
             None => Ok(None),
-            Some(_) if !crate::connectors::is_connector(doc, c) => {
+            Some(_) if !crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating) => {
                 Err(CmdError::refused(format!("`half` is for a connector's part lines; {} is not a connector.", crate::devices::tag_words(doc, c))))
             }
             Some(v) if v.eq_ignore_ascii_case("s") || v.eq_ignore_ascii_case("p") => Ok(Some(v.to_ascii_lowercase())),
