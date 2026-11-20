@@ -163,8 +163,6 @@ impl Project {
         let pages: Vec<PageId> = doc.page_order.clone();
         let cables: BTreeSet<CableId> = doc.cables.keys().copied().collect();
         self.ledger = ledger;
-        self.xref = crate::xref::RefIndex::build(self.ledger.document());
-        self.xref_shown = None;
         self.derived.rebuild(self.ledger.document());
         self.tag_high = crate::devices::TagHigh::starting_at(tag_high);
         self.catch_up_tags();

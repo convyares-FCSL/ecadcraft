@@ -1138,7 +1138,7 @@ fn r09_cross_references_between_the_halves() {
     let refs = v["references"].as_array().cloned().unwrap_or_default();
     assert!(refs.iter().any(|r| s(&r["source"]) == srep.hex() && s(&r["target_page"]) == n100), "{v}");
     // The kept index equals a rebuild (verify mode does this on every commit too).
-    let (kept, built) = c.h.cfg(|p| (p.xref.clone(), ecad_cadcraft::xref::RefIndex::build(p.ledger.document())));
+    let (kept, built) = c.h.cfg(|p| (p.xref().clone(), ecad_cadcraft::xref::RefIndex::build(p.ledger.document())));
     assert!(kept == built, "kept reference index differs from a rebuild");
 }
 

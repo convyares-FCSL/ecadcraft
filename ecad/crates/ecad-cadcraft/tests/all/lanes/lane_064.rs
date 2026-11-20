@@ -326,8 +326,9 @@ fn the_connectors_view_reaches_the_change_log() {
 }
 
 /// Step 5 (tester note 1): in verify mode, a kept view out of step with the document (forced here
-/// by emptying the views) is reported once as an `IndexRebuilt` event through `Changes.problems`
-/// and rebuilt in the same commit; the next commit finds nothing wrong.
+/// by emptying the views: the connector index and the reference index) is reported once each as an
+/// `IndexRebuilt` event through `Changes.problems` and rebuilt in the same commit; the next commit
+/// finds nothing wrong.
 #[test]
 fn a_view_out_of_step_is_reported_and_rebuilt() {
     use ecad_inspect::EventKind;
@@ -337,13 +338,16 @@ fn a_view_out_of_step_is_reported_and_rebuilt() {
     assert!(ecad_model::ledger::verify_mode(), "tests run in verify mode");
     h.cfg(|p| p.views_mut().rebuild(&Document::default()));
     assert!(h.p(|p| p.connectors().is_empty()), "the kept index is out of step");
+    assert!(h.p(|p| p.xref().verify(p.ledger.document()).is_err()), "the kept reference index is out of step");
     h.run("wire", json!({"points": crate::common::pts(&[(300.0, 300.0), (350.0, 300.0)])})).unwrap();
     let events: Vec<_> = h.p(|p| p.events.events().filter(|e| e.kind == EventKind::IndexRebuilt).cloned().collect());
-    assert_eq!(events.len(), 1, "{events:?}");
-    assert!(events[0].message.contains("connector index"), "{events:?}");
+    assert_eq!(events.len(), 2, "{events:?}");
+    assert!(events[0].message.contains("reference index was out of step"), "{events:?}");
+    assert!(events[1].message.contains("connector index"), "{events:?}");
     assert_eq!(h.p(|p| p.connectors().clone()), h.p(|p| connectors::Index::build(p.ledger.document())));
+    h.p(|p| p.xref().verify(p.ledger.document())).unwrap();
     h.run("wire", json!({"points": crate::common::pts(&[(300.0, 320.0), (350.0, 320.0)])})).unwrap();
-    assert_eq!(h.p(|p| p.events.count(EventKind::IndexRebuilt)), 1, "nothing more to repair");
+    assert_eq!(h.p(|p| p.events.count(EventKind::IndexRebuilt)), 2, "nothing more to repair");
 }
 
 // ---------------------------------------------------------------- step 4: the frame

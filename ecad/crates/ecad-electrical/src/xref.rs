@@ -1798,9 +1798,9 @@ pub type Shown = BTreeMap<DeviceId, BTreeMap<PageId, Vec<Part>>>;
 
 impl Watch {
     /// Before `ops` are committed on `doc`. `reuse` holds what the last commit derived, for
-    /// the same `doc` (the caller checks the state is unchanged): a device found there is not
-    /// derived again.
-    pub fn take(doc: &Document, idx: &RefIndex, ops: &[Op], mut reuse: Shown, m: &dyn TextMetrics) -> Watch {
+    /// the same `doc` (the caller keeps it only while the state is unchanged): a device found
+    /// there is not derived again.
+    pub fn take(doc: &Document, idx: &RefIndex, ops: &[Op], reuse: &Shown, m: &dyn TextMetrics) -> Watch {
         let cable_scope = crate::references::cables_touched(doc, ops);
         let cables = crate::references::Snapshot::take(doc, cable_scope.as_ref());
         let mut scope = Scope::default();
@@ -1814,7 +1814,7 @@ impl Watch {
             scope
                 .devices
                 .iter()
-                .map(|c| match reuse.remove(c) {
+                .map(|c| match reuse.get(c).cloned() {
                     // Verify mode checks a reuse against a fresh derivation; a stale one (a bug) is
                     // reported and the fresh one used.
                     Some(kept) if verify => {

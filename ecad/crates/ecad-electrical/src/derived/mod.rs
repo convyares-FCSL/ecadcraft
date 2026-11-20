@@ -23,6 +23,7 @@ mod devices;
 mod frame;
 mod generated;
 mod pages;
+mod refs;
 mod tree;
 
 use std::sync::Arc;
@@ -37,6 +38,7 @@ pub use devices::{DevicesFeed, DevicesScope};
 pub use frame::{FrameScope, FrameView};
 pub use generated::{GeneratedScope, GeneratedView};
 pub use pages::{PagesScope, PagesView, points_pages};
+pub use refs::{RefsScope, RefsView};
 pub use tree::{TreeFeed, TreeScope};
 
 use crate::text_style::fonts::TextMetrics;
@@ -100,6 +102,7 @@ impl<V> Lazy<V> {
 /// Each kept view's scope, noted on the document before the ops ([`Views::begin`]).
 #[derive(Debug, Default)]
 pub struct Pending {
+    refs: RefsScope,
     connectors: ConnectorsScope,
     pages: PagesScope,
     frame: FrameScope,
@@ -118,6 +121,7 @@ pub struct Detached {}
 pub struct Views {
     inputs: EngineInputs,
     // Stage 1: indexes that depend only on the document.
+    refs: RefsView,
     connectors: ConnectorsView,
     // Stage 3: pages.
     pages: PagesView,
@@ -133,6 +137,7 @@ impl Views {
     pub fn new(inputs: EngineInputs) -> Self {
         Views {
             inputs,
+            refs: RefsView::default(),
             connectors: ConnectorsView::default(),
             pages: PagesView::default(),
             frame: FrameView::default(),
@@ -157,6 +162,16 @@ impl Views {
         &mut self.frame
     }
 
+    /// The kept reference index (design 025 §3.3).
+    pub fn refs(&self) -> &crate::xref::RefIndex {
+        self.refs.index()
+    }
+
+    /// The references view, to put it out of step on purpose (tests of verify mode only).
+    pub fn refs_view_mut(&mut self) -> &mut RefsView {
+        &mut self.refs
+    }
+
     /// The kept connector index (design 044 §11.1).
     pub fn connectors(&self) -> &crate::connectors::Index {
         self.connectors.index()
@@ -166,7 +181,7 @@ impl Views {
     pub fn begin(&self, before: &Document, ops: &[Op]) -> Pending {
         let effects = Effects::of(ops);
         let cx = NoteCx { doc: before, phase: Phase::Before, effects: &effects };
-        let mut pending = Pending::default();
+        let mut pending = Pending { refs: self.refs.take(before, ops, &*self.inputs.metrics), ..Pending::default() };
         note_view::<_, Inputs<'_>>(&self.connectors, &cx, &mut pending.connectors);
         note_view::<_, Inputs<'_>>(&self.pages, &cx, &mut pending.pages);
         note_view::<_, Inputs<'_>>(&self.frame, &cx, &mut pending.frame);
@@ -179,7 +194,7 @@ impl Views {
     /// After phase on the committed transaction's ops, then update every kept view, stage by
     /// stage, and merge their outcomes.
     pub fn finish(&mut self, after: &Document, tx_ops: &[Op], pending: Pending) -> Changes {
-        let Pending { mut connectors, mut pages, mut frame, mut generated, mut tree, mut devices } = pending;
+        let Pending { refs, mut connectors, mut pages, mut frame, mut generated, mut tree, mut devices } = pending;
         let effects = Effects::of(tx_ops);
         let cx = NoteCx { doc: after, phase: Phase::After, effects: &effects };
         note_view::<_, Inputs<'_>>(&self.connectors, &cx, &mut connectors);
@@ -191,6 +206,7 @@ impl Views {
         let inputs = Inputs { engine: &self.inputs, frame_page: self.frame.shown().map(|(p, _)| p) };
         let mut changes = Changes::default();
         // Stage 1: the indexes.
+        merge(&mut changes, self.refs.update(after, tx_ops, refs, &*self.inputs.metrics));
         merge(&mut changes, self.connectors.update(after, connectors, &inputs));
         // Stage 3: pages.
         merge(&mut changes, self.pages.update(after, pages, &inputs));
@@ -216,11 +232,12 @@ impl Views {
         if generated.is_some() {
             self.generated.forget();
         }
-        self.connectors.check(doc).into_iter().chain(generated).collect()
+        self.refs.check(doc).into_iter().chain(self.connectors.check(doc)).chain(generated).collect()
     }
 
     /// Open, reload, branch switch: rebuild every kept view from `doc`.
     pub fn rebuild(&mut self, doc: &Document) {
+        self.refs = RefsView::build(doc);
         self.connectors = ConnectorsView::build(doc);
         self.frame.forget();
         self.generated.forget();

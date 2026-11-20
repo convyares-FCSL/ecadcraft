@@ -32,6 +32,12 @@ impl Project {
         self.page_list_version
     }
 
+    /// The general reference index (brief 025, design 025 §3.3), kept by the views' pipeline
+    /// (`ecad_electrical::derived::RefsView`).
+    pub fn xref(&self) -> &crate::xref::RefIndex {
+        self.derived.refs()
+    }
+
     /// The kept connector index (brief 044, design 044 §11.1), kept by the views' pipeline
     /// (`ecad_electrical::derived::ConnectorsView`).
     pub fn connectors(&self) -> &crate::connectors::Index {
@@ -344,10 +350,6 @@ impl Project {
         if std::mem::take(&mut self.faults.panic_in_command) {
             crate::fault_panic();
         }
-        // References are derived for the cables and devices the ops could touch only (briefs 014,
-        // 025).
-        let reuse = self.xref_reuse();
-        let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &ops, reuse, &crate::draw::text_style::EngineMetrics);
         let props = crate::props::touched(self.ledger.document(), &ops);
         let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &ops));
         let outputs = self.outputs.as_ref().map(|o| o.scope(self.ledger.document(), &ops));
@@ -367,13 +369,11 @@ impl Project {
         if let Some(id) = rack_page {
             self.pages.entry(id).or_default();
         }
-        let refs = self.finish_watch(watch);
         let props = self.with_numbered(props, n);
         self.update_checks(checks);
-        let generated = self.update_outputs(outputs);
-        let pages = touched(refs.pages, Some(generated));
+        let pages = self.update_outputs(outputs);
         let mut changes = self.finish_derived(pending);
-        pass_through(&mut changes, Old { pages, props, echo: refs.orphaned.into_iter().collect() });
+        pass_through(&mut changes, Old { pages, props, echo: Vec::new() });
         self.apply_changes(pg, command, changes, Path::Command);
         Ok(tx)
     }
@@ -435,35 +435,6 @@ impl Project {
         }
     }
 
-    /// Finish a commit's [`crate::xref::Watch`] with the last transaction: the reference index is
-    /// brought up to date and the pages whose references changed are named.
-    pub(super) fn finish_watch(&mut self, watch: crate::xref::Watch) -> crate::xref::Outcome {
-        let ledger = &self.ledger;
-        let ops = ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
-        let mut out = watch.finish(ledger.document(), &mut self.xref, ops, &crate::draw::text_style::EngineMetrics);
-        let head = ledger.head();
-        for line in std::mem::take(&mut out.problems) {
-            self.events.record(EventKind::IndexRebuilt, None, head, None, line);
-        }
-        self.xref_shown = Some((self.state_key(), std::mem::take(&mut out.shown)));
-        out
-    }
-
-    /// The ledger's state: its head and last transaction ID (unique, so a state reached again
-    /// by another route never matches).
-    fn state_key(&self) -> (u64, u128) {
-        (self.ledger.head(), self.ledger.log().last().map_or(0, |t| t.id.0))
-    }
-
-    /// What the last commit derived, when the state has not moved since (brief 025: a device
-    /// edited twice in a row is derived once per commit, not twice).
-    pub(super) fn xref_reuse(&mut self) -> crate::xref::Shown {
-        match self.xref_shown.take() {
-            Some((key, shown)) if key == self.state_key() => shown,
-            _ => crate::xref::Shown::new(),
-        }
-    }
-
     /// `props` with the wires the extension of the last transaction (its ops after the first `n`)
     /// made, removed, changed or renumbered: the wire rewrite (design 072 §4.4) and the numbering
     /// pass (brief 022); the Properties view of a wire reads its number, net and ends.
@@ -503,14 +474,14 @@ pub(super) enum Path<'a> {
 /// What the functions not yet moved into a view worked out (design 064 §9: each view step deletes
 /// one of them and its field here).
 pub(super) struct Old {
-    pub pages: Option<BTreeSet<PageId>>,
+    pub pages: BTreeSet<PageId>,
     pub props: Option<BTreeSet<ecad_model::ObjectRef>>,
     pub echo: Vec<String>,
 }
 
 /// Add `old` to the views' `changes`.
 pub(super) fn pass_through(changes: &mut Changes, old: Old) {
-    changes.pages.union(PageSet::from_option(old.pages));
+    changes.pages.union(PageSet::Only(old.pages));
     changes.props = match (changes.props.take(), old.props) {
         (Some(mut a), Some(b)) => {
             a.extend(b);

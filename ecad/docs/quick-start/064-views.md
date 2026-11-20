@@ -33,6 +33,12 @@ Progress (automated checks only, not owner-tried):
   both halves) on different pages, give one its own socket side name in Properties, then set the
   project's socket side name in Settings; only the other connector's half tags change, on its
   page, and undo puts them back.
+- Step 5, second index: the reference index (`RefsView`) is now one of the views too, with the
+  cable references, contact texts and mirror tables, and continuation arrows it redraws, and the
+  line about a reference left without its other end. To try it: place a coil on page 1 and one
+  of its contacts on page 2, then renumber page 1; the contact's reference text and the coil's
+  mirror table follow, and undo puts them back. Deleting one end of a two-ended cable reference
+  prints the orphaned-reference line, as before.
 - Step 6, the drawn pages (`PagesView`): which pages a commit could change, and which page an
   undo or redo brings to the front, now come from one view on every path; a drawing edit's
   change log now also names the other pages it changes (design 064 D2). To try it: move a

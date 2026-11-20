@@ -91,7 +91,7 @@ fn rows(h: &mut H, c: DeviceId) -> Vec<(String, String, String, String)> {
 }
 
 fn index_matches(h: &mut H) {
-    h.p(|p| p.xref.verify(p.ledger.document())).unwrap();
+    h.p(|p| p.xref().verify(p.ledger.document())).unwrap();
 }
 
 /// Check A: each contact shows the coil's place; the coil's table lists its five poles with their
@@ -120,7 +120,7 @@ fn a_contacts_show_the_coil_and_the_coil_shows_its_contacts() {
     assert!(refs.iter().any(|r| r["kind"] == "mirror"));
     // The index from the open matches a rebuild.
     index_matches(&mut x.h);
-    let sizes = x.h.p(|p| p.xref.sizes());
+    let sizes = x.h.p(|p| p.xref().sizes());
     assert_eq!(sizes.1, 2, "two device groups");
     // The table is drawn on page 100 only.
     assert!(drawn(&mut x.h, x.p100).iter().any(|(r, _, v)| *r == x.coil && v == "13/14" || *r == x.coil && v == "13"));
@@ -338,13 +338,13 @@ fn j_save_and_reopen_keep_contacts_and_mirror() {
     x.h.cfg(|p| p.persistence = Persistence::File);
     x.h.run("saveas", json!({"path": path})).unwrap();
     let live = x.h.doc();
-    let idx = x.h.p(|p| p.xref.clone());
+    let idx = x.h.p(|p| p.xref().clone());
     close_all(&mut x.h.s);
     let mut s = Session::empty();
     let (project, _) = ProjectHandle::open_file(&mut s, &path, 99).unwrap();
     let mut h2 = H { s, project, trail: Vec::new() };
     assert_eq!(h2.doc(), live);
-    assert_eq!(h2.p(|p| p.xref.clone()), idx, "the index rebuilt on open is the kept one");
+    assert_eq!(h2.p(|p| p.xref().clone()), idx, "the index rebuilt on open is the kept one");
     let c = &h2.doc().devices[&x.k1];
     assert_eq!(c.properties.get("contacts").map(String::as_str), Some("3P+1NO+1NC"));
     assert_eq!(c.properties.get("mirror").map(String::as_str), Some("right"));
@@ -385,7 +385,7 @@ fn k_hostile_values() {
     let e = x.h.run("place", json!({"symbol": "coil", "at": [10, 10], "device": x.k1.hex()})).unwrap_err();
     assert!(e.contains("already has a coil"), "{e}");
     index_matches(&mut x.h);
-    let groups: BTreeSet<Group> = x.h.p(|p| p.xref.groups().collect());
+    let groups: BTreeSet<Group> = x.h.p(|p| p.xref().groups().collect());
     assert!(groups.contains(&Group::Device(x.k1)) && groups.contains(&Group::Device(x.q1)));
 }
 
@@ -405,9 +405,9 @@ fn e_cable_groups_are_kept_on_the_index() {
     // continuation needs wires leaving the page through the reference (lane F step F4).
     h.reference_end(k, p2, (10.0, 50.0));
     let _ = (p1, p2);
-    let members: Vec<RepresentationId> = h.p(|p| p.xref.members(Group::Cable(k)).collect());
+    let members: Vec<RepresentationId> = h.p(|p| p.xref().members(Group::Cable(k)).collect());
     assert_eq!(members.len(), 2);
-    h.p(|p| p.xref.verify(p.ledger.document())).unwrap();
+    h.p(|p| p.xref().verify(p.ledger.document())).unwrap();
     let doc = h.doc();
     let scope = ecad_cadcraft::references::cables_touched(&doc, &[Op::DeleteCable { id: k, cable: doc.cables[&k].clone() }]);
     assert_eq!(scope, Some(BTreeSet::from([k])), "a cable op touches its cable only");
@@ -415,7 +415,7 @@ fn e_cable_groups_are_kept_on_the_index() {
     assert_eq!(v["references"].as_array().unwrap().len(), 2);
     assert!(v["references"].as_array().unwrap().iter().all(|r| r["kind"] == "cable"));
     h.run("u", json!({})).unwrap();
-    h.p(|p| p.xref.verify(p.ledger.document())).unwrap();
+    h.p(|p| p.xref().verify(p.ledger.document())).unwrap();
     assert_eq!(h.p(|p| RefIndex::build(p.ledger.document()).members(Group::Cable(k)).count()), 1);
 }
 
@@ -426,7 +426,7 @@ fn e_cable_groups_are_kept_on_the_index() {
 fn a_stale_index_is_reported_and_rebuilt() {
     use ecad_inspect::EventKind;
     let mut x = fixture();
-    x.h.cfg(|p| p.xref = RefIndex::default());
+    x.h.cfg(|p| *p.views_mut().refs_view_mut() = ecad_electrical::derived::RefsView::default());
     let head = x.h.head();
     x.h.run("setprop", json!({"component": x.k1.hex(), "key": "contacts", "value": "3P+2NO+2NC"})).unwrap();
     assert_eq!(x.h.head(), head + 1);

@@ -14,6 +14,10 @@
 //! Step 6: the pages' feed (`PagesView`) equals the old `pages_touched` and `pages_named` (kept
 //! here) on every transaction of the same history.
 //!
+//! Step 5: the references view (`RefsView`) equals the old path, a bare `xref::Watch` on a
+//! separately kept index with nothing reused, on every transaction of the same history: the same
+//! pages, the same orphaned-reference line, and the same index.
+//!
 //! # Frozen pre-R9 behaviour, test oracle only
 //! Every `old_*` function here is a frozen copy of code R9 replaced, kept only as a test oracle.
 //! It is not live legacy code and nothing outside this module calls it. Delete it when R9's
@@ -659,5 +663,54 @@ fn the_pages_view_matches_its_old_functions_on_the_small_corpus() {
 #[ignore = "slow: generates the medium bench project"]
 fn the_pages_view_matches_its_old_functions_on_the_medium_corpus() {
     let n = pages_view_agrees(tier("medium").unwrap());
+    assert!(n > 10, "{n} transactions");
+}
+
+/// The references view, with its reuse of the last commit's texts, equals the old path (a bare
+/// `xref::Watch` with nothing reused, on its own index) on every transaction of `tier`'s churned
+/// history with five undos and five redos at its end. Returns how many transactions were compared.
+fn refs_view_agrees(tier: Tier) -> usize {
+    use derived::RefsView;
+    use ecad_electrical::xref::{RefIndex, Shown, Watch};
+    let mut g = generate(tier, Variant::Churned).unwrap();
+    for undo in [true, true, true, true, true, false, false, false, false, false] {
+        let r = if undo { g.ledger.undo_at(Author::User, None) } else { g.ledger.redo_at(Author::User, None) };
+        r.unwrap();
+    }
+    assert_eq!(g.ledger.base(), 0, "the corpus replays from the empty document");
+    let m = ecad_electrical::text_style::fonts::FixedWidth;
+    let mut view = RefsView::build(&Document::default());
+    let mut old_index = RefIndex::build(&Document::default());
+    let mut doc = Document::default();
+    let mut checked = 0;
+    for tx in g.ledger.log() {
+        let scope = view.take(&doc, &tx.ops, &m);
+        let watch = Watch::take(&doc, &old_index, &tx.ops, &Shown::new(), &m);
+        for op in &tx.ops {
+            op.apply(&mut doc).unwrap();
+        }
+        let new = view.update(&doc, &tx.ops, scope, &m);
+        let old = watch.finish(&doc, &mut old_index, &tx.ops, &m);
+        let what = format!("{} transaction {} {:?}", tier.name, tx.seq, tx.label);
+        assert_eq!(new.pages, PageSet::from_option(old.pages), "{what}: pages");
+        assert_eq!(new.echo, old.orphaned.into_iter().collect::<Vec<_>>(), "{what}: orphaned line");
+        assert_eq!(view.index(), &old_index, "{what}: index");
+        checked += 1;
+    }
+    checked
+}
+
+/// Step 5: `RefsView` on the small tier's recorded history.
+#[test]
+fn the_refs_view_matches_the_old_watch_on_the_small_corpus() {
+    let n = refs_view_agrees(tier("small").unwrap());
+    assert!(n > 10, "{n} transactions");
+}
+
+/// Step 5: `RefsView` on the medium tier's recorded history (design 064 §10).
+#[test]
+#[ignore = "slow: generates the medium bench project"]
+fn the_refs_view_matches_the_old_watch_on_the_medium_corpus() {
+    let n = refs_view_agrees(tier("medium").unwrap());
     assert!(n > 10, "{n} transactions");
 }

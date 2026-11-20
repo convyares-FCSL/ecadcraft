@@ -40,7 +40,7 @@ pub(crate) fn device_source(p: &Project, map: &crate::project::HandleMap, h: Han
         Mapped::Item(i) => doc.representation_of_item(i)?.0,
         _ => return None,
     };
-    let (_, class) = p.xref.member(rep)?;
+    let (_, class) = p.xref().member(rep)?;
     let target = match (m, class) {
         (Mapped::Xref(_), xref::Class::Head) => {
             let (_, i) = map.xref_part(h)?;

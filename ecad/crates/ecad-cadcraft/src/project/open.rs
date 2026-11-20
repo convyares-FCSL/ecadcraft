@@ -39,8 +39,6 @@ impl Project {
             .map_err(|e| e.to_string())?;
         let baseline = ledger.head();
         let id: ProjectId = ids.fresh();
-        // The reference index is built once on open (brief 025).
-        let xref = crate::xref::RefIndex::build(ledger.document());
         let derived = views_for(ledger.document());
         let project = Arc::new(Mutex::new(Project {
             name: name.to_string(),
@@ -81,7 +79,6 @@ impl Project {
             last_caption: None,
             wire_potential: None,
             checks: None,
-            xref,
             outputs: None,
             open_reports: false,
             #[cfg(not(target_arch = "wasm32"))]
@@ -102,7 +99,6 @@ impl Project {
             confirm_merge_undo: false,
             merge_undo_question: None,
             merge_cache: None,
-            xref_shown: None,
             derived,
             branch_gen: 0,
         }));
@@ -139,8 +135,6 @@ impl Project {
         // A fresh ID stream even when the caller reuses the creation seed.
         let ids = IdAllocator::seeded_after(seed, ledger.log().last().map_or(0, |t| t.id.0) ^ u128::from(ledger.head()));
         let baseline = ledger.head();
-        // The reference index is built once on open (brief 025).
-        let xref = crate::xref::RefIndex::build(ledger.document());
         let derived = views_for(ledger.document());
         let project = Arc::new(Mutex::new(Project {
             name: name.to_string(),
@@ -181,7 +175,6 @@ impl Project {
             last_caption: None,
             wire_potential: None,
             checks: None,
-            xref,
             outputs: None,
             open_reports: false,
             #[cfg(not(target_arch = "wasm32"))]
@@ -202,7 +195,6 @@ impl Project {
             confirm_merge_undo: false,
             merge_undo_question: None,
             merge_cache: None,
-            xref_shown: None,
             derived,
             branch_gen: 0,
         }));
@@ -278,8 +270,6 @@ impl Project {
         }
         let views: BTreeSet<CableId> = loaded.fan.into_iter().filter(|k| ledger.document().cables.contains_key(k)).collect();
         let summary = summary.join("\n");
-        // The reference index is built once on open (brief 025).
-        let xref = crate::xref::RefIndex::build(ledger.document());
         let derived = views_for(ledger.document());
         let project = Arc::new(Mutex::new(Project {
             name: file_stem(&path),
@@ -320,7 +310,6 @@ impl Project {
             last_caption: None,
             wire_potential: None,
             checks: None,
-            xref,
             outputs: None,
             open_reports: false,
             #[cfg(not(target_arch = "wasm32"))]
@@ -341,7 +330,6 @@ impl Project {
             confirm_merge_undo: false,
             merge_undo_question: None,
             merge_cache: None,
-            xref_shown: None,
             derived,
             branch_gen: 0,
         }));
