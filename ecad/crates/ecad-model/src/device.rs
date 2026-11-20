@@ -169,11 +169,11 @@ impl DeviceType {
         }
     }
 
-    /// The same type with its rating fields empty (its kind kept).
+    /// The same type with its rating fields empty (its kind and contacts kept).
     pub fn unrated(&self) -> DeviceType {
         match self {
-            DeviceType::Protection(p) => DeviceType::Protection(p.kind().empty()),
-            DeviceType::Switching(s) => DeviceType::Switching(s.operator_kind().empty()),
+            DeviceType::Protection(p) => DeviceType::Protection(p.unrated()),
+            DeviceType::Switching(s) => DeviceType::Switching(s.unrated()),
             DeviceType::Sensor(s) => DeviceType::Sensor(s.unrated()),
             DeviceType::Motor(m) => DeviceType::Motor(m.unrated()),
             DeviceType::Load(l) => DeviceType::Load(l.unrated()),
@@ -206,6 +206,9 @@ impl DeviceType {
         matches!(self, DeviceType::General)
     }
 }
+
+pub mod contacts;
+pub use contacts::{ContactEntry, ContactLabel, ContactPoles, ContactSet, ContactTable, PoleKind};
 
 pub mod power_supply;
 pub use power_supply::{PowerSupply, Psu, Transformer};

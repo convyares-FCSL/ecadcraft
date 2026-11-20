@@ -13,9 +13,10 @@
 //!   under a head (`table`): one row per pole, NO or NC, power or auxiliary, its labels and its
 //!   place, with the poles the part offers that nobody drew (**spare**) and those drawn beyond the
 //!   offer (**over**).
-//! - What a part offers is the component property [`CONTACTS_KEY`] (FP1, grammar in
-//!   [`parse_offer`]); where its table goes is [`MIRROR_KEY`] (FP2, [`parse_mirror`]), else the
-//!   project's `contact_mirror` (FP3), else `auto`.
+//! - What a part offers is its typed contacts ([`crate::traits::Contacts`], design 072 §2.2; typed
+//!   through `setprop`'s [`CONTACTS_KEY`] in the grammar of [`parse_set`]); where its table goes is
+//!   a switching device's `contact_table` (typed through [`MIRROR_KEY`], [`parse_mirror`]), else
+//!   the project's `contact_mirror` (FP3), else `auto`.
 //! - Cable references keep their own derivation ([`crate::references`]); this module only scopes
 //!   them per commit ([`Watch`]), so every cable text is exactly as before.
 //!
@@ -33,7 +34,7 @@
 //! | `AttachEnd`, `CreateWire`, `DeleteWire` | the components at the ends before and after |
 //! | `AddTerminal` / `RemoveTerminal` | that component (its labels) |
 //! | `CreateDevice` / `DeleteDevice` | that component |
-//! | `SetProperty` component `contacts` or `mirror` | that component |
+//! | `ModifyDevice` changing its contacts or contact table | that component |
 //! | `SetProperty` page number or sheet | the devices with a member on that page |
 //! | page order (folder property, page and folder ops) | the devices with a member on a page whose book position changed |
 //! | `EmbedDefinition` / `RemoveDefinition` | the components using it |
@@ -48,8 +49,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::CmdError;
+use crate::traits::DeviceKind;
+use ecad_model::device::{ContactEntry, ContactLabel, ContactPoles, ContactSet, ContactTable};
 use ecad_model::{
-    CableId, ContactMirror, DeviceId, Document, Form, LengthUnit, ObjectRef, Op, PageId, Primitive, Pt, Representation, RepresentationId, Subject,
+    CableId, ContactMirror, Device as StoredDevice, DeviceId, DeviceType, Document, Form, LengthUnit, ObjectRef, Op, PageId, Primitive, Pt,
+    Representation, RepresentationId, Subject,
 };
 use serde_json::{Value, json};
 
@@ -64,16 +68,13 @@ fn ref_height(doc: &Document) -> f64 {
     crate::text_style::text_style(doc, REF).height
 }
 
-/// The component property that says what contacts the part offers (FP1): `3P+1NO+1NC`.
+/// The `setprop` key of the contacts a part offers (FP1): `3P+1NO+1NC`. A typed field, never in a
+/// property bag.
 pub const CONTACTS_KEY: &str = "contacts";
-/// The component property that says where the device's contact table goes (FP2).
+/// The `setprop` key of where a switching device's contact table goes (FP2). A typed field.
 pub const MIRROR_KEY: &str = "mirror";
-/// Most poles an offer may list.
-pub const MAX_POLES: usize = 32;
-/// Most characters of one explicit label in an offer.
-pub const MAX_LABEL_CHARS: usize = 16;
-/// Most millimetres a moved table may be from its coil, in each direction.
-pub const MAX_OFFSET_MM: f64 = 2_000.0;
+pub use ecad_model::device::PoleKind;
+pub use ecad_model::device::contacts::{MAX_LABEL_CHARS, MAX_OFFSET_MM, MAX_POLES};
 /// `ecad.xref`: ACI 7 (ByLayer on `ECAD-TAGS`). Its text is reference text: the `Reference` text
 /// style (brief 066d), never a size of its own.
 /// `ecad.xref-spare`: ACI 8.
@@ -94,23 +95,6 @@ pub const TABLE_DERIVED: &str = "The contact table is derived; move it with Move
 
 // ---------------------------------------------------------------- offer grammar (FP1)
 
-/// Normally open or normally closed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum PoleKind {
-    No,
-    Nc,
-}
-
-impl PoleKind {
-    /// `NO` or `NC`.
-    pub fn word(self) -> &'static str {
-        match self {
-            PoleKind::No => "NO",
-            PoleKind::Nc => "NC",
-        }
-    }
-}
-
 /// One pole a part offers, with its labels.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OfferedPole {
@@ -126,17 +110,16 @@ pub fn not_a_contact_list(text: &str) -> String {
     format!("\"{shown}\" is not a contact list. Write it like 3P+1NO+1NC, or 13/14 NO, 21/22 NC.")
 }
 
-/// Read an offer (design 025 FP1): entries separated by `+` or `,`, case-insensitive, spaces
-/// ignored. `3P` (power NO poles `1/2`, `3/4`…), `1PNC` (power NC poles, continuing the power
-/// numbering), `1NO` / `2NC` (auxiliary contacts, IEC sequence digit in written order), or one
-/// contact with explicit labels: `13/14 NO`, `21/22 NC`, `L1/T1 P`, `1/2 PNC`.
+/// Read a typed offer (design 025 FP1): entries separated by `+` or `,`, case-insensitive, spaces
+/// ignored. `3P` (power NO poles), `1PNC` (power NC poles), `1NO` / `2NC` (auxiliary contacts), or
+/// one contact with explicit labels: `13/14 NO`, `21/22 NC`, `L1/T1 P`, `1/2 PNC`.
 ///
 /// # Errors
 /// Unreadable text, no poles, or more than [`MAX_POLES`].
-pub fn parse_offer(text: &str) -> Result<Vec<OfferedPole>, CmdError> {
+pub fn parse_set(text: &str) -> Result<ContactSet, CmdError> {
     let bad = || CmdError::refused(not_a_contact_list(text));
-    let mut out: Vec<OfferedPole> = Vec::new();
-    let (mut power_n, mut seq) = (0u32, 0u32);
+    let too_many = || CmdError::refused(format!("A part offers at most {MAX_POLES} contacts."));
+    let mut out: Vec<ContactEntry> = Vec::new();
     for entry in text.split(['+', ',']) {
         let e: String = entry.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_ascii_uppercase();
         if e.is_empty() {
@@ -153,66 +136,101 @@ pub fn parse_offer(text: &str) -> Result<Vec<OfferedPole>, CmdError> {
         } else {
             return Err(bad());
         };
-        if let Some((a, b)) = body.split_once('/') {
-            let ok = |l: &str| !l.is_empty() && l.chars().count() <= MAX_LABEL_CHARS && l.chars().all(|c| c.is_ascii_alphanumeric() || c == '.');
-            if !(ok(a) && ok(b)) {
-                return Err(bad());
-            }
-            out.push(OfferedPole { labels: [a.to_string(), b.to_string()], kind, power });
+        let poles = if let Some((a, b)) = body.split_once('/') {
+            let label = |l: &str| {
+                let ok = !l.is_empty() && l.chars().all(|c| c.is_ascii_alphanumeric() || c == '.');
+                if ok { ContactLabel::new(l).ok() } else { None }
+            };
+            ContactPoles::Labels([label(a).ok_or_else(bad)?, label(b).ok_or_else(bad)?])
         } else {
             let n: usize = body.parse().map_err(|_| bad())?;
             if n == 0 {
                 return Err(bad());
             }
-            if out.len() + n > MAX_POLES {
-                return Err(CmdError::refused(format!("A part offers at most {MAX_POLES} contacts.")));
-            }
-            for _ in 0..n {
-                // A counted pole skips labels already offered (an explicit pair written before it).
-                let labels = loop {
-                    let labels = if power {
-                        power_n += 1;
-                        [(2 * power_n - 1).to_string(), (2 * power_n).to_string()]
-                    } else {
-                        seq += 1;
-                        let (a, b) = if kind == PoleKind::No { (3, 4) } else { (1, 2) };
-                        [format!("{seq}{a}"), format!("{seq}{b}")]
-                    };
-                    if !out.iter().any(|o| o.labels.iter().any(|l| labels.contains(l))) {
-                        break labels;
-                    }
-                };
-                out.push(OfferedPole { labels, kind, power });
-            }
-        }
-        if out.len() > MAX_POLES {
-            return Err(CmdError::refused(format!("A part offers at most {MAX_POLES} contacts.")));
+            ContactPoles::Count(u8::try_from(n).ok().and_then(std::num::NonZeroU8::new).ok_or_else(too_many)?)
+        };
+        out.push(ContactEntry { poles, kind, power });
+        if out.iter().map(ContactEntry::len).sum::<usize>() > MAX_POLES {
+            return Err(too_many());
         }
     }
     if out.is_empty() {
         return Err(bad());
     }
-    Ok(out)
+    Ok(ContactSet::new(out))
 }
 
-/// What component `c` offers, when it says so readably (an unreadable stored value, from a file,
-/// counts as no offer).
-pub fn offer_of(doc: &Document, c: DeviceId) -> Option<(String, Vec<OfferedPole>)> {
-    let text = doc.devices.get(&c)?.properties.get(CONTACTS_KEY)?;
-    parse_offer(text).ok().map(|p| (text.clone(), p))
+/// The poles `set` offers, numbered (design 025 FP1): power NO poles `1/2`, `3/4`…, power NC poles
+/// continuing the power numbering, auxiliary contacts with the IEC sequence digit in written order
+/// (`13/14` NO, `21/22` NC). A counted pole skips labels already offered.
+pub fn poles_offered(set: &ContactSet) -> Vec<OfferedPole> {
+    let mut out: Vec<OfferedPole> = Vec::new();
+    let (mut power_n, mut seq) = (0u32, 0u32);
+    for e in set.entries() {
+        let (kind, power) = (e.kind, e.power);
+        match &e.poles {
+            ContactPoles::Labels([a, b]) => out.push(OfferedPole { labels: [a.to_string(), b.to_string()], kind, power }),
+            ContactPoles::Count(n) => {
+                for _ in 0..n.get() {
+                    let labels = loop {
+                        let labels = if power {
+                            power_n += 1;
+                            [(2 * power_n - 1).to_string(), (2 * power_n).to_string()]
+                        } else {
+                            seq += 1;
+                            let (a, b) = if kind == PoleKind::No { (3, 4) } else { (1, 2) };
+                            [format!("{seq}{a}"), format!("{seq}{b}")]
+                        };
+                        if !out.iter().any(|o| o.labels.iter().any(|l| labels.contains(l))) {
+                            break labels;
+                        }
+                    };
+                    out.push(OfferedPole { labels, kind, power });
+                }
+            }
+        }
+    }
+    out
 }
 
-/// The stored form of an offer typed by someone: trimmed, checked; empty clears it.
+/// Read an offer and number its poles ([`parse_set`], [`poles_offered`]).
 ///
 /// # Errors
-/// As [`parse_offer`].
-pub fn offer_value(text: Option<&str>) -> Result<Option<String>, CmdError> {
-    let Some(t) = text.map(str::trim).filter(|t| !t.is_empty()) else { return Ok(None) };
-    if t.chars().count() > crate::devices::MAX_PROPERTY_CHARS {
-        return Err(CmdError::refused(not_a_contact_list(t)));
+/// As [`parse_set`].
+pub fn parse_offer(text: &str) -> Result<Vec<OfferedPole>, CmdError> {
+    parse_set(text).map(|s| poles_offered(&s))
+}
+
+/// The contacts component `c` offers: its typed set ([`crate::traits::Contacts`]); `None` when its
+/// group has no contacts.
+pub fn contacts_of(doc: &Document, c: DeviceId) -> Option<&ContactSet> {
+    doc.devices.get(&c)?.device_type.as_contacts().map(|x| x.contacts())
+}
+
+/// What component `c` offers, as written and numbered, when it offers any.
+pub fn offer_of(doc: &Document, c: DeviceId) -> Option<(String, Vec<OfferedPole>)> {
+    contacts_of(doc, c).filter(|s| !s.is_empty()).map(|s| (s.to_string(), poles_offered(s)))
+}
+
+/// Device `d` (named `who` in refusals) with its contacts set to the typed `text` (`None` or blank
+/// clears them).
+///
+/// # Errors
+/// A device whose group has no contacts; as [`parse_set`].
+pub fn with_contacts(d: &StoredDevice, who: &str, text: Option<&str>) -> Result<StoredDevice, CmdError> {
+    let set = match text.map(str::trim).filter(|t| !t.is_empty()) {
+        None => ContactSet::default(),
+        Some(t) => parse_set(t)?,
+    };
+    let mut out = d.clone();
+    match out.device_type.as_contacts_mut() {
+        Some(x) => *x.contacts_mut() = set,
+        None if set.is_empty() => {}
+        None => {
+            return Err(CmdError::refused(format!("{who} is a {}: it has no contacts.", d.device_type.group().label().to_lowercase())));
+        }
     }
-    parse_offer(t)?;
-    Ok(Some(t.to_string()))
+    Ok(out)
 }
 
 // ---------------------------------------------------------------- placement (FP2, FP3)
@@ -237,6 +255,28 @@ impl Placement {
             Placement::Right => "right".into(),
             Placement::Off => "off".into(),
             Placement::At(p) => format!("at {},{}", trim_num(p.x), trim_num(p.y)),
+        }
+    }
+
+    /// The placement a stored [`ContactTable`] says.
+    pub fn of_table(t: ContactTable) -> Placement {
+        match t {
+            ContactTable::Auto => Placement::Auto,
+            ContactTable::Below => Placement::Below,
+            ContactTable::Right => Placement::Right,
+            ContactTable::Off => Placement::Off,
+            ContactTable::At { dx, dy } => Placement::At(Pt::new(dx, dy)),
+        }
+    }
+
+    /// Its stored form.
+    pub fn table(self) -> ContactTable {
+        match self {
+            Placement::Auto => ContactTable::Auto,
+            Placement::Below => ContactTable::Below,
+            Placement::Right => ContactTable::Right,
+            Placement::Off => ContactTable::Off,
+            Placement::At(p) => ContactTable::At { dx: p.x, dy: p.y },
         }
     }
 
@@ -285,23 +325,38 @@ pub fn parse_mirror(text: &str) -> Result<Placement, CmdError> {
     Ok(Placement::At(Pt::new(x, y)))
 }
 
-/// The stored form of a typed `mirror` value; empty (or `auto`'s project default) clears it.
+/// The table placement a typed `mirror` value says; `None` for empty, `default` or `project
+/// default` (the project's default).
 ///
 /// # Errors
 /// As [`parse_mirror`].
-pub fn mirror_value(text: Option<&str>) -> Result<Option<String>, CmdError> {
+pub fn table_of_typed(text: Option<&str>) -> Result<Option<ContactTable>, CmdError> {
     let Some(t) = text.map(str::trim).filter(|t| !t.is_empty()) else { return Ok(None) };
     if t.eq_ignore_ascii_case("default") || t.to_ascii_lowercase().starts_with("project default") {
         return Ok(None);
     }
-    Ok(Some(parse_mirror(t)?.word()))
+    Ok(Some(parse_mirror(t)?.table()))
 }
 
-/// Where `c`'s table goes and whether the device says so itself (else the project default). An
-/// unreadable stored value counts as absent.
+/// Device `d` (named `who` in refusals) with its contact table placed at `table` (`None`: the
+/// project's default).
+///
+/// # Errors
+/// Not a switching device (only a switching device has a contact table of its own).
+pub fn with_table(d: &StoredDevice, who: &str, table: Option<ContactTable>) -> Result<StoredDevice, CmdError> {
+    let mut out = d.clone();
+    match &mut out.device_type {
+        DeviceType::Switching(s) => s.contact_table = table,
+        _ if table.is_none() => {}
+        _ => return Err(CmdError::refused(format!("{who} has no contact table: only a switching device has one."))),
+    }
+    Ok(out)
+}
+
+/// Where `c`'s table goes and whether the device says so itself (else the project default).
 pub fn placement_of(doc: &Document, c: DeviceId) -> (Placement, bool) {
-    match doc.devices.get(&c).and_then(|x| x.properties.get(MIRROR_KEY)).and_then(|t| parse_mirror(t).ok()) {
-        Some(p) => (p, true),
+    match doc.devices.get(&c).and_then(|x| x.device_type.as_contacts()).and_then(|x| x.contact_table()) {
+        Some(t) => (Placement::of_table(t), true),
         None => (Placement::of_default(doc.settings.contact_mirror), false),
     }
 }
@@ -689,7 +744,7 @@ pub fn counts(dev: &Device, offer: &[OfferedPole]) -> BTreeMap<(bool, PoleKind),
 
 /// `auxiliary NO`, `power NC`…
 pub fn kind_words(power: bool, kind: PoleKind) -> String {
-    format!("{} {}", if power { "power" } else { "auxiliary" }, kind.word())
+    format!("{} {}", if power { "power" } else { "auxiliary" }, kind.upper())
 }
 
 /// The labels the next contact of kind `make` joining `c` takes from its offer (design 025 §4.3,
@@ -710,7 +765,7 @@ pub fn over_line(doc: &Document, c: DeviceId, labels: &[String], make: bool) -> 
     (drawn > offered).then(|| {
         format!(
             "Added {} contact {} to {}; its part offers {offered} {} ({text}), now {drawn} drawn (see Checks).",
-            kind.word(),
+            kind.upper(),
             labels.join("/"),
             crate::devices::tag_words(doc, c),
             kind_words(false, kind),
@@ -1674,8 +1729,8 @@ impl Scope {
                 Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
                     self.devices.insert(*id);
                 }
-                Op::SetProperty { object: ObjectRef::Device(c), key, .. } if key == CONTACTS_KEY || key == MIRROR_KEY => {
-                    self.devices.insert(*c);
+                Op::ModifyDevice { id, before, after } if contacts_changed(before, after) => {
+                    self.devices.insert(*id);
                 }
                 Op::ModifyPage { id: p, before, after } => {
                     let ch = before.change(after);
@@ -2102,7 +2157,7 @@ pub fn contacts_json_measured(doc: &Document, c: DeviceId, m: &dyn TextMetrics) 
     }
     let dev = device(doc, c);
     let offer = offer_of(doc, c);
-    let stored = doc.devices.get(&c).and_then(|x| x.properties.get(CONTACTS_KEY)).cloned();
+    let stored = offer.as_ref().map(|(t, _)| t.clone());
     let mut places = Places::new(doc);
     let rows = rows(&mut places, &dev, offer.as_ref().map(|(_, o)| o.as_slice()));
     let over = rows.iter().filter(|r| r.state == State::Over).count();
@@ -2116,7 +2171,7 @@ pub fn contacts_json_measured(doc: &Document, c: DeviceId, m: &dyn TextMetrics) 
         "placement": placement.word(),
         "placement_from": if own { "device" } else { "project" },
         "rows": rows.iter().map(|r| json!({
-            "labels": r.label_pair(), "kind": r.kind.word(), "group": r.group_word(), "state": r.state.word(),
+            "labels": r.label_pair(), "kind": r.kind.upper(), "group": r.group_word(), "state": r.state.word(),
             "representation": r.rep.map(|x| x.hex()), "place": (r.state != State::Spare).then(|| r.place.clone()),
         })).collect::<Vec<_>>(),
         "over": over,
@@ -2204,7 +2259,7 @@ pub fn head_lines(doc: &Document, c: DeviceId, rep: RepresentationId) -> Vec<Str
     }
     let mut lines = vec![head];
     for r in rows.iter().take(6) {
-        lines.push(format!("  {} {} {} {}", r.label_pair(), r.kind.word(), r.group_word(), r.place));
+        lines.push(format!("  {} {} {} {}", r.label_pair(), r.kind.upper(), r.group_word(), r.place));
     }
     if rows.len() > 6 {
         lines.push(format!("  +{} more", rows.len() - 6));
@@ -2221,10 +2276,10 @@ pub fn row_lines(doc: &Document, c: DeviceId, i: usize, m: &dyn TextMetrics) -> 
     let tag = crate::devices::tag_words(doc, c);
     let what = if r.power { "power" } else { "auxiliary" };
     Some(vec![match (r.state, r.page) {
-        (State::Spare, _) | (_, None) => format!("{tag} {} {}, {what}, offered, not drawn", r.label_pair(), r.kind.word()),
+        (State::Spare, _) | (_, None) => format!("{tag} {} {}, {what}, offered, not drawn", r.label_pair(), r.kind.upper()),
         (s, Some(p)) => {
             let over = if s == State::Over { " (beyond the part's offer)" } else { "" };
-            format!("{tag} {} {}, {what}, {} {}{over}", r.label_pair(), r.kind.word(), crate::references::page_words(doc, p), r.place)
+            format!("{tag} {} {}, {what}, {} {}{over}", r.label_pair(), r.kind.upper(), crate::references::page_words(doc, p), r.place)
         }
     }])
 }
@@ -2263,12 +2318,19 @@ pub fn table_text_key(key: &str) -> bool {
     [crate::defaults::styles::TABLE.key, FONT.key].contains(&key)
 }
 
+/// Whether a `ModifyDevice` from `before` to `after` changes what the device offers or where its
+/// table goes.
+fn contacts_changed(before: &StoredDevice, after: &StoredDevice) -> bool {
+    let of = |d: &StoredDevice| d.device_type.as_contacts().map(|x| (x.contacts().clone(), x.contact_table()));
+    of(before) != of(after)
+}
+
 /// The devices whose table the user placed (`at dx,dy`): the ones a sheet change can move onto
 /// or off the title block. O(components), on a project sheet change only.
 pub fn placed_tables(doc: &Document) -> Vec<DeviceId> {
     doc.devices
         .iter()
-        .filter(|(_, c)| c.properties.get(MIRROR_KEY).is_some_and(|v| matches!(parse_mirror(v), Ok(Placement::At(_)))))
+        .filter(|(_, c)| matches!(&c.device_type, DeviceType::Switching(s) if matches!(s.contact_table, Some(ContactTable::At { .. }))))
         .map(|(id, _)| *id)
         .collect()
 }
@@ -2310,7 +2372,7 @@ mod tests {
     fn the_offer_grammar() {
         let labels = |t: &str| {
             parse_offer(t).map(|v| {
-                v.iter().map(|o| format!("{}/{} {}{}", o.labels[0], o.labels[1], if o.power { "P" } else { "" }, o.kind.word())).collect::<Vec<_>>()
+                v.iter().map(|o| format!("{}/{} {}{}", o.labels[0], o.labels[1], if o.power { "P" } else { "" }, o.kind.upper())).collect::<Vec<_>>()
             })
         };
         assert_eq!(labels("3P+1NO+1NC").unwrap(), ["1/2 PNO", "3/4 PNO", "5/6 PNO", "13/14 NO", "21/22 NC"]);
@@ -2337,8 +2399,8 @@ mod tests {
         for bad in ["at NaN,1", "at 1", "at inf,2", "at 99999,0", "sideways", ""] {
             assert!(parse_mirror(bad).is_err(), "{bad:?}");
         }
-        assert_eq!(mirror_value(Some("Project default (auto)")).unwrap(), None);
-        assert_eq!(mirror_value(Some("OFF")).unwrap(), Some("off".into()));
+        assert_eq!(table_of_typed(Some("Project default (auto)")).unwrap(), None);
+        assert_eq!(table_of_typed(Some("OFF")).unwrap(), Some(ContactTable::Off));
     }
 
     #[test]

@@ -288,9 +288,9 @@ fn build(kind: ProtectionKind, mut f: Found) -> Result<Protection, Problem> {
                 (Some(_), Some(_)) => {}
             }
             Ok(if kind == ProtectionKind::Mcb {
-                Protection::Mcb(Breaker { rated_current: rated, curve: f.curve, breaking, poles: f.poles })
+                Protection::Mcb(Breaker { rated_current: rated, curve: f.curve, breaking, poles: f.poles, ..Breaker::default() })
             } else {
-                Protection::Rcbo(Rcbo { rated_current: rated, curve: f.curve, residual, breaking, poles: f.poles })
+                Protection::Rcbo(Rcbo { rated_current: rated, curve: f.curve, residual, breaking, poles: f.poles, ..Rcbo::default() })
             })
         }
         ProtectionKind::Rcd => {
@@ -306,7 +306,7 @@ fn build(kind: ProtectionKind, mut f: Found) -> Result<Protection, Problem> {
             if residual.is_none() {
                 return Err(Problem::Ask("the residual current, for example 30 mA".into()));
             }
-            Ok(Protection::Rcd(Rcd { rated_current: rated, residual, poles: f.poles }))
+            Ok(Protection::Rcd(Rcd { rated_current: rated, residual, poles: f.poles, ..Rcd::default() }))
         }
     }
 }
@@ -422,12 +422,20 @@ fn note_refusal(e: &ecad_model::text::TextError) -> String {
     }
 }
 
-/// Device `d` with its rating set from `text` (`None` clears it).
+/// Device `d` with its rating set from `text` (`None` clears it). Its contacts and contact table
+/// are not rating fields and are kept.
 ///
 /// # Errors
 /// [`rated`]'s.
 pub fn with_rating(d: &Device, who: &str, text: Option<&str>) -> Result<Device, CmdError> {
-    let (device_type, rating_note) = rated(&d.device_type, who, text)?;
+    use crate::traits::DeviceKind;
+    let (mut device_type, rating_note) = rated(&d.device_type, who, text)?;
+    if let (Some(old), Some(new)) = (d.device_type.as_contacts(), device_type.as_contacts_mut()) {
+        *new.contacts_mut() = old.contacts().clone();
+    }
+    if let (DeviceType::Switching(old), DeviceType::Switching(new)) = (&d.device_type, &mut device_type) {
+        new.contact_table = old.contact_table;
+    }
     Ok(Device { device_type, rating_note, ..d.clone() })
 }
 

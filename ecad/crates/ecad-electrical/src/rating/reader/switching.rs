@@ -206,7 +206,7 @@ fn build(kind: OperatorKind, f: &Found) -> Result<Switching, Read<Switching>> {
         OperatorKind::SolidState => Operator::SolidState(Control { voltage, power }),
         OperatorKind::Manual => Operator::Manual,
     };
-    Ok(Switching { operator, ac3_current, ac3_power })
+    Ok(Switching { operator, ac3_current, ac3_power, ..Switching::default() })
 }
 
 #[cfg(test)]

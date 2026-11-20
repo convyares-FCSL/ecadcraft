@@ -20,6 +20,16 @@ pub static RULES: &[PropRule] = &[
         build: Build::Record(connector_value),
     },
     PropRule {
+        what: "contacts (brief 025, 072 B)",
+        claims: |_, o, k| matches!(o, ObjectRef::Device(_)) && k == crate::xref::CONTACTS_KEY,
+        build: Build::Record(contacts_value),
+    },
+    PropRule {
+        what: "contact table (brief 025, 072 B)",
+        claims: |_, o, k| matches!(o, ObjectRef::Device(_)) && k == crate::xref::MIRROR_KEY,
+        build: Build::Record(table_value),
+    },
+    PropRule {
         what: "device rating (072 B)",
         claims: |doc, o, k| match o {
             ObjectRef::Device(c) => {
@@ -50,6 +60,28 @@ pub fn rating_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>
         Some(n) => crate::rating::reader::with_output_rating(d, &who, &crate::symbols::bank_outputs(doc, c), n, value),
         None => crate::rating::reader::with_rating(d, &who, value),
     }?;
+    Ok((after != *d).then(|| Op::ModifyDevice { id: c, before: d.clone(), after }))
+}
+
+/// The contacts a part offers (design 025 FP1): one `ModifyDevice` of its group's `contacts`.
+///
+/// # Errors
+/// A device whose group has no contacts; an unreadable offer ([`crate::xref::with_contacts`]).
+pub fn contacts_value(doc: &Document, o: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
+    let (c, d) = device_of(doc, o)?;
+    let after = crate::xref::with_contacts(d, &crate::devices::tag_words(doc, c), value)?;
+    Ok((after != *d).then(|| Op::ModifyDevice { id: c, before: d.clone(), after }))
+}
+
+/// Where a switching device's contact table goes (design 025 FP2): one `ModifyDevice` of its
+/// `contact_table`.
+///
+/// # Errors
+/// An unreadable placement; not a switching device ([`crate::xref::with_table`]).
+pub fn table_value(doc: &Document, o: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
+    let (c, d) = device_of(doc, o)?;
+    let table = crate::xref::table_of_typed(value)?;
+    let after = crate::xref::with_table(d, &crate::devices::tag_words(doc, c), table)?;
     Ok((after != *d).then(|| Op::ModifyDevice { id: c, before: d.clone(), after }))
 }
 
