@@ -111,10 +111,6 @@ impl DocumentOwner for Project {
             self.events.record(EventKind::Refused, Some(c.command), head, Some(page), m.clone());
             return Verdict::Refuse(m);
         }
-        // References are derived for the cables the ops could touch only, once before and once
-        // after the commit (brief 014): a move of a component outside any cable derives none.
-        let reuse = self.xref_reuse();
-        let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &t.ops, reuse, &crate::draw::text_style::EngineMetrics);
         let props = crate::props::touched(self.ledger.document(), &t.ops);
         let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &t.ops));
         let outputs = self.outputs.as_ref().map(|o| o.scope(self.ledger.document(), &t.ops));
@@ -143,14 +139,11 @@ impl DocumentOwner for Project {
         // A reference end on another page may be drawn from this page's objects (brief 010). Only
         // the active page is drawn (brief 016); the change log says which other pages changed,
         // for a preview of one of them.
-        let refs = self.finish_watch(watch);
         self.update_checks(checks);
-        let generated = self.update_outputs(outputs);
-        let changed = touched(refs.pages, Some(generated));
+        let changed = self.update_outputs(outputs);
         let props = self.with_numbered(props, n);
         let mut changes = self.finish_derived(pending);
-        let echo = refs.orphaned.into_iter().chain(t.notes.iter().cloned()).collect();
-        pass_through(&mut changes, Old { pages: changed, props, echo });
+        pass_through(&mut changes, Old { pages: changed, props, echo: t.notes.clone() });
         self.apply_changes(pg, c.command, changes, Path::Interactive { page });
         self.move_follow_up(pg, &moved, &label);
         self.sync_saved(pg);
@@ -319,8 +312,6 @@ impl Project {
         }
         // The ops the undo or redo will apply, scoped as a commit's are (brief 014).
         let ops = if undo { self.ledger.undo_ops() } else { self.ledger.redo_ops() }.unwrap_or_default();
-        let reuse = self.xref_reuse();
-        let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &ops, reuse, &crate::draw::text_style::EngineMetrics);
         let order_before = self.ledger.document().page_order.clone();
         let props = crate::props::touched(self.ledger.document(), &ops);
         let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &ops));
@@ -357,12 +348,10 @@ impl Project {
                 let label = self.ledger.log().last().map(|t| t.label.clone()).unwrap_or_default();
                 let kind = if undo { EventKind::Undo } else { EventKind::Redo };
                 self.events.record(kind, Some(command), self.ledger.head(), None, label.clone());
-                let refs = self.finish_watch(watch);
                 self.update_checks(checks);
-                let generated = self.update_outputs(outputs);
-                let pages = touched(refs.pages, Some(generated));
+                let pages = self.update_outputs(outputs);
                 let mut changes = self.finish_derived(pending);
-                pass_through(&mut changes, Old { pages, props, echo: refs.orphaned.into_iter().collect() });
+                pass_through(&mut changes, Old { pages, props, echo: Vec::new() });
                 self.apply_changes(pg, command, changes, Path::History { order_before: &order_before });
                 Ok(Some(label))
             }

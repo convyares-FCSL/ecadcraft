@@ -80,7 +80,7 @@ fn drawn(h: &mut H, page: PageId) -> Vec<String> {
 }
 
 fn index_matches(h: &mut H) {
-    h.p(|p| p.xref.verify(p.ledger.document())).unwrap();
+    h.p(|p| p.xref().verify(p.ledger.document())).unwrap();
 }
 
 fn item_handle(h: &mut H, page: PageId, c: DeviceId) -> String {
@@ -105,7 +105,7 @@ fn three_arrows_show_each_other_in_book_order() {
     assert!((rotation - std::f64::consts::FRAC_PI_2).abs() < 1e-12 && halign == HAlign::Right, "{rotation} {halign:?}");
     assert!(at.near(Pt::new(300.0, 144.0), 1e-9), "{at:?}");
     // On the index: one continuation group, keyed by the lowest arrow; each shows the others.
-    let (g, targets) = f.h.p(|p| (p.xref.member(a), p.xref.targets(a).collect::<BTreeSet<_>>()));
+    let (g, targets) = f.h.p(|p| (p.xref().member(a), p.xref().targets(a).collect::<BTreeSet<_>>()));
     assert!(matches!(g, Some((Group::Continuation(_), xref::Class::Arrow))), "{g:?}");
     assert_eq!(targets, BTreeSet::from([b, c]));
     index_matches(&mut f.h);

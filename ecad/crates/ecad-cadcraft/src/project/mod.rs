@@ -175,12 +175,6 @@ pub struct Project {
     /// The merge last prepared (its states and scope), kept while nothing it read changes
     /// (brief 020b).
     pub merge_cache: Option<Arc<crate::merging::Prepared>>,
-    /// The general reference index (brief 025): built on open and branch switch, kept per commit
-    /// from the ops ([`crate::xref::Watch`]).
-    pub xref: crate::xref::RefIndex,
-    /// What the last commit's [`crate::xref::Watch`] derived after it, with the state it was
-    /// derived for (head and last transaction ID): the next commit's "before" while unchanged.
-    xref_shown: Option<((u64, u128), crate::xref::Shown)>,
     /// Counts branch actions (create, rename, switch, archive, reopen), however they were run:
     /// what shows the branch (title, bar, Revisions, History) refreshes when it moves (brief 020a).
     branch_gen: u64,
@@ -1098,11 +1092,4 @@ impl Project {
         }
         out
     }
-}
-
-/// `pages` and `refs` together; `None` (every page) when either is.
-fn touched(pages: Option<BTreeSet<PageId>>, refs: Option<BTreeSet<PageId>>) -> Option<BTreeSet<PageId>> {
-    let (mut a, b) = (pages?, refs?);
-    a.extend(b);
-    Some(a)
 }
