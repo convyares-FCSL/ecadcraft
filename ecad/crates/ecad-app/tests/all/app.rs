@@ -381,7 +381,7 @@ fn frames_lay_out_headless_with_every_dialog() {
     one_frame(&mut t, &ctx);
 }
 
-/// The quick-start guide's manual trial, typed through the ECAD command window's field. Mouse steps
+/// The quick-start guide's manual steps, typed through the ECAD command window's field. Mouse steps
 /// (window selection, dragging) are replaced by their JSON forms; how they look on screen is not
 /// checked. Keep in step with `ecad/docs/quick-start.md`.
 #[test]
