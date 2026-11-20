@@ -26,8 +26,8 @@ use std::sync::OnceLock;
 
 use crate::CmdError;
 use ecad_model::{
-    Definition, DefinitionId, DeviceGroup, DeviceType, Document, LibraryId, ObjectRef, Op, Origin, PointKey, Primitive, Pt, Subject, TerminalDef,
-    Word,
+    Definition, DefinitionId, DeviceGroup, DeviceType, Document, LibraryId, ObjectRef, Op, Origin, PartRole, PointKey, Primitive, Pt, Subject,
+    TerminalDef, Word,
 };
 
 /// The library ID of the starter symbols.
@@ -566,7 +566,7 @@ impl Starter {
         let bridges = match self.kind {
             Kind::ConnectorHalf { .. } => vec![vec![SOCKET_KEY, PLUG_KEY]],
             Kind::Contact { .. } | Kind::Terminal | Kind::Channel(_) | Kind::ChangeOver | Kind::Fixed { .. } | Kind::Tagless => {
-                crate::terminal_types::bridges(self.key.word())
+                crate::terminal_types::bridges(self.key)
             }
         };
         let mut d = Definition {
@@ -575,7 +575,8 @@ impl Starter {
             origin: None,
             graphics: graphics(self.key),
             terminals: terminals(self.key),
-            device_type: crate::plc::types::starter_type(self.key),
+            device_type: self.device_type(),
+            part_role: self.part_role(),
             ..Default::default()
         };
         let content_hash =
@@ -584,12 +585,96 @@ impl Starter {
         Ok(d)
     }
 
+    /// A placed copy's part in its device (design 072 §4.4, F3′): the part its definition
+    /// declares. The power pole sets (`power3`, `power4`) are a contactor's contacts.
+    pub fn part_role(&self) -> PartRole {
+        match self.kind {
+            Kind::ConnectorHalf { .. } if crate::connectors::is_pin_starter(self) => PartRole::Pin,
+            Kind::Fixed { exclusive: false } if !crate::xref::poles_of(self).is_empty() => PartRole::Contact,
+            k @ (Kind::ConnectorHalf { .. }
+            | Kind::Fixed { .. }
+            | Kind::Contact { .. }
+            | Kind::Terminal
+            | Kind::Channel(_)
+            | Kind::ChangeOver
+            | Kind::Tagless) => part_of_kind(k),
+        }
+    }
+
     /// What a device this starter begins is: the type its definition declares (design 072 §2.3).
     pub fn device_type(&self) -> DeviceType {
         let t = crate::plc::types::starter_type(self.key);
-        // A connector's family is its symbol's (a pin's: plain).
+        // A protective device's kind is its symbol's (design 072 §2.2).
+        if let DeviceType::Protection(_) = t {
+            use ecad_model::device::ProtectionKind as P;
+            let kind = if self.key.fuse_bank_ways().is_some() {
+                P::FuseBank
+            } else if matches!(self.key, K::Mcb1 | K::Mcb2) {
+                P::Mcb
+            } else if self.key == K::Rcbo2 {
+                P::Rcbo
+            } else if matches!(self.key, K::Rcd2 | K::Rcd4) {
+                P::Rcd
+            } else if self.key == K::Fuseterm {
+                P::FuseTerminal
+            } else {
+                P::Fuse
+            };
+            return DeviceType::Protection(kind.empty());
+        }
+        // What operates a switching device is its symbol's (design 072 §2.2).
+        if let DeviceType::Switching(_) = t {
+            use ecad_model::device::OperatorKind as O;
+            let kind = if matches!(self.key, K::Ssrin | K::Ssrout) {
+                O::SolidState
+            } else if matches!(self.key, K::Pbno | K::Pbnc | K::Sel | K::Swco) {
+                O::Manual
+            } else {
+                O::Coil
+            };
+            return DeviceType::Switching(kind.empty());
+        }
+        // What a sensor senses and outputs is its symbol's (design 072 §2.2).
+        if let DeviceType::Sensor(_) = t {
+            use ecad_model::device::{Output as O, Sensing as S, Sensor};
+            let known = [
+                (&[K::Prox3][..], S::Proximity, O::Pnp),
+                (&[K::Floatno, K::Floatnc][..], S::Float, O::Contact),
+                (&[K::Rollerno, K::Rollernc][..], S::Limit, O::Contact),
+                (&[K::Interlockno, K::Interlocknc][..], S::Interlock, O::Contact),
+                (&[K::Tc][..], S::Temperature, O::Thermocouple),
+            ];
+            if let Some((_, sensing, output)) = known.iter().find(|(keys, _, _)| keys.contains(&self.key)) {
+                return DeviceType::Sensor(Sensor::empty(*sensing, *output));
+            }
+            return t;
+        }
+        // A motor's phases are its symbol's (design 072 §2.2).
+        if let DeviceType::Motor(_) = t {
+            use ecad_model::device::{Motor, Phases};
+            return DeviceType::Motor(Motor::empty(if self.key == K::Motor1 { Phases::Single } else { Phases::Three }));
+        }
+        // An indicator's signal is a starter default, stored when it is created (design 072 §2.2): a
+        // lamp is steady. Its colour starts empty.
+        if let DeviceType::Indicator(_) = t {
+            use ecad_model::device::{Indicator, SignalType};
+            return DeviceType::Indicator(Indicator::empty(SignalType::Steady));
+        }
+        // Whether it is a power supply or a transformer is its symbol's (design 072 §2.2).
+        if let DeviceType::PowerSupply(_) = t {
+            use ecad_model::device::{PowerSupply, Psu, Transformer};
+            return DeviceType::PowerSupply(if self.key == K::Trafo {
+                PowerSupply::Transformer(Transformer::default())
+            } else {
+                PowerSupply::Psu(Psu::default())
+            });
+        }
+        // A connector's family is its symbol's (a pin's: plain); a half or pin has mating halves, a
+        // bulkhead is one piece.
         if let DeviceType::Connector(_) = t {
-            return DeviceType::Connector(Box::new(ecad_model::device::Connector::of_family(crate::connectors::family_of(self).unwrap_or_default())));
+            let mut x = ecad_model::device::Connector::of_family(crate::connectors::family_of(self).unwrap_or_default());
+            x.mating = matches!(self.kind, Kind::ConnectorHalf { .. });
+            return DeviceType::Connector(Box::new(x));
         }
         t
     }
@@ -621,7 +706,7 @@ impl Starter {
     /// (`symbol.<key>.prefix`, [`crate::defaults::symbols`]); empty for a tagless symbol. A
     /// project's own prefix is [`crate::devices::prefix_for`].
     pub fn prefix(&self) -> &'static str {
-        crate::defaults::symbols::prefix_entry(self.key.word()).map_or("", crate::defaults::symbols::builtin_prefix)
+        crate::defaults::symbols::prefix_entry(self.key).map_or("", crate::defaults::symbols::builtin_prefix)
     }
 
     /// Whether it can join an existing device (every starter symbol can, within §3.1's rules).
@@ -1227,35 +1312,40 @@ pub const PROJECT_SYMBOLS: LibraryId = LibraryId(0x0000_ecad_0048_5ea1_0000_0000
 pub const MAX_KEY: usize = 16;
 
 /// How a project symbol joins a device (design 048 §5.2).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Join {
-    /// A device of its own: a new tag on each placement.
-    Device,
-    /// Part of a named device.
-    Part,
-}
-
-impl Join {
-    /// The word stored in `defaults.join`.
-    pub fn word(self) -> &'static str {
-        match self {
-            Join::Device => "device",
-            Join::Part => "part",
-        }
-    }
-}
+pub use ecad_model::Join;
 
 /// Whether `d` is a symbol made or edited in a project (its origin is [`PROJECT_SYMBOLS`]).
 pub fn is_project_symbol(d: &Definition) -> bool {
     d.origin.as_ref().is_some_and(|o| o.library == PROJECT_SYMBOLS)
 }
 
+/// The part a symbol of kind `k` plays in its device (design 072 §4.4), with no poles of its own.
+fn part_of_kind(k: Kind) -> PartRole {
+    match k {
+        Kind::Fixed { exclusive: true } => PartRole::Head,
+        Kind::Contact { .. } | Kind::ChangeOver => PartRole::Contact,
+        Kind::Fixed { exclusive: false } => PartRole::Pole,
+        Kind::Terminal => PartRole::Terminal,
+        Kind::Channel(_) => PartRole::Channel,
+        Kind::ConnectorHalf { .. } => PartRole::Half,
+        Kind::Tagless => PartRole::Other,
+    }
+}
+
+/// A project symbol's part in its device (design 072 §4.4, F3′), declared when the symbol is
+/// made: its derived starter's kind, else a head unless its defaults join it as a part (design 048
+/// §5.2). A project symbol carries no poles of its own.
+pub fn project_part_role(d: &Definition) -> PartRole {
+    let kind = match d.derived_from.as_ref().and_then(starter_of_origin) {
+        Some(s) => s.kind,
+        None => Kind::Fixed { exclusive: join_of(d) != Join::Part },
+    };
+    part_of_kind(kind)
+}
+
 /// How project symbol `d` joins a device: `part` only when its defaults say so.
 pub fn join_of(d: &Definition) -> Join {
-    match d.defaults.get("join").map(|j| j.trim().to_ascii_lowercase()) {
-        Some(j) if j == "part" => Join::Part,
-        _ => Join::Device,
-    }
+    d.defaults.join.unwrap_or_default()
 }
 
 /// The starter an origin names (by library and ID).
@@ -1291,7 +1381,7 @@ impl<'a> Version<'a> {
 
     /// Its key (`defaults.key`), if it has one.
     pub fn key(&self) -> Option<&'a str> {
-        self.def.defaults.get("key").map(|k| k.trim()).filter(|k| !k.is_empty())
+        self.def.defaults.key.as_ref().map(|k| k.as_str())
     }
 }
 
@@ -1382,7 +1472,7 @@ pub fn registry_key(d: &Definition) -> Option<String> {
     if let Some(s) = of_definition(d) {
         return Some(s.key.to_string());
     }
-    d.defaults.get("key").map(|k| k.trim().to_string()).filter(|k| !k.is_empty())
+    d.defaults.key.as_ref().map(|k| k.to_string())
 }
 
 /// Whether `d` is a brief-044 connector half or pin: a connector starter whose bridges join the
@@ -1401,7 +1491,7 @@ pub fn bridge_key_ok(d: &Definition, k: &PointKey) -> bool {
     }
     match of_definition(d) {
         Some(s) if matches!(s.kind, Kind::ConnectorHalf { .. }) => *k == SOCKET_KEY || *k == PLUG_KEY,
-        Some(s) => crate::terminal_types::of_starter(s.key.word()).is_some_and(|(t, _)| t.bridges.iter().any(|g| g.iter().any(|x| k == *x))),
+        Some(s) => crate::terminal_types::of_starter(s.key).is_some_and(|(t, _)| t.bridges.iter().any(|g| g.contains(k))),
         None => false,
     }
 }
@@ -1502,11 +1592,7 @@ pub fn bank_outputs(doc: &Document, c: ecad_model::DeviceId) -> BTreeSet<String>
 
 // ---------------------------------------------------------------- ratings (design 034 §7.3)
 
-/// A device's rating as written on the drawing (`13A C 30mA`, `6.3A T`, `K`).
-pub const RATING_KEY: &str = "rating";
-
-/// A fuse bank's fuse rating: `rating.<n>`, `<n>` one of its fuse outputs.
-pub const RATING_OF_PREFIX: &str = "rating.";
+pub use ecad_model::device::{RATING_KEY, RATING_OF_PREFIX};
 
 /// Most characters of `<n>` in `rating.<n>` that are read; longer is refused without parsing it
 /// (a hostile key cannot make a lookup or a message long).
@@ -1522,18 +1608,16 @@ pub fn is_fuse_bank(s: &Starter) -> bool {
     s.key.fuse_bank_ways().is_some()
 }
 
-/// Check a `rating` or `rating.<n>` value set on `object` (design 034 §7.3).
+/// Check a `rating.<n>` value set on `object` that is neither a protective device nor a terminal
+/// strip (design 034 §7.3; a device's own rating, a fuse bank's fuses and a strip's fuse positions
+/// are typed fields, `cmd::props::b`).
 ///
 /// # Semantics
-/// `rating` on a device follows the 018 §6.1 value rules (at most 200 characters, no control
-/// characters, trimmed; empty or `None` clears). `rating.<n>` follows them too, and only on a
-/// device whose head is a fuse bank, with `<n>` one of its fuse outputs; clearing it is always
-/// allowed, whatever the device now is. Any other key, or an
-/// object that is not a device: no opinion, the value comes back unchanged.
+/// `rating.<n>` on such a device is refused, and clearing it is always allowed. Any other key, or
+/// an object that is not a device: no opinion, the value comes back unchanged.
 ///
 /// # Errors
-/// A value the 018 rules refuse; `rating.<n>` on a device that is not a fuse bank, or for a fuse
-/// it does not have (`-F01 has no fuse 13.`).
+/// `rating.<n>` set on a device that is not a fuse bank or a strip.
 pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
     let ObjectRef::Device(c) = object else { return Ok(value.map(str::to_string)) };
     if !is_rating_key(key) {
@@ -1544,33 +1628,10 @@ pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<
     let clearing = value.map(str::trim).is_none_or(str::is_empty);
     if let Some(n) = key.strip_prefix(RATING_OF_PREFIX).filter(|_| !clearing) {
         let who = crate::devices::tag_words(doc, c);
-        // Capped before any lookup: only the first 12 characters are ever read.
+        // Capped: only the first 12 characters are ever shown.
         let shown: String = n.chars().take(MAX_FUSE_LABEL).collect();
-        let long = n.chars().nth(MAX_FUSE_LABEL).is_some();
-        let more = if long { "…" } else { "" };
-        // Brief 036 (FP5): on a terminal strip, `rating.<p>` is a fuse position's rating.
-        if crate::strips::is_strip(doc, c) {
-            let fuse = !long && crate::terminal_types::positions(doc, c).iter().any(|p| p.label == n && p.ty.code == "fuse");
-            if !fuse {
-                return Err(CmdError::refused(format!(
-                    "{who}:{shown}{more} is not a fuse position; rating.<position> is the rating of a fuse position."
-                )));
-            }
-            return crate::devices::property_value(doc, key, value);
-        }
-        // The device's head (its one exclusive symbol), and only when that is a fuse bank.
-        let bank = doc
-            .representations_of(Subject::Device(c))
-            .filter_map(|(_, r)| crate::devices::rep_starter(doc, r))
-            .find(|s| s.kind == Kind::Fixed { exclusive: true })
-            .filter(|s| is_fuse_bank(s));
-        let Some(bank) = bank else {
-            return Err(CmdError::refused(format!("rating.{shown}{more} is for a fuse bank's fuses; {who} is not a fuse bank.")));
-        };
-        let has = !long && bank.labels().iter().any(|l| l == n && ecad_model::words::is_digits(l));
-        if !has {
-            return Err(CmdError::refused(format!("{who} has no fuse {shown}{more}.")));
-        }
+        let more = if n.chars().nth(MAX_FUSE_LABEL).is_some() { "…" } else { "" };
+        return Err(CmdError::refused(format!("rating.{shown}{more} is for a fuse bank's fuses; {who} is not a fuse bank.")));
     }
     crate::devices::property_value(doc, key, value)
 }
@@ -2465,7 +2526,7 @@ fn graphics(key: StarterKey) -> Vec<Primitive> {
         | K::TermsensorL3
         | K::Termsensor
         | K::Termdisc
-        | K::Termfuse => crate::terminal_types::graphics(key.word()).unwrap_or_else(|| sized_graphics(key)),
+        | K::Termfuse => crate::terminal_types::graphics(key).unwrap_or_else(|| sized_graphics(key)),
     }
 }
 
@@ -2610,7 +2671,7 @@ fn terminals(key: StarterKey) -> Vec<TerminalDef> {
         | K::TermsensorL3
         | K::Termsensor
         | K::Termdisc
-        | K::Termfuse => crate::terminal_types::terminals(key.word()).unwrap_or_else(|| sized_terminals(key, &t)),
+        | K::Termfuse => crate::terminal_types::terminals(key).unwrap_or_else(|| sized_terminals(key, &t)),
     }
 }
 
@@ -2820,25 +2881,25 @@ mod tests {
     #[test]
     fn the_basic_starters_keep_their_content_hashes() {
         let want: &[(&str, &str)] = &[
-            ("coil", "2af1b6d8286ce742810433538c9d705fd4d803259ff4302a4a335b8d791b95b0"),
-            ("no", "531a8952f3ab6faba59b2d92203e50b9a28e3ec6681b851089ad4f8a85bfa2b6"),
-            ("nc", "fb1755ecef8a01cbadc9fa1c00d3b47d6293b2598bf46e9763a108e40ec69e92"),
-            ("power3", "ddbafd55a10cf51b16178c304773cdc02a1cb104c672f708bc75f396cbc54d95"),
-            ("mcb1", "0449072e772d3becc698699b2168dbe8e85039ddc0ec60d67f28c0232cb2ce6a"),
-            ("mcb2", "577a656074a2f6685ab58cc4a12eca204a34367881c0dd37017399357f8867cf"),
-            ("fuse", "97e67e1b287d5c724cf004c2f84bcf55a24ce963ad8c0381d57014d744503766"),
-            ("psu", "ffe540113081227903544a5dd6ffd9fe7ff7a87f4b606a6eab35274c91ef87fe"),
-            ("pbno", "de7eb0aad4424b97477e5df51f974ce66c558d7e4457e56ac58d1ac54911f27e"),
-            ("pbnc", "e75283fe7b81d39d8dee2ab724a89ae120dc883a60602629cf0bca9d2ea0c4f6"),
-            ("sel", "1e9c869fcf4da31ff024f9d60f1e06168aa1757f2f2b2d4a66681e0af4ee5600"),
-            ("lamp", "43370ffbca5feb202311b0a7f9308659fab76005655b2e016d2b45c2cd6a5df0"),
-            ("motor3", "079e25164ab9a2fb0b5f1c5b867d65728ec8f152c5becd62db9cd22c7326f414"),
-            ("motor1", "24661cd6e3ad00d4433ce1c31f45107b31e31b8c39730ee9af81d968939af812"),
-            ("trafo", "b93505f2eab3aad42fbc8c2f647632effceeda5a6e1e06e634d3f53467dd92fd"),
-            ("terminal", "c5c7b47bbddcd35973ad00f1dd8906db9602290ce0b955f0fd7ee1c2bf403a1f"),
-            ("terminalpe", "d38f6429abbaf0e8e110505625b467b6531504a762e11205542230148f9f1c00"),
-            ("di", "92732e642b7d5109705f643341f4d9ee02bb3729275a570182e63b6d126bf7b9"),
-            ("do", "caeab16ca1a100e4c5b4a49a878ebf666a634ef6365db7111ab237ba1e936307"),
+            ("coil", "b01ce659fb3212b18fd235c62e7734263c26382682d7c7dc44d79b53d86521be"),
+            ("no", "de4cdf567f36a022fc66c69d302a96657cbab1e21184d6c700786d268b3cf668"),
+            ("nc", "9cb053ab1f7fa513eeb50bd306a749a36755ab2b012911d881fc7bbf4fe38c39"),
+            ("power3", "937b224a059a08464f22c3222dec0431879afb944df2bce59e37e913f0e47bb3"),
+            ("mcb1", "30110cad09d8eb4e3bbf594fbada91f08087023172607207a8f8a6339c9404a4"),
+            ("mcb2", "729b8b2d385555123c129c78cd42320e4b7d454629668a0cb92b8f21d6503763"),
+            ("fuse", "65c17e3bdd137685591b73b5900de645cbbaee8c5ba158d1650464199cbcbc1d"),
+            ("psu", "f0e8a98d18a2b5d5267e4ceb47379debca60a4b41bef72f853f3be170c89c9e8"),
+            ("pbno", "5188bd56e397980ea66886d9d3782b37c98ce727bb090bf0c80fb9ac9fe88c8a"),
+            ("pbnc", "a4b0f928ce469c761d79e1e6130a3da527108ed51341bf456cbaceef54734064"),
+            ("sel", "7866d97802dce3c5f60dd778432ad668962365edf84cdb6a32da281b866a2320"),
+            ("lamp", "ed1b3a984e1bd21c4f506c49e36cfc1c0b2eaca7aeac05645816efa0ea46c8b7"),
+            ("motor3", "8b9285a9c54393f2662969fd682b740aa9e3bfe23d025d7472ad4f35140f74b3"),
+            ("motor1", "155bd8445ceaf3a663703fc3ef3deeeffcca4387a9aa7aca4f83e04362066778"),
+            ("trafo", "be61de549fbf9fcffc34049d185831e4d7759a93f46e1fb2ffd10012db9c6090"),
+            ("terminal", "065f33dc2121ecf3399489981a3b83e0b670295a2c65ea762a4c416c4a83a84f"),
+            ("terminalpe", "e49dfa23a7aec81f0327f1ec5e7143b9bc60216a4ca47c76508d3ea87d939df5"),
+            ("di", "11ac9ed468c7b43d9c6243e847655c0bdb4182c7f02680657539edef57f04827"),
+            ("do", "3eb4db530b04231c3df246d6da2847f48d86d2dc89ad4b8a037cd0a246d6e2fe"),
             ("continuation", "7289a1f63b563b3f0ceb6959fd7fb34763daf4c1c6e56bb2366e01129ae7afaf"),
         ];
         // Brief 036's starters are new; the hashes pinned here are the earlier basic ones.

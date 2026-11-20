@@ -336,7 +336,7 @@ impl H {
                     subject: Subject::Device(device),
                     page,
                     form: Form::Drawn,
-                    role: "main".into(),
+                    role: ecad_model::Role::Part(ecad_model::PartRole::Head),
                     items: Vec::new(),
                     connection_points: cps,
                 },
@@ -374,7 +374,7 @@ impl H {
         let doc = self.doc();
         let style = doc
             .representations_of(Subject::Cable(cable))
-            .filter(|(_, r)| r.role == ecad_model::derive::REFERENCE_ROLE)
+            .filter(|(_, r)| r.role == ecad_model::Role::Reference)
             .find_map(|(_, r)| r.items.first().and_then(|i| doc.items.get(i)).map(|i| i.style.clone()))
             .expect("the cable has a reference to pair with");
         let (item, rep): (ecad_model::ItemId, ecad_model::RepresentationId) = self.cfg(|p| (p.ids.fresh(), p.ids.fresh()));
@@ -386,7 +386,7 @@ impl H {
                     subject: Subject::Cable(cable),
                     page,
                     form: Form::Drawn,
-                    role: ecad_model::derive::REFERENCE_ROLE.into(),
+                    role: ecad_model::Role::Reference,
                     items: vec![item],
                     connection_points: Default::default(),
                 },
@@ -467,7 +467,7 @@ pub fn wired_lines(
             subject: Subject::Device(device),
             page,
             form: Form::Drawn,
-            role: "main".into(),
+            role: ecad_model::Role::Part(ecad_model::PartRole::Head),
             items: Vec::new(),
             connection_points: cps,
         },

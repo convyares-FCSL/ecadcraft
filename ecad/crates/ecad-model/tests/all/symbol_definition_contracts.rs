@@ -162,13 +162,29 @@ fn embed(d: Definition) -> Result<(), String> {
 }
 
 fn slot(text: &str, x: f64) -> TextSlot {
-    TextSlot { text: text.into(), at: Pt::new(x, 0.0), h: Default::default(), v: Default::default(), rotation: ecad_model::units::Radians(0.0) }
+    TextSlot {
+        text: ecad_model::SlotText::parse(text).unwrap(),
+        at: Pt::new(x, 0.0),
+        h: Default::default(),
+        v: Default::default(),
+        rotation: ecad_model::units::Radians(0.0),
+    }
+}
+
+/// Design 072 §7: a slot's text is a `SlotText`; a word naming no device text never becomes one.
+#[test]
+fn a_slot_text_is_one_of_the_device_texts() {
+    for bad in ["colour", "rating.", "", "Tag"] {
+        assert_eq!(ecad_model::SlotText::parse(bad), None, "{bad}");
+    }
+    let read: Result<TextSlot, _> = serde_json::from_str(r#"{"text":"colour","at":{"x":0.0,"y":0.0}}"#);
+    assert!(read.unwrap_err().to_string().contains("not a device text"));
 }
 
 #[test]
 fn invariant_i7_covers_slots_defaults_and_derived_from() {
     type Case = (&'static str, fn(&mut Definition), Option<&'static str>);
-    let cases: [Case; 11] = [
+    let cases: [Case; 8] = [
         ("plain", |_| {}, None),
         ("tag and rating slots", |d| d.texts = vec![slot("tag", 0.0), slot("rating", 2.0), slot("rating.A1", 4.0)], None),
         ("a NaN slot", |d| d.texts = vec![slot("tag", f64::NAN)], Some("non-finite")),
@@ -178,14 +194,18 @@ fn invariant_i7_covers_slots_defaults_and_derived_from() {
             Some("non-finite"),
         ),
         ("two tag slots", |d| d.texts = vec![slot("tag", 0.0), slot("tag", 1.0)], Some("two slots")),
-        ("an unknown text", |d| d.texts = vec![slot("colour", 0.0)], Some("not a device text")),
-        ("an empty rating label", |d| d.texts = vec![slot("rating.", 0.0)], Some("not a device text")),
         (
             "known defaults",
-            |d| d.defaults = [("key", "f1"), ("prefix", "B"), ("join", "device")].map(|(k, v)| (k.to_string(), v.to_string())).into(),
+            |d| {
+                d.defaults = ecad_model::SymbolDefaults {
+                    key: Some(ecad_model::text::Text::new("f1").unwrap()),
+                    prefix: Some(ecad_model::text::Text::new("B").unwrap()),
+                    join: Some(ecad_model::Join::Device),
+                    ..Default::default()
+                }
+            },
             None,
         ),
-        ("an unknown default", |d| d.defaults = [("colour".to_string(), "red".to_string())].into(), Some("does not hold")),
         (
             "derived from another origin",
             |d| {

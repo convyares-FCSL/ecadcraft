@@ -542,7 +542,7 @@ fn g_fuse_and_disconnect_positions_break_the_net() {
     step(&mut m.h, "setprop", json!({"component": x2.hex(), "key": "rating.5", "value": "2A"}));
     let p5: Vec<Value> = level_rows(&plan(&mut m.h, x2)).into_iter().filter(|r| s(&r["position"]) == "5").collect();
     assert_eq!(p5.len(), 1, "a two-point level is one plan row: {p5:?}");
-    assert_eq!(s(&p5[0]["rating"]), "2A");
+    assert_eq!(s(&p5[0]["rating"]), "2 A", "shown from the typed fuse");
     assert_eq!(p5[0]["breaks"], true);
     assert!(s(&p5[0]["type"]).eq_ignore_ascii_case("FUSE"));
     // A link never crosses in → out: `5.1i-5.1o` is refused or joins nothing.
@@ -598,7 +598,7 @@ fn h_toposition_converts_a_fuse_device() {
     before.sort();
     after.sort();
     assert_eq!(before, after, "nets keep their wires and numbers");
-    assert_eq!(prop(&mut m.h, x2, &format!("rating.{p}")).as_deref(), Some("4A"), "rating carried");
+    assert_eq!(prop(&mut m.h, x2, &format!("rating.{p}")).as_deref(), Some("4 A"), "rating carried");
     let label = m.h.p(|p| p.ledger.log().last().map(|t| t.label.clone())).unwrap_or_default();
     assert!(label.starts_with("-F01 \u{2192} -X") && label.ends_with(":5"), "transaction label `-F05 → -X01:7`: {label}");
     // The device's symbol now draws `termfuse` and is a symbol of the strip.

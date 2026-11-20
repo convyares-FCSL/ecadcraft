@@ -52,7 +52,7 @@ fn row_both_makes_one_connector_with_two_halves_in_one_transaction() {
     let keys: Vec<(String, String)> = pins(&d, c).into_iter().map(|(k, n, _)| (k, n)).collect();
     let want: Vec<(String, String)> = [".p", ".s"].iter().flat_map(|k| (1..=4).map(move |n| (k.to_string(), n.to_string()))).collect();
     assert_eq!(keys, want);
-    assert!(connectors::is_connector(&d, c));
+    assert!(connectors::connector_of(&d, c).is_some_and(|x| x.mating));
     let tag = v["tag"].as_str().unwrap().to_string();
     assert_eq!(connectors::half_tag(&d, c, Side::Socket), format!("{tag}.S"));
     assert_eq!(connectors::pin_name(&d, pin(&d, c, ".p", "3")), Some(format!("{tag}.P:3")));
@@ -345,7 +345,7 @@ fn version_one_halves_stay_separate_and_new_ones_embed_version_two() {
     });
     let c: DeviceId = id(&h.run("place", json!({"symbol": "socket4", "at": [0, 0]})).unwrap(), "component");
     let d = h.doc();
-    assert!(connectors::is_connector(&d, c));
+    assert!(connectors::connector_of(&d, c).is_some_and(|x| x.mating));
     assert_eq!(
         d.definitions.values().filter(|x| symbols::of_definition(x).is_some_and(|y| y.key == ecad_cadcraft::symbols::StarterKey::Socket4)).count(),
         2

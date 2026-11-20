@@ -40,7 +40,7 @@ pub(crate) fn run_slash_continue(
             subject: Subject::Cable(cable),
             page,
             form: ecad_model::Form::Drawn,
-            role: "slash".into(),
+            role: ecad_model::Role::Slash,
             items: vec![item],
             connection_points: BTreeMap::new(),
         },

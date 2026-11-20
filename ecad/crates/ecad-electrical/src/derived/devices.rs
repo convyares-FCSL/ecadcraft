@@ -103,6 +103,8 @@ impl<'i> DerivedView<Inputs<'i>> for DevicesFeed {
         };
         let mut moves = false;
         match effect {
+            // Design 072 §2.6: a device link is not shown in the list.
+            Effect::DeviceLink { .. } => {}
             Effect::Device { id, .. } | Effect::DeviceDefinition { id, .. } => subject(&Subject::Device(*id)),
             Effect::Prop { object: ObjectRef::Device(c), .. } => subject(&Subject::Device(*c)),
             Effect::Rep { before, after, .. } => {

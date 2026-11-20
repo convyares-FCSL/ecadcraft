@@ -46,7 +46,7 @@ too_many_arguments = "allow"
 type_complexity = "allow"
 
 # Dependencies (crates.io and CADCraft's crates by path; not ECAD's own) are optimised: they are
-# compiled once and cached, and egui and wgpu stay usable in tests and the trial.
+# compiled once and cached, and egui and wgpu stay usable in tests and the app.
 [profile.dev.package."*"]
 opt-level = 2
 # Smaller debug builds (owner, 2026-11-14): build folders were reaching 30-60 GB.

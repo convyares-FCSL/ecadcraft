@@ -296,6 +296,7 @@ pub fn touches(ops: &[Op], page: PageId, shown: &FrameInput) -> bool {
 pub fn touched_by(effect: &ecad_model::effect::Effect<'_>, page: PageId, shown: &FrameInput) -> bool {
     use ecad_model::effect::Effect;
     match effect {
+        Effect::DeviceLink { .. } => false,
         Effect::Settings { before, after } => before.sheet != after.sheet || before.length_unit != after.length_unit,
         // Only what the title block shows: its fields, the defaults pages inherit, and issuing.
         // Brief 033 (design 033 §9.1): a text size or the font (lane T's `text.` keys).

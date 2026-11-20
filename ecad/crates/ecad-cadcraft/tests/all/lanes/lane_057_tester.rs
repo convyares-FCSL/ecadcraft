@@ -282,7 +282,7 @@ fn c02_underrated_wire_is_an_error_with_a_fix_and_undo_clears_it() {
     let R { mut h, q01, cab, wire, .. } = fixture(5702);
     box_temp(&mut h, cab, "44");
     h.run("rating", json!({"wire": wire.hex(), "bundling": 0.85})).unwrap();
-    h.run("setprop", json!({"component": q01.hex(), "key": "rating", "value": "25 A"})).unwrap();
+    h.run("setprop", json!({"component": q01.hex(), "key": "rating", "value": "C25"})).unwrap();
     let rows = checks_of(&mut h, "rating-under");
     assert_eq!(rows.len(), 1, "{rows:?}");
     let t = rows[0].to_string();
@@ -300,11 +300,11 @@ fn c03_rounding_near_the_device_rating_shows_the_extra_digit_and_compares_unroun
     let R { mut h, q01, cab, wire, .. } = fixture(5703);
     box_temp(&mut h, cab, "44");
     h.run("rating", json!({"wire": wire.hex(), "bundling": 0.85})).unwrap();
-    h.run("setprop", json!({"component": q01.hex(), "key": "rating", "value": "21.6 A"})).unwrap();
+    h.run("setprop", json!({"component": q01.hex(), "key": "rating", "value": "C21.6"})).unwrap();
     let rows = rows_text(&mut h, "rating-under");
     assert_eq!(rows.len(), 1, "unrounded 21.5985 < 21.6: {rows:?}");
     assert!(rows[0].contains("21.60 A"), "the extra digit: {rows:?}");
-    h.run("setprop", json!({"component": q01.hex(), "key": "rating", "value": "21.55 A"})).unwrap();
+    h.run("setprop", json!({"component": q01.hex(), "key": "rating", "value": "C21.55"})).unwrap();
     assert!(rows_text(&mut h, "rating-under").is_empty(), "21.5985 ≥ 21.55");
     assert!(wire_r(&mut h, wire).to_string().contains("21.60"), "within 0.05 A: two decimals");
 }
@@ -387,7 +387,7 @@ fn c06_a_wire_across_two_locations_takes_the_hotter() {
 fn t01_table_basis_worked_example_with_computed_ambient() {
     let R { mut h, .. } = fixture(5707);
     table(&mut h, "");
-    cable(&mut h, 250.0, "-W01", "4 A", "H07RN-F 4G1.5", "12 m");
+    cable(&mut h, 250.0, "-W01", "C4", "H07RN-F 4G1.5", "12 m");
     let head = h.head();
     h.run("rating", json!({"cable": "-W01", "basis": "table", "method": "e", "ambient": 37, "grouped": 3})).unwrap();
     assert_eq!(h.head(), head + 1);
@@ -420,7 +420,7 @@ fn t01_table_basis_worked_example_with_computed_ambient() {
 fn t02_field_ambient_default_is_30() {
     let R { mut h, .. } = fixture(5708);
     table(&mut h, "");
-    cable(&mut h, 250.0, "-W01", "4 A", "H07RN-F 4G1.5", "12 m");
+    cable(&mut h, 250.0, "-W01", "C4", "H07RN-F 4G1.5", "12 m");
     h.run("rating", json!({"cable": "-W01", "basis": "table", "method": "E", "grouped": 2})).unwrap();
     let r = cable_r(&mut h, "-W01");
     let a = factor(&r, "ambient").to_string();
@@ -436,7 +436,7 @@ fn t02_field_ambient_default_is_30() {
 #[test]
 fn t03_missing_table_data_says_what_is_missing() {
     let R { mut h, .. } = fixture(5709);
-    cable(&mut h, 250.0, "-W01", "4 A", "H07RN-F 4G1.5", "12 m");
+    cable(&mut h, 250.0, "-W01", "C4", "H07RN-F 4G1.5", "12 m");
     h.run("rating", json!({"cable": "-W01", "basis": "table", "method": "E", "grouped": 2})).unwrap();
     let rows = rows_text(&mut h, "rating-no-table");
     assert_eq!(rows.len(), 1, "{rows:?}");
@@ -486,7 +486,7 @@ fn t04_a_panel_wire_on_the_table_basis_uses_b1_only() {
 #[test]
 fn m01_manual_basis_and_its_hostile_values() {
     let R { mut h, q01, wire, .. } = fixture(5711);
-    h.run("setprop", json!({"component": q01.hex(), "key": "rating", "value": "16 A"})).unwrap();
+    h.run("setprop", json!({"component": q01.hex(), "key": "rating", "value": "C16"})).unwrap();
     h.run("rating", json!({"wire": wire.hex(), "basis": "manual", "manual": "10 A"})).unwrap();
     let r = wire_r(&mut h, wire);
     assert!((iz(&r) - 10.0).abs() < EPS);
@@ -532,7 +532,7 @@ fn m02_ib_in_iz_at_once() {
 fn v01_volt_drop_worked_example_and_the_current_it_uses() {
     let R { mut h, .. } = fixture(5713);
     table(&mut h, "");
-    cable(&mut h, 250.0, "-W01", "4 A", "H07RN-F 4G1.5", "12 m");
+    cable(&mut h, 250.0, "-W01", "C4", "H07RN-F 4G1.5", "12 m");
     h.run("rating", json!({"cable": "-W01", "basis": "table", "method": "E", "ambient": 37, "grouped": 3})).unwrap();
     let mv = 3f64.sqrt() * 11.0 * (1.0 + 0.00393 * 50.0);
     let r = cable_r(&mut h, "-W01");
@@ -618,30 +618,32 @@ fn v03_no_current_no_volt_drop() {
 fn d01_device_rating_text_is_read_or_reported_unread() {
     let R { mut h, q01, wire, .. } = fixture(5716);
     h.run("rating", json!({"wire": wire.hex(), "bundling": 0.85})).unwrap();
-    let long = "9".repeat(200);
-    // Longer than 200 characters is refused on write (034's rule).
+    // Longer than a rating note (64 characters) is refused on write.
     assert!(h.run("setprop", json!({"component": q01.hex(), "key": "rating", "value": "9".repeat(10_000)})).is_err());
-    let cases: Vec<(&str, Option<f64>)> = vec![
-        ("4A C", Some(4.0)),
-        ("C16", Some(16.0)),
-        ("B6", Some(6.0)),
-        ("13A C 30mA", Some(13.0)),
-        ("6.3 A T", Some(6.3)),
-        ("2 a", Some(2.0)),
-        ("6300 A", Some(6300.0)),
+    assert!(h.run("setprop", json!({"component": q01.hex(), "key": "rating", "value": "x".repeat(65)})).is_err());
+    // Design 072 §2.2: the MCB's text is read into its typed fields (In read from them), or kept
+    // as a note (no In: the unread row); ambiguous or wrong text is refused, the rating unchanged.
+    let cases: Vec<(&str, Option<Option<f64>>)> = vec![
+        ("4A C", Some(Some(4.0))),
+        ("C16", Some(Some(16.0))),
+        ("B6", Some(Some(6.0))),
+        ("curve D, 2 a", Some(Some(2.0))),
+        ("C6300", Some(Some(6300.0))),
+        ("see datasheet", Some(None)),
         ("16", None),
         ("K", None),
-        ("30mA", None),
-        ("10kA", None),
-        ("0 A", None),
-        ("-4 A", None),
-        ("1e9 A", None),
-        ("NaN A", None),
-        ("6301 A", None),
-        (long.as_str(), None),
+        ("13A C 30mA", None),
+        ("6.3 A T", None),
+        ("C0", None),
+        ("C6301", None),
     ];
     for (text, want) in cases {
-        h.run("setprop", json!({"component": q01.hex(), "key": "rating", "value": text})).unwrap();
+        let set = h.run("setprop", json!({"component": q01.hex(), "key": "rating", "value": text}));
+        let Some(want) = want else {
+            assert!(set.is_err(), "{text}: refused");
+            continue;
+        };
+        set.unwrap();
         let r = wire_r(&mut h, wire);
         let unread = checks_of(&mut h, "rating-device-unread");
         match want {
@@ -655,9 +657,8 @@ fn d01_device_rating_text_is_read_or_reported_unread() {
             }
         }
     }
-    h.run("setprop", json!({"component": q01.hex(), "key": "rating", "value": "K"})).unwrap();
     let t = rows_text(&mut h, "rating-device-unread");
-    assert!(t[0].contains("-Q01's rating 'K' has no current; write it as 16 A"), "{t:?}");
+    assert!(t[0].contains("-Q01's rating 'see datasheet' has no rated current"), "{t:?}");
 }
 
 /// Fuse bank position (check 12): `protected_by "-F01:3"` with `rating.3 "2 A"` → In 2 A.
@@ -679,13 +680,17 @@ fn d02_protected_by_a_fuse_of_a_bank_and_by_hand() {
     let e = refused(&mut h, "rating", json!({"wire": wire.hex(), "protected_by": "-Q09"}));
     assert!(e.contains("-Q09"), "{e}");
     refused(&mut h, "setprop", json!({"conductor": wire.hex(), "key": "protected_by", "value": "-Q09"}));
-    // A non-protective device named by hand: used, with an Info row.
+    // A non-protective device named by hand. Design 072 §2.2: a coil has no protective rating
+    // (its AC-3 current is a switching rating), so `rating` refuses it, and so does setprop
+    // (lane D stores `protected_by` typed, through the same rule).
     let k01 = placed(&mut h, "coil", 340.0, 300.0);
-    h.run("setprop", json!({"component": k01.hex(), "key": "rating", "value": "3 A"})).unwrap();
+    h.run("setprop", json!({"component": k01.hex(), "key": "rating", "value": "AC-3 3 A"})).unwrap();
     let k = crate::plc_contracts::tag(&mut h, k01);
-    h.run("rating", json!({"wire": wire.hex(), "protected_by": k})).unwrap();
-    assert_eq!(device_in(&wire_r(&mut h, wire)), Some(3.0));
-    assert_eq!(checks_of(&mut h, "rating-named-device").len(), 1);
+    let e = refused(&mut h, "rating", json!({"wire": wire.hex(), "protected_by": k}));
+    assert!(e.contains("no rated current"), "{e}");
+    let e = refused(&mut h, "setprop", json!({"conductor": wire.hex(), "key": "protected_by", "value": k}));
+    assert!(e.contains("no rated current"), "{e}");
+    assert_eq!(device_in(&wire_r(&mut h, wire)), Some(2.0), "the fuse found by hand stays");
 }
 
 // ---------------------------------------------------------------- trace (§4.2, check 11)
@@ -696,14 +701,14 @@ fn tr01_trace_line_side_rcd_and_two_devices() {
     let R { mut h, category, .. } = fixture(5718);
     // Line side of -Q01: -Q00 above feeds it; a wire -Q00:2 → -Q01:1 is protected by -Q00.
     let q00 = placed(&mut h, "mcb1", 100.0, 370.0);
-    h.run("setprop", json!({"component": q00.hex(), "key": "rating", "value": "10 A"})).unwrap();
+    h.run("setprop", json!({"component": q00.hex(), "key": "rating", "value": "C10"})).unwrap();
     let w = id::<WireId>(&h.run("wire", json!({"points": pts(&[(100.0, 360.0), (100.0, 310.0)])})).unwrap(), "conductor");
     h.run("category", json!({"conductor": w.hex(), "value": category})).unwrap();
     let r = wire_r(&mut h, w);
     assert_eq!(device_in(&r), Some(10.0), "line side of -Q01: its feeder, not -Q01: {r}");
     // RCD -Q10 between -Q02 (6 A) and a lamp: crossed by pole.
     let q02 = placed(&mut h, "mcb1", 200.0, 340.0);
-    h.run("setprop", json!({"component": q02.hex(), "key": "rating", "value": "6 A"})).unwrap();
+    h.run("setprop", json!({"component": q02.hex(), "key": "rating", "value": "C6"})).unwrap();
     placed(&mut h, "rcd2", 200.0, 290.0);
     let lamp = placed(&mut h, "lamp", 200.0, 220.0);
     h.run("wire", json!({"points": pts(&[(200.0, 330.0), (200.0, 300.0)])})).unwrap();
@@ -715,8 +720,8 @@ fn tr01_trace_line_side_rcd_and_two_devices() {
     // Two MCBs on one net: -Q03 6 A and -Q04 10 A, both load sides joined.
     let q03 = placed(&mut h, "mcb1", 300.0, 350.0);
     let q04 = placed(&mut h, "mcb1", 340.0, 350.0);
-    h.run("setprop", json!({"component": q03.hex(), "key": "rating", "value": "6 A"})).unwrap();
-    h.run("setprop", json!({"component": q04.hex(), "key": "rating", "value": "10 A"})).unwrap();
+    h.run("setprop", json!({"component": q03.hex(), "key": "rating", "value": "C6"})).unwrap();
+    h.run("setprop", json!({"component": q04.hex(), "key": "rating", "value": "C10"})).unwrap();
     let w3 =
         id::<WireId>(&h.run("wire", json!({"points": pts(&[(300.0, 340.0), (300.0, 300.0), (340.0, 300.0), (340.0, 340.0)])})).unwrap(), "conductor");
     h.run("category", json!({"conductor": w3.hex(), "value": category})).unwrap();
@@ -736,7 +741,7 @@ fn tr02_a_long_chain_stops_after_64_nets() {
     // connector pins keep one net, so they do not make a long trace.)
     let mut h = H::new(5719);
     let q = placed(&mut h, "mcb1", 10.0, 430.0);
-    h.run("setprop", json!({"component": q.hex(), "key": "rating", "value": "4 A"})).unwrap();
+    h.run("setprop", json!({"component": q.hex(), "key": "rating", "value": "C4"})).unwrap();
     let lamp = placed(&mut h, "lamp", 130.0, -20.0);
     let xs = [10.0, 40.0, 70.0, 100.0, 130.0];
     for x in xs {
@@ -772,11 +777,11 @@ fn tr02_a_long_chain_stops_after_64_nets() {
 fn n01_no_rating_data_no_rows_then_rows_only_for_rated_wires() {
     let mut h = H::new(5720);
     let q = placed(&mut h, "mcb1", 100.0, 300.0);
-    h.run("setprop", json!({"component": q.hex(), "key": "rating", "value": "4 A"})).unwrap();
+    h.run("setprop", json!({"component": q.hex(), "key": "rating", "value": "C4"})).unwrap();
     let l1 = placed(&mut h, "lamp", 100.0, 200.0);
     h.run("wire", json!({"points": pts(&[(100.0, 290.0), (100.0, 210.0)])})).unwrap();
     let q2 = placed(&mut h, "mcb1", 200.0, 300.0);
-    h.run("setprop", json!({"component": q2.hex(), "key": "rating", "value": "4 A"})).unwrap();
+    h.run("setprop", json!({"component": q2.hex(), "key": "rating", "value": "C4"})).unwrap();
     placed(&mut h, "lamp", 200.0, 200.0);
     h.run("wire", json!({"points": pts(&[(200.0, 290.0), (200.0, 210.0)])})).unwrap();
     assert_eq!(all_rating_rows(&mut h), 0, "no rating data anywhere: no rows (no nagging)");
@@ -926,7 +931,7 @@ fn u01_a_device_rating_change_rechecks_only_its_subjects() {
     let R { mut h, q01, category, .. } = fixture(5725);
     // A second, independent protected wire under -Q02.
     let q02 = placed(&mut h, "mcb1", 200.0, 300.0);
-    h.run("setprop", json!({"component": q02.hex(), "key": "rating", "value": "4 A"})).unwrap();
+    h.run("setprop", json!({"component": q02.hex(), "key": "rating", "value": "C4"})).unwrap();
     let l2 = placed(&mut h, "lamp", 200.0, 200.0);
     h.run("wire", json!({"points": pts(&[(200.0, 290.0), (200.0, 210.0)])})).unwrap();
     let w2 = conductor_at(&mut h, l2, "X1");
@@ -939,7 +944,7 @@ fn u01_a_device_rating_change_rechecks_only_its_subjects() {
         })
     };
     let _ = last(&mut h);
-    h.run("setprop", json!({"component": q01.hex(), "key": "rating", "value": "6 A"})).unwrap();
+    h.run("setprop", json!({"component": q01.hex(), "key": "rating", "value": "C6"})).unwrap();
     let (ev, re, set) = last(&mut h);
     assert_eq!((ev, set.len()), (1, 1), "protects[-Q01] only: {set:?}");
     assert_eq!(re, 0, "a device rating change re-checks results, never re-traces");
@@ -967,7 +972,7 @@ fn u01_a_device_rating_change_rechecks_only_its_subjects() {
 #[test]
 fn h01_hostile_values_are_refused_by_the_command_and_ignored_from_a_file() {
     let R { mut h, wire, cab, .. } = fixture(5726);
-    cable(&mut h, 250.0, "-W01", "4 A", "H07RN-F 4G1.5", "12 m");
+    cable(&mut h, 250.0, "-W01", "C4", "H07RN-F 4G1.5", "12 m");
     let long = "1".repeat(10_000);
     for (k, v) in [
         ("load", json!("1e400")),
@@ -1049,7 +1054,7 @@ fn u02_a_location_temperature_rechecks_only_the_wires_there() {
     let R { mut h, cab, category, .. } = fixture(5728);
     // A second rated wire outside +CAB1 (the box ends at y 150).
     let q = placed(&mut h, "mcb1", 300.0, 120.0);
-    h.run("setprop", json!({"component": q.hex(), "key": "rating", "value": "4 A"})).unwrap();
+    h.run("setprop", json!({"component": q.hex(), "key": "rating", "value": "C4"})).unwrap();
     let l = placed(&mut h, "lamp", 300.0, 40.0);
     h.run("wire", json!({"points": pts(&[(300.0, 110.0), (300.0, 50.0)])})).unwrap();
     let w = conductor_at(&mut h, l, "X1");
@@ -1084,7 +1089,7 @@ fn f01_a_location_temperature_can_be_set() {
 fn tr03_the_trace_crosses_connector_pin_pairs() {
     let mut h = H::new(5730);
     let q = placed(&mut h, "mcb1", 10.0, 150.0);
-    h.run("setprop", json!({"component": q.hex(), "key": "rating", "value": "4 A"})).unwrap();
+    h.run("setprop", json!({"component": q.hex(), "key": "rating", "value": "C4"})).unwrap();
     let lamp = placed(&mut h, "lamp", 10.0, 0.0);
     for j in 0..3 {
         h.run("place", json!({"symbol": "pinpair", "at": [10.0, 40.0 + 15.0 * f64::from(j)]})).unwrap();

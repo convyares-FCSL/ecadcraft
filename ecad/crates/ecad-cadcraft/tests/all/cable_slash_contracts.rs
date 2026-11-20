@@ -121,7 +121,7 @@ fn a_slash_makes_one_cable_of_the_wires_it_crosses_in_one_transaction() {
     let rid: RepresentationId = id(&r, "representation");
     let rep = &d.representations[&rid];
     assert_eq!(rep.subject, Subject::Cable(k));
-    assert_eq!((rep.form, rep.role.as_str(), rep.page), (Form::Drawn, "slash", f.page));
+    assert_eq!((rep.form, rep.role, rep.page), (Form::Drawn, ecad_model::Role::Slash, f.page));
     assert_eq!(rep.items, vec![item]);
     assert!(rep.connection_points.is_empty());
     assert_eq!(d.items[&item].kind, ItemKind::Primitive(Primitive::Line { a: Pt::new(28.0, -3.0), b: Pt::new(32.0, 18.0) }));

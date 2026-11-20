@@ -1,11 +1,12 @@
-//! Brief 052a (design 052 §3, §4, §10.1–5): representation types and relations, and no `main`
-//! role. Every symbol of a device is equal; its type comes from its definition.
+//! Brief 052a (design 052 §3, §4, §10.1–5): representation types and relations. Every symbol of
+//! a device is equal; its type is the part its definition declares, stored as its role (design
+//! 072 §4.4, F3′).
 
 use crate::common::{H, id};
 
-use ecad_cadcraft::reps::{self, RepType, View};
-use ecad_cadcraft::{connectors, locations, xref};
-use ecad_model::{DeviceId, Document, PageId, RepresentationId, Subject};
+use ecad_cadcraft::reps::{self, PartRole, View};
+use ecad_cadcraft::{connectors, xref};
+use ecad_model::{DeviceId, Document, PageId, RepresentationId, Role, Subject};
 use serde_json::{Value, json};
 
 const SEED: u64 = 52;
@@ -27,14 +28,15 @@ fn contact_text(h: &mut H, page: PageId, r: RepresentationId) -> Option<String> 
     })
 }
 
-fn no_main(d: &Document) {
-    let mains: Vec<_> = d.representations.iter().filter(|(_, r)| r.role == "main").map(|(id, _)| *id).collect();
-    assert!(mains.is_empty(), "no command writes role main: {mains:?}");
+fn parts_stored(d: &Document) {
+    let not_parts: Vec<_> =
+        d.representations.iter().filter(|(_, r)| matches!(r.subject, Subject::Device(_)) && r.role.part().is_none()).map(|(id, _)| *id).collect();
+    assert!(not_parts.is_empty(), "every device symbol stores its part: {not_parts:?}");
 }
 
-/// §10.1: a coil and a joined contact get their starter keys as roles; nothing is `main`.
+/// §10.1, design 072 §4.4: a coil and a joined contact store their parts as roles.
 #[test]
-fn roles_are_starter_keys_and_never_main() {
+fn every_symbol_stores_its_part() {
     let mut h = H::new(SEED);
     let p1 = h.first_page();
     h.run("pageprops", json!({"page": p1.hex(), "number": "100"})).unwrap();
@@ -50,25 +52,25 @@ fn roles_are_starter_keys_and_never_main() {
     h.run("place", json!({"symbol": "mcb1", "at": [250, 150]})).unwrap();
     h.run("connector", json!({"halves": "both", "family": "plain", "pins": 4, "layout": "row", "at": [50, 50]})).unwrap();
     let d = h.doc();
-    no_main(&d);
-    assert_eq!(d.representations[&rep(&coil)].role, "coil");
-    assert_eq!(d.representations[&rep(&no)].role, "no");
-    assert_eq!(reps::rep_type(&d, &d.representations[&rep(&coil)]), RepType::Head);
-    assert_eq!(reps::rep_type(&d, &d.representations[&rep(&no)]), RepType::Contact);
+    parts_stored(&d);
+    assert_eq!(d.representations[&rep(&coil)].role, Role::Part(PartRole::Head));
+    assert_eq!(d.representations[&rep(&no)].role, Role::Part(PartRole::Contact));
+    assert_eq!(reps::rep_type(&d, &d.representations[&rep(&coil)]), PartRole::Head);
+    assert_eq!(reps::rep_type(&d, &d.representations[&rep(&no)]), PartRole::Contact);
 }
 
-/// §3.1: the type comes from the definition kind, never from order or role.
+/// §3.1: the type is the part the definition declares, never order.
 #[test]
 fn types_follow_the_definition() {
     let mut h = H::new(SEED);
     let cases = [
-        ("coil", RepType::Head),
-        ("mcb1", RepType::Head),
-        ("no", RepType::Contact),
-        ("nc", RepType::Contact),
-        ("power3", RepType::Contact),
-        ("pins", RepType::Pin),
-        ("di", RepType::Channel),
+        ("coil", PartRole::Head),
+        ("mcb1", PartRole::Head),
+        ("no", PartRole::Contact),
+        ("nc", PartRole::Contact),
+        ("power3", PartRole::Contact),
+        ("pins", PartRole::Pin),
+        ("di", PartRole::Channel),
     ];
     for (i, (symbol, want)) in cases.into_iter().enumerate() {
         let v = h.run("place", json!({"symbol": symbol, "at": [20.0 + 30.0 * i as f64, 100.0]}));
@@ -77,12 +79,12 @@ fn types_follow_the_definition() {
         let r = &d.representations[&rep(&v)];
         assert_eq!(reps::rep_type(&d, r), want, "{symbol}");
         assert_eq!(reps::view(&d, r), View::Schematic);
-        assert_eq!(RepType::of_word(want.word()), Some(want));
+        assert_eq!(<PartRole as ecad_model::Word>::parse(ecad_model::Word::word(want)), Some(want));
     }
-    assert_eq!(RepType::Head.numbering_rank(), 0);
-    assert_eq!(RepType::Contact.numbering_rank(), 1);
-    assert_eq!(RepType::Terminal.numbering_rank(), 1);
-    assert_eq!(RepType::Other.numbering_rank(), 1);
+    assert_eq!(PartRole::Head.numbering_rank(), 0);
+    assert_eq!(PartRole::Contact.numbering_rank(), 1);
+    assert_eq!(PartRole::Terminal.numbering_rank(), 1);
+    assert_eq!(PartRole::Other.numbering_rank(), 1);
 }
 
 /// §10.2: three contacts joined first, the coil last on another page: each contact points at the
@@ -101,7 +103,7 @@ fn a_coil_placed_after_its_contacts_is_the_head() {
     let coil = rep(&coil);
     let contacts = [rep(&first), rep(&c2), rep(&c3)];
     let d = h.doc();
-    no_main(&d);
+    parts_stored(&d);
     assert_eq!(reps::head(&d, k), Some(coil));
     assert_eq!(xref::device(&d, k).head, Some(coil));
     assert_eq!(reps::goto(&d, k, None), Some(coil));
@@ -184,47 +186,11 @@ fn a_pin_only_half_has_no_half_member() {
     assert!(classes.iter().all(|(_, c)| matches!(c, xref::Class::Pin(_))), "{classes:?}");
     let edges = connectors::ref_edges(&d, x, &classes);
     assert!(edges.contains(&(s, p)) && edges.contains(&(p, s)), "{edges:?}");
-    assert_eq!(reps::rep_type(&d, &d.representations[&s]), RepType::Pin);
+    assert_eq!(reps::rep_type(&d, &d.representations[&s]), PartRole::Pin);
     assert_eq!(reps::siblings(&d, s), vec![p], "the mate first");
     assert_eq!(reps::half_anchor(&d, x, ecad_cadcraft::symbols::Side::Socket), None);
     assert_eq!(connectors::half_goto(&d, x, ecad_cadcraft::symbols::Side::Plug), Some(p));
     let _ = (p1, p2);
-}
-
-/// §10.5: a project whose contact carries role `main` behaves exactly as with its starter key.
-#[test]
-fn a_stored_main_role_means_nothing() {
-    let mut h = H::new(SEED);
-    let p1 = h.first_page();
-    let first = h.run("place", json!({"symbol": "no", "at": [50, 150]})).unwrap();
-    let k: DeviceId = id(&first, "component");
-    h.run("setprop", json!({"component": k.hex(), "key": "tag", "value": "-K05"})).unwrap();
-    h.run("place", json!({"symbol": "coil", "at": [200, 150], "device": k.hex()})).unwrap();
-    h.run("place", json!({"symbol": "coil", "at": [120, 150], "tag": "-K04"})).unwrap();
-    let plain = h.doc();
-    let mut edited = plain.clone();
-    if let Some(r) = edited.representations.get_mut(&rep(&first)) {
-        r.role = "main".into();
-    }
-    edited.rebuild_index();
-    assert_eq!(xref::device(&plain, k), xref::device(&edited, k));
-    assert_eq!(reps::goto(&plain, k, None), reps::goto(&edited, k, None));
-    assert_eq!(reps::goto(&plain, k, None), reps::goto(&edited, k, None));
-    assert_eq!(locations::resolve(&plain, k), locations::resolve(&edited, k));
-    let parts = |d: &Document| xref::parts_on_page(d, p1).into_iter().map(|p| (p.rep, p.index, format!("{:?}", p.shape))).collect::<Vec<_>>();
-    assert_eq!(parts(&plain), parts(&edited));
-    let req = ecad_model::numbering::Request {
-        kinds: [ecad_model::numbering::Kind::Devices].into_iter().collect(),
-        scope: ecad_model::numbering::Scope::All,
-        start: Some(1),
-        digits: None,
-        strips: Default::default(),
-        positions: Default::default(),
-    };
-    let high = ecad_model::tag::HighWater::new();
-    let plan = |d: &Document| ecad_model::numbering::plan_ranked(d, &req, &high, &|r| reps::numbering_rank(d, r)).unwrap().ops;
-    assert_eq!(format!("{:?}", plan(&plain)), format!("{:?}", plan(&edited)));
-    assert_eq!(ecad_model::numbering::rep_anchor(&plain, Subject::Device(k)), ecad_model::numbering::rep_anchor(&edited, Subject::Device(k)));
 }
 
 /// Review of #105, 2: go-to, the head and numbering share one drawing order (book, zone column

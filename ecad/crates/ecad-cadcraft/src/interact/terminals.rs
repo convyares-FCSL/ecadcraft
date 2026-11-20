@@ -26,8 +26,9 @@ pub(crate) fn terminals(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
     let (last, last_type) = read(s, |p, _| {
         let doc = p.ledger.document();
-        let strip = p.last_placed.as_ref().map(|(_, c)| *c).filter(|c| strips::is_strip(doc, *c)).map(|c| (c, crate::devices::tag_words(doc, c)));
-        let ty = p.last_placed.as_ref().and_then(|(k, _)| tt::of_starter(k)).map(|(t, _)| t);
+        let strip =
+            p.last_placed.as_ref().map(|(_, c)| *c).filter(|c| strips::strip_of(doc, *c).is_some()).map(|c| (c, crate::devices::tag_words(doc, c)));
+        let ty = p.last_placed.as_ref().and_then(|(k, _)| tt::of_starter(ecad_model::Word::parse(k)?)).map(|(t, _)| t);
         Ok((strip, ty))
     })
     .unwrap_or((None, None));
@@ -78,7 +79,7 @@ impl PlaceTerminals {
         } else {
             let found = read(s, |p, _| {
                 let doc = p.ledger.document();
-                Ok(crate::devices::holder_of(doc, t, None).filter(|c| strips::is_strip(doc, *c)))
+                Ok(crate::devices::holder_of(doc, t, None).filter(|c| strips::strip_of(doc, *c).is_some()))
             })
             .ok()
             .flatten();

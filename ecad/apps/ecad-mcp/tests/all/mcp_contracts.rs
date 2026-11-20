@@ -113,7 +113,7 @@ impl Client {
                             subject: Subject::Device(device),
                             page,
                             form: Form::Drawn,
-                            role: "main".into(),
+                            role: ecad_model::Role::Part(ecad_model::PartRole::Head),
                             items: Vec::new(),
                             connection_points: cps,
                         },

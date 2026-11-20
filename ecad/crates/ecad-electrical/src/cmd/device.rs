@@ -181,6 +181,7 @@ pub fn plan_delete(doc: &Document, doomed: Doomed) -> Result<Deleted, CmdError> 
             let (released_ops, released) =
                 if crate::plc::edit::station_of(doc, c).is_some() { crate::plc::rack::release_cards(doc, c) } else { (Vec::new(), 0) };
             ops.extend(released_ops);
+            ops.extend(super::device_link::unlink_ops(doc, c));
             ops.push(Op::DeleteDevice { id: c, device: component.clone() });
             let mut message =
                 (released > 0).then(|| format!("Deleted {}; {}", devices::tag_words(doc, c), crate::plc::rack::released_words(released)));
@@ -224,7 +225,7 @@ pub fn plan_convert(ids: &mut IdAllocator, page: PageId, items: Vec<ItemId>) -> 
                 subject: Subject::Device(component),
                 page,
                 form: Form::Drawn,
-                role: "drawn".into(),
+                role: ecad_model::Role::Drawn,
                 items,
                 connection_points: BTreeMap::new(),
             },

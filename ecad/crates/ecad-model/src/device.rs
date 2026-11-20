@@ -68,7 +68,7 @@ impl DeviceGroup {
 /// use ecad_model::device::{DeviceGroup, DeviceType, Protection};
 /// let t = DeviceType::Protection(Protection::default());
 /// assert_eq!(t.group(), DeviceGroup::Protection);
-/// assert_eq!(serde_json::to_string(&t).unwrap(), r#"{"protection":{}}"#);
+/// assert_eq!(serde_json::to_string(&t).unwrap(), r#"{"protection":{"fuse":{}}}"#);
 /// assert_eq!(serde_json::to_string(&DeviceType::General).unwrap(), r#""general""#);
 /// ```
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -139,51 +139,154 @@ impl DeviceType {
         }
     }
 
+    /// Whether its group holds a rating in typed fields (design 072 §2.2, "Ratings"): a device of
+    /// such a group with none of them set has no rating, whatever its note says.
+    pub fn has_rating_fields(&self) -> bool {
+        match self {
+            DeviceType::Protection(_) => true,
+            // A push button or selector is commonly unrated: only a coil or an SSR is warned about.
+            DeviceType::Switching(s) => s.operator_kind() != OperatorKind::Manual,
+            // A contact or a thermocouple has no supply: only a powered sensor is warned about.
+            DeviceType::Sensor(s) => s.output.is_powered(),
+            DeviceType::PowerSupply(_) | DeviceType::Motor(_) | DeviceType::Load(_) | DeviceType::Indicator(_) => true,
+            DeviceType::TerminalStrip(_) | DeviceType::Connector(_) | DeviceType::PlcRack(_) | DeviceType::PlcModule(_) | DeviceType::General => {
+                false
+            }
+        }
+    }
+
+    /// Its typed rating as shown (`curve B, 16 A`), when a rating field is set.
+    pub fn rating(&self) -> Option<String> {
+        match self {
+            DeviceType::Protection(p) => (!p.is_unrated()).then(|| p.to_string()),
+            DeviceType::Switching(s) => (!s.is_unrated()).then(|| s.to_string()),
+            DeviceType::Sensor(s) => (!s.is_unrated()).then(|| s.to_string()),
+            DeviceType::Motor(m) => (!m.is_unrated()).then(|| m.to_string()),
+            DeviceType::Load(l) => (!l.is_unrated()).then(|| l.to_string()),
+            DeviceType::Indicator(i) => (!i.is_unrated()).then(|| i.to_string()),
+            DeviceType::PowerSupply(p) => (!p.is_unrated()).then(|| p.to_string()),
+            DeviceType::TerminalStrip(_) | DeviceType::Connector(_) | DeviceType::PlcRack(_) | DeviceType::PlcModule(_) | DeviceType::General => None,
+        }
+    }
+
+    /// The same type with its rating fields empty (its kind and contacts kept).
+    pub fn unrated(&self) -> DeviceType {
+        match self {
+            DeviceType::Protection(p) => DeviceType::Protection(p.unrated()),
+            DeviceType::Switching(s) => DeviceType::Switching(s.unrated()),
+            DeviceType::Sensor(s) => DeviceType::Sensor(s.unrated()),
+            DeviceType::Motor(m) => DeviceType::Motor(m.unrated()),
+            DeviceType::Load(l) => DeviceType::Load(l.unrated()),
+            DeviceType::Indicator(i) => DeviceType::Indicator(i.unrated()),
+            DeviceType::PowerSupply(p) => DeviceType::PowerSupply(p.unrated()),
+            // A strip's ratings are its fuse positions'.
+            DeviceType::TerminalStrip(_) => DeviceType::TerminalStrip(TerminalStrip::default()),
+            DeviceType::Connector(_) | DeviceType::PlcRack(_) | DeviceType::PlcModule(_) | DeviceType::General => self.clone(),
+        }
+    }
+
+    /// Why its data is not well formed, if it is not.
+    pub fn problem(&self) -> Option<String> {
+        match self {
+            DeviceType::Protection(p) => p.problem(),
+            DeviceType::Connector(c) => c.problem(),
+            DeviceType::Switching(s) => s.problem(),
+            DeviceType::Sensor(s) => s.problem(),
+            DeviceType::TerminalStrip(s) => s.problem(),
+            DeviceType::Motor(m) => m.problem(),
+            DeviceType::Load(l) => l.problem(),
+            DeviceType::Indicator(i) => i.problem(),
+            DeviceType::PowerSupply(p) => p.problem(),
+            DeviceType::PlcRack(_) | DeviceType::PlcModule(_) | DeviceType::General => None,
+        }
+    }
+
     /// Whether this is [`DeviceType::General`] (left out of a definition's file record).
     pub fn is_general(&self) -> bool {
         matches!(self, DeviceType::General)
     }
+
+    /// A terminal strip's data, when it is one.
+    pub fn as_strip(&self) -> Option<&TerminalStrip> {
+        match self {
+            DeviceType::TerminalStrip(s) => Some(s),
+            DeviceType::PowerSupply(_)
+            | DeviceType::Protection(_)
+            | DeviceType::Switching(_)
+            | DeviceType::Sensor(_)
+            | DeviceType::Motor(_)
+            | DeviceType::Load(_)
+            | DeviceType::Indicator(_)
+            | DeviceType::Connector(_)
+            | DeviceType::PlcRack(_)
+            | DeviceType::PlcModule(_)
+            | DeviceType::General => None,
+        }
+    }
+
+    /// A connector's data, when it is one.
+    pub fn as_connector(&self) -> Option<&Connector> {
+        match self {
+            DeviceType::Connector(c) => Some(c),
+            DeviceType::PowerSupply(_)
+            | DeviceType::Protection(_)
+            | DeviceType::Switching(_)
+            | DeviceType::Sensor(_)
+            | DeviceType::Motor(_)
+            | DeviceType::Load(_)
+            | DeviceType::Indicator(_)
+            | DeviceType::TerminalStrip(_)
+            | DeviceType::PlcRack(_)
+            | DeviceType::PlcModule(_)
+            | DeviceType::General => None,
+        }
+    }
+
+    /// A protective device's data, when it is one.
+    pub fn as_protection(&self) -> Option<&Protection> {
+        match self {
+            DeviceType::Protection(p) => Some(p),
+            DeviceType::PowerSupply(_)
+            | DeviceType::Switching(_)
+            | DeviceType::Sensor(_)
+            | DeviceType::Motor(_)
+            | DeviceType::Load(_)
+            | DeviceType::Indicator(_)
+            | DeviceType::TerminalStrip(_)
+            | DeviceType::Connector(_)
+            | DeviceType::PlcRack(_)
+            | DeviceType::PlcModule(_)
+            | DeviceType::General => None,
+        }
+    }
 }
 
-/// A power supply, battery or transformer (group 1). Its fields come with lane B step 3.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PowerSupply {}
+pub mod contacts;
+pub use contacts::{ContactEntry, ContactLabel, ContactPoles, ContactSet, ContactTable, PoleKind};
 
-/// A protective device (group 2). Its fields come with lane B step 3.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Protection {}
+pub mod power_supply;
+pub use power_supply::{PowerSupply, Psu, Transformer};
 
-/// A switching device and what operates it (group 3). Its fields come with lane B step 3.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Switching {}
+pub mod protection;
+pub use protection::{Breaker, Fuse, FuseBank, FuseClass, Poles, Protection, ProtectionKind, Rcbo, Rcd, TripCurve};
 
-/// A sensor (group 4). Its fields come with lane B step 3.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Sensor {}
+pub mod switching;
+pub use switching::{Control, Operator, OperatorKind, Switching};
 
-/// A motor (group 5). Its fields come with lane B step 3.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Motor {}
+pub mod sensor;
+pub use sensor::{Output, Sensing, Sensor};
 
-/// A consumer with a power and a demand (group 6). Its fields come with lane B step 3.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Load {}
+pub mod motor;
+pub use motor::{Motor, Phases, Starting};
 
-/// An indicator (group 7). Its fields come with lane B step 3.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Indicator {}
+pub mod load;
+pub use load::Load;
 
-/// A strip of DIN-rail terminals (group 8, design 072 §2.5). Its fields come with lane B step 3.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct TerminalStrip {}
+pub mod indicator;
+pub use indicator::{Indicator, IndicatorColour, SignalType};
+
+pub mod terminal_strip;
+pub use terminal_strip::{PositionLabel, TerminalStrip};
 
 /// A connector: its family, pins and the part of each half (group 9, design 072 §2.2, design 044).
 ///
@@ -195,6 +298,9 @@ pub struct TerminalStrip {}
 /// - `pin_names` is a typed list of pin names in pin order (each 1 to [`MAX_PIN_NAME`]
 ///   characters, all different ignoring case, at most [`MAX_PINS`]); names not drawn yet are kept.
 /// - `socket` and `plug` are each half's own part (the BOM lists a half with a part number).
+/// - `mating` is whether it has mating halves (a socket and a plug, design 044): set by its
+///   starter (a half or pin) or the `connector` command, never worked out from its symbol. A
+///   one-piece connector (a bulkhead, `rj45`) is Connector-typed with `mating` false.
 /// - `ignored` are the Checks rows its person chose to ignore.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -208,6 +314,8 @@ pub struct Connector {
     pub socket: HalfPart,
     #[serde(default, skip_serializing_if = "HalfPart::is_empty")]
     pub plug: HalfPart,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub mating: bool,
     #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
     pub ignored: std::collections::BTreeSet<ConnectorCheck>,
 }
@@ -374,6 +482,15 @@ impl HalfPart {
 }
 
 pub use crate::plc::{PlcModule, PlcRack};
+
+/// A device's rating note (design 072 §2.2, "Ratings"): text that does not read as its group's
+/// rating ("see datasheet", a vendor code), never a second copy of the rating.
+pub type RatingNote = crate::text::Text<64>;
+
+/// The `setprop` key of a device's rating (its typed rating fields, or its note).
+pub const RATING_KEY: &str = "rating";
+/// A fuse bank's output rating, or a strip's fuse position rating: `rating.<n>`.
+pub const RATING_OF_PREFIX: &str = "rating.";
 
 /// A device's description (design 072 §2.1).
 pub type Description = crate::text::Text<256>;

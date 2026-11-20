@@ -181,6 +181,9 @@ check_kinds! {
     NoLocation = "no-location", Info, "Devices without a location", count;
     /// A device with more contacts of a kind drawn than its part offers (brief 025).
     TooManyContacts = "too-many-contacts", Warning, "More contacts than the part offers";
+    /// Design 072 §2.2 (owner, 2026-11-18): a device whose group has typed rating fields, none
+    /// set (a rating note does not count).
+    NoRating = "no-rating", Warning, "Device with no rating";
     /// Brief 028 (design 028 §8): a strip with more terminals drawn than it offers.
     TooManyTerminals = "too-many-terminals", Warning, "More terminals than the strip offers";
     /// Two terminals of one strip with one label.
@@ -1154,6 +1157,18 @@ pub fn component_checks_in(places: &mut Places<'_>, c: DeviceId, m: &dyn TextMet
     for (which, page, at) in crate::xref::count_checks(doc, c) {
         out.push(Check { kind: Kind::TooManyContacts, page, at, object: Object::Device(c), which, fix: None });
     }
+    // Design 072 §2.2: checks read only the typed rating; a note is not a rating.
+    if let Some(d) = doc.devices.get(&c)
+        && d.has_no_rating()
+    {
+        let (page, at) = crate::reps::goto_place_in(places, c).map_or((None, None), |(p, a)| (Some(p), a));
+        let tag = crate::devices::tag_words(doc, c);
+        let which = match &d.rating_note {
+            Some(n) => format!("{tag} has no rating ('{n}' is a note)"),
+            None => format!("{tag} has no rating"),
+        };
+        out.push(Check { kind: Kind::NoRating, page, at, object: Object::Device(c), which, fix: None });
+    }
     // Brief 044 (design 044 §6.3): a connector's mating checks.
     out.extend(crate::connectors::checks(doc, c));
     // Brief 033 (design 033 §4.1): a table the user placed over the title block stays there.
@@ -1681,6 +1696,8 @@ impl Scope {
                 // Brief 052 (design 052 §6): a page's function or location is a context for the
                 // devices on it; the project's for every device (rare); the list's codes for the
                 // objects storing that entry, and the duplicate rows.
+                // No check or output reads a device link yet (design 072 §2.6).
+                Op::AddDeviceLink { .. } | Op::RemoveDeviceLink { .. } => {}
                 Op::ModifyProject { before, after } => {
                     use crate::designations::{Aspect, changed_codes, default_key};
                     for a in Aspect::ALL {
