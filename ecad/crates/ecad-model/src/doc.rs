@@ -1439,12 +1439,32 @@ impl Document {
         self.terminals.contains_key(&t) || self.cable_point(t).is_some()
     }
 
-    /// The named points joined to `t` (`t` included), when `t` is one (design 072 §4.4, F4): a
-    /// cable reference's point joins the core's points on the cable's other references. `None` for
-    /// a device's own point. Named points are aids: a wire runs through them, never to them.
-    /// (Continuations still end wires at their own point until they become named points too.)
+    /// The named points joined to `t` (`t` included), when `t` is one (design 072 §4.4, F4, F5): a
+    /// cable reference's point joins the core's points on the cable's other references; a
+    /// continuation's point joins the points of every continuation with the same name (an unnamed
+    /// continuation's, its own). `None` for a device's own point. Named points are aids: a wire
+    /// runs through them, never to them, so it runs device point to device point across pages.
     pub fn named_points(&self, t: TerminalId) -> Option<Vec<TerminalId>> {
-        let (cable, i) = self.cable_point(t)?;
-        self.cables.get(&cable)?.cores.get(i).map(|c| c.through.clone())
+        if let Some((cable, i)) = self.cable_point(t) {
+            return self.cables.get(&cable)?.cores.get(i).map(|c| c.through.clone());
+        }
+        let device = self.terminals.get(&t)?.component;
+        let props = &self.devices.get(&device)?.properties;
+        if props.get(crate::connectivity::KIND).map(String::as_str) != Some(crate::connectivity::CONTINUATION) {
+            return None;
+        }
+        Some(self.continuation_points(props, device))
+    }
+
+    /// The points of continuation `device` (with `props`) and of its partners by name, in ID order.
+    pub fn continuation_points(&self, props: &Properties, device: DeviceId) -> Vec<TerminalId> {
+        let devices = match crate::connectivity::continuation_key(props) {
+            Some(k) => self.continuations_named(&k),
+            None => vec![device],
+        };
+        let mut out: Vec<TerminalId> = devices.into_iter().flat_map(|d| self.terminals_of(d).map(|(t, _)| t)).collect();
+        out.sort();
+        out.dedup();
+        out
     }
 }

@@ -227,7 +227,13 @@ fn each_seeded_fault_appears_once_where_it_is() {
     h.run("place", json!({"symbol": "continuation", "at": [700, 0], "name": "24V"})).unwrap();
     h.run("place", json!({"symbol": "continuation", "at": [700, 40], "rotation": 180, "name": "0V"})).unwrap();
     h.run("place", json!({"symbol": "continuation", "at": [300, 0], "name": "24V"})).unwrap();
-    wire(&mut h, &[(700.0, 0.0), (700.0, 40.0)], json!({}));
+    // F5: a continuation is a named point, so a wire runs between device points: each
+    // continuation's line lands on a point of -X7, and a wire joins the two.
+    terminal(&mut h, (720.0, 0.0), "X7");
+    terminal(&mut h, (720.0, 40.0), "X7");
+    line(&mut h, &[(700.0, 0.0), (720.0, 0.0)], json!({}));
+    line(&mut h, &[(700.0, 40.0), (720.0, 40.0)], json!({}));
+    wire(&mut h, &[(720.0, 0.0), (720.0, 40.0)], json!({}));
     // One net, two fixed numbers.
     for (x, y) in [(800.0, 0.0), (800.0, 30.0), (840.0, 0.0), (840.0, 30.0)] {
         terminal(&mut h, (x, y), "X6");
@@ -325,7 +331,8 @@ fn an_unknown_continuation_name_is_a_warning_never_a_refusal() {
     };
     terminal(&mut h, (0.0, 0.0), "X1");
     let r = h.run("place", json!({"symbol": "continuation", "at": [0, 30], "name": "Motor-run"})).unwrap();
-    wire(&mut h, &[(0.0, 0.0), (0.0, 30.0)], json!({}));
+    // F5: a continuation is a named point, an aid: a line to a lonely one carries no wire.
+    line(&mut h, &[(0.0, 0.0), (0.0, 30.0)], json!({}));
     assert!(kept(&mut h).iter().any(|c| c.which == "Motor-run"), "the name is not in the table");
     let row = kept(&mut h).into_iter().find(|c| c.which == "Motor-run").unwrap();
     assert_eq!(row.severity(), ecad_cadcraft::checks::Severity::Warning);
@@ -334,13 +341,17 @@ fn an_unknown_continuation_name_is_a_warning_never_a_refusal() {
     // Names in the table are not rows: the net takes the potential.
     terminal(&mut h, (100.0, 0.0), "X2");
     h.run("place", json!({"symbol": "continuation", "at": [100, 30], "name": "24V"})).unwrap();
-    wire(&mut h, &[(100.0, 0.0), (100.0, 30.0)], json!({}));
+    line(&mut h, &[(100.0, 0.0), (100.0, 30.0)], json!({}));
     assert_eq!(kept(&mut h).len(), 1);
     // A continuation named for its net's own number (as Merge the nets places) is not a row.
     terminal(&mut h, (200.0, 0.0), "X3");
-    // Design 072: the continuation first, so the wire runs to its point.
+    // Design 072: the continuations first, so the lines land on their points; F5: the wire runs
+    // through the pair, from -X3 to -X4.
     h.run("place", json!({"symbol": "continuation", "at": [200, 30], "name": "W-7"})).unwrap();
-    let w3 = wire(&mut h, &[(200.0, 0.0), (200.0, 30.0)], json!({}));
+    line(&mut h, &[(200.0, 0.0), (200.0, 30.0)], json!({}));
+    terminal(&mut h, (300.0, 0.0), "X4");
+    h.run("place", json!({"symbol": "continuation", "at": [300, 30], "name": "W-7"})).unwrap();
+    let w3 = wire(&mut h, &[(300.0, 0.0), (300.0, 30.0)], json!({}));
     h.run("wirenumber", json!({"conductor": w3.hex(), "value": "W-7"})).unwrap();
     assert_eq!(kept(&mut h).len(), 1, "named for its own number");
     // Add MOTOR-RUN to the table: the row goes; `u` brings it back.
@@ -434,6 +445,10 @@ fn a_wires_properties_show_and_edit_its_net() {
     let page = h.first_page();
     h.run("place", json!({"symbol": "continuation", "at": [0, 0], "name": "24V"})).unwrap();
     terminal(&mut h, (60.0, 0.0), "X1");
+    // F5: a continuation is a named point, so wire a runs through a pair of them, from -X0.
+    h.run("place", json!({"symbol": "continuation", "at": [0, 100], "name": "24V"})).unwrap();
+    terminal(&mut h, (30.0, 100.0), "X0");
+    line(&mut h, &[(0.0, 100.0), (30.0, 100.0)], json!({}));
     let a = wire(&mut h, &[(0.0, 0.0), (30.0, 0.0)], json!({}));
     // Design 072: two wires apart, joined later by a third between their points.
     let b = wire(&mut h, &[(40.0, 0.0), (60.0, 0.0)], json!({}));

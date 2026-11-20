@@ -166,19 +166,18 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
     h.state_mut().reports.as_mut().unwrap().tab = outputs_ui::Tab::Wires;
     h.run_steps(4);
     let wires = h.state().reports.as_ref().unwrap().table().clone();
-    // Until lane F step F4 the demo does not continue -W01 on page 3: its cores sit on lines ending
-    // at the reference (no wires), so no wire is listed with its cable yet (with F4: the three
-    // cores, "-W01 core ...").
-    assert!(!wires.rows.iter().any(|row| row[9].text.starts_with("-W01 core")), "no cores with their cable until F4");
+    // -W01 continues on page 3 (F4, F5): each core is one wire from -K01 to -X02, listed with its
+    // cable.
+    let cored = wires.rows.iter().filter(|row| row[9].text.starts_with("-W01 core")).count();
+    assert_eq!(cored, 3, "the three cores with their cable");
     save(&h, &deltas, "024-reports-wires.png");
     h.state_mut().reports.as_mut().unwrap().tab = outputs_ui::Tab::Cables;
     h.run_steps(4);
     let cables = h.state().reports.as_ref().unwrap().table().clone();
     let row: Vec<String> = cables.rows[0].iter().map(|c| c.text.clone()).collect();
-    // Brief 028: Cores is the offer read from the type. Until lane F step F4 -W01's cores sit on
-    // lines ending at the reference (no wires), so its ends have no location; a core on a line is
-    // used (lane 072 D c3), so 3 used and 1 open (GNYE) (with F4 the ends read +CP1, +JB1).
-    assert_eq!(row[..7], ["-W01", "4G1.5", "4", "?", "?", "3", "1 (GNYE)"], "{row:?}");
+    // Brief 028: Cores is the offer read from the type. -W01 continues on page 3, so its ends read
+    // +CP1 (-K01) and +JB1 (-X02); 3 used and 1 open (GNYE).
+    assert_eq!(row[..7], ["-W01", "4G1.5", "4", "+CP1", "+JB1", "3", "1 (GNYE)"], "{row:?}");
     h.state_mut().reports = None;
 
     // 5. Generated pages: a cover and contents, the BOM page.

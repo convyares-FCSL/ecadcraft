@@ -82,11 +82,20 @@
 // ---------------------------------------------------------------- page 3: Field
 {"command":"newpage","params":{"title":"Field"}}
 {"command":"pageprops","params":{"location":"+FIELD"}}
-// -W01 is continued here at F5: its page-2 lines must first end loose at the reference (lane D, F4 named points);
-// then `cablecontinue` at [130,150] toward [130,130] and the three stubs connected to X02.
+// -W01 continues here (design 072 §4.4): its page-2 lines end loose at the reference; `cablecontinue`
+// lands them on named points and draws three stubs from this page's reference, which run on to
+// X02. Each core is then one wire from -K01 on page 2 to -X02 here.
 {"command":"place","params":{"symbol":"terminal","at":[110,110],"tag":"X02"},"as":"x2a"}
 {"command":"place","params":{"symbol":"terminal","at":[130,110],"tag":"X02"},"as":"x2b"}
 {"command":"place","params":{"symbol":"terminal","at":[150,110],"tag":"X02"},"as":"x2c"}
+{"command":"cablecontinue","params":{"cable":"$w1.cable","at":[130,150],"toward":[130,130]}}
+{"command":"wire","params":{"points":[[125,130],[110,130],[110,110]]},"as":"c1"}
+{"command":"wire","params":{"points":[[130,130],[130,110]]},"as":"c2"}
+{"command":"wire","params":{"points":[[135,130],[150,130],[150,110]]},"as":"c3"}
+// The tool's potential goes only on a line drawn between two points; these lines join the stubs.
+{"command":"potential","params":{"conductor":"$c1.conductor","value":"L1"}}
+{"command":"potential","params":{"conductor":"$c2.conductor","value":"L2"}}
+{"command":"potential","params":{"conductor":"$c3.conductor","value":"L3"}}
 {"command":"place","params":{"symbol":"motor3","at":[130,75],"tag":"M01"},"as":"m1"}
 {"command":"wire","params":{"points":[[110,110],[110,100],[120,100],[120,90]]}}
 {"command":"wire","params":{"points":[[130,110],[130,90]]}}

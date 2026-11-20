@@ -31,8 +31,9 @@ fn w04(c: &mut Client) -> (String, String) {
     for i in 0..3 {
         let x = 100.0 + 20.0 * f64::from(i);
         let tp = place_terminal(c, (x, 100.0), &format!("X{}", i + 1));
-        c.exec("wire", json!({"points": [[tp.0, tp.1], [tp.0, 40.0]]}));
+        // The continuation first, so the line lands on its point (design 072 §4.4, F5).
         c.exec("place", json!({"symbol": "continuation", "at": [tp.0, 40.0], "name": format!("A{}", i + 1)}));
+        c.exec("wire", json!({"points": [[tp.0, tp.1], [tp.0, 40.0]]}));
     }
     let cable = hex(&c.exec("cableslash", json!({"from": [90, 70], "to": [150, 70], "tag": "-W04"})), "cable");
     let p2 = hex(&c.exec("newpage", json!({"title": "Field"})), "page");
@@ -110,31 +111,23 @@ fn wire_joinwires_cableslash_cablecontinue_wiresettings_by_the_agent_then_refuse
         assert_eq!(s["label_rule"], "each", "{s}");
         assert_eq!(s["label_min_length"], json!(10.0), "{s}");
 
-        // `cablecontinue` before the second slash: the §3.4 refusal, no transaction.
+        // `cablecontinue` on cores that are each one wire through the continuation pairs (F5):
+        // refused, naming the cable, no transaction.
         let (cable, p2) = w04(&mut c);
         let n = c.log().len();
         let m = c.refused("execute", json!({"command": "cablecontinue", "params": {"cable": cable, "at": [300, 70], "toward": [350, 70]}}));
-        assert!(m.contains("-W04's cores end on continuations"), "{m}");
-        assert!(m.contains("slash the wires there with tag -W04"), "{m}");
+        assert!(m.contains("-W04"), "{m}");
         assert_eq!(c.log().len(), n);
 
-        // `cableslash` continuing: one transaction "Cable slash", ModifyCable and
-        // LinkRepresentation, no CreateCable.
+        // `cableslash` with -W04's tag on page 2 (F5): one transaction "Cable slash", a
+        // LinkRepresentation, no CreateCable and no new member.
         let n = c.log().len();
         let v = c.exec("cableslash", json!({"from": [90, 70], "to": [150, 70], "tag": "-W04"}));
         let Transaction { label, ops, .. } = assert_one_by_agent(&mut c, n, "cableslash continue");
         assert_eq!(label, "Cable slash");
         assert_eq!(v["continued"], json!(true), "{v}");
-        // One ModifyCable for the cable, placing three more cores on wires.
-        let placed = |c: &ecad_model::Cable| c.cores.iter().filter(|m| m.wire().is_some()).count() as isize;
-        let added: Vec<isize> = ops
-            .iter()
-            .filter_map(|o| match o {
-                Op::ModifyCable { before, after, .. } => Some(placed(after) - placed(before)),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(added, vec![3], "{:?}", ops);
+        assert!(!ops.iter().any(|o| matches!(o, Op::ModifyCable { .. })), "no new member: {ops:?}");
+        assert_eq!(v["cores"].as_array().map_or(0, Vec::len), 3, "{v}");
         assert!(ops.iter().any(|o| matches!(o, Op::LinkRepresentation { .. })), "{ops:?}");
         assert!(!ops.iter().any(|o| matches!(o, Op::CreateCable { .. })), "{ops:?}");
 

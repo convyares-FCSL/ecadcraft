@@ -231,47 +231,52 @@ fn the_wire_tool_has_a_join_keyword() {
 
 // ---------------------------------------------------------------- Q8: a cable across pages
 
-/// Design 032 §3.1: page 100 wires from `-X01:1…3` to continuations A1…A3 slashed as `-W04`;
-/// page 115 continuations A1…A3 and wires on to `-X05:1…3`.
+/// Design 032 §3.1, as design 072 §4.4 (F5) has it: page 100 lines from `-X01:1…3` to
+/// continuations A1…A3, slashed as `-W04`; page 115 continuations A1…A3 and lines on to
+/// `-X05:1…3`. Continuations are named points, so each core is one wire from `-X01:n` to `-X05:n`.
 struct Pack {
     h: H,
     p100: PageId,
     p115: PageId,
     cable: ecad_model::CableId,
-    first: Vec<WireId>,
-    second: Vec<WireId>,
+    /// The three wires, `-X01:n` to `-X05:n`: the cable's cores.
+    wires: Vec<WireId>,
 }
 
 fn pack() -> Pack {
     let mut h = H::new(0x32_20);
     let p100 = h.first_page();
-    let mut first: Vec<WireId> = Vec::new();
     for (i, y) in [0.0, 10.0, 20.0].into_iter().enumerate() {
         terminal(&mut h, (0.0, y), "X01");
         h.run("place", json!({"symbol": "continuation", "at": [100, y], "name": format!("A{}", i + 1)})).unwrap();
-        first.push(id(&wire(&mut h, &[(0.0, y), (100.0, y)], json!({})), "conductor"));
+        let r = wire(&mut h, &[(0.0, y), (100.0, y)], json!({}));
+        assert!(r["conductor"].is_null(), "no partner yet: no wire, {r}");
     }
     let r = h.run("cableslash", json!({"from": [50, -5], "to": [50, 25], "tag": "-W04"})).unwrap();
     let cable: ecad_model::CableId = id(&r, "cable");
-    for (i, w) in first.iter().enumerate() {
-        h.run("cablecore", json!({"conductor": w.hex(), "core": format!("{}", i + 1)})).unwrap();
-    }
     let p115: PageId = id(&h.run("newpage", json!({"title": "115"})).unwrap(), "page");
     h.activate(p115);
-    let mut second = Vec::new();
+    let mut wires: Vec<WireId> = Vec::new();
     for (i, y) in [0.0, 10.0, 20.0].into_iter().enumerate() {
         h.run("place", json!({"symbol": "continuation", "at": [0, y], "name": format!("A{}", i + 1)})).unwrap();
         terminal(&mut h, (100.0, y), "X05");
-        second.push(id(&wire(&mut h, &[(0.0, y), (100.0, y)], json!({})), "conductor"));
+        wires.push(id(&wire(&mut h, &[(0.0, y), (100.0, y)], json!({})), "conductor"));
     }
-    Pack { h, p100, p115, cable, first, second }
+    for (i, w) in wires.iter().enumerate() {
+        h.run("cablecore", json!({"conductor": w.hex(), "core": format!("{}", i + 1)})).unwrap();
+    }
+    let doc = h.doc();
+    let members: Vec<WireId> = doc.cables[&cable].cores.iter().filter_map(|m| m.wire()).collect();
+    assert_eq!(members, wires, "each core moved onto its wire");
+    Pack { h, p100, p115, cable, wires }
 }
 
-/// §12 item 13: slashing on page 115 with the cable's tag continues it: one cable, six members,
-/// three cores from `-X01:n` to `-X05:n`, no core rows in Checks; erasing that slash leaves the
-/// cable with its page-100 members.
+/// Design 072 §4.4 (F5, superseding design 032 §3.3): slashing on page 115 with the cable's tag
+/// shows the cable there. Each core is already one wire through the continuations, so the cable
+/// keeps its three members; the result names them. Erasing that slash keeps them too (they run on
+/// page 100).
 #[test]
-fn a_cable_continues_through_continuations_by_its_tag() {
+fn a_cable_is_shown_on_another_page_by_its_tag() {
     let mut f = pack();
     let before = f.h.doc().cables.len();
     let head = f.h.head();
@@ -282,15 +287,15 @@ fn a_cable_continues_through_continuations_by_its_tag() {
     let doc = f.h.doc();
     assert_eq!(doc.cables.len(), before, "no new cable");
     let members: Vec<WireId> = doc.cables[&f.cable].cores.iter().filter_map(|m| m.wire()).collect();
-    assert_eq!(members.len(), 6);
+    assert_eq!(members, f.wires, "no new member");
     let cores = r["cores"].as_array().unwrap();
     assert_eq!(cores.len(), 3);
-    for (c, (w2, w1)) in cores.iter().zip(f.second.iter().zip(&f.first)) {
-        assert_eq!(c["conductor"], json!(w2.hex()));
-        assert_eq!(c["continues"], json!(w1.hex()));
+    for (i, (c, w)) in cores.iter().zip(&f.wires).enumerate() {
+        assert_eq!(c["conductor"], json!(w.hex()));
+        assert_eq!(c["core"], json!(format!("{}", i + 1)));
     }
-    let chains = ecad_cadcraft::references::core_chains(&doc, f.cable);
-    assert_eq!(chains, f.first.iter().zip(&f.second).map(|(a, b)| vec![*a, *b]).collect::<Vec<_>>());
+    let slashes = doc.representations_of(ecad_model::Subject::Cable(f.cable)).filter(|(_, r)| r.role == "slash").count();
+    assert_eq!(slashes, 2, "one slash on each page");
     let cc = f.h.run("cablecores", json!({"cable": f.cable.hex()})).unwrap();
     let rows = cc["cores"].as_array().unwrap();
     assert_eq!(rows.len(), 3, "{cc}");
@@ -305,7 +310,7 @@ fn a_cable_continues_through_continuations_by_its_tag() {
     assert!(text.contains("\"cores\":3") || text.contains("\"cores\": 3"), "{list}");
     let checks = f.h.run("checks", json!({"kinds": ["core-twice", "too-many-cores"]})).unwrap();
     assert_eq!(checks["total"], json!(0), "{checks}");
-    // Erasing the page-115 slash: the cable keeps its page-100 members.
+    // Erasing the page-115 slash: the cable keeps its members, which run on page 100 too.
     let rep: ecad_model::RepresentationId = id(&r, "representation");
     let item: ecad_model::ItemId = id(&r, "item");
     let handle = f.h.handle_of(f.p115, item);
@@ -313,41 +318,47 @@ fn a_cable_continues_through_continuations_by_its_tag() {
     let doc = f.h.doc();
     assert!(!doc.representations.contains_key(&rep));
     let left: Vec<WireId> = doc.cables[&f.cable].cores.iter().filter_map(|m| m.wire()).collect();
-    assert_eq!(left, f.first);
+    assert_eq!(left, f.wires);
     let _ = f.p100;
 }
 
-/// §12 item 13: the refusals of §3.3.
+/// F5 (overseer, 2026-11-20): the refusals of a slash with an existing cable's tag. A crossed wire
+/// that is not one of its cores; a page that already has its slash; a page where none of its wires
+/// runs (no empty slash). Nothing is written.
 #[test]
-fn continuing_a_cable_is_refused_with_the_reason() {
+fn showing_a_cable_by_its_tag_is_refused_with_the_reason() {
     let mut f = pack();
-    // A wire on page 115 that meets no core through a continuation.
+    // A wire on page 115 that is not a core of -W04.
     f.h.points_at(&[(0.0, 40.0), (100.0, 40.0)]);
     wire(&mut f.h, &[(0.0, 40.0), (100.0, 40.0)], json!({}));
     let head = f.h.head();
     let m = f.h.run("cableslash", json!({"from": [50, -5], "to": [50, 45], "tag": "-W04"})).unwrap_err();
-    assert!(m.contains("does not continue a core of -W04: none of its ends meets -W04 through a continuation."), "{m}");
+    assert!(m.contains("is not a core of -W04."), "{m}");
     assert_eq!(f.h.head(), head);
     // Already slashed on page 100.
     f.h.activate(f.p100);
     let m = f.h.run("cableslash", json!({"from": [60, -5], "to": [60, 25], "cable": f.cable.hex()})).unwrap_err();
     assert!(m.contains("-W04 already has a slash on this page."), "{m}");
-    // Two wires continuing one core.
-    f.h.activate(f.p115);
-    f.h.run("place", json!({"symbol": "continuation", "at": [0, 60], "name": "A1"})).unwrap();
-    f.h.points_at(&[(100.0, 60.0)]);
-    wire(&mut f.h, &[(0.0, 60.0), (100.0, 60.0)], json!({}));
-    let m = f.h.run("cableslash", json!({"from": [50, -5], "to": [50, 65], "tag": "-W04"})).unwrap_err();
-    assert!(m.contains("does not continue") || m.contains("Two of the wires continue -W04's core 1."), "{m}");
+    // A page where none of -W04's wires runs.
+    let p116: PageId = id(&f.h.run("newpage", json!({"title": "116"})).unwrap(), "page");
+    f.h.activate(p116);
+    f.h.points_at(&[(0.0, 0.0), (100.0, 0.0)]);
+    wire(&mut f.h, &[(0.0, 0.0), (100.0, 0.0)], json!({}));
+    let head = f.h.head();
+    let m = f.h.run("cableslash", json!({"from": [50, -5], "to": [50, 5], "tag": "-W04"})).unwrap_err();
+    assert!(m.contains("-W04 has no wire on this page"), "{m}");
+    assert_eq!(f.h.head(), head);
+    assert_eq!(f.h.doc().representations_of(ecad_model::Subject::Cable(f.cable)).filter(|(_, r)| r.page == p116).count(), 0);
 }
 
-/// §12 item 14: `cablecontinue` on a cable whose cores end on continuations says what to do.
+/// F5: `cablecontinue` takes a core's loose line on to another page; a cable whose cores are each
+/// one wire, connected at both ends, has nothing to continue and is refused, with nothing written.
 #[test]
-fn cablecontinue_says_to_slash_where_the_cores_continue() {
+fn cablecontinue_of_cores_connected_at_both_ends_is_refused() {
     let mut f = pack();
     let head = f.h.head();
     let m = f.h.run("cablecontinue", json!({"cable": f.cable.hex(), "at": [20, 80], "toward": [40, 80]})).unwrap_err();
-    assert!(m.contains("-W04's cores end on continuations. To show -W04 where they continue, slash the wires there with tag -W04."), "{m}");
+    assert!(m.contains("-W04"), "{m}");
     assert_eq!(f.h.head(), head);
 }
 
@@ -442,10 +453,11 @@ fn the_join_default_comes_from_the_registry() {
     assert_eq!(h.doc().routes.len(), 2, "wire.join off: the ends stay open (two lines)");
 }
 
-/// Review of #65, finding 1 (design 032 §8.4): renaming a continuation re-counts the cables of its
-/// old and new name groups. W04 continued, then page 115's A1 renamed Z1: that core breaks in two.
+/// Review of #65, finding 1, as design 072 §4.4 (F5) has it: renaming page 115's A1 to Z1 breaks
+/// the pair, so the A1 core's wire goes and the core stays on its lines; undo puts it back on the
+/// wire. The cable keeps three cores throughout.
 #[test]
-fn renaming_a_continuation_recounts_the_cables_cores() {
+fn renaming_a_continuation_leaves_the_core_on_its_lines() {
     let mut f = pack();
     f.h.run("cableslash", json!({"from": [50, -5], "to": [50, 25], "tag": "-W04"})).unwrap();
     let cores = |h: &mut H, k: ecad_model::CableId| h.run("cablecores", json!({"cable": k.hex()})).unwrap()["cores"].as_array().map_or(0, Vec::len);
@@ -457,9 +469,13 @@ fn renaming_a_continuation_recounts_the_cables_cores() {
         .find(|c| doc.representations_of(ecad_model::Subject::Device(*c)).any(|(_, r)| r.page == f.p115))
         .expect("A1 on page 115");
     f.h.run("setprop", json!({"component": a1.hex(), "key": "name", "value": "Z1"})).unwrap();
-    assert_eq!(cores(&mut f.h, f.cable), 4, "the A1 core is two cores now");
+    let doc = f.h.doc();
+    assert_eq!(doc.cables[&f.cable].cores.len(), 3, "still three cores: {:?}", doc.cables[&f.cable].cores);
+    assert!(!doc.wires.contains_key(&f.wires[0]), "the A1 wire went with the pair");
+    assert!(matches!(doc.cables[&f.cable].cores[0].position, ecad_model::CorePosition::Route { .. }), "{:?}", doc.cables[&f.cable].cores[0]);
     f.h.cmdline("u");
-    assert_eq!(cores(&mut f.h, f.cable), 3, "undo joins it again");
+    assert_eq!(cores(&mut f.h, f.cable), 3);
+    assert_eq!(f.h.doc().cables[&f.cable].cores[0].wire(), Some(f.wires[0]), "undo puts the core back on its wire");
 }
 
 /// Review of #65, finding 3: wire labels are drawn in lane T's wire-label style (a bold weight
@@ -600,7 +616,7 @@ fn chain_updates_in_checks_and_outputs_match_a_rebuild() {
         .unwrap();
     f.h.run("setprop", json!({"component": a2.hex(), "key": "name", "value": "Z2"})).unwrap();
     kept_equals_rebuild(&mut f.h, "continuation renamed");
-    let line = f.h.route_of(f.p115, f.second[0]);
+    let line = f.h.route_of(f.p115, f.wires[2]);
     f.h.run("disconnect", json!({"route": line.hex(), "end": "A"})).unwrap();
     kept_equals_rebuild(&mut f.h, "a member's end detached");
     // Unrelated: a wire far away on page 115 changes no cable row.
@@ -634,12 +650,16 @@ fn the_outputs_map_takes_a_continuation_rename_to_its_cables() {
         }];
         let scope = p.outputs.as_ref().unwrap().scope(&before, &ops);
         p.ledger.commit(ecad_model::Author::User, "rename", ops.clone()).unwrap();
+        // F5: the commit's rewrite pass adds to the rename (the broken pair's wire goes, its core
+        // stays on its lines); the update gets the whole transaction, as the project gives it.
+        let all = p.ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default();
+        assert!(all.len() > ops.len(), "the rewrite extends the rename");
         let doc = p.ledger.document();
-        p.outputs.as_mut().unwrap().update(doc, &ops, scope);
+        p.outputs.as_mut().unwrap().update(doc, &all, scope);
         let kept = p.outputs.as_ref().unwrap().cable_row(cable).cloned();
         let fresh = ecad_cadcraft::outputs::Outputs::build(doc).cable_row(cable).cloned();
         (kept, fresh)
     });
-    assert_eq!(kept.as_ref().map(|r| r.cores), Some(4), "{kept:?}");
+    assert_eq!(kept.as_ref().map(|r| r.cores), Some(2), "F5: two cores are wires, the third is on its lines: {kept:?}");
     assert_eq!(kept, fresh);
 }

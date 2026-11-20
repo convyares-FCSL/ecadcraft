@@ -28,8 +28,16 @@ What changed for someone using the app:
   error in Checks (**Connection point has more wires than it accepts**, e.g. `-X1:3 takes 2
   conductors; 3 are connected`). No built-in symbol takes more than two yet, and the symbol
   builder cannot set it yet.
-- A wire across two pages through a cable reference does not form yet (lane F, step F4 brings
-  it back through named points on both pages).
+- **A wire runs from device point to device point across pages.** A cable reference's points
+  (step F4) and a continuation's point (step F5) are named points: aids that a wire runs through,
+  never to. A continuation joins the points of every continuation with the same name, so a line
+  from `-G01:-` to the `0V` continuation on page 1 and a line from the `0V` continuation on page 2
+  to `-K01:A2` make one wire `-G01:-` to `-K01:A2`. A line to a continuation with no partner
+  carries no wire (Checks still lists **Continuation without partner**). Renaming a continuation
+  re-forms the wires of the nets it leaves and joins; a cable core whose wire goes stays on its
+  lines. A **Cable Slash** with an existing cable's tag on another page now only shows that cable
+  there, over its own wires (no new cores); on a page where none of its wires runs it is refused
+  (`-W04 has no wire on this page: …`).
 
 ## Try it (click only)
 
@@ -81,9 +89,30 @@ What changed for someone using the app:
     on page 2: each core becomes **one wire from page 1's point to page 2's**, in one net, and
     the core moves onto it. The inspector's cable row lists each core's two points
     (`through …`), in Raw and Readable. Erasing page 2's drawing leaves page 1's lines loose
-    again, the cores on them. Not yet: continuations still end wires at their own point (F5),
-    and some cable-reference views (hover text of a line ending on a reference, the debugger
-    trail) still describe the old drawing.
+    again, the cores on them. Not yet: some cable-reference views (hover text of a line ending on
+    a reference, the debugger trail) still describe the old drawing.
+
+12. Continuations (step F5). On page 1 draw a line from a device's point to a new continuation
+    named `T1`; on page 2 another `T1` continuation and a line from it to a device's point. The
+    wire list shows **one wire** from page 1's point to page 2's, and both pages label it with
+    the same number. Erase page 2's line: the wire goes (page 1's line has no wire again). Undo,
+    then rename page 2's continuation to `T2`: the wire goes and both continuations are listed
+    under **Continuation without partner**; undo brings the wire back.
+
+13. The demo (`cargo xtask demo`, then open it), against `docs/quick-start.md` §5I:
+    - Step 1: page 2 no longer labels the three lines above the contactor (`L1-01 2.5 BN` …):
+      their continuations `L1`–`L3` have no partner, so the lines carry no wire. Cable `-W01`
+      now continues on page 3: its cores below the contactor show `L1-01`, `L2-01`, `L3-01`
+      (number only), and on page 3 the stubs from its reference run to `-X02`, the motor's wires
+      showing `L1-01 2.5 BN`, `L2-01 2.5 BK`, `L3-01 2.5 GY`. Each core is one wire from `-K01:2`
+      (`:4`, `:6`) to `-X02`.
+    - Step 2: the Net line reads `Net 0V-01 · 3 wires · -G01:-, -H01:X2, -H02:X2, -K01:A2`
+      (four points, three wires; the continuations are no longer wire ends).
+    - Step 3: drawing from the lamp's `X1` to an empty spot makes a line with no wire yet (the
+      Checks row **Line not connected at both ends: no wire yet**), not `Wire 24V-04 drawn`. Draw
+      on from its free end to a connection point to make the wire.
+    - Step 7 and the Checks list: no `-W01` orphan reference, open ends, no-wire-yet or
+      core-at-one-end rows any more; ten rows in all.
 
 Not yet tried by the owner. Checked by the headless tests named in the lane's tests
 (`lanes::lane_072d`, ecad-model, ecad-file, ecad-inspector, ecad-cadcraft, ecad-mcp, ecad-app).

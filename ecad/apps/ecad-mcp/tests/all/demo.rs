@@ -24,19 +24,22 @@ fn the_demo_command_list_builds_the_control_panel() {
     assert_eq!(doc.representations_of(Subject::Device(k1)).count(), 4);
     assert_eq!(ecad_cadcraft::devices::page_numbers(&doc, k1), [2, 3]);
     assert_eq!(doc.devices[&k1].get("part_number"), Some("CT-9A-24VDC"));
-    // Cable -W01 leaves page 2 at its reference. Until lane F step F4 (wires across pages through
-    // cable references) the demo does not continue it on page 3, so its one reference is an
-    // orphan and each -X02 terminal has only the motor's wire (with F4: two linked references,
-    // and the cable's wire at each -X02 terminal too).
+    // Cable -W01 leaves page 2 at its reference and continues on page 3 (design 072 §4.4, F4/F5):
+    // two linked references, and each -X02 point has the motor's wire and the cable core's wire.
     assert_eq!(doc.cables.len(), 1);
     let refs = ecad_cadcraft::references::all(&doc);
-    assert_eq!(refs.len(), 1, "{refs:?}");
-    assert!(refs.iter().all(|r| r.orphan), "{refs:?}");
+    assert_eq!(refs.len(), 2, "{refs:?}");
+    assert!(refs.iter().all(|r| !r.orphan), "{refs:?}");
     let x2 = doc.components_tagged("-X02")[0];
     let x2_terminals: Vec<_> = doc.terminals_of(x2).map(|(t, _)| t).collect();
     assert_eq!(x2_terminals.len(), 3);
+    let w01 = doc.cables_tagged("-W01")[0];
+    let cores: Vec<_> = doc.cables[&w01].cores.iter().filter_map(|c| c.wire()).collect();
+    assert_eq!(cores.len(), 3, "each continued core is one wire");
     for t in x2_terminals {
-        assert!(!doc.ends_at(t).is_empty(), "each -X02 terminal has the motor's wire");
+        let ends = doc.ends_at(t);
+        assert_eq!(ends.len(), 2, "the motor's wire and the core's");
+        assert!(ends.iter().any(|(w, _)| cores.contains(w)), "a core of -W01 lands on each -X02 point");
     }
     // The drawing agrees with the model everywhere.
     assert!(ecad_model::derive::mismatches(&doc, 1e-9).is_empty(), "{:?}", ecad_model::derive::mismatches(&doc, 1e-9));
@@ -61,12 +64,12 @@ fn the_demo_nets_and_wire_numbers() {
     let checks: Vec<String> =
         ecad_cadcraft::checks::all(&doc, 1e-9).iter().map(|c| format!("{:?} {} {}", c.kind, c.locator(&doc), c.which)).collect();
     // Recorded from the build (design 022 §14 asks for the actual list). Page 1: L and N on each
-    // side of -Q01, PE, and the PSU outputs through continuations 24V and 0V. Page 2: 24V-01 from
-    // the continuation, the control nets, 0V-01 through the junction, L1-L3 above the contactor
-    // (continuations). Page 3: the same 24V-01, 0V-01, the NC-to-lamp wire 24V-05. Until lane F
-    // step F4 -W01 is not continued on page 3: its cores sit on lines ending at the reference (no
-    // wires, so no L1-02..L3-02 below the contactor), and the -X02-to-motor wires form nets of
-    // their own (01..03) instead of L1-02..L3-02.
+    // side of -Q01, PE, and the PSU outputs, which run through continuations 24V and 0V. Page 2:
+    // 24V-01 on to the breaker, the control nets, 0V-01 through the T. Page 3: the same 24V-01,
+    // 0V-01, the NC-to-lamp wire 24V-05. Continuations are named points (design 072 §4.4, F5): a
+    // wire runs device point to device point across pages, and the lines from the lonely L1-L3
+    // continuations above the contactor carry no wire. -W01 continues on page 3: each core is one
+    // wire from -K01 to -X02 (a core shows its number only), in the net of the motor's wire.
     let want = [
         "1: 0V-01 0.5 BU",
         "1: 24V-01 0.5 BU",
@@ -80,15 +83,18 @@ fn the_demo_nets_and_wire_numbers() {
         "2: 24V-02 0.5 BU",
         "2: 24V-03 0.5 BU",
         "2: 24V-04 0.5 BU",
-        "2: L1-01 2.5 BN",
-        "2: L2-01 2.5 BK",
-        "2: L3-01 2.5 GY",
-        "3: 01",
-        "3: 02",
-        "3: 03",
+        "2: L1-01",
+        "2: L2-01",
+        "2: L3-01",
         "3: 0V-01 0.5 BU",
         "3: 24V-01 0.5 BU",
         "3: 24V-05 0.5 BU",
+        "3: L1-01",
+        "3: L1-01 2.5 BN",
+        "3: L2-01",
+        "3: L2-01 2.5 BK",
+        "3: L3-01",
+        "3: L3-01 2.5 GY",
     ];
     assert_eq!(shown, want, "{shown:#?}");
     // Owner, 2026-11-09: no two labels touch, on any page (page 2 is the busiest).
@@ -102,11 +108,15 @@ fn the_demo_nets_and_wire_numbers() {
             }
         }
     }
-    // 24V runs over pages 1-3 through continuations. (L1-02 through the core and -X02 comes with
-    // lane F step F4, when -W01 continues on page 3.)
+    // 24V runs over pages 1-3 through continuations; L1-01 from -K01 through -W01's core and -X02
+    // to the motor.
     let conn = doc.connectivity();
     let net = |n: &str| conn.nets_numbered(n).map(|(id, _)| id).collect::<Vec<_>>();
     assert_eq!(net("24V-01").len(), 1);
+    assert_eq!(net("L1-01").len(), 1);
+    let l1 = ecad_cadcraft::wires::net_points(&doc, conn.net(net("L1-01")[0]).unwrap());
+    assert_eq!(l1.len(), 3, "{l1:?}");
+    assert!(l1.iter().any(|p| p == "-K01:2") && l1.iter().any(|p| p.starts_with("-X02:")) && l1.iter().any(|p| p.starts_with("-M01:")), "{l1:?}");
     let v24 = conn.net(net("24V-01")[0]).unwrap();
     assert_eq!(v24.names.iter().cloned().collect::<Vec<_>>(), ["24V"]);
     // The coil, both contacts' 14 side and the lamp share 24V-04 (design 022 §15 step 1).
@@ -118,29 +128,17 @@ fn the_demo_nets_and_wire_numbers() {
     // core (the owner rule: -W01's unwired GNYE core is an error until ticked Not used).
     // Brief 052: -K01's function =PUMP is stored, and no box, page or project says =PUMP.
     // Brief 059: -W01 has no gland size at either end (Info).
-    // Until lane F step F4 -W01 is not continued on page 3: its reference on page 2 is an orphan,
-    // and its three lines end loose there (an open end and no wire yet, each), each core landed at
-    // one end only (step c).
+    // -W01 continues on page 3 (F4, F5): no orphan reference and no loose lines.
     assert_eq!(
         checks,
         [
             "CoreOpen 2/E3 -W01 core GNYE is not assigned: slash or add a wire, or tick Not used.",
-            "CoreOneEnd 2/E3 -W01 core 1 is landed at -K01:2 only.",
-            "CoreOneEnd 2/E3 -W01 core 2 is landed at -K01:4 only.",
-            "CoreOneEnd 2/E3 -W01 core 3 is landed at -K01:6 only.",
-            "OpenEnd 2/E3 a wire with no connection point",
-            "OpenEnd 2/E3 a wire with no connection point",
-            "OpenEnd 2/E3 a wire with no connection point",
             "FunctionUnused 2/E1 -K01 is =PUMP, but none of its symbols is in =PUMP",
-            "OrphanReference 2/E3 -W01 /?",
             "LonelyContinuation 2/D3 L1",
             "LonelyContinuation 2/D3 L2",
             "LonelyContinuation 2/D3 L3",
             "NoGland 2/E3 -W01 has no gland size at the cabinet end.",
             "NoGland 2/E3 -W01 has no gland size at the field end.",
-            "NoWireYet 2/E3 a wire with no connection point",
-            "NoWireYet 2/E3 a wire with no connection point",
-            "NoWireYet 2/E3 a wire with no connection point",
             "Unconnected 3/E3 -M01:PE",
             "NoFunction  10 devices have no function",
             "NoPartNumber  7 devices have no part number"
@@ -204,11 +202,9 @@ fn the_demo_locations_reports_and_generated_pages() {
     );
     let cables = o.cable_table();
     let row: Vec<String> = cables.rows[0].iter().map(|c| c.text.clone()).collect();
-    // Brief 028: Cores is the offer read from the type (4G). Until lane F step F4 -W01 is not
-    // continued on page 3: its cores sit on lines ending at the reference (no wires), so its ends
-    // have no location. A core on a line is placed, so used (design 072 §4.5, lane D c3: counted as
-    // stored): 3 used, GNYE spare (with F4: +CP1, +JB1).
-    assert_eq!(row[..7], ["-W01", "4G1.5", "4", "?", "?", "3", "1 (GNYE)"], "{row:?}");
+    // Brief 028: Cores is the offer read from the type (4G). -W01 continues on page 3, so each
+    // core is a wire from -K01 (+CP1) to -X02 (+JB1): 3 used, GNYE spare.
+    assert_eq!(row[..7], ["-W01", "4G1.5", "4", "+CP1", "+JB1", "3", "1 (GNYE)"], "{row:?}");
     let s01 = o.bom_table(ecad_cadcraft::outputs::Group::Location);
     assert!(s01.rows.iter().any(|r| r[2].text == "-S01" && r[4].text == "?" && r[4].flag.is_some()), "-S01 has no maker");
     // The generated pages.
