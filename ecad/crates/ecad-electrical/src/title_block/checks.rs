@@ -77,14 +77,9 @@ fn unknown_rows(doc: &Document) -> Vec<Check> {
         let Some(cats) = ecad_model::style::layer_of(doc, layer) else { continue };
         for (cat, records) in cats {
             for (id, r) in records.iter().take(ecad_model::style::MAX_STYLES_PER_CATALOGUE) {
-                let Some(body) = &r.body else { continue };
+                // Only a frame style's body holds a title block (design 072 §8).
+                let Some(l) = r.title_block() else { continue };
                 let name = crate::styles::name(doc, *cat, id);
-                if *cat != sheet::FRAME_CATALOGUE {
-                    let which = format!("{name} carries a title block; only frames draw one.");
-                    out.push(Check { kind: Kind::TitleBindingUnknown, page: None, at: None, object: Object::None, which, fix: None });
-                    continue;
-                }
-                let Some(l) = &body.title_block else { continue };
                 // Tester 055 (§12.1 J, §1.3): a size past the bounds is drawn with the built-in's
                 // keep-out strip; say so.
                 if !l.size_ok() {
@@ -99,14 +94,10 @@ fn unknown_rows(doc: &Document) -> Vec<Check> {
                 // bounds are skipped.
                 let (_, skipped) = l.usable();
                 let n = skipped.items;
-                if n == 0 && body.other.is_empty() {
+                if n == 0 {
                     continue;
                 }
-                let which = if n == 0 {
-                    format!("{name} has a title block part this build cannot draw.")
-                } else {
-                    format!("{name} has {} this build cannot draw.", count(n, "item", "items"))
-                };
+                let which = format!("{name} has {} this build cannot draw.", count(n, "item", "items"));
                 out.push(Check { kind: Kind::TitleBindingUnknown, page: None, at: None, object: Object::None, which, fix: None });
             }
         }

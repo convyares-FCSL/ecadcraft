@@ -150,9 +150,8 @@ impl<'i> DerivedView<Inputs<'i>> for DevicesFeed {
             | Effect::Layer { .. }
             | Effect::Terminal { .. }
             | Effect::Wire { .. }
-            | Effect::End { .. }
+            | Effect::Route { .. }
             | Effect::Cable { .. }
-            | Effect::Member { .. }
             | Effect::Version { .. }
             | Effect::Style { .. }
             | Effect::Standard { .. }

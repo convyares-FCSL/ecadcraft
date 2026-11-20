@@ -47,7 +47,7 @@ fn conn_of(v: &Value) -> DeviceId {
 
 /// A connector's terminals by (side key, pin label).
 fn pins(d: &Document, c: DeviceId) -> BTreeMap<(String, String), TerminalId> {
-    d.terminals_of(c).map(|(t, x)| ((x.key.clone().unwrap_or_default(), x.label.clone().unwrap_or_default()), t)).collect()
+    d.terminals_of(c).map(|(t, x)| ((x.key.as_ref().map(ToString::to_string).unwrap_or_default(), x.label.clone().unwrap_or_default()), t)).collect()
 }
 
 fn pin(d: &Document, c: DeviceId, side: &str, label: &str) -> TerminalId {
@@ -70,7 +70,7 @@ fn name(h: &mut H, t: TerminalId) -> String {
     ecad_cadcraft::connectors::pin_name(&d, t).unwrap_or_else(|| ecad_cadcraft::interact::terminal_name(&d, t))
 }
 
-fn net(h: &mut H, t: TerminalId) -> Option<ecad_model::NetId> {
+fn net(h: &mut H, t: TerminalId) -> Option<ecad_model::NetKey> {
     h.doc().connectivity().net_of_terminal(t)
 }
 
@@ -84,8 +84,11 @@ fn newpage(h: &mut H, number: &str, title: &str) -> PageId {
     p
 }
 
-/// Vertical wires at `xs`, from y 250 to y 150, on the active page.
+/// Vertical wires at `xs`, from y 250 to y 150, on the active page, between connection points of
+/// one device.
 fn drops(h: &mut H, xs: &[f64]) -> Vec<WireId> {
+    let ends: Vec<(f64, f64)> = xs.iter().flat_map(|x| [(*x, 250.0), (*x, 150.0)]).collect();
+    h.points_at(&ends);
     xs.iter().map(|x| id(&h.run("wire", json!({"points": pts(&[(*x, 250.0), (*x, 150.0)])})).unwrap(), "conductor")).collect()
 }
 
@@ -101,7 +104,7 @@ fn wire_out(h: &mut H, page: PageId, c: DeviceId, t: TerminalId) -> WireId {
     let d = h.doc();
     let at = shown_at(&d, page, t).unwrap_or_else(|| panic!("{} not on that page", name(h, t)));
     let term = &d.terminals[&t];
-    let side = term.key.clone().unwrap_or_default();
+    let side = term.key.as_ref().map(ToString::to_string).unwrap_or_default();
     let other = if side == ".s" { ".p" } else { ".s" };
     let mate = pins(&d, c).get(&(other.to_string(), term.label.clone().unwrap_or_default())).and_then(|m| shown_at(&d, page, *m));
     let dir = match mate {
@@ -109,9 +112,9 @@ fn wire_out(h: &mut H, page: PageId, c: DeviceId, t: TerminalId) -> WireId {
         _ if side == ".s" => 1.0,
         _ => -1.0,
     };
-    let v = h.run("wire", json!({"points": pts(&[(at.x, at.y), (at.x, at.y + 20.0 * dir)])})).unwrap();
+    let v = h.wire_pp(&[(at.x, at.y), (at.x, at.y + 20.0 * dir)]).unwrap();
     let w: WireId = id(&v, "conductor");
-    assert!(h.doc().wires[&w].ends.contains(&Some(t)), "the wire lands on {}", name(h, t));
+    assert!(h.doc().wires[&w].ends.contains(&t), "the wire lands on {}", name(h, t));
     w
 }
 
@@ -321,7 +324,7 @@ fn r01_row_pair_is_one_device_with_two_halves_one_transaction() {
     for t in pins(&d, x).values() {
         let n = name(&mut c.h, *t);
         let term = &d.terminals[t];
-        let side = if term.key.as_deref() == Some(".s") { "S" } else { "P" };
+        let side = if term.key.as_ref().map(ToString::to_string).as_deref() == Some(".s") { "S" } else { "P" };
         assert_eq!(n, format!("-X01.{side}:{}", term.label.clone().unwrap_or_default()), "pin name (§5.1)");
     }
     // The ops of §4.6.
@@ -333,7 +336,11 @@ fn r01_row_pair_is_one_device_with_two_halves_one_transaction() {
         let built = def.definition().expect(k);
         let o = built.origin.as_ref().expect("starter origin");
         assert_eq!(o.library_seq, 2, "{k}: version 2 (FP3)");
-        assert_eq!(built.bridges, vec![vec![".s".to_string(), ".p".to_string()]], "{k}: bridge (FP2)");
+        assert_eq!(
+            built.bridges,
+            vec![vec![".s".parse::<ecad_model::PointKey>().unwrap(), ".p".parse::<ecad_model::PointKey>().unwrap()]],
+            "{k}: bridge (FP2)"
+        );
         assert!(
             embeds.iter().any(|e| e.origin.as_ref().is_some_and(|eo| eo.definition == o.definition && eo.library_seq == 2)),
             "{k} embedded at v2"
@@ -343,7 +350,13 @@ fn r01_row_pair_is_one_device_with_two_halves_one_transaction() {
     assert_eq!(ops.iter().filter(|o| matches!(o, Op::CreateDevice { .. })).count(), 1, "one CreateDevice");
     let adds: Vec<(Option<String>, Option<String>)> = ops
         .iter()
-        .filter_map(|o| if let Op::AddTerminal { terminal, .. } = o { Some((terminal.key.clone(), terminal.label.clone())) } else { None })
+        .filter_map(|o| {
+            if let Op::AddTerminal { terminal, .. } = o {
+                Some((terminal.key.as_ref().map(ToString::to_string), terminal.label.clone()))
+            } else {
+                None
+            }
+        })
         .collect();
     assert_eq!(adds.len(), 8, "{adds:?}");
     assert!(adds.iter().all(|(k, _)| matches!(k.as_deref(), Some(".s" | ".p"))), "{adds:?}");
@@ -495,8 +508,8 @@ fn r03_pin_pairs_across_wires_split_and_keep_the_number() {
     let mut nets = Vec::new();
     for (i, label) in ["1", "2", "3"].iter().enumerate() {
         let (sp, pp) = (pin(&d, x, ".s", label), pin(&d, x, ".p", label));
-        let on_s: Vec<&WireId> = d.wires.iter().filter(|(_, k)| k.ends.contains(&Some(sp))).map(|(w, _)| w).collect();
-        let on_p: Vec<&WireId> = d.wires.iter().filter(|(_, k)| k.ends.contains(&Some(pp))).map(|(w, _)| w).collect();
+        let on_s: Vec<&WireId> = d.wires.iter().filter(|(_, k)| k.ends.contains(&sp)).map(|(w, _)| w).collect();
+        let on_p: Vec<&WireId> = d.wires.iter().filter(|(_, k)| k.ends.contains(&pp)).map(|(w, _)| w).collect();
         assert_eq!((on_s.len(), on_p.len()), (1, 1), "pin {label}: the wire is split onto both points");
         let n = net(&mut c.h, sp);
         assert!(n.is_some() && n == net(&mut c.h, pp), "pin {label}: one net through the mate");
@@ -579,7 +592,7 @@ fn r03_one_side_pin_on_a_wire_leaves_the_far_part_open() {
     let x = conn_of(&v);
     let d = c.h.doc();
     let sp = pin(&d, x, ".s", "1");
-    let on: Vec<&ecad_model::Wire> = d.wires.values().filter(|k| k.ends.contains(&Some(sp))).collect();
+    let on: Vec<&ecad_model::Wire> = d.wires.values().filter(|k| k.ends.contains(&sp)).collect();
     assert_eq!(on.len(), 1, "one point, one wire");
 }
 
@@ -798,7 +811,7 @@ fn r06_pin_names_in_hover_wire_list_and_targets() {
     }
     // A terminal strip on the socket wire: its plan's target names the half pin (046's targets).
     let d = c.h.doc();
-    assert!(d.wires[&ws].ends.contains(&Some(s3)));
+    assert!(d.wires[&ws].ends.contains(&s3));
     let at = shown_at(&d, c.p101, s3).unwrap();
     c.h.activate(c.p101);
     let v = c.h.run("terminals", json!({"strip": null, "from": [at.x - 5.0, at.y + 10.0], "to": [at.x + 5.0, at.y + 10.0]})).unwrap();
@@ -1177,8 +1190,12 @@ fn r10_pinlabel_renames_on_both_halves() {
     let conductors = c.h.doc().wires.clone();
     let v = step(&mut c.h, "pinlabel", json!({"device": x.hex(), "pin": "3", "to": "PE"}));
     let d = c.h.doc();
-    assert_eq!((d.terminals[&s3].label.as_deref(), d.terminals[&s3].key.as_deref()), (Some("PE"), Some(".s")), "{v}");
-    assert_eq!((d.terminals[&p3].label.as_deref(), d.terminals[&p3].key.as_deref()), (Some("PE"), Some(".p")));
+    assert_eq!(
+        (d.terminals[&s3].label.as_deref(), d.terminals[&s3].key.as_ref().map(ToString::to_string).as_deref()),
+        (Some("PE"), Some(".s")),
+        "{v}"
+    );
+    assert_eq!((d.terminals[&p3].label.as_deref(), d.terminals[&p3].key.as_ref().map(ToString::to_string).as_deref()), (Some("PE"), Some(".p")));
     assert_eq!(d.wires, conductors, "wires unchanged");
     assert_eq!(net(&mut c.h, s3), net(&mut c.h, p3), "still mated");
     assert_eq!(wire_number(&mut c.h, s3), number);
@@ -1238,7 +1255,7 @@ fn bulkheads_stay_one_piece() {
         let bt = tag(&d, b);
         assert!(d.terminals_of(b).count() > 0, "{fam}");
         for (t, x) in d.terminals_of(b) {
-            assert!(!matches!(x.key.as_deref(), Some(".s" | ".p")), "{fam}: no side keys");
+            assert!(!matches!(x.key.as_ref().map(ToString::to_string).as_deref(), Some(".s" | ".p")), "{fam}: no side keys");
             assert!(ecad_cadcraft::connectors::pin_name(&d, t).is_none(), "{fam}: a bulkhead pin has no half name");
             let n = ecad_cadcraft::interact::terminal_name(&d, t);
             assert!(!n.contains(".S") && !n.contains(".P"), "{fam}: bulkhead pin {bt}:{n}");
@@ -1272,11 +1289,12 @@ fn fp3_starter_definitions_are_versioned() {
         let d = st.definition().unwrap();
         let o = d.origin.as_ref().unwrap();
         assert_eq!(o.library_seq, 2, "{k}");
-        assert_eq!(d.bridges, vec![vec![".s".to_string(), ".p".to_string()]], "{k}");
+        assert_eq!(d.bridges, vec![vec![".s".parse::<ecad_model::PointKey>().unwrap(), ".p".parse::<ecad_model::PointKey>().unwrap()]], "{k}");
         assert_eq!(o.content_hash, ecad_file::definition_hash(&ecad_model::Definition { origin: None, ..d.clone() }).unwrap(), "{k}: hash of v2");
         assert!(ids.insert(o.definition), "{k}: IDs unchanged and unique");
         // Definition keys stay 1…n (I7).
-        let keys: Vec<&str> = d.terminals.iter().map(|t| t.key.as_str()).collect();
+        let keys: Vec<String> = d.terminals.iter().map(|t| t.key.to_string()).collect();
+        let keys: Vec<&str> = keys.iter().map(String::as_str).collect();
         let n = keys.len();
         let want: Vec<String> = (1..=n).map(|i| i.to_string()).collect();
         assert_eq!(keys, want.iter().map(String::as_str).collect::<Vec<_>>(), "{k}");
@@ -1285,9 +1303,9 @@ fn fp3_starter_definitions_are_versioned() {
         let st = ecad_cadcraft::symbols::by_key(k).unwrap_or_else(|| panic!("{k} starter"));
         assert_eq!(st.prefix(), "X", "{k}");
         let d = st.definition().unwrap();
-        let got: Vec<&str> = d.terminals.iter().map(|t| t.key.as_str()).collect();
+        let got: Vec<String> = d.terminals.iter().map(|t| t.key.to_string()).collect();
         assert_eq!(got, keys, "{k}");
-        assert_eq!(d.bridges, vec![vec![".s".to_string(), ".p".to_string()]], "{k}");
+        assert_eq!(d.bridges, vec![vec![".s".parse::<ecad_model::PointKey>().unwrap(), ".p".parse::<ecad_model::PointKey>().unwrap()]], "{k}");
         for t in &d.terminals {
             assert!((t.at.x / 5.0).fract().abs() < 1e-9 && (t.at.y / 5.0).fract().abs() < 1e-9, "{k}: point on the 5 mm grid");
         }
@@ -1306,11 +1324,12 @@ fn fp2_a_bridge_to_an_unknown_key_is_refused() {
     let mut bad = ecad_cadcraft::symbols::by_key("socket4").unwrap().definition().unwrap().clone();
     bad.origin = None;
     bad.name = "hand made".into();
-    bad.bridges = vec![vec![".x".to_string(), "1".to_string()]];
+    assert!(".x".parse::<ecad_model::PointKey>().is_err(), ".x is no key at all");
+    bad.bridges = vec![vec![".in".parse::<ecad_model::PointKey>().unwrap(), "1".parse::<ecad_model::PointKey>().unwrap()]];
     let id = DefinitionId::from(0x7044_00b0_u128 << 64 | 1);
     let head = h.head();
     let r = h.cfg(|p| p.ledger.commit(Author::User, "hand-made", vec![Op::EmbedDefinition { id, definition: bad }]));
-    assert!(r.is_err(), "a bridge to .x is refused");
+    assert!(r.is_err(), "a bridge to .in is refused");
     assert_eq!(h.head(), head);
     let mut ok = ecad_cadcraft::symbols::by_key("plug4").unwrap().definition().unwrap().clone();
     ok.name = "copy".into();
@@ -1411,13 +1430,23 @@ fn r12_hand_made_connectors_never_panic() {
     {
         ops.push(Op::AddTerminal {
             id: TerminalId::from(0x7044_00c1_u128 << 64 | i as u128),
-            terminal: ecad_model::Terminal { component: x, label: label.map(str::to_string), key: key.map(str::to_string) },
+            terminal: ecad_model::Terminal {
+                component: x,
+                label: label.map(str::to_string),
+                key: key.and_then(|k| k.parse().ok()),
+                accepts: Default::default(),
+            },
         });
     }
     for i in 0..2_000u128 {
         ops.push(Op::AddTerminal {
             id: TerminalId::from(0x7044_00c2_u128 << 64 | i),
-            terminal: ecad_model::Terminal { component: x, label: Some(format!("{}", 100 + i)), key: Some(".p".into()) },
+            terminal: ecad_model::Terminal {
+                component: x,
+                label: Some(format!("{}", 100 + i)),
+                key: Some(".p".parse().unwrap()),
+                accepts: Default::default(),
+            },
         });
     }
     c.h.cfg(|p| p.ledger.commit(Author::User, "hand-made", ops)).unwrap();
@@ -1503,7 +1532,10 @@ fn r13_old_version_1_halves_stay_separate() {
     assert_ne!(old_s, old_p, "two devices, as 034");
     let d = h.doc();
     for c in [old_s, old_p] {
-        assert!(d.terminals_of(c).all(|(_, t)| !matches!(t.key.as_deref(), Some(".s" | ".p"))), "plain keys on a version-1 half");
+        assert!(
+            d.terminals_of(c).all(|(_, t)| !matches!(t.key.as_ref().map(ToString::to_string).as_deref(), Some(".s" | ".p"))),
+            "plain keys on a version-1 half"
+        );
     }
     // A new socket4 embeds version 2 beside version 1.
     let n = h.doc().definitions.len();
@@ -1514,7 +1546,7 @@ fn r13_old_version_1_halves_stay_separate() {
     let seqs: std::collections::BTreeSet<u64> =
         d.definitions.values().filter_map(|x| x.origin.as_ref()).filter(|o| o.definition == sid).map(|o| o.library_seq).collect();
     assert_eq!(seqs, [1, 2].into_iter().collect(), "both versions");
-    assert!(d.terminals_of(x).all(|(_, t)| t.key.as_deref() == Some(".s")), "the new half has side keys");
+    assert!(d.terminals_of(x).all(|(_, t)| t.key.as_ref().map(ToString::to_string).as_deref() == Some(".s")), "the new half has side keys");
     assert_eq!(
         ecad_cadcraft::symbols::embedded(&d, ecad_cadcraft::symbols::by_key("socket4").unwrap()).map(|i| d.definitions[&i]
             .origin
@@ -1526,7 +1558,10 @@ fn r13_old_version_1_halves_stay_separate() {
     // An old half is not a connector to join.
     refused(&mut h, "place", json!({"symbol": "plug4", "device": old_s.hex(), "at": [200, 60]}), &["is not a connector"]);
     let d2 = h.doc();
-    assert!(d2.terminals_of(old_s).all(|(_, t)| !matches!(t.key.as_deref(), Some(".s" | ".p"))), "old halves unconverted");
+    assert!(
+        d2.terminals_of(old_s).all(|(_, t)| !matches!(t.key.as_ref().map(ToString::to_string).as_deref(), Some(".s" | ".p"))),
+        "old halves unconverted"
+    );
     read_everything(&mut h);
 }
 

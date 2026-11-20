@@ -32,6 +32,10 @@ pub enum Mapped {
     /// computed, not an item. Selecting it selects the link; erasing it deletes the link; other
     /// edits of it alone are refused, and it is left out of an edit with other objects.
     Link(DeviceId, u32),
+    /// A ring of a T's dot (design 072 §4.4), by the route that ends on another route: computed,
+    /// not an item. Left out of an edit that also touches other objects; an edit of it alone is
+    /// refused.
+    Tee(ecad_model::RouteId),
 }
 
 /// ECAD ID ⇄ CADCraft handle for one page. Session-only, never saved.
@@ -73,6 +77,8 @@ pub struct HandleMap {
     dash_routes: HashMap<Handle, Handle>,
     /// Brief 040: the route handles drawn in a wire colour.
     coloured: BTreeSet<Handle>,
+    /// Lane 072 D: the rings of the T dots, (route, end index, ring) → handle.
+    tees: BTreeMap<(ecad_model::RouteId, u8, u8), Handle>,
 }
 
 impl HandleMap {
@@ -191,6 +197,18 @@ impl HandleMap {
         self.links.insert((strip, n, index), h);
         self.by_handle.insert(h, Mapped::Link(strip, n));
     }
+    /// Lane 072 D: the handle of ring `ring` of the T dot at end `end` of route `r`.
+    pub fn tee(&self, r: ecad_model::RouteId, end: u8, ring: u8) -> Option<Handle> {
+        self.tees.get(&(r, end, ring)).copied()
+    }
+    pub fn insert_tee(&mut self, r: ecad_model::RouteId, end: u8, ring: u8, h: Handle) {
+        self.tees.insert((r, end, ring), h);
+        self.by_handle.insert(h, Mapped::Tee(r));
+    }
+    /// Every handle of a T dot's ring.
+    pub fn tee_handles(&self) -> impl Iterator<Item = Handle> + '_ {
+        self.tees.values().copied()
+    }
     /// Brief 040: the handle of dash `index` of route `rep`.
     pub fn dash(&self, rep: RepresentationId, index: u32) -> Option<Handle> {
         self.dashes.get(&(rep, index)).copied()
@@ -260,6 +278,7 @@ impl HandleMap {
                 + self.xrefs.len()
                 + self.links.len()
                 + self.dashes.len()
+                + self.tees.len()
             && self.dash_routes.len() == self.dashes.len()
             && self.dashes.values().all(|h| matches!(self.by_handle.get(h), Some(Mapped::Label(_))))
             && self.links.iter().all(|((c, n, _), h)| self.by_handle.get(h) == Some(&Mapped::Link(*c, *n)))
@@ -272,5 +291,6 @@ impl HandleMap {
             && self.tags.iter().all(|((r, _), h)| self.by_handle.get(h) == Some(&Mapped::Tag(*r)))
             && self.labels.values().all(|(c, h)| self.by_handle.get(h) == Some(&Mapped::Label(*c)))
             && self.frame.iter().all(|(i, h)| self.by_handle.get(h) == Some(&Mapped::Frame(*i)))
+            && self.tees.iter().all(|((r, _, _), h)| self.by_handle.get(h) == Some(&Mapped::Tee(*r)))
     }
 }

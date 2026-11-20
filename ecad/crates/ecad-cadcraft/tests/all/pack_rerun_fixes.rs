@@ -57,7 +57,7 @@ fn bug_1_an_unlabelled_point_never_prints_its_id_after_a_merge() {
     }
     // Both points are unlabelled, with two different names: the moved one is renamed, never the
     // same name twice on one device (review of #92, 1).
-    let mut terms: Vec<_> = d.terminals_of(a).map(|(_, t)| (t.key.clone(), t.label.clone())).collect();
+    let mut terms: Vec<_> = d.terminals_of(a).map(|(_, t)| (t.key.as_ref().map(ToString::to_string), t.label.clone())).collect();
     terms.sort();
     assert_eq!(terms, [(Some("PE".to_string()), None), (Some("PE2".to_string()), None)]);
     // A labelled point whose label the device already has is still refused.
@@ -222,7 +222,7 @@ fn bug_11_four_pole_power_contacts_show_their_coil_like_no_and_nc() {
 /// Vertical wires at `xs` from y 250 down to 150.
 fn wires(h: &mut H, xs: &[f64]) {
     for x in xs {
-        h.run("wire", json!({"points": crate::common::pts(&[(*x, 250.0), (*x, 150.0)])})).unwrap();
+        h.wire_pp(&[(*x, 250.0), (*x, 150.0)]).unwrap();
     }
 }
 
@@ -246,7 +246,7 @@ fn bug_5_a_card_drawn_in_several_calls_has_one_frame() {
     assert_eq!(runs.first().map(|r| (r.first, r.last)), Some((Some(0), Some(3))));
     // The placed cell's point is on the wire, on the line of the others.
     let d = h.doc();
-    let ch2 = d.terminals_of(card).find(|(_, t)| t.key.as_deref() == Some(".2.in")).map(|(t, _)| t).unwrap();
+    let ch2 = d.terminals_of(card).find(|(_, t)| t.key.as_ref().map(ToString::to_string).as_deref() == Some(".2.in")).map(|(t, _)| t).unwrap();
     let at = h.terminal_pos(page, ch2);
     assert!((at.y - 200.0).abs() < 1e-6 && (at.x - 140.0).abs() < 1e-6, "{at:?}");
     assert!(!h.doc().ends_at(ch2).is_empty(), "channel 2 lands on its wire");
@@ -300,7 +300,7 @@ fn landed_on(h: &mut H, card: DeviceId, page: PageId, x: f64) -> Vec<String> {
     d.terminals_of(card)
         .filter(|(t, _)| !d.ends_at(*t).is_empty())
         .filter(|(t, _)| (h.terminal_pos(page, *t).x - x).abs() < 1e-6)
-        .filter_map(|(_, term)| term.key.clone())
+        .filter_map(|(_, term)| term.key.as_ref().map(ToString::to_string))
         .collect()
 }
 
@@ -345,7 +345,7 @@ fn bug_8_cells_on_wires_running_down_are_turned_with_their_frame_above() {
     let page = h.first_page();
     // Wires from y 230 down to 150; the fence just under their top.
     for x in [100.0, 120.0] {
-        h.run("wire", json!({"points": crate::common::pts(&[(x, 230.0), (x, 150.0)])})).unwrap();
+        h.wire_pp(&[(x, 230.0), (x, 150.0)]).unwrap();
     }
     let v = h.run("plcchannels", json!({"type": "DQ", "from": [95, 228], "to": [125, 228]})).unwrap();
     let card = card_of(&v);
@@ -359,7 +359,7 @@ fn bug_8_cells_on_wires_running_down_are_turned_with_their_frame_above() {
     let mut h = H::new(9109);
     let page = h.first_page();
     for x in [100.0, 120.0] {
-        h.run("wire", json!({"points": crate::common::pts(&[(x, 270.0), (x, 190.0)])})).unwrap();
+        h.wire_pp(&[(x, 270.0), (x, 190.0)]).unwrap();
     }
     let v = h.run("plcchannels", json!({"type": "DI", "from": [95, 192], "to": [125, 192]})).unwrap();
     let runs = h.p(|p| ecad_cadcraft::plc::look::runs_of_card(p.ledger.document(), card_of(&v), page));

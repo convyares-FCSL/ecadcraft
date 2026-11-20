@@ -41,8 +41,10 @@ fn last_tx(h: &mut H) -> (String, Vec<Op>) {
     h.p(|p| p.ledger.log().last().map(|t| (t.label.clone(), t.ops.clone())).unwrap_or_default())
 }
 
-/// `n` vertical wires at x = 0, 10, 20…, from y 0 to 50, with no ends attached.
+/// `n` vertical wires at x = 0, 10, 20…, from y 0 to 50, between connection points of one device.
 fn wires(h: &mut H, n: usize) -> Vec<WireId> {
+    let ends: Vec<(f64, f64)> = (0..n).flat_map(|i| [(10.0 * i as f64, 0.0), (10.0 * i as f64, 50.0)]).collect();
+    h.points_at(&ends);
     (0..n)
         .map(|i| {
             let x = 10.0 * i as f64;
@@ -159,7 +161,7 @@ fn r1_type_cores_length_maker_and_part_come_from_the_type_and_are_overridden_per
     let ty = synth_type(
         &mut h,
         "Synth Flex",
-        json!({"cores": "4G", "cross_section": "1.5", "maker": "Synthmaker", "part_number": "SYN-0004", "description": "Synthetic four core", "shield": "overall"}),
+        json!({"cores": "4G", "size": "1.5", "maker": "Synthmaker", "part_number": "SYN-0004", "description": "Synthetic four core", "shield": "overall"}),
     );
     let k = new_cable(&mut h, json!({"cable_type": ty, "length": 12.5}));
     let doc = h.doc();
@@ -299,8 +301,9 @@ fn r3_reducing_cores_below_those_assigned_is_refused_naming_them() {
     let k = new_cable(&mut h, json!({"cores": "BN,BK,GY,GNYE"}));
     slash_across(&mut h, (-5.0, 25.0), (25.0, 25.0), Some(k)).unwrap();
     let doc = h.doc();
-    let labels: Vec<Option<String>> = doc.cables[&k].members.iter().map(|m| m.core.clone()).collect();
-    assert_eq!(labels, vec![Some("BN".into()), Some("BK".into()), Some("GY".into())]);
+    let labels: Vec<Option<String>> = doc.cables[&k].cores.iter().map(|m| m.label_str().map(str::to_string)).collect();
+    // Design 072 §4.5: GNYE, offered and on no line, is stored too.
+    assert_eq!(labels, vec![Some("BN".into()), Some("BK".into()), Some("GY".into()), Some("GNYE".into())]);
     // A list without GY, or with too few: refused, naming the cores in use.
     for (cores, words) in
         [("BN,BK", "has wires on cores BN, BK and GY"), ("BN,BK,GNYE", "has wires on cores BN, BK and GY"), ("2G", "has wires on cores")]
@@ -379,7 +382,7 @@ fn r4_an_end_drawn_off_its_planned_function_warns() {
 #[test]
 fn r5_not_drawn_is_info_and_a_warning_in_the_release_check() {
     let mut h = H::new(59_501);
-    let ty = synth_type(&mut h, "Synth Four", json!({"cores": "4G", "cross_section": "1.5"}));
+    let ty = synth_type(&mut h, "Synth Four", json!({"cores": "4G", "size": "1.5"}));
     let k = new_cable(&mut h, json!({"cable_type": ty}));
     let rows = checks_of(&mut h, "cable-not-drawn");
     assert_eq!(rows.len(), 1, "{rows:?}");
@@ -413,7 +416,8 @@ fn r6_assign_follows_the_crossing_order_and_the_core_labels() {
     let r = slash_across(&mut h, (25.0, 25.0), (-5.0, 25.0), Some(k)).unwrap();
     assert_eq!(r["assigned"], json!(true), "{r}");
     let doc = h.doc();
-    let members: Vec<(WireId, Option<String>)> = doc.cables[&k].members.iter().map(|m| (m.conductor, m.core.clone())).collect();
+    let members: Vec<(WireId, Option<String>)> =
+        doc.cables[&k].cores.iter().filter_map(|m| Some((m.wire()?, m.label_str().map(str::to_string)))).collect();
     assert_eq!(members, vec![(ws[2], Some("BN".into())), (ws[1], Some("BK".into())), (ws[0], Some("GY".into()))]);
     // The spare core reads "not assigned".
     let open = checks_of(&mut h, "core-open");
@@ -438,8 +442,10 @@ fn r6_cableadd_onto_a_cable_not_drawn_takes_its_free_cores_in_order() {
     let k = new_cable(&mut h, json!({"cores": "3G"}));
     h.run("cableadd", json!({"conductors": [ws[0].hex(), ws[1].hex()], "cable": k.hex()})).unwrap();
     let doc = h.doc();
-    let labels: Vec<Option<String>> = doc.cables[&k].members.iter().map(|m| m.core.clone()).collect();
-    assert_eq!(labels, vec![Some("1".into()), Some("2".into())]);
+    let labels: Vec<Option<String>> = doc.cables[&k].cores.iter().map(|m| m.label_str().map(str::to_string)).collect();
+    // Design 072 §4.5: the stored cores 1 and 2 are placed; GNYE stays stored, on no line.
+    assert_eq!(labels, vec![Some("1".into()), Some("2".into()), Some("GNYE".into())]);
+    assert_eq!(doc.cables[&k].cores[2].position, ecad_model::CorePosition::Unplaced);
     assert!(checks_of(&mut h, "cable-not-drawn").is_empty());
 }
 
@@ -647,10 +653,12 @@ fn r7_a_file_with_hostile_cable_values_reads_as_absent_without_a_panic() {
         ("gland.from", "\u{202e}M20".to_string()),
         ("end.to.function", big.clone()),
         ("cable_type", "#ffffffffffffffffffffffffffffffff".to_string()),
-        ("shield", "OVERALL ".to_string()),
     ] {
         h.run("setprop", json!({"cable": k.hex(), "key": key, "value": v})).unwrap();
     }
+    // Design 072 §4.5: the shield is a typed field, never a property; a word it is not is refused.
+    assert!(h.run("setprop", json!({"cable": k.hex(), "key": "shield", "value": "tartan"})).is_err());
+    assert!(!h.doc().cables[&k].properties.contains_key("shield"));
     let doc = h.doc();
     assert!(cable_cmds::read(&doc, k, CableField::Length).is_none());
     assert!(cable_cmds::part_value(&doc, k, CableField::Maker).is_none());
@@ -719,7 +727,7 @@ fn r8_every_command_is_one_transaction_with_exact_undo_and_redo() {
         assert_eq!(h.head(), head + 1, "{cmd}: one transaction");
         states.push(h.doc());
     }
-    assert_eq!(h.doc().cables[&k].members.iter().map(|m| m.conductor).collect::<Vec<_>>(), ws);
+    assert_eq!(h.doc().cables[&k].cores.iter().filter_map(|m| m.wire()).collect::<Vec<_>>(), ws);
     // Undo all the way back, each step exact; then redo all, each step exact.
     for i in (0..states.len() - 1).rev() {
         h.run("u", json!({})).unwrap();
@@ -825,8 +833,10 @@ fn r8_kept_rows_follow_new_remove_assign_and_undo() {
 
 // ================================================================ 059 full (059b, 059c, 059d)
 
-/// A cable slashed on page 1 with a reference there, continued on page 2 (032): drawn on two
-/// pages. Returns (cable, page 1, page 2).
+/// A cable slashed on page 1 with a reference there, and its other reference end on page 2:
+/// drawn on two pages. Returns (cable, page 1, page 2). The end on page 2 is written as
+/// `cablecontinue` writes it ([`H::reference_end`]): a continuation needs wires leaving the page
+/// through the reference, which form only with lane F step F4.
 fn on_two_pages(h: &mut H) -> (CableId, ecad_model::PageId, ecad_model::PageId) {
     let p1 = h.first_page();
     for y in [0.0, 5.0, 10.0] {
@@ -836,7 +846,7 @@ fn on_two_pages(h: &mut H) -> (CableId, ecad_model::PageId, ecad_model::PageId) 
     h.run("cableref", json!({"cable": w.hex(), "at": [65, 5]})).unwrap();
     let p2: ecad_model::PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
     h.activate(p2);
-    h.run("cablecontinue", json!({"cable": w.hex(), "at": [20, 5], "toward": [40, 5]})).unwrap_or_else(|e| panic!("cablecontinue: {e}"));
+    h.reference_end(w, p2, (20.0, 5.0));
     (w, p1, p2)
 }
 
@@ -889,7 +899,7 @@ fn f2_the_picker_lists_not_drawn_first_matches_marked_then_drawn_not_slashed_her
     assert!(items[1].line.contains("Synth 4G1") && items[1].line.contains("+CAB1"), "{:?}", items[1].line);
     // A cable once assigned here leaves the picker of this page.
     for x in [200.0, 210.0] {
-        h.run("wire", json!({"points": pts(&[(x, 0.0), (x, 50.0)])})).unwrap();
+        h.wire_pp(&[(x, 0.0), (x, 50.0)]).unwrap();
     }
     slash_across(&mut h, (195.0, 25.0), (215.0, 25.0), Some(a)).unwrap();
     let items = cable_cmds::picker(&h.doc(), p1);
@@ -913,9 +923,19 @@ fn f3_the_slash_tool_assigns_a_picked_cable_not_drawn_in_crossing_order() {
     assert_eq!(h.head(), head + 1, "one transaction");
     let (label, ops) = last_tx(&mut h);
     assert_eq!(label, "Cable slash");
-    assert_eq!(ops.iter().filter(|o| matches!(o, Op::AddCableMember { .. })).count(), 3);
+    // One ModifyCable for the cable, placing three more cores on wires.
+    let placed = |c: &ecad_model::Cable| c.cores.iter().filter(|m| m.wire().is_some()).count() as isize;
+    let added: Vec<isize> = ops
+        .iter()
+        .filter_map(|o| match o {
+            Op::ModifyCable { id, before, after } if *id == k => Some(placed(after) - placed(before)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(added, vec![3], "{:?}", ops);
     let doc = h.doc();
-    let members: Vec<(WireId, Option<String>)> = doc.cables[&k].members.iter().map(|m| (m.conductor, m.core.clone())).collect();
+    let members: Vec<(WireId, Option<String>)> =
+        doc.cables[&k].cores.iter().filter_map(|m| Some((m.wire()?, m.label_str().map(str::to_string)))).collect();
     assert_eq!(members, vec![(ws[2], Some("BN".into())), (ws[1], Some("BK".into())), (ws[0], Some("GY".into()))]);
     h.run("u", json!({})).unwrap();
     assert!(!cable_cmds::is_drawn(&h.doc(), k), "one undo: not drawn again");
@@ -985,7 +1005,7 @@ fn f3_more_wires_than_free_cores_at_the_tool_is_refused_and_writes_nothing() {
 #[test]
 fn f4_glands_default_from_the_cable_type_and_are_overridden_per_end() {
     let mut h = H::new(59_907);
-    let ty = synth_type(&mut h, "Synth Gland", json!({"cores": "3G", "cross_section": "1.5", "gland": "M20"}));
+    let ty = synth_type(&mut h, "Synth Gland", json!({"cores": "3G", "size": "1.5", "gland": "M20"}));
     let k = new_cable(&mut h, json!({"cable_type": ty}));
     let doc = h.doc();
     for s in Side::BOTH {

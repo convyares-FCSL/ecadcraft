@@ -24,7 +24,7 @@ fn build(c: &mut Client) -> String {
     let q = s(&c.exec("place", json!({"symbol": "mcb1", "at": [100, 300]})), "component");
     c.exec("setprop", json!({"component": q, "key": "rating", "value": "4 A"}));
     c.exec("place", json!({"symbol": "lamp", "at": [100, 200]}));
-    let w = s(&c.exec("wire", json!({"points": [[100, 290], [100, 210]]})), "conductor");
+    let w = s(&c.wire_pp(json!({"points": [[100, 290], [100, 210]]})), "conductor");
     let cab = s(&c.exec("cableslash", json!({"from": [95, 250], "to": [105, 250], "tag": "-W01"})), "cable");
     c.exec("setprop", json!({"cable": cab, "key": "type", "value": "H07RN-F 4G1.5"}));
     c.exec("setprop", json!({"cable": cab, "key": "length", "value": "12 m"}));
@@ -55,7 +55,8 @@ fn rating_writes_by_the_agent_then_refused_with_writes_off() {
         let n = c.log().len();
         c.exec("rating", json!({"cable": "-W01", "basis": "table", "method": "E", "ambient": 37, "grouped": 3, "load": "3 A"}));
         let ops = assert_one_by_agent(&mut c, n, "rating cable").ops;
-        assert!(ops.iter().all(|o| matches!(o, Op::SetProperty { .. })), "only SetProperty: {ops:?}");
+        // Design 072 §4.5 (lane D c3): a cable's rating inputs are its fields, written whole.
+        assert!(matches!(ops.as_slice(), [Op::ModifyCable { .. }]), "one ModifyCable: {ops:?}");
         let n = c.log().len();
         c.exec("rating", json!({"wire": w, "basis": "manual", "manual": "10 A", "bundling": 0.85}));
         assert_one_by_agent(&mut c, n, "rating wire");

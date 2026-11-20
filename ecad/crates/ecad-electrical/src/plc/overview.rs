@@ -211,13 +211,9 @@ pub fn range_words(doc: &Document, plc: &Plc, card: &CardData) -> String {
         (None, None) => "\u{2014}".into(),
     }
 }
-/// The card property naming a card's voltage or contact words (`24 V`, `relay`; design 056 §3.3).
-pub const KIND_KEY: &str = "plc.kind";
-/// Longest kind words read from [`KIND_KEY`].
-pub const MAX_KIND: usize = 32;
-
-/// A card's kind words (design 056 §3.3): `16 inputs, 24 V`, `16 outputs, relay`, `4 analogue in`,
-/// `CPU`, `power`, `comms`. The words after the comma come from the card's `plc.kind`.
+/// A card's kind words (design 056 §3.3, design 072 §3): `16 inputs, 24 V`, `16 outputs, relay`,
+/// `4 analogue in, 4–20 mA`, `CPU`, `power`, `comms, PROFINET, 2 ports`. The words after the comma
+/// are the module's signal, or a communication module's protocol and ports.
 pub fn kind_words(doc: &Document, card: &CardData) -> String {
     let n = card.channels;
     let plural = |one: &str, many: &str| if n == 1 { format!("1 {one}") } else { format!("{n} {many}") };
@@ -232,15 +228,19 @@ pub fn kind_words(doc: &Document, card: &CardData) -> String {
         CardType::Iol => format!("{n} IO-Link"),
         CardType::Ps | CardType::Pm => "power".to_string(),
         CardType::Cm => "comms".to_string(),
+        CardType::Module => super::edit::module_of(doc, card.id).map_or("module", |m| m.function.word()).replace('_', " "),
     };
-    let extra = doc
-        .devices
-        .get(&card.id)
-        .and_then(|x| x.properties.get(KIND_KEY))
-        .map(|v| v.trim())
-        .filter(|v| !v.is_empty() && v.chars().count() <= MAX_KIND && !v.chars().any(char::is_control));
-    match extra {
-        Some(e) if card.ty.has_channels() => format!("{base}, {e}"),
+    let Some(m) = super::edit::module_of(doc, card.id) else { return base };
+    if let ecad_model::plc::ModuleFunction::Communication(ecad_model::plc::Communication::Link(c)) = &m.function {
+        let ports = match c.ports.len() {
+            0 => String::new(),
+            1 => ", 1 port".into(),
+            n => format!(", {n} ports"),
+        };
+        return format!("{base}, {}{ports}", c.protocol.label());
+    }
+    match m.signal_of(0) {
+        Some(s) if card.ty.has_channels() => format!("{base}, {}", s.label()),
         _ => base,
     }
 }
@@ -258,12 +258,13 @@ pub fn type_name(t: CardType) -> &'static str {
         CardType::Iol => "IO-Link master",
         CardType::Ps | CardType::Pm => "Power module",
         CardType::Cm => "Comms module",
+        CardType::Module => "Module",
     }
 }
 
 /// The card's own description (not the body's name a placement writes), if any.
 pub fn description(doc: &Document, card: &CardData) -> Option<String> {
-    let builtin = crate::symbols::by_key(card.ty.body()).map(|s| s.name);
+    let builtin = card.ty.body().map(crate::symbols::starter).map(|s| s.name);
     doc.devices
         .get(&card.id)
         .and_then(|x| x.description.as_ref())
@@ -275,7 +276,7 @@ pub fn description(doc: &Document, card: &CardData) -> Option<String> {
 /// `DQ 16`, or the card's description when it has one.
 pub fn what_words(doc: &Document, card: &CardData) -> String {
     // The body's own name, which placing a card writes as its description, is not the user's.
-    let builtin = crate::symbols::by_key(card.ty.body()).map(|s| s.name);
+    let builtin = card.ty.body().map(crate::symbols::starter).map(|s| s.name);
     let desc = doc.devices.get(&card.id).and_then(|x| x.description.as_ref()).map(|v| v.as_str()).filter(|v| !v.is_empty() && Some(*v) != builtin);
     match desc {
         Some(d) => d.to_string(),
@@ -400,7 +401,7 @@ pub fn rack_tiles(doc: &Document, plc: &Plc, rack: &RackData) -> Vec<Tile> {
             .get(&rack.id)
             .and_then(|x| x.description.as_ref())
             .map(|v| v.to_string())
-            .filter(|v| !v.is_empty() && crate::symbols::by_key(rack.ty.body()).is_none_or(|s| s.name != v))
+            .filter(|v| !v.is_empty() && rack.ty.body().map(crate::symbols::starter).is_none_or(|s| s.name != v))
             .unwrap_or_else(|| type_name(rack.ty).to_string()),
     }];
     for (head, slot, card) in layout(plc, rack) {

@@ -159,9 +159,10 @@ is not counted as a change until the project has a file."
     t.debugger.read_row();
     assert!(t.debugger.record().unwrap().as_ref().unwrap_err().contains("no file yet"));
 
-    // 2. Wire to the coil's lower terminal: the wire's trail shows the attachment, before (none)
-    //    and after (the terminal).
-    ok(&mut t, r#"wire {"points":[[60,0],[90,0]]}"#);
+    // 2. Wire from the coil's A1 to its A2 (a wire runs between two connection points, design
+    //    072): the wire's trail shows the route drawn and the wire made, before (none) and after
+    //    (its two connection points).
+    ok(&mut t, r#"wire {"points":[[90,0],[110,0]]}"#);
     let route = |d: &ecad_model::Document| {
         let (c, _) = d.wires.iter().next().unwrap();
         vec![ecad_model::derive::route_on_page(d, *c, d.page_order[0]).unwrap().0]
@@ -173,13 +174,11 @@ is not counted as a change until the project has a file."
     let touching = t.debugger.touching();
     assert!(touching.contains(&3), "{touching:?}");
     t.debugger.select_tx(Some(3));
-    let attach = t.debugger.log()[2]
-        .ops
-        .iter()
-        .map(ecad_cadcraft::debug::op_view)
-        .find(|v| v.name == "AttachEnd" && !v.after.as_ref().unwrap()["terminal"].is_null())
-        .unwrap();
-    assert!(attach.before.unwrap()["terminal"].is_null());
+    let views: Vec<_> = t.debugger.log()[2].ops.iter().map(ecad_cadcraft::debug::op_view).collect();
+    assert!(views.iter().any(|v| v.name == "AddRoute" && v.before.is_none()), "the route drawn");
+    let made = views.iter().find(|v| v.name == "CreateWire").unwrap();
+    assert!(made.before.is_none());
+    assert_eq!(made.after.as_ref().unwrap()["ends"].as_array().map(Vec::len), Some(2), "its two connection points");
     frame(&mut t, &ctx);
 
     // 3. Save As: everything is saved; the wire's row in the version 2 file decodes to exactly

@@ -39,7 +39,8 @@ impl Drop for TempDir {
 }
 
 fn edit(t: &mut App) {
-    // Brief 032: the same wire again stays a wire of its own (else its ends would close a loop).
+    // Brief 032: the same line again stays a line of its own (else its ends would close a loop);
+    // its ends are free, so it carries no wire (design 072).
     t.cad.run("wire", json!({"points": [[0, 0], [40, 0]], "join": false})).unwrap();
 }
 
@@ -181,7 +182,7 @@ fn closing_with_unsaved_changes_offers_save_discard_or_cancel() {
     t.answer(Answer::Save);
     assert!(t.dialog().is_none() && !t.project_open());
     t.open_project(&d.path("closing.ecad")).unwrap();
-    assert_eq!(doc(&mut t).wires.len(), 2, "both wires were saved");
+    assert_eq!(doc(&mut t).routes.len(), 2, "both lines were saved");
     // Discard: closed; the file keeps its last saved state.
     edit(&mut t);
     t.close_project();
@@ -189,7 +190,7 @@ fn closing_with_unsaved_changes_offers_save_discard_or_cancel() {
     assert!(!t.project_open());
     assert!(t.cad.session.log.iter().any(|l| l.contains("keeps its last saved state")));
     t.open_project(&d.path("closing.ecad")).unwrap();
-    assert_eq!(doc(&mut t).wires.len(), 2);
+    assert_eq!(doc(&mut t).routes.len(), 2);
 }
 
 #[test]
@@ -418,9 +419,8 @@ fn the_quick_start_runs_headless() {
     // 3. Connect the two terminals with a wire.
     ok(&mut t, r#"wire {"points":[[40,10],[70,10],[70,0],[90,0]]}"#);
     let dc = doc(&mut t);
-    let (cid, c) = dc.wires.iter().next().unwrap();
-    let cid = *cid;
-    assert!(c.ends.iter().all(Option::is_some), "both ends attached");
+    let cid = dc.wires.keys().next().unwrap();
+    let cid = *cid; // a wire: both ends landed on connection points
     let page = dc.page_order[0];
     // 4. Connected movement: move the rectangle; the wire end follows.
     let (rid, rep) =
@@ -464,10 +464,11 @@ fn the_quick_start_runs_headless() {
     assert!(t.pending_close().is_none() && t.cad.session.docs.is_empty() && t.project_open());
     t.show_page(p2).unwrap();
     assert_eq!(t.cad.session.docs.len(), 1);
-    // The wire and its label (brief 022), not counting the sheet frame (brief 019).
+    // The line, not counting the sheet frame (brief 019); its ends are free, so it carries no
+    // wire and shows no label (design 072).
     assert_eq!(
         t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).count(),
-        2,
+        1,
         "page 2's wire is drawn again"
     );
     t.show_page(page).unwrap();

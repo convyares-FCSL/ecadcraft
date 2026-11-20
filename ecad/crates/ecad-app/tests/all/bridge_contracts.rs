@@ -153,10 +153,12 @@ pub(crate) fn log_len(h: &mut H) -> usize {
     authors(h).len()
 }
 
+/// The lines drawn: [`wire`]'s lines end free, so each is a route and carries no wire (design
+/// 072: a wire runs between two connection points).
 pub(crate) fn conductors(h: &mut H) -> usize {
     let t = h.state_mut();
     let p = t.project().unwrap().clone();
-    p.read(&mut t.cad.session, |p, _| p.ledger.document().wires.len()).unwrap()
+    p.read(&mut t.cad.session, |p, _| p.ledger.document().routes.len()).unwrap()
 }
 
 /// A person's edit, through the ECAD command field.

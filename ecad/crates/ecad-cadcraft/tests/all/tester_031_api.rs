@@ -35,7 +35,11 @@ fn doc_with(props: &[(&str, &str)]) -> Document {
         let style = k.strip_prefix("text.").and_then(|r| r.rsplit_once('.')).filter(|(_, f)| ["height", "weight", "font"].contains(f));
         match style {
             Some((kind, field)) => {
-                records.entry(kind.to_string()).or_default().fields.insert(field.to_string(), (*v).into());
+                records.entry(kind.to_string()).or_insert_with(|| ecad_model::StyleRecord::empty(ecad_model::StyleCatalogue::Text));
+                // Design 072 §8: a value the field does not take cannot be stored; it stays absent.
+                if let Some(ecad_model::style::StyleBody::Text(t)) = records.get_mut(kind).map(|r| &mut r.body) {
+                    let _ = ecad_cadcraft::styles::text::set(t, field, Some(v));
+                }
             }
             None => ops.push(Op::SetProperty { object: ObjectRef::Project, key: (*k).into(), before: None, after: Some((*v).into()) }),
         }

@@ -179,16 +179,29 @@ impl H {
         out
     }
 
+    /// The route drawing wire `c` on `page` (`wires::route_of_wire_on`).
+    pub fn route_of(&mut self, page: PageId, c: WireId) -> ecad_model::RouteId {
+        ecad_cadcraft::wires::route_of_wire_on(&self.doc(), c, page).expect("route")
+    }
+
+    /// The handle of wire `c`'s line on `page`.
     pub fn route_handle(&mut self, page: PageId, c: WireId) -> Handle {
+        let r = self.route_of(page, c);
+        self.line_handle(page, r)
+    }
+
+    /// The handle of route `r`'s line on `page`.
+    pub fn line_handle(&mut self, page: PageId, r: ecad_model::RouteId) -> Handle {
         let doc = self.doc();
-        let (item, _) = ecad_model::derive::route_on_page(&doc, c, page).expect("route");
+        let (_, item, _) = ecad_cadcraft::wires::route_item(&doc, r).expect("route item");
         self.handle_of(page, item)
     }
 
+    /// The first and last point of wire `c`'s line on `page`.
     pub fn route_ends(&mut self, page: PageId, c: WireId) -> (Pt, Pt) {
-        let doc = self.doc();
-        let (_, prim) = ecad_model::derive::route_on_page(&doc, c, page).expect("route");
-        prim.path_ends().unwrap()
+        let r = self.route_of(page, c);
+        let [a, b] = self.doc().routes[&r].end_points().expect("points");
+        (a, b)
     }
 
     pub fn terminal_pos(&mut self, page: PageId, t: TerminalId) -> Pt {
@@ -295,6 +308,95 @@ pub fn reopen(path: &str, seed: u64) -> H {
     h
 }
 
+impl H {
+    /// Connection points at `at` on the active page (design 072: a wire runs between two
+    /// connection points): one drawn device holding one point per place, committed straight to the
+    /// ledger. Returns the points, in the order given.
+    pub fn points_at(&mut self, at: &[(f64, f64)]) -> Vec<TerminalId> {
+        use ecad_model::{Author, Device, Form, Op, Representation, Subject, Terminal};
+        self.cfg(|p| {
+            let page = p.active_page().unwrap_or(p.ledger.document().page_order[0]);
+            let device: DeviceId = p.ids.fresh();
+            let mut ops = vec![Op::CreateDevice { id: device, device: Device::default() }];
+            let mut cps = std::collections::BTreeMap::new();
+            let mut out = Vec::new();
+            for (i, (x, y)) in at.iter().enumerate() {
+                let t: TerminalId = p.ids.fresh();
+                ops.push(Op::AddTerminal {
+                    id: t,
+                    terminal: Terminal { component: device, label: Some((i + 1).to_string()), key: None, accepts: Default::default() },
+                });
+                cps.insert(t, Pt::new(*x, *y));
+                out.push(t);
+            }
+            let rep: ecad_model::RepresentationId = p.ids.fresh();
+            ops.push(Op::LinkRepresentation {
+                id: rep,
+                rep: Representation {
+                    subject: Subject::Device(device),
+                    page,
+                    form: Form::Drawn,
+                    role: "main".into(),
+                    items: Vec::new(),
+                    connection_points: cps,
+                },
+            });
+            p.ledger.commit(Author::User, "points", ops).unwrap();
+            out
+        })
+    }
+
+    /// `wire` through `points`, first putting a connection point at each end that has none (design
+    /// 072: a line with a free end carries no wire). The command's JSON result.
+    pub fn wire_pp(&mut self, points: &[(f64, f64)]) -> Result<Value, String> {
+        let doc = self.doc();
+        let page = self.p(|p| p.active_page()).unwrap_or(doc.page_order[0]);
+        let shown: Vec<Pt> = ecad_model::derive::terminal_positions(&doc, page).into_iter().map(|(_, _, at)| at).collect();
+        let ends: Vec<(f64, f64)> = [points.first(), points.last()]
+            .into_iter()
+            .flatten()
+            .copied()
+            .filter(|(x, y)| !shown.iter().any(|q| q.near(Pt::new(*x, *y), 1e-6)))
+            .collect();
+        if !ends.is_empty() {
+            self.points_at(&ends);
+        }
+        self.run("wire", json!({"points": pts(points)}))
+    }
+
+    /// A reference end of `cable` on `page` at `at` (its Point and its `reference` representation,
+    /// styled like the cable's first reference), applied to the project as one edit: the end a
+    /// cable gains when it is continued on another page. Until lane F step F4 no command draws a
+    /// cable on two pages (`cablecontinue` needs wires leaving the page through the reference), so
+    /// tests about what two ends say of each other (texts, zones, markers, checks) pair them so.
+    pub fn reference_end(&mut self, cable: ecad_model::CableId, page: PageId, at: (f64, f64)) -> ecad_model::RepresentationId {
+        use ecad_model::{Form, Item, Op, Primitive, Representation, Subject};
+        let doc = self.doc();
+        let style = doc
+            .representations_of(Subject::Cable(cable))
+            .filter(|(_, r)| r.role == ecad_model::derive::REFERENCE_ROLE)
+            .find_map(|(_, r)| r.items.first().and_then(|i| doc.items.get(i)).map(|i| i.style.clone()))
+            .expect("the cable has a reference to pair with");
+        let (item, rep): (ecad_model::ItemId, ecad_model::RepresentationId) = self.cfg(|p| (p.ids.fresh(), p.ids.fresh()));
+        let ops = vec![
+            Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(at.0, at.1) }) } },
+            Op::LinkRepresentation {
+                id: rep,
+                rep: Representation {
+                    subject: Subject::Cable(cable),
+                    page,
+                    form: Form::Drawn,
+                    role: ecad_model::derive::REFERENCE_ROLE.into(),
+                    items: vec![item],
+                    connection_points: Default::default(),
+                },
+            },
+        ];
+        self.project.apply_ops(&mut self.s, "Reference end", ops).unwrap();
+        rep
+    }
+}
+
 /// `place` a symbol at `at`; the command's JSON result (`component`, ...).
 pub fn place(h: &mut H, symbol: &str, at: (f64, f64)) -> Value {
     h.run("place", json!({"symbol": symbol, "at": [at.0, at.1]})).unwrap()
@@ -326,6 +428,135 @@ pub fn small_project(seed: u64) -> (H, DeviceId, DeviceId, WireId) {
     let to = ecad_model::derive::terminal_positions(&doc, first).into_iter().find(|(_, r, _)| *r == rid).unwrap().2;
     let w: WireId = id(&h.run("wire", json!({"points": pts(&[(40.0, 10.0), (to.x, to.y)])})).unwrap(), "conductor");
     assert!(doc.wires.is_empty());
-    assert!(h.doc().wires[&w].ends.iter().all(Option::is_some), "both ends attached");
+    assert!(h.doc().wires.contains_key(&w), "the wire between the two points");
     (h, c1, c2, w)
+}
+
+/// Ops drawing `n` wires on `page` straight to the ledger (fixtures too large to draw one by
+/// one): one drawn device holding two connection points per wire, a route between them landing
+/// on both (design 072 §4.3) with its line, and the wire. `line(i)` gives wire `i`'s two end
+/// points. Returns the ops and, in order, each wire with its route and its line's item.
+pub fn wired_lines(
+    ids: &mut ecad_model::IdAllocator, page: PageId, style: ecad_model::Style, n: usize, line: impl Fn(usize) -> (Pt, Pt),
+) -> (Vec<ecad_model::Op>, Vec<(WireId, ecad_model::RouteId, ecad_model::ItemId)>) {
+    use ecad_model::{Device, Form, Op, Representation, RouteEnd, Subject, Terminal, Wire};
+    let device: DeviceId = ids.fresh();
+    let mut ops = vec![Op::CreateDevice { id: device, device: Device::default() }];
+    let mut cps = std::collections::BTreeMap::new();
+    let mut out = Vec::with_capacity(n);
+    for i in 0..n {
+        let (a, b) = line(i);
+        let (ta, tb): (TerminalId, TerminalId) = (ids.fresh(), ids.fresh());
+        for (t, at, k) in [(ta, a, 2 * i), (tb, b, 2 * i + 1)] {
+            ops.push(Op::AddTerminal {
+                id: t,
+                terminal: Terminal { component: device, label: Some(k.to_string()), key: None, accepts: Default::default() },
+            });
+            cps.insert(t, at);
+        }
+        let (r, item, add) = ecad_cadcraft::wires::add_route(ids, page, style.clone(), vec![a, b], [RouteEnd::Point(ta), RouteEnd::Point(tb)]);
+        ops.extend(add);
+        let w: WireId = ids.fresh();
+        ops.push(Op::CreateWire { id: w, wire: Wire::new(ids.fresh(), ids.fresh(), ta, tb) });
+        out.push((w, r, item));
+    }
+    let rep: ecad_model::RepresentationId = ids.fresh();
+    ops.push(Op::LinkRepresentation {
+        id: rep,
+        rep: Representation {
+            subject: Subject::Device(device),
+            page,
+            form: Form::Drawn,
+            role: "main".into(),
+            items: Vec::new(),
+            connection_points: cps,
+        },
+    });
+    (ops, out)
+}
+
+/// Wire `w`'s line on `page`: the item drawing its route there (`wires::route_of_wire_on`) and
+/// the item's path (design 072 §4.3; what `derive::route_on_page` gave before routes).
+pub fn wire_line(doc: &Document, w: WireId, page: PageId) -> Option<(ecad_model::ItemId, ecad_model::Primitive)> {
+    let r = ecad_cadcraft::wires::route_of_wire_on(doc, w, page)?;
+    let (_, item, it) = ecad_cadcraft::wires::route_item(doc, r)?;
+    match &it.kind {
+        ItemKind::Primitive(p) => Some((item, p.clone())),
+        ItemKind::Symbol(_) => None,
+    }
+}
+
+/// A device's values as the `setprop` keys name them (design 072 §3): its property bag, with a PLC
+/// module's and station's typed fields under their keys (`plc.rack` as the station's ID, `plc.slot`,
+/// `plc.addr.start`, `plc.addr.size`, `plc.ch.<i>.text|address|tag|safe`).
+pub fn plc_view(doc: &Document, c: DeviceId) -> std::collections::BTreeMap<String, String> {
+    let Some(d) = doc.devices.get(&c) else { return Default::default() };
+    let mut out = d.properties.clone();
+    if let ecad_model::DeviceType::PlcModule(m) = &d.device_type {
+        let mut put = |k: String, v: Option<String>| {
+            if let Some(v) = v {
+                out.insert(k, v);
+            }
+        };
+        put("plc.rack".into(), m.rack.map(|r| r.hex()));
+        put("plc.slot".into(), m.slot.map(|s| s.to_string()));
+        put("plc.addr.start".into(), m.address.start.map(|s| s.to_string()));
+        put("plc.addr.size".into(), m.address.size.map(|s| s.to_string()));
+        for (i, ch) in m.channels() {
+            put(format!("plc.ch.{i}.text"), ch.text.as_ref().map(ToString::to_string));
+            put(format!("plc.ch.{i}.address"), ch.address.as_ref().map(ToString::to_string));
+            put(format!("plc.ch.{i}.tag"), ch.tag.as_ref().map(ToString::to_string));
+            put(format!("plc.ch.{i}.safe"), ch.safe.as_ref().map(ToString::to_string));
+        }
+    }
+    out
+}
+
+/// A device's value of `setprop` key `k` ([`plc_view`], else [`ecad_model::Device::value`]);
+/// `plc.channels` is a module's count.
+pub fn plc_value(doc: &Document, c: DeviceId, k: &str) -> Option<String> {
+    if k == "plc.channels" {
+        return match &doc.devices.get(&c)?.device_type {
+            ecad_model::DeviceType::PlcModule(m) => Some(m.channel_count().to_string()),
+            _ => None,
+        };
+    }
+    plc_view(doc, c).remove(k).or_else(|| doc.devices.get(&c)?.value(k))
+}
+
+/// A hand-made op setting a PLC module's field named by `setprop` key `k` (as a file or a merge
+/// might hold it, bypassing the commands): one `ModifyDevice`. `plc.rack` takes any ID.
+pub fn plc_raw(doc: &Document, c: DeviceId, k: &str, value: Option<&str>) -> ecad_model::Op {
+    let before = doc.devices[&c].clone();
+    let mut after = before.clone();
+    let ecad_model::DeviceType::PlcModule(m) = &mut after.device_type else { panic!("{c:?} is not a module") };
+    let num = |v: Option<&str>| v.map(|t| t.parse::<u32>().unwrap());
+    match k {
+        "plc.rack" => m.rack = value.map(|t| DeviceId::parse(t).unwrap()),
+        "plc.slot" => m.slot = num(value).map(|n| u16::try_from(n).unwrap()),
+        "plc.addr.start" => m.address.start = num(value),
+        "plc.addr.size" => m.address.size = num(value),
+        "plc.channels" => m.function.groups_mut()[0].count = u16::try_from(num(value).unwrap_or(0)).unwrap(),
+        _ => {
+            let rest = k.strip_prefix("plc.ch.").unwrap_or_else(|| panic!("not a module field: {k}"));
+            let (i, what) = rest.split_once('.').unwrap();
+            let v = value.map(str::to_string);
+            m.edit_channel(i.parse().unwrap(), |ch| match what {
+                "text" => ch.text = v.as_deref().map(|t| ecad_model::text::Text::new(t).unwrap()),
+                "address" => ch.address = v.as_deref().map(|t| ecad_model::text::Text::new(t).unwrap()),
+                "tag" => ch.tag = v.as_deref().map(|t| ecad_model::text::Text::new(t).unwrap()),
+                "safe" => ch.safe = v.as_deref().map(|t| ecad_model::plc::SafeState::parse(t).unwrap()),
+                other => panic!("no channel field {other}"),
+            });
+        }
+    }
+    ecad_model::Op::ModifyDevice { id: c, before, after }
+}
+
+/// Device `c`'s station data (design 072 §3); panics when it is not a station.
+pub fn plc_station(doc: &Document, c: DeviceId) -> ecad_model::plc::PlcRack {
+    match &doc.devices[&c].device_type {
+        ecad_model::DeviceType::PlcRack(r) => r.clone(),
+        other => panic!("{c:?} is not a station: {other:?}"),
+    }
 }

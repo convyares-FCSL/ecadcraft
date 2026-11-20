@@ -99,7 +99,10 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
         let mut ts = Vec::new();
         for p in points {
             let t: TerminalId = ids.fresh();
-            ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: Some((*p).into()), key: None } });
+            ops.push(Op::AddTerminal {
+                id: t,
+                terminal: Terminal { component: c, label: Some((*p).into()), key: None, accepts: Default::default() },
+            });
             ts.push(t);
         }
         (ops, ts)
@@ -108,24 +111,28 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
     let (k1b, _) = device(&mut ids, "-K1", &["A1"]);
     let (x1, x1t) = device(&mut ids, "-X1", &["3", "4"]);
     l.commit(Author::User, "Devices", [k1, k1b, x1].concat()).unwrap();
-    let wire = |ids: &mut IdAllocator, number: &str, a: TerminalId, b: TerminalId| -> (WireId, Op) {
+    // Whole wires, no routes (design 072 §4.2): one net, its order 1 then 2.
+    let net: NetId = ids.fresh();
+    let wire = |ids: &mut IdAllocator, number: &str, order: u16, a: TerminalId, b: TerminalId| -> (WireId, Op) {
         let w: WireId = ids.fresh();
-        let conductor = Wire {
-            ends: [Some(a), Some(b)],
+        let wire = Wire {
+            net_order: order,
             number: ecad_model::text::Text::new(number).ok().map(|text| ecad_model::wire::WireNumber { text, fixed: false }),
             size: ecad_model::wire::WireSize::parse("1.5"),
-            ..Wire::default()
+            ..Wire::new(net, ids.fresh(), a, b)
         };
-        (w, Op::CreateWire { id: w, conductor })
+        (w, Op::CreateWire { id: w, wire })
     };
-    let (w1, op1) = wire(&mut ids, "101", k1t[0], x1t[0]);
-    let (_, op2) = wire(&mut ids, "101", x1t[0], x1t[1]);
+    let (w1, op1) = wire(&mut ids, "101", 1, k1t[0], x1t[0]);
+    let (_, op2) = wire(&mut ids, "101", 2, x1t[0], x1t[1]);
     l.commit(Author::User, "Wires", vec![op1, op2]).unwrap();
     let cable: CableId = ids.fresh();
     let mut cprops = ecad_model::doc::Properties::new();
     cprops.insert("tag".into(), "-W1".into());
-    let cable_op =
-        Op::CreateCable { id: cable, cable: Cable { properties: cprops, members: vec![CableMember { conductor: w1, core: Some("1".into()) }] } };
+    let cable_op = Op::CreateCable {
+        id: cable,
+        cable: Cable { properties: cprops, cores: vec![Core::on_wire(w1, ecad_model::CoreLabel::new("1").ok())], ..Default::default() },
+    };
     l.commit(Author::User, "Cable", vec![cable_op]).unwrap();
     for i in 0..20 {
         let id: ItemId = ids.fresh();

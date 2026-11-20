@@ -22,7 +22,6 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::CmdError;
 use ecad_model::book::{self, Book, MAX_FOLDER_DEPTH};
-use ecad_model::style::StyleLayer;
 use ecad_model::{Document, FolderId, ObjectRef, Op, PageId, StyleRef};
 use serde_json::{Value, json};
 
@@ -226,7 +225,7 @@ pub fn newpage_type(doc: &Document, ty: Option<&str>, kind: Option<GenKind>) -> 
     let id = crate::styles::find(doc, ecad_model::StyleCatalogue::Page, t)?;
     match kind {
         None if ptype::generated_only(&id) => Err(CmdError::refused(ptype::generated_refusal(doc, &id))),
-        Some(k) if ptype::look_of(doc, &id).holds != ptype::Holds::of_kind(k) => Err(CmdError::refused(ptype::kind_refusal(k))),
+        Some(k) if ptype::look_of(doc, &id).holds != ptype::holds_of_kind(k) => Err(CmdError::refused(ptype::kind_refusal(k))),
         _ => Ok(Some(id)),
     }
 }
@@ -236,34 +235,8 @@ pub fn newpage_type(doc: &Document, ty: Option<&str>, kind: Option<GenKind>) -> 
 pub enum PageFix {
     /// **Use its usual type**: clear the page's own `page.type`, so it takes its derived type.
     UseDerived(PageId),
-    /// **Reset**: clear field `field` (an index into the catalogue's fields) of a type's project
-    /// record.
-    Reset(TypeRef, u8),
     /// **Remove**: clear a folder start key (the folder may be gone).
     RemoveStart(FolderId),
-}
-
-/// A page type, as a fix can hold it: a built-in by its index, or an own type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TypeRef {
-    Builtin(u8),
-    Own(u128),
-}
-
-impl TypeRef {
-    fn of(id: &StyleRef) -> Option<TypeRef> {
-        match id {
-            StyleRef::Own(n) => Some(TypeRef::Own(*n)),
-            StyleRef::Builtin(w) => ptype::CATALOGUE.builtins.iter().position(|b| b.id == w).and_then(|i| u8::try_from(i).ok()).map(TypeRef::Builtin),
-        }
-    }
-
-    fn id(self) -> String {
-        match self {
-            TypeRef::Own(n) => StyleRef::Own(n).text(),
-            TypeRef::Builtin(i) => ptype::CATALOGUE.builtins.get(usize::from(i)).map_or_else(String::new, |b| b.id.to_string()),
-        }
-    }
 }
 
 impl PageFix {
@@ -271,7 +244,6 @@ impl PageFix {
     pub fn label(self) -> &'static str {
         match self {
             PageFix::UseDerived(_) => "Use its usual type",
-            PageFix::Reset(..) => "Reset",
             PageFix::RemoveStart(_) => "Remove",
         }
     }
@@ -281,10 +253,6 @@ impl PageFix {
         match self {
             PageFix::UseDerived(p) => {
                 ("setdefault", json!({"key": ecad_model::sheet::PAGE_TYPE_KEY, "level": "page", "page": p.hex(), "reset": true}))
-            }
-            PageFix::Reset(t, f) => {
-                let key = ptype::CATALOGUE.fields.get(usize::from(f)).map_or("", |f| f.key);
-                ("setstyle", json!({"catalogue": ecad_model::StyleCatalogue::Page, "id": t.id(), "fields": {key: null}}))
             }
             PageFix::RemoveStart(f) => ("folderprops", json!({"folder": f.hex(), "start": null})),
         }
@@ -306,7 +274,7 @@ pub fn checks_changed(doc: &Document, ops: &[Op]) -> bool {
         Op::ModifyPage { before, after, .. } => before.page_type != after.page_type && (off(before) || off(after)),
         Op::AddPage { page, .. } | Op::RemovePage { page, .. } => off(page),
         Op::SetStyle { catalogue, before, after, .. } if *catalogue == ecad_model::StyleCatalogue::Page => {
-            let c = |r: &Option<ecad_model::StyleRecord>| r.as_ref().and_then(|r| r.fields.get("checks").cloned());
+            let c = |r: &Option<ecad_model::StyleRecord>| r.as_ref().and_then(|r| r.body.page()).and_then(|p| p.checks);
             c(before) != c(after)
         }
         _ => false,
@@ -344,24 +312,8 @@ pub fn check_rows(doc: &Document) -> Vec<Check> {
         r.fix = Some(crate::checks::Fix::Page(PageFix::UseDerived(p)));
         out.push(r);
     }
-    // Type records holding values their fields do not take.
-    for layer in [StyleLayer::Standard, StyleLayer::Project] {
-        for (id, r) in crate::styles::records(doc, layer, ecad_model::StyleCatalogue::Page) {
-            for (i, f) in ptype::CATALOGUE.fields.iter().enumerate() {
-                let Some(v) = r.fields.get(f.key) else { continue };
-                if crate::defaults::parse_value(f.kind, v).is_none() {
-                    let name = crate::styles::name(doc, ecad_model::StyleCatalogue::Page, id);
-                    let shown: String = v.chars().take(24).filter(|c| !c.is_control()).collect();
-                    let mut c = row(Kind::PageTypeField, None, format!("Page type {name}: {} {shown:?} not read; its usual value is used", f.label));
-                    // Reset writes the project's record; a standard's value is changed in Standards.
-                    if layer == StyleLayer::Project {
-                        c.fix = TypeRef::of(id).zip(u8::try_from(i).ok()).map(|(t, i)| crate::checks::Fix::Page(PageFix::Reset(t, i)));
-                    }
-                    out.push(c);
-                }
-            }
-        }
-    }
+    // Design 072 §8: a type record holds typed values only; a value its field does not take
+    // does not read, so there is nothing to report about type records here.
     // Folder start numbers that are not 1–6 digits (design 072 §5.2: a page number is stored).
     for (id, f) in &doc.folders {
         if f.start.as_ref().is_some_and(|s| !is_start(s.as_str().trim())) {

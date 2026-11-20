@@ -30,7 +30,7 @@ impl Command for PlcmaketagsParams {
             let doc = p.ledger.document();
             let (cards, who) = rules::tag_cards(doc, self.card.as_deref(), self.rack.as_deref())?;
             let (ops, counts) = make_tags_ops(doc, &cards);
-            let made = ops.len();
+            let made: usize = counts.iter().map(|(_, n)| *n).sum();
             if made == 0 {
                 return Ok(
                     json!({"made": 0, "changed": false, "message": format!("Every used channel of {who} has a tag or no description to make one from.")}),

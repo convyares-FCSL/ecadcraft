@@ -1,75 +1,73 @@
-//! Wire categories (brief 050b, design 050 §5): the `wire` catalogue.
+//! Wire types (brief 050b, design 050 §5; design 072 §4.6, §8, F36): the `wire` catalogue.
 //!
-//! A category gives a wire its colour and cross-section (in the label, the reports and the BOM),
-//! its drawn line (colour, type, weight), its label rule and its BOM part. A category names the
-//! potential it is the default for (one direction stored, owner answer 3).
+//! A wire type gives a wire its colours and size (in the label, the reports and the BOM), its
+//! insulation, its drawn line (colour, type, weight), its label rule and its BOM part. A type names
+//! the potential it is the default for (one direction stored, owner answer 3).
 //!
-//! # A conductor's category (design 050 §5.3)
-//! Its own `wire.category`, else the category whose `potential` is its net's potential, else the
+//! Its records are typed ([`WireType`]); the built-in types and the defaults are our own data,
+//! `defaults/wire_types.toml`, read as the same type. [`FIELDS`] is the editor's description of
+//! the fields (labels, input rules), not their storage.
+//!
+//! # A wire's type (design 050 §5.3)
+//! Its own `wire_type`, else the type whose `potential` is its net's potential, else the
 //! registry's `wire.category` (project, then standard), else none (today's look of a wire with no
-//! potential). Its colour and cross-section are its own properties when it has them (022 FP3,
-//! "overridden"), else the category's. A cable core takes no category colour: its core is its
-//! colour.
+//! potential). Its colours and size are its own when it has them (022 FP3, "overridden"), else the
+//! type's. A cable core takes no type colour: its core is its colour.
 //!
 //! This module draws nothing; `wires`, `look` and `outputs` read [`WireLooks`].
 
 use std::collections::BTreeMap;
+use std::sync::OnceLock;
 
-use ecad_model::{Document, StyleRef, WireId};
+use ecad_model::style::wire::{ConductorRating, Insulation, LineColour, WireType};
+pub use ecad_model::style::wire::{LineType, RouteLabels};
+use ecad_model::units::{Amps, Celsius, Metres, Mm};
+use ecad_model::wire::{Colours, WireSize};
+use ecad_model::{Document, StyleRef, WireId, Word};
+use serde::Deserialize;
 
 use super::{Builtin, Catalogue, Field};
-use crate::defaults::{Kind, Resolved, Scope, Slot, Source};
+use crate::CmdError;
+use crate::defaults::{Kind, Resolved, Scope, Slot, Source, Value};
 
-ecad_model::word_enum! {
-    /// How a wire style's line is drawn.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum LineType {
-        Continuous,
-        Dashed,
-        Dashdot,
-    }
-}
-ecad_model::word_enum! {
-    /// Which routes a wire style labels.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum RouteLabels {
-        Project,
-        Net,
-        Each,
-        None,
-    }
-}
-
-/// The registry's built-in category choice: no category.
+/// The registry's built-in type choice: no type.
 pub const NONE: &str = "none";
 
 fn any_text(_: &str) -> bool {
     true
 }
 
-/// `wire` (the insulation colour, 040), `ink`, or one IEC 60757 colour code.
+/// `wire` (the insulation colour, 040), `ink`, or one colour in any of its forms.
 pub fn is_line_colour(s: &str) -> bool {
-    let t = s.trim();
-    t.eq_ignore_ascii_case("wire") || t.eq_ignore_ascii_case("ink") || crate::words::colour_code(t).is_some_and(|(_, two)| two.is_none())
+    LineColour::parse(s).is_some()
+}
+
+fn is_size(s: &str) -> bool {
+    WireSize::parse(s).is_some()
+}
+
+fn is_colours(s: &str) -> bool {
+    Colours::parse(s).is_some()
 }
 
 const TEXT24: Kind = Kind::Parsed { max_chars: 24, parse: any_text };
 const TEXT64: Kind = Kind::Parsed { max_chars: 64, parse: any_text };
 
-static FIELDS: [Field; 16] = [
-    // Design 050 §5.3: potential and the BOM texts are empty by default (only colour and
-    // cross-section default to `none`), so a potential named "none" is a name like any other.
+/// The fields of a wire type, for the editor and the `style` command.
+pub static FIELDS: [Field; 17] = [
     Field { key: "potential", label: "Potential", kind: TEXT24, slot: Slot::new(), over: None },
-    Field { key: "colour", label: "Colour", kind: TEXT24, slot: Slot::new(), over: None },
-    Field { key: "cross_section", label: "Cross-section", kind: TEXT24, slot: Slot::new(), over: None },
+    Field { key: "size", label: "Size", kind: Kind::Parsed { max_chars: 24, parse: is_size }, slot: Slot::new(), over: None },
+    Field { key: "colours", label: "Colours", kind: Kind::Parsed { max_chars: 24, parse: is_colours }, slot: Slot::new(), over: None },
+    Field { key: "insulation", label: "Insulation", kind: Kind::Choice(<Insulation as Word>::WORDS), slot: Slot::new(), over: None },
     Field { key: "line_colour", label: "Line colour", kind: Kind::Parsed { max_chars: 16, parse: is_line_colour }, slot: Slot::new(), over: None },
-    Field { key: "line_type", label: "Line type", kind: Kind::Choice(<LineType as ecad_model::Word>::WORDS), slot: Slot::new(), over: None },
+    Field { key: "line_type", label: "Line type", kind: Kind::Choice(<LineType as Word>::WORDS), slot: Slot::new(), over: None },
     Field { key: "line_weight", label: "Line weight", kind: Kind::Length { min: 0.13, max: 2.11 }, slot: Slot::new(), over: None },
-    Field { key: "label_rule", label: "Label rule", kind: Kind::Choice(<RouteLabels as ecad_model::Word>::WORDS), slot: Slot::new(), over: None },
+    Field { key: "label_rule", label: "Label rule", kind: Kind::Choice(<RouteLabels as Word>::WORDS), slot: Slot::new(), over: None },
     Field { key: "part_number", label: "Part number", kind: TEXT64, slot: Slot::new(), over: None },
     Field { key: "maker", label: "Maker", kind: TEXT64, slot: Slot::new(), over: None },
     Field { key: "description", label: "Description", kind: TEXT64, slot: Slot::new(), over: None },
-    Field { key: "allowance", label: "Allowance (m per wire)", kind: Kind::Number { min: 0.0, max: 100.0 }, slot: Slot::new(), over: None }, // Brief 057 (design 057 §4.4, FP3): the datasheet rating, shared by the category's wires.
+    Field { key: "allowance", label: "Allowance (m per wire)", kind: Kind::Number { min: 0.0, max: 100.0 }, slot: Slot::new(), over: None },
+    // Brief 057 (design 057 §4.4, FP3): the datasheet rating, shared by the type's wires.
     crate::rating::fields::RATED_CURRENT,
     crate::rating::fields::RATED_AT,
     crate::rating::fields::MAX_TEMPERATURE,
@@ -77,38 +75,182 @@ static FIELDS: [Field; 16] = [
     crate::rating::fields::CONDUCTOR_CLASS,
 ];
 
-const fn cat(id: &'static str, name: &'static str) -> Builtin {
+const fn wire_type(id: &'static str, name: &'static str) -> Builtin {
     Builtin { id, name, slot: Slot::new() }
 }
 
-/// Design 050 §5.2: from 022's default potentials and the UI spec's default category colours.
-static BUILTINS: [Builtin; 10] = [
-    cat("l", "Power L"),
-    cat("l1", "Power L1"),
-    cat("l2", "Power L2"),
-    cat("l3", "Power L3"),
-    cat("n", "Neutral"),
-    cat("pe", "Protective earth"),
-    cat("dc24", "24 V DC"),
-    cat("dc0", "0 V DC"),
-    cat("signal", "Signal"),
-    cat("analogue", "Analogue"),
+/// Design 050 §5.2 and design 072 F37: the built-in types, in table order; their values are in
+/// `defaults/wire_types.toml`.
+static BUILTINS: [Builtin; 12] = [
+    wire_type("l", "Power L"),
+    wire_type("l1", "Power L1"),
+    wire_type("l2", "Power L2"),
+    wire_type("l3", "Power L3"),
+    wire_type("n", "Neutral"),
+    wire_type("pe", "Protective earth"),
+    wire_type("ac230_l", "230 V AC L"),
+    wire_type("ac230_n", "230 V AC N"),
+    wire_type("dc24", "24 V DC"),
+    wire_type("dc0", "0 V DC"),
+    wire_type("signal", "Signal"),
+    wire_type("analogue", "Analogue"),
 ];
 
 fn choices() -> Vec<&'static crate::defaults::Entry> {
     vec![&crate::defaults::styles::WIRE_CATEGORY]
 }
 
-/// The wire category catalogue.
+/// The wire type catalogue.
 pub static CATALOGUE: Catalogue = Catalogue {
     catalogue: ecad_model::StyleCatalogue::Wire,
-    plural: "Wire categories",
-    one: "Wire category",
+    plural: "Wire types",
+    one: "Wire type",
     fields: &FIELDS,
     builtins: &BUILTINS,
     choices,
     project_field: None,
 };
+
+/// The built-in data's text.
+pub const DATA: &str = include_str!("../../defaults/wire_types.toml");
+/// Its name, for messages.
+pub const DATA_FILE: &str = "wire_types.toml";
+
+/// The built-in data, read as typed records.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Data {
+    pub defaults: WireType,
+    #[serde(default)]
+    pub types: BTreeMap<String, WireType>,
+}
+
+/// Read the built-in data.
+///
+/// # Errors
+/// The data's first problem ([`DATA_FILE`]'s field, value or syntax).
+pub fn read_data(text: &str) -> Result<Data, toml::de::Error> {
+    toml::from_str(text)
+}
+
+fn data() -> &'static Data {
+    static DATA_READ: OnceLock<Data> = OnceLock::new();
+    // A damaged built-in file gives no built-in values (each field's safe value); the test
+    // `wire_types_data_reads` keeps it from shipping.
+    DATA_READ.get_or_init(|| read_data(DATA).unwrap_or_default())
+}
+
+/// The catalogue's defaults: what a field takes when nothing else sets it.
+pub fn defaults() -> &'static WireType {
+    &data().defaults
+}
+
+/// Built-in type `id`'s values.
+pub fn builtin_type(id: &str) -> Option<&'static WireType> {
+    data().types.get(id)
+}
+
+/// The value of field `key` that `w` sets, if it sets one.
+pub fn get<'a>(w: &'a WireType, key: &str) -> Option<Value<'a>> {
+    let r = &w.rating;
+    let text = |t: Option<&'a str>| t.map(Value::Text);
+    match key {
+        "potential" => text(w.potential.as_ref().map(|t| t.as_str())),
+        "size" => w.size.map(Value::Size),
+        "colours" => w.colours.as_ref().map(Value::Colours),
+        "insulation" => w.insulation.map(|v| Value::Choice(v.word())),
+        "line_colour" => w.line_colour.map(|v| Value::Text(v.word())),
+        "line_type" => w.line_type.map(|v| Value::Choice(v.word())),
+        "line_weight" => w.line_weight.map(|v| Value::Length(v.0)),
+        "label_rule" => w.label_rule.map(|v| Value::Choice(v.word())),
+        "part_number" => text(w.part_number.as_ref().map(|t| t.as_str())),
+        "maker" => text(w.maker.as_ref().map(|t| t.as_str())),
+        "description" => text(w.description.as_ref().map(|t| t.as_str())),
+        "allowance" => w.allowance.map(|v| Value::Number(v.0)),
+        "rated_current" => r.rated_current.map(|v| Value::Number(v.0)),
+        "rated_at" => r.rated_at.map(|v| Value::Number(v.0)),
+        "max_temperature" => r.max_temperature.map(|v| Value::Number(v.0)),
+        "material" => r.material.map(|v| Value::Choice(v.word())),
+        "conductor_class" => r.conductor_class.map(|v| Value::Choice(v.word())),
+        _ => None,
+    }
+}
+
+fn refused(why: String) -> CmdError {
+    CmdError::refused(why)
+}
+
+fn number(key: &str, t: &str) -> Result<f64, CmdError> {
+    t.trim().parse::<f64>().ok().filter(|x| x.is_finite()).ok_or_else(|| refused(format!("{key} takes a number, not {t:?}")))
+}
+
+fn word<W: Word>(key: &str, t: &str) -> Result<W, CmdError> {
+    W::parse(t).ok_or_else(|| refused(format!("{key} takes {}, not {t:?}", W::WORDS.join(", "))))
+}
+
+fn text<const N: usize>(t: &str) -> Result<ecad_model::text::Text<N>, CmdError> {
+    ecad_model::text::Text::new(t).map_err(|e| refused(e.to_string()))
+}
+
+fn no_field(key: &str) -> CmdError {
+    refused(format!("Wire types have no field {key:?}."))
+}
+
+/// Set (`Some`) or clear (`None`) field `key` of `w` from its text, as the `style` command
+/// checked it.
+///
+/// # Errors
+/// An unknown field, or text the field does not take, in words.
+pub fn set(w: &mut WireType, key: &str, value: Option<&str>) -> Result<(), CmdError> {
+    let Some(t) = value else {
+        let r: &mut ConductorRating = &mut w.rating;
+        match key {
+            "potential" => w.potential = None,
+            "size" => w.size = None,
+            "colours" => w.colours = None,
+            "insulation" => w.insulation = None,
+            "line_colour" => w.line_colour = None,
+            "line_type" => w.line_type = None,
+            "line_weight" => w.line_weight = None,
+            "label_rule" => w.label_rule = None,
+            "part_number" => w.part_number = None,
+            "maker" => w.maker = None,
+            "description" => w.description = None,
+            "allowance" => w.allowance = None,
+            "rated_current" => r.rated_current = None,
+            "rated_at" => r.rated_at = None,
+            "max_temperature" => r.max_temperature = None,
+            "material" => r.material = None,
+            "conductor_class" => r.conductor_class = None,
+            _ => return Err(no_field(key)),
+        }
+        return Ok(());
+    };
+    match key {
+        "potential" => w.potential = Some(text(t)?),
+        "size" => w.size = Some(WireSize::parse(t).ok_or_else(|| refused(format!("{t:?} is not a wire size")))?),
+        "colours" => w.colours = Some(Colours::parse(t).ok_or_else(|| refused(format!("{t:?} is not a list of wire colours")))?),
+        "insulation" => w.insulation = Some(word(key, t)?),
+        "line_colour" => w.line_colour = Some(LineColour::parse(t).ok_or_else(|| refused(format!("{t:?} is not a line colour")))?),
+        "line_type" => w.line_type = Some(word(key, t)?),
+        "line_weight" => w.line_weight = Some(Mm(number(key, t)?)),
+        "label_rule" => w.label_rule = Some(word(key, t)?),
+        "part_number" => w.part_number = Some(text(t)?),
+        "maker" => w.maker = Some(text(t)?),
+        "description" => w.description = Some(text(t)?),
+        "allowance" => w.allowance = Some(Metres(number(key, t)?)),
+        "rated_current" => {
+            let a = crate::rating::parse::current(t).ok_or_else(|| refused(format!("{t:?} is not a current")))?;
+            w.rating.rated_current = Some(Amps(a));
+        }
+        "rated_at" => w.rating.rated_at = Some(Celsius(number(key, t)?)),
+        "max_temperature" => w.rating.max_temperature = Some(Celsius(number(key, t)?)),
+        "material" => w.rating.material = Some(word(key, t)?),
+        "conductor_class" => w.rating.conductor_class = Some(word(key, t)?),
+        _ => return Err(no_field(key)),
+    }
+    Ok(())
+}
 
 /// Where a conductor's category came from (the inspector's badge, design 050 §7.5).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,11 +271,11 @@ pub enum CategoryFrom {
 pub struct WireLook {
     pub category: Option<StyleRef>,
     pub from: CategoryFrom,
-    /// Colour code and cross-section, with where they come from (`Object` = the conductor's own).
-    pub colour: Option<(String, Source)>,
+    /// Its colours and cross-section, with where they come from (`Object` = the conductor's own).
+    pub colour: Option<(Colours, Source)>,
     pub cross_section: Option<(String, Source)>,
-    /// `wire`, `ink` or one colour code.
-    pub line_colour: String,
+    /// What its route is drawn in: the insulation colour, ink, or one colour.
+    pub line_colour: LineColour,
     /// `continuous`, `dashed`, `dashdot`.
     pub line_type: &'static str,
     /// Millimetres.
@@ -143,14 +285,19 @@ pub struct WireLook {
 }
 
 impl WireLook {
-    /// The code a route is drawn in: the insulation colour for `wire`, none for `ink`, else the
-    /// line colour's code.
-    pub fn route_code(&self) -> Option<String> {
-        match self.line_colour.as_str() {
-            "wire" => self.colour.as_ref().map(|c| c.0.clone()),
-            "ink" => None,
-            code => Some(code.to_string()),
+    /// The colours a route is drawn in: the insulation colours for `wire`, none for `ink`, else the
+    /// line colour.
+    pub fn route_code(&self) -> Option<Colours> {
+        match self.line_colour {
+            LineColour::Wire => self.colour.as_ref().map(|c| c.0.clone()),
+            LineColour::Ink => None,
+            LineColour::Colour(c) => Colours::new(vec![c]),
         }
+    }
+
+    /// Its colours in their stored words (`GN/YE`), with where they come from.
+    pub fn colour_text(&self) -> Option<(String, Source)> {
+        self.colour.as_ref().map(|(c, s)| (c.to_string(), *s))
     }
 }
 
@@ -212,7 +359,7 @@ impl WireLooks {
     /// The category of conductor `c` and where it came from (design 050 §5.3).
     pub fn category(&self, doc: &Document, c: WireId) -> (Option<StyleRef>, CategoryFrom) {
         let e = &crate::defaults::styles::WIRE_CATEGORY;
-        let own = doc.wires.get(&c).and_then(|x| x.display.get(e.key)).and_then(|v| StyleRef::parse(v));
+        let own = doc.wires.get(&c).and_then(|x| x.wire_type.clone());
         if let Some(id) = own.filter(|id| super::exists(doc, ecad_model::StyleCatalogue::Wire, id)) {
             return (Some(id), CategoryFrom::Own);
         }
@@ -244,11 +391,12 @@ impl WireLooks {
         let core = !doc.cables_of(c).is_empty();
         let f = |key: &str| category.as_ref().and_then(|id| super::field_of(doc, ecad_model::StyleCatalogue::Wire, id, key, None));
         let from_cat = |key: &str| f(key).and_then(|r| text_of(&r).map(|t| (t, r.from)));
-        let own_colours = wire.and_then(|w| w.colours.as_ref()).map(|c| (c.to_string(), Source::Object));
+        let own_colours = wire.and_then(|w| w.colours.clone()).map(|c| (c, Source::Object));
         let own_size = wire.and_then(|w| w.size).map(|s| (s.to_string(), Source::Object));
-        let colour = own_colours.or_else(|| if core { None } else { from_cat("colour") });
-        let cross_section = own_size.or_else(|| if core { None } else { from_cat("cross_section") });
-        let line_colour = f("line_colour").map_or_else(|| "wire".to_string(), |r| r.text().to_ascii_lowercase());
+        let type_colours = || f("colours").and_then(|r| text_of(&r).and_then(|t| Colours::parse(&t)).map(|c| (c, r.from)));
+        let colour = own_colours.or_else(|| if core { None } else { type_colours() });
+        let cross_section = own_size.or_else(|| if core { None } else { from_cat("size") });
+        let line_colour = f("line_colour").and_then(|r| LineColour::parse(&r.text())).unwrap_or(LineColour::Wire);
         let line_type = match f("line_type").map(|r| r.word()) {
             Some("dashed") => "dashed",
             Some("dashdot") => "dashdot",
@@ -280,5 +428,68 @@ pub fn linetype(word: &str) -> &'static str {
         "dashed" => crate::locations::LINETYPE,
         "dashdot" => "DASHDOT",
         _ => "CONTINUOUS",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Design 072 F37: the built-in data reads as typed records, every built-in type has its values
+    /// and every type in the data is listed, and the 230 V L/N types are there.
+    #[test]
+    fn wire_types_data_reads() {
+        let data = read_data(DATA).unwrap();
+        for b in &BUILTINS {
+            assert!(data.types.contains_key(b.id), "{} has no values in {DATA_FILE}", b.id);
+        }
+        for id in data.types.keys() {
+            assert!(BUILTINS.iter().any(|b| b.id == id), "{id} in {DATA_FILE} is not listed");
+        }
+        for (id, potential) in [("ac230_l", None), ("ac230_n", None), ("pe", Some("PE"))] {
+            let t = &data.types[id];
+            assert_eq!(t.potential.as_ref().map(|p| p.as_str()), potential, "{id}");
+            assert!(t.size.is_some() && t.colours.is_some(), "{id}");
+        }
+        assert!(data.defaults.line_weight.is_some() && data.defaults.rating.max_temperature.is_some());
+        assert!(read_data("[defaults]\ncolour = \"BU\"\n").is_err(), "an unknown field is refused");
+    }
+
+    /// Every field's text sets and reads back the same value, and clears.
+    #[test]
+    fn every_field_sets_reads_and_clears() {
+        let samples = [
+            ("potential", "L1"),
+            ("size", "2.5"),
+            ("colours", "GN/YE"),
+            ("insulation", "pvc"),
+            ("line_colour", "BU"),
+            ("line_type", "dashed"),
+            ("line_weight", "0.35"),
+            ("label_rule", "each"),
+            ("part_number", "H07V-K 2.5"),
+            ("maker", "Maker"),
+            ("description", "Flexible wire"),
+            ("allowance", "0.2"),
+            ("rated_current", "24"),
+            ("rated_at", "30"),
+            ("max_temperature", "70"),
+            ("material", "cu"),
+            ("conductor_class", "5"),
+        ];
+        assert_eq!(samples.len(), FIELDS.len());
+        let mut w = WireType::default();
+        for (key, text) in samples {
+            assert!(FIELDS.iter().any(|f| f.key == key), "{key}");
+            set(&mut w, key, Some(text)).unwrap();
+            let shown = get(&w, key).map(|value| Resolved { value, from: Source::Project }.text());
+            assert_eq!(shown.as_deref(), Some(text), "{key}");
+        }
+        for (key, _) in samples {
+            set(&mut w, key, None).unwrap();
+        }
+        assert_eq!(w, WireType::default());
+        assert!(set(&mut w, "colour", Some("BU")).is_err());
+        assert!(set(&mut w, "insulation", Some("paper")).is_err());
     }
 }

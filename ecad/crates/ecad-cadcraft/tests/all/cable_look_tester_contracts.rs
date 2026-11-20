@@ -29,10 +29,17 @@ use ecad_cadcraft::look::{self, MarkerEnd, Role, Shape};
 use ecad_cadcraft::views::{self, FanOnPage, Settings};
 use ecad_cadcraft::{Persistence, Project, ProjectHandle};
 use ecad_model::{
-    CableId, CableMember, Color, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId, Style, Subject,
-    Transaction, WireId,
+    CableId, Color, Core, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId, Style, Subject, Transaction,
+    WireId,
 };
 use serde_json::{Value, json};
+
+/// `wire` point to point (design 072: a wire runs between two connection points): a connection
+/// point at each end that has none first ([`H::wire_pp`]).
+fn wire_pp(h: &mut H, points: Value) -> Result<Value, String> {
+    let p: Vec<(f64, f64)> = points.as_array().into_iter().flatten().filter_map(|q| Some((q[0].as_f64()?, q[1].as_f64()?))).collect();
+    h.wire_pp(&p)
+}
 
 const SEED: u64 = 0x0009_7e57;
 
@@ -88,7 +95,7 @@ fn fixture_on(mut h: H, left: bool, right: bool) -> Fx {
     }
     let mut wires = Vec::new();
     for (i, y) in [0.0, 5.0, 10.0, 15.0].into_iter().enumerate() {
-        let w: WireId = id(&h.run("wire", json!({"points": [[0.0, y], [120.0, y]]})).unwrap(), "conductor");
+        let w: WireId = id(&wire_pp(&mut h, json!([[0.0, y], [120.0, y]])).unwrap(), "conductor");
         h.run("wirenumber", json!({"conductor": w.hex(), "value": format!("W{}", i + 1)})).unwrap();
         wires.push(w);
     }
@@ -108,7 +115,7 @@ fn last_tx(h: &mut H) -> Transaction {
 }
 
 fn cores(h: &mut H, k: CableId) -> Vec<Option<String>> {
-    h.doc().cables[&k].members.iter().map(|m| m.core.clone()).collect()
+    h.doc().cables[&k].cores.iter().map(|m| m.label_str().map(str::to_string)).collect()
 }
 
 fn view(h: &mut H, k: CableId, v: &str) {
@@ -209,14 +216,17 @@ fn reference_end(h: &mut H, page: PageId, cable: CableId, at: Pt, n: u128) -> (I
     (item, rep)
 }
 
-/// Store `core` on member `index` of `cable` with the design §5.3 pair, bypassing `cablecore`'s
+/// Store `core` on member `index` of `cable` with one ModifyCable, bypassing `cablecore`'s
 /// validation (a label stored "by another route", design §4.5).
 fn store_core_raw(h: &mut H, cable: CableId, index: usize, core: Option<&str>) {
-    let m = h.doc().cables[&cable].members[index].clone();
-    let ops = vec![
-        Op::RemoveCableMember { cable, index, member: m.clone() },
-        Op::AddCableMember { cable, index, member: CableMember { conductor: m.conductor, core: core.map(str::to_string) } },
-    ];
+    let before = h.doc().cables[&cable].clone();
+    let mut after = before.clone();
+    let m = &mut after.cores[index];
+    *m = Core { position: m.position, ..Core::unplaced(core.and_then(|c| ecad_model::CoreLabel::new(c).ok())) };
+    let ops: Vec<Op> = Op::modify_cable(cable, &before, after).into_iter().collect();
+    if ops.is_empty() {
+        return;
+    }
     h.project.apply_ops(&mut h.s, "Core label", ops).unwrap();
     h.check();
 }
@@ -566,12 +576,12 @@ fn ac4_traditional_labels_on_vertical_and_reversed_wires() {
     let mut wires = Vec::new();
     // Two vertical wires drawn top to bottom, two horizontal wires drawn right to left.
     for pts in [[[0.0, 40.0], [0.0, 0.0]], [[5.0, 40.0], [5.0, 0.0]]] {
-        wires.push(id::<WireId>(&h.run("wire", json!({"points": pts})).unwrap(), "conductor"));
+        wires.push(id::<WireId>(&wire_pp(&mut h, json!(pts)).unwrap(), "conductor"));
     }
     let v: CableId = id(&h.run("cableslash", json!({"from": [-3, 20], "to": [8, 20]})).unwrap(), "cable");
     h.run("cablecore", json!({"cable": v.hex(), "cores": ["A", "B"]})).unwrap();
     for pts in [[[100.0, 0.0], [50.0, 0.0]], [[100.0, 5.0], [50.0, 5.0]]] {
-        wires.push(id::<WireId>(&h.run("wire", json!({"points": pts})).unwrap(), "conductor"));
+        wires.push(id::<WireId>(&wire_pp(&mut h, json!(pts)).unwrap(), "conductor"));
     }
     let r: CableId = id(&h.run("cableslash", json!({"from": [75, -3], "to": [75, 8]})).unwrap(), "cable");
     h.run("cablecore", json!({"cable": r.hex(), "cores": ["C", "D"]})).unwrap();
@@ -634,14 +644,14 @@ fn ac2_mirror_one_sided_fan_stops_on_the_left() {
     let lines = f.h.p(|p| hover_lines(p, uid, hp)).unwrap();
     // Combined trial with 010: 010's lens; the A side is checked through `markers` above.
     assert!(lines.first().is_some_and(|l| l.starts_with("Cable reference")), "{lines:?}");
-    // Traditional view: the reference end is drawn (flag) and nothing else changes; the loose ends
-    // at x = 0 show their squares again.
+    // Traditional view: the reference end is drawn (flag) and nothing else changes; the wires end
+    // on connection points at x = 0 (design 072), so no loose-end squares there either.
     view(&mut f.h, f.c1, "traditional");
     let t = drawing(&mut f.h, f.page, f.c1, false);
     assert!(!t.is_fan() && t.hidden.is_empty());
     assert_eq!(of_role(&t, Role::Flag).len(), 1);
     let sq = squares(&mut f.h, f.page);
-    assert_eq!(sq.iter().filter(|q| q.x.abs() < 1e-6).count(), 4, "{sq:?}");
+    assert!(sq.is_empty(), "{sq:?}");
     f.h.check();
 }
 
@@ -696,15 +706,16 @@ fn ac2_moving_and_extra_references() {
 
 // --------------------------------------------------------------------------- AC6 hostile
 
-/// AC6: labels stored by another route (bypassing `cablecore`): 1000 characters, control
-/// characters, only spaces, empty cable tag and wire tag, a 1000-character designation. Both
-/// views draw them shortened or not at all, never panic, and the projection stays consistent.
+/// AC6: labels stored by another route (bypassing `cablecore`): the longest a core label holds
+/// (32 characters, design 072 §4.5: longer or control characters no longer store), only spaces,
+/// empty cable tag and wire tag, a 1000-character designation. Both views draw them whole,
+/// shortened or not at all, never panic, and the projection stays consistent.
 #[test]
 fn ac6_long_and_empty_labels_draw_safely_in_both_views() {
     let mut f = fixture(true, true);
-    let long = "L".repeat(1000);
+    let long = "L".repeat(ecad_model::MAX_CORE_LABEL);
     store_core_raw(&mut f.h, f.c1, 0, Some(&long));
-    store_core_raw(&mut f.h, f.c1, 1, Some("a\nb\u{7}"));
+    store_core_raw(&mut f.h, f.c1, 1, Some(&"ü".repeat(ecad_model::MAX_CORE_LABEL)));
     store_core_raw(&mut f.h, f.c1, 2, Some("   "));
     store_core_raw(&mut f.h, f.c1, 3, Some(""));
     f.h.run("setprop", json!({"cable": f.c1.hex(), "key": "tag", "value": ""})).ok();
@@ -712,14 +723,14 @@ fn ac6_long_and_empty_labels_draw_safely_in_both_views() {
     f.h.run("wirenumber", json!({"conductor": f.wires[1].hex(), "value": ""})).ok();
     f.h.run("wirenumber", json!({"conductor": f.wires[2].hex(), "value": "T".repeat(24)})).unwrap();
     f.h.check();
-    let shown32 = format!("{}…", "L".repeat(31));
+    let shown32 = "L".repeat(32);
     let shown24 = |c: &str| format!("{}…", c.repeat(23));
     for fan_view in [false, true] {
         view(&mut f.h, f.c1, if fan_view { "fan" } else { "traditional" });
         f.h.check();
         let texts: Vec<String> = layer_texts(&mut f.h, f.page).into_iter().map(|t| t.2).collect();
-        assert!(texts.contains(&shown32), "1000-char core shortened to 32: {texts:?}");
-        assert!(texts.iter().any(|t| t == "a?b?"), "control characters drawn as ?: {texts:?}");
+        assert!(texts.contains(&shown32), "a 32-character core drawn whole: {texts:?}");
+        assert!(texts.contains(&"ü".repeat(32)), "32 scalar values drawn whole: {texts:?}");
         assert!(texts.iter().all(|t| !t.trim().is_empty()), "blank labels draw nothing: {texts:?}");
         assert!(texts.iter().all(|t| t.chars().count() <= 32), "{texts:?}");
         assert!(texts.iter().all(|t| !t.chars().any(char::is_control)), "{texts:?}");
@@ -760,7 +771,7 @@ fn ac6_unnamed_cable_box_shows_a_question_mark() {
     let mut h = H::new(SEED + 2);
     let page = h.first_page();
     for y in [0.0, 5.0] {
-        h.run("wire", json!({"points": [[0.0, y], [60.0, y]]})).unwrap();
+        wire_pp(&mut h, json!([[0.0, y], [60.0, y]])).unwrap();
     }
     let k: CableId = id(&h.run("cableslash", json!({"from": [30, -3], "to": [30, 8]})).unwrap(), "cable");
     // Brief 026: a new cable is tagged; clear the tag to see an unnamed one.
@@ -782,7 +793,7 @@ fn ac6_nan_infinite_and_overflowing_geometry_never_panics() {
     view(&mut f.h, f.c1, "fan");
     reference_end(&mut f.h, f.page, f.c1, Pt::new(125.0, 21.25), 1);
     let base = f.h.doc();
-    let (route, _) = ecad_model::derive::route_on_page(&base, f.wires[1], f.page).unwrap();
+    let (route, _) = crate::common::wire_line(&base, f.wires[1], f.page).unwrap();
     let bad = [f64::NAN, f64::INFINITY, f64::NEG_INFINITY];
     // Committing a non-finite route or reference point is refused; nothing written.
     for x in bad {
@@ -849,7 +860,7 @@ fn ac6_nan_infinite_and_overflowing_geometry_never_panics() {
         let page = h.first_page();
         let mut ws = Vec::new();
         for y in [0.0, 5.0, 10.0] {
-            match h.run("wire", json!({"points": [[-big, y], [big, y]]})) {
+            match wire_pp(&mut h, json!([[-big, y], [big, y]])) {
                 Ok(v) => ws.push(id::<WireId>(&v, "conductor")),
                 Err(e) => eprintln!("wire at {big} refused: {e}"),
             }
@@ -883,17 +894,17 @@ fn ac6_twenty_core_cable_at_a_tight_pitch() {
         let mut ws = Vec::new();
         for i in 0..20 {
             let t = f64::from(i);
-            let w: WireId = id(&h.run("wire", json!({"points": [p(0.0, t), p(80.0, t)]})).unwrap(), "conductor");
+            let w: WireId = id(&wire_pp(&mut h, json!([p(0.0, t), p(80.0, t)])).unwrap(), "conductor");
             h.run("wirenumber", json!({"conductor": w.hex(), "value": format!("X{i:02}")})).unwrap();
             ws.push(w);
         }
         let k: CableId = id(&h.run("cableslash", json!({"from": p(40.0, -2.0), "to": p(40.0, 21.0)})).unwrap(), "cable");
-        assert_eq!(h.doc().cables[&k].members.len(), 20);
+        assert_eq!(h.doc().cables[&k].cores.len(), 20);
         let head = h.head();
         let labels: Vec<String> = (1..=20).map(|i| i.to_string()).collect();
         h.run("cablecore", json!({"cable": k.hex(), "cores": labels})).unwrap();
         assert_eq!(h.head(), head + 1, "one transaction for 20 labels");
-        assert_eq!(last_tx(&mut h).ops.len(), 40);
+        assert!(matches!(last_tx(&mut h).ops.as_slice(), [Op::ModifyCable { .. }]), "one ModifyCable for 20 labels");
         view(&mut h, k, "fan");
         h.check();
         let d = fan(&mut h, page, k);

@@ -534,7 +534,7 @@ fn connector_rows(doc: &ecad_model::Document, c: ecad_model::DeviceId, rep: Repr
         });
         let side = t.and_then(|t| cn::side_of(doc, t));
         if let Some(side @ (Side::Socket | Side::Plug)) = side {
-            let mate = doc.terminals_of(c).find(|(_, x)| x.label.as_deref() == Some(name.as_str()) && x.key.as_deref() == side.other().key());
+            let mate = doc.terminals_of(c).find(|(_, x)| x.label.as_deref() == Some(name.as_str()) && x.key == side.other().key());
             let (value, goto) = match mate {
                 Some((m, _)) => {
                     let reps: Vec<RepresentationId> = doc.representations_showing(m).map(|(id, _)| id).collect();
@@ -641,8 +641,8 @@ fn style_row(
             (Some(n), _) => n,
             (None, _) => "None".into(),
         };
-        let own = doc.wires.get(&c).and_then(|x| x.display.get(e.key));
-        let dangling = own.filter(|v| e.parse_in(doc, v).is_none()).map(|_| "Not found: drawn without a category".to_string());
+        let own = doc.wires.get(&c).and_then(|x| x.wire_type.as_ref());
+        let dangling = own.filter(|t| !styles::exists(doc, cat, t)).map(|_| "Not found: drawn without a category".to_string());
         let _ = r;
         return (value, list, dangling);
     }
@@ -844,7 +844,7 @@ fn what_of(p: &ecad_cadcraft::Project, page: PageId, selection: &[ecad_cadcraft:
                 Some((rid, r)) => match r.subject {
                     Subject::Device(c) => What::Symbol(c, rid),
                     Subject::Wire(w) => What::Wire(w),
-                    Subject::Cable(_) => return None,
+                    Subject::Cable(_) | Subject::Route(_) => return None,
                 },
                 None => return None,
             },

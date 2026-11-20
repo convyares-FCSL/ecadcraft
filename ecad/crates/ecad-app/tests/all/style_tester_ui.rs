@@ -20,6 +20,8 @@ fn shown_standards() -> H {
     let mut h = harness_with(None);
     h.state_mut().set_cad_chrome(false);
     ok(&mut h, r#"place {"symbol":"coil","at":[100,100]}"#);
+    // A wire runs between two connection points (design 072).
+    crate::common::points_at(h.state_mut(), &[(0.0, 50.0), (60.0, 50.0)]);
     ok(&mut h, r#"wire {"points":[[0,50],[60,50]],"potential":"24V"}"#);
     h.state_mut().open_standards(None);
     h.run_steps(3);
@@ -55,7 +57,7 @@ fn a09_style_changes_patch_the_standards_tables_and_rebuild_none() {
 fn b_a_category_change_patches_and_rebuilds_none() {
     let mut h = shown_standards();
     let (rebuilds, patches) = counters(&h);
-    ok(&mut h, r#"setstyle {"catalogue":"wire","id":"dc24","fields":{"colour":"RD"}}"#);
+    ok(&mut h, r#"setstyle {"catalogue":"wire","id":"dc24","fields":{"colours":"RD"}}"#);
     h.run_steps(2);
     assert_eq!(counters(&h), (rebuilds, patches + 1));
     let c = crate::mouse_tester::doc(&mut h).wires.keys().next().copied().unwrap();

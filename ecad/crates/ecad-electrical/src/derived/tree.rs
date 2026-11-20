@@ -55,9 +55,8 @@ impl<'i> DerivedView<Inputs<'i>> for TreeFeed {
             | Effect::Terminal { .. }
             | Effect::Rep { .. }
             | Effect::Wire { .. }
-            | Effect::End { .. }
+            | Effect::Route { .. }
             | Effect::Cable { .. }
-            | Effect::Member { .. }
             | Effect::Prop { .. }
             | Effect::Definition { .. }
             | Effect::Settings { .. }

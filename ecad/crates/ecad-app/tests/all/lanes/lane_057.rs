@@ -60,7 +60,7 @@ fn rated(h: &mut H, dir: &std::path::Path) -> (ecad_model::WireId, ecad_model::C
         .iter()
         .find(|(_, c)| {
             c.potential_name() == Some("L")
-                && c.ends.iter().flatten().any(|t| d.terminals.get(t).is_some_and(|x| x.component == q01 && x.label.as_deref() == Some("2")))
+                && c.ends.iter().any(|t| d.terminals.get(t).is_some_and(|x| x.component == q01 && x.label.as_deref() == Some("2")))
         })
         .map(|(id, _)| *id)
         .unwrap();
@@ -122,7 +122,7 @@ fn the_cable_is_drawn_end_to_end_in_its_core_colours() {
     let dir = std::env::temp_dir().join(format!("ecad-057-cable-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let (_, w01) = rated(&mut h, &dir);
-    ok(&mut h, r#"setstyle {"catalogue":"cable","new":true,"name":"H07RN-F 4G1.5","fields":{"cross_section":"1.5","core_colours":"BN,BK,GY,GNYE"}}"#);
+    ok(&mut h, r#"setstyle {"catalogue":"cable","new":true,"name":"H07RN-F 4G1.5","fields":{"size":"1.5","core_colours":"BN,BK,GY,GNYE"}}"#);
     let d = doc(&mut h);
     let ty = ecad_cadcraft::styles::rows(&d, &ecad_cadcraft::styles::cable::CATALOGUE)[0].id.text();
     ok(&mut h, &format!(r#"rating {{"cable":"{}","cable_type":"{ty}"}}"#, w01.hex()));
@@ -167,7 +167,7 @@ fn the_cable_is_drawn_end_to_end_in_its_core_colours() {
     assert!(h.state().reports.as_ref().unwrap().cables.cores.is_unused(gnye), "ticked");
     assert_eq!(open_rows(&mut h), 0, "a ticked core is no error");
     let d = doc(&mut h);
-    assert_eq!(d.cables[&w01].properties.get("unused.GNYE").map(String::as_str), Some("yes"));
+    assert!(d.cables[&w01].cores.iter().any(|m| m.label_str() == Some("GNYE") && m.is_spare()), "the core is stored Spare");
     if let Some(out) = crate::project_panel::shots() {
         let _ = crate::mouse_tester::shot(&h, &deltas, &out.join("057-cable-view-v2-ticked.png"));
     }

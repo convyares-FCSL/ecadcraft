@@ -482,8 +482,7 @@ fn tag_field(h: &mut H, field: &str) -> Option<String> {
     d.styles
         .get(&ecad_model::StyleCatalogue::Text)
         .and_then(|m| m.get(&ecad_model::StyleRef::Builtin("tag".into())))
-        .and_then(|r| r.fields.get(field))
-        .cloned()
+        .and_then(|r| r.body.entry(field))
 }
 
 /// T4 (AC 1): `textstyle {kind: tag, height: 3, weight: regular}` is one transaction; the open
@@ -690,8 +689,8 @@ fn t5_showtext_refusals() {
     refused(&mut f.h, "showtext", json!({"kind": "tag", "show": "off", "page": ghost}), "No page");
     refused(&mut f.h, "showtext", json!({"kind": "tag", "show": "off", "page": "zz"}), "");
     // A wire's representation is not a symbol.
-    let w: ecad_model::WireId = id(&f.h.run("wire", json!({"points": [[10, 10], [40, 10]]})).unwrap(), "conductor");
-    let wr = f.h.doc().representations_of(Subject::Wire(w)).map(|(id, _)| id).next().unwrap();
+    let w: ecad_model::RouteId = id(&f.h.run("wire", json!({"points": [[10, 10], [40, 10]]})).unwrap(), "route");
+    let wr = f.h.doc().representations_of(Subject::Route(w)).map(|(id, _)| id).next().unwrap();
     refused(&mut f.h, "showtext", json!({"kind": "tag", "show": "off", "representation": wr.hex()}), "That representation is not a symbol.");
     // Two targets at once.
     refused(&mut f.h, "showtext", json!({"kind": "tag", "show": "off", "page": f.page.hex(), "component": f.k1.hex()}), "");

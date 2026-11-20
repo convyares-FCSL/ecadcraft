@@ -369,7 +369,7 @@ fn wiring_settings_and_bridges_survive_chunks() {
     let mut o = open(&tail);
     let before = f.ledger.document().settings.clone();
     let mut after = before.clone();
-    after.wiring.colour_style = Some(ecad_model::wiring::ColourStyle::ThreeLetter);
+    after.wiring.colour_style = Some(ecad_model::colour::ColourWords::Code3);
     after.wiring.label_height = Some(2.5);
     // Brief 032 (FP-W1).
     after.wiring.label_rule = Some(ecad_model::wiring::LABEL_RULE_EACH.into());
@@ -377,7 +377,7 @@ fn wiring_settings_and_bridges_survive_chunks() {
     let def: DefinitionId = f.ids.fresh();
     let mut bridged = coil(2.0);
     bridged.name = "Bridged".into();
-    bridged.bridges = vec![vec!["A1".into(), "A2".into()]];
+    bridged.bridges = vec![vec!["A1".parse().unwrap(), "A2".parse().unwrap()]];
     let edits = [
         ("Wiring", vec![Op::SetProjectSettings { before, after: after.clone() }]),
         ("Embed", vec![Op::EmbedDefinition { id: def, definition: bridged.clone() }]),

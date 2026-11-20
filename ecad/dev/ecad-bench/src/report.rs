@@ -356,9 +356,9 @@ Texts on {} {} (densest page: {} symbols, {} texts): textplace {:.2} ms (large: 
         let Some(w) = &r.wires else { continue };
         out.push_str(&format!(
             "
-Wires and nets on {} {}: wmerge {:.2} ms (within 10% of wopen {:.2} ms), jjoin {:.2} ms (as junction {:.2} ms),              lnet {:.2} ms (within 10% of leach {:.2} ms; {} routes on the densest page), ccont {:.2} ms (50 cores, < 20)
+Wires and nets on {} {}: wmerge {:.2} ms (within 10% of wopen {:.2} ms), jjoin {:.2} ms,              lnet {:.2} ms (within 10% of leach {:.2} ms; {} routes on the densest page), ccont {:.2} ms (50 cores, < 20)
 ",
-            r.tier, r.variant, w.wmerge_ms, w.wopen_ms, w.jjoin_ms, w.junction_ms, w.lnet_ms, w.leach_ms, w.routes, w.ccont_ms
+            r.tier, r.variant, w.wmerge_ms, w.wopen_ms, w.jjoin_ms, w.lnet_ms, w.leach_ms, w.routes, w.ccont_ms
         ));
     }
     for r in rows {
@@ -738,7 +738,7 @@ fn acc_json(t: &crate::strips::MeasuredStrips) -> serde_json::Value {
 /// Brief 032's row as JSON (outside the report's one `json!`, which is at the macro's depth).
 fn wires_json(w: &crate::wires_nets::MeasuredWires) -> serde_json::Value {
     json!({
-        "wopen_ms": w.wopen_ms, "wmerge_ms": w.wmerge_ms, "junction_ms": w.junction_ms, "jjoin_ms": w.jjoin_ms,
+        "wopen_ms": w.wopen_ms, "wmerge_ms": w.wmerge_ms, "jjoin_ms": w.jjoin_ms,
         "lnet_ms": w.lnet_ms, "leach_ms": w.leach_ms, "routes": w.routes, "ccont_ms": w.ccont_ms,
     })
 }

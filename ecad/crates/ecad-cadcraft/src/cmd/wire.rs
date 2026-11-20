@@ -1,5 +1,5 @@
 //! Brief 022's commands (design 022 §10): `nets`, `net`, `wirenumber`, `potential`,
-//! `wiresettings`, `renumberwires`, `junction`, `checks`, `wire`, `joinwires`, `category`, and the
+//! `wiresettings`, `renumberwires`, `checks`, `wire`, `joinwires`, `category`, and the
 //! continuation form of `place`. Their JSON forms commit through [`Project::apply_edit`], which
 //! runs the numbering pass; reads change nothing.
 //!
@@ -8,9 +8,7 @@
 
 use cadcraft_engine::Session;
 use ecad_electrical::CmdError;
-use ecad_electrical::cmd::wire::{
-    self as rules, CategoryName, Conflict, Junctioned, NetChoice, NetView, Numbered, PotentialRow, WireSettingsChange, Wires,
-};
+use ecad_electrical::cmd::wire::{self as rules, CategoryName, Conflict, NetChoice, NetView, Numbered, PotentialRow, WireSettingsChange, Wires};
 use ecad_model::connectivity::{KIND, NAME};
 use ecad_model::units::{Degrees, Radians};
 use ecad_model::wiring;
@@ -34,7 +32,6 @@ pub const TYPED: &[Typed] = &[
     Typed::of::<CategoryParams>("category"),
     Typed::of::<WiresettingsParams>("wiresettings"),
     Typed::of::<RenumberwiresParams>("renumberwires"),
-    Typed::of::<JunctionParams>("junction"),
     Typed::of::<ChecksParams>("checks"),
     Typed::of::<WireParams>("wire"),
     Typed::of::<JoinwiresParams>("joinwires"),
@@ -65,29 +62,17 @@ fn net_json(n: &NetView) -> Value {
     out
 }
 
-fn junction_json(j: &Junctioned) -> Value {
-    let mut r = json!({
-        "junction": j.junction.hex(),
-        "terminal": j.terminal.hex(),
-        "conductor": j.conductor.map(|c| c.hex()),
-        "at": [j.at.x, j.at.y],
-    });
-    if let Some(n) = j.attached {
-        r["attached"] = json!(n);
-    }
-    r
-}
-
 /// The project's wiring settings as `wiresettings` shows them (the label rule as resolved).
 fn settings_json(doc: &Document) -> Value {
     let w = &doc.settings.wiring;
     json!({
         "scheme": w.scheme.name(),
-        "colour_style": w.colour_style().name(),
+        "colour_style": ecad_model::words::Word::word(w.colour_style()),
         "label_height": crate::cmd::sheet::wire_label_height(doc),
         "label_rule": wires::label_rule_word(doc),
         "label_min_length": wires::label_min_length(doc),
         "digits": w.digits(),
+        "number_by": ecad_model::Word::word(w.number_by),
         "unclassified_prefix": w.unclassified_prefix,
         "potentials": w.potentials.iter().map(|p| json!({
             "name": p.name, "prefix": p.prefix, "numbered": p.numbered,
@@ -356,7 +341,7 @@ struct PotentialRowParam {
 }
 
 /// `wiresettings {scheme?, digits?, unclassified_prefix?, potentials?, colour_style?,
-/// label_height?, label_rule?, label_min_length?}`: no parameters reads.
+/// label_height?, label_rule?, label_min_length?, number_by?}`: no parameters reads.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct WiresettingsParams {
@@ -372,7 +357,7 @@ pub(crate) struct WiresettingsParams {
     /// The whole potentials table (colours and cross-sections are wire categories').
     #[serde(default)]
     potentials: Option<Vec<PotentialRowParam>>,
-    /// "iec" (BN, BU, GNYE) or "three-letter" (BRN, BLU, GRN/YEL).
+    /// "code2" (BN, BU, GN/YE), "code3" (BRN, BLU, GRN/YEL) or "name" (Brown, Blue, Green/Yellow).
     #[serde(default)]
     colour_style: Option<String>,
     /// Wire label height in mm, 0.5 to 10.
@@ -384,6 +369,10 @@ pub(crate) struct WiresettingsParams {
     /// The shortest labelled wire in mm, 0 to 100.
     #[serde(default)]
     label_min_length: Option<f64>,
+    /// What one wire number counts: "net" (every wire of a net shows the net's number) or
+    /// "conductor" (every wire its own). Switching renumbers every net in the same edit.
+    #[serde(default)]
+    number_by: Option<String>,
 }
 
 impl Command for WiresettingsParams {
@@ -405,6 +394,7 @@ impl Command for WiresettingsParams {
             label_height: self.label_height,
             label_rule: self.label_rule,
             label_min_length: self.label_min_length,
+            number_by: self.number_by,
             unclassified_prefix: self.unclassified_prefix,
             potentials: rows,
         };
@@ -455,29 +445,11 @@ impl Command for RenumberwiresParams {
     }
 }
 
-// ---------------------------------------------------------------- junction and joinwires
+// ---------------------------------------------------------------- joinwires
 
-/// `junction {at: [x,y]}` on the active page (design 022 §3.1).
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct JunctionParams {
-    /// The point on the wire, which is split there.
-    at: Point,
-}
-
-impl Command for JunctionParams {
-    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        on_project(s, |p, pg, page| {
-            let style = plain_style(p);
-            let (ops, j) = rules::junction_at(p.ledger.document(), &mut p.ids, style, page, self.at.0)?;
-            p.apply_edit(pg, "junction", "Junction", ops)?;
-            Ok(junction_json(&j))
-        })
-    }
-}
-
-/// `joinwires {at: [x,y]}` on the active page (design 032 §2.5): two open ends that meet become
-/// one wire; an open end on a wire's interior, or three or more ends, get a junction.
+/// `joinwires {at: [x,y]}` on the active page (design 032 §2.5, design 072 §4.3): two free route
+/// ends that meet become one route; free ends on a route's middle, or three or more ends, land on
+/// one route there (a T).
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct JoinwiresParams {
@@ -488,19 +460,16 @@ pub(crate) struct JoinwiresParams {
 impl Command for JoinwiresParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         on_project(s, |p, pg, page| {
-            let style = plain_style(p);
             let quiet = quiet_ends(p, page);
-            let done = rules::join_wires(p.ledger.document(), &mut p.ids, style, page, self.at.0, &quiet, MAX_WIRE_POINTS)?;
+            let done = rules::join_wires(p.ledger.document(), page, self.at.0, &quiet, MAX_WIRE_POINTS)?;
             Ok(match done {
                 rules::Joined::Merged { ops, survivor, removed, at } => {
                     p.apply_edit(pg, "joinwires", "Join wires", ops)?;
-                    json!({"how": "merged", "conductor": survivor.hex(), "removed": [removed.hex()], "at": [at.x, at.y]})
+                    json!({"how": "merged", "route": survivor.hex(), "removed": [removed.hex()], "at": [at.x, at.y]})
                 }
-                rules::Joined::Junction { ops, junction } => {
+                rules::Joined::Tee { ops, route, landed, at } => {
                     p.apply_edit(pg, "joinwires", "Join wires", ops)?;
-                    let mut r = junction_json(&junction);
-                    r["how"] = json!("junction");
-                    r
+                    json!({"how": "tee", "route": route.hex(), "landed": landed, "at": [at.x, at.y]})
                 }
             })
         })
@@ -558,11 +527,11 @@ impl Command for ChecksParams {
 
 // ---------------------------------------------------------------- wire (brief 032 §2)
 
-/// `wire {points, potential?, join?: bool, junction?: bool, category?}` (design 032 §2.3).
+/// `wire {points, potential?, join?: bool, category?}` (design 032 §2.3).
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct WireParams {
-    /// The route: 2 to 10,000 [x, y] points.
+    /// The route: 2 to 4,096 [x, y] points.
     points: Bounded<Point, 2, { MAX_WIRE_POINTS }>,
     /// The wire's potential ("auto" or none: the net's).
     #[serde(default)]
@@ -570,9 +539,6 @@ pub(crate) struct WireParams {
     /// Join ends that meet other wires (default: the project's `wire.join`).
     #[serde(default)]
     join: Option<bool>,
-    /// The old name of `join`.
-    #[serde(default)]
-    junction: Option<bool>,
     /// The new wire's category, its ID or name ("auto" or none: the net's).
     #[serde(default)]
     category: Option<String>,
@@ -584,10 +550,7 @@ impl Command for WireParams {
             Some(v) => wiring::valid_text("potential", Some(&v)).map_err(err)?,
             None => None,
         };
-        let join = match (self.join, self.junction) {
-            (Some(a), Some(b)) if a != b => return Err(err("`join` and `junction` disagree; give only `join`")),
-            (a, b) => a.or(b),
-        };
+        let join = self.join;
         let points: Vec<Pt> = self.points.0.into_iter().map(|p| p.0).collect();
         let category = not_auto(self.category);
         on_project(s, |p, pg, page| {
@@ -606,39 +569,28 @@ impl Command for WireParams {
             };
             let mut plan = rules::wire(&p.ledger, &mut p.ids, input, category.as_deref())?;
             p.apply_edit(pg, "wire", "Wire", std::mem::take(&mut plan.ops))?;
-            let number = rules::number_of(p.ledger.document(), plan.conductor);
+            let doc = p.ledger.document();
+            let wire = plan.wire.filter(|w| doc.wires.contains_key(w)).or_else(|| wires::wire_of_route(doc, plan.route));
+            let number = wire.and_then(|w| rules::number_of(doc, w));
             let attached: Vec<Value> = plan.attached.iter().map(|(e, t)| json!({"end": format!("{e:?}"), "terminal": t.hex()})).collect();
             let mut r = json!({
-                "conductor": plan.conductor.hex(),
+                "route": plan.route.hex(),
+                "conductor": wire.map(|w| w.hex()),
                 "item": plan.item.hex(),
                 "created": plan.created,
                 "attached": attached,
                 "potential": potential,
                 "number": number,
             });
-            if !plan.junctions.is_empty() {
-                r["junctions"] = json!(
-                    plan.junctions
-                        .iter()
-                        .map(|(e, j, at)| json!({"end": format!("{e:?}"), "junction": j.hex(), "at": [at.x, at.y]}))
-                        .collect::<Vec<_>>()
-                );
-            }
             if !plan.joined.is_empty() {
-                r["joined"] = json!(
-                    plan.joined
-                        .iter()
-                        .map(|(e, c, how, n)| json!({"end": format!("{e:?}"), "conductor": c.hex(), "how": how, "wires": n}))
-                        .collect::<Vec<_>>()
-                );
+                r["joined"] =
+                    json!(plan.joined.iter().map(|(e, x, how)| json!({"end": format!("{e:?}"), "route": x.hex(), "how": how})).collect::<Vec<_>>());
             }
             if !plan.removed.is_empty() {
                 r["removed"] = json!(plan.removed.iter().map(|c| c.hex()).collect::<Vec<_>>());
             }
-            if !plan.splits.is_empty() {
-                r["splits"] = json!(
-                    plan.splits.iter().map(|(at, j, c)| json!({"at": [at.x, at.y], "junction": j.hex(), "conductor": c.hex()})).collect::<Vec<_>>()
-                );
+            if !plan.tees.is_empty() {
+                r["tees"] = json!(plan.tees.iter().map(|(at, x)| json!({"at": [at.x, at.y], "route": x.hex()})).collect::<Vec<_>>());
             }
             Ok(r)
         })
@@ -669,7 +621,7 @@ pub(crate) fn join_by_default(doc: &Document) -> bool {
 
 // ---------------------------------------------------------------- place (the continuation form)
 
-/// `place {symbol: "continuation" | "junction", at, rotation?, mirror?, name?, caption?}`: a
+/// `place {symbol: "continuation", at, rotation?, mirror?, name?, caption?}`: a
 /// tagless component (design 022 §3.2), part of `place` ([`crate::cmd::device::PlaceParams`]).
 pub(crate) fn place_tagless(
     s: &mut Session, params: &crate::cmd::device::PlaceParams, starter: &'static Starter, at: Pt, degrees: Degrees, mirror: bool,
@@ -690,8 +642,7 @@ pub(crate) fn place_tagless(
         }
         let placement = Placement { origin: at, rotation: Radians::from(degrees), mirror, scale: 1.0 };
         let t = wires::plan_tagless(doc, &mut p.ids, page, style, starter, placement, props)?;
-        let label = if starter.key == crate::symbols::StarterKey::Continuation { "Continuation" } else { "Junction" };
-        p.apply_edit(pg, "place", label, t.ops.clone())?;
+        p.apply_edit(pg, "place", starter.name, t.ops.clone())?;
         if let Some(n) = &name {
             p.last_continuation = Some(n.clone());
         }
@@ -704,7 +655,7 @@ pub(crate) fn place_tagless(
             "terminal": t.terminal.hex(),
             "name": name,
             "caption": caption,
-            "attached": t.attached.iter().map(|(c, e)| json!({"conductor": c.hex(), "end": format!("{e:?}")})).collect::<Vec<_>>(),
+            "attached": t.attached.iter().map(|(r, e)| json!({"route": r.hex(), "end": format!("{e:?}")})).collect::<Vec<_>>(),
         }))
     })
 }

@@ -172,6 +172,8 @@ fn terminals_table_edits_a_label_in_one_transaction() {
     h.state_mut().cad.session.viewport_px = (1280.0, 800.0);
     ok(&mut h, r#"place {"symbol":"coil","at":[100,220]}"#);
     ok(&mut h, r#"place {"symbol":"coil","at":[150,220]}"#);
+    // The far ends land on connection points: each line carries a wire (design 072).
+    crate::common::points_at(h.state_mut(), &[(100.0, 65.0), (150.0, 65.0)]);
     ok(&mut h, r#"wire {"points":[[100,210],[100,65]]}"#);
     ok(&mut h, r#"wire {"points":[[150,210],[150,65]]}"#);
     ok(&mut h, r#"terminals {"from":[90,170],"to":[160,170]}"#);

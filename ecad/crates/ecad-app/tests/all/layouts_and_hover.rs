@@ -529,11 +529,12 @@ mod layout_refusals {
         assert_eq!(head(&mut h), before.0 + 1, "one wire");
         let d = doc(&mut h);
         let page = d.page_order[0];
+        // The line drawn (its ends are free, so it is a route with no wire, design 072).
         let new_route = d
-            .wires
-            .keys()
-            .filter_map(|c| ecad_model::derive::route_on_page(&d, *c, page))
-            .filter_map(|(_, r)| r.path_ends())
+            .routes
+            .values()
+            .filter(|r| r.page == page)
+            .filter_map(|r| Some((*r.points.first()?, *r.points.last()?)))
             .any(|(p, q)| p.y > 49.0 && q.y > 49.0 && q.x > 25.0);
         assert!(new_route, "the wire runs where it was clicked in Model, not through the sheet click");
         type_enter(&mut h, "u");

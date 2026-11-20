@@ -47,7 +47,12 @@ pub(crate) fn place_channel(
         };
         let doc = p.ledger.document();
         let j = if new {
-            let n = channel_count(doc, card, t);
+            // The new card is made in `ops`: its count is the one it is made with.
+            let n = crate::plc::edit::current(doc, &ops, card).and_then(|d| match d.device_type {
+                ecad_model::DeviceType::PlcModule(m) => Some(m.channel_count()),
+                _ => None,
+            });
+            let n = n.unwrap_or(0);
             let roles = roles_of(starter);
             let index = match named {
                 Some(x) => x.checked_sub(first_number(doc, card)).ok_or(CmdError::refused("Channels start at 0."))?,
@@ -81,8 +86,8 @@ pub(crate) fn place_channel(
         let cell = plan_cell(&mut p.ids, page, style, def, starter, card, &j, pl, &mut ops)?;
         let mut wire = None;
         if let (Some((_, on)), Some((_, t0, _, _))) = (landing, cell.terminals.first()) {
-            let land = crate::connectors::plan_land(doc, &mut p.ids, page, on, *t0)?;
-            wire = Some(land.conductor);
+            let land = crate::connectors::plan_land(doc, &mut p.ids, on, *t0)?;
+            wire = Some(land.route);
             ops.extend(land.ops);
         }
         // Brief 052d (design 052 §5.3): the place proposes for the card.
@@ -93,7 +98,10 @@ pub(crate) fn place_channel(
         let doc = p.ledger.document();
         let first = first_number(doc, card);
         let pins: Vec<String> = cell.terminals.iter().map(|(_, _, pin, _)| pin.clone()).collect();
-        let on = wire.map(|w| format!(" on wire {}", crate::slash::wire_name(doc, w))).unwrap_or_default();
+        let on = wire
+            .and_then(|r| crate::wires::wire_of_route(doc, r))
+            .map(|w| format!(" on wire {}", crate::slash::wire_name(doc, w)))
+            .unwrap_or_default();
         let message = format!("Placed {card_tag} channel {} ({}){on}.", j.index + first, pins_words(&pins));
         let mut v = json!({
             "component": card.hex(),
@@ -104,7 +112,7 @@ pub(crate) fn place_channel(
             "representation": cell.representation.hex(),
             "item": cell.item.hex(),
             "symbol": starter.key,
-            "terminals": cell.terminals.iter().map(|(r, t, pin, _)| json!({"role": r, "label": pin, "key": key(j.index, r), "terminal": t.hex()})).collect::<Vec<_>>(),
+            "terminals": cell.terminals.iter().map(|(r, t, pin, _)| json!({"role": r, "label": pin, "key": key(j.index, *r), "terminal": t.hex()})).collect::<Vec<_>>(),
             "message": message,
         });
         crate::draw::proposals::finish_place(p, pg, card, !new, &proposed, &mut v);
@@ -194,7 +202,7 @@ impl Command for PlcchannelsParams {
             first_pins.sort_by_key(|x| x.parse::<u64>().unwrap_or(u64::MAX));
             let message = format!("Placed {tag} {} on {wires} ({}).", channels_words(first, &plan.placed), pins_words(&first_pins));
             let doc = p.ledger.document();
-            let count = channel_count(doc, c, plan.ty);
+            let count = channel_count(doc, c);
             let over = plan.placed.iter().filter(|i| **i >= count).count();
             let message = if over > 0 { format!("{message} {over} beyond its {count} channels: raise its count in Properties.") } else { message };
             Ok(json!({"card": c.hex(), "tag": tag, "channels": channels, "message": message}))

@@ -4,7 +4,7 @@ use ecad_cadcraft::checks::Fix;
 use ecad_cadcraft::devices::TextOf;
 use ecad_cadcraft::outputs::accessory_fix_commands;
 use ecad_cadcraft::plc::PlcFix;
-use ecad_model::{Author, DeviceId, ObjectRef, Op, Subject, Terminal, TerminalId};
+use ecad_model::{Author, DeviceId, Op, Subject, Terminal, TerminalId};
 use serde_json::{Value, json};
 
 use super::{checks_of, place, placed, prop, same_as_built};
@@ -34,7 +34,7 @@ fn fixture(seed: u64) -> P {
     for i in 0..8 {
         let x = 100.0 + 20.0 * f64::from(i);
         placed(&mut h, "lamp", x, 260.0);
-        h.run("wire", json!({"points": pts(&[(x, 250.0), (x, 150.0)])})).unwrap();
+        h.wire_pp(&[(x, 250.0), (x, 150.0)]).unwrap();
     }
     P { h, cpu, di, di2, ai, iol, dq }
 }
@@ -48,8 +48,8 @@ fn points(h: &mut H, c: DeviceId) -> Vec<(String, String)> {
     let d = h.doc();
     let mut v: Vec<(String, String)> = d
         .terminals_of(c)
-        .filter(|(_, t)| t.key.as_deref().is_some_and(|k| k.starts_with('.')))
-        .map(|(_, t)| (t.key.clone().unwrap_or_default(), t.label.clone().unwrap_or_default()))
+        .filter(|(_, t)| t.key.as_ref().map(ToString::to_string).as_deref().is_some_and(|k| k.starts_with('.')))
+        .map(|(_, t)| (t.key.as_ref().map(ToString::to_string).unwrap_or_default(), t.label.clone().unwrap_or_default()))
         .collect();
     v.sort_by_key(|(k, _)| {
         let i: u32 = k.trim_start_matches('.').split('.').next().and_then(|n| n.parse().ok()).unwrap_or(0);
@@ -106,7 +106,7 @@ fn f_a_fence_across_eight_wires_makes_channels_0_to_7_and_rest_draws_the_spares(
     assert_eq!(pts[7], (".7.in".to_string(), "8".to_string()));
     // Each point is on its wire.
     let d = h.doc();
-    for (t, _) in d.terminals_of(di).filter(|(_, t)| t.key.as_deref().is_some_and(|k| k.starts_with('.'))) {
+    for (t, _) in d.terminals_of(di).filter(|(_, t)| t.key.as_ref().map(ToString::to_string).as_deref().is_some_and(|k| k.starts_with('.'))) {
         assert!(!d.ends_at(t).is_empty(), "channel point on its wire");
     }
     let v = h.run("plcchannels", json!({"card": "-A02", "rest": true})).unwrap();
@@ -146,18 +146,19 @@ fn f_a_cell_ends_a_loose_wire_at_its_point() {
     let v = h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [155.0, 200.0]})).unwrap();
     assert_eq!(v["message"], "Placed -A01 channels 0–2 on 3 wires (pins 1–3).", "{v}");
     let d = h.doc();
-    assert_eq!(d.wires.len(), wires + 1, "only the lamp-to-lamp wire is split in two");
+    // Design 072: a loose line carries no wire until both its ends land; each cell lands one, so
+    // the two loose lines get their wire (lamp to cell) and the lamp-to-lamp wire splits in two.
+    assert_eq!(d.wires.len(), wires + 3, "two loose lines get their wire, the lamp-to-lamp wire splits in two");
     let page = d.page_order[0];
     let mut cells: Vec<(String, TerminalId)> =
-        d.terminals_of(di).filter_map(|(t, x)| x.key.as_ref().filter(|k| k.starts_with('.')).map(|k| (k.clone(), t))).collect();
+        d.terminals_of(di).filter_map(|(t, x)| x.key.as_ref().filter(|k| k.as_def().is_none()).map(|k| (k.to_string(), t))).collect();
     cells.sort();
     let ends: Vec<usize> = cells.iter().map(|(_, t)| d.ends_at(*t).len()).collect();
     assert_eq!(ends, [1, 1, 2], "{cells:?}");
     for (_, t) in cells.iter().take(2) {
         let (c, _) = d.ends_at(*t)[0];
-        let wire = &d.wires[&c];
-        assert!(wire.ends.iter().all(Option::is_some), "the kept half runs from the lamp to the point: {wire:?}");
-        let (_, _, route) = ecad_cadcraft::wires::route_vertices(&d, c, page).unwrap();
+        let r = ecad_cadcraft::wires::route_of_wire_on(&d, c, page).unwrap();
+        let (_, _, route) = ecad_cadcraft::wires::route_vertices(&d, r).unwrap();
         assert!(route.iter().all(|q| q.y >= 200.0 - 1e-9), "nothing past the point, into the cell: {route:?}");
     }
     same_as_built(&mut h);
@@ -332,9 +333,9 @@ fn m_channel_and_address_rows_have_working_fixes() {
     assert_eq!(rows.len(), 1, "{rows:?}");
     // channel-twice: a hand-made second copy of channel 0's key.
     let d = h.doc();
-    let (t1, _) = d.terminals_of(di).find(|(_, t)| t.key.as_deref() == Some(".1.in")).unwrap();
+    let (t1, _) = d.terminals_of(di).find(|(_, t)| t.key.as_ref().map(ToString::to_string).as_deref() == Some(".1.in")).unwrap();
     let term = d.terminals.get(&t1).cloned().unwrap();
-    let after = Terminal { key: Some(".0.in".into()), ..term.clone() };
+    let after = Terminal { key: Some(".0.in".parse().unwrap()), ..term.clone() };
     h.cfg(|p| {
         p.ledger
             .commit(Author::User, "hand-made", vec![Op::RemoveTerminal { id: t1, terminal: term }, Op::AddTerminal { id: t1, terminal: after }])
@@ -361,16 +362,24 @@ fn t_hostile_keys_counts_and_values_never_panic() {
     let e = h.run("setprop", json!({"component": di.hex(), "key": "plc.addr.start", "value": "70000"})).unwrap_err();
     assert!(e.contains("0 to 65535"), "{e}");
     let d = h.doc();
-    let ts: Vec<(TerminalId, Terminal)> =
-        d.terminals_of(di).filter(|(_, t)| t.key.as_deref().is_some_and(|k| k.starts_with('.'))).map(|(i, t)| (i, t.clone())).take(4).collect();
+    let ts: Vec<(TerminalId, Terminal)> = d
+        .terminals_of(di)
+        .filter(|(_, t)| t.key.as_ref().map(ToString::to_string).as_deref().is_some_and(|k| k.starts_with('.')))
+        .map(|(i, t)| (i, t.clone()))
+        .take(4)
+        .collect();
     let mut ops = Vec::new();
     for ((t, term), k) in ts.into_iter().zip([".999.in", ".-1.in", ".3.nope", ".3"]) {
         ops.push(Op::RemoveTerminal { id: t, terminal: term.clone() });
-        ops.push(Op::AddTerminal { id: t, terminal: Terminal { key: Some(k.into()), ..term } });
+        ops.push(Op::AddTerminal { id: t, terminal: Terminal { key: k.parse().ok(), ..term } });
     }
-    ops.push(Op::SetProperty { object: ObjectRef::Device(di), key: "plc.ch.0.text".into(), before: None, after: Some("x".repeat(10_000)) });
-    ops.push(Op::SetProperty { object: ObjectRef::Device(di), key: "plc.addr.start".into(), before: None, after: Some("65535".into()) });
-    ops.push(Op::SetProperty { object: ObjectRef::Device(di), key: "plc.addr.size".into(), before: None, after: Some("4096".into()) });
+    // The longest values the module's fields hold.
+    let mut d2 = d.clone();
+    for (k, v) in [("plc.ch.0.text", "x".repeat(80)), ("plc.addr.start", "65535".into()), ("plc.addr.size", "4096".into())] {
+        let op = crate::common::plc_raw(&d2, di, k, Some(&v));
+        op.apply(&mut d2).unwrap();
+        ops.push(op);
+    }
     h.cfg(|p| p.ledger.commit(Author::User, "hand-made", ops).map(|_| ()).unwrap());
     let d = h.doc();
     let _ = ecad_cadcraft::checks::all(&d, 1e-6);
@@ -383,7 +392,7 @@ fn t_a_fence_across_too_many_wires_is_refused() {
     let mut h = H::new(4530);
     for i in 0..260 {
         let x = 10.0 + 1.0 * f64::from(i);
-        h.run("wire", json!({"points": pts(&[(x, 250.0), (x, 150.0)])})).unwrap();
+        h.wire_pp(&[(x, 250.0), (x, 150.0)]).unwrap();
     }
     let e = h.run("plcchannels", json!({"type": "DI", "from": [5.0, 200.0], "to": [300.0, 200.0]})).unwrap_err();
     assert!(e.contains("crosses 260 wires; at most 256"), "{e}");

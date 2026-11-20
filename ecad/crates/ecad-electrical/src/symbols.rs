@@ -26,7 +26,8 @@ use std::sync::OnceLock;
 
 use crate::CmdError;
 use ecad_model::{
-    Definition, DefinitionId, DeviceGroup, DeviceType, Document, LibraryId, ObjectRef, Op, Origin, Primitive, Pt, Subject, TerminalDef, Word,
+    Definition, DefinitionId, DeviceGroup, DeviceType, Document, LibraryId, ObjectRef, Op, Origin, PointKey, Primitive, Pt, Subject, TerminalDef,
+    Word,
 };
 
 /// The library ID of the starter symbols.
@@ -51,7 +52,7 @@ pub enum Kind {
     ChangeOver,
     /// Fixed labels from the definition. `exclusive`: a device holds at most one of these.
     Fixed { exclusive: bool },
-    /// A tagless component of its own, never part of a device: a junction or a continuation
+    /// A tagless component of its own, never part of a device: a continuation
     /// (brief 022, FP4).
     Tagless,
     /// A connector half, or one pin of one or both halves (brief 044, design 044 §3.3): its
@@ -73,7 +74,7 @@ pub enum Side {
 
 impl Side {
     /// The side key a pin of this side is stored under (`.s` / `.p`); `None` for [`Side::Both`].
-    pub fn key(self) -> Option<&'static str> {
+    pub fn key(self) -> Option<PointKey> {
         match self {
             Side::Socket => Some(SOCKET_KEY),
             Side::Plug => Some(PLUG_KEY),
@@ -82,11 +83,10 @@ impl Side {
     }
 
     /// The side of a side key.
-    pub fn of_key(key: &str) -> Option<Side> {
-        match key {
-            SOCKET_KEY => Some(Side::Socket),
-            PLUG_KEY => Some(Side::Plug),
-            _ => None,
+    pub fn of_key(key: &PointKey) -> Option<Side> {
+        match key.side()? {
+            ecad_model::Side::Socket => Some(Side::Socket),
+            ecad_model::Side::Plug => Some(Side::Plug),
         }
     }
 
@@ -119,9 +119,9 @@ impl Side {
 }
 
 /// The terminal key of a socket pin (design 044 FP1).
-pub const SOCKET_KEY: &str = ".s";
+pub const SOCKET_KEY: PointKey = PointKey::Side(ecad_model::Side::Socket);
 /// The terminal key of a plug pin (design 044 FP1).
-pub const PLUG_KEY: &str = ".p";
+pub const PLUG_KEY: PointKey = PointKey::Side(ecad_model::Side::Plug);
 
 ecad_model::word_enum! {
     /// The key of a starter symbol (design 072 §9.1): one value per row of [`STARTERS`], in table
@@ -148,7 +148,6 @@ ecad_model::word_enum! {
         Terminalpe,
         Di,
         Do,
-        Junction,
         Continuation,
         Co,
         Swco,
@@ -262,7 +261,7 @@ use StarterKey as K;
 
 impl StarterKey {
     /// The group a device this starter begins belongs to (design 072 §2.2): what the starter
-    /// declares in its definition's [`Definition::device_type`]. Junctions and continuations are
+    /// declares in its definition's [`Definition::device_type`]. Continuations are
     /// `General` until lane F makes them drawing aids.
     pub fn device_group(self) -> DeviceGroup {
         match self {
@@ -356,7 +355,7 @@ impl StarterKey {
             | K::Chao
             | K::Chrtd
             | K::Chiol => DeviceGroup::PlcModule,
-            K::Junction | K::Continuation => DeviceGroup::General,
+            K::Continuation => DeviceGroup::General,
         }
     }
 
@@ -387,7 +386,6 @@ impl StarterKey {
             | K::Terminalpe
             | K::Di
             | K::Do
-            | K::Junction
             | K::Continuation
             | K::Co
             | K::Swco
@@ -566,7 +564,7 @@ impl Starter {
     fn build(&self) -> Result<Definition, CmdError> {
         // Brief 044 (FP2): a connector half's bridge joins the side keys written at placement.
         let bridges = match self.kind {
-            Kind::ConnectorHalf { .. } => vec![vec![SOCKET_KEY.to_string(), PLUG_KEY.to_string()]],
+            Kind::ConnectorHalf { .. } => vec![vec![SOCKET_KEY, PLUG_KEY]],
             Kind::Contact { .. } | Kind::Terminal | Kind::Channel(_) | Kind::ChangeOver | Kind::Fixed { .. } | Kind::Tagless => {
                 crate::terminal_types::bridges(self.key.word())
             }
@@ -577,7 +575,7 @@ impl Starter {
             origin: None,
             graphics: graphics(self.key),
             terminals: terminals(self.key),
-            device_type: DeviceType::of_group(self.key.device_group()),
+            device_type: crate::plc::types::starter_type(self.key),
             ..Default::default()
         };
         let content_hash =
@@ -588,7 +586,7 @@ impl Starter {
 
     /// What a device this starter begins is: the type its definition declares (design 072 §2.3).
     pub fn device_type(&self) -> DeviceType {
-        let t = DeviceType::of_group(self.key.device_group());
+        let t = crate::plc::types::starter_type(self.key);
         // A connector's family is its symbol's (a pin's: plain).
         if let DeviceType::Connector(_) = t {
             return DeviceType::Connector(Box::new(ecad_model::device::Connector::of_family(crate::connectors::family_of(self).unwrap_or_default())));
@@ -633,7 +631,7 @@ impl Starter {
 
     /// The labels of its terminals as the definition gives them.
     pub fn labels(&self) -> Vec<String> {
-        terminals(self.key).into_iter().map(|t| t.key).collect()
+        terminals(self.key).into_iter().map(|t| t.key.to_string()).collect()
     }
 
     /// Its box (width, height) in millimetres.
@@ -742,7 +740,6 @@ pub const STARTERS: &[Starter] = &[
     st(K::Terminalpe, "PE terminal", &["pe terminal", "earth terminal"], Kind::Terminal, def_id(21)),
     st(K::Di, "PLC digital input", &["plc", "input", "di"], Kind::Channel(crate::plc::rack::CardType::Di), def_id(17)),
     st(K::Do, "PLC digital output", &["plc", "output", "do"], Kind::Channel(crate::plc::rack::CardType::Dq), def_id(18)),
-    st(K::Junction, "Junction", &["junction", "dot", "tee"], Kind::Tagless, def_id(19)),
     st(K::Continuation, "Continuation", &["continuation", "arrow", "potential", "link"], Kind::Tagless, def_id(20)),
     // ---- Brief 034 stage 1: contacts and protection (design 034 §3).
     st(K::Co, "Change-over contact", &["change-over", "changeover", "c/o", "spdt", "contact", "relay"], Kind::ChangeOver, cp(1)).of(Family::Contacts),
@@ -888,7 +885,6 @@ pub fn cell_shape(key: StarterKey) -> Option<(f64, &'static [(&'static str, f64)
         | K::Terminalpe
         | K::Di
         | K::Do
-        | K::Junction
         | K::Continuation
         | K::Co
         | K::Swco
@@ -1042,7 +1038,6 @@ fn cell_graphics(key: StarterKey) -> Vec<Primitive> {
         | K::Terminalpe
         | K::Di
         | K::Do
-        | K::Junction
         | K::Continuation
         | K::Co
         | K::Swco
@@ -1394,19 +1389,19 @@ pub fn registry_key(d: &Definition) -> Option<String> {
 /// side keys.
 pub fn is_mating(d: &Definition) -> bool {
     of_definition(d).is_some_and(|s| matches!(s.kind, Kind::ConnectorHalf { .. }))
-        && d.bridges.iter().any(|g| g.iter().any(|k| k == SOCKET_KEY) && g.iter().any(|k| k == PLUG_KEY))
+        && d.bridges.iter().any(|g| g.contains(&SOCKET_KEY) && g.contains(&PLUG_KEY))
 }
 
 /// Whether bridge key `k` of definition `d` is one a placement can write (overseer condition on
 /// FP2): one of the definition's own terminal keys, a side key on a connector half, or a level
 /// key of its multi-level terminal type.
-pub fn bridge_key_ok(d: &Definition, k: &str) -> bool {
-    if d.terminals.iter().any(|t| t.key == k) {
+pub fn bridge_key_ok(d: &Definition, k: &PointKey) -> bool {
+    if d.terminals.iter().any(|t| t.key == *k) {
         return true;
     }
     match of_definition(d) {
-        Some(s) if matches!(s.kind, Kind::ConnectorHalf { .. }) => k == SOCKET_KEY || k == PLUG_KEY,
-        Some(s) => crate::terminal_types::of_starter(s.key.word()).is_some_and(|(t, _)| t.bridges.iter().any(|g| g.contains(&k))),
+        Some(s) if matches!(s.kind, Kind::ConnectorHalf { .. }) => *k == SOCKET_KEY || *k == PLUG_KEY,
+        Some(s) => crate::terminal_types::of_starter(s.key.word()).is_some_and(|(t, _)| t.bridges.iter().any(|g| g.iter().any(|x| k == *x))),
         None => false,
     }
 }
@@ -1727,7 +1722,6 @@ pub fn anchors(s: &Starter) -> Vec<Anchor> {
         | K::Terminalpe
         | K::Di
         | K::Do
-        | K::Junction
         | K::Continuation
         | K::Co
         | K::Swco
@@ -1773,9 +1767,9 @@ pub fn anchors(s: &Starter) -> Vec<Anchor> {
         | K::Termfuse => vec![tag, description, rating],
     };
     if is_fuse_bank(s) {
-        for t in d.terminals.iter().filter(|t| ecad_model::words::is_digits(&t.key)) {
+        for (t, key) in d.terminals.iter().filter_map(|t| Some((t, t.key.as_def().filter(|k| ecad_model::words::is_digits(k))?))) {
             out.push(Anchor {
-                role: TextRole::RatingOf(t.key.clone()),
+                role: TextRole::RatingOf(key.to_string()),
                 at: p(t.at.x + 3.0, -8.0),
                 h: HAlign::Left,
                 v: VAlign::Middle,
@@ -1973,7 +1967,6 @@ impl Connector {
             | K::Terminalpe
             | K::Di
             | K::Do
-            | K::Junction
             | K::Continuation
             | K::Co
             | K::Swco
@@ -2293,9 +2286,6 @@ fn graphics(key: StarterKey) -> Vec<Primitive> {
         K::Terminal => vec![circle((0.0, 0.0), 1.5)],
         // Our own earth mark to the right of the ring (design 028 §2).
         K::Terminalpe => vec![circle((0.0, 0.0), 1.5), line((2.5, -1.2), (2.5, 1.2)), line((3.2, -0.8), (3.2, 0.8)), line((3.9, -0.4), (3.9, 0.4))],
-        // A filled dot (`ecad.junction-size`): concentric circles, so it reads as filled at any
-        // lineweight setting (design 022 §3.1).
-        K::Junction => vec![circle((0.0, 0.0), 0.5), circle((0.0, 0.0), 0.33), circle((0.0, 0.0), 0.17)],
         // An arrow pointing away from its wire (design 022 §3.2).
         K::Continuation => vec![line((0.0, 0.0), (0.0, -5.0)), poly(&[(-1.5, -3.5), (0.0, -5.0), (1.5, -3.5)], false)],
         K::Di => vec![rect((-7.5, -2.5), (7.5, 2.5)), text((-2.5, -1.25), 2.5, "DI"), line((0.0, 2.5), (0.0, 10.0))],
@@ -2480,7 +2470,8 @@ fn graphics(key: StarterKey) -> Vec<Primitive> {
 }
 
 fn terminals(key: StarterKey) -> Vec<TerminalDef> {
-    let t = |k: &str, x: f64, y: f64| TerminalDef { key: k.into(), label: Some(k.into()), at: p(x, y) };
+    let t = |k: &str, x: f64, y: f64| TerminalDef { key: PointKey::def(k), label: Some(k.into()), at: p(x, y), accepts: Default::default() };
+    let side = |k: PointKey, x: f64, y: f64| TerminalDef { label: Some(k.to_string()), key: k, at: p(x, y), accepts: Default::default() };
     match key {
         K::Coil => vec![t("A1", 0.0, 10.0), t("A2", 0.0, -10.0)],
         K::No | K::Pbno | K::Sel | K::Floatno | K::Rollerno | K::Interlockno => vec![t("13", 0.0, 10.0), t("14", 0.0, -10.0)],
@@ -2496,10 +2487,21 @@ fn terminals(key: StarterKey) -> Vec<TerminalDef> {
         K::Motor1 => vec![t("U1", -5.0, 15.0), t("U2", 5.0, 15.0), t("PE", 20.0, 15.0)],
         K::Trafo => vec![t("1U1", -5.0, 15.0), t("1U2", 5.0, 15.0), t("2U1", -5.0, -15.0), t("2U2", 5.0, -15.0)],
         K::Terminal | K::Terminalpe => vec![t("1", 0.0, 0.0)],
-        // No label: a junction or continuation shows no connection point name.
-        K::Junction | K::Continuation => vec![TerminalDef { key: "1".into(), label: None, at: p(0.0, 0.0) }],
-        K::Di => vec![t("I0.0", 0.0, 10.0)],
-        K::Do => vec![t("Q0.0", 0.0, -10.0)],
+        // No label: a continuation shows no connection point name.
+        K::Continuation => vec![TerminalDef { key: PointKey::def("1"), label: None, at: p(0.0, 0.0), accepts: Default::default() }],
+        // Design 072 §3: a channel symbol's point is keyed by its role; the label is what it shows.
+        K::Di => vec![TerminalDef {
+            key: PointKey::Role(ecad_model::ChannelRole::In),
+            label: Some("I0.0".into()),
+            at: p(0.0, 10.0),
+            accepts: Default::default(),
+        }],
+        K::Do => vec![TerminalDef {
+            key: PointKey::Role(ecad_model::ChannelRole::Out),
+            label: Some("Q0.0".into()),
+            at: p(0.0, -10.0),
+            accepts: Default::default(),
+        }],
         // ---- Brief 034 stage 1: definition order is common, NC, NO (design 034 §2.3).
         K::Co | K::Swco => vec![t("11", 0.0, 10.0), t("12", 5.0, -10.0), t("14", 0.0, -10.0)],
         K::Power4 => vec![
@@ -2540,13 +2542,23 @@ fn terminals(key: StarterKey) -> Vec<TerminalDef> {
         // label given when it joins a card.
         k @ (K::Chdi | K::Chdq | K::Chai | K::Chao | K::Chrtd | K::Chiol) => cell_shape(k)
             .map(|(_, pts)| {
-                pts.iter().map(|(role, x)| TerminalDef { key: format!(".{role}"), label: Some((*role).to_string()), at: p(*x, 5.0) }).collect()
+                pts.iter()
+                    .filter_map(|(role, x)| {
+                        let role = ecad_model::ChannelRole::exact(role)?;
+                        Some(TerminalDef {
+                            key: PointKey::Role(role),
+                            label: Some(role.word().to_string()),
+                            at: p(*x, 5.0),
+                            accepts: Default::default(),
+                        })
+                    })
+                    .collect()
             })
             .unwrap_or_default(),
         // ---- Brief 044: a pin's definition keys are its side keys.
-        K::Pinpair => vec![t(SOCKET_KEY, 0.0, 5.0), t(PLUG_KEY, 0.0, -5.0)],
-        K::Pins => vec![t(SOCKET_KEY, 0.0, 5.0)],
-        K::Pinp => vec![t(PLUG_KEY, 0.0, -5.0)],
+        K::Pinpair => vec![side(SOCKET_KEY, 0.0, 5.0), side(PLUG_KEY, 0.0, -5.0)],
+        K::Pins => vec![side(SOCKET_KEY, 0.0, 5.0)],
+        K::Pinp => vec![side(PLUG_KEY, 0.0, -5.0)],
         K::Fusebank4
         | K::Fusebank6
         | K::Fusebank8
@@ -2688,11 +2700,11 @@ mod tests {
             bare.origin = None;
             assert_eq!(ecad_file::definition_hash(&bare).unwrap(), o.content_hash);
         }
-        // 18 symbols (brief 018), the junction and continuation (brief 022), the PE terminal (028),
+        // 18 symbols (brief 018), the continuation (brief 022), the PE terminal (028),
         // brief 034's stage 1 (14), stage 2 (11), stage 3a (27) and stage 3b (8), brief 036's
         // multi-level terminals (20), brief 044's connector pins (3), brief 045's modules (3) and
         // channel cells (6).
-        assert_eq!(STARTERS.len(), 21 + 14 + 11 + 27 + 8 + 20 + 3 + 3 + 6);
+        assert_eq!(STARTERS.len(), 20 + 14 + 11 + 27 + 8 + 20 + 3 + 3 + 6);
         // Brief 034's definition IDs sit in their family's block.
         for s in STARTERS.iter().filter(|s| s.family != Family::Basic) {
             let n = s.id.0 - def_id(0).0;
@@ -2825,9 +2837,8 @@ mod tests {
             ("trafo", "b93505f2eab3aad42fbc8c2f647632effceeda5a6e1e06e634d3f53467dd92fd"),
             ("terminal", "c5c7b47bbddcd35973ad00f1dd8906db9602290ce0b955f0fd7ee1c2bf403a1f"),
             ("terminalpe", "d38f6429abbaf0e8e110505625b467b6531504a762e11205542230148f9f1c00"),
-            ("di", "418a6aab8d5818614ba43098c08872d64592926ca89ab42557f185476425f06a"),
-            ("do", "a7d39c8d471f7b36a469fff10c05eaa40ee4f93e921349a265a23e34cda6461f"),
-            ("junction", "8a6e36eab66ded66ec4ef470682d2d5cecf536a0d1fe6c148c632154232a4868"),
+            ("di", "92732e642b7d5109705f643341f4d9ee02bb3729275a570182e63b6d126bf7b9"),
+            ("do", "caeab16ca1a100e4c5b4a49a878ebf666a634ef6365db7111ab237ba1e936307"),
             ("continuation", "7289a1f63b563b3f0ceb6959fd7fb34763daf4c1c6e56bb2366e01129ae7afaf"),
         ];
         // Brief 036's starters are new; the hashes pinned here are the earlier basic ones.

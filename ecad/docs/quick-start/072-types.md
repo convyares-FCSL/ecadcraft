@@ -79,23 +79,6 @@ The project's own tag prefixes are stored by symbol, `starter:coil` for a built-
 The headless test `lanes::lane_072a::a_project_symbol_with_its_own_prefix_opens_writable`
 (ecad-cadcraft) runs these steps; nobody has tried them by hand yet.
 
-## Rotations (A2: F6, F7)
-
-- Every command parameter named `rotation` takes degrees, now also the symbol builder's text
-  slots (`symbolnew`/`symboledit` `slots[].rotation`), which took radians before. Files are
-  unchanged: stored angles stay radians, now typed as such.
-- The inspector's Layout tab now selects the right rotation segment for a turned symbol (it read
-  the stored radians as degrees).
-
-### Try it
-
-1. Place a coil, turn it a quarter turn (the rotate key while placing, or `place {"at": [100, 0],
-   "rotation": 90}`), select it: the Layout tab shows 90°.
-2. In the symbol builder, add a text slot and turn it: it turns a quarter turn per click, as before.
-
-The headless test `lanes::lane_072a::a_slot_rotation_is_given_in_degrees_and_stored_in_radians`
-(ecad-cadcraft) covers the slot input; nobody has tried these steps by hand yet.
-
 ## Lane B: devices have a type
 
 What changed for someone using the app:
@@ -188,6 +171,11 @@ manual Iz, bundling) and its load.
   note) is refused: a wire has no free properties. Its number and potential still belong to its
   net (`wirenumber`, `potential`).
 - Labels write two-colour wires with a slash: `GN/YE` (three-letter style `GRN/YEL`).
+- The colour setting's words are `code2`, `code3` and `name` (were `iec`, `three-letter`):
+  Project settings ▸ Wires ▸ Colours has a third choice, `Brown Blue Green/Yellow`.
+- `rating {"wire":…, "protected_by":"-Q01"}` (or `-F01:3`) stores the device itself; a name that
+  is no device is refused, also by setprop. Deleting the device clears it in the same transaction
+  (the message says how many were cleared); U brings them back.
 - Projects saved before this lane do not open (no compatibility before 1.0): regenerate them.
 
 ### Try it
@@ -224,3 +212,67 @@ is made: a terminal plan of every strip, or of one strip.
 
 Tests: `lanes::lane_072e` in ecad-model, ecad-file and ecad-mcp. Agent-observed only; nobody has
 tried these steps by hand yet.
+
+## Rotations (A2: F6, F7)
+
+- Every command parameter named `rotation` takes degrees, now also the symbol builder's text
+  slots (`symbolnew`/`symboledit` `slots[].rotation`), which took radians before. Files are
+  unchanged: stored angles stay radians, now typed as such.
+- The inspector's Layout tab now selects the right rotation segment for a turned symbol (it read
+  the stored radians as degrees).
+
+### Try it
+
+1. Place a coil, turn it a quarter turn (the rotate key while placing, or `place {"at": [100, 0],
+   "rotation": 90}`), select it: the Layout tab shows 90°.
+2. In the symbol builder, add a text slot and turn it: it turns a quarter turn per click, as before.
+
+The headless test `lanes::lane_072a::a_slot_rotation_is_given_in_degrees_and_stored_in_radians`
+(ecad-cadcraft) covers the slot input; nobody has tried these steps by hand yet.
+
+## Lane G: wire types are typed records
+
+What changed for someone using the app:
+
+- **Wire categories are now wire types.** A wire type stores its values as fields, not free text:
+  potential, size (`2.5` mm² or `18 AWG`), colours as an ordered list (`GN/YE`), **insulation**
+  (new: `pvc`, `xlpe`, `epr`, `rubber`, `silicone`, `ptfe`, `lszh`), part number, maker,
+  description, allowance, rating and the drawn line.
+- In `setstyle` on the `wire` catalogue the fields are now `size` (was `cross_section`) and
+  `colours` (was `colour`). Typing is lenient as for a wire (`6 mm²`, `green/yellow`, `XLPE`); what
+  is stored is one form only.
+- Two new built-in types, **230 V AC L** (`ac230_l`) and **230 V AC N** (`ac230_n`): brown and
+  blue, 1.5 mm², no potential of their own.
+- A style record in a file now holds a body of its own catalogue (`"body": {"wire": {…}}`); a
+  field the type does not have, or a value in another form, makes the project open read-only.
+  Projects saved before this lane do not open (no compatibility before 1.0): regenerate them.
+
+- **Every style catalogue is typed** the same way: text styles, location styles, frames, page
+  types, rating tables and cable types store their fields as values, not free text. A file whose
+  style record holds an unknown field, or a value in another form, opens read-only.
+- Cable types: `cross_section` is now `size`, and a cable type can name a **core colour scheme**
+  (`core_scheme`): `harmonised` (power: brown, black, grey, blue, green/yellow; numbered black
+  cores from six up), `numbered`, `din47100` (data cables) or `icea_k2` (control cables). A
+  cable of that type takes its cores' colours from the scheme by its core offer (`5G`); the
+  type's own `core_colours` list still wins.
+
+### Try it
+
+1. Open **Standards ▸ Wire types**: the list shows the twelve built-in types, with the two
+   230 V ones.
+2. Select **Protective earth**, set Insulation to `xlpe` and Size to `6`: a wire of potential PE
+   now labels `… 6 GN/YE`.
+3. Type `paper` as the insulation: it is refused with the words it takes.
+4. In **Standards ▸ Cable types**, make a type with Cores `5G` and Core colour scheme
+   `harmonised`; give a cable that type: its cores show brown, black, grey, blue and
+   green/yellow.
+
+The headless tests (automated, not tried by hand):
+
+```sh
+cargo test -p ecad-model --test all lane_072g
+cargo test -p ecad-electrical styles::wire
+cargo test -p ecad-electrical styles::cable
+cargo test -p ecad-mcp --test all lane_072g
+cargo test -p ecad-inspector --test all lane_072g
+```

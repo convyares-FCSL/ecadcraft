@@ -111,6 +111,7 @@ fn renumber_dialog_swap_provisional_checks_and_issue_by_element_name() {
     h.state_mut().show_page(page).unwrap();
     h.run_steps(2);
     ok(&mut h, r#"place {"symbol":"coil","at":[150,60]}"#);
+    crate::common::points_at(h.state_mut(), &[(150.0, 20.0), (190.0, 20.0)]);
     ok(&mut h, r#"wire {"points":[[150,20],[190,20]],"potential":"24V"}"#);
     ok(&mut h, "zoom e");
     h.run_steps(3);

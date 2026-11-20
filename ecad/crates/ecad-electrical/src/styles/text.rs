@@ -8,9 +8,12 @@
 //! The wire label's height stays where 031 put it, `settings.wiring.label_height`, read as the
 //! project field of the `wire_label` style (`project_field`).
 
-use ecad_model::{Document, StyleRef};
+use ecad_model::style::text::{Font, StyleColour, TextStyle};
+use ecad_model::units::Mm;
+use ecad_model::{Document, StyleRef, Word};
 
 use super::{Builtin, Catalogue, Field};
+use crate::CmdError;
 use crate::defaults::{Kind, Slot, Value};
 
 /// A font field's value meaning "the project font" (`text.font`).
@@ -102,4 +105,36 @@ pub fn noun(key: &str) -> Noun {
         Some("wire_label") => Noun::Wires,
         _ => Noun::Pages,
     }
+}
+
+/// The value of field `key` that `t` sets, if it sets one.
+pub fn get<'a>(t: &'a TextStyle, key: &str) -> Option<Value<'a>> {
+    match key {
+        "font" => t.font.as_ref().map(|f| Value::Text(f.as_str())),
+        "height" => t.height.map(|h| Value::Length(h.0)),
+        "weight" => t.weight.map(|w| Value::Choice(w.word())),
+        "colour" => t.colour.map(Value::Colour),
+        _ => None,
+    }
+}
+
+/// Set (`Some`) or clear (`None`) field `key` of `t` from its text, as the `style` command
+/// checked it.
+///
+/// # Errors
+/// An unknown field, or text the field does not take, in words.
+pub fn set(t: &mut TextStyle, key: &str, value: Option<&str>) -> Result<(), CmdError> {
+    let bad = |what: &str| CmdError::refused(format!("{key} takes {what}, not {:?}.", value.unwrap_or_default()));
+    match (key, value) {
+        ("font", None) => t.font = None,
+        ("height", None) => t.height = None,
+        ("weight", None) => t.weight = None,
+        ("colour", None) => t.colour = None,
+        ("font", Some(v)) => t.font = Some(Font::parse(v).ok_or_else(|| bad("a font name"))?),
+        ("height", Some(v)) => t.height = Some(Mm(v.trim().parse::<f64>().ok().filter(|x| x.is_finite()).ok_or_else(|| bad("a length"))?)),
+        ("weight", Some(v)) => t.weight = Some(Word::parse(v).ok_or_else(|| bad("regular or bold"))?),
+        ("colour", Some(v)) => t.colour = Some(StyleColour::parse(v).ok_or_else(|| bad("none, a colour code or #rrggbb"))?),
+        _ => return Err(CmdError::refused(format!("Text styles have no field {key:?}."))),
+    }
+    Ok(())
 }

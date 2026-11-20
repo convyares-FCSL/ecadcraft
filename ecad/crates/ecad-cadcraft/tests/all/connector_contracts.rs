@@ -7,12 +7,14 @@ use ecad_cadcraft::symbols::{self, Side};
 use ecad_model::{DeviceId, Document, PageId, TerminalId, WireId};
 use serde_json::{Value, json};
 
-use crate::common::{H, id, pts};
+use crate::common::{H, id};
 
 /// The connector's terminals by (side key, pin name).
 fn pins(d: &Document, c: DeviceId) -> Vec<(String, String, TerminalId)> {
-    let mut v: Vec<(String, String, TerminalId)> =
-        d.terminals_of(c).map(|(t, x)| (x.key.clone().unwrap_or_default(), x.label.clone().unwrap_or_default(), t)).collect();
+    let mut v: Vec<(String, String, TerminalId)> = d
+        .terminals_of(c)
+        .map(|(t, x)| (x.key.as_ref().map(ToString::to_string).unwrap_or_default(), x.label.clone().unwrap_or_default(), t))
+        .collect();
     v.sort();
     v
 }
@@ -21,7 +23,7 @@ fn pin(d: &Document, c: DeviceId, key: &str, name: &str) -> TerminalId {
     pins(d, c).into_iter().find(|(k, n, _)| k == key && n == name).map(|(_, _, t)| t).unwrap_or_else(|| panic!("no {key} {name}"))
 }
 
-fn net(d: &Document, t: TerminalId) -> Option<ecad_model::NetId> {
+fn net(d: &Document, t: TerminalId) -> Option<ecad_model::NetKey> {
     d.connectivity().net_of_terminal(t)
 }
 
@@ -36,7 +38,7 @@ fn row(h: &mut H, extra: Value) -> Value {
 
 /// Three vertical wires at x 100, 120, 140 from y 250 to y 150.
 fn three_wires(h: &mut H) -> Vec<WireId> {
-    [100.0, 120.0, 140.0].iter().map(|x| id(&h.run("wire", json!({"points": pts(&[(*x, 250.0), (*x, 150.0)])})).unwrap(), "conductor")).collect()
+    [100.0, 120.0, 140.0].iter().map(|x| id(&h.wire_pp(&[(*x, 250.0), (*x, 150.0)]).unwrap(), "conductor")).collect()
 }
 
 #[test]
@@ -117,9 +119,14 @@ fn pin_pairs_across_wires_split_them_and_keep_one_net() {
         let (s, p) = (pin(&d, c, ".s", n), pin(&d, c, ".p", n));
         assert_eq!(net(&d, s), net(&d, p), "pin {n} mates");
         // Both parts of the wire are on that net.
-        let new: WireId = id(&v["split"][i], "new");
-        assert_eq!(d.connectivity().net_of_conductor(w[i]), d.connectivity().net_of_conductor(new));
-        assert_eq!(d.connectivity().net_of_conductor(w[i]), net(&d, s));
+        // The two parts of the line (design 072 §4.3: routes), each carrying its own wire in
+        // place of `w[i]`.
+        let part = |key: &str| ecad_cadcraft::wires::wire_of_route(&d, id(&v["split"][i], key));
+        let (kept, new) = (part("route"), part("new"));
+        assert!(kept.is_some() && new.is_some() && !d.wires.contains_key(&w[i]), "{v}");
+        let net_of = |x: Option<WireId>| x.and_then(|x| d.connectivity().net_of_conductor(x));
+        assert_eq!(net_of(kept), net_of(new));
+        assert_eq!(net_of(kept), net(&d, s));
     }
     assert_ne!(net(&d, pin(&d, c, ".s", "1")), net(&d, pin(&d, c, ".s", "2")));
     // A plug pin placed alone takes the next pin drawn on neither side… here 4 (1–3 are pairs).
@@ -354,8 +361,8 @@ fn every_starter_bridges_only_keys_a_placement_writes() {
         }
     }
     let mut d = symbols::by_key("plug4").unwrap().definition().unwrap().clone();
-    d.bridges = vec![vec![".s".into(), ".x".into()]];
-    assert!(!symbols::bridge_key_ok(&d, ".x"));
+    d.bridges = vec![vec![".s".parse().unwrap(), ".in".parse().unwrap()]];
+    assert!(!symbols::bridge_key_ok(&d, &".in".parse().unwrap()));
 }
 
 // ------------------------------------------------------------------------------- fix round 1
@@ -404,7 +411,7 @@ fn half_row_groups_are_kept_not_regrouped() {
     let count = |h: &mut H| h.cfg(|p| p.outputs().bom_count(ecad_cadcraft::outputs::Group::Location));
     let n = count(&mut h);
     let g0 = h.cfg(|p| p.outputs().half_groupings.load(std::sync::atomic::Ordering::Relaxed));
-    h.run("wire", json!({"points": pts(&[(300.0, 300.0), (350.0, 300.0)])})).unwrap();
+    h.wire_pp(&[(300.0, 300.0), (350.0, 300.0)]).unwrap();
     assert_eq!(count(&mut h), n);
     let g1 = h.cfg(|p| p.outputs().half_groupings.load(std::sync::atomic::Ordering::Relaxed));
     assert_eq!(g0, g1, "an unrelated edit and the counts group no half rows");
@@ -423,7 +430,7 @@ fn the_connector_index_is_kept_from_the_ops() {
     let key = ecad_cadcraft::defaults::connectors::SIDE_SOCKET.key;
     let inh = h.p(|p| p.connectors().inheriting(key));
     assert!(inh.contains(&a) && !inh.contains(&b), "{inh:?}");
-    h.run("wire", json!({"points": pts(&[(300.0, 300.0), (350.0, 300.0)])})).unwrap();
+    h.wire_pp(&[(300.0, 300.0), (350.0, 300.0)]).unwrap();
     assert_eq!(connectors::index_work(), 0, "an unrelated edit recomputes no connector");
     h.run("setprop", json!({"component": a.hex(), "key": "half.s.maker", "value": "ACME"})).unwrap();
     assert_eq!(connectors::index_work(), 1, "an edit of one connector recomputes that one");

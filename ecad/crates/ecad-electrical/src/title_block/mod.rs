@@ -73,10 +73,12 @@ pub enum Reach {
 
 /// What a frame record sets that the grid and the keep-out read: its sheet, its margins and its
 /// block's height.
-fn geometry(r: Option<&ecad_model::StyleRecord>) -> Option<(Option<String>, Option<String>, Option<u64>)> {
-    let r = r?;
-    let h = r.title_block().and_then(TitleBlockLayout::height).map(f64::to_bits);
-    Some((r.field(sheet::FRAME_SHEET_FIELD).map(str::to_string), r.field(sheet::FRAME_MARGINS_FIELD).map(str::to_string), h))
+type Geometry = (Option<ecad_model::style::frame::FrameSheet>, Option<ecad_model::style::frame::FrameMargins>, Option<u64>);
+
+fn geometry(r: Option<&ecad_model::StyleRecord>) -> Option<Geometry> {
+    let f = r?.body.frame()?;
+    let h = f.title_block.as_ref().and_then(TitleBlockLayout::height).map(f64::to_bits);
+    Some((f.sheet, f.margins, h))
 }
 
 /// What `op` reaches through the frames (see [`Reach`]): [`frame_reach_of`] on its effect.

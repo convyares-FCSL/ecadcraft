@@ -4,7 +4,7 @@ use ecad_cadcraft::checks::{Kind, Severity};
 use ecad_model::DeviceId;
 use serde_json::{Value, json};
 
-use crate::common::{H, id, pts};
+use crate::common::{H, id};
 
 /// Two connector rows and one terminal strip on the active page.
 fn fixture(h: &mut H) -> (Vec<DeviceId>, DeviceId) {
@@ -15,7 +15,7 @@ fn fixture(h: &mut H) -> (Vec<DeviceId>, DeviceId) {
     }
     for i in 0..3 {
         let x = 200.0 + 10.0 * f64::from(i);
-        h.run("wire", json!({"points": pts(&[(x, 200.0), (x, 240.0)])})).unwrap();
+        h.wire_pp(&[(x, 200.0), (x, 240.0)]).unwrap();
     }
     let v = h.run("terminals", json!({"from": [190, 220], "to": [240, 220]})).unwrap();
     (conns, id(&v, "strip"))
@@ -29,10 +29,14 @@ fn setprop_on_several_components_walks_the_single_component_rules() {
     let (conns, strip) = fixture(&mut h);
     let label_key = "term_label.1.1";
     let long_label = "L".repeat(30);
+    // Design 072 §3: a pinned start is a PLC module's field.
+    h.run("place", json!({"symbol": "plccpu", "at": [400, 40]})).unwrap();
+    let cards: Vec<DeviceId> =
+        [440.0, 480.0].iter().map(|x| id::<DeviceId>(&h.run("place", json!({"symbol": "plcdi", "at": [*x, 40.0]})).unwrap(), "component")).collect();
     // (components, key, refused value, accepted value, stored value)
     let cases: Vec<(Vec<DeviceId>, &str, &str, &str, &str)> = vec![
         (conns.clone(), "pins", "abc", " 6 ", "6"),
-        (conns.clone(), "plc.addr.start", "x1", "12", "12"),
+        (cards, "plc.addr.start", "x1", "12", "12"),
         (vec![strip], "terminal.level.separator", "too-long", ":", ":"),
         (vec![strip], label_key, &long_label, "Top", "Top"),
     ];
@@ -47,7 +51,7 @@ fn setprop_on_several_components_walks_the_single_component_rules() {
         h.run("setprop", json!({"devices": many, "key": key, "value": good})).unwrap();
         let d = h.doc();
         for c in &cs {
-            assert_eq!(d.devices[c].value(key).as_deref(), Some(stored), "{key} on {}", c.hex());
+            assert_eq!(crate::common::plc_value(&d, *c, key).as_deref(), Some(stored), "{key} on {}", c.hex());
         }
     }
 }
@@ -77,7 +81,6 @@ const KINDS_AT_060: &[(&str, &str, Severity)] = &[
     ("looks-connected", "Looks connected", Severity::Warning),
     ("drawn-away", "End drawn away from its connection point", Severity::Warning),
     ("single-point", "Net with a single connection point", Severity::Warning),
-    ("thin-junction", "Junction with fewer than three wires", Severity::Info),
     ("unconnected", "Connection point not connected", Severity::Info),
     ("lonely-continuation", "Continuation without partner", Severity::Info),
     ("mixed-potentials", "Mixed potentials in one net", Severity::Info),
@@ -147,7 +150,6 @@ const KINDS_AT_060: &[(&str, &str, Severity)] = &[
     ("category-potential-twice", "Two wire categories are the default for one potential", Severity::Warning),
     ("wire-allowance", "Wire length not set (set an allowance in Standards)", Severity::Info),
     ("page-type-unknown", "Page type not found; drawn as its usual type", Severity::Warning),
-    ("page-type-field", "Page type value not read; its usual value is used", Severity::Warning),
     ("folder-start-unknown", "Folder start number not read", Severity::Info),
     ("folder-runs-overlap", "A folder's page numbers run into another folder's", Severity::Warning),
     ("cover-legend-cut", "The cover's symbol legend does not show every symbol", Severity::Info),
@@ -198,7 +200,9 @@ fn every_check_kind_is_in_the_table_once_and_keeps_its_words() {
         let k = Kind::parse(name).unwrap_or_else(|| panic!("kind {name} is gone: persisted names never change"));
         assert_eq!((k.words(), k.severity()), (*words, *severity), "{name}");
     }
-    assert_eq!(KINDS_AT_060.len(), 110);
+    // 110 at 060, less `thin-junction` (design 072 §4: the junction device is gone) and
+    // `page-type-field` (design 072 §8: a malformed page type value does not read).
+    assert_eq!(KINDS_AT_060.len(), 108);
 }
 
 /// Brief 060 (R7): each whole-project check source keeps its rows under a key of its own.

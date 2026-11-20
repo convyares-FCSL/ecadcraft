@@ -20,7 +20,7 @@ use ecad_model::*;
 fn cable(tag: &str) -> Cable {
     let mut properties = ecad_model::doc::Properties::new();
     properties.insert("tag".into(), tag.into());
-    Cable { properties, members: Vec::new() }
+    Cable { properties, cores: Vec::new(), ..Default::default() }
 }
 
 /// Cables `-W01` and `-W02`, then `-W02` deleted, then lines: the snapshot (every 16) is after the

@@ -271,6 +271,13 @@ pub const RESERVED: &[PropKey] = &[
     // Lane D: a wire's number and its fixed flag are `Wire.number` (design 072 §4.2).
     WIRE_NUMBER,
     WIRE_NUMBER_FIXED,
+    // Lane C (design 072 §3): a PLC module's and station's fields.
+    PropKey("plc.rack"),
+    PropKey("plc.slot"),
+    PropKey("plc.channels"),
+    PropKey("plc.addr.start"),
+    PropKey("plc.addr.size"),
+    PropKey("plc.kind"),
 ];
 
 /// Keys that became struct fields on one holder only (design 072 §5.3): a page's and the
@@ -288,10 +295,18 @@ pub const RESERVED_ON: &[(Holder, PropKey)] = &[
     (Holder::Project, PropKey("site")),
     (Holder::Project, PropKey("status")),
     (Holder::Project, PropKey("cover.notes")),
+    // Lane 072 D: a wire's own type is `Wire.wire_type` (design 072 §4.6, F36).
+    (Holder::Wire, PropKey(crate::wiring::WIRE_CATEGORY)),
+    // Lane 072 D: a cable's type is `Cable.cable_type` (design 072 §4.5).
+    (Holder::Cable, PropKey(crate::doc::CABLE_TYPE_KEY)),
+    // Lane 072 D: a cable's own shield (design 072 §4.5).
+    (Holder::Cable, PropKey("shield")),
+    // Lane 072 D: a cable's design current is its field (design 072 §4.5).
+    (Holder::Cable, PropKey("load")),
 ];
 
 /// Key prefixes that became struct fields on one holder: the project's location and function
-/// lists (`designation.l.<id>.code`) and revision rows (`rev.<n>.<field>`), design 072 §5.3.
+/// lists (`designation.l.<id>.code`), revision rows (`rev.<n>.<field>`) and folders, design 072 §5.3.
 pub const RESERVED_PREFIXES: &[(Holder, &str)] = &[
     (Holder::Project, "designation."),
     (Holder::Project, crate::project::REVISIONS_KEY),
@@ -299,6 +314,12 @@ pub const RESERVED_PREFIXES: &[(Holder, &str)] = &[
     // Lane 072 B: a connector's halves and ignored rows are fields of its type (design 072 §2.2).
     (Holder::Device, "half."),
     (Holder::Device, "ignore."),
+    // Lane 072 C: a PLC channel's own data (`plc.ch.<i>.<field>`, design 072 §3).
+    (Holder::Device, "plc.ch."),
+    // Lane 072 D: a core's Not used is its purpose (design 072 §4.5).
+    (Holder::Cable, "unused."),
+    // Lane 072 D: a cable's rating inputs are its fields (design 072 §4.5).
+    (Holder::Cable, "rating."),
 ];
 
 /// Whether `key` became a struct field on `holder` ([`RESERVED`], [`RESERVED_ON`],

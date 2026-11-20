@@ -107,7 +107,7 @@ fn t3_cable_manager_edits_undone_and_redone_save_reopen_and_replay_the_same() {
     for x in [0, 10, 20] {
         c.exec("wire", json!({"points": [[x, 0], [x, 50]]}));
     }
-    let ty = c.exec("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth Round", "fields": {"cores": "4G", "cross_section": "1.5", "maker": "Synthmaker", "gland": "M20"}}));
+    let ty = c.exec("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth Round", "fields": {"cores": "4G", "size": "1.5", "maker": "Synthmaker", "gland": "M20"}}));
     let a = c.exec(
         "cablenew",
         json!({"cable_type": ty["id"], "length": 12, "shield": "overall", "part_number": "SYN-R4",
@@ -140,7 +140,9 @@ fn t3_cable_manager_edits_undone_and_redone_save_reopen_and_replay_the_same() {
     let tags: Vec<String> = doc.cables.values().filter_map(|x| x.properties.get("tag").cloned()).collect();
     assert_eq!(doc.cables.len(), 3, "{tags:?}");
     let ka = ecad_model::CableId::parse(&a).unwrap();
-    assert_eq!(doc.cables[&ka].members.len(), 3);
+    // Design 072 §4.5: three cores placed, the type's fourth stored on no line.
+    assert_eq!(doc.cables[&ka].cores.iter().filter(|m| m.position != ecad_model::CorePosition::Unplaced).count(), 3);
+    assert_eq!(doc.cables[&ka].cores.len(), 4);
     assert!(doc.cables[&ka].properties.contains_key("end.from.location"));
 }
 
