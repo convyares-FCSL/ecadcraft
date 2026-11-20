@@ -43,6 +43,7 @@ pub mod outputs;
 pub mod page_types;
 pub mod plc;
 pub mod proposals;
+pub mod props;
 pub mod rating;
 pub mod references;
 pub mod release;

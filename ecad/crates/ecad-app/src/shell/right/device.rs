@@ -4,7 +4,8 @@
 //! cable…) it shows that object's properties in the same folding sections.
 
 use ecad_cadcraft::checks::{Object, Severity};
-use ecad_cadcraft::props::{Row, Section};
+use ecad_electrical::props::Section;
+use ecad_electrical::words::Row;
 use ecad_ui::tokens::{radius, space, ui_type};
 use eframe::egui::{self, Rect, Sense, pos2, vec2};
 

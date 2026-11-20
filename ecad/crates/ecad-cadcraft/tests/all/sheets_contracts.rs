@@ -377,12 +377,12 @@ fn a_read_only_project_refuses_writes() {
 }
 
 /// The Properties rows of `selection` on `page`, and the objects they depend on.
-fn props_of(h: &mut H, page: PageId, selection: &[cadcraft_engine::doc::Handle]) -> ecad_cadcraft::props::PropsView {
+fn props_of(h: &mut H, page: PageId, selection: &[cadcraft_engine::doc::Handle]) -> ecad_electrical::props::PropsView {
     let sel = selection.to_vec();
     h.p(|p| ecad_cadcraft::props::view(p, Some(page), &sel))
 }
 
-fn row(v: &ecad_cadcraft::props::PropsView, key: &str) -> String {
+fn row(v: &ecad_electrical::props::PropsView, key: &str) -> String {
     v.sections.iter().flat_map(|s| s.rows.iter()).find(|r| r.key == key).map(|r| r.value.clone()).unwrap_or_default()
 }
 
