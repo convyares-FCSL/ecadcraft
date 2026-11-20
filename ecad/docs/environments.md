@@ -1,21 +1,19 @@
-# Environments for the integration experiment
+# Environments: where ECAD builds and runs
 
-> **Status:** developer notes for the bounded integration experiment (proposal §17). Nothing in
-> this file has been run on WSL or on the NVIDIA Thor yet. It lists what to check before building,
-> what the build needs, and how to run the experiment and the inspector. Report the check output
-> back so the notes can be corrected.
+> **Status:** developer notes on the environments ECAD has been built and run in, what to check
+> before building, what the build needs, and how to run the headless example and the inspector.
+> Report the check output back so the notes can be corrected.
 >
-> **There is no ECAD desktop application.** The experiment runs as tests, a headless example and
-> a desktop **trial harness** (`ecad/apps/ecad-trial`, not yet seen on a display). The harness
-> has no project persistence: Save and Save As report that saving is unavailable. The inspector
-> is a static page that loads exported snapshots, with no live connection.
+> ECAD's desktop application is `ecad-desktop` (`ecad/apps/ecad-desktop`); building, running and
+> trying it by hand are in [`quick-start.md`](quick-start.md). The inspector is a static page that
+> loads exported snapshots, with no live connection.
 
 ## Where it has run so far
 
 | Environment | Checked | Result |
 | --- | --- | --- |
 | Claude Code cloud container | `uname -m` → `x86_64`; Ubuntu 24.04.5 LTS; 4 cores; 15 GiB RAM; `cc` 13.3; Rust 1.97.0 | CADCraft workspace and ECAD workspace build and test headless. No display; no GUI was run. |
-| Windows laptop with WSL | reported by the owner, 2026-10-12: Ubuntu 26.04, x86_64, WSLg, Rust 1.99.0 | Release build of `ecad-trial` completed and the window opened (EGL/Zink warnings printed). Manual trial results in the experiment report. |
+| Windows laptop with WSL | reported by the owner, 2026-10-12: Ubuntu 26.04, x86_64, WSLg, Rust 1.99.0 | Release build of the desktop app (then named `ecad-trial`) completed and the window opened (EGL/Zink warnings printed). The owner's results are in the experiment report. |
 | NVIDIA Thor (JetPack) | not yet | later ARM64 target |
 
 Notes from the container:
@@ -73,7 +71,7 @@ Do not assume:
 Share one target directory between the two workspaces to save disk and time:
 `export CARGO_TARGET_DIR="$PWD/target"` from the repository root.
 
-## 3. WSL (first local trial)
+## 3. WSL
 
 1. Clone **inside the WSL filesystem** (for example `~/src/ecadcraft`), not under `/mnt/c`: builds
    on the Windows mount are much slower.
@@ -92,7 +90,7 @@ Share one target directory between the two workspaces to save disk and time:
    `target/ecad-snapshots` (reachable from Windows as `\\wsl$\<distro>\…`) with **Open
    snapshots…**. No server is needed.
 5. GUI: the **ECAD desktop program** (`ecad-desktop`). Follow [`quick-start.md`](quick-start.md) for the build,
-   the run command and the manual trial. Keep `.ecad` project files in the Linux home folder
+   the run command and the manual steps. Keep `.ecad` project files in the Linux home folder
    (for example `~/ecad-projects`): that is the supported, tested location. File locking and
    durability on Windows drives under `/mnt` are unverified. Upstream CADCraft's own desktop app
    (below) does not load ECAD commands or projects. It is still useful to check the display stack.

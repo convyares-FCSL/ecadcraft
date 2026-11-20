@@ -113,7 +113,7 @@ To open a saved project: `cargo run --release -p ecad-desktop -- path/to/project
 
 ## Development workflow
 
-- `main` is the released baseline and `dev` is integration. Each feature is developed on its own long-lived branch cut from `dev` (`feature/<name>`, listed in [`ecad/docs/features.md`](ecad/docs/features.md)) and reaches `dev` by one pull request when it works. `dev` reaches `main` through a QA gate: the full suite, screenshots, the benchmark and an owner trial.
+- `main` is the released baseline and `dev` is integration. Each feature is developed on its own long-lived branch cut from `dev` (`feature/<name>`, listed in [`ecad/docs/features.md`](ecad/docs/features.md)) and reaches `dev` by one pull request when it works. `dev` reaches `main` through a QA gate: the full suite, screenshots, the benchmark and the owner's own click-through test.
 - Pull requests into `dev` run a quick check (fmt, clippy with all targets, and the fast tests of the crates that changed); the full suite (`cargo xtask ci`, with the slow tests, on Linux and Windows) runs on pull requests into `main`. Rules for contributors and agents: [`ecad/CLAUDE.md`](ecad/CLAUDE.md).
 - ECAD crates carry unit tests next to the code and one integration test executable per crate under `tests/all/`. Checks are scoped to what you changed (`cargo xtask test-changed`).
 - Production code never panics: no `unwrap`, `expect`, `panic!` or `unsafe`; errors are `Result`s. See [`CLAUDE.md`](CLAUDE.md) for the full engine conventions inherited from CADCraft.

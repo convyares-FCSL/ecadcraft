@@ -1,6 +1,5 @@
-//! ecad-app: the ECAD application, still the smallest runnable ECAD desktop harness for manual
-//! trials of the ECAD integration (an experiment, not an application). The program that opens
-//! its window, parses the command line and times start-up is `ecad-desktop` (design 065 §2.2).
+//! ecad-app: the ECAD application. The program that opens its window, parses the command line and
+//! times start-up is `ecad-desktop` (design 065 §2.2).
 //!
 //! It is CADCraft's own window ([`CadApp`]) with the ECAD commands installed and one ECAD project
 //! open at a time. Everything ECAD-specific runs through `ecad-cadcraft`; this crate only adds
