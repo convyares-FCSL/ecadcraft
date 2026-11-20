@@ -600,6 +600,7 @@ fn ac8_the_cover_draws_every_block() {
     h.run("issuerevision", json!({})).unwrap();
     h.activate(sch);
     coil(&mut h, 100.0);
+    h.points_at(&[(0.0, 50.0), (60.0, 50.0)]);
     h.run("wire", json!({"points": [[0, 50], [60, 50]], "potential": "24V"})).unwrap();
     let t = gen_texts(&mut h, cover);
     for want in [
@@ -627,6 +628,7 @@ fn ac8_wire_colours_show_only_categories_in_use() {
     let (mut h, cover, sch) = with_cover(0x54_0802);
     assert!(gen_texts(&mut h, cover).iter().any(|x| x == "No wires yet."));
     h.activate(sch);
+    h.points_at(&[(0.0, 50.0), (60.0, 50.0)]);
     let w = h.run("wire", json!({"points": [[0, 50], [60, 50]], "potential": "24V"})).unwrap();
     let t = gen_texts(&mut h, cover);
     let lines: Vec<&String> =

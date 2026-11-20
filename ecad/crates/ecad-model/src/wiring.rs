@@ -18,17 +18,23 @@
 //! | Split, automatic | the part with more conductors keeps it (tie: the lowest conductor ID); the other gets the next free |
 //! | Split, fixed | both keep it (a Checks error) |
 //! | Its potential changed and the automatic number has another prefix | the next free of the new potential |
-//! | Settings changed | nothing until Renumber Wires |
+//! | Settings changed | nothing until Renumber Wires, except `wiring.number_by` (below) |
+//!
+//! `wiring.number_by` (design 072 F40) says what one number counts: per net (the rules above), or
+//! per conductor, where each wire of a net is its own group ([`units`]) in net order and the
+//! rules apply to each group alone. Switching it renumbers every net in the same edit, keeping
+//! each number on the group that ranks first for it.
 //!
 //! This module reads the document and returns ops; it changes nothing itself.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
 use crate::colour::ColourWords;
-use crate::connectivity::{self, CONTINUATION, KIND, NAME, NetData, NetId, Node, name_key, split_number};
-use crate::doc::{Document, Subject};
+use crate::connectivity::{self, CONTINUATION, KIND, NAME, NetData, NetKey, Node, name_key, split_number};
+use crate::doc::Document;
 use crate::id::{PageId, WireId};
 use crate::op::{ObjectRef, Op};
 use crate::text::Text;
@@ -101,72 +107,38 @@ pub struct PotentialDef {
     pub legacy_cross_section: Option<String>,
 }
 
-/// The conductor property naming its wire category (brief 050b, FP5).
+/// The defaults-registry key choosing the wire type (brief 050b, FP5) for the project or the
+/// standard. A wire's own type is its field [`crate::wire::Wire::wire_type`] (design 072 §4.6).
 pub const WIRE_CATEGORY: &str = "wire.category";
 
-/// How colours are written on labels (owner, 2026-11-09).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum ColourStyle {
-    /// IEC 60757 two-letter codes: `BN`, `BU`, `GNYE`.
-    #[default]
-    #[serde(rename = "iec")]
-    Iec,
-    /// Three-letter codes: `BRN`, `BLU`, `GRN/YEL`.
-    #[serde(rename = "three-letter")]
-    ThreeLetter,
-}
-
-impl ColourStyle {
-    /// The colour words it writes.
-    pub fn words(self) -> ColourWords {
-        match self {
-            ColourStyle::Iec => ColourWords::Code2,
-            ColourStyle::ThreeLetter => ColourWords::Code3,
-        }
-    }
-
-    pub fn name(self) -> &'static str {
-        match self {
-            ColourStyle::Iec => "iec",
-            ColourStyle::ThreeLetter => "three-letter",
-        }
-    }
-
-    pub fn parse(text: &str) -> Option<Self> {
-        match text.trim().to_ascii_lowercase().as_str() {
-            "iec" | "iec60757" | "iec 60757" | "two-letter" => Some(ColourStyle::Iec),
-            "three-letter" | "three" | "3" | "three_letter" => Some(ColourStyle::ThreeLetter),
-            _ => None,
-        }
-    }
-}
-
-/// The IEC 60757 colour codes and their three-letter forms.
-pub const COLOUR_CODES: [(&str, &str); 15] = [
-    ("BK", "BLK"),
-    ("BN", "BRN"),
-    ("RD", "RED"),
-    ("OG", "ORG"),
-    ("YE", "YEL"),
-    ("GN", "GRN"),
-    ("BU", "BLU"),
-    ("VT", "VIO"),
-    ("GY", "GRY"),
-    ("WH", "WHT"),
-    ("PK", "PNK"),
-    ("GD", "GLD"),
-    ("TQ", "TQS"),
-    ("SR", "SLR"),
-    ("GNYE", "GRN/YEL"),
-];
-
-/// A colour as labels write it in `style`: a known code (either form, any case) in that style;
+/// A colour as labels write it in `words`: a known colour (any form, any case) in those words;
 /// anything else (free text) as typed.
-pub fn colour_text(style: ColourStyle, value: &str) -> String {
+pub fn colour_text(words: ColourWords, value: &str) -> String {
     let v = value.trim();
     match Colours::parse(v) {
-        Some(c) => c.shown(style.words()),
+        Some(c) => c.shown(words),
         None => v.to_string(),
+    }
+}
+
+crate::word_enum! {
+    /// What one wire number counts, the project setting `wiring.number_by` (design 072 §4.2, F40):
+    /// every wire of a net shows the net's number (potential numbering), or every wire its own.
+    /// The number's text follows the scheme either way.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+    pub enum NumberBy {
+        /// One number per net (today's behaviour).
+        #[default]
+        Net,
+        /// One number per conductor.
+        Conductor,
+    }
+}
+
+impl NumberBy {
+    /// Whether it is the default, per net (left out of the file).
+    pub fn is_net(&self) -> bool {
+        *self == NumberBy::Net
     }
 }
 
@@ -185,7 +157,7 @@ pub struct WiringSettings {
     /// How label colours are written, when the project chose (brief 066, F3: `None` follows the
     /// built-in, [`WiringSettings::colour_style`]).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub colour_style: Option<ColourStyle>,
+    pub colour_style: Option<ColourWords>,
     /// Text height of conductor labels, millimetres, when the project chose one (brief 066, F2:
     /// `None` follows the built-in, the registry's `text.wire_label.height`; a chosen value is kept
     /// even when it equals the built-in). Read through the registry, which keeps it in range.
@@ -201,6 +173,9 @@ pub struct WiringSettings {
     /// follows the registry's `wiring.label_min_length`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label_min_length: Option<f64>,
+    /// What one wire number counts (design 072 F40): per net, or per conductor.
+    #[serde(skip_serializing_if = "NumberBy::is_net")]
+    pub number_by: NumberBy,
 }
 
 /// Brief 032: one label per net per page.
@@ -213,8 +188,8 @@ pub const LABEL_MIN_LENGTHS: std::ops::RangeInclusive<f64> = 0.0..=100.0;
 /// The label heights a project may set, millimetres.
 pub const LABEL_HEIGHTS: std::ops::RangeInclusive<f64> = 0.5..=10.0;
 
-/// The words of the colour styles ([`ColourStyle::name`]).
-pub const COLOUR_STYLE_WORDS: &[&str] = &["iec", "three-letter"];
+/// The words of the colour setting ([`ColourWords`]): `code2`, `code3`, `name`.
+pub const COLOUR_STYLE_WORDS: &[&str] = <ColourWords as crate::words::Word>::WORDS;
 /// The most digits a sequence is padded to.
 pub const MAX_DIGITS: u8 = 6;
 
@@ -248,6 +223,7 @@ impl Default for WiringSettings {
             label_height: None,
             label_rule: None,
             label_min_length: None,
+            number_by: NumberBy::Net,
         }
     }
 }
@@ -271,7 +247,7 @@ impl WiringSettings {
     }
 
     /// The colour style: the project's choice, else the built-in ([`crate::builtins`]).
-    pub fn colour_style(&self) -> ColourStyle {
+    pub fn colour_style(&self) -> ColourWords {
         self.colour_style.unwrap_or_else(|| crate::builtins::builtins().colour_style)
     }
 
@@ -361,22 +337,68 @@ pub fn place(doc: &Document, page: PageId, at: crate::geom::Pt) -> Option<crate:
     crate::derive::place_on(&grid, &crate::book::page_number(doc, page), at)
 }
 
-/// Where a net is, for the page schemes: the shown page number and the frame column label of its
-/// lowest-ID conductor's route start on its first page in page order (`1` and the first column's
-/// label when it has none).
+/// Where a net is, for the page schemes: the shown page number and the frame column label of
+/// where its first wire in net order starts ([`crate::derive::wire_start`]; `1` and the first
+/// column's label when it has none).
 pub fn net_place(doc: &Document, net: &NetData) -> (String, String) {
     let first_column = |page: Option<PageId>| match page {
         Some(p) => crate::sheet::Grid::of(doc, p).column_label(1),
         None => doc.settings.sheet().column_labels.label(1),
     };
-    let fallback = || ("1".to_string(), first_column(None));
-    let Some(first) = net.first_conductor() else { return fallback() };
-    let order: Option<(usize, PageId)> =
-        doc.representations_of(Subject::Wire(first)).filter_map(|(_, r)| doc.page_order.iter().position(|p| *p == r.page).map(|i| (i, r.page))).min();
-    let Some((_, page)) = order else { return fallback() };
-    match crate::derive::route_ends_on(doc, first, page).and_then(|(a, _)| place(doc, page, a)) {
+    let Some((page, at)) = first_wire(doc, net).and_then(|w| crate::derive::wire_start(doc, w)) else {
+        return ("1".to_string(), first_column(None));
+    };
+    match place(doc, page, at) {
         Some(p) => (p.page, p.column_label),
         None => (crate::book::page_number(doc, page), first_column(Some(page))),
+    }
+}
+
+/// The first wire of `net` in net order (design 072 §4.4; ties and wires gone: the lower ID).
+pub fn first_wire(doc: &Document, net: &NetData) -> Option<WireId> {
+    net.wires.iter().min_by_key(|w| (doc.wires.get(w).map_or(u16::MAX, |x| x.net_order), **w)).copied()
+}
+
+/// The groups of wires that each carry one number under the project's `wiring.number_by`
+/// (design 072 §4.2, F40): the whole net, or each of its wires alone, in net order. A wire's
+/// group keeps the net's potentials and continuation names, so its prefix is the net's.
+pub fn units<'a>(doc: &Document, net: &'a NetData) -> Vec<Cow<'a, NetData>> {
+    if doc.settings.wiring.number_by == NumberBy::Net || net.wires.len() < 2 {
+        return vec![Cow::Borrowed(net)];
+    }
+    let mut wires: Vec<(u16, WireId, &crate::wire::Wire)> =
+        net.wires.iter().filter_map(|id| doc.wires.get(id).map(|w| (w.net_order, *id, w))).collect();
+    wires.sort_by_key(|x| (x.0, x.1));
+    wires.into_iter().map(|(_, id, w)| Cow::Owned(unit_of(net, id, w))).collect()
+}
+
+/// Wire `id` alone as a numbering group of `net`.
+fn unit_of(net: &NetData, id: WireId, w: &crate::wire::Wire) -> NetData {
+    let mut u = NetData {
+        terminals: w.ends.iter().copied().collect(),
+        wires: [id].into_iter().collect(),
+        names: net.names.clone(),
+        potentials: net.potentials.clone(),
+        ..NetData::default()
+    };
+    if let Some(n) = w.number_text() {
+        u.numbers.insert(n.to_string(), 1);
+        if w.number_fixed() {
+            u.fixed.insert(n.to_string(), 1);
+        }
+    }
+    u
+}
+
+/// The number wire `c` shows: its net's ([`net_number`]) when numbering per net, its own when
+/// numbering per conductor (design 072 F40).
+pub fn wire_number(doc: &Document, c: WireId) -> Option<String> {
+    match doc.settings.wiring.number_by {
+        NumberBy::Net => {
+            let conn = doc.connectivity();
+            conn.net_of_conductor(c).and_then(|n| conn.net(n)).and_then(|n| net_number(doc, n))
+        }
+        NumberBy::Conductor => doc.wires.get(&c).and_then(|w| w.number_text()).map(str::to_string),
     }
 }
 
@@ -421,8 +443,8 @@ pub(crate) fn scope_of(doc: &Document, net: &NetData, pot: &NetPotential) -> Str
 
 /// The number net `id` keeps when numbering only nets without one: its most carried number, if
 /// no other net has a better claim to it.
-pub(crate) fn kept_number(doc: &Document, id: NetId, net: &NetData) -> Option<String> {
-    best_number(&net.numbers).filter(|w| keeps(doc, id, w))
+pub(crate) fn kept_number(doc: &Document, id: NetKey, net: &NetData) -> Option<String> {
+    best_number(&net.numbers).filter(|w| keeps(doc, id, net, w))
 }
 
 /// Next free numbers handed out by one pass, so two new nets never get the same one.
@@ -473,11 +495,11 @@ fn carries(net: &NetData, number: &str, fixed: bool) -> bool {
 }
 
 /// The nets a transaction's ops touched, in the state after them (design 022 §11).
-pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetId>, BTreeSet<NetId>) {
+pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetKey>, BTreeSet<NetKey>) {
     let conn = doc.connectivity();
     let mut nets = BTreeSet::new();
     let mut potential = BTreeSet::new();
-    let add = |n: Node, nets: &mut BTreeSet<NetId>| {
+    let add = |n: Node, nets: &mut BTreeSet<NetKey>| {
         if let Some(id) = conn.net_of(&n) {
             nets.insert(id);
         }
@@ -485,14 +507,8 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetId>, BTreeSet<Ne
     for op in ops {
         match op {
             Op::CreateWire { id, .. } => add(Node::Wire(*id), &mut nets),
-            Op::DeleteWire { conductor, .. } => {
-                for t in conductor.ends.iter().flatten() {
-                    add(Node::Terminal(*t), &mut nets);
-                }
-            }
-            Op::AttachEnd { conductor, before, after, .. } => {
-                add(Node::Wire(*conductor), &mut nets);
-                for t in [before, after].into_iter().flatten() {
+            Op::DeleteWire { wire, .. } => {
+                for t in &wire.ends {
                     add(Node::Terminal(*t), &mut nets);
                 }
             }
@@ -552,6 +568,10 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetId>, BTreeSet<Ne
                     }
                 }
             }
+            // Design 072 F40: switching what a number counts renumbers every net in the same edit.
+            Op::SetProjectSettings { before, after } if before.wiring.number_by != after.wiring.number_by => {
+                nets.extend(conn.nets().filter(|(_, n)| !n.wires.is_empty()).map(|(id, _)| id));
+            }
             // Brief 036 (FP8a): a bridged level symbol joins or parts its position's levels.
             Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => {
                 for t in crate::connectivity::Connectivity::bridged_shown(doc, rep) {
@@ -577,12 +597,27 @@ fn net_rank(net: &NetData, number: &str) -> (bool, usize, std::cmp::Reverse<Opti
     (net.fixed.contains_key(number), net.wires.len(), std::cmp::Reverse(net.first_conductor()))
 }
 
-/// Whether `id` keeps `number` among every net carrying it.
-fn keeps(doc: &Document, id: NetId, number: &str) -> bool {
+/// Whether `unit` (a group of net `id`, [`units`]) keeps `number` among every group carrying it:
+/// per net, against the other nets ([`net_rank`]); per conductor, against every other wire
+/// carrying it (fixed first, then the earlier in its net's order, then the lower ID).
+fn keeps(doc: &Document, id: NetKey, unit: &NetData, number: &str) -> bool {
     let conn = doc.connectivity();
-    let Some(me) = conn.net(id) else { return true };
-    let mine = net_rank(me, number);
-    conn.nets_numbered(number).filter(|(n, _)| *n != id).all(|(n, _)| conn.net(n).is_none_or(|o| net_rank(o, number) < mine))
+    match doc.settings.wiring.number_by {
+        NumberBy::Net => {
+            let Some(me) = conn.net(id) else { return true };
+            let mine = net_rank(me, number);
+            conn.nets_numbered(number).filter(|(n, _)| *n != id).all(|(n, _)| conn.net(n).is_none_or(|o| net_rank(o, number) < mine))
+        }
+        NumberBy::Conductor => {
+            let rank = |w: WireId| doc.wires.get(&w).map(|x| (x.number_fixed(), std::cmp::Reverse((x.net_order, w))));
+            let Some(mine) = unit.first_conductor().and_then(rank) else { return true };
+            conn.nets_numbered(number)
+                .filter_map(|(n, _)| conn.net(n))
+                .flat_map(|n| n.wires.iter().copied())
+                .filter(|w| !unit.wires.contains(w) && doc.wires.get(w).and_then(|x| x.number_text()) == Some(number))
+                .all(|w| rank(w).is_none_or(|o| o < mine))
+        }
+    }
 }
 
 /// The numbering pass (design 022 §5.1): `SetProperty` ops numbering the nets `ops` touched in
@@ -593,9 +628,10 @@ pub fn assign(doc: &Document, ops: &[Op]) -> Vec<Op> {
 }
 
 /// [`assign`] for the nets `touched`.
-pub fn assign_nets(doc: &Document, touched: &BTreeSet<NetId>, potential_changed: &BTreeSet<NetId>) -> Vec<Op> {
+pub fn assign_nets(doc: &Document, touched: &BTreeSet<NetKey>, potential_changed: &BTreeSet<NetKey>) -> Vec<Op> {
     let conn = doc.connectivity();
-    let mut order: Vec<(WireId, NetId)> = touched.iter().filter_map(|id| conn.net(*id).and_then(|n| n.first_conductor()).map(|c| (c, *id))).collect();
+    let mut order: Vec<(WireId, NetKey)> =
+        touched.iter().filter_map(|id| conn.net(*id).and_then(|n| n.first_conductor()).map(|c| (c, *id))).collect();
     order.sort();
     let mut alloc = Allocator::default();
     let mut out = Vec::new();
@@ -606,10 +642,12 @@ pub fn assign_nets(doc: &Document, touched: &BTreeSet<NetId>, potential_changed:
         if !off.is_empty() && only_on(doc, net, &off) {
             continue;
         }
-        if let Some((number, fixed)) = decide(doc, id, net, potential_changed.contains(&id), &mut alloc)
-            && !carries(net, &number, fixed)
-        {
-            out.extend(write_ops(doc, net, &number, fixed));
+        for unit in units(doc, net) {
+            if let Some((number, fixed)) = decide(doc, id, &unit, potential_changed.contains(&id), &mut alloc)
+                && !carries(&unit, &number, fixed)
+            {
+                out.extend(write_ops(doc, &unit, &number, fixed));
+            }
         }
     }
     out
@@ -618,8 +656,10 @@ pub fn assign_nets(doc: &Document, touched: &BTreeSet<NetId>, potential_changed:
 /// Whether every route of `net`'s conductors is on a page of `pages` (and it has one).
 fn only_on(doc: &Document, net: &NetData, pages: &std::collections::BTreeSet<crate::id::PageId>) -> bool {
     let mut any = false;
+    // A wire is drawn by the routes at its ends (design 072 §4.3).
     for c in &net.wires {
-        for (_, r) in doc.representations_of(crate::doc::Subject::Wire(*c)) {
+        let Some(w) = doc.wires.get(c) else { continue };
+        for r in w.ends.iter().flat_map(|t| doc.routes_at(*t)).filter_map(|r| doc.routes.get(&r)) {
             if !pages.contains(&r.page) {
                 return false;
             }
@@ -629,8 +669,9 @@ fn only_on(doc: &Document, net: &NetData, pages: &std::collections::BTreeSet<cra
     any
 }
 
-/// The number net `id` should carry, and whether fixed; `None` to leave it as it is.
-fn decide(doc: &Document, id: NetId, net: &NetData, potential_changed: bool, alloc: &mut Allocator) -> Option<(String, bool)> {
+/// The number `net` (net `id`, or one group of it, [`units`]) should carry, and whether fixed;
+/// `None` to leave it as it is.
+fn decide(doc: &Document, id: NetKey, net: &NetData, potential_changed: bool, alloc: &mut Allocator) -> Option<(String, bool)> {
     if net.wires.is_empty() {
         return None;
     }
@@ -655,7 +696,7 @@ fn decide(doc: &Document, id: NetId, net: &NetData, potential_changed: bool, all
     }
     // An unnumbered potential's shared number (`PE`) is never kept by a numbered net.
     let shared_exempt = doc.settings.wiring.potentials.iter().any(|p| !p.numbered && p.prefix == winner);
-    if shared_exempt || !keeps(doc, id, &winner) {
+    if shared_exempt || !keeps(doc, id, net, &winner) {
         return Some((alloc.next(doc, net, &pot), false));
     }
     Some((winner, false))
@@ -748,7 +789,7 @@ pub fn label_with(doc: &Document, c: WireId, cross_section: Option<String>, colo
     let cond = doc.wires.get(&c)?;
     let conn = doc.connectivity();
     let net = conn.net_of_conductor(c).and_then(|id| conn.net(id).map(|n| (id, n)));
-    let number = net.and_then(|(_, n)| net_number(doc, n));
+    let number = wire_number(doc, c);
     // Brief 026: with provisional tags on, an unnumbered net shows its prefix and `?` (`24V-?`).
     let provisional = number.is_none() && crate::numbering::provisional_on(doc);
     let unnumbered = match net {
@@ -765,7 +806,10 @@ pub fn label_with(doc: &Document, c: WireId, cross_section: Option<String>, colo
         words.extend(colour.filter(|v| !v.trim().is_empty()).map(|c| doc.settings.wiring.colour(&c)));
     }
     let error = match (net, number.as_deref()) {
-        (Some((id, n)), Some(num)) => number_error(doc, id, n, num),
+        (Some((id, n)), Some(num)) => match doc.settings.wiring.number_by {
+            NumberBy::Net => number_error(doc, id, n, num),
+            NumberBy::Conductor => wire_number_error(doc, num),
+        },
         _ => false,
     };
     Some(Label { text: words.join(" "), error, provisional })
@@ -773,7 +817,7 @@ pub fn label_with(doc: &Document, c: WireId, cross_section: Option<String>, colo
 
 /// Whether net `id` (showing `number`) is in a number error: two different fixed numbers, or
 /// another net carrying the same number (unless it is an unnumbered potential's shared prefix).
-pub fn number_error(doc: &Document, id: NetId, net: &NetData, number: &str) -> bool {
+pub fn number_error(doc: &Document, id: NetKey, net: &NetData, number: &str) -> bool {
     if net.fixed.len() > 1 {
         return true;
     }
@@ -781,13 +825,20 @@ pub fn number_error(doc: &Document, id: NetId, net: &NetData, number: &str) -> b
     !exempt && doc.connectivity().nets_numbered(number).any(|(n, _)| n != id)
 }
 
+/// Numbering per conductor: whether `number` is carried by more than one wire (unless it is an
+/// unnumbered potential's shared prefix).
+pub fn wire_number_error(doc: &Document, number: &str) -> bool {
+    let exempt = doc.settings.wiring.potentials.iter().any(|p| !p.numbered && p.prefix == number);
+    !exempt && doc.connectivity().nets_numbered(number).map(|(_, n)| n).sum::<u32>() > 1
+}
+
 /// The nets that share `number` with another net (for Checks), when it is not exempt.
-pub fn sharing(doc: &Document, number: &str) -> Vec<NetId> {
+pub fn sharing(doc: &Document, number: &str) -> Vec<NetKey> {
     let exempt = doc.settings.wiring.potentials.iter().any(|p| !p.numbered && p.prefix == number);
     if exempt {
         return Vec::new();
     }
-    let nets: Vec<NetId> = doc.connectivity().nets_numbered(number).map(|(n, _)| n).collect();
+    let nets: Vec<NetKey> = doc.connectivity().nets_numbered(number).map(|(n, _)| n).collect();
     if nets.len() > 1 { nets } else { Vec::new() }
 }
 

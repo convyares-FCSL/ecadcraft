@@ -68,11 +68,12 @@ pub const OP_NAMES: &[&str] = &[
     "CreateWire",
     "DeleteWire",
     "ModifyWire",
-    "AttachEnd",
+    "AddRoute",
+    "RemoveRoute",
+    "ModifyRoute",
     "CreateCable",
     "DeleteCable",
-    "AddCableMember",
-    "RemoveCableMember",
+    "ModifyCable",
     "SetProperty",
     "EmbedDefinition",
     "RemoveDefinition",
@@ -251,8 +252,6 @@ fn check_integers(op: &records::Op) -> Result<(), FileError> {
     let n = match op {
         records::Op::AddPage { index, .. }
         | records::Op::RemovePage { index, .. }
-        | records::Op::AddCableMember { index, .. }
-        | records::Op::RemoveCableMember { index, .. }
         | records::Op::AddFolder { index, .. }
         | records::Op::RemoveFolder { index, .. } => *index,
         records::Op::NameVersion { at, .. } | records::Op::UnnameVersion { at, .. } => *at,

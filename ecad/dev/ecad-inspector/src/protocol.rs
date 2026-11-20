@@ -406,7 +406,7 @@ fn invariants(d: &Document) -> Value {
     let shown: Vec<Value> = mismatches
         .iter()
         .take(200)
-        .map(|m| json!({"wire": wire_name(d, m.conductor), "end": format!("{:?}", m.end), "point": point_name(d, m.terminal), "page": page_number(d, m.page)}))
+        .map(|m| json!({"route": format!("({})", m.route.short()), "end": format!("{:?}", m.end), "point": point_name(d, m.terminal), "page": page_number(d, m.page)}))
         .collect();
     json!({
         "ok": check.is_ok() && index.is_ok() && mismatches.is_empty(),
@@ -481,6 +481,8 @@ fn project(d: &Document) -> Value {
         "function": d.project.function.map(|f| function_code(d, f)),
         "revisions": revisions,
         "reference_style": format!("{:?}", d.settings.reference_style()),
+        // Design 072 F40 (A15): what one wire number counts.
+        "number_by": ecad_model::Word::word(d.settings.wiring.number_by),
         "versions": d.versions,
         "counts": {
             "pages": d.pages.len(),
@@ -559,7 +561,7 @@ fn devices(d: &Document, detail: bool) -> Vec<Value> {
     }
     let mut attached: BTreeMap<TerminalId, Vec<WireId>> = BTreeMap::new();
     for (id, w) in &d.wires {
-        for t in w.ends.iter().flatten() {
+        for t in &w.ends {
             attached.entry(*t).or_default().push(*id);
         }
     }
@@ -582,7 +584,8 @@ fn devices(d: &Document, detail: bool) -> Vec<Value> {
                 .map(|(t, term)| {
                     let name = term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| t.short());
                     let wires: Vec<String> = attached.get(&t).into_iter().flatten().map(|w| wire_name(d, *w)).collect();
-                    json!({"name": name, "wires": wires})
+                    // Design 072 F38 (A15): how many conductors it accepts.
+                    json!({"name": name, "wires": wires, "accepts": term.accepts.get()})
                 })
                 .collect();
             let pages: Vec<String> =
@@ -641,24 +644,29 @@ fn wires(d: &Document) -> Vec<Value> {
     let mut in_cable: BTreeMap<WireId, (String, Option<String>)> = BTreeMap::new();
     for (id, k) in &d.cables {
         let tag = k.properties.get(ecad_model::tag::TAG_KEY).cloned().unwrap_or_else(|| format!("({})", id.short()));
-        for m in &k.members {
-            in_cable.insert(m.conductor, (tag.clone(), m.core.clone()));
+        for w in k.cores.iter().filter_map(|m| m.wire()) {
+            in_cable.insert(w, (tag.clone(), k.cores.iter().find(|m| m.wire() == Some(w)).and_then(|m| m.label_str().map(str::to_string))));
         }
     }
     d.wires
         .iter()
         .map(|(id, w)| {
-            let ends: Vec<String> = w.ends.iter().map(|e| e.map_or_else(|| "open".to_string(), |t| point_name(d, t))).collect();
+            let ends: Vec<String> = w.ends.iter().map(|t| point_name(d, *t)).collect();
             let cable = in_cable.get(id);
             json!({
                 "id": id.to_string(),
                 "number": wire_number(d, *id),
                 "ends": ends,
+                "net": w.net.to_string(),
+                "conductor": w.conductor.to_string(),
+                "net_order": w.net_order,
+                "order_fixed": w.order_fixed,
                 "size": w.size.map(|s| s.to_string()),
                 "colours": w.colours.as_ref().map(ToString::to_string),
                 "fixed": w.number_fixed(),
                 "potential": w.potential_name(),
                 "rating": w.rating.values().into_iter().map(|(k, v)| format!("{k}: {v}")).chain(w.load.map(|a| format!("load: {a}"))).collect::<Vec<_>>(),
+                "protected_by": w.protected_by.map(|p| protected_name(d, p)),
                 "cable": cable.map(|c| c.0.clone()),
                 "core": cable.and_then(|c| c.1.clone()),
             })
@@ -666,22 +674,66 @@ fn wires(d: &Document) -> Vec<Value> {
         .collect()
 }
 
+/// The device a wire or cable names as its protection, in words: `-F01:3`, or the id of a device
+/// that is not there.
+fn protected_name(d: &Document, p: ecad_model::wire::ProtectedBy) -> String {
+    let device = if d.devices.contains_key(&p.device) { device_name(d, p.device) } else { format!("{} (not in the project)", p.device.short()) };
+    p.position.map_or_else(|| device.clone(), |n| format!("{device}:{n}"))
+}
+
+/// Where a cable core is, in words: its wire, or the line it waits on with its landed end
+/// (owner ruling, 2026-11-18), or unplaced.
+fn core_place(d: &Document, p: ecad_model::CorePosition) -> String {
+    match p {
+        ecad_model::CorePosition::Wire(w) => wire_name(d, w),
+        ecad_model::CorePosition::Route { route, landed: Some(t) } => {
+            format!("line {} (no wire yet, landed at {})", route.short(), point_name(d, t))
+        }
+        ecad_model::CorePosition::Route { route, landed: None } => format!("line {} (no wire yet, no end landed)", route.short()),
+        ecad_model::CorePosition::Unplaced => "unplaced".into(),
+    }
+}
+
 fn cables(d: &Document) -> Vec<Value> {
     d.cables
         .iter()
         .map(|(id, k)| {
-            let members: Vec<Value> = k.members.iter().map(|m| json!({"wire": wire_name(d, m.conductor), "core": m.core})).collect();
+            let members: Vec<Value> = k
+                .cores
+                .iter()
+                .map(|m| {
+                    let mut v = json!({
+                        "wire": core_place(d, m.position),
+                        "core": m.label_str(),
+                        "purpose": if m.is_spare() { "spare" } else { "in use" },
+                        "colours": m.colours.as_ref().map(ToString::to_string),
+                    });
+                    // Its named points on the cable's references (design 072 §4.4, F4).
+                    if !m.through.is_empty() {
+                        v["through"] = json!(m.through.iter().map(ToString::to_string).collect::<Vec<_>>());
+                    }
+                    v
+                })
+                .collect();
             let mut ends: [BTreeSet<String>; 2] = [BTreeSet::new(), BTreeSet::new()];
-            for m in &k.members {
-                if let Some(w) = d.wires.get(&m.conductor) {
+            for m in &k.cores {
+                if let Some(w) = m.wire().and_then(|w| d.wires.get(&w)) {
                     for (side, t) in ends.iter_mut().zip(w.ends.iter()) {
-                        if let Some(term) = t.and_then(|t| d.terminals.get(&t)) {
+                        if let Some(term) = d.terminals.get(t) {
                             side.insert(device_name(d, term.component));
                         }
                     }
                 }
             }
-            json!({"id": id.to_string(), "tag": k.properties.get(ecad_model::tag::TAG_KEY), "members": members, "ends": ends})
+            json!({
+                "id": id.to_string(),
+                "tag": k.properties.get(ecad_model::tag::TAG_KEY),
+                "cable_type": k.cable_type.as_ref().map(ecad_model::StyleRef::text),
+                "shield": k.shield.map(ecad_model::words::Word::word),
+                "protected_by": k.protected_by.map(|p| protected_name(d, p)),
+                "members": members,
+                "ends": ends,
+            })
         })
         .collect()
 }

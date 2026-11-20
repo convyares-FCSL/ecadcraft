@@ -48,9 +48,8 @@ pub use protection::*;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::units::{Amps, Celsius, Percent, Volts};
-use ecad_model::wire::{CircuitInputs, InstallMethod, SupplySystem};
-use ecad_model::{CableId, DeviceId, Document, NetId, ObjectRef, Op, StyleRef, WireId, Word};
+use ecad_model::wire::CircuitInputs;
+use ecad_model::{CableId, DeviceId, Document, NetKey, ObjectRef, Op, StyleRef, WireId, Word};
 
 use crate::defaults::{self, Scope};
 use crate::styles::{self, cable, ratingtable, wire};
@@ -140,34 +139,17 @@ impl RatedSubject {
         }
     }
 
-    fn props(self, doc: &Document) -> Option<&ecad_model::Properties> {
+    /// The wire or cable itself, as a [`Circuit`].
+    pub fn circuit(self, doc: &Document) -> Option<&dyn Circuit> {
         match self {
-            RatedSubject::Wire(c) => doc.wires.get(&c).map(|x| &x.display),
-            RatedSubject::Cable(k) => doc.cables.get(&k).map(|x| &x.properties),
+            RatedSubject::Wire(c) => doc.wires.get(&c).map(|x| x as &dyn Circuit),
+            RatedSubject::Cable(k) => doc.cables.get(&k).map(|x| x as &dyn Circuit),
         }
     }
 
-    /// Its own rating inputs and load: a wire's fields; a cable's stored values (lane D step 2
-    /// types them), a value that does not read raising [`Issue::BadValue`] in `issues`.
-    pub fn inputs(self, doc: &Document, issues: &mut Vec<Issue>) -> (CircuitInputs, Option<f64>) {
-        match self {
-            RatedSubject::Wire(c) => doc.wires.get(&c).map_or_else(Default::default, |w| (w.rating, w.load.map(|a| a.0))),
-            RatedSubject::Cable(_) => {
-                let props = self.props(doc);
-                let inputs = CircuitInputs {
-                    basis: own(props, BASIS, Basis::parse, issues),
-                    manual: own(props, MANUAL, parse::current, issues).map(Amps),
-                    bundling: None,
-                    method: own(props, METHOD, InstallMethod::parse, issues),
-                    ambient: own(props, AMBIENT, parse::ambient, issues).map(Celsius),
-                    grouped: own(props, GROUPED, |v| parse::count(v).and_then(|n| u8::try_from(n).ok()), issues),
-                    voltage: own(props, VOLTAGE, parse::voltage, issues).map(Volts),
-                    system: own(props, SYSTEM, SupplySystem::parse, issues),
-                    vd_limit: own(props, VD_LIMIT, parse::percent, issues).map(Percent),
-                };
-                (inputs, props.and_then(|p| p.get(LOAD)).and_then(|v| parse::current(v)))
-            }
-        }
+    /// Its own rating inputs and load: a wire's or a cable's fields (design 072 §4.2, §4.5).
+    pub fn inputs(self, doc: &Document) -> (CircuitInputs, Option<f64>) {
+        self.circuit(doc).map_or_else(Default::default, |c| (*c.inputs(), c.load()))
     }
 
     /// Its words in a row: the wire number (or `wire`), the cable tag.
@@ -182,6 +164,66 @@ impl RatedSubject {
             }),
             RatedSubject::Cable(k) => crate::cables::cable_title(doc, k),
         }
+    }
+}
+
+/// What the rating check reads from a panel wire or a field cable (design 072 §4.5): its typed
+/// rating inputs and load, and the few words still kept as properties.
+///
+/// # Semantics
+/// [`evaluate`], the volt drop and the protection side read a subject only through this trait, so
+/// a wire and a cable are rated by the same code. `length` and `type` are a cable's properties
+/// until they get types of their own.
+pub trait Circuit {
+    /// Its own rating inputs; each overrides the project's.
+    fn inputs(&self) -> &CircuitInputs;
+    /// Its typed design current Ib, in A.
+    fn load(&self) -> Option<f64>;
+    /// Its length as typed (`25 m`).
+    fn length(&self) -> Option<&str>;
+    /// Its free-text type (`4G2.5`), read for a size when it has no cable type.
+    fn type_text(&self) -> Option<&str>;
+    /// The device it names as its protection, over the trace's.
+    fn protected_by(&self) -> Option<ecad_model::wire::ProtectedBy>;
+}
+
+fn named<'a>(p: &'a ecad_model::Properties, key: &str) -> Option<&'a str> {
+    p.get(key).map(String::as_str).filter(|v| !v.trim().is_empty())
+}
+
+impl Circuit for ecad_model::wire::Wire {
+    fn inputs(&self) -> &CircuitInputs {
+        &self.rating
+    }
+    fn load(&self) -> Option<f64> {
+        self.load.map(|a| a.0)
+    }
+    fn length(&self) -> Option<&str> {
+        named(&self.display, "length")
+    }
+    fn type_text(&self) -> Option<&str> {
+        named(&self.display, "type")
+    }
+    fn protected_by(&self) -> Option<ecad_model::wire::ProtectedBy> {
+        self.protected_by
+    }
+}
+
+impl Circuit for ecad_model::Cable {
+    fn inputs(&self) -> &CircuitInputs {
+        &self.rating
+    }
+    fn load(&self) -> Option<f64> {
+        self.load.map(|a| a.0)
+    }
+    fn length(&self) -> Option<&str> {
+        named(&self.properties, "length")
+    }
+    fn type_text(&self) -> Option<&str> {
+        named(&self.properties, "type")
+    }
+    fn protected_by(&self) -> Option<ecad_model::wire::ProtectedBy> {
+        self.protected_by
     }
 }
 
@@ -219,7 +261,7 @@ pub enum Issue {
     LoadOver,
     VoltDropOver,
     BundlingUnset,
-    /// `protected_by` names nothing.
+    /// `protected_by` names a device that is not there (read so from a file).
     DeviceMissing(String),
     /// No device found (`true`: the trace stopped at its bound).
     NoDevice(bool),
@@ -250,7 +292,7 @@ pub struct Touch {
     pub subjects: BTreeSet<RatedSubject>,
     /// Re-trace these too.
     pub retrace: BTreeSet<RatedSubject>,
-    pub nets: BTreeSet<NetId>,
+    pub nets: BTreeSet<NetKey>,
     pub devices: BTreeSet<DeviceId>,
     pub styles: BTreeSet<(ecad_model::StyleCatalogue, StyleRef)>,
     /// Locations whose temperature changed: `at[location]` (D1).
@@ -294,9 +336,6 @@ impl Touch {
                     for k in doc.cables_of(*c) {
                         self.retrace.insert(RatedSubject::Cable(k));
                     }
-                }
-                Op::SetProperty { object: ObjectRef::Cable(k), .. } => {
-                    self.retrace.insert(RatedSubject::Cable(*k));
                 }
                 Op::SetProperty { object: ObjectRef::Device(c), key, .. } => {
                     let is_box = doc.devices.get(c).is_some_and(crate::locations::is_box_component);
@@ -346,21 +385,12 @@ impl Touch {
                         self.all_results = true;
                     }
                 }
-                Op::CreateWire { id, conductor } | Op::DeleteWire { id, conductor } => {
+                Op::CreateWire { id, wire } | Op::DeleteWire { id, wire } => {
                     self.retrace.insert(RatedSubject::Wire(*id));
                     if let Some(n) = conn.net_of_conductor(*id) {
                         self.nets.insert(n);
                     }
-                    for t in conductor.ends.iter().flatten() {
-                        net_of_terminal(*t, self);
-                    }
-                }
-                Op::AttachEnd { conductor, before, after, .. } => {
-                    self.retrace.insert(RatedSubject::Wire(*conductor));
-                    if let Some(n) = conn.net_of_conductor(*conductor) {
-                        self.nets.insert(n);
-                    }
-                    for t in [before, after].into_iter().flatten() {
+                    for t in &wire.ends {
                         net_of_terminal(*t, self);
                     }
                 }
@@ -410,13 +440,13 @@ impl Touch {
                 }
                 Op::CreateCable { id, cable } | Op::DeleteCable { id, cable } => {
                     self.retrace.insert(RatedSubject::Cable(*id));
-                    for m in &cable.members {
-                        self.retrace.insert(RatedSubject::Wire(m.conductor));
+                    for m in &cable.cores {
+                        self.retrace.extend(m.wire().map(RatedSubject::Wire));
                     }
                 }
-                Op::AddCableMember { cable, member, .. } | Op::RemoveCableMember { cable, member, .. } => {
-                    self.retrace.insert(RatedSubject::Cable(*cable));
-                    self.retrace.insert(RatedSubject::Wire(member.conductor));
+                Op::ModifyCable { id, before, after } => {
+                    self.retrace.insert(RatedSubject::Cable(*id));
+                    self.retrace.extend(before.cores.iter().chain(&after.cores).filter_map(|m| m.wire()).map(RatedSubject::Wire));
                 }
                 // A device moved may enter another location box: its wires; a box moved: the wires at
                 // its location and those of the devices on its page.
@@ -445,7 +475,7 @@ pub struct Kept {
     /// device → subjects it protects (by the trace or by name).
     protects: BTreeMap<DeviceId, BTreeSet<RatedSubject>>,
     /// net → subjects whose trace crossed it.
-    path: BTreeMap<NetId, BTreeSet<RatedSubject>>,
+    path: BTreeMap<NetKey, BTreeSet<RatedSubject>>,
     tally: Tally,
     /// Devices whose rating does not read → how many results name them.
     unread: BTreeMap<DeviceId, (usize, String)>,
@@ -893,9 +923,11 @@ pub fn rows(doc: &Document, r: &Rating) -> Vec<Check> {
                     show,
                 );
             }
-            Issue::DeviceMissing(t) => {
-                row(CheckKind::RatingDeviceMissing, format!("{who} names {t} as its protection; there is no {t}"), Some(Fix::ClearProtectedBy(s)))
-            }
+            Issue::DeviceMissing(t) => row(
+                CheckKind::RatingDeviceMissing,
+                format!("{who} names {t} as its protection; it is not in the project"),
+                Some(Fix::ClearProtectedBy(s)),
+            ),
             Issue::TwoDevices(a, b) => {
                 let used = i_n.map(|x| format!("; {} A ({a}) used", dataset::fmt_num(x))).unwrap_or_default();
                 row(CheckKind::RatingTwoDevices, format!("{who} is fed by {a} and {b}{used}"), None);

@@ -126,8 +126,9 @@ impl Live {
         p.read(&mut t.cad.session, |p, _| p.ledger.full_log().unwrap()).unwrap()
     }
 
+    /// The lines drawn (the tests' lines end free: routes that carry no wire, design 072).
     fn wires(&mut self) -> usize {
-        crate::mouse_tester::doc(&mut self.h).wires.len()
+        crate::mouse_tester::doc(&mut self.h).routes.len()
     }
 
     /// The project's author and transaction budget now (the frame invariant, §5.2).

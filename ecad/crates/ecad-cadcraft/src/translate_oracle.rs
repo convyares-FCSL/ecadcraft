@@ -21,15 +21,18 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use cadcraft_engine::doc::{Drawing, Entity, Handle};
 use cadcraft_engine::ext::{Provenance, Source};
-use ecad_model::derive::{route_on_page, terminal_positions};
+use ecad_model::derive::terminal_positions;
 use ecad_model::{
-    Device, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Pt, Representation, RepresentationId, Subject, Terminal,
-    TerminalId, Wire, WireId,
+    Device, DeviceId, Document, End, Form, IdAllocator, ItemId, ItemKind, Op, PageId, Pt, Representation, RepresentationId, Route, RouteEnd, RouteId,
+    Subject, Terminal, TerminalId,
 };
 
 use crate::convert::{ECAD_PREFIX, MARKER_LAYER, item_from, marker_entity, marker_position};
 use crate::project::{ClipSnapshot, HandleMap, Mapped};
-use crate::translate::Translation;
+use crate::translate::{
+    Moves, ROUTE_SHAPE, Translation, apply_moves, erase_routes, merge_route_edits, record, reference_points_follow, route_edit, route_moved,
+};
+use crate::wires::path_vertices;
 
 static COMPARED: AtomicU64 = AtomicU64::new(0);
 static ACCEPTED: AtomicU64 = AtomicU64::new(0);
@@ -182,10 +185,17 @@ fn entities(d: &Drawing) -> (Vec<Handle>, HashMap<Handle, &Arc<Entity>>) {
     (order, d.model.iter().map(|e| (e.handle, e)).collect())
 }
 
-/// Apply `ops` to a copy of `doc` and check invariants.
+/// Apply `ops` to a copy of `doc`, then the wire rewrite a commit runs after them (design 072
+/// §4.4), and check invariants.
 fn preview(doc: &Document, ops: &[Op]) -> Result<Document, String> {
     let mut d = doc.clone();
     for op in ops {
+        op.apply(&mut d).map_err(|e| e.to_string())?;
+    }
+    for op in ecad_model::wire_order::rewrite(&d, ops) {
+        op.apply(&mut d).map_err(|e| e.to_string())?;
+    }
+    for op in ecad_model::wire_order::cores(&d, ops) {
         op.apply(&mut d).map_err(|e| e.to_string())?;
     }
     d.check().map_err(|e| e.to_string())?;
@@ -240,7 +250,8 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
     // Wire labels (brief 022) are left out the same way: drawn again from the document.
     // Device cross-references (brief 025) too.
     let drawn = |map: &HandleMap, h: Handle| {
-        matches!(map.get(h), Some(Mapped::Fan(k)) if !map.is_fan(k)) || matches!(map.get(h), Some(Mapped::Label(_) | Mapped::Xref(_)))
+        matches!(map.get(h), Some(Mapped::Fan(k)) if !map.is_fan(k))
+            || matches!(map.get(h), Some(Mapped::Label(_) | Mapped::Xref(_) | Mapped::Tee(_)))
     };
     // Device tag texts and terminal labels (brief 018) are left out the same way when changed or
     // copied with other objects; erasing one erases its symbol (below).
@@ -289,6 +300,11 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
         if skipped.iter().all(|h| link(cx.map, *h) || copied_source(h, &link)) {
             return Err(crate::link_lines::LINK_DERIVED.into());
         }
+        // Lane 072 D: a T's dot alone.
+        let tee = |m: &HandleMap, x: Handle| matches!(m.get(x), Some(Mapped::Tee(_)));
+        if skipped.iter().all(|h| tee(cx.map, *h) || copied_source(h, &tee)) {
+            return Err(crate::wires::TEE_DERIVED.into());
+        }
         return Err(if tags_only {
             crate::devices::TAG_DERIVED
         } else if labels_only {
@@ -326,8 +342,9 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
                 counts[2] += 1;
             }
             // Left out (above); drawn again from the document.
-            Some(Mapped::Fan(_) | Mapped::Label(_) | Mapped::Xref(_)) if skipped.contains(h) => {}
+            Some(Mapped::Fan(_) | Mapped::Label(_) | Mapped::Xref(_) | Mapped::Tee(_)) if skipped.contains(h) => {}
             Some(Mapped::Label(_)) => return Err(crate::wires::LABEL_DERIVED.into()),
+            Some(Mapped::Tee(_)) => return Err(crate::wires::TEE_DERIVED.into()),
             Some(m @ Mapped::Xref(_)) => return Err(crate::xref::refusal(cx.doc, Some(m)).into()),
             // Briefs 005, 009: a fan is a view, not an object; it cannot be erased.
             Some(Mapped::Fan(k)) => return Err(crate::views::refusal(cx.map, k).into()),
@@ -396,12 +413,21 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
                         return Err(m);
                     }
                     linked_changed |= cx.doc.representation_of_item(id).is_some();
+                    if let Some((rid, points)) = reference_points_follow(cx.doc, id, &old, &item) {
+                        rep(&mut reps, rid, cx.doc)?;
+                        if let Some(r) = reps.get_mut(&rid) {
+                            r.connection_points.extend(points);
+                        }
+                    }
+                    let route = route_edit(cx.doc, id, &item)?;
                     t.ops.push(Op::ModifyItem { id, before: old, after: item });
+                    t.ops.extend(route);
                     counts[1] += 1;
                 }
             }
-            Some(Mapped::Fan(_) | Mapped::Label(_) | Mapped::Xref(_)) if skipped.contains(h) => {}
+            Some(Mapped::Fan(_) | Mapped::Label(_) | Mapped::Xref(_) | Mapped::Tee(_)) if skipped.contains(h) => {}
             Some(Mapped::Label(_)) => return Err(crate::wires::LABEL_DERIVED.into()),
+            Some(Mapped::Tee(_)) => return Err(crate::wires::TEE_DERIVED.into()),
             Some(m @ Mapped::Xref(_)) => return Err(crate::xref::refusal(cx.doc, Some(m)).into()),
             Some(Mapped::Fan(k)) => return Err(crate::views::refusal(cx.map, k).into()),
             Some(Mapped::RefText(_)) => return Err(crate::references::TEXT_DERIVED.into()),
@@ -428,7 +454,7 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
     // are dropped.
     let added: Vec<Handle> = added_handles.into_iter().filter(|h| !skipped.contains(h)).collect();
     let mut batches: BTreeMap<u32, Vec<(Handle, Source)>> = BTreeMap::new();
-    let mut fresh_conductor_ends: Vec<(WireId, End)> = Vec::new();
+    let mut fresh_route_ends: Vec<(RouteId, End)> = Vec::new();
     // Removing a meaningful object while creating new ones without provenance is a replacement
     // (BREAK, JOIN, EXPLODE, TRIM that re-creates…): what the new objects mean is undecided (L1).
     // Changing one in place while creating new ones is the same split (BREAK and TRIM keep the
@@ -456,16 +482,17 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
         }
     }
     for (_, batch) in batches {
-        copy_batch(cx, &after, &batch, &mut t, &mut fresh_conductor_ends, &mut counts)?;
+        copy_batch(cx, &after, &batch, &mut t, &mut fresh_route_ends, &mut counts)?;
     }
 
     // Representation edits: an emptied representation is removed (its subject stays, DOC-06). A
     // symbol's connection points are in its definition's frame (brief 018): with no symbol left
-    // they place nothing.
+    // they place nothing. A cable reference's named points (design 072 §4.4, F4) are placed by
+    // its point: with the point erased, the reference goes with them.
     let mut unlinked: Vec<(RepresentationId, Representation)> = Vec::new();
     for (id, r) in reps {
         let old = cx.doc.representations.get(&id).cloned().ok_or("representation missing")?;
-        if r.items.is_empty() && (r.connection_points.is_empty() || r.form == Form::Symbol) {
+        if r.items.is_empty() && (r.connection_points.is_empty() || r.form == Form::Symbol || matches!(r.subject, Subject::Cable(_))) {
             unlinked.push((id, old.clone()));
             t.ops.push(Op::UnlinkRepresentation { id, rep: old });
         } else if r != old {
@@ -480,13 +507,15 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
     t.notes.extend(notes);
     // Brief 032 §3.5: one of a cable's several slashes erased takes its page's members along.
     t.ops.extend(crate::references::slash_erase_followups(cx.doc, &unlinked));
+    erase_routes(cx.doc, &unlinked, &mut t.ops);
+    merge_route_edits(&mut t.ops);
 
     // Left-out parts beside objects that recorded nothing: nothing else was edited after all.
     if !skipped.is_empty() && t.ops.is_empty() {
         return Err(crate::views::DRAWN_REFUSED.into());
     }
 
-    movement(cx, &mut t, &fresh_conductor_ends)?;
+    movement(cx, &mut t, &fresh_route_ends)?;
     preview(cx.doc, &t.ops)?;
     t.summary = format!("{} added, {} modified, {} removed, {} components copied", counts[0], counts[1], counts[2], counts[3]);
     Ok(t)
@@ -494,8 +523,8 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
 
 /// One copy operation's new entities (§11.1).
 fn copy_batch(
-    cx: &mut OldCtx<'_>, after: &HashMap<Handle, &Arc<Entity>>, batch: &[(Handle, Source)], t: &mut Translation, fresh_ends: &mut Vec<(WireId, End)>,
-    counts: &mut [usize; 4],
+    cx: &mut OldCtx<'_>, after: &HashMap<Handle, &Arc<Entity>>, batch: &[(Handle, Source)], t: &mut Translation,
+    fresh_ends: &mut Vec<(RouteId, End)>, counts: &mut [usize; 4],
 ) -> Result<(), String> {
     // Resolve sources against the live document or the clipboard snapshot.
     let mut src_doc: Option<&Document> = None;
@@ -516,6 +545,7 @@ fn copy_batch(
             Some(Mapped::Fan(k)) => return Err(crate::views::refusal(map, k).into()),
             Some(Mapped::RefText(_)) => return Err(crate::references::TEXT_DERIVED.into()),
             Some(Mapped::Frame(_)) => return Err(crate::frame::DERIVED.into()),
+            Some(Mapped::Tee(_)) => return Err(crate::wires::TEE_DERIVED.into()),
             _ => {}
         }
         src_doc = Some(doc);
@@ -603,32 +633,49 @@ fn copy_batch(
         counts[3] += 1;
     }
 
-    // Whole conductor routes: new conductors; ends follow copied terminals, else are resolved later.
+    // Whole routes: new routes; ends follow copied connection points, else are resolved later.
     for (_, r) in sdoc.representations.iter().filter(|(_, r)| r.page == cx.page) {
-        let Subject::Wire(src_c) = r.subject else { continue };
+        let Subject::Route(src_r) = r.subject else { continue };
         let handles: Vec<Handle> = r.items.iter().filter_map(|i| smap.item(*i)).collect();
         if handles.is_empty() || handles.len() != r.items.len() || !handles.iter().all(|h| by_source.contains_key(h)) {
             continue;
         }
-        let c = sdoc.wires.get(&src_c).cloned().ok_or("source conductor missing")?;
-        let new_c: WireId = cx.ids.fresh();
-        t.ops.push(Op::CreateWire { id: new_c, conductor: Wire { ends: [None, None], ..c.clone() } });
+        let src = sdoc.routes.get(&src_r).cloned().ok_or("source route missing")?;
+        let new_r: RouteId = cx.ids.fresh();
         let new_rep: RepresentationId = cx.ids.fresh();
         let mut items = Vec::new();
+        let mut added = Vec::new();
+        let mut points: Option<Vec<Pt>> = None;
         for sh in &handles {
             let nh = by_source.get(sh).copied().ok_or("copy missing")?;
             let e = after.get(&nh).ok_or("copied entity missing")?;
             let item = item_from(cx.doc, cx.page, e)?;
+            if points.is_none() {
+                points = Some(match &item.kind {
+                    ItemKind::Primitive(p) => path_vertices(p).ok_or(ROUTE_SHAPE)?,
+                    ItemKind::Symbol(_) => return Err(ROUTE_SHAPE.into()),
+                });
+            }
             let id: ItemId = cx.ids.fresh();
-            t.ops.push(Op::AddItem { id, item });
+            added.push(Op::AddItem { id, item });
             t.new_items.push((id, nh));
             items.push(id);
             consumed.insert(nh);
         }
+        let points = points.ok_or(ROUTE_SHAPE)?;
+        let mut ends = [RouteEnd::Free; 2];
+        for ((end, slot), src_end) in End::BOTH.into_iter().zip(ends.iter_mut()).zip(src.ends) {
+            match src_end.point().and_then(|src_t| term_map.get(&src_t)) {
+                Some(nt) => *slot = RouteEnd::Point(*nt),
+                None => fresh_ends.push((new_r, end)),
+            }
+        }
+        t.ops.push(Op::AddRoute { id: new_r, route: Route::new(cx.page, points, ends) });
+        t.ops.extend(added);
         t.ops.push(Op::LinkRepresentation {
             id: new_rep,
             rep: Representation {
-                subject: Subject::Wire(new_c),
+                subject: Subject::Route(new_r),
                 page: cx.page,
                 form: Form::Drawn,
                 role: r.role,
@@ -636,12 +683,6 @@ fn copy_batch(
                 connection_points: BTreeMap::new(),
             },
         });
-        for end in End::BOTH {
-            match c.end(end).and_then(|src_t| term_map.get(&src_t)) {
-                Some(nt) => t.ops.push(Op::AttachEnd { conductor: new_c, end, before: None, after: Some(*nt) }),
-                None => fresh_ends.push((new_c, end)),
-            }
-        }
     }
 
     // Everything else in the batch: plain copies of plain or partly copied items.
@@ -667,94 +708,20 @@ fn copy_batch(
     Ok(())
 }
 
-/// Movement policy (§10). Adds attachment ops and route-end amendments to `t`.
-fn movement(cx: &OldCtx<'_>, t: &mut Translation, fresh_ends: &[(WireId, End)]) -> Result<(), String> {
-    let eps = 1e-9;
+/// Movement policy (§10) over every route of the page. Adds route changes and their line
+/// amendments to `t`.
+fn movement(cx: &OldCtx<'_>, t: &mut Translation, fresh_ends: &[(RouteId, End)]) -> Result<(), String> {
     let proposed = preview(cx.doc, &t.ops)?;
     let old_pos = positions(cx.doc, cx.page);
     let new_pos = positions(&proposed, cx.page);
-    let mut amend: BTreeMap<ItemId, Item> = BTreeMap::new();
-    let mut attach: Vec<Op> = Vec::new();
-    let mut notes: Vec<String> = Vec::new();
-    for (cid, c) in &proposed.wires {
-        let Some((route_id, prim)) = route_on_page(&proposed, *cid, cx.page) else { continue };
-        let Some((new_a, new_b)) = prim.path_ends() else { continue };
-        let old_ends = route_on_page(cx.doc, *cid, cx.page).and_then(|(id, p)| (id == route_id).then(|| p.path_ends()).flatten());
-        let mut route = prim.clone();
-        for (end, new_end) in [(End::A, new_a), (End::B, new_b)] {
-            let fresh = fresh_ends.contains(&(*cid, end));
-            let end_moved = fresh || old_ends.is_some_and(|(a, b)| !(if end == End::A { a } else { b }).near(new_end, eps));
-            match c.end(end) {
-                Some(term) => {
-                    let (op, np) = (old_pos.get(&term), new_pos.get(&term));
-                    let terminal_moved = matches!((op, np), (Some(a), Some(b)) if !a.near(*b, eps));
-                    if terminal_moved {
-                        // M2: the end follows its terminal.
-                        if let Some(np) = np
-                            && !new_end.near(*np, eps)
-                            && let Some(r) = route.with_path_end(end, *np)
-                        {
-                            route = r;
-                        }
-                    } else if end_moved && old_pos.contains_key(&term) {
-                        // M3: a deliberate reconnection, resolved once. Only for a terminal shown
-                        // on this page: an end attached on another page (a wire continued across
-                        // pages, brief 010) is the end that leaves toward the reference here,
-                        // and moving it never detaches it.
-                        let found = terminal_at(&proposed, cx.page, new_end, cx.tol);
-                        if found != Some(term) {
-                            attach.push(Op::AttachEnd { conductor: *cid, end, before: Some(term), after: found });
-                        }
-                    } else if end_moved && terminal_at(&proposed, cx.page, new_end, cx.tol).is_some() {
-                        // The end leaving toward a reference was dropped on a terminal here: it
-                        // stays connected on the other page, and the user is told so.
-                        notes.push(format!(
-                            "End {end:?} of {} is connected on another page, so it was not connected here; \
-disconnect it there first.",
-                            crate::slash::wire_name(&proposed, *cid)
-                        ));
-                    }
-                }
-                None if end_moved => {
-                    if let Some(found) = terminal_at(&proposed, cx.page, new_end, cx.tol) {
-                        attach.push(Op::AttachEnd { conductor: *cid, end, before: None, after: Some(found) });
-                    }
-                }
-                None => {}
-            }
-        }
-        if route != prim
-            && let Some(item) = proposed.items.get(&route_id)
-        {
-            amend.insert(route_id, Item { kind: ItemKind::Primitive(route), ..item.clone() });
-        }
+    let mut found = |at: Pt| terminal_at(&proposed, cx.page, at, cx.tol);
+    let mut out: Moves = Default::default();
+    for (r, route) in proposed.routes.iter().filter(|(_, x)| x.page == cx.page) {
+        let old_ends = cx.doc.routes.get(r).and_then(Route::end_points);
+        let position = |term: TerminalId| (old_pos.get(&term).copied(), new_pos.get(&term).copied());
+        let after = route_moved(&proposed, cx.page, *r, route, old_ends, fresh_ends, position, &mut found);
+        record(&proposed, *r, route, after, &mut out);
     }
-    for (id, after) in amend {
-        let handle = cx.map.item(id).or_else(|| t.new_items.iter().find(|(i, _)| *i == id).map(|(_, h)| *h));
-        // Fold into the op that already touches the item, else add a modification.
-        let mut folded = false;
-        for op in t.ops.iter_mut() {
-            match op {
-                Op::ModifyItem { id: i, after: a, .. } if *i == id => {
-                    *a = after.clone();
-                    folded = true;
-                }
-                Op::AddItem { id: i, item } if *i == id => {
-                    *item = after.clone();
-                    folded = true;
-                }
-                _ => {}
-            }
-        }
-        if !folded {
-            let before = proposed.items.get(&id).cloned().ok_or("route item missing")?;
-            t.ops.push(Op::ModifyItem { id, before, after });
-        }
-        if let Some(h) = handle {
-            t.amended.insert(h);
-        }
-    }
-    t.ops.extend(attach);
-    t.notes.extend(notes);
+    apply_moves(cx.map, t, out);
     Ok(())
 }

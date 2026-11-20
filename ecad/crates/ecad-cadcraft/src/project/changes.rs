@@ -461,28 +461,44 @@ impl Project {
         }
     }
 
-    /// `props` with the conductors the numbering pass of the last transaction renumbered (its ops
-    /// after the first `n`): the Properties view of a wire reads its number (brief 022).
+    /// `props` with the wires the extension of the last transaction (its ops after the first `n`)
+    /// made, removed, changed or renumbered: the wire rewrite (design 072 §4.4) and the numbering
+    /// pass (brief 022); the Properties view of a wire reads its number, net and ends.
     pub(super) fn with_numbered(&self, props: Option<BTreeSet<ecad_model::ObjectRef>>, n: usize) -> Option<BTreeSet<ecad_model::ObjectRef>> {
         let mut props = props?;
         let extra = self.ledger.log().last().map(|t| t.ops.get(n..).unwrap_or_default()).unwrap_or_default();
+        let doc = self.ledger.document();
         for op in extra {
-            if let Op::SetProperty { object, .. } = op {
-                props.insert(*object);
+            match op {
+                Op::SetProperty { object, .. } => {
+                    props.insert(*object);
+                }
+                Op::CreateWire { id, wire } | Op::DeleteWire { id, wire } | Op::ModifyWire { id, after: wire, .. } => {
+                    props.insert(ecad_model::ObjectRef::Wire(*id));
+                    // The devices at its ends show its net (brief 022).
+                    props.extend(wire.ends.iter().filter_map(|t| doc.terminals.get(t)).map(|t| ecad_model::ObjectRef::Device(t.component)));
+                }
+                _ => {}
             }
         }
         Some(props)
     }
 
-    /// The pages whose labels the numbering pass of the last transaction changed: the pages of
-    /// the conductors its ops (after the first `n`, the command's own) renumbered (brief 022).
+    /// The pages whose labels the extension of the last transaction changed: the pages of the
+    /// wires its ops (after the first `n`, the command's own) made, removed or renumbered (the
+    /// wire rewrite, design 072 §4.4, and the numbering pass, brief 022).
     pub(super) fn numbered_pages(&self, n: usize) -> Option<BTreeSet<PageId>> {
         let doc = self.ledger.document();
         let extra = self.ledger.log().last().map(|t| t.ops.get(n..).unwrap_or_default()).unwrap_or_default();
         let mut out = BTreeSet::new();
         for op in extra {
-            if let Op::SetProperty { object: ecad_model::ObjectRef::Wire(c), .. } | Op::ModifyWire { id: c, .. } = op {
-                out.extend(doc.representations_of(Subject::Wire(*c)).map(|(_, r)| r.page));
+            match op {
+                Op::SetProperty { object: ecad_model::ObjectRef::Wire(c), .. } | Op::ModifyWire { id: c, .. } => {
+                    out.extend(crate::wires::wire_pages(doc, *c));
+                }
+                // The rewrite's wires (design 072 §4.4): labelled on the routes at their ends.
+                Op::CreateWire { wire, .. } | Op::DeleteWire { wire, .. } => out.extend(super::points_pages(doc, &wire.ends)),
+                _ => {}
             }
         }
         Some(out)

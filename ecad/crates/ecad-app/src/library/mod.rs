@@ -209,6 +209,7 @@ impl App {
                                 .unwrap_or_else(|| ecad_model::PointKey::Def((n + 1).to_string())),
                             label: tm.label.clone(),
                             at: ecad_model::Pt::new(at.x - o.x, at.y - o.y),
+                            accepts: Default::default(),
                         })
                     })
                     .collect();

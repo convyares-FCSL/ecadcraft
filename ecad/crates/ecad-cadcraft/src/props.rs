@@ -63,6 +63,8 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
             Subject::Device(c) => ObjectRef::Device(c),
             Subject::Wire(c) => ObjectRef::Wire(c),
             Subject::Cable(c) => ObjectRef::Cable(c),
+            // A route has no properties (design 072 F31).
+            Subject::Route(_) => return,
         });
     };
     for op in ops {
@@ -88,21 +90,26 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
             Op::ModifyWire { id, .. } => {
                 out.insert(ObjectRef::Wire(*id));
             }
-            Op::CreateWire { id, conductor } | Op::DeleteWire { id, conductor } => {
+            Op::CreateWire { id, wire } | Op::DeleteWire { id, wire } => {
                 out.insert(ObjectRef::Wire(*id));
                 // The devices at its ends: a wire's net (brief 022) is shown through them.
-                out.extend(conductor.ends.iter().flatten().filter_map(|t| doc.terminals.get(t)).map(|t| ObjectRef::Device(t.component)));
+                out.extend(wire.ends.iter().filter_map(|t| doc.terminals.get(t)).map(|t| ObjectRef::Device(t.component)));
             }
-            Op::AttachEnd { conductor: id, before, after, .. } => {
-                out.insert(ObjectRef::Wire(*id));
-                out.extend([before, after].into_iter().flatten().filter_map(|t| doc.terminals.get(t)).map(|t| ObjectRef::Device(t.component)));
-            }
-            Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
+            Op::CreateCable { id, cable } | Op::DeleteCable { id, cable } => {
                 out.insert(ObjectRef::Cable(*id));
+                out.extend(cable.cores.iter().filter_map(|m| m.wire()).map(ObjectRef::Wire));
             }
-            Op::AddCableMember { cable, member, .. } | Op::RemoveCableMember { cable, member, .. } => {
-                out.insert(ObjectRef::Cable(*cable));
-                out.insert(ObjectRef::Wire(member.conductor));
+            // A route has no properties (design 072 F31); the devices it lands on show its net.
+            Op::AddRoute { route, .. } | Op::RemoveRoute { route, .. } => {
+                out.extend(route.points_landed().filter_map(|t| doc.terminals.get(&t)).map(|t| ObjectRef::Device(t.component)));
+            }
+            Op::ModifyRoute { before, after, .. } => {
+                let landed = before.points_landed().chain(after.points_landed());
+                out.extend(landed.filter_map(|t| doc.terminals.get(&t)).map(|t| ObjectRef::Device(t.component)));
+            }
+            Op::ModifyCable { id, before, after } => {
+                out.insert(ObjectRef::Cable(*id));
+                out.extend(before.cores.iter().chain(&after.cores).filter_map(|m| m.wire()).map(ObjectRef::Wire));
             }
             // A new or removed item is shown through its representation (linked or unlinked in the
             // same transaction); a moved one changes its subject's place.
@@ -185,6 +192,8 @@ fn pick(p: &Project, page: PageId, selection: &[Handle]) -> Picked {
         let rep = match map.get(*h) {
             Some(Mapped::Item(i)) => doc.representation_of_item(i).map(|(id, _)| id),
             Some(Mapped::Marker(r, _) | Mapped::Tag(r) | Mapped::RefText(r) | Mapped::Xref(r)) => Some(r),
+            // Lane 072 D: a T's dot stands for the line that ends there.
+            Some(Mapped::Tee(r)) => crate::wires::route_item(doc, r).map(|(rid, _, _)| rid),
             // Brief 030: a link line shows its strip (Properties ▸ Link).
             Some(Mapped::Link(c, n)) => {
                 out.links.insert((c, n));
@@ -227,6 +236,13 @@ fn pick(p: &Project, page: PageId, selection: &[Handle]) -> Picked {
             Subject::Cable(k) => {
                 out.cables.insert(k);
             }
+            // A drawn line stands for the wire it carries (design 072 §4.3).
+            Subject::Route(x) => match crate::wires::wire_of_route(doc, x) {
+                Some(w) => {
+                    out.wires.insert(w);
+                }
+                None => out.plain += 1,
+            },
         }
     }
     out
@@ -324,8 +340,8 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         v.deps.extend(doc.cables_of(*w).into_iter().map(ObjectRef::Cable));
         // From and To name each end's device and connection point: a renamed device, or a
         // connection point added or removed, changes them.
-        let ends = doc.wires.get(w).map(|c| c.ends).unwrap_or([None, None]);
-        v.deps.extend(ends.iter().flatten().filter_map(|t| doc.terminals.get(t)).map(|t| ObjectRef::Device(t.component)));
+        let ends = doc.wires.get(w).map(|c| c.ends.to_vec()).unwrap_or_default();
+        v.deps.extend(ends.iter().filter_map(|t| doc.terminals.get(t)).map(|t| ObjectRef::Device(t.component)));
         // Brief 022: the number, potential and Net block read the whole net: its conductors and
         // the devices (junctions and continuations included) at its connection points.
         let conn = doc.connectivity();
@@ -773,7 +789,7 @@ fn link_section(p: &Project, c: DeviceId, n: u32) -> Section {
 }
 
 fn end_words(doc: &Document, w: WireId, end: End) -> String {
-    match doc.wires.get(&w).and_then(|c| c.end(end)) {
+    match doc.wires.get(&w).map(|c| c.end(end)) {
         // `-K01:A1` (design 019 §8.2); a junction or continuation by what it is (brief 022).
         Some(t) => crate::wires::point_words(doc, t),
         None => "not connected".into(),
@@ -792,7 +808,7 @@ fn wiring_rows(doc: &Document, w: WireId) -> (Vec<Row>, Vec<Row>) {
     let Some(net) = conn.net_of_conductor(w).and_then(|id| conn.net(id)) else { return (Vec::new(), Vec::new()) };
     let pot = wiring::net_potential(doc, net);
     let mut top = vec![
-        Row::rw(wiring::WIRE_NUMBER_KEY, "Wire number", wiring::net_number(doc, net).unwrap_or_else(|| "?".into())),
+        Row::rw(wiring::WIRE_NUMBER_KEY, "Wire number", wiring::wire_number(doc, w).unwrap_or_else(|| "?".into())),
         Row {
             choices: vec!["yes".into(), "no".into()],
             ..Row::rw(ecad_model::connectivity::WIRE_NUMBER_FIXED, "Fixed", if wiring::net_fixed(net) { "yes" } else { "no" }.into())
@@ -810,10 +826,10 @@ fn wiring_rows(doc: &Document, w: WireId) -> (Vec<Row>, Vec<Row>) {
     let cat_value =
         |v: &Option<(String, crate::defaults::Source)>| v.as_ref().filter(|x| x.1 != crate::defaults::Source::Object).map(|x| x.0.clone());
     let cat_name = look.category.as_ref().map(|id| crate::styles::name(doc, ecad_model::StyleCatalogue::Wire, id));
-    let (cs_default, colour_default) = (cat_value(&look.cross_section), cat_value(&look.colour));
+    let (cs_default, colour_default) = (cat_value(&look.cross_section), cat_value(&look.colour_text()));
     let wire = doc.wires.get(&w);
     let own_size = wire.and_then(|x| x.size).map(|s| s.to_string());
-    let own_colours = wire.and_then(|x| x.colours.as_ref()).map(|c| c.shown(doc.settings.wiring.colour_style().words()));
+    let own_colours = wire.and_then(|x| x.colours.as_ref()).map(|c| c.shown(doc.settings.wiring.colour_style()));
     let rows = [
         (ecad_electrical::cmd::props::d::SIZE, "Cross-section", own_size, &cs_default),
         (ecad_electrical::cmd::props::d::COLOURS, "Colour", own_colours, &colour_default),
@@ -822,8 +838,7 @@ fn wiring_rows(doc: &Document, w: WireId) -> (Vec<Row>, Vec<Row>) {
         let shown = |v: &str| if key == ecad_electrical::cmd::props::d::COLOURS { doc.settings.wiring.colour(v) } else { v.to_string() };
         let mut row = Row::rw(key, label, stored.clone().unwrap_or_default());
         if key == ecad_electrical::cmd::props::d::COLOURS {
-            row.choices =
-                ecad_model::colour::ConductorColour::ALL.iter().map(|c| c.shown(doc.settings.wiring.colour_style().words()).to_string()).collect();
+            row.choices = ecad_model::colour::ConductorColour::ALL.iter().map(|c| c.shown(doc.settings.wiring.colour_style()).to_string()).collect();
         }
         if stored.is_none()
             && let (Some(d), Some(n)) = (default, &cat_name)
@@ -835,9 +850,9 @@ fn wiring_rows(doc: &Document, w: WireId) -> (Vec<Row>, Vec<Row>) {
     }
     let mut pages: Vec<String> = Vec::new();
     let mut seen = BTreeSet::new();
+    let drawn: BTreeSet<PageId> = net.wires.iter().flat_map(|c| crate::wires::wire_pages(doc, *c)).collect();
     for page in &doc.page_order {
-        let on = net.wires.iter().any(|c| doc.representations_of(Subject::Wire(*c)).any(|(_, r)| r.page == *page));
-        if on && seen.insert(*page) {
+        if drawn.contains(page) && seen.insert(*page) {
             pages.push(ecad_model::book::page_number(doc, *page));
         }
     }
@@ -903,7 +918,7 @@ fn cable_section(doc: &Document, k: CableId) -> Section {
         cores.inherited = true;
     }
     rows.push(cores);
-    let members = cable.map_or(0, |c| c.members.len());
+    let members = cable.map_or(0, |c| c.cores.len());
     let used = match count.spare_text() {
         Some(s) => format!("{} / {s}", count.used()),
         None => format!("{members} / ? (set the cable's cores or type to count spares)"),

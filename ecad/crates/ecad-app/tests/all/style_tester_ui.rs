@@ -20,6 +20,8 @@ fn shown_standards() -> H {
     let mut h = harness_with(None);
     h.state_mut().set_cad_chrome(false);
     ok(&mut h, r#"place {"symbol":"coil","at":[100,100]}"#);
+    // A wire runs between two connection points (design 072).
+    crate::common::points_at(h.state_mut(), &[(0.0, 50.0), (60.0, 50.0)]);
     ok(&mut h, r#"wire {"points":[[0,50],[60,50]],"potential":"24V"}"#);
     h.state_mut().open_standards(None);
     h.run_steps(3);

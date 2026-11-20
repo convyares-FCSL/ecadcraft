@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use ecad_model::{CableId, ItemId, Op, PageId, Pt, Representation, RepresentationId, Subject, WireId};
+use ecad_model::{CableId, ItemId, Op, PageId, Pt, Representation, RepresentationId, Subject};
 
 use crate::draw::text_style::EngineMetrics;
 
@@ -13,32 +13,22 @@ pub fn reference_at(doc: &ecad_model::Document, page: PageId, p: Pt, radius: f64
     crate::references::reference_at_measured(doc, page, p, radius, &EngineMetrics)
 }
 
-/// `cableslash` in continue mode (design 032 §3.3): `cable` gains the crossed wires as members with
-/// their cores' labels, and a slash representation on this page. One transaction, `Cable slash`;
-/// no new cable, no new tag.
+/// `cableslash` with an existing cable's tag (design 072 §4.4, F5, superseding design 032 §3.3):
+/// a slash representation of `cable` on this page over cores it already has here. One
+/// transaction, `Cable slash`; no new cable, no new member.
 ///
 /// # Errors
-/// §3.3's refusals, a wire already in a cable, too many members; nothing is written then.
+/// A slash already here, none of the cable's wires on this page, a crossed core not the cable's;
+/// nothing is written then.
 pub(crate) fn run_slash_continue(
     p: &mut crate::project::Project, pg: &mut crate::access::Pages<'_>, page: PageId, cable: CableId, from: Pt, to: Pt,
     found: &crate::slash::Crossings,
 ) -> Result<serde_json::Value, String> {
     let doc = p.ledger.document();
-    let crossed: Vec<WireId> = found.members.iter().map(|m| m.conductor).collect();
-    if doc.representations_of(Subject::Cable(cable)).any(|(_, r)| r.page == page && r.role == ecad_model::Role::Slash) {
-        return Err(format!("{} already has a slash on this page.", crate::references::title(doc, cable)));
-    }
-    let blocked: Vec<(WireId, CableId)> = crate::slash::blocked(doc, &found.members).into_iter().map(|(m, k)| (m.conductor, k)).collect();
-    if !blocked.is_empty() {
-        return Err(crate::slash::already_in_cable(doc, &blocked, "Nothing was created."));
-    }
+    let crossed: Vec<ecad_model::CorePosition> = found.members.iter().map(|m| m.position).collect();
     let plan = crate::references::plan_slash_continue(doc, page, cable, &crossed)?;
-    let start = doc.cables.get(&cable).map_or(0, |c| c.members.len());
     let (item, rep): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
     let mut ops = Vec::new();
-    for (i, w) in plan.iter().enumerate() {
-        ops.push(Op::AddCableMember { cable, index: start + i, member: ecad_model::CableMember { conductor: w.conductor, core: w.core.clone() } });
-    }
     let style = crate::cmd::plain_style(p);
     ops.push(Op::AddItem {
         id: item,
@@ -60,10 +50,13 @@ pub(crate) fn run_slash_continue(
         "cable": cable.hex(),
         "item": item.hex(),
         "representation": rep.hex(),
-        "conductors": crossed.iter().map(|c| c.hex()).collect::<Vec<_>>(),
+        "conductors": plan.iter().filter_map(|w| w.position.wire()).map(|c| c.hex()).collect::<Vec<_>>(),
         "ignored": found.ignored.iter().map(|(i, _)| i.hex()).collect::<Vec<_>>(),
         "touched": found.touched.iter().map(|c| c.hex()).collect::<Vec<_>>(),
         "continued": true,
-        "cores": plan.iter().map(|w| serde_json::json!({"conductor": w.conductor.hex(), "core": w.core, "continues": w.continues.hex()})).collect::<Vec<_>>(),
+        "cores": plan
+            .iter()
+            .map(|w| serde_json::json!({"conductor": w.position.wire().map(|c| c.hex()), "route": w.position.route().map(|r| r.hex()), "core": w.core}))
+            .collect::<Vec<_>>(),
     }))
 }

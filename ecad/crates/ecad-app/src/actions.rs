@@ -729,7 +729,6 @@ pub const ACTIONS: &[Action] = &[
     slot("wire.settings", "wiresettings", Params::App(App::WireSettings), "Wire settings", Icon::Properties, &[(K::Wire, S::TopLeft)], ok),
     slot("wireend.connect", "connect", Params::StartAt, "Connect", Icon::Connect, &[(K::WireEnd, S::Top)], write),
     slot("wireend.disconnect", "disconnect", Params::Id(IdOf::End), "Disconnect", Icon::Disconnect, &[(K::WireEnd, S::TopRight)], write),
-    slot("wireend.junction", "junction", Params::At, "Junction", Icon::Junction, &[(K::WireEnd, S::Left)], write),
     // ---- Terminal.
     slot("terminal.label", "termlabel", Params::App(App::Template), "Edit label", Icon::Edit, &[(K::Terminal, S::Top)], write),
     slot("terminal.jumper", "jumper", Params::StartAt, "Jumper", Icon::Connect, &[(K::Terminal, S::TopRight)], write),
@@ -843,7 +842,6 @@ pub const ACTIONS: &[Action] = &[
     search_only("device.mirrortable", "mirrormove", Params::Start, "Move contact table", Icon::Move, &["mirror table", "cross reference"]),
     search_only("device.deleteany", "ecaddelete", Params::App(App::Template), "Delete electrical object", Icon::Delete, &["remove"]),
     search_only("object.setprop", "setprop", Params::App(App::Template), "Set property", Icon::Properties, &["tag", "description"]),
-    search_only("wire.junctiontool", "junction", Params::Start, "Junction", Icon::Junction, &["dot", "tee"]),
     search_only("wire.jointool", "joinwires", Params::Start, "Join wires", Icon::Junction, &["repair"]),
     search_only("wire.connecttool", "connect", Params::Start, "Connect", Icon::Connect, &["attach"]),
     search_only("wire.disconnecttool", "disconnect", Params::Start, "Disconnect", Icon::Disconnect, &["detach"]),

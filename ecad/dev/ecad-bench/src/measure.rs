@@ -305,8 +305,8 @@ fn edit_and_save(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec
         let mut o = open(copy)?;
         let mut ids = IdAllocator::seeded(EDIT_SEED);
         let (mut edit, mut save) = (Vec::with_capacity(runs), Vec::with_capacity(runs));
-        for run in 0..runs {
-            let ops = crate::generate::added_wire(o.ledger.document(), &mut ids, &format!("W-bench-{}", run + 1))?;
+        for _ in 0..runs {
+            let ops = crate::generate::added_wire(o.ledger.document(), &mut ids)?;
             let t = Instant::now();
             o.ledger.commit(Author::User, "Wire", ops).map_err(|e| e.to_string())?;
             edit.push(ms(t));
@@ -330,7 +330,7 @@ pub const RAIL_WIRES: usize = 25_000;
 /// own points, built and numbered once (not timed); per run one leaf conductor is deleted (timed:
 /// the commit with the numbering pass and the Checks update) and the deletion undone (not timed).
 fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
-    use ecad_model::{Device, DeviceId, Ledger, Op, Page, PageId, Terminal, TerminalId, Wire, WireId};
+    use ecad_model::{ConductorId, Device, DeviceId, Ledger, NetId, Op, Page, PageId, Terminal, TerminalId, Wire, WireId};
     let mut ids = IdAllocator::seeded(EDIT_SEED ^ 0x0FA1);
     let mut ledger = Ledger::new(7);
     let page: PageId = ids.fresh();
@@ -339,14 +339,16 @@ fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
     let mut ops = vec![
         Op::AddPage { id: page, page: Page::titled("1").map_err(|e| e.to_string())?, index: 0 },
         Op::CreateDevice { id: comp, device: Device::default() },
-        Op::AddTerminal { id: hub, terminal: Terminal { component: comp, label: None, key: None } },
+        Op::AddTerminal { id: hub, terminal: Terminal { component: comp, label: None, key: None, accepts: Default::default() } },
     ];
     let mut leaves = Vec::with_capacity(wires);
-    for _ in 0..wires {
-        let (t, c): (TerminalId, WireId) = (ids.fresh(), ids.fresh());
-        ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: comp, label: None, key: None } });
-        let conductor = Wire { ends: [Some(hub), Some(t)], potential: ecad_model::text::Text::new("0V").ok(), ..Wire::default() };
-        ops.push(Op::CreateWire { id: c, conductor });
+    let net: NetId = ids.fresh();
+    for i in 0..wires {
+        let (t, c, k): (TerminalId, WireId, ConductorId) = (ids.fresh(), ids.fresh(), ids.fresh());
+        ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: comp, label: None, key: None, accepts: Default::default() } });
+        let order = u16::try_from(i + 1).unwrap_or(u16::MAX);
+        let wire = Wire { potential: ecad_model::text::Text::new("0V").ok(), net_order: order, ..Wire::new(net, k, hub, t) };
+        ops.push(Op::CreateWire { id: c, wire });
         leaves.push(c);
     }
     ledger.commit_extended(Author::User, "Rail", ops, None, ecad_model::wiring::assign).map_err(|e| e.to_string())?;
@@ -355,16 +357,8 @@ fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
     let mut out = Vec::with_capacity(runs);
     for run in 0..runs {
         let victim = *leaves.get(run * 997 % wires.max(1)).ok_or("no leaf")?;
-        let cond = ledger.document().wires.get(&victim).cloned().ok_or("leaf missing")?;
-        let mut ops = Vec::new();
-        for end in ecad_model::End::BOTH {
-            if let Some(t) = cond.end(end) {
-                ops.push(Op::AttachEnd { conductor: victim, end, before: Some(t), after: None });
-            }
-        }
-        let mut bare = cond.clone();
-        bare.ends = [None, None];
-        ops.push(Op::DeleteWire { id: victim, conductor: bare });
+        let wire = ledger.document().wires.get(&victim).cloned().ok_or("leaf missing")?;
+        let ops = vec![Op::DeleteWire { id: victim, wire }];
         let t = Instant::now();
         let scope = checks.scope(ledger.document(), &ops);
         ledger.commit_extended(Author::User, "Delete", ops, None, ecad_model::wiring::assign).map_err(|e| e.to_string())?;
@@ -382,12 +376,12 @@ fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
 /// Brief 022's incremental net updates on a copy opened once (not timed). Per run:
 /// - **netupd**: commit one wire attached at both ends with the numbering pass, bring the Checks
 ///   list (built once, not timed) and page 1's labels up to date, then undo it the same way;
-/// - **netcut**: delete one conductor of the largest net (its route, its attachments, the
-///   conductor) with the numbering pass and the Checks update; the undo after it is not timed.
+/// - **netcut**: delete one conductor of the largest net (its route and drawing; the commit's
+///   rewrite pass then brings the net's wires in line) with the numbering pass and the Checks update; the undo after it is not timed.
 ///
 /// Returns the netupd and netcut samples and the size (conductors) of the net cut.
 fn net_edits(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec<f64>, usize), String> {
-    use ecad_model::{Op, Subject};
+    use ecad_model::RouteEnd;
     remove(copy);
     std::fs::copy(path, copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
     let result = (|| {
@@ -409,8 +403,8 @@ fn net_edits(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec<f64
                 .ok_or("no net with a wire outside a cable")?;
             (c, net.wires.len())
         };
-        for run in 0..runs {
-            let ops = crate::generate::added_wire(o.ledger.document(), &mut ids, &format!("W-net-{}", run + 1))?;
+        for _ in 0..runs {
+            let ops = crate::generate::added_wire(o.ledger.document(), &mut ids)?;
             let t = Instant::now();
             let scope = checks.scope(o.ledger.document(), &ops);
             o.ledger.commit_extended(Author::User, "Wire", ops, None, ecad_model::wiring::assign).map_err(|e| e.to_string())?;
@@ -423,24 +417,15 @@ fn net_edits(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec<f64
             checks.update(o.ledger.document(), &undo, scope, tol);
             upd.push(ms(t));
 
+            // The victim's route goes (with its drawing); the commit's rewrite deletes its wire.
             let doc = o.ledger.document();
-            let mut ops = Vec::new();
-            for (rid, r) in doc.representations_of(Subject::Wire(victim)) {
-                ops.push(Op::UnlinkRepresentation { id: rid, rep: r.clone() });
-                for i in &r.items {
-                    let item = doc.items.get(i).cloned().ok_or("route item missing")?;
-                    ops.push(Op::RemoveItem { id: *i, item });
-                }
-            }
-            let cond = doc.wires.get(&victim).cloned().ok_or("victim missing")?;
-            for end in ecad_model::End::BOTH {
-                if let Some(t) = cond.end(end) {
-                    ops.push(Op::AttachEnd { conductor: victim, end, before: Some(t), after: None });
-                }
-            }
-            let mut bare = cond.clone();
-            bare.ends = [None, None];
-            ops.push(Op::DeleteWire { id: victim, conductor: bare });
+            let wire = doc.wires.get(&victim).cloned().ok_or("victim missing")?;
+            let [a, b] = wire.ends;
+            let route = doc
+                .routes_at(a)
+                .find(|r| doc.routes.get(r).is_some_and(|x| x.ends.contains(&RouteEnd::Point(b))))
+                .ok_or("the victim's route is missing")?;
+            let ops = ecad_cadcraft::wires::remove_route_ops(doc, route);
             let t = Instant::now();
             let scope = checks.scope(o.ledger.document(), &ops);
             o.ledger.commit_extended(Author::User, "Delete", ops, None, ecad_model::wiring::assign).map_err(|e| e.to_string())?;
@@ -486,12 +471,15 @@ fn draw_target(project: &ecad_cadcraft::ProjectHandle, s: &mut cadcraft_engine::
         let map = &p.pages.get(&page)?.map;
         let symbol = map.item(item)?;
         let mut with_wires = vec![symbol];
+        // The routes landing on its connection points, by their drawing.
         for (t, _) in doc.terminals_of(component) {
-            for (c, _) in doc.ends_at(t) {
-                if let Some(h) = ecad_model::derive::route_on_page(doc, c, page).and_then(|(i, _)| map.item(i))
-                    && !with_wires.contains(&h)
-                {
-                    with_wires.push(h);
+            for r in doc.routes_at(t) {
+                for (_, rep) in doc.representations_of(Subject::Route(r)).filter(|(_, rep)| rep.page == page) {
+                    if let Some(h) = rep.items.first().and_then(|i| map.item(*i))
+                        && !with_wires.contains(&h)
+                    {
+                        with_wires.push(h);
+                    }
                 }
             }
         }

@@ -440,12 +440,16 @@ fn hostile_text_comes_back_as_plain_json_strings() {
             Op::AddPage { id: p1, page: Page::titled(X).unwrap(), index: 0 },
             Op::AddLayer { id: layer, layer: Layer { name: X.into() } },
             Op::CreateDevice { id: k, device: Device { properties: props(&[("note", X)]), ..Device::default() }.with_tag(Some(X)) },
-            Op::AddTerminal { id: a, terminal: Terminal { component: k, label: Some(X.into()), key: None } },
-            Op::AddTerminal { id: b, terminal: Terminal { component: k, label: Some("2".into()), key: None } },
-            Op::CreateWire { id: w, conductor: Wire { display: props(&[("wire.category", X)]), ends: [Some(a), Some(b)], ..Wire::default() } },
+            Op::AddTerminal { id: a, terminal: Terminal { component: k, label: Some(X.into()), key: None, accepts: Default::default() } },
+            Op::AddTerminal { id: b, terminal: Terminal { component: k, label: Some("2".into()), key: None, accepts: Default::default() } },
+            Op::CreateWire { id: w, wire: Wire::new(ids.fresh(), ids.fresh(), a, b) },
             Op::CreateCable {
                 id: c,
-                cable: Cable { properties: props(&[("tag", X)]), members: vec![CableMember { conductor: w, core: Some(X.into()) }] },
+                cable: Cable {
+                    properties: props(&[("tag", X)]),
+                    cores: vec![Core::on_wire(w, ecad_model::CoreLabel::new(X).ok())],
+                    ..Default::default()
+                },
             },
             Op::SetProperty { object: ObjectRef::Project, key: "project.title".parse().unwrap(), before: None, after: Some(X.into()) },
         ],

@@ -188,9 +188,35 @@ fn props_of(doc: &Document, o: ObjectRef) -> Option<&ecad_model::Properties> {
 pub fn rewrite_users(doc: &Document, cat: &Catalogue, id: &StyleRef, to: &StyleRef) -> Vec<Op> {
     let mut out = Vec::new();
     let mut put = |o: ObjectRef, key: &str| {
+        // Design 072 §4.6: a wire's own type is its field.
+        if let ObjectRef::Wire(w) = o
+            && key == ecad_model::wiring::WIRE_CATEGORY
+        {
+            if let Some(before) = doc.wires.get(&w).filter(|x| x.wire_type.as_ref() == Some(id)) {
+                let mut after = before.clone();
+                after.wire_type = Some(to.clone());
+                out.push(Op::ModifyWire { id: w, before: before.clone(), after });
+            }
+            return;
+        }
+        // Design 072 §4.5: a cable's type is its field.
+        if let ObjectRef::Cable(k) = o
+            && key == styles::cable::CABLE_TYPE
+        {
+            if let Some(before) = doc.cables.get(&k).filter(|x| x.cable_type.as_ref() == Some(id)) {
+                let mut after = before.clone();
+                after.cable_type = Some(to.clone());
+                styles::cable::sync_offered_cores(doc, before, &mut after);
+                out.extend(Op::modify_cable(k, before, after));
+            }
+            return;
+        }
         let before = props_of(doc, o).and_then(|p| p.get(key)).cloned();
         if before.as_deref().and_then(StyleRef::parse).as_ref() == Some(id) {
-            out.push(Op::SetProperty { object: o, key: key.to_string(), before, after: Some(to.text()) });
+            match o {
+                ObjectRef::Cable(k) => Op::set_cable_property(doc, &mut out, k, key, Some(to.text())),
+                _ => out.push(Op::SetProperty { object: o, key: key.to_string(), before, after: Some(to.text()) }),
+            }
         }
     };
     for (key, o) in styles::explicit_users(doc, cat.catalogue, id) {
@@ -214,6 +240,37 @@ fn chosen_by_levels(doc: &Document, cat: &Catalogue, id: &StyleRef) -> bool {
             .any(|p| p.get(e.key).and_then(|v| StyleRef::parse(v)).as_ref() == Some(id))
     })
 }
+
+/// "-W01 and -W02 use X; give replace_with.": the cables using cable type `name` (the first
+/// [`NAMED_CABLES`] by tag, then how many more), for a refusal.
+fn cables_using(doc: &Document, users: &[(&'static str, ObjectRef)], name: &str) -> String {
+    let mut tags: Vec<String> = users
+        .iter()
+        .filter_map(|(_, o)| match o {
+            ObjectRef::Cable(k) => Some(crate::cables::cable_title(doc, *k)),
+            _ => None,
+        })
+        .collect();
+    tags.sort();
+    let more = tags.len().saturating_sub(NAMED_CABLES);
+    let verb = if tags.len() == 1 { "uses" } else { "use" };
+    tags.truncate(NAMED_CABLES);
+    let mut list = match tags.split_last() {
+        Some((last, rest)) if !rest.is_empty() && more == 0 => format!("{} and {last}", rest.join(", ")),
+        _ => tags.join(", "),
+    };
+    if more > 0 {
+        list.push_str(&format!(" and {more} more"));
+    }
+    format!(
+        "{list} {verb} {}; give replace_with, or choose another type for {} first.",
+        crate::cables::clip(name),
+        if verb == "uses" { "it" } else { "them" }
+    )
+}
+
+/// Most cables a refusal names by tag.
+const NAMED_CABLES: usize = 8;
 
 /// "4 devices use X" or "The project uses X": who uses a style, for a refusal.
 fn who_uses(users: &[(&'static str, ObjectRef)]) -> (String, &'static str) {
@@ -530,6 +587,10 @@ pub fn plan_delete(doc: &Document, cat: &Catalogue, id: StyleRef, replace_with: 
     let mut ops = Vec::new();
     if !users.is_empty() || chosen_by_levels(doc, cat, &id) {
         let Some(w) = replace_with.map(str::trim) else {
+            // Design 072 §4.5: a cable type in use names its cables.
+            if cat.catalogue == ecad_model::StyleCatalogue::Cable {
+                return Err(CmdError::refused(cables_using(doc, &users, &name)));
+            }
             let (who, verb) = who_uses(&users);
             return Err(CmdError::refused(format!("{who} {verb} {name}; give replace_with.")));
         };

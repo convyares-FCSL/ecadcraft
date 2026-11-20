@@ -64,14 +64,34 @@ fn embedded_definitions_follow_the_owner_requirements() {
     // Remove the d1 instances, then d1 itself: earlier revisions keep the original content.
     let before = f.ledger.head();
     let mut ops = Vec::new();
+    // Each cable's cores once the wires go, written as one ModifyCable per cable at the end.
+    let mut cables = std::collections::BTreeMap::new();
     for c in [f.c1, f.c2] {
         let doc = f.ledger.document();
         let (rid, rep) = doc.representations_of(Subject::Device(c)).next().map(|(i, r)| (i, r.clone())).unwrap();
-        for (w, cond) in doc.wires.iter() {
-            for end in End::BOTH {
-                if let Some(t) = cond.end(end).filter(|t| doc.terminals[t].component == c) {
-                    ops.push(Op::AttachEnd { conductor: *w, end, before: Some(t), after: None });
+        // Its routes go with their drawings, and the wires to its points with their cable cores.
+        for (r, route) in doc.routes.iter() {
+            let gone = ops.iter().any(|o| matches!(o, Op::RemoveRoute { id, .. } if id == r));
+            if !gone && route.ends.iter().any(|e| e.point().is_some_and(|t| doc.terminals[&t].component == c)) {
+                for (rid, rep) in doc.representations_of(Subject::Route(*r)) {
+                    ops.push(Op::UnlinkRepresentation { id: rid, rep: rep.clone() });
+                    for i in &rep.items {
+                        ops.push(Op::RemoveItem { id: *i, item: doc.items[i].clone() });
+                    }
                 }
+                ops.push(Op::RemoveRoute { id: *r, route: route.clone() });
+            }
+        }
+        for (w, wire) in doc.wires.iter() {
+            if wire.ends.iter().any(|t| doc.terminals[t].component == c) && !ops.iter().any(|o| matches!(o, Op::DeleteWire { id, .. } if id == w)) {
+                for (cable, cv) in doc.cables.iter() {
+                    if cv.cores.iter().any(|m| m.wire() == Some(*w)) {
+                        let (_, after): &mut (ecad_model::Cable, ecad_model::Cable) =
+                            cables.entry(*cable).or_insert_with(|| (cv.clone(), cv.clone()));
+                        after.cores.retain(|m| m.wire() != Some(*w));
+                    }
+                }
+                ops.push(Op::DeleteWire { id: *w, wire: wire.clone() });
             }
         }
         ops.push(Op::UnlinkRepresentation { id: rid, rep: rep.clone() });
@@ -82,6 +102,7 @@ fn embedded_definitions_follow_the_owner_requirements() {
         ops.push(Op::DeleteDevice { id: c, device: doc.devices[&c].clone() });
     }
     ops.push(Op::RemoveDefinition { id: f.d1, definition: doc.definitions[&f.d1].clone() });
+    ops.extend(cables.into_iter().filter_map(|(id, (before, after))| Op::modify_cable(id, &before, after)));
     f.commit("Remove old version", ops);
     let opened = reopened(&mut f.ledger);
     assert!(!opened.ledger.document().definitions.contains_key(&f.d1));
@@ -126,7 +147,7 @@ fn wiring_settings_and_bridges_are_written_only_when_set_and_round_trip() {
     let mut after = before.clone();
     after.wiring.scheme = ecad_model::wiring::Scheme::PageColumn;
     after.wiring.digits = Some(3);
-    after.wiring.colour_style = Some(ecad_model::wiring::ColourStyle::ThreeLetter);
+    after.wiring.colour_style = Some(ecad_model::colour::ColourWords::Code3);
     after.wiring.label_height = Some(2.5);
     // Brief 032 (FP-W1): the label rule and the shortest labelled wire.
     after.wiring.label_rule = Some(ecad_model::wiring::LABEL_RULE_EACH.into());
@@ -134,7 +155,7 @@ fn wiring_settings_and_bridges_are_written_only_when_set_and_round_trip() {
     after.wiring.potentials.retain(|p| p.name != "PE");
     let op = Op::SetProjectSettings { before, after: after.clone() };
     let line = ecad_file::record::op_value(&op).unwrap().to_string();
-    assert!(line.contains("\"page-column\"") && line.contains("\"three-letter\""), "{line}");
+    assert!(line.contains("\"page-column\"") && line.contains("\"code3\""), "{line}");
     f.ledger.commit(Author::User, "Wire settings", vec![op]).unwrap();
 
     let bare = ecad_model::Definition {
@@ -146,8 +167,10 @@ fn wiring_settings_and_bridges_are_written_only_when_set_and_round_trip() {
         ..Default::default()
     };
     // Brief 044 (FP2, invariant I7): a bridge names keys the definition has terminals for.
-    let points =
-        ["1", "2"].iter().map(|k| ecad_model::TerminalDef { key: k.parse().unwrap(), label: None, at: ecad_model::Pt::new(0.0, 0.0) }).collect();
+    let points = ["1", "2"]
+        .iter()
+        .map(|k| ecad_model::TerminalDef { key: k.parse().unwrap(), label: None, at: ecad_model::Pt::new(0.0, 0.0), accepts: Default::default() })
+        .collect();
     let bridged = ecad_model::Definition { terminals: points, bridges: vec![vec!["1".parse().unwrap(), "2".parse().unwrap()]], ..bare.clone() };
     let bare_line = serde_json::to_string(&ecad_file::records::Definition::from(&bare)).unwrap();
     assert!(!bare_line.contains("bridges"), "{bare_line}");

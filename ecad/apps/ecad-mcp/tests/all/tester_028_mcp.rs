@@ -40,7 +40,7 @@ fn strip_writes_by_the_agent_then_refused_with_writes_off_on_the_saved_project()
     let (strip, cable, terms, before) = {
         let mut c = Client::new(EcadMcp::create(&path, Options { write: true, agent: None }).unwrap());
         for x in [100, 120, 140, 160] {
-            c.exec("wire", json!({"points": [[x, 200], [x, 100]]}));
+            c.wire_pp(json!({"points": [[x, 200], [x, 100]]}));
         }
         let cable = hex(&c.exec("cableslash", json!({"from": [90, 120], "to": [170, 120], "tag": "-W01"})), "cable");
         let f = c.exec("terminals", json!({"from": [90, 170], "to": [170, 170]}));

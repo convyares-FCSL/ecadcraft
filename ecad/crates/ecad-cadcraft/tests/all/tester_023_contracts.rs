@@ -303,7 +303,7 @@ fn transparent_zoom_and_pan_inside_wire_and_place_leave_one_transaction() {
     for (tool, transparent) in [("wire", "'zoom"), ("wire", "'pan"), ("place", "'zoom"), ("wire", "'redraw")] {
         let (mut h, _, _) = fixture(2360);
         let head = h.head();
-        let conductors = h.doc().wires.len();
+        let lines = h.doc().routes.len();
         let devices = h.doc().devices.len();
         h.s.start(tool).unwrap();
         if tool == "wire" {
@@ -335,13 +335,14 @@ fn transparent_zoom_and_pan_inside_wire_and_place_leave_one_transaction() {
         assert_eq!(h.head(), head + 1, "{tool} {transparent}: one transaction");
         let d = h.doc();
         match tool {
-            "wire" => assert_eq!(d.wires.len(), conductors + 1, "{tool} {transparent}"),
+            // A line to nowhere is a route without a wire (design 072 §4.3).
+            "wire" => assert_eq!(d.routes.len(), lines + 1, "{tool} {transparent}"),
             _ => assert_eq!(d.devices.len(), devices + 1, "{tool} {transparent}"),
         }
         assert!(h.s.state().unwrap().undo.is_empty());
         h.check();
         h.cmdline("u");
-        assert_eq!(h.doc().wires.len(), conductors);
+        assert_eq!(h.doc().routes.len(), lines);
         assert_eq!(h.doc().devices.len(), devices);
     }
 }

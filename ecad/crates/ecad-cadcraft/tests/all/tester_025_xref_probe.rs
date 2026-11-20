@@ -65,8 +65,9 @@ fn fixture(seed: u64) -> X {
     h.run("pageprops", json!({"page": p100.hex(), "number": "100", "title": "Supply"})).unwrap();
     let coil = h.run("place", json!({"symbol": "coil", "at": [75, 180]})).unwrap();
     let k1: DeviceId = id(&coil, "component");
+    // Design 072: the bus first, point to point; A2's wire tees onto it.
+    h.wire_pp(&[(40.0, 150.0), (200.0, 150.0)]).unwrap();
     let a2: WireId = id(&h.run("wire", json!({"points": pts(&[(75.0, 170.0), (75.0, 150.0)])})).unwrap(), "conductor");
-    h.run("wire", json!({"points": pts(&[(40.0, 150.0), (200.0, 150.0)])})).unwrap();
     h.run("place", json!({"symbol": "power3", "at": [125, 180], "device": k1.hex()})).unwrap();
     let p105: PageId = id(&h.run("newpage", json!({"title": "Motor control", "number": "105"})).unwrap(), "page");
     h.run("place", json!({"symbol": "no", "at": [100, 150], "device": k1.hex()})).unwrap();
@@ -258,7 +259,7 @@ fn step(x: &mut X, rng: &mut Rng, n: usize) -> Option<&'static str> {
             let page = x.h.p(|p| p.ledger.document().representations.get(&x.coil).map(|r| r.page))?;
             x.h.activate(page);
             let doc = x.h.doc();
-            let (item, _) = ecad_model::derive::route_on_page(&doc, x.a2, page)?;
+            let (item, _) = crate::common::wire_line(&doc, x.a2, page)?;
             let hd = x.h.handle_of(page, item);
             r(
                 &mut x.h,

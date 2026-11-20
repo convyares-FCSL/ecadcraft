@@ -8,10 +8,11 @@
 //! 3. a definition's bridges ([`crate::Definition::bridges`]) join a component's terminals whose
 //!    keys are in one group;
 //! 4. a component's links (`link.<n>` properties, [`crate::links`], brief 030) join its terminals
-//!    whose labels the link names.
+//!    whose labels the link names;
+//! 5. a route (design 072 F31) joins the connection points its ends land on and the routes it
+//!    lands on (a T): the route is a node.
 //!
-//! Nothing else joins: crossings, T-junctions without a junction device and loose ends lying on
-//! another route are separate nets.
+//! Nothing else joins: crossings and loose ends lying on another route are separate nets.
 //!
 //! # Semantics
 //! - [`Connectivity`] is derived: never serialised, never compared by the document's `==`.
@@ -30,14 +31,15 @@
 //! - Per net, the counted wire numbers, fixed numbers and potentials of its conductors are kept
 //!   ([`NetData`]), and project-wide, which nets carry each number ([`Connectivity::nets_numbered`])
 //!   and the highest sequence used per number prefix ([`Connectivity::next_in`]).
-//! - Net IDs ([`NetId`]) are not stable across a rebuild: compare nets by their members.
+//! - Net keys ([`NetKey`]) are not stable across a rebuild: compare nets by their members. A
+//!   wire stores its net's stable [`crate::id::NetId`] (design 072 F39).
 //!
 //! This module reads the document and its indexes; it holds no I/O.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
 use crate::doc::{Document, Properties, Wire};
-use crate::id::{DeviceId, TerminalId, WireId};
+use crate::id::{DeviceId, RouteId, TerminalId, WireId};
 use crate::op::{ObjectRef, Op};
 use crate::point::PointKey;
 
@@ -47,12 +49,10 @@ pub const WIRE_NUMBER: &str = "wire_number";
 pub const WIRE_NUMBER_FIXED: &str = "wire_number_fixed";
 /// Wire property: the potential (`24V`, `L1`…) the conductor carries.
 pub const POTENTIAL: &str = "potential";
-/// Device property naming what a tagless component is (`junction`, `continuation`).
+/// Device property naming what a tagless component is (`continuation`, the only kind).
 pub const KIND: &str = "kind";
 /// The [`KIND`] of a continuation.
 pub const CONTINUATION: &str = "continuation";
-/// The [`KIND`] of a junction.
-pub const JUNCTION: &str = "junction";
 /// Device property: a continuation's name.
 pub const NAME: &str = "name";
 
@@ -89,11 +89,14 @@ pub enum Node {
     Wire(WireId),
     /// A continuation name group, by [`name_key`].
     Name(String),
+    /// A route (design 072 F31).
+    Route(RouteId),
 }
 
-/// A net's identity in one [`Connectivity`] (not stable across rebuilds).
+/// A net's key in one [`Connectivity`] (not stable across rebuilds; the stored, stable id is
+/// [`crate::id::NetId`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct NetId(pub u64);
+pub struct NetKey(pub u64);
 
 /// What one conductor contributes to its net's counted values.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -116,6 +119,8 @@ pub struct NetData {
     pub wires: BTreeSet<WireId>,
     /// Continuation name keys joined into it.
     pub names: BTreeSet<String>,
+    /// Routes drawing it (design 072 F31).
+    pub routes: BTreeSet<RouteId>,
     /// Wire number → how many of its conductors carry it.
     pub numbers: BTreeMap<String, u32>,
     /// Fixed wire number → how many of its conductors carry it fixed.
@@ -126,7 +131,7 @@ pub struct NetData {
 
 impl NetData {
     fn len(&self) -> usize {
-        self.terminals.len() + self.wires.len() + self.names.len()
+        self.terminals.len() + self.wires.len() + self.names.len() + self.routes.len()
     }
 
     fn nodes(&self) -> Vec<Node> {
@@ -134,12 +139,18 @@ impl NetData {
         out.extend(self.terminals.iter().map(|t| Node::Terminal(*t)));
         out.extend(self.wires.iter().map(|c| Node::Wire(*c)));
         out.extend(self.names.iter().map(|n| Node::Name(n.clone())));
+        out.extend(self.routes.iter().map(|r| Node::Route(*r)));
         out
     }
 
     /// The members, sorted, as a comparable value.
-    fn members(&self) -> (Vec<TerminalId>, Vec<WireId>, Vec<String>) {
-        (self.terminals.iter().copied().collect(), self.wires.iter().copied().collect(), self.names.iter().cloned().collect())
+    fn members(&self) -> (Vec<TerminalId>, Vec<WireId>, Vec<String>, Vec<RouteId>) {
+        (
+            self.terminals.iter().copied().collect(),
+            self.wires.iter().copied().collect(),
+            self.names.iter().cloned().collect(),
+            self.routes.iter().copied().collect(),
+        )
     }
 
     /// The conductor with the lowest ID (nets are ordered by it).
@@ -170,16 +181,16 @@ fn count_down(map: &mut BTreeMap<String, u32>, key: &str) {
 /// index), so two kept states holding the same nets print alike whatever their net IDs.
 #[derive(Clone, Default)]
 pub struct Connectivity {
-    node_net: HashMap<Node, NetId>,
-    nets: HashMap<NetId, NetData>,
+    node_net: HashMap<Node, NetKey>,
+    nets: HashMap<NetKey, NetData>,
     next: u64,
     /// Wire number → nets carrying it → how many of their conductors carry it.
-    by_number: BTreeMap<String, BTreeMap<NetId, u32>>,
+    by_number: BTreeMap<String, BTreeMap<NetKey, u32>>,
     /// Number prefix ([`split_number`]) → sequence → how many conductors carry it.
     seqs: BTreeMap<String, BTreeMap<u64, u32>>,
     /// Nets a cut may have split, with the nodes on either side of each cut, to be searched by
     /// [`Connectivity::settle`].
-    suspect: BTreeMap<NetId, Vec<Node>>,
+    suspect: BTreeMap<NetKey, Vec<Node>>,
 }
 
 impl std::fmt::Debug for Connectivity {
@@ -196,6 +207,7 @@ fn present(doc: &Document, node: &Node) -> bool {
         Node::Terminal(t) => doc.terminals.contains_key(t),
         Node::Wire(c) => doc.wires.contains_key(c),
         Node::Name(k) => doc.index.continuations.contains_key(k),
+        Node::Route(r) => doc.routes.contains_key(r),
     }
 }
 
@@ -250,9 +262,13 @@ fn bridged(doc: &Document, t: TerminalId) -> Vec<TerminalId> {
 /// About how many edges `node` has, read from the indexes without listing them.
 fn degree(doc: &Document, node: &Node) -> usize {
     match node {
-        Node::Terminal(t) => doc.index.terminal_ends.get(t).map_or(0, BTreeMap::len).saturating_add(2),
+        Node::Terminal(t) => {
+            let ends = doc.index.terminal_ends.get(t).map_or(0, BTreeMap::len);
+            ends.saturating_add(doc.index.terminal_routes.get(t).map_or(0, BTreeMap::len)).saturating_add(2)
+        }
         Node::Wire(_) => 2,
         Node::Name(k) => doc.index.continuations.get(k).map_or(0, BTreeMap::len),
+        Node::Route(r) => doc.index.route_tees.get(r).map_or(0, BTreeMap::len).saturating_add(2),
     }
 }
 
@@ -279,11 +295,12 @@ fn neighbors_base(doc: &Document, node: &Node) -> Vec<Node> {
             if let Some(k) = name_of_terminal(doc, *t) {
                 out.push(Node::Name(k));
             }
+            out.extend(crate::index::referrers(&doc.index.terminal_routes, t).map(Node::Route));
             out.extend(bridged(doc, *t).into_iter().map(Node::Terminal));
         }
         Node::Wire(c) => {
             if let Some(cond) = doc.wires.get(c) {
-                for t in cond.ends.iter().flatten() {
+                for t in &cond.ends {
                     if doc.terminals.contains_key(t) {
                         out.push(Node::Terminal(*t));
                     }
@@ -294,6 +311,18 @@ fn neighbors_base(doc: &Document, node: &Node) -> Vec<Node> {
             for comp in doc.continuations_named(k) {
                 out.extend(doc.terminals_of(comp).map(|(t, _)| Node::Terminal(t)));
             }
+        }
+        Node::Route(r) => {
+            if let Some(route) = doc.routes.get(r) {
+                for e in route.ends {
+                    match e {
+                        crate::route::RouteEnd::Point(t) if doc.terminals.contains_key(&t) => out.push(Node::Terminal(t)),
+                        crate::route::RouteEnd::On { route: o, .. } if doc.routes.contains_key(&o) => out.push(Node::Route(o)),
+                        crate::route::RouteEnd::Point(_) | crate::route::RouteEnd::On { .. } | crate::route::RouteEnd::Free => {}
+                    }
+                }
+            }
+            out.extend(crate::index::referrers(&doc.index.route_tees, r).map(Node::Route));
         }
     }
     out
@@ -308,7 +337,8 @@ impl Connectivity {
             .keys()
             .map(|t| Node::Terminal(*t))
             .chain(doc.wires.keys().map(|k| Node::Wire(*k)))
-            .chain(doc.index.continuations.keys().map(|k| Node::Name(k.clone())));
+            .chain(doc.index.continuations.keys().map(|k| Node::Name(k.clone())))
+            .chain(doc.routes.keys().map(|r| Node::Route(*r)));
         // Link edges, worked out once per component with links (a chain per link).
         let mut link_edges: HashMap<TerminalId, Vec<TerminalId>> = HashMap::new();
         for (id, comp) in &doc.devices {
@@ -345,13 +375,13 @@ impl Connectivity {
         c
     }
 
-    fn fresh(&mut self) -> NetId {
+    fn fresh(&mut self) -> NetKey {
         self.next = self.next.saturating_add(1);
-        NetId(self.next)
+        NetKey(self.next)
     }
 
     /// Put `node` (not in any net) into net `id` with its contributions.
-    fn attach(&mut self, doc: &Document, node: Node, id: NetId) {
+    fn attach(&mut self, doc: &Document, node: Node, id: NetKey) {
         let contribution = match &node {
             Node::Wire(c) => doc.wires.get(c).map(Contribution::of),
             _ => None,
@@ -367,6 +397,9 @@ impl Connectivity {
                 Node::Name(k) => {
                     net.names.insert(k.clone());
                 }
+                Node::Route(r) => {
+                    net.routes.insert(*r);
+                }
             }
         }
         if let Some(con) = contribution {
@@ -377,7 +410,7 @@ impl Connectivity {
     }
 
     /// Add (`up`) or remove one conductor's values to net `id`'s counts and the number index.
-    fn contribute(&mut self, id: NetId, con: &Contribution, up: bool) {
+    fn contribute(&mut self, id: NetKey, con: &Contribution, up: bool) {
         let Some(net) = self.nets.get_mut(&id) else { return };
         let step = if up { count_up } else { count_down };
         if let Some(n) = &con.number {
@@ -423,7 +456,7 @@ impl Connectivity {
     }
 
     /// Move `node` from its net to net `to` (both exist).
-    fn relabel(&mut self, doc: &Document, node: &Node, to: NetId) {
+    fn relabel(&mut self, doc: &Document, node: &Node, to: NetKey) {
         let Some(from) = self.node_net.get(node).copied() else { return };
         if from == to {
             return;
@@ -438,6 +471,9 @@ impl Connectivity {
                 }
                 Node::Name(k) => {
                     net.names.remove(k);
+                }
+                Node::Route(r) => {
+                    net.routes.remove(r);
                 }
             }
         }
@@ -458,6 +494,9 @@ impl Connectivity {
                 }
                 Node::Name(k) => {
                     net.names.insert(k.clone());
+                }
+                Node::Route(r) => {
+                    net.routes.insert(*r);
                 }
             }
         }
@@ -536,6 +575,9 @@ impl Connectivity {
                     Node::Name(k) => {
                         net.names.remove(k);
                     }
+                    Node::Route(r) => {
+                        net.routes.remove(r);
+                    }
                 }
                 net.len() == 0
             }
@@ -577,7 +619,8 @@ impl Connectivity {
     /// | Op | Here |
     /// | --- | --- |
     /// | `CreateWire` / `DeleteWire` | node added and joined to its ends / node removed, its net suspect |
-    /// | `AttachEnd` | `before` cut (net suspect), `after` joined |
+    /// | `AddRoute` / `RemoveRoute` (design 072 F31) | node added and joined to the points and routes it lands on and the routes landing on it / node removed, its net suspect |
+    /// | `ModifyRoute` | its ends changed: the route and its old neighbours cut (net suspect), then joined to the new |
     /// | `AddTerminal` / `RemoveTerminal` | node added and joined (ends, name group, bridges) / removed |
     /// | `CreateDevice` / `DeleteDevice` of a continuation | its terminals joined to / cut from its name group |
     /// | `SetProperty` component `kind` or `name` | cut from the old name group, joined to the new |
@@ -593,11 +636,16 @@ impl Connectivity {
                 let wire = doc.wires.get(id).cloned();
                 self.remove(doc, wire.as_ref(), &Node::Wire(*id));
             }
-            Op::AttachEnd { conductor, before: Some(t), .. } => {
-                self.cut(&Node::Wire(*conductor));
-                self.cut(&Node::Terminal(*t));
-            }
             Op::RemoveTerminal { id, .. } => self.remove(doc, None, &Node::Terminal(*id)),
+            // Design 072 F31: a route removed, or redrawn so that its ends land elsewhere.
+            Op::RemoveRoute { id, .. } => self.remove(doc, None, &Node::Route(*id)),
+            Op::ModifyRoute { id, before, after } if before.ends != after.ends => {
+                let node = Node::Route(*id);
+                self.cut(&node);
+                for m in neighbors(doc, &node) {
+                    self.cut(&m);
+                }
+            }
             // Brief 048 (FP5): another definition may bridge other points.
             Op::DeleteDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
                 for t in Self::terminals_of(doc, *id) {
@@ -664,11 +712,8 @@ impl Connectivity {
     pub(crate) fn after_op(&mut self, doc: &Document, op: &Op) {
         match op {
             Op::CreateWire { id, .. } => self.ensure(doc, Node::Wire(*id)),
-            Op::AttachEnd { conductor, after: Some(t), .. } => {
-                self.ensure(doc, Node::Wire(*conductor));
-                self.ensure(doc, Node::Terminal(*t));
-            }
             Op::AddTerminal { id, .. } => self.ensure(doc, Node::Terminal(*id)),
+            Op::AddRoute { id, .. } | Op::ModifyRoute { id, .. } => self.ensure(doc, Node::Route(*id)),
             Op::CreateDevice { id, device: component } | Op::DeleteDevice { id, device: component } => {
                 self.name_groups(doc, component.properties.get(NAME).map(|n| name_key(n)));
                 if matches!(op, Op::CreateDevice { .. }) {
@@ -765,7 +810,7 @@ impl Connectivity {
     /// The interleaved searches of [`Connectivity::settle`] in net `id` from `frontier` (two or
     /// more of its nodes). Returns `false` when they could not decide (never expected), so the
     /// caller walks the whole net.
-    fn split_from(&mut self, doc: &Document, id: NetId, frontier: Vec<Node>) -> bool {
+    fn split_from(&mut self, doc: &Document, id: NetKey, frontier: Vec<Node>) -> bool {
         let k = frontier.len();
         let mut parent: Vec<usize> = (0..k).collect();
         fn find(parent: &mut [usize], mut x: usize) -> usize {
@@ -880,7 +925,7 @@ impl Connectivity {
 
     /// Walk the whole of net `id` and split it into its parts (the fallback of
     /// [`Connectivity::settle`]).
-    fn walk_all(&mut self, doc: &Document, id: NetId) {
+    fn walk_all(&mut self, doc: &Document, id: NetKey) {
         {
             let Some(net) = self.nets.get(&id) else { return };
             let members = net.nodes();
@@ -939,27 +984,27 @@ impl Connectivity {
     }
 
     /// The net of `node`.
-    pub fn net_of(&self, node: &Node) -> Option<NetId> {
+    pub fn net_of(&self, node: &Node) -> Option<NetKey> {
         self.node_net.get(node).copied()
     }
 
     /// The net of conductor `c`.
-    pub fn net_of_conductor(&self, c: WireId) -> Option<NetId> {
+    pub fn net_of_conductor(&self, c: WireId) -> Option<NetKey> {
         self.net_of(&Node::Wire(c))
     }
 
     /// The net of terminal `t`.
-    pub fn net_of_terminal(&self, t: TerminalId) -> Option<NetId> {
+    pub fn net_of_terminal(&self, t: TerminalId) -> Option<NetKey> {
         self.net_of(&Node::Terminal(t))
     }
 
     /// Net `id`'s members and counts.
-    pub fn net(&self, id: NetId) -> Option<&NetData> {
+    pub fn net(&self, id: NetKey) -> Option<&NetData> {
         self.nets.get(&id)
     }
 
     /// Every net, in no particular order.
-    pub fn nets(&self) -> impl Iterator<Item = (NetId, &NetData)> {
+    pub fn nets(&self) -> impl Iterator<Item = (NetKey, &NetData)> {
         self.nets.iter().map(|(k, v)| (*k, v))
     }
 
@@ -974,12 +1019,12 @@ impl Connectivity {
     }
 
     /// The nets whose conductors carry wire number `number`, with how many of them carry it.
-    pub fn nets_numbered(&self, number: &str) -> impl Iterator<Item = (NetId, u32)> + '_ {
+    pub fn nets_numbered(&self, number: &str) -> impl Iterator<Item = (NetKey, u32)> + '_ {
         self.by_number.get(number).into_iter().flat_map(|m| m.iter().map(|(k, v)| (*k, *v)))
     }
 
     /// Every wire number in use, in order, with the nets carrying it.
-    pub fn numbers(&self) -> impl Iterator<Item = (&str, &BTreeMap<NetId, u32>)> {
+    pub fn numbers(&self) -> impl Iterator<Item = (&str, &BTreeMap<NetKey, u32>)> {
         self.by_number.iter().map(|(k, v)| (k.as_str(), v))
     }
 
@@ -990,7 +1035,7 @@ impl Connectivity {
     }
 
     /// The nets as comparable sets of members, sorted.
-    fn partition(&self) -> Vec<(Vec<TerminalId>, Vec<WireId>, Vec<String>)> {
+    fn partition(&self) -> Vec<(Vec<TerminalId>, Vec<WireId>, Vec<String>, Vec<RouteId>)> {
         let mut out: Vec<_> = self.nets.values().map(NetData::members).collect();
         out.sort();
         out
@@ -1034,6 +1079,7 @@ impl Connectivity {
                 Node::Terminal(t) => n.terminals.contains(t),
                 Node::Wire(c) => n.wires.contains(c),
                 Node::Name(k) => n.names.contains(k),
+                Node::Route(r) => n.routes.contains(r),
             });
             if !listed {
                 return Some(format!("{node:?} is labelled with a net that does not list it"));

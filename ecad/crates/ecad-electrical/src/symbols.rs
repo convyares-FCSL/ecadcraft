@@ -52,7 +52,7 @@ pub enum Kind {
     ChangeOver,
     /// Fixed labels from the definition. `exclusive`: a device holds at most one of these.
     Fixed { exclusive: bool },
-    /// A tagless component of its own, never part of a device: a junction or a continuation
+    /// A tagless component of its own, never part of a device: a continuation
     /// (brief 022, FP4).
     Tagless,
     /// A connector half, or one pin of one or both halves (brief 044, design 044 §3.3): its
@@ -148,7 +148,6 @@ ecad_model::word_enum! {
         Terminalpe,
         Di,
         Do,
-        Junction,
         Continuation,
         Co,
         Swco,
@@ -262,7 +261,7 @@ use StarterKey as K;
 
 impl StarterKey {
     /// The group a device this starter begins belongs to (design 072 §2.2): what the starter
-    /// declares in its definition's [`Definition::device_type`]. Junctions and continuations are
+    /// declares in its definition's [`Definition::device_type`]. Continuations are
     /// `General` until lane F makes them drawing aids.
     pub fn device_group(self) -> DeviceGroup {
         match self {
@@ -356,7 +355,7 @@ impl StarterKey {
             | K::Chao
             | K::Chrtd
             | K::Chiol => DeviceGroup::PlcModule,
-            K::Junction | K::Continuation => DeviceGroup::General,
+            K::Continuation => DeviceGroup::General,
         }
     }
 
@@ -387,7 +386,6 @@ impl StarterKey {
             | K::Terminalpe
             | K::Di
             | K::Do
-            | K::Junction
             | K::Continuation
             | K::Co
             | K::Swco
@@ -827,7 +825,6 @@ pub const STARTERS: &[Starter] = &[
     st(K::Terminalpe, "PE terminal", &["pe terminal", "earth terminal"], Kind::Terminal, def_id(21)),
     st(K::Di, "PLC digital input", &["plc", "input", "di"], Kind::Channel(crate::plc::rack::CardType::Di), def_id(17)),
     st(K::Do, "PLC digital output", &["plc", "output", "do"], Kind::Channel(crate::plc::rack::CardType::Dq), def_id(18)),
-    st(K::Junction, "Junction", &["junction", "dot", "tee"], Kind::Tagless, def_id(19)),
     st(K::Continuation, "Continuation", &["continuation", "arrow", "potential", "link"], Kind::Tagless, def_id(20)),
     // ---- Brief 034 stage 1: contacts and protection (design 034 §3).
     st(K::Co, "Change-over contact", &["change-over", "changeover", "c/o", "spdt", "contact", "relay"], Kind::ChangeOver, cp(1)).of(Family::Contacts),
@@ -973,7 +970,6 @@ pub fn cell_shape(key: StarterKey) -> Option<(f64, &'static [(&'static str, f64)
         | K::Terminalpe
         | K::Di
         | K::Do
-        | K::Junction
         | K::Continuation
         | K::Co
         | K::Swco
@@ -1127,7 +1123,6 @@ fn cell_graphics(key: StarterKey) -> Vec<Primitive> {
         | K::Terminalpe
         | K::Di
         | K::Do
-        | K::Junction
         | K::Continuation
         | K::Co
         | K::Swco
@@ -1788,7 +1783,6 @@ pub fn anchors(s: &Starter) -> Vec<Anchor> {
         | K::Terminalpe
         | K::Di
         | K::Do
-        | K::Junction
         | K::Continuation
         | K::Co
         | K::Swco
@@ -2034,7 +2028,6 @@ impl Connector {
             | K::Terminalpe
             | K::Di
             | K::Do
-            | K::Junction
             | K::Continuation
             | K::Co
             | K::Swco
@@ -2354,9 +2347,6 @@ fn graphics(key: StarterKey) -> Vec<Primitive> {
         K::Terminal => vec![circle((0.0, 0.0), 1.5)],
         // Our own earth mark to the right of the ring (design 028 §2).
         K::Terminalpe => vec![circle((0.0, 0.0), 1.5), line((2.5, -1.2), (2.5, 1.2)), line((3.2, -0.8), (3.2, 0.8)), line((3.9, -0.4), (3.9, 0.4))],
-        // A filled dot (`ecad.junction-size`): concentric circles, so it reads as filled at any
-        // lineweight setting (design 022 §3.1).
-        K::Junction => vec![circle((0.0, 0.0), 0.5), circle((0.0, 0.0), 0.33), circle((0.0, 0.0), 0.17)],
         // An arrow pointing away from its wire (design 022 §3.2).
         K::Continuation => vec![line((0.0, 0.0), (0.0, -5.0)), poly(&[(-1.5, -3.5), (0.0, -5.0), (1.5, -3.5)], false)],
         K::Di => vec![rect((-7.5, -2.5), (7.5, 2.5)), text((-2.5, -1.25), 2.5, "DI"), line((0.0, 2.5), (0.0, 10.0))],
@@ -2541,8 +2531,8 @@ fn graphics(key: StarterKey) -> Vec<Primitive> {
 }
 
 fn terminals(key: StarterKey) -> Vec<TerminalDef> {
-    let t = |k: &str, x: f64, y: f64| TerminalDef { key: PointKey::def(k), label: Some(k.into()), at: p(x, y) };
-    let side = |k: PointKey, x: f64, y: f64| TerminalDef { label: Some(k.to_string()), key: k, at: p(x, y) };
+    let t = |k: &str, x: f64, y: f64| TerminalDef { key: PointKey::def(k), label: Some(k.into()), at: p(x, y), accepts: Default::default() };
+    let side = |k: PointKey, x: f64, y: f64| TerminalDef { label: Some(k.to_string()), key: k, at: p(x, y), accepts: Default::default() };
     match key {
         K::Coil => vec![t("A1", 0.0, 10.0), t("A2", 0.0, -10.0)],
         K::No | K::Pbno | K::Sel | K::Floatno | K::Rollerno | K::Interlockno => vec![t("13", 0.0, 10.0), t("14", 0.0, -10.0)],
@@ -2558,11 +2548,21 @@ fn terminals(key: StarterKey) -> Vec<TerminalDef> {
         K::Motor1 => vec![t("U1", -5.0, 15.0), t("U2", 5.0, 15.0), t("PE", 20.0, 15.0)],
         K::Trafo => vec![t("1U1", -5.0, 15.0), t("1U2", 5.0, 15.0), t("2U1", -5.0, -15.0), t("2U2", 5.0, -15.0)],
         K::Terminal | K::Terminalpe => vec![t("1", 0.0, 0.0)],
-        // No label: a junction or continuation shows no connection point name.
-        K::Junction | K::Continuation => vec![TerminalDef { key: PointKey::def("1"), label: None, at: p(0.0, 0.0) }],
+        // No label: a continuation shows no connection point name.
+        K::Continuation => vec![TerminalDef { key: PointKey::def("1"), label: None, at: p(0.0, 0.0), accepts: Default::default() }],
         // Design 072 §3: a channel symbol's point is keyed by its role; the label is what it shows.
-        K::Di => vec![TerminalDef { key: PointKey::Role(ecad_model::ChannelRole::In), label: Some("I0.0".into()), at: p(0.0, 10.0) }],
-        K::Do => vec![TerminalDef { key: PointKey::Role(ecad_model::ChannelRole::Out), label: Some("Q0.0".into()), at: p(0.0, -10.0) }],
+        K::Di => vec![TerminalDef {
+            key: PointKey::Role(ecad_model::ChannelRole::In),
+            label: Some("I0.0".into()),
+            at: p(0.0, 10.0),
+            accepts: Default::default(),
+        }],
+        K::Do => vec![TerminalDef {
+            key: PointKey::Role(ecad_model::ChannelRole::Out),
+            label: Some("Q0.0".into()),
+            at: p(0.0, -10.0),
+            accepts: Default::default(),
+        }],
         // ---- Brief 034 stage 1: definition order is common, NC, NO (design 034 §2.3).
         K::Co | K::Swco => vec![t("11", 0.0, 10.0), t("12", 5.0, -10.0), t("14", 0.0, -10.0)],
         K::Power4 => vec![
@@ -2606,7 +2606,12 @@ fn terminals(key: StarterKey) -> Vec<TerminalDef> {
                 pts.iter()
                     .filter_map(|(role, x)| {
                         let role = ecad_model::ChannelRole::exact(role)?;
-                        Some(TerminalDef { key: PointKey::Role(role), label: Some(role.word().to_string()), at: p(*x, 5.0) })
+                        Some(TerminalDef {
+                            key: PointKey::Role(role),
+                            label: Some(role.word().to_string()),
+                            at: p(*x, 5.0),
+                            accepts: Default::default(),
+                        })
                     })
                     .collect()
             })
@@ -2756,11 +2761,11 @@ mod tests {
             bare.origin = None;
             assert_eq!(ecad_file::definition_hash(&bare).unwrap(), o.content_hash);
         }
-        // 18 symbols (brief 018), the junction and continuation (brief 022), the PE terminal (028),
+        // 18 symbols (brief 018), the continuation (brief 022), the PE terminal (028),
         // brief 034's stage 1 (14), stage 2 (11), stage 3a (27) and stage 3b (8), brief 036's
         // multi-level terminals (20), brief 044's connector pins (3), brief 045's modules (3) and
         // channel cells (6).
-        assert_eq!(STARTERS.len(), 21 + 14 + 11 + 27 + 8 + 20 + 3 + 3 + 6);
+        assert_eq!(STARTERS.len(), 20 + 14 + 11 + 27 + 8 + 20 + 3 + 3 + 6);
         // Brief 034's definition IDs sit in their family's block.
         for s in STARTERS.iter().filter(|s| s.family != Family::Basic) {
             let n = s.id.0 - def_id(0).0;
@@ -2895,7 +2900,6 @@ mod tests {
             ("terminalpe", "e49dfa23a7aec81f0327f1ec5e7143b9bc60216a4ca47c76508d3ea87d939df5"),
             ("di", "11ac9ed468c7b43d9c6243e847655c0bdb4182c7f02680657539edef57f04827"),
             ("do", "3eb4db530b04231c3df246d6da2847f48d86d2dc89ad4b8a037cd0a246d6e2fe"),
-            ("junction", "8a6e36eab66ded66ec4ef470682d2d5cecf536a0d1fe6c148c632154232a4868"),
             ("continuation", "7289a1f63b563b3f0ceb6959fd7fb34763daf4c1c6e56bb2366e01129ae7afaf"),
         ];
         // Brief 036's starters are new; the hashes pinned here are the earlier basic ones.

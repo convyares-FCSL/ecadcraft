@@ -231,7 +231,8 @@ fn classic_array_copies_are_recorded_as_copies() {
                 let page = h.first_page();
                 json!({"handles": [h.route_handle(page, w).hex()], "rows": 2, "cols": 1, "rowSpacing": 30})
             },
-            &["CreateWire", "LinkRepresentation"],
+            // Design 072 §4.3: a copied line is a new route; landing on nothing, it makes no wire.
+            &["AddRoute", "LinkRepresentation"],
         ),
     ];
     for (what, params, expect) in cases {
@@ -240,6 +241,7 @@ fn classic_array_copies_are_recorded_as_copies() {
         let head = h.head();
         let devices = h.doc().devices.len();
         let conductors = h.doc().wires.len();
+        let routes = h.doc().routes.len();
         h.run("-array", p).unwrap();
         assert_eq!(h.head(), head + 1, "{what}: one transaction");
         let (label, ops) = last_tx(&mut h);
@@ -250,7 +252,7 @@ fn classic_array_copies_are_recorded_as_copies() {
         let doc = h.doc();
         match what {
             "symbol" => assert_eq!(doc.devices.len(), devices + 1, "a copied device"),
-            "wire" => assert_eq!(doc.wires.len(), conductors + 1, "a copied wire"),
+            "wire" => assert_eq!((doc.routes.len(), doc.wires.len()), (routes + 1, conductors), "a copied line"),
             _ => assert_eq!((doc.devices.len(), doc.wires.len()), (devices, conductors)),
         }
         h.check();

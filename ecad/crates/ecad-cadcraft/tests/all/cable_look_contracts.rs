@@ -24,6 +24,13 @@ use ecad_model::{
 };
 use serde_json::{Value, json};
 
+/// `wire` point to point (design 072: a wire runs between two connection points): a connection
+/// point at each end that has none first ([`H::wire_pp`]).
+fn wire_pp(h: &mut H, points: Value) -> Result<Value, String> {
+    let p: Vec<(f64, f64)> = points.as_array().into_iter().flatten().filter_map(|q| Some((q[0].as_f64()?, q[1].as_f64()?))).collect();
+    h.wire_pp(&p)
+}
+
 const SEED: u64 = 9_009;
 
 struct Fx {
@@ -54,7 +61,7 @@ fn fixture(right: bool) -> Fx {
     }
     let mut wires = Vec::new();
     for (i, y) in [0.0, 5.0, 10.0, 15.0].into_iter().enumerate() {
-        let w: WireId = id(&h.run("wire", json!({"points": [[0.0, y], [120.0, y]]})).unwrap(), "conductor");
+        let w: WireId = id(&wire_pp(&mut h, json!([[0.0, y], [120.0, y]])).unwrap(), "conductor");
         h.run("wirenumber", json!({"conductor": w.hex(), "value": format!("W{}", i + 1)})).unwrap();
         wires.push(w);
     }
@@ -71,7 +78,7 @@ fn core(h: &mut H, w: WireId, core: Value) -> Result<Value, String> {
 }
 
 fn cores(h: &mut H, k: CableId) -> Vec<Option<String>> {
-    h.doc().cables[&k].members.iter().map(|m| m.core.clone()).collect()
+    h.doc().cables[&k].cores.iter().map(|m| m.label_str().map(str::to_string)).collect()
 }
 
 fn last_tx(h: &mut H) -> Transaction {
@@ -172,7 +179,7 @@ fn reference_end(h: &mut H, page: PageId, cable: CableId, at: Pt, n: u128) -> (I
 /// Check B (AC3): the JSON form records exactly the remove/add pair at the member's index, and
 /// nothing else changes.
 #[test]
-fn b_json_core_label_is_one_transaction_of_two_existing_ops() {
+fn b_json_core_label_is_one_transaction_of_one_modify_cable() {
     let mut f = fixture(true);
     let (before, head) = (f.h.doc(), f.h.head());
     let r = core(&mut f.h, f.wires[0], json!("1")).unwrap();
@@ -180,17 +187,10 @@ fn b_json_core_label_is_one_transaction_of_two_existing_ops() {
     assert_eq!(f.h.head(), head + 1);
     let t = last_tx(&mut f.h);
     assert_eq!(t.label, "Core label");
-    let member = |core: Option<&str>| ecad_model::CableMember { conductor: f.wires[0], core: core.map(str::to_string) };
-    assert_eq!(
-        t.ops,
-        vec![
-            Op::RemoveCableMember { cable: f.c1, index: 0, member: member(None) },
-            Op::AddCableMember { cable: f.c1, index: 0, member: member(Some("1")) },
-        ]
-    );
-    let after = f.h.doc();
     let mut expect = before.clone();
-    expect.cables.get_mut(&f.c1).unwrap().members[0].core = Some("1".into());
+    expect.cables.get_mut(&f.c1).unwrap().cores[0].label = ecad_model::CoreLabel::new("1").ok();
+    assert_eq!(t.ops, vec![Op::ModifyCable { id: f.c1, before: before.cables[&f.c1].clone(), after: expect.cables[&f.c1].clone() }]);
+    let after = f.h.doc();
     assert_eq!(after, expect, "only the core changed");
     // The same value again: no transaction.
     let r = core(&mut f.h, f.wires[0], json!("1")).unwrap();
@@ -326,7 +326,7 @@ fn m_hostile_core_input_is_refused() {
     let long = "é".repeat(32);
     assert_eq!(core(&mut f.h, f.wires[0], json!(long)).unwrap()["core"], json!(long));
     // A wire in no cable.
-    let loose: WireId = id(&f.h.run("wire", json!({"points": [[0, 60], [50, 60]]})).unwrap(), "conductor");
+    let loose: WireId = id(&wire_pp(&mut f.h, json!([[0, 60], [50, 60]])).unwrap(), "conductor");
     f.h.run("wirenumber", json!({"conductor": loose.hex(), "value": "W9"})).unwrap();
     refused(&mut f.h, json!({"conductor": loose.hex(), "core": "1"}), "Wire W9 is not in a cable.");
     f.h.check();
@@ -344,15 +344,13 @@ fn n_batch_cores_are_one_transaction_in_member_order() {
     assert_eq!(f.h.head(), head + 1);
     let t = last_tx(&mut f.h);
     assert_eq!(t.label, "Core labels");
-    let indexes: Vec<usize> = t
-        .ops
-        .iter()
-        .map(|o| match o {
-            Op::RemoveCableMember { index, .. } | Op::AddCableMember { index, .. } => *index,
-            other => panic!("{other:?}"),
-        })
-        .collect();
-    assert_eq!(indexes, vec![0, 0, 1, 1, 2, 2, 3, 3]);
+    // One ModifyCable whose cores keep their order and places; only the labels change.
+    let [Op::ModifyCable { id, before, after }] = t.ops.as_slice() else { panic!("{:?}", t.ops) };
+    assert_eq!(*id, f.c1);
+    let places = |c: &ecad_model::Cable| c.cores.iter().map(|m| m.position).collect::<Vec<_>>();
+    assert_eq!(places(before), places(after), "member order and places are kept");
+    let labels: Vec<Option<&str>> = after.cores.iter().map(|m| m.label_str()).collect();
+    assert_eq!(labels, vec![Some("1"), Some("2"), None, Some("4")]);
     assert_eq!(cores(&mut f.h, f.c1), vec![Some("1".into()), Some("2".into()), None, Some("4".into())]);
     let r = f.h.run("cablecore", json!({"cable": f.c1.hex(), "cores": ["1", "2", null, "4"]})).unwrap();
     assert_eq!((r["changed"].as_bool(), f.h.head()), (Some(false), head + 1));
@@ -595,7 +593,7 @@ fn k_hover_and_trail_show_cores() {
     let doc = f.h.doc();
     assert_eq!(ecad_cadcraft::debug::object_label(&doc, ecad_cadcraft::debug::ObjectId::Wire(f.wires[2])), "W3 · core 3");
     let snap = f.h.run("ecadinspect", json!({})).unwrap();
-    assert!(snap.to_string().contains("\"core\":\"3\""), "ecadinspect shows the core");
+    assert!(snap.to_string().contains("\"label\":\"3\""), "ecadinspect shows the core");
 }
 
 /// Check L: computed drawing cannot be edited; the reference point can be moved.
@@ -631,7 +629,7 @@ fn m_hostile_geometry_never_panics() {
     let mut wires = Vec::new();
     for i in 0..20 {
         let y = f64::from(i) * 5.0;
-        wires.push(id::<WireId>(&h.run("wire", json!({"points": [[0.0, y], [120.0, y]]})).unwrap(), "conductor"));
+        wires.push(id::<WireId>(&wire_pp(&mut h, json!([[0.0, y], [120.0, y]])).unwrap(), "conductor"));
     }
     h.run("wirenumber", json!({"conductor": wires[0].hex(), "value": "x".repeat(24)})).unwrap();
     let k: CableId = id(&h.run("cableslash", json!({"from": [60, -3], "to": [60, 100]})).unwrap(), "cable");
@@ -668,20 +666,21 @@ fn m_hostile_geometry_never_panics() {
     );
     let d = look::cable_on_page(&doc, page, k, true, 1e-6, &look::font_width);
     assert!(d.is_fan());
-    let (route, _) = ecad_model::derive::route_on_page(&doc, wires[3], page).unwrap();
+    let (route, _) = crate::common::wire_line(&doc, wires[3], page).unwrap();
     doc.items.get_mut(&route).unwrap().kind = ItemKind::Primitive(Primitive::Line { a: Pt::new(-1e12, 15.0), b: Pt::new(f64::INFINITY, 15.0) });
     let d = look::cable_on_page(&doc, page, k, true, 1e-6, &look::font_width);
     assert!(!d.is_fan(), "drawn traditional when a value is not finite");
     // Two wires ending at the same point (pitch 0).
     let mut doc = h.doc();
-    let (r1, _) = ecad_model::derive::route_on_page(&doc, wires[1], page).unwrap();
+    let (r1, _) = crate::common::wire_line(&doc, wires[1], page).unwrap();
     doc.items.get_mut(&r1).unwrap().kind = ItemKind::Primitive(Primitive::Line { a: Pt::new(0.0, 0.0), b: Pt::new(120.0, 0.0) });
     let _ = look::cable_on_page(&doc, page, k, true, 1e-6, &look::font_width);
 }
 
 // --------------------------------------------------------------------------- review S2
 
-/// A labelled cable of three loose wires, its handles (wires, slash, core labels) and the labels'.
+/// A labelled cable of three loose lines (design 072: no wires; its cores sit on the lines), its
+/// handles (lines, slash, core labels) and the labels'.
 fn loose_labelled_cable(h: &mut H) -> (PageId, CableId, Vec<Handle>, Vec<Handle>) {
     let page = h.first_page();
     for y in [0.0, 5.0, 10.0] {

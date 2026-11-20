@@ -3,7 +3,9 @@
 //! two-colour wires on a page get their dashes. Pure rules over the document; the cable fan
 //! drawing that uses them stays in `look`.
 
-use ecad_model::{Document, ItemKind, PageId, Pt, Subject, WireId};
+use ecad_model::colour::ConductorColour;
+use ecad_model::wire::Colours;
+use ecad_model::{Document, PageId, Pt, WireId};
 
 /// Longest core label accepted (Unicode scalar values, after trimming).
 pub const MAX_CORE_CHARS: usize = 32;
@@ -20,40 +22,39 @@ pub fn shorten(text: &str, max: usize) -> String {
     out
 }
 
-/// `ecad.wire_colour.*` (design `040.md` §2): the colour each IEC 60757 code draws in, on the
-/// paper and the dark sheet. Black draws in ink, so it shows on both sheets; white draws as a warm
-/// grey on paper. Codes as `ecad_model::wiring::COLOUR_CODES` (the single colours).
-pub const CODE_COLOURS: [(&str, &str, ecad_drawing_style::Color, ecad_drawing_style::Color); 14] = {
+/// `ecad.wire_colour.*` (design `040.md` §2): the colour each conductor colour draws in, on the
+/// paper and the dark sheet, in [`ConductorColour::ALL`]'s order (so a colour's index is
+/// `colour as usize`). Black draws in ink, so it shows on both sheets; white draws as a warm grey
+/// on paper. A colour's words come from [`ConductorColour::forms`], never from here.
+pub const CODE_COLOURS: [(ConductorColour, ecad_drawing_style::Color, ecad_drawing_style::Color); 14] = {
+    use ConductorColour as K;
     use ecad_drawing_style::Color as C;
     [
-        ("BK", "BLK", ecad_drawing_style::sheet::PAPER.ink, ecad_drawing_style::sheet::DARK.ink),
-        ("BN", "BRN", C::hex(0x8A4B1F), C::hex(0xC9895A)),
-        ("RD", "RED", C::hex(0xC62828), C::hex(0xFF7A70)),
-        ("OG", "ORG", C::hex(0xD96800), C::hex(0xFFA34D)),
-        ("YE", "YEL", C::hex(0xE3B800), C::hex(0xF2D34B)),
-        ("GN", "GRN", C::hex(0x2F8F3A), C::hex(0x6FD67A)),
-        ("BU", "BLU", C::hex(0x23408F), C::hex(0x8FB0FF)),
-        ("VT", "VIO", C::hex(0x7B3FA0), C::hex(0xC392F0)),
-        ("GY", "GRY", C::hex(0x7C8591), C::hex(0xA3ABB6)),
-        ("WH", "WHT", C::hex(0xB9B4A6), C::hex(0xF2F3F5)),
-        ("PK", "PNK", C::hex(0xD9528F), C::hex(0xFF9CC8)),
-        ("GD", "GLD", C::hex(0xA8851C), C::hex(0xE3C463)),
-        ("TQ", "TQS", C::hex(0x14948F), C::hex(0x54D3CC)),
-        ("SR", "SLR", C::hex(0x98A0A8), C::hex(0xC9CED4)),
+        (K::Black, ecad_drawing_style::sheet::PAPER.ink, ecad_drawing_style::sheet::DARK.ink),
+        (K::Brown, C::hex(0x8A4B1F), C::hex(0xC9895A)),
+        (K::Red, C::hex(0xC62828), C::hex(0xFF7A70)),
+        (K::Orange, C::hex(0xD96800), C::hex(0xFFA34D)),
+        (K::Yellow, C::hex(0xE3B800), C::hex(0xF2D34B)),
+        (K::Green, C::hex(0x2F8F3A), C::hex(0x6FD67A)),
+        (K::Blue, C::hex(0x23408F), C::hex(0x8FB0FF)),
+        (K::Violet, C::hex(0x7B3FA0), C::hex(0xC392F0)),
+        (K::Grey, C::hex(0x7C8591), C::hex(0xA3ABB6)),
+        (K::White, C::hex(0xB9B4A6), C::hex(0xF2F3F5)),
+        (K::Pink, C::hex(0xD9528F), C::hex(0xFF9CC8)),
+        (K::Gold, C::hex(0xA8851C), C::hex(0xE3C463)),
+        (K::Turquoise, C::hex(0x14948F), C::hex(0x54D3CC)),
+        (K::Silver, C::hex(0x98A0A8), C::hex(0xC9CED4)),
     ]
 };
 
 /// Longest colour code looked at (characters after trimming).
 pub const MAX_CODE_CHARS: usize = 16;
 
-/// Index into [`CODE_COLOURS`] of one colour code, either form, any case.
-fn one_code(s: &str) -> Option<usize> {
-    CODE_COLOURS.iter().position(|(iec, three, _, _)| s.eq_ignore_ascii_case(iec) || s.eq_ignore_ascii_case(three))
-}
-
-/// The colours of a colour code: one colour (`BU`, `BLU`), or two, the first solid and the second
-/// laid over it as dashes (`GNYE`, `GN/YE`, `GRN/YEL`, `RDBU`, `YEBN`). `None` for a code the app
-/// does not know (it draws in ink and raises an information check) and for an empty one.
+/// The colours of a colour code: one colour (`BU`, `BLU`, `blue`), or two, the first solid and
+/// the second laid over it as dashes (`GNYE`, `GN/YE`, `GRN/YEL`, `RDBU`, `YEBN`), as indexes into
+/// [`CODE_COLOURS`]. Read by [`Colours::parse`], the one reader of colour words. `None` for a code
+/// the app does not know (it draws in ink and raises an information check), for an empty one and
+/// for three colours.
 ///
 /// # Example
 /// ```
@@ -67,42 +68,40 @@ pub fn colour_code(code: &str) -> Option<(usize, Option<usize>)> {
     if c.is_empty() || c.chars().count() > MAX_CODE_CHARS || !c.is_ascii() {
         return None;
     }
-    if let Some(i) = one_code(c) {
-        return Some((i, None));
-    }
-    let parts: Vec<&str> = c.split(['/', '-', ' ', '+']).filter(|p| !p.is_empty()).collect();
-    match parts.as_slice() {
-        [a, b] => Some((one_code(a)?, Some(one_code(b)?))),
-        // Run together: two two-letter codes (`GNYE`) or two three-letter ones (`GRNYEL`).
-        [ab] => [2usize, 3].iter().find_map(|n| {
-            let (a, b) = (ab.get(..*n)?, ab.get(*n..)?);
-            if b.len() != *n {
-                return None;
-            }
-            Some((one_code(a)?, Some(one_code(b)?)))
-        }),
+    match Colours::parse(c)?.list() {
+        [a] => Some((*a as usize, None)),
+        [a, b] => Some((*a as usize, Some(*b as usize))),
         _ => None,
     }
 }
 
-/// How a wire of colour `code` is drawn on `sheet`: its solid colour, and the dashes' colour for a
-/// two-colour code; `None` for an unknown code (drawn in ink).
-pub fn wire_colours(code: &str, sheet: &ecad_drawing_style::Sheet) -> Option<ecad_drawing_style::wire::WireColors> {
+/// How a wire of colours `colours` is drawn on `sheet`: its solid colour, and the dashes' colour
+/// for two colours; `None` for three colours (drawn in ink).
+pub fn wire_colours(colours: &Colours, sheet: &ecad_drawing_style::Sheet) -> Option<ecad_drawing_style::wire::WireColors> {
+    let (a, b) = match colours.list() {
+        [a] => (*a, None),
+        [a, b] => (*a, Some(*b)),
+        _ => return None,
+    };
+    Some(ecad_drawing_style::wire::WireColors { solid: drawn(a, sheet), dashes: b.map(|b| drawn(b, sheet)) })
+}
+
+/// The colour `c` is drawn in on `sheet`.
+pub fn drawn(c: ConductorColour, sheet: &ecad_drawing_style::Sheet) -> ecad_drawing_style::Color {
     let dark = sheet.sheet == ecad_drawing_style::sheet::DARK.sheet;
-    let colour = |i: usize| CODE_COLOURS.get(i).map(|(_, _, paper, on_dark)| if dark { *on_dark } else { *paper });
-    let (a, b) = colour_code(code)?;
-    Some(ecad_drawing_style::wire::WireColors { solid: colour(a)?, dashes: b.and_then(colour) })
+    let (_, paper, on_dark) = CODE_COLOURS[c as usize];
+    if dark { on_dark } else { paper }
 }
 
 /// The colour code a conductor's route is drawn in (brief 050b, design 050 §5.5): its wire
 /// category's line colour (`wire`: the insulation colour, its own or the category's; `ink`: none;
 /// or a code). `None` when it is drawn in ink.
-pub fn conductor_colour(doc: &Document, c: WireId) -> Option<String> {
+pub fn conductor_colour(doc: &Document, c: WireId) -> Option<Colours> {
     crate::styles::wire::wire_look(doc, c).route_code()
 }
 
 /// [`conductor_colour`] with the project's categories read once (`looks`).
-pub fn conductor_colour_in(doc: &Document, looks: &crate::styles::wire::WireLooks, c: WireId) -> Option<String> {
+pub fn conductor_colour_in(doc: &Document, looks: &crate::styles::wire::WireLooks, c: WireId) -> Option<Colours> {
     looks.look(doc, c).route_code()
 }
 
@@ -185,18 +184,18 @@ pub fn dash_budget(doc: &Document, page: PageId) -> DashBudget {
     let mut out = DashBudget::default();
     let mut total: usize = 0;
     let looks = crate::styles::wire::WireLooks::new(doc);
-    for (rep, r) in doc.representations_on(page) {
-        let Subject::Wire(c) = r.subject else { continue };
-        if r.form != ecad_model::Form::Drawn {
+    // Each route on the page (the page index), in the colour of the wire it stands for.
+    for route in doc.routes_on(page) {
+        let (Some(points), Some((rep, _, _)), Some(c)) =
+            (doc.routes.get(&route).map(|x| x.points.clone()), crate::wires::route_item(doc, route), crate::wires::wire_of_route(doc, route))
+        else {
             continue;
-        }
+        };
         // Only two-colour codes have dashes.
         let Some(code) = conductor_colour_in(doc, &looks, c) else { continue };
-        if !colour_code(&code).is_some_and(|(_, b)| b.is_some()) {
+        if code.list().len() != 2 {
             continue;
         }
-        let Some(ItemKind::Primitive(prim)) = r.items.first().and_then(|i| doc.items.get(i)).map(|i| &i.kind) else { continue };
-        let Some(points) = crate::wires::path_vertices(prim) else { continue };
         let n = dash_count(&points, on, off);
         if n > MAX_DASHES || total.saturating_add(n) > MAX_PAGE_DASHES {
             if !out.left_out.contains(&c) {

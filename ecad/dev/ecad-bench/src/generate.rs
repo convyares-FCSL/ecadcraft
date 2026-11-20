@@ -2,14 +2,15 @@
 //!
 //! # Semantics
 //! - Every page holds the same pattern: `components / pages` coil symbols in a row, each with
-//!   terminals A1 (top) and A2 (bottom); `wires / pages` wires, wire `j` running from A2 of
-//!   component `j mod n` to A1 of component `(j + 1) mod n`, attached at both ends, so parallel
-//!   wires share a pair of terminals and each pair is one net; `cables / pages` cables, cable `c`
+//!   terminals A1 (top) and A2 (bottom); `wires / pages` wires, wire `j` drawn as one route from A2
+//!   of component `j mod n` to A1 of component `(j + 1) mod n` and recorded with its wire, so
+//!   parallel wires share a pair of terminals and each pair is one net; `cables / pages` cables, cable `c`
 //!   taking every wire of pair `c` with core labels `1, 2, …` and a slash across them.
 //! - The first cable of each page except the last is continued on the next page as brief 010's
 //!   `cableref` and `cablecontinue` record it: a reference end on each page (an ordinary drawn
 //!   representation of the cable with role [`ecad_model::Role::Reference`] and one Point item), one stub per
-//!   member on the next page (a second route of the same conductor) and a slash there.
+//!   member on the next page (a route with free ends: cross-page wires form in lane F) and a
+//!   slash there.
 //! - Only existing ops are used, shaped as the commands record them (`place`, `wire`,
 //!   `cableslash`, `newpage`, `cableref`, `cablecontinue`, `move`, `undo`, `redo`; a page rename is
 //!   recorded as a page removed and added again, the only way an existing op can rename one).
@@ -27,9 +28,10 @@
 use std::collections::BTreeMap;
 
 use ecad_model::{
-    Author, Cable, CableId, CableMember, Color, Definition, DefinitionId, Device, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind,
-    Layer, LayerId, Ledger, LengthUnit, ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectId, ProjectSettings, Pt, Representation,
-    RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId, Transaction, TxId, TxKind, Wire, WireId,
+    Author, Cable, CableId, Color, ConductorId, Core, Definition, DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId,
+    ItemKind, Layer, LayerId, Ledger, LengthUnit, NetId, Op, Page, PageId, Placement, Primitive, ProjectId, ProjectSettings, Pt, Representation,
+    RepresentationId, Route, RouteEnd, RouteId, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId, Transaction, TxId, TxKind, Wire,
+    WireId,
 };
 
 /// The role brief 010 gives a cable reference end: its own constant, so the generated references
@@ -152,8 +154,8 @@ fn coil() -> Definition {
         origin: None,
         graphics: vec![Primitive::Polyline { vertices: r.iter().map(|(x, y)| Pt::new(*x, *y)).collect(), closed: true }],
         terminals: vec![
-            TerminalDef { key: ecad_model::PointKey::def("A1"), label: Some("A1".into()), at: Pt::new(0.0, 10.0) },
-            TerminalDef { key: ecad_model::PointKey::def("A2"), label: Some("A2".into()), at: Pt::new(0.0, -10.0) },
+            TerminalDef { key: ecad_model::PointKey::def("A1"), label: Some("A1".into()), at: Pt::new(0.0, 10.0), accepts: Default::default() },
+            TerminalDef { key: ecad_model::PointKey::def("A2"), label: Some("A2".into()), at: Pt::new(0.0, -10.0), accepts: Default::default() },
         ],
         ..Default::default()
     }
@@ -214,52 +216,69 @@ fn moved(id: ItemId, before: Item, dx: f64) -> Op {
     Op::ModifyItem { id, before, after }
 }
 
-/// A wire named `name` (its wire number, not fixed, so renumbering reaches it), as [`wire_ops`]
-/// makes it.
-fn named_wire(name: &str) -> Wire {
+/// Wire `w` of net `net`, `order`th in it, between `ends`, named `name` (its wire number, not
+/// fixed, so renumbering reaches it), as [`wire_ops`] makes it.
+fn named_wire(net: NetId, conductor: ConductorId, order: u16, ends: [TerminalId; 2], name: &str) -> Wire {
     let number = ecad_model::text::Text::new(name).ok().map(|text| ecad_model::wire::WireNumber { text, fixed: false });
-    Wire { number, ..Wire::default() }
+    let [a, b] = ends;
+    Wire { number, net_order: order, ..Wire::new(net, conductor, a, b) }
 }
 
-/// The op renaming wire `w`, named `name`, to `<name>X` (the rename step of a wire).
-fn renamed_wire(w: WireId, name: &str) -> Op {
-    Op::ModifyWire { id: w, before: named_wire(name), after: named_wire(&format!("{name}X")) }
+/// The op renaming wire `w` (value `wire`, named `name`) to `<name>X` (the rename step of a wire).
+fn renamed_wire(w: WireId, wire: &Wire, name: &str) -> Op {
+    let number = ecad_model::text::Text::new(&format!("{name}X")).ok().map(|text| ecad_model::wire::WireNumber { text, fixed: false });
+    Op::ModifyWire { id: w, before: wire.clone(), after: Wire { number, ..wire.clone() } }
 }
 
-fn renamed(object: ObjectRef, tag: &str) -> Op {
-    Op::SetProperty { object, key: "tag".into(), before: Some(tag.into()), after: Some(format!("{tag} (old name)")) }
+/// The op renaming cable `k` (value `cable`, tagged `tag`): a cable is written whole.
+fn renamed_cable(k: CableId, cable: &Cable, tag: &str) -> Op {
+    let mut after = cable.clone();
+    after.properties.insert("tag".into(), format!("{tag} (old name)"));
+    Op::ModifyCable { id: k, before: cable.clone(), after }
 }
 
 fn drawn(subject: Subject, page: PageId, role: ecad_model::Role, items: Vec<ItemId>) -> Representation {
     Representation { subject, page, form: Form::Drawn, role, items, connection_points: BTreeMap::new() }
 }
 
-/// The ops of one wire as `wire` records it: a wire numbered `tag`, its route on `page`
-/// through `vertices`, and its ends attached to `ends` (A, then B). Returns the new wire.
-pub fn wire_ops(ids: &mut IdAllocator, page: PageId, style: &Style, vertices: Vec<Pt>, ends: [TerminalId; 2], tag: &str) -> (WireId, Vec<Op>) {
-    let (w, item, rep): (WireId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
-    let conductor = named_wire(tag);
-    let [a, b] = ends;
+/// The ops of one route as `wire` records it (design 072 §4.3): a route on `page` through
+/// `vertices` with its two ends, its polyline item and its drawn representation. Returns the new
+/// route.
+pub fn route_ops(ids: &mut IdAllocator, page: PageId, style: &Style, vertices: Vec<Pt>, ends: [RouteEnd; 2]) -> (RouteId, Vec<Op>) {
+    let (r, item, rep): (RouteId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
     let ops = vec![
-        Op::CreateWire { id: w, conductor },
+        Op::AddRoute { id: r, route: Route::new(page, vertices.clone(), ends) },
         Op::AddItem {
             id: item,
             item: Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Polyline { vertices, closed: false }) },
         },
-        Op::LinkRepresentation { id: rep, rep: drawn(Subject::Wire(w), page, ecad_model::Role::Route, vec![item]) },
-        Op::AttachEnd { conductor: w, end: End::A, before: None, after: Some(a) },
-        Op::AttachEnd { conductor: w, end: End::B, before: None, after: Some(b) },
+        Op::LinkRepresentation { id: rep, rep: drawn(Subject::Route(r), page, ecad_model::Role::Route, vec![item]) },
     ];
-    (w, ops)
+    (r, ops)
 }
 
-/// The add-wire transaction the edit timing commits on an opened project: a wire on the first
-/// page between the first two distinct terminals shown there, on layer `0`. `ids` must be a
+/// The ops of one generated wire: its route ([`route_ops`]) and the wire of net `net`, `order`th
+/// in it, numbered `tag`, between `ends` (A, then B). The generator applies its ops without the
+/// ledger's rewrite pass, so it records the wire itself, as the rewrite would have; parallel
+/// wires of one pair are kept as the bench's tiers count them. Returns the new wire and its value.
+pub fn wire_ops(
+    ids: &mut IdAllocator, page: PageId, style: &Style, vertices: Vec<Pt>, ends: [TerminalId; 2], net: NetId, order: u16, tag: &str,
+) -> (WireId, Wire, Vec<Op>) {
+    let (_, mut ops) = route_ops(ids, page, style, vertices, ends.map(RouteEnd::Point));
+    let (w, conductor): (WireId, ConductorId) = (ids.fresh(), ids.fresh());
+    let wire = named_wire(net, conductor, order, ends, tag);
+    ops.push(Op::CreateWire { id: w, wire: wire.clone() });
+    (w, wire, ops)
+}
+
+/// The add-wire transaction the edit timing commits on an opened project: a route on the first
+/// page between the first two distinct terminals shown there, on layer `0`; the commit's rewrite
+/// pass makes the wire (design 072 §4.4). `ids` must be a
 /// stream the project has not used.
 ///
 /// # Errors
 /// The project has no page, no layer `0`, or fewer than two terminals on its first page.
-pub fn added_wire(doc: &Document, ids: &mut IdAllocator, tag: &str) -> Result<Vec<Op>, String> {
+pub fn added_wire(doc: &Document, ids: &mut IdAllocator) -> Result<Vec<Op>, String> {
     let page = *doc.page_order.first().ok_or("the project has no page")?;
     let layer = doc.layers.iter().find(|(_, l)| l.name == "0").map(|(id, _)| *id).ok_or("the project has no layer 0")?;
     let shown = ecad_model::derive::terminal_positions(doc, page);
@@ -267,7 +286,7 @@ pub fn added_wire(doc: &Document, ids: &mut IdAllocator, tag: &str) -> Result<Ve
     let (t2, _, p2) = *shown.iter().find(|(t, _, _)| *t != t1).ok_or("fewer than two terminals on the first page")?;
     let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     let bend = Pt::new(p1.x, p2.y);
-    Ok(wire_ops(ids, page, &style, vec![p1, bend, p2], [t1, t2], tag).1)
+    Ok(route_ops(ids, page, &style, vec![p1, bend, p2], [RouteEnd::Point(t1), RouteEnd::Point(t2)]).1)
 }
 
 /// Generate `tier` with the history of `variant`.
@@ -360,7 +379,10 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             let mut keyed = Vec::new();
             for td in &def.terminals {
                 let t: TerminalId = ids.fresh();
-                ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()) } });
+                ops.push(Op::AddTerminal {
+                    id: t,
+                    terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
+                });
                 keyed.push(t);
             }
             let origin = Pt::new(PITCH * i as f64 + PITCH / 2.0, ROW_Y);
@@ -386,9 +408,10 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             comp_ids.push(c);
         }
 
-        // Wires (`wire`), attached at both ends; pair `j mod n`.
+        // Wires (`wire`), a route between two connection points each; pair `j mod n`.
         let mut pair_wires: Vec<Vec<WireId>> = vec![Vec::new(); n];
         let mut pair_lows: Vec<f64> = vec![0.0; n];
+        let mut pair_nets: BTreeMap<usize, NetId> = BTreeMap::new();
         for j in 0..m {
             wire_no += 1;
             let pair = j % n;
@@ -403,8 +426,11 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             let mid = a.x + PITCH / 2.0;
             let vertices = vec![a, Pt::new(a.x, low), Pt::new(mid, low), Pt::new(mid, high), Pt::new(z.x, high), z];
             let tag = format!("W{wire_no}");
-            let (w, ops) = wire_ops(&mut ids, page, &style, vertices, [from_t, to_t], &tag);
-            b.step("Wire", ops, "Rename", vec![renamed_wire(w, &tag)])?;
+            let net = *pair_nets.entry(pair).or_insert_with(|| ids.fresh());
+            let order = pair_wires.get(pair).map_or(1, |l| l.len() + 1);
+            let order = u16::try_from(order).map_err(|_| "generator: more parallel wires than a net's order holds".to_string())?;
+            let (w, wire, ops) = wire_ops(&mut ids, page, &style, vertices, [from_t, to_t], net, order, &tag);
+            b.step("Wire", ops, "Rename", vec![renamed_wire(w, &wire, &tag)])?;
             if let Some(list) = pair_wires.get_mut(pair) {
                 list.push(w);
             }
@@ -438,16 +464,16 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
             let tag = format!("-W{cable_no}");
             let mut value = Cable::default();
             value.properties.insert("tag".into(), tag.clone());
+            value.cores =
+                members.iter().enumerate().map(|(index, w)| Core::on_wire(*w, ecad_model::CoreLabel::new(&(index + 1).to_string()).ok())).collect();
+            let rename = renamed_cable(cable, &value, &tag);
             let mut ops = vec![Op::CreateCable { id: cable, cable: value }];
-            for (index, w) in members.iter().enumerate() {
-                ops.push(Op::AddCableMember { cable, index, member: CableMember { conductor: *w, core: Some((index + 1).to_string()) } });
-            }
             ops.push(Op::AddItem {
                 id: item,
                 item: Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Line { a: from, b: to }) },
             });
             ops.push(Op::LinkRepresentation { id: rep, rep: drawn(Subject::Cable(cable), page, ecad_model::Role::Slash, vec![item]) });
-            b.step("Cable slash", ops, "Rename", vec![renamed(ObjectRef::Cable(cable), &tag)])?;
+            b.step("Cable slash", ops, "Rename", vec![rename])?;
             if c == 0 {
                 first_cable = Some((cable, members, Pt::new(x + PITCH / 4.0, lowest - 6.0)));
             }
@@ -473,18 +499,12 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
                 Op::AddItem { id: ref_item, item: ref_point.clone() },
                 Op::LinkRepresentation { id: ref_rep, rep: drawn(Subject::Cable(cable), page, ecad_model::Role::Reference, vec![ref_item]) },
             ];
-            for (lane, w) in members.iter().enumerate() {
+            // One stub per member: a route with free ends (cross-page wires form in lane F).
+            for lane in 0..members.len() {
                 let y = here.y - 5.0 * lane as f64;
-                let (i, r): (ItemId, RepresentationId) = (ids.fresh(), ids.fresh());
-                ops.push(Op::AddItem {
-                    id: i,
-                    item: Item {
-                        page,
-                        style: style.clone(),
-                        kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(here.x, y), b: Pt::new(here.x + 30.0, y) }),
-                    },
-                });
-                ops.push(Op::LinkRepresentation { id: r, rep: drawn(Subject::Wire(*w), page, ecad_model::Role::Route, vec![i]) });
+                let (_, stub) =
+                    route_ops(&mut ids, page, &style, vec![Pt::new(here.x, y), Pt::new(here.x + 30.0, y)], [RouteEnd::Free, RouteEnd::Free]);
+                ops.extend(stub);
             }
             let span = 5.0 * members.len() as f64;
             let (slash_item, slash_rep): (ItemId, RepresentationId) = (ids.fresh(), ids.fresh());

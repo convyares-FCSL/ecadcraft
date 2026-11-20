@@ -345,6 +345,11 @@ manual Iz, bundling) and its load.
   note) is refused: a wire has no free properties. Its number and potential still belong to its
   net (`wirenumber`, `potential`).
 - Labels write two-colour wires with a slash: `GN/YE` (three-letter style `GRN/YEL`).
+- The colour setting's words are `code2`, `code3` and `name` (were `iec`, `three-letter`):
+  Project settings ▸ Wires ▸ Colours has a third choice, `Brown Blue Green/Yellow`.
+- `rating {"wire":…, "protected_by":"-Q01"}` (or `-F01:3`) stores the device itself; a name that
+  is no device is refused, also by setprop. Deleting the device clears it in the same transaction
+  (the message says how many were cleared); U brings them back.
 - Projects saved before this lane do not open (no compatibility before 1.0): regenerate them.
 
 ### Try it

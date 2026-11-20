@@ -288,7 +288,11 @@ pub(crate) fn fixture_p(h: &mut Harness<'static, App>) -> (PageId, PageId, PageI
     let cable = doc(h).cables.keys().next().copied().unwrap();
     ok(h, &format!(r#"cableref {{"cable":"{}","at":[65,5]}}"#, cable.hex()));
     ok(h, r#"newpage {"title":"Field"}"#);
-    ok(h, &format!(r#"cablecontinue {{"cable":"{}","at":[20,5],"toward":[40,5]}}"#, cable.hex()));
+    // C1's other end on Field at (20,5), written as `cablecontinue` writes it but without its stubs:
+    // a continuation needs wires leaving the page through the reference, which form only with lane
+    // F step F4. The tests on this fixture are about pages and what the two ends say of each other.
+    let field = doc(h).page_order[1];
+    crate::common::reference_end(h.state_mut(), cable, field, (20.0, 5.0));
     ok(h, r#"newpage {"title":"Spare"}"#);
     let d = doc(h);
     (d.page_order[0], d.page_order[1], d.page_order[2])
@@ -971,7 +975,9 @@ fn the_developer_section_hosts_the_command_the_debugger_and_inspect() {
     h.run_steps(3);
     assert!(h.state().developer.open);
     assert!(h.query_by_label("Export Inspector Snapshot").is_none(), "only with --snapshots");
-    // The command field: Run shows the reply under it; one transaction.
+    // The command field: Run shows the reply under it; one transaction. The wire runs between two
+    // connection points (design 072).
+    crate::common::points_at(h.state_mut(), &[(0.0, 0.0), (40.0, 0.0)]);
     let before = head(&mut h);
     h.state_mut().command = r#"wire {"points":[[0,0],[40,0]]}"#.into();
     h.run_steps(1);

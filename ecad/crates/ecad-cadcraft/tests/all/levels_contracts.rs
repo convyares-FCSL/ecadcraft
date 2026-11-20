@@ -7,7 +7,7 @@ use ecad_cadcraft::outputs::{Group, Outputs};
 use ecad_model::{DeviceId, TerminalId, WireId};
 use serde_json::{Value, json};
 
-use crate::common::{H, id, pts};
+use crate::common::{H, id};
 
 /// The kept models equal a fresh build (the update map left nothing behind).
 fn same_as_built(h: &mut H) {
@@ -24,7 +24,7 @@ fn wires(h: &mut H, y0: f64) -> Vec<WireId> {
     (1..=3)
         .map(|i| {
             let x = 10.0 * f64::from(i);
-            id(&h.run("wire", json!({"points": pts(&[(x, y0), (x, y0 + 40.0)])})).unwrap(), "conductor")
+            id(&h.wire_pp(&[(x, y0), (x, y0 + 40.0)]).unwrap(), "conductor")
         })
         .collect()
 }
@@ -42,7 +42,7 @@ fn terminals(v: &Value) -> Vec<TerminalId> {
     v["terminals"].as_array().unwrap().iter().map(|t| id(t, "terminal")).collect()
 }
 
-fn net(h: &mut H, t: TerminalId) -> Option<ecad_model::NetId> {
+fn net(h: &mut H, t: TerminalId) -> Option<ecad_model::NetKey> {
     h.doc().connectivity().net_of_terminal(t)
 }
 
@@ -131,14 +131,20 @@ fn bridged_two_level_positions_and_fuse_positions_break_the_net() {
     same_as_built(&mut h);
     // A fuse position on a wire: in and out on two nets.
     let mut h = H::new(0x0360_0004);
-    let w: WireId = id(&h.run("wire", json!({"points": pts(&[(10.0, 0.0), (10.0, 80.0)])})).unwrap(), "conductor");
+    h.wire_pp(&[(10.0, 0.0), (10.0, 80.0)]).unwrap();
     let f = h.run("terminals", json!({"type": "FUSE", "from": [0, 40], "to": [20, 40]})).unwrap();
     let x1: DeviceId = id(&f, "strip");
     let t_in: TerminalId = id(&f["terminals"][0], "terminal");
-    let new: WireId = id(&f["terminals"][0], "new");
     let doc = h.doc();
+    // The two parts of the line (design 072 §4.3: routes), each carrying its own wire.
+    let (kept, new) = (
+        ecad_cadcraft::wires::wire_of_route(&doc, id(&f["terminals"][0], "route")),
+        ecad_cadcraft::wires::wire_of_route(&doc, id(&f["terminals"][0], "new")),
+    );
+    assert!(kept.is_some() && new.is_some(), "{f}");
     let conn = doc.connectivity();
-    assert_ne!(conn.net_of_conductor(w), conn.net_of_conductor(new), "the fuse breaks the net");
+    let net_of = |w: Option<WireId>| w.and_then(|w| conn.net_of_conductor(w));
+    assert_ne!(net_of(kept), net_of(new), "the fuse breaks the net");
     let tout = doc.terminals_of(x1).find(|(_, x)| x.key.as_ref().map(ToString::to_string).as_deref() == Some(".1o")).map(|(t, _)| t).unwrap();
     assert!(doc.ends_at(t_in).len() == 1 && doc.ends_at(tout).len() == 1, "one half on each point");
     h.run("setprop", json!({"component": x1.hex(), "key": "rating.1", "value": "2A"})).unwrap();
@@ -192,8 +198,8 @@ fn toposition_turns_a_fuse_terminal_device_into_a_fuse_position() {
     let ft = fence(&mut h, None, "Feedthrough", "1", 20.0);
     let x1: DeviceId = id(&ft, "strip");
     let f5: DeviceId = id(&h.run("place", json!({"symbol": "fuseterm", "at": [100, 100]})).unwrap(), "component");
-    let w1: WireId = id(&h.run("wire", json!({"points": pts(&[(100.0, 110.0), (100.0, 140.0)])})).unwrap(), "conductor");
-    let w2: WireId = id(&h.run("wire", json!({"points": pts(&[(100.0, 90.0), (100.0, 60.0)])})).unwrap(), "conductor");
+    let w1: WireId = id(&h.wire_pp(&[(100.0, 110.0), (100.0, 140.0)]).unwrap(), "conductor");
+    let w2: WireId = id(&h.wire_pp(&[(100.0, 90.0), (100.0, 60.0)]).unwrap(), "conductor");
     h.run("setprop", json!({"component": f5.hex(), "key": "rating", "value": "4A"})).unwrap();
     let nets_before = {
         let d = h.doc();
@@ -210,8 +216,14 @@ fn toposition_turns_a_fuse_terminal_device_into_a_fuse_position() {
     assert!(!doc.devices.contains_key(&f5), "-F05 gone");
     assert_eq!(doc.devices[&x1].value("rating.4").as_deref(), Some("4 A"));
     let c = doc.connectivity();
-    assert_eq!((c.net_of_conductor(w1).is_some(), c.net_of_conductor(w1) == c.net_of_conductor(w2)), nets_before, "nets unchanged");
-    let ends: Vec<_> = doc.terminals_of(x1).filter(|(_, x)| x.label.as_deref() == Some("4")).map(|(t, _)| doc.ends_at(t).len()).collect();
+    // Design 072 §4.4: the wires now end on the position's points, so they are new wires (the
+    // rewrite carries their values); their nets are as before: two, one on each point.
+    let at4: Vec<TerminalId> = doc.terminals_of(x1).filter(|(_, x)| x.label.as_deref() == Some("4")).map(|(t, _)| t).collect();
+    let wires4: Vec<WireId> = at4.iter().flat_map(|t| doc.ends_at(*t)).map(|(w, _)| w).collect();
+    assert_eq!(wires4.len(), 2, "each wire on its point");
+    let (n1, n2) = (c.net_of_conductor(wires4[0]), c.net_of_conductor(wires4[1]));
+    assert_eq!((n1.is_some(), n1 == n2), nets_before, "nets unchanged");
+    let ends: Vec<_> = at4.iter().map(|t| doc.ends_at(*t).len()).collect();
     assert_eq!(ends, [1, 1], "each wire on its point");
     same_as_built(&mut h);
     h.check();
@@ -244,7 +256,7 @@ fn offers_by_type_give_spare_positions_and_bom_rows() {
 fn renumber_keeps_028_strips_and_numbers_colliding_keys_by_their_own_symbol() {
     let mut h = H::new(0x0360_0008);
     for x in [10.0, 20.0, 30.0] {
-        h.run("wire", json!({"points": pts(&[(x, 0.0), (x, 40.0)])})).unwrap();
+        h.wire_pp(&[(x, 0.0), (x, 40.0)]).unwrap();
     }
     // Right to left: the first (main) symbol is at x = 30, the joined ones at 20 and 10.
     let v = h.run("terminals", json!({"from": [40, 20], "to": [0, 20]})).unwrap();
@@ -293,7 +305,7 @@ fn nothing_is_lost_silently() {
     assert_eq!(h.doc().devices[&x1].properties.get("term_label.2.1").map(String::as_str), Some("2S"), "u brings it back");
     same_as_built(&mut h);
     // A fixed wire number on a wire a fuse position splits: the out half's loss is reported.
-    let w: WireId = id(&h.run("wire", json!({"points": pts(&[(100.0, 0.0), (100.0, 80.0)])})).unwrap(), "conductor");
+    let w: WireId = id(&h.wire_pp(&[(100.0, 0.0), (100.0, 80.0)]).unwrap(), "conductor");
     h.run("wirenumber", json!({"conductor": w.hex(), "value": "24V-07"})).unwrap();
     let f = h.run("terminals", json!({"type": "FUSE", "from": [90, 40], "to": [110, 40]})).unwrap();
     assert_eq!(f["dropped_wire_numbers"][0]["number"], "24V-07", "{f}");
@@ -357,7 +369,7 @@ fn update_map_counters() {
     let _plain = fence(&mut h, None, "Feedthrough", "1", 120.0);
     let x1: DeviceId = id(&a, "strip");
     let work = |h: &mut H| h.cfg(|p| p.outputs().strips.last_work);
-    h.run("wire", json!({"points": pts(&[(300.0, 0.0), (300.0, 40.0)])})).unwrap();
+    h.wire_pp(&[(300.0, 0.0), (300.0, 40.0)]).unwrap();
     assert_eq!(work(&mut h), 0, "a wire elsewhere recomputes no strip");
     h.run("projectprops", json!({"props": {"terminal.level.separator": "/"}})).unwrap();
     assert_eq!(work(&mut h), 1, "only the L/N/PE strip inherits the separator");
@@ -402,7 +414,7 @@ fn relabel_and_renumber_keep_mixed_and_cross_level_links() {
 fn a_link_on_out_points_keeps_its_point() {
     let mut h = H::new(0x0360_000d);
     for x in [10.0, 20.0, 30.0] {
-        h.run("wire", json!({"points": pts(&[(x, 0.0), (x, 80.0)])})).unwrap();
+        h.wire_pp(&[(x, 0.0), (x, 80.0)]).unwrap();
     }
     let f = h.run("terminals", json!({"type": "FUSE", "from": [0, 40], "to": [40, 40]})).unwrap();
     let x1: DeviceId = id(&f, "strip");

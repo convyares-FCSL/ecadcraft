@@ -8,7 +8,7 @@ use common::{H, hex, id, pts};
 use ecad_cadcraft::ProjectHandle;
 use ecad_inspect::EventKind;
 use ecad_model::derive::nets;
-use ecad_model::{DeviceId, Document, End, PageId, Pt, Subject, TerminalId, WireId};
+use ecad_model::{DeviceId, Document, PageId, Pt, RouteEnd, RouteId, Subject, TerminalId, WireId};
 use serde_json::{Value, json};
 
 #[test]
@@ -44,15 +44,18 @@ fn scenario_s1_to_s16() {
     assert!(h.terminal_pos(p1, s1).near(Pt::new(90.0, 10.0), 1e-9), "A1 at (90,10): placement applied");
     assert!(h.terminal_pos(p1, s2).near(Pt::new(110.0, 10.0), 1e-9));
 
-    // S4: three wires.
+    // S4: three lines: one from t1 to s1 (a wire), two from t2 and t3 into free space (routes
+    // with one connection point carry no wire, design 072 §4.2).
     let r = h.run("wire", json!({"points": pts(&[(40.0, 15.0), (65.0, 15.0), (65.0, 10.0), (90.0, 10.0)])})).unwrap();
     let w1: WireId = id(&r, "conductor");
-    let w2: WireId = id(&h.run("wire", json!({"points": pts(&[(40.0, 10.0), (55.0, -10.0)])})).unwrap(), "conductor");
-    let w3: WireId = id(&h.run("wire", json!({"points": pts(&[(40.0, 5.0), (50.0, -20.0)])})).unwrap(), "conductor");
+    let r2: RouteId = id(&h.run("wire", json!({"points": pts(&[(40.0, 10.0), (55.0, -10.0)])})).unwrap(), "route");
+    let r3: RouteId = id(&h.run("wire", json!({"points": pts(&[(40.0, 5.0), (50.0, -20.0)])})).unwrap(), "route");
     let doc = h.doc();
-    assert_eq!(doc.wires[&w1].ends, [Some(t1), Some(s1)]);
-    assert_eq!(doc.wires[&w2].ends, [Some(t2), None]);
-    assert_eq!(doc.wires[&w3].ends, [Some(t3), None]);
+    assert_eq!(doc.wires[&w1].ends, [t1, s1]);
+    assert_eq!(doc.wires.len(), 1, "a line to nowhere is no wire");
+    assert_eq!(doc.routes[&r2].ends, [RouteEnd::Point(t2), RouteEnd::Free]);
+    assert_eq!(doc.routes[&r3].ends, [RouteEnd::Point(t3), RouteEnd::Free]);
+    let ends = |h: &mut H, r: RouteId| h.doc().routes[&r].end_points().unwrap();
 
     // S5: reroute w1 by a vertex grip (M1).
     let nets_before = nets(&h.doc());
@@ -62,7 +65,7 @@ fn scenario_s1_to_s16() {
     assert_eq!(h.head(), head + 1);
     let tx = h.p(|p| p.ledger.log().last().cloned().unwrap());
     assert!(
-        tx.ops.iter().all(|o| o.name() == "ModifyItem"),
+        tx.ops.iter().all(|o| matches!(o.name(), "ModifyItem" | "ModifyRoute")),
         "a reroute records geometry only: {:?}",
         tx.ops.iter().map(|o| o.name()).collect::<Vec<_>>()
     );
@@ -74,8 +77,8 @@ fn scenario_s1_to_s16() {
     h.run("move", json!({"handles": handles, "delta": [0, -5]})).unwrap();
     assert!(h.terminal_pos(p1, t1).near(Pt::new(40.0, 10.0), 1e-9));
     assert!(h.route_ends(p1, w1).0.near(Pt::new(40.0, 10.0), 1e-9), "w1 end A followed t1");
-    assert!(h.route_ends(p1, w2).0.near(Pt::new(40.0, 5.0), 1e-9), "w2 end A followed t2");
-    assert!(h.route_ends(p1, w2).1.near(Pt::new(55.0, -10.0), 1e-9), "w2's free end stayed");
+    assert!(ends(&mut h, r2)[0].near(Pt::new(40.0, 5.0), 1e-9), "r2 end A followed t2");
+    assert!(ends(&mut h, r2)[1].near(Pt::new(55.0, -10.0), 1e-9), "r2's free end stayed");
     let sym_item = h.symbol_item(c2);
     let sym = h.handle_of(p1, sym_item);
     h.run("rotate", json!({"handles": [sym.hex()], "base": [100, 10], "angle": 180})).unwrap();
@@ -83,20 +86,25 @@ fn scenario_s1_to_s16() {
     assert!(h.route_ends(p1, w1).1.near(h.terminal_pos(p1, s1), 1e-9), "w1 end B followed s1");
     assert_eq!(nets(&h.doc()), nets_before, "moving equipment does not change connectivity");
 
-    // S7: deliberate reconnection of w3's free end: onto s2, then into free space (M3).
+    // S7: deliberate reconnection of r3's free end: onto s2, then into free space, then back (M3).
     let s2_at = h.terminal_pos(p1, s2);
-    let route = h.route_handle(p1, w3);
+    let route = h.line_handle(p1, r3);
     h.run("grip.stretch", json!({"handle": route.hex(), "index": 2, "to": [s2_at.x, s2_at.y]})).unwrap();
-    assert_eq!(h.doc().wires[&w3].ends, [Some(t3), Some(s2)], "landing on s2 attached it");
-    let route = h.route_handle(p1, w3);
+    assert_eq!(h.doc().routes[&r3].ends, [RouteEnd::Point(t3), RouteEnd::Point(s2)], "landing on s2 attached it");
+    assert!(ecad_cadcraft::wires::wire_between(&h.doc(), t3, s2).is_some(), "and made the wire t3-s2");
+    let route = h.line_handle(p1, r3);
     h.run("grip.stretch", json!({"handle": route.hex(), "index": 2, "to": [80, -20]})).unwrap();
-    assert_eq!(h.doc().wires[&w3].ends, [Some(t3), None], "dragging into free space detached it");
-    assert_eq!(h.doc().wires[&w2].ends, [Some(t2), None], "w2 untouched");
+    assert_eq!(h.doc().routes[&r3].ends, [RouteEnd::Point(t3), RouteEnd::Free], "dragging into free space detached it");
+    assert!(ecad_cadcraft::wires::wire_between(&h.doc(), t3, s2).is_none(), "and took the wire away");
+    assert_eq!(h.doc().routes[&r2].ends, [RouteEnd::Point(t2), RouteEnd::Free], "r2 untouched");
+    let route = h.line_handle(p1, r3);
+    h.run("grip.stretch", json!({"handle": route.hex(), "index": 2, "to": [s2_at.x, s2_at.y]})).unwrap();
+    let w3 = ecad_cadcraft::wires::wire_between(&h.doc(), t3, s2).expect("t3-s2 wired again");
 
-    // S8: COPY c1 together with w2: an independent copy with preserved internal relationships.
+    // S8: COPY c1 together with r2: an independent copy with preserved internal relationships.
     let before = h.doc();
     let mut sel = h.rep_handles(p1, c1);
-    sel.push(h.route_handle(p1, w2).hex());
+    sel.push(h.line_handle(p1, r2).hex());
     h.run("copy", json!({"handles": sel, "delta": [0, -60]})).unwrap();
     let after = h.doc();
     assert_eq!(after.devices.len(), before.devices.len() + 1);
@@ -104,15 +112,16 @@ fn scenario_s1_to_s16() {
     let new_terms: Vec<TerminalId> = after.terminals_of(c1b).map(|(t, _)| t).collect();
     assert_eq!(new_terms.len(), 3);
     assert!(new_terms.iter().all(|t| !before.terminals.contains_key(t)), "new terminal IDs");
-    let w2b = *after.wires.keys().find(|c| !before.wires.contains_key(c)).unwrap();
-    let t2b = after.wires[&w2b].end(End::A).expect("the copied wire is attached");
+    let r2b = *after.routes.keys().find(|r| !before.routes.contains_key(r)).unwrap();
+    let t2b = after.routes[&r2b].ends[0].point().expect("the copied line is attached");
     assert_eq!(after.terminals[&t2b].component, c1b, "attached to the copied component, not the original");
     assert!(h.terminal_pos(p1, t2b).near(Pt::new(40.0, -55.0), 1e-9));
-    assert_eq!(after.wires[&w2b].end(End::B), None);
+    assert_eq!(after.routes[&r2b].ends[1], RouteEnd::Free);
     for k in before.devices.keys() {
         assert_eq!(before.devices[k], after.devices[k], "originals unchanged");
     }
-    assert_eq!(before.wires[&w2], after.wires[&w2]);
+    assert_eq!(before.routes[&r2], after.routes[&r2]);
+    assert_eq!(before.wires, after.wires, "a copied line to nowhere makes no wire");
     // COPYCLIP / PASTECLIP the symbol.
     let sym_item = h.symbol_item(c2);
     let sym = h.handle_of(p1, sym_item);
@@ -127,24 +136,31 @@ fn scenario_s1_to_s16() {
     assert_eq!(keys_b.len(), 2);
     assert!(keys_b.contains(&Some(ecad_model::PointKey::def("A1"))) && keys_b.contains(&Some(ecad_model::PointKey::def("A2"))));
 
-    // S9: ERASE w1's route keeps the conductor; DELETE w2 removes it.
+    // S9: ERASE w1's line removes its route, and the wire goes with it (design 072 §4.4); erasing
+    // r2's line leaves t2 with no route.
+    let r1 = h.route_of(p1, w1);
     let route = h.route_handle(p1, w1);
     h.run("erase", json!({"handles": [route.hex()]})).unwrap();
     let doc = h.doc();
-    assert!(doc.wires.contains_key(&w1), "removing a representation never deletes its subject (P6)");
-    assert_eq!(doc.wires[&w1].ends, [Some(t1), Some(s1)], "w1 still attached");
-    assert_eq!(doc.representations_of(Subject::Wire(w1)).count(), 0, "w1 is not shown");
-    h.run("ecaddelete", json!({"conductor": w2_hex(w2)})).unwrap();
+    assert!(!doc.routes.contains_key(&r1), "the line's route is erased with it");
+    assert!(!doc.wires.contains_key(&w1), "t1 and s1 are no longer joined");
+    assert_eq!(doc.representations_of(Subject::Route(r1)).count(), 0, "nothing shows it");
+    let route = h.line_handle(p1, r2);
+    h.run("erase", json!({"handles": [route.hex()]})).unwrap();
     let doc = h.doc();
-    assert!(!doc.wires.contains_key(&w2));
-    assert!(doc.ends_at(t2).is_empty());
+    assert!(!doc.routes.contains_key(&r2));
+    assert_eq!(doc.routes_at(t2).count(), 0);
 
     // S10: a second page; a cable spanning both pages; a non-graphical edit.
     let r = h.run("newpage", json!({"title": "2"})).unwrap();
     let p2: PageId = id(&r, "page");
     h.activate(p2);
     h.run("line", json!({"points": [[0, 0], [10, 10]]})).unwrap();
-    let w4: WireId = id(&h.run("wire", json!({"points": pts(&[(0.0, 20.0), (30.0, 20.0)])})).unwrap(), "conductor");
+    let r = h.run("place", json!({"at": [100, 10], "rotation": 90})).unwrap();
+    let ends4: Vec<TerminalId> = r["terminals"].as_array().unwrap().iter().map(|x| id(x, "terminal")).collect();
+    let (a4, b4) = (h.terminal_pos(p2, ends4[0]), h.terminal_pos(p2, ends4[1]));
+    let w4: WireId =
+        id(&h.run("wire", json!({"points": pts(&[(a4.x, a4.y), (a4.x, a4.y + 20.0), (b4.x, b4.y + 20.0), (b4.x, b4.y)])})).unwrap(), "conductor");
     let cable = h.run("cableadd", json!({"conductors": [w2_hex(w3), w2_hex(w4)], "tag": "-W1"})).unwrap();
     h.run("setprop", json!({"component": c1b.hex(), "key": "tag", "value": "-K2"})).unwrap();
     let i2 = h.page_index(p2).unwrap();

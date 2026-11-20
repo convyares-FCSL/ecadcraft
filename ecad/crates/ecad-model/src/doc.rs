@@ -13,7 +13,7 @@ use crate::book::PageNo;
 use crate::device::DeviceType;
 use crate::error::{ModelError, Result};
 use crate::geom::{Placement, Pt};
-use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, TerminalId, WireId};
+use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, RouteId, TerminalId, WireId};
 use crate::page::{PageKind, PageTitle};
 use crate::point::PointKey;
 use crate::role::{PartRole, Role};
@@ -526,6 +526,57 @@ impl Device {
     }
 }
 
+/// How many conductors a connection point accepts (design 072 §2.7, §4.4, F38): 1 to
+/// [`Accepts::MAX`]; two unless its symbol says more (PE bars, earth studs). The wire order chains
+/// through a point that accepts two and fans out (a star) from one that accepts more; a point
+/// with more wires than it accepts is a Checks error. Any other number is a read error.
+///
+/// # Example
+/// ```
+/// use ecad_model::Accepts;
+/// assert_eq!(Accepts::default().get(), 2);
+/// assert_eq!(Accepts::new(6).map(Accepts::get), Some(6));
+/// assert!(Accepts::new(0).is_none() && Accepts::new(1000).is_none());
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(transparent)]
+pub struct Accepts(u8);
+
+impl Accepts {
+    /// The most conductors a point may accept.
+    pub const MAX: u8 = 64;
+    /// The usual point: two conductors, one in and one out.
+    pub const TWO: Accepts = Accepts(2);
+
+    /// `n` conductors, when 1 to [`Accepts::MAX`].
+    pub fn new(n: u64) -> Option<Accepts> {
+        u8::try_from(n).ok().filter(|n| (1..=Self::MAX).contains(n)).map(Accepts)
+    }
+
+    /// How many.
+    pub fn get(self) -> usize {
+        usize::from(self.0)
+    }
+
+    /// Whether it is the usual two (left out of the file).
+    pub fn is_two(&self) -> bool {
+        *self == Self::TWO
+    }
+}
+
+impl Default for Accepts {
+    fn default() -> Self {
+        Self::TWO
+    }
+}
+
+impl<'de> Deserialize<'de> for Accepts {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Self, D::Error> {
+        let n = u64::deserialize(d)?;
+        Accepts::new(n).ok_or_else(|| serde::de::Error::custom(format!("a connection point accepts 1 to {} conductors, not {n}", Accepts::MAX)))
+    }
+}
+
 /// A terminal of a component.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Terminal {
@@ -533,6 +584,9 @@ pub struct Terminal {
     pub label: Option<String>,
     /// The definition terminal this one was created from (LIB-02; design 072 §2.7).
     pub key: Option<PointKey>,
+    /// How many conductors it accepts, copied from its definition terminal when it is made.
+    #[serde(default, skip_serializing_if = "Accepts::is_two")]
+    pub accepts: Accepts,
 }
 
 /// What a representation depicts.
@@ -541,6 +595,8 @@ pub enum Subject {
     Device(DeviceId),
     Wire(WireId),
     Cable(CableId),
+    /// A route's drawing (design 072 F31).
+    Route(RouteId),
 }
 
 /// The two representation forms (proposal §4.1).
@@ -568,18 +624,153 @@ pub struct Representation {
     pub connection_points: BTreeMap<TerminalId, Pt>,
 }
 
-/// A conductor's membership of a cable.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CableMember {
-    pub conductor: WireId,
-    pub core: Option<String>,
+/// Where a cable core is (owner ruling, 2026-11-18): stored, never worked out from the
+/// connections on read.
+///
+/// # Semantics
+/// - `Unplaced`: the core is on no line yet.
+/// - `Route`: the core is on a drawn line that carries no wire yet (a loose line); `landed` is the
+///   connection point of the one end that has landed, when exactly one has.
+/// - `Wire`: the core is that wire. The command that lands a line's second end moves its cores
+///   from the route to the wire it forms.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CorePosition {
+    Unplaced,
+    Route { route: RouteId, landed: Option<TerminalId> },
+    Wire(WireId),
 }
+
+impl CorePosition {
+    /// The wire, when the core is on one.
+    pub fn wire(self) -> Option<WireId> {
+        match self {
+            CorePosition::Wire(w) => Some(w),
+            CorePosition::Unplaced | CorePosition::Route { .. } => None,
+        }
+    }
+
+    /// The route, when the core is on a line with no wire yet.
+    pub fn route(self) -> Option<RouteId> {
+        match self {
+            CorePosition::Route { route, .. } => Some(route),
+            CorePosition::Unplaced | CorePosition::Wire(_) => None,
+        }
+    }
+}
+
+/// What a cable core is for (owner ruling, 2026-11-18): stored apart from where it is, never
+/// worked out from its position.
+///
+/// # Semantics
+/// - `InUse`: the core is meant to carry a conductor. One left [`CorePosition::Unplaced`] is an
+///   open core (a check).
+/// - `Spare`: the core is ticked **Not used**; it may stay unplaced.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Purpose {
+    #[default]
+    InUse,
+    Spare,
+}
+
+/// The longest core label.
+pub const MAX_CORE_LABEL: usize = 32;
+
+/// A core's label: `1`, `BN`, `GNYE`.
+pub type CoreLabel = crate::text::Text<MAX_CORE_LABEL>;
+
+/// One core of a cable (design 072 §4.5): the cable's cores are its whole core set, so a core the
+/// cable offers but no line carries yet is stored, [`CorePosition::Unplaced`].
+///
+/// # Semantics
+/// `colours`, when set, are the core's own; `None` takes them from the cable type by core order.
+/// `purpose` and `position` are independent: a spare core may sit on a line, an in-use core may be
+/// unplaced.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Core {
+    pub label: Option<CoreLabel>,
+    pub colours: Option<crate::wire::Colours>,
+    pub purpose: Purpose,
+    pub position: CorePosition,
+    /// The core's named points on the cable's references (design 072 §4.4, F4): one connection
+    /// point per reference end, positioned by that reference's representation. Every point listed
+    /// here joins the others, so a line landing on one page's point and a line landing on the other
+    /// page's are one net, and the wire runs from device point to device point across the pages.
+    /// They are aids: never a wire's end.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub through: Vec<TerminalId>,
+}
+
+impl Core {
+    /// An in-use core on wire `w`.
+    pub fn on_wire(w: WireId, label: Option<CoreLabel>) -> Self {
+        Core { label, colours: None, purpose: Purpose::InUse, position: CorePosition::Wire(w), through: Vec::new() }
+    }
+
+    /// An in-use core on no line yet.
+    pub fn unplaced(label: Option<CoreLabel>) -> Self {
+        Core { label, colours: None, purpose: Purpose::InUse, position: CorePosition::Unplaced, through: Vec::new() }
+    }
+
+    /// The label's text, when it has one.
+    pub fn label_str(&self) -> Option<&str> {
+        self.label.as_ref().map(CoreLabel::as_str)
+    }
+
+    /// Whether the core is ticked Not used.
+    pub fn is_spare(&self) -> bool {
+        self.purpose == Purpose::Spare
+    }
+
+    /// The core once its line is gone (a write rule, never a read): a labelled or spare core is one
+    /// of the cable's core set and stays, unplaced; an unlabelled in-use core was only that line's
+    /// membership and goes. `None` too when `others` already hold an unplaced core of that label.
+    pub fn off_line(&self, others: &[Core]) -> Option<Core> {
+        // A core with named points on the cable's references stays (F4): they are placed there.
+        if self.label.is_none() && !self.is_spare() && self.through.is_empty() {
+            return None;
+        }
+        let taken = self.label.is_some() && others.iter().any(|o| o.position == CorePosition::Unplaced && o.label == self.label);
+        (!taken).then(|| Core { position: CorePosition::Unplaced, ..self.clone() })
+    }
+
+    /// The wire this core is, when it is one.
+    pub fn wire(&self) -> Option<WireId> {
+        self.position.wire()
+    }
+
+    /// The route this core is on, when it has no wire yet.
+    pub fn route(&self) -> Option<RouteId> {
+        self.position.route()
+    }
+}
+
+/// The style-choice index key of a cable's cable type ([`Cable::cable_type`]); never a property.
+pub const CABLE_TYPE_KEY: &str = "cable_type";
 
 /// A cable groups existing conductors (DOC-04).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Cable {
     pub properties: Properties,
-    pub members: Vec<CableMember>,
+    /// The whole core set, in core order (design 072 §4.5).
+    pub cores: Vec<Core>,
+    /// Its cable type (a style of catalogue `cable`, design 072 §4.5): what its size, colours and
+    /// shield come from when it has none of its own. A reference to no type is kept (a check row).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cable_type: Option<crate::style::StyleRef>,
+    /// The cable's own shield; `None` takes its cable type's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shield: Option<crate::style::cable::Shield>,
+    /// The cable's own rating inputs (design 057 §6.1, 072 §4.5); each overrides the project's.
+    #[serde(default, skip_serializing_if = "crate::wire::CircuitInputs::is_empty")]
+    pub rating: crate::wire::CircuitInputs,
+    /// The design current typed for the cable (`load`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub load: Option<crate::units::Amps>,
+    /// The device named as its protection (`rating {protected_by}`), over the trace's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protected_by: Option<crate::wire::ProtectedBy>,
 }
 
 /// SHA-256 of a definition's canonical form (proposal §20.10), as 64 lower-case hex digits.
@@ -793,6 +984,10 @@ pub struct TerminalDef {
     pub key: PointKey,
     pub label: Option<String>,
     pub at: Pt,
+    /// How many conductors the point accepts (design 072 F38); copied to each [`Terminal`] made
+    /// from it.
+    #[serde(default, skip_serializing_if = "Accepts::is_two")]
+    pub accepts: Accepts,
 }
 
 /// The device text a symbol slot places (design 048 §2.3, design 072 §7): one of the device's own
@@ -1156,6 +1351,8 @@ pub struct Document {
     pub representations: BTreeMap<RepresentationId, Representation>,
     pub wires: BTreeMap<WireId, Wire>,
     pub cables: BTreeMap<CableId, Cable>,
+    /// The lines drawn on pages (design 072 F31).
+    pub routes: BTreeMap<RouteId, crate::route::Route>,
     pub definitions: BTreeMap<DefinitionId, Definition>,
     pub settings: ProjectSettings,
     /// Named versions (bookmarks): name → the `seq` it names (§6.1). History, never pruned.
@@ -1199,6 +1396,8 @@ struct DocumentData {
     representations: BTreeMap<RepresentationId, Representation>,
     wires: BTreeMap<WireId, Wire>,
     cables: BTreeMap<CableId, Cable>,
+    #[serde(default)]
+    routes: BTreeMap<RouteId, crate::route::Route>,
     definitions: BTreeMap<DefinitionId, Definition>,
     settings: ProjectSettings,
     versions: BTreeMap<String, u64>,
@@ -1228,6 +1427,7 @@ impl From<DocumentData> for Document {
             representations,
             wires,
             cables,
+            routes,
             definitions,
             settings,
             versions,
@@ -1248,6 +1448,7 @@ impl From<DocumentData> for Document {
             representations,
             wires,
             cables,
+            routes,
             definitions,
             settings,
             versions,
@@ -1278,6 +1479,7 @@ impl PartialEq for Document {
             representations,
             wires,
             cables,
+            routes,
             definitions,
             settings,
             versions,
@@ -1299,6 +1501,7 @@ impl PartialEq for Document {
             && *representations == other.representations
             && *wires == other.wires
             && *cables == other.cables
+            && *routes == other.routes
             && *definitions == other.definitions
             && *settings == other.settings
             && *versions == other.versions
@@ -1421,6 +1624,26 @@ impl Document {
         referrers(&self.index.terminal_ends, &terminal).collect()
     }
 
+    /// The wires of net `net`, in ID order, through the index.
+    pub fn wires_of_net(&self, net: crate::id::NetId) -> impl Iterator<Item = WireId> + '_ {
+        referrers(&self.index.net_wires, &net)
+    }
+
+    /// The routes with an end on connection point `t`, in ID order, through the index.
+    pub fn routes_at(&self, t: TerminalId) -> impl Iterator<Item = crate::id::RouteId> + '_ {
+        referrers(&self.index.terminal_routes, &t)
+    }
+
+    /// The routes ending on the middle of route `r` (its T-joins), in ID order, through the index.
+    pub fn tees_of(&self, r: crate::id::RouteId) -> impl Iterator<Item = crate::id::RouteId> + '_ {
+        referrers(&self.index.route_tees, &r)
+    }
+
+    /// The routes drawn on page `page`, in ID order, through the index.
+    pub fn routes_on(&self, page: PageId) -> impl Iterator<Item = crate::id::RouteId> + '_ {
+        referrers(&self.index.page_routes, &page)
+    }
+
     /// Components whose tag is the same tag as `tag` (equal [`crate::tag::key`]), in ID order,
     /// through the tag index: the cost does not grow with the project.
     pub fn components_tagged(&self, tag: &str) -> Vec<DeviceId> {
@@ -1496,5 +1719,52 @@ impl Document {
     /// Cables `conductor` is a member of, in ID order.
     pub fn cables_of(&self, conductor: WireId) -> Vec<CableId> {
         referrers(&self.index.conductor_cables, &conductor).collect()
+    }
+
+    /// The cables with a core on route `r` (a line with no wire yet).
+    pub fn cables_on_route(&self, r: RouteId) -> Vec<CableId> {
+        referrers(&self.index.route_cables, &r).collect()
+    }
+
+    /// The cable and core index whose named point `t` is (a point of a cable reference, design 072
+    /// §4.4, F4), through the index.
+    pub fn cable_point(&self, t: TerminalId) -> Option<(CableId, usize)> {
+        let cable = referrers(&self.index.cable_points, &t).next()?;
+        let index = self.cables.get(&cable)?.cores.iter().position(|c| c.through.contains(&t))?;
+        Some((cable, index))
+    }
+
+    /// Whether `t` is a connection point: a component's terminal or a cable reference's point.
+    pub fn has_point(&self, t: TerminalId) -> bool {
+        self.terminals.contains_key(&t) || self.cable_point(t).is_some()
+    }
+
+    /// The named points joined to `t` (`t` included), when `t` is one (design 072 §4.4, F4, F5): a
+    /// cable reference's point joins the core's points on the cable's other references; a
+    /// continuation's point joins the points of every continuation with the same name (an unnamed
+    /// continuation's, its own). `None` for a device's own point. Named points are aids: a wire
+    /// runs through them, never to them, so it runs device point to device point across pages.
+    pub fn named_points(&self, t: TerminalId) -> Option<Vec<TerminalId>> {
+        if let Some((cable, i)) = self.cable_point(t) {
+            return self.cables.get(&cable)?.cores.get(i).map(|c| c.through.clone());
+        }
+        let device = self.terminals.get(&t)?.component;
+        let props = &self.devices.get(&device)?.properties;
+        if props.get(crate::connectivity::KIND).map(String::as_str) != Some(crate::connectivity::CONTINUATION) {
+            return None;
+        }
+        Some(self.continuation_points(props, device))
+    }
+
+    /// The points of continuation `device` (with `props`) and of its partners by name, in ID order.
+    pub fn continuation_points(&self, props: &Properties, device: DeviceId) -> Vec<TerminalId> {
+        let devices = match crate::connectivity::continuation_key(props) {
+            Some(k) => self.continuations_named(&k),
+            None => vec![device],
+        };
+        let mut out: Vec<TerminalId> = devices.into_iter().flat_map(|d| self.terminals_of(d).map(|(t, _)| t)).collect();
+        out.sort();
+        out.dedup();
+        out
     }
 }

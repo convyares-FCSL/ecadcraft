@@ -20,13 +20,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
-    DefinitionId, Device, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Placement, Primitive, Pt,
-    Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId,
+    DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Placement, Pt, Representation,
+    RepresentationId, RouteEnd, RouteId, Style, Subject, SymbolInstance, Terminal, TerminalId,
 };
 
+use ecad_model::Noun;
 use ecad_model::Word;
 use ecad_model::device::{Connector, ConnectorCheck, DeviceType, HalfPart};
-use ecad_model::{CableId, CableMember, Noun, Wire, WireId};
 
 use crate::CmdError;
 use crate::checks::{Check, Fix, Kind as CheckKind, Object};
@@ -34,7 +34,7 @@ use crate::defaults::{self, Scope};
 use crate::locations::{BoxCache, Located};
 use crate::strips::{self, terminal_words};
 use crate::symbols::{self, Kind, PLUG_KEY, Side, Starter, StarterKey};
-use crate::wires::{ON_WIRE, OnWire};
+use crate::wires::{ON_WIRE, OnRoute};
 
 /// Most pins a connector has (design 044 §2.3): a guard, not a preference.
 pub const MAX_PINS: usize = 64;
@@ -659,7 +659,7 @@ pub fn symbol_ops(
         let name = if pin { names.first() } else { names.get(i) }.ok_or(CmdError::refused("Not enough pin names for this symbol."))?;
         let t: TerminalId = ids.fresh();
         let key = side.key().ok_or(CmdError::refused("A connector symbol's point has no side."))?;
-        ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: Some(name.clone()), key: Some(key) } });
+        ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: Some(name.clone()), key: Some(key), accepts: td.accepts } });
         cps.insert(t, td.at);
         shown.push(Shown { side, name: name.clone(), terminal: t, local: td.at });
     }
@@ -767,78 +767,37 @@ pub fn check_named_pin(doc: &Document, c: DeviceId, side: Side, name: &str, take
     Ok(())
 }
 
-/// Plan landing a connector pin symbol, placed at `on.at`, on its wire (design 044 §4.5): a pin
-/// pair splits the wire, the part towards `.s` landing on `.s` and the other on `.p`; both are
-/// one net through the mate, so the wire number stays on both. A one-side pin takes the part
-/// towards its point; the other part is left open, without a stored number of its own.
+/// Plan landing a connector pin symbol, placed at `on.at`, on its route (design 044 §4.5,
+/// design 072 §4.3): a pin pair splits the route, the part towards `.s` ending on `.s` and the
+/// other on `.p`. A one-side pin takes the part towards its point; the other part ends free.
+/// The commit's rewrite makes the wires.
 ///
 /// # Errors
 /// [`crate::connectors::plan_land`]'s refusals.
 pub fn land_pin(
-    doc: &Document, ids: &mut IdAllocator, page: PageId, on: crate::wires::OnWire, shown: &[Shown], placement: Placement,
+    doc: &Document, ids: &mut IdAllocator, on: crate::wires::OnRoute, shown: &[Shown], placement: Placement,
 ) -> Result<crate::connectors::Land, CmdError> {
     let first = shown.first().ok_or(CmdError::refused("The symbol has no connection point."))?;
-    let before = crate::wires::route_vertices(doc, on.conductor, page).and_then(|(_, _, v)| v.get(on.segment).copied());
-    let mut land = crate::connectors::plan_land(doc, ids, page, on, first.terminal)?;
-    let (c1, c2) = (land.conductor, land.new);
-    match (shown.iter().find(|x| x.side == Side::Socket), shown.iter().find(|x| x.side == Side::Plug)) {
+    let before = doc.routes.get(&on.route).and_then(|r| r.points.get(on.segment).copied());
+    let (a, b) = match (shown.iter().find(|x| x.side == Side::Socket), shown.iter().find(|x| x.side == Side::Plug)) {
         (Some(s), Some(p)) if shown.len() == 2 => {
             let (ps, pp) = (placement.apply(s.local), placement.apply(p.local));
             let keep_s = before.is_none_or(|b| b.dist(ps) <= b.dist(pp));
             let (keep_t, keep_p, rest_t, rest_p) = if keep_s { (s.terminal, ps, p.terminal, pp) } else { (p.terminal, pp, s.terminal, ps) };
-            for op in &mut land.ops {
-                match op {
-                    Op::AttachEnd { conductor, end: End::B, after, .. } if *conductor == c1 => *after = Some(keep_t),
-                    Op::CreateWire { id, conductor } if *id == c2 => conductor.ends[0] = Some(rest_t),
-                    Op::ModifyItem { after, .. } => set_route_end(after, keep_p, false),
-                    Op::AddItem { item, .. } if matches!(item.kind, ItemKind::Primitive(_)) => set_route_end(item, rest_p, true),
-                    _ => {}
-                }
-            }
+            ((RouteEnd::Point(keep_t), keep_p), (RouteEnd::Point(rest_t), rest_p))
         }
         _ => {
             let pt = placement.apply(first.local);
             let away = Pt::new(2.0 * placement.origin.x - pt.x, 2.0 * placement.origin.y - pt.y);
             let keep_attached = before.is_none_or(|b| b.dist(pt) <= b.dist(away));
-            let mut dropped = None;
-            for op in &mut land.ops {
-                match op {
-                    Op::AttachEnd { conductor, end: End::B, after, .. } if *conductor == c1 && !keep_attached => *after = None,
-                    Op::CreateWire { id, conductor } if *id == c2 => {
-                        if keep_attached {
-                            conductor.ends[0] = None;
-                        }
-                        dropped = conductor.number.take().map(|n| (n.text.to_string(), n.fixed));
-                    }
-                    Op::ModifyItem { after, .. } if keep_attached => set_route_end(after, pt, false),
-                    Op::AddItem { item, .. } if !keep_attached && matches!(item.kind, ItemKind::Primitive(_)) => set_route_end(item, pt, true),
-                    _ => {}
-                }
-            }
-            land.dropped_number = dropped;
-        }
-    }
-    Ok(land)
-}
-
-/// Move a route's first (`start`) or last vertex to `p`.
-fn set_route_end(item: &mut Item, p: Pt, start: bool) {
-    match &mut item.kind {
-        ItemKind::Primitive(Primitive::Line { a, b }) => {
-            if start {
-                *a = p;
+            if keep_attached {
+                ((RouteEnd::Point(first.terminal), pt), (RouteEnd::Free, on.at))
             } else {
-                *b = p;
+                ((RouteEnd::Free, on.at), (RouteEnd::Point(first.terminal), pt))
             }
         }
-        ItemKind::Primitive(Primitive::Polyline { vertices, .. }) => {
-            let v = if start { vertices.first_mut() } else { vertices.last_mut() };
-            if let Some(v) = v {
-                *v = p;
-            }
-        }
-        _ => {}
-    }
+    };
+    crate::connectors::plan_land_ends(doc, ids, on, a, b)
 }
 
 // ---------------------------------------------------------------- properties (FP4)
@@ -1451,116 +1410,55 @@ mod tests {
     }
 }
 
-/// A wire split at a terminal.
+/// A route split at a terminal.
 #[derive(Debug, Clone)]
 pub struct Land {
     pub ops: Vec<Op>,
-    /// The wire, which keeps end A and the route up to the terminal.
-    pub conductor: WireId,
-    /// The new second half, from the terminal to the old end B.
-    pub new: WireId,
-    /// The cable whose membership was decided, and which half keeps it.
-    pub cable: Option<(CableId, WireId, bool)>,
-    /// Brief 036: the stored wire number the second half of a two-point split did not keep
-    /// (review M1: reported, never dropped silently), and whether it was fixed.
-    pub dropped_number: Option<(String, bool)>,
+    /// The route, which keeps its first end and its points up to the terminal.
+    pub route: RouteId,
+    /// The new second part, from the terminal to the old last end.
+    pub new: RouteId,
 }
 
-/// Plan landing terminal `t` (being placed at `on.at`) on its wire (design 028 §3.1): the wire is
-/// split there and both halves attach to `t`; cable membership stays with the half the cable's
-/// slash crosses on this page.
+/// Plan landing terminal `t` (being placed at `on.at`) on its route (design 028 §3.1, design 072
+/// §4.3): the route is split there and both parts end on `t`; the commit's rewrite makes the
+/// wires (cable membership stays with the wires it keeps).
 ///
 /// # Errors
-/// The point at a route end, a terminal already there, a wire drawn on several pages; each says
-/// what to do instead.
-pub fn plan_land(doc: &Document, ids: &mut IdAllocator, page: PageId, on: OnWire, t: TerminalId) -> Result<Land, CmdError> {
-    let c = on.conductor;
-    let cond = doc.wires.get(&c).ok_or(CmdError::NotFound(Noun::Wire))?;
-    let pages: BTreeSet<PageId> = doc.representations_of(Subject::Wire(c)).map(|(_, r)| r.page).collect();
-    if pages.len() > 1 {
-        return Err(CmdError::refused(format!(
-            "This wire is drawn on {} pages; place the terminal where the wire is drawn on one page, or on empty space and wire it.",
-            pages.len()
-        )));
-    }
-    if let Some(x) = strip_terminal_at(doc, page, on.at) {
+/// As [`plan_land_ends`].
+pub fn plan_land(doc: &Document, ids: &mut IdAllocator, on: OnRoute, t: TerminalId) -> Result<Land, CmdError> {
+    plan_land_ends(doc, ids, on, (RouteEnd::Point(t), on.at), (RouteEnd::Point(t), on.at))
+}
+
+/// Plan splitting `on.route` at `on.at` where a symbol lands: the first part ends on `first` (an
+/// end and the point drawn to), the second starts on `second`.
+///
+/// # Errors
+/// The point at a route end, or a strip terminal already there; each says what to do instead.
+pub fn plan_land_ends(doc: &Document, ids: &mut IdAllocator, on: OnRoute, first: (RouteEnd, Pt), second: (RouteEnd, Pt)) -> Result<Land, CmdError> {
+    let route = doc.routes.get(&on.route).ok_or(CmdError::NotFound(Noun::Wire))?;
+    if let Some(x) = strip_terminal_at(doc, route.page, on.at) {
         return Err(CmdError::refused(format!("{} is already there. Click elsewhere on the wire.", terminal_words(doc, x))));
     }
-    let (item_id, item, v) = crate::wires::route_vertices(doc, c, page).ok_or(CmdError::refused("The wire has no route on this page."))?;
-    let (first, last) = (v.first().copied().ok_or(CmdError::refused("empty route"))?, v.last().copied().ok_or(CmdError::refused("empty route"))?);
-    for (end, p) in [(End::A, first), (End::B, last)] {
-        if on.at.near(p, ON_WIRE) {
-            return Err(CmdError::refused(match cond.end(end) {
-                Some(x) => {
-                    format!("That is the end of the wire at {}. Click along the wire, away from its ends, or on empty space.", terminal_words(doc, x))
-                }
-                None => "That is the end of the wire. Click along the wire, away from its ends, or on empty space.".into(),
-            }));
+    if let Some([a, b]) = route.end_points() {
+        for (p, e) in [a, b].into_iter().zip(route.ends) {
+            if on.at.near(p, ON_WIRE) {
+                return Err(CmdError::refused(match e.point() {
+                    Some(x) => format!(
+                        "That is the end of the wire at {}. Click along the wire, away from its ends, or on empty space.",
+                        terminal_words(doc, x)
+                    ),
+                    None => "That is the end of the wire. Click along the wire, away from its ends, or on empty space.".into(),
+                }));
+            }
         }
     }
-    let seg = on.segment;
-    let mut keep: Vec<Pt> = v.get(..=seg).unwrap_or_default().to_vec();
-    let mut rest: Vec<Pt> = v.get(seg + 1..).unwrap_or_default().to_vec();
-    if keep.last().is_some_and(|p| p.near(on.at, 1e-9)) {
-        keep.pop();
-    }
-    if rest.first().is_some_and(|p| p.near(on.at, 1e-9)) {
-        rest.remove(0);
-    }
-    keep.push(on.at);
-    rest.insert(0, on.at);
-    let path = |pts: &[Pt]| match pts {
-        [a, b] => Primitive::Line { a: *a, b: *b },
-        _ => Primitive::Polyline { vertices: pts.to_vec(), closed: false },
-    };
-    let mut ops = Vec::new();
-    let mut shortened = item.clone();
-    shortened.kind = ItemKind::Primitive(path(&keep));
-    ops.push(Op::ModifyItem { id: item_id, before: item.clone(), after: shortened });
-    let old_b = cond.end(End::B);
-    ops.push(Op::AttachEnd { conductor: c, end: End::B, before: old_b, after: Some(t) });
-    let (c2, i2, r2): (WireId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
-    ops.push(Op::CreateWire { id: c2, conductor: Wire { ends: [Some(t), old_b], ..cond.clone() } });
-    let mut second = item;
-    second.kind = ItemKind::Primitive(path(&rest));
-    ops.push(Op::AddItem { id: i2, item: second });
-    let role = doc.representations_of(Subject::Wire(c)).find(|(_, r)| r.page == page).map_or(ecad_model::Role::Route, |(_, r)| r.role);
-    ops.push(Op::LinkRepresentation {
-        id: r2,
-        rep: Representation { subject: Subject::Wire(c2), page, form: Form::Drawn, role, items: vec![i2], connection_points: BTreeMap::new() },
-    });
-    // Cable membership (§3.1 step 3).
-    let mut cable = None;
-    if let Some(k) = doc.cables_of(c).first().copied()
-        && let Some((index, member)) = doc.cables.get(&k).and_then(|x| x.members.iter().enumerate().find(|(_, m)| m.conductor == c))
-    {
-        let slashes = crate::slash::slashes_of(doc, page, k);
-        let crosses = |pts: &[Pt]| slashes.iter().any(|(_, a, b)| segments(pts).any(|(p, q)| meets(p, q, *a, *b)));
-        let (in_keep, in_rest) = (crosses(&keep), crosses(&rest));
-        let moved = in_rest && !in_keep;
-        let decided = in_keep != in_rest;
-        if moved {
-            ops.push(Op::RemoveCableMember { cable: k, index, member: member.clone() });
-            ops.push(Op::AddCableMember { cable: k, index, member: CableMember { conductor: c2, core: member.core.clone() } });
-        }
-        cable = Some((k, if moved { c2 } else { c }, decided));
-    }
-    Ok(Land { ops, conductor: c, new: c2, cable, dropped_number: None })
+    let split = crate::wires::plan_split(doc, ids, &on, first, second)?;
+    Ok(Land { ops: split.ops, route: split.route, new: split.new })
 }
 
 pub fn segments(v: &[Pt]) -> impl Iterator<Item = (Pt, Pt)> + '_ {
     v.windows(2).filter_map(|w| Some((*w.first()?, *w.get(1)?)))
-}
-
-/// Whether segments `p`-`q` and `r`-`s` cross or touch.
-fn meets(p: Pt, q: Pt, r: Pt, s: Pt) -> bool {
-    let d = (q.x - p.x) * (s.y - r.y) - (q.y - p.y) * (s.x - r.x);
-    if d.abs() < 1e-12 {
-        return false;
-    }
-    let t = ((r.x - p.x) * (s.y - r.y) - (r.y - p.y) * (s.x - r.x)) / d;
-    let u = ((r.x - p.x) * (q.y - p.y) - (r.y - p.y) * (q.x - p.x)) / d;
-    (-1e-9..=1.0 + 1e-9).contains(&t) && (-1e-9..=1.0 + 1e-9).contains(&u)
 }
 
 /// The terminal of any strip drawn at `at` on `page`.

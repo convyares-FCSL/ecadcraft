@@ -19,8 +19,8 @@
 //! | `SetProperty(Page P, location)`, `AddPage` / `RemovePage` of P | conductors routed on P (their Page cell); no device row |
 //! | `SetProperty(Page P, number)` | conductors routed on P |
 //! | `SetProperty(Project, designation.<a>.<key>.code)` (a rename in the list, brief 052) | the devices, connectors and items storing that key (the one wide case, by intent) |
-//! | `CreateWire` / `DeleteWire` / `AttachEnd` / `SetProperty` conductor / route ops | that conductor and its net's conductors (before and after); their cables |
-//! | `CreateCable` / `DeleteCable` / members / `SetProperty` cable | that cable; its cores |
+//! | `CreateWire` / `DeleteWire` / `SetProperty` conductor (the commit's wire rewrite included) / route ops | that conductor and its net's conductors (before and after); their cables |
+//! | `CreateCable` / `DeleteCable` / `ModifyCable` | that cable; its cores |
 //! | `SetProperty` of a continuation's `name` (brief 032) | the cables with a member attached to its old or new name group: their core chains |
 //! | `SetProjectSettings` changing the potentials table | conductors on the potentials whose row changed (potential index); with a row added or removed, also those with no potential |
 //! | `SetProjectSettings` changing the sheet | conductors routed on pages that use the project's sheet (their Page cell and ends' places) |
@@ -78,22 +78,11 @@ impl PageCx {
     }
 }
 
-/// Where conductor `w`'s two ends are drawn: end A at its first route's first vertex, end B at
-/// its last route's last vertex, routes in book order.
+/// Where conductor `w`'s two ends are drawn: each at the first (in book order) route end landing
+/// on its connection point.
 pub fn end_points(doc: &Document, w: WireId, cx: &PageCx) -> [Option<(PageId, Pt)>; 2] {
-    let mut routes: Vec<(usize, Vec<Pt>, PageId)> = doc
-        .representations_of(Subject::Wire(w))
-        .filter_map(|(_, r)| {
-            let pts = r.items.iter().filter_map(|i| doc.items.get(i)).find_map(|i| match &i.kind {
-                ecad_model::ItemKind::Primitive(ecad_model::Primitive::Polyline { vertices, .. }) => Some(vertices.clone()),
-                ecad_model::ItemKind::Primitive(ecad_model::Primitive::Line { a, b }) => Some(vec![*a, *b]),
-                _ => None,
-            })?;
-            Some((cx.pos(r.page), pts, r.page))
-        })
-        .collect();
-    routes.sort_by_key(|(pos, _, _)| *pos);
-    [routes.first().and_then(|(_, v, p)| v.first().map(|x| (*p, *x))), routes.last().and_then(|(_, v, p)| v.last().map(|x| (*p, *x)))]
+    let Some(wire) = doc.wires.get(&w) else { return [None, None] };
+    wire.ends.map(|t| crate::wires::drawn_ends_at(doc, t).into_iter().min_by_key(|(p, _)| cx.pos(*p)))
 }
 
 /// One device as the reports see it.
@@ -215,10 +204,8 @@ fn loc_key(v: Option<&str>) -> LocKey {
 /// One end of a wire as the report shows it.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct EndCell {
-    /// `-K01:A1`, `24V >`; `None` for a loose end or a junction.
+    /// `-K01:A1`, `24V >`; `None` for a loose end.
     pub name: Option<String>,
-    /// A junction end: where it is (shown as `junction 105-C-4` in the reference style).
-    pub junction: Option<Option<ecad_model::derive::Place>>,
     /// The device's location; `None` with `device` set means the device has none.
     pub location: Option<String>,
     pub device: Option<DeviceId>,
@@ -230,11 +217,8 @@ pub struct EndCell {
 
 impl EndCell {
     /// The end as shown, in reference style `style`.
-    pub fn text(&self, style: ecad_model::ReferenceStyle) -> Option<String> {
-        match &self.junction {
-            Some(p) => Some(format!("junction {}", p.as_ref().map_or_else(|| "?".to_string(), |x| x.text(style)))),
-            None => self.name.clone(),
-        }
+    pub fn text(&self, _style: ecad_model::ReferenceStyle) -> Option<String> {
+        self.name.clone()
     }
 }
 
@@ -496,6 +480,14 @@ impl Scope {
             Subject::Cable(k) => {
                 self.cables.insert(k);
             }
+            // A route's drawing: the wires at the points it lands on (where their ends are drawn).
+            Subject::Route(r) => {
+                if let Some(route) = doc.routes.get(&r) {
+                    for t in route.points_landed() {
+                        self.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+                    }
+                }
+            }
         }
     }
 
@@ -530,10 +522,8 @@ impl Scope {
                 Op::SetProperty { object: ObjectRef::Wire(w), .. } | Op::ModifyWire { id: w, .. } => {
                     self.wires.insert(*w);
                 }
-                Op::SetProperty { object: ObjectRef::Cable(k), .. } => {
-                    self.cables.insert(*k);
-                }
-                Op::SetProperty { object: ObjectRef::Page(_), .. } => {}
+                // A cable is written whole (`ModifyCable`); `SetProperty` on one is refused.
+                Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Cable(_), .. } => {}
                 Op::ModifyProject { before, after } => {
                     use crate::designations::{Aspect, changed_codes, default_key};
                     // Brief 047: an item without its own location shows the project's.
@@ -610,15 +600,29 @@ impl Scope {
                         self.subject(doc, r.subject, r.page);
                     }
                 }
-                Op::CreateWire { id, .. } | Op::DeleteWire { id, .. } | Op::AttachEnd { conductor: id, .. } => {
+                Op::CreateWire { id, .. } | Op::DeleteWire { id, .. } => {
                     self.wires.insert(*id);
                 }
-                Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
+                // A cable is made or deleted with its cores (design 072 §4.5): their wires' rows.
+                Op::CreateCable { id, cable } | Op::DeleteCable { id, cable } => {
                     self.cables.insert(*id);
+                    self.wires.extend(cable.cores.iter().filter_map(|m| m.wire()));
                 }
-                Op::AddCableMember { cable, member, .. } | Op::RemoveCableMember { cable, member, .. } => {
-                    self.cables.insert(*cable);
-                    self.wires.insert(member.conductor);
+                // Design 072 §4.3: a route moved, added or removed moves where the wires at the
+                // points it lands on are drawn.
+                Op::AddRoute { route, .. } | Op::RemoveRoute { route, .. } => {
+                    for t in route.points_landed() {
+                        self.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+                    }
+                }
+                Op::ModifyRoute { before, after, .. } => {
+                    for t in before.points_landed().chain(after.points_landed()) {
+                        self.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+                    }
+                }
+                Op::ModifyCable { id, before, after } => {
+                    self.cables.insert(*id);
+                    self.wires.extend(before.cores.iter().chain(&after.cores).filter_map(|m| m.wire()));
                 }
                 Op::SetProjectSettings { before, after } => {
                     let rows = |w: &ecad_model::wiring::WiringSettings| -> BTreeMap<String, ecad_model::wiring::PotentialDef> {
@@ -704,18 +708,12 @@ fn continuation_group_cables(doc: &Document, c: DeviceId) -> BTreeSet<CableId> {
     out
 }
 
-/// 032: the members standing for `cable`'s core chains (design 032 §3.2), in member order, each
-/// with the first stored core label along its chain, and each chain's last member.
-fn chain_heads(doc: &Document, k: CableId, cab: &ecad_model::Cable) -> (Vec<ecad_model::CableMember>, Vec<WireId>) {
-    let chains = crate::references::core_chains(doc, k);
-    let mut heads = Vec::with_capacity(chains.len());
-    let mut tails = Vec::with_capacity(chains.len());
-    for ch in &chains {
-        let (Some(first), Some(last)) = (ch.first(), ch.last()) else { continue };
-        let core = ch.iter().find_map(|w| cab.members.iter().find(|m| m.conductor == *w).and_then(|m| m.core.clone()));
-        heads.push(ecad_model::CableMember { conductor: *first, core });
-        tails.push(*last);
-    }
+/// The members standing for `cable`'s cores, in member order, each with its stored label, and
+/// each core's last member: the same wire, since a core through continuations or cable references
+/// is one wire (design 072 §4.4, F5).
+fn chain_heads(_doc: &Document, _k: CableId, cab: &ecad_model::Cable) -> (Vec<ecad_model::Core>, Vec<WireId>) {
+    let heads: Vec<ecad_model::Core> = cab.cores.iter().filter_map(|m| Some(ecad_model::Core::on_wire(m.wire()?, m.label.clone()))).collect();
+    let tails = heads.iter().filter_map(|m| m.wire()).collect();
     (heads, tails)
 }
 
