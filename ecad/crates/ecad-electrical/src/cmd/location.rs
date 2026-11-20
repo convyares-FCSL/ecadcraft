@@ -121,7 +121,7 @@ pub fn plan(doc: &Document, ids: &mut IdAllocator, objects: &[DeviceId], prop: &
             if is_box {
                 return Err(CmdError::refused("A box has a function and a location, not one per symbol type."));
             }
-            if crate::strips::is_strip(doc, *c) {
+            if crate::strips::strip_of(doc, *c).is_some() {
                 return Err(CmdError::refused(
                     "A strip's positions and levels are where the strip is; set the strip's location (a split strip is two strips).",
                 ));

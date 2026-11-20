@@ -164,6 +164,10 @@ const ECAD_COMMANDS: &[&str] = &[
     "titleblocks",
     "titleblock",
     "titleblockimport",
+    // Lane 072 B step 5.
+    "userfield",
+    "linkdevices",
+    "unlinkdevices",
 ];
 
 fn ecad_ids() -> BTreeSet<String> {

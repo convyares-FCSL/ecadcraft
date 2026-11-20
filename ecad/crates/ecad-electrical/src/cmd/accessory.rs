@@ -55,7 +55,7 @@ fn strip_of(doc: &Document, strip: Option<DeviceId>, terminal: Option<TerminalId
     if !doc.devices.contains_key(&c) {
         return Err(CmdError::NotFound(Noun::Strip));
     }
-    if !crate::strips::is_strip(doc, c) {
+    if crate::strips::strip_of(doc, c).is_none() {
         return Err(CmdError::refused(format!("{} is not a terminal strip. Pick a terminal of the strip.", strip_words(doc, c))));
     }
     Ok((c, label))

@@ -56,6 +56,7 @@ pub mod symbols;
 pub mod terminal_types;
 pub mod text_style;
 pub mod title_block;
+pub mod traits;
 pub mod wires;
 pub mod words;
 pub mod words_check;

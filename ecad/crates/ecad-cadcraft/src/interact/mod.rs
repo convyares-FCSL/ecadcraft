@@ -654,7 +654,7 @@ fn cable_lines(doc: &Document, page: PageId, k: CableId) -> Vec<String> {
     let refs: Vec<String> = doc
         .representations
         .iter()
-        .filter(|(_, r)| r.page == page && r.subject == Subject::Cable(k) && r.role == crate::look::REFERENCE_ROLE)
+        .filter(|(_, r)| r.page == page && r.subject == Subject::Cable(k) && r.role == ecad_model::Role::Reference)
         .map(|(id, _)| format!("\"{}\"", crate::look::reference_text(doc, *id)))
         .collect();
     if !refs.is_empty() {

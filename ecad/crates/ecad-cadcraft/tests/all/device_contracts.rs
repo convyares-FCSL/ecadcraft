@@ -369,7 +369,7 @@ fn g_typed_search_then_device_then_click_records_the_json_join() {
     typed(&mut h, "");
     assert!(h.s.running.is_none());
     let ops = last_ops(&mut h);
-    assert!(ops.iter().any(|o| matches!(o, Op::LinkRepresentation { rep, .. } if rep.role == "no" && rep.connection_points.len() == 2)));
+    assert!(ops.iter().any(|o| matches!(o, Op::LinkRepresentation { rep, .. } if rep.role == ecad_model::Role::Part(ecad_model::PartRole::Contact) && rep.connection_points.len() == 2)));
     let doc = h.doc();
     let labels: Vec<String> = doc.terminals_of(k1).filter_map(|(_, t)| t.label.clone()).collect();
     assert!(labels.contains(&"13".to_string()) && labels.contains(&"14".to_string()));

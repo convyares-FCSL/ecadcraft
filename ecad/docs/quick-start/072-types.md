@@ -156,6 +156,207 @@ cargo test -p ecad-inspector --test all lane_072b
 cargo test -p ecad-mcp --test all lane_072b
 ```
 
+### Lane B, step 3: ratings are typed (Protection first)
+
+A device's `rating` is no longer free text. A protective device (fuse, MCB, RCD, RCBO, fuse bank)
+stores its rating as typed fields: rated current, curve, breaking capacity, poles, residual
+current, and a fuse bank one fuse rating per output. What you type is read into those fields and
+shown back from them:
+
+- `B16` on an MCB reads as **curve B, 16 A**; the Properties panel, the status line and the
+  command's answer all say what was read.
+- Ambiguous text is refused with a question, never guessed: a bare `16` on an MCB asks for the
+  curve; a bare `30` on an RCD asks whether it is A or mA. A value the device does not have is
+  refused (a curve on a fuse, a residual current on an MCB).
+- Text that is no rating at all (`see datasheet`) is kept as the device's rating note, and the
+  device gets the Checks warning **no-rating**, because the checks read only the typed fields.
+- A fuse bank takes `rating.<n>` per fuse (`rating.3` `6.3 A T`); its own `rating` is refused.
+- Other groups (power supplies) keep what you type
+  as the note until their own step; a symbol's default rating is read the same way when it is
+  placed, and a symbol whose default rating does not read for its group cannot be saved.
+- A file whose device holds `rating` among its properties, or a protective device holding
+  `rating.<n>`, opens read-only.
+
+To try it: place an MCB, type `B16` as its rating in the Properties panel (shown as
+`curve B, 16 A`), then `16` (refused, asks for the curve), then `see datasheet` (kept as a note,
+and Checks shows "no rating"). Nobody has tried it by hand yet.
+
+Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector, and
+`rating::reader` in ecad-electrical (automated, not tried by hand).
+
+### Lane B, step 3: switching devices' ratings are typed
+
+A switching device (relay, contactor, SSR, push button, selector) now says what operates it, from
+its symbol: a **coil** (`coil`, `no`, `nc`, `co`, `power3`, `power4`), a **solid-state** input
+(`ssrin`, `ssrout`) or a **hand** (`pbno`, `pbnc`, `sel`, `swco`). Its rating is typed fields: the
+coil's or input's control voltage (`24 V DC`) and power (`3 W`), and the AC-3 rating: rated
+current (`AC-3 9 A`) and motor power (`4 kW`).
+
+- `24VDC AC-3 9A` on a coil reads as **coil 24 V DC, AC-3 9 A**; an SSR shows `input 24 V DC`.
+- Asked, never guessed: `24 V` (AC or DC?), `9 A` (is it the AC-3 current? write `AC-3 9 A`), a
+  bare `24` (which unit?).
+- A push button or selector has no coil: a voltage on it is refused; it takes only the AC-3
+  rating. An unrated push button or selector gets no **no-rating** warning; an unrated coil or
+  SSR does.
+- `24 V AC/DC`, `5 VA` and other text that does not read are kept as the note.
+
+To try it: place a coil (Checks shows "no rating"), type `24VDC AC-3 9A` as its rating (shown as
+`coil 24 V DC, AC-3 9 A`, and the warning goes), then `24 V` (refused, asks AC or DC). Place a
+push button and type `24 V DC` (refused: no coil). Nobody has tried it by hand yet.
+
+Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector
+(`…switching…`), and `rating::reader::switching` in ecad-electrical (automated, not tried by
+hand).
+
+### Lane B, step 3: sensors' ratings are typed
+
+A sensor now says what it senses and what it outputs, from its symbol: `prox3` is a **proximity**
+switch with a **PNP** output; `floatno`/`floatnc` (**float**), `rollerno`/`rollernc` (**limit**)
+and `interlockno`/`interlocknc` (**interlock**) are volt-free **contacts**; `tc` is a
+**temperature** sensor with a **thermocouple** output. Only a PNP or NPN sensor is powered: its
+rating is its supply voltage, a typed field.
+
+- `24VDC` on a proximity switch reads as **24 V DC**. Asked, never guessed: `24 V` (AC or DC?), a
+  bare `24` (which unit?). `10-30 V DC` and other text that does not read are kept as the note.
+- A contact or a thermocouple has no supply: what you type on it (`250 V AC 5 A`, `K`) is kept as
+  the note, and an unrated one gets no **no-rating** warning. An unrated proximity switch does.
+
+To try it: place a proximity switch (Checks shows "no rating"), type `24VDC` as its rating (shown
+as `24 V DC`, and the warning goes), then `24 V` (refused, asks AC or DC). Place a float switch:
+no warning, and `250 V AC 5 A` is kept as typed. Nobody has tried it by hand yet.
+
+Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector
+(`…sensor…`), and `rating::reader::sensor` in ecad-electrical (automated, not tried by hand).
+
+### Lane B, step 3: a strip's fuse position ratings are typed
+
+A fuse position's rating (`setprop rating.<position>`, or the Rating cell of the terminal list)
+is now the strip's own typed field: a fuse's rated current, class and breaking capacity, read by
+the same reader as a fuse. `6,3A T` reads as **6.3 A, T**.
+
+- Text that is no fuse rating (`see datasheet`, `B16`) is refused: a position has no note.
+- A position that is not a fuse position is refused; clearing always works.
+- Renumbering or relabelling a position moves its rating; erasing the position's last terminal
+  removes it (with a note, `U` brings it back). **Make strip position** moves a fuse terminal
+  device's typed rating onto the position; a rating kept only as a note is listed as lost.
+- A project whose strip still holds `rating.<p>` as a property opens read-only (pre-v1, no
+  conversion).
+
+To try it: draw a FUSE fence across two wires, open the terminal list, type `6,3A T` in a
+position's Rating (shown as `6.3 A, T`; the **no-fuse-rating** warning goes when every fuse
+position is rated), then `see datasheet` (refused). Nobody has tried it by hand yet.
+
+Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector
+(`…strip…`), and `levels_contracts::relabel_moves_every_position_keyed_property` (automated, not
+tried by hand).
+
+### Lane B, step 3: motors' ratings are typed
+
+A motor now says its phases, from its symbol: `motor1` is **single-phase**, `motor3`
+**three-phase**. Its rating is its nameplate, in typed fields: rated power (shown in kW), rated
+current, power factor (`cos φ 0.85`, also `pf 0.85`), efficiency (`eff 91 %`) and how it starts
+(`DOL`, `star-delta` or `Y-D`, `soft start`, `VFD`).
+
+- `7,5kW 15.2A Y-D` reads as **7.5 kW, 15.2 A, star-delta**; `370 W` as **0.37 kW**.
+- Asked, never guessed: a bare `7.5` (kW or A?), `91 %` without `eff`. A voltage (`400 V`) is
+  refused: a motor has no voltage field. Other text (`IE3`, `see datasheet`) is kept as the note.
+- An unrated motor now gets the Checks warning **no-rating** (the demo's `-M01` too).
+
+To try it: place a 3-phase motor (Checks shows "no rating"), type `7,5kW 15.2A Y-D` as its rating
+(shown as `7.5 kW, 15.2 A, star-delta`, and the warning goes), then `7.5` (refused, asks kW or A).
+Nobody has tried it by hand yet.
+
+Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector
+(`…motor…`), and `rating::reader::motor` in ecad-electrical (automated, not tried by hand).
+
+### Lane B, step 3: loads' ratings are typed
+
+Heaters and valves are **loads**. A load's rating is its rated power, in one typed field: shown in
+W below 1 kW (`5 W`) and in kW from it (`3 kW`).
+
+- `3000 W` reads as **3 kW**, `0,5 kW` as **500 W**.
+- Asked, never guessed: a bare `3` (W or kW?). A voltage (`24 V DC`) or a current is refused: a
+  load has only a power field. Other text (`see datasheet`) is kept as the note.
+- An unrated load now gets the Checks warning **no-rating**.
+
+To try it: place a heater (Checks shows "no rating"), type `3000 W` as its rating (shown as `3 kW`,
+and the warning goes), then `3` (refused, asks W or kW). Nobody has tried it by hand yet.
+
+Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector (`…load…`),
+and `rating::reader::load` in ecad-electrical (automated, not tried by hand).
+
+### Lane B, step 3: indicators' ratings are typed
+
+A lamp is an **indicator**. It is created **steady** with no colour. Its rating is its colour
+(red, yellow, green, blue or white, in any IEC 60757 form: `red`, `RD`, `RED`), how it signals
+(`steady`, `flashing`, `rotating`, `audible`, `meter`), its rated voltage with AC or DC, and its
+power.
+
+- `RD flashing 24VDC 2W` reads as **red, flashing, 24 V DC, 2 W**. Without a signal word the lamp
+  keeps its own.
+- Asked, never guessed: `24 V` (AC or DC?) and a bare `24` (V or W?). Refused: a current (`0.1 A`),
+  and a colour that no indicator has (`black`). Other text (`LED`, `amber`) is kept as the note.
+- An unrated lamp now gets the Checks warning **no-rating** (the demo's lamps too).
+
+To try it: place an indicator lamp (Checks shows "no rating"), type `RD 24VDC 2W` as its rating
+(shown as `red, 24 V DC, 2 W`, and the warning goes), then `24 V` (refused, asks AC or DC).
+Nobody has tried it by hand yet.
+
+Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector
+(`…indicator…`), and `rating::reader::indicator` in ecad-electrical (automated, not tried by hand).
+
+### Lane B, step 3: power supplies' and transformers' ratings are typed
+
+A `psu` symbol creates a **power supply** and a `trafo` symbol a **transformer**; the symbol
+decides which, the rating never does. A power supply's rating is its input and output voltage
+(each AC or DC), its output current and its output power. A transformer's is its two voltages
+(always AC) and its power in **VA**. A transformer's ratio comes from its two voltages.
+
+- `230VAC/24VDC 5A` (or `in 230 V AC out 24 V DC 5 A`) reads as **230 V AC / 24 V DC, 5 A**.
+  `24 V DC` alone is a power supply's output. On a transformer `400/24 V 250 VA` reads as
+  **400 V AC / 24 V AC, 250 VA**.
+- Asked, never guessed: one AC voltage on a power supply, or one voltage on a transformer (input
+  or output?), and a power-supply voltage without AC or DC. Refused: W or a current on a
+  transformer (use VA), DC on a transformer, and VA on a power supply. Other text
+  (`see datasheet`) is kept as the note.
+- An unrated power supply or transformer now gets the Checks warning **no-rating** (the demo's
+  -G01 too).
+
+To try it: place a power supply (Checks shows "no rating"), type `230VAC/24VDC 5A` as its rating
+(the warning goes), then `230 V AC` (refused: input or output?). Place a transformer and type
+`250 W` (refused: use VA). Nobody has tried it by hand yet.
+
+Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector
+(`…power_supply…`), and `rating::reader::power_supply` in ecad-electrical (automated, not tried
+by hand).
+
+### Lane B, step 5: user fields and device links
+
+The project can define its own **user fields** (design 072 §2.8): each has a name (unique,
+ignoring case) and a kind: text, number (with an optional unit), yes/no, or a choice from a fixed
+list. A device stores its values by field. Two devices can be **linked** (§2.6): a mechanical
+interlock (a reversing pair) or an auxiliary block. A link lives in the project, not in either
+device; deleting a device removes its links in the same step, and undo brings them back.
+
+There is no panel for either yet; they are commands (and MCP `execute`):
+
+- `userfield {"name": "Row", "kind": "number", "unit": "mm"}` adds a field;
+  `{"name": "Side", "kind": "choice", "options": ["Left", "Right"]}` a choice field;
+  `{"name": "Row", "remove": true}` removes one and clears its values.
+- `setprop {"component": <id>, "key": "user.Row", "value": "12.5 mm"}` sets a value; it is read
+  as the field's kind, so `twelve` is refused, and so is `Up` for the choice field. An empty value
+  clears it.
+- `linkdevices {"kind": "mechanical_interlock", "devices": [<id>, <id>]}` answers the link id;
+  the same link twice or a device linked to itself is refused. `unlinkdevices {"link": <id>}`
+  removes it.
+
+The inspector's Raw and Readable views show `ModifyProject` with the field list, a device's
+`user` values, and the `AddDeviceLink` / `RemoveDeviceLink` ops. Nothing reads a link yet (lane F's
+interlock checks will). Nobody has tried it by hand yet.
+
+Tests: `lanes::lane_072b` in ecad-model, ecad-file, ecad-cadcraft, ecad-mcp and ecad-inspector
+(`user_fields…`, `device_links…`) (automated, not tried by hand).
+
 ## Lane D: wires carry typed values
 
 A conductor is now a **wire** in code and files (`Wire`, ops `CreateWire`, `DeleteWire` and the

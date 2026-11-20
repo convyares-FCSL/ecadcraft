@@ -46,10 +46,10 @@ pub fn definition_for(doc: &Document, ids: &mut IdAllocator, s: &crate::symbols:
 
 /// Plan one terminal symbol of `strip` labelled `label` at `at` (a join: its own connection
 /// point keyed by its label, as 018's joins are). `first`: a new strip's first symbol, which shows
-/// the definition's own point. Every symbol's role is its starter key (design 052 §4).
+/// the definition's own point. Every symbol's role is its starter's part (design 072 §4.4).
 #[allow(clippy::too_many_arguments)]
 fn terminal_symbol(
-    ids: &mut IdAllocator, page: PageId, style: Style, def: DefinitionId, strip: DeviceId, label: &str, at: Pt, first: bool, role: &str,
+    ids: &mut IdAllocator, page: PageId, style: Style, def: DefinitionId, strip: DeviceId, label: &str, at: Pt, first: bool, role: ecad_model::Role,
     ops: &mut Vec<Op>,
 ) -> TerminalId {
     let (t, item, rep): (TerminalId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
@@ -66,14 +66,7 @@ fn terminal_symbol(
     }
     ops.push(Op::LinkRepresentation {
         id: rep,
-        rep: Representation {
-            subject: Subject::Device(strip),
-            page,
-            form: Form::Symbol,
-            role: role.into(),
-            items: vec![item],
-            connection_points: cps,
-        },
+        rep: Representation { subject: Subject::Device(strip), page, form: Form::Symbol, role, items: vec![item], connection_points: cps },
     });
     t
 }
@@ -128,9 +121,9 @@ pub fn plan_fence_typed(
         return Err(CmdError::refused(format!("That line crosses {} wires; at most {MAX_FENCE} at once. Draw a shorter line.", found.members.len())));
     }
     let legacy = kind.ty.legacy();
-    let starter = crate::devices::starter(&kind.ty.starter_key(kind.level))?;
+    let starter = crate::symbols::starter(kind.ty.starter_key(kind.level));
     if let Some(c) = strip
-        && !strips::is_strip(doc, c)
+        && strips::strip_of(doc, c).is_none()
     {
         return Err(CmdError::refused("That device is not a terminal strip. Press Enter for a new strip, or type the tag of one (-X01)."));
     }
@@ -182,7 +175,18 @@ pub fn plan_fence_typed(
         let on = crate::wires::on_route_of(doc, m.route, m.at).ok_or(CmdError::refused("A crossed wire has no route here."))?;
         if legacy {
             let label = next.to_string();
-            let t = terminal_symbol(ids, page, style.clone(), def, strip, &label, m.at, first_main, ecad_model::Word::word(starter.key), &mut ops);
+            let t = terminal_symbol(
+                ids,
+                page,
+                style.clone(),
+                def,
+                strip,
+                &label,
+                m.at,
+                first_main,
+                ecad_model::Role::Part(starter.part_role()),
+                &mut ops,
+            );
             first_main = false;
             let land = plan_land(doc, ids, on, t).map_err(|e| on_wire(e, m.position))?;
             ops.extend(land.ops);
@@ -232,7 +236,7 @@ pub fn level_symbol(
             subject: Subject::Device(strip),
             page,
             form: Form::Symbol,
-            role: starter.key.to_string(),
+            role: ecad_model::Role::Part(starter.part_role()),
             items: vec![item],
             connection_points: cps,
         },

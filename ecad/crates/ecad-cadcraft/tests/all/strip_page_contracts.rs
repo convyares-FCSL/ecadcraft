@@ -157,7 +157,7 @@ fn a_graphic_page_draws_the_strip_as_wired() {
         }
     }
     // The fuse's rating beside its label.
-    assert!(texts(&p).iter().any(|(t, _)| t.ends_with(" 2A")), "fuse rating");
+    assert!(texts(&p).iter().any(|(t, _)| t.ends_with(" 2 A")), "fuse rating");
     // The title names the strip.
     let titles: Vec<String> = texts(&p).into_iter().map(|(t, _)| t).filter(|t| t.starts_with("Terminal strips: -X01")).collect();
     assert!(!titles.is_empty(), "sheet title");

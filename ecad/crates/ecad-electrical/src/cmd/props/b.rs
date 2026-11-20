@@ -10,6 +10,11 @@ use crate::error::CmdError;
 /// This lane's rows, asked before [`super::super::prop::PROP_RULES`].
 pub static RULES: &[PropRule] = &[
     PropRule {
+        what: "user fields (072 B)",
+        claims: |_, o, k| matches!(o, ObjectRef::Device(_)) && k.starts_with(crate::cmd::device_link::USER_PREFIX),
+        build: Build::Record(crate::cmd::device_link::user_value),
+    },
+    PropRule {
         what: "device text fields (072 B)",
         claims: |_, o, k| matches!(o, ObjectRef::Device(_)) && TextField::of_key(k).is_some(),
         build: Build::Record(text_value),
@@ -19,7 +24,71 @@ pub static RULES: &[PropRule] = &[
         claims: |_, o, k| matches!(o, ObjectRef::Device(_)) && crate::connectors::is_field_key(k),
         build: Build::Record(connector_value),
     },
+    PropRule {
+        what: "contacts (brief 025, 072 B)",
+        claims: |_, o, k| matches!(o, ObjectRef::Device(_)) && k == crate::xref::CONTACTS_KEY,
+        build: Build::Record(contacts_value),
+    },
+    PropRule {
+        what: "contact table (brief 025, 072 B)",
+        claims: |_, o, k| matches!(o, ObjectRef::Device(_)) && k == crate::xref::MIRROR_KEY,
+        build: Build::Record(table_value),
+    },
+    PropRule {
+        what: "device rating (072 B)",
+        claims: |doc, o, k| match o {
+            ObjectRef::Device(c) => {
+                k == ecad_model::device::RATING_KEY
+                    || (k.starts_with(ecad_model::device::RATING_OF_PREFIX)
+                        && doc.devices.get(&c).is_some_and(|d| {
+                            matches!(d.device_type, ecad_model::DeviceType::Protection(_) | ecad_model::DeviceType::TerminalStrip(_))
+                        }))
+            }
+            _ => false,
+        },
+        build: Build::Record(rating_value),
+    },
 ];
+
+/// A device's rating (its typed fields, or its note), a fuse bank's fuse rating or a strip's fuse
+/// position rating, read by its group's reader ([`crate::rating::reader`]): one `ModifyDevice`.
+///
+/// # Errors
+/// The reader's refusals: ambiguous text (what is missing), a value the group does not have.
+pub fn rating_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
+    let (c, d) = device_of(doc, o)?;
+    let who = crate::devices::tag_words(doc, c);
+    let after = match key.strip_prefix(ecad_model::device::RATING_OF_PREFIX) {
+        Some(p) if matches!(d.device_type, ecad_model::DeviceType::TerminalStrip(_)) => {
+            crate::rating::reader::with_position_rating(d, &who, &crate::terminal_types::fuse_positions(doc, c), p, value)
+        }
+        Some(n) => crate::rating::reader::with_output_rating(d, &who, &crate::symbols::bank_outputs(doc, c), n, value),
+        None => crate::rating::reader::with_rating(d, &who, value),
+    }?;
+    Ok((after != *d).then(|| Op::ModifyDevice { id: c, before: d.clone(), after }))
+}
+
+/// The contacts a part offers (design 025 FP1): one `ModifyDevice` of its group's `contacts`.
+///
+/// # Errors
+/// A device whose group has no contacts; an unreadable offer ([`crate::xref::with_contacts`]).
+pub fn contacts_value(doc: &Document, o: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
+    let (c, d) = device_of(doc, o)?;
+    let after = crate::xref::with_contacts(d, &crate::devices::tag_words(doc, c), value)?;
+    Ok((after != *d).then(|| Op::ModifyDevice { id: c, before: d.clone(), after }))
+}
+
+/// Where a switching device's contact table goes (design 025 FP2): one `ModifyDevice` of its
+/// `contact_table`.
+///
+/// # Errors
+/// An unreadable placement; not a switching device ([`crate::xref::with_table`]).
+pub fn table_value(doc: &Document, o: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
+    let (c, d) = device_of(doc, o)?;
+    let table = crate::xref::table_of_typed(value)?;
+    let after = crate::xref::with_table(d, &crate::devices::tag_words(doc, c), table)?;
+    Ok((after != *d).then(|| Op::ModifyDevice { id: c, before: d.clone(), after }))
+}
 
 /// A connector's pins, pin names, half parts or ignored rows: one `ModifyDevice`.
 ///

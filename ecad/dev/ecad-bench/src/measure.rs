@@ -776,7 +776,7 @@ fn xref_edits(path: &Path, copy: &Path, runs: usize) -> Result<XrefTimes, String
 /// representations and the page order.
 fn add_coils(ledger: &mut ecad_model::Ledger) -> Result<(Vec<ecad_model::RepresentationId>, Vec<ecad_model::PageId>), String> {
     use ecad_cadcraft::devices::{TagHigh, Target, plan_place};
-    use ecad_model::{Color, ObjectRef, Op, Placement, Pt, Style};
+    use ecad_model::{Color, Op, Placement, Pt, Style};
     let order = ledger.document().page_order.clone();
     let n = order.len();
     if n == 0 {
@@ -811,7 +811,9 @@ fn add_coils(ledger: &mut ecad_model::Ledger) -> Result<(Vec<ecad_model::Represe
         step(ledger, b, "no", (x, 60.0), Target::Join(c))?;
         step(ledger, b, "nc", (x + 10.0, 60.0), Target::Join(c))?;
         if i % 2 == 0 {
-            let op = Op::SetProperty { object: ObjectRef::Device(c), key: "contacts".into(), before: None, after: Some("3P+1NO+1NC".into()) };
+            let before = ledger.document().devices.get(&c).cloned().ok_or("the bench coil is missing")?;
+            let after = ecad_cadcraft::xref::with_contacts(&before, "the bench coil", Some("3P+1NO+1NC")).map_err(|e| e.to_string())?;
+            let op = Op::ModifyDevice { id: c, before, after };
             ledger.commit(Author::User, "Bench coils", vec![op]).map_err(|e| e.to_string())?;
         }
     }

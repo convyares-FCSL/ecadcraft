@@ -441,7 +441,7 @@ fn w04(seed: u64) -> W04 {
 }
 
 fn slash_reps(doc: &Document, k: CableId) -> Vec<(ecad_model::RepresentationId, PageId)> {
-    doc.representations_of(Subject::Cable(k)).filter(|(_, r)| r.role == "slash").map(|(id, r)| (id, r.page)).collect()
+    doc.representations_of(Subject::Cable(k)).filter(|(_, r)| r.role == ecad_model::Role::Slash).map(|(id, r)| (id, r.page)).collect()
 }
 
 fn same_outputs_as_built(h: &mut H) {

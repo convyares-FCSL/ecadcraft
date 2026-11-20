@@ -22,7 +22,7 @@ fn s(v: &Value, key: &str) -> String {
 /// -Q01 (4 A) feeding a lamp; cable -W01 across the wire; returns the wire's conductor ID.
 fn build(c: &mut Client) -> String {
     let q = s(&c.exec("place", json!({"symbol": "mcb1", "at": [100, 300]})), "component");
-    c.exec("setprop", json!({"component": q, "key": "rating", "value": "4 A"}));
+    c.exec("setprop", json!({"component": q, "key": "rating", "value": "C4"}));
     c.exec("place", json!({"symbol": "lamp", "at": [100, 200]}));
     let w = s(&c.wire_pp(json!({"points": [[100, 290], [100, 210]]})), "conductor");
     let cab = s(&c.exec("cableslash", json!({"from": [95, 250], "to": [105, 250], "tag": "-W01"})), "cable");

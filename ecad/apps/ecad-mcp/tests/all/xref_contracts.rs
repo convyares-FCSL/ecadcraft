@@ -4,7 +4,7 @@
 //! nothing.
 
 use ecad_mcp::policy;
-use ecad_model::{Author, ObjectRef, Op};
+use ecad_model::{Author, Op};
 use serde_json::{Value, json};
 
 use crate::common::writer;
@@ -30,16 +30,14 @@ fn cross_reference_commands_through_execute() {
     c.exec("place", json!({"symbol": "power3", "at": [125, 180], "device": k1}));
     // The offer: one `setprop`, by the agent.
     c.exec("setprop", json!({"component": k1, "key": "contacts", "value": "3P+1NO+1NC"}));
-    assert!(
-        matches!(&last_by_agent(&mut c)[..], [Op::SetProperty { object: ObjectRef::Device(_), key, after: Some(v), .. }] if key == "contacts" && v == "3P+1NO+1NC")
-    );
+    assert!(matches!(&last_by_agent(&mut c)[..], [Op::ModifyDevice { after, .. }] if offered(after).as_deref() == Some("3P+1NO+1NC")));
     // A join takes the offered labels.
     let no = c.exec("place", json!({"symbol": "no", "at": [100, 100], "device": k1}));
     assert_eq!(no["offer_slot"], json!(true));
     assert!(last_by_agent(&mut c).iter().any(|o| matches!(o, Op::AddTerminal { terminal, .. } if terminal.label.as_deref() == Some("13"))));
     // The table's placement, by `setprop` and by Move Mirror Table.
     c.exec("setprop", json!({"component": k1, "key": "mirror", "value": "below"}));
-    assert!(matches!(&last_by_agent(&mut c)[..], [Op::SetProperty { key, after: Some(v), .. }] if key == "mirror" && v == "below"));
+    assert!(matches!(&last_by_agent(&mut c)[..], [Op::ModifyDevice { after, .. }] if table(after) == Some(ecad_model::device::ContactTable::Below)));
     let m = c.exec("mirrormove", json!({"component": k1, "at": [90, 150]}));
     assert_eq!(m["mirror"], json!("at 15,-30"), "{m}");
     let last = c.log().last().cloned().unwrap();
@@ -77,4 +75,20 @@ fn with_writes_off_the_writes_are_refused_and_the_reads_work() {
     let m = c.refused("execute", json!({"command": "refgoto", "params": {"source": "1"}}));
     assert!(m.contains("no such reference"), "{m}");
     assert_eq!(c.log(), before, "nothing recorded");
+}
+
+/// What device `d` offers, as written (design 072 §2.2: a switching device's typed contacts).
+fn offered(d: &ecad_model::Device) -> Option<String> {
+    match &d.device_type {
+        ecad_model::DeviceType::Switching(s) => Some(s.contacts.to_string()),
+        _ => None,
+    }
+}
+
+/// Where switching device `d`'s contact table goes, when it says so itself.
+fn table(d: &ecad_model::Device) -> Option<ecad_model::device::ContactTable> {
+    match &d.device_type {
+        ecad_model::DeviceType::Switching(s) => s.contact_table,
+        _ => None,
+    }
 }

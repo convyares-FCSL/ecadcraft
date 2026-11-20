@@ -375,7 +375,7 @@ fn tester_025_branch_switch_merge_and_update_keep_the_index() {
     let m = raw(&mut x.h, "merge", json!({"from": "B"}));
     assert!(m.is_ok(), "{m:?}");
     index_is_a_rebuild(&mut x.h, "after merge");
-    assert!(x.h.doc().devices[&x.k1].properties.contains_key("contacts"));
+    assert!(xref::offer_of(&x.h.doc(), x.k1).is_some());
     raw(&mut x.h, "u", json!({})).ok();
     raw(&mut x.h, "undomerge", json!({})).ok();
     index_is_a_rebuild(&mut x.h, "after undoing the merge");
@@ -426,7 +426,7 @@ fn tester_025_save_reopen_keeps_index_and_texts() {
     // (`auto`) is left out of the settings. (A qsave always writes a new session record, so the
     // file bytes are not compared.)
     let doc = h2.doc();
-    assert!(doc.devices.values().all(|c| !c.properties.contains_key("contacts") && !c.properties.contains_key("mirror")));
+    assert!(doc.devices.keys().all(|c| xref::offer_of(&doc, *c).is_none() && !xref::placement_of(&doc, *c).1));
     let settings = serde_json::to_value(&doc.settings).unwrap();
     assert!(settings.get("contact_mirror").is_none(), "{settings}");
     // With an offer, a moved table and a project default, a second round trip keeps them all.
@@ -490,7 +490,7 @@ fn rows(h: &mut H, c: DeviceId) -> Vec<(String, String, String)> {
 #[test]
 fn tester_025_offer_labels() {
     let labels =
-        |t: &str| xref::parse_offer(t).map(|v| v.iter().map(|o| format!("{}/{}{}", o.labels[0], o.labels[1], o.kind.word())).collect::<Vec<_>>());
+        |t: &str| xref::parse_offer(t).map(|v| v.iter().map(|o| format!("{}/{}{}", o.labels[0], o.labels[1], o.kind.upper())).collect::<Vec<_>>());
     assert_eq!(labels("3P+2NO+1NC").unwrap(), ["1/2NO", "3/4NO", "5/6NO", "13/14NO", "23/24NO", "31/32NC"]);
     assert_eq!(labels(" 3p , 1no + 1nc ").unwrap(), ["1/2NO", "3/4NO", "5/6NO", "13/14NO", "21/22NC"]);
     assert_eq!(labels("1P+1PNC").unwrap(), ["1/2NO", "3/4NC"]);

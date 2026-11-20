@@ -272,7 +272,7 @@ fn reference_end(h: &mut Harness<'static, App>, cable: &str, at: (f64, f64)) {
                 subject: Subject::Cable(k),
                 page,
                 form: Form::Drawn,
-                role: ecad_cadcraft::look::REFERENCE_ROLE.into(),
+                role: ecad_model::Role::Reference,
                 items: vec![item],
                 connection_points: Default::default(),
             },

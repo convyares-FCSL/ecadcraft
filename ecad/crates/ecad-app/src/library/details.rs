@@ -210,7 +210,7 @@ pub fn show(ui: &mut egui::Ui, b: &mut Builder, info: &Info) -> Vec<Act> {
         let name = format!("library.details.slots.row.{}", sl.text);
         let r = ui.horizontal(|ui| {
             let chosen = b.selected == Some(Picked::Slot(i));
-            if ui.selectable_label(chosen, draft::slot_label(&sl.text)).clicked() {
+            if ui.selectable_label(chosen, draft::slot_label(&sl.text.word())).clicked() {
                 b.selected = Some(Picked::Slot(i));
             }
             let turn = if sl.rotation.0.abs() > 1e-9 { format!(", {}°", Degrees::from(sl.rotation).0.round()) } else { String::new() };

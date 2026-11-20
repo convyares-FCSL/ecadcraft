@@ -55,7 +55,7 @@ pub struct Content {
     pub graphics: Vec<Primitive>,
     pub points: Vec<TerminalDef>,
     pub slots: Vec<TextSlot>,
-    pub defaults: BTreeMap<String, String>,
+    pub defaults: ecad_model::SymbolDefaults,
     pub bridges: Vec<Vec<PointKey>>,
     /// What a device this symbol starts is (design 072 §2.3).
     pub device_type: ecad_model::DeviceType,
@@ -64,7 +64,7 @@ pub struct Content {
 impl Content {
     /// Its key (`defaults.key`), trimmed.
     pub fn key(&self) -> Option<&str> {
-        self.defaults.get("key").map(|k| k.trim()).filter(|k| !k.is_empty())
+        self.defaults.key.as_ref().map(|k| k.as_str())
     }
 
     /// The definition this content makes, with no origin.
@@ -79,6 +79,8 @@ impl Content {
             defaults: self.defaults.clone(),
             derived_from: None,
             device_type: self.device_type.clone(),
+            // Declared when a version is made ([`version_definition`]).
+            part_role: ecad_model::PartRole::Other,
         }
     }
 
@@ -149,21 +151,22 @@ pub fn content(input: ContentInput) -> Result<Content, CmdError> {
         c.points.push(TerminalDef { key, label, at, accepts: Default::default() });
     }
     for s in input.slots {
-        let text = s.text.map(|t| t.trim().to_string()).ok_or(CmdError::refused("Each slot needs a `text`."))?;
+        let word = s.text.map(|t| t.trim().to_string()).ok_or(CmdError::refused("Each slot needs a `text`."))?;
+        let text = ecad_model::SlotText::parse(&word)
+            .ok_or_else(|| CmdError::refused(format!("A slot places a device text; {} is not one.", word.chars().take(64).collect::<String>())))?;
         let at = s.at.ok_or_else(|| CmdError::refused(format!("The {text} slot needs `at` [x, y].")))?;
         c.slots.push(TextSlot { text, at, h: s.h, v: s.v, rotation: s.rotation });
     }
-    if input.defaults.len() > ecad_model::DEFINITION_DEFAULT_KEYS.len() {
+    if input.defaults.len() > ecad_model::SymbolDefault::ALL.len() {
         return Err(CmdError::refused("`defaults` holds too many values."));
     }
     for (k, v) in input.defaults {
-        let v = v.trim().to_string();
-        if !v.is_empty() {
-            c.defaults.insert(k.trim().to_string(), v);
-        }
+        let which =
+            ecad_model::SymbolDefault::of_word(k.trim()).ok_or_else(|| CmdError::refused(format!("A symbol has no default {}.", k.trim())))?;
+        c.defaults.set(which, &v).map_err(|e| CmdError::refused(e.to_string()))?;
     }
     if let Some(k) = input.key.as_deref().map(str::trim).filter(|k| !k.is_empty()) {
-        c.defaults.insert("key".into(), k.to_string());
+        c.defaults.set(ecad_model::SymbolDefault::Key, k).map_err(|e| CmdError::refused(e.to_string()))?;
     }
     c.bridges = input
         .bridges
@@ -218,38 +221,36 @@ pub fn problems(c: &Content, rules: &Rules<'_>) -> Vec<String> {
             }
         }
     }
-    if let Some(k) = c.defaults.keys().find(|k| !ecad_model::DEFINITION_DEFAULT_KEYS.contains(&k.as_str())) {
-        out.push(format!("A symbol has no default {k}."));
-    }
-    let join = c.defaults.get("join").map(|j| j.to_ascii_lowercase());
-    if let Some(j) = &join
-        && j != "device"
-        && j != "part"
-    {
-        out.push("A symbol joins a device as `device` or `part`.".to_string());
-    }
-    let part = join.as_deref() == Some("part");
-    match c.defaults.get("prefix") {
+    let part = c.defaults.join == Some(ecad_model::Join::Part);
+    match c.defaults.prefix.as_ref().map(|p| p.as_str()) {
         Some(px) if crate::devices::valid_prefix(px).is_none() => out.push(format!("{px} is not a tag prefix (letters only, for example B).")),
         None if !part => out.push("A symbol of its own device needs a tag prefix (for example B).".to_string()),
         _ => {}
     }
-    for (f, k) in [(Field::Description, "description"), (Field::Rating, "rating")] {
-        if let Some(v) = c.defaults.get(k)
+    for (f, k, v) in [
+        (Field::Description, "description", c.defaults.description.as_ref().map(|t| t.as_str())),
+        (Field::Rating, "rating", c.defaults.rating.as_ref().map(|t| t.as_str())),
+    ] {
+        if let Some(v) = v
             && !f.accepts(v)
         {
             out.push(format!("The {k} is too long ({} characters at most).", f.max_chars()));
         }
     }
-    if let Some(a) = c.defaults.get("aliases")
-        && (a.split(',').count() > 8 || a.chars().count() > 200 || a.chars().any(char::is_control))
+    // Design 072 §2.2: a default rating reads as the declared group's (ambiguous text is asked).
+    if let Some(r) = c.defaults.rating.as_ref().map(|t| t.as_str())
+        && let Err(m) = crate::rating::reader::rated(&c.device_type, "The symbol", Some(r))
     {
+        out.push(m.to_string());
+    }
+    let aliases = &c.defaults.aliases;
+    if aliases.len() > 8 || aliases.iter().map(|a| a.as_str().chars().count()).sum::<usize>() > 200 {
         out.push("At most 8 aliases.".to_string());
     }
     if c.points.is_empty() {
         out.push("A symbol needs at least one connection point.".to_string());
     }
-    if !part && !c.slots.iter().any(|s| s.text == "tag") {
+    if !part && !c.slots.iter().any(|s| s.text == ecad_model::SlotText::Tag) {
         out.push("A symbol needs a tag slot.".to_string());
     }
     if !c.graphics.iter().all(prim_ok) {
@@ -280,9 +281,7 @@ pub fn problems(c: &Content, rules: &Rules<'_>) -> Vec<String> {
     }
     let mut texts = BTreeSet::new();
     for s in &c.slots {
-        if !TextSlot::is_known_text(&s.text) {
-            out.push(format!("A slot places a device text; {} is not one.", s.text));
-        } else if !texts.insert(s.text.as_str()) {
+        if !texts.insert(&s.text) {
             out.push(format!("Two slots place the {}.", s.text));
         }
         if !finite_in(s.at) || !s.rotation.is_finite() {
@@ -338,6 +337,7 @@ fn refuse_problems(c: &Content, rules: &Rules<'_>) -> Result<(), CmdError> {
 pub fn version_definition(c: &Content, lineage: DefinitionId, seq: u64, derived_from: Option<Origin>) -> Result<Definition, CmdError> {
     let mut d = c.definition();
     d.derived_from = derived_from;
+    d.part_role = crate::symbols::project_part_role(&d);
     let content_hash = ecad_file::definition_hash(&d).map_err(|e| CmdError::refused(format!("The symbol could not be prepared ({e}).")))?;
     d.origin = Some(Origin { library: PROJECT_SYMBOLS, definition: lineage, library_seq: seq, content_hash });
     Ok(d)
@@ -567,8 +567,14 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
                 cps.insert(t, nd.at);
             }
         }
-        if cps != r.connection_points {
-            ops.push(Op::ModifyRepresentation { id: row.rep, before: r.clone(), after: Representation { connection_points: cps, ..r.clone() } });
+        // The copy's part follows its new definition (design 072 §4.4, F3′).
+        let role = ecad_model::Role::Part(new.part_role);
+        if cps != r.connection_points || role != r.role {
+            ops.push(Op::ModifyRepresentation {
+                id: row.rep,
+                before: r.clone(),
+                after: Representation { connection_points: cps, role, ..r.clone() },
+            });
         }
     }
     ops.extend(moved_routes.ops());
@@ -1038,6 +1044,7 @@ pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: DeviceId, mut cont
     let (id, lineage, item, new_rep): (DefinitionId, DefinitionId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
     let def = version_definition(&content, lineage, 1, None)?;
     let style = rep.items.first().and_then(|i| doc.items.get(i)).map_or(fallback, |i| i.style.clone());
+    let part = def.part_role;
     let mut ops = vec![Op::EmbedDefinition { id, definition: def }, Op::UnlinkRepresentation { id: rid, rep: rep.clone() }];
     for i in &rep.items {
         if let Some(it) = doc.items.get(i) {
@@ -1061,7 +1068,7 @@ pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: DeviceId, mut cont
             subject: Subject::Device(c),
             page: rep.page,
             form: Form::Symbol,
-            role: rep.role.clone(),
+            role: ecad_model::Role::Part(part),
             items: vec![item],
             connection_points: BTreeMap::new(),
         },
@@ -1098,7 +1105,7 @@ pub fn plan_place(
     ledger: &Ledger, ids: &mut IdAllocator, tag_high: &mut TagHigh, page: PageId, style: Style, def_id: DefinitionId, def: &Definition,
     pl: Placement, join: Option<DeviceId>, tag: Option<String>,
 ) -> Result<PlacedProject, CmdError> {
-    let key = def.defaults.get("key").cloned().unwrap_or_default();
+    let key = def.defaults.key.as_ref().map(|k| k.to_string()).unwrap_or_default();
     let (item, representation): (ItemId, RepresentationId) = (ids.fresh(), ids.fresh());
     let instance = Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition: def_id, placement: pl }) };
     let mut ops = Vec::new();
@@ -1133,7 +1140,14 @@ pub fn plan_place(
             ops.push(Op::AddItem { id: item, item: instance });
             ops.push(Op::LinkRepresentation {
                 id: representation,
-                rep: Representation { subject: Subject::Device(c), page, form: Form::Symbol, role: key, items: vec![item], connection_points: cps },
+                rep: Representation {
+                    subject: Subject::Device(c),
+                    page,
+                    form: Form::Symbol,
+                    role: ecad_model::Role::Part(def.part_role),
+                    items: vec![item],
+                    connection_points: cps,
+                },
             });
             Ok(PlacedProject { ops, component: c, representation, tag: crate::devices::tag_words(doc, c) })
         }
@@ -1146,19 +1160,20 @@ pub fn plan_place(
                 }
             };
             let c: DeviceId = ids.fresh();
-            let mut properties = ecad_model::Properties::new();
             let description = field_value(doc, &key, def, Field::Description).unwrap_or_else(|| def.name.clone());
-            if let Some(r) = field_value(doc, &key, def, Field::Rating) {
-                properties.insert(symbols::RATING_KEY.into(), r);
-            }
+            // Design 072 §2.2: the default rating is read by the group's reader; text it cannot
+            // read (ambiguous since it was saved) is kept as the note, never guessed.
+            let rating = field_value(doc, &key, def, Field::Rating);
+            let (device_type, rating_note) = crate::rating::reader::rated(&def.device_type, &tag, rating.as_deref())
+                .unwrap_or_else(|_| (def.device_type.clone(), rating.as_deref().and_then(|r| ecad_model::device::RatingNote::new(r).ok())));
             ops.push(Op::CreateDevice {
                 id: c,
                 device: Device {
                     tag: Some(crate::devices::stored_tag(&tag)?),
                     description: crate::devices::description_of(&description),
-                    properties,
+                    rating_note,
                     definition: Some(def_id),
-                    device_type: def.device_type.clone(),
+                    device_type,
                     ..Device::default()
                 },
             });
@@ -1176,7 +1191,7 @@ pub fn plan_place(
                     subject: Subject::Device(c),
                     page,
                     form: Form::Symbol,
-                    role: key.clone(),
+                    role: ecad_model::Role::Part(def.part_role),
                     items: vec![item],
                     connection_points: BTreeMap::new(),
                 },

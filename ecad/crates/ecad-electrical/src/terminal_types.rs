@@ -23,16 +23,20 @@ use ecad_model::links::{level_of_key, natural_key};
 use ecad_model::{DeviceId, Document, LevelIo, PointKey, Primitive, Pt, Subject, TerminalDef, TerminalId};
 
 use crate::CmdError;
+use crate::symbols::StarterKey;
 
 /// The strip property prefix of a level's own label (FP4): `term_label.<p>.<n>`.
 pub const LABEL_PREFIX: &str = "term_label.";
-/// The strip property prefix of a fuse position's rating (FP5): `rating.<p>`.
-pub const RATING_PREFIX: &str = "rating.";
+/// The `setprop` key prefix of a fuse position's rating (FP5): `rating.<p>`. The rating is the
+/// strip's typed field ([`ecad_model::device::TerminalStrip::fuses`], design 072 §2.5), not a
+/// property.
+pub const RATING_PREFIX: &str = ecad_model::device::RATING_OF_PREFIX;
 /// Every strip property keyed by a position label (review M1): what renumbering and `termlabel`
 /// move with a position, in one list, so a prefix added later is never left behind. `acc.after.`
-/// and `acc.on.` are brief 030's placements, the next two this brief's; `link.` values name
-/// positions inside and are rewritten, not moved ([`crate::accessories::renumber_ops`]).
-pub const POSITION_KEYED: &[&str] = &[crate::accessories::AFTER_PREFIX, crate::accessories::ON_PREFIX, LABEL_PREFIX, RATING_PREFIX];
+/// and `acc.on.` are brief 030's placements, `term_label.` this brief's; `link.` values name
+/// positions inside and are rewritten, not moved ([`crate::accessories::renumber_ops`]). A fuse
+/// position's rating is the strip's field and moves with [`moved_fuses`].
+pub const POSITION_KEYED: &[&str] = &[crate::accessories::AFTER_PREFIX, crate::accessories::ON_PREFIX, LABEL_PREFIX];
 
 /// Most characters of a position label (`termlabel {position}`).
 pub const MAX_POSITION_CHARS: usize = 16;
@@ -44,8 +48,10 @@ pub const MAX_OFFER_CHARS: usize = 64;
 /// A terminal type (design 036 §2.2).
 #[derive(Debug)]
 pub struct TermType {
-    /// The whole-terminal starter's key (`termlnpe`); for one-level types the starter itself.
-    pub key: &'static str,
+    /// The whole-terminal starter (`termlnpe`); for one-level types the starter itself.
+    pub key: StarterKey,
+    /// The starter of each level, level 1 first (`termlnpe.1`…); empty for a one-level type.
+    pub level_starters: &'static [StarterKey],
     /// The registry code, lower case (`lnpe`): `terminal.<code>.levels`, `part_number.<code>`.
     pub code: &'static str,
     /// The offer code as written (`LNPE`); empty for feed-through.
@@ -57,7 +63,7 @@ pub struct TermType {
     /// Built-in level names, one per level, top deck first.
     pub levels: &'static [&'static str],
     /// Levels joined inside the block, by key.
-    pub bridges: &'static [&'static [&'static str]],
+    pub bridges: &'static [&'static [PointKey]],
     /// Two-point levels that break the net (disconnect, fuse).
     pub breaks: bool,
     /// The level that carries the PE mark.
@@ -91,26 +97,29 @@ impl TermType {
         }
     }
 
-    /// The starter key of level `n` (`termlnpe.2`), or of the whole terminal (`None`).
-    pub fn starter_key(&self, n: Option<u32>) -> String {
-        match n {
-            Some(n) if self.multi() => format!("{}.{n}", self.key),
-            _ => self.key.to_string(),
-        }
+    /// The starter of level `n` (`termlnpe.2`), or of the whole terminal (`None`).
+    pub fn starter_key(&self, n: Option<u32>) -> StarterKey {
+        n.filter(|_| self.multi()).and_then(|n| self.level_starters.get(usize::try_from(n).ok()?.checked_sub(1)?)).copied().unwrap_or(self.key)
     }
 
     /// Whether it is 028's feed-through or PE terminal (one level, old keys).
     pub fn legacy(&self) -> bool {
-        self.key == "terminal" || self.key == ecad_model::Word::word(crate::strips::PE_KEY)
+        self.key == StarterKey::Terminal || self.key == crate::strips::PE_KEY
     }
 }
 
-const NONE: &[&[&str]] = &[];
+const NONE: &[&[PointKey]] = &[];
+
+/// Level `n` of a strip terminal as a point key (`.n`).
+const fn level(n: u8) -> PointKey {
+    PointKey::Level { level: n, io: None }
+}
 
 /// The catalogue, in offer order (design 036 §2.2). Adding a type is a row here and its starters.
 pub static TYPES: &[TermType] = &[
     TermType {
-        key: "terminal",
+        key: StarterKey::Terminal,
+        level_starters: &[],
         code: "ft",
         offer: "",
         name: "Feed-through terminal",
@@ -121,7 +130,8 @@ pub static TYPES: &[TermType] = &[
         pe_level: None,
     },
     TermType {
-        key: "terminalpe",
+        key: StarterKey::Terminalpe,
+        level_starters: &[],
         code: "pe",
         offer: "PE",
         name: "PE terminal",
@@ -132,7 +142,8 @@ pub static TYPES: &[TermType] = &[
         pe_level: Some(1),
     },
     TermType {
-        key: "term2",
+        key: StarterKey::Term2,
+        level_starters: &[StarterKey::Term2L1, StarterKey::Term2L2],
         code: "x2",
         offer: "x2",
         name: "Two-level terminal",
@@ -143,18 +154,20 @@ pub static TYPES: &[TermType] = &[
         pe_level: None,
     },
     TermType {
-        key: "term2b",
+        key: StarterKey::Term2b,
+        level_starters: &[StarterKey::Term2bL1, StarterKey::Term2bL2],
         code: "x2b",
         offer: "x2B",
         name: "Two-level terminal, bridged",
         word: "two-level bridged",
         levels: &["1", "2"],
-        bridges: &[&[".1", ".2"]],
+        bridges: &[&[level(1), level(2)]],
         breaks: false,
         pe_level: None,
     },
     TermType {
-        key: "term3",
+        key: StarterKey::Term3,
+        level_starters: &[StarterKey::Term3L1, StarterKey::Term3L2, StarterKey::Term3L3],
         code: "x3",
         offer: "x3",
         name: "Three-level terminal",
@@ -165,7 +178,8 @@ pub static TYPES: &[TermType] = &[
         pe_level: None,
     },
     TermType {
-        key: "termlnpe",
+        key: StarterKey::Termlnpe,
+        level_starters: &[StarterKey::TermlnpeL1, StarterKey::TermlnpeL2, StarterKey::TermlnpeL3],
         code: "lnpe",
         offer: "LNPE",
         name: "L/N/PE terminal",
@@ -176,7 +190,8 @@ pub static TYPES: &[TermType] = &[
         pe_level: Some(3),
     },
     TermType {
-        key: "termsensor",
+        key: StarterKey::Termsensor,
+        level_starters: &[StarterKey::TermsensorL1, StarterKey::TermsensorL2, StarterKey::TermsensorL3],
         code: "sen",
         offer: "SEN",
         name: "Sensor terminal",
@@ -187,7 +202,8 @@ pub static TYPES: &[TermType] = &[
         pe_level: None,
     },
     TermType {
-        key: "termdisc",
+        key: StarterKey::Termdisc,
+        level_starters: &[],
         code: "dis",
         offer: "DIS",
         name: "Disconnect terminal",
@@ -198,7 +214,8 @@ pub static TYPES: &[TermType] = &[
         pe_level: None,
     },
     TermType {
-        key: "termfuse",
+        key: StarterKey::Termfuse,
+        level_starters: &[],
         code: "fuse",
         offer: "FUSE",
         name: "Fuse terminal",
@@ -235,7 +252,7 @@ pub fn by_word(word: &str) -> Option<&'static TermType> {
     if ["feedthrough", "feed-through", "ft", ""].iter().any(|x| x.eq_ignore_ascii_case(w)) {
         return Some(feedthrough());
     }
-    TYPES.iter().find(|t| t.offer.eq_ignore_ascii_case(w) || t.code.eq_ignore_ascii_case(w) || t.key.eq_ignore_ascii_case(w))
+    TYPES.iter().find(|t| t.offer.eq_ignore_ascii_case(w) || t.code.eq_ignore_ascii_case(w) || ecad_model::Word::word(t.key).eq_ignore_ascii_case(w))
 }
 
 /// The index of `t` in [`TYPES`].
@@ -245,30 +262,30 @@ pub fn index_of(t: &TermType) -> usize {
 
 /// The type and level a starter draws: `termlnpe.2` → (L/N/PE, level 2); `termlnpe` → (L/N/PE,
 /// `None`: the whole terminal); `terminal`, `terminalpe`, `termdisc`, `termfuse` → level 1.
-pub fn of_starter(key: &str) -> Option<(&'static TermType, Option<u32>)> {
-    if let Some(t) = TYPES.iter().find(|t| t.key == key) {
-        return Some((t, if t.multi() { None } else { Some(1) }));
-    }
-    let (base, n) = key.rsplit_once('.')?;
-    let t = TYPES.iter().find(|t| t.key == base && t.multi())?;
-    let n: u32 = n.parse().ok()?;
-    (1..=t.count()).contains(&n).then_some((t, Some(n)))
+pub fn of_starter(key: StarterKey) -> Option<(&'static TermType, Option<u32>)> {
+    TYPES.iter().find_map(|t| {
+        if t.key == key {
+            return Some((t, if t.multi() { None } else { Some(1) }));
+        }
+        let i = t.level_starters.iter().position(|k| *k == key)?;
+        Some((t, Some(u32::try_from(i).ok()? + 1)))
+    })
 }
 
 /// Whether `key` is one of this brief's new starters (a level, a whole terminal, disconnect, fuse).
 pub fn is_level_starter(key: crate::symbols::StarterKey) -> bool {
-    of_starter(ecad_model::Word::word(key)).is_some_and(|(t, _)| !t.legacy())
+    of_starter(key).is_some_and(|(t, _)| !t.legacy())
 }
 
 /// Every new starter key, in catalogue order: per multi-level type its levels then its whole
 /// symbol; then disconnect and fuse.
-pub fn starter_keys() -> Vec<String> {
+pub fn starter_keys() -> Vec<StarterKey> {
     let mut out = Vec::new();
     for t in TYPES.iter().filter(|t| !t.legacy()) {
         if t.multi() {
             out.extend((1..=t.count()).map(|n| t.starter_key(Some(n))));
         }
-        out.push(t.key.to_string());
+        out.push(t.key);
     }
     out
 }
@@ -284,7 +301,7 @@ pub fn type_of_terminal(doc: &Document, t: TerminalId) -> &'static TermType {
         let d = doc.devices.get(&c)?.definition?;
         crate::symbols::of_definition(doc.definitions.get(&d)?)
     });
-    starter.and_then(|s| of_starter(ecad_model::Word::word(s.key))).map_or_else(feedthrough, |(t, _)| t)
+    starter.and_then(|s| of_starter(s.key)).map_or_else(feedthrough, |(t, _)| t)
 }
 
 /// A terminal's level and point (`.1i` → (1, `i`)); a hostile key is level 1.
@@ -327,6 +344,42 @@ pub fn rating_key(position: &str) -> String {
     format!("{RATING_PREFIX}{position}")
 }
 
+/// Whether strip `d` has a fuse position rating on a label `map` (old → new) moves.
+pub fn fuses_move(d: &ecad_model::Device, map: &BTreeMap<String, String>) -> bool {
+    match &d.device_type {
+        ecad_model::DeviceType::TerminalStrip(s) => s.fuses.keys().any(|l| map.contains_key(l.as_str())),
+        _ => false,
+    }
+}
+
+/// Strip `d` with its fuse position ratings relabelled by `map` (old → new), and a preview line
+/// per move (`rating rating.2 → rating.7`). A rating whose new label is no valid position label
+/// stays where it is, and says so.
+pub fn moved_fuses(d: &ecad_model::Device, map: &BTreeMap<String, String>) -> (ecad_model::Device, Vec<String>) {
+    let ecad_model::DeviceType::TerminalStrip(s) = &d.device_type else { return (d.clone(), Vec::new()) };
+    let mut lines = Vec::new();
+    let mut fuses = BTreeMap::new();
+    for (l, f) in &s.fuses {
+        let label = match map.get(l.as_str()) {
+            Some(n) => match ecad_model::device::PositionLabel::new(n) {
+                Ok(nl) => {
+                    lines.push(format!("rating {} → {}", rating_key(l.as_str()), rating_key(nl.as_str())));
+                    nl
+                }
+                Err(_) => {
+                    let shown: String = n.chars().take(MAX_POSITION_CHARS).collect();
+                    lines.push(format!("rating {} stays: {shown} is no position label", rating_key(l.as_str())));
+                    l.clone()
+                }
+            },
+            None => l.clone(),
+        };
+        fuses.insert(label, f.clone());
+    }
+    let strip = ecad_model::device::TerminalStrip { fuses };
+    (ecad_model::Device { device_type: ecad_model::DeviceType::TerminalStrip(strip), ..d.clone() }, lines)
+}
+
 /// The derived label of level `n` of position `p` of type `t` on strip `c` (no override).
 pub fn derived_label(doc: &Document, c: DeviceId, t: &TermType, p: &str, n: u32) -> String {
     if !t.multi() {
@@ -349,7 +402,7 @@ pub fn shown_label(doc: &Document, t: TerminalId) -> Option<String> {
     }
     // Brief 044 (FP6): only a strip's `.`-keys are levels; a connector pin (`.s`, `.p`) is named
     // by its half (`-X10.S:3`, design 044 §0).
-    if !crate::strips::is_strip(doc, c) {
+    if crate::strips::strip_of(doc, c).is_none() {
         return Some(crate::connectors::pin_name(doc, t).unwrap_or(p));
     }
     Some(derived_label(doc, c, type_of_terminal(doc, t), &p, n))
@@ -357,11 +410,12 @@ pub fn shown_label(doc: &Document, t: TerminalId) -> Option<String> {
 
 /// The ops removing strip `c`'s position-keyed properties that `dropped` terminals leave without
 /// a terminal (review M1, no silent data loss): `term_label.<p>.<n>` when level `n` of `p` has no
-/// terminal left, `rating.<p>` when position `p` has none; with a note for each.
+/// terminal left, and the fuse rating of position `p` (the strip's field) when `p` has none; with
+/// a note for each.
 pub fn orphaned_key_ops(doc: &Document, c: DeviceId, dropped: &[TerminalId]) -> (Vec<ecad_model::Op>, Vec<String>) {
     let (mut ops, mut notes) = (Vec::new(), Vec::new());
     let Some(props) = doc.devices.get(&c).map(|x| &x.properties) else { return (ops, notes) };
-    if dropped.is_empty() || !crate::strips::is_strip(doc, c) {
+    if dropped.is_empty() || crate::strips::strip_of(doc, c).is_none() {
         return (ops, notes);
     }
     let gone: BTreeSet<TerminalId> = dropped.iter().copied().collect();
@@ -376,6 +430,7 @@ pub fn orphaned_key_ops(doc: &Document, c: DeviceId, dropped: &[TerminalId]) -> 
             ops.push(ecad_model::Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key, before: Some(v.clone()), after: None });
         }
     };
+    let mut gone_positions: BTreeSet<String> = BTreeSet::new();
     for t in dropped {
         let Some(p) = doc.terminals.get(t).and_then(|x| x.label.clone()) else { continue };
         let n = level_of(doc, *t).0;
@@ -383,7 +438,23 @@ pub fn orphaned_key_ops(doc: &Document, c: DeviceId, dropped: &[TerminalId]) -> 
             remove(label_key(&p, n), &mut ops, &mut notes);
         }
         if !left.iter().any(|(l, _)| *l == p) {
-            remove(rating_key(&p), &mut ops, &mut notes);
+            gone_positions.insert(p);
+        }
+    }
+    // Design 072 §2.5: a fuse position's rating is the strip's field; one `ModifyDevice`, first.
+    if let Some(d) = doc.devices.get(&c)
+        && let ecad_model::DeviceType::TerminalStrip(s) = &d.device_type
+    {
+        let mut strip = s.clone();
+        for (l, f) in &s.fuses {
+            if gone_positions.contains(l.as_str()) {
+                notes.push(format!("{tag}: {} ({f}) removed with its terminal; U brings it back.", rating_key(l.as_str())));
+                strip.fuses.remove(l);
+            }
+        }
+        if strip != *s {
+            let after = ecad_model::Device { device_type: ecad_model::DeviceType::TerminalStrip(strip), ..d.clone() };
+            ops.insert(0, ecad_model::Op::ModifyDevice { id: c, before: d.clone(), after });
         }
     }
     (ops, notes)
@@ -438,6 +509,11 @@ pub fn positions(doc: &Document, c: DeviceId) -> Vec<Position> {
         .collect();
     out.sort_by_cached_key(|p| natural_key(&p.label));
     out
+}
+
+/// The labels of strip `c`'s fuse positions (the positions a `rating.<p>` names).
+pub fn fuse_positions(doc: &Document, c: DeviceId) -> BTreeSet<String> {
+    positions(doc, c).into_iter().filter(|p| p.ty.code == "fuse").map(|p| p.label).collect()
 }
 
 /// The position groups the numbering planner numbers (design 036 §10.3, FP8c): terminals with one
@@ -775,11 +851,11 @@ fn ticks(n: u32) -> Vec<Primitive> {
 }
 
 /// The graphics of a new starter (`None` for any other key).
-pub fn graphics(key: &str) -> Option<Vec<Primitive>> {
+pub fn graphics(key: StarterKey) -> Option<Vec<Primitive>> {
     let (t, n) = of_starter(key).filter(|(t, _)| !t.legacy())?;
     Some(match (t.key, n) {
-        ("termfuse", _) => crate::symbols::graphics_of(crate::symbols::StarterKey::Fuseterm),
-        ("termdisc", _) => {
+        (StarterKey::Termfuse, _) => crate::symbols::graphics_of(StarterKey::Fuseterm),
+        (StarterKey::Termdisc, _) => {
             vec![rect((-3.5, -7.5), (3.5, 7.5)), line((0.0, 10.0), (0.0, 3.0)), line((0.0, 3.0), (2.5, -3.0)), line((0.0, -3.0), (0.0, -10.0))]
         }
         (_, Some(n)) => {
@@ -804,7 +880,7 @@ pub fn graphics(key: &str) -> Option<Vec<Primitive>> {
                 }
             }
             for group in t.bridges {
-                let ys: Vec<f64> = group.iter().filter_map(|k| k.strip_prefix('.')?.parse::<u32>().ok()).map(|n| -5.0 * f64::from(n - 1)).collect();
+                let ys: Vec<f64> = group.iter().filter_map(|k| k.level()).map(|(n, _)| -5.0 * f64::from(n - 1)).collect();
                 if let (Some(a), Some(b)) = (ys.iter().copied().reduce(f64::max), ys.iter().copied().reduce(f64::min)) {
                     g.push(line((1.0, a - 1.2), (1.0, b + 1.2)));
                 }
@@ -815,7 +891,7 @@ pub fn graphics(key: &str) -> Option<Vec<Primitive>> {
 }
 
 /// The connection points of a new starter (`None` for any other key).
-pub fn terminals(key: &str) -> Option<Vec<TerminalDef>> {
+pub fn terminals(key: StarterKey) -> Option<Vec<TerminalDef>> {
     let (t, n) = of_starter(key).filter(|(t, _)| !t.legacy())?;
     let d = |k: PointKey, x: f64, y: f64| TerminalDef { key: k, label: None, at: p(x, y), accepts: Default::default() };
     let level = |n: u32, io: Option<LevelIo>| PointKey::Level { level: u8::try_from(n).unwrap_or(u8::MAX), io };
@@ -827,15 +903,15 @@ pub fn terminals(key: &str) -> Option<Vec<TerminalDef>> {
 }
 
 /// The internal bridges of a new starter's definition (§6): its type's groups.
-pub fn bridges(key: &str) -> Vec<Vec<PointKey>> {
-    of_starter(key).map(|(t, _)| t.bridges.iter().map(|g| g.iter().filter_map(|k| k.parse().ok()).collect()).collect()).unwrap_or_default()
+pub fn bridges(key: StarterKey) -> Vec<Vec<PointKey>> {
+    of_starter(key).map(|(t, _)| t.bridges.iter().map(|g| g.to_vec()).collect()).unwrap_or_default()
 }
 
 /// Where each level of a symbol of strip `c` sits, keyed by the definition keys it shows (the
 /// whole terminal: every level).
 pub fn rep_type(doc: &Document, r: &ecad_model::Representation) -> Option<(&'static TermType, Option<u32>)> {
     let Subject::Device(_) = r.subject else { return None };
-    of_starter(ecad_model::Word::word(crate::devices::rep_starter(doc, r)?.key))
+    of_starter(crate::devices::rep_starter(doc, r)?.key)
 }
 
 pub fn short(hex: &str) -> &str {
@@ -866,14 +942,20 @@ mod tests {
 
     #[test]
     fn starters_and_codes() {
-        assert_eq!(of_starter("termlnpe.2").map(|(t, n)| (t.code, n)), Some(("lnpe", Some(2))));
-        assert_eq!(of_starter("termlnpe").map(|(t, n)| (t.code, n)), Some(("lnpe", None)));
-        assert_eq!(of_starter("termlnpe.4"), None);
-        assert_eq!(of_starter("termfuse").map(|(t, n)| (t.code, n)), Some(("fuse", Some(1))));
+        assert_eq!(of_starter(StarterKey::TermlnpeL2).map(|(t, n)| (t.code, n)), Some(("lnpe", Some(2))));
+        assert_eq!(of_starter(StarterKey::Termlnpe).map(|(t, n)| (t.code, n)), Some(("lnpe", None)));
+        assert_eq!(of_starter(StarterKey::Coil), None);
+        assert_eq!(of_starter(StarterKey::Termfuse).map(|(t, n)| (t.code, n)), Some(("fuse", Some(1))));
+        for t in TYPES {
+            assert_eq!(t.level_starters.len(), if t.multi() { t.levels.len() } else { 0 }, "{}", t.code);
+            for (i, k) in t.level_starters.iter().enumerate() {
+                assert_eq!(t.starter_key(Some(u32::try_from(i).unwrap() + 1)), *k);
+            }
+        }
         assert_eq!(starter_keys().len(), 20);
         assert!(is_level_starter(crate::symbols::StarterKey::Term2bL1) && !is_level_starter(crate::symbols::StarterKey::Terminal));
-        assert_eq!(by_word("x2b").map(|t| t.key), Some("term2b"));
-        assert_eq!(by_word("Feedthrough").map(|t| t.key), Some("terminal"));
+        assert_eq!(by_word("x2b").map(|t| t.key), Some(StarterKey::Term2b));
+        assert_eq!(by_word("Feedthrough").map(|t| t.key), Some(StarterKey::Terminal));
     }
 
     #[test]
