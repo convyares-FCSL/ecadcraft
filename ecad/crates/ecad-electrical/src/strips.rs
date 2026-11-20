@@ -76,7 +76,7 @@ pub fn strip_of(doc: &Document, c: DeviceId) -> Option<&ecad_model::device::Term
 
 /// Whether representation `r` draws a PE terminal.
 pub fn rep_is_pe(doc: &Document, r: &ecad_model::Representation) -> bool {
-    crate::xref::starter_of(doc, r).is_some_and(|s| s.key == PE_KEY)
+    crate::devices::rep_starter(doc, r).is_some_and(|s| s.key == PE_KEY)
 }
 
 /// A strip's drawn terminals: (terminal, its representation, whether PE).
