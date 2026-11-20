@@ -181,13 +181,23 @@ impl App {
                 let Some(touched) = ecad_cadcraft::props::touched(p.ledger.document(), &t.ops) else { return };
                 let Some(drawing) = pages.drawing_of(p, page) else { return };
                 let mut boxes = Vec::new();
-                for o in touched.iter().take(MAX_OUTLINED) {
-                    let object = match o {
-                        ObjectRef::Device(c) => Object::Device(*c),
-                        ObjectRef::Wire(c) => Object::Wire(*c),
-                        ObjectRef::Cable(c) => Object::Cable(*c),
-                        ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard => continue,
-                    };
+                // The routes it drew or changed too (design 072: a loose line is a route with no
+                // wire, and a route has no properties, so `touched` leaves it out).
+                let routes = t.ops.iter().filter_map(|op| match op {
+                    ecad_model::Op::AddRoute { id, .. } | ecad_model::Op::ModifyRoute { id, .. } => Some(Object::Route(*id)),
+                    _ => None,
+                });
+                let objects: Vec<Object> = touched
+                    .iter()
+                    .filter_map(|o| match o {
+                        ObjectRef::Device(c) => Some(Object::Device(*c)),
+                        ObjectRef::Wire(c) => Some(Object::Wire(*c)),
+                        ObjectRef::Cable(c) => Some(Object::Cable(*c)),
+                        ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard => None,
+                    })
+                    .chain(routes)
+                    .collect();
+                for object in objects.into_iter().take(MAX_OUTLINED) {
                     let mut b = Bounds2::EMPTY;
                     for h in ecad_cadcraft::checks::handles_of(p, page, object) {
                         if let Some(e) = drawing.entity(h) {

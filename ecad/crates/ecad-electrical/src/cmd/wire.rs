@@ -1,20 +1,20 @@
 //! The wire commands' rules (brief 022, design 022 §10; brief 032 §2; brief 050b): nets and their
-//! numbers, potentials and categories, the wiring settings, junctions, joins and the wire itself.
+//! numbers, potentials and categories, the wiring settings, joins and the wire itself.
 //! Each function reads the document and returns the ops to commit and what to report.
 
 use ecad_model::units::Radians;
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::connectivity::{CONTINUATION, JUNCTION, KIND, NAME};
+use ecad_model::connectivity::{CONTINUATION, KIND, NAME};
 use ecad_model::text::Text;
 use ecad_model::wiring::{self, Scheme};
 use ecad_model::{
-    DeviceId, Document, End, IdAllocator, Ledger, NetData, NetId, Noun, ObjectRef, Op, PageId, Placement, ProjectSettings, Pt, Style, StyleRef,
-    Subject, TerminalId, Wire, WireId,
+    DeviceId, Document, End, IdAllocator, Ledger, NetData, NetKey, Noun, ObjectRef, Op, PageId, Placement, ProjectSettings, Pt, RouteEnd, RouteId,
+    Style, StyleRef, TerminalId, Wire, WireId,
 };
 
 use crate::error::{CmdError, msg};
-use crate::wires::{self, ON_WIRE};
+use crate::wires;
 
 /// `nets` lists at most this many by default.
 pub const DEFAULT_LIMIT: usize = 200;
@@ -57,7 +57,7 @@ pub struct NetView {
     /// The categories, when the net's wires resolve to different ones (or some have none).
     pub categories: Option<Vec<CategoryName>>,
     pub wires: Vec<WireId>,
-    /// Its device connection points (not junctions or continuations), with their words.
+    /// Its device connection points (not continuations), with their words.
     pub points: Vec<(TerminalId, String)>,
     /// The names of its continuations.
     pub continuations: BTreeSet<String>,
@@ -72,9 +72,9 @@ pub fn net_view(doc: &Document, net: &NetData) -> NetView {
     let order: BTreeMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i + 1)).collect();
     let mut pages: BTreeMap<usize, (String, Option<String>)> = BTreeMap::new();
     for c in &net.wires {
-        for (_, r) in doc.representations_of(Subject::Wire(*c)) {
+        for r in wires::routes_of_wire(doc, *c).into_iter().filter_map(|r| doc.routes.get(&r)) {
             let Some(n) = order.get(&r.page) else { continue };
-            let col = ecad_model::derive::route_ends_on(doc, *c, r.page).and_then(|(a, _)| wiring::place(doc, r.page, a)).map(|p| p.column_label);
+            let col = r.points.first().and_then(|a| wiring::place(doc, r.page, *a)).map(|p| p.column_label);
             let slot = pages.entry(*n).or_insert_with(|| (ecad_model::book::page_number(doc, r.page), None));
             if slot.1.is_none() {
                 slot.1 = col;
@@ -84,7 +84,7 @@ pub fn net_view(doc: &Document, net: &NetData) -> NetView {
     let points = net
         .terminals
         .iter()
-        .filter(|t| doc.terminals.get(t).is_none_or(|x| !matches!(wires::kind_of(doc, x.component), Some(JUNCTION | CONTINUATION))))
+        .filter(|t| doc.terminals.get(t).is_none_or(|x| !matches!(wires::kind_of(doc, x.component), Some(CONTINUATION))))
         .map(|t| (*t, wires::point_words(doc, *t)))
         .collect();
     let continuations = net
@@ -128,7 +128,7 @@ fn sort_key(net: &NetData) -> (u8, u128) {
 ///
 /// # Errors
 /// No such wire or connection point, no net with that number, or nothing given.
-pub fn chosen_net(doc: &Document, choice: &NetChoice) -> Result<NetId, CmdError> {
+pub fn chosen_net(doc: &Document, choice: &NetChoice) -> Result<NetKey, CmdError> {
     let conn = doc.connectivity();
     if let Some(c) = choice.conductor {
         return conn.net_of_conductor(c).ok_or(CmdError::NotFound(Noun::Wire));
@@ -138,7 +138,7 @@ pub fn chosen_net(doc: &Document, choice: &NetChoice) -> Result<NetId, CmdError>
     }
     if let Some(n) = &choice.number {
         let n = n.trim();
-        let mut nets: Vec<NetId> = conn.nets_numbered(n).map(|(id, _)| id).collect();
+        let mut nets: Vec<NetKey> = conn.nets_numbered(n).map(|(id, _)| id).collect();
         nets.sort_by_key(|id| conn.net(*id).map(sort_key));
         return nets.first().copied().ok_or_else(|| CmdError::refused(format!("no net has number {n}")));
     }
@@ -184,17 +184,15 @@ pub struct NetsPage {
 /// As [`chosen_net`]; a page that does not exist; an unreadable cursor.
 pub fn nets(doc: &Document, q: &NetsQuery) -> Result<NetsPage, CmdError> {
     let conn = doc.connectivity();
-    let mut ids: Vec<NetId> = if q.choice.is_given() {
+    let mut ids: Vec<NetKey> = if q.choice.is_given() {
         if let Some(n) = &q.choice.number { conn.nets_numbered(n.trim()).map(|(id, _)| id).collect() } else { vec![chosen_net(doc, &q.choice)?] }
     } else if let Some(pg) = q.page {
         if !doc.pages.contains_key(&pg) {
             return Err(CmdError::refused(format!("page {pg} does not exist")));
         }
         let mut set = BTreeSet::new();
-        for (_, r) in doc.representations_on(pg) {
-            if let Subject::Wire(c) = r.subject
-                && let Some(id) = conn.net_of_conductor(c)
-            {
+        for r in doc.routes_on(pg) {
+            if let Some(id) = wires::wire_of_route(doc, r).and_then(|c| conn.net_of_conductor(c)) {
                 set.insert(id);
             }
         }
@@ -203,7 +201,7 @@ pub fn nets(doc: &Document, q: &NetsQuery) -> Result<NetsPage, CmdError> {
         conn.nets().map(|(id, _)| id).collect()
     };
     ids.retain(|id| conn.net(*id).is_some_and(|n| q.all || !n.wires.is_empty()));
-    let mut keyed: Vec<((u8, u128), NetId)> = ids.into_iter().filter_map(|id| conn.net(id).map(|n| (sort_key(n), id))).collect();
+    let mut keyed: Vec<((u8, u128), NetKey)> = ids.into_iter().filter_map(|id| conn.net(id).map(|n| (sort_key(n), id))).collect();
     keyed.sort();
     if let Some(a) = &q.after {
         let cursor = u128::from_str_radix(a.trim(), 16).map_err(|_| CmdError::input("`after` must be a cursor from `next`"))?;
@@ -220,8 +218,8 @@ pub fn nets(doc: &Document, q: &NetsQuery) -> Result<NetsPage, CmdError> {
 fn where_words(doc: &Document, net: &NetData) -> String {
     let point = wires::net_points(doc, net).into_iter().next();
     let place = net.first_conductor().and_then(|c| {
-        doc.representations_of(Subject::Wire(c)).find_map(|(_, r)| {
-            let (a, _) = ecad_model::derive::route_ends_on(doc, c, r.page)?;
+        wires::routes_of_wire(doc, c).into_iter().filter_map(|r| doc.routes.get(&r)).find_map(|r| {
+            let a = *r.points.first()?;
             Some(wiring::place(doc, r.page, a)?.text(doc.settings.reference_style()))
         })
     });
@@ -277,20 +275,20 @@ fn merge_sense(doc: &Document, a: &NetData, b: &NetData) -> Result<(), Unmergeab
     Ok(())
 }
 
-/// The loose end of a net to continue from: (conductor, end, page, point, direction away).
-fn open_end(doc: &Document, net: &NetData) -> Option<(WireId, End, PageId, Pt, Pt)> {
+/// The free route end of a net to continue from: (route, end, page, point, direction away).
+fn open_end(doc: &Document, net: &NetData) -> Option<(RouteId, End, PageId, Pt, Pt)> {
     for c in &net.wires {
-        let cond = doc.wires.get(c)?;
-        for (_, r) in doc.representations_of(Subject::Wire(*c)) {
-            let Some((_, _, v)) = wires::route_vertices(doc, *c, r.page) else { continue };
-            for end in End::BOTH {
-                if cond.end(end).is_some() {
+        for r in wires::routes_of_wire(doc, *c) {
+            let Some(route) = doc.routes.get(&r) else { continue };
+            let v = &route.points;
+            for (end, e) in End::BOTH.into_iter().zip(route.ends) {
+                if e != RouteEnd::Free {
                     continue;
                 }
                 let (at, prev) = if end == End::A { (v.first(), v.get(1)) } else { (v.last(), v.iter().rev().nth(1)) };
                 let (Some(at), Some(prev)) = (at, prev) else { continue };
                 let d = Pt::new(at.x - prev.x, at.y - prev.y);
-                return Some((*c, end, r.page, *at, d));
+                return Some((r, end, route.page, *at, d));
             }
         }
     }
@@ -375,7 +373,7 @@ pub fn wirenumber(
     let v = v.to_string();
     let conn = doc.connectivity();
     let exempt = doc.settings.wiring.potentials.iter().any(|x| !x.numbered && x.prefix == v);
-    let others: Vec<NetId> = if exempt { Vec::new() } else { conn.nets_numbered(&v).map(|(n, _)| n).filter(|n| *n != id).collect() };
+    let others: Vec<NetKey> = if exempt { Vec::new() } else { conn.nets_numbered(&v).map(|(n, _)| n).filter(|n| *n != id).collect() };
     let Some(other_id) = others.first().copied() else {
         let ops = wiring::write_ops(doc, &net, &v, true);
         return Ok(Numbered::Fixed { ops, number: v, conductors });
@@ -426,7 +424,7 @@ pub fn wirenumber(
                 props.insert(KIND.into(), CONTINUATION.into());
                 props.insert(NAME.into(), name.clone());
                 let placement = Placement { origin: at, rotation: arrow_rotation(d), mirror: false, scale: 1.0 };
-                // The plan attaches the loose end at the point.
+                // The plan lands the free route end at the point.
                 let t = wires::plan_tagless(doc, ids, page, style.clone(), starter, placement, props)?;
                 continuations.push(t.component);
                 ops.extend(t.ops);
@@ -456,10 +454,10 @@ pub fn potential(doc: &Document, c: WireId, value: Option<&str>) -> Result<(Vec<
     Ok((ops, net.wires.len()))
 }
 
-/// The number of the net wire `c` belongs to.
+/// The number wire `c` shows ([`wiring::wire_number`]: its net's, or its own numbering per
+/// conductor).
 pub fn number_of(doc: &Document, c: WireId) -> Option<String> {
-    let conn = doc.connectivity();
-    conn.net_of_conductor(c).and_then(|id| conn.net(id)).and_then(|n| wiring::net_number(doc, n))
+    wiring::wire_number(doc, c)
 }
 
 /// The ops giving `conductors` category `value` (`None`: clear their own), with the potential
@@ -469,7 +467,6 @@ pub fn number_of(doc: &Document, c: WireId) -> Option<String> {
 /// # Errors
 /// No such wire.
 pub fn category_ops(doc: &Document, conductors: &[WireId], value: Option<&StyleRef>) -> Result<(Vec<Op>, Option<String>), CmdError> {
-    let key = wiring::WIRE_CATEGORY;
     let pot = value
         .and_then(|id| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, id, "potential", None))
         .and_then(|r| crate::styles::wire::filled(&r));
@@ -479,10 +476,7 @@ pub fn category_ops(doc: &Document, conductors: &[WireId], value: Option<&StyleR
     for c in conductors {
         let cond = doc.wires.get(c).ok_or(CmdError::NotFound(Noun::Wire))?;
         let mut after = cond.clone();
-        match value {
-            Some(v) => after.display.insert(key.into(), v.text()),
-            None => after.display.remove(key),
-        };
+        after.wire_type = value.cloned();
         if let Some(p) = &pot {
             let net_pot = conn.net_of_conductor(*c).and_then(|id| conn.net(id)).and_then(|n| wiring::net_potential(doc, n).name);
             match net_pot {
@@ -568,6 +562,8 @@ pub struct WireSettingsChange {
     pub label_height: Option<f64>,
     pub label_rule: Option<String>,
     pub label_min_length: Option<f64>,
+    /// Design 072 F40: what one wire number counts, `net` or `conductor`.
+    pub number_by: Option<String>,
     pub unclassified_prefix: Option<String>,
     /// The whole table.
     pub potentials: Option<Vec<PotentialRow>>,
@@ -588,10 +584,9 @@ pub fn wire_settings(before: &ProjectSettings, change: &WireSettingsChange) -> R
         w.digits = Some(d as u8);
     }
     if let Some(c) = &change.colour_style {
-        w.colour_style = Some(
-            wiring::ColourStyle::parse(c)
-                .ok_or(CmdError::input("`colour_style` must be \"iec\" (BN, BU, GNYE) or \"three-letter\" (BRN, BLU, GRN/YEL)"))?,
-        );
+        w.colour_style = Some(<ecad_model::colour::ColourWords as ecad_model::words::Word>::parse(c).ok_or(CmdError::input(
+            "`colour_style` must be \"code2\" (BN, BU, GN/YE), \"code3\" (BRN, BLU, GRN/YEL) or \"name\" (Brown, Blue, Green/Yellow)",
+        ))?);
     }
     if let Some(hv) = change.label_height {
         w.label_height =
@@ -608,6 +603,10 @@ pub fn wire_settings(before: &ProjectSettings, change: &WireSettingsChange) -> R
     if let Some(lv) = change.label_min_length {
         w.label_min_length =
             Some(Some(lv).filter(|x| wiring::LABEL_MIN_LENGTHS.contains(x)).ok_or(CmdError::input("Shortest labelled wire is 0 to 100 mm."))?);
+    }
+    if let Some(b) = &change.number_by {
+        w.number_by = <wiring::NumberBy as ecad_model::Word>::parse(b)
+            .ok_or(CmdError::input("`number_by` must be \"net\" (one number per net) or \"conductor\" (one number per wire)"))?;
     }
     if let Some(u) = &change.unclassified_prefix {
         w.unclassified_prefix = wiring::valid_text("prefix", Some(u)).map_err(CmdError::refused)?.unwrap_or_default();
@@ -647,7 +646,7 @@ pub fn wire_settings(before: &ProjectSettings, change: &WireSettingsChange) -> R
 /// change), and how many nets they renumber.
 pub fn renumber(doc: &Document, all: bool) -> (Vec<Op>, usize) {
     let ops = wiring::renumber(doc, all);
-    let nets: BTreeSet<NetId> = ops
+    let nets: BTreeSet<NetKey> = ops
         .iter()
         .filter_map(|op| match op {
             Op::ModifyWire { id, .. } => doc.connectivity().net_of_conductor(*id),
@@ -657,98 +656,71 @@ pub fn renumber(doc: &Document, all: bool) -> (Vec<Op>, usize) {
     (ops, nets.len())
 }
 
-/// A junction placed by `junction` or `joinwires`.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Junctioned {
-    pub junction: DeviceId,
-    pub terminal: TerminalId,
-    /// The new second half of the wire split at it (`None`: loose ends that only met).
-    pub conductor: Option<WireId>,
-    pub at: Pt,
-    /// The loose ends attached (only when they only met).
-    pub attached: Option<usize>,
-}
-
-/// The ops and result of a junction at `at` on `page` (design 022 §3.1): loose ends that only
-/// meet get a junction with nothing to split; otherwise the wire under the point is split.
-///
-/// # Errors
-/// No wire there; the junction symbol is missing.
-pub fn junction_at(doc: &Document, ids: &mut IdAllocator, style: Style, page: PageId, at: Pt) -> Result<(Vec<Op>, Junctioned), CmdError> {
-    // Loose ends that only meet (no wire runs through the point): a junction joins them, with
-    // nothing to split (the Checks row's Add junction, design 022 §8).
-    let loose = wires::loose_ends_at(doc, page, at, ON_WIRE);
-    let through = wires::interior_wire_at(doc, page, at);
-    if through.is_none() && loose.len() >= 2 {
-        let starter = wires::junction_starter();
-        let mut props = ecad_model::Properties::new();
-        props.insert(KIND.into(), JUNCTION.into());
-        let snapped = loose
-            .first()
-            .and_then(|(c, e)| {
-                wires::route_vertices(doc, *c, page).and_then(|(_, _, v)| if *e == End::A { v.first().copied() } else { v.last().copied() })
-            })
-            .unwrap_or(at);
-        let placement = Placement { origin: snapped, rotation: Radians(0.0), mirror: false, scale: 1.0 };
-        let t = wires::plan_tagless(doc, ids, page, style, starter, placement, props)?;
-        let done = Junctioned { junction: t.component, terminal: t.terminal, conductor: None, at: snapped, attached: Some(t.attached.len()) };
-        return Ok((t.ops, done));
-    }
-    let on = wires::wire_at(doc, page, at, ON_WIRE, None).ok_or(CmdError::refused("There is no wire there: click on a wire."))?;
-    let j = wires::plan_junction(doc, ids, page, style, on)?;
-    let done = Junctioned { junction: j.tagless.component, terminal: j.tagless.terminal, conductor: Some(j.second), at: j.at, attached: None };
-    Ok((j.tagless.ops, done))
-}
-
 /// What `joinwires` did.
 #[derive(Debug, Clone)]
 pub enum Joined {
-    /// Two open ends became one wire.
-    Merged { ops: Vec<Op>, survivor: WireId, removed: WireId, at: Pt },
-    /// The ends got a junction.
-    Junction { ops: Vec<Op>, junction: Junctioned },
+    /// Two free route ends became one route.
+    Merged { ops: Vec<Op>, survivor: RouteId, removed: RouteId, at: Pt },
+    /// Free route ends landed on route `route` (a T): on its middle, or on its free end where three
+    /// or more ends meet.
+    Tee { ops: Vec<Op>, route: RouteId, landed: usize, at: Pt },
 }
 
-/// `joinwires` (design 032 §2.5): two open ends that meet at `at` become one wire; an open end on
-/// a wire's interior, or three or more ends, get a junction. `quiet` ends are never joined.
+/// `joinwires` (design 032 §2.5, design 072 §4.3): two free route ends that meet at `at` become
+/// one route; free ends on a route's middle, or three or more ends, land on one route there (a
+/// T). `quiet` ends are never joined.
 ///
 /// # Errors
-/// Nothing to join there; a join that would close a loop or is too long.
-pub fn join_wires(
-    doc: &Document, ids: &mut IdAllocator, style: Style, page: PageId, at: Pt, quiet: &[Pt], max_points: usize,
-) -> Result<Joined, CmdError> {
+/// Nothing to join there; a join that is too long or not sensible (§2.2).
+pub fn join_wires(doc: &Document, page: PageId, at: Pt, quiet: &[Pt], max_points: usize) -> Result<Joined, CmdError> {
     let loose = wires::joinable_ends_at(doc, page, at, quiet);
-    let through = wires::interior_wire_at(doc, page, at);
+    let through = wires::interior_route_at(doc, page, at);
     if let ([a, b], None) = (loose.as_slice(), through)
-        && let Some(j) = wires::plan_end_join(doc, page, *a, *b, max_points)?
+        && let Some(j) = wires::plan_end_join(doc, *a, *b, max_points)?
     {
-        let snapped = wires::route_vertices(doc, j.survivor, page)
-            .and_then(|(_, _, v)| {
-                if (a.0 == j.survivor && a.1 == End::A) || (b.0 == j.survivor && b.1 == End::A) { v.first().copied() } else { v.last().copied() }
-            })
-            .unwrap_or(at);
+        let snapped = [a, b].into_iter().find(|(r, _)| *r == j.survivor).and_then(|(r, e)| wires::end_point(doc, *r, *e)).unwrap_or(at);
         return Ok(Joined::Merged { ops: j.ops, survivor: j.survivor, removed: j.removed, at: snapped });
     }
-    if (through.is_none() && loose.len() < 2) || (through.is_some() && loose.is_empty()) {
+    // The route the ends land on: the one under the point, else the first free end's.
+    let (route, place, landing): (RouteId, Pt, Vec<(RouteId, End)>) = match (through, loose.split_first()) {
+        (Some(on), Some(_)) => (on.route, on.at, loose.iter().copied().filter(|(r, _)| *r != on.route).collect()),
+        (None, Some(((r, e), rest))) => (*r, wires::end_point(doc, *r, *e).unwrap_or(at), rest.iter().copied().filter(|(x, _)| x != r).collect()),
+        (_, None) => return Err(CmdError::refused(msg::NO_ENDS_TO_JOIN)),
+    };
+    if landing.is_empty() {
         return Err(CmdError::refused(msg::NO_ENDS_TO_JOIN));
     }
-    let (ops, junction) = junction_at(doc, ids, style, page, at)?;
-    Ok(Joined::Junction { ops, junction })
+    for (r, _) in &landing {
+        wires::join_sense(doc, route, *r)?;
+    }
+    let mut edits = wires::RouteEdits::new(doc);
+    for (r, e) in &landing {
+        edits.set_end(*r, *e, RouteEnd::On { route, at: place });
+    }
+    Ok(Joined::Tee { ops: edits.ops(), route, landed: landing.len(), at: place })
 }
 
-/// `wire` (design 032 §2.3): the plan for drawing `input`, with the new wire's `category` (an ID
-/// or a name) when given.
+/// `wire` (design 032 §2.3): the plan for drawing `input`, with `category` (an ID or a name), when
+/// given, on the wires the drawn route carries.
+///
+/// # Semantics
+/// With a category, the commit's wire rewrite (`ecad_model::wire_order::rewrite`) is run here on
+/// the preview and its ops are part of the plan, so the category can be set on the wires it makes;
+/// the commit's own rewrite then finds nothing left to do.
 ///
 /// # Errors
-/// The route does not work (too many points, a loop…); no such category; the model refused the
-/// preview.
+/// The route does not work (too many points…); no such category; the model refused the preview.
 pub fn wire(ledger: &Ledger, ids: &mut IdAllocator, input: wires::WireInput<'_>, category: Option<&str>) -> Result<wires::WirePlan, CmdError> {
     let doc = ledger.document();
     let mut plan = wires::plan_wire(doc, ids, input)?;
     if let Some(c) = category {
         let id = crate::styles::find(doc, ecad_model::StyleCatalogue::Wire, c)?;
-        let after = ledger.preview(&plan.ops)?;
-        let (more, _) = category_ops(&after, &[plan.conductor], Some(&id))?;
+        let drawn = ledger.preview(&plan.ops)?;
+        let rewritten = ecad_model::wire_order::rewrite(&drawn, &plan.ops);
+        let after = if rewritten.is_empty() { drawn } else { ledger.preview(&[plan.ops.clone(), rewritten.clone()].concat())? };
+        plan.ops.extend(rewritten);
+        let carried = wires::wires_of_route(&after, plan.route);
+        let (more, _) = category_ops(&after, &carried, Some(&id))?;
         plan.ops.extend(more);
     }
     Ok(plan)
@@ -758,14 +730,14 @@ pub fn wire(ledger: &Ledger, ids: &mut IdAllocator, input: wires::WireInput<'_>,
 /// (checked), `Err` to refuse; `Ok(None)` when the key is not one of brief 022's.
 ///
 /// # Errors
-/// A wire number or potential (they belong to the whole net), a junction's or continuation's kind,
+/// A wire number or potential (they belong to the whole net), a continuation's kind,
 /// a continuation without a name, or a value that does not read.
 pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Option<String>>, CmdError> {
     match object {
         // Brief 049 (design 049 §3.1): a caption only on a continuation, checked.
         ObjectRef::Device(c) if key == crate::continuations::CAPTION_KEY => Ok(Some(crate::continuations::caption_value(doc, c, value)?)),
         ObjectRef::Device(c) if wires::kind_of(doc, c).is_some() => match key {
-            k if k == KIND => Err(CmdError::refused("A junction or continuation keeps its kind; erase it and place another.")),
+            k if k == KIND => Err(CmdError::refused("A continuation keeps its kind; erase it and place another.")),
             k if k == NAME && wires::kind_of(doc, c) == Some(CONTINUATION) => {
                 let v = value.ok_or(CmdError::refused("A continuation needs a name."))?;
                 Ok(Some(Some(wires::valid_name(v)?)))

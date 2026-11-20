@@ -95,7 +95,7 @@ fn make_them_one_cable_in_a_merge_moves_the_slash_drawings() {
     assert_eq!(r["merged"], json!(true), "{r}");
     let doc = c.doc();
     assert!(!doc.cables.contains_key(&CableId::parse(&bk).unwrap()), "the branch's cable joined main's");
-    assert_eq!(doc.cables[&mid].members.len(), 2, "both wires in one cable");
+    assert_eq!(doc.cables[&mid].cores.len(), 2, "both wires in one cable");
     assert_eq!(doc.representations_of(Subject::Cable(mid)).count(), 2, "both slashes show main's cable");
 }
 

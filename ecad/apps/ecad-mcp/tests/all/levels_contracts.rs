@@ -37,7 +37,7 @@ fn multi_level_terminal_commands_through_execute() {
     for (x0, y0) in [(10, 0), (10, 100)] {
         for i in 0..3 {
             let x = x0 + 10 * i;
-            c.exec("wire", json!({"points": [[x, y0], [x, y0 + 40]]}));
+            c.wire_pp(json!({"points": [[x, y0], [x, y0 + 40]]}));
         }
     }
     // Levels by fence: L across the first three wires, N across the next three.
@@ -86,7 +86,7 @@ fn multi_level_terminal_commands_through_execute() {
     c.exec("projectprops", json!({"props": {"strip_lnpe_part_number": "LNPE-X"}}));
     assert_eq!(set(&last_by_agent(&mut c).1, "strip_lnpe_part_number").as_deref(), Some("LNPE-X"));
     // A fuse position on a wire, its rating, and a fuse device turned into a position.
-    let w = c.exec("wire", json!({"points": [[300, 0], [300, 80]]}));
+    let w = c.wire_pp(json!({"points": [[300, 0], [300, 80]]}));
     let _ = hex(&w, "conductor");
     let f = c.exec("terminals", json!({"strip": strip, "type": "FUSE", "from": [290, 40], "to": [310, 40]}));
     let fpos = f["terminals"][0]["position"].as_str().unwrap().to_string();

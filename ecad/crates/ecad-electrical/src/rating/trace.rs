@@ -17,7 +17,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::{DeviceId, Document, NetId, Node, Subject, TerminalId};
+use ecad_model::{DeviceId, Document, NetKey, Node, Subject, TerminalId};
 
 use super::RatedSubject;
 use crate::symbols::{Kind, StarterKey, StarterKey as K};
@@ -46,7 +46,7 @@ impl How {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Found {
     pub devices: Vec<(DeviceId, Option<String>)>,
-    pub path: BTreeSet<NetId>,
+    pub path: BTreeSet<NetKey>,
     pub bounded: bool,
 }
 
@@ -166,10 +166,10 @@ fn step(doc: &Document, t: TerminalId) -> Step {
 }
 
 /// Trace from `start` nets (design 057 §4.2).
-pub fn trace_nets(doc: &Document, start: impl IntoIterator<Item = NetId>) -> Found {
+pub fn trace_nets(doc: &Document, start: impl IntoIterator<Item = NetKey>) -> Found {
     let conn = doc.connectivity();
     let mut found = Found::default();
-    let mut level: Vec<NetId> = Vec::new();
+    let mut level: Vec<NetKey> = Vec::new();
     for n in start {
         if found.path.insert(n) {
             level.push(n);
@@ -227,8 +227,8 @@ pub fn trace_subject(doc: &Document, s: RatedSubject) -> Found {
         RatedSubject::Cable(k) => {
             let mut all = Found::default();
             let Some(cable) = doc.cables.get(&k) else { return all };
-            for m in &cable.members {
-                let f = trace_nets(doc, conn.net_of_conductor(m.conductor));
+            for w in cable.cores.iter().filter_map(|m| m.wire()) {
+                let f = trace_nets(doc, conn.net_of_conductor(w));
                 all.bounded |= f.bounded;
                 all.path.extend(f.path);
                 for d in f.devices {
@@ -263,6 +263,32 @@ pub fn named(doc: &Document, text: &str) -> Option<(DeviceId, Option<String>)> {
         }
     }
     Some((c, fuse))
+}
+
+/// The device `text` names (`-Q01`, `-F01:3`) as stored: the device and its numbered position.
+/// `None` when it names nothing or the position is not a number 1 to 255.
+pub fn protected_by(doc: &Document, text: &str) -> Option<ecad_model::wire::ProtectedBy> {
+    let (device, fuse) = named(doc, text)?;
+    let position = match fuse {
+        None => None,
+        Some(f) => Some(f.trim().parse::<u8>().ok().filter(|n| *n > 0)?),
+    };
+    Some(ecad_model::wire::ProtectedBy { device, position })
+}
+
+/// How many wires and cables name device `c` as their protection: the ones deleting it clears.
+pub fn protected_count(doc: &Document, c: DeviceId) -> (usize, usize) {
+    let names = |p: Option<ecad_model::wire::ProtectedBy>| p.is_some_and(|p| p.device == c);
+    (doc.wires.values().filter(|w| names(w.protected_by)).count(), doc.cables.values().filter(|k| names(k.protected_by)).count())
+}
+
+/// What deleting device `c` says of the `protected_by`s it clears (`protected_by cleared on 2
+/// wires and 1 cable`); `None` when none name it.
+pub fn cleared_words(doc: &Document, c: DeviceId) -> Option<String> {
+    let (w, k) = protected_count(doc, c);
+    let n = |n: usize, one: &str| format!("{n} {one}{}", if n == 1 { "" } else { "s" });
+    let parts: Vec<String> = [(w, "wire"), (k, "cable")].into_iter().filter(|(c, _)| *c > 0).map(|(c, one)| n(c, one)).collect();
+    (!parts.is_empty()).then(|| format!("protected_by cleared on {}", parts.join(" and ")))
 }
 
 /// The rating text of a device (or its fuse).

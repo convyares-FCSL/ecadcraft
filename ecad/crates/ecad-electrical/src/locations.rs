@@ -678,7 +678,7 @@ pub fn plan_from_item_with(doc: &Document, ids: &mut IdAllocator, item: ItemId, 
         let who = match r.subject {
             Subject::Device(c) if is_box(doc, c) => "another location box".to_string(),
             Subject::Device(c) => crate::devices::tag_words(doc, c),
-            Subject::Wire(_) => "a wire".into(),
+            Subject::Wire(_) | Subject::Route(_) => "a wire".into(),
             Subject::Cable(_) => "a cable".into(),
         };
         return Err(CmdError::refused(format!("That outline belongs to {who}; draw a box instead.")));

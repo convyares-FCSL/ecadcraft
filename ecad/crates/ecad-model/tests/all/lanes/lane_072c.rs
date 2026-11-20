@@ -126,7 +126,7 @@ fn an_old_channel_key_on_a_module_is_a_read_error() {
         device_type: DeviceType::PlcModule(PlcModule::new(ModuleFunction::DigitalIn(ChannelGroup::new(Signal::Dc24v, 16)))),
         ..Device::default()
     };
-    let point = |k: &str| Terminal { component: c, label: Some("1".into()), key: Some(k.parse().unwrap()) };
+    let point = |k: &str| Terminal { component: c, label: Some("1".into()), key: Some(k.parse().unwrap()), accepts: Default::default() };
     l.commit(Author::User, "card", vec![Op::CreateDevice { id: c, device: module }, Op::AddTerminal { id: good, terminal: point(".0.in") }]).unwrap();
     for old in ["I1.3", "Q0.0", "L+"] {
         let t: TerminalId = TerminalId::from(0x072c_0100u128);

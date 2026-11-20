@@ -22,7 +22,7 @@ fn wire_digits(s: &ProjectSettings) -> Option<Value<'_>> {
 }
 
 fn colour_style(s: &ProjectSettings) -> Option<Value<'_>> {
-    s.wiring.colour_style.map(|c| Value::Choice(c.name()))
+    s.wiring.colour_style.map(|c| Value::Choice(ecad_model::words::Word::word(c)))
 }
 
 fn page_number_step(s: &ProjectSettings) -> Option<Value<'_>> {

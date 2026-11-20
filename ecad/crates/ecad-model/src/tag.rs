@@ -156,7 +156,8 @@ pub const TAG_RULE: u32 = 2;
 ///
 /// # Semantics
 /// Device and cable tags share one mark per prefix (brief 026, Q7): `CreateDevice`,
-/// `DeleteDevice`, `CreateCable`, `DeleteCable` and any `SetProperty` of `tag` count (FP7). A
+/// `DeleteDevice`, `ModifyDevice`, `CreateCable`, `DeleteCable`, `ModifyCable` and any `SetProperty`
+/// of `tag` count (FP7). A
 /// `SetProperty` of project property `numbering.high.<P>` to a newer generation (a renumber, or
 /// its redo) sets the mark of `P` to its number (FP4: overwrite, not max), so new tags follow a
 /// renumbered set; a later tag write raises it again as usual. One back to an older generation or
@@ -177,6 +178,11 @@ pub fn note_ops(high: &mut HighWater, ops: &[crate::Op]) {
             }
             crate::Op::CreateCable { cable, .. } | crate::Op::DeleteCable { cable, .. } => {
                 if let Some(t) = cable.properties.get(TAG_KEY) {
+                    note(high, t);
+                }
+            }
+            crate::Op::ModifyCable { before, after, .. } => {
+                for t in before.properties.get(TAG_KEY).into_iter().chain(after.properties.get(TAG_KEY)) {
                     note(high, t);
                 }
             }

@@ -99,7 +99,8 @@ fn the_cover_and_its_page_tab_with_the_board_screenshots() {
     let mut wires = Vec::new();
     for (i, cat) in ["l1", "l2", "l3", "n", "dc24", "dc0", "pe"].iter().enumerate() {
         let y = 60 + 8 * i;
-        ok(&mut h, &format!(r#"wire {{"points":[[40,{y}],[340,{y}]]}}"#));
+        crate::common::wire_pp(h.state_mut(), &[(40.0, y as f64), (340.0, y as f64)]);
+        h.run_steps(2);
         let d = doc(&mut h);
         let c = d.wires.keys().copied().find(|c| !wires.contains(c)).unwrap();
         wires.push(c);

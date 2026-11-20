@@ -195,7 +195,8 @@ fn three_copies(h: &mut H) -> (Vec<RepresentationId>, Vec<DeviceId>) {
         let v = run(h, "place", json!({"symbol": "float1", "at": [x, 100.0]}));
         comps.push(DeviceId::from(u128::from_str_radix(v["component"].as_str().unwrap(), 16).unwrap()));
     }
-    run(h, "wire", json!({"points": [[100.0, 90.0], [100.0, 60.0]]}));
+    // From point 2 of the first copy to point 1 of the second (a wire runs between two points).
+    run(h, "wire", json!({"points": [[100.0, 90.0], [100.0, 70.0], [150.0, 70.0], [150.0, 110.0]]}));
     let d = doc(h);
     let reps = comps.iter().map(|c| d.representations_of(Subject::Device(*c)).next().unwrap().0).collect();
     (reps, comps)
@@ -297,7 +298,8 @@ fn make_symbol_on_a_drawn_device_promotes_it_keeping_its_ids_and_wires() {
     for (at, label) in [([100, 100], "A1"), ([110, 110], "A2")] {
         run(&mut h, "addterminal", json!({"handle": hs[0], "at": at, "label": label}));
     }
-    let w = run(&mut h, "wire", json!({"points": [[100, 100], [100, 80]]}));
+    let w = crate::common::wire_pp(h.state_mut(), &[(100.0, 100.0), (100.0, 80.0)]);
+    h.run_steps(2);
     let mut t = ecad_cadcraft::interact::kind::Target::new(ObjectKind::Device, [100.0, 100.0], "component");
     t.component = Some(c);
     t.drawn = true;
@@ -376,12 +378,13 @@ fn ctrl_z_in_the_builder_undoes_the_draft_step_not_the_project() {
 fn make_symbol_on_a_wire_refuses_naming_it() {
     let mut h = shell(None);
     let mut hs = lines(&mut h);
-    let w = run(&mut h, "wire", json!({"points": [[400.0, 100.0], [450.0, 100.0]]}));
+    let w = crate::common::wire_pp(h.state_mut(), &[(400.0, 100.0), (450.0, 100.0)]);
+    h.run_steps(2);
     run(&mut h, "wirenumber", json!({"conductor": w["conductor"], "value": "24V-05"}));
     let d = doc(&mut h);
     let c = ecad_model::WireId::from(u128::from_str_radix(w["conductor"].as_str().unwrap(), 16).unwrap());
     let page = d.page_order[0];
-    let route = d.representations_of(Subject::Wire(c)).find(|(_, r)| r.page == page).and_then(|(_, r)| r.items.first().copied()).unwrap();
+    let route = ecad_model::derive::route_on_page(&d, c, page).unwrap().0;
     let handle = {
         let t = h.state_mut();
         let p = t.project().unwrap().clone();

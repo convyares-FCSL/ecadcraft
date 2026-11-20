@@ -20,8 +20,8 @@
 
 use std::collections::BTreeMap;
 
-use crate::doc::{Cable, CableMember, Device, Document, End, Folder, Item, ItemKind, Page, Representation, Subject, Terminal, Wire};
-use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId, WireId};
+use crate::doc::{Cable, Core, Device, Document, End, Folder, Item, ItemKind, Page, Representation, Subject, Terminal, Wire};
+use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, NetId, PageId, RepresentationId, RouteId, TerminalId, WireId};
 use crate::op::ObjectRef;
 
 /// Whether a reference is being added or removed.
@@ -67,6 +67,10 @@ pub(crate) struct Index {
     pub(crate) terminal_ends: Multi<TerminalId, (WireId, End)>,
     /// Wire → cables listing it.
     pub(crate) conductor_cables: Multi<WireId, CableId>,
+    /// Route → the cables with a core on it (a line with no wire yet).
+    pub(crate) route_cables: Multi<RouteId, CableId>,
+    /// A cable reference's named point → the cable whose core lists it (design 072 §4.4, F4).
+    pub(crate) cable_points: Multi<TerminalId, CableId>,
     /// Device → its terminals.
     pub(crate) component_terminals: Multi<DeviceId, TerminalId>,
     /// PLC station → the modules naming it (design 072 §3).
@@ -103,6 +107,14 @@ pub(crate) struct Index {
     /// 050 §2.5: the explicit users of a style), for the keys [`crate::style::is_choice_key`]
     /// names.
     pub(crate) style_users: Multi<(String, String), ObjectRef>,
+    /// Page → routes drawn on it (design 072 F31).
+    pub(crate) page_routes: Multi<PageId, RouteId>,
+    /// Terminal → routes landing on it.
+    pub(crate) terminal_routes: Multi<TerminalId, RouteId>,
+    /// Route → routes landing on its middle (a T).
+    pub(crate) route_tees: Multi<RouteId, RouteId>,
+    /// Net → its wires (design 072 §4.2).
+    pub(crate) net_wires: Multi<NetId, WireId>,
 }
 
 impl Index {
@@ -179,6 +191,20 @@ impl Index {
         }
         for (id, f) in &doc.folders {
             rest.folder(*id, f, Delta::Add);
+        }
+        for (id, r) in &doc.routes {
+            rest.route(*id, r, Delta::Add);
+        }
+    }
+
+    pub(crate) fn route(&mut self, id: RouteId, r: &crate::route::Route, delta: Delta) {
+        bump(&mut self.page_routes, r.page, id, delta);
+        for e in r.ends {
+            match e {
+                crate::route::RouteEnd::Point(t) => bump(&mut self.terminal_routes, t, id, delta),
+                crate::route::RouteEnd::On { route, .. } => bump(&mut self.route_tees, route, id, delta),
+                crate::route::RouteEnd::Free => {}
+            }
         }
     }
 
@@ -265,23 +291,25 @@ impl Index {
 
     pub(crate) fn conductor(&mut self, id: WireId, c: &Wire, delta: Delta) {
         for end in End::BOTH {
-            self.conductor_end(id, end, c.end(end), delta);
+            bump(&mut self.terminal_ends, c.end(end), (id, end), delta);
+        }
+        bump(&mut self.net_wires, c.net, id, delta);
+        if let Some(t) = &c.wire_type {
+            self.style_choice(ObjectRef::Wire(id), crate::wiring::WIRE_CATEGORY, &t.text(), delta);
         }
         self.style_choices(ObjectRef::Wire(id), &c.display, delta);
     }
 
-    pub(crate) fn conductor_end(&mut self, id: WireId, end: End, terminal: Option<TerminalId>, delta: Delta) {
-        if let Some(t) = terminal {
-            bump(&mut self.terminal_ends, t, (id, end), delta);
-        }
-    }
-
     pub(crate) fn cable(&mut self, id: CableId, c: &Cable, delta: Delta) {
-        for m in &c.members {
+        for m in &c.cores {
             self.cable_member(id, m, delta);
         }
         if let Some(t) = c.properties.get(crate::tag::TAG_KEY) {
             self.cable_tag(id, t, delta);
+        }
+        // Design 072 §4.5: a cable's type is a style user, though no registry level chooses one.
+        if let Some(t) = &c.cable_type {
+            bump(&mut self.style_users, (t.text(), crate::doc::CABLE_TYPE_KEY.to_string()), ObjectRef::Cable(id), delta);
         }
         self.style_choices(ObjectRef::Cable(id), &c.properties, delta);
     }
@@ -291,8 +319,16 @@ impl Index {
         bump(&mut self.cable_tags, crate::tag::key(tag), id, delta);
     }
 
-    pub(crate) fn cable_member(&mut self, id: CableId, m: &CableMember, delta: Delta) {
-        bump(&mut self.conductor_cables, m.conductor, id, delta);
+    pub(crate) fn cable_member(&mut self, id: CableId, m: &Core, delta: Delta) {
+        if let Some(w) = m.wire() {
+            bump(&mut self.conductor_cables, w, id, delta);
+        }
+        if let Some(r) = m.route() {
+            bump(&mut self.route_cables, r, id, delta);
+        }
+        for t in &m.through {
+            bump(&mut self.cable_points, *t, id, delta);
+        }
     }
 
     /// How many times representations list `item`, in total (DOC-05 allows one).

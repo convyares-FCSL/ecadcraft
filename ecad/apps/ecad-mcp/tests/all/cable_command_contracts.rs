@@ -153,7 +153,7 @@ fn field(doc: &Document) -> PageId {
 }
 
 /// Fills a row's placeholders from the document as it is when the row runs: `<supply>`, `<field>`,
-/// `<c1>` (the one cable), `<w0>` (its first member) and `<ref supply>` / `<ref field>`.
+/// `<c1>` (the one cable), `<w0>` (its first core's wire, or its line while it has none) and `<ref supply>` / `<ref field>`.
 fn fill(doc: &Document, v: &Value) -> Value {
     match v {
         Value::String(s) => {
@@ -163,7 +163,10 @@ fn fill(doc: &Document, v: &Value) -> Value {
                 "<supply>" => Value::String(supply(doc).hex()),
                 "<field>" => Value::String(field(doc).hex()),
                 "<c1>" => Value::String(c1().hex()),
-                "<w0>" => Value::String(doc.cables[&c1()].members[0].conductor.hex()),
+                "<w0>" => {
+                    let core = &doc.cables[&c1()].cores[0];
+                    Value::String(core.wire().map(|w| w.hex()).or(core.route().map(|l| l.hex())).unwrap_or_default())
+                }
                 "<ref supply>" => Value::String(reference(supply(doc))),
                 "<ref field>" => Value::String(reference(field(doc))),
                 _ => v.clone(),
@@ -186,8 +189,9 @@ fn rows() -> Vec<(&'static str, Value, &'static str, usize)> {
         ("cableslash", json!({"from": [28, -3], "to": [32, 18], "tag": "C1"}), "cable", 1),
         // Brief 009: core labels, one or all; the same label again records nothing.
         ("cablecore", json!({"cable": "<c1>", "cores": ["L1", "L2", null]}), "", 1),
-        ("cablecore", json!({"conductor": "<w0>", "core": "N"}), r#""changed":true"#, 1),
-        ("cablecore", json!({"conductor": "<w0>", "core": "N"}), r#""changed":false"#, 0),
+        // The lines are loose until continued (design 072 §4.4, F4): cores named through the cable.
+        ("cablecore", json!({"cable": "<c1>", "cores": ["N", "L2", null]}), "", 1),
+        ("cablecore", json!({"cable": "<c1>", "cores": ["N", "L2", null]}), "", 0),
         // Brief 009: the fan join, as a fraction; the same value again records nothing.
         ("cablefan", json!({"cable": "<c1>", "end": "A", "at": 0.25}), r#""changed":true"#, 1),
         ("cablefan", json!({"cable": "<c1>", "end": "A", "at": 0.25}), r#""changed":false"#, 0),
@@ -279,7 +283,8 @@ fn each_change_through_mcp_records_the_json_forms_transaction_as_the_agent_and_u
     }
     // Every changing command of the two briefs took part in the comparison.
     let labels: Vec<&str> = agent.iter().map(|t| t.label.as_str()).collect();
-    for label in ["Core labels", "Core label", "Cable join", "Cable reference", "Continue cable", "Rename page", "Move page"] {
+    // (A single core by its wire, "Core label", needs a wire: the lines here stay loose, F4.)
+    for label in ["Core labels", "Cable join", "Cable reference", "Continue cable", "Rename page", "Move page"] {
         assert!(labels.contains(&label), "{label} missing from {labels:?}");
     }
 

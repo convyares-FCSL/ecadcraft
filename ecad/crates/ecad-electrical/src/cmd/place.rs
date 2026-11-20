@@ -175,12 +175,11 @@ pub fn connector_target(doc: &Document, side: Side, device: Option<&str>, tag: O
 }
 
 /// A tagless symbol's name and caption as `place` takes them (design 022 §3.2, 049 §5.1): a
-/// junction or continuation is part of no device; a continuation needs a name; only a continuation
-/// has a caption.
+/// continuation is part of no device, needs a name and may have a caption.
 ///
 /// # Errors
 /// `device` or `tag` given; a name or caption that does not read; no name for a continuation; a
-/// caption on a junction.
+/// caption on anything but a continuation.
 pub fn tagless(starter: &Starter, joins: bool, name: Option<&str>, caption: Option<&str>) -> Result<(Option<String>, Option<String>), CmdError> {
     if joins {
         return Err(CmdError::refused(format!("A {} has no tag and is not part of a device.", starter.name.to_lowercase())));
@@ -196,7 +195,7 @@ pub fn tagless(starter: &Starter, joins: bool, name: Option<&str>, caption: Opti
     let caption = match caption {
         None => None,
         Some(_) if starter.key != crate::symbols::StarterKey::Continuation => {
-            return Err(CmdError::refused("Only continuation arrows have a caption; that is a junction."));
+            return Err(CmdError::refused(format!("Only continuation arrows have a caption; that is a {}.", starter.name.to_lowercase())));
         }
         Some(t) => crate::continuations::caption_text(Some(t))?,
     };

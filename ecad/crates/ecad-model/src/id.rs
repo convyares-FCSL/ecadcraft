@@ -102,6 +102,14 @@ typed_id!(/// A conductor.
     WireId, "cnd");
 typed_id!(/// A cable.
     CableId, "cbl");
+typed_id!(/// A route: a line drawn on a page (design 072 F31).
+    RouteId, "rte");
+typed_id!(/// A net, stored on each of its wires: given when the net first appears and kept through
+    /// edits (design 072 §4.2, F39).
+    NetId, "net");
+typed_id!(/// A conductor's own identity in the project: given when its wire is made, never reused
+    /// (design 072 §4.2, F39).
+    ConductorId, "cdr");
 typed_id!(/// An embedded definition.
     DefinitionId, "def");
 typed_id!(/// A transaction.

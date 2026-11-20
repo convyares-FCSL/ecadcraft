@@ -91,8 +91,9 @@ fn writes_are_refused_with_writes_off_and_the_reads_still_answer() {
 #[test]
 fn category_and_wire_with_a_category_by_the_agent() {
     let mut c = writer(WRITER_SEED);
-    let w = c.exec("wire", json!({"points": [[10, 150], [60, 150]], "potential": "24V"}))["conductor"].as_str().unwrap().to_string();
+    let w = c.wire_pp(json!({"points": [[10, 150], [60, 150]], "potential": "24V"}))["conductor"].as_str().unwrap().to_string();
     one_undoable(&mut c, "category", json!({"conductor": w, "value": "signal"}), "Category Signal");
+    c.points_at(&[(10.0, 170.0), (60.0, 170.0)]);
     let n = c.log().len();
     let v = c.exec("wire", json!({"points": [[10, 170], [60, 170]], "category": "24 V DC"}));
     assert_eq!(c.log().len(), n + 1, "one transaction");
@@ -100,7 +101,7 @@ fn category_and_wire_with_a_category_by_the_agent() {
     let id = v["conductor"].as_str().unwrap();
     let d = c.doc();
     let cond = d.wires.iter().find(|(k, _)| k.hex() == id).unwrap().1;
-    assert_eq!(cond.display.get("wire.category").map(String::as_str), Some("dc24"));
+    assert_eq!(cond.wire_type.as_ref().map(ecad_model::StyleRef::text).as_deref(), Some("dc24"));
     let mut r = crate::mcp_contracts::reader();
     let m = r.refused("execute", json!({"command": "category", "params": {"conductor": w, "value": "signal"}}));
     assert_eq!(m, policy::WRITES_OFF);

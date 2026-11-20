@@ -157,3 +157,103 @@ pub(crate) fn click(h: &mut Harness<'static, App>, at: Pos2) {
     }
     h.run_steps(2);
 }
+
+/// Connection points at `at` on the active page (design 072: a wire runs between two connection
+/// points): one drawn device holding one point per place, committed straight to the ledger.
+/// Returns the points, in the order given.
+pub(crate) fn points_at(t: &mut App, at: &[(f64, f64)]) -> Vec<ecad_model::TerminalId> {
+    use ecad_model::{Author, Device, DeviceId, Form, Op, Pt, Representation, RepresentationId, Subject, Terminal, TerminalId};
+    let p = t.project().unwrap().clone();
+    p.configure(&mut t.cad.session, |p| {
+        let page = p.active_page().unwrap_or(p.ledger.document().page_order[0]);
+        let device: DeviceId = p.ids.fresh();
+        let mut ops = vec![Op::CreateDevice { id: device, device: Device::default() }];
+        let mut cps = std::collections::BTreeMap::new();
+        let mut out = Vec::new();
+        for (i, (x, y)) in at.iter().enumerate() {
+            let t: TerminalId = p.ids.fresh();
+            ops.push(Op::AddTerminal {
+                id: t,
+                terminal: Terminal { component: device, label: Some((i + 1).to_string()), key: None, accepts: Default::default() },
+            });
+            cps.insert(t, Pt::new(*x, *y));
+            out.push(t);
+        }
+        let rep: RepresentationId = p.ids.fresh();
+        ops.push(Op::LinkRepresentation {
+            id: rep,
+            rep: Representation {
+                subject: Subject::Device(device),
+                page,
+                form: Form::Drawn,
+                role: "main".into(),
+                items: Vec::new(),
+                connection_points: cps,
+            },
+        });
+        p.ledger.commit(Author::User, "points", ops).unwrap();
+        out
+    })
+    .unwrap()
+}
+
+/// `wire` through `points` (JSON form), first putting a connection point at each end that has
+/// none (design 072: a line with a free end carries no wire). The command's JSON result.
+pub(crate) fn wire_pp(t: &mut App, points: &[(f64, f64)]) -> serde_json::Value {
+    let p = t.project().unwrap().clone();
+    let shown: Vec<ecad_model::Pt> = p
+        .read(&mut t.cad.session, |p, _| {
+            let doc = p.ledger.document();
+            let page = p.active_page().unwrap_or(doc.page_order[0]);
+            ecad_model::derive::terminal_positions(doc, page).into_iter().map(|(_, _, at)| at).collect()
+        })
+        .unwrap();
+    let ends: Vec<(f64, f64)> = [points.first(), points.last()]
+        .into_iter()
+        .flatten()
+        .copied()
+        .filter(|(x, y)| !shown.iter().any(|q| q.near(ecad_model::Pt::new(*x, *y), 1e-6)))
+        .collect();
+    if !ends.is_empty() {
+        points_at(t, &ends);
+    }
+    let pts: Vec<[f64; 2]> = points.iter().map(|(x, y)| [*x, *y]).collect();
+    t.cad.run("wire", serde_json::json!({ "points": pts })).unwrap()
+}
+
+/// A reference end of `cable` on `page` at `at` (its Point and its `reference` representation,
+/// styled like the cable's first reference), applied to the project as one edit: the end a cable
+/// gains when it is continued on another page. Until lane F step F4 no command draws a cable on
+/// two pages (`cablecontinue` needs wires leaving the page through the reference), so tests about
+/// what two ends say of each other (texts, previews, page panels) pair them so.
+pub(crate) fn reference_end(t: &mut App, cable: ecad_model::CableId, page: ecad_model::PageId, at: (f64, f64)) {
+    use ecad_model::{Form, Item, ItemId, ItemKind, Op, Primitive, Pt, Representation, RepresentationId, Subject};
+    let p = t.project().unwrap().clone();
+    let (style, item, rep) = p
+        .configure(&mut t.cad.session, |p| {
+            let doc = p.ledger.document();
+            let style = doc
+                .representations_of(Subject::Cable(cable))
+                .filter(|(_, r)| r.role == ecad_model::derive::REFERENCE_ROLE)
+                .find_map(|(_, r)| r.items.first().and_then(|i| doc.items.get(i)).map(|i| i.style.clone()))
+                .expect("the cable has a reference to pair with");
+            let (item, rep): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
+            (style, item, rep)
+        })
+        .unwrap();
+    let ops = vec![
+        Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(at.0, at.1) }) } },
+        Op::LinkRepresentation {
+            id: rep,
+            rep: Representation {
+                subject: Subject::Cable(cable),
+                page,
+                form: Form::Drawn,
+                role: ecad_model::derive::REFERENCE_ROLE.into(),
+                items: vec![item],
+                connection_points: Default::default(),
+            },
+        },
+    ];
+    p.apply_ops(&mut t.cad.session, "Reference end", ops).unwrap();
+}

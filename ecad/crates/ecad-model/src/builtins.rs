@@ -15,9 +15,10 @@
 
 use std::sync::OnceLock;
 
+use crate::colour::ColourWords;
 use crate::doc::ReferenceStyle;
 use crate::sheet::SheetSpec;
-use crate::wiring::ColourStyle;
+use crate::words::Word as _;
 
 /// The embedded data file.
 pub const SETTINGS: &str = include_str!("../defaults/settings.toml");
@@ -57,7 +58,7 @@ pub fn get(key: &str) -> Option<BuiltinValue> {
         TAG_PADDING => BuiltinValue::Number(f64::from(b.tag_padding)),
         WIRE_DIGITS => BuiltinValue::Number(f64::from(b.wire_digits)),
         PAGE_NUMBER_STEP => BuiltinValue::Number(f64::from(b.page_number_step)),
-        COLOUR_STYLE => BuiltinValue::Word(b.colour_style.name()),
+        COLOUR_STYLE => BuiltinValue::Word(b.colour_style.word()),
         REFERENCE_STYLE => BuiltinValue::Word(b.reference_style.word()),
         k if k == crate::tag::DASH_KEY => BuiltinValue::Word(b.tag_dash),
         k if k == crate::tag::CASE_KEY => BuiltinValue::Word(b.tag_case),
@@ -77,7 +78,7 @@ pub struct Builtins {
     /// A word of [`crate::tag::CASE_WORDS`].
     pub tag_case: &'static str,
     pub wire_digits: u8,
-    pub colour_style: ColourStyle,
+    pub colour_style: ColourWords,
     pub page_number_step: u32,
     pub sheet: SheetSpec,
     pub reference_style: ReferenceStyle,
@@ -103,7 +104,7 @@ pub fn load(text: &str) -> Builtins {
         tag_dash: word(crate::tag::DASH_KEY, crate::tag::DASH_WORDS).unwrap_or(crate::tag::DASH_WORDS[0]),
         tag_case: word(crate::tag::CASE_KEY, crate::tag::CASE_WORDS).unwrap_or(crate::tag::CASE_WORDS[0]),
         wire_digits: small(WIRE_DIGITS, crate::wiring::MAX_DIGITS),
-        colour_style: word(COLOUR_STYLE, crate::wiring::COLOUR_STYLE_WORDS).and_then(ColourStyle::parse).unwrap_or(ColourStyle::Iec),
+        colour_style: word(COLOUR_STYLE, crate::wiring::COLOUR_STYLE_WORDS).and_then(<ColourWords as crate::words::Word>::parse).unwrap_or_default(),
         page_number_step: int(PAGE_NUMBER_STEP, 1, i64::from(MAX_PAGE_NUMBER_STEP)).and_then(|n| u32::try_from(n).ok()).unwrap_or(1),
         sheet: get(SHEET).and_then(toml::Value::as_str).and_then(|s| SheetSpec::parse(s).ok()).unwrap_or_default(),
         reference_style: word(REFERENCE_STYLE, ReferenceStyle::WORDS).and_then(ReferenceStyle::parse).unwrap_or(ReferenceStyle::PageZone),
@@ -118,7 +119,7 @@ mod tests {
     fn the_built_ins_are_today_s_values() {
         let b = builtins();
         assert_eq!((b.tag_padding, b.tag_dash, b.tag_case, b.wire_digits), (2, "yes", "upper", 2));
-        assert_eq!((b.colour_style, b.page_number_step, b.reference_style), (ColourStyle::Iec, 1, ReferenceStyle::PageZone));
+        assert_eq!((b.colour_style, b.page_number_step, b.reference_style), (ColourWords::Code2, 1, ReferenceStyle::PageZone));
         assert_eq!(b.sheet, SheetSpec::default());
     }
 

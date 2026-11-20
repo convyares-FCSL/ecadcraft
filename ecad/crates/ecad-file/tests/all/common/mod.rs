@@ -39,8 +39,8 @@ pub fn coil(graphics_scale: f64) -> Definition {
             Primitive::Circle { center: Pt::new(0.0, 0.0), radius: graphics_scale },
         ],
         terminals: vec![
-            TerminalDef { key: "A1".parse().unwrap(), label: Some("A1".into()), at: Pt::new(0.0, 10.0) },
-            TerminalDef { key: "A2".parse().unwrap(), label: Some("A2".into()), at: Pt::new(0.0, -10.0) },
+            TerminalDef { key: "A1".parse().unwrap(), label: Some("A1".into()), at: Pt::new(0.0, 10.0), accepts: Default::default() },
+            TerminalDef { key: "A2".parse().unwrap(), label: Some("A2".into()), at: Pt::new(0.0, -10.0), accepts: Default::default() },
         ],
         ..Default::default()
     }
@@ -65,8 +65,14 @@ impl Fixture {
             (self.ids.fresh(), self.ids.fresh(), self.ids.fresh(), self.ids.fresh(), self.ids.fresh());
         let ops = vec![
             Op::CreateDevice { id: c, device: Device { definition: Some(def), ..Device::default() } },
-            Op::AddTerminal { id: t1, terminal: Terminal { component: c, label: Some("A1".into()), key: Some("A1".parse().unwrap()) } },
-            Op::AddTerminal { id: t2, terminal: Terminal { component: c, label: Some("A2".into()), key: Some("A2".parse().unwrap()) } },
+            Op::AddTerminal {
+                id: t1,
+                terminal: Terminal { component: c, label: Some("A1".into()), key: Some("A1".parse().unwrap()), accepts: Default::default() },
+            },
+            Op::AddTerminal {
+                id: t2,
+                terminal: Terminal { component: c, label: Some("A2".into()), key: Some("A2".parse().unwrap()), accepts: Default::default() },
+            },
             Op::AddItem {
                 id: item,
                 item: Item {
@@ -165,44 +171,36 @@ pub fn fixture() -> Fixture {
     f.c2 = c2;
     f.c3 = c3;
     f.t = vec![t1[0], t1[1], t2[0], t2[1], t3[0], t3[1]];
-    let (w, route, rep): (WireId, ItemId, RepresentationId) = (f.ids.fresh(), f.ids.fresh(), f.ids.fresh());
+    // A route between the two points (design 072 F31): the rewrite keeps the wire made with it.
+    let (w, net, conductor, route, item, rep): (WireId, NetId, ConductorId, RouteId, ItemId, RepresentationId) =
+        (f.ids.fresh(), f.ids.fresh(), f.ids.fresh(), f.ids.fresh(), f.ids.fresh(), f.ids.fresh());
+    let points = vec![Pt::new(90.0, 0.0), Pt::new(120.0, 0.0), Pt::new(150.0, 10.0)];
     f.commit(
         "WIRE",
         vec![
-            Op::CreateWire { id: w, conductor: Wire::default() },
+            Op::AddRoute { id: route, route: Route::new(page, points.clone(), [RouteEnd::Point(t1[0]), RouteEnd::Point(t2[0])]) },
             Op::AddItem {
-                id: route,
-                item: Item {
-                    page,
-                    style: style(layer),
-                    kind: ItemKind::Primitive(Primitive::Polyline {
-                        vertices: vec![Pt::new(90.0, 0.0), Pt::new(120.0, 0.0), Pt::new(150.0, 10.0)],
-                        closed: false,
-                    }),
-                },
+                id: item,
+                item: Item { page, style: style(layer), kind: ItemKind::Primitive(Primitive::Polyline { vertices: points, closed: false }) },
             },
             Op::LinkRepresentation {
                 id: rep,
                 rep: Representation {
-                    subject: Subject::Wire(w),
+                    subject: Subject::Route(route),
                     page,
                     form: Form::Drawn,
                     role: "route".into(),
-                    items: vec![route],
+                    items: vec![item],
                     connection_points: Default::default(),
                 },
             },
-            Op::AttachEnd { conductor: w, end: End::A, before: None, after: Some(t1[0]) },
-            Op::AttachEnd { conductor: w, end: End::B, before: None, after: Some(t2[0]) },
+            Op::CreateWire { id: w, wire: Wire::new(net, conductor, t1[0], t2[0]) },
         ],
     );
     let cable: CableId = f.ids.fresh();
     f.commit(
         "Cable",
-        vec![
-            Op::CreateCable { id: cable, cable: Cable::default() },
-            Op::AddCableMember { cable, index: 0, member: CableMember { conductor: w, core: Some("1".into()) } },
-        ],
+        vec![Op::CreateCable { id: cable, cable: Cable { cores: vec![Core::on_wire(w, ecad_model::CoreLabel::new("1").ok())], ..Cable::default() } }],
     );
     // Keys whose UTF-8 and UTF-16 orders differ (U+FF5E sorts before U+1F600 in UTF-8 only).
     for (key, value) in [("note", "-K1"), ("\u{FF5E}wave", "w"), ("\u{1F600}smile", "s"), ("Bezeichnung-ä", "ä")] {

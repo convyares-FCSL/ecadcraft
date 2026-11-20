@@ -270,7 +270,7 @@ fn fp3_different_styles_values_and_edits_merge_cleanly() {
     assert!(field(&mut c, "frame", "sheet", "border_weight").starts_with("0.7"));
     assert!(styles(&mut c, "location").iter().any(|r| s(&r["id"]) == own));
     let d = c.doc();
-    assert_eq!(d.wires.len(), 1, "main's wire kept");
+    assert_eq!(d.routes.len(), 1, "main's wire kept");
     let std = d.standard.as_ref().unwrap();
     assert_eq!(std.values.get("symbol.coil.prefix").map(String::as_str), Some("Q"));
     assert_eq!(std.values.get("wiring.label_rule").map(String::as_str), Some("each"));
@@ -322,10 +322,10 @@ fn b_category_writes_by_the_agent_then_refused_with_writes_off() {
     let path = dir.file("Leitungen (B).ecad");
     let (w, before) = {
         let mut c = create(&path);
-        let w = c.exec("wire", json!({"points": [[0, 20], [60, 20]], "potential": "24V"}))["conductor"].as_str().unwrap().to_string();
+        let w = c.wire_pp(json!({"points": [[0, 20], [60, 20]], "potential": "24V"}))["conductor"].as_str().unwrap().to_string();
         assert_eq!(styles(&mut c, "wire").len(), 12);
         let (_, ops) = one_by_agent_then_undo(&mut c, "category", json!({"conductor": w, "value": "signal"}));
-        assert!(matches!(ops.as_slice(), [Op::ModifyWire { after, .. }] if after.display.contains_key("wire.category")), "{ops:?}");
+        assert!(matches!(ops.as_slice(), [Op::ModifyWire { after, .. }] if after.wire_type.is_some()), "{ops:?}");
         one_by_agent_then_undo(&mut c, "wire", json!({"points": [[0, 60], [60, 60]], "category": "dc24"}));
         one_by_agent_then_undo(
             &mut c,
@@ -381,7 +381,7 @@ fn b18_category_merges() {
     let dir = TempDir::new("t050b-merge");
     let path = dir.file("cat.ecad");
     let mut c = create(&path);
-    let w = c.exec("wire", json!({"points": [[0, 20], [60, 20]], "potential": "24V"}))["conductor"].as_str().unwrap().to_string();
+    let w = c.wire_pp(json!({"points": [[0, 20], [60, 20]], "potential": "24V"}))["conductor"].as_str().unwrap().to_string();
     c.ok("save", json!({}));
     c.exec("branch", json!({"name": "Option B"}));
     c.exec("category", json!({"conductor": w, "value": "signal"}));
@@ -398,7 +398,7 @@ fn b18_category_merges() {
     assert_eq!(r["merged"], json!(true), "{r}");
     let d = c.doc();
     let cond = d.wires.iter().find(|(k, _)| k.hex() == w).map(|(_, x)| x.clone()).unwrap();
-    assert_eq!(cond.display.get("wire.category").map(String::as_str), Some("signal"), "the branch's category came");
+    assert_eq!(cond.wire_type.as_ref().map(ecad_model::StyleRef::text).as_deref(), Some("signal"), "the branch's category came");
     assert!(field(&mut c, "wire", "dc24", "colours").contains("RD"));
     assert!(field(&mut c, "wire", "pe", "line_weight").starts_with("0.5"));
     c.ok("save", json!({}));

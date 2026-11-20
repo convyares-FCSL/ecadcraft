@@ -490,7 +490,7 @@ fn id_params(of: IdOf, t: &Target) -> Option<Value> {
         IdOf::Cable => json!({"cable": t.cable?.hex()}),
         IdOf::Source => json!({"source": t.representation?.hex()}),
         IdOf::Conductors => json!({"conductors": [t.conductor?.hex()]}),
-        IdOf::End => json!({"conductor": t.conductor?.hex(), "end": match t.end? { ecad_model::End::A => "A", ecad_model::End::B => "B" }}),
+        IdOf::End => json!({"route": t.route?.hex(), "end": match t.end? { ecad_model::End::A => "A", ecad_model::End::B => "B" }}),
         IdOf::Electrical => match (t.cable, t.conductor, t.component) {
             (Some(k), _, _) if t.kind == ObjectKind::Cable => json!({"cable": k.hex()}),
             (_, Some(w), _) => json!({"conductor": w.hex()}),

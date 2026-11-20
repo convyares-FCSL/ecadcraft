@@ -127,11 +127,10 @@ fn the_quick_start_example_is_built_by_clicks_and_keys() {
         drawn.1.connection_points.iter().map(|(t, p)| (d.terminals[t].label.clone().unwrap_or_default(), *p)).collect();
     terminals.sort_by(|a, b| a.0.cmp(&b.0));
     assert_eq!(terminals, vec![("1".into(), Pt::new(40.0, 10.0)), ("2".into(), Pt::new(0.0, 10.0))]);
-    let (w, c) = d.wires.iter().next().unwrap();
-    let ends: Vec<String> = End::BOTH.iter().map(|e| c.end(*e).and_then(|t| d.terminals[&t].label.clone()).unwrap_or_default()).collect();
+    let c = d.wires.values().next().unwrap();
+    let ends: Vec<String> = End::BOTH.iter().map(|e| d.terminals[&c.end(*e)].label.clone().unwrap_or_default()).collect();
     assert_eq!(ends, ["1", "A1"], "both ends attached: to terminal 1 and to the coil's A1");
-    let route = ecad_model::derive::route_on_page(&d, *w, page).unwrap().1;
-    let ecad_model::Primitive::Polyline { vertices, .. } = route else { panic!("a polyline route") };
+    let vertices = d.routes.values().find(|r| r.page == page).unwrap().points.clone();
     let expected = [(40.0, 10.0), (70.0, 10.0), (70.0, 0.0), (90.0, 0.0)];
     assert_eq!(vertices.len(), 4);
     // Bends are where the clicks were (to screen precision); ends are the terminals' points.

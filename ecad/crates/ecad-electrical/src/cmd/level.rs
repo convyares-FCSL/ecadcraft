@@ -295,24 +295,35 @@ pub fn plan_toposition(
     let (tin, tout): (TerminalId, TerminalId) = (ids.fresh(), ids.fresh());
     ops.push(Op::AddTerminal {
         id: tin,
-        terminal: Terminal { component: strip, label: Some(pos.clone()), key: Some(PointKey::Level { level: 1, io: Some(LevelIo::In) }) },
+        terminal: Terminal {
+            component: strip,
+            label: Some(pos.clone()),
+            key: Some(PointKey::Level { level: 1, io: Some(LevelIo::In) }),
+            accepts: Default::default(),
+        },
     });
     ops.push(Op::AddTerminal {
         id: tout,
-        terminal: Terminal { component: strip, label: Some(pos.clone()), key: Some(PointKey::Level { level: 1, io: Some(LevelIo::Out) }) },
+        terminal: Terminal {
+            component: strip,
+            label: Some(pos.clone()),
+            key: Some(PointKey::Level { level: 1, io: Some(LevelIo::Out) }),
+            accepts: Default::default(),
+        },
     });
     // The device's points by key: `1` → in, `2` → out.
     let old: Vec<(TerminalId, Terminal)> = doc.terminals_of(device).map(|(t, x)| (t, x.clone())).collect();
+    let mut moved = std::collections::BTreeMap::new();
     for (t, x) in &old {
         let to = match x.key.as_ref().and_then(PointKey::as_def) {
             Some("1") => tin,
             Some("2") => tout,
             _ => return Err(CmdError::refused(format!("{tag} has a connection point that is not 1 or 2; move its wires first."))),
         };
-        for (w, end) in doc.ends_at(*t) {
-            ops.push(Op::AttachEnd { conductor: w, end, before: Some(*t), after: Some(to) });
-        }
+        moved.insert(*t, to);
     }
+    // Its routes land on the strip's points; the commit's rewrite moves the wires.
+    ops.extend(crate::wires::repoint_ops(doc, &moved));
     ops.push(Op::UnlinkRepresentation { id: rid, rep: rep.clone() });
     let mut item_after = item_before.clone();
     if let ItemKind::Symbol(si) = &mut item_after.kind {

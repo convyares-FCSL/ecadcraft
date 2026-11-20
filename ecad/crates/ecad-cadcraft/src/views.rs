@@ -115,8 +115,13 @@ pub type Fan = crate::look::CableDrawing;
 /// The fan of `cable` on `page` (design 009 §4), measured with the drafting font. Bounded by the
 /// members and their route points; never panics.
 pub fn fan_on_page(doc: &Document, page: PageId, cable: CableId, tol: f64) -> FanOnPage {
-    let routed =
-        doc.cables.get(&cable).is_some_and(|c| c.members.iter().any(|m| ecad_model::derive::route_on_page(doc, m.conductor, page).is_some()));
+    let routed = doc.cables.get(&cable).is_some_and(|c| {
+        c.cores.iter().any(|m| match m.position {
+            ecad_model::CorePosition::Wire(w) => crate::wires::route_of_wire_on(doc, w, page).is_some(),
+            ecad_model::CorePosition::Route { route, .. } => doc.routes.get(&route).is_some_and(|r| r.page == page),
+            ecad_model::CorePosition::Unplaced => false,
+        })
+    });
     if !routed {
         return FanOnPage::Nothing;
     }
@@ -141,7 +146,7 @@ pub fn switched(doc: &Document, cable: CableId, view: View) -> String {
 
 /// Whether `cable` may be switched to fan view: it has two or more members (owner answer Q4).
 pub fn offers_fan(doc: &Document, cable: CableId) -> bool {
-    doc.cables.get(&cable).is_some_and(|c| c.members.len() >= 2)
+    doc.cables.get(&cable).is_some_and(|c| c.cores.len() >= 2)
 }
 
 // ---------------------------------------------------------------- remembering (design §7)

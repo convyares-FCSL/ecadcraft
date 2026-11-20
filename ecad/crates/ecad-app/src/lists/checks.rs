@@ -48,7 +48,6 @@ pub fn fix_names(f: Fix) -> Vec<&'static str> {
         return two.to_vec();
     }
     vec![match f {
-        Fix::AddJunction(_) => cp::ADD_JUNCTION,
         Fix::Join(_) => cp::JOIN,
         Fix::NumberThem => cp::NUMBER_THEM,
         Fix::Finalise => cp::FINALISE,

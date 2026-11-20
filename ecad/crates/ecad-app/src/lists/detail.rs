@@ -113,7 +113,7 @@ impl Prop {
 /// black insulation stays black); none for a code that is not a colour.
 fn swatch(code: &str) -> Option<(ecad_ui::tokens::Color, Option<ecad_ui::tokens::Color>)> {
     let sheet = &ecad_drawing_style::sheet::PAPER;
-    ecad_cadcraft::look::wire_colours(code, sheet).map(|c| (c.solid, c.dashes))
+    ecad_model::wire::Colours::parse(code).and_then(|c| ecad_cadcraft::look::wire_colours(&c, sheet)).map(|c| (c.solid, c.dashes))
 }
 
 fn read(label: &'static str, value: impl Into<String>) -> Prop {

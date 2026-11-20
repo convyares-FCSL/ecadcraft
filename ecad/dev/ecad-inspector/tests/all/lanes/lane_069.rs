@@ -9,9 +9,9 @@ use std::time::Duration;
 
 use ecad_inspector::source::{FileSource, Source, VerifyState};
 use ecad_model::{
-    Author, Cable, CableMember, Color, Definition, Device, End, Folder, Form, IdAllocator, Item, ItemKind, Layer, LayerId, Ledger, LengthUnit,
-    ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation, StandardHeader, Style, StyleLayer, StyleRecord, StyleRef,
-    Subject, SymbolInstance, Terminal, TerminalDef, Wire,
+    Author, Cable, Color, Core, Definition, Device, Folder, Form, IdAllocator, Item, ItemKind, Layer, LayerId, Ledger, LengthUnit, ObjectRef, Op,
+    Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation, StandardHeader, Style, StyleLayer, StyleRecord, StyleRef, Subject,
+    SymbolInstance, Terminal, TerminalDef, Wire,
 };
 use serde_json::{Value, json};
 
@@ -82,14 +82,17 @@ fn every_op_ledger() -> Ledger {
     let def_v = Definition {
         name: "K".into(),
         graphics: vec![Primitive::Circle { center: Pt::new(0.0, 0.0), radius: 2.0 }],
-        terminals: vec![TerminalDef { key: "1".parse().unwrap(), label: None, at: Pt::new(0.0, 2.0) }],
+        terminals: vec![TerminalDef { key: "1".parse().unwrap(), label: None, at: Pt::new(0.0, 2.0), accepts: Default::default() }],
         ..Default::default()
     };
     let comp: ecad_model::DeviceId = ids.fresh();
     let mut comp_v = Device { definition: Some(def), ..Device::default() };
     comp_v.properties.insert("note".into(), "K1".into());
     let term: ecad_model::TerminalId = ids.fresh();
-    let term_v = Terminal { component: comp, label: Some("1".into()), key: Some("1".parse().unwrap()) };
+    let term_v = Terminal { component: comp, label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() };
+    // More connection points of the device, for the wires' other ends.
+    let (term2, term3, term4): (ecad_model::TerminalId, ecad_model::TerminalId, ecad_model::TerminalId) = (ids.fresh(), ids.fresh(), ids.fresh());
+    let point = |label: &str| Terminal { component: comp, label: Some(label.into()), key: None, accepts: Default::default() };
     let sym: ecad_model::ItemId = ids.fresh();
     let sym_v = Item { page, style: style(layer), kind: ItemKind::Symbol(SymbolInstance { definition: def, placement: Placement::default() }) };
     let item: ecad_model::ItemId = ids.fresh();
@@ -103,12 +106,17 @@ fn every_op_ledger() -> Ledger {
         items: vec![sym],
         connection_points: Default::default(),
     };
+    // The wire the route below runs, and a second wire, with no route, on two points of its own
+    // (design 072 §4.2–§4.4: routes are drawn, wires are not; the rewrite keeps a route-less wire
+    // whose net no route edit touches).
     let wire: ecad_model::WireId = ids.fresh();
-    let wire_v = Wire { ends: [Some(term), None], ..Wire::default() };
+    let wire_v = Wire::new(ids.fresh(), ids.fresh(), term, term2);
     let wire2: ecad_model::WireId = ids.fresh();
+    let wire2_v = Wire::new(ids.fresh(), ids.fresh(), term3, term4);
+    let route: ecad_model::RouteId = ids.fresh();
     let rep_wire: ecad_model::RepresentationId = ids.fresh();
     let rep_wire_v = Representation {
-        subject: Subject::Wire(wire),
+        subject: Subject::Route(route),
         page,
         form: Form::Drawn,
         role: "route".into(),
@@ -116,9 +124,14 @@ fn every_op_ledger() -> Ledger {
         connection_points: Default::default(),
     };
     let cable: ecad_model::CableId = ids.fresh();
-    let cable_v = Cable { members: vec![CableMember { conductor: wire, core: None }], ..Cable::default() };
+    let cable_v = Cable { cores: vec![Core::on_wire(wire, None)], ..Cable::default() };
     let folder: ecad_model::FolderId = ids.fresh();
     let folder_v = Folder { name: "F".into(), parent: None, start: None };
+    let route_v = ecad_model::Route::new(
+        page,
+        vec![Pt::new(0.0, 0.0), Pt::new(9.0, 0.0)],
+        [ecad_model::RouteEnd::Point(term), ecad_model::RouteEnd::Point(term2)],
+    );
     ledger
         .commit(
             Author::User,
@@ -129,14 +142,18 @@ fn every_op_ledger() -> Ledger {
                 Op::EmbedDefinition { id: def, definition: def_v.clone() },
                 Op::CreateDevice { id: comp, device: comp_v.clone() },
                 Op::AddTerminal { id: term, terminal: term_v.clone() },
+                Op::AddTerminal { id: term2, terminal: point("2") },
+                Op::AddTerminal { id: term3, terminal: point("3") },
+                Op::AddTerminal { id: term4, terminal: point("4") },
                 Op::AddItem { id: sym, item: sym_v },
                 Op::AddItem { id: item, item: item_v.clone() },
                 Op::LinkRepresentation { id: rep_sym, rep: rep_sym_v.clone() },
-                Op::CreateWire { id: wire, conductor: wire_v.clone() },
-                Op::CreateWire { id: wire2, conductor: Wire::default() },
+                Op::CreateWire { id: wire, wire: wire_v.clone() },
+                Op::CreateWire { id: wire2, wire: wire2_v.clone() },
                 Op::LinkRepresentation { id: rep_wire, rep: rep_wire_v.clone() },
                 Op::CreateCable { id: cable, cable: cable_v.clone() },
                 Op::AddFolder { id: folder, folder: folder_v.clone(), index: 0 },
+                Op::AddRoute { id: route, route: route_v.clone() },
             ],
         )
         .unwrap();
@@ -171,19 +188,28 @@ fn every_op_ledger() -> Ledger {
             before: comp_v.clone(),
             after: Device { device_type: ecad_model::DeviceType::of_group(ecad_model::DeviceGroup::Motor), ..comp_v.clone() },
         },
-        Op::AddTerminal { id: ids.fresh(), terminal: Terminal { component: comp, label: None, key: None } },
+        Op::AddTerminal { id: ids.fresh(), terminal: Terminal { component: comp, label: None, key: None, accepts: Default::default() } },
         Op::RemoveTerminal { id: term, terminal: term_v.clone() },
         Op::LinkRepresentation { id: ids.fresh(), rep: rep_wire_v.clone() },
         Op::ModifyRepresentation { id: rep_wire, before: rep_wire_v.clone(), after: rep_after },
         Op::UnlinkRepresentation { id: rep_sym, rep: rep_sym_v.clone() },
-        Op::CreateWire { id: ids.fresh(), conductor: Wire { ends: [Some(term), Some(term)], ..Wire::default() } },
-        Op::DeleteWire { id: wire, conductor: wire_v.clone() },
-        Op::ModifyWire { id: wire2, before: Wire::default(), after: Wire { size: ecad_model::wire::WireSize::parse("2.5"), ..Wire::default() } },
-        Op::AttachEnd { conductor: wire2, end: End::B, before: None, after: Some(term) },
+        Op::CreateWire { id: ids.fresh(), wire: Wire::new(ids.fresh(), ids.fresh(), term, term3) },
+        Op::DeleteWire { id: wire, wire: wire_v.clone() },
+        Op::ModifyWire { id: wire2, before: wire2_v.clone(), after: Wire { size: ecad_model::wire::WireSize::parse("2.5"), ..wire2_v.clone() } },
+        Op::AddRoute { id: ids.fresh(), route: ecad_model::Route { ends: [ecad_model::RouteEnd::Free; 2], ..route_v.clone() } },
+        Op::ModifyRoute {
+            id: route,
+            before: route_v.clone(),
+            after: ecad_model::Route { points: vec![Pt::new(0.0, 0.0), Pt::new(0.0, 9.0)], ..route_v.clone() },
+        },
+        Op::RemoveRoute { id: route, route: route_v.clone() },
         Op::CreateCable { id: ids.fresh(), cable: cable_v.clone() },
         Op::DeleteCable { id: cable, cable: cable_v.clone() },
-        Op::AddCableMember { cable, index: 1, member: CableMember { conductor: wire2, core: Some("2".into()) } },
-        Op::RemoveCableMember { cable, index: 0, member: CableMember { conductor: wire, core: None } },
+        Op::ModifyCable {
+            id: cable,
+            before: cable_v.clone(),
+            after: Cable { cores: vec![Core::on_wire(wire2, ecad_model::CoreLabel::new("2").ok())], ..cable_v.clone() },
+        },
         Op::SetProperty { object: ObjectRef::Device(comp), key: "note".parse().unwrap(), before: Some("K1".into()), after: None },
         Op::EmbedDefinition { id: ids.fresh(), definition: def_v.clone() },
         Op::RemoveDefinition { id: def, definition: def_v.clone() },

@@ -1,19 +1,23 @@
-//! Connectivity on the page (brief 022, design 022 §3, §7): conductor labels, continuation texts,
-//! and placing junctions and continuations with existing ops.
+//! Connectivity on the page (brief 022, design 022 §3, §7, design 072 §4.3): conductor labels,
+//! continuation texts, drawing routes (lines, joins and T's) and placing continuations.
 //!
 //! # Semantics
 //! - Labels and continuation texts are derived on every projection of a page, never stored
 //!   (like 018's tag texts): only the page on screen is projected.
-//! - A junction or continuation is a tagless component made from the starter definition
-//!   `junction` or `continuation` (FP4), with one connection point keyed `1`.
+//! - A person draws routes ([`ecad_model::Route`]); each is drawn by one polyline item whose
+//!   vertices are the route's points. A T is a route end on another route (`RouteEnd::On`):
+//!   there are no junction components. The wires come from the commit's rewrite pass
+//!   (`ecad_model::wire_order::rewrite`); the planners here write routes.
+//! - A continuation is a tagless component made from the starter definition `continuation`
+//!   (FP4), with one connection point keyed `1`.
 //! - Labels use the project's label height and colour style (wiring settings) and are placed so
 //!   none touches another label or another wire (`labels_on_page_with`).
 //!
 //! # Update map of the labels (design 032 §8.1)
 //! | Change | Labels |
 //! | --- | --- |
-//! | a route added, moved or removed (incl. a merge's `ModifyItem` and a fold's removal) | that page's labels, when it is projected |
-//! | `AttachEnd`, `CreateWire`, `DeleteWire` (nets join or split) | with the `net` rule, the pages where those nets have routes: their routes' pages are touched, marked stale, the page on screen re-projects |
+//! | `AddRoute`, `ModifyRoute`, `RemoveRoute` (incl. a merge's) | that page's labels, when it is projected |
+//! | `CreateWire`, `DeleteWire` (nets join or split) | with the `net` rule, the pages where those nets have routes: their routes' pages are touched, marked stale, the page on screen re-projects |
 //! | a wire number, potential, cross-section or colour | the pages of the conductors it was written on (the numbering pass's included) |
 //! | wiring settings (label rule, shortest labelled wire, colour style, label height, potentials) | every page, when it is projected next |
 //! | lane T's wire-label text style or show setting (031) | as lane T's map says; here the pages of the conductors concerned |
@@ -21,20 +25,21 @@
 //! | anything else | nothing |
 //!
 //! # Update map of the looks-connected marks (design 032 §8.2)
-//! Route ops, `AttachEnd` of an end routed on P, and cable reference ops on P change P's marks,
+//! Route ops on P and cable reference ops on P change P's marks,
 //! computed when P is projected ([`looks_connected_on_page`]); anything else changes nothing.
 //!
 //! This module reads the document and plans ops; it commits nothing itself.
 
 use crate::CmdError;
 use ecad_model::Noun;
-use ecad_model::units::Radians;
 use std::collections::BTreeMap;
 
-use ecad_model::connectivity::{CONTINUATION, JUNCTION, KIND, NAME};
+use std::collections::BTreeSet;
+
+use ecad_model::connectivity::{CONTINUATION, KIND, NAME};
 use ecad_model::{
-    DefinitionId, Device, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Placement, Primitive, Pt, Representation,
-    RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId, Wire, WireId,
+    ConductorId, DefinitionId, Device, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, NetId, Op, PageId, Placement, Primitive,
+    Pt, Representation, RepresentationId, Route, RouteEnd, RouteId, Style, Subject, SymbolInstance, Terminal, TerminalId, Wire, WireId,
 };
 
 use crate::devices::{DerivedText, TextOf};
@@ -66,20 +71,22 @@ pub const MAX_NAME_CHARS: usize = 16;
 /// Why a conductor label alone cannot be edited.
 pub const LABEL_DERIVED: &str = "The wire label is derived; change the number with Fix Wire Number, or the wire's cross-section and colour.";
 
+/// Why a T's dot alone cannot be edited (design 072 §4.4).
+pub const TEE_DERIVED: &str = "A T's dot is drawn from its lines; move or erase the line instead.";
+
+/// The radii (mm) of a T's dot: concentric circles, so it reads as filled at any lineweight
+/// setting (the old junction glyph's look, design 022 §3.1).
+pub const TEE_DOT_RADII: [f64; 3] = [0.5, 0.33, 0.17];
+
 /// The continuation name rule, in words (design 022 §3.2).
 pub const NAME_RULE: &str = "A continuation name is 1 to 16 letters, digits or + - / . _";
-
-/// The starter of a junction.
-pub fn junction_starter() -> &'static Starter {
-    symbols::starter(symbols::StarterKey::Junction)
-}
 
 /// The starter of a continuation.
 pub fn continuation_starter() -> &'static Starter {
     symbols::starter(symbols::StarterKey::Continuation)
 }
 
-/// What a tagless component is (`junction`, `continuation`), from its `kind` property.
+/// What a tagless component is (`continuation`), from its `kind` property.
 pub fn kind_of(doc: &Document, c: DeviceId) -> Option<&str> {
     doc.devices.get(&c)?.properties.get(KIND).map(String::as_str)
 }
@@ -101,7 +108,7 @@ pub fn valid_name(text: &str) -> Result<String, CmdError> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct WireLabel {
     pub conductor: WireId,
-    /// The route representation it labels.
+    /// The representation of the route it labels.
     pub rep: RepresentationId,
     /// The centre of its baseline.
     pub at: Pt,
@@ -239,7 +246,8 @@ fn candidates(a: Pt, b: Pt, w: f64, h: f64) -> Vec<Pt> {
     out
 }
 
-/// Every conductor label on `page` (one per route representation, on its longest segment) but
+/// Every conductor label on `page` (one per route, of the wire it stands for ([`wire_of_route`]),
+/// on its longest segment) but
 /// those of the routes whose items are `hidden` (a cable drawn as a fan: its members' routes and
 /// their labels are not shown, brief 005 and owner 2026-11-09). `m` measures the labels (the C
 /// wrappers `labels_on_page` and `labels_on_page_with` pass CADCraft's fonts).
@@ -253,18 +261,15 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
     let style = crate::text_style::text_style(doc, crate::text_style::TextKind::WireLabel);
     let fonts = crate::text_style::fonts::Fonts::resolve_with(doc, m);
     let h = style.height;
-    // Every route on the page: (representation, conductor, vertices).
+    // Every route on the page (through the page index): (representation, wire, points).
     let mut routes: Vec<(RepresentationId, WireId, Vec<Pt>)> = Vec::new();
-    for (rid, r) in doc.representations_on(page) {
-        let Subject::Wire(c) = r.subject else { continue };
-        if r.form != Form::Drawn || r.items.first().is_some_and(|i| hidden.contains(i)) {
+    for r in doc.routes_on(page) {
+        let (Some(route), Some((rid, item, _))) = (doc.routes.get(&r), route_item(doc, r)) else { continue };
+        if hidden.contains(&item) {
             continue;
         }
-        let Some(ItemKind::Primitive(p)) = r.items.first().and_then(|i| doc.items.get(i)).map(|i| &i.kind) else {
-            continue;
-        };
-        if let Some(v) = path_vertices(p) {
-            routes.push((rid, c, v));
+        if let Some(c) = wire_of_route(doc, r) {
+            routes.push((rid, c, route.points.clone()));
         }
     }
     // Brief 032 §4.2: which routes get a label (the project's rule; a wire whose label lane T's
@@ -282,7 +287,9 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
         if look.label_rule == "none" {
             continue;
         }
-        let Some(label) = ecad_model::wiring::label_with(doc, *c, look.cross_section.map(|x| x.0), look.colour.map(|x| x.0)) else { continue };
+        let Some(label) = ecad_model::wiring::label_with(doc, *c, look.cross_section.map(|x| x.0), look.colour.map(|x| x.0.to_string())) else {
+            continue;
+        };
         let target = crate::text_style::TextTarget::conductor(*c, Some(page));
         if crate::text_style::text_shown(doc, target, crate::text_style::TextKind::WireLabel) == crate::text_style::Shown::Off {
             continue;
@@ -390,9 +397,322 @@ pub fn continuation_texts(doc: &Document, c: DeviceId, rep: RepresentationId, pl
     Some(out)
 }
 
+// ---------------------------------------------------------------- routes (design 072 §4.3)
+
+/// A route's drawing: its representation, its item's ID and the item.
+pub fn route_item(doc: &Document, r: RouteId) -> Option<(RepresentationId, ItemId, &Item)> {
+    doc.representations_of(Subject::Route(r)).find_map(|(rid, rep)| {
+        let id = *rep.items.first()?;
+        Some((rid, id, doc.items.get(&id)?))
+    })
+}
+
+/// The T's on `page` (design 072 §4.4): each route end that lands on another route
+/// (`RouteEnd::On`), as (route, end index, point). Derived from the routes, never stored; a page
+/// is drawn again when a route op touches it, so the dots follow AddRoute, ModifyRoute and
+/// RemoveRoute of that page's routes and nothing else.
+pub fn tees_on_page(doc: &Document, page: PageId) -> Vec<(RouteId, u8, Pt)> {
+    let mut out = Vec::new();
+    for r in doc.routes_on(page) {
+        let Some(route) = doc.routes.get(&r) else { continue };
+        for (i, end) in (0u8..).zip(route.ends) {
+            if let RouteEnd::On { at, .. } = end
+                && at.is_finite()
+            {
+                out.push((r, i, at));
+            }
+        }
+    }
+    out
+}
+
+/// Route `r`'s item, the item and the route's points.
+pub fn route_vertices(doc: &Document, r: RouteId) -> Option<(ItemId, Item, Vec<Pt>)> {
+    let route = doc.routes.get(&r)?;
+    let (_, id, item) = route_item(doc, r)?;
+    Some((id, item.clone(), route.points.clone()))
+}
+
+/// The polyline item drawing a route through `points` on `page`.
+pub fn route_drawing(page: PageId, style: Style, points: Vec<Pt>) -> Item {
+    Item { page, style, kind: ItemKind::Primitive(Primitive::Polyline { vertices: points, closed: false }) }
+}
+
+/// The ops that draw a new route on `page` through `points` with `ends` (design 072 §4.3): the
+/// route, its item and the representation linking them. Returns the route's and the item's IDs.
+pub fn add_route(ids: &mut IdAllocator, page: PageId, style: Style, points: Vec<Pt>, ends: [RouteEnd; 2]) -> (RouteId, ItemId, Vec<Op>) {
+    let (r, i, rep): (RouteId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
+    let ops = vec![
+        Op::AddRoute { id: r, route: Route::new(page, points.clone(), ends) },
+        Op::AddItem { id: i, item: route_drawing(page, style, points) },
+        Op::LinkRepresentation {
+            id: rep,
+            rep: Representation {
+                subject: Subject::Route(r),
+                page,
+                form: Form::Drawn,
+                role: "route".into(),
+                items: vec![i],
+                connection_points: BTreeMap::new(),
+            },
+        },
+    ];
+    (r, i, ops)
+}
+
+/// The ops that remove route `r` with its drawing. Routes landing on it must be changed first
+/// ([`RouteEdits::free_tees`] or [`RouteEdits::retarget_tees`]).
+pub fn remove_route_ops(doc: &Document, r: RouteId) -> Vec<Op> {
+    let mut ops = Vec::new();
+    let mut items = Vec::new();
+    for (rid, rep) in doc.representations_of(Subject::Route(r)) {
+        ops.push(Op::UnlinkRepresentation { id: rid, rep: rep.clone() });
+        items.extend(rep.items.iter().copied());
+    }
+    for i in items {
+        if let Some(item) = doc.items.get(&i) {
+            ops.push(Op::RemoveItem { id: i, item: item.clone() });
+        }
+    }
+    if let Some(route) = doc.routes.get(&r) {
+        ops.push(Op::RemoveRoute { id: r, route: route.clone() });
+    }
+    ops
+}
+
+/// Changes to existing routes gathered while planning, so that a route changed more than once is
+/// one `ModifyRoute`, with one `ModifyItem` when its points move (its drawing follows it).
+#[derive(Debug, Clone)]
+pub struct RouteEdits<'a> {
+    doc: &'a Document,
+    after: BTreeMap<RouteId, Route>,
+}
+
+impl<'a> RouteEdits<'a> {
+    pub fn new(doc: &'a Document) -> Self {
+        RouteEdits { doc, after: BTreeMap::new() }
+    }
+
+    /// Route `r` as changed so far, to change further; `None` when there is no such route.
+    pub fn get(&mut self, r: RouteId) -> Option<&mut Route> {
+        if !self.after.contains_key(&r) {
+            let route = self.doc.routes.get(&r)?.clone();
+            self.after.insert(r, route);
+        }
+        self.after.get_mut(&r)
+    }
+
+    /// End `e` of route `r` lands on `to`.
+    pub fn set_end(&mut self, r: RouteId, e: End, to: RouteEnd) {
+        if let Some(x) = self.get(r).and_then(|route| route.ends.get_mut(end_index(e))) {
+            *x = to;
+        }
+    }
+
+    /// Every route end on connection point `from` (found through the index) lands on `to`
+    /// instead: another point, or `Free` when the point goes.
+    pub fn repoint(&mut self, from: TerminalId, to: RouteEnd) {
+        let routes: Vec<RouteId> = self.doc.routes_at(from).collect();
+        for r in routes {
+            if let Some(route) = self.get(r) {
+                for e in route.ends.iter_mut().filter(|e| **e == RouteEnd::Point(from)) {
+                    *e = to;
+                }
+            }
+        }
+    }
+
+    /// The routes landing on route `from` land on route `to` at the same places.
+    pub fn retarget_tees(&mut self, from: RouteId, to: RouteId) {
+        let tees: Vec<RouteId> = self.doc.tees_of(from).collect();
+        for t in tees {
+            if let Some(route) = self.get(t) {
+                for e in route.ends.iter_mut() {
+                    if let RouteEnd::On { route: x, at } = *e
+                        && x == from
+                    {
+                        *e = RouteEnd::On { route: to, at };
+                    }
+                }
+            }
+        }
+    }
+
+    /// The routes landing on route `r` end free where they are (before `r` goes).
+    pub fn free_tees(&mut self, r: RouteId) {
+        let tees: Vec<RouteId> = self.doc.tees_of(r).collect();
+        for t in tees {
+            if let Some(route) = self.get(t) {
+                for e in route.ends.iter_mut().filter(|e| e.route() == Some(r)) {
+                    *e = RouteEnd::Free;
+                }
+            }
+        }
+    }
+
+    /// Route `r` is removed by other ops: no change of it is planned.
+    pub fn forget(&mut self, r: RouteId) {
+        self.after.remove(&r);
+    }
+
+    /// The ops: a `ModifyRoute` per changed route, with a `ModifyItem` of its drawing when its
+    /// points changed.
+    pub fn ops(self) -> Vec<Op> {
+        let mut ops = Vec::new();
+        for (r, after) in self.after {
+            let Some(before) = self.doc.routes.get(&r) else { continue };
+            if *before == after {
+                continue;
+            }
+            if before.points != after.points
+                && let Some((_, i, item)) = route_item(self.doc, r)
+            {
+                let moved = Item { kind: ItemKind::Primitive(Primitive::Polyline { vertices: after.points.clone(), closed: false }), ..item.clone() };
+                ops.push(Op::ModifyItem { id: i, before: item.clone(), after: moved });
+            }
+            ops.push(Op::ModifyRoute { id: r, before: before.clone(), after });
+        }
+        ops
+    }
+}
+
+/// The ops that let go of connection points `points` (being removed or replaced): every route
+/// end on one of them ends free where it is, so the commit's rewrite takes their wires away.
+pub fn free_points_ops(doc: &Document, points: impl IntoIterator<Item = TerminalId>) -> Vec<Op> {
+    let mut edits = RouteEdits::new(doc);
+    for t in points {
+        edits.repoint(t, RouteEnd::Free);
+    }
+    edits.ops()
+}
+
+/// The ops moving every route end from one connection point to another (`map`: from → to), in
+/// one `ModifyRoute` per route.
+pub fn repoint_ops(doc: &Document, map: &BTreeMap<TerminalId, TerminalId>) -> Vec<Op> {
+    let mut edits = RouteEdits::new(doc);
+    for (from, to) in map {
+        edits.repoint(*from, RouteEnd::Point(*to));
+    }
+    edits.ops()
+}
+
+/// The free route ends on `page` drawn within `tol` of `at`.
+pub fn loose_ends_at(doc: &Document, page: PageId, at: Pt, tol: f64) -> Vec<(RouteId, End)> {
+    let mut out = Vec::new();
+    for r in doc.routes_on(page) {
+        let Some(route) = doc.routes.get(&r) else { continue };
+        for (end, e) in End::BOTH.into_iter().zip(route.ends) {
+            if e == RouteEnd::Free && end_point(doc, r, end).is_some_and(|p| p.near(at, tol)) {
+                out.push((r, end));
+            }
+        }
+    }
+    out
+}
+
+// ---------------------------------------------------------------- the wires a route carries
+
+/// The wire between connection points `a` and `b`, if there is one (through the index).
+pub fn wire_between(doc: &Document, a: TerminalId, b: TerminalId) -> Option<WireId> {
+    doc.ends_at(a).into_iter().map(|(w, _)| w).find(|w| doc.wires.get(w).is_some_and(|x| x.ends.contains(&a) && x.ends.contains(&b)))
+}
+
+/// A connection point route `r` reaches over routes, the nearest first: its own ends, then the
+/// routes it lands on and that land on it; never a named point. The cost follows the routes
+/// joined to it.
+fn point_of_route(doc: &Document, r: RouteId) -> Option<TerminalId> {
+    let mut seen = BTreeSet::new();
+    let mut todo = std::collections::VecDeque::from([r]);
+    while let Some(x) = todo.pop_front() {
+        if !seen.insert(x) {
+            continue;
+        }
+        let Some(route) = doc.routes.get(&x) else { continue };
+        // A named point (a cable reference's, F4) is an aid: no wire ends there.
+        if let Some(t) = route.points_landed().find(|t| doc.named_points(*t).is_none()) {
+            return Some(t);
+        }
+        todo.extend(route.ends.iter().filter_map(|e| e.route()));
+        todo.extend(doc.tees_of(x));
+    }
+    None
+}
+
+/// The wire route `r` stands for when a person clicks it: the wire between its two connection
+/// points when it runs from one to the other, else the first (in net order) of the wires at the
+/// nearest connection point it reaches. `None` for a route on no net with wires.
+pub fn wire_of_route(doc: &Document, r: RouteId) -> Option<WireId> {
+    let route = doc.routes.get(&r)?;
+    if let [RouteEnd::Point(a), RouteEnd::Point(b)] = route.ends
+        && let Some(w) = wire_between(doc, a, b)
+    {
+        return Some(w);
+    }
+    let t = point_of_route(doc, r)?;
+    doc.ends_at(t).into_iter().map(|(w, _)| w).filter_map(|w| doc.wires.get(&w).map(|x| (x.net_order, w))).min().map(|(_, w)| w)
+}
+
+/// The wires route `r` carries: the wire between its two connection points when it runs from one
+/// to the other, else every wire of its net, in net order.
+pub fn wires_of_route(doc: &Document, r: RouteId) -> Vec<WireId> {
+    let Some(route) = doc.routes.get(&r) else { return Vec::new() };
+    if let [RouteEnd::Point(a), RouteEnd::Point(b)] = route.ends
+        && let Some(w) = wire_between(doc, a, b)
+    {
+        return vec![w];
+    }
+    let Some(net) = point_of_route(doc, r).and_then(|t| doc.ends_at(t).first().and_then(|(w, _)| doc.wires.get(w)).map(|w| w.net)) else {
+        return Vec::new();
+    };
+    let mut v: Vec<(u16, WireId)> = doc.wires_of_net(net).filter_map(|w| doc.wires.get(&w).map(|x| (x.net_order, w))).collect();
+    v.sort_unstable();
+    v.into_iter().map(|(_, w)| w).collect()
+}
+
+/// The routes drawing wire `w`: those with an end on either of its connection points, in ID
+/// order (through the index).
+pub fn routes_of_wire(doc: &Document, w: WireId) -> Vec<RouteId> {
+    let Some(wire) = doc.wires.get(&w) else { return Vec::new() };
+    let mut v: Vec<RouteId> = wire.ends.iter().flat_map(|t| doc.routes_at(*t)).collect();
+    v.sort_unstable();
+    v.dedup();
+    v
+}
+
+/// The route drawing wire `w` on `page`: the one running straight between its two points when
+/// there is one, else the first of [`routes_of_wire`] there.
+pub fn route_of_wire_on(doc: &Document, w: WireId, page: PageId) -> Option<RouteId> {
+    let ends = doc.wires.get(&w)?.ends;
+    let here: Vec<RouteId> = routes_of_wire(doc, w).into_iter().filter(|r| doc.routes.get(r).is_some_and(|x| x.page == page)).collect();
+    let direct = here.iter().copied().find(|r| doc.routes.get(r).is_some_and(|x| ends.iter().all(|t| x.ends.contains(&RouteEnd::Point(*t)))));
+    direct.or_else(|| here.first().copied())
+}
+
+/// Where connection point `t` is drawn as a route end: (page, point) of every route end landing
+/// on it, in route ID order (through the index).
+pub fn drawn_ends_at(doc: &Document, t: TerminalId) -> Vec<(PageId, Pt)> {
+    let mut out = Vec::new();
+    for r in doc.routes_at(t) {
+        let Some(route) = doc.routes.get(&r) else { continue };
+        for (p, e) in [route.points.first(), route.points.last()].into_iter().zip(route.ends) {
+            if let Some(p) = p
+                && e == RouteEnd::Point(t)
+            {
+                out.push((route.page, *p));
+            }
+        }
+    }
+    out
+}
+
+/// The pages wire `w` is drawn on (see [`routes_of_wire`]).
+pub fn wire_pages(doc: &Document, w: WireId) -> BTreeSet<PageId> {
+    routes_of_wire(doc, w).into_iter().filter_map(|r| doc.routes.get(&r).map(|x| x.page)).collect()
+}
+
 // ---------------------------------------------------------------- placing (§3)
 
-/// A planned junction or continuation.
+/// A planned continuation (a tagless component).
 #[derive(Debug, Clone)]
 pub struct Tagless {
     pub ops: Vec<Op>,
@@ -401,35 +721,13 @@ pub struct Tagless {
     pub item: ItemId,
     pub representation: RepresentationId,
     pub definition: DefinitionId,
-    /// Loose ends found at the point and attached.
-    pub attached: Vec<(WireId, End)>,
-}
-
-/// The route of `c` on `page`: its item, the item, and its vertices.
-pub fn route_vertices(doc: &Document, c: WireId, page: PageId) -> Option<(ItemId, Item, Vec<Pt>)> {
-    let (id, prim) = ecad_model::derive::route_on_page(doc, c, page)?;
-    let item = doc.items.get(&id)?.clone();
-    Some((id, item, path_vertices(&prim)?))
-}
-
-/// The conductor ends on `page` that are loose and drawn within `tol` of `at`.
-pub fn loose_ends_at(doc: &Document, page: PageId, at: Pt, tol: f64) -> Vec<(WireId, End)> {
-    let mut out = Vec::new();
-    for (_, r) in doc.representations_on(page) {
-        let Subject::Wire(c) = r.subject else { continue };
-        let Some(cond) = doc.wires.get(&c) else { continue };
-        let Some((a, b)) = ecad_model::derive::route_ends_on(doc, c, page) else { continue };
-        for (end, p) in [(End::A, a), (End::B, b)] {
-            if cond.end(end).is_none() && p.near(at, tol) && !out.contains(&(c, end)) {
-                out.push((c, end));
-            }
-        }
-    }
-    out
+    /// Free route ends found at the point, now on it.
+    pub attached: Vec<(RouteId, End)>,
 }
 
 /// Plan a tagless component of starter `s` at `placement` on `page`, with properties `props`
-/// (`kind`, and `name` for a continuation); loose ends lying on its connection point attach.
+/// (`kind`, and `name` for a continuation); free route ends lying on its connection point land on
+/// it.
 ///
 /// # Errors
 /// The starter definition cannot be built (never expected).
@@ -451,7 +749,10 @@ pub fn plan_tagless(
         id: component,
         device: Device { properties: props, definition: Some(definition), device_type: s.device_type(), ..Device::default() },
     });
-    ops.push(Op::AddTerminal { id: terminal, terminal: Terminal { component, label: None, key: Some(ecad_model::PointKey::def("1")) } });
+    ops.push(Op::AddTerminal {
+        id: terminal,
+        terminal: Terminal { component, label: None, key: Some(ecad_model::PointKey::def("1")), accepts: Default::default() },
+    });
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition, placement }) } });
     ops.push(Op::LinkRepresentation {
         id: representation,
@@ -465,9 +766,11 @@ pub fn plan_tagless(
         },
     });
     let attached = loose_ends_at(doc, page, placement.origin, ON_WIRE);
-    for (c, end) in &attached {
-        ops.push(Op::AttachEnd { conductor: *c, end: *end, before: None, after: Some(terminal) });
+    let mut edits = RouteEdits::new(doc);
+    for (r, end) in &attached {
+        edits.set_end(*r, *end, RouteEnd::Point(terminal));
     }
+    ops.extend(edits.ops());
     Ok(Tagless { ops, component, terminal, item, representation, definition, attached })
 }
 
@@ -480,101 +783,84 @@ fn on_segment(p: Pt, a: Pt, b: Pt) -> (Pt, f64) {
     (q, q.dist(p))
 }
 
-/// A wire found under a point: the conductor, the segment index and the point on it.
+/// A route found under a point: the route, the segment index and the point on it.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct OnWire {
-    pub conductor: WireId,
+pub struct OnRoute {
+    pub route: RouteId,
     pub segment: usize,
     pub at: Pt,
 }
 
-/// The wire on `page` whose route passes within `tol` of `p` (the nearest; never `except`), with
-/// the point snapped to a route vertex within `tol`.
-pub fn wire_at(doc: &Document, page: PageId, p: Pt, tol: f64, except: Option<WireId>) -> Option<OnWire> {
-    let mut best: Option<(f64, OnWire)> = None;
-    for (_, r) in doc.representations_on(page) {
-        let Subject::Wire(c) = r.subject else { continue };
-        if Some(c) == except || r.form != Form::Drawn {
+/// The route on `page` passing within `tol` of `p` (the nearest; never `except`), with the point
+/// snapped to a route vertex within `tol`. Reads the page's routes through the index.
+pub fn route_at(doc: &Document, page: PageId, p: Pt, tol: f64, except: Option<RouteId>) -> Option<OnRoute> {
+    let mut best: Option<(f64, OnRoute)> = None;
+    for r in doc.routes_on(page) {
+        if Some(r) == except {
             continue;
         }
-        let Some(ItemKind::Primitive(prim)) = r.items.first().and_then(|i| doc.items.get(i)).map(|i| &i.kind) else {
-            continue;
-        };
-        let Some(v) = path_vertices(prim) else { continue };
+        let Some(v) = doc.routes.get(&r).map(|x| &x.points) else { continue };
         let (first, last) = (v.first().copied(), v.last().copied());
         for (i, w) in v.windows(2).enumerate() {
             let (Some(a), Some(b)) = (w.first(), w.get(1)) else { continue };
             let (q, d) = on_segment(p, *a, *b);
-            // Hostile geometry (an overflowing segment) gives NaN: never a wire there.
+            // Hostile geometry (an overflowing segment) gives NaN: never a route there.
             if !(d <= tol && q.is_finite()) {
                 continue;
             }
-            // A wire's interior wins over another wire's end at the same point.
+            // A route's interior wins over another route's end at the same point.
             let at_end = first.is_some_and(|f| f.near(q, tol)) || last.is_some_and(|l| l.near(q, tol));
             let d = if at_end { d + tol } else { d };
             if best.is_none_or(|(bd, _)| d < bd) {
                 let at = v.iter().copied().find(|x| x.near(q, tol)).unwrap_or(q);
-                best = Some((d, OnWire { conductor: c, segment: i, at }));
+                best = Some((d, OnRoute { route: r, segment: i, at }));
             }
         }
     }
     best.map(|(_, w)| w)
 }
 
-/// A planned junction on a wire (design 022 §3.1).
-#[derive(Debug, Clone)]
-pub struct Junction {
-    pub tagless: Tagless,
-    /// The new second half of the wire.
-    pub second: WireId,
-    pub at: Pt,
+/// The route `r` met at `at`: its segment there, when `at` lies within [`ON_WIRE`] of it.
+pub fn on_route_of(doc: &Document, r: RouteId, at: Pt) -> Option<OnRoute> {
+    let v = &doc.routes.get(&r)?.points;
+    let mut best: Option<(f64, usize)> = None;
+    for (i, w) in v.windows(2).enumerate() {
+        let (Some(a), Some(b)) = (w.first(), w.get(1)) else { continue };
+        let (_, d) = on_segment(at, *a, *b);
+        if d.is_finite() && best.is_none_or(|(bd, _)| d < bd) {
+            best = Some((d, i));
+        }
+    }
+    let (d, segment) = best?;
+    (d <= ON_WIRE).then_some(OnRoute { route: r, segment, at })
 }
 
-/// Plan a junction where `on` lies on its wire: the junction, the wire split at the point (it
-/// keeps its ID up to the point, a copy of it continues), and loose ends at the point attached.
+/// A route split in two at a point.
+#[derive(Debug, Clone)]
+pub struct Split {
+    pub ops: Vec<Op>,
+    /// The route, which keeps its first end and its points up to the split.
+    pub route: RouteId,
+    /// The new second part, from the split to the route's old last end.
+    pub new: RouteId,
+    /// The second part's item.
+    pub new_item: ItemId,
+}
+
+/// Plan splitting route `on.route` at `on.at` (design 028 §3.1, design 072 §4.3): the route keeps
+/// its first end and ends on `first` (an end and the point it is drawn to); a new route starts on
+/// `second` and keeps the old last end. Routes landing on the second part land on the new route.
 ///
 /// # Errors
-/// Design 022 §3.1's refusals: a cable core, a wire drawn on more than one page, a junction
-/// already there, the point at a route end.
-pub fn plan_junction(doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, on: OnWire) -> Result<Junction, CmdError> {
-    let c = on.conductor;
-    let cond = doc.wires.get(&c).ok_or(CmdError::NotFound(Noun::Wire))?;
-    if let Some(k) = doc.cables_of(c).first() {
-        let cable = crate::references::cable_words(doc, *k);
-        let core = doc
-            .cables
-            .get(k)
-            .and_then(|x| x.members.iter().find(|m| m.conductor == c))
-            .and_then(|m| m.core.clone())
-            .map_or_else(String::new, |n| format!("'s core {n}"));
-        return Err(CmdError::refused(format!("{cable}{core} can't take a junction: a cable core runs end to end.")));
+/// No such route, or the point at one of its ends.
+pub fn plan_split(doc: &Document, ids: &mut IdAllocator, on: &OnRoute, first: (RouteEnd, Pt), second: (RouteEnd, Pt)) -> Result<Split, CmdError> {
+    let r = on.route;
+    let route = doc.routes.get(&r).ok_or(CmdError::NotFound(Noun::Wire))?;
+    let v = &route.points;
+    let [a, b] = route.end_points().ok_or(CmdError::refused("empty route"))?;
+    if on.at.near(a, ON_WIRE) || on.at.near(b, ON_WIRE) {
+        return Err(CmdError::refused("That is the end of the wire. Click along the wire, away from its ends, or on empty space."));
     }
-    let pages: std::collections::BTreeSet<PageId> = doc.representations_of(Subject::Wire(c)).map(|(_, r)| r.page).collect();
-    if pages.len() > 1 {
-        return Err(CmdError::refused(format!("This wire is drawn on {} pages; add the junction where it is a single wire.", pages.len())));
-    }
-    let (item_id, item, v) = route_vertices(doc, c, page).ok_or(CmdError::refused("The wire has no route on this page."))?;
-    for (_, r) in doc.representations_on(page) {
-        let Subject::Device(j) = r.subject else { continue };
-        if kind_of(doc, j) != Some(JUNCTION) {
-            continue;
-        }
-        let here = doc.terminals_of(j).any(|(t, _)| ecad_model::derive::terminal_position(doc, page, t).is_some_and(|p| p.near(on.at, ON_WIRE)));
-        if here {
-            return Err(CmdError::refused("There is a junction here already."));
-        }
-    }
-    let (first, last) = (v.first().copied().ok_or(CmdError::refused("empty route"))?, v.last().copied().ok_or(CmdError::refused("empty route"))?);
-    if on.at.near(first, ON_WIRE) || on.at.near(last, ON_WIRE) {
-        return Err(CmdError::refused("Click on a wire, not its end: an end can attach to a connection point."));
-    }
-    let starter = junction_starter();
-    let mut props = ecad_model::Properties::new();
-    props.insert(KIND.into(), JUNCTION.into());
-    let placement = Placement { origin: on.at, rotation: Radians(0.0), mirror: false, scale: 1.0 };
-    let mut tagless = plan_tagless(doc, ids, page, style, starter, placement, props)?;
-    let j = tagless.terminal;
-    // Split: C keeps its vertices up to the point; C2 runs from the point to C's old end B.
     let seg = on.segment;
     let mut keep: Vec<Pt> = v.get(..=seg).unwrap_or_default().to_vec();
     let mut rest: Vec<Pt> = v.get(seg + 1..).unwrap_or_default().to_vec();
@@ -584,28 +870,31 @@ pub fn plan_junction(doc: &Document, ids: &mut IdAllocator, page: PageId, style:
     if rest.first().is_some_and(|p| p.near(on.at, 1e-9)) {
         rest.remove(0);
     }
-    keep.push(on.at);
-    rest.insert(0, on.at);
-    let path = |pts: Vec<Pt>| match pts.as_slice() {
-        [a, b] => Primitive::Line { a: *a, b: *b },
-        _ => Primitive::Polyline { vertices: pts, closed: false },
-    };
-    let mut shortened = item.clone();
-    shortened.kind = ItemKind::Primitive(path(keep));
-    tagless.ops.push(Op::ModifyItem { id: item_id, before: item.clone(), after: shortened });
-    let old_b = cond.end(End::B);
-    tagless.ops.push(Op::AttachEnd { conductor: c, end: End::B, before: old_b, after: Some(j) });
-    let (c2, i2, r2): (WireId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
-    tagless.ops.push(Op::CreateWire { id: c2, conductor: Wire { ends: [Some(j), old_b], ..cond.clone() } });
-    let mut second = item;
-    second.kind = ItemKind::Primitive(path(rest));
-    tagless.ops.push(Op::AddItem { id: i2, item: second });
-    let role = doc.representations_of(Subject::Wire(c)).find(|(_, r)| r.page == page).map_or_else(|| "route".to_string(), |(_, r)| r.role.clone());
-    tagless.ops.push(Op::LinkRepresentation {
-        id: r2,
-        rep: Representation { subject: Subject::Wire(c2), page, form: Form::Drawn, role, items: vec![i2], connection_points: BTreeMap::new() },
-    });
-    Ok(Junction { tagless, second: c2, at: on.at })
+    keep.push(first.1);
+    rest.insert(0, second.1);
+    let style = route_item(doc, r).map(|(_, _, i)| i.style.clone()).ok_or(CmdError::refused("The wire has no drawing on this page."))?;
+    let (new, new_item, mut ops) = add_route(ids, route.page, style, rest, [second.0, route.ends[1]]);
+    let split_at = route.along(on.at).map_or(0.0, |(s, _)| s);
+    let mut edits = RouteEdits::new(doc);
+    // The routes landing on the second part land on the new route.
+    for t in doc.tees_of(r).collect::<Vec<_>>() {
+        if let Some(x) = edits.get(t) {
+            for e in x.ends.iter_mut() {
+                if let RouteEnd::On { route: h, at } = *e
+                    && h == r
+                    && route.along(at).is_some_and(|(s, _)| s > split_at)
+                {
+                    *e = RouteEnd::On { route: new, at };
+                }
+            }
+        }
+    }
+    if let Some(x) = edits.get(r) {
+        x.points = keep;
+        x.ends[1] = first.0;
+    }
+    ops.extend(edits.ops());
+    Ok(Split { ops, route: r, new, new_item })
 }
 
 // ---------------------------------------------------------------- words (§7, §9)
@@ -613,17 +902,13 @@ pub fn plan_junction(doc: &Document, ids: &mut IdAllocator, page: PageId, style:
 /// Most connection points a net line names before `+n`.
 pub const MAX_POINTS_SHOWN: usize = 6;
 
-/// A connection point in words: `-K01:A1`; a junction `junction`, a continuation `→24V`.
+/// A connection point in words: `-K01:A1`; a continuation `→24V`.
 pub fn point_words(doc: &Document, t: TerminalId) -> String {
     let Some(term) = doc.terminals.get(&t) else { return "?".into() };
     let c = term.component;
-    match kind_of(doc, c) {
-        Some(JUNCTION) => return "junction".into(),
-        Some(CONTINUATION) => {
-            let name = doc.devices.get(&c).and_then(|x| x.properties.get(NAME)).cloned().unwrap_or_default();
-            return format!("\u{2192}{name}");
-        }
-        _ => {}
+    if kind_of(doc, c) == Some(CONTINUATION) {
+        let name = doc.devices.get(&c).and_then(|x| x.properties.get(NAME)).cloned().unwrap_or_default();
+        return format!("\u{2192}{name}");
     }
     let label = term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| "?".into());
     match crate::devices::tag_of(doc, c) {
@@ -632,12 +917,12 @@ pub fn point_words(doc: &Document, t: TerminalId) -> String {
     }
 }
 
-/// The device connection points of a net (not junctions or continuations), in words, sorted.
+/// The device connection points of a net (not continuations), in words, sorted.
 pub fn net_points(doc: &Document, net: &ecad_model::NetData) -> Vec<String> {
     let mut v: Vec<String> = net
         .terminals
         .iter()
-        .filter(|t| doc.terminals.get(t).is_none_or(|x| !matches!(kind_of(doc, x.component), Some(JUNCTION | CONTINUATION))))
+        .filter(|t| doc.terminals.get(t).is_none_or(|x| !matches!(kind_of(doc, x.component), Some(CONTINUATION))))
         .map(|t| point_words(doc, *t))
         .collect();
     v.sort();
@@ -700,7 +985,7 @@ pub fn hover_lines(doc: &Document, w: WireId) -> Vec<String> {
     if let Some(v) = shown(ecad_model::wiring::CROSS_SECTION, &look.cross_section) {
         values.push(format!("Cross-section {v}"));
     }
-    if let Some(v) = shown(ecad_model::wiring::COLOUR, &look.colour) {
+    if let Some(v) = shown(ecad_model::wiring::COLOUR, &look.colour_text()) {
         values.push(format!("Colour {v}"));
     }
     if !values.is_empty() {
@@ -710,54 +995,64 @@ pub fn hover_lines(doc: &Document, w: WireId) -> Vec<String> {
     lines
 }
 
-// ---------------------------------------------------------------- joining (brief 032 §2)
+// ---------------------------------------------------------------- joining (brief 032 §2, design 072 §4.3)
 
 /// The way out every join refusal names (design 032 §2.2).
 pub const JOIN_WAY_OUT: &str = "Draw it with join off (join: false), or end it on a connection point.";
 
-/// What one end of a new wire meets (design 032 §2.1).
-#[derive(Debug, Clone)]
+/// What one end of a new route meets (design 032 §2.1, design 072 §4.3).
+#[derive(Debug, Clone, PartialEq)]
 enum Meets {
     /// Nothing there: a deliberate open end.
-    Open,
+    Free,
     /// A connection point there.
     Point(TerminalId),
-    /// The one open end of a wire that takes the new one (§2.2), with that wire's route.
-    Merge { conductor: WireId, end: End, route: (ItemId, Item, Vec<Pt>) },
-    /// A new junction there: its ops, its terminal and component, how many other wire ends it
-    /// joins, the wire it splits (if any) and the conductors whose ends it attaches.
-    Junction { ops: Vec<Op>, terminal: TerminalId, component: DeviceId, others: usize, split: Option<WireId>, touched: Vec<WireId> },
+    /// The one free end of another route: the new line extends that route.
+    Merge { route: RouteId, end: End },
+    /// The middle of route `route` (a T), or its free end where the free ends of several routes
+    /// meet; the free ends of `others` there land on `route` too.
+    On { route: RouteId, others: Vec<(RouteId, End)> },
 }
 
-/// A planned `wire` (design 032 §2.3): its ops and what the result reports.
+impl Meets {
+    /// The other routes this end changes or lands on.
+    fn routes(&self) -> Vec<RouteId> {
+        match self {
+            Meets::Free | Meets::Point(_) => Vec::new(),
+            Meets::Merge { route, .. } => vec![*route],
+            Meets::On { route, others } => std::iter::once(*route).chain(others.iter().map(|(r, _)| *r)).collect(),
+        }
+    }
+
+    /// A merge that cannot be made lands on the route instead.
+    fn not_merged(self) -> Meets {
+        match self {
+            Meets::Merge { route, .. } => Meets::On { route, others: Vec::new() },
+            m => m,
+        }
+    }
+}
+
+/// A planned `wire` (design 032 §2.3, design 072 §4.3): its ops and what the result reports.
 #[derive(Debug, Clone)]
 pub struct WirePlan {
     pub ops: Vec<Op>,
-    /// The wire the drawn route (its first piece) now belongs to.
-    pub conductor: WireId,
-    /// That wire's route item.
+    /// The route the drawn line now belongs to: a new one, or the one it extends.
+    pub route: RouteId,
+    /// That route's item.
     pub item: ItemId,
-    /// False when the route was merged into an existing wire.
+    /// False when the line was merged into an existing route.
     pub created: bool,
-    /// The ends that merged or met other wire ends at a junction: (end, the other wire, how, how
-    /// many other wires met there).
-    pub joined: Vec<(End, WireId, &'static str, usize)>,
-    /// Wires folded into the survivor and deleted.
-    pub removed: Vec<WireId>,
-    /// Ends attached to a connection point that was already there.
+    /// The ends that met other routes: (end, the route met, `merged` or `on`).
+    pub joined: Vec<(End, RouteId, &'static str)>,
+    /// Routes merged into the survivor and removed.
+    pub removed: Vec<RouteId>,
+    /// Ends on a connection point.
     pub attached: Vec<(End, TerminalId)>,
-    /// Junctions placed at the ends: (end, junction, point).
-    pub junctions: Vec<(End, DeviceId, Pt)>,
-    /// Reverse T: (point, junction, the new wire piece that starts there).
-    pub splits: Vec<(Pt, DeviceId, WireId)>,
-}
-
-/// The other end of a wire.
-fn other_end(e: End) -> End {
-    match e {
-        End::A => End::B,
-        End::B => End::A,
-    }
+    /// Reverse T: (point, the route whose free end now lands on the drawn line there).
+    pub tees: Vec<(Pt, RouteId)>,
+    /// The wire made between the two connection points to carry the tool's potential.
+    pub wire: Option<WireId>,
 }
 
 /// Whether `a`-`b`-`c` runs straight on through `b` (one line, same direction).
@@ -790,8 +1085,8 @@ fn reversed(v: &[Pt]) -> Vec<Pt> {
     v.iter().rev().copied().collect()
 }
 
-/// The route of wire C (vertices `cv`, open end `open`) with `add` (starting at that end) joined
-/// on, so C keeps its end letters.
+/// The points of a route (`cv`, free end `open`) with `add` (starting at that end) joined on, so
+/// the route keeps its direction.
 fn merged_route(cv: &[Pt], open: End, add: &[Pt]) -> Vec<Pt> {
     match open {
         End::B => joined(cv.to_vec(), add),
@@ -799,45 +1094,30 @@ fn merged_route(cv: &[Pt], open: End, add: &[Pt]) -> Vec<Pt> {
     }
 }
 
-/// A route path as a primitive (a line for two points).
-fn path_of(pts: Vec<Pt>) -> Primitive {
-    match pts.as_slice() {
-        [a, b] => Primitive::Line { a: *a, b: *b },
-        _ => Primitive::Polyline { vertices: pts, closed: false },
-    }
-}
-
-/// Whether a wire end at `at` is quiet (a cable reference end, brief 009): never joined.
+/// Whether a route end at `at` is quiet (a cable reference end, brief 009): never joined.
 fn is_quiet(quiet: &[Pt], at: Pt) -> bool {
     quiet.iter().any(|q| q.near(at, ON_WIRE))
 }
 
-/// The wire whose interior (not an end) passes within [`ON_WIRE`] of `at`, the nearest.
-pub fn interior_wire_at(doc: &Document, page: PageId, at: Pt) -> Option<OnWire> {
-    wire_at(doc, page, at, ON_WIRE, None).filter(|on| {
-        route_vertices(doc, on.conductor, page)
-            .is_some_and(|(_, _, v)| !v.first().is_some_and(|f| f.near(on.at, ON_WIRE)) && !v.last().is_some_and(|l| l.near(on.at, ON_WIRE)))
-    })
+/// The route on `page` whose interior (not an end) passes within [`ON_WIRE`] of `at`, the nearest.
+pub fn interior_route_at(doc: &Document, page: PageId, at: Pt) -> Option<OnRoute> {
+    route_at(doc, page, at, ON_WIRE, None)
+        .filter(|on| doc.routes.get(&on.route).and_then(Route::end_points).is_some_and(|[f, l]| !f.near(on.at, ON_WIRE) && !l.near(on.at, ON_WIRE)))
 }
 
-/// Whether wire `c` can take a new wire end to end (design 032 §2.2): one route, on `page`, not a
-/// cable member.
-pub fn mergeable(doc: &Document, c: WireId, page: PageId) -> bool {
-    let mut reps = doc.representations_of(Subject::Wire(c));
-    let one_here = reps.next().is_some_and(|(_, r)| r.page == page && r.form == Form::Drawn) && reps.next().is_none();
-    one_here && doc.cables_of(c).is_empty()
+/// The net of the wires route `r` carries.
+fn route_net_key(doc: &Document, r: RouteId) -> Option<ecad_model::NetKey> {
+    wire_of_route(doc, r).and_then(|w| doc.connectivity().net_of_conductor(w))
 }
 
-/// The words of a wire in a refusal: its number, else `that wire`.
-fn wire_words(doc: &Document, c: WireId) -> String {
-    let conn = doc.connectivity();
-    conn.net_of_conductor(c).and_then(|n| conn.net(n)).and_then(|n| ecad_model::wiring::net_number(doc, n)).unwrap_or_else(|| "that wire".into())
+/// The net of the wires route `r` carries.
+fn route_net(doc: &Document, r: RouteId) -> Option<&ecad_model::NetData> {
+    route_net_key(doc, r).and_then(|n| doc.connectivity().net(n))
 }
 
-/// Refuse merging wire `c` with a new wire of potential `potential` (design 032 §2.2).
-fn merge_potential(doc: &Document, c: WireId, potential: Option<&str>) -> Result<(), CmdError> {
-    let conn = doc.connectivity();
-    let Some(net) = conn.net_of_conductor(c).and_then(|n| conn.net(n)) else { return Ok(()) };
+/// Refuse joining route `r` with a new line of potential `potential` (design 032 §2.2).
+fn merge_potential(doc: &Document, r: RouteId, potential: Option<&str>) -> Result<(), CmdError> {
+    let Some(net) = route_net(doc, r) else { return Ok(()) };
     let theirs = ecad_model::wiring::net_potential(doc, net).name;
     if let (Some(x), Some(y)) = (theirs.as_deref(), potential)
         && !x.eq_ignore_ascii_case(y)
@@ -847,91 +1127,28 @@ fn merge_potential(doc: &Document, c: WireId, potential: Option<&str>) -> Result
     Ok(())
 }
 
-/// Refuse folding wires `a` and `b` into one (design 032 §2.2): potentials, fixed numbers, stored
-/// cross-sections and colours that disagree.
-pub fn fold_sense(doc: &Document, a: WireId, b: WireId) -> Result<(), CmdError> {
+/// Refuse joining routes `a` and `b` into one (design 032 §2.2): their nets carry different
+/// potentials, or both have fixed numbers that differ.
+pub fn join_sense(doc: &Document, a: RouteId, b: RouteId) -> Result<(), CmdError> {
+    let (Some(ka), Some(kb)) = (route_net_key(doc, a), route_net_key(doc, b)) else { return Ok(()) };
     let conn = doc.connectivity();
-    if let (Some(na), Some(nb)) = (conn.net_of_conductor(a), conn.net_of_conductor(b))
-        && na != nb
-        && let (Some(x), Some(y)) = (conn.net(na), conn.net(nb))
-    {
-        let (px, py) = (ecad_model::wiring::net_potential(doc, x).name, ecad_model::wiring::net_potential(doc, y).name);
-        if let (Some(px), Some(py)) = (&px, &py)
-            && !px.eq_ignore_ascii_case(py)
-        {
-            return Err(CmdError::refused(format!("That wire carries {px} and this one {py}; joining them would short them. {JOIN_WAY_OUT}")));
-        }
-        if ecad_model::wiring::net_fixed(x) && ecad_model::wiring::net_fixed(y) {
-            let (fx, fy) = (ecad_model::wiring::net_number(doc, x).unwrap_or_default(), ecad_model::wiring::net_number(doc, y).unwrap_or_default());
-            if fx != fy {
-                return Err(CmdError::refused(format!("Both wires have fixed numbers of their own ({fx} and {fy}). {JOIN_WAY_OUT}")));
-            }
-        }
+    let (Some(x), Some(y)) = (conn.net(ka), conn.net(kb)) else { return Ok(()) };
+    if ka == kb {
+        return Ok(());
     }
-    let (Some(ca), Some(cb)) = (doc.wires.get(&a), doc.wires.get(&b)) else { return Ok(()) };
-    let pairs = [
-        (ca.size.map(|s| s.to_string()), cb.size.map(|s| s.to_string()), "cross-sections"),
-        (ca.colours.as_ref().map(ToString::to_string), cb.colours.as_ref().map(ToString::to_string), "colours"),
-    ];
-    for (x, y, words) in pairs {
-        if let (Some(x), Some(y)) = (x, y)
-            && x != y
-        {
-            return Err(CmdError::refused(format!("The two wires have different {words} ({x} and {y}). {JOIN_WAY_OUT}")));
+    let (px, py) = (ecad_model::wiring::net_potential(doc, x).name, ecad_model::wiring::net_potential(doc, y).name);
+    if let (Some(px), Some(py)) = (&px, &py)
+        && !px.eq_ignore_ascii_case(py)
+    {
+        return Err(CmdError::refused(format!("That wire carries {px} and this one {py}; joining them would short them. {JOIN_WAY_OUT}")));
+    }
+    if ecad_model::wiring::net_fixed(x) && ecad_model::wiring::net_fixed(y) {
+        let (fx, fy) = (ecad_model::wiring::net_number(doc, x).unwrap_or_default(), ecad_model::wiring::net_number(doc, y).unwrap_or_default());
+        if fx != fy {
+            return Err(CmdError::refused(format!("Both wires have fixed numbers of their own ({fx} and {fy}). {JOIN_WAY_OUT}")));
         }
     }
     Ok(())
-}
-
-/// The ops that carry folded wire `o`'s own properties onto survivor `s` (overseer ruling on
-/// design 032 §2.2: never lose them silently). Net-wide numbering keys are left to the numbering
-/// pass. A value both wires store differently is refused by [`fold_sense`] (cross-section,
-/// colour) or here (any other key), with words.
-fn fold_properties(doc: &Document, s: WireId, o: WireId) -> Result<Vec<Op>, CmdError> {
-    let (Some(sc), Some(oc)) = (doc.wires.get(&s), doc.wires.get(&o)) else { return Ok(Vec::new()) };
-    let differ = |k: &str, x: &dyn std::fmt::Debug, v: &dyn std::fmt::Debug| {
-        CmdError::refused(format!("The two wires have different values of {k} ({x:?} and {v:?}). {JOIN_WAY_OUT}"))
-    };
-    let mut after = sc.clone();
-    // The values both may hold: the survivor's stays, the folded one's fills a gap.
-    fn take<T: Clone + PartialEq>(mine: &mut Option<T>, other: &Option<T>) -> bool {
-        match (mine.as_ref(), other) {
-            (Some(x), Some(y)) => x == y,
-            (None, Some(y)) => {
-                *mine = Some(y.clone());
-                true
-            }
-            (_, None) => true,
-        }
-    }
-    if !take(&mut after.size, &oc.size) {
-        return Err(differ("size", &sc.size, &oc.size));
-    }
-    if !take(&mut after.colours, &oc.colours) {
-        return Err(differ("colours", &sc.colours, &oc.colours));
-    }
-    if !take(&mut after.potential, &oc.potential) {
-        return Err(differ("potential", &sc.potential, &oc.potential));
-    }
-    if !take(&mut after.load, &oc.load) {
-        return Err(differ("load", &sc.load, &oc.load));
-    }
-    match (sc.rating.is_empty(), oc.rating.is_empty()) {
-        (_, true) => {}
-        (true, false) => after.rating = oc.rating,
-        (false, false) if sc.rating == oc.rating => {}
-        (false, false) => return Err(differ("rating inputs", &sc.rating, &oc.rating)),
-    }
-    for (k, v) in &oc.display {
-        match sc.display.get(k) {
-            Some(x) if x == v => {}
-            Some(x) => return Err(CmdError::refused(format!("The two wires have different values of {k} ({x} and {v}). {JOIN_WAY_OUT}"))),
-            None => {
-                after.display.insert(k.clone(), v.clone());
-            }
-        }
-    }
-    Ok(if after == *sc { Vec::new() } else { vec![Op::ModifyWire { id: s, before: sc.clone(), after }] })
 }
 
 /// Whether a wire's net has a fixed number.
@@ -940,63 +1157,51 @@ pub fn has_fixed_number(doc: &Document, c: WireId) -> bool {
     conn.net_of_conductor(c).and_then(|n| conn.net(n)).is_some_and(ecad_model::wiring::net_fixed)
 }
 
-/// A junction made at `at` (no wire split): it attaches the open ends there.
-fn junction_here(doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, at: Pt) -> Result<Tagless, CmdError> {
-    let starter = junction_starter();
-    let mut props = ecad_model::Properties::new();
-    props.insert(KIND.into(), JUNCTION.into());
-    plan_tagless(doc, ids, page, style, starter, Placement { origin: at, rotation: Radians(0.0), mirror: false, scale: 1.0 }, props)
+/// The point at end `e` of route `r`.
+pub fn end_point(doc: &Document, r: RouteId, e: End) -> Option<Pt> {
+    let v = &doc.routes.get(&r)?.points;
+    match e {
+        End::A => v.first().copied(),
+        End::B => v.last().copied(),
+    }
 }
 
-/// The point of end `e` of `c`'s route on `page`.
-fn end_point(doc: &Document, c: WireId, e: End, page: PageId) -> Option<Pt> {
-    ecad_model::derive::route_ends_on(doc, c, page).map(|(a, b)| if e == End::A { a } else { b })
+/// The index of end `e` in a route's `ends`.
+pub fn end_index(e: End) -> usize {
+    match e {
+        End::A => 0,
+        End::B => 1,
+    }
 }
 
-/// The open ends of other wires at `at` on `page` that a new wire may join (not quiet ones).
-pub fn joinable_ends_at(doc: &Document, page: PageId, at: Pt, quiet: &[Pt]) -> Vec<(WireId, End)> {
-    loose_ends_at(doc, page, at, ON_WIRE).into_iter().filter(|(c, e)| end_point(doc, *c, *e, page).is_some_and(|p| !is_quiet(quiet, p))).collect()
+/// The free route ends at `at` on `page` that a new line may join (not quiet ones).
+pub fn joinable_ends_at(doc: &Document, page: PageId, at: Pt, quiet: &[Pt]) -> Vec<(RouteId, End)> {
+    loose_ends_at(doc, page, at, ON_WIRE).into_iter().filter(|(r, e)| end_point(doc, *r, *e).is_some_and(|p| !is_quiet(quiet, p))).collect()
 }
 
-/// What the end of a new wire at `at` meets (design 032 §2.1, step 2), and the point it snaps to.
-fn meet_at(doc: &Document, ids: &mut IdAllocator, page: PageId, style: &Style, at: Pt, quiet: &[Pt]) -> Result<(Meets, Pt), CmdError> {
+/// What the end of a new line at `at` meets (design 032 §2.1, step 2), and the point it snaps to.
+fn meet_at(doc: &Document, page: PageId, at: Pt, quiet: &[Pt]) -> (Meets, Pt) {
     let loose = joinable_ends_at(doc, page, at, quiet);
-    let through = interior_wire_at(doc, page, at);
-    match (loose.as_slice(), through) {
-        ([], None) => Ok((Meets::Open, at)),
-        ([(c, e)], None) if mergeable(doc, *c, page) => {
-            let route = route_vertices(doc, *c, page).ok_or(CmdError::refused("The wire has no route on this page."))?;
-            let p = end_point(doc, *c, *e, page).unwrap_or(at);
-            Ok((Meets::Merge { conductor: *c, end: *e, route }, p))
-        }
-        (_, Some(on)) => {
-            let j = plan_junction(doc, ids, page, style.clone(), on).map_err(|why| CmdError::refused(format!("{why} {JOIN_WAY_OUT}")))?;
-            let touched = j.tagless.attached.iter().map(|(c, _)| *c).collect();
-            let meets = Meets::Junction {
-                ops: j.tagless.ops,
-                terminal: j.tagless.terminal,
-                component: j.tagless.component,
-                others: j.tagless.attached.len() + 1,
-                split: Some(on.conductor),
-                touched,
-            };
-            Ok((meets, j.at))
-        }
-        ([(c, e), ..], None) => {
-            let p = end_point(doc, *c, *e, page).unwrap_or(at);
-            let t = junction_here(doc, ids, page, style.clone(), p)?;
-            let touched = t.attached.iter().map(|(c, _)| *c).collect();
-            Ok((Meets::Junction { ops: t.ops, terminal: t.terminal, component: t.component, others: t.attached.len(), split: None, touched }, p))
+    if let Some(on) = interior_route_at(doc, page, at) {
+        let others = loose.into_iter().filter(|(r, _)| *r != on.route).collect();
+        return (Meets::On { route: on.route, others }, on.at);
+    }
+    match loose.as_slice() {
+        [] => (Meets::Free, at),
+        [(r, e)] => (Meets::Merge { route: *r, end: *e }, end_point(doc, *r, *e).unwrap_or(at)),
+        [(r, e), rest @ ..] => {
+            let others = rest.iter().filter(|(x, _)| x != r).copied().collect();
+            (Meets::On { route: *r, others }, end_point(doc, *r, *e).unwrap_or(at))
         }
     }
 }
 
-/// The open ends of other wires on `page` that lie on the interior of path `v` (design 032 §2.1
-/// step 3), each as (segment index, distance along it, point), in order along the path, one per
-/// point.
-fn ends_on_path(doc: &Document, page: PageId, v: &[Pt], quiet: &[Pt]) -> Vec<(usize, f64, Pt)> {
+/// The free ends of other routes on `page` that lie on the interior of path `v` (design 032 §2.1
+/// step 3), each as (segment index, distance along it, point, route, end), in order along the
+/// path.
+fn ends_on_path(doc: &Document, page: PageId, v: &[Pt], quiet: &[Pt]) -> Vec<(usize, f64, Pt, RouteId, End)> {
     let (Some(first), Some(last)) = (v.first().copied(), v.last().copied()) else { return Vec::new() };
-    // A grid of the new wire's segments (overseer ruling: no segment-by-segment test of every end
+    // A grid of the new line's segments (overseer ruling: no segment-by-segment test of every end
     // on the page): an end is tested only against the segments in its cell.
     let mut grid: std::collections::HashMap<(i64, i64), Vec<usize>> = std::collections::HashMap::new();
     let mut long: Vec<usize> = Vec::new();
@@ -1019,19 +1224,12 @@ fn ends_on_path(doc: &Document, page: PageId, v: &[Pt], quiet: &[Pt]) -> Vec<(us
             }
         }
     }
-    let mut out: Vec<(usize, f64, Pt)> = Vec::new();
-    for (_, r) in doc.representations_on(page) {
-        let Subject::Wire(c) = r.subject else { continue };
-        if r.form != Form::Drawn {
-            continue;
-        }
-        let Some(cond) = doc.wires.get(&c) else { continue };
-        let Some((a, b)) = ecad_model::derive::route_ends_on(doc, c, page) else { continue };
-        for (end, q) in [(End::A, a), (End::B, b)] {
-            if cond.end(end).is_some() || !q.is_finite() || q.near(first, ON_WIRE) || q.near(last, ON_WIRE) || is_quiet(quiet, q) {
-                continue;
-            }
-            if out.iter().any(|(_, _, x)| x.near(q, ON_WIRE)) {
+    let mut out: Vec<(usize, f64, Pt, RouteId, End)> = Vec::new();
+    for r in doc.routes_on(page) {
+        let Some(route) = doc.routes.get(&r) else { continue };
+        for (end, e) in End::BOTH.into_iter().zip(route.ends) {
+            let Some(q) = end_point(doc, r, end) else { continue };
+            if e != RouteEnd::Free || !q.is_finite() || q.near(first, ON_WIRE) || q.near(last, ON_WIRE) || is_quiet(quiet, q) {
                 continue;
             }
             let Some(cell) = looks_cell(q) else { continue };
@@ -1044,11 +1242,11 @@ fn ends_on_path(doc: &Document, page: PageId, v: &[Pt], quiet: &[Pt]) -> Vec<(us
                 (d <= ON_WIRE && on.is_finite()).then(|| (i, s.dist(on)))
             });
             if let Some((i, along)) = hit {
-                out.push((i, along, q));
+                out.push((i, along, q, r, end));
             }
         }
     }
-    out.sort_by(|x, y| x.0.cmp(&y.0).then(x.1.total_cmp(&y.1)));
+    out.sort_by(|x, y| x.0.cmp(&y.0).then(x.1.total_cmp(&y.1)).then(x.3.cmp(&y.3)));
     out
 }
 
@@ -1059,39 +1257,39 @@ pub struct WireInput<'a> {
     pub style: Style,
     pub points: Vec<Pt>,
     pub potential: Option<&'a str>,
-    /// Join ends that meet other wires (design 032 §2.1 steps 2 and 3).
+    /// Join ends that meet other routes (design 032 §2.1 steps 2 and 3).
     pub join: bool,
     /// The project tolerance (an end on a connection point).
     pub tol: f64,
     /// The page's quiet ends (cable reference ends): never joined.
     pub quiet: &'a [Pt],
-    /// Most points a route may have, and most wire ends one wire may cross.
+    /// Most points a route may have, and most route ends one line may cross.
     pub max_points: usize,
 }
 
-/// Plan a new wire (design 032 §2): ends on connection points attach; with `join`, ends meeting
-/// other wires merge or get a junction, and open ends of other wires lying on it split it with a
-/// junction (the reverse T).
+/// Plan drawing a line (design 032 §2, design 072 §4.3): a route whose ends land on connection
+/// points, and with `join` on other routes: an end on another route's free end extends that route
+/// (two such ends make the two routes one), an end on a route's middle lands there (a T), and free
+/// ends of other routes lying on the line land on it (the reverse T). The wires come from the
+/// commit's rewrite pass; a line from one connection point straight to another also makes that
+/// wire, to carry the tool's potential.
 ///
 /// # Errors
-/// Design 032 §2.2's refusals (potentials, fixed numbers, a loop, too many points or splits), and
-/// a junction that cannot be placed; nothing is planned then.
+/// Design 032 §2.2's refusals (potentials, fixed numbers, too many points or ends crossed);
+/// nothing is planned then.
 pub fn plan_wire(doc: &Document, ids: &mut IdAllocator, input: WireInput<'_>) -> Result<WirePlan, CmdError> {
     let WireInput { page, style, points: mut pts, potential, join, tol, quiet, max_points } = input;
     let (Some(first), Some(last)) = (pts.first().copied(), pts.last().copied()) else { return Err(CmdError::refused("a wire needs two points")) };
     let mut shown = ShownOnce::new(doc, page);
-    let loop_refusal = |c: WireId| {
-        CmdError::refused(format!("This wire meets wire {} at two places, which would close it into a loop. {JOIN_WAY_OUT}", wire_words(doc, c)))
-    };
     // 1. The ends.
     let mut meets: Vec<Meets> = Vec::with_capacity(2);
     for (i, at) in [first, last].into_iter().enumerate() {
         let (m, p) = if let Some(t) = shown.terminal_at(at, tol) {
             (Meets::Point(t), at)
         } else if join {
-            meet_at(doc, ids, page, &style, at, quiet)?
+            meet_at(doc, page, at, quiet)
         } else {
-            (Meets::Open, at)
+            (Meets::Free, at)
         };
         let slot = if i == 0 { pts.first_mut() } else { pts.last_mut() };
         if let Some(s) = slot {
@@ -1099,323 +1297,209 @@ pub fn plan_wire(doc: &Document, ids: &mut IdAllocator, input: WireInput<'_>) ->
         }
         meets.push(m);
     }
-    let ma = meets.first().cloned().unwrap_or(Meets::Open);
-    let mb = meets.get(1).cloned().unwrap_or(Meets::Open);
-    if let (Meets::Merge { conductor: a, .. }, Meets::Merge { conductor: b, .. }) = (&ma, &mb)
-        && a == b
-    {
-        return Err(CmdError::refused(format!("Both ends land on the ends of one wire: that would close it into a loop. {JOIN_WAY_OUT}")));
-    }
-    // Conductors this plan splits or merges: each at most once, and no other end of the plan
-    // attaches to them (else the ops would contradict each other).
-    let mut exclusive: Vec<WireId> = Vec::new();
-    let mut touched: Vec<WireId> = Vec::new();
-    for m in [&ma, &mb] {
-        match m {
-            Meets::Merge { conductor, .. } => exclusive.push(*conductor),
-            Meets::Junction { split, touched: t, .. } => {
-                exclusive.extend(split.iter().copied());
-                touched.extend(t.iter().copied());
-            }
-            _ => {}
-        }
-    }
-    // 2. The reverse T: open ends lying on the new wire's interior split it.
-    let mut splits: Vec<(Pt, Tagless)> = Vec::new();
-    let mut pieces: Vec<Vec<Pt>> = vec![pts.clone()];
-    if join {
-        let on_path = ends_on_path(doc, page, &pts, quiet);
-        if on_path.len() > max_points {
-            return Err(CmdError::refused(format!("This wire crosses more than {max_points} wire ends; draw it in parts.")));
-        }
-        if !on_path.is_empty() {
-            let mut current: Vec<Pt> = Vec::new();
-            pieces.clear();
-            let mut k = 0usize;
-            for (i, w) in pts.windows(2).enumerate() {
-                let (Some(s), Some(e)) = (w.first().copied(), w.get(1).copied()) else { continue };
-                if current.is_empty() {
-                    current.push(s);
-                }
-                while let Some((seg, _, q)) = on_path.get(k).copied()
-                    && seg == i
-                {
-                    k += 1;
-                    if shown.terminal_at(q, tol).is_some() {
-                        continue;
-                    }
-                    let t = junction_here(doc, ids, page, style.clone(), q)?;
-                    touched.extend(t.attached.iter().map(|(c, _)| *c));
-                    if current.last().is_none_or(|l| !l.near(q, 1e-9)) {
-                        current.push(q);
-                    }
-                    pieces.push(std::mem::take(&mut current));
-                    current.push(q);
-                    splits.push((q, t));
-                }
-                if current.last().is_none_or(|l| !l.near(e, 1e-9)) {
-                    current.push(e);
-                }
-            }
-            pieces.push(current);
-            if pieces.iter().any(|p| p.len() < 2) || pieces.len() != splits.len() + 1 {
-                return Err(CmdError::refused("This wire would split where it starts or ends; draw it in parts."));
-            }
-        }
-    }
-    for c in &touched {
-        if exclusive.contains(c) {
-            return Err(loop_refusal(*c));
-        }
-    }
-    let mut seen = std::collections::BTreeSet::new();
-    for c in &exclusive {
-        if !seen.insert(*c) {
-            return Err(loop_refusal(*c));
-        }
-    }
-    let mut plan = WirePlan {
-        ops: Vec::new(),
-        conductor: WireId::from(0u128),
-        item: ItemId::from(0u128),
-        created: true,
-        joined: Vec::new(),
-        removed: Vec::new(),
-        attached: Vec::new(),
-        junctions: Vec::new(),
-        splits: Vec::new(),
-    };
-    // The ops of the junctions come first: the ends attach to their connection points.
-    let mut ops: Vec<Op> = Vec::new();
-    for m in [&ma, &mb] {
-        if let Meets::Junction { ops: j, .. } = m {
-            ops.extend(j.iter().cloned());
-        }
-    }
-    for (_, t) in &splits {
-        ops.extend(t.ops.iter().cloned());
-    }
-    for (end, m) in [(End::A, &ma), (End::B, &mb)] {
-        match m {
-            Meets::Point(t) => plan.attached.push((end, *t)),
-            Meets::Junction { component, others, touched: t, .. } => {
-                let at = if end == End::A { pts.first() } else { pts.last() };
-                plan.junctions.push((end, *component, at.copied().unwrap_or(first)));
-                if let Some(c) = t.first()
-                    && *others >= 2
-                {
-                    plan.joined.push((end, *c, "junction", *others));
-                }
-            }
-            Meets::Merge { conductor, .. } => plan.joined.push((end, *conductor, "merged", 1)),
-            Meets::Open => {}
-        }
-    }
-    // What each end of the whole wire attaches to (None: open, or merged).
-    let end_terminal = |m: &Meets| match m {
-        Meets::Point(t) => Some(*t),
-        Meets::Junction { terminal, .. } => Some(*terminal),
-        _ => None,
-    };
-    let n = pieces.len();
-    let mut conductor = Wire::default();
-    if let Some(v) = potential {
-        conductor.potential = ecad_model::text::Text::new(v).ok();
-    }
-    // The potential the drawn wire carries goes on the wire that takes it, when it has none.
-    let give_potential = |c: WireId, ops: &mut Vec<Op>| {
-        let Some(v) = potential else { return };
-        if let Some(x) = doc.wires.get(&c).filter(|x| x.potential.is_none()) {
-            let after = Wire { potential: ecad_model::text::Text::new(v).ok(), ..x.clone() };
-            ops.push(Op::ModifyWire { id: c, before: x.clone(), after });
-        }
-    };
-    let too_long = || CmdError::refused(format!("The joined wire would have more than {max_points} points."));
-    let mut attach: Vec<Op> = Vec::new();
-    let mut tail: Vec<Op> = Vec::new();
-    let mut owner: Option<(WireId, ItemId)> = None;
-    if let (Meets::Merge { conductor: c1, end: e1, route: r1 }, Meets::Merge { conductor: c2, end: e2, route: r2 }, 1) = (&ma, &mb, n) {
-        // Both ends meet open ends of two wires: one wire (§2.2).
-        merge_potential(doc, *c1, potential)?;
-        merge_potential(doc, *c2, potential)?;
-        fold_sense(doc, *c1, *c2)?;
-        // The survivor: the one with a fixed number, else the wire at end A.
-        let c1_survives = has_fixed_number(doc, *c1) || !has_fixed_number(doc, *c2);
-        let (s, es, rs, o, eo, ro, w) =
-            if c1_survives { (*c1, *e1, r1, *c2, *e2, r2, pts.clone()) } else { (*c2, *e2, r2, *c1, *e1, r1, reversed(&pts)) };
-        let o_from_end = if eo == End::A { ro.2.clone() } else { reversed(&ro.2) };
-        let route = merged_route(&rs.2, es, &joined(w, &o_from_end));
-        if route.len() > max_points {
-            return Err(too_long());
-        }
-        let mut after = rs.1.clone();
-        after.kind = ItemKind::Primitive(path_of(route));
-        ops.push(Op::ModifyItem { id: rs.0, before: rs.1.clone(), after });
-        let folded = fold_properties(doc, s, o)?;
-        let carries_potential = folded.iter().any(|op| matches!(op, Op::SetProperty { key, .. } if key == ecad_model::wiring::POTENTIAL_KEY));
-        ops.extend(folded);
-        if !carries_potential {
-            give_potential(s, &mut ops);
-        }
-        let oc = doc.wires.get(&o).ok_or(CmdError::NotFound(Noun::Wire))?;
-        let far = other_end(eo);
-        let mut gone = oc.clone();
-        if let Some(t) = oc.end(far) {
-            tail.push(Op::AttachEnd { conductor: o, end: far, before: Some(t), after: None });
-            tail.push(Op::AttachEnd { conductor: s, end: es, before: None, after: Some(t) });
-            gone.set_end(far, None);
-        }
-        for (rid, rep) in doc.representations_of(Subject::Wire(o)) {
-            tail.push(Op::UnlinkRepresentation { id: rid, rep: rep.clone() });
-        }
-        tail.push(Op::RemoveItem { id: ro.0, item: ro.1.clone() });
-        tail.push(Op::DeleteWire { id: o, conductor: gone });
-        plan.removed.push(o);
-        plan.created = false;
-        owner = Some((s, rs.0));
+    let mut mb = meets.pop().unwrap_or(Meets::Free);
+    let mut ma = meets.pop().unwrap_or(Meets::Free);
+    // 2. The reverse T: free ends lying on the line's interior land on it.
+    let tees: Vec<(Pt, RouteId, End)> = if join {
+        ends_on_path(doc, page, &pts, quiet)
+            .into_iter()
+            .filter(|(_, _, q, _, _)| shown.terminal_at(*q, tol).is_none())
+            .map(|(_, _, q, r, e)| (q, r, e))
+            .collect()
     } else {
-        // The terminal between pieces k and k+1.
-        let split_terminal = |k: usize| splits.get(k).map(|(_, t)| t.terminal);
-        for (k, piece) in pieces.iter().enumerate() {
-            let ta = if k == 0 { end_terminal(&ma) } else { split_terminal(k - 1) };
-            let tb = if k + 1 == n { end_terminal(&mb) } else { split_terminal(k) };
-            // A piece at a merging end joins that wire: its route grows, and the piece's other
-            // end's attachment goes on that wire's end.
-            let merge = match (k == 0, k + 1 == n, &ma, &mb) {
-                (true, _, Meets::Merge { conductor, end, route }, _) => Some((*conductor, *end, route, piece.clone(), tb)),
-                (_, true, _, Meets::Merge { conductor, end, route }) => Some((*conductor, *end, route, reversed(piece), ta)),
-                _ => None,
-            };
-            if let Some((c, e, route, from_end, far)) = merge {
-                merge_potential(doc, c, potential)?;
-                let r = merged_route(&route.2, e, &from_end);
-                if r.len() > max_points {
-                    return Err(too_long());
-                }
-                let mut after = route.1.clone();
-                after.kind = ItemKind::Primitive(path_of(r));
-                ops.push(Op::ModifyItem { id: route.0, before: route.1.clone(), after });
-                give_potential(c, &mut ops);
-                if let Some(t) = far {
-                    attach.push(Op::AttachEnd { conductor: c, end: e, before: None, after: Some(t) });
-                }
-                if k == 0 {
-                    owner = Some((c, route.0));
-                    plan.created = false;
-                }
-                continue;
-            }
-            let (w, i, r): (WireId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
-            ops.push(Op::CreateWire { id: w, conductor: conductor.clone() });
-            let item = Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Polyline { vertices: piece.clone(), closed: false }) };
-            ops.push(Op::AddItem { id: i, item });
-            let rep = Representation {
-                subject: Subject::Wire(w),
-                page,
-                form: Form::Drawn,
-                role: "route".into(),
-                items: vec![i],
-                connection_points: BTreeMap::new(),
-            };
-            ops.push(Op::LinkRepresentation { id: r, rep });
-            for (end, t) in [(End::A, ta), (End::B, tb)] {
-                if let Some(t) = t {
-                    attach.push(Op::AttachEnd { conductor: w, end, before: None, after: Some(t) });
-                }
-            }
-            if k == 0 {
-                owner = Some((w, i));
-            }
-            if let Some((q, t)) = k.checked_sub(1).and_then(|j| splits.get(j)) {
-                plan.splits.push((*q, t.component, w));
-            }
+        Vec::new()
+    };
+    if tees.len() > max_points {
+        return Err(CmdError::refused(format!("This wire crosses more than {max_points} wire ends; draw it in parts.")));
+    }
+    // A route merged into the line must not also land on it, or be landed on by its other end:
+    // that end lands on the route instead.
+    let tee_routes: BTreeSet<RouteId> = tees.iter().map(|(_, r, _)| *r).collect();
+    let clash = |m: &Meets, other: &Meets| match m {
+        Meets::Merge { route, .. } => tee_routes.contains(route) || other.routes().contains(route),
+        _ => false,
+    };
+    let (clash_a, clash_b) = (clash(&ma, &mb), clash(&mb, &ma));
+    if clash_a {
+        ma = ma.not_merged();
+    }
+    if clash_b {
+        mb = mb.not_merged();
+    }
+    if let (Meets::Merge { route: a, .. }, Meets::Merge { route: b, .. }) = (&ma, &mb) {
+        let lands = |x: RouteId, y: RouteId| doc.routes.get(&x).is_some_and(|r| r.ends.iter().any(|e| e.route() == Some(y)));
+        if lands(*a, *b) || lands(*b, *a) {
+            mb = mb.not_merged();
         }
     }
-    ops.extend(attach);
+    // Joining at an open end or landing on a line's middle (a T) joins the nets alike.
+    for m in [&ma, &mb] {
+        if let Meets::Merge { route, .. } | Meets::On { route, .. } = m {
+            merge_potential(doc, *route, potential)?;
+        }
+    }
+    if let (Meets::Merge { route: a, .. }, Meets::Merge { route: b, .. }) = (&ma, &mb) {
+        join_sense(doc, *a, *b)?;
+    }
+    let (pa, pb) = (pts.first().copied().unwrap_or(first), pts.last().copied().unwrap_or(last));
+    let end_of = |m: &Meets, at: Pt| match m {
+        Meets::Point(t) => RouteEnd::Point(*t),
+        Meets::On { route, .. } => RouteEnd::On { route: *route, at },
+        Meets::Free | Meets::Merge { .. } => RouteEnd::Free,
+    };
+    let (ea, eb) = (end_of(&ma, pa), end_of(&mb, pb));
+    let too_long = || CmdError::refused(format!("The joined wire would have more than {max_points} points."));
+    let mut ops: Vec<Op> = Vec::new();
+    let mut tail: Vec<Op> = Vec::new();
+    let mut edits = RouteEdits::new(doc);
+    let mut removed = Vec::new();
+    let mut joined_ends = Vec::new();
+    // 3. The route that holds the line.
+    let (holder, item, created) = match (&ma, &mb) {
+        (Meets::Merge { route: r1, end: e1 }, Meets::Merge { route: r2, end: e2 }) => {
+            // Both ends meet free ends of two routes: one route (§2.2), the one at end A.
+            let o = doc.routes.get(r2).ok_or(CmdError::NotFound(Noun::Wire))?;
+            let o_from_end = if *e2 == End::A { o.points.clone() } else { reversed(&o.points) };
+            let far = o.ends.get(end_index(e2.other())).copied().unwrap_or(RouteEnd::Free);
+            let s = edits.get(*r1).ok_or(CmdError::NotFound(Noun::Wire))?;
+            let points = merged_route(&s.points, *e1, &joined(pts.clone(), &o_from_end));
+            if points.len() > max_points {
+                return Err(too_long());
+            }
+            s.points = points;
+            if let Some(x) = s.ends.get_mut(end_index(*e1)) {
+                *x = far;
+            }
+            edits.retarget_tees(*r2, *r1);
+            tail = remove_route_ops(doc, *r2);
+            edits.forget(*r2);
+            removed.push(*r2);
+            joined_ends.push((End::A, *r1, "merged"));
+            joined_ends.push((End::B, *r2, "merged"));
+            let item = route_item(doc, *r1).map(|(_, i, _)| i).ok_or(CmdError::refused("The wire has no drawing on this page."))?;
+            (*r1, item, false)
+        }
+        (Meets::Merge { route, end }, _) | (_, Meets::Merge { route, end }) => {
+            let at_a = matches!(ma, Meets::Merge { .. });
+            let (add, far) = if at_a { (pts.clone(), eb) } else { (reversed(&pts), ea) };
+            let s = edits.get(*route).ok_or(CmdError::NotFound(Noun::Wire))?;
+            let points = merged_route(&s.points, *end, &add);
+            if points.len() > max_points {
+                return Err(too_long());
+            }
+            s.points = points;
+            if let Some(x) = s.ends.get_mut(end_index(*end)) {
+                *x = far;
+            }
+            joined_ends.push((if at_a { End::A } else { End::B }, *route, "merged"));
+            let item = route_item(doc, *route).map(|(_, i, _)| i).ok_or(CmdError::refused("The wire has no drawing on this page."))?;
+            (*route, item, false)
+        }
+        _ => {
+            if pts.len() > max_points {
+                return Err(CmdError::refused(format!("A wire has at most {max_points} points.")));
+            }
+            let (r, i, add) = add_route(ids, page, style, pts.clone(), [ea, eb]);
+            ops.extend(add);
+            (r, i, true)
+        }
+    };
+    // 4. What lands where.
+    let mut attached = Vec::new();
+    for (end, m, at) in [(End::A, &ma, pa), (End::B, &mb, pb)] {
+        match m {
+            Meets::Point(t) => attached.push((end, *t)),
+            Meets::On { route, others } => {
+                joined_ends.push((end, *route, "on"));
+                for (r, e) in others {
+                    edits.set_end(*r, *e, RouteEnd::On { route: *route, at });
+                }
+            }
+            Meets::Free | Meets::Merge { .. } => {}
+        }
+    }
+    let mut landed = Vec::new();
+    for (q, r, e) in &tees {
+        edits.set_end(*r, *e, RouteEnd::On { route: holder, at: *q });
+        landed.push((*q, *r));
+    }
+    // 5. The tool's potential, on the wire between two connection points.
+    let mut wire = None;
+    if created
+        && let (Some(v), Meets::Point(a), Meets::Point(b)) = (potential, &ma, &mb)
+        && a != b
+        && wire_between(doc, *a, *b).is_none()
+    {
+        let (id, net, conductor): (WireId, NetId, ConductorId) = (ids.fresh(), ids.fresh(), ids.fresh());
+        let mut w = Wire::new(net, conductor, *a, *b);
+        w.potential = ecad_model::text::Text::new(v).ok();
+        ops.push(Op::CreateWire { id, wire: w });
+        wire = Some(id);
+    }
+    ops.extend(edits.ops());
     ops.extend(tail);
-    let (c, i) = owner.ok_or(CmdError::refused("the wire has no route"))?;
-    plan.conductor = c;
-    plan.item = i;
-    plan.ops = ops;
-    Ok(plan)
+    Ok(WirePlan { ops, route: holder, item, created, joined: joined_ends, removed, attached, tees: landed, wire })
 }
 
-/// A planned merge of two open ends that meet (`joinwires`, design 032 §2.5).
+/// A planned merge of two free route ends that meet (`joinwires`, design 032 §2.5).
 #[derive(Debug, Clone)]
 pub struct EndJoin {
     pub ops: Vec<Op>,
-    pub survivor: WireId,
-    pub removed: WireId,
+    pub survivor: RouteId,
+    pub removed: RouteId,
 }
 
-/// Plan merging the open ends `a` and `b` of two wires that meet on `page` into one wire (design
-/// 032 §2.5): the wire with a fixed number survives, else the lower conductor ID; the other's far
-/// attachment moves onto the survivor, and the other is deleted.
+/// Plan merging the free ends `a` and `b` of two routes that meet into one route (design 032
+/// §2.5): the lower route ID survives and takes the other's points and far end; routes landing on
+/// the other land on it; the other is removed. `Ok(None)` when one of them lands on the other (the
+/// caller lands one end on the other route instead).
 ///
 /// # Errors
-/// One wire's two ends (a loop), a wire that cannot be merged (a cable core, drawn on two pages:
-/// `Ok(None)`, the caller places a junction instead), and §2.2's refusals.
-pub fn plan_end_join(doc: &Document, page: PageId, a: (WireId, End), b: (WireId, End), max_points: usize) -> Result<Option<EndJoin>, CmdError> {
+/// One route's two ends; a route too long; §2.2's refusals.
+pub fn plan_end_join(doc: &Document, a: (RouteId, End), b: (RouteId, End), max_points: usize) -> Result<Option<EndJoin>, CmdError> {
     if a.0 == b.0 {
         return Err(CmdError::refused(format!("Both ends belong to one wire: joining them would close it into a loop. {JOIN_WAY_OUT}")));
     }
-    if !mergeable(doc, a.0, page) || !mergeable(doc, b.0, page) {
+    let lands = |x: RouteId, y: RouteId| doc.routes.get(&x).is_some_and(|r| r.ends.iter().any(|e| e.route() == Some(y)));
+    if lands(a.0, b.0) || lands(b.0, a.0) {
         return Ok(None);
     }
-    fold_sense(doc, a.0, b.0)?;
-    let a_survives = match (has_fixed_number(doc, a.0), has_fixed_number(doc, b.0)) {
-        (true, false) => true,
-        (false, true) => false,
-        _ => a.0 < b.0,
-    };
-    let ((s, es), (o, eo)) = if a_survives { (a, b) } else { (b, a) };
-    let rs = route_vertices(doc, s, page).ok_or(CmdError::refused("The wire has no route on this page."))?;
-    let ro = route_vertices(doc, o, page).ok_or(CmdError::refused("The wire has no route on this page."))?;
-    let o_from_end = if eo == End::A { ro.2.clone() } else { reversed(&ro.2) };
-    // The other wire's open end lies on the survivor's (within ON_WIRE): it starts there.
-    let mut add = o_from_end;
-    if let (Some(first), Some(at)) = (add.first_mut(), end_point(doc, s, es, page)) {
+    join_sense(doc, a.0, b.0)?;
+    let ((s, es), (o, eo)) = if a.0 < b.0 { (a, b) } else { (b, a) };
+    let ro = doc.routes.get(&o).ok_or(CmdError::NotFound(Noun::Wire))?;
+    // The other route's free end lies on the survivor's (within ON_WIRE): it starts there.
+    let mut add = if eo == End::A { ro.points.clone() } else { reversed(&ro.points) };
+    if let (Some(first), Some(at)) = (add.first_mut(), end_point(doc, s, es)) {
         *first = at;
     }
-    let route = merged_route(&rs.2, es, &add);
-    if route.len() > max_points {
+    let far = ro.ends.get(end_index(eo.other())).copied().unwrap_or(RouteEnd::Free);
+    let mut edits = RouteEdits::new(doc);
+    let rs = edits.get(s).ok_or(CmdError::NotFound(Noun::Wire))?;
+    let points = merged_route(&rs.points, es, &add);
+    if points.len() > max_points {
         return Err(CmdError::refused(format!("The joined wire would have more than {max_points} points.")));
     }
-    let mut ops = Vec::new();
-    let mut after = rs.1.clone();
-    after.kind = ItemKind::Primitive(path_of(route));
-    ops.push(Op::ModifyItem { id: rs.0, before: rs.1.clone(), after });
-    ops.extend(fold_properties(doc, s, o)?);
-    let oc = doc.wires.get(&o).ok_or(CmdError::NotFound(Noun::Wire))?;
-    let far = other_end(eo);
-    let mut gone = oc.clone();
-    if let Some(t) = oc.end(far) {
-        ops.push(Op::AttachEnd { conductor: o, end: far, before: Some(t), after: None });
-        ops.push(Op::AttachEnd { conductor: s, end: es, before: None, after: Some(t) });
-        gone.set_end(far, None);
+    rs.points = points;
+    if let Some(x) = rs.ends.get_mut(end_index(es)) {
+        *x = far;
     }
-    for (rid, rep) in doc.representations_of(Subject::Wire(o)) {
-        ops.push(Op::UnlinkRepresentation { id: rid, rep: rep.clone() });
-    }
-    ops.push(Op::RemoveItem { id: ro.0, item: ro.1.clone() });
-    ops.push(Op::DeleteWire { id: o, conductor: gone });
+    edits.retarget_tees(o, s);
+    edits.forget(o);
+    let mut ops = edits.ops();
+    ops.extend(remove_route_ops(doc, o));
     Ok(Some(EndJoin { ops, survivor: s, removed: o }))
 }
 
-/// The nearest open end of a wire on `page` within `tol` of `p` that a new wire may join (not a
-/// quiet one): the Wire tool snaps a click there (design 032 §2.4).
+/// The nearest free route end on `page` within `tol` of `p` that a new line may join (not a quiet
+/// one): the Wire tool snaps a click there (design 032 §2.4).
 pub fn open_end_near(doc: &Document, page: PageId, p: Pt, tol: f64, quiet: &[Pt]) -> Option<Pt> {
     let mut best: Option<(f64, Pt)> = None;
-    for (_, r) in doc.representations_on(page) {
-        let Subject::Wire(c) = r.subject else { continue };
-        if r.form != Form::Drawn {
-            continue;
-        }
-        let Some(cond) = doc.wires.get(&c) else { continue };
-        let Some((a, b)) = ecad_model::derive::route_ends_on(doc, c, page) else { continue };
-        for (end, q) in [(End::A, a), (End::B, b)] {
+    for r in doc.routes_on(page) {
+        let Some(route) = doc.routes.get(&r) else { continue };
+        for (end, e) in End::BOTH.into_iter().zip(route.ends) {
+            let Some(q) = end_point(doc, r, end) else { continue };
             let d = q.dist(p);
-            if cond.end(end).is_none() && d <= tol && !is_quiet(quiet, q) && best.is_none_or(|(bd, _)| d < bd) {
+            if e == RouteEnd::Free && d <= tol && !is_quiet(quiet, q) && best.is_none_or(|(bd, _)| d < bd) {
                 best = Some((d, q));
             }
         }
@@ -1424,24 +1508,20 @@ pub fn open_end_near(doc: &Document, page: PageId, p: Pt, tol: f64, quiet: &[Pt]
 }
 
 /// What the Wire tool shows at an end point `at` (design 032 §2.4): the point, the word (`join`,
-/// `junction`, or the first words of a refusal such as `0V ≠ 24V`) and whether it is refused;
-/// `None` when the end would stay open.
+/// `tee`, or the first words of a refusal such as `0V ≠ 24V`) and whether it is refused; `None`
+/// when the end would stay open.
 pub fn join_preview(doc: &Document, page: PageId, at: Pt, quiet: &[Pt], potential: Option<&str>) -> Option<(Pt, String, bool)> {
-    let loose = joinable_ends_at(doc, page, at, quiet);
-    let through = interior_wire_at(doc, page, at);
-    match (loose.as_slice(), through) {
-        ([], None) => None,
-        ([(c, e)], None) if mergeable(doc, *c, page) => {
-            let p = end_point(doc, *c, *e, page).unwrap_or(at);
-            let conn = doc.connectivity();
-            let theirs = conn.net_of_conductor(*c).and_then(|n| conn.net(n)).and_then(|n| ecad_model::wiring::net_potential(doc, n).name);
+    let (m, p) = meet_at(doc, page, at, quiet);
+    match m {
+        Meets::Free | Meets::Point(_) => None,
+        Meets::Merge { route, .. } => {
+            let theirs = route_net(doc, route).and_then(|n| ecad_model::wiring::net_potential(doc, n).name);
             match (theirs, potential) {
                 (Some(x), Some(y)) if !x.eq_ignore_ascii_case(y) => Some((p, format!("{x} \u{2260} {y}"), true)),
                 _ => Some((p, "join".into(), false)),
             }
         }
-        (_, Some(on)) => Some((on.at, "junction".into(), false)),
-        ([(c, e), ..], None) => Some((end_point(doc, *c, *e, page).unwrap_or(at), "junction".into(), false)),
+        Meets::On { .. } => Some((p, "tee".into(), false)),
     }
 }
 
@@ -1455,31 +1535,18 @@ fn looks_cell(p: Pt) -> Option<(i64, i64)> {
     p.is_finite().then(|| ((p.x / LOOKS_CELL_MM).floor() as i64, (p.y / LOOKS_CELL_MM).floor() as i64))
 }
 
-/// The open wire ends on `page` that look connected (design 032 §2.6): lying on another wire's
+/// The free route ends on `page` that look connected (design 032 §2.6): lying on another route's
 /// end or interior, not quiet (a cable reference end). One point per place, in route order.
 ///
 /// # Semantics
-/// Computed during the page's projection from that page's routes only, with a grid of their
-/// segments, so the cost follows the page, never the project (update map §8.2).
+/// Computed during the page's projection from that page's routes only (the page index), with a
+/// grid of their segments, so the cost follows the page, never the project (update map §8.2).
 pub fn looks_connected_on_page(doc: &Document, page: PageId, quiet: &[Pt]) -> Vec<Pt> {
-    // Every route on the page: (conductor, vertices).
-    let mut routes: Vec<(WireId, Vec<Pt>)> = Vec::new();
-    for (_, r) in doc.representations_on(page) {
-        let Subject::Wire(c) = r.subject else { continue };
-        if r.form != Form::Drawn {
-            continue;
-        }
-        if let Some(v) = r.items.first().and_then(|i| doc.items.get(i)).and_then(|i| match &i.kind {
-            ItemKind::Primitive(p) => path_vertices(p),
-            _ => None,
-        }) {
-            routes.push((c, v));
-        }
-    }
+    let routes: Vec<&Route> = doc.routes_on(page).filter_map(|r| doc.routes.get(&r)).collect();
     let mut grid: std::collections::HashMap<(i64, i64), Vec<(usize, usize)>> = std::collections::HashMap::new();
     let mut long: Vec<(usize, usize)> = Vec::new();
-    for (r, (_, v)) in routes.iter().enumerate() {
-        for (s, w) in v.windows(2).enumerate() {
+    for (r, route) in routes.iter().enumerate() {
+        for (s, w) in route.points.windows(2).enumerate() {
             let (Some(a), Some(b)) = (w.first(), w.get(1)) else { continue };
             let (Some(lo), Some(hi)) = (
                 looks_cell(Pt::new(a.x.min(b.x) - ON_WIRE, a.y.min(b.y) - ON_WIRE)),
@@ -1500,11 +1567,10 @@ pub fn looks_connected_on_page(doc: &Document, page: PageId, quiet: &[Pt]) -> Ve
         }
     }
     let mut out: Vec<Pt> = Vec::new();
-    for (r, (c, v)) in routes.iter().enumerate() {
-        let Some(cond) = doc.wires.get(c) else { continue };
-        for (end, at) in [(End::A, v.first()), (End::B, v.last())] {
+    for (r, route) in routes.iter().enumerate() {
+        for (at, e) in [route.points.first(), route.points.last()].into_iter().zip(route.ends) {
             let Some(at) = at.copied() else { continue };
-            if cond.end(end).is_some() || is_quiet(quiet, at) || out.iter().any(|q| q.near(at, ON_WIRE)) {
+            if e != RouteEnd::Free || is_quiet(quiet, at) || out.iter().any(|q| q.near(at, ON_WIRE)) {
                 continue;
             }
             let Some(cell) = looks_cell(at) else { continue };
@@ -1512,7 +1578,7 @@ pub fn looks_connected_on_page(doc: &Document, page: PageId, quiet: &[Pt]) -> Ve
                 if *o == r {
                     return false;
                 }
-                let Some((_, ov)) = routes.get(*o) else { return false };
+                let Some(ov) = routes.get(*o).map(|x| &x.points) else { return false };
                 let (Some(a), Some(b)) = (ov.get(*s), ov.get(s + 1)) else { return false };
                 let (q, d) = on_segment(at, *a, *b);
                 d <= ON_WIRE && q.is_finite()
@@ -1542,7 +1608,7 @@ pub struct LabelCandidate {
     pub rep: RepresentationId,
     pub conductor: WireId,
     /// The route's net, if it has one.
-    pub net: Option<ecad_model::NetId>,
+    pub net: Option<ecad_model::NetKey>,
     pub text: String,
     /// Length of its longest segment.
     pub longest: f64,
@@ -1560,7 +1626,7 @@ pub fn labelled(candidates: &[LabelCandidate], rule: LabelRule) -> Vec<usize> {
     let mut chosen = vec![false; candidates.len()];
     match rule {
         LabelRule::Net => {
-            let mut best: BTreeMap<(Option<ecad_model::NetId>, Option<WireId>, &str), usize> = BTreeMap::new();
+            let mut best: BTreeMap<(Option<ecad_model::NetKey>, Option<WireId>, &str), usize> = BTreeMap::new();
             for (i, c) in candidates.iter().enumerate() {
                 // A wire without a net is its own group.
                 let key = (c.net, if c.net.is_none() { Some(c.conductor) } else { None }, c.text.as_str());
@@ -1588,7 +1654,7 @@ pub fn labelled(candidates: &[LabelCandidate], rule: LabelRule) -> Vec<usize> {
         }
     }
     // Every net drawn on the page is labelled at least once: on its best route.
-    let mut nets: BTreeMap<(Option<ecad_model::NetId>, Option<WireId>), (bool, usize)> = BTreeMap::new();
+    let mut nets: BTreeMap<(Option<ecad_model::NetKey>, Option<WireId>), (bool, usize)> = BTreeMap::new();
     for (i, c) in candidates.iter().enumerate() {
         let key = (c.net, if c.net.is_none() { Some(c.conductor) } else { None });
         let on = chosen.get(i).copied().unwrap_or(false);
@@ -1645,5 +1711,136 @@ impl<'a> ShownOnce<'a> {
     pub fn terminal_at(&mut self, at: Pt, tol: f64) -> Option<TerminalId> {
         let (doc, page) = (self.doc, self.page);
         first_near(self.shown.get_or_insert_with(|| ecad_model::derive::terminal_positions(doc, page)), at, tol)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ecad_model::{Color, Layer, LayerId, Page};
+
+    /// A document with one page and one layer, and the style to draw on it.
+    fn page_doc() -> (Document, PageId, Style) {
+        let mut doc = Document::default();
+        let (page, layer) = (PageId::from(1u128), LayerId::from(2u128));
+        for op in
+            [Op::AddLayer { id: layer, layer: Layer { name: "0".into() } }, Op::AddPage { id: page, page: Page::titled("1").unwrap(), index: 0 }]
+        {
+            op.apply(&mut doc).expect("setup");
+        }
+        doc.rebuild_index();
+        (doc, page, Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 })
+    }
+
+    fn draw(doc: &mut Document, ids: &mut IdAllocator, page: PageId, style: &Style, pts: &[(f64, f64)]) -> WirePlan {
+        let input = WireInput {
+            page,
+            style: style.clone(),
+            points: pts.iter().map(|(x, y)| Pt::new(*x, *y)).collect(),
+            potential: None,
+            join: true,
+            tol: 0.1,
+            quiet: &[],
+            max_points: 100,
+        };
+        let plan = plan_wire(doc, ids, input).expect("plan");
+        for op in &plan.ops {
+            op.apply(doc).expect("apply");
+        }
+        doc.rebuild_index();
+        plan
+    }
+
+    /// The item drawing route `r` has the route's points.
+    fn drawn_as_routed(doc: &Document, r: RouteId) -> bool {
+        matches!(route_vertices(doc, r), Some((_, Item { kind: ItemKind::Primitive(Primitive::Polyline { vertices, .. }), .. }, v)) if vertices == v)
+    }
+
+    #[test]
+    fn a_line_is_a_route_drawn_by_one_polyline() {
+        let (mut doc, page, style) = page_doc();
+        let mut ids = IdAllocator::seeded(7);
+        let plan = draw(&mut doc, &mut ids, page, &style, &[(0.0, 0.0), (10.0, 0.0)]);
+        assert!(plan.created);
+        let route = doc.routes.get(&plan.route).expect("route");
+        assert_eq!(route.ends, [RouteEnd::Free, RouteEnd::Free]);
+        assert!(drawn_as_routed(&doc, plan.route));
+        assert!(doc.wires.is_empty(), "no connection points: no wire");
+    }
+
+    #[test]
+    fn a_line_from_a_free_end_extends_that_route() {
+        let (mut doc, page, style) = page_doc();
+        let mut ids = IdAllocator::seeded(7);
+        let first = draw(&mut doc, &mut ids, page, &style, &[(0.0, 0.0), (10.0, 0.0)]);
+        let second = draw(&mut doc, &mut ids, page, &style, &[(10.0, 0.0), (20.0, 0.0)]);
+        assert!(!second.created);
+        assert_eq!(second.route, first.route);
+        assert_eq!(doc.routes.len(), 1);
+        assert_eq!(doc.routes.get(&first.route).map(|r| r.points.clone()), Some(vec![Pt::new(0.0, 0.0), Pt::new(20.0, 0.0)]), "one straight line");
+        assert!(drawn_as_routed(&doc, first.route));
+    }
+
+    #[test]
+    fn a_line_between_two_free_ends_makes_one_route_of_three() {
+        let (mut doc, page, style) = page_doc();
+        let mut ids = IdAllocator::seeded(7);
+        let a = draw(&mut doc, &mut ids, page, &style, &[(0.0, 0.0), (10.0, 0.0)]);
+        let b = draw(&mut doc, &mut ids, page, &style, &[(20.0, 10.0), (20.0, 20.0)]);
+        let c = draw(&mut doc, &mut ids, page, &style, &[(10.0, 0.0), (20.0, 0.0), (20.0, 10.0)]);
+        assert_eq!(c.route, a.route);
+        assert_eq!(c.removed, vec![b.route]);
+        assert_eq!(doc.routes.len(), 1);
+        assert_eq!(doc.routes.get(&a.route).map(|r| r.points.len()), Some(3));
+        assert!(drawn_as_routed(&doc, a.route));
+        assert!(route_item(&doc, b.route).is_none(), "the merged route's drawing goes with it");
+    }
+
+    #[test]
+    fn a_line_ending_on_a_route_is_a_tee_and_a_free_end_on_a_new_line_lands_on_it() {
+        let (mut doc, page, style) = page_doc();
+        let mut ids = IdAllocator::seeded(7);
+        let main = draw(&mut doc, &mut ids, page, &style, &[(0.0, 0.0), (20.0, 0.0)]);
+        let tee = draw(&mut doc, &mut ids, page, &style, &[(5.0, 10.0), (5.0, 0.0)]);
+        assert_eq!(doc.routes.get(&tee.route).map(|r| r.ends[1]), Some(RouteEnd::On { route: main.route, at: Pt::new(5.0, 0.0) }));
+        assert!(doc.devices.is_empty(), "no junction component");
+        // Reverse T: a free end lying on a new line's middle lands on it.
+        let stub = draw(&mut doc, &mut ids, page, &style, &[(40.0, 10.0), (40.0, 0.0)]);
+        let across = draw(&mut doc, &mut ids, page, &style, &[(30.0, 0.0), (50.0, 0.0)]);
+        assert_eq!(across.tees, vec![(Pt::new(40.0, 0.0), stub.route)]);
+        assert_eq!(doc.routes.get(&stub.route).map(|r| r.ends[1]), Some(RouteEnd::On { route: across.route, at: Pt::new(40.0, 0.0) }));
+    }
+
+    #[test]
+    fn joining_two_free_ends_merges_and_tees_follow_the_survivor() {
+        let (mut doc, page, style) = page_doc();
+        let mut ids = IdAllocator::seeded(7);
+        let a = draw(&mut doc, &mut ids, page, &style, &[(0.0, 0.0), (10.0, 0.0)]);
+        let input = WireInput {
+            page,
+            style: style.clone(),
+            points: vec![Pt::new(10.0, 0.0), Pt::new(20.0, 0.0)],
+            potential: None,
+            join: false,
+            tol: 0.1,
+            quiet: &[],
+            max_points: 100,
+        };
+        let b = plan_wire(&doc, &mut ids, input).expect("plan");
+        for op in &b.ops {
+            op.apply(&mut doc).expect("apply");
+        }
+        doc.rebuild_index();
+        let tee = draw(&mut doc, &mut ids, page, &style, &[(15.0, 10.0), (15.0, 0.0)]);
+        let ends = [(a.route, End::B), (b.route, End::A)];
+        let j = plan_end_join(&doc, ends[0], ends[1], 100).expect("join").expect("merge");
+        for op in &j.ops {
+            op.apply(&mut doc).expect("apply");
+        }
+        doc.rebuild_index();
+        assert_eq!(doc.routes.len(), 2);
+        let survivor = j.survivor;
+        assert_eq!(doc.routes.get(&tee.route).and_then(|r| r.ends[1].route()), Some(survivor));
+        assert!(drawn_as_routed(&doc, survivor));
     }
 }

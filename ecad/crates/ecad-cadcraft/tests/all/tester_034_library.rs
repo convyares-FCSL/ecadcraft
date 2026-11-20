@@ -15,7 +15,7 @@ use ecad_cadcraft::symbols::{self, STARTER_LIBRARY, STARTERS};
 use ecad_model::{DeviceId, Document, Pt, TerminalId, Word};
 use serde_json::{Value, json};
 
-use crate::common::{H, id, pts};
+use crate::common::{H, id};
 use crate::common::{reopen, tmp_dir};
 
 /// `def_id(0)` of the starter library (design 018 §4): definition IDs are this plus n.
@@ -187,7 +187,7 @@ pub(crate) fn catalogue() -> Vec<Sym> {
 /// Brief 045's starters (design 045 §3.1, §4.1), not design 034's.
 pub(crate) const BRIEF_045: &[&str] = &["plcim", "plcpm", "plccm", "chdi", "chdq", "chai", "chao", "chrtd", "chiol"];
 
-const OLD: [(&str, u128, &str); 21] = [
+const OLD: [(&str, u128, &str); 20] = [
     ("coil", 1, "K"),
     ("no", 2, "K"),
     ("nc", 3, "K"),
@@ -206,7 +206,6 @@ const OLD: [(&str, u128, &str); 21] = [
     ("terminal", 16, "X"),
     ("di", 17, "A"),
     ("do", 18, "A"),
-    ("junction", 19, ""),
     ("continuation", 20, ""),
     ("terminalpe", 21, "X"),
 ];
@@ -265,7 +264,7 @@ fn search_keys(h: &mut H, q: &str) -> BTreeSet<String> {
     v["symbols"].as_array().map(|a| a.iter().filter_map(|s| s["key"].as_str().map(String::from)).collect()).unwrap_or_default()
 }
 
-fn net_of(d: &Document, t: TerminalId) -> Option<ecad_model::connectivity::NetId> {
+fn net_of(d: &Document, t: TerminalId) -> Option<ecad_model::connectivity::NetKey> {
     d.connectivity().net_of_terminal(t)
 }
 
@@ -385,7 +384,7 @@ fn a1_every_new_symbol_is_in_the_catalogue_as_designed() {
         .map(|k| k.word())
         .collect();
     assert!(extra.is_empty(), "keys not in design 034: {extra:?}");
-    assert_eq!(STARTERS.len(), 21 + cat.len() + 20 + 3 + STARTERS.iter().filter(|s| BRIEF_045.contains(&s.key.word())).count());
+    assert_eq!(STARTERS.len(), 20 + cat.len() + 20 + 3 + STARTERS.iter().filter(|s| BRIEF_045.contains(&s.key.word())).count());
 }
 
 /// §13 check 1 and §7.1: Find Symbol finds by family word, prefix and alias.
@@ -625,9 +624,9 @@ fn f_fuse_bank_breaks_the_net_per_fuse() {
     let mut h = H::new(0x7034_0009);
     let v = place(&mut h, "fusebank8", (100.0, 150.0));
     // L+ (90,170), outputs 1 (100,135) and 2 (110,135).
-    h.run("wire", json!({"points": pts(&[(90.0, 200.0), (90.0, 170.0)])})).unwrap();
-    h.run("wire", json!({"points": pts(&[(100.0, 135.0), (100.0, 100.0)])})).unwrap();
-    h.run("wire", json!({"points": pts(&[(110.0, 135.0), (110.0, 90.0)])})).unwrap();
+    h.wire_pp(&[(90.0, 200.0), (90.0, 170.0)]).unwrap();
+    h.wire_pp(&[(100.0, 135.0), (100.0, 100.0)]).unwrap();
+    h.wire_pp(&[(110.0, 135.0), (110.0, 90.0)]).unwrap();
     let d = h.doc();
     let (lp, o1, o2) = (term(&v, "L+"), term(&v, "1"), term(&v, "2"));
     for t in [lp, o1, o2] {
@@ -644,8 +643,8 @@ fn g_fuse_terminal_breaks_the_net() {
     let mut h = H::new(0x7034_000a);
     let v = place(&mut h, "fuseterm", (100.0, 150.0));
     assert_eq!(v["tag"], json!("-F01"));
-    h.run("wire", json!({"points": pts(&[(100.0, 200.0), (100.0, 160.0)])})).unwrap();
-    h.run("wire", json!({"points": pts(&[(100.0, 140.0), (100.0, 100.0)])})).unwrap();
+    h.wire_pp(&[(100.0, 200.0), (100.0, 160.0)]).unwrap();
+    h.wire_pp(&[(100.0, 140.0), (100.0, 100.0)]).unwrap();
     let d = h.doc();
     let (a, b) = (term(&v, "1"), term(&v, "2"));
     assert!(d.has_ends(a) && d.has_ends(b));
@@ -661,8 +660,8 @@ fn h_bulkhead_pin_joins_both_sides() {
     let mut h = H::new(0x7034_000b);
     let v = place(&mut h, "rj45", (100.0, 150.0));
     assert_eq!(v["tag"], json!("-X01"));
-    h.run("wire", json!({"points": pts(&[(100.0, 200.0), (100.0, 150.0)])})).unwrap();
-    h.run("wire", json!({"points": pts(&[(100.0, 150.0), (100.0, 100.0)])})).unwrap();
+    h.wire_pp(&[(100.0, 200.0), (100.0, 150.0)]).unwrap();
+    h.wire_pp(&[(100.0, 150.0), (100.0, 100.0)]).unwrap();
     let d = h.doc();
     let pin = term(&v, "1");
     let net = net_of(&d, pin).expect("pin 1 has a net");
@@ -765,7 +764,7 @@ fn j_quiet_spare_points_are_not_flagged() {
     // Wiring a quiet pin changes nothing else: its neighbour stays quiet.
     let (e, v) = placed.iter().find(|(e, _)| e.key == "socket4").unwrap();
     let at = slot(cat.iter().position(|x| x.key == e.key).unwrap());
-    h.run("wire", json!({"points": pts(&[(at.0, at.1 + 5.0), (at.0, at.1 + 30.0)])})).unwrap();
+    h.wire_pp(&[(at.0, at.1 + 5.0), (at.0, at.1 + 30.0)]).unwrap();
     let f = unconnected(&h.doc());
     assert!(!f.contains(&term(v, "1")) && !f.contains(&term(v, "2")));
 }
@@ -976,10 +975,9 @@ fn p_old_starters_keep_their_content_hash() {
         ("terminalpe", "d38f6429abbaf0e8e110505625b467b6531504a762e11205542230148f9f1c00"),
         ("di", "92732e642b7d5109705f643341f4d9ee02bb3729275a570182e63b6d126bf7b9"),
         ("do", "caeab16ca1a100e4c5b4a49a878ebf666a634ef6365db7111ab237ba1e936307"),
-        ("junction", "8a6e36eab66ded66ec4ef470682d2d5cecf536a0d1fe6c148c632154232a4868"),
         ("continuation", "7289a1f63b563b3f0ceb6959fd7fb34763daf4c1c6e56bb2366e01129ae7afaf"),
     ];
-    assert_eq!(PINNED.len(), 21, "pin every old starter");
+    assert_eq!(PINNED.len(), 20, "pin every old starter");
     for (key, want) in PINNED {
         let s = symbols::by_key(key).unwrap();
         let o = s.definition().unwrap().origin.clone().unwrap();
