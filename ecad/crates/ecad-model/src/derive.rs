@@ -188,10 +188,6 @@ enum Node {
 
 // ---------------------------------------------------------------- cable references (brief 010)
 
-/// The representation role of a cable reference end (design 010 §0): a drawn representation of a
-/// cable holding one Point item, where the drawing of the cable stops on its page.
-pub const REFERENCE_ROLE: &str = "reference";
-
 /// Most other ends one reference text lists before `+N` (design 010 §6.2); also the most partner
 /// IDs a [`CableReference`] keeps, so a hostile file with many references of one cable costs
 /// linear, not quadratic, memory.
@@ -370,7 +366,7 @@ pub fn cable_references(doc: &Document) -> Vec<CableReference> {
     let refs: Vec<(RepresentationId, &Representation)> = doc
         .representations
         .iter()
-        .filter(|(_, r)| r.role == REFERENCE_ROLE && matches!(r.subject, Subject::Cable(_)))
+        .filter(|(_, r)| r.role == crate::Role::Reference && matches!(r.subject, Subject::Cable(_)))
         .map(|(id, r)| (*id, r))
         .collect();
     references_from(doc, refs)
@@ -384,7 +380,7 @@ pub fn cable_references_of(doc: &Document, cables: &BTreeSet<CableId>) -> Vec<Ca
     let refs: Vec<(RepresentationId, &Representation)> = cables
         .iter()
         .flat_map(|k| doc.representations_of(Subject::Cable(*k)))
-        .filter(|(_, r)| r.role == REFERENCE_ROLE && matches!(r.subject, Subject::Cable(_)))
+        .filter(|(_, r)| r.role == crate::Role::Reference && matches!(r.subject, Subject::Cable(_)))
         .collect();
     references_from(doc, refs)
 }

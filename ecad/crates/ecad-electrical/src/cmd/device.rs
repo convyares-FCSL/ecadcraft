@@ -194,7 +194,7 @@ pub fn plan_convert(ids: &mut IdAllocator, page: PageId, items: Vec<ItemId>) -> 
                 subject: Subject::Device(component),
                 page,
                 form: Form::Drawn,
-                role: "drawn".into(),
+                role: ecad_model::Role::Drawn,
                 items,
                 connection_points: BTreeMap::new(),
             },

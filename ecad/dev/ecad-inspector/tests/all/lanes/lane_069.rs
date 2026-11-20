@@ -99,7 +99,7 @@ fn every_op_ledger() -> Ledger {
         subject: Subject::Device(comp),
         page,
         form: Form::Symbol,
-        role: "main".into(),
+        role: ecad_model::Role::Part(ecad_model::PartRole::Other),
         items: vec![sym],
         connection_points: Default::default(),
     };
@@ -111,7 +111,7 @@ fn every_op_ledger() -> Ledger {
         subject: Subject::Wire(wire),
         page,
         form: Form::Drawn,
-        role: "route".into(),
+        role: ecad_model::Role::Route,
         items: vec![item],
         connection_points: Default::default(),
     };
@@ -143,7 +143,7 @@ fn every_op_ledger() -> Ledger {
     ledger.commit(Author::User, "bookmark", vec![Op::NameVersion { name: "v".into(), at: 1, description: None }]).unwrap();
     let moved = line(page, layer, 7.0);
     let mut rep_after = rep_wire_v.clone();
-    rep_after.role = "moved".into();
+    rep_after.role = ecad_model::Role::Drawn;
     let header = StandardHeader {
         id: ids.fresh(),
         name: ecad_model::style::StyleName::new("S").unwrap(),

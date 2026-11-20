@@ -903,7 +903,7 @@ impl App {
         let found = p
             .read(&mut self.cad.session, |p, _| {
                 let doc = p.ledger.document();
-                let (_, r) = doc.representations_of(ecad_model::Subject::Cable(cable)).find(|(_, r)| r.role == "slash")?;
+                let (_, r) = doc.representations_of(ecad_model::Subject::Cable(cable)).find(|(_, r)| r.role == ecad_model::Role::Slash)?;
                 let at = r.items.first().and_then(|i| doc.items.get(i)).and_then(|i| match &i.kind {
                     ecad_model::ItemKind::Primitive(ecad_model::Primitive::Line { a, b }) => {
                         Some(ecad_model::Pt::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0))

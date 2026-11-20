@@ -196,7 +196,7 @@ fn reference_end(h: &mut H, page: PageId, cable: CableId, at: Pt, n: u128) -> (I
                 subject: Subject::Cable(cable),
                 page,
                 form: Form::Drawn,
-                role: look::REFERENCE_ROLE.into(),
+                role: ecad_model::Role::Reference,
                 items: vec![item],
                 connection_points: Default::default(),
             },
@@ -791,7 +791,7 @@ fn ac6_nan_infinite_and_overflowing_geometry_never_panics() {
         let after = Item { kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(0.0, 5.0), b: Pt::new(x, 5.0) }), ..before.clone() };
         assert!(f.h.project.apply_ops(&mut f.h.s, "Bad", vec![Op::ModifyItem { id: route, before, after }]).is_err());
         assert_eq!(f.h.head(), head);
-        let rep_item = base.representations.values().find(|r| r.role == look::REFERENCE_ROLE).unwrap().items[0];
+        let rep_item = base.representations.values().find(|r| r.role == ecad_model::Role::Reference).unwrap().items[0];
         let before = base.items[&rep_item].clone();
         let after = Item { kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(x, 0.0) }), ..before.clone() };
         let r = f.h.project.apply_ops(&mut f.h.s, "Bad", vec![Op::ModifyItem { id: rep_item, before, after }]);
@@ -824,7 +824,7 @@ fn ac6_nan_infinite_and_overflowing_geometry_never_panics() {
         }
     }
     let point_cases = [Pt::new(f64::NAN, 0.0), Pt::new(0.0, f64::INFINITY), Pt::new(-1e12, 1e12)];
-    let rep_item = base.representations.values().find(|r| r.role == look::REFERENCE_ROLE).unwrap().items[0];
+    let rep_item = base.representations.values().find(|r| r.role == ecad_model::Role::Reference).unwrap().items[0];
     for at in point_cases {
         let mut doc = base.clone();
         doc.items.get_mut(&rep_item).unwrap().kind = ItemKind::Primitive(Primitive::Point { at });
@@ -1202,7 +1202,7 @@ fn cablefan_join_follows_wires_and_cable_lifecycle() {
     f.h.run("redo", Value::Null).unwrap();
     f.h.check();
     // Delete the whole cable with a stored join: the document stays valid; undo restores both.
-    let anchors = |h: &mut H| h.doc().representations.values().filter(|r| r.role == look::ANCHOR_ROLE).count();
+    let anchors = |h: &mut H| h.doc().representations.values().filter(|r| r.role == ecad_model::Role::FanAnchor).count();
     assert_eq!(anchors(&mut f.h), 1);
     f.h.run("ecaddelete", json!({"cable": f.c1.hex()})).unwrap();
     f.h.check();
@@ -1228,7 +1228,7 @@ fn cablefan_hostile_stored_join_draws_finite() {
     view(&mut f.h, f.c1, "fan");
     f.h.run("cablefan", json!({"cable": f.c1.hex(), "end": "A", "at": 0.5})).unwrap();
     let base = f.h.doc();
-    let item = base.representations.values().find(|r| r.role == look::ANCHOR_ROLE).unwrap().items[0];
+    let item = base.representations.values().find(|r| r.role == ecad_model::Role::FanAnchor).unwrap().items[0];
     for at in [Pt::new(1e308, 1e308), Pt::new(-1e308, 1e308), Pt::new(f64::NAN, 0.0), Pt::new(0.0, f64::INFINITY)] {
         let mut doc = base.clone();
         doc.items.get_mut(&item).unwrap().kind = ItemKind::Primitive(Primitive::Point { at });

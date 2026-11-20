@@ -124,8 +124,9 @@ fn record_and_definition_hashes_are_pinned() {
         ("coil", "a8b35e81d6a9d456e9f70d188e8b6fb8b729a950d94ca54fbcbd793e9f908952"),
         ("d1", "a8b35e81d6a9d456e9f70d188e8b6fb8b729a950d94ca54fbcbd793e9f908952"),
         ("d2", "0fcefba53f430d7f0e8467eb0eddb6166605310dee1a02896b16543e6ca99682"),
-        // Design 072 F14 and F20 (lanes B, D and E): the device, wire, page and project records.
-        ("head", "afc63eb6797ea50085aedb6ccef76f39c694e68c4c926fe76fe5f8a9b98197bf"),
+        // Design 072 F14, F20 and F3′ (lanes B, D and E): the device, wire, page and project records
+        // and the representation roles.
+        ("head", "0151664de15f73c74bb6e6156c590546bd13d6289289d6ac6687c7fb7be2aaf7"),
     ];
     for ((name, h), (wname, w)) in got.iter().chain(std::iter::once(&head)).zip(want) {
         assert_eq!((*name, h.as_str()), (wname, w), "a pinned hash changed");

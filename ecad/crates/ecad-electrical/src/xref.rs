@@ -393,12 +393,9 @@ pub enum Class {
     Other,
 }
 
-/// The starter symbol a representation shows: its definition's, else (a drawn form) its role key.
+/// The starter symbol a representation shows: its definition's (a drawn form has none).
 pub fn starter_of(doc: &Document, r: &Representation) -> Option<&'static Starter> {
-    if let Some(s) = crate::devices::rep_starter(doc, r) {
-        return Some(s);
-    }
-    (r.form == Form::Drawn).then(|| crate::symbols::by_key(&r.role)).flatten()
+    crate::devices::rep_starter(doc, r)
 }
 
 /// Whether a starter symbol is a head.
@@ -421,7 +418,7 @@ pub fn poles_of(s: &Starter) -> Vec<(PoleKind, bool)> {
 /// by [`device`]): a head by its type ([`crate::reps::rep_type`]), a child when its symbol carries
 /// poles.
 fn raw_class(doc: &Document, r: &Representation) -> Class {
-    if crate::reps::rep_type(doc, r) == crate::reps::RepType::Head {
+    if crate::reps::rep_type(doc, r) == ecad_model::PartRole::Head {
         return Class::Head;
     }
     match starter_of(doc, r) {

@@ -1134,7 +1134,7 @@ mod tests {
                 subject: ecad_model::Subject::Device(comp),
                 page,
                 form: ecad_model::Form::Symbol,
-                role: String::new(),
+                role: ecad_model::Role::default(),
                 items: Vec::new(),
                 connection_points: Default::default(),
             },

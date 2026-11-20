@@ -147,7 +147,11 @@ fn review_3_kept_model_paths_walk_no_project() {
     // The inspector on a cell.
     let page = h.first_page();
     let d = h.doc();
-    let cell = d.representations_of(Subject::Device(di)).find(|(_, r)| r.role == "chdi").and_then(|(_, r)| r.items.first().copied()).expect("a cell");
+    let cell = d
+        .representations_of(Subject::Device(di))
+        .find(|(_, r)| r.role == ecad_model::Role::Part(ecad_model::PartRole::Channel))
+        .and_then(|(_, r)| r.items.first().copied())
+        .expect("a cell");
     let handle = h.handle_of(page, cell);
     let v = h.pv(|p, _| ecad_cadcraft::props::view(p, Some(page), &[handle]));
     let row = v.sections.iter().flat_map(|s| s.rows.iter()).find(|r| r.label == "Address").cloned().expect("an Address row");

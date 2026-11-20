@@ -566,7 +566,7 @@ fn ac5_hover_on_member_wires_names_the_other_drawing() {
     }
     // The slash on Field lists both pages and both references.
     let doc = r.h.doc();
-    let slash = doc.representations.iter().find(|(_, x)| x.page == r.field && x.role == "slash").map(|(_, x)| x.items[0]).unwrap();
+    let slash = doc.representations.iter().find(|(_, x)| x.page == r.field && x.role == ecad_model::Role::Slash).map(|(_, x)| x.items[0]).unwrap();
     let hs = r.h.handle_of(r.field, slash);
     let u = uid(&mut r.h, r.field);
     let lines = r.h.p(|p| hover_lines(p, u, hs)).unwrap();
@@ -730,7 +730,7 @@ fn ac6_hostile_json_values_in_every_parameter_never_panic_or_prompt() {
 }
 
 fn ref_rep(subject: Subject, page: PageId, items: Vec<ItemId>) -> Representation {
-    Representation { subject, page, form: Form::Drawn, role: "reference".into(), items, connection_points: Default::default() }
+    Representation { subject, page, form: Form::Drawn, role: ecad_model::Role::Reference, items, connection_points: Default::default() }
 }
 
 /// Add a reference representation holding one Point item to a hand-built document.

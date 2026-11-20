@@ -459,7 +459,7 @@ pub fn plan_tagless(
             subject: Subject::Device(component),
             page,
             form: Form::Symbol,
-            role: s.key.to_string(),
+            role: ecad_model::Role::Part(s.part_role()),
             items: vec![item],
             connection_points: BTreeMap::new(),
         },
@@ -600,7 +600,7 @@ pub fn plan_junction(doc: &Document, ids: &mut IdAllocator, page: PageId, style:
     let mut second = item;
     second.kind = ItemKind::Primitive(path(rest));
     tagless.ops.push(Op::AddItem { id: i2, item: second });
-    let role = doc.representations_of(Subject::Wire(c)).find(|(_, r)| r.page == page).map_or_else(|| "route".to_string(), |(_, r)| r.role.clone());
+    let role = doc.representations_of(Subject::Wire(c)).find(|(_, r)| r.page == page).map_or(ecad_model::Role::Route, |(_, r)| r.role);
     tagless.ops.push(Op::LinkRepresentation {
         id: r2,
         rep: Representation { subject: Subject::Wire(c2), page, form: Form::Drawn, role, items: vec![i2], connection_points: BTreeMap::new() },
@@ -1313,7 +1313,7 @@ pub fn plan_wire(doc: &Document, ids: &mut IdAllocator, input: WireInput<'_>) ->
                 subject: Subject::Wire(w),
                 page,
                 form: Form::Drawn,
-                role: "route".into(),
+                role: ecad_model::Role::Route,
                 items: vec![i],
                 connection_points: BTreeMap::new(),
             };

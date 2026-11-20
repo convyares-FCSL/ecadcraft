@@ -43,7 +43,7 @@ fn worked_example_replays_and_undoes() {
         subject: Subject::Device(c1),
         page: p1,
         form: Form::Drawn,
-        role: "main".into(),
+        role: ecad_model::Role::Part(ecad_model::PartRole::Other),
         items: rect.clone(),
         connection_points: Default::default(),
     };
@@ -76,7 +76,7 @@ fn worked_example_replays_and_undoes() {
                     subject: Subject::Wire(w),
                     page: p1,
                     form: Form::Drawn,
-                    role: "route".into(),
+                    role: ecad_model::Role::Route,
                     items: vec![i],
                     connection_points: Default::default(),
                 },

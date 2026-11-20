@@ -622,7 +622,7 @@ pub fn plan_place(
                     subject: Subject::Device(c),
                     page,
                     form: Form::Symbol,
-                    role: s.key.to_string(),
+                    role: ecad_model::Role::Part(s.part_role()),
                     items: vec![item],
                     connection_points: BTreeMap::new(),
                 },
@@ -651,7 +651,7 @@ pub fn plan_place(
                     subject: Subject::Device(c),
                     page,
                     form: Form::Symbol,
-                    role: s.key.to_string(),
+                    role: ecad_model::Role::Part(s.part_role()),
                     items: vec![item],
                     connection_points: cps,
                 },
@@ -798,7 +798,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
             };
             cps.insert(nt, *at);
         }
-        let role = r.role.clone();
+        let role = r.role;
         let nr: RepresentationId = ids.fresh();
         renamed.push((*rid, nr));
         ops_reps.push((

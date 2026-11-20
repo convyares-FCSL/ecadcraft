@@ -986,7 +986,7 @@ impl CableSlash {
         read(s, |p, page| {
             let doc = p.ledger.document();
             let k = crate::cmd::cable::cable_named(doc, text).map_err(|e| e.to_string())?;
-            if doc.representations_of(Subject::Cable(k)).any(|(_, r)| r.page == page && r.role == "slash") {
+            if doc.representations_of(Subject::Cable(k)).any(|(_, r)| r.page == page && r.role == ecad_model::Role::Slash) {
                 return Err(format!("{} already has a slash on this page.", crate::cables::cable_title(doc, k)));
             }
             Ok(k)

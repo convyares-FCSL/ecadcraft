@@ -13,7 +13,7 @@
 //!   the context differs (`=F1+CP1-K01`, [`shown_tag`]); that reads the symbol's own page only.
 //! - A **location box** is a tagless component with property `kind: "location_box"` carrying a
 //!   `location`, a `function` or both (FP9), drawn as one closed polyline item (layer [`LAYER`])
-//!   of a drawn representation with role [`ROLE`] (design 024 FP2). Its label is derived.
+//!   of a drawn representation with role [`ecad_model::Role::LocationBox`] (design 024 FP2). Its label is derived.
 //! - Containment ([`contains`]) is point in polygon by the even-odd rule; a point within
 //!   [`EDGE_TOL`] of the outline counts as inside. Innermost is the smallest polygon area, ties by
 //!   component ID.
@@ -43,8 +43,6 @@ pub const KIND_VALUE: &str = "location_box";
 pub const LAYER: &str = "ECAD-LOCATIONS";
 /// The linetype of a box outline.
 pub const LINETYPE: &str = "DASHED";
-/// The representation role of a box outline.
-pub const ROLE: &str = "box";
 /// How far the label sits inside the top-left vertex.
 pub const LABEL_INSET: f64 = 1.5;
 /// Smallest outline area (mm²): 10 x 10 mm.
@@ -98,7 +96,7 @@ pub fn is_device(doc: &Document, c: DeviceId) -> bool {
 /// The box representation `r` (`rid`) stands for, if it is one with a drawable outline.
 pub fn box_of_rep(doc: &Document, rid: RepresentationId, r: &Representation) -> Option<LocBox> {
     let Subject::Device(c) = r.subject else { return None };
-    if r.form != Form::Drawn || r.role != ROLE {
+    if r.form != Form::Drawn || r.role != ecad_model::Role::LocationBox {
         return None;
     }
     let comp = doc.devices.get(&c).filter(|x| is_box_component(x))?;
@@ -458,13 +456,13 @@ pub fn override_key(doc: &Document, r: &Representation) -> Option<String> {
         return Some(format!("{LOCATION_KEY}.{}", if side == Side::Plug { "plug" } else { "socket" }));
     }
     let t = crate::reps::rep_type(doc, r);
-    (t != crate::reps::RepType::Head).then(|| format!("{LOCATION_KEY}.{}", t.word()))
+    (t != ecad_model::PartRole::Head).then(|| format!("{LOCATION_KEY}.{}", ecad_model::Word::word(t)))
 }
 
 /// Whether `t` may name an override (design 052 FP3): a §3.1 type word other than `head`, or
 /// `socket` / `plug`.
 pub fn override_type_ok(t: &str) -> bool {
-    matches!(t, "socket" | "plug") || crate::reps::RepType::of_word(t).is_some_and(|x| x != crate::reps::RepType::Head)
+    matches!(t, "socket" | "plug") || <ecad_model::PartRole as ecad_model::Word>::parse(t).is_some_and(|x| x != ecad_model::PartRole::Head)
 }
 
 /// Representation `r`'s location (design 052 §5.2), first match wins: a strip's own (a strip has
@@ -651,7 +649,7 @@ pub fn plan_box_with(doc: &Document, ids: &mut IdAllocator, page: PageId, values
             subject: Subject::Device(component),
             page,
             form: Form::Drawn,
-            role: ROLE.into(),
+            role: ecad_model::Role::LocationBox,
             items: vec![item],
             connection_points: BTreeMap::new(),
         },
@@ -706,7 +704,7 @@ pub fn plan_from_item_with(doc: &Document, ids: &mut IdAllocator, item: ItemId, 
             subject: Subject::Device(component),
             page: it.page,
             form: Form::Drawn,
-            role: ROLE.into(),
+            role: ecad_model::Role::LocationBox,
             items: vec![item],
             connection_points: BTreeMap::new(),
         },
@@ -771,7 +769,7 @@ pub fn planned_box(doc: &Document, p: &Planned) -> Option<LocBox> {
 pub fn reshape_refusal(doc: &Document, id: ItemId, after: &Item) -> Option<String> {
     let (_, r) = doc.representation_of_item(id)?;
     let Subject::Device(c) = r.subject else { return None };
-    if r.role != ROLE || !is_box(doc, c) {
+    if r.role != ecad_model::Role::LocationBox || !is_box(doc, c) {
         return None;
     }
     let ok = matches!(&after.kind, ItemKind::Primitive(Primitive::Polyline { vertices, closed: true }) if vertices.len() >= 3);

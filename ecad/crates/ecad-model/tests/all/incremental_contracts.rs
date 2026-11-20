@@ -122,7 +122,7 @@ pub(crate) fn base() -> Base {
         subject: Subject::Device(comp),
         page,
         form: Form::Symbol,
-        role: "main".into(),
+        role: ecad_model::Role::Part(ecad_model::PartRole::Other),
         items: vec![sym],
         connection_points: Default::default(),
     };
@@ -134,7 +134,7 @@ pub(crate) fn base() -> Base {
         subject: Subject::Wire(wire),
         page,
         form: Form::Drawn,
-        role: "route".into(),
+        role: ecad_model::Role::Route,
         items: vec![item],
         connection_points: Default::default(),
     };
@@ -215,7 +215,7 @@ fn bytes(doc: &Document) -> Vec<u8> {
 pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
     let moved = line(b.page, b.layer, 7.0);
     let mut rep_after = b.rep_wire_v.clone();
-    rep_after.role = "moved".into();
+    rep_after.role = ecad_model::Role::Drawn;
     vec![
         Op::AddPage { id: b.ids.fresh(), page: Page::titled("2").unwrap(), index: 1 },
         Op::RemovePage { id: b.page, page: b.page_v.clone(), index: 0 },
@@ -641,7 +641,7 @@ impl Gen {
                 subject: Subject::Device(*cid),
                 page: it.page,
                 form: Form::Symbol,
-                role: "main".into(),
+                role: ecad_model::Role::Part(ecad_model::PartRole::Other),
                 items: vec![*iid],
                 connection_points: Default::default(),
             };
@@ -660,7 +660,7 @@ impl Gen {
                 subject: Subject::Device(*cid),
                 page: it.page,
                 form: Form::Symbol,
-                role: "no".into(),
+                role: ecad_model::Role::Part(ecad_model::PartRole::Contact),
                 items: vec![*iid],
                 connection_points,
             };
@@ -696,7 +696,7 @@ impl Gen {
             }
         }
         let form = if self.rng.chance(15) { Form::Symbol } else { Form::Drawn };
-        Representation { subject, page, form, role: "r".into(), items, connection_points }
+        Representation { subject, page, form, role: ecad_model::Role::Part(ecad_model::PartRole::Other), items, connection_points }
     }
 
     fn definition(&mut self) -> Definition {

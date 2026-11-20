@@ -636,8 +636,8 @@ pub struct Shown {
 
 /// Plan one connector symbol of `starter` on connector `c`, its pins named `names` (a whole half:
 /// one name per point; a pin: one name): one terminal per point keyed by its side, shown through
-/// explicit connection points (design 044 §3.1, §4.6). Its role is the starter key, whichever
-/// symbol of the connector it is (design 052 §4).
+/// explicit connection points (design 044 §3.1, §4.6). Its role is the part its starter
+/// declares (design 072 §4.4).
 ///
 /// # Errors
 /// Fewer names than points; the definition could not be built.
@@ -670,7 +670,7 @@ pub fn symbol_ops(
             subject: Subject::Device(c),
             page,
             form: Form::Symbol,
-            role: starter.key.to_string(),
+            role: ecad_model::Role::Part(starter.part_role()),
             items: vec![item],
             connection_points: cps,
         },
@@ -1524,7 +1524,7 @@ pub fn plan_land(doc: &Document, ids: &mut IdAllocator, page: PageId, on: OnWire
     let mut second = item;
     second.kind = ItemKind::Primitive(path(&rest));
     ops.push(Op::AddItem { id: i2, item: second });
-    let role = doc.representations_of(Subject::Wire(c)).find(|(_, r)| r.page == page).map_or_else(|| "route".to_string(), |(_, r)| r.role.clone());
+    let role = doc.representations_of(Subject::Wire(c)).find(|(_, r)| r.page == page).map_or(ecad_model::Role::Route, |(_, r)| r.role);
     ops.push(Op::LinkRepresentation {
         id: r2,
         rep: Representation { subject: Subject::Wire(c2), page, form: Form::Drawn, role, items: vec![i2], connection_points: BTreeMap::new() },

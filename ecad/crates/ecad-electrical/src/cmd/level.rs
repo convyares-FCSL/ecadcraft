@@ -331,7 +331,7 @@ pub fn plan_toposition(
             subject: Subject::Device(strip),
             page,
             form: rep.form,
-            role: "termfuse".into(),
+            role: ecad_model::Role::FuseTerm,
             items: rep.items.clone(),
             connection_points: cps,
         },

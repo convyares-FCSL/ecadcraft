@@ -48,6 +48,7 @@ pub mod plc;
 pub mod point;
 pub mod prefix;
 pub mod project;
+pub mod role;
 pub mod sheet;
 pub mod strict;
 pub mod style;
@@ -82,6 +83,7 @@ pub use point::{ChannelRole, LevelIo, PointKey};
 pub use project::{
     CustomField, Function, InfoField, ListCode, ListDescription, ListEntry, Location, Project, ProjectInfo, Rev, RevField, RevValue, Revision,
 };
+pub use role::{PartRole, Role};
 pub use sheet::{GridLabels, PageColumn, PageRow, SheetSpec};
 pub use style::{Standard, StandardHeader, StyleCatalogue, StyleCatalogues, StyleLayer, StyleRecord, StyleRef};
 pub use words::{Side, Word};

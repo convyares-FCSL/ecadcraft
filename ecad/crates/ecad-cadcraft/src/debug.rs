@@ -1220,7 +1220,7 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
         }),
         ObjectId::Representation(i) => doc.representations.get(&i).map_or_else(String::new, |r| {
             // A cable's reference end shows the text it draws (design 009 §8).
-            if r.role == crate::look::REFERENCE_ROLE && matches!(r.subject, Subject::Cable(_)) {
+            if r.role == ecad_model::Role::Reference && matches!(r.subject, Subject::Cable(_)) {
                 format!("{} of {} \"{}\"", r.role, subject_label(doc, r.subject), crate::look::reference_text(doc, i))
             } else {
                 format!("{} of {}", r.role, subject_label(doc, r.subject))
