@@ -80,7 +80,7 @@ fn prefix_ok(t: &str) -> bool {
 }
 
 macro_rules! prefixes {
-    ($($name:ident = $key:literal, $symbol:literal;)*) => {
+    ($($name:ident = $var:ident $key:literal, $symbol:literal;)*) => {
         $(
             pub static $name: Entry = Entry {
                 key: concat!("terminal.", $key, ".prefix"),
@@ -103,9 +103,9 @@ macro_rules! prefixes {
         pub static PREFIXES: &[&Entry] = &[$(&$name),*];
 
         /// The prefix entry of this brief's starter `key`.
-        pub fn prefix_entry(key: &str) -> Option<&'static Entry> {
+        pub fn prefix_entry(key: crate::symbols::StarterKey) -> Option<&'static Entry> {
             match key {
-                $($key => Some(&$name),)*
+                $(crate::symbols::StarterKey::$var => Some(&$name),)*
                 _ => None,
             }
         }
@@ -113,26 +113,26 @@ macro_rules! prefixes {
 }
 
 prefixes! {
-    TERM2_1 = "term2.1", "Two-level terminal, level 1";
-    TERM2_2 = "term2.2", "Two-level terminal, level 2";
-    TERM2 = "term2", "Two-level terminal";
-    TERM2B_1 = "term2b.1", "Two-level terminal, bridged, level 1";
-    TERM2B_2 = "term2b.2", "Two-level terminal, bridged, level 2";
-    TERM2B = "term2b", "Two-level terminal, bridged";
-    TERM3_1 = "term3.1", "Three-level terminal, level 1";
-    TERM3_2 = "term3.2", "Three-level terminal, level 2";
-    TERM3_3 = "term3.3", "Three-level terminal, level 3";
-    TERM3 = "term3", "Three-level terminal";
-    TERMLNPE_1 = "termlnpe.1", "L/N/PE terminal, level L";
-    TERMLNPE_2 = "termlnpe.2", "L/N/PE terminal, level N";
-    TERMLNPE_3 = "termlnpe.3", "L/N/PE terminal, level PE";
-    TERMLNPE = "termlnpe", "L/N/PE terminal";
-    TERMSENSOR_1 = "termsensor.1", "Sensor terminal, level S";
-    TERMSENSOR_2 = "termsensor.2", "Sensor terminal, level +";
-    TERMSENSOR_3 = "termsensor.3", "Sensor terminal, level -";
-    TERMSENSOR = "termsensor", "Sensor terminal";
-    TERMDISC = "termdisc", "Disconnect terminal";
-    TERMFUSE = "termfuse", "Fuse terminal (strip position)";
+    TERM2_1 = Term2L1 "term2.1", "Two-level terminal, level 1";
+    TERM2_2 = Term2L2 "term2.2", "Two-level terminal, level 2";
+    TERM2 = Term2 "term2", "Two-level terminal";
+    TERM2B_1 = Term2bL1 "term2b.1", "Two-level terminal, bridged, level 1";
+    TERM2B_2 = Term2bL2 "term2b.2", "Two-level terminal, bridged, level 2";
+    TERM2B = Term2b "term2b", "Two-level terminal, bridged";
+    TERM3_1 = Term3L1 "term3.1", "Three-level terminal, level 1";
+    TERM3_2 = Term3L2 "term3.2", "Three-level terminal, level 2";
+    TERM3_3 = Term3L3 "term3.3", "Three-level terminal, level 3";
+    TERM3 = Term3 "term3", "Three-level terminal";
+    TERMLNPE_1 = TermlnpeL1 "termlnpe.1", "L/N/PE terminal, level L";
+    TERMLNPE_2 = TermlnpeL2 "termlnpe.2", "L/N/PE terminal, level N";
+    TERMLNPE_3 = TermlnpeL3 "termlnpe.3", "L/N/PE terminal, level PE";
+    TERMLNPE = Termlnpe "termlnpe", "L/N/PE terminal";
+    TERMSENSOR_1 = TermsensorL1 "termsensor.1", "Sensor terminal, level S";
+    TERMSENSOR_2 = TermsensorL2 "termsensor.2", "Sensor terminal, level +";
+    TERMSENSOR_3 = TermsensorL3 "termsensor.3", "Sensor terminal, level -";
+    TERMSENSOR = Termsensor "termsensor", "Sensor terminal";
+    TERMDISC = Termdisc "termdisc", "Disconnect terminal";
+    TERMFUSE = Termfuse "termfuse", "Fuse terminal (strip position)";
 }
 
 macro_rules! levels {

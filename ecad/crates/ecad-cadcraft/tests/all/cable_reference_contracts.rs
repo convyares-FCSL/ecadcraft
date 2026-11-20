@@ -227,19 +227,20 @@ fn continuing_a_cable_adds_routes_of_the_same_conductors_in_one_transaction() {
         lines,
         vec![(p(20.0, 0.0), p(40.0, 0.0)), (p(20.0, 5.0), p(40.0, 5.0)), (p(20.0, 10.0), p(40.0, 10.0)), (p(27.5, -2.5), p(32.5, 12.5))]
     );
-    let roles: Vec<(String, Subject)> = ops
+    let roles: Vec<(ecad_model::Role, Subject)> = ops
         .iter()
         .filter_map(|op| match op {
-            Op::LinkRepresentation { rep, .. } => Some((rep.role.clone(), rep.subject)),
+            Op::LinkRepresentation { rep, .. } => Some((rep.role, rep.subject)),
             _ => None,
         })
         .collect();
     let k = Subject::Cable(r.c1);
     // The stubs are new routes (design 072 §4.3).
     let stub = |s: &Subject| if matches!(s, Subject::Route(_)) { Subject::Route(ecad_model::RouteId::from(0u128)) } else { *s };
-    let roles: Vec<(String, Subject)> = roles.iter().map(|(role, s)| (role.clone(), stub(s))).collect();
+    let roles: Vec<(ecad_model::Role, Subject)> = roles.iter().map(|(role, s)| (*role, stub(s))).collect();
     let any = Subject::Route(ecad_model::RouteId::from(0u128));
-    assert_eq!(roles, vec![("reference".into(), k), ("route".into(), any), ("route".into(), any), ("route".into(), any), ("slash".into(), k)]);
+    use ecad_model::Role::{Reference, Route, Slash};
+    assert_eq!(roles, vec![(Reference, k), (Route, any), (Route, any), (Route, any), (Slash, k)]);
     let after = r.h.doc();
     let positions = |d: &Document| d.cables[&r.c1].cores.iter().map(|c| c.position).collect::<Vec<_>>();
     assert_eq!(positions(&after), positions(&before), "same cable, same cores where they were");
@@ -684,7 +685,7 @@ fn hostile_documents_derive_without_panicking() {
                 subject: Subject::Cable(cable),
                 page,
                 form: Form::Drawn,
-                role: "reference".into(),
+                role: ecad_model::Role::Reference,
                 items: vec![item],
                 connection_points: Default::default(),
             },
@@ -722,7 +723,7 @@ fn hostile_documents_derive_without_panicking() {
                 subject: Subject::Cable(cable),
                 page: pg,
                 form: Form::Drawn,
-                role: "reference".into(),
+                role: ecad_model::Role::Reference,
                 items: vec![item],
                 connection_points: Default::default(),
             },
@@ -763,7 +764,7 @@ fn twenty_thousand_references_of_one_cable_stay_bounded_and_fast() {
                 subject: Subject::Cable(cable),
                 page,
                 form: Form::Drawn,
-                role: "reference".into(),
+                role: ecad_model::Role::Reference,
                 items: vec![item],
                 connection_points: Default::default(),
             },
@@ -886,7 +887,7 @@ fn a_ten_thousand_wire_cable_continues_in_bounded_time() {
                 subject: Subject::Cable(cable),
                 page: supply,
                 form: Form::Drawn,
-                role: "reference".into(),
+                role: ecad_model::Role::Reference,
                 items: vec![it],
                 connection_points: Default::default(),
             },

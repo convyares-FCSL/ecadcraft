@@ -283,7 +283,7 @@ pub(crate) fn run_slash_assign(
             subject: Subject::Cable(k),
             page,
             form: Form::Drawn,
-            role: "slash".into(),
+            role: ecad_model::Role::Slash,
             items: vec![item],
             connection_points: BTreeMap::new(),
         },
@@ -345,7 +345,7 @@ pub fn picker(doc: &Document, page: PageId) -> Vec<PickItem> {
     let mut out: Vec<PickItem> = Vec::new();
     for k in doc.cables.keys() {
         let drawn = is_drawn(doc, *k);
-        if drawn && doc.representations_of(Subject::Cable(*k)).any(|(_, r)| r.page == page && r.role == "slash") {
+        if drawn && doc.representations_of(Subject::Cable(*k)).any(|(_, r)| r.page == page && r.role == ecad_model::Role::Slash) {
             continue;
         }
         let tag = crate::cables::cable_title(doc, *k);

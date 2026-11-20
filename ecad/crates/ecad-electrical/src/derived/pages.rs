@@ -179,6 +179,8 @@ fn project_pages(doc: &Document, before: &ecad_model::project::Project, after: &
 fn before(doc: &Document, effects: &Effects<'_>, effect: &Effect<'_>, scope: &mut PagesScope) {
     let out = &mut scope.pages;
     match effect {
+        // Design 072 §2.6: a device link is a relationship, drawn on no page.
+        Effect::DeviceLink { .. } => {}
         Effect::Item { before, after, .. } => {
             for p in before.iter().chain(after.iter()).map(|i| i.page) {
                 out.insert(p);
@@ -314,6 +316,7 @@ fn before(doc: &Document, effects: &Effects<'_>, effect: &Effect<'_>, scope: &mu
 /// in `doc` after the commit.
 fn extension(doc: &Document, effect: &Effect<'_>, out: &mut PageSet) {
     match effect {
+        Effect::DeviceLink { .. } => {}
         Effect::Prop { object: ObjectRef::Wire(c), .. } | Effect::Wire { id: c, before: Some(_), after: Some(_) } => {
             extend(out, crate::wires::wire_pages(doc, *c));
         }

@@ -156,7 +156,7 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
     if dev.head.is_some() {
         let offer = xref::offer_of(doc, c);
         for row in xref::rows(&mut places, &dev, offer.as_ref().map(|(_, o)| o.as_slice())).into_iter().take(MAX_ROWS) {
-            let kind = if row.power { format!("main, {}", row.kind.word()) } else { row.kind.word().to_string() };
+            let kind = if row.power { format!("main, {}", row.kind.upper()) } else { row.kind.upper().to_string() };
             let (what, place) = match row.state {
                 xref::State::Drawn => (kind, row.place.clone()),
                 xref::State::Spare => (format!("{kind}, not used yet"), String::new()),

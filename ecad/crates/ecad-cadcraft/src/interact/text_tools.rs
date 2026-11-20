@@ -160,7 +160,7 @@ fn echo(doc: &ecad_model::Document, v: &serde_json::Value, kind: TextKind, show:
         _ => "in the project".to_string(),
     };
     let mut line = format!("{subject} {done} {place}.");
-    let strip = component.is_some_and(|c| crate::strips::is_strip(doc, c));
+    let strip = component.is_some_and(|c| crate::strips::strip_of(doc, c).is_some());
     if level == "device" && kind == TextKind::Tag && strip {
         line.push_str(" Strip tags show once per run unless you set a symbol.");
     }

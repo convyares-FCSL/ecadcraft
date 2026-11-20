@@ -98,7 +98,7 @@ fn designations_now(h: &mut H) -> Value {
 // ------------------------------------------------------------------------------------ focus 1
 
 /// A project as v0.2.0 wrote it: a coil with `location +CP1` and `function =F1` stored as codes, a
-/// contact with role `main`, a connector with the retired `half.s.location` and a box `+FIELD`
+/// contact, a connector with the retired `half.s.location` and a box `+FIELD`
 /// (a page's and the project's location are ids since design 072 §5.3). Built with raw ops, saved
 /// and reopened.
 /// List ids an old project's devices hold with no entry in the list.
@@ -112,19 +112,15 @@ fn old_project(dir: &TempDir) -> (H, DeviceId, DeviceId, DeviceId, PageId, Docum
     h.run("pageprops", json!({"page": p1.hex(), "number": "100"})).unwrap();
     let k = place(&mut h, "coil", (75.0, 180.0));
     let p2 = page(&mut h, "105");
-    let no = h.run("place", json!({"symbol": "no", "at": [100, 150], "device": k.hex(), "location": "keep", "function": "keep"})).unwrap();
+    h.run("place", json!({"symbol": "no", "at": [100, 150], "device": k.hex(), "location": "keep", "function": "keep"})).unwrap();
     let x: DeviceId =
         id(&h.run("connector", json!({"halves": "both", "family": "plain", "pins": 2, "layout": "row", "at": [200, 50]})).unwrap(), "component");
     let bx: DeviceId = id(
         &h.run("locationbox", json!({"location": "+TMP", "page": p2.hex(), "corners": [[60, 110], [140, 190]], "proposal": "keep"})).unwrap(),
         "component",
     );
-    let no_rep = id(&no, "representation");
     h.cfg(|p| {
         let d = p.ledger.document();
-        let before = d.representations[&no_rep].clone();
-        let mut after = before.clone();
-        after.role = "main".into();
         // Design 072 §6.3: a device stores list ids; these name no entry (a removed one).
         let gone = |d: &ecad_model::Device, l: u128, f: Option<u128>| ecad_model::Device {
             location: Some(ecad_model::LocationId(l)),
@@ -134,7 +130,6 @@ fn old_project(dir: &TempDir) -> (H, DeviceId, DeviceId, DeviceId, PageId, Docum
         let ops = vec![
             Op::ModifyDevice { id: k, before: d.devices[&k].clone(), after: gone(&d.devices[&k], OLD_CP1, Some(OLD_F1)) },
             Op::ModifyDevice { id: bx, before: d.devices[&bx].clone(), after: gone(&d.devices[&bx], OLD_FIELD, None) },
-            Op::ModifyRepresentation { id: no_rep, before, after },
         ];
         p.ledger.commit(Author::User, "as v0.2.0 wrote it", ops).unwrap();
     });
@@ -144,7 +139,7 @@ fn old_project(dir: &TempDir) -> (H, DeviceId, DeviceId, DeviceId, PageId, Docum
 }
 
 /// §7, §10.5, §10.9: opening writes nothing; every old code shows `?` (never a wrong value) and is
-/// listed; a stored `main` role means nothing; tags and the head are kept.
+/// listed; tags and the head are kept.
 #[test]
 fn an_old_project_opens_unchanged_and_flags_its_old_codes() {
     let dir = TempDir::new("old");
@@ -172,12 +167,12 @@ fn an_old_project_opens_unchanged_and_flags_its_old_codes() {
     let hex = |n: u128| format!("{n:032x}");
     assert!(lm.contains(&hex(OLD_CP1).as_str()) && lm.contains(&hex(OLD_FIELD).as_str()), "{v}");
     assert_eq!(v["functions"]["missing"], json!([hex(OLD_F1)]), "{v}");
-    // The tag and the head are kept: the contact (role `main`) is a contact, the coil the head.
+    // The tag and the head are kept: the contact is a contact, the coil the head.
     let tags = ecad_cadcraft::devices::tag_words(&d, k);
     assert_eq!(tags, "-K01");
     let heads = ecad_cadcraft::reps::heads(&d, k);
     assert_eq!(heads.len(), 1);
-    assert_eq!(d.representations[&heads[0]].role, "coil");
+    assert_eq!(d.representations[&heads[0]].role, ecad_model::Role::Part(ecad_model::PartRole::Head));
     // Setting a location through the list is the way out, and it is one transaction.
     let head = h.head();
     h.run("setlocation", json!({"component": k.hex(), "value": "+CP1"})).unwrap();

@@ -6,7 +6,7 @@
 //! With a project file, the app opens it; otherwise it starts a new, unsaved project.
 //! `--snapshots <dir>` enables exporting inspector snapshots (a banner button, before a project is
 //! discarded, and at exit). Snapshots are diagnostic files, not saved projects.
-//! See `ecad/docs/quick-start.md` for building, running and the manual trial.
+//! See `ecad/docs/quick-start.md` for building, running and trying the app by hand.
 //!
 //! `ECAD_STARTUP_TIMING=1` prints start-up timing marks on stderr and writes them to
 //! `ecad-startup-<time>.json` in the snapshots folder (or the temp folder); see [`ecad_desktop::startup`].

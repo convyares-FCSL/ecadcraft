@@ -63,7 +63,7 @@ pub fn parts_on_page(doc: &Document, page: PageId) -> Vec<LinkPart> {
     for c in strips {
         let Some(comp) = doc.devices.get(&c) else { continue };
         let found = links::of(&comp.properties);
-        if found.is_empty() || !crate::strips::is_strip(doc, c) {
+        if found.is_empty() || crate::strips::strip_of(doc, c).is_none() {
             continue;
         }
         let order = crate::accessories::positions(doc, c);

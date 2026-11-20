@@ -164,7 +164,7 @@ fn ratings_follow_the_rule() {
     let mut h = new_h();
     let f: DeviceId = id(&place(&mut h, "fusebank8", [0.0, 0.0]), "component");
     setprop(&mut h, f, "rating.3", json!(" 2A ")).unwrap();
-    assert_eq!(prop(&mut h, f, "rating.3").as_deref(), Some("2A"));
+    assert_eq!(prop(&mut h, f, "rating.3").as_deref(), Some("2 A"));
     let head = h.head();
     assert_eq!(setprop(&mut h, f, "rating.13", json!("2A")).unwrap_err(), "-F01 has no fuse 13.");
     assert_eq!(setprop(&mut h, f, "rating.L+", json!("2A")).unwrap_err(), "-F01 has no fuse L+.");
@@ -174,13 +174,17 @@ fn ratings_follow_the_rule() {
     assert_eq!(prop(&mut h, f, "rating.3"), None);
     let q: DeviceId = id(&place(&mut h, "rcbo2", [0.0, -80.0]), "component");
     setprop(&mut h, q, "rating", json!("13A C 30mA")).unwrap();
-    assert_eq!(prop(&mut h, q, "rating").as_deref(), Some("13A C 30mA"));
+    assert_eq!(prop(&mut h, q, "rating").as_deref(), Some("curve C, 13 A, 30 mA"));
     assert_eq!(setprop(&mut h, q, "rating.1", json!("2A")).unwrap_err(), "rating.1 is for a fuse bank's fuses; -Q01 is not a fuse bank.");
     // Several devices at once follow the same rule.
     let many = h.run("setprop", json!({"devices": [f.hex(), q.hex()], "key": "rating.1", "value": "1A"}));
     assert!(many.is_err());
-    h.run("setprop", json!({"devices": [f.hex(), q.hex()], "key": "rating", "value": "x"})).unwrap();
+    // Design 072 §2.2: a fuse bank's ratings are per fuse; text that is no rating is a note.
+    assert!(h.run("setprop", json!({"devices": [f.hex(), q.hex()], "key": "rating", "value": "x"})).is_err());
+    let fuse: DeviceId = id(&place(&mut h, "fuse", [80.0, -80.0]), "component");
+    h.run("setprop", json!({"devices": [fuse.hex(), q.hex()], "key": "rating", "value": "x"})).unwrap();
     assert_eq!(prop(&mut h, q, "rating").as_deref(), Some("x"));
+    assert!(h.doc().devices[&q].has_no_rating());
 }
 
 #[test]
@@ -353,7 +357,6 @@ fn save_close_and_reopen_keep_the_library_devices() {
     join(&mut h, "co", k, [20.0, 0.0]).unwrap();
     join(&mut h, "no", k, [40.0, 0.0]).unwrap();
     let f: DeviceId = id(&place(&mut h, "fusebank8", [0.0, -60.0]), "component");
-    setprop(&mut h, f, "rating", json!("10A")).unwrap();
     setprop(&mut h, f, "rating.3", json!("2A")).unwrap();
     let q: DeviceId = id(&place(&mut h, "rcbo2", [150.0, -60.0]), "component");
     setprop(&mut h, q, "rating", json!("13A C 30mA")).unwrap();
@@ -377,8 +380,8 @@ fn save_close_and_reopen_keep_the_library_devices() {
     assert!(h2.p(|p| p.ledger.replay_matches().unwrap()));
     let all: std::collections::BTreeSet<String> = ecad_cadcraft::devices::labels_of(&doc, k);
     assert_eq!(all.into_iter().collect::<Vec<_>>(), ["11", "12", "14", "23", "24", "A1", "A2"]);
-    assert_eq!(doc.devices[&f].properties.get("rating.3").map(String::as_str), Some("2A"));
-    assert_eq!(doc.devices[&q].properties.get("rating").map(String::as_str), Some("13A C 30mA"));
+    assert_eq!(doc.devices[&f].value("rating.3").as_deref(), Some("2 A"));
+    assert_eq!(doc.devices[&q].value("rating").as_deref(), Some("curve C, 13 A, 30 mA"));
     // Every embedded definition is still the catalogue's, by origin and content hash.
     assert_eq!(doc.definitions.len(), 10);
     for d in doc.definitions.values() {

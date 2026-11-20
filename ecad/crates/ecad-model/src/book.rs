@@ -185,6 +185,7 @@ impl Outline {
             | Effect::Item { .. }
             | Effect::Device { .. }
             | Effect::DeviceDefinition { .. }
+            | Effect::DeviceLink { .. }
             | Effect::Terminal { .. }
             | Effect::Rep { .. }
             | Effect::Wire { .. }

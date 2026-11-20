@@ -1,6 +1,6 @@
 # ECAD's control port (brief 035)
 
-The ECAD trial listens on `127.0.0.1:<port>` only while the person has turned **agent access**
+The ECAD desktop app listens on `127.0.0.1:<port>` only while the person has turned **agent access**
 on (Developer ▸ Agent access, or `ecad-desktop --control <port>` for one run). The transport is
 CADCraft's own control server, unchanged (`docs/control-protocol.md` at the repository root):
 one JSON object per line, one reply per line, the per-session token from

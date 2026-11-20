@@ -32,7 +32,7 @@
 //! | a conductor (create, delete, attach, route, properties) and its net mates (wire numbers) | the strips it was on (kept) and is on now |
 //! | a cable (create, delete, members, properties) | the strips its members were on (kept) and are on now |
 //! | a page whose number or position changed (`SetProperty` number, book order, the sheet) | the strips with terminals on it (their Place) |
-//! | brief 036: a strip's `term_label.*`, `rating.*`, `terminal.*`, `part_number.<code>` (its own properties: a device in scope) | that strip |
+//! | brief 036: a strip's `term_label.*`, `terminal.*`, `part_number.<code>` (its own properties), and its fuse position ratings (its `ModifyDevice`, design 072 §2.5): a device in scope | that strip |
 //! | brief 036: project `terminal.level.separator` or `terminal.<code>.levels` | the strips inheriting it (`inherits`, recorded only by strips with a multi-level position): rebuilt |
 //! | brief 036: project `strip_<code>_*` or `terminal.<code>.description` | the strips inheriting it: their type part data and accessories only ([`Strips::recompute_acc`]) |
 //! | brief 036: a fuse terminal device created, changed or deleted | the `fuse-device` set ([`Strips::note_devices`]) |
@@ -50,7 +50,6 @@ use ecad_model::{CableId, Core, DeviceId, Document, End, PageId, Pt, Representat
 use crate::CmdError;
 use crate::outputs::PageCx;
 use crate::outputs::kept::Outputs;
-use crate::symbols::Kind;
 
 /// The strip property that offers positions (FP1).
 pub const OFFER_KEY: &str = "terminals";
@@ -70,19 +69,14 @@ pub const PE_KEY: crate::symbols::StarterKey = crate::symbols::StarterKey::Termi
 
 // ---------------------------------------------------------------- strips and terminals
 
-/// Whether `c` is a terminal strip: its definition is a terminal starter.
-pub fn is_strip(doc: &Document, c: DeviceId) -> bool {
-    doc.devices
-        .get(&c)
-        .and_then(|x| x.definition)
-        .and_then(|d| doc.definitions.get(&d))
-        .and_then(crate::symbols::of_definition)
-        .is_some_and(|s| s.kind == Kind::Terminal)
+/// Strip `c`'s own data (its type's, design 072 §2.2), when it is a terminal strip.
+pub fn strip_of(doc: &Document, c: DeviceId) -> Option<&ecad_model::device::TerminalStrip> {
+    doc.devices.get(&c)?.device_type.as_strip()
 }
 
 /// Whether representation `r` draws a PE terminal.
 pub fn rep_is_pe(doc: &Document, r: &ecad_model::Representation) -> bool {
-    crate::xref::starter_of(doc, r).is_some_and(|s| s.key == PE_KEY)
+    crate::devices::rep_starter(doc, r).is_some_and(|s| s.key == PE_KEY)
 }
 
 /// A strip's drawn terminals: (terminal, its representation, whether PE).
@@ -130,7 +124,7 @@ pub fn drawn_points(doc: &Document, c: DeviceId) -> Vec<(TerminalId, Representat
 /// The terminal of a strip a conductor end is on: (strip, terminal).
 pub fn strip_of_terminal(doc: &Document, t: TerminalId) -> Option<DeviceId> {
     let c = doc.terminals.get(&t)?.component;
-    is_strip(doc, c).then_some(c)
+    strip_of(doc, c).map(|_| c)
 }
 
 /// The strip a conductor bridges, when its two ends are on two terminals of one strip.
@@ -960,10 +954,10 @@ impl Strips {
     pub fn build(doc: &Document, o: &Outputs, cx: &PageCx) -> Strips {
         let mut s = Strips::default();
         for c in doc.devices.keys() {
-            if is_strip(doc, *c) {
+            if strip_of(doc, *c).is_some() {
                 s.set(doc, *c, o, cx);
             }
-            if crate::strips::is_fuse_device(doc, *c) {
+            if fuse_terminal_of(doc, *c).is_some() {
                 s.fuse_devices.insert(*c);
             }
         }
@@ -980,7 +974,7 @@ impl Strips {
     pub fn note_devices(&mut self, doc: &Document, devices: &BTreeSet<DeviceId>) -> bool {
         let mut changed = false;
         for c in devices {
-            changed |= if crate::strips::is_fuse_device(doc, *c) { self.fuse_devices.insert(*c) } else { self.fuse_devices.remove(c) };
+            changed |= if fuse_terminal_of(doc, *c).is_some() { self.fuse_devices.insert(*c) } else { self.fuse_devices.remove(c) };
         }
         changed
     }
@@ -989,7 +983,7 @@ impl Strips {
     pub fn touched(&self, doc: &Document, scope: &StripScope<'_>) -> BTreeSet<DeviceId> {
         let mut out = BTreeSet::new();
         for c in scope.devices {
-            if self.strips.contains_key(c) || is_strip(doc, *c) {
+            if self.strips.contains_key(c) || strip_of(doc, *c).is_some() {
                 out.insert(*c);
             }
             out.extend(self.by_far.get(c).into_iter().flatten().copied());
@@ -1096,7 +1090,7 @@ impl Strips {
 
     fn set(&mut self, doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) {
         self.remove(c);
-        if !is_strip(doc, c) {
+        if strip_of(doc, c).is_none() {
             return;
         }
         let d = strip_data(doc, c, o, cx);
@@ -1263,7 +1257,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripDat
     }
     let mut bridged: BTreeSet<TerminalId> = BTreeSet::new();
     let separator = tt::separator(doc, c);
-    let mut names_of: BTreeMap<&'static str, Vec<String>> = BTreeMap::new();
+    let mut names_of: BTreeMap<crate::symbols::StarterKey, Vec<String>> = BTreeMap::new();
     let mut inherits: BTreeSet<String> = BTreeSet::new();
     let own = |k: &str| props.get(k).is_some_and(|v| !v.trim().is_empty());
     // The conductors on one terminal, sorted into inside and outside cells (§5.2; two-point levels
@@ -1332,7 +1326,11 @@ fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripDat
             d.mixed.push((pos.label.clone(), *t));
             d.mixed_types.insert(*t, tt::type_of_terminal(doc, *t).word);
         }
-        if ty.code == "fuse" && clean(props.get(&tt::rating_key(&pos.label))).is_none() {
+        let fuse_rating = match &strip.device_type {
+            ecad_model::DeviceType::TerminalStrip(s) => s.fuse_rating(&pos.label),
+            _ => None,
+        };
+        if ty.code == "fuse" && fuse_rating.is_none() {
             d.no_rating += 1;
         }
         let names = names_of.entry(ty.key).or_insert_with(|| tt::level_names(doc, c, ty)).clone();
@@ -1346,7 +1344,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripDat
                 inherits.insert(e.key.to_string());
             }
         }
-        let rating = ty.breaks.then(|| clean(props.get(&tt::rating_key(&pos.label)))).flatten();
+        let rating = ty.breaks.then_some(fuse_rating).flatten();
         let mut seen_levels: BTreeSet<u32> = BTreeSet::new();
         // One row per level, free levels included; a level drawn twice adds a row (and a Checks row).
         let max_level = ty.count().max(pos.levels.keys().copied().max().unwrap_or(1));
@@ -1400,11 +1398,7 @@ fn strip_data(doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) -> StripDat
                 row.internal_bridge = ty
                     .bridges
                     .iter()
-                    .position(|g| {
-                        g.iter()
-                            .filter_map(|key| key.parse::<ecad_model::PointKey>().ok())
-                            .any(|key| ecad_model::links::level_of_key(Some(&key)).is_some_and(|(m, _)| m == n))
-                    })
+                    .position(|g| g.iter().any(|key| ecad_model::links::level_of_key(Some(key)).is_some_and(|(m, _)| m == n)))
                     .map(|i| i + 1);
                 row.place = page.zip(at).and_then(|(p, a)| {
                     let grid = grids.entry(p).or_insert_with(|| ecad_model::sheet::Grid::of(doc, p));
@@ -1750,18 +1744,11 @@ pub fn terminal_words(doc: &Document, t: TerminalId) -> String {
     format!("{tag}:{}", crate::terminal_types::terminal_name(doc, t))
 }
 
-/// Whether `c` is a brief 034 fuse terminal device (its own definition is `fuseterm`).
-pub fn is_fuse_device(doc: &Document, c: DeviceId) -> bool {
-    doc.devices
-        .get(&c)
-        .and_then(|x| x.definition)
-        .and_then(|d| doc.definitions.get(&d))
-        .and_then(crate::symbols::of_definition)
-        .is_some_and(|s| s.key == FUSE_DEVICE)
+/// Fuse terminal device `c`'s fuse (brief 034's `fuseterm`): its stored
+/// [`ecad_model::device::Protection::FuseTerminal`] (design 072 §2.2).
+pub fn fuse_terminal_of(doc: &Document, c: DeviceId) -> Option<&ecad_model::device::Fuse> {
+    doc.devices.get(&c)?.device_type.as_protection()?.as_fuse_terminal()
 }
-
-/// The starter key of a fuse terminal device (brief 034).
-pub const FUSE_DEVICE: crate::symbols::StarterKey = crate::symbols::StarterKey::Fuseterm;
 
 #[cfg(test)]
 mod tests {

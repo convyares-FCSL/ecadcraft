@@ -141,7 +141,17 @@ impl Command for SetpropParams {
                     if let Some(op) = op {
                         p.apply_edit(pg, "setprop", "Set property", vec![op])?;
                     }
-                    Ok(record_answer(p, object, &key, changed))
+                    let mut answer = record_answer(p, object, &key, changed);
+                    // Design 072 §2.2: every way in shows what a rating read as.
+                    if let ObjectRef::Device(c) = object
+                        && let Some(m) = p.ledger.document().devices.get(&c).and_then(|d| ecad_electrical::rating::reader::echo(d, &key))
+                    {
+                        if changed {
+                            pg.echo(m.clone());
+                        }
+                        answer["message"] = json!(m);
+                    }
+                    Ok(answer)
                 }
             }
         })

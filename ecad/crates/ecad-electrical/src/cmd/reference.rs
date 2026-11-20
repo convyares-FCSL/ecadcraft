@@ -14,7 +14,7 @@ use ecad_model::{
 };
 
 use crate::error::CmdError;
-use crate::references::{self, Plan, REFERENCE_ROLE};
+use crate::references::{self, Plan};
 
 /// A new reference end: its Point item and its representation.
 #[derive(Debug, Clone, PartialEq)]
@@ -35,7 +35,7 @@ fn reference_ops(ids: &mut IdAllocator, page: PageId, style: Style, cable: Cable
                 subject: Subject::Cable(cable),
                 page,
                 form: Form::Drawn,
-                role: REFERENCE_ROLE.into(),
+                role: ecad_model::Role::Reference,
                 items: vec![item],
                 connection_points: BTreeMap::new(),
             },
@@ -143,7 +143,7 @@ pub fn continue_cable(
             subject: Subject::Cable(cable),
             page,
             form: Form::Drawn,
-            role: "slash".into(),
+            role: ecad_model::Role::Slash,
             items: vec![slash_item],
             connection_points: BTreeMap::new(),
         },

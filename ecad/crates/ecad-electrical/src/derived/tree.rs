@@ -46,6 +46,7 @@ impl<'i> DerivedView<Inputs<'i>> for TreeFeed {
 
     fn note(&self, _cx: &NoteCx<'_>, effect: &Effect<'_>, scope: &mut TreeScope) {
         let touched = match effect {
+            Effect::DeviceLink { .. } => false,
             Effect::Page { before: Some(b), after: Some(a), index_before: None, index_after: None, .. } => shown_changed(b, a),
             Effect::Page { .. } | Effect::Folder { .. } => true,
             Effect::Layer { .. }

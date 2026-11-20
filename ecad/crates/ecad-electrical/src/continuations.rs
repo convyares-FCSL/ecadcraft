@@ -552,6 +552,7 @@ pub fn names_named_by(doc: &Document, effect: &ecad_model::effect::Effect<'_>, o
         | Effect::Layer { .. }
         | Effect::Device { .. }
         | Effect::DeviceDefinition { .. }
+        | Effect::DeviceLink { .. }
         | Effect::Terminal { .. }
         | Effect::Wire { .. }
         | Effect::Route { .. }

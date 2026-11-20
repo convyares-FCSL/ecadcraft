@@ -299,7 +299,7 @@ impl Outputs {
         for op in ops {
             let Op::SetProperty { object: ObjectRef::Device(c), key, .. } = op else { continue };
             let position = key.strip_prefix(crate::terminal_types::LABEL_PREFIX).and_then(|r| r.rsplit_once('.')).map(|(p, _)| p);
-            if (position.is_none() && !crate::defaults::terminals::is_label_key(key)) || !crate::strips::is_strip(doc, *c) {
+            if (position.is_none() && !crate::defaults::terminals::is_label_key(key)) || crate::strips::strip_of(doc, *c).is_none() {
                 continue;
             }
             for (t, x) in doc.terminals_of(*c) {
@@ -325,7 +325,7 @@ impl Outputs {
         }
         for op in ops {
             let Op::SetProperty { object: ObjectRef::Device(c), key, .. } = op else { continue };
-            if crate::defaults::connectors::is_naming_key(key) && crate::connectors::is_connector(doc, *c) {
+            if crate::defaults::connectors::is_naming_key(key) && crate::connectors::connector_of(doc, *c).is_some_and(|x| x.mating) {
                 for (t, _) in doc.terminals_of(*c) {
                     scope.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
                 }
@@ -583,7 +583,7 @@ impl Outputs {
         // its first drawn half), with that half's tag and location.
         let halves = if item { Vec::new() } else { crate::connectors::half_rows(doc, c, &mut BoxCache::default()) };
         // Sub-items only where `for` can name some or fuses can be uncovered.
-        let fuseterm = !item && bom::is_fuse_terminal(doc, c);
+        let fuseterm = !item && crate::strips::fuse_terminal_of(doc, c).is_some();
         let subs = if item || fuseterm { bom::Subs::None } else { bom::sub_items(doc, c) };
         let mut covered: BTreeSet<&str> = BTreeSet::new();
         let mut inserts = 0;
@@ -683,7 +683,7 @@ impl Outputs {
             return;
         }
         // Review of PR #57, 4: a link key on a device that is not a strip.
-        let misplaced = !crate::strips::is_strip(doc, c)
+        let misplaced = crate::strips::strip_of(doc, c).is_none()
             && doc.devices.get(&c).is_some_and(|x| x.properties.keys().any(|k| ecad_model::links::link_number(k).is_some()));
         if misplaced {
             let keys = doc
@@ -719,14 +719,14 @@ impl Outputs {
         };
         // Brief 044 (design 044 §8.1): a connector has one BOM row per drawn half, kept apart;
         // its part lines are entries (brief 047), each under its half (`part.<n>.half`).
-        let connector = crate::connectors::is_connector(doc, c);
+        let connector = crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating);
         if connector {
             let rows = connector_rows(doc, c, cache);
             self.set_connector(c, rows);
         }
         // Brief 028 (Q13): a strip has one BOM row per terminal type, from the strip model; its
         // part lines are entries like a device's (brief 047).
-        let main = (!crate::strips::is_strip(doc, c) && !connector).then(|| Entry {
+        let main = (crate::strips::strip_of(doc, c).is_none() && !connector).then(|| Entry {
             component: c,
             line: 0,
             item: false,

@@ -25,6 +25,7 @@ pub mod continuation;
 pub mod default;
 pub mod designation;
 pub(crate) mod device;
+pub(crate) mod device_link;
 pub mod input;
 pub mod level;
 pub mod location;
@@ -282,6 +283,7 @@ pub fn typed_commands() -> Vec<input::Typed> {
         crate::cmd::page_type::TYPED,
         crate::cmd::cable::TYPED,
         crate::cmd::connector::TYPED,
+        crate::cmd::device_link::TYPED,
         crate::cmd::accessory::TYPED,
         crate::cmd::release::TYPED,
         crate::cmd::level::TYPED,

@@ -191,7 +191,7 @@ pub fn verify_page_pending(
         if let Some(Mapped::Item(id)) = map.get(e.handle)
             && doc
                 .representation_of_item(id)
-                .is_some_and(|(_, r)| r.role == crate::locations::ROLE || matches!(r.subject, ecad_model::Subject::Route(_)))
+                .is_some_and(|(_, r)| r.role == ecad_model::Role::LocationBox || matches!(r.subject, ecad_model::Subject::Route(_)))
             && let Some(own) = doc.items.get(&id).and_then(|item| crate::convert::entity_for(doc, item, e.handle))
         {
             e.common.color = own.common.color;
