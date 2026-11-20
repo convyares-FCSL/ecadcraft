@@ -11,6 +11,9 @@
 //! Step 4: the frame's effect map (`frames::touched_by`, `generated::touched_by`) equals the old
 //! op-based `frames::touches` and `generated::touches` (kept here) for every page's frame.
 //!
+//! Step 6: the pages' feed (`PagesView`) equals the old `pages_touched` and `pages_named` (kept
+//! here) on every transaction of the same history.
+//!
 //! # Frozen pre-R9 behaviour, test oracle only
 //! Every `old_*` function here is a frozen copy of code R9 replaced, kept only as a test oracle.
 //! It is not live legacy code and nothing outside this module calls it. Delete it when R9's
@@ -368,4 +371,293 @@ fn the_frame_map_matches_its_old_functions_on_the_small_corpus() {
 fn the_frame_map_matches_its_old_functions_on_the_medium_corpus() {
     let n = frame_map_agrees(tier("medium").unwrap());
     assert!(n > 10, "{n} frames");
+}
+
+// ---------------------------------------------------------------- step 6: the pages' feed
+
+use ecad_electrical::{derived, plc};
+use ecad_model::PageId;
+use ecad_model::view::PageSet;
+
+/// `project::unused_after`, `project::pages_touched` and `project::pages_named` as they were before
+/// design 064 step 6 (the kept PLC model left out: the walk gives the same cards).
+fn old_unused_after(doc: &ecad_model::Document, id: ecad_model::DefinitionId, ops: &[Op]) -> bool {
+    let items = doc.items_using(id);
+    let comps = doc.components_using(id);
+    let item_left = |i: &ecad_model::ItemId| {
+        !ops.iter().any(|o| match o {
+            Op::RemoveItem { id: x, .. } => x == i,
+            Op::ModifyItem { id: x, after, .. } => x == i && !matches!(&after.kind, ecad_model::ItemKind::Symbol(sym) if sym.definition == id),
+            _ => false,
+        })
+    };
+    let comp_left = |c: &ecad_model::DeviceId| {
+        !ops.iter().any(|o| match o {
+            Op::DeleteDevice { id: x, .. } => x == c,
+            Op::SetDeviceDefinition { id: x, after, .. } => x == c && *after != Some(id),
+            _ => false,
+        })
+    };
+    !items.iter().any(item_left) && !comps.iter().any(comp_left)
+}
+
+/// The pages whose drawing `ops` could change directly (their items and representations, and the
+/// pages a conductor whose ends they attach is routed on), worked out on the document before them;
+/// `None` when that could be any page (op kinds other than item, representation, attachment and
+/// new-object ops). Reference texts on other pages are [`ecad_electrical::references::Snapshot`]'s part.
+/// Brief 045: `plc`, the kept PLC model when built, gives a rack's cards without a walk.
+fn old_pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BTreeSet<PageId>> {
+    let mut out = BTreeSet::new();
+    for op in ops {
+        match op {
+            Op::AddItem { item, .. } | Op::RemoveItem { item, .. } => {
+                out.insert(item.page);
+            }
+            Op::ModifyItem { before, after, .. } => {
+                out.insert(before.page);
+                out.insert(after.page);
+            }
+            Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => {
+                out.insert(rep.page);
+            }
+            Op::ModifyRepresentation { before, after, .. } => {
+                out.insert(before.page);
+                out.insert(after.page);
+            }
+            // A route is drawn on its page; the wire labels its net's change move with the rewrite's
+            // own ops (`Project::numbered_pages`).
+            Op::AddRoute { route, .. } | Op::RemoveRoute { route, .. } => {
+                out.insert(route.page);
+            }
+            Op::ModifyRoute { before, after, .. } => {
+                out.insert(before.page);
+                out.insert(after.page);
+            }
+            // Brief 049 (design 049 §8.2): a continuation's partners list it on their pages; those
+            // pages come from the reference index's watch (`xref::Watch`), and its own pages from
+            // its representation ops.
+            Op::CreateDevice { device: component, .. } | Op::DeleteDevice { device: component, .. }
+                if ecad_model::connectivity::continuation_key(&component.properties).is_some() => {}
+            Op::CreateWire { id, .. } if !doc.wires.contains_key(id) => {}
+            // A deleted wire's labels are on the pages of the routes at its ends.
+            Op::DeleteWire { wire, .. } => out.extend(derived::points_pages(doc, &wire.ends)),
+            Op::CreateDevice { id, .. } if !doc.devices.contains_key(id) => {}
+            Op::AddTerminal { id, .. } if !doc.terminals.contains_key(id) => {}
+            // Brief 028: a terminal relabelled (Remove + Add of one ID) is drawn by its device's
+            // symbols only: their pages.
+            Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
+                out.extend(doc.representations_of(Subject::Device(terminal.component)).map(|(_, r)| r.page));
+            }
+            Op::EmbedDefinition { id, .. } if !doc.definitions.contains_key(id) => {}
+            // A page's own properties show in its frame only (brief 019); the references they
+            // change on other pages are the reference snapshot's part.
+            // A folder move changes the book order (Next boxes, unnumbered pages) anywhere.
+            Op::ModifyPage { before, after, .. } if before.change(after).folder => {
+                return None;
+            }
+            Op::ModifyPage { id: p, before, after } => {
+                out.insert(*p);
+                // The page before it in book order shows its number in its Next box.
+                if before.change(after).number {
+                    let book = ecad_model::book::Book::of(doc);
+                    if let Some(prev) = book.position(*p).and_then(|i| i.checked_sub(2)).and_then(|i| book.order.get(i)) {
+                        out.insert(*prev);
+                    }
+                }
+            }
+            Op::SetProperty { object: ecad_model::ObjectRef::Page(p), .. } => {
+                out.insert(*p);
+            }
+            // A device's tag is drawn beside each of its symbols (brief 018): their pages. Brief
+            // 049 (design 049 §8.2): a continuation's name and kind are drawn on its own pages; its
+            // partners' pages come from the reference index's watch.
+            Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key, .. }
+                if (key == ecad_model::connectivity::NAME || key == ecad_model::connectivity::KIND)
+                    && ecad_electrical::continuations::is_continuation(doc, *c) =>
+            {
+                out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
+            }
+            Op::SetProperty { object: ecad_model::ObjectRef::Device(_), key, .. }
+                if key == ecad_model::connectivity::NAME || key == ecad_model::connectivity::KIND =>
+            {
+                return None;
+            }
+            Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key, after, .. } => {
+                out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
+                // Brief 045 (design 045 §11.1): a rack's tag shows in its cards' captions, and a
+                // card's slot or size moves the addresses of the cards after it.
+                out.extend(plc::pages_touched(doc, None, *c, key, after.as_deref()));
+            }
+            Op::SetDeviceDefinition { id: c, .. } => {
+                out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
+            }
+            // Design 072: a device's typed fields (its tag, its type) show beside its symbols; a
+            // rack's tag also in its cards' captions. A PLC station's or module's fields (§3): its
+            // station's cards' pages (their captions and addresses read it).
+            Op::ModifyDevice { id: c, before, after } => {
+                out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
+                if before.tag != after.tag {
+                    out.extend(plc::pages_touched(doc, None, *c, ecad_model::tag::TAG_KEY, after.tag()));
+                }
+                if plc::is_plc(before) || plc::is_plc(after) {
+                    out.extend(plc::pages_modified(doc, None, *c, before, after));
+                }
+            }
+            // Brief 048 (FP8): a superseded version nothing shows after the transaction is drawn
+            // nowhere. Its last copies move off it in the same transaction (review of PR #86,
+            // finding 1), and their own ops name their pages; the document here is the one before.
+            Op::RemoveDefinition { id, .. } if old_unused_after(doc, *id, ops) => {}
+            // A conductor's label shows its properties (brief 022): its pages.
+            Op::SetProperty { object: ecad_model::ObjectRef::Wire(c), .. } | Op::ModifyWire { id: c, .. } => {
+                out.extend(ecad_electrical::wires::wire_pages(doc, *c));
+            }
+            // Design 072 §4.5: a cable's fields (its tag, brief 026) are drawn by its slashes and its
+            // cores' lines (its references elsewhere are the reference snapshot's part); a change
+            // of its cores redraws every page, as the core ops did.
+            Op::ModifyCable { id, before, after } => {
+                if before.cores != after.cores {
+                    return None;
+                }
+                out.extend(doc.representations_of(Subject::Cable(*id)).map(|(_, r)| r.page));
+                for m in &after.cores {
+                    out.extend(ecad_electrical::cables::member_pages(doc, m));
+                }
+            }
+            Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } if key.starts_with(ecad_model::tag::HIGH_RESET_PREFIX) => {}
+            // Brief 052 (design 052 §8.2a): a rename in the project's list redraws the pages of
+            // the devices, boxes and pages storing that entry (every page when it is the project's
+            // default); a description is drawn on no page.
+            Op::ModifyProject { before, after } => {
+                use ecad_electrical::designations::{Aspect, changed_codes, default_key, page_key};
+                // Design 072 §5.3: the info and the revision rows are drawn in every page's frame,
+                // as the project properties they were.
+                if before.info != after.info || before.revisions != after.revisions {
+                    return None;
+                }
+                for a in Aspect::ALL {
+                    // A new default is drawn on every page that sets none.
+                    if default_key(before, a) != default_key(after, a) {
+                        return None;
+                    }
+                    for entry in changed_codes(before, after, a) {
+                        if default_key(after, a).as_deref() == Some(entry.as_str()) {
+                            return None;
+                        }
+                        for (c, x) in &doc.devices {
+                            if ecad_electrical::designations::device_keys(x).iter().any(|(_, v)| *v == entry) {
+                                out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
+                            }
+                        }
+                        out.extend(doc.pages.iter().filter(|(_, x)| page_key(x, a).as_deref() == Some(entry.as_str())).map(|(p, _)| *p));
+                    }
+                }
+            }
+            // Brief 044 (design 044 §11.1): a connector naming or description default is drawn by
+            // the connectors that inherit it: their pages. The maker's answers are drawn nowhere.
+            // Their pages come from the connector index view after the commit (`ConnectorsView`).
+            Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } if key.starts_with("connector.") => {}
+            // Brief 030: strip accessory defaults are drawn nowhere (the plan page is a generated
+            // page, kept by its own rule).
+            Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. }
+                if ecad_electrical::accessories::strip_key_of_project(key).is_some() => {}
+            // Brief 050a (design 050 §10): a style record marks the pages of its users (every page
+            // when the project's choice resolves to it); the standard's header none.
+            Op::SetStyle { .. } | Op::SetStandard { .. } => out.extend(ecad_electrical::styles::pages_touched(doc, op)?),
+            // A standard's value acts like a project-level write of its key, and changes nothing on
+            // a page while the project holds its own value.
+            Op::SetProperty { object: ecad_model::ObjectRef::Standard, key, before, after } => {
+                let hidden = ecad_electrical::defaults::find(key).is_some_and(|e| {
+                    ecad_electrical::defaults::resolve(doc, e, ecad_electrical::defaults::Scope::project()).from
+                        == ecad_electrical::defaults::Source::Project
+                });
+                if !hidden {
+                    let as_project =
+                        Op::SetProperty { object: ecad_model::ObjectRef::Project, key: key.clone(), before: before.clone(), after: after.clone() };
+                    out.extend(old_pages_touched(doc, std::slice::from_ref(&as_project))?);
+                }
+            }
+            _ => return None,
+        }
+    }
+    // Brief 052 (design 052 §8.2): a device's location and function are stored, so a box or a
+    // page value changes the tag prefixes of that page only, and a moved symbol those of its own
+    // page; both pages are named by the ops above. #102's widening is gone.
+    Some(out)
+}
+
+/// The pages whose drawn objects `ops` add, change or remove (items and representations): where
+/// an undo or redo of them shows. Other ops (subjects, attachments, cables, properties) are drawn
+/// through those objects or nowhere, so they name no page.
+fn old_pages_named(ops: &[Op]) -> BTreeSet<PageId> {
+    let mut out = BTreeSet::new();
+    for op in ops {
+        match op {
+            Op::AddItem { item, .. } | Op::RemoveItem { item, .. } => {
+                out.insert(item.page);
+            }
+            Op::ModifyItem { before, after, .. } => {
+                out.insert(before.page);
+                out.insert(after.page);
+            }
+            Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => {
+                out.insert(rep.page);
+            }
+            Op::ModifyRepresentation { before, after, .. } => {
+                out.insert(before.page);
+                out.insert(after.page);
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// The pages' feed, on its own, equals its old functions on every transaction of `tier`'s churned
+/// history, with five undos and five redos at its end. Returns how many transactions were compared.
+fn pages_view_agrees(tier: Tier) -> usize {
+    use derived::{Inputs, PagesView, note_view};
+    use ecad_model::view::{DerivedView, NoteCx, Phase};
+    let mut g = generate(tier, Variant::Churned).unwrap();
+    for undo in [true, true, true, true, true, false, false, false, false, false] {
+        let r = if undo { g.ledger.undo_at(Author::User, None) } else { g.ledger.redo_at(Author::User, None) };
+        r.unwrap();
+    }
+    assert_eq!(g.ledger.base(), 0, "the corpus replays from the empty document");
+    let metrics = std::sync::Arc::new(ecad_electrical::text_style::fonts::FixedWidth);
+    let engine = EngineInputs { metrics };
+    let mut view = PagesView::default();
+    let mut doc = Document::default();
+    let mut checked = 0;
+    for tx in g.ledger.log() {
+        let old = PageSet::from_option(old_pages_touched(&doc, &tx.ops));
+        let old_named = old_pages_named(&tx.ops);
+        let effects = ecad_model::effect::Effects::of(&tx.ops);
+        let mut scope = Default::default();
+        note_view::<_, Inputs<'_>>(&view, &NoteCx { doc: &doc, phase: Phase::Before, effects: &effects }, &mut scope);
+        for op in &tx.ops {
+            op.apply(&mut doc).unwrap();
+        }
+        note_view::<_, Inputs<'_>>(&view, &NoteCx { doc: &doc, phase: Phase::After, effects: &effects }, &mut scope);
+        let pages = view.update(&doc, scope, &Inputs { engine: &engine, frame_page: None }).pages;
+        let what = format!("{} transaction {} {:?}", tier.name, tx.seq, tx.label);
+        assert_eq!(pages, old, "{what}: pages");
+        assert_eq!(view.take_named(), old_named, "{what}: named");
+        checked += 1;
+    }
+    checked
+}
+
+/// Step 6: `PagesView` on the small tier's recorded history.
+#[test]
+fn the_pages_view_matches_its_old_functions_on_the_small_corpus() {
+    let n = pages_view_agrees(tier("small").unwrap());
+    assert!(n > 10, "{n} transactions");
+}
+
+/// Step 6: `PagesView` on the medium tier's recorded history (design 064 §10).
+#[test]
+#[ignore = "slow: generates the medium bench project"]
+fn the_pages_view_matches_its_old_functions_on_the_medium_corpus() {
+    let n = pages_view_agrees(tier("medium").unwrap());
+    assert!(n > 10, "{n} transactions");
 }

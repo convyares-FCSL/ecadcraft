@@ -146,12 +146,11 @@ impl DocumentOwner for Project {
         let refs = self.finish_watch(watch);
         self.update_checks(checks);
         let generated = self.update_outputs(outputs);
-        let generated = Some(self.generated_touched(generated));
-        let changed = touched(touched(refs.pages, self.numbered_pages(n)), generated);
+        let changed = touched(refs.pages, Some(generated));
         let props = self.with_numbered(props, n);
         let mut changes = self.finish_derived(pending);
         let echo = refs.orphaned.into_iter().chain(t.notes.iter().cloned()).collect();
-        pass_through(&mut changes, Old { pages: changed, named: BTreeSet::new(), props, echo });
+        pass_through(&mut changes, Old { pages: changed, props, echo });
         self.apply_changes(pg, c.command, changes, Path::Interactive { page });
         self.move_follow_up(pg, &moved, &label);
         self.sync_saved(pg);
@@ -322,9 +321,7 @@ impl Project {
         let ops = if undo { self.ledger.undo_ops() } else { self.ledger.redo_ops() }.unwrap_or_default();
         let reuse = self.xref_reuse();
         let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &ops, reuse, &crate::draw::text_style::EngineMetrics);
-        let pages = pages_touched(self.ledger.document(), &ops, self.outputs.as_ref().map(|o| &o.plc));
         let order_before = self.ledger.document().page_order.clone();
-        let drawn = pages_named(&ops);
         let props = crate::props::touched(self.ledger.document(), &ops);
         let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &ops));
         let outputs = self.outputs.as_ref().map(|o| o.scope(self.ledger.document(), &ops));
@@ -363,10 +360,9 @@ impl Project {
                 let refs = self.finish_watch(watch);
                 self.update_checks(checks);
                 let generated = self.update_outputs(outputs);
-                let generated = Some(self.generated_touched(generated));
-                let pages = touched(touched(pages, refs.pages), generated);
+                let pages = touched(refs.pages, Some(generated));
                 let mut changes = self.finish_derived(pending);
-                pass_through(&mut changes, Old { pages, named: drawn, props, echo: refs.orphaned.into_iter().collect() });
+                pass_through(&mut changes, Old { pages, props, echo: refs.orphaned.into_iter().collect() });
                 self.apply_changes(pg, command, changes, Path::History { order_before: &order_before });
                 Ok(Some(label))
             }
