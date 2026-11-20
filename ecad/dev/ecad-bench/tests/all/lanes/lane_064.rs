@@ -14,9 +14,10 @@
 //! Step 6: the pages' feed (`PagesView`) equals the old `pages_touched` and `pages_named` (kept
 //! here) on every transaction of the same history.
 //!
-//! Step 5: the references view (`RefsView`) equals the old path, a bare `xref::Watch` on a
-//! separately kept index with nothing reused, on every transaction of the same history: the same
-//! pages, the same orphaned-reference line, and the same index.
+//! Step 5: the references view (`RefsView`, its update map over effects) against the whole
+//! document on every transaction of the same history: every page whose reference texts, tables,
+//! connector parts, continuation arrows or cable reference texts differ is among its pages; its
+//! orphaned-reference line is the whole document's; its index equals a build.
 //!
 //! # Frozen pre-R9 behaviour, test oracle only
 //! Every `old_*` function here is a frozen copy of code R9 replaced, kept only as a test oracle.
@@ -666,35 +667,65 @@ fn the_pages_view_matches_its_old_functions_on_the_medium_corpus() {
     assert!(n > 10, "{n} transactions");
 }
 
-/// The references view, with its reuse of the last commit's texts, equals the old path (a bare
-/// `xref::Watch` with nothing reused, on its own index) on every transaction of `tier`'s churned
-/// history with five undos and five redos at its end. Returns how many transactions were compared.
+/// What the references show on each page of `doc`, worked out over the whole document: the device
+/// and connector parts, the continuation arrows, and the cable reference texts.
+fn every_reference(doc: &Document, m: &dyn ecad_electrical::text_style::fonts::TextMetrics) -> std::collections::BTreeMap<PageId, String> {
+    use ecad_electrical::{continuations, xref};
+    let mut out: std::collections::BTreeMap<PageId, String> = std::collections::BTreeMap::new();
+    for p in &doc.page_order {
+        let parts = xref::parts_on_page_measured(doc, *p, m);
+        if !parts.is_empty() {
+            out.insert(*p, format!("{parts:?}"));
+        }
+    }
+    let names: BTreeSet<String> = doc.devices.keys().filter_map(|c| continuations::name_of(doc, *c)).collect();
+    let mut places = xref::Places::new(doc);
+    for (p, parts) in continuations::shown_measured(doc, &mut places, &names, m) {
+        if !parts.is_empty() {
+            out.entry(p).or_default().push_str(&format!("{parts:?}"));
+        }
+    }
+    for r in ecad_model::derive::cable_references(doc) {
+        out.entry(r.page).or_default().push_str(&format!("{}:{};", r.reference.hex(), r.text));
+    }
+    out
+}
+
+/// The references view on every transaction of `tier`'s churned history with five undos and five
+/// redos at its end, against the whole document. Returns how many transactions were compared.
 fn refs_view_agrees(tier: Tier) -> usize {
-    use derived::RefsView;
-    use ecad_electrical::xref::{RefIndex, Shown, Watch};
+    use derived::{Inputs, RefsView};
     let mut g = generate(tier, Variant::Churned).unwrap();
     for undo in [true, true, true, true, true, false, false, false, false, false] {
         let r = if undo { g.ledger.undo_at(Author::User, None) } else { g.ledger.redo_at(Author::User, None) };
         r.unwrap();
     }
     assert_eq!(g.ledger.base(), 0, "the corpus replays from the empty document");
-    let m = ecad_electrical::text_style::fonts::FixedWidth;
+    let metrics = std::sync::Arc::new(ecad_electrical::text_style::fonts::FixedWidth);
+    let engine = EngineInputs { metrics: metrics.clone() };
+    let inputs = Inputs { engine: &engine, frame_page: None };
     let mut view = RefsView::build(&Document::default());
-    let mut old_index = RefIndex::build(&Document::default());
     let mut doc = Document::default();
     let mut checked = 0;
     for tx in g.ledger.log() {
-        let scope = view.take(&doc, &tx.ops, &m);
-        let watch = Watch::take(&doc, &old_index, &tx.ops, &Shown::new(), &m);
+        let before = doc.clone();
         for op in &tx.ops {
             op.apply(&mut doc).unwrap();
         }
-        let new = view.update(&doc, &tx.ops, scope, &m);
-        let old = watch.finish(&doc, &mut old_index, &tx.ops, &m);
+        let out = view.commit(&before, &doc, &tx.ops, &inputs);
         let what = format!("{} transaction {} {:?}", tier.name, tx.seq, tx.label);
-        assert_eq!(new.pages, PageSet::from_option(old.pages), "{what}: pages");
-        assert_eq!(new.echo, old.orphaned.into_iter().collect::<Vec<_>>(), "{what}: orphaned line");
-        assert_eq!(view.index(), &old_index, "{what}: index");
+        let (shown_before, shown_after) = (every_reference(&before, &*metrics), every_reference(&doc, &*metrics));
+        if let PageSet::Only(pages) = &out.pages {
+            for p in shown_before.keys().chain(shown_after.keys()) {
+                if shown_before.get(p) != shown_after.get(p) {
+                    assert!(pages.contains(p), "{what}: page {} changed its references but was not named", p.hex());
+                }
+            }
+        }
+        let whole = ecad_electrical::references::Snapshot::take(&before, None);
+        let orphaned = whole.orphaned_line(&doc, &ecad_electrical::references::Snapshot::take(&doc, None));
+        assert_eq!(out.echo, orphaned.into_iter().collect::<Vec<_>>(), "{what}: orphaned line");
+        assert_eq!(view.index(), &ecad_electrical::xref::RefIndex::build(&doc), "{what}: index");
         checked += 1;
     }
     checked
@@ -702,7 +733,7 @@ fn refs_view_agrees(tier: Tier) -> usize {
 
 /// Step 5: `RefsView` on the small tier's recorded history.
 #[test]
-fn the_refs_view_matches_the_old_watch_on_the_small_corpus() {
+fn the_refs_view_follows_the_whole_document_on_the_small_corpus() {
     let n = refs_view_agrees(tier("small").unwrap());
     assert!(n > 10, "{n} transactions");
 }
@@ -710,7 +741,7 @@ fn the_refs_view_matches_the_old_watch_on_the_small_corpus() {
 /// Step 5: `RefsView` on the medium tier's recorded history (design 064 §10).
 #[test]
 #[ignore = "slow: generates the medium bench project"]
-fn the_refs_view_matches_the_old_watch_on_the_medium_corpus() {
+fn the_refs_view_follows_the_whole_document_on_the_medium_corpus() {
     let n = refs_view_agrees(tier("medium").unwrap());
     assert!(n > 10, "{n} transactions");
 }

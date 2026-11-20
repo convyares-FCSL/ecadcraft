@@ -4,36 +4,40 @@
 //! and the line about references left without another end.
 //!
 //! # Update map
-//! The map is [`crate::xref::Watch`]'s (design 025 §6, the table in [`crate::xref`]), taken on the
-//! ops before the commit and finished on the committed transaction's ops after it:
-//! - The cables the ops could touch ([`crate::references::cables_touched`]): their reference ends'
-//!   pages when their texts changed, and the orphaned-reference line (design 010 §4.3) for the
-//!   command line.
-//! - The devices the ops name (items, representations, wires at their ends, connection points,
-//!   `contacts` and `mirror`, definitions, a page's number, sheet, type or book position, a
-//!   frame's grid): the pages where their texts or tables differ before and after.
-//! - The continuation names the ops name or that stand on such a page: the pages where their
-//!   arrows' texts or caption runs differ.
+//! Its scope is a [`crate::xref::Watch`] (design 025 §6, the table in [`crate::xref`]). Before the
+//! commit, for the ops given to `begin`, each effect looked up on the document before them; after
+//! it, for the transaction as recorded, on the document after:
+//! - The cables (before only, [`crate::references::cables_touched_by`]): a reference
+//!   representation or item, a member's route, wire or connection point, a cable, a page's
+//!   number, sheet, type or book position, a page type's sheet, a frame's grid; every cable for
+//!   the effects no drawing edit makes (a layer, a standard, a project record, other settings).
+//!   Their reference ends' pages when their texts changed, and the orphaned-reference line
+//!   (design 010 §4.3) for the command line.
+//! - The devices: items, representations, wires at their ends, connection points, a device made
+//!   or removed or its definition switched, `contacts` and `mirror`, definitions; the devices with
+//!   a member on a page whose number, sheet, type, book position, type's sheet or frame changed.
+//!   The pages where their texts or tables differ before and after.
+//! - The continuation names the effects name ([`crate::continuations::names_named_by`]) or that
+//!   stand on such a page: the pages where their arrows' texts or caption runs differ.
 //! - The table text, the reference style, the sheet, the length unit or the contact mirror
 //!   default: every page with a device member (the wide case); the continuation text settings:
 //!   every page with an arrow.
-//! - The index: the groups the ops name are made again; a page type's checks switched on or off
-//!   rebuilds it (and is wide).
-//! - Every other op changes nothing.
+//! - The index: the groups the effects name are made again
+//!   ([`crate::xref::RefIndex::groups_named_by`]); a page type's checks switched on or off makes it
+//!   again whole (the scope's `is_all`, after the commit only).
+//! - Every other effect changes nothing.
 //!
 //! What the last commit derived for its devices is kept and is the next commit's "before" (brief
-//! 025): every change of the document goes through [`RefsView::take`] and [`RefsView::update`] or
-//! a rebuild, so it is never stale; verify mode checks each reuse against a fresh derivation.
-//!
-//! It is the one view still mapped from ops, not effects: the pipeline hands it the ops directly.
-//! Brief 064 step 5's port of `xref::Scope::collect`, `references::cables_touched` and
-//! `continuations::names_named` to a `note` over `Effect` (with `Watch` as the scope, and its
-//! internal rebuilds as `is_all` / `verify`) is still to do. Open, reload and branch switch build
-//! it whole ([`RefsView::build`]).
+//! 025): every change of the document goes through the pipeline or a rebuild, so it is never
+//! stale; verify mode checks each reuse against a fresh derivation, and the index against a
+//! build ([`RefsView::check`]). Open, reload and branch switch build it whole
+//! ([`RefsView::build`]).
 
-use ecad_model::view::{Outcome, PageSet};
+use ecad_model::effect::{AreaSet, Effect};
+use ecad_model::view::{DerivedView, NoteCx, Outcome, PageSet, Phase, ViewScope};
 use ecad_model::{Document, Op};
 
+use super::Inputs;
 use crate::text_style::fonts::TextMetrics;
 use crate::xref::{RefIndex, Shown, Watch};
 
@@ -45,10 +49,21 @@ pub struct RefsView {
     shown: Shown,
 }
 
-/// What [`RefsView::take`] saw before the commit.
+/// The references view's scope: the [`Watch`] noted and taken before the commit.
 #[derive(Debug, Default)]
 pub struct RefsScope {
-    watch: Option<Watch>,
+    watch: Watch,
+}
+
+impl ViewScope for RefsScope {
+    fn is_empty(&self) -> bool {
+        false
+    }
+
+    /// A page type's checks switched: the index is made again whole.
+    fn is_all(&self) -> bool {
+        self.watch.rebuilds()
+    }
 }
 
 impl RefsView {
@@ -62,18 +77,10 @@ impl RefsView {
         &self.index
     }
 
-    /// Before the commit: what `ops` could change, derived on `before`. Changes nothing.
-    pub fn take(&self, before: &Document, ops: &[Op], m: &dyn TextMetrics) -> RefsScope {
-        RefsScope { watch: Some(Watch::take(before, &self.index, ops, &self.shown, m)) }
-    }
-
-    /// After the commit: bring the index up to date on `after` and the transaction's ops, and
-    /// say which pages' references changed. A scope not taken changes nothing.
-    pub fn update(&mut self, after: &Document, tx_ops: &[Op], scope: RefsScope, m: &dyn TextMetrics) -> Outcome {
-        let Some(watch) = scope.watch else { return Outcome::default() };
-        let out = watch.finish(after, &mut self.index, tx_ops, m);
-        self.shown = out.shown;
-        Outcome { pages: PageSet::from_option(out.pages), echo: out.orphaned.into_iter().collect(), problems: out.problems, ..Outcome::default() }
+    /// The end of the Before phase: derive what the noted devices, names and cables show on
+    /// `before`. Changes nothing kept.
+    pub fn take(&self, before: &Document, scope: &mut RefsScope, m: &dyn TextMetrics) {
+        scope.watch.take(before, &self.index, &self.shown, m);
     }
 
     /// Verify mode: when the kept index differs from a fresh build of `doc`, rebuild it and say so.
@@ -82,5 +89,41 @@ impl RefsView {
         self.index = RefIndex::build(doc);
         self.shown = Shown::new();
         Some(format!("the reference index was out of step ({e}); rebuilt"))
+    }
+
+    /// Before and after a transaction of `ops` on `before`, giving `after` (tests and benches
+    /// that have no pipeline): the same notes and update as the pipeline's.
+    pub fn commit(&mut self, before: &Document, after: &Document, ops: &[Op], inputs: &Inputs<'_>) -> Outcome {
+        let effects = ecad_model::effect::Effects::of(ops);
+        let mut scope = RefsScope::default();
+        super::note_view::<_, Inputs<'_>>(self, &NoteCx { doc: before, phase: Phase::Before, effects: &effects }, &mut scope);
+        self.take(before, &mut scope, &*inputs.engine.metrics);
+        super::note_view::<_, Inputs<'_>>(self, &NoteCx { doc: after, phase: Phase::After, effects: &effects }, &mut scope);
+        self.update(after, scope, inputs)
+    }
+}
+
+impl<'i> DerivedView<Inputs<'i>> for RefsView {
+    type Scope = RefsScope;
+    const NAME: &'static str = "refs";
+    const AREAS: AreaSet = AreaSet::ALL;
+
+    fn note(&self, cx: &NoteCx<'_>, effect: &Effect<'_>, scope: &mut RefsScope) {
+        scope.watch.note(cx.doc, cx.phase == Phase::Before, cx.effects, effect);
+    }
+
+    fn update(&mut self, doc: &Document, scope: RefsScope, cx: &Inputs<'i>) -> Outcome {
+        if scope.is_all() {
+            self.index = RefIndex::build(doc);
+        } else {
+            scope.watch.refresh(doc, &mut self.index);
+        }
+        let out = scope.watch.finish(doc, &self.index, &*cx.engine.metrics);
+        self.shown = out.shown;
+        Outcome { pages: PageSet::from_option(out.pages), echo: out.orphaned.into_iter().collect(), problems: out.problems, ..Outcome::default() }
+    }
+
+    fn verify(&self, doc: &Document, _cx: &Inputs<'i>) -> Option<String> {
+        self.index.verify(doc).err().map(|e| format!("the reference index differs from a rebuild ({e})"))
     }
 }
