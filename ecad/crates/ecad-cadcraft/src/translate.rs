@@ -153,7 +153,9 @@ impl Scope {
                 Subject::Route(x) => {
                     s.routes.insert(x);
                 }
-                Subject::Wire(_) | Subject::Cable(_) => {}
+                // A cable reference places its cores' named points (F4).
+                Subject::Cable(_) => s.terminals.extend(r.connection_points.keys().copied()),
+                Subject::Wire(_) => {}
             }
         };
         for op in ops {
@@ -501,6 +503,12 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
                         return Err(m);
                     }
                     linked_changed |= cx.ledger.document().representation_of_item(id).is_some();
+                    if let Some((rid, points)) = reference_points_follow(cx.ledger.document(), id, &old, &item) {
+                        rep(&mut reps, rid, cx.ledger.document())?;
+                        if let Some(r) = reps.get_mut(&rid) {
+                            r.connection_points.extend(points);
+                        }
+                    }
                     // A route's points follow its line (design 072 §4.3).
                     let route = route_edit(cx.ledger.document(), id, &item)?;
                     t.ops.push(Op::ModifyItem { id, before: old, after: item });
@@ -570,11 +578,12 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
 
     // Representation edits: an emptied representation is removed (its subject stays, DOC-06). A
     // symbol's connection points are in its definition's frame (brief 018): with no symbol left
-    // they place nothing.
+    // they place nothing. A cable reference's named points (design 072 §4.4, F4) are placed by
+    // its point: with the point erased, the reference goes with them.
     let mut unlinked: Vec<(RepresentationId, Representation)> = Vec::new();
     for (id, r) in reps {
         let old = cx.ledger.document().representations.get(&id).cloned().ok_or("representation missing")?;
-        if r.items.is_empty() && (r.connection_points.is_empty() || r.form == Form::Symbol) {
+        if r.items.is_empty() && (r.connection_points.is_empty() || r.form == Form::Symbol || matches!(r.subject, Subject::Cable(_))) {
             unlinked.push((id, old.clone()));
             t.ops.push(Op::UnlinkRepresentation { id, rep: old });
         } else if r != old {
@@ -622,6 +631,21 @@ pub(crate) fn route_edit(doc: &Document, id: ItemId, item: &Item) -> Result<Opti
     }
     let after = Route { points, ..before.clone() };
     Ok(Some(Op::ModifyRoute { id: r, before, after }))
+}
+
+/// A cable reference's named points follow its point (design 072 §4.4, F4): when item `id` is a
+/// reference's point moved from `old` to `item`, that reference and its connection points moved
+/// by the same distance (as the document has them, so a moved marker of one of them agrees).
+pub(crate) fn reference_points_follow(doc: &Document, id: ItemId, old: &Item, item: &Item) -> Option<(RepresentationId, BTreeMap<TerminalId, Pt>)> {
+    let (rid, rep) = doc.representation_of_item(id)?;
+    if !matches!(rep.subject, Subject::Cable(_)) || rep.connection_points.is_empty() {
+        return None;
+    }
+    let (ItemKind::Primitive(Primitive::Point { at: a }), ItemKind::Primitive(Primitive::Point { at: b })) = (&old.kind, &item.kind) else {
+        return None;
+    };
+    let (dx, dy) = (b.x - a.x, b.y - a.y);
+    Some((rid, rep.connection_points.iter().map(|(t, p)| (*t, Pt::new(p.x + dx, p.y + dy))).collect()))
 }
 
 /// The routes whose drawing `unlinked` removed go too (`RemoveRoute`), after the routes landing

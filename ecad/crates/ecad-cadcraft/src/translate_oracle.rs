@@ -29,7 +29,9 @@ use ecad_model::{
 
 use crate::convert::{ECAD_PREFIX, MARKER_LAYER, item_from, marker_entity, marker_position};
 use crate::project::{ClipSnapshot, HandleMap, Mapped};
-use crate::translate::{Moves, ROUTE_SHAPE, Translation, apply_moves, erase_routes, merge_route_edits, record, route_edit, route_moved};
+use crate::translate::{
+    Moves, ROUTE_SHAPE, Translation, apply_moves, erase_routes, merge_route_edits, record, reference_points_follow, route_edit, route_moved,
+};
 use crate::wires::path_vertices;
 
 static COMPARED: AtomicU64 = AtomicU64::new(0);
@@ -411,6 +413,12 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
                         return Err(m);
                     }
                     linked_changed |= cx.doc.representation_of_item(id).is_some();
+                    if let Some((rid, points)) = reference_points_follow(cx.doc, id, &old, &item) {
+                        rep(&mut reps, rid, cx.doc)?;
+                        if let Some(r) = reps.get_mut(&rid) {
+                            r.connection_points.extend(points);
+                        }
+                    }
                     let route = route_edit(cx.doc, id, &item)?;
                     t.ops.push(Op::ModifyItem { id, before: old, after: item });
                     t.ops.extend(route);
@@ -479,11 +487,12 @@ fn translate(cx: &mut OldCtx<'_>) -> Result<Translation, String> {
 
     // Representation edits: an emptied representation is removed (its subject stays, DOC-06). A
     // symbol's connection points are in its definition's frame (brief 018): with no symbol left
-    // they place nothing.
+    // they place nothing. A cable reference's named points (design 072 §4.4, F4) are placed by
+    // its point: with the point erased, the reference goes with them.
     let mut unlinked: Vec<(RepresentationId, Representation)> = Vec::new();
     for (id, r) in reps {
         let old = cx.doc.representations.get(&id).cloned().ok_or("representation missing")?;
-        if r.items.is_empty() && (r.connection_points.is_empty() || r.form == Form::Symbol) {
+        if r.items.is_empty() && (r.connection_points.is_empty() || r.form == Form::Symbol || matches!(r.subject, Subject::Cable(_))) {
             unlinked.push((id, old.clone()));
             t.ops.push(Op::UnlinkRepresentation { id, rep: old });
         } else if r != old {

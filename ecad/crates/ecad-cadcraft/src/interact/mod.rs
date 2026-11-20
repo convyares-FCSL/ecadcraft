@@ -491,6 +491,10 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
                 }
             },
         },
+        // A cable reference's named point (design 072 §4.4, F4) is the reference's: its lens.
+        Mapped::Marker(rid, _) if doc.representations.get(&rid).is_some_and(crate::references::is_reference) => {
+            crate::references::hover_lines(doc, rid)?
+        }
         Mapped::Marker(_, t) => terminal_lines(doc, t),
         Mapped::Fan(k) => {
             let fan = view.map.is_fan(k);
@@ -513,7 +517,7 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
 
 /// The terminal shown on page drawing `uid` within `aperture` drawing units of `cursor` (the
 /// nearest, as a capture picks it), with what hovering it shows: drawn and symbol terminals
-/// alike, connected or free. A terminal under the pointer wins over the objects around it (the
+/// alike, connected or free; never a cable reference's named point. A terminal under the pointer wins over the objects around it (the
 /// wire ending on it, the symbol it belongs to). Read only.
 pub fn hover_terminal(p: &Project, uid: u64, cursor: Vec2, aperture: f64) -> Option<(TerminalId, Vec<String>)> {
     let page = p.page_of(uid)?;
@@ -521,6 +525,10 @@ pub fn hover_terminal(p: &Project, uid: u64, cursor: Vec2, aperture: f64) -> Opt
         return None;
     }
     let c = capture(p, page, cursor, aperture)?;
+    // A cable reference's named point (design 072 §4.4, F4) is the reference's: its own lens.
+    if p.ledger.document().cable_point(c.terminal).is_some() {
+        return None;
+    }
     let mut lines = terminal_lines(p.ledger.document(), c.terminal);
     capped(&mut lines);
     Some((c.terminal, lines))

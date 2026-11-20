@@ -618,7 +618,8 @@ pub fn wire_between(doc: &Document, a: TerminalId, b: TerminalId) -> Option<Wire
 }
 
 /// A connection point route `r` reaches over routes, the nearest first: its own ends, then the
-/// routes it lands on and that land on it. The cost follows the routes joined to it.
+/// routes it lands on and that land on it; never a named point. The cost follows the routes
+/// joined to it.
 fn point_of_route(doc: &Document, r: RouteId) -> Option<TerminalId> {
     let mut seen = BTreeSet::new();
     let mut todo = std::collections::VecDeque::from([r]);
@@ -627,7 +628,8 @@ fn point_of_route(doc: &Document, r: RouteId) -> Option<TerminalId> {
             continue;
         }
         let Some(route) = doc.routes.get(&x) else { continue };
-        if let Some(t) = route.points_landed().next() {
+        // A named point (a cable reference's, F4) is an aid: no wire ends there.
+        if let Some(t) = route.points_landed().find(|t| doc.named_points(*t).is_none()) {
             return Some(t);
         }
         todo.extend(route.ends.iter().filter_map(|e| e.route()));

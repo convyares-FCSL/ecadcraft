@@ -191,6 +191,8 @@ pub fn plan_delete(doc: &Document, doomed: Doomed) -> Result<Deleted, CmdError> 
         }
         Doomed::Cable(k) => {
             let cable = doc.cables.get(&k).ok_or(CmdError::refused("no such cable"))?;
+            // Its named points go with it (design 072 §4.4, F4): the lines on them end free.
+            ops.extend(crate::wires::free_points_ops(doc, cable.cores.iter().flat_map(|c| c.through.iter().copied())));
             ops.extend(remove_representations(doc, Subject::Cable(k)));
             ops.push(Op::DeleteCable { id: k, cable: cable.clone() });
             let kept = cable.cores.iter().filter(|m| m.position != ecad_model::CorePosition::Unplaced).count();
