@@ -13,7 +13,8 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use ecad_cadcraft::props::{PropsView, Row, Target};
+use ecad_electrical::props::{PropsView, Target};
+use ecad_electrical::words::Row;
 use ecad_model::SheetSpec;
 use ecad_ui::control::{self, Decor, Select, TextEntry};
 use ecad_ui::dialog::{Dialog, action};
@@ -1062,20 +1063,20 @@ fn prop_row(ui: &mut egui::Ui, sh: &mut PropsShared, target: &Option<Target>, ki
             let typed = typed.trim().to_string();
             let next = e.split("\"next\" (use ").nth(1).and_then(|r| r.split(')').next()).map(str::to_string);
             let same_kind = e.contains("\"swap\"");
-            let noun = if matches!(tg, ecad_cadcraft::props::Target::Cable(_)) { "cable" } else { "device" };
+            let noun = if matches!(tg, ecad_electrical::props::Target::Cable(_)) { "cable" } else { "device" };
             ui.horizontal(|ui| {
                 if same_kind {
                     if ui.add(Button::new("Swap").kind(Kind::Primary).small()).accessible_name("ecad.tagclash.swap").clicked() {
-                        sh.edits.push((tg.clone(), ecad_cadcraft::props::conflict_key("swap"), Some(typed.clone())));
+                        sh.edits.push((tg.clone(), ecad_electrical::props::conflict_key("swap"), Some(typed.clone())));
                     }
                     let same = format!("Make it the same {noun}");
                     if ui.add(Button::new(&same).small()).accessible_name("ecad.tagclash.merge").clicked() {
-                        sh.edits.push((tg.clone(), ecad_cadcraft::props::conflict_key("merge"), Some(typed.clone())));
+                        sh.edits.push((tg.clone(), ecad_electrical::props::conflict_key("merge"), Some(typed.clone())));
                     }
                 }
                 let label = next.as_deref().map_or_else(|| "Use the next free".to_string(), |n| format!("Use {n}"));
                 if ui.add(Button::new(&label).small()).accessible_name("ecad.tagclash.next").clicked() {
-                    sh.edits.push((tg.clone(), ecad_cadcraft::props::conflict_key("next"), Some(typed.clone())));
+                    sh.edits.push((tg.clone(), ecad_electrical::props::conflict_key("next"), Some(typed.clone())));
                 }
             });
         }

@@ -428,7 +428,7 @@ fn update_available_reaches_the_devices_list_through_its_update_map() {
     // The list's and the properties' update maps name the device for the new version.
     let touched = ecad_cadcraft::device_list::devices_touched(&before, &ops);
     assert!(format!("{touched:?}").contains(&format!("{a:?}")), "{touched:?}");
-    let props = ecad_cadcraft::props::touched(&before, &ops).unwrap();
+    let props = ecad_electrical::props::touched(&before, &ops).unwrap();
     assert!(props.contains(&ecad_model::ObjectRef::Device(a)));
     assert!(entry(&h.doc()).symbols[0].update, "update available");
 }
