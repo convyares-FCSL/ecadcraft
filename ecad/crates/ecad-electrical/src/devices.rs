@@ -487,7 +487,7 @@ pub fn join_labels(doc: &Document, c: DeviceId, s: &Starter, extra: &BTreeSet<St
     used.extend(extra.iter().cloned());
     let who = tag_words(doc, c);
     // Brief 044: a connector holds connector halves and pins only.
-    if crate::connectors::is_connector(doc, c) && !matches!(s.kind, Kind::ConnectorHalf { .. }) {
+    if crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating) && !matches!(s.kind, Kind::ConnectorHalf { .. }) {
         return Err(CmdError::refused(format!("{who} is a connector; place a connector half or pin on it, or Enter for a new device.")));
     }
     match s.kind {

@@ -167,7 +167,7 @@ pub fn connector_target(doc: &Document, side: Side, device: Option<&str>, tag: O
         }
     }
     if let Some(c) = found
-        && !crate::connectors::is_connector(doc, c)
+        && !crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating)
     {
         return Err(CmdError::refused(crate::connectors::not_a_connector(doc, c)));
     }

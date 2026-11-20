@@ -150,7 +150,7 @@ fn step(doc: &Document, t: TerminalId) -> Step {
         return Step::Stop;
     }
     // A connector: the same pin on the other half.
-    if crate::connectors::is_connector(doc, c) {
+    if crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating) {
         let (Some(side), Some(name)) = (crate::connectors::side_of(doc, t), crate::connectors::pin_name(doc, t)) else { return Step::Stop };
         let d = crate::connectors::drawn(doc, c);
         let other = d.side(side.other()).and_then(|m| m.get(&name)).cloned().unwrap_or_default();

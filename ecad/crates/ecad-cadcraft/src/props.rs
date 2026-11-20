@@ -602,7 +602,7 @@ fn override_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>) {
         r.choices = codes(doc, LOCATION_KEY);
         rows.push(r);
     };
-    if crate::connectors::is_connector(doc, c) {
+    if crate::connectors::connector_of(doc, c).is_some_and(|x| x.mating) {
         row("location.socket", "Location (socket)");
         row("location.plug", "Location (plug)");
     } else if crate::strips::strip_of(doc, c).is_none()
