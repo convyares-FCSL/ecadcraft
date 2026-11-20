@@ -46,6 +46,7 @@ pub mod plc;
 pub mod proposals;
 pub mod rating;
 pub mod references;
+pub mod release;
 pub mod reps;
 pub mod revisions;
 pub mod slash;
