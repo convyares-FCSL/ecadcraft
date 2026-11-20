@@ -393,7 +393,7 @@ fn r5_not_drawn_is_info_and_a_warning_in_the_release_check() {
     assert_eq!(row.len(), 1);
     assert_eq!(row[0].severity(), Severity::Info);
     assert_eq!(row[0].release_severity(), Severity::Warning);
-    let (_, warnings, _) = ecad_cadcraft::release::counts(&release);
+    let (_, warnings, _) = ecad_electrical::release::counts(&release);
     assert!(warnings >= 1);
     // The pre-release check (read only) shows it as a warning.
     let pre = h.run("prerelease", json!({})).unwrap();

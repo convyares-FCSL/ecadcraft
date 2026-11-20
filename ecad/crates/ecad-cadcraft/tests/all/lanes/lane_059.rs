@@ -71,7 +71,7 @@ fn cablenew_makes_a_cable_that_is_not_drawn_in_one_transaction() {
     let c = checks::cable_checks(&doc, k).into_iter().find(|c| c.kind == checks::Kind::CableNotDrawn).unwrap();
     assert_eq!(c.severity(), Severity::Info);
     assert_eq!(c.release_severity(), Severity::Warning);
-    assert_eq!(ecad_cadcraft::release::counts(&[c]), (0, 1, 0));
+    assert_eq!(ecad_electrical::release::counts(&[c]), (0, 1, 0));
     // The cable's row in the report says not drawn.
     let drawn = h.p(|p| p.outputs.as_ref().and_then(|o| o.cable_row(k)).map(|r| r.drawn));
     assert!(drawn != Some(true));

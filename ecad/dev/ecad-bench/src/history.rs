@@ -105,7 +105,7 @@ fn measure_on(copy: &Path, runs: usize) -> Result<MeasuredHistory, String> {
     let mut branches = 0;
     for _ in 0..runs {
         let t = Instant::now();
-        let (l, g) = p.read(&mut s, |p, _| history::graph(p, history::Show::default()).map(|g| (history::layout(&g), g)))??;
+        let (l, g) = p.read(&mut s, |p, _| history::graph(p, ecad_file::history::Show::default()).map(|g| (ecad_file::history::layout(&g), g)))??;
         show.push(ms(t));
         nodes = g.nodes.len();
         branches = g.branches.len();
@@ -118,7 +118,7 @@ fn measure_on(copy: &Path, runs: usize) -> Result<MeasuredHistory, String> {
         toggle(&mut s, n)?;
         let t = Instant::now();
         run(&mut s, "version", json!({"name": format!("Bench upd {i}")}))?;
-        let g = p.read(&mut s, |p, _| history::graph(p, history::Show::default()))??;
+        let g = p.read(&mut s, |p, _| history::graph(p, ecad_file::history::Show::default()))??;
         upd.push(ms(t));
         std::hint::black_box(g);
     }
