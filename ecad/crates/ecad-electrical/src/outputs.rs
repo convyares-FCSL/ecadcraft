@@ -524,6 +524,8 @@ impl Scope {
                 }
                 // A cable is written whole (`ModifyCable`); `SetProperty` on one is refused.
                 Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Cable(_), .. } => {}
+                // No check or output reads a device link yet (design 072 §2.6).
+                Op::AddDeviceLink { .. } | Op::RemoveDeviceLink { .. } => {}
                 Op::ModifyProject { before, after } => {
                     use crate::designations::{Aspect, changed_codes, default_key};
                     // Brief 047: an item without its own location shows the project's.

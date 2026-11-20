@@ -122,6 +122,8 @@ impl Scope {
                     | Op::SetStyle { .. }
                     | Op::SetStandard { .. }
                     | Op::ModifyProject { .. }
+                    | Op::AddDeviceLink { .. }
+                    | Op::RemoveDeviceLink { .. }
             ) {
                 self.project = true;
             }
@@ -967,6 +969,10 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
             Obj::Project => {
                 m.properties = merge_props(ctx, obj, "Project", &a.properties, &t.properties, &s.properties, ctx.inp.keep_project_key);
                 m.project = merge_project(ctx, obj, &a.project, &t.project, &s.project);
+                m.device_links =
+                    field(ctx, obj, "device_links", "Project · device links".into(), &a.device_links, &t.device_links, &s.device_links, &|x| {
+                        format!("{} device links", x.len())
+                    });
                 m.settings =
                     field(ctx, obj, "settings", "Project settings · changed on both".into(), &a.settings, &t.settings, &s.settings, &|_| {
                         "its settings".into()
@@ -1000,6 +1006,9 @@ fn merge_project(ctx: &mut Ctx<'_, '_>, obj: Obj, a: &crate::Project, t: &crate:
         }),
         // Revision rows are merged only where the filter allows (never into the release line; an
         // update brings them unchanged), as one unit.
+        user_fields: field(ctx, obj, "user_fields", "Project · user fields".into(), &a.user_fields, &t.user_fields, &s.user_fields, &|x| {
+            format!("{} user fields", x.len())
+        }),
         revisions: if (ctx.inp.keep_project_key)(crate::project::REVISIONS_KEY) {
             field(ctx, obj, "revisions", "Project · revisions".into(), &a.revisions, &t.revisions, &s.revisions, &|x| {
                 format!("{} revisions", x.len())

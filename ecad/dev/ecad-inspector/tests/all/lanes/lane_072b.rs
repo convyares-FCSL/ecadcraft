@@ -353,3 +353,55 @@ fn a_symbol_s_part_and_a_representation_s_role_are_shown_raw_and_readable() {
         "contact",
     );
 }
+
+/// Step 5, user fields (A15, design 072 §2.8): the project's field list (`ModifyProject`) and a
+/// device's value (`ModifyDevice`) show in the readable log and the Readable row view, and the
+/// Raw view is the stored bytes.
+#[test]
+fn user_fields_and_a_device_s_value_are_shown_raw_and_readable() {
+    use ecad_model::text::Text;
+    use ecad_model::{Project, UserFieldDef, UserFieldId, UserFieldKind, UserValue};
+    let mut ids = IdAllocator::seeded(86);
+    let (c, f): (DeviceId, UserFieldId) = (ids.fresh(), ids.fresh());
+    let def = UserFieldDef { id: f, name: Text::new("Panel row").unwrap(), kind: UserFieldKind::Number { unit: Some(Text::new("mm").unwrap()) } };
+    let project = Project { user_fields: vec![def], ..Project::default() };
+    let add_field = Op::ModifyProject { before: Project::default(), after: project.clone() };
+    let device = vec![Op::CreateDevice { id: c, device: Device::default() }];
+    shown("072b-user-field", device, vec![add_field], "ModifyProject", &["user_fields", "Panel row", "number", "mm"], "Panel row");
+    let before = Device::default();
+    let mut after = before.clone();
+    after.user.insert(f, UserValue::Number(12.5));
+    let setup = vec![Op::ModifyProject { before: Project::default(), after: project }, Op::CreateDevice { id: c, device: before.clone() }];
+    shown("072b-user-value", setup, vec![Op::ModifyDevice { id: c, before, after }], "ModifyDevice", &["user", "12.5"], "12.5");
+}
+
+/// Step 5, device links (A15, design 072 §2.6): `AddDeviceLink` and `RemoveDeviceLink` show
+/// with their kind and devices in the readable log and the Readable row view, and the Raw view
+/// is the stored bytes.
+#[test]
+fn device_links_are_shown_raw_and_readable() {
+    use ecad_model::{DeviceLink, LinkId, LinkKind};
+    let mut ids = IdAllocator::seeded(87);
+    let (a, b, l): (DeviceId, DeviceId, LinkId) = (ids.fresh(), ids.fresh(), ids.fresh());
+    let devices = vec![Op::CreateDevice { id: a, device: Device::default() }, Op::CreateDevice { id: b, device: Device::default() }];
+    let link = DeviceLink { kind: LinkKind::MechanicalInterlock, a, b };
+    let add = Op::AddDeviceLink { id: l, link };
+    shown(
+        "072b-link-add",
+        devices.clone(),
+        vec![add.clone()],
+        "AddDeviceLink",
+        &["mechanical_interlock", &a.hex(), &b.hex()],
+        "mechanical_interlock",
+    );
+    let mut setup = devices;
+    setup.push(add);
+    shown(
+        "072b-link-remove",
+        setup,
+        vec![Op::RemoveDeviceLink { id: l, link }],
+        "RemoveDeviceLink",
+        &["mechanical_interlock"],
+        "mechanical_interlock",
+    );
+}

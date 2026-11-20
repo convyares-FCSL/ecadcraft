@@ -211,6 +211,9 @@ pub struct Device {
     /// What the device is (design 072 F15): the model's own type, whose words and fields are
     /// strict.
     pub device_type: m::DeviceType,
+    /// Design 072 §2.8: its values of the project's user fields; left out while empty.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub user: BTreeMap<m::UserFieldId, m::UserValue>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -963,6 +966,15 @@ pub enum Op {
         before: m::Project,
         after: m::Project,
     },
+    /// Design 072 §2.6: a link between two devices made or removed, the model's strict record.
+    AddDeviceLink {
+        id: m::LinkId,
+        link: m::DeviceLink,
+    },
+    RemoveDeviceLink {
+        id: m::LinkId,
+        link: m::DeviceLink,
+    },
 }
 
 /// Where a style record lives (brief 050a).
@@ -1069,6 +1081,7 @@ impl From<&m::Device> for Device {
             properties: c.properties.clone(),
             definition: c.definition,
             device_type: c.device_type.clone(),
+            user: c.user.clone(),
         }
     }
 }
@@ -1321,6 +1334,8 @@ impl From<&m::Op> for Op {
             }
             m::Op::SetStandard { before, after } => Op::SetStandard { before: before.clone(), after: after.clone() },
             m::Op::ModifyProject { before, after } => Op::ModifyProject { before: before.clone(), after: after.clone() },
+            m::Op::AddDeviceLink { id, link } => Op::AddDeviceLink { id: *id, link: *link },
+            m::Op::RemoveDeviceLink { id, link } => Op::RemoveDeviceLink { id: *id, link: *link },
         }
     }
 }
@@ -1425,6 +1440,7 @@ impl From<Device> for m::Device {
             properties: c.properties,
             definition: c.definition,
             device_type: c.device_type,
+            user: c.user,
         }
     }
 }
@@ -1595,6 +1611,8 @@ impl TryFrom<Op> for m::Op {
             Op::SetStyle { layer: l, catalogue, id, before, after } => m::Op::SetStyle { layer: mlayer(l), catalogue, id, before, after },
             Op::SetStandard { before, after } => m::Op::SetStandard { before, after },
             Op::ModifyProject { before, after } => m::Op::ModifyProject { before, after },
+            Op::AddDeviceLink { id, link } => m::Op::AddDeviceLink { id, link },
+            Op::RemoveDeviceLink { id, link } => m::Op::RemoveDeviceLink { id, link },
         })
     }
 }

@@ -390,6 +390,7 @@ pub fn plan_toposition(
         }
         _ => None,
     };
+    ops.extend(crate::cmd::device_link::unlink_ops(doc, device));
     ops.push(Op::DeleteDevice { id: device, device: comp.clone() });
     Ok(ToPosition { ops, strip, position: pos.clone(), lost, note, label: format!("{tag} \u{2192} {stag}:{pos}") })
 }

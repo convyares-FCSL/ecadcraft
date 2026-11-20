@@ -86,6 +86,8 @@ pub const OP_NAMES: &[&str] = &[
     "SetStyle",
     "SetStandard",
     "ModifyProject",
+    "AddDeviceLink",
+    "RemoveDeviceLink",
 ];
 
 /// Why a record could not be decoded (§20.6).

@@ -277,3 +277,53 @@ fn setprop_of_a_power_supply_rating_records_modify_device() {
     let mut r = reader();
     r.refused("execute", json!({"command": "setprop", "params": {"component": id, "key": "rating", "value": "24 V DC"}}));
 }
+
+/// Step 5 (design 072 §2.8, brief 011): `userfield` records one `ModifyProject` and
+/// `setprop user.<name>` one `ModifyDevice` with the typed value, as the agent; both are refused
+/// with writes off.
+#[test]
+fn user_fields_record_modify_project_and_modify_device() {
+    let mut c = Client::new(EcadMcp::in_memory("lane072b-user", 86, Options { write: true, agent: None }).unwrap());
+    let placed = c.exec("place", json!({"symbol": "coil", "at": [50, 50]}));
+    let id = placed["component"].as_str().unwrap().to_string();
+    let before = c.log().len();
+    c.exec("userfield", json!({"name": "Row", "kind": "number", "unit": "mm"}));
+    c.exec("setprop", json!({"component": id, "key": "user.Row", "value": "3"}));
+    let log = c.log();
+    assert_eq!(log.len(), before + 2);
+    let (field, value) = (&log[before], &log[before + 1]);
+    assert_eq!(field.author, Author::Agent(AGENT.into()));
+    assert_eq!(value.author, Author::Agent(AGENT.into()));
+    let fid = match field.ops.as_slice() {
+        [Op::ModifyProject { after, .. }] => after.user_fields[0].id,
+        other => panic!("{other:?}"),
+    };
+    match value.ops.as_slice() {
+        [Op::ModifyDevice { after, .. }] => assert_eq!(after.user.get(&fid), Some(&ecad_model::UserValue::Number(3.0))),
+        other => panic!("{other:?}"),
+    }
+    let mut r = reader();
+    r.refused("execute", json!({"command": "userfield", "params": {"name": "Row", "kind": "flag"}}));
+    r.refused("execute", json!({"command": "setprop", "params": {"component": id, "key": "user.Row", "value": "4"}}));
+}
+
+/// Step 5 (design 072 §2.6, brief 011): `linkdevices` records one `AddDeviceLink` and
+/// `unlinkdevices` one `RemoveDeviceLink`, as the agent; both are refused with writes off.
+#[test]
+fn device_links_record_add_and_remove_device_link() {
+    let mut c = Client::new(EcadMcp::in_memory("lane072b-link", 87, Options { write: true, agent: None }).unwrap());
+    let a = c.exec("place", json!({"symbol": "coil", "at": [50, 50]}))["component"].as_str().unwrap().to_string();
+    let b = c.exec("place", json!({"symbol": "coil", "at": [90, 50]}))["component"].as_str().unwrap().to_string();
+    let v = c.exec("linkdevices", json!({"kind": "mechanical_interlock", "devices": [a, b]}));
+    let link = v["link"].as_str().unwrap().to_string();
+    let last = c.log().last().cloned().unwrap();
+    assert_eq!(last.author, Author::Agent(AGENT.into()));
+    assert!(matches!(last.ops.as_slice(), [Op::AddDeviceLink { link: l, .. }] if l.kind == ecad_model::LinkKind::MechanicalInterlock));
+    c.exec("unlinkdevices", json!({"link": link}));
+    let last = c.log().last().cloned().unwrap();
+    assert_eq!(last.author, Author::Agent(AGENT.into()));
+    assert!(matches!(last.ops.as_slice(), [Op::RemoveDeviceLink { .. }]));
+    let mut r = reader();
+    r.refused("execute", json!({"command": "linkdevices", "params": {"kind": "auxiliary_block", "devices": [a, b]}}));
+    r.refused("execute", json!({"command": "unlinkdevices", "params": {"link": link}}));
+}

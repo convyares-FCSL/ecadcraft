@@ -162,7 +162,9 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
             | Op::ModifyFolder { .. }
             | Op::SetProjectSettings { .. }
             // Design 072 §5.3: a code renamed in the project's list shows on every object storing it.
-            | Op::ModifyProject { .. } => return None,
+            | Op::ModifyProject { .. }
+            | Op::AddDeviceLink { .. }
+            | Op::RemoveDeviceLink { .. } => return None,
         }
     }
     Some(out)

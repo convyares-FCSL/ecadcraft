@@ -284,6 +284,18 @@ Schematic versus panel is one device with two representations, not a relationshi
 `Project.user_fields: Vec<UserFieldDef { id, name, kind: Text | Number { unit } | Flag | Choice }>`;
 devices store values by id; a wrong kind or an unknown id is a read error.
 
+**As built (lane B step 5, 2026-11-20).** `ecad_model::user`: `UserFieldDef { id: UserFieldId,
+name: Text<32>, kind }`, `Choice { options }` (1 to 32, none twice ignoring case), at most 64
+fields, names unique ignoring case; `Device.user: BTreeMap<UserFieldId, UserValue>` (`Text`,
+`Number(f64)` finite, `Flag`, `Choice`), checked by invariant I24, so a bad value does not open.
+Fields change through `ModifyProject` (`userfield`); a value through `ModifyDevice`
+(`setprop user.<name>`, `user.` reserved on devices). Removing a field clears its values first, in
+the same transaction. Links: `Document.device_links: BTreeMap<LinkId, DeviceLink>`, stored in the
+`model:project` chunk; `LinkKind` is `mechanical_interlock` or `auxiliary_block` (more when a
+check needs one); a pair is linked once per kind; `DeleteDevice` refuses a linked device, so every
+delete removes the links first (a merge of two devices re-points them); `Effect::DeviceLink`;
+commands `linkdevices`, `unlinkdevices`.
+
 ---
 
 ## 3. PLC: station, modules, channels

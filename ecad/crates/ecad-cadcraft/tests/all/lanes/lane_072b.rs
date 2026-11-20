@@ -618,3 +618,58 @@ fn contacts_and_the_table_are_written_as_modify_device() {
     assert!(xref::offer_of(&h.doc(), k).is_none());
     assert!(!xref::placement_of(&h.doc(), k).1);
 }
+
+/// Step 5 (design 072 §2.8): `userfield` adds a project field, `setprop user.<name>` sets a
+/// device's value read as the field's kind (refusing one that does not read), and removing the
+/// field clears the values in the same transaction.
+#[test]
+fn user_fields_are_added_set_and_removed() {
+    use ecad_model::UserValue;
+    let mut h = H::new(0x72_c5);
+    let k = id::<DeviceId>(&h.run("place", json!({"symbol": "coil", "at": [40, 40]})).unwrap(), "component");
+    h.run("userfield", json!({"name": "Row", "kind": "number", "unit": "mm"})).unwrap();
+    h.run("userfield", json!({"name": "Side", "kind": "choice", "options": ["Left", "Right"]})).unwrap();
+    assert!(h.run("userfield", json!({"name": "row", "kind": "flag"})).is_err(), "a name twice, ignoring case");
+    assert!(h.run("userfield", json!({"name": "Empty", "kind": "choice"})).is_err(), "a choice field with no choices");
+    assert!(h.run("userfield", json!({"name": "No kind"})).is_err());
+    h.run("setprop", json!({"component": k.hex(), "key": "user.Row", "value": "12.5 mm"})).unwrap();
+    h.run("setprop", json!({"component": k.hex(), "key": "user.side", "value": "right"})).unwrap();
+    let doc = h.doc();
+    let field = |name: &str| doc.project.user_fields.iter().find(|f| f.name.as_str() == name).unwrap().id;
+    let (row, side) = (field("Row"), field("Side"));
+    assert_eq!(doc.devices[&k].user.get(&row), Some(&UserValue::Number(12.5)));
+    assert!(matches!(doc.devices[&k].user.get(&side), Some(UserValue::Choice(c)) if c.as_str() == "Right"));
+    for (key, value) in [("user.Row", "twelve"), ("user.Side", "Up"), ("user.Nothing", "1")] {
+        assert!(h.run("setprop", json!({"component": k.hex(), "key": key, "value": value})).is_err(), "{key} = {value}");
+    }
+    assert!(h.doc().devices[&k].properties.keys().all(|p| !p.starts_with("user.")), "never in the bag");
+    let v = h.run("userfield", json!({"name": "Row", "remove": true})).unwrap();
+    assert_eq!(v["cleared"], 1, "{v}");
+    let doc = h.doc();
+    assert!(!doc.devices[&k].user.contains_key(&row) && doc.devices[&k].user.contains_key(&side));
+    h.run("undo", json!({})).unwrap();
+    assert_eq!(h.doc().devices[&k].user.get(&row), Some(&UserValue::Number(12.5)), "undo brings field and value back");
+}
+
+/// Step 5 (design 072 §2.6): `linkdevices` links two devices once; deleting one removes its
+/// links in the same transaction and undo restores them; `unlinkdevices` removes a link.
+#[test]
+fn devices_are_linked_and_deleting_one_removes_its_links() {
+    use ecad_model::{LinkId, LinkKind};
+    let mut h = H::new(0x72_c6);
+    let a = id::<DeviceId>(&h.run("place", json!({"symbol": "coil", "at": [40, 40]})).unwrap(), "component");
+    let b = id::<DeviceId>(&h.run("place", json!({"symbol": "coil", "at": [80, 40]})).unwrap(), "component");
+    let v = h.run("linkdevices", json!({"kind": "mechanical_interlock", "devices": [a.hex(), b.hex()]})).unwrap();
+    let link = id::<LinkId>(&v, "link");
+    assert_eq!(h.doc().device_links[&link].kind, LinkKind::MechanicalInterlock);
+    assert!(h.run("linkdevices", json!({"kind": "mechanical_interlock", "devices": [b.hex(), a.hex()]})).is_err(), "once");
+    assert!(h.run("linkdevices", json!({"kind": "auxiliary_block", "devices": [a.hex(), a.hex()]})).is_err(), "not to itself");
+    assert!(h.run("linkdevices", json!({"kind": "glued", "devices": [a.hex(), b.hex()]})).is_err(), "an unknown kind");
+    h.run("ecaddelete", json!({"component": a.hex()})).unwrap();
+    assert!(h.doc().device_links.is_empty());
+    h.run("undo", json!({})).unwrap();
+    assert!(h.doc().device_links.contains_key(&link), "undo restores the link with the device");
+    h.run("unlinkdevices", json!({"link": link.hex()})).unwrap();
+    assert!(h.doc().device_links.is_empty());
+    assert!(h.run("unlinkdevices", json!({"link": link.hex()})).is_err());
+}

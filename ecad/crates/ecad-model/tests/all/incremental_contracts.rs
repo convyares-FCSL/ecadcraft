@@ -94,6 +94,9 @@ pub(crate) struct Base {
     pub(crate) folder_v: Folder,
     route: ecad_model::RouteId,
     route_v: ecad_model::Route,
+    /// The link between two plain devices (design 072 §2.6).
+    link: ecad_model::LinkId,
+    link_v: ecad_model::DeviceLink,
 }
 
 pub(crate) fn base() -> Base {
@@ -159,6 +162,9 @@ pub(crate) fn base() -> Base {
         vec![Pt::new(0.0, 0.0), Pt::new(9.0, 0.0)],
         [ecad_model::RouteEnd::Point(term), ecad_model::RouteEnd::Point(term2)],
     );
+    let pair: [ecad_model::DeviceId; 2] = [ids.fresh(), ids.fresh()];
+    let link = ids.fresh();
+    let link_v = ecad_model::DeviceLink { kind: ecad_model::LinkKind::MechanicalInterlock, a: pair[0], b: pair[1] };
     ledger
         .commit(
             Author::User,
@@ -181,6 +187,9 @@ pub(crate) fn base() -> Base {
                 Op::CreateCable { id: cable, cable: cable_v.clone() },
                 Op::AddFolder { id: folder, folder: folder_v.clone(), index: 0 },
                 Op::AddRoute { id: route, route: route_v.clone() },
+                Op::CreateDevice { id: pair[0], device: Device::default() },
+                Op::CreateDevice { id: pair[1], device: Device::default() },
+                Op::AddDeviceLink { id: link, link: link_v },
             ],
         )
         .unwrap();
@@ -216,6 +225,8 @@ pub(crate) fn base() -> Base {
         folder_v,
         route,
         route_v,
+        link,
+        link_v,
     }
 }
 
@@ -305,6 +316,8 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
         },
         Op::SetStandard { before: None, after: Some(header(b)) },
         Op::ModifyProject { before: ecad_model::Project::default(), after: lists(b) },
+        Op::AddDeviceLink { id: b.ids.fresh(), link: ecad_model::DeviceLink { kind: ecad_model::LinkKind::AuxiliaryBlock, ..b.link_v } },
+        Op::RemoveDeviceLink { id: b.link, link: b.link_v },
     ]
 }
 
@@ -396,6 +409,9 @@ fn failing(b: &mut Base) -> Vec<Op> {
         },
         Op::SetStandard { before: Some(header(b)), after: None },
         Op::ModifyProject { before: lists(b), after: ecad_model::Project::default() },
+        // Lane 072 B step 5: the same link again; a link that is not there.
+        Op::AddDeviceLink { id: b.ids.fresh(), link: b.link_v },
+        Op::RemoveDeviceLink { id: b.ids.fresh(), link: b.link_v },
     ]
 }
 

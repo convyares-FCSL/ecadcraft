@@ -57,6 +57,7 @@ pub mod tag;
 pub mod text;
 pub mod title_block;
 pub mod units;
+pub mod user;
 pub mod view;
 pub mod wire;
 pub mod wire_order;
@@ -75,8 +76,8 @@ pub use doc::{
 pub use error::{ModelError, Noun, ParseError, Parsed, Result};
 pub use geom::{Placement, Pt};
 pub use id::{
-    CableId, ConductorId, DefinitionId, DeviceId, FolderId, FunctionId, IdAllocator, ItemId, LayerId, LibraryId, LocationId, NetId, PageId,
-    ProjectId, RepresentationId, RouteId, StandardId, TerminalId, TxId, WireId,
+    CableId, ConductorId, DefinitionId, DeviceId, FolderId, FunctionId, IdAllocator, ItemId, LayerId, LibraryId, LinkId, LocationId, NetId, PageId,
+    ProjectId, RepresentationId, RouteId, StandardId, TerminalId, TxId, UserFieldId, WireId,
 };
 pub use invariant::Touched;
 pub use ledger::{Author, Base, BranchPoint, Check, History, Ledger, StepPoint, Transaction, TxKind};
@@ -90,6 +91,7 @@ pub use role::{PartRole, Role};
 pub use route::{Route, RouteEnd};
 pub use sheet::{GridLabels, PageColumn, PageRow, SheetSpec};
 pub use style::{Standard, StandardHeader, StyleCatalogue, StyleCatalogues, StyleLayer, StyleRecord, StyleRef};
+pub use user::{DeviceLink, LinkKind, UserFieldDef, UserFieldKind, UserValue};
 pub use words::{Side, Word};
 
 /// Version of the op and document schema. Independent of the product version (proposal §8.1):

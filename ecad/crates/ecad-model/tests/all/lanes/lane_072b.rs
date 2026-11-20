@@ -741,3 +741,106 @@ fn roles_are_stored_as_words_and_an_unknown_word_is_refused() {
     assert_eq!(v["part_role"], "head");
     assert_eq!(serde_json::from_value::<Definition>(v).unwrap(), head);
 }
+
+/// Step 5 (design 072 §2.8): a device's user values must name a field the project defines and be
+/// of its kind; removing a field a device still uses is refused; a file holding a bad value is an
+/// invariant breach.
+#[test]
+fn user_values_name_a_defined_field_of_its_kind() {
+    use ecad_model::text::Text;
+    use ecad_model::{Project, UserFieldDef, UserFieldId, UserFieldKind, UserValue};
+    let mut l = Ledger::new(31);
+    let mut ids = IdAllocator::seeded(31);
+    let (c, f, g): (DeviceId, UserFieldId, UserFieldId) = (ids.fresh(), ids.fresh(), ids.fresh());
+    let side = UserFieldKind::Choice { options: vec![Text::new("Left").unwrap(), Text::new("Right").unwrap()] };
+    let defs = vec![
+        UserFieldDef { id: f, name: Text::new("Row").unwrap(), kind: UserFieldKind::Number { unit: None } },
+        UserFieldDef { id: g, name: Text::new("Side").unwrap(), kind: side.clone() },
+    ];
+    let project = Project { user_fields: defs, ..Project::default() };
+    l.commit(Author::User, "fields", vec![Op::ModifyProject { before: Project::default(), after: project.clone() }]).unwrap();
+    l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: Device::default() }]).unwrap();
+    let set = |user: Vec<(UserFieldId, UserValue)>| {
+        let mut d = Device::default();
+        d.user.extend(user);
+        Op::ModifyDevice { id: c, before: Device::default(), after: d }
+    };
+    let cases: Vec<(&str, Vec<(UserFieldId, UserValue)>, bool)> = vec![
+        ("a number", vec![(f, UserValue::Number(3.0))], true),
+        ("an offered choice", vec![(g, UserValue::Choice(Text::new("Left").unwrap()))], true),
+        ("text in a number field", vec![(f, UserValue::Text(Text::new("3").unwrap()))], false),
+        ("a choice not offered", vec![(g, UserValue::Choice(Text::new("Up").unwrap()))], false),
+        ("not a finite number", vec![(f, UserValue::Number(f64::NAN))], false),
+        ("an unknown field", vec![(ids.fresh(), UserValue::Flag(true))], false),
+    ];
+    for (name, user, ok) in cases {
+        let r = l.commit(Author::User, name, vec![set(user)]);
+        assert_eq!(r.is_ok(), ok, "{name}: {r:?}");
+        if ok {
+            l.undo(Author::User).unwrap();
+        }
+    }
+    // A field a device uses cannot go while the value is there.
+    l.commit(Author::User, "value", vec![set(vec![(f, UserValue::Number(3.0))])]).unwrap();
+    let mut fewer = project.clone();
+    fewer.user_fields.retain(|d| d.id != f);
+    assert!(l.commit(Author::User, "drop", vec![Op::ModifyProject { before: project.clone(), after: fewer.clone() }]).is_err());
+    // Read back: the value survives a JSON round trip, and the parser reads each kind.
+    let doc = l.document();
+    let back: ecad_model::Document = serde_json::from_str(&serde_json::to_string(doc).unwrap()).unwrap();
+    assert_eq!(&back, doc);
+    assert!(back.check().is_ok());
+    assert!(
+        matches!(UserValue::parse(&UserFieldKind::Number { unit: Some(Text::new("mm").unwrap()) }, "12.5 mm"), Ok(UserValue::Number(n)) if n == 12.5)
+    );
+    assert!(UserValue::parse(&side, "right").is_ok_and(|v| v == UserValue::Choice(Text::new("Right").unwrap())));
+    assert!(UserValue::parse(&side, "up").is_err());
+    assert!(UserValue::parse(&UserFieldKind::Flag, "maybe").is_err());
+    // Two fields of one name, or a choice field with no choices, are not a project.
+    let mut twice = project.clone();
+    twice.user_fields.push(UserFieldDef { id: ids.fresh(), name: Text::new("row").unwrap(), kind: UserFieldKind::Flag });
+    assert!(twice.problem().is_some_and(|p| p.contains("twice")), "{:?}", twice.problem());
+    let none = Project {
+        user_fields: vec![UserFieldDef { id: ids.fresh(), name: Text::new("X").unwrap(), kind: UserFieldKind::Choice { options: vec![] } }],
+        ..Project::default()
+    };
+    assert!(none.problem().is_some());
+}
+
+/// Step 5 (design 072 §2.6): `AddDeviceLink`/`RemoveDeviceLink` join two different devices once,
+/// undo exactly, and a linked device cannot be deleted until its links are removed.
+#[test]
+fn device_links_join_two_devices_once() {
+    use ecad_model::{DeviceLink, LinkId, LinkKind};
+    let mut l = Ledger::new(32);
+    let mut ids = IdAllocator::seeded(32);
+    let (a, b, l1, l2): (DeviceId, DeviceId, LinkId, LinkId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
+    let make = vec![Op::CreateDevice { id: a, device: Device::default() }, Op::CreateDevice { id: b, device: Device::default() }];
+    l.commit(Author::User, "devices", make).unwrap();
+    let link = DeviceLink { kind: LinkKind::MechanicalInterlock, a, b };
+    l.commit(Author::User, "link", vec![Op::AddDeviceLink { id: l1, link }]).unwrap();
+    assert_eq!(l.document().device_links.get(&l1), Some(&link));
+    // The same pair, either way round, with the same kind: refused; a link to itself: refused.
+    let back = DeviceLink { kind: LinkKind::MechanicalInterlock, a: b, b: a };
+    assert!(l.commit(Author::User, "again", vec![Op::AddDeviceLink { id: l2, link: back }]).is_err());
+    assert!(l.commit(Author::User, "self", vec![Op::AddDeviceLink { id: l2, link: DeviceLink { a, ..link } }]).is_err());
+    // A different kind is another link.
+    l.commit(Author::User, "aux", vec![Op::AddDeviceLink { id: l2, link: DeviceLink { kind: LinkKind::AuxiliaryBlock, ..back } }]).unwrap();
+    // Deleting a linked device is refused; after its links go, it is not.
+    assert!(matches!(
+        l.commit(Author::User, "delete", vec![Op::DeleteDevice { id: a, device: Device::default() }]),
+        Err(ModelError::Precondition(_))
+    ));
+    let doc = l.document().clone();
+    let unlink: Vec<Op> = doc.device_links.iter().map(|(id, k)| Op::RemoveDeviceLink { id: *id, link: *k }).collect();
+    let mut ops = unlink;
+    ops.push(Op::DeleteDevice { id: a, device: Device::default() });
+    l.commit(Author::User, "delete", ops).unwrap();
+    assert!(l.document().device_links.is_empty());
+    l.undo(Author::User).unwrap();
+    assert_eq!(l.document(), &doc, "undo brings the links back");
+    let json = serde_json::to_string(&doc).unwrap();
+    assert!(json.contains("\"device_links\"") && json.contains("mechanical_interlock"), "{json}");
+    let read: ecad_model::Document = serde_json::from_str(&json).unwrap();
+    assert_eq!(read, doc);
+}

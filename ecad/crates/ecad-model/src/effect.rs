@@ -135,6 +135,12 @@ pub enum Effect<'a> {
         before: &'a Project,
         after: &'a Project,
     },
+    /// A device link made or removed (design 072 §2.6).
+    DeviceLink {
+        id: crate::id::LinkId,
+        before: Option<&'a crate::user::DeviceLink>,
+        after: Option<&'a crate::user::DeviceLink>,
+    },
 }
 
 /// The kind of an [`Effect`], without its data: for tests, the update-map matrix and cheap "any
@@ -159,11 +165,12 @@ pub enum EffectKind {
     Style,
     Standard,
     Project,
+    DeviceLink,
 }
 
 impl EffectKind {
     /// Every kind, in declaration order.
-    pub const ALL: [EffectKind; 18] = [
+    pub const ALL: [EffectKind; 19] = [
         EffectKind::Page,
         EffectKind::Layer,
         EffectKind::Item,
@@ -182,6 +189,7 @@ impl EffectKind {
         EffectKind::Style,
         EffectKind::Standard,
         EffectKind::Project,
+        EffectKind::DeviceLink,
     ];
 
     fn bit(self) -> u32 {
@@ -259,6 +267,7 @@ impl Effect<'_> {
             Effect::Style { .. } => EffectKind::Style,
             Effect::Standard { .. } => EffectKind::Standard,
             Effect::Project { .. } => EffectKind::Project,
+            Effect::DeviceLink { .. } => EffectKind::DeviceLink,
         }
     }
 }
@@ -409,6 +418,8 @@ fn classify(op: &Op) -> Effect<'_> {
         }
         Op::SetStandard { before, after } => Effect::Standard { before: before.as_ref(), after: after.as_ref() },
         Op::ModifyProject { before, after } => Effect::Project { before, after },
+        Op::AddDeviceLink { id, link } => Effect::DeviceLink { id: *id, before: None, after: Some(link) },
+        Op::RemoveDeviceLink { id, link } => Effect::DeviceLink { id: *id, before: Some(link), after: None },
     }
 }
 
@@ -438,7 +449,8 @@ fn fold_key(e: &Effect<'_>, remove: bool) -> Option<Open> {
         | Effect::Folder { .. }
         | Effect::Style { .. }
         | Effect::Standard { .. }
-        | Effect::Project { .. } => None,
+        | Effect::Project { .. }
+        | Effect::DeviceLink { .. } => None,
     }
 }
 

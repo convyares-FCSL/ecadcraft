@@ -4,7 +4,7 @@
 //! - `page:<PageId>`: the page, the items on it and the representations on it.
 //! - `model:project`: page order, settings, named versions, project properties, folders and
 //!   folder order, and (brief 050a, left out while empty) the standard and the project's style
-//!   records.
+//!   records, and (design 072 §2.6, left out while empty) the device links.
 //! - `model:<kind>:<b>`: the layers, devices, terminals, conductors, cables or definitions
 //!   whose ID falls in bucket `b` of that kind. A kind with `n` objects has `B` buckets, the
 //!   smallest power of two with `B × 1 024 ≥ n` (at least 1), and an object's bucket is a mix of
@@ -222,6 +222,9 @@ struct ProjectChunkRef<'a> {
     /// Design 072 §5.3: left out while empty.
     #[serde(skip_serializing_if = "Project::is_empty")]
     project: &'a Project,
+    /// Design 072 §2.6: left out while empty.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    device_links: &'a BTreeMap<ecad_model::LinkId, ecad_model::DeviceLink>,
     folders: &'a BTreeMap<FolderId, Folder>,
     folder_order: &'a Vec<FolderId>,
     /// Brief 050a (FP1, FP2): left out while empty, so older chunks keep their hashes.
@@ -240,6 +243,8 @@ struct ProjectChunk {
     properties: BTreeMap<String, String>,
     #[serde(default)]
     project: Project,
+    #[serde(default)]
+    device_links: BTreeMap<ecad_model::LinkId, ecad_model::DeviceLink>,
     folders: BTreeMap<FolderId, Folder>,
     folder_order: Vec<FolderId>,
     #[serde(default)]
@@ -331,6 +336,7 @@ fn project_chunk(doc: &Document) -> Result<NewChunk, FileError> {
         versions: &doc.versions,
         properties: &doc.properties,
         project: &doc.project,
+        device_links: &doc.device_links,
         folders: &doc.folders,
         folder_order: &doc.folder_order,
         standard: &doc.standard,
@@ -567,6 +573,7 @@ fn merge_parsed(parsed: Vec<Result<Parsed, FileError>>) -> Result<(Document, Opt
                 doc.versions = p.versions;
                 doc.properties = p.properties;
                 doc.project = p.project;
+                doc.device_links = p.device_links;
                 doc.folders = p.folders;
                 doc.folder_order = p.folder_order;
                 doc.standard = p.standard;

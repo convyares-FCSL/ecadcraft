@@ -317,6 +317,8 @@ pub const RESERVED_PREFIXES: &[(Holder, &str)] = &[
     // Lane 072 B: a connector's halves and ignored rows are fields of its type (design 072 §2.2).
     (Holder::Device, "half."),
     (Holder::Device, "ignore."),
+    // Lane 072 B: a device's user field values are its `user` map (design 072 §2.8).
+    (Holder::Device, "user."),
     // Lane 072 C: a PLC channel's own data (`plc.ch.<i>.<field>`, design 072 §3).
     (Holder::Device, "plc.ch."),
     // Lane 072 D: a core's Not used is its purpose (design 072 §4.5).
