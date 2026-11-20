@@ -404,8 +404,8 @@ fn renumber_with_a_start_around_fixed_tags_makes_no_duplicate() {
 
 // ---------------------------------------------------------------- 2. provisional tags
 
-fn provisional_left(h: &mut H) -> ecad_cadcraft::numbering_cmds::Provisional {
-    h.p(|p| ecad_cadcraft::numbering_cmds::provisional_items(p.ledger.document()))
+fn provisional_left(h: &mut H) -> ecad_electrical::cmd::numbering::Provisional {
+    h.p(|p| ecad_electrical::cmd::numbering::provisional_items(p.ledger.document()))
 }
 
 /// Finalise follows the high-water mark, not only the highest tag in use: with `-K04` deleted,

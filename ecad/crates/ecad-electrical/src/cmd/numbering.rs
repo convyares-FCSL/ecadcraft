@@ -5,8 +5,10 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::numbering::{self, Kind, Request, Scope};
-use ecad_model::{CableId, DeviceId, Document, FolderId, Noun, PageId, TerminalId, WireId};
+use ecad_model::numbering::{self, Kind, Mark, Plan, Request, Scope};
+use ecad_model::tag;
+use ecad_model::{CableId, DeviceId, Document, FolderId, Noun, ObjectRef, PageId, TerminalId, WireId};
+use serde_json::{Value, json};
 
 use crate::error::CmdError;
 
@@ -199,5 +201,265 @@ pub fn finalise_request() -> Request {
         digits: None,
         strips: BTreeSet::new(),
         positions: Default::default(),
+    }
+}
+
+// ---------------------------------------------------------------- words, choices and provisional items (brief 074: from the engine)
+
+/// Most rows a JSON preview lists (`more` counts the rest).
+pub const MAX_PREVIEW_ROWS: usize = 2_000;
+
+pub fn kind_label(kinds: &BTreeSet<Kind>) -> &'static str {
+    match kinds.iter().collect::<Vec<_>>().as_slice() {
+        [Kind::Devices] => "Renumber devices",
+        [Kind::Cables] => "Renumber cables",
+        [Kind::Wires] => "Renumber wires",
+        [Kind::Terminals] => "Renumber terminals",
+        _ => "Renumber",
+    }
+}
+
+pub fn plural(n: usize, one: &str, many: &str) -> String {
+    format!("{n} {}", if n == 1 { one } else { many })
+}
+
+/// The echo after Apply: `Renumbered 42 devices (3 fixed kept). U undoes it.`
+pub fn applied_words(plan: &Plan, finalise: bool) -> String {
+    let mut parts = Vec::new();
+    for (k, one, many) in [
+        (Kind::Devices, "device", "devices"),
+        (Kind::Cables, "cable", "cables"),
+        (Kind::Wires, "net", "nets"),
+        (Kind::Terminals, "terminal", "terminals"),
+    ] {
+        let n = plan.changes_of(k);
+        if n > 0 {
+            parts.push(plural(n, one, many));
+        }
+    }
+    let what = if parts.is_empty() { "nothing".to_string() } else { parts.join(", ") };
+    let verb = if finalise { "Finalised" } else { "Renumbered" };
+    let fixed = plan.fixed();
+    let kept = if fixed > 0 { format!(" ({fixed} fixed kept)") } else { String::new() };
+    format!("{verb} {what}{kept}. U undoes it.")
+}
+
+pub fn row_json(doc: &Document, r: &numbering::Row) -> Value {
+    json!({
+        "desc": desc(doc, r.object),
+        "page": r.page.map(|p| p.hex()),
+        "point": r.point.map(|a| [a.x, a.y]),
+        "object": numbering::object_id(r.object).to_string(),
+        "id": format!("{:032x}", numbering::object_id(r.object)),
+        "kind": r.kind.word(),
+        "terminal": r.terminal.map(|t| t.hex()),
+        "old": r.old,
+        "new": r.new,
+        "at": r.at,
+        "fixed": r.mark == Mark::Fixed,
+        "change": r.mark.word(),
+        "mark": r.mark.glyph(),
+        "why": match &r.mark { Mark::Skipped(w) => Value::String((*w).to_string()), _ => Value::Null },
+    })
+}
+
+/// A row's Desc: the device's description, `Cable, 3 wires`, or the net's potential.
+pub fn desc(doc: &Document, o: ObjectRef) -> String {
+    match o {
+        ObjectRef::Device(c) => crate::devices::description(doc, c),
+        ObjectRef::Cable(k) => {
+            let n = doc.cables.get(&k).map_or(0, |c| c.cores.len());
+            format!("Cable, {}", plural(n, "wire", "wires"))
+        }
+        ObjectRef::Wire(w) => {
+            let conn = doc.connectivity();
+            conn.net_of_conductor(w).and_then(|id| conn.net(id)).and_then(|n| ecad_model::wiring::net_potential(doc, n).name).unwrap_or_default()
+        }
+        _ => String::new(),
+    }
+}
+
+/// The preview as JSON (design §13).
+pub fn preview_json(doc: &Document, plan: &Plan, change_count: u64) -> Value {
+    let rows: Vec<Value> =
+        plan.rows.iter().filter(|r| !matches!(r.mark, Mark::Skipped(_))).take(MAX_PREVIEW_ROWS).map(|r| row_json(doc, r)).collect();
+    let skipped: Vec<Value> = plan
+        .rows
+        .iter()
+        .filter_map(|r| match &r.mark {
+            Mark::Skipped(why) => {
+                Some(json!({"id": format!("{:032x}", numbering::object_id(r.object)), "kind": r.kind.word(), "tag": r.old, "why": why}))
+            }
+            _ => None,
+        })
+        .take(MAX_PREVIEW_ROWS)
+        .collect();
+    let listed = plan.rows.len() - plan.skipped();
+    json!({
+        "rows": rows,
+        "skipped": skipped,
+        "changes": plan.changes(),
+        "fixed": plan.fixed(),
+        "same": plan.same(),
+        "skipped_count": plan.skipped(),
+        "more": listed.saturating_sub(MAX_PREVIEW_ROWS),
+        "change_count": change_count,
+        "summary": summary_line(plan),
+    })
+}
+
+/// `42 to change · 3 fixed · 7 same · 1 skipped`.
+pub fn summary_line(plan: &Plan) -> String {
+    format!("{} to change · {} fixed · {} same · {} skipped", plan.changes(), plan.fixed(), plan.same(), plan.skipped())
+}
+
+/// What the Renumber dialog offers (design §3): the tag prefixes in use (`-K`, `-Q`…, provisional
+/// ones included), the potentials of the wire table, the folders as paths (`Control / Motors`),
+/// and how many provisional items there are. Read when the dialog opens.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Choices {
+    pub prefixes: Vec<String>,
+    pub potentials: Vec<String>,
+    pub folders: Vec<(FolderId, String)>,
+    pub provisional: usize,
+}
+
+/// The dialog's choices for `doc`.
+pub fn choices(doc: &Document) -> Choices {
+    let mut prefixes: BTreeSet<String> = BTreeSet::new();
+    for k in doc.tagged().map(|(k, _)| k).chain(doc.tagged_cables().map(|(k, _)| k)) {
+        if let Some(p) = tag::prefix_of(k) {
+            prefixes.insert(p);
+        }
+    }
+    let potentials = doc.settings.wiring.potentials.iter().filter(|p| p.numbered).map(|p| p.name.clone()).collect();
+    let mut folders: Vec<(FolderId, String)> = doc
+        .folder_order
+        .iter()
+        .filter_map(|f| {
+            let mut names = Vec::new();
+            let mut at = Some(*f);
+            for _ in 0..ecad_model::book::MAX_FOLDER_DEPTH {
+                let Some(id) = at else { break };
+                let folder = doc.folders.get(&id)?;
+                names.push(folder.name.clone());
+                at = folder.parent;
+            }
+            names.reverse();
+            Some((*f, names.join(" / ")))
+        })
+        .collect();
+    folders.sort_by(|a, b| a.1.cmp(&b.1));
+    let items = provisional_items(doc);
+    Choices { prefixes: prefixes.into_iter().map(|p| format!("-{p}")).collect(), potentials, folders, provisional: items.tags.len() + items.nets }
+}
+
+/// The provisional items of a project: the provisional tags (devices and cables, in tag order) and,
+/// with provisional tags on, the unnumbered nets per potential.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Provisional {
+    pub tags: Vec<String>,
+    pub nets: usize,
+    pub by_potential: Vec<(String, usize)>,
+}
+
+impl Provisional {
+    /// Whether nothing is provisional.
+    pub fn is_empty(&self) -> bool {
+        self.tags.is_empty() && self.nets == 0
+    }
+
+    /// `3 provisional tags and 12 wire numbers are not final`.
+    pub fn words(&self) -> String {
+        let t = plural(self.tags.len(), "provisional tag", "provisional tags");
+        let w = plural(self.nets, "wire number", "wire numbers");
+        let are = if self.tags.len() + self.nets == 1 { "is" } else { "are" };
+        match (self.tags.is_empty(), self.nets == 0) {
+            (false, true) => format!("{t} {are} not final"),
+            (true, false) => format!("{w} {are} not final"),
+            _ => format!("{t} and {w} are not final"),
+        }
+    }
+
+    /// `-K?1  -K?2  -W?1   · 12 nets (24V ×8, 0V ×4)`.
+    pub fn list_line(&self) -> String {
+        let mut s = self.tags.iter().take(30).cloned().collect::<Vec<_>>().join("  ");
+        if self.tags.len() > 30 {
+            s.push_str(&format!("  +{}", self.tags.len() - 30));
+        }
+        if self.nets > 0 {
+            let pots = self.by_potential.iter().map(|(p, n)| format!("{p} ×{n}")).collect::<Vec<_>>().join(", ");
+            if !s.is_empty() {
+                s.push_str("   · ");
+            }
+            s.push_str(&format!("{} ({pots})", plural(self.nets, "net", "nets")));
+        }
+        s
+    }
+}
+
+/// The provisional items of `doc` (read when a revision is issued: a walk over the tag index and
+/// the nets).
+pub fn provisional_items(doc: &Document) -> Provisional {
+    let mut tags: Vec<String> = doc
+        .tagged()
+        .filter_map(|(_, c)| crate::devices::tag_of(doc, c).filter(|t| tag::is_provisional(t)).map(str::to_string))
+        .chain(doc.tagged_cables().filter_map(|(_, k)| crate::devices::cable_tag_of(doc, k).filter(|t| tag::is_provisional(t)).map(str::to_string)))
+        .collect();
+    tags.sort_by_key(|t| tag::provisional(t));
+    let mut by: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    let mut nets = 0;
+    // Unnumbered nets are provisional only with provisional tags on; otherwise they are 022's
+    // nets with no number yet (an Info row), never a reason to stop an issue.
+    let on = numbering::provisional_on(doc);
+    for (_, n) in doc.connectivity().nets().filter(|_| on) {
+        if n.wires.is_empty() || !n.numbers.is_empty() {
+            continue;
+        }
+        let pot = ecad_model::wiring::net_potential(doc, n);
+        if !pot.numbered {
+            continue;
+        }
+        nets += 1;
+        *by.entry(pot.name.unwrap_or_else(|| "?".into())).or_default() += 1;
+    }
+    let mut by_potential: Vec<(String, usize)> = by.into_iter().collect();
+    by_potential.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    Provisional { tags, nets, by_potential }
+}
+
+/// What the provisional step before an issue will do (design §5.5), worked out without writing.
+#[derive(Debug, Clone)]
+pub enum BeforeIssue {
+    /// Go on to the issue; the note for the echo (`(2 provisional tags issued)`), if any.
+    Go(Option<String>),
+    /// Finalise numbering first, with this plan (its own transaction, `Finalise numbering`).
+    Finalise(Plan),
+}
+
+/// What the provisional step before an issue does for `doc` with the `provisional` word `way`
+/// (design §5.5): go on (with the echo's note), or finalise numbering first, which the caller
+/// plans against the project's tag marks.
+///
+/// # Errors
+/// Provisional items present and no `way` given (the ways forward), or a word that is neither.
+pub fn way_before_issue(doc: &Document, way: Option<&str>) -> Result<Option<Option<String>>, CmdError> {
+    let way = way.map(|w| w.trim().to_ascii_lowercase());
+    let items = provisional_items(doc);
+    if items.is_empty() {
+        return Ok(Some(None));
+    }
+    match way.as_deref() {
+        None => Err(CmdError::refused(format!(
+            "{}. Give provisional: \"finalise\" (number them first, in one transaction before the issue) or \"issue\" (issue as they are).",
+            items.words()
+        ))),
+        Some("issue") => Ok(Some(Some(if items.tags.is_empty() {
+            format!("({} issued)", plural(items.nets, "provisional wire number", "provisional wire numbers"))
+        } else {
+            format!("({} issued)", plural(items.tags.len(), "provisional tag", "provisional tags"))
+        }))),
+        Some("finalise" | "finalize") => Ok(None),
+        Some(other) => Err(CmdError::input(format!("`provisional` must be \"finalise\" or \"issue\", not {other:?}"))),
     }
 }

@@ -173,6 +173,11 @@ pub fn stopped(reason: &str) -> String {
     format!("Release stopped: {r}. Nothing was issued or written. Choose another folder, or try again.")
 }
 
+/// How many provisional rows the check holds (tags, and the wire-numbers row).
+pub fn provisional_count(rows: &[Check]) -> usize {
+    rows.iter().filter(|c| matches!(c.kind.name(), "provisional-tag" | "provisional-wires")).count()
+}
+
 /// `Nothing has changed since Rev A.` when every step after the last issue up to `head` only
 /// edited revision fields (design 027 §6, Q11): a warning, never a refusal. `tx` reads a step of
 /// the ledger; it stops at the first other step.
