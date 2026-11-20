@@ -9,6 +9,12 @@ use serde_json::json;
 use crate::common::{H, id};
 
 /// The group today's predicates imply for device `c`, where one of them speaks (design 072 A7).
+///
+/// B step 6 deleted the strip, fuse terminal and connector predicates: those rows now read the
+/// stored type (as their callers do) and only keep the `spoke` count. The checks that are still
+/// independent are the PLC card body and the `kind` predicates (continuation, box, item), which
+/// lane F deletes with `Aid` and `LoosePart`; this test then becomes "each starter declares its
+/// symbol's type".
 fn predicates_say(doc: &Document, c: DeviceId) -> Option<DeviceGroup> {
     use ecad_cadcraft::{bom, connectors, continuations, locations, plc, strips};
     if strips::fuse_terminal_of(doc, c).is_some() {
