@@ -12,7 +12,7 @@ folded **Developer** section at the bottom of the panel (design 016, "Top bar re
 - *Automated checks:* `ecad/crates/ecad-app/tests/all/project_panel.rs` (design 016 checks A to J by
   label in a 1280×800 headless window, and the six `016-*.png` screenshots), the one-window and
   undo checks in `ecad/crates/ecad-cadcraft/tests/all/project_pages.rs`, check K in
-  `ecad/apps/ecad-mcp/tests/all/mcp_contracts.rs`, and `the_quick_start_trial_runs_headless`
+  `ecad/apps/ecad-mcp/tests/all/mcp_contracts.rs`, and `the_quick_start_runs_headless`
   (sections 5 to 7 below).
 - *Agent-observed:* the worker rendered the `016-*.png` reference screenshots headless (wgpu) and
   looked at them; no agent has clicked through the live window.
