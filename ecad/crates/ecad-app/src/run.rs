@@ -730,7 +730,7 @@ impl App {
             let doc = p.ledger.document();
             let objects = uid.and_then(|u| p.page_of(u)).map(|pg| ecad_cadcraft::props::selected_objects(p, pg, &handles)).unwrap_or_default();
             (
-                ecad_cadcraft::numbering_cmds::choices(doc),
+                ecad_electrical::cmd::numbering::choices(doc),
                 objects,
                 ecad_cadcraft::devices::padding(doc),
                 u8::try_from(doc.settings.wiring.digits()).unwrap_or(ecad_model::wiring::MAX_DIGITS),
@@ -756,7 +756,7 @@ impl App {
     /// The provisional question before an issue (brief 026, design §5.5), for the refused `line`.
     pub(crate) fn ask_issue_provisional(&mut self, line: String) {
         let Some(p) = self.project.clone() else { return };
-        let items = p.read(&mut self.cad.session, |p, _| ecad_cadcraft::numbering_cmds::provisional_items(p.ledger.document()));
+        let items = p.read(&mut self.cad.session, |p, _| ecad_electrical::cmd::numbering::provisional_items(p.ledger.document()));
         if let Ok(items) = items {
             self.issue_prompt = Some((line, format!("{}:\n{}", items.words(), items.list_line())));
         }

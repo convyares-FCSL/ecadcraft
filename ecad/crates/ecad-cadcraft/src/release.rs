@@ -92,17 +92,12 @@ pub mod numbering_seam {
     use crate::checks::Check;
     use crate::project::Project;
 
-    /// How many provisional rows the check holds (tags, and the wire-numbers row).
-    pub fn provisional_count(rows: &[Check]) -> usize {
-        rows.iter().filter(|c| matches!(c.kind.name(), "provisional-tag" | "provisional-wires")).count()
-    }
-
     /// What `release` would refuse for provisional items without a choice (026's words), if any.
     pub fn refusal(p: &Project, _rows: &[Check], params: &Value) -> Option<String> {
         if params.get("provisional").is_some_and(|v| !v.is_null()) {
             return None;
         }
-        let items = crate::cmd::numbering::provisional_items(p.ledger.document());
+        let items = ecad_electrical::cmd::numbering::provisional_items(p.ledger.document());
         (!items.is_empty()).then(|| {
             format!(
                 "{}. Give provisional: \"finalise\" (number them first, in one transaction before the issue) or \"issue\" (issue as they are).",
@@ -115,7 +110,7 @@ pub mod numbering_seam {
     ///
     /// # Errors
     /// 026's refusal or a bad `provisional`.
-    pub fn plan(p: &mut Project, params: &Value) -> Result<crate::cmd::numbering::BeforeIssue, String> {
+    pub fn plan(p: &mut Project, params: &Value) -> Result<ecad_electrical::cmd::numbering::BeforeIssue, String> {
         crate::cmd::numbering::plan_before_issue(p, params).map_err(String::from)
     }
 
@@ -872,7 +867,7 @@ pub fn view(p: &mut Project, rev: Option<&str>, accept: bool, limit: usize) -> R
             }
         }
         (v.errors, v.warnings, v.info) = counts(rows);
-        v.provisional = numbering_seam::provisional_count(rows);
+        v.provisional = ecad_electrical::release::provisional_count(rows);
     };
     match &issued_rev {
         Some(row) => {
@@ -1065,8 +1060,8 @@ pub(crate) fn release_pending(
     // 2. 026's finalise, when asked: planned now, recorded only with the issue (step 4), so a
     // release that stops before the issue records nothing at all (tester 027, 1).
     let (finalise, note) = match numbering_seam::plan(p, params)? {
-        crate::cmd::numbering::BeforeIssue::Go(note) => (None, note),
-        crate::cmd::numbering::BeforeIssue::Finalise(plan) => (Some(plan), None),
+        ecad_electrical::cmd::numbering::BeforeIssue::Go(note) => (None, note),
+        ecad_electrical::cmd::numbering::BeforeIssue::Finalise(plan) => (Some(plan), None),
     };
     // The caller's transaction budget (an agent's cap of one per call, two with Finalise): known
     // before anything reaches the disk, never found out after (tester 027, 3).

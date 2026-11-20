@@ -1062,3 +1062,89 @@ pub fn issued(doc: &Document, rev: &str) -> Result<Revision, CmdError> {
 pub fn undone_issue(undo: &[Op]) -> Result<String, CmdError> {
     revisions::issue_in(&revisions::inverse(undo)).map(|(rev, _)| rev).ok_or(CmdError::refused("The last step did not issue a revision; use Undo."))
 }
+
+// ---------------------------------------------------------------- page numbers (brief 074: from the engine)
+
+/// The number a new page gets after the page shown as `before` (design 019 §6.1): its leading
+/// digits plus the project's step, skipping numbers in use; with no digits or no page before, its
+/// book position `position`.
+pub fn default_number(doc: &Document, book: &Book, before: Option<PageId>, position: usize, outputs: Option<&Outputs>) -> String {
+    default_number_from(doc, book, before, position, outputs, None)
+}
+
+/// [`default_number`], or for the first page of a folder with a start number (brief 054, design
+/// 054 §4.3) that start when it is free, else the next free after it. Leading zeros keep their
+/// width (`01` gives `01`, `02`), from the start or from the page before.
+pub fn default_number_from(
+    doc: &Document, book: &Book, before: Option<PageId>, position: usize, outputs: Option<&Outputs>, start: Option<&str>,
+) -> String {
+    // Brief 033: every sheet's number, continuation sheets included, is in use.
+    let used: BTreeSet<String> =
+        book.order.iter().flat_map(|p| crate::generated::sheet_numbers(doc, book, *p, outputs)).map(|n| n.to_ascii_lowercase()).collect();
+    let step = u64::from(doc.settings.page_number_step().max(1));
+    let digits = before.map(|p| book.number(doc, p)).map(|n| n.chars().take_while(char::is_ascii_digit).collect::<String>());
+    let from_start = start.and_then(|t| t.parse::<u64>().ok().map(|n| (n, t.len())));
+    let (mut n, step, width) = match (from_start, digits.as_deref().and_then(|d| d.parse::<u64>().ok().map(|n| (n, d)))) {
+        (Some((s, w)), _) => (s, step, w),
+        (None, Some((s, d))) => (s.saturating_add(step), step, if d.len() > 1 && d.starts_with('0') { d.len() } else { 0 }),
+        (None, None) => (position as u64, 1, 0),
+    };
+    for _ in 0..100_000 {
+        let t = format!("{n:0width$}");
+        if !used.contains(&t) && t.len() <= MAX_NUMBER_CHARS {
+            return t;
+        }
+        n = n.saturating_add(step);
+    }
+    n.to_string()
+}
+
+/// Where a new page in `folder` goes in book order: the page before it, and its position.
+pub fn new_page_place(doc: &Document, book: &Book, folder: Option<FolderId>) -> (Option<PageId>, usize) {
+    let in_folder: Vec<PageId> =
+        doc.page_order.iter().copied().filter(|p| book::folder_of(doc, *p).filter(|f| doc.folders.contains_key(f)) == folder).collect();
+    if let Some(last) = in_folder.last() {
+        let pos = book.position(*last).unwrap_or(0);
+        return (Some(*last), pos + 1);
+    }
+    let Some(f) = folder else { return (None, 1) };
+    // An empty folder: the page before the folder in book order.
+    let mut before = None;
+    for node in &book.nodes {
+        match node {
+            book::Node::Folder { id, .. } if *id == f => break,
+            book::Node::Page { id, .. } => before = Some(*id),
+            book::Node::Folder { .. } => {}
+        }
+    }
+    let pos = before.and_then(|p| book.position(p)).unwrap_or(0) + 1;
+    (before, pos)
+}
+
+/// Where a new page goes (brief 054, design 054 §4.2): right after `after` in its folder, else
+/// last in `folder`. Its folder, its index in the page order, and (the page before it, its book
+/// position).
+///
+/// # Errors
+/// No such page to add after.
+pub fn new_page_at(
+    doc: &Document, book: &Book, folder: Option<FolderId>, after: Option<PageId>,
+) -> Result<(Option<FolderId>, usize, (Option<PageId>, usize)), CmdError> {
+    Ok(match after {
+        Some(a) => {
+            let i = doc.page_order.iter().position(|x| *x == a).ok_or(CmdError::refused("No such page to add after."))?;
+            let f = book::folder_of(doc, a).filter(|f| doc.folders.contains_key(f));
+            (f, i + 1, (Some(a), book.position(a).unwrap_or(0) + 1))
+        }
+        None => (folder, doc.page_order.len(), new_page_place(doc, book, folder)),
+    })
+}
+
+/// The number a new page placed by [`new_page_at`] gets (design 054 §4.3): the first page of a
+/// folder with a start number takes it; every other page the next after the page before it.
+pub fn next_number(doc: &Document, book: &Book, folder: Option<FolderId>, place: (Option<PageId>, usize), outputs: Option<&Outputs>) -> String {
+    let (before, position) = place;
+    let first = before.is_none_or(|b| book::folder_of(doc, b).filter(|f| doc.folders.contains_key(f)) != folder);
+    let start = folder.filter(|_| first).and_then(|f| crate::page_types::start_of(doc, f));
+    default_number_from(doc, book, before, position, outputs, start.as_deref())
+}
