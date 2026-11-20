@@ -11,7 +11,7 @@ use crate::common::{H, id};
 /// The group today's predicates imply for device `c`, where one of them speaks (design 072 A7).
 fn predicates_say(doc: &Document, c: DeviceId) -> Option<DeviceGroup> {
     use ecad_cadcraft::{bom, connectors, continuations, locations, plc, strips};
-    if strips::is_fuse_device(doc, c) || bom::is_fuse_terminal(doc, c) {
+    if strips::fuse_terminal_of(doc, c).is_some() {
         // The owner's answer (design 072 §2.2): a fuse terminal device is Protection; a fuse
         // position in a strip (`termfuse`) is the strip's.
         return Some(DeviceGroup::Protection);

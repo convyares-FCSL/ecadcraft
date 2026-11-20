@@ -100,6 +100,14 @@ impl ProtectionKind {
 }
 
 impl Protection {
+    /// A fuse terminal's fuse, when it is a fuse terminal (brief 034's `fuseterm`).
+    pub fn as_fuse_terminal(&self) -> Option<&Fuse> {
+        match self {
+            Protection::FuseTerminal(f) => Some(f),
+            Protection::Fuse(_) | Protection::Mcb(_) | Protection::Rcd(_) | Protection::Rcbo(_) | Protection::FuseBank(_) => None,
+        }
+    }
+
     /// Its kind.
     pub fn kind(&self) -> ProtectionKind {
         match self {

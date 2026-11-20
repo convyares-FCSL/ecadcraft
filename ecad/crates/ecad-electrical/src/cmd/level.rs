@@ -12,7 +12,6 @@ use ecad_model::{
 };
 
 use crate::error::CmdError;
-use crate::strips::is_fuse_device;
 use crate::terminal_types as tt;
 
 // ---------------------------------------------------------------- termlabel (§4.2)
@@ -233,7 +232,7 @@ pub fn plan_toposition(
     if crate::strips::strip_of(doc, device).is_some() {
         return Err(CmdError::refused(format!("{tag} is a terminal strip, not a fuse terminal device.")));
     }
-    if !is_fuse_device(doc, device) {
+    if crate::strips::fuse_terminal_of(doc, device).is_none() {
         return Err(CmdError::refused(format!(
             "{tag} is not a fuse terminal device. Make strip position turns a fuse terminal (fuseterm) into a strip position."
         )));
