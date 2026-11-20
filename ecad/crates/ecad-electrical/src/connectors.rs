@@ -1456,9 +1456,7 @@ pub fn strip_terminal_at(doc: &Document, page: PageId, at: Pt) -> Option<Termina
     // Each terminal symbol shows its own connection point: O(representations on the page).
     doc.representations_on(page).find_map(|(_, r)| {
         let Subject::Device(c) = r.subject else { return None };
-        if strips::strip_of(doc, c).is_none() {
-            return None;
-        }
+        strips::strip_of(doc, c)?;
         let placement = crate::devices::rep_definition(doc, r).map(|(_, pl)| pl);
         crate::devices::shown_terminals(doc, c, r).into_iter().find_map(|(t, p)| {
             let p = match (r.form, placement) {
