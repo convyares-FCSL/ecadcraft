@@ -628,14 +628,7 @@ fn copy_batch(
         }
         t.ops.push(Op::LinkRepresentation {
             id: new_rep,
-            rep: Representation {
-                subject: Subject::Device(new_comp),
-                page: cx.page,
-                form: r.form,
-                role: r.role.clone(),
-                items,
-                connection_points: cps,
-            },
+            rep: Representation { subject: Subject::Device(new_comp), page: cx.page, form: r.form, role: r.role, items, connection_points: cps },
         });
         counts[3] += 1;
     }
@@ -685,7 +678,7 @@ fn copy_batch(
                 subject: Subject::Route(new_r),
                 page: cx.page,
                 form: Form::Drawn,
-                role: r.role.clone(),
+                role: r.role,
                 items,
                 connection_points: BTreeMap::new(),
             },

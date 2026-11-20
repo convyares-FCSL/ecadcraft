@@ -171,7 +171,7 @@ operates them, so they are one **Switching** group with an `operator` (owner, 20
 | 4 | `Sensor` | B (converting a variable to a signal) | `prox3`, `floatno/nc`, `rollerno/nc`, `interlockno/nc`, `tc` | `sensing` (Proximity, Float, Limit, Interlock, Temperature…), `output` (Contact, Pnp, Npn, Analogue { range }), supply `RatedVoltage` | `Senses::signal()` (what a PLC input must accept: the "sensor on the wrong channel type" check), `Load::demand()` |
 | 5 | `Motor` | M (mechanical energy) | `motor1`, `motor3` | `phases`, `rated_power`, `rated_current`, `power_factor`, `efficiency`, `starting` (Direct, StarDelta, Soft, Vfd) | `Load::demand()`, `full_load_current()`, `starting_current()` (protection and cable sizing) |
 | 6 | `Load` | E (heat, light as energy), MB (valves, solenoids, brakes), other consumers | `heater`, `valve`, `valve2` | `rated_power: Watts` | `Load::demand()` |
-| 7 | `Indicator` | P (presenting information: lamps, beacons, buzzers, meters) | `lamp` | `colour: Option<IndicatorColour>`, `signal: SignalType` (Steady, Flashing, Rotating, Audible, Meter), `power` | `Signals::signal()`, `colour()`; `Load::demand()` |
+| 7 | `Indicator` | P (presenting information: lamps, beacons, buzzers, meters) | `lamp` | `colour: Option<IndicatorColour>`, `signal: SignalType` (Steady, Flashing, Rotating, Audible, Meter), `rated_voltage: RatedVoltage` (with AC/DC), `power: Watts` | `Signals::signal()`, `colour()`; `Load::demand()` |
 | 8 | `TerminalStrip` | X (connecting: DIN-rail terminals) | `terminal`, `terminalpe`, `term2…`, `term3…`, `termlnpe…`, `termsensor…`, `termdisc`, `termfuse` | levels (label, fuse rating), jumpers, accessories, PE part (§2.5) | `Connects::points()`, `jumpered(position)`, `Bom` lines per terminal type and accessory |
 | 9 | `Connector` | X (plugs, sockets, bulkheads) | `socket*`, `plug*`, `dsub*`, `m12*`, `rj45`, `usba`, `usbb`, `pinpair`, `pins`, `pinp` | `family`, `pins`, `pin_names`, `halves` (part per half), `mating`, ignored checks | `Connects::points()`, `mates_with(other)`, `pin_map()` |
 | 10 | `PlcRack` | K (processing signals): a PLC station | today's CPU and head-module cards | §3 | `Addressed::address_space()`, `modules(doc)`, `io_count(doc)` |
@@ -180,10 +180,53 @@ operates them, so they are one **Switching** group with an `operator` (owner, 20
 
 - **QA and QB → Protection**; a fuse *position* in a strip (`termfuse`) stays the strip's.
 - Contactors are `Switching` (they switch but don't protect).
+- **Indicator (overseer rulings, 2026-11-18).** The signal is a starter default stored when the
+  device is created (a lamp: `Steady`), never read from the symbol later; the colour starts
+  empty. The rating reader reads colour (`red`, `RD`) and signal (`flashing`) into their fields.
+  A lamp is bought by its voltage, so it has a typed `rated_voltage` (AC or DC) beside its power:
+  `24 V DC 2 W` reads in full. Checking it against its circuit's voltage is later work. (A motor
+  still refuses a voltage; listed for the end-gate review.)
+- **PowerSupply (overseer rulings, 2026-11-18).** The kind is set by the starter (`psu` → `Psu`,
+  `trafo` → `Transformer`) and each kind carries only its own fields: `Psu { input, output:
+  Option<RatedVoltage>, output_current: Option<Amps>, output_power: Option<Watts> }`, and
+  `Transformer { input, output: Option<RatedVoltage>, rated_power: Option<VoltAmps> }`. A
+  transformer therefore cannot hold watts, and a DC voltage on one is invalid. Batteries come later.
+  The ratio is never stored: `Transformer::ratio()` works it out from the two voltages. The reader
+  takes `230 V AC / 24 V DC`, `230VAC/24VDC` and `in 230 V AC out 24 V DC` as input / output.
+  `400/24 V` gives both sides the one unit, and on a transformer it reads as AC/AC. One DC voltage
+  alone on a PSU is its output (a PSU's DC side is its output). One AC voltage alone on a PSU, one
+  voltage alone on a transformer, and a PSU voltage without AC/DC ask "input or output?" (or "AC
+  or DC?"). A PSU takes A and W together, with no consistency check yet. `VoltAmps` is its own unit
+  (VA is not W): a transformer reads `250 VA`. W or a current on a transformer, DC on a
+  transformer, and VA on a PSU are refused.
 - Catalogue products (an IVP4 versus an IVP6) are part-library data, never variants.
 - A group is added only when a symbol needs fields or a calculation no group has.
 - `DeviceType` offers `as_supply()`, `as_load()`, `as_protects()`, `as_switching()`, … (exhaustive,
   no `_`), so a check asks for the trait it needs and never names a group it doesn't care about.
+
+**Ratings (owner decisions, 2026-11-18; a deviation from the table's `rating_text`).** Today's free
+`rating` text on every device becomes typed data:
+
+- **Typed fields are the truth.** Each group with a rating holds it as several typed fields on its
+  struct (a breaker: rated current, curve, breaking capacity, poles; an RCD: residual; a fuse bank:
+  a rating per output; a contactor: AC-3 rating and coil voltage; a motor: rated power; a power
+  supply: its output). There is no `rating_text` and no stored display string.
+- **One common note.** `Device.rating_note: Option<Text<64>>` holds only text that does not read as
+  the group's typed values ("see datasheet", a vendor code). It is a note, never a second copy of
+  the rating.
+- **Parsed at the edge, never guessed.** One reader per group, in `ecad-electrical`, used by the
+  UI, the CLI, MCP and the symbol defaults (`DEFINITION_DEFAULT_KEYS`) alike. `setprop rating "B16"`
+  on a breaker stores curve B and 16 A. Ambiguous input (a bare `16` on a breaker) is refused with a
+  typed error naming what is missing ("curve?"). Text that is no rating at all goes to the note with
+  the typed fields left empty, so nothing people type today is lost. Every way in shows what was
+  read ("curve B, 16 A") in the command's result.
+- **Shown from the fields.** Text slots and symbols show the typed fields when set, else the note.
+- **Checks read only the typed fields.** A device whose group has rating fields, all empty, gets a
+  "no rating" warning even when it has a note.
+- **The part sets the rating (decided, waiting on a parts library).** When the part number's library
+  entry carries a rating, it fills the fields; a value typed on the device is an override, and a
+  check reports an override that differs from the part. Not built until a parts library with ratings
+  exists (backlog); until then the typed fields are stored plainly.
 
 ### 2.3 Where a device's type comes from
 
@@ -240,6 +283,18 @@ Schematic versus panel is one device with two representations, not a relationshi
 
 `Project.user_fields: Vec<UserFieldDef { id, name, kind: Text | Number { unit } | Flag | Choice }>`;
 devices store values by id; a wrong kind or an unknown id is a read error.
+
+**As built (lane B step 5, 2026-11-20).** `ecad_model::user`: `UserFieldDef { id: UserFieldId,
+name: Text<32>, kind }`, `Choice { options }` (1 to 32, none twice ignoring case), at most 64
+fields, names unique ignoring case; `Device.user: BTreeMap<UserFieldId, UserValue>` (`Text`,
+`Number(f64)` finite, `Flag`, `Choice`), checked by invariant I24, so a bad value does not open.
+Fields change through `ModifyProject` (`userfield`); a value through `ModifyDevice`
+(`setprop user.<name>`, `user.` reserved on devices). Removing a field clears its values first, in
+the same transaction. Links: `Document.device_links: BTreeMap<LinkId, DeviceLink>`, stored in the
+`model:project` chunk; `LinkKind` is `mechanical_interlock` or `auxiliary_block` (more when a
+check needs one); a pair is linked once per kind; `DeleteDevice` refuses a linked device, so every
+delete removes the links first (a merge of two devices re-points them); `Effect::DeviceLink`;
+commands `linkdevices`, `unlinkdevices`.
 
 ---
 

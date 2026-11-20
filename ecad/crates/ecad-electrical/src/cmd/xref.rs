@@ -2,9 +2,10 @@
 //! `refgoto` goes, and the `mirror` value `mirrormove` writes. The listings (`xrefs`,
 //! `contacts`) are [`crate::xref`]'s own; the engine crate's shims open pages and answer in JSON.
 
-use ecad_model::{DeviceId, Document, ItemId, ObjectRef, Op, PageId, Pt, RepresentationId, Subject};
+use ecad_model::{DeviceId, Document, ItemId, Op, PageId, Pt, RepresentationId, Subject};
 
 use crate::error::CmdError;
+use crate::traits::DeviceKind;
 use crate::xref::{self, Placement, RefIndex};
 
 /// Where `refgoto` goes: the page, the point to centre, the item to select, and the words.
@@ -121,14 +122,14 @@ pub struct Mirrored {
 }
 
 /// `mirrormove {component, at? | placement?}`: where device `c`'s contact table goes, as one
-/// `SetProperty` of its `mirror`.
+/// `ModifyDevice` of its `contact_table`.
 ///
 /// # Errors
 /// No such component, or [`mirror_for`]'s refusals.
 pub fn plan_mirrormove(doc: &Document, c: DeviceId, at: Option<Pt>, placement: Option<&str>) -> Result<Mirrored, CmdError> {
     let comp = doc.devices.get(&c).ok_or(CmdError::refused("no such component"))?;
     let after = mirror_for(doc, c, at, placement)?;
-    let before = comp.properties.get(xref::MIRROR_KEY).cloned();
+    let before = comp.device_type.as_contacts().and_then(|x| x.contact_table()).map(|t| Placement::of_table(t).word());
     if before == after {
         return Ok(Mirrored { ops: Vec::new(), mirror: after, message: String::new() });
     }
@@ -139,6 +140,8 @@ pub fn plan_mirrormove(doc: &Document, c: DeviceId, at: Option<Pt>, placement: O
         Some(w) => format!("is placed {w}"),
     };
     let message = format!("{}'s contact table {words}.", crate::devices::tag_words(doc, c));
-    let ops = vec![Op::SetProperty { object: ObjectRef::Device(c), key: xref::MIRROR_KEY.into(), before, after: after.clone() }];
+    let who = crate::devices::tag_words(doc, c);
+    let table = xref::table_of_typed(after.as_deref())?;
+    let ops = vec![Op::ModifyDevice { id: c, before: comp.clone(), after: xref::with_table(comp, &who, table)? }];
     Ok(Mirrored { ops, mirror: after, message })
 }

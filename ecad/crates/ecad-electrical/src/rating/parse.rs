@@ -18,7 +18,7 @@ fn bounded(text: &str, max: usize) -> Option<&str> {
 
 /// A plain decimal number: digits with one `.` or `,` (`3,2` is 3.2), an optional leading `-`.
 /// No exponent, no `inf`/`nan`, no `+`.
-fn decimal(t: &str) -> Option<f64> {
+pub(crate) fn decimal(t: &str) -> Option<f64> {
     let t = t.trim();
     if t.is_empty() {
         return None;

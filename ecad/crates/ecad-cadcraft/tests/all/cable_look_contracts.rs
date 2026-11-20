@@ -161,7 +161,7 @@ fn reference_end(h: &mut H, page: PageId, cable: CableId, at: Pt, n: u128) -> (I
                 subject: Subject::Cable(cable),
                 page,
                 form: Form::Drawn,
-                role: look::REFERENCE_ROLE.into(),
+                role: ecad_model::Role::Reference,
                 items: vec![item],
                 connection_points: Default::default(),
             },
@@ -659,7 +659,7 @@ fn m_hostile_geometry_never_panics() {
             subject: Subject::Cable(k),
             page,
             form: Form::Drawn,
-            role: look::REFERENCE_ROLE.into(),
+            role: ecad_model::Role::Reference,
             items: vec![item],
             connection_points: Default::default(),
         },
@@ -782,7 +782,7 @@ fn cablefan_moves_the_join_along_the_spine() {
     let r = f.h.run("cablefan", json!({"cable": k, "end": "B", "at": 0.0})).unwrap();
     assert_eq!((r["changed"].as_bool(), f.h.head()), (Some(false), h1));
     // The stored joins are not drawn; the page is consistent; undo and redo; null resets.
-    let anchors = f.h.doc().representations.values().filter(|r| r.role == look::ANCHOR_ROLE).count();
+    let anchors = f.h.doc().representations.values().filter(|r| r.role == ecad_model::Role::FanAnchor).count();
     assert_eq!(anchors, 2);
     f.h.check();
     f.h.run("u", Value::Null).unwrap();

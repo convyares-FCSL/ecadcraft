@@ -27,6 +27,8 @@ fn last_by_agent(c: &mut Client) -> (String, Vec<Op>) {
 fn set(ops: &[Op], key: &str) -> Option<String> {
     ops.iter().find_map(|o| match o {
         Op::SetProperty { object: ObjectRef::Device(_) | ObjectRef::Project, key: k, after, .. } if k == key => after.clone(),
+        // Design 072 §2.5: a fuse position's rating is the strip's typed field.
+        Op::ModifyDevice { before, after, .. } if before.value(key) != after.value(key) => after.value(key),
         _ => None,
     })
 }
@@ -91,7 +93,7 @@ fn multi_level_terminal_commands_through_execute() {
     let f = c.exec("terminals", json!({"strip": strip, "type": "FUSE", "from": [290, 40], "to": [310, 40]}));
     let fpos = f["terminals"][0]["position"].as_str().unwrap().to_string();
     c.exec("setprop", json!({"component": strip, "key": format!("rating.{fpos}"), "value": "2A"}));
-    assert_eq!(set(&last_by_agent(&mut c).1, &format!("rating.{fpos}")).as_deref(), Some("2A"));
+    assert_eq!(set(&last_by_agent(&mut c).1, &format!("rating.{fpos}")).as_deref(), Some("2 A"));
     let dev = c.exec("place", json!({"symbol": "fuseterm", "at": [250, 300]}));
     let dev = hex(&dev, "component");
     c.exec("toposition", json!({"device": dev, "strip": strip}));

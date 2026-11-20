@@ -40,6 +40,7 @@ pub mod dataset;
 pub mod load;
 pub mod parse;
 pub mod protection;
+pub mod reader;
 pub mod trace;
 
 pub use circuit::*;
@@ -405,6 +406,10 @@ impl Touch {
                 }
                 // Lane 072 B: a device's description, part or type text is read by no rating row.
                 Op::ModifyDevice { before, after, .. } if before.only_text_differs(after) => {}
+                // Design 072 §2.2: a device's rating reaches only the subjects it protects.
+                Op::ModifyDevice { id, before, after } if before.only_rating_differs(after) => {
+                    self.devices.insert(*id);
+                }
                 // Design 072 §6.3: a box's new location reaches the wires at both locations; a
                 // device's own location its wires only.
                 Op::ModifyDevice { id, before, after } if before.only_place_differs(after) => {
@@ -1011,7 +1016,7 @@ pub fn summary_rows(doc: &Document, k: &Kept) -> Vec<Check> {
             page,
             at,
             object: Object::Device(c),
-            which: format!("{tag}'s rating '{text}' has no current; write it as 16 A"),
+            which: if text.is_empty() { format!("{tag} has no rated current") } else { format!("{tag}'s rating '{text}' has no rated current") },
             fix: None,
         });
     }

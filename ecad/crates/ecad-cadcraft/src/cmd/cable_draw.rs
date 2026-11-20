@@ -296,7 +296,7 @@ impl Command for CablefanParams {
                                 subject: Subject::Cable(cable),
                                 page,
                                 form: Form::Drawn,
-                                role: crate::look::ANCHOR_ROLE.into(),
+                                role: ecad_model::Role::FanAnchor,
                                 items: vec![item],
                                 connection_points: BTreeMap::new(),
                             },

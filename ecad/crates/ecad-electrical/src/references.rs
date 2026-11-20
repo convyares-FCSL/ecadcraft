@@ -3,7 +3,7 @@
 //!
 //! # Semantics
 //! - A **reference end** is an ordinary drawn representation of the cable with role
-//!   [`REFERENCE_ROLE`] and one Point item (design 010 §0). Nothing else is stored for it: no
+//!   [`ecad_model::Role::Reference`] and one Point item (design 010 §0). Nothing else is stored for it: no
 //!   pairing, no text. A cable has at most two references in this version (one continuation).
 //! - Everything a reference **says** (the other end's page number and column, its partner, whether
 //!   it is an orphan) is derived on every draw by [`ecad_model::derive::cable_references`] and never
@@ -28,7 +28,7 @@ use ecad_model::{
     TerminalId, WireId,
 };
 
-pub use ecad_model::derive::{MAX_REFERENCES_PER_CABLE, REFERENCE_ROLE};
+pub use ecad_model::derive::MAX_REFERENCES_PER_CABLE;
 
 use crate::text_style::fonts::TextMetrics;
 
@@ -66,12 +66,12 @@ pub fn sizes(doc: &Document) -> Sizes {
 
 /// Whether `r` is a cable reference end.
 pub fn is_reference(r: &Representation) -> bool {
-    r.role == REFERENCE_ROLE && matches!(r.subject, Subject::Cable(_))
+    r.role == ecad_model::Role::Reference && matches!(r.subject, Subject::Cable(_))
 }
 
 /// The reference representations of `cable`, in ID order.
 pub fn references_of(doc: &Document, cable: CableId) -> Vec<(RepresentationId, &Representation)> {
-    doc.representations_of(Subject::Cable(cable)).filter(|(_, r)| r.role == REFERENCE_ROLE).collect()
+    doc.representations_of(Subject::Cable(cable)).filter(|(_, r)| r.role == ecad_model::Role::Reference).collect()
 }
 
 /// Every reference end of the document, derived (page order, then column, then ID).
@@ -892,7 +892,7 @@ pub struct Continued {
 pub fn plan_slash_continue(doc: &Document, page: PageId, cable: CableId, crossed: &[CorePosition]) -> Result<Vec<Continued>, CmdError> {
     let c = doc.cables.get(&cable).ok_or(CmdError::refused(crate::msg::NO_SUCH_CABLE))?;
     let tag = title(doc, cable);
-    if doc.representations_of(Subject::Cable(cable)).any(|(_, r)| r.page == page && r.role == "slash") {
+    if doc.representations_of(Subject::Cable(cable)).any(|(_, r)| r.page == page && r.role == ecad_model::Role::Slash) {
         return Err(CmdError::refused(format!("{tag} already has a slash on this page.")));
     }
     if !c.cores.iter().any(|m| crate::cables::member_pages(doc, m).contains(&page)) {
@@ -940,7 +940,7 @@ pub fn slash_erase_followups(doc: &Document, erased: &[(RepresentationId, Repres
     let mut by_cable: BTreeMap<CableId, BTreeSet<PageId>> = BTreeMap::new();
     for (_, r) in erased {
         if let Subject::Cable(k) = r.subject
-            && r.role == "slash"
+            && r.role == ecad_model::Role::Slash
         {
             by_cable.entry(k).or_default().insert(r.page);
         }
@@ -948,7 +948,7 @@ pub fn slash_erase_followups(doc: &Document, erased: &[(RepresentationId, Repres
     let mut ops = Vec::new();
     for (k, pages) in by_cable {
         let Some(c) = doc.cables.get(&k) else { continue };
-        let kept = doc.representations_of(Subject::Cable(k)).any(|(id, r)| r.role == "slash" && !gone.contains(&id));
+        let kept = doc.representations_of(Subject::Cable(k)).any(|(id, r)| r.role == ecad_model::Role::Slash && !gone.contains(&id));
         if !kept {
             continue;
         }
@@ -979,7 +979,7 @@ fn reference_erase_followups(doc: &Document, erased: &[(RepresentationId, Repres
         .collect();
     for (_, r) in erased {
         let Subject::Cable(k) = r.subject else { continue };
-        if r.role != REFERENCE_ROLE || r.connection_points.is_empty() {
+        if r.role != ecad_model::Role::Reference || r.connection_points.is_empty() {
             continue;
         }
         let gone: BTreeSet<TerminalId> = r.connection_points.keys().copied().collect();

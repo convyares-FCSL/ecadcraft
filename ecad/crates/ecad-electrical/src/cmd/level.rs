@@ -12,7 +12,6 @@ use ecad_model::{
 };
 
 use crate::error::CmdError;
-use crate::strips::is_fuse_device;
 use crate::terminal_types as tt;
 
 // ---------------------------------------------------------------- termlabel (§4.2)
@@ -106,7 +105,7 @@ pub fn plan_termlabel(doc: &Document, input: TermlabelInput) -> Result<Termlabel
         }
         (None, None) => return Err(CmdError::input("`terminal` or `strip` (hex id) is required")),
     };
-    if !crate::strips::is_strip(doc, c) {
+    if crate::strips::strip_of(doc, c).is_none() {
         return Err(CmdError::refused("That device is not a terminal strip."));
     }
     let tag = crate::devices::tag_words(doc, c);
@@ -230,10 +229,10 @@ pub fn plan_toposition(
 ) -> Result<ToPosition, CmdError> {
     let comp = doc.devices.get(&device).ok_or(CmdError::NotFound(Noun::Device))?;
     let tag = crate::devices::tag_words(doc, device);
-    if crate::strips::is_strip(doc, device) {
+    if crate::strips::strip_of(doc, device).is_some() {
         return Err(CmdError::refused(format!("{tag} is a terminal strip, not a fuse terminal device.")));
     }
-    if !is_fuse_device(doc, device) {
+    if crate::strips::fuse_terminal_of(doc, device).is_none() {
         return Err(CmdError::refused(format!(
             "{tag} is not a fuse terminal device. Make strip position turns a fuse terminal (fuseterm) into a strip position."
         )));
@@ -260,7 +259,7 @@ pub fn plan_toposition(
             if c == device {
                 return Err(CmdError::refused(format!("{tag} cannot become a position of itself. Name a terminal strip.")));
             }
-            if !crate::strips::is_strip(doc, c) {
+            if crate::strips::strip_of(doc, c).is_none() {
                 return Err(CmdError::refused(format!("{} is not a terminal strip.", crate::devices::tag_words(doc, c))));
             }
             c
@@ -270,7 +269,7 @@ pub fn plan_toposition(
             let strips: std::collections::BTreeSet<DeviceId> = doc
                 .representations_on(page)
                 .filter_map(|(_, r)| match r.subject {
-                    Subject::Device(c) if crate::strips::is_strip(doc, c) => Some(c),
+                    Subject::Device(c) if crate::strips::strip_of(doc, c).is_some() => Some(c),
                     _ => None,
                 })
                 .collect();
@@ -342,7 +341,7 @@ pub fn plan_toposition(
             subject: Subject::Device(strip),
             page,
             form: rep.form,
-            role: "termfuse".into(),
+            role: ecad_model::Role::FuseTerm,
             items: rep.items.clone(),
             connection_points: cps,
         },
@@ -351,15 +350,32 @@ pub fn plan_toposition(
         ops.push(Op::RemoveTerminal { id: *t, terminal: x.clone() });
     }
     let props = comp.properties.clone();
-    if let Some(r) = props.get("rating").filter(|r| !r.trim().is_empty()) {
-        let key = tt::rating_key(&pos);
-        let before = doc.devices.get(&strip).and_then(|x| x.properties.get(&key)).cloned();
-        ops.push(Op::SetProperty { object: ObjectRef::Device(strip), key, before, after: Some(r.clone()) });
-    }
-    let keep = ["rating"];
+    let keep: [&str; 0] = [];
     // Everything else goes with the device and is listed (review M1: no silent loss), its own
     // text placements included.
     let mut lost: Vec<String> = props.keys().filter(|k| !keep.contains(&k.as_str())).cloned().collect();
+    // Design 072 §2.2 and §2.5: the fuse's typed rating becomes the position's. A note is no fuse
+    // rating and a position has no note: it goes with the device and is listed.
+    let typed = match &comp.device_type {
+        ecad_model::DeviceType::Protection(ecad_model::device::Protection::Fuse(f) | ecad_model::device::Protection::FuseTerminal(f))
+            if *f != ecad_model::device::Fuse::default() =>
+        {
+            Some(f)
+        }
+        _ => None,
+    };
+    let label = ecad_model::device::PositionLabel::new(&pos).ok();
+    let sd = doc.devices.get(&strip);
+    if let (Some(f), Some(label), Some(sd)) = (typed, label, sd)
+        && let ecad_model::DeviceType::TerminalStrip(s) = &sd.device_type
+    {
+        let mut s = s.clone();
+        s.fuses.insert(label, f.clone());
+        let after = ecad_model::Device { device_type: ecad_model::DeviceType::TerminalStrip(s), ..sd.clone() };
+        ops.push(Op::ModifyDevice { id: strip, before: sd.clone(), after });
+    } else if comp.rating_shown().is_some() {
+        lost.push(ecad_model::device::RATING_KEY.into());
+    }
     // Design 072 §2.1: the tag is a field of the device, and goes with it too.
     if comp.tag.is_some() {
         lost.push(ecad_model::tag::TAG_KEY.into());
@@ -373,6 +389,7 @@ pub fn plan_toposition(
         }
         _ => None,
     };
+    ops.extend(crate::cmd::device_link::unlink_ops(doc, device));
     ops.push(Op::DeleteDevice { id: device, device: comp.clone() });
     Ok(ToPosition { ops, strip, position: pos.clone(), lost, note, label: format!("{tag} \u{2192} {stag}:{pos}") })
 }
