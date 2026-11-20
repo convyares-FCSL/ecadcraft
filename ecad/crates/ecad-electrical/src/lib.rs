@@ -36,6 +36,7 @@ pub mod error;
 pub mod frames;
 pub mod front;
 pub mod generated;
+pub mod history;
 pub mod kinds;
 pub mod link_lines;
 pub mod locations;
