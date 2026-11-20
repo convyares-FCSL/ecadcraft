@@ -3,7 +3,7 @@
 //! refused with writes off. Written from the brief and design before the implementation.
 
 use ecad_mcp::{EcadMcp, Options, policy};
-use ecad_model::{Op, Transaction, WireId};
+use ecad_model::{Op, Transaction};
 use serde_json::{Value, json};
 
 use crate::common::assert_one_by_agent;
@@ -11,10 +11,6 @@ use crate::mcp_contracts::{Client, TempDir};
 
 fn hex(v: &Value, key: &str) -> String {
     v[key].as_str().unwrap_or_default().to_string()
-}
-
-fn conductor(h: &str) -> WireId {
-    WireId::from(u128::from_str_radix(h, 16).unwrap())
 }
 
 fn place_terminal(c: &mut Client, at: (f64, f64), tag: &str) -> (f64, f64) {
@@ -35,8 +31,9 @@ fn w04(c: &mut Client) -> (String, String) {
     for i in 0..3 {
         let x = 100.0 + 20.0 * f64::from(i);
         let tp = place_terminal(c, (x, 100.0), &format!("X{}", i + 1));
-        c.exec("wire", json!({"points": [[tp.0, tp.1], [tp.0, 40.0]]}));
+        // The continuation first, so the line lands on its point (design 072 §4.4, F5).
         c.exec("place", json!({"symbol": "continuation", "at": [tp.0, 40.0], "name": format!("A{}", i + 1)}));
+        c.exec("wire", json!({"points": [[tp.0, tp.1], [tp.0, 40.0]]}));
     }
     let cable = hex(&c.exec("cableslash", json!({"from": [90, 70], "to": [150, 70], "tag": "-W04"})), "cable");
     let p2 = hex(&c.exec("newpage", json!({"title": "Field"})), "page");
@@ -57,37 +54,42 @@ fn wire_joinwires_cableslash_cablecontinue_wiresettings_by_the_agent_then_refuse
     let (survivor, cable, p2) = {
         let mut c = Client::new(EcadMcp::create(&path, Options { write: true, agent: None }).unwrap());
 
-        // `wire` merging (case 1): one transaction labelled Wire, no CreateWire.
+        // `wire` merging (case 1): one transaction labelled Wire that grows the line (design 072:
+        // routes draw, wires connect), no new route.
         let a = c.exec("wire", json!({"points": [[0, 0], [50, 0]]}));
-        let first = hex(&a, "conductor");
+        let first = hex(&a, "route");
         let n = c.log().len();
         let b = c.exec("wire", json!({"points": [[50, 0], [50, -20]]}));
         let Transaction { label, ops, .. } = assert_one_by_agent(&mut c, n, "wire merge");
         assert_eq!(label, "Wire");
-        assert!(!ops.iter().any(|o| matches!(o, Op::CreateWire { .. })), "{ops:?}");
+        assert!(!ops.iter().any(|o| matches!(o, Op::AddRoute { .. })), "{ops:?}");
         assert_eq!(b["created"], json!(false), "{b}");
-        assert_eq!(hex(&b, "conductor"), first, "{b}");
+        assert_eq!(hex(&b, "route"), first, "{b}");
         assert_eq!(b["joined"][0]["how"], "merged", "{b}");
 
-        // Case 3 through execute: `removed` names the folded conductor, which no longer exists.
+        // Case 3 through execute: `removed` names the folded line, which no longer exists; with
+        // both ends on terminals the line now carries a wire.
         let l = place_terminal(&mut c, (0.0, 200.0), "X7");
         let r = place_terminal(&mut c, (150.0, 200.0), "X8");
-        let left = hex(&c.exec("wire", json!({"points": [[l.0, l.1], [50, 200]]})), "conductor");
-        let right = hex(&c.exec("wire", json!({"points": [[100, 200], [r.0, r.1]]})), "conductor");
+        let left = hex(&c.exec("wire", json!({"points": [[l.0, l.1], [50, 200]]})), "route");
+        let right = hex(&c.exec("wire", json!({"points": [[100, 200], [r.0, r.1]]})), "route");
         let n = c.log().len();
         let v = c.exec("wire", json!({"points": [[50, 200], [100, 200]]}));
         let Transaction { label, ops, .. } = assert_one_by_agent(&mut c, n, "wire fold");
         assert_eq!(label, "Wire");
         assert_eq!(v["created"], json!(false), "{v}");
-        assert_eq!(hex(&v, "conductor"), left, "{v}");
+        assert_eq!(hex(&v, "route"), left, "{v}");
         assert_eq!(v["removed"], json!([right]), "{v}");
-        assert!(ops.iter().any(|o| matches!(o, Op::DeleteWire { .. })), "{ops:?}");
-        assert!(!c.doc().wires.contains_key(&conductor(&right)), "the folded conductor is gone");
+        assert!(ops.iter().any(|o| matches!(o, Op::RemoveRoute { .. })), "{ops:?}");
+        assert!(ops.iter().any(|o| matches!(o, Op::CreateWire { .. })), "the wire X7–X8 forms: {ops:?}");
+        assert!(!c.doc().routes.contains_key(&ecad_model::RouteId::parse(&right).unwrap()), "the folded line is gone");
 
-        // A refused merge records nothing.
+        // A refused join records nothing: a 24V line landing on a 0V wire (a T; a line with a free
+        // end carries no wire, so no potential, design 072).
+        c.points_at(&[(0.0, 300.0), (50.0, 300.0), (25.0, 340.0)]);
         c.exec("wire", json!({"points": [[0, 300], [50, 300]], "potential": "0V"}));
         let n = c.log().len();
-        let m = c.refused("execute", json!({"command": "wire", "params": {"points": [[50, 300], [50, 340]], "potential": "24V"}}));
+        let m = c.refused("execute", json!({"command": "wire", "params": {"points": [[25, 340], [25, 300]], "potential": "24V"}}));
         assert!(m.contains("That wire carries 0V and this one 24V"), "{m}");
         assert_eq!(c.log().len(), n);
 
@@ -99,7 +101,7 @@ fn wire_joinwires_cableslash_cablecontinue_wiresettings_by_the_agent_then_refuse
         let Transaction { label, .. } = assert_one_by_agent(&mut c, n, "joinwires");
         assert_eq!(label, "Join wires");
         assert_eq!(j["how"], "merged", "{j}");
-        let survivor = hex(&j, "conductor");
+        let survivor = hex(&j, "route");
 
         // `wiresettings`: one SetProjectSettings transaction.
         let n = c.log().len();
@@ -109,22 +111,23 @@ fn wire_joinwires_cableslash_cablecontinue_wiresettings_by_the_agent_then_refuse
         assert_eq!(s["label_rule"], "each", "{s}");
         assert_eq!(s["label_min_length"], json!(10.0), "{s}");
 
-        // `cablecontinue` before the second slash: the §3.4 refusal, no transaction.
+        // `cablecontinue` on cores that are each one wire through the continuation pairs (F5):
+        // refused, naming the cable, no transaction.
         let (cable, p2) = w04(&mut c);
         let n = c.log().len();
         let m = c.refused("execute", json!({"command": "cablecontinue", "params": {"cable": cable, "at": [300, 70], "toward": [350, 70]}}));
-        assert!(m.contains("-W04's cores end on continuations"), "{m}");
-        assert!(m.contains("slash the wires there with tag -W04"), "{m}");
+        assert!(m.contains("-W04"), "{m}");
         assert_eq!(c.log().len(), n);
 
-        // `cableslash` continuing: one transaction "Cable slash", AddCableMember and
-        // LinkRepresentation, no CreateCable.
+        // `cableslash` with -W04's tag on page 2 (F5): one transaction "Cable slash", a
+        // LinkRepresentation, no CreateCable and no new member.
         let n = c.log().len();
         let v = c.exec("cableslash", json!({"from": [90, 70], "to": [150, 70], "tag": "-W04"}));
         let Transaction { label, ops, .. } = assert_one_by_agent(&mut c, n, "cableslash continue");
         assert_eq!(label, "Cable slash");
         assert_eq!(v["continued"], json!(true), "{v}");
-        assert_eq!(ops.iter().filter(|o| matches!(o, Op::AddCableMember { .. })).count(), 3, "{ops:?}");
+        assert!(!ops.iter().any(|o| matches!(o, Op::ModifyCable { .. })), "no new member: {ops:?}");
+        assert_eq!(v["cores"].as_array().map_or(0, Vec::len), 3, "{v}");
         assert!(ops.iter().any(|o| matches!(o, Op::LinkRepresentation { .. })), "{ops:?}");
         assert!(!ops.iter().any(|o| matches!(o, Op::CreateCable { .. })), "{ops:?}");
 
@@ -159,7 +162,7 @@ fn wire_joinwires_cableslash_cablecontinue_wiresettings_by_the_agent_then_refuse
     assert_eq!(w["label_rule"], "each", "{w}");
     assert_eq!(w["label_min_length"], json!(10.0), "{w}");
     assert_eq!(c.exec("checks", json!({})), reads_before);
-    let _ = c.exec("net", json!({"conductor": survivor}));
+    assert!(c.doc().routes.contains_key(&ecad_model::RouteId::parse(&survivor).unwrap()), "the joined line is saved");
     let _ = c.exec("cablecores", json!({"cable": cable}));
     let _ = p2;
     assert_eq!(c.log(), log, "nothing recorded with writes off");

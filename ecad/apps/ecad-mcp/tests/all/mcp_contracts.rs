@@ -82,6 +82,68 @@ impl Client {
     pub(crate) fn doc(&mut self) -> Document {
         self.s.with_session(|s, p| p.read(s, |p, _| p.ledger.document().clone()).unwrap()).unwrap()
     }
+
+    /// Connection points at `at` on the active page (design 072: a wire runs between two
+    /// connection points): one drawn device holding one point per place, committed straight to
+    /// the ledger by the person. Returns the points, in the order given.
+    pub(crate) fn points_at(&mut self, at: &[(f64, f64)]) -> Vec<ecad_model::TerminalId> {
+        use ecad_model::{Device, DeviceId, Form, Op, Pt, Representation, RepresentationId, Subject, Terminal, TerminalId};
+        let at = at.to_vec();
+        self.s
+            .with_session(|s, p| {
+                p.configure(s, |p| {
+                    let page = p.active_page().unwrap_or(p.ledger.document().page_order[0]);
+                    let device: DeviceId = p.ids.fresh();
+                    let mut ops = vec![Op::CreateDevice { id: device, device: Device::default() }];
+                    let mut cps = std::collections::BTreeMap::new();
+                    let mut out = Vec::new();
+                    for (i, (x, y)) in at.iter().enumerate() {
+                        let t: TerminalId = p.ids.fresh();
+                        ops.push(Op::AddTerminal {
+                            id: t,
+                            terminal: Terminal { component: device, label: Some((i + 1).to_string()), key: None, accepts: Default::default() },
+                        });
+                        cps.insert(t, Pt::new(*x, *y));
+                        out.push(t);
+                    }
+                    let rep: RepresentationId = p.ids.fresh();
+                    ops.push(Op::LinkRepresentation {
+                        id: rep,
+                        rep: Representation {
+                            subject: Subject::Device(device),
+                            page,
+                            form: Form::Drawn,
+                            role: ecad_model::Role::Part(ecad_model::PartRole::Head),
+                            items: Vec::new(),
+                            connection_points: cps,
+                        },
+                    });
+                    p.ledger.commit(Author::User, "points", ops).unwrap();
+                    out
+                })
+                .unwrap()
+            })
+            .unwrap()
+    }
+
+    /// `wire` with `params` through `execute`, first putting a connection point at each end of its
+    /// `points` that has none (design 072: a line with a free end carries no wire).
+    pub(crate) fn wire_pp(&mut self, params: Value) -> Value {
+        let pts: Vec<(f64, f64)> = params["points"].as_array().unwrap().iter().map(|p| (p[0].as_f64().unwrap(), p[1].as_f64().unwrap())).collect();
+        let doc = self.doc();
+        let page = self.s.with_session(|s, p| p.read(s, |p, _| p.active_page()).unwrap()).unwrap().unwrap_or(doc.page_order[0]);
+        let shown: Vec<ecad_model::Pt> = ecad_model::derive::terminal_positions(&doc, page).into_iter().map(|(_, _, at)| at).collect();
+        let ends: Vec<(f64, f64)> = [pts.first(), pts.last()]
+            .into_iter()
+            .flatten()
+            .copied()
+            .filter(|(x, y)| !shown.iter().any(|q| q.near(ecad_model::Pt::new(*x, *y), 1e-6)))
+            .collect();
+        if !ends.is_empty() {
+            self.points_at(&ends);
+        }
+        self.exec("wire", params)
+    }
 }
 
 pub(crate) fn reader() -> Client {
@@ -406,7 +468,7 @@ fn save_works_only_with_the_write_flag_and_reopening_shows_the_agents_edits() {
     let path = dir.file("agent.ecad");
     {
         let mut c = Client::new(EcadMcp::create(&path, Options { write: true, agent: None }).unwrap());
-        c.exec("wire", json!({"points": [[0, 0], [60, 0]]}));
+        c.wire_pp(json!({"points": [[0, 0], [60, 0]]}));
         let m = c.refused("save", json!({"path": dir.file("other.ecad")}));
         assert!(m.contains("Save As stays"), "{m}");
         let saved = c.ok("save", json!({}));
@@ -627,10 +689,10 @@ fn a_batch_is_one_call_for_the_transaction_cap() {
     assert_eq!(replies[1]["result"]["isError"], json!(true), "{}", replies[1]);
     let m = replies[1]["result"]["content"][0]["text"].as_str().unwrap();
     assert!(m.contains("one request line, batches included") && m.contains("taken back"), "{m}");
-    assert_eq!(c.doc().wires.len(), before.wires.len() + 1, "only the first wire stays");
+    assert_eq!(c.doc().routes.len(), before.routes.len() + 1, "only the first wire stays");
     // The next line is a new call.
     c.exec("wire", json!({"points": [[0, 10], [60, 10]]}));
-    assert_eq!(c.doc().wires.len(), before.wires.len() + 2);
+    assert_eq!(c.doc().routes.len(), before.routes.len() + 2);
 }
 
 #[test]
@@ -646,7 +708,7 @@ fn an_overflowing_undo_is_taken_back_by_a_redo_never_by_undoing_more() {
     let replies = batch(&mut c, vec![undo(1), undo(2)]);
     assert_ne!(replies[0]["result"]["isError"], json!(true), "{}", replies[0]);
     assert_eq!(replies[1]["result"]["isError"], json!(true), "{}", replies[1]);
-    assert_eq!(c.doc().wires.len(), 2, "exactly one wire undone; the others untouched");
+    assert_eq!(c.doc().routes.len(), 2, "exactly one wire undone; the others untouched");
     let log = c.log();
     let last = log.last().unwrap();
     assert!(matches!(last.kind, ecad_model::TxKind::Redo { .. }), "the overflowing undo was redone: {:?}", last.kind);
@@ -718,7 +780,7 @@ fn openpage_switches_the_one_active_page_and_undo_brings_back_the_page_it_change
     assert_eq!((active(&mut c), windows(&mut c)), (Some(field), 1));
     c.exec("openpage", json!({"page": first.hex()}));
     assert_eq!((active(&mut c), windows(&mut c)), (Some(first), 1), "one page window");
-    let w = c.exec("wire", json!({"points": [[0, 0], [60, 0]]}));
+    let w = c.wire_pp(json!({"points": [[0, 0], [60, 0]]}));
     let conductor = w["conductor"].as_str().unwrap().to_string();
     let last = c.log().last().cloned().unwrap();
     assert_eq!(last.author, Author::Agent(AGENT.into()));
@@ -950,27 +1012,35 @@ fn wiring_through_mcp_records_the_json_forms_transactions_as_the_agent() {
             .count()
     };
 
-    // `wire` with a potential: the conductor's potential and its number in the same transaction.
+    // Design 072: a wire runs between two connection points; terminals give the lines their ends.
+    for at in [[0, 0], [60, 0], [45, 30], [100, 40], [200, 40]] {
+        c.exec("place", json!({"symbol": "terminal", "at": at}));
+    }
+
+    // `wire` with a potential: the route, the wire and its number in the same transaction.
     let (r, t) = one(&mut c, "wire", json!({"points": [[0, 0], [60, 0]], "potential": "24V"}));
     assert_eq!(r["number"], json!("24V-01"), "{r}");
     assert_eq!(r["potential"], json!("24V"));
-    assert!(t.ops.iter().any(|op| matches!(op, Op::CreateWire { conductor, .. } if conductor.potential_name() == Some("24V"))));
-    assert_eq!(sets(&t, "wire_number"), 1, "{:?}", t.ops);
+    assert!(t.ops.iter().any(|op| matches!(op, Op::AddRoute { .. })), "{:?}", t.ops);
+    assert!(t.ops.iter().any(|op| matches!(op, Op::CreateWire { .. })), "{:?}", t.ops);
     let first = r["conductor"].as_str().unwrap().to_string();
+    let wire_potential =
+        |c: &mut Client, w: &str| c.doc().wires.get(&ecad_model::WireId::parse(w).unwrap()).and_then(|x| x.potential_name().map(str::to_string));
+    assert_eq!(wire_potential(&mut c, &first).as_deref(), Some("24V"));
 
-    // `junction`: a tagless component on the wire, which is split; both halves keep the number.
-    let (j, t) = one(&mut c, "junction", json!({"at": [30, 0]}));
-    assert!(t.ops.iter().any(
-        |op| matches!(op, Op::CreateDevice { device: component, .. } if component.properties.get("kind").map(String::as_str) == Some("junction"))
-    ));
-    let net = c.exec("net", json!({"conductor": j["conductor"]}));
+    // A line ending on another line's interior lands there (a T), in its own transaction; no
+    // junction device: the new point joins the net.
+    let (r, t) = one(&mut c, "wire", json!({"points": [[45, 30], [45, 0]]}));
+    assert!(
+        t.ops.iter().any(|op| matches!(op, Op::AddRoute { route, .. } if route.ends.iter().any(|e| e.route().is_some()))),
+        "the end lands on the line: {:?}",
+        t.ops
+    );
+    assert!(t.ops.iter().all(|op| !matches!(op, Op::CreateDevice { .. })), "no junction device");
+    assert_eq!(r["number"], json!("24V-01"), "{r}");
+    let net = c.exec("net", json!({"conductor": first}));
     assert_eq!(net["number"], json!("24V-01"));
-    assert_eq!(net["conductors"].as_array().unwrap().len(), 2);
-
-    // A wire ending on another wire's interior gets a junction in its own transaction.
-    let (r, _) = one(&mut c, "wire", json!({"points": [[45, 30], [45, 0]]}));
-    assert!(r["junctions"].is_array(), "{r}");
-    assert_eq!(r["number"], json!("24V-01"));
+    assert_eq!(net["conductors"].as_array().unwrap().len(), 2, "three points, two wires: {net}");
 
     // `place` a continuation.
     let (r, t) = one(&mut c, "place", json!({"symbol": "continuation", "at": [100, 0], "name": "0V"}));
@@ -980,6 +1050,11 @@ fn wiring_through_mcp_records_the_json_forms_transactions_as_the_agent() {
             .iter()
             .any(|op| matches!(op, Op::CreateDevice { device: component, .. } if component.properties.get("name").map(String::as_str) == Some("0V")))
     );
+    // F5: a continuation is a named point, so the wire runs through a pair of them, from one
+    // terminal to the other; its partner's line is drawn first and carries no wire yet.
+    one(&mut c, "place", json!({"symbol": "continuation", "at": [200, 0], "name": "0V"}));
+    let (r, _) = one(&mut c, "wire", json!({"points": [[200, 0], [200, 40]]}));
+    assert!(r["conductor"].is_null(), "no wire to a lonely continuation: {r}");
     let (r, _) = one(&mut c, "wire", json!({"points": [[100, 0], [100, 40]]}));
     assert_eq!(r["number"], json!("0V-01"), "a net named by a continuation takes its potential");
     let zero = r["conductor"].as_str().unwrap().to_string();
@@ -987,8 +1062,8 @@ fn wiring_through_mcp_records_the_json_forms_transactions_as_the_agent() {
     // `wirenumber`: fixes the number on the whole net; a number another net uses offers choices.
     let (r, t) = one(&mut c, "wirenumber", json!({"conductor": first, "value": "24V-50"}));
     assert_eq!(r["fixed"], json!(true));
-    assert_eq!(sets(&t, "wire_number"), 4, "two halves, the auto-junction split, the T");
-    assert_eq!(sets(&t, "wire_number_fixed"), 4);
+    assert_eq!(sets(&t, "wire_number"), 2, "the net's two wires");
+    assert_eq!(sets(&t, "wire_number_fixed"), 2);
     let before = c.log();
     let m = c.refused("execute", json!({"command": "wirenumber", "params": {"conductor": zero, "value": "24V-50"}}));
     assert!(m.contains("24V-50 is used by another net") && m.contains("\"swap\"") && m.contains("\"another\""), "{m}");
@@ -1019,14 +1094,16 @@ fn wiring_through_mcp_records_the_json_forms_transactions_as_the_agent() {
     let nets = c.exec("nets", json!({}));
     assert_eq!(nets["nets"].as_array().unwrap().len(), 2, "{nets}");
     let checks = c.exec("checks", json!({}));
-    assert!(checks["checks"].as_array().unwrap().iter().any(|x| x["kind"] == json!("lonely-continuation")), "{checks}");
+    // F5: the 0V continuation has its partner now, so no lonely-continuation row; the list answers.
+    let rows = checks["checks"].as_array().unwrap();
+    assert!(rows.iter().all(|x| x["kind"] != json!("lonely-continuation")), "{checks}");
+    assert!(rows.iter().any(|x| x["kind"] == json!("no-part-number")), "{checks}");
 
     // Writes off: every brief 022 write is refused; nets, net and checks answer.
     let mut r = reader();
     let before = r.log();
     for (cmd, params) in [
         ("wire", json!({"points": [[0, 0], [10, 0]], "potential": "24V"})),
-        ("junction", json!({"at": [5, 0]})),
         ("wirenumber", json!({"number": "01", "value": "X"})),
         ("potential", json!({"conductor": "1", "value": "24V"})),
         ("wiresettings", json!({"scheme": "page"})),

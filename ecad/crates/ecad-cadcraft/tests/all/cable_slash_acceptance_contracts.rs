@@ -16,7 +16,7 @@ use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Input, Session};
 use common::{H, id};
 use ecad_cadcraft::{Persistence, ProjectHandle};
-use ecad_model::{CableId, Document, Form, ItemId, ItemKind, ObjectRef, Op, PageId, Primitive, Pt, Subject, Transaction, WireId};
+use ecad_model::{CableId, Document, Form, ItemId, ItemKind, Op, PageId, Primitive, Pt, Subject, Transaction, WireId};
 use serde_json::{Value, json};
 
 const SEED: u64 = 404;
@@ -32,9 +32,9 @@ struct F {
 }
 
 fn wire(h: &mut H, pts: &[(f64, f64)]) -> WireId {
-    let p: Vec<Value> = pts.iter().map(|(x, y)| json!([x, y])).collect();
-    // Brief 032: these fixtures stack wires on one another on purpose; they stay separate wires.
-    id(&h.run("wire", json!({ "points": p, "join": false })).unwrap(), "conductor")
+    // Brief 032: these fixtures stack wires on one another on purpose; they stay separate wires
+    // (design 072: lines are not joined; each wire runs point to point).
+    id(&h.wire_pp(pts).unwrap(), "conductor")
 }
 
 fn fixture(seed: u64) -> F {
@@ -65,7 +65,7 @@ fn hexes(v: &Value, key: &str) -> Vec<String> {
 }
 
 fn members(d: &Document, k: CableId) -> Vec<WireId> {
-    d.cables[&k].members.iter().map(|m| m.conductor).collect()
+    d.cables[&k].cores.iter().filter_map(|m| m.wire()).collect()
 }
 
 /// Every conductor with its ends and the items of its representations, for "unchanged" checks.
@@ -73,8 +73,9 @@ fn conductors_snapshot(d: &Document) -> Vec<String> {
     d.wires
         .iter()
         .map(|(c, x)| {
-            let reps: Vec<String> = d
-                .representations_of(Subject::Wire(*c))
+            let reps: Vec<String> = ecad_cadcraft::wires::routes_of_wire(d, *c)
+                .into_iter()
+                .flat_map(|r| d.representations_of(Subject::Route(r)).map(|(rid, r)| (rid, r.clone())).collect::<Vec<_>>())
                 .map(|(rid, r)| format!("{rid:?} {r:?} {:?}", r.items.iter().map(|i| &d.items[i]).collect::<Vec<_>>()))
                 .collect();
             format!("{c:?} {x:?} {reps:?}")
@@ -135,7 +136,7 @@ fn ac1_one_transaction_with_members_in_crossing_order_and_conductors_unchanged()
         let k: CableId = id(&r, "cable");
         let want = if reversed { vec![f.w10, f.w5, f.w0] } else { vec![f.w0, f.w5, f.w10] };
         assert_eq!(members(&d, k), want, "crossing order from `from` to `to`");
-        assert!(d.cables[&k].members.iter().all(|m| m.core.is_none()), "core stays None");
+        assert!(d.cables[&k].cores.iter().all(|m| m.label.is_none()), "core stays None");
         // Brief 026: an automatic tag when none is given.
         assert!(d.cables[&k].properties.get("tag").is_some_and(|t| t.starts_with("-W")), "an automatic tag");
         let want_hex: Vec<String> = want.iter().map(|c| c.hex()).collect();
@@ -147,18 +148,16 @@ fn ac1_one_transaction_with_members_in_crossing_order_and_conductors_unchanged()
         // Design §2: the op list, in order.
         let tx = last_tx(&mut f.h);
         assert_eq!(tx.label, "Cable slash");
-        assert_eq!(tx.ops.len(), 6, "{:?}", tx.ops);
-        assert!(matches!(&tx.ops[0], Op::CreateCable { id, cable } if *id == k && cable.members.is_empty()));
-        for (i, c) in want.iter().enumerate() {
-            assert!(
-                matches!(&tx.ops[1 + i], Op::AddCableMember { cable, index, member }
-                    if *cable == k && *index == i && member.conductor == *c && member.core.is_none()),
-                "member op {i}: {:?}",
-                tx.ops[1 + i]
-            );
+        assert_eq!(tx.ops.len(), 3, "{:?}", tx.ops);
+        // The new cable carries its cores, in crossing order.
+        let Op::CreateCable { id: created, cable } = &tx.ops[0] else { panic!("op 0 is CreateCable: {:?}", tx.ops[0]) };
+        assert_eq!(*created, k);
+        assert_eq!(cable.cores.len(), want.len(), "{:?}", cable.cores);
+        for (i, (member, c)) in cable.cores.iter().zip(&want).enumerate() {
+            assert!(member.wire() == Some(*c) && member.label.is_none(), "core {i}: {member:?}");
         }
         let item: ItemId = id(&r, "item");
-        match &tx.ops[4] {
+        match &tx.ops[1] {
             Op::AddItem { id, item: it } => {
                 assert_eq!(*id, item);
                 assert_eq!(it.page, f.page);
@@ -169,12 +168,12 @@ fn ac1_one_transaction_with_members_in_crossing_order_and_conductors_unchanged()
                     other => panic!("slash is a line: {other:?}"),
                 }
                 // O4: the same style as a new wire.
-                let wire_item = d.representations_of(Subject::Wire(f.w0)).next().unwrap().1.items[0];
+                let wire_item = crate::common::wire_line(&d, f.w0, f.page).unwrap().0;
                 assert_eq!(it.style, d.items[&wire_item].style, "slash in the wire style (O4)");
             }
-            other => panic!("op 4 is AddItem: {other:?}"),
+            other => panic!("op 1 is AddItem: {other:?}"),
         }
-        match &tx.ops[5] {
+        match &tx.ops[2] {
             Op::LinkRepresentation { id: rid, rep } => {
                 assert_eq!(rid.hex(), r["representation"].as_str().unwrap());
                 assert_eq!(rep.subject, Subject::Cable(k));
@@ -184,7 +183,7 @@ fn ac1_one_transaction_with_members_in_crossing_order_and_conductors_unchanged()
                 assert_eq!(rep.items, vec![item]);
                 assert!(rep.connection_points.is_empty());
             }
-            other => panic!("op 5 is LinkRepresentation: {other:?}"),
+            other => panic!("op 2 is LinkRepresentation: {other:?}"),
         }
     }
 }
@@ -422,7 +421,7 @@ fn ac5_refusals_leave_the_head_unchanged_with_a_clear_message() {
     let e = slash(&mut f.h, (30.0, 4.0), (80.0, 6.0)).unwrap_err();
     assert!(e.contains("already in cable"), "{e}");
     assert_eq!(f.h.head(), head);
-    assert!(f.h.doc().cables.values().all(|c| !c.members.iter().any(|m| m.conductor == free)));
+    assert!(f.h.doc().cables.values().all(|c| !c.cores.iter().any(|m| m.wire() == Some(free))));
     // With tags, the names are the tags (design §5.4).
     f.h.run("wirenumber", json!({"conductor": w5, "value": "W5"})).unwrap();
     f.h.run("setprop", json!({"cable": k.hex(), "key": "tag", "value": "C1"})).unwrap();
@@ -538,8 +537,8 @@ fn ac6_erase_keeps_the_cable_and_delete_keeps_the_conductors() {
     slash(&mut f.h, (40.0, 3.0), (40.0, 7.0)).unwrap();
 }
 
-/// AC6 and design §8: `ecaddelete {cable}` with its slash still drawn removes the members, the
-/// slash and the cable in one transaction, in that op order, and undo brings it all back.
+/// AC6 and design §8: `ecaddelete {cable}` with its slash still drawn removes the slash and the
+/// cable (with its cores) in one transaction, in that op order, and undo brings it all back.
 #[test]
 fn ac6_deleting_a_cable_with_its_slash_removes_both_and_undoes() {
     let mut f = fixture(SEED);
@@ -554,7 +553,6 @@ fn ac6_deleting_a_cable_with_its_slash_removes_both_and_undoes() {
         .ops
         .iter()
         .map(|o| match o {
-            Op::RemoveCableMember { .. } => "member",
             Op::RemoveItem { .. } => "item",
             Op::UnlinkRepresentation { .. } => "unlink",
             Op::DeleteCable { .. } => "cable",
@@ -563,13 +561,11 @@ fn ac6_deleting_a_cable_with_its_slash_removes_both_and_undoes() {
         .collect();
     // Design §8 lists `RemoveItem` then `UnlinkRepresentation`; the implementation unlinks first.
     // Both replay to the same state (checked by the harness), so either order is accepted here.
-    assert!(
-        kinds == ["member", "member", "member", "item", "unlink", "cable"] || kinds == ["member", "member", "member", "unlink", "item", "cable"],
-        "{:?}",
-        tx.ops
-    );
-    let idx: Vec<usize> = tx.ops.iter().filter_map(|o| if let Op::RemoveCableMember { index, .. } = o { Some(*index) } else { None }).collect();
-    assert_eq!(idx, [2, 1, 0], "last index first");
+    assert!(kinds == ["item", "unlink", "cable"] || kinds == ["unlink", "item", "cable"], "{:?}", tx.ops);
+    // The DeleteCable carries the whole cable, its three cores included.
+    let deleted = tx.ops.iter().find_map(|o| if let Op::DeleteCable { cable, .. } = o { Some(cable) } else { None }).unwrap();
+    assert_eq!(deleted, &with.cables[&k]);
+    assert_eq!(deleted.cores.len(), 3);
     let d = f.h.doc();
     assert!(d.cables.is_empty() && !d.items.contains_key(&id::<ItemId>(&r, "item")));
     assert_eq!(conductors_snapshot(&d), conductors);
@@ -587,8 +583,21 @@ fn scope4_moving_wires_or_the_slash_keeps_membership_and_an_emptied_cable_stays(
     let mut f = fixture(SEED);
     let r = slash(&mut f.h, (28.0, -3.0), (32.0, 18.0)).unwrap();
     let k: CableId = id(&r, "cable");
+    // Moving W5's line off both its points ends W5 (design 072), but its core stays in the
+    // cable, on the moved line; undo brings W5 back.
     let route = f.h.route_handle(f.page, f.w5);
+    let line = f.h.route_of(f.page, f.w5);
     f.h.run("move", json!({"handles": [route.hex()], "delta": [0, 50]})).unwrap();
+    let positions: Vec<ecad_model::CorePosition> = f.h.doc().cables[&k].cores.iter().map(|m| m.position).collect();
+    assert_eq!(
+        positions,
+        vec![
+            ecad_model::CorePosition::Wire(f.w0),
+            ecad_model::CorePosition::Route { route: line, landed: None },
+            ecad_model::CorePosition::Wire(f.w10)
+        ]
+    );
+    f.h.run("u", Value::Null).unwrap();
     assert_eq!(members(&f.h.doc(), k), vec![f.w0, f.w5, f.w10]);
     let slash_h = f.h.handle_of(f.page, id(&r, "item"));
     f.h.run("move", json!({"handles": [slash_h.hex()], "delta": [500, 0]})).unwrap();
@@ -598,7 +607,7 @@ fn scope4_moving_wires_or_the_slash_keeps_membership_and_an_emptied_cable_stays(
     }
     let d = f.h.doc();
     assert!(d.cables.contains_key(&k), "an emptied cable stays");
-    assert!(d.cables[&k].members.is_empty());
+    assert!(d.cables[&k].cores.is_empty());
 }
 
 // ------------------------------------------------------------------ AC7
@@ -896,40 +905,18 @@ fn ac8_hostile_typed_points_and_huge_valid_coordinates() {
 }
 
 /// A reopened project with `n` + 1 parallel unit wires at y = 0 ..= n (x from 0 to 1), made in one
-/// transaction to keep the run short: the ops of one real `wire` are copied with fresh IDs and
-/// moved up by 1 each, committed to the ledger, saved, and the project reopened so its pages are
-/// projected from the history like any opened project. Returns the wires bottom to top.
+/// transaction to keep the run short ([`crate::common::wired_lines`]), committed to the ledger,
+/// saved, and the project reopened so its pages are projected from the history like any opened
+/// project. Returns the wires bottom to top.
 fn bulk_wires(n: usize) -> (H, Vec<WireId>) {
-    use ecad_model::{Author, RepresentationId};
+    use ecad_model::Author;
     let mut h = H::new(SEED);
-    let first = wire(&mut h, &[(0.0, 0.0), (1.0, 0.0)]);
-    let template = last_tx(&mut h).ops;
-    let mut ops = Vec::new();
-    let mut ws = vec![first];
-    for i in 1..=n {
-        let y = i as f64;
-        let base = (0xABCD_u128 << 64) + 4 * i as u128;
-        let (c, it, r) = (WireId::from(base), ItemId::from(base + 1), RepresentationId::from(base + 2));
-        ws.push(c);
-        for op in &template {
-            ops.push(match op.clone() {
-                Op::CreateWire { conductor, .. } => Op::CreateWire { id: c, conductor },
-                Op::AddItem { mut item, .. } => {
-                    item.kind = ItemKind::Primitive(Primitive::Line { a: Pt::new(0.0, y), b: Pt::new(1.0, y) });
-                    Op::AddItem { id: it, item }
-                }
-                Op::LinkRepresentation { mut rep, .. } => {
-                    rep.subject = Subject::Wire(c);
-                    rep.items = vec![it];
-                    Op::LinkRepresentation { id: r, rep }
-                }
-                // Since 022 a new wire records its `wire_number`; the copies stay unnumbered,
-                // which these cap tests do not need.
-                Op::SetProperty { object: ObjectRef::Wire(_), ref key, .. } if key == ecad_model::connectivity::WIRE_NUMBER => continue,
-                other => panic!("unexpected op in a wire transaction: {other:?}"),
-            });
-        }
-    }
+    let (ops, made) = h.cfg(|p| {
+        let page = p.ledger.document().page_order[0];
+        let style = ecad_model::Style { layer: p.default_layer, color: ecad_model::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
+        crate::common::wired_lines(&mut p.ids, page, style, n + 1, |i| (Pt::new(0.0, i as f64), Pt::new(1.0, i as f64)))
+    });
+    let ws: Vec<WireId> = made.into_iter().map(|(w, _, _)| w).collect();
     // The old session's page is not reprojected after this direct commit, so it is saved without
     // the harness checks and only the reopened project is used.
     h.cfg(|p| p.ledger.commit(Author::User, "bulk wires", ops)).unwrap();
@@ -1033,7 +1020,19 @@ fn r2_near_tolerance_crossings_order_by_id_and_are_deterministic() {
         let mut runs = Vec::new();
         for _ in 0..3 {
             let mut h = H::new(SEED);
-            let ws: Vec<WireId> = ys.iter().map(|y| wire(&mut h, &[(0.0, *y), (10.0, *y)])).collect();
+            // Stacked on purpose: each wire between its own two points (design 072: `wire` lands
+            // on the points already there, so identical lines are drawn as ops).
+            let ws: Vec<WireId> = h.cfg(|p| {
+                let page = p.ledger.document().page_order[0];
+                let style =
+                    ecad_model::Style { layer: p.default_layer, color: ecad_model::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
+                let (ops, made) = crate::common::wired_lines(&mut p.ids, page, style, ys.len(), |i| {
+                    let y = ys.get(i).copied().unwrap_or_default();
+                    (Pt::new(0.0, y), Pt::new(10.0, y))
+                });
+                p.ledger.commit(ecad_model::Author::User, "stacked wires", ops).unwrap();
+                made.into_iter().map(|(w, _, _)| w).collect()
+            });
             let up = slash_members(&mut h, (5.0, 0.0), (5.0, 10.0)).unwrap();
             h.run("u", Value::Null).unwrap();
             let down = slash_members(&mut h, (5.0, 10.0), (5.0, 0.0)).unwrap();
@@ -1169,7 +1168,7 @@ fn r2_cableadd_cap_holds_for_the_whole_cable() {
     // New cable: exactly max, then max + 1.
     let r = h.run("cableadd", json!({"conductors": hx(0..max)})).unwrap();
     let k: CableId = id(&r, "cable");
-    assert_eq!(h.doc().cables[&k].members.len(), max);
+    assert_eq!(h.doc().cables[&k].cores.len(), max);
     h.run("u", Value::Null).unwrap();
     let e = refused(&mut h, json!({"conductors": hx(0..max + 1)}), "new cable of max + 1");
     assert!(!e.to_lowercase().contains("panic"), "{e}");
@@ -1180,7 +1179,7 @@ fn r2_cableadd_cap_holds_for_the_whole_cable() {
     let e = refused(&mut h, json!({"cable": k, "conductors": hx(max - 1..max + 1)}), "max - 1 + 2");
     assert_eq!(e, format!("a cable holds at most {max} wires; nothing was changed"));
     h.run("cableadd", json!({"cable": k, "conductors": hx(max - 1..max)})).unwrap();
-    assert_eq!(h.doc().cables[&kid].members.len(), max, "exactly max via an existing cable");
+    assert_eq!(h.doc().cables[&kid].cores.len(), max, "exactly max via an existing cable");
     let e = refused(&mut h, json!({"cable": k, "conductors": hx(max..max + 1)}), "full + 1");
     assert_eq!(e, format!("a cable holds at most {max} wires; nothing was changed"));
 }

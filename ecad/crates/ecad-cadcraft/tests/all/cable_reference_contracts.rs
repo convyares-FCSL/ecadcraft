@@ -20,14 +20,21 @@ use cadcraft_engine::ext::MarkShape;
 use cadcraft_engine::geom::Vec2;
 use common::{H, id};
 use ecad_cadcraft::interact::{hover_lines, overlay_marks};
-use ecad_cadcraft::references::{markers_on_page, plan_continue};
+use ecad_cadcraft::references::markers_on_page;
 use ecad_cadcraft::{Mapped, ProjectHandle};
 use ecad_model::derive::{cable_references, nets};
 use ecad_model::{
-    Cable, CableId, CableMember, Color, Document, Form, Item, ItemId, ItemKind, Layer, LayerId, Op, Page, PageId, Primitive, Pt, Representation,
+    Cable, CableId, Color, Core, Document, Form, Item, ItemId, ItemKind, Layer, LayerId, Op, Page, PageId, Primitive, Pt, Representation,
     RepresentationId, Style, Subject, TerminalId, WireId,
 };
 use serde_json::{Value, json};
+
+/// `wire` point to point (design 072: a wire runs between two connection points): a connection
+/// point at each end that has none first ([`H::wire_pp`]).
+fn wire_pp(h: &mut H, points: Value) -> Result<Value, String> {
+    let p: Vec<(f64, f64)> = points.as_array().into_iter().flatten().filter_map(|q| Some((q[0].as_f64()?, q[1].as_f64()?))).collect();
+    h.wire_pp(&p)
+}
 
 const SEED: u64 = 10_010;
 
@@ -67,10 +74,12 @@ fn before_reference() -> R {
     h.run("renamepage", json!({"page": supply.hex(), "title": "Supply"})).unwrap();
     component(&mut h, supply, "line -10,-5 0,-5 0,15 -10,15 c", [(0.0, 0.0), (0.0, 5.0), (0.0, 10.0)], "K1");
     let mut w = Vec::new();
+    // Loose lines leaving the page (design 072 §4.4, F4): no wire until each is continued through
+    // the cable's references and lands on K2; until then a core is named by its line.
     for y in [0.0, 5.0, 10.0] {
-        let c: WireId = id(&h.run("wire", json!({"points": [[0.0, y], [60.0, y]]})).unwrap(), "conductor");
-        tag(&mut h, "conductor", &c.hex(), &format!("W{y}"));
-        w.push(c);
+        let v = h.run("wire", json!({"points": [[0.0, y], [60.0, y]]})).unwrap();
+        let line: ecad_model::RouteId = id(&v, "route");
+        w.push(WireId::parse(&line.hex()).unwrap());
     }
     let c1: CableId = id(&h.run("cableslash", json!({"from": [28, -3], "to": [32, 18], "tag": "C1"})).unwrap(), "cable");
     let field: PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
@@ -89,11 +98,31 @@ fn continued() -> (R, Value) {
     (r, v)
 }
 
+/// Fixture R with the reference on Supply and C1's other reference end on Field at (20,5), written
+/// as `cablecontinue` writes it but without its stubs ([`H::reference_end`]): a continuation needs
+/// wires leaving the page through the reference, which form only with lane F step F4. For tests
+/// about the two ends' texts, flags and pages, not the wires.
+fn paired() -> R {
+    let mut r = before_reference();
+    r.h.run("cableref", json!({"cable": r.c1.hex(), "at": [65, 5]})).unwrap();
+    let field = r.field;
+    r.h.reference_end(r.c1, field, (20.0, 5.0));
+    r
+}
+
 /// Fixture R complete: the continued wires connected to K2.
 fn connected() -> R {
-    let (mut r, _) = continued();
-    for (w, t) in r.w.iter().zip(r.k2) {
-        r.h.run("connect", json!({"conductor": w.hex(), "end": "B", "terminal": t.hex()})).unwrap();
+    let (mut r, v) = continued();
+    // Each stub's free end onto K2 (design 072 §4.3: the stubs are routes).
+    for (s, t) in v["routes"].as_array().cloned().unwrap_or_default().iter().zip(r.k2) {
+        r.h.run("connect", json!({"route": s["route"], "end": s["free_end"], "terminal": t.hex()})).unwrap();
+    }
+    // Now each core is a wire, from K1 to K2 across the pages: name them W0, W5, W10.
+    let doc = r.h.doc();
+    let wires: Vec<WireId> = doc.cables[&r.c1].cores.iter().filter_map(|c| c.wire()).collect();
+    for (i, (w, y)) in wires.iter().zip(["0", "5", "10"]).enumerate() {
+        tag(&mut r.h, "conductor", &w.hex(), &format!("W{y}"));
+        r.w[i] = *w;
     }
     r
 }
@@ -158,24 +187,37 @@ fn continuing_a_cable_adds_routes_of_the_same_conductors_in_one_transaction() {
     assert_eq!(r.h.head(), head + 1, "one transaction");
     let ops = last_ops(&mut r.h);
     let names: Vec<&str> = ops.iter().map(Op::name).collect();
+    // Design 072 §4.4 (F4): the reference here with a named point per core, the cores listing
+    // their points, Supply's reference placing its points, Supply's lines landing on them, the
+    // stubs from the points here, the slash.
     assert_eq!(
         names,
         [
             "AddItem",
             "LinkRepresentation",
+            "ModifyCable",
+            "ModifyRepresentation",
+            "ModifyRoute",
+            "ModifyRoute",
+            "ModifyRoute",
+            "AddRoute",
             "AddItem",
             "LinkRepresentation",
+            "AddRoute",
             "AddItem",
             "LinkRepresentation",
+            "AddRoute",
             "AddItem",
             "LinkRepresentation",
             "AddItem",
             "LinkRepresentation"
         ]
     );
+    // The stubs are routes (design 072 §4.3): their points, then the slash's line.
     let lines: Vec<(Pt, Pt)> = ops
         .iter()
         .filter_map(|op| match op {
+            Op::AddRoute { route, .. } => route.end_points().map(|[a, b]| (a, b)),
             Op::AddItem { item: Item { kind: ItemKind::Primitive(Primitive::Line { a, b }), .. }, .. } => Some((*a, *b)),
             _ => None,
         })
@@ -193,19 +235,17 @@ fn continuing_a_cable_adds_routes_of_the_same_conductors_in_one_transaction() {
         })
         .collect();
     let k = Subject::Cable(r.c1);
-    assert_eq!(
-        roles,
-        vec![
-            (ecad_model::Role::Reference, k),
-            (ecad_model::Role::Route, Subject::Wire(r.w[0])),
-            (ecad_model::Role::Route, Subject::Wire(r.w[1])),
-            (ecad_model::Role::Route, Subject::Wire(r.w[2])),
-            (ecad_model::Role::Slash, k)
-        ]
-    );
+    // The stubs are new routes (design 072 §4.3).
+    let stub = |s: &Subject| if matches!(s, Subject::Route(_)) { Subject::Route(ecad_model::RouteId::from(0u128)) } else { *s };
+    let roles: Vec<(ecad_model::Role, Subject)> = roles.iter().map(|(role, s)| (*role, stub(s))).collect();
+    let any = Subject::Route(ecad_model::RouteId::from(0u128));
+    use ecad_model::Role::{Reference, Route, Slash};
+    assert_eq!(roles, vec![(Reference, k), (Route, any), (Route, any), (Route, any), (Slash, k)]);
     let after = r.h.doc();
-    assert_eq!(after.cables, before.cables, "same cable, same members");
-    assert_eq!(after.wires, before.wires, "no conductor or attachment changed");
+    let positions = |d: &Document| d.cables[&r.c1].cores.iter().map(|c| c.position).collect::<Vec<_>>();
+    assert_eq!(positions(&after), positions(&before), "same cable, same cores where they were");
+    assert!(after.cables[&r.c1].cores.iter().all(|c| c.through.len() == 2), "each core has a point on each reference");
+    assert_eq!(after.wires, before.wires, "no wire until a stub lands on a device point");
     assert_eq!(nets(&after), nets(&before), "nets unchanged");
     assert_eq!(v["text"], "1/F2");
     assert_eq!(v["partner"], json!(reference_on(&mut r.h, r.supply).hex()));
@@ -275,7 +315,7 @@ fn each_reference_shows_the_other_end_away_from_its_wires() {
 /// their own; moving the point changes the other end's column.
 #[test]
 fn texts_follow_page_moves_renames_and_point_moves_live() {
-    let mut r = connected();
+    let mut r = paired();
     let head = r.h.head();
     r.h.run("movepage", json!({"page": r.field.hex(), "index": 1})).unwrap();
     assert_eq!(r.h.head(), head + 1, "exactly the move");
@@ -303,7 +343,9 @@ fn texts_follow_page_moves_renames_and_point_moves_live() {
 // ---------------------------------------------------------------- AC3 (check E)
 
 /// Check E: erasing the whole Field drawing makes Supply's end an orphan (red, diagnostic, echo);
-/// conductors and their Field attachments stay; undo restores the link with the same IDs.
+/// Supply's lines and the cable's cores stay, but the wires through Field's points go with
+/// Field's lines (design 072 §4.4, F4: a wire runs only from device point to device point); undo
+/// restores the link with the same IDs.
 #[test]
 fn erasing_one_drawing_makes_the_other_end_an_orphan_and_undo_restores_it() {
     let mut r = connected();
@@ -346,8 +388,10 @@ fn erasing_one_drawing_makes_the_other_end_an_orphan_and_undo_restores_it() {
     let th = r.h.p(|p| p.pages[&r.supply].map.ref_text(srid)).expect("text drawn");
     let te = r.h.pv(|p, pg| pg.entities_of(p, r.supply)).into_iter().find(|e| e.handle == th).unwrap();
     assert_eq!(te.common.color, CColor::Index(1));
-    assert_eq!(doc.wires, before.wires, "conductors and attachments stay");
-    assert_eq!(doc.cables, before.cables);
+    assert!(doc.wires.is_empty(), "no wire without Field's lines");
+    let supply_lines: Vec<&ecad_model::Route> = before.routes.values().filter(|x| x.page == r.supply).collect();
+    assert!(supply_lines.iter().all(|l| doc.routes.values().any(|x| x.points == l.points)), "Supply's lines stay");
+    assert_eq!(doc.cables[&r.c1].cores.len(), before.cables[&r.c1].cores.len(), "the cable keeps its cores");
     assert!(log_since(&r.h, n).contains("Cable -C01's reference on page 1 now has no other end."), "{}", log_since(&r.h, n));
     assert_eq!(ecad_cadcraft::references::diagnostics(&doc), vec!["Orphan: cable -C01 on page 1 (?)".to_string()]);
     let snap = r.h.project.snapshot(&mut r.h.s, None).unwrap();
@@ -360,7 +404,7 @@ fn erasing_one_drawing_makes_the_other_end_an_orphan_and_undo_restores_it() {
 /// Erasing only the reference text erases its reference (design §9); moving it is refused.
 #[test]
 fn the_text_is_derived_erasing_it_erases_the_reference_and_moving_it_is_refused() {
-    let (mut r, _) = continued();
+    let mut r = paired();
     r.h.activate(r.supply);
     let rid = reference_on(&mut r.h, r.supply);
     let text = r.h.p(|p| p.pages[&r.supply].map.ref_text(rid)).unwrap();
@@ -474,7 +518,7 @@ fn refusals_say_why_and_change_nothing() {
     let third: PageId = id(&r.h.run("newpage", json!({"title": "Third"})).unwrap(), "page");
     r.h.activate(r.supply);
     // A cable with no wires on Third, and one with no reference: W-new on Supply.
-    let lone: WireId = id(&r.h.run("wire", json!({"points": [[0, 40], [60, 40]]})).unwrap(), "conductor");
+    let lone: WireId = id(&wire_pp(&mut r.h, json!([[0, 40], [60, 40]])).unwrap(), "conductor");
     let c2: CableId = id(&r.h.run("cableadd", json!({"conductors": [lone.hex()], "tag": "C2"})).unwrap(), "cable");
     let cases: Vec<(PageId, &str, Value, &str)> = vec![
         (r.supply, "cableref", json!({"cable": c1, "at": [70, 0]}), "Cable -C01 already has a reference on this page."),
@@ -508,19 +552,6 @@ fn refusals_say_why_and_change_nothing() {
     let e = f.h.run("cablecontinue", json!({"cable": f.c1.hex(), "at": [80, 5], "toward": [90, 5]})).unwrap_err();
     assert!(e.contains("Cable -C01 is already drawn on this page; continue it on another page."), "{e}");
     assert_eq!(f.h.head(), head);
-    let doc = f.h.doc();
-    let mut both = doc.clone();
-    for w in f.w {
-        both.wires.get_mut(&w).unwrap().set_end(ecad_model::End::B, Some(f.k2[0]));
-    }
-    let e = plan_continue(&both, f.field, f.c1, None, Pt::new(0.0, 0.0), Pt::new(10.0, 0.0), 1e-6).unwrap_err().to_string();
-    assert_eq!(e, "None of cable -C01's wires can continue: each is connected at both ends or already drawn on this page.");
-    // A mixed cable: the both-ends wire is skipped and reported.
-    let mut mixed = doc.clone();
-    mixed.wires.get_mut(&f.w[2]).unwrap().set_end(ecad_model::End::B, Some(f.k2[0]));
-    let plan = plan_continue(&mixed, f.field, f.c1, None, Pt::new(0.0, 0.0), Pt::new(10.0, 0.0), 1e-6).unwrap();
-    assert_eq!(plan.stubs.len(), 2);
-    assert_eq!(plan.skipped, vec![(f.w[2], ecad_cadcraft::references::Skip::BothConnected)]);
 }
 
 /// The JSON forms of every new or changed command, as an agent drives them (brief 011 rule):
@@ -643,7 +674,7 @@ fn hostile_documents_derive_without_panicking() {
     doc.pages.insert(page, Page::titled("1").unwrap());
     doc.page_order.push(page);
     doc.layers.insert(layer, Layer { name: "0".into() });
-    doc.cables.insert(cable, Cable { properties: Default::default(), members: Vec::<CableMember>::new() });
+    doc.cables.insert(cable, Cable::default());
     let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     for (i, x) in [0.0, 50.0, 100.0, 150.0, f64::NAN].into_iter().enumerate() {
         let item = ItemId::from(100 + i as u128);
@@ -682,7 +713,7 @@ fn hostile_documents_derive_without_panicking() {
     two.pages.insert(lost_page, Page::titled("lost").unwrap());
     two.page_order.push(page);
     two.layers.insert(layer, Layer { name: "0".into() });
-    two.cables.insert(cable, Cable { properties: Default::default(), members: Vec::new() });
+    two.cables.insert(cable, Cable::default());
     for (i, pg) in [page, lost_page].into_iter().enumerate() {
         let item = ItemId::from(300 + i as u128);
         two.items.insert(item, Item { page: pg, style: style.clone(), kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(10.0, 0.0) }) });
@@ -721,7 +752,7 @@ fn twenty_thousand_references_of_one_cable_stay_bounded_and_fast() {
     doc.pages.insert(page, Page::titled("1").unwrap());
     doc.page_order.push(page);
     doc.layers.insert(layer, Layer { name: "0".into() });
-    doc.cables.insert(cable, Cable { properties: Default::default(), members: Vec::new() });
+    doc.cables.insert(cable, Cable::default());
     let style = Style { layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     let n: usize = 20_000;
     for i in 0..n {
@@ -753,25 +784,35 @@ fn twenty_thousand_references_of_one_cable_stay_bounded_and_fast() {
     let _ = ecad_cadcraft::views::drawings_on_page(&doc, page, &Default::default(), 1e-6);
 }
 
-/// The per-page movement rule (design 010 §0, translate M3): on the continuation page, moving a
-/// stub whose other end is connected on the first page never detaches that end, and dropping that
-/// end on a terminal here connects nothing and says why.
+/// The per-page movement rule (design 010 §0, translate M3) with named points (design 072 §4.4,
+/// F4): each page's line lands on the core's point on that page's reference, so moving the stub
+/// on the continuation page never touches the line on the first page, which stays on its point
+/// there. The stub's own end leaves Field's point when moved away and lands on it again when
+/// moved back.
 #[test]
 fn moving_a_stub_never_detaches_the_end_connected_on_the_other_page() {
-    let (mut r, _) = continued();
+    let (mut r, v) = continued();
     r.h.activate(r.field);
-    let before = r.h.doc().wires;
-    let w5 = r.h.route_handle(r.field, r.w[1]);
-    // Away from everything: the end at the reference (end A, attached to K1 on Supply) stays.
-    r.h.run("move", json!({"handles": [w5.hex()], "delta": [0, 50]})).unwrap();
-    assert_eq!(r.h.doc().wires, before, "no attachment changed");
-    assert_eq!(r.h.route_ends(r.field, r.w[1]).0, Pt::new(20.0, 55.0));
-    // Back, then onto K2's middle terminal at (100,5): end A stays on K1 and the user is told.
-    r.h.run("move", json!({"handles": [w5.hex()], "delta": [0, -50]})).unwrap();
-    let n = r.h.s.log.len();
-    r.h.run("move", json!({"handles": [w5.hex()], "delta": [80, 0]})).unwrap();
-    assert_eq!(r.h.doc().wires, before, "end A is still connected on Supply only");
-    assert!(log_since(&r.h, n).contains("End A of W5 is connected on another page, so it was not connected here"), "{}", log_since(&r.h, n));
+    let before = r.h.doc();
+    let s = &v["routes"][1];
+    let stub: ecad_model::RouteId = id(s, "route");
+    let core = before.cables[&r.c1].cores[s["core"].as_u64().unwrap() as usize - 1].clone();
+    let line = core.route().expect("the core's line on Supply");
+    assert_eq!(before.routes[&line].ends[1], ecad_model::RouteEnd::Point(core.through[0]), "Supply's line on its point");
+    assert_eq!(before.routes[&stub].ends[0], ecad_model::RouteEnd::Point(core.through[1]), "the stub from Field's point");
+    let h5 = r.h.line_handle(r.field, stub);
+    // Away from everything: the stub's end leaves Field's point; Supply's line stays on its own.
+    r.h.run("move", json!({"handles": [h5.hex()], "delta": [0, 50]})).unwrap();
+    let doc = r.h.doc();
+    assert_eq!(doc.routes[&stub].end_points().map(|[a, _]| a), Some(Pt::new(20.0, 55.0)));
+    assert_eq!(doc.routes[&stub].ends[0], ecad_model::RouteEnd::Free, "moved away: a free end");
+    assert_eq!(doc.routes[&line], before.routes[&line], "Supply's line untouched");
+    // Back onto Field's point: it lands there again, and the page is as it was.
+    r.h.run("move", json!({"handles": [h5.hex()], "delta": [0, -50]})).unwrap();
+    let doc = r.h.doc();
+    assert_eq!(doc.routes, before.routes, "every line as before");
+    assert_eq!(doc.cables, before.cables);
+    assert_eq!(doc.wires, before.wires);
 }
 
 // ---------------------------------------------------------------- scope 5 (check M), fan (check L)
@@ -794,8 +835,15 @@ fn the_debugger_trail_follows_references_across_pages() {
         })
         .collect();
     assert_eq!(reps, vec![r.supply, r.supply, r.field, r.field], "grouped by page in page order");
-    let routes = used_by(&doc, ObjectId::Wire(r.w[0])).into_iter().filter(|o| matches!(o, ObjectId::Representation(_))).count();
-    assert_eq!(routes, 2, "a route on each page");
+    // A route is an object of its own (design 072 §4.3), not a representation of the wire.
+    let pages: std::collections::BTreeSet<PageId> = used_by(&doc, ObjectId::Wire(r.w[0]))
+        .into_iter()
+        .filter_map(|o| match o {
+            ObjectId::Route(x) => doc.routes.get(&x).map(|x| x.page),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(pages, [r.supply, r.field].into_iter().collect(), "a route on each page");
     let snap = r.h.project.snapshot(&mut r.h.s, None).unwrap();
     assert_eq!(snap["checks"]["cable_references"].as_array().map(Vec::len), Some(2));
     assert_eq!(snap["checks"]["orphan_references"], json!([]));
@@ -821,39 +869,16 @@ fn fan_view_keeps_the_reference_drawn() {
 #[test]
 #[ignore = "slow: ten-thousand-wire cable, about 7 s"]
 fn a_ten_thousand_wire_cable_continues_in_bounded_time() {
-    use ecad_model::{Author, Wire};
+    use ecad_model::Author;
     let n = ecad_cadcraft::slash::MAX_CABLE_MEMBERS;
     let mut h = H::new(SEED + 7);
     let supply = h.first_page();
     let ops = h.cfg(|p| {
         let style = Style { layer: p.default_layer, color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
         let cable: CableId = p.ids.fresh();
-        let mut ops = vec![Op::CreateCable { id: cable, cable: Cable::default() }];
-        for i in 0..n {
-            let (c, it, r): (WireId, ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh(), p.ids.fresh());
-            let y = i as f64;
-            ops.push(Op::CreateWire { id: c, conductor: Wire::default() });
-            ops.push(Op::AddItem {
-                id: it,
-                item: Item {
-                    page: supply,
-                    style: style.clone(),
-                    kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(0.0, y), b: Pt::new(60.0, y) }),
-                },
-            });
-            ops.push(Op::LinkRepresentation {
-                id: r,
-                rep: Representation {
-                    subject: Subject::Wire(c),
-                    page: supply,
-                    form: Form::Drawn,
-                    role: ecad_model::Role::Route,
-                    items: vec![it],
-                    connection_points: Default::default(),
-                },
-            });
-            ops.push(Op::AddCableMember { cable, index: i, member: CableMember { conductor: c, core: None } });
-        }
+        let (mut ops, made) = crate::common::wired_lines(&mut p.ids, supply, style.clone(), n, |i| (Pt::new(0.0, i as f64), Pt::new(60.0, i as f64)));
+        let cores = made.into_iter().map(|(c, _, _)| Core::on_wire(c, None)).collect();
+        ops.push(Op::CreateCable { id: cable, cable: Cable { cores, ..Cable::default() } });
         let (it, r): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
         ops.push(Op::AddItem { id: it, item: Item { page: supply, style, kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(65.0, 0.0) }) } });
         ops.push(Op::LinkRepresentation {
@@ -917,12 +942,19 @@ fn assert_flag_away(h: &mut H, page: PageId, cable: CableId, u: Pt) {
     let m = markers_on_page(&doc, page).into_iter().find(|m| m.cable == cable).expect("a marker");
     let along = |p: Pt| (p.x - m.at.x) * u.x + (p.y - m.at.y) * u.y;
     // The wires leave the point the other way.
-    let ends = ecad_model::derive::route_ends_by_page(&doc);
+    // Each core's line on the page: its wire's, its loose line, or the line from its named point
+    // on this page's reference (design 072 §4.4, F4).
     let routes: Vec<Pt> = doc.cables[&cable]
-        .members
+        .cores
         .iter()
-        .filter_map(|x| ends.get(&(x.conductor, page)).copied())
-        .map(|(a, b)| if a.dist(m.at) <= b.dist(m.at) { b } else { a })
+        .flat_map(|x| {
+            let mut lines: Vec<ecad_model::RouteId> = x.through.iter().flat_map(|t| doc.routes_at(*t)).collect();
+            lines.extend(x.route());
+            lines.extend(x.wire().and_then(|w| ecad_cadcraft::wires::route_of_wire_on(&doc, w, page)));
+            lines
+        })
+        .filter_map(|l| doc.routes.get(&l).filter(|l| l.page == page).and_then(|l| l.end_points()))
+        .map(|[a, b]| if a.dist(m.at) <= b.dist(m.at) { b } else { a })
         .collect();
     assert!(!routes.is_empty() && routes.iter().all(|far| along(*far) < 0.0), "the wires leave against {u:?}");
 
@@ -948,7 +980,7 @@ fn assert_flag_away(h: &mut H, page: PageId, cable: CableId, u: Pt) {
 /// Fixture R's page 1: the wires come from the left, the flag points right.
 #[test]
 fn the_flag_points_right_when_the_wires_come_from_the_left() {
-    let (mut r, _) = continued();
+    let mut r = paired();
     assert_flag_away(&mut r.h, r.supply, r.c1, Pt::new(1.0, 0.0));
 }
 
@@ -965,7 +997,7 @@ fn vertical_cable(at: [f64; 2]) -> (H, PageId, CableId) {
     let mut h = H::new(SEED);
     let page = h.first_page();
     for x in [0.0, 5.0, 10.0] {
-        h.run("wire", json!({"points": [[x, 0.0], [x, 60.0]]})).unwrap();
+        wire_pp(&mut h, json!([[x, 0.0], [x, 60.0]])).unwrap();
     }
     let c1: CableId = id(&h.run("cableslash", json!({"from": [-3, 28], "to": [13, 32], "tag": "C1"})).unwrap(), "cable");
     h.run("cableref", json!({"cable": c1.hex(), "at": at})).unwrap();
@@ -1044,7 +1076,7 @@ fn only_the_active_page_is_drawn_and_another_page_shows_the_new_text_when_made_a
 /// shows the reverted reference text when it is made active.
 #[test]
 fn undo_on_the_page_of_the_edit_stays_and_other_pages_show_the_reverted_text_when_active() {
-    let mut r = connected();
+    let mut r = paired();
     r.h.activate(r.field);
     let fid = reference_on(&mut r.h, r.field);
     let fpoint = r.h.doc().representations[&fid].items[0];
@@ -1074,7 +1106,7 @@ fn undo_on_the_page_of_the_edit_stays_and_other_pages_show_the_reverted_text_whe
 /// page 1 shows `2/F1` when it is active again.
 #[test]
 fn undo_from_another_page_brings_the_page_of_the_edit_to_the_front() {
-    let mut r = connected();
+    let mut r = paired();
     r.h.activate(r.field);
     let doc = r.h.doc();
     let keep: Vec<cadcraft_engine::doc::Handle> = doc

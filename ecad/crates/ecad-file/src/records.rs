@@ -8,7 +8,9 @@
 use std::collections::BTreeMap;
 
 use ecad_model as m;
-use ecad_model::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, TerminalId, TxId, WireId};
+use ecad_model::{
+    CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, RouteId, TerminalId, TxId, WireId,
+};
 use serde::{Deserialize, Serialize};
 
 /// A point `[x, y]`.
@@ -217,6 +219,9 @@ pub struct Terminal {
     pub component: DeviceId,
     pub label: Option<String>,
     pub key: Option<m::PointKey>,
+    /// Design 072 F38: how many conductors it accepts, 1 to 64; left out at two.
+    #[serde(default, skip_serializing_if = "m::Accepts::is_two")]
+    pub accepts: m::Accepts,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -225,6 +230,25 @@ pub enum Subject {
     Device(DeviceId),
     Wire(WireId),
     Cable(CableId),
+    Route(RouteId),
+}
+
+/// A route (design 072 F31): a line drawn on a page and what its ends land on.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Route {
+    pub page: PageId,
+    pub points: Vec<Pt>,
+    pub ends: [RouteEnd; 2],
+}
+
+/// What one end of a route lands on.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum RouteEnd {
+    Point(TerminalId),
+    On { route: RouteId, at: Pt },
+    Free,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -245,26 +269,19 @@ pub struct Representation {
     pub connection_points: BTreeMap<TerminalId, Pt>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum End {
-    A,
-    B,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Ends {
-    pub a: Option<TerminalId>,
-    pub b: Option<TerminalId>,
-}
-
-/// A wire (design 072 §4.2): its ends, its typed values (the model's own strict types) and its
-/// display choices.
+/// A wire (design 072 §4.2): its net, its conductor id, its place in the net's order, its two
+/// connection points, its typed values (the model's own strict types) and its display choices.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Wire {
-    pub ends: Ends,
+    pub net: m::NetId,
+    pub conductor: m::ConductorId,
+    pub net_order: u16,
+    pub ends: [TerminalId; 2],
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub order_fixed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wire_type: Option<m::StyleRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size: Option<m::wire::WireSize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -277,22 +294,100 @@ pub struct Wire {
     pub rating: m::wire::CircuitInputs,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub load: Option<m::units::Amps>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protected_by: Option<m::wire::ProtectedBy>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub display: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct CableMember {
-    pub conductor: WireId,
-    pub core: Option<String>,
+pub struct Core {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<m::CoreLabel>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colours: Option<m::wire::Colours>,
+    pub purpose: Purpose,
+    pub position: CorePosition,
+    /// The core's named points on the cable's references (design 072 §4.4, F4).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub through: Vec<m::TerminalId>,
+}
+
+/// What a cable core is for, as written.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Purpose {
+    InUse,
+    Spare,
+}
+
+impl From<m::Purpose> for Purpose {
+    fn from(p: m::Purpose) -> Self {
+        match p {
+            m::Purpose::InUse => Purpose::InUse,
+            m::Purpose::Spare => Purpose::Spare,
+        }
+    }
+}
+
+impl From<Purpose> for m::Purpose {
+    fn from(p: Purpose) -> Self {
+        match p {
+            Purpose::InUse => m::Purpose::InUse,
+            Purpose::Spare => m::Purpose::Spare,
+        }
+    }
+}
+
+/// Where a cable core is (owner ruling, 2026-11-18): stored as written.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum CorePosition {
+    Unplaced,
+    Route {
+        route: RouteId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        landed: Option<TerminalId>,
+    },
+    Wire(WireId),
+}
+
+impl From<m::CorePosition> for CorePosition {
+    fn from(p: m::CorePosition) -> Self {
+        match p {
+            m::CorePosition::Unplaced => CorePosition::Unplaced,
+            m::CorePosition::Route { route, landed } => CorePosition::Route { route, landed },
+            m::CorePosition::Wire(w) => CorePosition::Wire(w),
+        }
+    }
+}
+
+impl From<CorePosition> for m::CorePosition {
+    fn from(p: CorePosition) -> Self {
+        match p {
+            CorePosition::Unplaced => m::CorePosition::Unplaced,
+            CorePosition::Route { route, landed } => m::CorePosition::Route { route, landed },
+            CorePosition::Wire(w) => m::CorePosition::Wire(w),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Cable {
     pub properties: BTreeMap<String, String>,
-    pub members: Vec<CableMember>,
+    pub cores: Vec<Core>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cable_type: Option<m::StyleRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shield: Option<m::style::cable::Shield>,
+    #[serde(default, skip_serializing_if = "m::wire::CircuitInputs::is_empty")]
+    pub rating: m::wire::CircuitInputs,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub load: Option<m::units::Amps>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protected_by: Option<m::wire::ProtectedBy>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -310,6 +405,10 @@ pub struct TerminalDef {
     pub key: m::PointKey,
     pub label: Option<String>,
     pub at: Pt,
+    /// Design 072 F38: how many conductors the point accepts, 1 to 64; left out at two, so a
+    /// definition without it is written, and hashed, exactly as before.
+    #[serde(default, skip_serializing_if = "m::Accepts::is_two")]
+    pub accepts: m::Accepts,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -458,15 +557,6 @@ pub struct PotentialDef {
     pub cross_section: Option<String>,
 }
 
-/// How label colours are written (brief 022 fix round).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ColourStyle {
-    #[serde(rename = "iec")]
-    Iec,
-    #[serde(rename = "three-letter")]
-    ThreeLetter,
-}
-
 /// Wiring settings (brief 022). `colour_style` is left out at its default; the label height, rule
 /// and shortest labelled wire are written only when the project chose them (brief 066, F2).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -479,7 +569,7 @@ pub struct WiringSettings {
     pub unclassified_prefix: String,
     pub potentials: Vec<PotentialDef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub colour_style: Option<ColourStyle>,
+    pub colour_style: Option<m::colour::ColourWords>,
     /// Brief 066 (F2): written only when the project chose a height, even one equal to the
     /// built-in; absent follows the built-in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -490,6 +580,9 @@ pub struct WiringSettings {
     /// Brief 032 (FP-W1); left out at its default, like its neighbours.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label_min_length: Option<f64>,
+    /// Design 072 F40: what one wire number counts, `net` or `conductor`; left out at `net`.
+    #[serde(default, skip_serializing_if = "m::wiring::NumberBy::is_net")]
+    pub number_by: m::wiring::NumberBy,
 }
 
 impl Default for WiringSettings {
@@ -519,13 +612,11 @@ impl From<&m::wiring::WiringSettings> for WiringSettings {
                     cross_section: p.legacy_cross_section.clone(),
                 })
                 .collect(),
-            colour_style: w.colour_style.map(|c| match c {
-                m::wiring::ColourStyle::Iec => ColourStyle::Iec,
-                m::wiring::ColourStyle::ThreeLetter => ColourStyle::ThreeLetter,
-            }),
+            colour_style: w.colour_style,
             label_height: w.label_height,
             label_rule: w.label_rule.clone(),
             label_min_length: w.label_min_length,
+            number_by: w.number_by,
         }
     }
 }
@@ -578,13 +669,11 @@ impl From<WiringSettings> for m::wiring::WiringSettings {
                     legacy_cross_section: p.cross_section.filter(|v| !v.trim().is_empty()),
                 })
                 .collect(),
-            colour_style: w.colour_style.map(|c| match c {
-                ColourStyle::Iec => m::wiring::ColourStyle::Iec,
-                ColourStyle::ThreeLetter => m::wiring::ColourStyle::ThreeLetter,
-            }),
+            colour_style: w.colour_style,
             label_height: w.label_height,
             label_rule: w.label_rule,
             label_min_length: w.label_min_length,
+            number_by: w.number_by,
         }
     }
 }
@@ -770,22 +859,30 @@ pub enum Op {
     },
     CreateWire {
         id: WireId,
-        conductor: Wire,
+        wire: Wire,
     },
     DeleteWire {
         id: WireId,
-        conductor: Wire,
+        wire: Wire,
     },
     ModifyWire {
         id: WireId,
         before: Wire,
         after: Wire,
     },
-    AttachEnd {
-        conductor: WireId,
-        end: End,
-        before: Option<TerminalId>,
-        after: Option<TerminalId>,
+    /// Design 072 F31.
+    AddRoute {
+        id: RouteId,
+        route: Route,
+    },
+    RemoveRoute {
+        id: RouteId,
+        route: Route,
+    },
+    ModifyRoute {
+        id: RouteId,
+        before: Route,
+        after: Route,
     },
     CreateCable {
         id: CableId,
@@ -795,15 +892,10 @@ pub enum Op {
         id: CableId,
         cable: Cable,
     },
-    AddCableMember {
-        cable: CableId,
-        index: u64,
-        member: CableMember,
-    },
-    RemoveCableMember {
-        cable: CableId,
-        index: u64,
-        member: CableMember,
+    ModifyCable {
+        id: CableId,
+        before: Cable,
+        after: Cable,
     },
     SetProperty {
         object: ObjectRef,
@@ -983,7 +1075,7 @@ impl From<&m::Device> for Device {
 
 impl From<&m::Terminal> for Terminal {
     fn from(t: &m::Terminal) -> Self {
-        Terminal { component: t.component, label: t.label.clone(), key: t.key.clone() }
+        Terminal { component: t.component, label: t.label.clone(), key: t.key.clone(), accepts: t.accepts }
     }
 }
 
@@ -994,6 +1086,7 @@ impl From<&m::Representation> for Representation {
                 m::Subject::Device(c) => Subject::Device(c),
                 m::Subject::Wire(c) => Subject::Wire(c),
                 m::Subject::Cable(c) => Subject::Cable(c),
+                m::Subject::Route(c) => Subject::Route(c),
             },
             page: r.page,
             form: match r.form {
@@ -1007,37 +1100,72 @@ impl From<&m::Representation> for Representation {
     }
 }
 
-fn end(e: m::End) -> End {
-    match e {
-        m::End::A => End::A,
-        m::End::B => End::B,
-    }
-}
-
 impl From<&m::Wire> for Wire {
     fn from(c: &m::Wire) -> Self {
         Wire {
-            ends: Ends { a: c.end(m::End::A), b: c.end(m::End::B) },
+            net: c.net,
+            conductor: c.conductor,
+            net_order: c.net_order,
+            ends: c.ends,
+            order_fixed: c.order_fixed,
+            wire_type: c.wire_type.clone(),
             size: c.size,
             colours: c.colours.clone(),
             number: c.number.clone(),
             potential: c.potential.clone(),
             rating: c.rating,
             load: c.load,
+            protected_by: c.protected_by,
             display: c.display.clone(),
         }
     }
 }
 
-impl From<&m::CableMember> for CableMember {
-    fn from(c: &m::CableMember) -> Self {
-        CableMember { conductor: c.conductor, core: c.core.clone() }
+impl From<&m::Route> for Route {
+    fn from(r: &m::Route) -> Self {
+        let end = |e: m::RouteEnd| match e {
+            m::RouteEnd::Point(t) => RouteEnd::Point(t),
+            m::RouteEnd::On { route, at } => RouteEnd::On { route, at: pt(at) },
+            m::RouteEnd::Free => RouteEnd::Free,
+        };
+        Route { page: r.page, points: r.points.iter().map(|p| pt(*p)).collect(), ends: r.ends.map(end) }
+    }
+}
+
+impl From<Route> for m::Route {
+    fn from(r: Route) -> Self {
+        let end = |e: RouteEnd| match e {
+            RouteEnd::Point(t) => m::RouteEnd::Point(t),
+            RouteEnd::On { route, at } => m::RouteEnd::On { route, at: mpt(at) },
+            RouteEnd::Free => m::RouteEnd::Free,
+        };
+        m::Route { page: r.page, points: r.points.into_iter().map(mpt).collect(), ends: r.ends.map(end) }
+    }
+}
+
+impl From<&m::Core> for Core {
+    fn from(c: &m::Core) -> Self {
+        Core {
+            label: c.label.clone(),
+            colours: c.colours.clone(),
+            purpose: c.purpose.into(),
+            position: c.position.into(),
+            through: c.through.clone(),
+        }
     }
 }
 
 impl From<&m::Cable> for Cable {
     fn from(c: &m::Cable) -> Self {
-        Cable { properties: c.properties.clone(), members: c.members.iter().map(Into::into).collect() }
+        Cable {
+            properties: c.properties.clone(),
+            cores: c.cores.iter().map(Into::into).collect(),
+            cable_type: c.cable_type.clone(),
+            shield: c.shield,
+            rating: c.rating,
+            load: c.load,
+            protected_by: c.protected_by,
+        }
     }
 }
 
@@ -1047,7 +1175,11 @@ impl From<&m::Definition> for Definition {
             name: d.name.clone(),
             origin: d.origin.as_ref().map(origin),
             graphics: d.graphics.iter().map(Into::into).collect(),
-            terminals: d.terminals.iter().map(|t| TerminalDef { key: t.key.clone(), label: t.label.clone(), at: pt(t.at) }).collect(),
+            terminals: d
+                .terminals
+                .iter()
+                .map(|t| TerminalDef { key: t.key.clone(), label: t.label.clone(), at: pt(t.at), accepts: t.accepts })
+                .collect(),
             bridges: d.bridges.clone(),
             texts: d.texts.iter().map(|t| TextSlot { text: t.text.clone(), at: pt(t.at), h: t.h, v: t.v, rotation: t.rotation }).collect(),
             defaults: d.defaults.clone(),
@@ -1164,16 +1296,15 @@ impl From<&m::Op> for Op {
             m::Op::LinkRepresentation { id, rep } => Op::LinkRepresentation { id: *id, rep: rep.into() },
             m::Op::ModifyRepresentation { id, before, after } => Op::ModifyRepresentation { id: *id, before: before.into(), after: after.into() },
             m::Op::UnlinkRepresentation { id, rep } => Op::UnlinkRepresentation { id: *id, rep: rep.into() },
-            m::Op::CreateWire { id, conductor } => Op::CreateWire { id: *id, conductor: conductor.into() },
-            m::Op::DeleteWire { id, conductor } => Op::DeleteWire { id: *id, conductor: conductor.into() },
+            m::Op::CreateWire { id, wire } => Op::CreateWire { id: *id, wire: wire.into() },
+            m::Op::DeleteWire { id, wire } => Op::DeleteWire { id: *id, wire: wire.into() },
             m::Op::ModifyWire { id, before, after } => Op::ModifyWire { id: *id, before: before.into(), after: after.into() },
-            m::Op::AttachEnd { conductor, end: e, before, after } => {
-                Op::AttachEnd { conductor: *conductor, end: end(*e), before: *before, after: *after }
-            }
+            m::Op::AddRoute { id, route } => Op::AddRoute { id: *id, route: route.into() },
+            m::Op::RemoveRoute { id, route } => Op::RemoveRoute { id: *id, route: route.into() },
+            m::Op::ModifyRoute { id, before, after } => Op::ModifyRoute { id: *id, before: before.into(), after: after.into() },
             m::Op::CreateCable { id, cable } => Op::CreateCable { id: *id, cable: cable.into() },
             m::Op::DeleteCable { id, cable } => Op::DeleteCable { id: *id, cable: cable.into() },
-            m::Op::AddCableMember { cable, index, member } => Op::AddCableMember { cable: *cable, index: ix(*index), member: member.into() },
-            m::Op::RemoveCableMember { cable, index, member } => Op::RemoveCableMember { cable: *cable, index: ix(*index), member: member.into() },
+            m::Op::ModifyCable { id, before, after } => Op::ModifyCable { id: *id, before: before.into(), after: after.into() },
             m::Op::SetProperty { object: o, key, before, after } => {
                 Op::SetProperty { object: object(*o), key: key.clone(), before: before.clone(), after: after.clone() }
             }
@@ -1300,7 +1431,7 @@ impl From<Device> for m::Device {
 
 impl From<Terminal> for m::Terminal {
     fn from(t: Terminal) -> Self {
-        m::Terminal { component: t.component, label: t.label, key: t.key }
+        m::Terminal { component: t.component, label: t.label, key: t.key, accepts: t.accepts }
     }
 }
 
@@ -1311,6 +1442,7 @@ impl From<Representation> for m::Representation {
                 Subject::Device(c) => m::Subject::Device(c),
                 Subject::Wire(c) => m::Subject::Wire(c),
                 Subject::Cable(c) => m::Subject::Cable(c),
+                Subject::Route(c) => m::Subject::Route(c),
             },
             page: r.page,
             form: match r.form {
@@ -1324,37 +1456,44 @@ impl From<Representation> for m::Representation {
     }
 }
 
-fn mend(e: End) -> m::End {
-    match e {
-        End::A => m::End::A,
-        End::B => m::End::B,
-    }
-}
-
 impl From<Wire> for m::Wire {
     fn from(c: Wire) -> Self {
         m::Wire {
-            ends: [c.ends.a, c.ends.b],
+            net: c.net,
+            conductor: c.conductor,
+            net_order: c.net_order,
+            ends: c.ends,
+            order_fixed: c.order_fixed,
+            wire_type: c.wire_type,
             size: c.size,
             colours: c.colours,
             number: c.number,
             potential: c.potential,
             rating: c.rating,
             load: c.load,
+            protected_by: c.protected_by,
             display: c.display,
         }
     }
 }
 
-impl From<CableMember> for m::CableMember {
-    fn from(c: CableMember) -> Self {
-        m::CableMember { conductor: c.conductor, core: c.core }
+impl From<Core> for m::Core {
+    fn from(c: Core) -> Self {
+        m::Core { label: c.label, colours: c.colours, purpose: c.purpose.into(), position: c.position.into(), through: c.through }
     }
 }
 
 impl From<Cable> for m::Cable {
     fn from(c: Cable) -> Self {
-        m::Cable { properties: c.properties, members: c.members.into_iter().map(Into::into).collect() }
+        m::Cable {
+            properties: c.properties,
+            cores: c.cores.into_iter().map(Into::into).collect(),
+            cable_type: c.cable_type,
+            shield: c.shield,
+            rating: c.rating,
+            load: c.load,
+            protected_by: c.protected_by,
+        }
     }
 }
 
@@ -1364,7 +1503,7 @@ impl From<Definition> for m::Definition {
             name: d.name,
             origin: d.origin.map(morigin),
             graphics: d.graphics.into_iter().map(Into::into).collect(),
-            terminals: d.terminals.into_iter().map(|t| m::TerminalDef { key: t.key, label: t.label, at: mpt(t.at) }).collect(),
+            terminals: d.terminals.into_iter().map(|t| m::TerminalDef { key: t.key, label: t.label, at: mpt(t.at), accepts: t.accepts }).collect(),
             bridges: d.bridges,
             texts: d.texts.into_iter().map(|t| m::TextSlot { text: t.text, at: mpt(t.at), h: t.h, v: t.v, rotation: t.rotation }).collect(),
             defaults: d.defaults,
@@ -1435,14 +1574,15 @@ impl TryFrom<Op> for m::Op {
             Op::LinkRepresentation { id, rep } => m::Op::LinkRepresentation { id, rep: rep.into() },
             Op::ModifyRepresentation { id, before, after } => m::Op::ModifyRepresentation { id, before: before.into(), after: after.into() },
             Op::UnlinkRepresentation { id, rep } => m::Op::UnlinkRepresentation { id, rep: rep.into() },
-            Op::CreateWire { id, conductor } => m::Op::CreateWire { id, conductor: conductor.into() },
-            Op::DeleteWire { id, conductor } => m::Op::DeleteWire { id, conductor: conductor.into() },
+            Op::CreateWire { id, wire } => m::Op::CreateWire { id, wire: wire.into() },
+            Op::DeleteWire { id, wire } => m::Op::DeleteWire { id, wire: wire.into() },
             Op::ModifyWire { id, before, after } => m::Op::ModifyWire { id, before: before.into(), after: after.into() },
-            Op::AttachEnd { conductor, end, before, after } => m::Op::AttachEnd { conductor, end: mend(end), before, after },
+            Op::AddRoute { id, route } => m::Op::AddRoute { id, route: route.into() },
+            Op::RemoveRoute { id, route } => m::Op::RemoveRoute { id, route: route.into() },
+            Op::ModifyRoute { id, before, after } => m::Op::ModifyRoute { id, before: before.into(), after: after.into() },
             Op::CreateCable { id, cable } => m::Op::CreateCable { id, cable: cable.into() },
             Op::DeleteCable { id, cable } => m::Op::DeleteCable { id, cable: cable.into() },
-            Op::AddCableMember { cable, index: i, member } => m::Op::AddCableMember { cable, index: index(i)?, member: member.into() },
-            Op::RemoveCableMember { cable, index: i, member } => m::Op::RemoveCableMember { cable, index: index(i)?, member: member.into() },
+            Op::ModifyCable { id, before, after } => m::Op::ModifyCable { id, before: before.into(), after: after.into() },
             Op::SetProperty { object, key, before, after } => m::Op::SetProperty { object: mobject(object), key, before, after },
             Op::EmbedDefinition { id, definition } => m::Op::EmbedDefinition { id, definition: definition.into() },
             Op::RemoveDefinition { id, definition } => m::Op::RemoveDefinition { id, definition: definition.into() },

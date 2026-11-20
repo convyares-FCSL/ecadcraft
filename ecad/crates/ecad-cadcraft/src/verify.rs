@@ -116,6 +116,7 @@ pub fn verify_page_pending(
     let hidden: BTreeSet<ItemId> = fans.values().flat_map(|f| f.hidden.iter().copied()).collect();
     let mut fan_shown: BTreeMap<String, usize> = BTreeMap::new();
     let mut fan_expected: BTreeMap<String, usize> = BTreeMap::new();
+    let mut tees_shown: Vec<(ecad_model::RouteId, Pt)> = Vec::new();
     let look = crate::text_style::Look::new(doc);
     for f in fans.values() {
         for part in &f.parts {
@@ -190,7 +191,7 @@ pub fn verify_page_pending(
         if let Some(Mapped::Item(id)) = map.get(e.handle)
             && doc
                 .representation_of_item(id)
-                .is_some_and(|(_, r)| r.role == ecad_model::Role::LocationBox || matches!(r.subject, ecad_model::Subject::Wire(_)))
+                .is_some_and(|(_, r)| r.role == ecad_model::Role::LocationBox || matches!(r.subject, ecad_model::Subject::Route(_)))
             && let Some(own) = doc.items.get(&id).and_then(|item| crate::convert::entity_for(doc, item, e.handle))
         {
             e.common.color = own.common.color;
@@ -231,6 +232,14 @@ pub fn verify_page_pending(
             *fan_shown.entry(computed_key(e)).or_default() += 1;
             continue;
         }
+        // A T's dot (lane 072 D): a ring at a point where its route ends on another route.
+        if let Some(Mapped::Tee(r)) = map.get(e.handle) {
+            match &e.kind {
+                EntityKind::Circle(c) => tees_shown.push((r, Pt::new(c.center.x, c.center.y))),
+                _ => problems.push(format!("a T dot of {r} is not a circle")),
+            }
+            continue;
+        }
         if let Some(Mapped::Frame(_) | Mapped::Link(..)) = map.get(e.handle) {
             *fan_shown.entry(computed_key(e)).or_default() += 1;
             continue;
@@ -262,6 +271,16 @@ pub fn verify_page_pending(
     if shown != expected {
         let missing = expected.iter().filter(|(k, n)| shown.get(*k) != Some(n)).count();
         problems.push(format!("drawn items differ from the document's items ({missing} kinds of item differ)"));
+    }
+    // T dots (lane 072 D): one dot of rings per route end on another route, where it lands.
+    let tees: Vec<(ecad_model::RouteId, Pt)> = crate::wires::tees_on_page(doc, page)
+        .into_iter()
+        .filter(|(r, _, _)| crate::wires::route_item(doc, *r).is_some_and(|(_, i, _)| !hidden.contains(&i)))
+        .map(|(r, _, at)| (r, at))
+        .collect();
+    let rings = crate::wires::TEE_DOT_RADII.len();
+    if tees_shown.len() != tees.len() * rings || !tees_shown.iter().all(|(r, at)| tees.iter().any(|(x, p)| x == r && near(*p, *at))) {
+        problems.push("the T dots drawn differ from the T's of the document".into());
     }
     if fan_shown != fan_expected {
         problems.push("the cable fans drawn differ from the fans computed from the document".into());
@@ -368,30 +387,33 @@ pub fn verify_page_pending(
     }
     v.groups = wanted_groups;
 
-    // 6. Relationships shown on the page: an attached conductor end drawn here ends on a terminal
-    //    position read from the drawing (markers and symbol blocks), not from the document.
+    // 6. Relationships shown on the page: a route end on a connection point drawn here ends on a
+    //    terminal position read from the drawing (markers and symbol blocks), not from the document.
     let mut drawn_terminals: Vec<Pt> = entities.values().filter_map(|e| marker_position(e)).collect();
     drawn_terminals.extend(entities.values().flat_map(|e| block_terminals(drawing, e)));
-    for (cid, c) in &doc.wires {
-        let Some((item, _)) = ecad_model::derive::route_on_page(doc, *cid, page) else { continue };
+    let shown = ecad_model::derive::terminal_positions(doc, page);
+    for rid in doc.routes_on(page) {
+        let Some(c) = doc.routes.get(&rid) else { continue };
+        let Some((item, _)) = doc.representations_of(ecad_model::Subject::Route(rid)).find_map(|(_, r)| r.items.first().map(|i| (*i, r))) else {
+            continue;
+        };
         let Some(e) = map.item(item).and_then(|h| entities.get(&h)) else { continue };
         let Some(path) = item_from(doc, page, e).ok().and_then(|i| match i.kind {
             ItemKind::Primitive(p) => p.path_ends(),
             ItemKind::Symbol(_) => None,
         }) else {
-            problems.push(format!("route of conductor {cid} is not a path in the drawing"));
+            problems.push(format!("route {rid} is not a path in the drawing"));
             continue;
         };
-        for end in End::BOTH {
-            let Some(t) = c.end(end) else { continue };
-            let shown_here = ecad_model::derive::terminal_positions(doc, page).iter().any(|(x, _, _)| *x == t);
-            if !shown_here {
+        for (end, landed) in End::BOTH.into_iter().zip(c.ends) {
+            let Some(t) = landed.point() else { continue };
+            if !shown.iter().any(|(x, _, _)| *x == t) {
                 continue;
             }
             v.attached_ends += 1;
             let at = if end == End::A { path.0 } else { path.1 };
             if !drawn_terminals.iter().any(|p| near(*p, at)) {
-                problems.push(format!("conductor {cid} end {end:?} is attached but not drawn on a connection point"));
+                problems.push(format!("route {rid} end {end:?} is on a connection point but not drawn on it"));
             }
         }
     }

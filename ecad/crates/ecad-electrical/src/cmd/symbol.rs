@@ -17,9 +17,9 @@ use ecad_model::units::Radians;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
-    Definition, DefinitionId, Device, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Noun, Op, Origin, PageId,
-    Placement, Primitive, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId, TextHAlign,
-    TextSlot, TextVAlign, WireId,
+    Definition, DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Noun, Op, Origin, PageId, Placement,
+    Primitive, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalDef, TerminalId, TextHAlign, TextSlot,
+    TextVAlign, WireId,
 };
 
 use crate::defaults::symbols::Field;
@@ -148,7 +148,7 @@ pub fn content(input: ContentInput) -> Result<Content, CmdError> {
         let key = PointKey::parse(&key).map_err(|e| CmdError::refused(format!("{e}.")))?;
         let label = p.label.map(|l| l.trim().to_string()).filter(|l| !l.is_empty());
         let at = p.at.ok_or_else(|| CmdError::refused(format!("Point {key} needs `at` [x, y].")))?;
-        c.points.push(TerminalDef { key, label, at });
+        c.points.push(TerminalDef { key, label, at, accepts: Default::default() });
     }
     for s in input.slots {
         let word = s.text.map(|t| t.trim().to_string()).ok_or(CmdError::refused("Each slot needs a `text`."))?;
@@ -396,11 +396,7 @@ fn mm(d: f64) -> String {
 
 /// A wire as people read it: its net's number (`24V-05`), else its tag, else its short ID.
 fn wire_number(doc: &Document, c: WireId) -> String {
-    let conn = doc.connectivity();
-    conn.net_of_conductor(c)
-        .and_then(|n| conn.net(n))
-        .and_then(|n| ecad_model::wiring::net_number(doc, n))
-        .unwrap_or_else(|| crate::slash::wire_name(doc, c))
+    ecad_model::wiring::wire_number(doc, c).unwrap_or_else(|| crate::slash::wire_name(doc, c))
 }
 
 fn wire_words(doc: &Document, t: TerminalId) -> String {
@@ -443,7 +439,7 @@ fn row(doc: &Document, item: ItemId, rid: RepresentationId, old_id: DefinitionId
             Some(nd) => {
                 if !nd.at.near(td.at, TOL) {
                     let d = nd.at.dist(td.at);
-                    let wired = t.filter(|t| doc.has_ends(*t));
+                    let wired = t.filter(|t| doc.has_ends(*t) || doc.routes_at(*t).next().is_some());
                     match wired {
                         Some(t) => {
                             changes.push(format!("{k} moves {} mm, {} follows", mm(d), wire_words(doc, t)));
@@ -519,8 +515,7 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
     const GONE: &str = "A copy is gone.";
     let mut ops = Vec::new();
     let mut set_def: BTreeSet<DeviceId> = BTreeSet::new();
-    let mut moved_routes: BTreeMap<ItemId, Item> = BTreeMap::new();
-    let mut route_before: BTreeMap<ItemId, Item> = BTreeMap::new();
+    let mut moved_routes = crate::wires::RouteEdits::new(doc);
     for row in rows {
         if let Some(clash) = &row.clash {
             return Err(CmdError::refused(format!("{} (p. {}) would clash: {clash}", row.tag, crate::references::page_number(doc, row.page))));
@@ -559,9 +554,7 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
                             cps.insert(t, nd.at);
                         }
                         let (from, to) = (inst.placement.apply(td.at), inst.placement.apply(nd.at));
-                        for (cond, _) in doc.ends_at(t) {
-                            follow(doc, cond, r.page, from, to, &mut route_before, &mut moved_routes);
-                        }
+                        follow(doc, t, r.page, from, to, &mut moved_routes);
                     }
                 }
             }
@@ -569,7 +562,7 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
         for nd in new.terminals.iter().filter(|nd| !old.terminals.iter().any(|td| td.key == nd.key)) {
             let t: TerminalId = ids.fresh();
             let key = if r.connection_points.is_empty() { nd.key.clone() } else { nd.label.clone().map_or_else(|| nd.key.clone(), PointKey::Def) };
-            ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: nd.label.clone(), key: Some(key) } });
+            ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: nd.label.clone(), key: Some(key), accepts: nd.accepts } });
             if !r.connection_points.is_empty() {
                 cps.insert(t, nd.at);
             }
@@ -584,32 +577,25 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
             });
         }
     }
-    for (id, after) in moved_routes {
-        if let Some(before) = route_before.remove(&id) {
-            ops.push(Op::ModifyItem { id, before, after });
-        }
-    }
+    ops.extend(moved_routes.ops());
     Ok(ops)
 }
 
-/// Move the end of conductor `c`'s route on `page` that lies at `from` to `to` (the route's other
-/// vertices stay), accumulating several moves of one route.
-fn follow(doc: &Document, c: WireId, page: PageId, from: Pt, to: Pt, before: &mut BTreeMap<ItemId, Item>, after: &mut BTreeMap<ItemId, Item>) {
-    let Some((id, _)) = ecad_model::derive::route_on_page(doc, c, page) else { return };
-    let Some(orig) = doc.items.get(&id) else { return };
-    let cur = after.get(&id).cloned().unwrap_or_else(|| orig.clone());
-    let ItemKind::Primitive(prim) = &cur.kind else { return };
-    let Some((a, b)) = prim.path_ends() else { return };
-    let end = if a.near(from, 1e-6) {
-        End::A
-    } else if b.near(from, 1e-6) {
-        End::B
-    } else {
-        return;
-    };
-    let Some(moved) = prim.with_path_end(end, to) else { return };
-    before.entry(id).or_insert_with(|| orig.clone());
-    after.insert(id, Item { kind: ItemKind::Primitive(moved), ..cur });
+/// Move the ends of the routes on `page` landing on connection point `t` at `from` to `to` (the
+/// routes' other points stay), gathering several moves of one route in `edits`.
+fn follow(doc: &Document, t: TerminalId, page: PageId, from: Pt, to: Pt, edits: &mut crate::wires::RouteEdits<'_>) {
+    for r in doc.routes_at(t).filter(|r| doc.routes.get(r).is_some_and(|x| x.page == page)).collect::<Vec<_>>() {
+        let Some(route) = edits.get(r) else { continue };
+        let n = route.points.len();
+        for (i, e) in [(0, route.ends[0]), (n.saturating_sub(1), route.ends[1])] {
+            if e == ecad_model::RouteEnd::Point(t)
+                && let Some(p) = route.points.get_mut(i)
+                && p.near(from, 1e-6)
+            {
+                *p = to;
+            }
+        }
+    }
 }
 
 /// Superseded project versions of `lineage` nothing places once `ops` are applied (FP8), as
@@ -917,6 +903,11 @@ pub fn not_plain(doc: &Document, i: ItemId) -> String {
         Some(Subject::Wire(c)) => format!("Wire {}", wire_number(doc, c)),
         Some(Subject::Device(c)) => crate::devices::tag_words(doc, c),
         Some(Subject::Cable(k)) => crate::references::cable_words(doc, k),
+        // Design 072: a line names the wire it carries; a loose line carries none.
+        Some(Subject::Route(r)) => match crate::wires::wire_of_route(doc, r) {
+            Some(c) => format!("Wire {}", wire_number(doc, c)),
+            None => "A line".to_string(),
+        },
         None => "Part of the selection".to_string(),
     };
     format!("{what} is not plain geometry; Make symbol takes lines, arcs and text.")
@@ -1041,7 +1032,7 @@ pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: DeviceId, mut cont
         if term.key.as_ref() != Some(&key) {
             rekey.push((*t, key.clone()));
         }
-        points.push(TerminalDef { key, label: term.label.clone(), at: Pt::new(at.x - origin.x, at.y - origin.y) });
+        points.push(TerminalDef { key, label: term.label.clone(), at: Pt::new(at.x - origin.x, at.y - origin.y), accepts: Default::default() });
     }
     content.points = points;
     for sl in &mut content.slots {
@@ -1141,6 +1132,7 @@ pub fn plan_place(
                         component: c,
                         label: td.label.clone(),
                         key: Some(td.label.clone().map_or_else(|| td.key.clone(), PointKey::Def)),
+                        accepts: td.accepts,
                     },
                 });
                 cps.insert(t, td.at);
@@ -1187,7 +1179,10 @@ pub fn plan_place(
             });
             for td in &def.terminals {
                 let t: TerminalId = ids.fresh();
-                ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()) } });
+                ops.push(Op::AddTerminal {
+                    id: t,
+                    terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
+                });
             }
             ops.push(Op::AddItem { id: item, item: instance });
             ops.push(Op::LinkRepresentation {

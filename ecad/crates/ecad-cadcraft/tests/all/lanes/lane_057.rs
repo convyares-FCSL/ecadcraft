@@ -9,7 +9,7 @@ use ecad_cadcraft::rating::{self, parse};
 use ecad_model::{CableId, DeviceId, WireId};
 use serde_json::{Value, json};
 
-use crate::common::{H, id, pts};
+use crate::common::{H, id};
 
 /// The synthetic rating table of design 057 §11 (not from any standard).
 pub const SYNTHETIC: &str = "kind,a,b,c,d,value\n\
@@ -41,7 +41,7 @@ fn place(h: &mut H, symbol: &str, at: [f64; 2], tag: &str) -> DeviceId {
 }
 
 fn wire(h: &mut H, points: &[(f64, f64)]) -> WireId {
-    id(&h.run("wire", json!({"points": pts(points)})).unwrap_or_else(|e| panic!("wire {points:?}: {e}")), "conductor")
+    id(&h.wire_pp(points).unwrap_or_else(|e| panic!("wire {points:?}: {e}")), "conductor")
 }
 
 fn setprop(h: &mut H, what: &str, idv: String, key: &str, value: Value) {
@@ -270,8 +270,10 @@ fn c12_protected_by() {
     rate_category(&mut f.h);
     let e = f.h.run("rating", json!({"wire": f.l2.hex(), "protected_by": "-Q09"})).unwrap_err();
     assert!(e.contains("-Q09"), "{e}");
-    setprop(&mut f.h, "conductor", f.l2.hex(), "protected_by", json!("-Q09"));
-    assert_eq!(checks_of(&mut f.h, "rating-device-missing").len(), 1);
+    // Design 072 step d: `protected_by` stores the device itself, so setprop refuses it too; a
+    // dangling one comes only from a file (ecad-electrical's protection tests).
+    assert!(f.h.run("setprop", json!({"conductor": f.l2.hex(), "key": "protected_by", "value": "-Q09"})).is_err());
+    assert!(checks_of(&mut f.h, "rating-device-missing").is_empty());
 }
 
 #[test]

@@ -13,12 +13,13 @@
 //! # Update map (design 022 §11)
 //! | Op | Re-checked |
 //! | --- | --- |
-//! | `CreateWire` / `DeleteWire` / `AttachEnd` | that conductor; the connection points at its ends before and after; their nets (before and after) and the nets sharing their numbers |
+//! | `CreateWire` / `DeleteWire` (the commit's wire rewrite included) | that conductor; the connection points at its ends; their nets (before and after) and the nets sharing their numbers |
+//! | `AddRoute` / `RemoveRoute` / `ModifyRoute` | that route (open end, loose route, looks connected, drawn away); free route ends near its old and new path; the connection points it lands on before and after |
 //! | `AddTerminal` / `RemoveTerminal` | that point and its net |
 //! | `CreateDevice` / `DeleteDevice` / `SetProperty` component | that component (its contact count against its part's `contacts`, brief 025); its points' nets; continuations with its name (partners) |
 //! | `SetProperty` conductor | that conductor's net, and the nets sharing its old and new number |
-//! | `AddItem` / `ModifyItem` / `RemoveItem` / representation ops of a route | that conductor; loose ends near its old and new route |
-//! | the same of a component symbol | conductors attached to its points ("drawn away"); continuations with its name |
+//! | `AddItem` / `ModifyItem` / `RemoveItem` / representation ops of a route | that route |
+//! | the same of a component symbol | routes landing on its points ("drawn away"); continuations with its name |
 //! | `EmbedDefinition` / `RemoveDefinition` | components using it and their points |
 //! | `SetProjectSettings` changing the numbering or potentials (`wiring` scheme, digits, prefix, table) | every net (rare and explicit) |
 //! | `SetProjectSettings` changing anything else (label looks, tags, sheet, reference style) | nothing (sheet and reference style: rows are copied again) |
@@ -31,9 +32,9 @@
 use ecad_model::numbering::Places;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use ecad_model::connectivity::{CONTINUATION, JUNCTION, NAME, name_key};
+use ecad_model::connectivity::{CONTINUATION, NAME, name_key};
 use ecad_model::wiring;
-use ecad_model::{CableId, DeviceId, Document, End, NetData, NetId, ObjectRef, Op, PageId, Pt, Subject, TerminalId, WireId};
+use ecad_model::{CableId, DeviceId, Document, End, NetData, NetKey, ObjectRef, Op, PageId, Pt, RouteEnd, RouteId, Subject, TerminalId, WireId};
 use serde_json::{Value, json};
 
 use crate::text_style::fonts::TextMetrics;
@@ -134,11 +135,14 @@ check_kinds! {
     TwoFixed = "two-fixed", Error, "One net, two fixed numbers";
     OpenEnd = "open-end", Warning, "Open end";
     LooseWire = "loose-wire", Warning, "Loose wire";
+    /// A drawn line with a free end carries no wire until both ends land (owner, 2026-11-18).
+    NoWireYet = "no-wire-yet", Info, "Line not connected at both ends: no wire yet";
     LooksConnected = "looks-connected", Warning, looks_connected_words();
     DrawnAway = "drawn-away", Warning, "End drawn away from its connection point";
     SinglePoint = "single-point", Warning, "Net with a single connection point";
-    ThinJunction = "thin-junction", Info, "Junction with fewer than three wires";
     Unconnected = "unconnected", Info, "Connection point not connected";
+    /// A connection point with more wires than it accepts (design 072 §4.4, F38, A17).
+    OverCount = "over-count", Error, "Connection point has more wires than it accepts";
     LonelyContinuation = "lonely-continuation", Info, "Continuation without partner";
     MixedPotentials = "mixed-potentials", Info, "Mixed potentials in one net";
     Unnumbered = "unnumbered", Info, "Unnumbered nets", count;
@@ -154,6 +158,11 @@ check_kinds! {
     LocationUnused = "location-unused", Warning, "Location used by none of its symbols";
     /// The same for its function.
     FunctionUnused = "function-unused", Warning, "Function used by none of its symbols";
+    /// Design 072 §6.3 (A13): a device whose location was set by hand has a symbol inside a
+    /// location box of another location; one row on every placed symbol of the device.
+    TiedLocations = "symbol-tied-locations", Error, "Symbol tied to multiple locations";
+    /// The same for its function.
+    TiedFunctions = "symbol-tied-functions", Error, "Symbol tied to multiple functions";
     /// Devices without a function (one count row, when some function is set).
     NoFunction = "function-none", Info, "Devices without a function";
     /// A stored function or location names no entry of the project's list.
@@ -333,6 +342,12 @@ check_kinds! {
     /// Brief 059 (design 059 §6): a cable built in Project ▸ Cables that is not in the drawing yet
     /// (Info; Warning in the release check).
     CableNotDrawn = "cable-not-drawn", Info, "Cable not in the drawing yet";
+    /// A core on a line with one end landed (owner rule, 2026-11-18): it moves onto a wire when
+    /// the other end lands.
+    CoreOneEnd = "core-one-end", Warning, "Core landed at one end only";
+    /// A core's stored place is not where the drawing puts it (a file made elsewhere): reading never
+    /// works it out, so it is reported (owner rule, 2026-11-18).
+    CorePlaceStale = "core-place-stale", Error, "Core's stored place disagrees with the drawing";
     /// Brief 059: a drawn cable end differs from that end's planned location.
     CableEndOffPlan = "cable-end-off-plan", Warning, "Cable end drawn away from its plan";
     /// Brief 059 (059d): a drawn cable end with no gland size.
@@ -359,6 +374,8 @@ impl Kind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Object {
     Wire(WireId),
+    /// A drawn route (design 072 §4.3).
+    Route(RouteId),
     Terminal(TerminalId),
     Device(DeviceId),
     /// A cable reference end (brief 027).
@@ -370,8 +387,6 @@ pub enum Object {
 /// What a fix button on a row does.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Fix {
-    /// `junction {at}` on the row's page.
-    AddJunction(Pt),
     /// 032: `joinwires {at}` on the row's page (Looks connected: **Join**).
     Join(Pt),
     /// `renumberwires {scope: "unnumbered"}`.
@@ -558,6 +573,7 @@ impl Check {
     pub fn to_json(&self, doc: &Document) -> Value {
         let object = match self.object {
             Object::Wire(c) => json!({"conductor": c.hex()}),
+            Object::Route(r) => json!({"route": r.hex()}),
             Object::Terminal(t) => json!({"terminal": t.hex()}),
             Object::Device(c) => json!({"component": c.hex()}),
             Object::Reference(r) => json!({"reference": r.hex()}),
@@ -591,8 +607,10 @@ impl Check {
 /// What a check belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Key {
-    Net(NetId),
+    Net(NetKey),
     Wire(WireId),
+    /// A drawn route's rows (open end, loose, looks connected, drawn away).
+    Route(RouteId),
     Terminal(TerminalId),
     Device(DeviceId),
     /// The reference ends of a cable (brief 027: orphans).
@@ -681,39 +699,26 @@ fn cells_of_segment(page: PageId, a: Pt, b: Pt) -> Vec<Cell> {
     out
 }
 
-/// The per-page grid of route segments and loose ends.
+/// The per-page grid of route segments and free route ends.
 #[derive(Debug, Clone, Default)]
 pub struct Grid {
-    segments: HashMap<Cell, BTreeSet<(WireId, usize)>>,
-    ends: HashMap<Cell, BTreeSet<(WireId, End)>>,
-    /// What each conductor put in the grid, to take it out again.
-    placed: HashMap<WireId, Placed>,
+    segments: HashMap<Cell, BTreeSet<(RouteId, usize)>>,
+    ends: HashMap<Cell, BTreeSet<(RouteId, End)>>,
+    /// What each route put in the grid, to take it out again.
+    placed: HashMap<RouteId, Placed>,
 }
 
 #[derive(Debug, Clone, Default)]
 struct Placed {
     /// (page, segment index, a, b)
     segments: Vec<(PageId, usize, Pt, Pt)>,
-    /// (page, end, point) of loose ends
+    /// (page, end, point) of free ends
     ends: Vec<(PageId, End, Pt)>,
     cells: BTreeSet<Cell>,
 }
 
-/// The route vertices of `c` on each page it is drawn on.
-fn routes_of(doc: &Document, c: WireId) -> Vec<(PageId, Vec<Pt>)> {
-    let mut out = Vec::new();
-    for (_, r) in doc.representations_of(Subject::Wire(c)) {
-        if let Some((_, _, v)) = wires::route_vertices(doc, c, r.page)
-            && !out.iter().any(|(p, _)| *p == r.page)
-        {
-            out.push((r.page, v));
-        }
-    }
-    out
-}
-
 impl Grid {
-    fn remove(&mut self, c: WireId) {
+    fn remove(&mut self, c: RouteId) {
         let Some(p) = self.placed.remove(&c) else { return };
         for (page, i, a, b) in &p.segments {
             for cell in cells_of_segment(*page, *a, *b) {
@@ -737,40 +742,39 @@ impl Grid {
         }
     }
 
-    fn insert(&mut self, doc: &Document, c: WireId) {
+    fn insert(&mut self, doc: &Document, c: RouteId) {
         self.remove(c);
-        let Some(cond) = doc.wires.get(&c) else { return };
+        let Some(route) = doc.routes.get(&c) else { return };
+        let (page, v) = (route.page, &route.points);
         let mut placed = Placed::default();
-        for (page, v) in routes_of(doc, c) {
-            for (i, w) in v.windows(2).enumerate() {
-                let (Some(a), Some(b)) = (w.first(), w.get(1)) else { continue };
-                for cell in cells_of_segment(page, *a, *b) {
-                    self.segments.entry(cell).or_default().insert((c, i));
-                    placed.cells.insert(cell);
-                }
-                placed.segments.push((page, i, *a, *b));
+        for (i, w) in v.windows(2).enumerate() {
+            let (Some(a), Some(b)) = (w.first(), w.get(1)) else { continue };
+            for cell in cells_of_segment(page, *a, *b) {
+                self.segments.entry(cell).or_default().insert((c, i));
+                placed.cells.insert(cell);
             }
-            for (end, at) in [(End::A, v.first().copied()), (End::B, v.last().copied())] {
-                let Some(at) = at else { continue };
-                if cond.end(end).is_none()
-                    && let Some(cell) = cell_of(page, at)
-                {
-                    self.ends.entry(cell).or_default().insert((c, end));
-                    placed.cells.insert(cell);
-                    placed.ends.push((page, end, at));
-                }
+            placed.segments.push((page, i, *a, *b));
+        }
+        for ((end, at), e) in [(End::A, v.first().copied()), (End::B, v.last().copied())].into_iter().zip(route.ends) {
+            let Some(at) = at else { continue };
+            if e == RouteEnd::Free
+                && let Some(cell) = cell_of(page, at)
+            {
+                self.ends.entry(cell).or_default().insert((c, end));
+                placed.cells.insert(cell);
+                placed.ends.push((page, end, at));
             }
         }
         self.placed.insert(c, placed);
     }
 
     /// The cells `c` occupies now.
-    fn cells(&self, c: WireId) -> BTreeSet<Cell> {
+    fn cells(&self, c: RouteId) -> BTreeSet<Cell> {
         self.placed.get(&c).map(|p| p.cells.clone()).unwrap_or_default()
     }
 
-    /// Conductors with a loose end in any of `cells` (and the 8 cells round each).
-    fn loose_near(&self, cells: &BTreeSet<Cell>) -> BTreeSet<WireId> {
+    /// Routes with a free end in any of `cells` (and the 8 cells round each).
+    fn loose_near(&self, cells: &BTreeSet<Cell>) -> BTreeSet<RouteId> {
         let mut out = BTreeSet::new();
         for (page, x, y) in cells {
             for dx in -1..=1 {
@@ -784,9 +788,9 @@ impl Grid {
         out
     }
 
-    /// Whether `at` on `page` lies on the interior of another conductor's route, or on another
-    /// loose end: the conductor it lies on.
-    fn under(&self, page: PageId, at: Pt, me: WireId) -> Option<(WireId, bool)> {
+    /// Whether `at` on `page` lies on the interior of another route, or on another free end: the
+    /// route it lies on.
+    fn under(&self, page: PageId, at: Pt, me: RouteId) -> Option<(RouteId, bool)> {
         let cell = cell_of(page, at)?;
         for (c, i) in self.segments.get(&cell).into_iter().flatten() {
             if *c == me {
@@ -824,20 +828,37 @@ fn net_words(doc: &Document, net: &NetData) -> String {
     wiring::net_number(doc, net).unwrap_or_else(|| wires::net_points(doc, net).first().cloned().unwrap_or_default())
 }
 
-/// Where a conductor is: its first page in book order and the midpoint of its longest segment
-/// there, or a given end.
+/// Where a conductor is: the first page in book order of the routes drawing it
+/// ([`wires::routes_of_wire`]) and the midpoint of that route's longest segment, or where a given
+/// end is drawn.
 pub fn conductor_place(doc: &Document, c: WireId, end: Option<End>) -> (Option<PageId>, Option<Pt>) {
     let order: HashMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i)).collect();
-    let routes = routes_of(doc, c);
-    let Some((page, v)) = routes.iter().min_by_key(|(p, _)| order.get(p).copied().unwrap_or(usize::MAX)) else {
+    let pos = |p: &PageId| order.get(p).copied().unwrap_or(usize::MAX);
+    if let (Some(e), Some(w)) = (end, doc.wires.get(&c)) {
+        return wires::drawn_ends_at(doc, w.end(e)).into_iter().min_by_key(|(p, _)| pos(p)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
+    }
+    let routes: Vec<RouteId> = wires::routes_of_wire(doc, c);
+    let Some(r) = routes.iter().filter_map(|r| doc.routes.get(r)).min_by_key(|r| pos(&r.page)) else {
         return (None, None);
     };
+    (Some(r.page), wires::longest_segment(&r.points).map(|(a, b)| Pt::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0)))
+}
+
+/// Where a route is: its page and the midpoint of its longest segment, or a given end.
+pub fn route_place(doc: &Document, r: RouteId, end: Option<End>) -> (Option<PageId>, Option<Pt>) {
+    let Some(route) = doc.routes.get(&r) else { return (None, None) };
+    let v = &route.points;
     let at = match end {
         Some(End::A) => v.first().copied(),
         Some(End::B) => v.last().copied(),
         None => wires::longest_segment(v).map(|(a, b)| Pt::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0)),
     };
-    (Some(*page), at)
+    (Some(route.page), at)
+}
+
+/// A route's words: the words of the wire it stands for, else `a wire with no connection point`.
+fn route_words(doc: &Document, r: RouteId) -> String {
+    wires::wire_of_route(doc, r).map_or_else(|| "a wire with no connection point".into(), |w| conductor_words(doc, w))
 }
 
 /// Where a connection point is shown first (book order).
@@ -855,7 +876,12 @@ fn terminal_place(doc: &Document, t: TerminalId) -> (Option<PageId>, Option<Pt>)
 /// A conductor's words: its cable and core, or its net's number.
 fn conductor_words(doc: &Document, c: WireId) -> String {
     if let Some(k) = doc.cables_of(c).first() {
-        let core = doc.cables.get(k).and_then(|x| x.members.iter().find(|m| m.conductor == c)).and_then(|m| m.core.clone()).unwrap_or_default();
+        let core = doc
+            .cables
+            .get(k)
+            .and_then(|x| x.cores.iter().find(|m| m.wire() == Some(c)))
+            .and_then(|m| m.label_str().map(str::to_string))
+            .unwrap_or_default();
         return format!("{} {core}", crate::references::cable_words(doc, *k)).trim().to_string();
     }
     let conn = doc.connectivity();
@@ -863,7 +889,7 @@ fn conductor_words(doc: &Document, c: WireId) -> String {
 }
 
 /// The net checks of net `id`.
-pub fn net_checks(doc: &Document, id: NetId, net: &NetData) -> Vec<Check> {
+pub fn net_checks(doc: &Document, id: NetKey, net: &NetData) -> Vec<Check> {
     let mut out = Vec::new();
     let first = net.first_conductor();
     let (page, at) = first.map_or((None, None), |c| conductor_place(doc, c, None));
@@ -893,7 +919,7 @@ pub fn net_checks(doc: &Document, id: NetId, net: &NetData) -> Vec<Check> {
     if !net.wires.is_empty() && net.terminals.len() == 1 && net.names.is_empty() {
         let t = net.terminals.first().copied();
         let jc = t.and_then(|t| doc.terminals.get(&t)).map(|x| kind_of(doc, x.component));
-        if !matches!(jc, Some(Some(JUNCTION | CONTINUATION)))
+        if !matches!(jc, Some(Some(CONTINUATION)))
             && let Some(t) = t
         {
             let (p, a) = terminal_place(doc, t);
@@ -939,8 +965,8 @@ pub fn net_checks(doc: &Document, id: NetId, net: &NetData) -> Vec<Check> {
     out
 }
 
-// 032: the Looks connected row's words and fix (design 032 §2.7): two open ends that meet are
-// joined by merging them (`joinwires`), not by a junction.
+// 032: the Looks connected row's words and fix (design 032 §2.7): free route ends that meet are
+// joined (`joinwires`): merged, or landed on the route (a T).
 fn looks_connected_words() -> &'static str {
     "Looks connected"
 }
@@ -950,57 +976,73 @@ fn looks_connected_fix(at: Pt) -> Fix {
     Fix::Join(at)
 }
 
-/// The checks of conductor `c`: open end, loose wire, looks connected, drawn away.
-pub fn conductor_checks(doc: &Document, c: WireId, grid: &Grid, tol: f64) -> Vec<Check> {
+/// The checks of route `r` (design 072 §4.3): an open end (one free end), a loose route (no end
+/// on a connection point or another route), a line with no wire yet (any free end), a free end
+/// that looks connected, an end drawn away from its connection point.
+pub fn route_checks(doc: &Document, r: RouteId, grid: &Grid, tol: f64) -> Vec<Check> {
     let mut out = Vec::new();
-    let Some(cond) = doc.wires.get(&c) else { return out };
-    let which = conductor_words(doc, c);
-    let loose: Vec<End> = End::BOTH.into_iter().filter(|e| cond.end(*e).is_none()).collect();
+    let Some(route) = doc.routes.get(&r) else { return out };
+    let which = route_words(doc, r);
+    let page = route.page;
+    let v = &route.points;
+    let loose: Vec<End> = End::BOTH.into_iter().zip(route.ends).filter(|(_, e)| *e == RouteEnd::Free).map(|(end, _)| end).collect();
     match loose.len() {
         2 => {
-            let (page, at) = conductor_place(doc, c, None);
-            out.push(Check { kind: Kind::LooseWire, page, at, object: Object::Wire(c), which: which.clone(), fix: None });
+            let (page, at) = route_place(doc, r, None);
+            out.push(Check { kind: Kind::LooseWire, page, at, object: Object::Route(r), which: which.clone(), fix: None });
         }
         1 => {
-            let (page, at) = conductor_place(doc, c, loose.first().copied());
-            out.push(Check { kind: Kind::OpenEnd, page, at, object: Object::Wire(c), which: which.clone(), fix: None });
+            let (page, at) = route_place(doc, r, loose.first().copied());
+            out.push(Check { kind: Kind::OpenEnd, page, at, object: Object::Route(r), which: which.clone(), fix: None });
         }
         _ => {}
     }
-    // Looks connected: a loose end on another wire's interior, or on another loose end (reported
-    // by the lower conductor ID only, so the pair is one row).
-    for (page, v) in routes_of(doc, c) {
-        for end in &loose {
-            let at = if *end == End::A { v.first() } else { v.last() };
-            let Some(at) = at.copied() else { continue };
-            if let Some((other, is_end)) = grid.under(page, at, c) {
-                if is_end && other < c {
-                    continue;
-                }
-                out.push(Check {
-                    kind: Kind::LooksConnected,
-                    page: Some(page),
-                    at: Some(at),
-                    object: Object::Wire(c),
-                    which: which.clone(),
-                    fix: Some(looks_connected_fix(at)),
-                });
+    // A line with a free end carries no wire yet (owner, 2026-11-18): at its first free end.
+    if let Some(end) = loose.first().copied() {
+        let (page, at) = route_place(doc, r, Some(end));
+        out.push(Check { kind: Kind::NoWireYet, page, at, object: Object::Route(r), which: which.clone(), fix: None });
+    }
+    // Looks connected: a free end on another route's interior, or on another free end (reported
+    // by the lower route ID only, so the pair is one row).
+    for end in &loose {
+        let at = if *end == End::A { v.first() } else { v.last() };
+        let Some(at) = at.copied() else { continue };
+        if let Some((other, is_end)) = grid.under(page, at, r) {
+            if is_end && other < r {
+                continue;
             }
-        }
-        // Drawn away: an attached end whose route end is not at its point on this page.
-        for (end, at) in [(End::A, v.first()), (End::B, v.last())] {
-            let (Some(t), Some(at)) = (cond.end(end), at) else { continue };
-            if let Some(tp) = ecad_model::derive::terminal_position(doc, page, t)
-                && !tp.near(*at, tol.max(1e-6))
-            {
-                out.push(Check { kind: Kind::DrawnAway, page: Some(page), at: Some(*at), object: Object::Wire(c), which: which.clone(), fix: None });
-            }
+            out.push(Check {
+                kind: Kind::LooksConnected,
+                page: Some(page),
+                at: Some(at),
+                object: Object::Route(r),
+                which: which.clone(),
+                fix: Some(looks_connected_fix(at)),
+            });
         }
     }
+    // Drawn away: an end on a connection point that is not where the point is on this page.
+    for (at, e) in [v.first(), v.last()].into_iter().zip(route.ends) {
+        let (Some(t), Some(at)) = (e.point(), at) else { continue };
+        if let Some(tp) = ecad_model::derive::terminal_position(doc, page, t)
+            && !tp.near(*at, tol.max(1e-6))
+        {
+            out.push(Check { kind: Kind::DrawnAway, page: Some(page), at: Some(*at), object: Object::Route(r), which: which.clone(), fix: None });
+        }
+    }
+    out
+}
+
+/// The checks of conductor `c`: a colour code the app cannot draw.
+pub fn conductor_checks(doc: &Document, c: WireId) -> Vec<Check> {
+    let mut out = Vec::new();
+    if !doc.wires.contains_key(&c) {
+        return out;
+    }
+    let which = conductor_words(doc, c);
     // Brief 040: a colour code the app cannot draw is drawn in ink and listed as information.
-    if let Some(code) = crate::words::conductor_colour(doc, c).filter(|code| crate::words::colour_code(code).is_none()) {
+    if let Some(code) = crate::words::conductor_colour(doc, c).filter(|code| code.list().len() > 2) {
         let (page, at) = conductor_place(doc, c, None);
-        let code = crate::words::shorten(code.trim(), crate::words::MAX_CODE_CHARS);
         out.push(Check { kind: Kind::UnknownColour, page, at, object: Object::Wire(c), which: format!("{which} {code}"), fix: None });
     }
     out
@@ -1033,26 +1075,34 @@ fn is_quiet_point(doc: &Document, t: TerminalId) -> bool {
     })
 }
 
-/// The checks of connection point `t`: a device point with nothing attached.
+/// The checks of connection point `t`: more wires than it accepts (design 072 §4.4: `-X1:3 takes
+/// 2 conductors; 3 are connected`); a device point with nothing attached.
 pub fn terminal_checks(doc: &Document, t: TerminalId) -> Vec<Check> {
     let Some(term) = doc.terminals.get(&t) else { return Vec::new() };
-    if matches!(kind_of(doc, term.component), Some(JUNCTION | CONTINUATION)) || doc.has_ends(t) {
-        return Vec::new();
+    let mut out = Vec::new();
+    let (wired, takes) = (doc.ends_at(t).len(), ecad_model::wire_order::accepts(doc, t));
+    if wired > takes {
+        let (page, at) = terminal_place(doc, t);
+        let which = format!("{} takes {takes} conductors; {wired} are connected", wires::point_words(doc, t));
+        out.push(Check { kind: Kind::OverCount, page, at, object: Object::Terminal(t), which, fix: None });
+    }
+    if matches!(kind_of(doc, term.component), Some(CONTINUATION)) || doc.has_ends(t) || doc.routes_at(t).next().is_some() {
+        return out;
     }
     // Bridged inside its device to an attached point: connected.
     let conn = doc.connectivity();
     if conn.net_of_terminal(t).and_then(|id| conn.net(id)).is_some_and(|n| !n.wires.is_empty()) {
-        return Vec::new();
+        return out;
     }
     if is_quiet_point(doc, t) {
-        return Vec::new();
+        return out;
     }
     let (page, at) = terminal_place(doc, t);
-    vec![Check { kind: Kind::Unconnected, page, at, object: Object::Terminal(t), which: wires::point_words(doc, t), fix: None }]
+    out.push(Check { kind: Kind::Unconnected, page, at, object: Object::Terminal(t), which: wires::point_words(doc, t), fix: None });
+    out
 }
 
-/// The checks of component `c`: a junction with fewer than three wires, a continuation with no
-/// partner.
+/// The checks of component `c`: a continuation with no partner.
 pub fn component_checks(doc: &Document, c: DeviceId, m: &dyn TextMetrics) -> Vec<Check> {
     component_checks_in(&mut Places::new(doc), c, m)
 }
@@ -1065,13 +1115,6 @@ pub fn component_checks_in(places: &mut Places<'_>, c: DeviceId, m: &dyn TextMet
     designation_checks(places, c, &mut out);
     let place = || doc.terminals_of(c).next().map_or((None, None), |(t, _)| terminal_place(doc, t));
     match kind_of(doc, c) {
-        Some(JUNCTION) => {
-            let wires_here: usize = doc.terminals_of(c).map(|(t, _)| doc.ends_at(t).len()).sum();
-            if wires_here < 3 {
-                let (page, at) = place();
-                out.push(Check { kind: Kind::ThinJunction, page, at, object: Object::Device(c), which: format!("{wires_here} wires"), fix: None });
-            }
-        }
         Some(CONTINUATION) => {
             let name = doc.devices.get(&c).and_then(|x| x.properties.get(NAME)).cloned().unwrap_or_default();
             let partners = doc.continuations_named(&name_key(&name)).len();
@@ -1199,6 +1242,29 @@ fn designation_checks(places: &mut Places<'_>, c: DeviceId, out: &mut Vec<Check>
             fix: contexts.first().filter(|f| f.value.is_some() && contexts.iter().all(|x| x.key == f.key)).map(|_| Fix::UseContext(c, a)),
         });
     }
+    // Design 072 §6.3 (A13): a value set by hand, and a box of another value holding one of the
+    // device's symbols: the error goes on every placed symbol of the device, with one message.
+    for a in Aspect::ALL {
+        let Some(own) = d::device_key(comp, a).filter(|_| d::device_fixed(comp, a)) else { continue };
+        let boxed = |r: &ecad_model::Representation, cache: &mut crate::locations::BoxCache| {
+            let at = crate::locations::anchor(doc, r)?;
+            crate::locations::innermost_in(cache.on(doc, r.page), a, at).and_then(|b| b.key(a)).map(str::to_string)
+        };
+        if !reps.iter().any(|r| boxed(r, &mut cache).is_some_and(|k| k != own)) {
+            continue;
+        }
+        let words = if a == Aspect::Location { Kind::TiedLocations } else { Kind::TiedFunctions };
+        for r in &reps {
+            out.push(Check {
+                kind: words,
+                page: Some(r.page),
+                at: crate::locations::anchor(doc, r),
+                object: Object::Device(c),
+                which: format!("{who}: {}", words.words()),
+                fix: Some(Fix::SetDesignation(c, a)),
+            });
+        }
+    }
     let heads = crate::reps::heads(doc, c);
     if let [_, second, ..] = heads.as_slice()
         && let Some(r) = doc.representations.get(second)
@@ -1279,6 +1345,7 @@ pub fn cable_checks_in(places: &mut Places<'_>, k: ecad_model::CableId) -> Vec<C
         });
     }
     out.extend(crate::cables::value_checks(doc, k, drawn));
+    core_place_checks(doc, k, &mut out);
     // Brief 057 (owner rule, board 2.06): every core is connected at both ends or ticked Not used.
     let open = if drawn { crate::styles::cable::open_cores(doc, k) } else { Vec::new() };
     if !open.is_empty() {
@@ -1286,11 +1353,7 @@ pub fn cable_checks_in(places: &mut Places<'_>, k: ecad_model::CableId) -> Vec<C
         let name = crate::cables::cable_title(doc, k);
         for (i, o) in open.into_iter().enumerate() {
             // Brief 059 (design 059 §6): an unwired core is "not assigned".
-            let which = if o.unwired {
-                format!("{name} core {} is not assigned: slash or add a wire, or tick Not used.", o.label)
-            } else {
-                format!("{name} core {} is open at an end; connect it, or tick Not used", o.label)
-            };
+            let which = format!("{name} core {} is not assigned: slash or add a wire, or tick Not used.", o.label);
             out.push(Check {
                 kind: Kind::CoreOpen,
                 page,
@@ -1298,23 +1361,6 @@ pub fn cable_checks_in(places: &mut Places<'_>, k: ecad_model::CableId) -> Vec<C
                 object: Object::Cable(k),
                 which,
                 fix: Some(Fix::CoreOpen(k, u16::try_from(i).unwrap_or(u16::MAX))),
-            });
-        }
-    }
-    // Tester re-check 2, item 4: `unused.` keys a file made elsewhere holds that ECAD does not read.
-    let (bad, n) = crate::styles::cable::bad_unused(doc, k);
-    if n > 0 {
-        let (page, at) = ecad_model::numbering::rep_anchor(doc, Subject::Cable(k)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
-        let name = crate::cables::cable_title(doc, k);
-        let more = if n > bad.len() { format!(" (and {} more)", n - bad.len()) } else { String::new() };
-        for (key, v) in &bad {
-            out.push(Check {
-                kind: Kind::RatingBadValue,
-                page,
-                at,
-                object: Object::Cable(k),
-                which: format!("{name} has {key} '{v}', which ECAD does not read{more}"),
-                fix: None,
             });
         }
     }
@@ -1334,6 +1380,63 @@ pub fn cable_checks_in(places: &mut Places<'_>, k: ecad_model::CableId) -> Vec<C
     out
 }
 
+/// The rows of cable `k`'s cores on lines (owner rule, 2026-11-18): a core whose line has one end
+/// landed, and a core whose stored place is not the one its line now gives
+/// ([`ecad_model::wire_order::core_position`]). Reads only the cable's own cores and their lines.
+fn core_place_checks(doc: &Document, k: ecad_model::CableId, out: &mut Vec<Check>) {
+    let Some(cable) = doc.cables.get(&k) else { return };
+    let name = crate::cables::cable_title(doc, k);
+    for (i, m) in cable.cores.iter().enumerate() {
+        let core = m.label_str().map(str::to_string).unwrap_or_else(|| (i + 1).to_string());
+        if let ecad_model::CorePosition::Wire(w) = m.position {
+            if let Some(now) = wire_core_stale(doc, w) {
+                let (page, at) = if doc.wires.contains_key(&w) { conductor_place(doc, w, None) } else { (None, None) };
+                let which = format!("{name} core {core}: stored on a wire, but {now}.");
+                out.push(Check { kind: Kind::CorePlaceStale, page, at, object: Object::Cable(k), which, fix: None });
+            }
+            continue;
+        }
+        let ecad_model::CorePosition::Route { route, landed } = m.position else { continue };
+        let (page, at) = route_place(doc, route, None);
+        let found = ecad_model::wire_order::core_position(doc, route);
+        if found != m.position {
+            let now = match found {
+                ecad_model::CorePosition::Wire(_) => "its line now carries a wire".to_string(),
+                ecad_model::CorePosition::Route { landed: None, .. } => "its line has no end landed".to_string(),
+                ecad_model::CorePosition::Route { landed: Some(t), .. } => format!("its line is landed at {}", wires::point_words(doc, t)),
+                ecad_model::CorePosition::Unplaced => "its line is gone".to_string(),
+            };
+            let which = format!("{name} core {core}: stored on a line, but {now}.");
+            out.push(Check { kind: Kind::CorePlaceStale, page, at, object: Object::Cable(k), which, fix: None });
+        } else if let Some(t) = landed {
+            let which = format!("{name} core {core} is landed at {} only.", wires::point_words(doc, t));
+            out.push(Check { kind: Kind::CoreOneEnd, page, at, object: Object::Cable(k), which, fix: None });
+        }
+    }
+}
+
+/// Why a core stored on wire `w` is stale, in words: the wire is gone, or lines land at its ends
+/// but none of them carries it. `None` when it holds (a wire with no line at its ends, made by a
+/// command that draws none, is not judged).
+fn wire_core_stale(doc: &Document, w: WireId) -> Option<&'static str> {
+    let Some(wire) = doc.wires.get(&w) else { return Some("its wire is gone") };
+    let mut lines = wire.ends.iter().flat_map(|t| doc.routes_at(*t)).peekable();
+    lines.peek()?;
+    let carried = lines.any(|r| ecad_model::wire_order::wire_of_route(doc, r) == Some(w));
+    (!carried).then_some("no line carries that wire now")
+}
+
+/// The connection points `route` lands on, and those of each route it ends on (a T, one level).
+fn route_points(doc: &Document, route: &ecad_model::Route) -> Vec<TerminalId> {
+    let mut out: Vec<TerminalId> = route.points_landed().collect();
+    for on in route.ends.iter().filter_map(|e| e.route()) {
+        if let Some(r) = doc.routes.get(&on) {
+            out.extend(r.points_landed());
+        }
+    }
+    out
+}
+
 /// The subjects a transaction could change (see the module's update map).
 #[derive(Debug, Clone, Default)]
 pub struct Scope {
@@ -1342,10 +1445,10 @@ pub struct Scope {
     /// rows are taken again.
     relocate: bool,
     nodes: BTreeSet<ecad_model::Node>,
-    old_nets: BTreeSet<NetId>,
+    old_nets: BTreeSet<NetKey>,
     numbers: BTreeSet<String>,
     wires: BTreeSet<WireId>,
-    routes: BTreeSet<WireId>,
+    routes: BTreeSet<RouteId>,
     terminals: BTreeSet<TerminalId>,
     devices: BTreeSet<DeviceId>,
     /// Cables whose reference ends to re-check (brief 027: orphans).
@@ -1391,24 +1494,12 @@ impl Scope {
             self.styles |= crate::styles::checks::touches(op);
             self.title_blocks |= crate::title_block::checks::touches(op);
             match op {
-                Op::CreateWire { id, conductor } | Op::DeleteWire { id, conductor } => {
+                Op::CreateWire { id, wire } | Op::DeleteWire { id, wire } => {
                     // Brief 057: a member's ends decide its cable's open cores.
                     self.cables.extend(doc.cables_of(*id));
                     self.wires.insert(*id);
-                    self.routes.insert(*id);
                     node(self, Node::Wire(*id));
-                    for t in conductor.ends.iter().flatten() {
-                        self.terminals.insert(*t);
-                        node(self, Node::Terminal(*t));
-                        self.component_of(doc, *t);
-                    }
-                }
-                Op::AttachEnd { conductor, before, after, .. } => {
-                    self.cables.extend(doc.cables_of(*conductor));
-                    self.wires.insert(*conductor);
-                    self.routes.insert(*conductor);
-                    node(self, Node::Wire(*conductor));
-                    for t in [before, after].into_iter().flatten() {
+                    for t in &wire.ends {
                         self.terminals.insert(*t);
                         node(self, Node::Terminal(*t));
                         self.component_of(doc, *t);
@@ -1486,6 +1577,8 @@ impl Scope {
                         node(self, Node::Terminal(t));
                     }
                 }
+                // A cable is written whole (`ModifyCable`); `SetProperty` on one is refused.
+                Op::SetProperty { object: ObjectRef::Cable(_), .. } => {}
                 Op::SetProperty { object: ObjectRef::Wire(c), .. } => {
                     node(self, Node::Wire(*c));
                     self.wires.insert(*c);
@@ -1495,30 +1588,33 @@ impl Scope {
                     self.wires.insert(*c);
                     self.numbers.extend([before, after].into_iter().filter_map(|w| w.number_text().map(str::to_string)));
                 }
-                Op::SetProperty { object: ObjectRef::Cable(k), .. }
-                | Op::CreateCable { id: k, .. }
-                | Op::DeleteCable { id: k, .. }
-                | Op::AddCableMember { cable: k, .. }
-                | Op::RemoveCableMember { cable: k, .. } => {
+                Op::CreateCable { id: k, .. } | Op::DeleteCable { id: k, .. } | Op::ModifyCable { id: k, .. } => {
                     // Brief 027: a new or deleted cable, or its tag (the orphan row's words).
                     self.cable_references.insert(*k);
                     // Brief 026: the cable's own rows, and every holder of the tags it had or has.
                     self.cables.insert(*k);
                     match op {
-                        Op::SetProperty { key, before, after, .. } if key == ecad_model::tag::TAG_KEY => {
-                            self.tag_holders(doc, [before, after].into_iter().flatten().map(String::as_str));
-                        }
                         Op::CreateCable { cable, .. } | Op::DeleteCable { cable, .. } => {
                             self.tag_holders(doc, cable.properties.get(ecad_model::tag::TAG_KEY).map(String::as_str));
+                        }
+                        Op::ModifyCable { before, after, .. } => {
+                            let tag = |c: &'_ ecad_model::Cable| c.properties.get(ecad_model::tag::TAG_KEY).cloned();
+                            self.tag_holders(doc, [tag(before), tag(after)].iter().flatten().map(String::as_str));
                         }
                         _ => {}
                     }
                     // A cable's tag and cores are part of its members' words.
                     if let Some(cable) = doc.cables.get(k) {
-                        self.wires.extend(cable.members.iter().map(|m| m.conductor));
+                        self.wires.extend(cable.cores.iter().filter_map(|m| m.wire()));
                     }
-                    if let Op::AddCableMember { member, .. } | Op::RemoveCableMember { member, .. } = op {
-                        self.wires.insert(member.conductor);
+                    match op {
+                        Op::ModifyCable { before, after, .. } => {
+                            self.wires.extend(before.cores.iter().chain(&after.cores).filter_map(|m| m.wire()));
+                        }
+                        Op::CreateCable { cable, .. } | Op::DeleteCable { cable, .. } => {
+                            self.wires.extend(cable.cores.iter().filter_map(|m| m.wire()));
+                        }
+                        _ => {}
                     }
                 }
                 Op::AddItem { id, .. } | Op::RemoveItem { id, .. } => self.item(doc, *id),
@@ -1527,6 +1623,28 @@ impl Scope {
                 Op::ModifyRepresentation { before, after, .. } => {
                     self.rep(doc, before);
                     self.rep(doc, after);
+                }
+                // Design 072 §4.3: the route's own rows, and the points it lands on (connected or
+                // not).
+                // The commit's rewrite pass makes and removes wires at those points (and at the
+                // points of a route it lands on), which the ops given to `scope` do not hold yet:
+                // their nets as they were lose their rows (design 072 §4.2).
+                Op::AddRoute { id, route } | Op::RemoveRoute { id, route } => {
+                    self.routes.insert(*id);
+                    // The cables with a core on it: their core rows (owner rule, 2026-11-18).
+                    self.cables.extend(doc.cables_on_route(*id));
+                    for t in route_points(doc, route) {
+                        self.terminals.insert(t);
+                        node(self, Node::Terminal(t));
+                    }
+                }
+                Op::ModifyRoute { id, before, after } => {
+                    self.routes.insert(*id);
+                    self.cables.extend(doc.cables_on_route(*id));
+                    for t in route_points(doc, before).into_iter().chain(route_points(doc, after)) {
+                        self.terminals.insert(t);
+                        node(self, Node::Terminal(t));
+                    }
                 }
                 Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => {
                     for c in doc.components_using(*id) {
@@ -1677,18 +1795,20 @@ impl Scope {
         match r.subject {
             Subject::Wire(c) => {
                 self.wires.insert(c);
-                self.routes.insert(c);
+            }
+            Subject::Route(x) => {
+                self.routes.insert(x);
             }
             Subject::Device(c) => {
                 // Brief 052: a box drawn, moved or erased changes the contexts on its page.
                 if crate::locations::is_box(doc, c) {
                     self.devices_on(doc, r.page);
                 }
-                // Its points moved: the wires attached to them may now be drawn away; a
+                // Its points moved: the routes landing on them may now be drawn away; a
                 // continuation's place moves its partners' rows.
                 self.component(doc, c, None);
                 for (t, _) in doc.terminals_of(c) {
-                    self.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+                    self.routes.extend(doc.routes_at(t));
                 }
             }
             // A cable's drawing moves its rows (brief 026); a reference end linked, changed or

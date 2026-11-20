@@ -19,15 +19,15 @@ use std::sync::Arc;
 
 use cadcraft_engine::doc::{Drawing, Entity, Handle};
 use cadcraft_engine::ext::{Provenance, Source};
-use ecad_model::derive::{route_on_page, terminal_position, terminal_positions};
+use ecad_model::derive::{terminal_position, terminal_positions};
 use ecad_model::{
-    Device, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Pt, Representation, RepresentationId, Subject,
-    Terminal, TerminalId, Wire, WireId,
+    Device, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Primitive, Pt, Representation, RepresentationId,
+    Route, RouteEnd, RouteId, Subject, Terminal, TerminalId,
 };
 
 use crate::convert::{ECAD_PREFIX, MARKER_LAYER, item_from, marker_entity, marker_position};
 use crate::project::{ClipSnapshot, HandleMap, Mapped};
-use crate::wires::{ShownOnce, first_near};
+use crate::wires::{ON_WIRE, ShownOnce, first_near, on_route_of, path_vertices, route_at, route_item};
 
 /// Everything the translation reads. The ledger is borrowed mutably only to preview proposed
 /// ops in place ([`Ledger::with_applied`]); the translation never changes it.
@@ -116,26 +116,25 @@ pub(crate) fn terminal_at(doc: &Document, page: PageId, at: Pt, tol: f64) -> Opt
 /// What a set of proposed ops could move on a page, worked out on the document before them.
 ///
 /// # Semantics
-/// A conductor can get a movement op (§10) only if one of its ends is attached to a terminal
-/// whose shown position changed (M2), or one of its route ends moved (M3) or is fresh. So:
-/// - `terminals`: every terminal whose position on the page the ops could change: those of every
-///   component whose representation on the page the ops link, unlink or change (as recorded in
-///   the ops, before and after), or whose page item they change or remove. Terminals the ops
-///   create have no earlier position, so never count as moved.
-/// - `routes`: every conductor whose route on the page the ops could change (its representation
-///   or its route item changed, or it is new).
-/// - `attached`: conductors whose ends the ops attach or detach.
+/// A route can get a movement change (§10) only if one of its ends lands on a connection point
+/// whose shown position changed (M2), one of its ends moved (M3) or is fresh, or it lands on a
+/// route the ops changed (a T whose route moved away). So:
+/// - `terminals`: every connection point whose position on the page the ops could change: those
+///   of every component whose representation on the page the ops link, unlink or change (as
+///   recorded in the ops, before and after), or whose page item they change or remove. Points the
+///   ops create have no earlier position, so never count as moved.
+/// - `routes`: every route the ops could change (its representation or its item changed, or the
+///   route itself added, removed or changed).
 ///
 /// Op kinds a translation does not produce make the scope the whole document, which is exactly
 /// the earlier behaviour: `AddPage`, `RemovePage`, `AddLayer`, `RemoveLayer`, `DeleteDevice`,
-/// `RemoveTerminal`, `DeleteWire`, the cable ops, `SetProperty`, `RemoveDefinition`,
+/// `RemoveTerminal`, the wire and cable ops, `SetProperty`, `RemoveDefinition`,
 /// `SetProjectSettings`, `NameVersion`, `UnnameVersion`, and `CreateDevice`, `AddTerminal` or
 /// `EmbedDefinition` of an ID the document already has.
 #[derive(Debug, Default)]
 struct Scope {
     terminals: BTreeSet<TerminalId>,
-    routes: BTreeSet<WireId>,
-    attached: BTreeSet<WireId>,
+    routes: BTreeSet<RouteId>,
 }
 
 impl Scope {
@@ -151,10 +150,12 @@ impl Scope {
                     devices.insert(c);
                     s.terminals.extend(r.connection_points.keys().copied());
                 }
-                Subject::Wire(c) => {
-                    s.routes.insert(c);
+                Subject::Route(x) => {
+                    s.routes.insert(x);
                 }
-                Subject::Cable(_) => {}
+                // A cable reference places its cores' named points (F4).
+                Subject::Cable(_) => s.terminals.extend(r.connection_points.keys().copied()),
+                Subject::Wire(_) => {}
             }
         };
         for op in ops {
@@ -171,11 +172,8 @@ impl Scope {
                     note(before, &mut s);
                     note(after, &mut s);
                 }
-                Op::CreateWire { id, .. } => {
+                Op::AddRoute { id, .. } | Op::RemoveRoute { id, .. } | Op::ModifyRoute { id, .. } => {
                     s.routes.insert(*id);
-                }
-                Op::AttachEnd { conductor, .. } => {
-                    s.attached.insert(*conductor);
                 }
                 // New objects; a definition the document lacks cannot be shown by anything in it.
                 Op::CreateDevice { id, .. } if !doc.devices.contains_key(id) => {}
@@ -191,16 +189,94 @@ impl Scope {
     }
 
     fn everything(doc: &Document) -> Scope {
-        Scope { terminals: doc.terminals.keys().copied().collect(), routes: doc.wires.keys().copied().collect(), attached: BTreeSet::new() }
+        Scope { terminals: doc.terminals.keys().copied().collect(), routes: doc.routes.keys().copied().collect() }
     }
 }
 
-/// What [`movement`] needs from the document before the ops: positions of the scope's terminals
-/// and routes of the scope's conductors.
+/// What [`movement`] needs from the document before the ops: positions of the scope's connection
+/// points and the end points of the scope's routes.
 struct Earlier {
     positions: BTreeMap<TerminalId, Option<Pt>>,
-    /// Route item and its path ends, `None` when the conductor has no route on the page.
-    routes: BTreeMap<WireId, Option<(ItemId, Option<(Pt, Pt)>)>>,
+    /// A route's first and last point, `None` when there was no such route.
+    routes: BTreeMap<RouteId, Option<[Pt; 2]>>,
+}
+
+/// A wire's line stays one open line (design 072 §4.3).
+pub(crate) const ROUTE_SHAPE: &str = "a wire's line stays one open line; draw a new wire instead";
+
+/// What a route end at `at` lands on now (design 072 §4.3): the connection point `found` there,
+/// else the interior of another route on `page` (a T), else nothing.
+pub(crate) fn landing(doc: &Document, page: PageId, r: RouteId, at: Pt, found: Option<TerminalId>) -> RouteEnd {
+    if let Some(t) = found {
+        return RouteEnd::Point(t);
+    }
+    let interior = route_at(doc, page, at, ON_WIRE, Some(r))
+        .filter(|on| doc.routes.get(&on.route).and_then(Route::end_points).is_some_and(|[f, l]| !f.near(on.at, ON_WIRE) && !l.near(on.at, ON_WIRE)));
+    match interior {
+        Some(on) => RouteEnd::On { route: on.route, at },
+        None => RouteEnd::Free,
+    }
+}
+
+/// Path `p` through `points` instead, keeping its kind (a line stays a line).
+pub(crate) fn drawn_as(p: &Primitive, points: &[Pt]) -> Primitive {
+    match (p, points) {
+        (Primitive::Line { .. }, [a, b]) => Primitive::Line { a: *a, b: *b },
+        _ => Primitive::Polyline { vertices: points.to_vec(), closed: false },
+    }
+}
+
+/// Route `r` becomes `after` in `ops`: folded into the op that already adds or changes it, else a
+/// new `ModifyRoute` from `before` (the route as the ops found it).
+pub(crate) fn set_route(ops: &mut Vec<Op>, r: RouteId, before: Route, after: Route) {
+    for op in ops.iter_mut() {
+        match op {
+            Op::AddRoute { id, route } if *id == r => {
+                *route = after;
+                return;
+            }
+            Op::ModifyRoute { id, after: a, .. } if *id == r => {
+                *a = after;
+                return;
+            }
+            _ => {}
+        }
+    }
+    if before != after {
+        ops.push(Op::ModifyRoute { id: r, before, after });
+    }
+}
+
+/// Several `ModifyRoute`s of one route, each worked out on the document before the ops (erase
+/// follow-ups beside this translation's own), become one: the later ones' changes (points, each
+/// end) are laid onto the first. A later one that follows on from the first replaces its result.
+pub(crate) fn merge_route_edits(ops: &mut Vec<Op>) {
+    let mut first: BTreeMap<RouteId, usize> = BTreeMap::new();
+    let mut out: Vec<Op> = Vec::with_capacity(ops.len());
+    for op in std::mem::take(ops) {
+        if let Op::ModifyRoute { id, before, after } = &op
+            && let Some(Op::ModifyRoute { after: a0, .. }) = first.get(id).and_then(|i| out.get_mut(*i))
+        {
+            if before == a0 {
+                *a0 = after.clone();
+            } else {
+                if after.points != before.points {
+                    a0.points = after.points.clone();
+                }
+                for (slot, (was, now)) in a0.ends.iter_mut().zip(before.ends.iter().zip(after.ends)) {
+                    if *was != now {
+                        *slot = now;
+                    }
+                }
+            }
+            continue;
+        }
+        if let Op::ModifyRoute { id, .. } = &op {
+            first.insert(*id, out.len());
+        }
+        out.push(op);
+    }
+    *ops = out;
 }
 
 pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
@@ -263,7 +339,8 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     // Wire labels (brief 022) are left out the same way: drawn again from the document.
     // Device cross-references (brief 025) too.
     let drawn = |map: &HandleMap, h: Handle| {
-        matches!(map.get(h), Some(Mapped::Fan(k)) if !map.is_fan(k)) || matches!(map.get(h), Some(Mapped::Label(_) | Mapped::Xref(_)))
+        matches!(map.get(h), Some(Mapped::Fan(k)) if !map.is_fan(k))
+            || matches!(map.get(h), Some(Mapped::Label(_) | Mapped::Xref(_) | Mapped::Tee(_)))
     };
     // Device tag texts and terminal labels (brief 018) are left out the same way when changed or
     // copied with other objects; erasing one erases its symbol (below).
@@ -313,6 +390,11 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
         if skipped.iter().all(|h| link(cx.map, *h) || copied_source(h, &link)) {
             return Err(crate::link_lines::LINK_DERIVED.into());
         }
+        // Lane 072 D: a T's dot alone.
+        let tee = |m: &HandleMap, x: Handle| matches!(m.get(x), Some(Mapped::Tee(_)));
+        if skipped.iter().all(|h| tee(cx.map, *h) || copied_source(h, &tee)) {
+            return Err(crate::wires::TEE_DERIVED.into());
+        }
         return Err(if tags_only {
             crate::devices::TAG_DERIVED
         } else if labels_only {
@@ -350,8 +432,9 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
                 counts[2] += 1;
             }
             // Left out (above); drawn again from the document.
-            Some(Mapped::Fan(_) | Mapped::Label(_) | Mapped::Xref(_)) if skipped.contains(h) => {}
+            Some(Mapped::Fan(_) | Mapped::Label(_) | Mapped::Xref(_) | Mapped::Tee(_)) if skipped.contains(h) => {}
             Some(Mapped::Label(_)) => return Err(crate::wires::LABEL_DERIVED.into()),
+            Some(Mapped::Tee(_)) => return Err(crate::wires::TEE_DERIVED.into()),
             Some(m @ Mapped::Xref(_)) => return Err(crate::xref::refusal(cx.ledger.document(), Some(m)).into()),
             // Briefs 005, 009: a fan is a view, not an object; it cannot be erased.
             Some(Mapped::Fan(k)) => return Err(crate::views::refusal(cx.map, k).into()),
@@ -420,12 +503,22 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
                         return Err(m);
                     }
                     linked_changed |= cx.ledger.document().representation_of_item(id).is_some();
+                    if let Some((rid, points)) = reference_points_follow(cx.ledger.document(), id, &old, &item) {
+                        rep(&mut reps, rid, cx.ledger.document())?;
+                        if let Some(r) = reps.get_mut(&rid) {
+                            r.connection_points.extend(points);
+                        }
+                    }
+                    // A route's points follow its line (design 072 §4.3).
+                    let route = route_edit(cx.ledger.document(), id, &item)?;
                     t.ops.push(Op::ModifyItem { id, before: old, after: item });
+                    t.ops.extend(route);
                     counts[1] += 1;
                 }
             }
-            Some(Mapped::Fan(_) | Mapped::Label(_) | Mapped::Xref(_)) if skipped.contains(h) => {}
+            Some(Mapped::Fan(_) | Mapped::Label(_) | Mapped::Xref(_) | Mapped::Tee(_)) if skipped.contains(h) => {}
             Some(Mapped::Label(_)) => return Err(crate::wires::LABEL_DERIVED.into()),
+            Some(Mapped::Tee(_)) => return Err(crate::wires::TEE_DERIVED.into()),
             Some(m @ Mapped::Xref(_)) => return Err(crate::xref::refusal(cx.ledger.document(), Some(m)).into()),
             Some(Mapped::Fan(k)) => return Err(crate::views::refusal(cx.map, k).into()),
             Some(Mapped::RefText(_)) => return Err(crate::references::TEXT_DERIVED.into()),
@@ -452,7 +545,7 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     // are dropped.
     let added: Vec<Handle> = added_handles.into_iter().filter(|h| !skipped.contains(h)).collect();
     let mut batches: BTreeMap<u32, Vec<(Handle, Source)>> = BTreeMap::new();
-    let mut fresh_conductor_ends: Vec<(WireId, End)> = Vec::new();
+    let mut fresh_route_ends: Vec<(RouteId, End)> = Vec::new();
     // Removing a meaningful object while creating new ones without provenance is a replacement
     // (BREAK, JOIN, EXPLODE, TRIM that re-creates…): what the new objects mean is undecided (L1).
     // Changing one in place while creating new ones is the same split (BREAK and TRIM keep the
@@ -480,16 +573,17 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
         }
     }
     for (_, batch) in batches {
-        copy_batch(cx, &after, &batch, &mut t, &mut fresh_conductor_ends, &mut counts)?;
+        copy_batch(cx, &after, &batch, &mut t, &mut fresh_route_ends, &mut counts)?;
     }
 
     // Representation edits: an emptied representation is removed (its subject stays, DOC-06). A
     // symbol's connection points are in its definition's frame (brief 018): with no symbol left
-    // they place nothing.
+    // they place nothing. A cable reference's named points (design 072 §4.4, F4) are placed by
+    // its point: with the point erased, the reference goes with them.
     let mut unlinked: Vec<(RepresentationId, Representation)> = Vec::new();
     for (id, r) in reps {
         let old = cx.ledger.document().representations.get(&id).cloned().ok_or("representation missing")?;
-        if r.items.is_empty() && (r.connection_points.is_empty() || r.form == Form::Symbol) {
+        if r.items.is_empty() && (r.connection_points.is_empty() || r.form == Form::Symbol || matches!(r.subject, Subject::Cable(_))) {
             unlinked.push((id, old.clone()));
             t.ops.push(Op::UnlinkRepresentation { id, rep: old });
         } else if r != old {
@@ -504,21 +598,90 @@ fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     t.notes.extend(notes);
     // Brief 032 §3.5: one of a cable's several slashes erased takes its page's members along.
     t.ops.extend(crate::references::slash_erase_followups(cx.ledger.document(), &unlinked));
+    // An erased line removes its route; routes landing on it end free (design 072 §4.3).
+    erase_routes(cx.ledger.document(), &unlinked, &mut t.ops);
+    merge_route_edits(&mut t.ops);
 
     // Left-out parts beside objects that recorded nothing: nothing else was edited after all.
     if !skipped.is_empty() && t.ops.is_empty() {
         return Err(crate::views::DRAWN_REFUSED.into());
     }
 
-    movement(cx, &mut t, &fresh_conductor_ends)?;
+    movement(cx, &mut t, &fresh_route_ends)?;
     preview(cx.ledger, &t.ops, |_| ())?;
     t.summary = format!("{} added, {} modified, {} removed, {} components copied", counts[0], counts[1], counts[2], counts[3]);
     Ok(t)
 }
 
+/// The `ModifyRoute` that keeps route points equal to a changed item's vertices, when the item
+/// draws a route (none when it draws something else or the points are the same).
+///
+/// # Errors
+/// [`ROUTE_SHAPE`] when the item is no longer an open path.
+pub(crate) fn route_edit(doc: &Document, id: ItemId, item: &Item) -> Result<Option<Op>, &'static str> {
+    let Some((_, rep)) = doc.representation_of_item(id) else { return Ok(None) };
+    let Subject::Route(r) = rep.subject else { return Ok(None) };
+    let points = match &item.kind {
+        ItemKind::Primitive(p) => path_vertices(p).ok_or(ROUTE_SHAPE)?,
+        ItemKind::Symbol(_) => return Err(ROUTE_SHAPE),
+    };
+    let before = doc.routes.get(&r).cloned().ok_or("route missing")?;
+    if before.points == points {
+        return Ok(None);
+    }
+    let after = Route { points, ..before.clone() };
+    Ok(Some(Op::ModifyRoute { id: r, before, after }))
+}
+
+/// A cable reference's named points follow its point (design 072 §4.4, F4): when item `id` is a
+/// reference's point moved from `old` to `item`, that reference and its connection points moved
+/// by the same distance (as the document has them, so a moved marker of one of them agrees).
+pub(crate) fn reference_points_follow(doc: &Document, id: ItemId, old: &Item, item: &Item) -> Option<(RepresentationId, BTreeMap<TerminalId, Pt>)> {
+    let (rid, rep) = doc.representation_of_item(id)?;
+    if !matches!(rep.subject, Subject::Cable(_)) || rep.connection_points.is_empty() {
+        return None;
+    }
+    let (ItemKind::Primitive(Primitive::Point { at: a }), ItemKind::Primitive(Primitive::Point { at: b })) = (&old.kind, &item.kind) else {
+        return None;
+    };
+    let (dx, dy) = (b.x - a.x, b.y - a.y);
+    Some((rid, rep.connection_points.iter().map(|(t, p)| (*t, Pt::new(p.x + dx, p.y + dy))).collect()))
+}
+
+/// The routes whose drawing `unlinked` removed go too (`RemoveRoute`), after the routes landing
+/// on them end free where they are; a change planned for a removed route is dropped.
+pub(crate) fn erase_routes(doc: &Document, unlinked: &[(RepresentationId, Representation)], ops: &mut Vec<Op>) {
+    let gone: BTreeSet<RouteId> = unlinked.iter().filter_map(|(_, r)| if let Subject::Route(x) = r.subject { Some(x) } else { None }).collect();
+    if gone.is_empty() {
+        return;
+    }
+    ops.retain(|op| !matches!(op, Op::ModifyRoute { id, .. } if gone.contains(id)));
+    for r in &gone {
+        for tee in doc.tees_of(*r).filter(|x| !gone.contains(x)).collect::<Vec<_>>() {
+            let Some(before) = doc.routes.get(&tee) else { continue };
+            let mut after = ops
+                .iter()
+                .find_map(|op| match op {
+                    Op::ModifyRoute { id, after, .. } if *id == tee => Some(after.clone()),
+                    _ => None,
+                })
+                .unwrap_or_else(|| before.clone());
+            for e in after.ends.iter_mut().filter(|e| e.route() == Some(*r)) {
+                *e = RouteEnd::Free;
+            }
+            set_route(ops, tee, before.clone(), after);
+        }
+    }
+    for r in gone {
+        if let Some(route) = doc.routes.get(&r) {
+            ops.push(Op::RemoveRoute { id: r, route: route.clone() });
+        }
+    }
+}
+
 /// One copy operation's new entities (§11.1).
 fn copy_batch(
-    cx: &mut Ctx<'_>, after: &HashMap<Handle, &Arc<Entity>>, batch: &[(Handle, Source)], t: &mut Translation, fresh_ends: &mut Vec<(WireId, End)>,
+    cx: &mut Ctx<'_>, after: &HashMap<Handle, &Arc<Entity>>, batch: &[(Handle, Source)], t: &mut Translation, fresh_ends: &mut Vec<(RouteId, End)>,
     counts: &mut [usize; 4],
 ) -> Result<(), String> {
     // Resolve sources against the live document or the clipboard snapshot.
@@ -540,6 +703,7 @@ fn copy_batch(
             Some(Mapped::Fan(k)) => return Err(crate::views::refusal(map, k).into()),
             Some(Mapped::RefText(_)) => return Err(crate::references::TEXT_DERIVED.into()),
             Some(Mapped::Frame(_)) => return Err(crate::frame::DERIVED.into()),
+            Some(Mapped::Tee(_)) => return Err(crate::wires::TEE_DERIVED.into()),
             _ => {}
         }
         src_doc = Some(doc);
@@ -627,32 +791,49 @@ fn copy_batch(
         counts[3] += 1;
     }
 
-    // Whole conductor routes: new conductors; ends follow copied terminals, else are resolved later.
+    // Whole routes: new routes; ends follow copied connection points, else are resolved later.
     for (_, r) in sdoc.representations.iter().filter(|(_, r)| r.page == cx.page) {
-        let Subject::Wire(src_c) = r.subject else { continue };
+        let Subject::Route(src_r) = r.subject else { continue };
         let handles: Vec<Handle> = r.items.iter().filter_map(|i| smap.item(*i)).collect();
         if handles.is_empty() || handles.len() != r.items.len() || !handles.iter().all(|h| by_source.contains_key(h)) {
             continue;
         }
-        let c = sdoc.wires.get(&src_c).cloned().ok_or("source conductor missing")?;
-        let new_c: WireId = cx.ids.fresh();
-        t.ops.push(Op::CreateWire { id: new_c, conductor: Wire { ends: [None, None], ..c.clone() } });
+        let src = sdoc.routes.get(&src_r).cloned().ok_or("source route missing")?;
+        let new_r: RouteId = cx.ids.fresh();
         let new_rep: RepresentationId = cx.ids.fresh();
         let mut items = Vec::new();
+        let mut added = Vec::new();
+        let mut points: Option<Vec<Pt>> = None;
         for sh in &handles {
             let nh = by_source.get(sh).copied().ok_or("copy missing")?;
             let e = after.get(&nh).ok_or("copied entity missing")?;
             let item = item_from(cx.ledger.document(), cx.page, e)?;
+            if points.is_none() {
+                points = Some(match &item.kind {
+                    ItemKind::Primitive(p) => path_vertices(p).ok_or(ROUTE_SHAPE)?,
+                    ItemKind::Symbol(_) => return Err(ROUTE_SHAPE.into()),
+                });
+            }
             let id: ItemId = cx.ids.fresh();
-            t.ops.push(Op::AddItem { id, item });
+            added.push(Op::AddItem { id, item });
             t.new_items.push((id, nh));
             items.push(id);
             consumed.insert(nh);
         }
+        let points = points.ok_or(ROUTE_SHAPE)?;
+        let mut ends = [RouteEnd::Free; 2];
+        for ((end, slot), src_end) in End::BOTH.into_iter().zip(ends.iter_mut()).zip(src.ends) {
+            match src_end.point().and_then(|src_t| term_map.get(&src_t)) {
+                Some(nt) => *slot = RouteEnd::Point(*nt),
+                None => fresh_ends.push((new_r, end)),
+            }
+        }
+        t.ops.push(Op::AddRoute { id: new_r, route: Route::new(cx.page, points, ends) });
+        t.ops.extend(added);
         t.ops.push(Op::LinkRepresentation {
             id: new_rep,
             rep: Representation {
-                subject: Subject::Wire(new_c),
+                subject: Subject::Route(new_r),
                 page: cx.page,
                 form: Form::Drawn,
                 role: r.role,
@@ -660,12 +841,6 @@ fn copy_batch(
                 connection_points: BTreeMap::new(),
             },
         });
-        for end in End::BOTH {
-            match c.end(end).and_then(|src_t| term_map.get(&src_t)) {
-                Some(nt) => t.ops.push(Op::AttachEnd { conductor: new_c, end, before: None, after: Some(*nt) }),
-                None => fresh_ends.push((new_c, end)),
-            }
-        }
     }
 
     // Everything else in the batch: plain copies of plain or partly copied items.
@@ -691,30 +866,36 @@ fn copy_batch(
     Ok(())
 }
 
-/// Movement policy (§10). Adds attachment ops and route-end amendments to `t`.
+/// Movement policy (§10). Adds route changes and their line amendments to `t`.
 ///
 /// # Semantics
-/// Goes through the conductors of the proposed document in ID order, but only those [`Scope`]
-/// says could have moved: conductors attached to a terminal whose position the ops could change,
-/// conductors whose route the ops could change or whose ends they attach, and conductors with a
-/// fresh end. Any other conductor has the same route, ends and terminal positions before and
-/// after the ops, so the policy gives it nothing to do. Positions are worked out per terminal,
-/// only for the scope's terminals; the page's terminal positions, which a moved route end is
-/// matched against (M3), are listed at most once per edit.
-fn movement(cx: &mut Ctx<'_>, t: &mut Translation, fresh_ends: &[(WireId, End)]) -> Result<(), String> {
+/// Goes through the routes of the proposed document in ID order, but only those [`Scope`] says
+/// could have moved: routes landing on a connection point whose position the ops could change,
+/// routes the ops change, routes landing on those, and routes with a fresh end. Any other route
+/// has the same points, ends, landings and point positions before and after the ops, so the
+/// policy gives it nothing to do. Positions are worked out per point, only for the scope's
+/// points; the page's point positions, which a moved route end is matched against (M3), are
+/// listed at most once per edit.
+fn movement(cx: &mut Ctx<'_>, t: &mut Translation, fresh_ends: &[(RouteId, End)]) -> Result<(), String> {
     let (page, tol) = (cx.page, cx.tol);
     // Before the ops: what they could move, and where it is now.
     let doc = cx.ledger.document();
     let scope = Scope::of(doc, page, &t.ops);
     let earlier = Earlier {
         positions: scope.terminals.iter().map(|term| (*term, terminal_position(doc, page, *term))).collect(),
-        routes: scope.routes.iter().map(|cid| (*cid, route_on_page(doc, *cid, page).map(|(id, p)| (id, p.path_ends())))).collect(),
+        routes: scope.routes.iter().map(|r| (*r, doc.routes.get(r).and_then(Route::end_points))).collect(),
     };
     // After the ops, on the live document, rolled back afterwards.
-    let (amend, attach, notes) = preview(cx.ledger, &t.ops, |proposed| moved(proposed, page, tol, &scope, &earlier, fresh_ends))?;
+    let moves = preview(cx.ledger, &t.ops, |proposed| moved(proposed, page, tol, &scope, &earlier, fresh_ends))?;
+    apply_moves(cx.map, t, moves);
+    Ok(())
+}
+
+/// Fold the policy's changes into `t`: each line amendment into the op that already touches the
+/// item, else a modification; each route change likewise ([`set_route`]).
+pub(crate) fn apply_moves(map: &HandleMap, t: &mut Translation, (amend, routes): Moves) {
     for (id, (before, after)) in amend {
-        let handle = cx.map.item(id).or_else(|| t.new_items.iter().find(|(i, _)| *i == id).map(|(_, h)| *h));
-        // Fold into the op that already touches the item, else add a modification.
+        let handle = map.item(id).or_else(|| t.new_items.iter().find(|(i, _)| *i == id).map(|(_, h)| *h));
         let mut folded = false;
         for op in t.ops.iter_mut() {
             match op {
@@ -736,93 +917,107 @@ fn movement(cx: &mut Ctx<'_>, t: &mut Translation, fresh_ends: &[(WireId, End)])
             t.amended.insert(h);
         }
     }
-    t.ops.extend(attach);
-    t.notes.extend(notes);
-    Ok(())
+    for (r, (before, after)) in routes {
+        set_route(&mut t.ops, r, before, after);
+    }
 }
 
-/// Route items to amend (their item in `proposed`, and the amended item), attachment ops, in the
-/// order the policy produces them, and notes to echo after the commit.
-type Moves = (BTreeMap<ItemId, (Item, Item)>, Vec<Op>, Vec<String>);
+/// Route lines to amend (their item in `proposed`, and the amended item) and routes to change
+/// (as in `proposed`, and changed), as the policy produces them.
+pub(crate) type Moves = (BTreeMap<ItemId, (Item, Item)>, BTreeMap<RouteId, (Route, Route)>);
 
-/// The movement policy on the proposed document, for the conductors `scope` names.
-fn moved(proposed: &Document, page: PageId, tol: f64, scope: &Scope, earlier: &Earlier, fresh_ends: &[(WireId, End)]) -> Moves {
-    let eps = 1e-9;
-    let mut candidates: BTreeSet<WireId> = scope.routes.union(&scope.attached).copied().collect();
-    candidates.extend(fresh_ends.iter().map(|(c, _)| *c));
+/// The movement policy on the proposed document, for the routes `scope` names.
+fn moved(proposed: &Document, page: PageId, tol: f64, scope: &Scope, earlier: &Earlier, fresh_ends: &[(RouteId, End)]) -> Moves {
+    let mut candidates: BTreeSet<RouteId> = scope.routes.clone();
+    candidates.extend(fresh_ends.iter().map(|(r, _)| *r));
     for term in &scope.terminals {
-        candidates.extend(proposed.ends_at(*term).into_iter().map(|(c, _)| c));
+        candidates.extend(proposed.routes_at(*term));
+    }
+    for r in &scope.routes {
+        candidates.extend(proposed.tees_of(*r));
     }
     let mut shown = ShownOnce::new(proposed, page);
-    let mut amend: BTreeMap<ItemId, (Item, Item)> = BTreeMap::new();
-    let mut attach: Vec<Op> = Vec::new();
-    let mut notes: Vec<String> = Vec::new();
-    for cid in &candidates {
-        let Some(c) = proposed.wires.get(cid) else { continue };
-        let Some((route_id, prim)) = route_on_page(proposed, *cid, page) else { continue };
-        let Some((new_a, new_b)) = prim.path_ends() else { continue };
-        // A conductor outside the scope's routes kept its route item and path.
-        let old_ends = match earlier.routes.get(cid) {
-            Some(old) => (*old).and_then(|(id, ends)| (id == route_id).then_some(ends).flatten()),
-            None => Some((new_a, new_b)),
+    let mut found = |at: Pt| shown.terminal_at(at, tol);
+    let mut out: Moves = Default::default();
+    for r in &candidates {
+        let Some(route) = proposed.routes.get(r).filter(|x| x.page == page) else { continue };
+        // A route outside the scope's routes kept its points.
+        let old_ends = match earlier.routes.get(r) {
+            Some(old) => *old,
+            None => route.end_points(),
         };
-        let mut route = prim.clone();
-        for (end, new_end) in [(End::A, new_a), (End::B, new_b)] {
-            let fresh = fresh_ends.contains(&(*cid, end));
-            let end_moved = fresh || old_ends.is_some_and(|(a, b)| !(if end == End::A { a } else { b }).near(new_end, eps));
-            match c.end(end) {
-                Some(term) => {
-                    // A terminal outside the scope is where it was.
-                    let (op, np) = match earlier.positions.get(&term) {
-                        Some(op) => (*op, terminal_position(proposed, page, term)),
-                        None => (None, None),
-                    };
-                    let terminal_moved = matches!((op, np), (Some(a), Some(b)) if !a.near(b, eps));
-                    if terminal_moved {
-                        // M2: the end follows its terminal.
-                        if let Some(np) = np
-                            && !new_end.near(np, eps)
-                            && let Some(r) = route.with_path_end(end, np)
-                        {
-                            route = r;
+        // A connection point outside the scope is where it was.
+        let position = |term: TerminalId| match earlier.positions.get(&term) {
+            Some(op) => (*op, terminal_position(proposed, page, term)),
+            None => (None, None),
+        };
+        // Until the test oracle is retired, every change here must be made in
+        // `translate_oracle.rs` too.
+        let after = route_moved(proposed, page, *r, route, old_ends, fresh_ends, position, &mut found);
+        record(proposed, *r, route, after, &mut out);
+    }
+    out
+}
+
+/// One route under the movement policy (§10, design 072 §4.3): `old_ends` are its end points
+/// before the ops (`None` for a route the ops made), `position` gives a connection point's
+/// position before and after them, and `found` the connection point shown at a place.
+///
+/// - M2: an end on a connection point that moved follows it.
+/// - M3: an end that moved (or is fresh) lands on what is there now ([`landing`]): a connection
+///   point, another route's interior, or nothing.
+/// - An end on another route that no longer passes there lands on what is there now the same way.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn route_moved(
+    proposed: &Document, page: PageId, r: RouteId, route: &Route, old_ends: Option<[Pt; 2]>, fresh_ends: &[(RouteId, End)],
+    position: impl Fn(TerminalId) -> (Option<Pt>, Option<Pt>), found: &mut dyn FnMut(Pt) -> Option<TerminalId>,
+) -> Route {
+    let eps = 1e-9;
+    let mut after = route.clone();
+    let Some(new_ends) = route.end_points() else { return after };
+    for (i, end) in End::BOTH.into_iter().enumerate() {
+        let (Some(new_end), Some(landed)) = (new_ends.get(i).copied(), route.ends.get(i).copied()) else { continue };
+        let fresh = fresh_ends.contains(&(r, end));
+        let end_moved = fresh || old_ends.and_then(|o| o.get(i).copied()).is_some_and(|o| !o.near(new_end, eps));
+        let snapped = match landed {
+            RouteEnd::Point(term) => match position(term) {
+                (Some(a), Some(np)) if !a.near(np, eps) => {
+                    // M2: the end follows its connection point.
+                    if !new_end.near(np, eps) {
+                        let slot = if end == End::A { after.points.first_mut() } else { after.points.last_mut() };
+                        if let Some(p) = slot {
+                            *p = np;
                         }
-                    } else if end_moved && earlier.positions.get(&term).copied().unwrap_or_else(|| terminal_position(proposed, page, term)).is_some()
-                    {
-                        // M3: a deliberate reconnection, resolved once. Only for a terminal shown
-                        // on this page before the ops (brief 010): an end attached on another page
-                        // (a wire continued across pages) is the end that leaves toward the
-                        // reference here, and moving it never detaches it. `earlier` holds only the
-                        // scope's terminals; one outside the scope did not move, so where it is
-                        // shown now is where it was shown before.
-                        //
-                        // Until the test oracle is retired, every change here must be made in
-                        // `translate_oracle.rs` too.
-                        let found = shown.terminal_at(new_end, tol);
-                        if found != Some(term) {
-                            attach.push(Op::AttachEnd { conductor: *cid, end, before: Some(term), after: found });
-                        }
-                    } else if end_moved && shown.terminal_at(new_end, tol).is_some() {
-                        // The end leaving toward a reference was dropped on a terminal here: it
-                        // stays connected on the other page, and the user is told so.
-                        notes.push(format!(
-                            "End {end:?} of {} is connected on another page, so it was not connected here; disconnect it there first.",
-                            crate::slash::wire_name(proposed, *cid)
-                        ));
                     }
+                    None
                 }
-                None if end_moved => {
-                    if let Some(found) = shown.terminal_at(new_end, tol) {
-                        attach.push(Op::AttachEnd { conductor: *cid, end, before: None, after: Some(found) });
-                    }
-                }
-                None => {}
+                // M3: a deliberate reconnection, resolved once.
+                _ if end_moved => Some(landing(proposed, page, r, new_end, found(new_end))),
+                _ => None,
+            },
+            RouteEnd::On { route: x, .. } => {
+                (end_moved || on_route_of(proposed, x, new_end).is_none()).then(|| landing(proposed, page, r, new_end, found(new_end)))
             }
-        }
-        if route != prim
-            && let Some(item) = proposed.items.get(&route_id)
-        {
-            amend.insert(route_id, (item.clone(), Item { kind: ItemKind::Primitive(route), ..item.clone() }));
+            RouteEnd::Free => end_moved.then(|| landing(proposed, page, r, new_end, found(new_end))),
+        };
+        if let (Some(e), Some(slot)) = (snapped, after.ends.get_mut(i)) {
+            *slot = e;
         }
     }
-    (amend, attach, notes)
+    after
+}
+
+/// Note route `r`'s change (`route` in the proposed document, `after` as the policy left it) in
+/// `out`, with its line's amendment when its points changed.
+pub(crate) fn record(proposed: &Document, r: RouteId, route: &Route, after: Route, out: &mut Moves) {
+    if after == *route {
+        return;
+    }
+    if after.points != route.points
+        && let Some((_, id, item)) = route_item(proposed, r)
+        && let ItemKind::Primitive(p) = &item.kind
+    {
+        out.0.insert(id, (item.clone(), Item { kind: ItemKind::Primitive(drawn_as(p, &after.points)), ..item.clone() }));
+    }
+    out.1.insert(r, (route.clone(), after));
 }

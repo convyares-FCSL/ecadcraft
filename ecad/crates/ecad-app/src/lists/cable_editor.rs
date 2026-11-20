@@ -11,6 +11,7 @@
 use std::collections::BTreeMap;
 
 use ecad_cadcraft::cable_cmds::{self, CableField, Shield, Side, Source};
+use ecad_model::words::Word;
 use ecad_model::{CableId, Document, PageId};
 use ecad_ui::control::{self, Select, TextEntry};
 use ecad_ui::panel;
@@ -105,7 +106,7 @@ pub fn copy(doc: &Document, k: CableId) -> Copy {
         (false, Source::Type) => Source::Type.hint(),
         _ => "",
     };
-    let members = doc.cables.get(&k).map_or(0, |x| x.members.len());
+    let members = doc.cables.get(&k).map_or(0, |x| x.cores.len());
     c.cores_line = match ecad_cadcraft::strips::cable_cores(doc, k).and_then(|n| n.offer) {
         Some(o) => format!("{} \u{b7} {members} assigned", o.len()),
         None => format!("{members} assigned"),

@@ -189,6 +189,8 @@ fn a_template_fills_the_command_field_and_its_placeholders_never_run() {
 #[test]
 fn templates_take_ids_from_the_selection() {
     let mut t = new_app();
+    // A wire runs between two connection points (design 072).
+    crate::common::points_at(&mut t, &[(0.0, 0.0), (40.0, 0.0)]);
     assert!(t.submit_command(r#"wire {"points":[[0,0],[40,0]]}"#).is_none());
     let d = doc(&mut t);
     let (cid, _) = d.wires.iter().next().unwrap();

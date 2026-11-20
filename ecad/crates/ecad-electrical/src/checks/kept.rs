@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 
 use ecad_model::numbering::Places;
-use ecad_model::{Document, NetId, Op, PageId, Subject};
+use ecad_model::{Document, NetKey, Op, PageId};
 
 use super::*;
 use crate::text_style::fonts::TextMetrics;
@@ -16,7 +16,7 @@ pub struct Checks {
     by_key: BTreeMap<Key, Vec<Check>>,
     grid: Grid,
     /// Nets with conductors and no number (for the one Unnumbered row).
-    unnumbered: BTreeSet<NetId>,
+    unnumbered: BTreeSet<NetKey>,
     /// Provisional tags are on (brief 026): the Unnumbered row is a warning, `… provisional`.
     provisional: bool,
     /// Bumped on every change, for views that copy the rows.
@@ -37,8 +37,8 @@ impl Checks {
     /// The whole list, computed from scratch (open, reload, first show).
     pub fn build_with(doc: &Document, tol: f64, m: &dyn TextMetrics) -> Self {
         let mut ch = Checks { off: ecad_model::sheet::checks_off_pages(doc), ..Checks::default() };
-        for c in doc.wires.keys() {
-            ch.grid.insert(doc, *c);
+        for r in doc.routes.keys() {
+            ch.grid.insert(doc, *r);
         }
         let conn = doc.connectivity();
         for (id, net) in conn.nets() {
@@ -48,8 +48,12 @@ impl Checks {
             }
         }
         for c in doc.wires.keys() {
-            let v = conductor_checks(doc, *c, &ch.grid, tol);
+            let v = conductor_checks(doc, *c);
             ch.set(Key::Wire(*c), v);
+        }
+        for r in doc.routes.keys() {
+            let v = route_checks(doc, *r, &ch.grid, tol);
+            ch.set(Key::Route(*r), v);
         }
         for t in doc.terminals.keys() {
             ch.set(Key::Terminal(*t), terminal_checks(doc, *t));
@@ -182,17 +186,18 @@ impl Checks {
             *self = Checks { revision: self.revision + 1, changed: self.changed + 1, ..Checks::build_with(doc, tol, m) };
             return;
         }
-        // Geometry first: the grid must hold the new routes before any conductor is re-checked.
-        for c in &scope.routes {
-            let old = self.grid.cells(*c);
-            self.grid.insert(doc, *c);
-            let new = self.grid.cells(*c);
+        // Geometry first: the grid must hold the new routes before any route is re-checked.
+        let mut routes = scope.routes.clone();
+        for r in &scope.routes {
+            let old = self.grid.cells(*r);
+            self.grid.insert(doc, *r);
+            let new = self.grid.cells(*r);
             let near: BTreeSet<Cell> = old.union(&new).copied().collect();
-            scope.wires.extend(self.grid.loose_near(&near));
+            routes.extend(self.grid.loose_near(&near));
         }
         let conn = doc.connectivity();
         // Nets: those named, and those sharing their numbers.
-        let mut nets: BTreeSet<NetId> = BTreeSet::new();
+        let mut nets: BTreeSet<NetKey> = BTreeSet::new();
         let mut numbers = std::mem::take(&mut scope.numbers);
         for n in &scope.nodes {
             if let Some(id) = conn.net_of(n) {
@@ -229,8 +234,12 @@ impl Checks {
             }
         }
         for c in &scope.wires {
-            let v = conductor_checks(doc, *c, &self.grid, tol);
+            let v = conductor_checks(doc, *c);
             self.set(Key::Wire(*c), v);
+        }
+        for r in &routes {
+            let v = route_checks(doc, *r, &self.grid, tol);
+            self.set(Key::Route(*r), v);
         }
         for t in &scope.terminals {
             self.set(Key::Terminal(*t), terminal_checks(doc, *t));
@@ -248,9 +257,10 @@ impl Checks {
         // Brief 040: the dash budget of the pages the re-checked wires are on, and of the pages
         // that had a row (a wire removed or recoloured there).
         let mut pages: BTreeSet<PageId> = self.by_key.keys().filter_map(|k| if let Key::Page(p) = k { Some(*p) } else { None }).collect();
-        for c in scope.wires.iter().chain(scope.routes.iter()) {
-            pages.extend(doc.representations_of(Subject::Wire(*c)).map(|(_, r)| r.page));
+        for c in &scope.wires {
+            pages.extend(crate::wires::wire_pages(doc, *c));
         }
+        pages.extend(routes.iter().filter_map(|r| doc.routes.get(r)).map(|r| r.page));
         for page in pages {
             let rows = if doc.pages.contains_key(&page) { page_checks(doc, page) } else { Vec::new() };
             self.set(Key::Page(page), rows);

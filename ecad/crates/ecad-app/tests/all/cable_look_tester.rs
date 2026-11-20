@@ -228,7 +228,8 @@ fn fixture(h: &mut Harness<'static, App>, right: bool) -> (String, Vec<String>) 
     }
     let mut wires = Vec::new();
     for (i, y) in [0, 5, 10, 15].into_iter().enumerate() {
-        let r = h.state_mut().cad.run("wire", json!({"points": [[0, y], [120, y]]})).unwrap();
+        // Without the right-hand component its ends land on bare connection points (design 072).
+        let r = crate::common::wire_pp(h.state_mut(), &[(0.0, f64::from(y)), (120.0, f64::from(y))]);
         let w = r["conductor"].as_str().unwrap().to_string();
         let tag = format!("W{}", i + 1);
         h.state_mut().cad.run("wirenumber", json!({"conductor": w, "value": tag})).unwrap();

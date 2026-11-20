@@ -140,7 +140,9 @@ fn t3_cable_manager_edits_undone_and_redone_save_reopen_and_replay_the_same() {
     let tags: Vec<String> = doc.cables.values().filter_map(|x| x.properties.get("tag").cloned()).collect();
     assert_eq!(doc.cables.len(), 3, "{tags:?}");
     let ka = ecad_model::CableId::parse(&a).unwrap();
-    assert_eq!(doc.cables[&ka].members.len(), 3);
+    // Design 072 §4.5: three cores placed, the type's fourth stored on no line.
+    assert_eq!(doc.cables[&ka].cores.iter().filter(|m| m.position != ecad_model::CorePosition::Unplaced).count(), 3);
+    assert_eq!(doc.cables[&ka].cores.len(), 4);
     assert!(doc.cables[&ka].properties.contains_key("end.from.location"));
 }
 

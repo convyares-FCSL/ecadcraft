@@ -22,24 +22,26 @@ fn hex(v: &Value, key: &str) -> String {
     v[key].as_str().unwrap().to_string()
 }
 
-/// FP-W3: `wire` that merges records one `Wire` transaction with no `CreateWire`, and says
-/// `created: false` with the existing wire; a wire between two open ends removes the folded wire.
+/// FP-W3 (design 072: routes draw, wires connect): `wire` that merges records one `Wire`
+/// transaction that grows the existing line (no new route), and says `created: false` with that
+/// line; a line between two open ends removes the folded line.
 #[test]
 fn wire_merging_through_execute() {
     let mut c = writer(WRITER_SEED);
     let first = c.exec("wire", json!({"points": [[0, 0], [50, 0]]}));
     let r = c.exec("wire", json!({"points": [[50, 0], [50, -20]]}));
     assert_eq!(r["created"], json!(false), "{r}");
-    assert_eq!(r["conductor"], first["conductor"]);
+    assert_eq!(r["route"], first["route"]);
+    assert_eq!(r["conductor"], Value::Null, "its ends are free: no wire yet");
     let t = last(&mut c);
     assert_eq!(t.label, "Wire");
-    assert!(!t.ops.iter().any(|o| matches!(o, Op::CreateWire { .. })), "{:?}", t.ops);
-    // Both ends: the folded wire is reported and no longer exists.
+    assert!(!t.ops.iter().any(|o| matches!(o, Op::AddRoute { .. })), "{:?}", t.ops);
+    // Both ends: the folded line is reported and no longer exists.
     let other = c.exec("wire", json!({"points": [[100, -20], [140, -20]]}));
     let r = c.exec("wire", json!({"points": [[50, -20], [100, -20]]}));
-    assert_eq!(r["removed"], json!([hex(&other, "conductor")]), "{r}");
+    assert_eq!(r["removed"], json!([hex(&other, "route")]), "{r}");
     let t = last(&mut c);
-    assert!(t.ops.iter().any(|o| matches!(o, Op::DeleteWire { id, .. } if id.hex() == hex(&other, "conductor"))));
+    assert!(t.ops.iter().any(|o| matches!(o, Op::RemoveRoute { id, .. } if id.hex() == hex(&other, "route"))));
 }
 
 /// `joinwires`: one `Join wires` transaction by the agent.
@@ -66,8 +68,9 @@ fn with_writes_off_the_wire_commands_are_refused() {
     assert_eq!(c.log(), before, "nothing recorded");
 }
 
-/// Design 032 §3.1 through `execute`: `-W04` slashed on the first page, its cores ending on
-/// continuations; the second page's wires continue from them. Returns the cable.
+/// Design 032 §3.1 through `execute`, as design 072 §4.4 (F5) has it: `-W04` slashed on the first
+/// page over lines to continuations; the second page's lines from their partners make each core
+/// one wire across the pages. Returns the cable.
 fn pack(c: &mut Client) -> String {
     for (i, y) in [0, 10, 20].into_iter().enumerate() {
         c.exec("place", json!({"symbol": "terminal", "at": [0, y], "tag": "X01"}));
@@ -85,22 +88,23 @@ fn pack(c: &mut Client) -> String {
     k
 }
 
-/// `cableslash` continuing a cable: one `Cable slash` transaction with `AddCableMember` and
-/// `LinkRepresentation`, no `CreateCable`; `cablecontinue` on it before is refused with §3.4's
-/// words and records nothing.
+/// `cableslash` with an existing cable's tag (F5): one `Cable slash` transaction with a
+/// `LinkRepresentation`, no `CreateCable` and no `ModifyCable` (each core is already one wire
+/// through the continuations); `cablecontinue` on such a cable is refused and records nothing.
 #[test]
 fn cableslash_continuing_and_cablecontinue_through_execute() {
     let mut c = writer(WRITER_SEED);
     let k = pack(&mut c);
     let n = c.log().len();
     let m = c.refused("execute", json!({"command": "cablecontinue", "params": {"cable": k, "at": [20, 80], "toward": [40, 80]}}));
-    assert!(m.contains("-W04's cores end on continuations."), "{m}");
+    assert!(m.contains("-W04"), "{m}");
     assert_eq!(c.log().len(), n, "a refusal records nothing");
     let r = c.exec("cableslash", json!({"from": [50, -5], "to": [50, 25], "tag": "-W04"}));
     assert_eq!(r["continued"], json!(true), "{r}");
+    assert_eq!(r["cores"].as_array().map_or(0, Vec::len), 3, "{r}");
     let t = last(&mut c);
     assert_eq!(t.label, "Cable slash");
-    assert_eq!(t.ops.iter().filter(|o| matches!(o, Op::AddCableMember { .. })).count(), 3);
+    assert!(!t.ops.iter().any(|o| matches!(o, Op::ModifyCable { .. })), "no new member: {:?}", t.ops);
     assert!(t.ops.iter().any(|o| matches!(o, Op::LinkRepresentation { .. })));
     assert!(!t.ops.iter().any(|o| matches!(o, Op::CreateCable { .. })));
 }

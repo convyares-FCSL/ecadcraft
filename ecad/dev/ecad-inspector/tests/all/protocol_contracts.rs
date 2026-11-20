@@ -73,7 +73,7 @@ fn every_op_answers_in_shape_on_the_rich_fixture() {
             assert_eq!(k1.len(), 2);
             assert!(k1.iter().all(|r| r["duplicate"] == true));
             let x1 = o["rows"].as_array().unwrap().iter().find(|r| r["tag"] == "-X1").unwrap();
-            assert_eq!(x1["points"][0], json!({"name": "3", "wires": ["101", "101"]}));
+            assert_eq!(x1["points"][0], json!({"name": "3", "wires": ["101", "101"], "accepts": 2}));
             assert!(x1.get("properties").is_none(), "properties only with detail");
         }),
         (json!({"op": "devices", "detail": true, "q": "-x1"}), |o| {
@@ -96,7 +96,7 @@ fn every_op_answers_in_shape_on_the_rich_fixture() {
         (json!({"op": "cables"}), |o| {
             assert_eq!(o["total"], 1);
             assert_eq!(o["rows"][0]["tag"], "-W1");
-            assert_eq!(o["rows"][0]["members"], json!([{"wire": "101", "core": "1"}]));
+            assert_eq!(o["rows"][0]["members"], json!([{"wire": "101", "core": "1", "purpose": "in use", "colours": null}]));
         }),
         (json!({"op": "branches"}), |o| {
             assert_eq!(o["total"], 2);

@@ -36,6 +36,7 @@
 //! | I20 | A folder's parent exists, the parents form no cycle and it nests at most 8 deep | folder → parent folders | touched folders, their sub-folders (all levels) and the sub-folders of a removed one |
 //! | I21 | A page's `folder` property names an existing folder | page → folder | touched pages and pages whose properties changed; pages in a touched folder |
 //! | I22 | The location and function lists hold each id and code once, codes with their sign | project | any change to the project's own data |
+//! | I23 | A route has 2 to 4096 finite points, lies on an existing page, and its ends land on existing connection points and on other routes of its page (design 072 F31) | route → page, terminals, routes | touched routes; routes on a touched page, landing on a touched terminal (a cable's or a cable reference's named points count as touched with it) or on a touched route |
 //!
 //! Not invariants of the document: properties (other than a page's `folder`), layer names, project
 //! settings. Named versions are
@@ -54,7 +55,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::doc::{Cable, Definition, Device, Document, Form, Item, ItemKind, Primitive, Representation, Subject, Terminal, Wire};
 use crate::effect::{Effect, Effects};
 use crate::error::{ModelError, Result};
-use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId, WireId};
+use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, TerminalId, WireId};
 use crate::index::referrers;
 use crate::op::{ObjectRef, Op};
 use crate::point::PointKey;
@@ -76,6 +77,8 @@ pub struct Touched {
     pub representations: BTreeSet<RepresentationId>,
     pub wires: BTreeSet<WireId>,
     pub cables: BTreeSet<CableId>,
+    /// Routes drawn, removed or changed (design 072 F31).
+    pub routes: BTreeSet<RouteId>,
     pub definitions: BTreeSet<DefinitionId>,
     /// A folder was added or removed, so the folder order changed.
     pub folder_order: bool,
@@ -125,14 +128,26 @@ impl Touched {
             Effect::Terminal { id, .. } => {
                 self.terminals.insert(*id);
             }
-            Effect::Rep { id, .. } => {
+            Effect::Rep { id, before, after } => {
                 self.representations.insert(*id);
+                // A cable reference places named points (design 072 §4.4, F4): the routes landing
+                // on the points it placed or places are re-checked (I23).
+                for r in [before, after].into_iter().flatten().filter(|r| matches!(r.subject, Subject::Cable(_))) {
+                    self.terminals.extend(r.connection_points.keys().copied());
+                }
             }
-            Effect::Wire { id, .. } | Effect::End { conductor: id, .. } => {
+            Effect::Wire { id, .. } => {
                 self.wires.insert(*id);
             }
-            Effect::Cable { id, .. } | Effect::Member { cable: id, .. } => {
+            Effect::Cable { id, before, after } => {
                 self.cables.insert(*id);
+                // Its cores' named points (F4): the routes landing on them are re-checked (I23).
+                for c in [before, after].into_iter().flatten() {
+                    self.terminals.extend(c.cores.iter().flat_map(|m| m.through.iter().copied()));
+                }
+            }
+            Effect::Route { id, .. } => {
+                self.routes.insert(*id);
             }
             Effect::Prop { object, .. } => match object {
                 ObjectRef::Device(id) => {
@@ -202,6 +217,9 @@ impl Document {
         }
         for (id, c) in &self.cables {
             self.check_cable(*id, c)?;
+        }
+        for (id, r) in &self.routes {
+            self.check_route(*id, r)?;
         }
         self.check_folder_order()?;
         for id in self.folders.keys() {
@@ -302,7 +320,8 @@ impl Document {
         let mut reps = touched.representations.clone();
         let subjects = (touched.devices.iter().map(|c| Subject::Device(*c)))
             .chain(touched.wires.iter().map(|c| Subject::Wire(*c)))
-            .chain(touched.cables.iter().map(|c| Subject::Cable(*c)));
+            .chain(touched.cables.iter().map(|c| Subject::Cable(*c)))
+            .chain(touched.routes.iter().map(|c| Subject::Route(*c)));
         for s in subjects {
             reps.extend(referrers(&ix.subject_reps, &s));
         }
@@ -342,9 +361,28 @@ impl Document {
         for c in &touched.wires {
             cables.extend(referrers(&ix.conductor_cables, c));
         }
+        for r in &touched.routes {
+            cables.extend(referrers(&ix.route_cables, r));
+        }
         for id in &cables {
             if let Some(c) = self.cables.get(id) {
                 self.check_cable(*id, c)?;
+            }
+        }
+
+        let mut routes = touched.routes.clone();
+        for p in &touched.pages {
+            routes.extend(referrers(&ix.page_routes, p));
+        }
+        for t in &touched.terminals {
+            routes.extend(referrers(&ix.terminal_routes, t));
+        }
+        for r in &touched.routes {
+            routes.extend(referrers(&ix.route_tees, r));
+        }
+        for id in &routes {
+            if let Some(r) = self.routes.get(id) {
+                self.check_route(*id, r)?;
             }
         }
 
@@ -477,12 +515,36 @@ impl Document {
         Ok(())
     }
 
+    /// I23: a route is well formed, on an existing page, and lands on existing connection points
+    /// and on existing routes of its own page.
+    fn check_route(&self, id: RouteId, r: &crate::route::Route) -> Result<()> {
+        if let Err(e) = r.check(id) {
+            return bad(format!("route {id}: {e}"));
+        }
+        if !self.pages.contains_key(&r.page) {
+            return bad(format!("route {id} is on a missing page"));
+        }
+        for e in r.ends {
+            match e {
+                crate::route::RouteEnd::Point(t) if !self.has_point(t) => {
+                    return bad(format!("route {id} lands on a missing connection point {t}"));
+                }
+                crate::route::RouteEnd::On { route, .. } if self.routes.get(&route).is_none_or(|o| o.page != r.page) => {
+                    return bad(format!("route {id} lands on route {route}, which is not on its page"));
+                }
+                crate::route::RouteEnd::Point(_) | crate::route::RouteEnd::On { .. } | crate::route::RouteEnd::Free => {}
+            }
+        }
+        Ok(())
+    }
+
     /// I10 to I16. `doc05` is called for each listed item, in order, and decides I13.
     fn check_representation(&self, id: RepresentationId, r: &Representation, mut doc05: impl FnMut(ItemId) -> Result<()>) -> Result<()> {
         let subject_exists = match r.subject {
             Subject::Device(c) => self.devices.contains_key(&c),
             Subject::Wire(c) => self.wires.contains_key(&c),
             Subject::Cable(c) => self.cables.contains_key(&c),
+            Subject::Route(c) => self.routes.contains_key(&c),
         };
         if !subject_exists {
             return bad(format!("representation {id} depicts a missing subject"));
@@ -528,6 +590,16 @@ impl Document {
             }
         }
         for (t, p) in &r.connection_points {
+            // A cable reference places the named points of its cable's cores (design 072 §4.4, F4).
+            if let Subject::Cable(k) = r.subject {
+                if r.role != crate::Role::Reference || self.cable_point(*t).map(|(c, _)| c) != Some(k) {
+                    return bad(format!("representation {id} places point {t}, which is not a point of its cable's cores"));
+                }
+                if !p.is_finite() {
+                    return bad(format!("representation {id} has a non-finite connection point"));
+                }
+                continue;
+            }
             let Subject::Device(c) = r.subject else {
                 return bad(format!("representation {id} of a non-component has connection points"));
             };
@@ -543,23 +615,57 @@ impl Document {
 
     /// I17.
     fn check_conductor(&self, id: WireId, c: &Wire) -> Result<()> {
-        for t in c.ends.iter().flatten() {
+        for t in &c.ends {
             if !self.terminals.contains_key(t) {
                 return bad(format!("wire {id} is attached to missing terminal {t}"));
             }
+        }
+        if c.ends[0] == c.ends[1] {
+            return bad(format!("wire {id} ends twice at terminal {}", c.ends[0]));
+        }
+        if c.net_order == 0 {
+            return bad(format!("wire {id} has no place in its net's order"));
         }
         Ok(())
     }
 
     /// I18.
     fn check_cable(&self, id: CableId, c: &Cable) -> Result<()> {
+        // Design 072 §4.5: a key that became a cable field is never in the cable's bag.
+        if let Some(k) = c.properties.keys().find(|k| crate::keys::is_reserved_on(crate::keys::Holder::Cable, k)) {
+            return bad(format!("cable {id} holds {k} in its properties; it is a field"));
+        }
         let mut seen = BTreeSet::new();
-        for m in &c.members {
-            if !self.wires.contains_key(&m.conductor) {
-                return bad(format!("cable {id} lists missing conductor {}", m.conductor));
+        let mut points = BTreeSet::new();
+        for m in &c.cores {
+            // Design 072 §4.4 (F4): each named point is one core's, placed by one reference of the cable.
+            for t in &m.through {
+                if !points.insert(*t) || self.terminals.contains_key(t) {
+                    return bad(format!("cable {id} lists point {t} twice, or a component's terminal as a named point"));
+                }
+                let placed = self
+                    .representations_showing(*t)
+                    .filter(|(_, r)| r.subject == Subject::Cable(id) && r.role == crate::Role::Reference)
+                    .count();
+                if placed != 1 {
+                    return bad(format!("cable {id}'s point {t} is placed by {placed} references, not one"));
+                }
             }
-            if !seen.insert(m.conductor) {
-                return bad(format!("cable {id} lists conductor {} twice", m.conductor));
+            match m.position {
+                crate::doc::CorePosition::Unplaced => continue,
+                crate::doc::CorePosition::Wire(w) if !self.wires.contains_key(&w) => {
+                    return bad(format!("cable {id} lists missing conductor {w}"));
+                }
+                crate::doc::CorePosition::Route { route, .. } if !self.routes.contains_key(&route) => {
+                    return bad(format!("cable {id} has a core on missing route {route}"));
+                }
+                crate::doc::CorePosition::Route { landed: Some(t), .. } if !self.has_point(t) => {
+                    return bad(format!("cable {id} has a core landed at missing point {t}"));
+                }
+                crate::doc::CorePosition::Wire(_) | crate::doc::CorePosition::Route { .. } => {}
+            }
+            if !seen.insert(m.position) {
+                return bad(format!("cable {id} lists {:?} twice", m.position));
             }
         }
         Ok(())

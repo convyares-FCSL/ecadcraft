@@ -69,7 +69,6 @@ fn the_wire_commands_refuse_input_uniformly() {
         ("wiresettings", json!({"scheme": 1}), "`scheme` must be text, or null"),
         ("wiresettings", json!({"potentials": 1}), "`potentials` must be a list of objects, or null"),
         ("renumberwires", json!({"scope": "x"}), "`scope` must be one of \"unnumbered\", \"all\", or null"),
-        ("junction", json!({}), "`at` (point [x, y]) is required"),
         ("joinwires", json!({"at": "here"}), "`at` must be a point [x, y]"),
         ("checks", json!({"kinds": "nope"}), "`kinds` must be a list of texts, or null"),
     ];
@@ -83,7 +82,11 @@ fn the_wire_commands_refuse_input_uniformly() {
 #[test]
 fn the_wire_commands_keep_their_rule_words() {
     let rows: &[(&str, Value, &str)] = &[
-        ("wire", json!({"points": [[0, 0], [9, 0]], "join": true, "junction": false}), "`join` and `junction` disagree; give only `join`"),
+        (
+            "wire",
+            json!({"points": [[0, 0], [9, 0]], "join": true, "junction": false}),
+            "`junction` is not a parameter of this command; it takes `category`, `join`, `points`, `potential`",
+        ),
         ("nets", json!({"after": "zz"}), "`after` must be a cursor from `next`"),
         ("net", json!({}), "one of `conductor`, `terminal` or `number` is required"),
         ("net", json!({"conductor": "1"}), "No such wire."),
@@ -108,7 +111,7 @@ fn the_wire_commands_keep_their_rule_words() {
 fn an_unknown_parameter_is_refused() {
     let mut h = H::new(7002);
     let e = h.run("wire", json!({"points": [[0, 0], [9, 0]], "colour": "RD"})).err().unwrap_or_default();
-    assert_eq!(e, "`colour` is not a parameter of this command; it takes `category`, `join`, `junction`, `points`, `potential`");
+    assert_eq!(e, "`colour` is not a parameter of this command; it takes `category`, `join`, `points`, `potential`");
     assert!(h.doc().wires.is_empty(), "nothing was drawn");
 }
 
@@ -116,7 +119,7 @@ fn an_unknown_parameter_is_refused() {
 #[test]
 fn the_typed_wire_commands_still_work() {
     let mut h = H::new(7003);
-    let w = h.run("wire", json!({"points": [[0, 0], [30, 0]]})).unwrap_or(Value::Null);
+    let w = h.wire_pp(&[(0.0, 0.0), (30.0, 0.0)]).unwrap_or(Value::Null);
     let c = w["conductor"].as_str().unwrap_or_default().to_string();
     let n = h.run("net", json!({"conductor": c})).unwrap_or(Value::Null);
     assert_eq!(n["conductors"], json!([c]));
@@ -1709,9 +1712,9 @@ fn place_keeps_its_rule_words() {
         (json!({"symbol": "coil", "at": [0, 0], "device": coil, "tag": "-K9"}), "`tag` is for a new device; `device` joins an existing one"),
         (json!({"symbol": "coil", "at": [0, 0], "device": "ab"}), "No such device."),
         (json!({"symbol": "coil", "at": [0, 0], "location": " "}), "`location` is \"propose\", \"move\", \"keep\" or a code"),
-        (json!({"symbol": "junction", "at": [0, 0], "tag": "-K9"}), "A junction has no tag and is not part of a device."),
+        (json!({"symbol": "continuation", "at": [0, 0], "name": "24V", "tag": "-K9"}), "A continuation has no tag and is not part of a device."),
         (json!({"symbol": "continuation", "at": [0, 0]}), "`name` is required for a continuation"),
-        (json!({"symbol": "junction", "at": [0, 0], "caption": "Up"}), "Only continuation arrows have a caption; that is a junction."),
+        (json!({"symbol": "junction", "at": [0, 0]}), "No symbol \"junction\". Type List to see them."),
         (
             json!({"symbol": "termlnpe.2", "at": [0, 0], "device": coil}),
             "is not a terminal strip. Name a strip (-X01), or leave it out for a new one.",

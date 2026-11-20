@@ -49,6 +49,7 @@ pub mod point;
 pub mod prefix;
 pub mod project;
 pub mod role;
+pub mod route;
 pub mod sheet;
 pub mod strict;
 pub mod style;
@@ -58,22 +59,24 @@ pub mod title_block;
 pub mod units;
 pub mod view;
 pub mod wire;
+pub mod wire_order;
 pub mod wiring;
 pub mod words;
 
 pub use book::PageNo;
-pub use connectivity::{Connectivity, NetData, NetId, Node};
+pub use connectivity::{Connectivity, NetData, NetKey, Node};
 pub use device::{DeviceGroup, DeviceType, TextField};
 pub use doc::{
-    Cable, CableMember, Color, ContactMirror, ContentHash, Definition, Device, Document, End, Folder, Form, Item, ItemKind, Join, Layer, LengthUnit,
-    NotASlotText, Origin, Page, Primitive, ProjectSettings, Properties, ReferenceStyle, Representation, SlotText, Style, Subject, SymbolDefault,
-    SymbolDefaultError, SymbolDefaults, SymbolInstance, Terminal, TerminalDef, TextHAlign, TextSlot, TextVAlign, Wire,
+    Accepts, Cable, Color, ContactMirror, ContentHash, Core, CoreLabel, CorePosition, Definition, Device, Document, End, Folder, Form, Item,
+    ItemKind, Join, Layer, LengthUnit, MAX_CORE_LABEL, NotASlotText, Origin, Page, Primitive, ProjectSettings, Properties, Purpose, ReferenceStyle,
+    Representation, SlotText, Style, Subject, SymbolDefault, SymbolDefaultError, SymbolDefaults, SymbolInstance, Terminal, TerminalDef, TextHAlign,
+    TextSlot, TextVAlign, Wire,
 };
 pub use error::{ModelError, Noun, ParseError, Parsed, Result};
 pub use geom::{Placement, Pt};
 pub use id::{
-    CableId, DefinitionId, DeviceId, FolderId, FunctionId, IdAllocator, ItemId, LayerId, LibraryId, LocationId, PageId, ProjectId, RepresentationId,
-    StandardId, TerminalId, TxId, WireId,
+    CableId, ConductorId, DefinitionId, DeviceId, FolderId, FunctionId, IdAllocator, ItemId, LayerId, LibraryId, LocationId, NetId, PageId,
+    ProjectId, RepresentationId, RouteId, StandardId, TerminalId, TxId, WireId,
 };
 pub use invariant::Touched;
 pub use ledger::{Author, Base, BranchPoint, Check, History, Ledger, StepPoint, Transaction, TxKind};
@@ -84,6 +87,7 @@ pub use project::{
     CustomField, Function, InfoField, ListCode, ListDescription, ListEntry, Location, Project, ProjectInfo, Rev, RevField, RevValue, Revision,
 };
 pub use role::{PartRole, Role};
+pub use route::{Route, RouteEnd};
 pub use sheet::{GridLabels, PageColumn, PageRow, SheetSpec};
 pub use style::{Standard, StandardHeader, StyleCatalogue, StyleCatalogues, StyleLayer, StyleRecord, StyleRef};
 pub use words::{Side, Word};

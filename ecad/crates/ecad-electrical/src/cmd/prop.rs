@@ -115,16 +115,6 @@ pub static PROP_RULES: &[PropRule] = &[
         build: Build::Value(bom_value),
     },
     PropRule { what: "strip accessories, or free text (brief 030)", claims: |_, o, _| is_component(o), build: Build::Value(accessory_value) },
-    PropRule {
-        what: "cable cores (brief 028)",
-        claims: |_, o, k| matches!(o, ObjectRef::Cable(_)) && k == crate::strips::CORES_KEY,
-        build: Build::Value(cores_value),
-    },
-    PropRule {
-        what: "cable core not used (brief 057)",
-        claims: |_, o, k| matches!(o, ObjectRef::Cable(_)) && k.starts_with(crate::styles::cable::UNUSED_PREFIX),
-        build: Build::Value(unused_value),
-    },
     FREE_TEXT,
 ];
 
@@ -245,17 +235,6 @@ fn accessory_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>)
         None => None,
     };
     Ok(rule.unwrap_or_else(|| value.map(str::to_string)))
-}
-
-fn cores_value(_: &Document, _: ObjectRef, _: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    crate::strips::cores_value(value)
-}
-
-fn unused_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    match o {
-        ObjectRef::Cable(k) => crate::styles::cable::unused_value(doc, k, key, value),
-        _ => Ok(value.map(str::to_string)),
-    }
 }
 
 // ---------------------------------------------------------------- the key
@@ -499,8 +478,8 @@ fn fixed_of(doc: &Document, o: ObjectRef) -> bool {
     }
 }
 
-/// The op giving `o` tag `tag` and fixed flag `fixed`: one `ModifyDevice` on a device, the
-/// properties' `SetProperty` ops on a cable.
+/// The op giving `o` tag `tag` and fixed flag `fixed`: one `ModifyDevice` on a device, one
+/// `ModifyCable` on a cable.
 fn write_tag(doc: &Document, o: ObjectRef, tag: Option<String>, fixed: bool) -> Vec<Op> {
     match o {
         ObjectRef::Device(c) => {
@@ -508,18 +487,14 @@ fn write_tag(doc: &Document, o: ObjectRef, tag: Option<String>, fixed: bool) -> 
             let after = ecad_model::Device { tag_fixed: fixed, ..d.with_tag(tag.as_deref()) };
             if after == *d { Vec::new() } else { vec![Op::ModifyDevice { id: c, before: d.clone(), after }] }
         }
-        _ => {
-            let Some(props) = props_of(doc, o) else { return Vec::new() };
+        ObjectRef::Cable(k) => {
             let mut ops = Vec::new();
-            ops.extend(set(o, TAG_KEY, props.get(TAG_KEY), tag));
-            ops.extend(set(o, FIXED_KEY, props.get(FIXED_KEY), fixed.then(|| ecad_model::words::flag_word(true).to_string())));
+            Op::set_cable_property(doc, &mut ops, k, TAG_KEY, tag);
+            Op::set_cable_property(doc, &mut ops, k, FIXED_KEY, fixed.then(|| ecad_model::words::flag_word(true).to_string()));
             ops
         }
+        ObjectRef::Wire(_) | ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard => Vec::new(),
     }
-}
-
-fn set(o: ObjectRef, key: &str, before: Option<&String>, after: Option<String>) -> Option<Op> {
-    (before != after.as_ref()).then(|| Op::SetProperty { object: o, key: key.into(), before: before.cloned(), after })
 }
 
 /// The ops writing `tag` on `o` and its fixed flag (`fixed`; a provisional tag is never fixed).
@@ -653,7 +628,7 @@ pub fn plan_tag(doc: &Document, tag_high: &mut TagHigh, o: ObjectRef, typed: Opt
 /// The echo after two cables became one (with the merged document): `-W2 is now part of -W1
 /// (5 wires).`
 pub fn merged_cable_words(doc: &Document, before: Option<&str>, tag: &str, into: CableId) -> String {
-    let n = doc.cables.get(&into).map_or(0, |c| c.members.len());
+    let n = doc.cables.get(&into).map_or(0, |c| c.cores.len());
     format!("{} is now part of {tag} ({}).", before.unwrap_or("The cable"), plural(n, "wire", "wires"))
 }
 

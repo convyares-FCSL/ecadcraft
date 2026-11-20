@@ -373,9 +373,9 @@ pub fn users(doc: &Document, catalogue: StyleCatalogue, id: &StyleRef) -> Count 
     let cat = self::catalogue(catalogue);
     let value = id.text();
     let mut c = Count::default();
-    // Brief 057: a cable's `cable_type` is a plain cable property (cables have no registry level).
+    // Design 072 §4.5: a cable's type is its field (cables have no registry level).
     if cat.catalogue == StyleCatalogue::Cable {
-        c.explicit = cable::users(doc, id).len();
+        c.explicit = doc.style_users(cable::CABLE_TYPE, &value).count();
     }
     for entry in (cat.choices)() {
         c.explicit += doc.style_users(entry.key, &value).count();
@@ -404,7 +404,11 @@ fn implicit(doc: &Document, cat: &Catalogue, entry: &defaults::Entry, id: &Style
         // 050b: conductors whose resolved category is `id` and that have none of their own.
         ecad_model::StyleCatalogue::Wire => {
             let looks = wire::WireLooks::new(doc);
-            doc.wires.iter().filter(|(_, x)| !own(&x.display)).filter(|(c, _)| looks.category(doc, **c).0.as_ref() == Some(id)).count()
+            doc.wires
+                .iter()
+                .filter(|(_, x)| !x.wire_type.as_ref().is_some_and(|t| exists(doc, ecad_model::StyleCatalogue::Wire, t)))
+                .filter(|(c, _)| looks.category(doc, **c).0.as_ref() == Some(id))
+                .count()
         }
         ecad_model::StyleCatalogue::Text if project == *id => match text::noun(entry.key) {
             text::Noun::Devices => doc.devices.values().filter(|x| !own(&x.properties)).count(),
@@ -420,6 +424,10 @@ pub fn explicit_users(doc: &Document, catalogue: StyleCatalogue, id: &StyleRef) 
     let cat = self::catalogue(catalogue);
     let value = id.text();
     let mut out = Vec::new();
+    // Design 072 §4.5: a cable's type is its field (cables have no registry level).
+    if cat.catalogue == StyleCatalogue::Cable {
+        out.extend(doc.style_users(cable::CABLE_TYPE, &value).map(|o| (cable::CABLE_TYPE, o)));
+    }
     for entry in (cat.choices)() {
         out.extend(doc.style_users(entry.key, &value).map(|o| (entry.key, o)));
     }
@@ -430,7 +438,7 @@ pub fn explicit_users(doc: &Document, catalogue: StyleCatalogue, id: &StyleRef) 
 fn pages_of(doc: &Document, o: ObjectRef, out: &mut BTreeSet<PageId>) {
     match o {
         ObjectRef::Device(c) => out.extend(doc.representations_of(Subject::Device(c)).map(|(_, r)| r.page)),
-        ObjectRef::Wire(c) => out.extend(doc.representations_of(Subject::Wire(c)).map(|(_, r)| r.page)),
+        ObjectRef::Wire(c) => out.extend(crate::wires::wire_pages(doc, c)),
         ObjectRef::Cable(c) => out.extend(doc.representations_of(Subject::Cable(c)).map(|(_, r)| r.page)),
         ObjectRef::Page(p) => {
             out.insert(p);

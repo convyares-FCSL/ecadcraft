@@ -712,7 +712,7 @@ pub fn tag_case(word: &str) -> Result<Case, CmdError> {
 }
 
 /// The ops of `tag_dash` and `tag_case` in `projectprops` (design 033 §8.4): the settings, and
-/// one `SetProperty(tag)` per component or cable tag whose stored text changes (a new dash, or
+/// one `ModifyDevice` or `ModifyCable` per component or cable tag whose stored text changes (a new dash, or
 /// back to upper case). The echo in words. Tags are identities by `tag::key`, which ignores the
 /// dash and the case, so no index changes key; each rewrite is an ordinary tag op that every
 /// tag-showing view already maps. Merging two branches with different dash settings: the merged
@@ -756,6 +756,7 @@ pub fn tag_style_ops(doc: &Document, dash: Option<bool>, case: Option<Case>) -> 
                             ops.push(Op::ModifyDevice { id: c, before: d.clone(), after: d.with_tag(Some(&new)) });
                         }
                     }
+                    ObjectRef::Cable(k) => Op::set_cable_property(doc, &mut ops, k, TAG_KEY, Some(new)),
                     _ => ops.push(Op::SetProperty { object, key: TAG_KEY.into(), before: Some(old.to_string()), after: Some(new) }),
                 }
                 n += 1;
@@ -871,10 +872,9 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
     tag_settings(&mut settings, "tag_padding", change.tag_padding, &change.tag_prefixes)?;
     // Brief 022 fix round: how label colours are written, and the label height.
     if let Some(w) = &change.colour_style {
-        settings.wiring.colour_style = Some(
-            ecad_model::wiring::ColourStyle::parse(w)
-                .ok_or(CmdError::refused("`colour_style` must be \"iec\" (BN, BU, GNYE) or \"three-letter\" (BRN, BLU, GRN/YEL)"))?,
-        );
+        settings.wiring.colour_style = Some(<ecad_model::colour::ColourWords as ecad_model::words::Word>::parse(w).ok_or(CmdError::refused(
+            "`colour_style` must be \"code2\" (BN, BU, GN/YE), \"code3\" (BRN, BLU, GRN/YEL) or \"name\" (Brown, Blue, Green/Yellow)",
+        ))?);
     }
     if let Some(h) = change.label_height {
         settings.wiring.label_height = Some(

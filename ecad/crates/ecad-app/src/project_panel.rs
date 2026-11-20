@@ -143,8 +143,6 @@ pub enum Action {
     RunLine(String),
     /// Checks tab (brief 022): show this row's page, centre on it, select it, ring it.
     GotoCheck(Box<ecad_cadcraft::checks::Check>),
-    /// Checks tab: `junction {at}` on this page.
-    AddJunction(PageId, ecad_model::Pt),
     /// Checks tab (brief 032): `joinwires {at}` on this page.
     JoinWires(PageId, ecad_model::Pt),
     /// Checks tab: `renumberwires {scope: "unnumbered"}`.

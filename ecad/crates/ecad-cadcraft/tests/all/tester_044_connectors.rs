@@ -70,7 +70,7 @@ fn name(h: &mut H, t: TerminalId) -> String {
     ecad_cadcraft::connectors::pin_name(&d, t).unwrap_or_else(|| ecad_cadcraft::interact::terminal_name(&d, t))
 }
 
-fn net(h: &mut H, t: TerminalId) -> Option<ecad_model::NetId> {
+fn net(h: &mut H, t: TerminalId) -> Option<ecad_model::NetKey> {
     h.doc().connectivity().net_of_terminal(t)
 }
 
@@ -84,8 +84,11 @@ fn newpage(h: &mut H, number: &str, title: &str) -> PageId {
     p
 }
 
-/// Vertical wires at `xs`, from y 250 to y 150, on the active page.
+/// Vertical wires at `xs`, from y 250 to y 150, on the active page, between connection points of
+/// one device.
 fn drops(h: &mut H, xs: &[f64]) -> Vec<WireId> {
+    let ends: Vec<(f64, f64)> = xs.iter().flat_map(|x| [(*x, 250.0), (*x, 150.0)]).collect();
+    h.points_at(&ends);
     xs.iter().map(|x| id(&h.run("wire", json!({"points": pts(&[(*x, 250.0), (*x, 150.0)])})).unwrap(), "conductor")).collect()
 }
 
@@ -109,9 +112,9 @@ fn wire_out(h: &mut H, page: PageId, c: DeviceId, t: TerminalId) -> WireId {
         _ if side == ".s" => 1.0,
         _ => -1.0,
     };
-    let v = h.run("wire", json!({"points": pts(&[(at.x, at.y), (at.x, at.y + 20.0 * dir)])})).unwrap();
+    let v = h.wire_pp(&[(at.x, at.y), (at.x, at.y + 20.0 * dir)]).unwrap();
     let w: WireId = id(&v, "conductor");
-    assert!(h.doc().wires[&w].ends.contains(&Some(t)), "the wire lands on {}", name(h, t));
+    assert!(h.doc().wires[&w].ends.contains(&t), "the wire lands on {}", name(h, t));
     w
 }
 
@@ -505,8 +508,8 @@ fn r03_pin_pairs_across_wires_split_and_keep_the_number() {
     let mut nets = Vec::new();
     for (i, label) in ["1", "2", "3"].iter().enumerate() {
         let (sp, pp) = (pin(&d, x, ".s", label), pin(&d, x, ".p", label));
-        let on_s: Vec<&WireId> = d.wires.iter().filter(|(_, k)| k.ends.contains(&Some(sp))).map(|(w, _)| w).collect();
-        let on_p: Vec<&WireId> = d.wires.iter().filter(|(_, k)| k.ends.contains(&Some(pp))).map(|(w, _)| w).collect();
+        let on_s: Vec<&WireId> = d.wires.iter().filter(|(_, k)| k.ends.contains(&sp)).map(|(w, _)| w).collect();
+        let on_p: Vec<&WireId> = d.wires.iter().filter(|(_, k)| k.ends.contains(&pp)).map(|(w, _)| w).collect();
         assert_eq!((on_s.len(), on_p.len()), (1, 1), "pin {label}: the wire is split onto both points");
         let n = net(&mut c.h, sp);
         assert!(n.is_some() && n == net(&mut c.h, pp), "pin {label}: one net through the mate");
@@ -589,7 +592,7 @@ fn r03_one_side_pin_on_a_wire_leaves_the_far_part_open() {
     let x = conn_of(&v);
     let d = c.h.doc();
     let sp = pin(&d, x, ".s", "1");
-    let on: Vec<&ecad_model::Wire> = d.wires.values().filter(|k| k.ends.contains(&Some(sp))).collect();
+    let on: Vec<&ecad_model::Wire> = d.wires.values().filter(|k| k.ends.contains(&sp)).collect();
     assert_eq!(on.len(), 1, "one point, one wire");
 }
 
@@ -808,7 +811,7 @@ fn r06_pin_names_in_hover_wire_list_and_targets() {
     }
     // A terminal strip on the socket wire: its plan's target names the half pin (046's targets).
     let d = c.h.doc();
-    assert!(d.wires[&ws].ends.contains(&Some(s3)));
+    assert!(d.wires[&ws].ends.contains(&s3));
     let at = shown_at(&d, c.p101, s3).unwrap();
     c.h.activate(c.p101);
     let v = c.h.run("terminals", json!({"strip": null, "from": [at.x - 5.0, at.y + 10.0], "to": [at.x + 5.0, at.y + 10.0]})).unwrap();
@@ -1427,13 +1430,23 @@ fn r12_hand_made_connectors_never_panic() {
     {
         ops.push(Op::AddTerminal {
             id: TerminalId::from(0x7044_00c1_u128 << 64 | i as u128),
-            terminal: ecad_model::Terminal { component: x, label: label.map(str::to_string), key: key.and_then(|k| k.parse().ok()) },
+            terminal: ecad_model::Terminal {
+                component: x,
+                label: label.map(str::to_string),
+                key: key.and_then(|k| k.parse().ok()),
+                accepts: Default::default(),
+            },
         });
     }
     for i in 0..2_000u128 {
         ops.push(Op::AddTerminal {
             id: TerminalId::from(0x7044_00c2_u128 << 64 | i),
-            terminal: ecad_model::Terminal { component: x, label: Some(format!("{}", 100 + i)), key: Some(".p".parse().unwrap()) },
+            terminal: ecad_model::Terminal {
+                component: x,
+                label: Some(format!("{}", 100 + i)),
+                key: Some(".p".parse().unwrap()),
+                accepts: Default::default(),
+            },
         });
     }
     c.h.cfg(|p| p.ledger.commit(Author::User, "hand-made", ops)).unwrap();

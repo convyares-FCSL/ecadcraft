@@ -66,7 +66,7 @@ fn plus_cable_builds_a_cable_not_drawn_and_its_details_edit_it() {
     let d = doc(&mut h);
     assert_eq!(d.cables.len(), before + 1);
     let k = selected_cable(&h).expect("the new cable is selected");
-    assert!(d.cables[&k].members.is_empty());
+    assert!(d.cables[&k].cores.is_empty());
     assert!(h.state().reports.as_ref().unwrap().cables.details, "its details are open");
     assert!(h.query_all_by_label_contains("not drawn").next().is_some(), "the not drawn badge");
     assert!(h.query_all_by_label_contains("1 not drawn").next().is_some(), "the footer counts it");

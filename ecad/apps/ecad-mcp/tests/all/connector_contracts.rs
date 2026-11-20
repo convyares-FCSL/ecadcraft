@@ -29,13 +29,15 @@ fn connector_row_and_pins_by_the_agent() {
 
     // Pins across wires: one transaction with the splits.
     for x in [100.0, 120.0] {
-        c.exec("wire", json!({"points": [[x, 250.0], [x, 150.0]]}));
+        c.wire_pp(json!({"points": [[x, 250.0], [x, 150.0]]}));
     }
     let n = c.log().len();
     let v = c.exec("connector", json!({"halves": "both", "family": "m12", "pins": 4, "layout": "pins", "line": [[90, 200], [130, 200]]}));
     let ops = assert_one_by_agent(&mut c, n, "write").ops;
     assert_eq!(v["split"].as_array().map(Vec::len), Some(2));
-    assert_eq!(ops.iter().filter(|o| matches!(o, Op::CreateWire { .. })).count(), 2);
+    // Design 072: each wire split by a pin is two new wires (the pair it joined is gone).
+    assert_eq!(ops.iter().filter(|o| matches!(o, Op::CreateWire { .. })).count(), 4, "{ops:?}");
+    assert_eq!(ops.iter().filter(|o| matches!(o, Op::DeleteWire { .. })).count(), 2, "{ops:?}");
 
     // `place {symbol: pinpair, device}` joins and takes the next free pin.
     let n = c.log().len();

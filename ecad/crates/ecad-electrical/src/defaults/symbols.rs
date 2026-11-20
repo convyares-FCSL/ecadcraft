@@ -346,7 +346,7 @@ pub fn project_prefix(doc: &Document, key: &str) -> String {
 }
 
 /// The tag prefix a new device of starter `key` gets in this project (letters, upper case, without
-/// `-`): the project's `tag_prefixes`, else the built-in. Empty for a tagless symbol (junction,
+/// `-`): the project's `tag_prefixes`, else the built-in. Empty for a tagless symbol (a
 /// continuation). A hostile stored value that is not a prefix counts as absent.
 pub fn prefix(doc: &Document, key: crate::symbols::StarterKey) -> String {
     let Some(entry) = prefix_entry(key) else {
@@ -422,6 +422,6 @@ mod tests {
         for bad in ["", "K1", long.as_str(), "K\u{7}", "-"] {
             assert!(TagPrefix::typed(bad).is_none(), "{bad:?}");
         }
-        assert_eq!(prefix(&doc, crate::symbols::StarterKey::Junction), "");
+        assert_eq!(prefix(&doc, crate::symbols::StarterKey::Continuation), "");
     }
 }

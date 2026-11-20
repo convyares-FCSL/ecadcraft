@@ -359,7 +359,7 @@ impl Draft {
         }
         let key = self.next_point_key();
         self.step();
-        self.shape.points.push(TerminalDef { key, label: None, at });
+        self.shape.points.push(TerminalDef { key, label: None, at, accepts: Default::default() });
         Ok(self.shape.points.len() - 1)
     }
 

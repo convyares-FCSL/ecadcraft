@@ -8,15 +8,25 @@ use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
 
-fn net_of(doc: &Document, c: WireId) -> Option<ecad_model::NetId> {
-    doc.connectivity().net_of_conductor(c)
-}
-
 fn number(doc: &Document, c: WireId) -> Option<String> {
     doc.wires.get(&c)?.number_text().map(str::to_string)
 }
 
+/// A wire through `points`, first putting a connection point at each end that has none (design
+/// 072: a wire runs between two connection points), as `H::wire_pp` does, with `extra` params.
 fn wire(h: &mut H, points: &[(f64, f64)], extra: Value) -> WireId {
+    let doc = h.doc();
+    let page = h.p(|p| p.active_page()).unwrap_or(doc.page_order[0]);
+    let shown: Vec<ecad_model::Pt> = ecad_model::derive::terminal_positions(&doc, page).into_iter().map(|(_, _, at)| at).collect();
+    let ends: Vec<(f64, f64)> = [points.first(), points.last()]
+        .into_iter()
+        .flatten()
+        .copied()
+        .filter(|(x, y)| !shown.iter().any(|q| q.near(ecad_model::Pt::new(*x, *y), 1e-6)))
+        .collect();
+    if !ends.is_empty() {
+        h.points_at(&ends);
+    }
     let mut params = json!({"points": pts(points)});
     if let (Some(o), Some(e)) = (params.as_object_mut(), extra.as_object()) {
         for (k, v) in e {
@@ -24,6 +34,17 @@ fn wire(h: &mut H, points: &[(f64, f64)], extra: Value) -> WireId {
         }
     }
     id(&h.run("wire", params).unwrap(), "conductor")
+}
+
+/// A drawn line (its route, design 072 §4.3), wire or not.
+fn line(h: &mut H, points: &[(f64, f64)], extra: Value) -> ecad_model::RouteId {
+    let mut params = json!({"points": pts(points)});
+    if let (Some(o), Some(e)) = (params.as_object_mut(), extra.as_object()) {
+        for (k, v) in e {
+            o.insert(k.clone(), v.clone());
+        }
+    }
+    id(&h.run("wire", params).unwrap(), "route")
 }
 
 fn terminal(h: &mut H, at: (f64, f64), tag: &str) -> ecad_model::TerminalId {
@@ -35,48 +56,50 @@ fn rows(doc: &Document, ch: &Checks) -> Vec<String> {
     ch.sorted(doc).iter().map(|c| format!("{:?} {:?} {} {}", c.kind, c.object, c.which, c.locator(doc))).collect()
 }
 
-/// §15 B: a T without a junction is two nets and a Checks row with Add junction; with the
-/// junction it is one net and one number; a crossing is two nets.
+/// §15 B (design 072 §4.3): a T drawn with join off is a line with a free end and a Checks row
+/// with Join; joined (the row's fix), it lands on the line: one net with one number; a crossing
+/// joins nothing.
 #[test]
 fn a_tee_needs_a_junction_and_a_crossing_never_connects() {
     let mut h = H::new(0x22_01);
-    let a = terminal(&mut h, (0.0, 0.0), "X1");
-    let b = terminal(&mut h, (60.0, 0.0), "X1");
-    let _ = (a, b);
+    terminal(&mut h, (0.0, 0.0), "X1");
+    terminal(&mut h, (60.0, 0.0), "X1");
+    terminal(&mut h, (30.0, 30.0), "X2");
     let main = wire(&mut h, &[(0.0, 0.0), (60.0, 0.0)], json!({}));
-    let tee = wire(&mut h, &[(30.0, 30.0), (30.0, 0.0)], json!({"junction": false}));
+    let page = h.first_page();
+    let main_line = h.route_of(page, main);
+    let tee = line(&mut h, &[(30.0, 30.0), (30.0, 0.0)], json!({"join": false}));
     let doc = h.doc();
-    assert_ne!(net_of(&doc, main), net_of(&doc, tee), "a T without a junction is not connected");
+    assert_eq!(doc.wires.len(), 1, "a T without a landing is not connected");
+    assert_eq!(doc.routes[&tee].ends[1], ecad_model::RouteEnd::Free);
     let all = ecad_cadcraft::checks::all(&doc, 1e-6);
     let looks: Vec<_> = all.iter().filter(|c| c.kind == Kind::LooksConnected).collect();
     assert_eq!(looks.len(), 1, "{all:?}");
     let Some(Fix::Join(at)) = looks[0].fix else { panic!("no fix: {looks:?}") };
     assert!(at.near(ecad_model::Pt::new(30.0, 0.0), 1e-9));
-    // Add junction (the row's fix), then the T is one net with one number.
+    // Join (the row's fix), then the T is one net with one number.
     let head = h.head();
-    let j = h.run("junction", json!({"at": [at.x, at.y]})).unwrap();
+    let j = h.run("joinwires", json!({"at": [at.x, at.y]})).unwrap();
+    assert_eq!(j["how"], "tee", "{j}");
     assert_eq!(h.head(), head + 1);
     let doc = h.doc();
-    let second: WireId = id(&j, "conductor");
-    assert_eq!(net_of(&doc, main), net_of(&doc, tee));
-    assert_eq!(net_of(&doc, main), net_of(&doc, second));
-    assert_eq!(number(&doc, main), number(&doc, tee));
-    assert_eq!(number(&doc, main), number(&doc, second));
+    assert_eq!(doc.routes[&tee].ends[1].route(), Some(main_line));
+    assert_eq!(doc.wires.len(), 2, "three points, two wires");
+    let nets: std::collections::BTreeSet<_> = doc.wires.values().map(|w| w.net).collect();
+    assert_eq!(nets.len(), 1, "one net");
+    let numbers: std::collections::BTreeSet<_> = doc.wires.keys().map(|w| number(&doc, *w)).collect();
+    assert_eq!(numbers.len(), 1, "one number");
     assert!(ecad_cadcraft::checks::all(&doc, 1e-6).iter().all(|c| c.kind != Kind::LooksConnected));
     // `u` undoes it in one step.
     h.cmdline("u");
-    let doc = h.doc();
-    assert_ne!(net_of(&doc, main), net_of(&doc, tee));
-    // The refusals.
+    assert_eq!(h.doc().wires.len(), 1);
     h.cmdline("redo");
-    let m = h.run("junction", json!({"at": [30, 0]})).unwrap_err();
-    assert!(m.contains("There is a junction here already."), "{m}");
-    let m = h.run("junction", json!({"at": [0, 0]})).unwrap_err();
-    assert!(m.contains("not its end"), "{m}");
-    // A crossing: two nets.
-    let v = wire(&mut h, &[(45.0, 20.0), (45.0, -20.0)], json!({"junction": false}));
+    // A crossing: nothing joins.
+    let wires = h.doc().wires.len();
+    let v = line(&mut h, &[(45.0, 20.0), (45.0, -20.0)], json!({"join": false}));
     let doc = h.doc();
-    assert_ne!(net_of(&doc, v), net_of(&doc, main));
+    assert_eq!(doc.wires.len(), wires);
+    assert!(doc.routes[&v].ends.iter().all(|e| *e == ecad_model::RouteEnd::Free));
 }
 
 /// §15 C: every route shows its label; a net's conductors share the number; the text is never
@@ -175,18 +198,16 @@ fn each_seeded_fault_appears_once_where_it_is() {
     let page = h.first_page();
     // Open end, and its net's single connection point.
     let x = terminal(&mut h, (0.0, 0.0), "X1");
-    let open = wire(&mut h, &[(0.0, 0.0), (0.0, 30.0)], json!({}));
+    let open = line(&mut h, &[(0.0, 0.0), (0.0, 30.0)], json!({}));
     // Loose wire, and a T onto it with no junction (looks connected).
-    let loose = wire(&mut h, &[(50.0, 0.0), (50.0, 30.0)], json!({}));
+    let loose = line(&mut h, &[(50.0, 0.0), (50.0, 30.0)], json!({}));
     terminal(&mut h, (70.0, 15.0), "X4");
-    let tee = wire(&mut h, &[(70.0, 15.0), (50.0, 15.0)], json!({"junction": false}));
+    let tee = line(&mut h, &[(70.0, 15.0), (50.0, 15.0)], json!({"join": false}));
     // Unconnected device points.
     h.run("place", json!({"symbol": "lamp", "at": [200, 100], "tag": "H9"})).unwrap();
-    // A junction with two wires only.
-    terminal(&mut h, (600.0, 0.0), "X5");
-    terminal(&mut h, (640.0, 0.0), "X5");
-    wire(&mut h, &[(600.0, 0.0), (640.0, 0.0)], json!({}));
-    h.run("junction", json!({"at": [620, 0]})).unwrap();
+    // Two points an old wire joins (below).
+    let o1 = terminal(&mut h, (600.0, 0.0), "X5");
+    let o2 = terminal(&mut h, (640.0, 0.0), "X5");
     // Mixed potentials in one net.
     for i in 0..3 {
         terminal(&mut h, (400.0 + 20.0 * i as f64, 0.0), "X2");
@@ -206,7 +227,13 @@ fn each_seeded_fault_appears_once_where_it_is() {
     h.run("place", json!({"symbol": "continuation", "at": [700, 0], "name": "24V"})).unwrap();
     h.run("place", json!({"symbol": "continuation", "at": [700, 40], "rotation": 180, "name": "0V"})).unwrap();
     h.run("place", json!({"symbol": "continuation", "at": [300, 0], "name": "24V"})).unwrap();
-    wire(&mut h, &[(700.0, 0.0), (700.0, 40.0)], json!({}));
+    // F5: a continuation is a named point, so a wire runs between device points: each
+    // continuation's line lands on a point of -X7, and a wire joins the two.
+    terminal(&mut h, (720.0, 0.0), "X7");
+    terminal(&mut h, (720.0, 40.0), "X7");
+    line(&mut h, &[(700.0, 0.0), (720.0, 0.0)], json!({}));
+    line(&mut h, &[(700.0, 40.0), (720.0, 40.0)], json!({}));
+    wire(&mut h, &[(720.0, 0.0), (720.0, 40.0)], json!({}));
     // One net, two fixed numbers.
     for (x, y) in [(800.0, 0.0), (800.0, 30.0), (840.0, 0.0), (840.0, 30.0)] {
         terminal(&mut h, (x, y), "X6");
@@ -218,19 +245,26 @@ fn each_seeded_fault_appears_once_where_it_is() {
     wire(&mut h, &[(800.0, 0.0), (840.0, 0.0)], json!({}));
     // Unnumbered: a conductor committed without the pass (a project older than 022); and an end
     // drawn away from its connection point. Both are written past the commands.
-    let old = h.cfg(|p| {
+    let (old, fa_route) = h.cfg(|p| {
         let w: WireId = p.ids.fresh();
-        p.ledger.commit(Author::User, "old", vec![Op::CreateWire { id: w, conductor: Default::default() }]).unwrap();
+        let wire = ecad_model::Wire::new(p.ids.fresh(), p.ids.fresh(), o1, o2);
+        p.ledger.commit(Author::User, "old", vec![Op::CreateWire { id: w, wire }]).unwrap();
         let doc = p.ledger.document();
-        let (item, _) = ecad_model::derive::route_on_page(doc, fa, page).unwrap();
-        let before = doc.items[&item].clone();
-        let mut after = before.clone();
-        if let ecad_model::ItemKind::Primitive(prim) = &before.kind {
-            let moved = prim.with_path_end(ecad_model::End::B, ecad_model::Pt::new(805.0, 30.0)).unwrap();
-            after.kind = ecad_model::ItemKind::Primitive(moved);
+        let r = wires::route_of_wire_on(doc, fa, page).unwrap();
+        let (item, before, mut points) = wires::route_vertices(doc, r).unwrap();
+        if let Some(last) = points.last_mut() {
+            *last = ecad_model::Pt::new(805.0, 30.0);
         }
-        p.ledger.commit(Author::User, "away", vec![Op::ModifyItem { id: item, before, after }]).unwrap();
-        w
+        let route = doc.routes[&r].clone();
+        let after = ecad_model::Item {
+            kind: ecad_model::ItemKind::Primitive(ecad_model::Primitive::Polyline { vertices: points.clone(), closed: false }),
+            ..before.clone()
+        };
+        let moved = ecad_model::Route { points, ..route.clone() };
+        p.ledger
+            .commit(Author::User, "away", vec![Op::ModifyItem { id: item, before, after }, Op::ModifyRoute { id: r, before: route, after: moved }])
+            .unwrap();
+        (w, r)
     });
     let doc = h.doc();
     let all = ecad_cadcraft::checks::all(&doc, 1e-6);
@@ -238,14 +272,18 @@ fn each_seeded_fault_appears_once_where_it_is() {
     let has = |k: Kind, o: Object| all.iter().any(|c| c.kind == k && c.object == o);
     let listing = rows(&doc, &Checks::build(&doc, 1e-6));
     assert_eq!(count(Kind::OpenEnd), 2, "{listing:#?}");
-    assert!(has(Kind::OpenEnd, Object::Wire(open)) && has(Kind::OpenEnd, Object::Wire(tee)));
-    assert_eq!(count(Kind::LooseWire), 2, "{listing:#?}");
-    assert!(has(Kind::LooseWire, Object::Wire(loose)) && has(Kind::LooseWire, Object::Wire(old)));
+    assert!(has(Kind::OpenEnd, Object::Route(open)) && has(Kind::OpenEnd, Object::Route(tee)));
+    assert_eq!(count(Kind::LooseWire), 1, "{listing:#?}");
+    assert!(has(Kind::LooseWire, Object::Route(loose)));
+    let _ = old;
     assert_eq!(count(Kind::LooksConnected), 1, "{listing:#?}");
-    assert!(has(Kind::LooksConnected, Object::Wire(tee)));
-    assert_eq!(count(Kind::SinglePoint), 2, "{listing:#?}");
-    assert!(has(Kind::SinglePoint, Object::Terminal(x)));
-    assert_eq!(count(Kind::ThinJunction), 1, "{listing:#?}");
+    assert!(has(Kind::LooksConnected, Object::Route(tee)));
+    // Design 072: a line with a free end carries no wire, so X1 and X4 are in no net (no
+    // single-point rows); each such line is a no-wire-yet row instead.
+    assert_eq!(count(Kind::SinglePoint), 0, "{listing:#?}");
+    let _ = x;
+    assert_eq!(count(Kind::NoWireYet), 3, "{listing:#?}");
+    assert!([open, loose, tee].into_iter().all(|r| has(Kind::NoWireYet, Object::Route(r))), "{listing:#?}");
     assert_eq!(count(Kind::LonelyContinuation), 1, "{listing:#?}");
     assert_eq!(count(Kind::MixedPotentials), 1, "{listing:#?}");
     assert_eq!(count(Kind::UnknownName), 0, "24V and 0V are in the table: {listing:#?}");
@@ -253,7 +291,7 @@ fn each_seeded_fault_appears_once_where_it_is() {
     assert_eq!(count(Kind::TwoFixed), 1, "{listing:#?}");
     assert_eq!(count(Kind::SharedNumber), 2, "{listing:#?}");
     assert_eq!(count(Kind::DrawnAway), 1, "{listing:#?}");
-    assert!(has(Kind::DrawnAway, Object::Wire(fa)));
+    assert!(has(Kind::DrawnAway, Object::Route(fa_route)));
     assert_eq!(count(Kind::Unnumbered), 1, "{listing:#?}");
     assert_eq!(count(Kind::Unconnected), 2, "the lamp's X1 and X2: {listing:#?}");
     // Rows point at their page and point, in book order (errors first).
@@ -292,8 +330,9 @@ fn an_unknown_continuation_name_is_a_warning_never_a_refusal() {
         })
     };
     terminal(&mut h, (0.0, 0.0), "X1");
-    wire(&mut h, &[(0.0, 0.0), (0.0, 30.0)], json!({}));
     let r = h.run("place", json!({"symbol": "continuation", "at": [0, 30], "name": "Motor-run"})).unwrap();
+    // F5: a continuation is a named point, an aid: a line to a lonely one carries no wire.
+    line(&mut h, &[(0.0, 0.0), (0.0, 30.0)], json!({}));
     assert!(kept(&mut h).iter().any(|c| c.which == "Motor-run"), "the name is not in the table");
     let row = kept(&mut h).into_iter().find(|c| c.which == "Motor-run").unwrap();
     assert_eq!(row.severity(), ecad_cadcraft::checks::Severity::Warning);
@@ -301,14 +340,19 @@ fn an_unknown_continuation_name_is_a_warning_never_a_refusal() {
     assert!(row.page.is_some() && row.at.is_some());
     // Names in the table are not rows: the net takes the potential.
     terminal(&mut h, (100.0, 0.0), "X2");
-    wire(&mut h, &[(100.0, 0.0), (100.0, 30.0)], json!({}));
     h.run("place", json!({"symbol": "continuation", "at": [100, 30], "name": "24V"})).unwrap();
+    line(&mut h, &[(100.0, 0.0), (100.0, 30.0)], json!({}));
     assert_eq!(kept(&mut h).len(), 1);
     // A continuation named for its net's own number (as Merge the nets places) is not a row.
     terminal(&mut h, (200.0, 0.0), "X3");
-    let w3 = wire(&mut h, &[(200.0, 0.0), (200.0, 30.0)], json!({}));
-    h.run("wirenumber", json!({"conductor": w3.hex(), "value": "W-7"})).unwrap();
+    // Design 072: the continuations first, so the lines land on their points; F5: the wire runs
+    // through the pair, from -X3 to -X4.
     h.run("place", json!({"symbol": "continuation", "at": [200, 30], "name": "W-7"})).unwrap();
+    line(&mut h, &[(200.0, 0.0), (200.0, 30.0)], json!({}));
+    terminal(&mut h, (300.0, 0.0), "X4");
+    h.run("place", json!({"symbol": "continuation", "at": [300, 30], "name": "W-7"})).unwrap();
+    let w3 = wire(&mut h, &[(300.0, 0.0), (300.0, 30.0)], json!({}));
+    h.run("wirenumber", json!({"conductor": w3.hex(), "value": "W-7"})).unwrap();
     assert_eq!(kept(&mut h).len(), 1, "named for its own number");
     // Add MOTOR-RUN to the table: the row goes; `u` brings it back.
     let mut table: Vec<Value> = h.run("wiresettings", json!({})).unwrap()["potentials"].as_array().unwrap().clone();
@@ -340,8 +384,8 @@ fn the_kept_checks_list_follows_every_edit_and_equals_a_fresh_build() {
         ("place", json!({"symbol": "terminal", "at": [0, 0], "tag": "X1"})),
         ("place", json!({"symbol": "terminal", "at": [40, 0], "tag": "X1"})),
         ("wire", json!({"points": [[0, 0], [40, 0]]})),
-        ("wire", json!({"points": [[20, 30], [20, 0]], "junction": false})),
-        ("junction", json!({"at": [20, 0]})),
+        ("wire", json!({"points": [[20, 30], [20, 0]], "join": false})),
+        ("joinwires", json!({"at": [20, 0]})),
         ("wire", json!({"points": [[100, 0], [100, 40]], "potential": "24V"})),
         ("place", json!({"symbol": "continuation", "at": [100, 40], "name": "24V"})),
         ("place", json!({"symbol": "continuation", "at": [200, 40], "name": "24V"})),
@@ -354,7 +398,7 @@ fn the_kept_checks_list_follows_every_edit_and_equals_a_fresh_build() {
         ("wire", json!({"points": [[600, 0], [600, 40]], "potential": "PE"})),
         ("wire", json!({"points": [[600, 40], [640, 40]], "potential": "PE"})),
         // Settings: label looks re-check nothing, numbering settings re-check every net.
-        ("wiresettings", json!({"label_height": 2.5, "colour_style": "three-letter"})),
+        ("wiresettings", json!({"label_height": 2.5, "colour_style": "code3"})),
         ("wiresettings", json!({"digits": 3})),
         ("newpage", json!({"title": "2"})),
     ];
@@ -390,26 +434,6 @@ fn the_kept_checks_list_follows_every_edit_and_equals_a_fresh_build() {
     let _ = ObjectRef::Wire(w);
 }
 
-/// Two loose ends meeting at one point look connected; Add junction joins them there with
-/// nothing to split.
-#[test]
-fn add_junction_joins_loose_ends_that_only_meet() {
-    let mut h = H::new(0x22_06);
-    let a = wire(&mut h, &[(0.0, 0.0), (30.0, 0.0)], json!({}));
-    let b = wire(&mut h, &[(30.0, 0.0), (30.0, 30.0)], json!({"junction": false}));
-    let doc = h.doc();
-    assert_ne!(net_of(&doc, a), net_of(&doc, b));
-    let looks: Vec<_> = ecad_cadcraft::checks::all(&doc, 1e-6).into_iter().filter(|c| c.kind == Kind::LooksConnected).collect();
-    assert_eq!(looks.len(), 1, "one row for the pair: {looks:?}");
-    let Some(Fix::Join(at)) = looks[0].fix else { panic!("{looks:?}") };
-    let r = h.run("junction", json!({"at": [at.x, at.y]})).unwrap();
-    assert_eq!(r["attached"], json!(2), "{r}");
-    let doc = h.doc();
-    assert_eq!(net_of(&doc, a), net_of(&doc, b));
-    assert_eq!(doc.wires.len(), 2, "nothing was split");
-    assert!(ecad_cadcraft::checks::all(&doc, 1e-6).iter().all(|c| c.kind != Kind::LooksConnected));
-}
-
 /// Design 022 §9 on brief 019's Properties panel: a wire's section shows its net's number, Fixed,
 /// Potential (from a continuation when it comes from one), Cross-section and Colour (the
 /// potential's defaults when unset) and the Net block; each edit is the command the panel sends;
@@ -421,9 +445,13 @@ fn a_wires_properties_show_and_edit_its_net() {
     let page = h.first_page();
     h.run("place", json!({"symbol": "continuation", "at": [0, 0], "name": "24V"})).unwrap();
     terminal(&mut h, (60.0, 0.0), "X1");
+    // F5: a continuation is a named point, so wire a runs through a pair of them, from -X0.
+    h.run("place", json!({"symbol": "continuation", "at": [0, 100], "name": "24V"})).unwrap();
+    terminal(&mut h, (30.0, 100.0), "X0");
+    line(&mut h, &[(0.0, 100.0), (30.0, 100.0)], json!({}));
     let a = wire(&mut h, &[(0.0, 0.0), (30.0, 0.0)], json!({}));
-    // Brief 032: two wires that meet, joined later by a junction (else they would be one wire).
-    let b = wire(&mut h, &[(30.0, 0.0), (60.0, 0.0)], json!({"join": false}));
+    // Design 072: two wires apart, joined later by a third between their points.
+    let b = wire(&mut h, &[(40.0, 0.0), (60.0, 0.0)], json!({}));
     let view = |h: &mut H, w: WireId| {
         let route = h.route_handle(page, w);
         h.p(|p| props::view(p, Some(page), &[route]))
@@ -467,10 +495,10 @@ fn a_wires_properties_show_and_edit_its_net() {
     // Joining b into a's net elsewhere changes a's Net block; the change meets its dependencies.
     let v = view(&mut h, a);
     let n = h.p(|p| p.change_count());
-    h.run("place", json!({"symbol": "junction", "at": [30, 0]})).unwrap();
+    wire(&mut h, &[(30.0, 0.0), (40.0, 0.0)], json!({}));
     let touched = h.p(|p| p.props_changes_since(n)).unwrap();
     assert!(touched.iter().any(|o| v.deps.contains(o)), "{touched:?}");
-    assert!(row(&view(&mut h, a), "net").value.starts_with("2 wires"));
+    assert!(row(&view(&mut h, a), "net").value.starts_with("3 wires"));
     let _ = b;
 }
 
@@ -490,8 +518,8 @@ fn colours_are_iec_codes_or_three_letter_and_free_text_stays() {
         [a, b, c].map(|w| all.iter().find(|l| l.conductor == w).unwrap().text.clone())
     };
     assert_eq!(texts(&mut h), ["24V-01 0.5 BU", "PE 2.5 GN/YE", "L-01 2.5 BN"]);
-    let r = h.run("wiresettings", json!({"colour_style": "three-letter"})).unwrap();
-    assert_eq!(r["colour_style"], json!("three-letter"));
+    let r = h.run("wiresettings", json!({"colour_style": "code3"})).unwrap();
+    assert_eq!(r["colour_style"], json!("code3"));
     assert_eq!(texts(&mut h), ["24V-01 0.5 BLU", "PE 2.5 GRN/YEL", "L-01 2.5 BRN"]);
     // Design 072 §4.6: a wire's own colours are IEC 60757 colours; free text is refused.
     let e = h.run("setprop", json!({"conductor": a.hex(), "key": "colours", "value": "Violet stripe"})).unwrap_err();
@@ -555,7 +583,7 @@ fn a_fan_view_hides_its_members_labels() {
     assert_eq!(h.head(), head, "a view is not recorded");
     assert_eq!(shown(&mut h), 1, "only the wire outside the cable keeps its label");
     let doc = h.doc();
-    let route = ecad_model::derive::route_on_page(&doc, other, page).unwrap().0;
+    let route = crate::common::wire_line(&doc, other, page).unwrap().0;
     assert!(h.p(|p| p.pages[&page].map.item(route)).is_some());
     h.run("cableview", json!({"cable": cable, "view": "traditional"})).unwrap();
     assert_eq!(shown(&mut h), 4);

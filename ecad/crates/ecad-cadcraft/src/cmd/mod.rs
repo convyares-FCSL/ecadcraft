@@ -100,16 +100,16 @@ fn base_specs() -> Vec<CommandSpec> {
             .noundo(),
         CommandSpec::new("wire", "Wire", crate::cmd::input::typed::<crate::cmd::wire::WireParams>)
             .params(
-                "{points: [[x,y], …], potential?: string, join?: bool (true), junction?: bool (old name of join)} (ends on connection points attach; an end on another wire's open end joins it into one wire, on its interior adds a junction; open ends lying on the new wire join it with a junction)",
+                "{points: [[x,y], …], potential?: string, join?: bool (true)} (ends on connection points attach; an end on another wire's open end joins it into one line, an end on a line's middle lands there (a T); open ends lying on the new line land on it)",
             )
             .interactive(interact::wire)
             .noundo(),
         CommandSpec::new("connect", "Connect", crate::cmd::input::typed::<crate::cmd::connect::ConnectParams>)
-            .params("{conductor: id, end: \"A\"|\"B\", terminal: id}")
+            .params("{route: id, end: \"A\"|\"B\", terminal: id}")
             .interactive(interact::connect)
             .noundo(),
         CommandSpec::new("disconnect", "Disconnect", crate::cmd::input::typed::<crate::cmd::connect::DisconnectParams>)
-            .params("{conductor: id, end: \"A\"|\"B\"}")
+            .params("{route: id, end: \"A\"|\"B\"}")
             .interactive(interact::disconnect)
             .noundo(),
         CommandSpec::new("cableslash", "Cable Slash", crate::cmd::input::typed::<crate::cmd::cable_draw::CableslashParams>)
@@ -201,16 +201,12 @@ end's spine; null: the middle)",
             .noundo(),
         CommandSpec::new("wiresettings", "Wire Settings", crate::cmd::input::typed::<crate::cmd::wire::WiresettingsParams>)
             .params(
-                "{scheme?: \"potential\"|\"page\"|\"page-column\", digits?: 1..6, unclassified_prefix?, potentials?: [{name, prefix, numbered}] (colours and cross-sections: wire categories), colour_style?: \"iec\"|\"three-letter\", label_height?: mm} (no parameters reads; colours are IEC 60757 codes by default, free text allowed)",
+                "{scheme?: \"potential\"|\"page\"|\"page-column\", digits?: 1..6, unclassified_prefix?, potentials?: [{name, prefix, numbered}] (colours and cross-sections: wire categories), colour_style?: \"code2\"|\"code3\"|\"name\", label_height?: mm} (no parameters reads; colours are IEC 60757 codes by default, free text allowed)",
             )
             .noundo(),
         CommandSpec::new("renumberwires", "Renumber Wires", crate::cmd::input::typed::<crate::cmd::wire::RenumberwiresParams>)
             .params("{scope?: \"unnumbered\"|\"all\"} (fixed numbers never change)")
             .interactive(interact::renumberwires)
-            .noundo(),
-        CommandSpec::new("junction", "Junction", crate::cmd::input::typed::<crate::cmd::wire::JunctionParams>)
-            .params("{at: [x,y]} (a junction on the wire there, which is split at it)")
-            .interactive(interact::junction)
             .noundo(),
         CommandSpec::new("checks", "Checks", crate::cmd::input::typed::<crate::cmd::wire::ChecksParams>)
             .params("{kinds?: [kind], limit?: n (200, max 2000), after?: n} (read only)")
@@ -229,7 +225,7 @@ end's spine; null: the middle)",
             .params("{seq?: n} (read-only snapshot)")
             .noundo(),
         CommandSpec::new("joinwires", "Join Wires", crate::cmd::input::typed::<crate::cmd::wire::JoinwiresParams>)
-            .params("{at: [x,y]} (two open ends there become one wire; an open end on a wire, or three or more ends, get a junction)")
+            .params("{at: [x,y]} (two open ends there become one line; open ends on a line's middle, or three or more ends, land on one line there (a T))")
             .interactive(interact::joinwires)
             .noundo(),
     ]
@@ -322,8 +318,8 @@ pub(crate) fn opt_typed<'a, T>(p: &'a Value, key: &str, what: &str, get: impl Fn
     }
 }
 
-/// Most points one WIRE accepts.
-pub(crate) const MAX_WIRE_POINTS: usize = 10_000;
+/// Most points one WIRE accepts: a route's own bound (design 072 §4.3).
+pub(crate) const MAX_WIRE_POINTS: usize = ecad_model::route::MAX_POINTS;
 
 pub(crate) fn point(v: &Value) -> Option<Pt> {
     let a = v.as_array()?;
@@ -347,8 +343,8 @@ pub fn builtin_coil() -> Definition {
         origin: None,
         graphics: vec![Primitive::Polyline { vertices: r.iter().map(|(x, y)| Pt::new(*x, *y)).collect(), closed: true }],
         terminals: vec![
-            TerminalDef { key: ecad_model::PointKey::def("A1"), label: Some("A1".into()), at: Pt::new(0.0, 10.0) },
-            TerminalDef { key: ecad_model::PointKey::def("A2"), label: Some("A2".into()), at: Pt::new(0.0, -10.0) },
+            TerminalDef { key: ecad_model::PointKey::def("A1"), label: Some("A1".into()), at: Pt::new(0.0, 10.0), accepts: Default::default() },
+            TerminalDef { key: ecad_model::PointKey::def("A2"), label: Some("A2".into()), at: Pt::new(0.0, -10.0), accepts: Default::default() },
         ],
         ..Default::default()
     }

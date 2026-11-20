@@ -238,7 +238,7 @@ fn desc(doc: &Document, o: ObjectRef) -> String {
     match o {
         ObjectRef::Device(c) => devices::description(doc, c),
         ObjectRef::Cable(k) => {
-            let n = doc.cables.get(&k).map_or(0, |c| c.members.len());
+            let n = doc.cables.get(&k).map_or(0, |c| c.cores.len());
             format!("Cable, {}", plural(n, "wire", "wires"))
         }
         ObjectRef::Wire(w) => {

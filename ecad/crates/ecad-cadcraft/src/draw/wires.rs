@@ -64,10 +64,12 @@ pub(crate) fn style_routes(doc: &Document, page: PageId, ents: &mut [Entity], it
     let looks = crate::styles::wire::WireLooks::new(doc);
     let index: std::collections::HashMap<Handle, usize> = ents.iter().enumerate().map(|(i, e)| (e.handle, i)).collect();
     for (_, r) in doc.representations_on(page) {
-        let Subject::Wire(c) = r.subject else { continue };
+        let Subject::Route(x) = r.subject else { continue };
         if r.form != Form::Drawn {
             continue;
         }
+        // A line looks as the wire it stands for (design 072 §4.3).
+        let Some(c) = crate::wires::wire_of_route(doc, x) else { continue };
         let look = looks.look(doc, c);
         let weight = (look.line_weight * 100.0).round().clamp(0.0, 211.0) as u16;
         if look.line_type == "continuous" && weight == crate::look::WIRE_WEIGHT {
@@ -99,7 +101,7 @@ pub(crate) fn route_dashes(r: &crate::look::ColouredRoute, route: &Common) -> Ve
         .collect()
 }
 
-/// Every conductor label on `page`: one per route representation, on its longest segment.
+/// Every conductor label on `page`: one per route, on its longest segment.
 pub fn labels_on_page(doc: &Document, page: PageId) -> Vec<WireLabel> {
     labels_on_page_with(doc, page, &std::collections::BTreeSet::new())
 }

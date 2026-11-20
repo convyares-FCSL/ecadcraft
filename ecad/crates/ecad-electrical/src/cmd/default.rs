@@ -144,7 +144,9 @@ pub fn write_setting(entry: &Entry, s: &mut ProjectSettings, value: Option<&str>
         k if k == defaults::settings::TAG_PADDING.key => s.tag_padding = whole(value)?.map(small),
         k if k == defaults::settings::WIRE_DIGITS.key => s.wiring.digits = whole(value)?.map(small),
         k if k == defaults::settings::PAGE_NUMBER_STEP.key => s.page_number_step = whole(value)?,
-        k if k == defaults::settings::COLOUR_STYLE.key => s.wiring.colour_style = value.and_then(ecad_model::wiring::ColourStyle::parse),
+        k if k == defaults::settings::COLOUR_STYLE.key => {
+            s.wiring.colour_style = value.and_then(<ecad_model::colour::ColourWords as ecad_model::words::Word>::parse)
+        }
         k if k == defaults::settings::REFERENCE_STYLE.key => s.reference_style = value.and_then(ecad_model::ReferenceStyle::parse),
         _ => match starter_key(entry) {
             Some(key) => set_tag_prefix(s, key, value),
@@ -210,6 +212,16 @@ pub fn ops(doc: &Document, entry: &Entry, level: Level, target: Target, value: O
             property(ObjectRef::Device(c), doc.devices.get(&c).map(|c| &c.properties), defaults::symbol_key(entry.key, rep))
         }
         (Level::Object, Target::Device(c)) => property(ObjectRef::Device(c), doc.devices.get(&c).map(|c| &c.properties), entry.key.to_string()),
+        // Design 072 §4.6: a wire's own type is its field, changed with `ModifyWire`.
+        (Level::Object, Target::Wire(c)) if entry.key == ecad_model::wiring::WIRE_CATEGORY => {
+            let before = doc.wires.get(&c).ok_or(CmdError::NotFound(Noun::Wire))?;
+            let mut after = before.clone();
+            after.wire_type = match value.as_deref() {
+                Some(v) => Some(ecad_model::StyleRef::parse(v).ok_or_else(|| CmdError::refused(format!("`{v}` is not a wire type")))?),
+                None => None,
+            };
+            Ok(if after == *before { Vec::new() } else { vec![Op::ModifyWire { id: c, before: before.clone(), after }] })
+        }
         (Level::Object, Target::Wire(c)) => property(ObjectRef::Wire(c), doc.wires.get(&c).map(|c| &c.display), entry.key.to_string()),
         (Level::Object, _) => Err(CmdError::refused(NEEDS_OBJECT)),
         (Level::Page, _) => Err(CmdError::refused("The page level needs a `page`.")),

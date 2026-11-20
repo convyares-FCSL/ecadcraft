@@ -4,7 +4,7 @@
 // Coordinates are millimetres on the 5 mm grid from the paper's bottom-left corner (brief 019);
 // terminal positions follow the starter symbols. Brief 022: wires carry potentials, continuations
 // (placed before their wire, so it attaches) carry 24V and 0V across pages, and one T on page 2
-// is a junction.
+// is a line ending on another line (design 072 §4.3).
 
 // Brief 024: the project is in control panel +CP1; page 3 is in the field (+FIELD).
 {"command":"projectprops","params":{"location":"+CP1"}}
@@ -52,11 +52,13 @@
 {"command":"wire","params":{"points":[[30,90],[30,75]],"potential":"24V"}}
 {"command":"wire","params":{"points":[[30,75],[85,75]],"potential":"24V"}}
 // 0V: the coil's wire runs to a continuation at the left, just above the title block; the lamp's
-// wire ends on its bend, so a junction joins them.
+// line ends on its bend (a T), which joins them.
 {"command":"place","params":{"symbol":"continuation","at":[20,52.5],"rotation":270,"name":"0V"}}
 {"command":"wire","params":{"points":[[30,55],[30,52.5],[20,52.5]]}}
 {"command":"wire","params":{"points":[[85,55],[85,52.5],[30,52.5]]}}
-// Power circuit: the contactor's main contacts feed the motor on page 3 through cable -W01.
+// Power circuit: the contactor's main contacts feed the motor on page 3 through cable -W01. Its
+// lines end free at the reference (design 072: a line with a free end carries no wire yet; the
+// cores sit on the lines).
 {"command":"place","params":{"symbol":"power3","at":[130,110],"tag":"K01"}}
 {"command":"place","params":{"symbol":"continuation","at":[120,150],"rotation":180,"name":"L1"}}
 {"command":"place","params":{"symbol":"continuation","at":[130,150],"rotation":180,"name":"L2"}}
@@ -81,13 +83,20 @@
 // ---------------------------------------------------------------- page 3: Field
 {"command":"newpage","params":{"title":"Field"}}
 {"command":"pageprops","params":{"location":"+FIELD"}}
-{"command":"cablecontinue","params":{"cable":"$w1.cable","at":[130,150],"toward":[130,130]},"as":"cont"}
+// -W01 continues here (design 072 §4.4): its page-2 lines end loose at the reference; `cablecontinue`
+// lands them on named points and draws three stubs from this page's reference, which run on to
+// X02. Each core is then one wire from -K01 on page 2 to -X02 here.
 {"command":"place","params":{"symbol":"terminal","at":[110,110],"tag":"X02"},"as":"x2a"}
 {"command":"place","params":{"symbol":"terminal","at":[130,110],"tag":"X02"},"as":"x2b"}
 {"command":"place","params":{"symbol":"terminal","at":[150,110],"tag":"X02"},"as":"x2c"}
-{"command":"connect","params":{"conductor":"$cont.routes.0.conductor","end":"$cont.routes.0.free_end","terminal":"$x2a.terminals.0.terminal"}}
-{"command":"connect","params":{"conductor":"$cont.routes.1.conductor","end":"$cont.routes.1.free_end","terminal":"$x2b.terminals.0.terminal"}}
-{"command":"connect","params":{"conductor":"$cont.routes.2.conductor","end":"$cont.routes.2.free_end","terminal":"$x2c.terminals.0.terminal"}}
+{"command":"cablecontinue","params":{"cable":"$w1.cable","at":[130,150],"toward":[130,130]}}
+{"command":"wire","params":{"points":[[125,130],[110,130],[110,110]]},"as":"c1"}
+{"command":"wire","params":{"points":[[130,130],[130,110]]},"as":"c2"}
+{"command":"wire","params":{"points":[[135,130],[150,130],[150,110]]},"as":"c3"}
+// The tool's potential goes only on a line drawn between two points; these lines join the stubs.
+{"command":"potential","params":{"conductor":"$c1.conductor","value":"L1"}}
+{"command":"potential","params":{"conductor":"$c2.conductor","value":"L2"}}
+{"command":"potential","params":{"conductor":"$c3.conductor","value":"L3"}}
 {"command":"place","params":{"symbol":"motor3","at":[130,75],"tag":"M01"},"as":"m1"}
 {"command":"wire","params":{"points":[[110,110],[110,100],[120,100],[120,90]]}}
 {"command":"wire","params":{"points":[[130,110],[130,90]]}}

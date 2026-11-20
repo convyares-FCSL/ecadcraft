@@ -46,8 +46,8 @@ fn zoom(h: &mut H) {
 fn every_starter_symbol_on_one_page() {
     let deltas: Deltas = Arc::default();
     let mut h = harness_with(Some(deltas.clone()));
-    // The 19 device symbols (brief 028 added the PE terminal); the junction and continuation
-    // (brief 022) are not devices.
+    // The 19 device symbols (brief 028 added the PE terminal); the continuation (brief 022) is
+    // not a device.
     // (brief 022) are not devices; brief 034's families have their own tests.
     let devices = ecad_cadcraft::symbols::STARTERS
         .iter()
