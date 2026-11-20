@@ -21,6 +21,8 @@ mod changes;
 mod connectors;
 mod devices;
 mod frame;
+mod generated;
+mod pages;
 mod tree;
 
 use std::sync::Arc;
@@ -33,6 +35,8 @@ pub use changes::Changes;
 pub use connectors::{ConnectorsScope, ConnectorsView};
 pub use devices::{DevicesFeed, DevicesScope};
 pub use frame::{FrameScope, FrameView};
+pub use generated::{GeneratedScope, GeneratedView};
+pub use pages::{PagesScope, PagesView, points_pages};
 pub use tree::{TreeFeed, TreeScope};
 
 use crate::text_style::fonts::TextMetrics;
@@ -56,6 +60,8 @@ impl std::fmt::Debug for EngineInputs {
 #[derive(Debug, Clone, Copy)]
 pub struct Inputs<'a> {
     pub engine: &'a EngineInputs,
+    /// The page whose frame is kept (`FrameView`), if any.
+    pub frame_page: Option<ecad_model::PageId>,
 }
 
 /// A view built on first show (the checks list, the report models): skipped by the pipeline
@@ -95,7 +101,9 @@ impl<V> Lazy<V> {
 #[derive(Debug, Default)]
 pub struct Pending {
     connectors: ConnectorsScope,
+    pages: PagesScope,
     frame: FrameScope,
+    generated: GeneratedScope,
     tree: TreeScope,
     devices: DevicesScope,
 }
@@ -112,7 +120,9 @@ pub struct Views {
     // Stage 1: indexes that depend only on the document.
     connectors: ConnectorsView,
     // Stage 3: pages.
+    pages: PagesView,
     frame: FrameView,
+    generated: GeneratedView,
     // Stage 4: feeds for the change log.
     tree: TreeFeed,
     devices: DevicesFeed,
@@ -121,7 +131,15 @@ pub struct Views {
 impl Views {
     /// No view built yet; [`Views::rebuild`] builds the kept ones.
     pub fn new(inputs: EngineInputs) -> Self {
-        Views { inputs, connectors: ConnectorsView::default(), frame: FrameView::default(), tree: TreeFeed, devices: DevicesFeed::default() }
+        Views {
+            inputs,
+            connectors: ConnectorsView::default(),
+            pages: PagesView::default(),
+            frame: FrameView::default(),
+            generated: GeneratedView::default(),
+            tree: TreeFeed,
+            devices: DevicesFeed::default(),
+        }
     }
 
     /// The engine's inputs the views are built with.
@@ -150,7 +168,9 @@ impl Views {
         let cx = NoteCx { doc: before, phase: Phase::Before, effects: &effects };
         let mut pending = Pending::default();
         note_view::<_, Inputs<'_>>(&self.connectors, &cx, &mut pending.connectors);
+        note_view::<_, Inputs<'_>>(&self.pages, &cx, &mut pending.pages);
         note_view::<_, Inputs<'_>>(&self.frame, &cx, &mut pending.frame);
+        note_view::<_, Inputs<'_>>(&self.generated, &cx, &mut pending.generated);
         note_view::<_, Inputs<'_>>(&self.tree, &cx, &mut pending.tree);
         note_view::<_, Inputs<'_>>(&self.devices, &cx, &mut pending.devices);
         pending
@@ -159,19 +179,25 @@ impl Views {
     /// After phase on the committed transaction's ops, then update every kept view, stage by
     /// stage, and merge their outcomes.
     pub fn finish(&mut self, after: &Document, tx_ops: &[Op], pending: Pending) -> Changes {
-        let Pending { mut connectors, mut frame, mut tree, mut devices } = pending;
+        let Pending { mut connectors, mut pages, mut frame, mut generated, mut tree, mut devices } = pending;
         let effects = Effects::of(tx_ops);
         let cx = NoteCx { doc: after, phase: Phase::After, effects: &effects };
         note_view::<_, Inputs<'_>>(&self.connectors, &cx, &mut connectors);
+        note_view::<_, Inputs<'_>>(&self.pages, &cx, &mut pages);
         note_view::<_, Inputs<'_>>(&self.frame, &cx, &mut frame);
+        note_view::<_, Inputs<'_>>(&self.generated, &cx, &mut generated);
         note_view::<_, Inputs<'_>>(&self.tree, &cx, &mut tree);
         note_view::<_, Inputs<'_>>(&self.devices, &cx, &mut devices);
-        let inputs = Inputs { engine: &self.inputs };
+        let inputs = Inputs { engine: &self.inputs, frame_page: self.frame.shown().map(|(p, _)| p) };
         let mut changes = Changes::default();
         // Stage 1: the indexes.
         merge(&mut changes, self.connectors.update(after, connectors, &inputs));
         // Stage 3: pages.
+        merge(&mut changes, self.pages.update(after, pages, &inputs));
+        changes.named = self.pages.take_named();
         merge(&mut changes, self.frame.update(after, frame, &inputs));
+        merge(&mut changes, self.generated.update(after, generated, &inputs));
+        changes.cover = self.generated.take_cover();
         // Stage 4: the feeds, merged in field order.
         merge(&mut changes, self.tree.update(after, tree, &inputs));
         merge(&mut changes, self.devices.update(after, devices, &inputs));
@@ -185,13 +211,19 @@ impl Views {
     /// Verify mode: every kept view against a fresh build; one line per disagreement (the view
     /// is rebuilt).
     pub fn verify(&mut self, doc: &Document) -> Vec<String> {
-        self.connectors.check(doc).into_iter().collect()
+        let inputs = Inputs { engine: &self.inputs, frame_page: None };
+        let generated = self.generated.verify(doc, &inputs);
+        if generated.is_some() {
+            self.generated.forget();
+        }
+        self.connectors.check(doc).into_iter().chain(generated).collect()
     }
 
     /// Open, reload, branch switch: rebuild every kept view from `doc`.
     pub fn rebuild(&mut self, doc: &Document) {
         self.connectors = ConnectorsView::build(doc);
         self.frame.forget();
+        self.generated.forget();
     }
 
     /// The views of another document state (an issued or finalised revision), built with the

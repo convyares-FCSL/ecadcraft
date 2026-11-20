@@ -348,7 +348,6 @@ impl Project {
         // 025).
         let reuse = self.xref_reuse();
         let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &ops, reuse, &crate::draw::text_style::EngineMetrics);
-        let pages = pages_touched(self.ledger.document(), &ops, self.outputs.as_ref().map(|o| &o.plc));
         let props = crate::props::touched(self.ledger.document(), &ops);
         let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &ops));
         let outputs = self.outputs.as_ref().map(|o| o.scope(self.ledger.document(), &ops));
@@ -369,14 +368,12 @@ impl Project {
             self.pages.entry(id).or_default();
         }
         let refs = self.finish_watch(watch);
-        let numbered = self.numbered_pages(n);
         let props = self.with_numbered(props, n);
         self.update_checks(checks);
         let generated = self.update_outputs(outputs);
-        let generated = Some(self.generated_touched(generated));
-        let pages = touched(touched(touched(pages, refs.pages), numbered), generated);
+        let pages = touched(refs.pages, Some(generated));
         let mut changes = self.finish_derived(pending);
-        pass_through(&mut changes, Old { pages, named: BTreeSet::new(), props, echo: refs.orphaned.into_iter().collect() });
+        pass_through(&mut changes, Old { pages, props, echo: refs.orphaned.into_iter().collect() });
         self.apply_changes(pg, command, changes, Path::Command);
         Ok(tx)
     }
@@ -390,7 +387,7 @@ impl Project {
     /// What follows every commit, on all three paths (design 064 §5): the change log entry, the
     /// redraw the path calls for, and the lines for the command line.
     pub(super) fn apply_changes(&mut self, pg: &mut Pages<'_>, command: &str, changes: Changes, path: Path<'_>) {
-        let Changes { mut pages, named, devices, props, list, frame_stale, echo, problems } = changes;
+        let Changes { mut pages, named, devices, props, list, frame_stale, cover, echo, problems } = changes;
         // Verify mode: a kept view that differed from a fresh build (it was rebuilt).
         let head = self.ledger.head();
         for line in problems {
@@ -402,6 +399,10 @@ impl Project {
         }
         if frame_stale {
             self.frame_stale = true;
+        }
+        // Brief 054b: the cover's Checks rows follow the cover (a cover added or removed too).
+        if cover && let Some(c) = self.checks.as_mut() {
+            c.set_cover(self.ledger.document());
         }
         let pages = pages.into_option();
         // Which page an undo or redo brings to the front is read before the change is recorded.
@@ -485,26 +486,6 @@ impl Project {
         }
         Some(props)
     }
-
-    /// The pages whose labels the extension of the last transaction changed: the pages of the
-    /// wires its ops (after the first `n`, the command's own) made, removed or renumbered (the
-    /// wire rewrite, design 072 §4.4, and the numbering pass, brief 022).
-    pub(super) fn numbered_pages(&self, n: usize) -> Option<BTreeSet<PageId>> {
-        let doc = self.ledger.document();
-        let extra = self.ledger.log().last().map(|t| t.ops.get(n..).unwrap_or_default()).unwrap_or_default();
-        let mut out = BTreeSet::new();
-        for op in extra {
-            match op {
-                Op::SetProperty { object: ecad_model::ObjectRef::Wire(c), .. } | Op::ModifyWire { id: c, .. } => {
-                    out.extend(crate::wires::wire_pages(doc, *c));
-                }
-                // The rewrite's wires (design 072 §4.4): labelled on the routes at their ends.
-                Op::CreateWire { wire, .. } | Op::DeleteWire { wire, .. } => out.extend(super::points_pages(doc, &wire.ends)),
-                _ => {}
-            }
-        }
-        Some(out)
-    }
 }
 
 /// Which commit path a change came from: what [`Project::apply_changes`] redraws.
@@ -523,7 +504,6 @@ pub(super) enum Path<'a> {
 /// one of them and its field here).
 pub(super) struct Old {
     pub pages: Option<BTreeSet<PageId>>,
-    pub named: BTreeSet<PageId>,
     pub props: Option<BTreeSet<ecad_model::ObjectRef>>,
     pub echo: Vec<String>,
 }
@@ -531,7 +511,6 @@ pub(super) struct Old {
 /// Add `old` to the views' `changes`.
 pub(super) fn pass_through(changes: &mut Changes, old: Old) {
     changes.pages.union(PageSet::from_option(old.pages));
-    changes.named.extend(old.named);
     changes.props = match (changes.props.take(), old.props) {
         (Some(mut a), Some(b)) => {
             a.extend(b);

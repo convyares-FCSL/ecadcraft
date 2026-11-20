@@ -33,3 +33,15 @@ Progress (automated checks only, not owner-tried):
   both halves) on different pages, give one its own socket side name in Properties, then set the
   project's socket side name in Settings; only the other connector's half tags change, on its
   page, and undo puts them back.
+- Step 6, the drawn pages (`PagesView`): which pages a commit could change, and which page an
+  undo or redo brings to the front, now come from one view on every path; a drawing edit's
+  change log now also names the other pages it changes (design 064 D2). To try it: move a
+  symbol, open another page, and undo: the page of the move comes to the front with the symbol
+  back in place.
+- Step 9, generated pages (`GeneratedView`): the cover, contents and revisions pages decide from
+  one view whether they are drawn again. To try it: with a cover, a contents page and a
+  revisions page in the book and a schematic page in front, place the project's first coil (the
+  cover's symbol legend gains it, a second coil leaves the cover alone), rename the page (the
+  contents page lists the new title), and add a revision (the revisions page shows the row).
+  The report pages (parts list, terminals, cables, I/O list, racks) follow once `OutputsView`
+  lands.

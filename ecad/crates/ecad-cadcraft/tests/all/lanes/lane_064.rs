@@ -278,13 +278,22 @@ fn the_connectors_view_matches_its_old_functions() {
     let mut doc = Document::default();
     views.rebuild(&doc);
     let mut old = connectors::Index::build(&doc);
+    // The view on its own, for its pages: the pipeline's `Changes.pages` holds every view's.
+    let mut alone = ecad_electrical::derived::ConnectorsView::build(&doc);
     let mut named = 0;
     for tx in &log {
+        use ecad_electrical::derived::{Inputs, note_view};
+        use ecad_model::view::{DerivedView, NoteCx, Phase};
+        let effects = ecad_model::effect::Effects::of(&tx.ops);
+        let mut scope = Default::default();
+        note_view::<_, Inputs<'_>>(&alone, &NoteCx { doc: &doc, phase: Phase::Before, effects: &effects }, &mut scope);
         let pending = views.begin(&doc, &tx.ops);
         for op in &tx.ops {
             op.apply(&mut doc).unwrap();
         }
-        let pages = views.finish(&doc, &tx.ops, pending).pages;
+        views.finish(&doc, &tx.ops, pending);
+        note_view::<_, Inputs<'_>>(&alone, &NoteCx { doc: &doc, phase: Phase::After, effects: &effects }, &mut scope);
+        let pages = alone.update(&doc, scope, &Inputs { engine: views.inputs(), frame_page: None }).pages;
         old.update(&doc, &old_connectors_touched(&doc, &tx.ops));
         let what = format!("transaction {} {:?}", tx.seq, tx.label);
         assert_eq!(views.connectors(), &old, "{what}: the index");
@@ -522,4 +531,49 @@ fn a_refused_commit_leaves_the_frame_and_its_flag() {
     let valid = ecad_model::Op::ModifyProject { before: project.clone(), after: titled("Panel 7") };
     h.project.apply_ops(&mut h.s, "valid", vec![valid]).unwrap();
     assert_eq!(h.p(|p| p.frame_builds), builds + 1, "a title change is on the frame's map");
+}
+
+/// Step 9 (the R9 revisions probe, 2026-11-18): a revision records only the project's data, and
+/// the Revisions page behind the active page is in the change log (every page is too: the Rev box
+/// is in every frame).
+#[test]
+fn a_revision_marks_the_revisions_page_behind() {
+    use serde_json::json;
+    let mut h = crate::common::H::new(6431);
+    let r: PageId = crate::common::id(&h.run("newpage", json!({"type": "front", "generated": "revisions"})).unwrap(), "page");
+    let s: PageId = crate::common::id(&h.run("newpage", json!({"type": "schematic"})).unwrap(), "page");
+    h.activate(s);
+    let n = h.p(|p| p.change_count());
+    h.run("revision", json!({"description": "First issue", "drawn": "CVA"})).unwrap();
+    let pages = h.p(|p| p.changes_since(n));
+    assert!(pages.as_ref().is_none_or(|p| p.contains(&r)), "{pages:?}");
+}
+
+/// Step 9 (C8 for the cover and contents): each kind's trigger puts its page in the change log,
+/// and an edit that leaves it does not.
+#[test]
+fn every_front_kind_redraws_after_its_trigger() {
+    use serde_json::json;
+    let mut h = crate::common::H::new(6491);
+    let page = |h: &mut crate::common::H, v: serde_json::Value| -> PageId { crate::common::id(&h.run("newpage", v).unwrap(), "page") };
+    let cover = page(&mut h, json!({"generated": "cover"}));
+    let contents = page(&mut h, json!({"generated": "contents"}));
+    let revisions = page(&mut h, json!({"type": "front", "generated": "revisions"}));
+    let first = h.first_page();
+    h.activate(first);
+    let after = |h: &mut crate::common::H, cmd: &str, v: serde_json::Value| {
+        let n = h.p(|p| p.change_count());
+        h.run(cmd, v).unwrap();
+        h.p(|p| p.changes_since(n)).expect("not every page")
+    };
+    // The first coil is new to the cover's symbol legend; the second is not.
+    let pages = after(&mut h, "place", json!({"symbol": "coil", "at": [100, 100]}));
+    assert!(pages.contains(&cover) && !pages.contains(&contents) && !pages.contains(&revisions), "{pages:?}");
+    let pages = after(&mut h, "place", json!({"symbol": "coil", "at": [150, 100]}));
+    assert!(!pages.contains(&cover) && !pages.contains(&contents) && !pages.contains(&revisions), "{pages:?}");
+    // A retitled page is listed on the contents.
+    let pages = after(&mut h, "renamepage", json!({"page": first.hex(), "title": "Supply"}));
+    assert!(pages.contains(&contents) && !pages.contains(&cover) && !pages.contains(&revisions), "{pages:?}");
+    // A revision is in every page's frame, so every page redraws: the revisions page's own map is
+    // `a_revision_marks_the_revisions_page_behind`.
 }
