@@ -345,6 +345,9 @@ pub struct Device {
     pub definition: Option<DefinitionId>,
     /// What the device is.
     pub device_type: DeviceType,
+    /// Its values of the project's user fields, by field (design 072 §2.8); left out while empty.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub user: BTreeMap<crate::id::UserFieldId, crate::user::UserValue>,
 }
 
 impl Device {
@@ -1353,6 +1356,9 @@ pub struct Document {
     pub cables: BTreeMap<CableId, Cable>,
     /// The lines drawn on pages (design 072 F31).
     pub routes: BTreeMap<RouteId, crate::route::Route>,
+    /// The typed links between devices (design 072 §2.6).
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub device_links: BTreeMap<crate::id::LinkId, crate::user::DeviceLink>,
     pub definitions: BTreeMap<DefinitionId, Definition>,
     pub settings: ProjectSettings,
     /// Named versions (bookmarks): name → the `seq` it names (§6.1). History, never pruned.
@@ -1398,6 +1404,8 @@ struct DocumentData {
     cables: BTreeMap<CableId, Cable>,
     #[serde(default)]
     routes: BTreeMap<RouteId, crate::route::Route>,
+    #[serde(default)]
+    device_links: BTreeMap<crate::id::LinkId, crate::user::DeviceLink>,
     definitions: BTreeMap<DefinitionId, Definition>,
     settings: ProjectSettings,
     versions: BTreeMap<String, u64>,
@@ -1428,6 +1436,7 @@ impl From<DocumentData> for Document {
             wires,
             cables,
             routes,
+            device_links,
             definitions,
             settings,
             versions,
@@ -1449,6 +1458,7 @@ impl From<DocumentData> for Document {
             wires,
             cables,
             routes,
+            device_links,
             definitions,
             settings,
             versions,
@@ -1480,6 +1490,7 @@ impl PartialEq for Document {
             wires,
             cables,
             routes,
+            device_links,
             definitions,
             settings,
             versions,
@@ -1502,6 +1513,7 @@ impl PartialEq for Document {
             && *wires == other.wires
             && *cables == other.cables
             && *routes == other.routes
+            && *device_links == other.device_links
             && *definitions == other.definitions
             && *settings == other.settings
             && *versions == other.versions

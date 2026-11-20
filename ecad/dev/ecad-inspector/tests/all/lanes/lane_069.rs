@@ -158,6 +158,16 @@ fn every_op_ledger() -> Ledger {
         )
         .unwrap();
     ledger.commit(Author::User, "bookmark", vec![Op::NameVersion { name: "v".into(), at: 1, description: None }]).unwrap();
+    // Lane 072 B step 5 (A15): two devices and a link between them.
+    let pair: [ecad_model::DeviceId; 2] = [ids.fresh(), ids.fresh()];
+    let link = ids.fresh();
+    let link_v = ecad_model::DeviceLink { kind: ecad_model::LinkKind::MechanicalInterlock, a: pair[0], b: pair[1] };
+    let linked = vec![
+        Op::CreateDevice { id: pair[0], device: ecad_model::Device::default() },
+        Op::CreateDevice { id: pair[1], device: ecad_model::Device::default() },
+        Op::AddDeviceLink { id: link, link: link_v },
+    ];
+    ledger.commit(Author::User, "linked", linked).unwrap();
     let moved = line(page, layer, 7.0);
     let mut rep_after = rep_wire_v.clone();
     rep_after.role = ecad_model::Role::Drawn;
@@ -239,6 +249,9 @@ fn every_op_ledger() -> Ledger {
                 ..ecad_model::Project::default()
             },
         },
+        // Lane 072 B step 5 (A15): a link made and one removed.
+        Op::AddDeviceLink { id: ids.fresh(), link: ecad_model::DeviceLink { kind: ecad_model::LinkKind::AuxiliaryBlock, ..link_v } },
+        Op::RemoveDeviceLink { id: link, link: link_v },
     ];
     for op in ops {
         let name = op.name();

@@ -937,6 +937,8 @@ pub fn op_view(op: &Op) -> OpView {
         ),
         Op::SetStandard { before, after } => (val(before), val(after)),
         Op::ModifyProject { before, after } => (val(before), val(after)),
+        Op::AddDeviceLink { link, .. } => (None, val(link)),
+        Op::RemoveDeviceLink { link, .. } => (val(link), None),
     };
     OpView { name: op.name(), targets: op_targets(op), before, after }
 }
@@ -1034,6 +1036,11 @@ pub fn op_targets(op: &Op) -> Vec<ObjectId> {
         }),
         Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => out.push(ObjectId::Definition(*id)),
         Op::SetProjectSettings { .. } | Op::ModifyProject { .. } => out.push(ObjectId::Settings),
+        // A device link (design 072 §2.6) shows in the history of both devices it joins.
+        Op::AddDeviceLink { link, .. } | Op::RemoveDeviceLink { link, .. } => {
+            out.push(ObjectId::Device(link.a));
+            out.push(ObjectId::Device(link.b));
+        }
         Op::NameVersion { .. } | Op::UnnameVersion { .. } => {}
         // Folders (brief 019) are not among the debugger's objects yet.
         Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => {}

@@ -842,6 +842,8 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
     // Brief 045 (FP1 condition 2, review of #84, 1): a rack merged away hands its cards to `into`,
     // which takes its rack body (or already is a rack); otherwise they leave it, in this transaction.
     crate::plc::rack::merge_into(doc, &mut ops, from, into);
+    // Design 072 §2.6: its links move to `into`.
+    ops.extend(crate::cmd::device_link::repoint_ops(doc, from, into));
     ops.push(Op::DeleteDevice { id: from, device: from_c });
     Ok(ops)
 }
@@ -885,6 +887,7 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
         if doc.representations_of(Subject::Device(c)).all(|(id, _)| gone.contains(&id))
             && let Some(component) = doc.devices.get(&c)
         {
+            ops.extend(crate::cmd::device_link::unlink_ops(doc, c));
             ops.push(Op::DeleteDevice { id: c, device: component.clone() });
         }
     }
@@ -916,6 +919,7 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
             let (released, n) =
                 if crate::plc::edit::station_of(doc, c).is_some() { crate::plc::rack::release_cards(doc, c) } else { (Vec::new(), 0) };
             ops.extend(released);
+            ops.extend(crate::cmd::device_link::unlink_ops(doc, c));
             ops.push(Op::DeleteDevice { id: c, device: component.clone() });
             if n > 0 {
                 notes.push(format!("Deleted {who}; {}", crate::plc::rack::released_words(n)));

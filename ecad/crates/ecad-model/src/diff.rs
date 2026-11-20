@@ -257,6 +257,22 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
         }
     }
 
+    // Device links (design 072 §2.6): removed before any device goes, added after every device
+    // is made.
+    let (mut link_removes, mut link_adds) = (Vec::new(), Vec::new());
+    if project {
+        for (id, l) in &from.device_links {
+            if to.device_links.get(id) != Some(l) {
+                link_removes.push(Op::RemoveDeviceLink { id: *id, link: *l });
+            }
+        }
+        for (id, l) in &to.device_links {
+            if from.device_links.get(id) != Some(l) {
+                link_adds.push(Op::AddDeviceLink { id: *id, link: *l });
+            }
+        }
+    }
+
     // The project.
     if project {
         props(ObjectRef::Project, &from.properties, &to.properties, keep_project_key, &mut changes);
@@ -274,7 +290,8 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
         styles(from, to, &mut changes);
     }
 
-    let mut out = Vec::with_capacity(removes.len() + adds.len() + changes.len());
+    let mut out = Vec::with_capacity(link_removes.len() + removes.len() + adds.len() + changes.len() + link_adds.len());
+    out.extend(link_removes);
     out.extend(removes);
     out.extend(page_removes);
     out.extend(folder_removes);
@@ -282,6 +299,7 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
     out.extend(folder_adds);
     out.extend(adds);
     out.extend(changes);
+    out.extend(link_adds);
     out
 }
 
@@ -360,6 +378,7 @@ pub fn objects(ops: &[Op]) -> BTreeMap<(&'static str, u128), usize> {
             },
             Op::SetProjectSettings { .. } => ("settings", 0),
             Op::ModifyProject { .. } => ("project", 0),
+            Op::AddDeviceLink { id, .. } | Op::RemoveDeviceLink { id, .. } => ("device link", id.0),
             Op::NameVersion { .. } | Op::UnnameVersion { .. } => continue,
         };
         *out.entry(key).or_insert(0) += 1;

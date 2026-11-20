@@ -1696,6 +1696,8 @@ impl Scope {
                 // Brief 052 (design 052 §6): a page's function or location is a context for the
                 // devices on it; the project's for every device (rare); the list's codes for the
                 // objects storing that entry, and the duplicate rows.
+                // No check or output reads a device link yet (design 072 §2.6).
+                Op::AddDeviceLink { .. } | Op::RemoveDeviceLink { .. } => {}
                 Op::ModifyProject { before, after } => {
                     use crate::designations::{Aspect, changed_codes, default_key};
                     for a in Aspect::ALL {

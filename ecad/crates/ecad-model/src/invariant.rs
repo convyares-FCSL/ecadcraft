@@ -168,6 +168,10 @@ impl Touched {
                 self.definitions.insert(*id);
             }
             Effect::Settings { .. } | Effect::Version { .. } => {}
+            // Links are checked with the project (I24).
+            Effect::DeviceLink { .. } => {
+                self.project = true;
+            }
             Effect::Folder { id, index_before, index_after, .. } => {
                 // An add or a remove changes the folder order; a change in place does not.
                 if index_before.is_some() || index_after.is_some() {
@@ -236,11 +240,43 @@ impl Document {
     /// I22 (design 072 §5.3): the location and function lists are well formed
     /// ([`crate::project::Project::problem`]). A page or the project naming an id with no entry
     /// is not a breach: it shows `?`.
+    ///
+    /// I24 (design 072 §2.8, §2.6): every device's user values name a field the project defines
+    /// and are of its kind; every device link joins two different devices that exist, once.
     fn check_project(&self) -> Result<()> {
-        match self.project.problem() {
-            Some(p) => bad(p),
-            None => Ok(()),
+        if let Some(p) = self.project.problem() {
+            return bad(p);
         }
+        for (id, d) in self.devices.iter().filter(|(_, d)| !d.user.is_empty()) {
+            self.check_user_values(*id, d)?;
+        }
+        self.check_device_links()
+    }
+
+    fn check_user_values(&self, id: DeviceId, c: &Device) -> Result<()> {
+        for (f, v) in &c.user {
+            match self.project.user_field(*f) {
+                None => return bad(format!("device {id} has a value of user field {f}, which the project does not define")),
+                Some(def) if !v.fits(&def.kind) => {
+                    return bad(format!("device {id}'s value of user field \"{}\" is not a {} value", def.name.as_str(), def.kind.word()));
+                }
+                Some(_) => {}
+            }
+        }
+        Ok(())
+    }
+
+    fn check_device_links(&self) -> Result<()> {
+        let links: Vec<_> = self.device_links.iter().collect();
+        for (i, (id, l)) in links.iter().enumerate() {
+            if l.a == l.b || !self.devices.contains_key(&l.a) || !self.devices.contains_key(&l.b) {
+                return bad(format!("device link {id} does not join two different devices that exist"));
+            }
+            if links.get(..i).unwrap_or_default().iter().any(|(_, k)| k.same_as(l)) {
+                return bad(format!("device link {id} repeats another link"));
+            }
+        }
+        Ok(())
     }
 
     /// I-styles (brief 050a, design 050 §3.3): every catalogue word is well formed, and no
@@ -502,6 +538,7 @@ impl Document {
         if let Some(k) = c.properties.keys().find(|k| crate::keys::is_reserved_on(crate::keys::Holder::Device, k)) {
             return bad(format!("device {id} holds {k} in its properties; it is a field"));
         }
+        self.check_user_values(id, c)?;
         if let Some(p) = c.device_type.problem() {
             return bad(format!("device {id}: {p}"));
         }
@@ -643,10 +680,8 @@ impl Document {
                 if !points.insert(*t) || self.terminals.contains_key(t) {
                     return bad(format!("cable {id} lists point {t} twice, or a component's terminal as a named point"));
                 }
-                let placed = self
-                    .representations_showing(*t)
-                    .filter(|(_, r)| r.subject == Subject::Cable(id) && r.role == crate::Role::Reference)
-                    .count();
+                let placed =
+                    self.representations_showing(*t).filter(|(_, r)| r.subject == Subject::Cable(id) && r.role == crate::Role::Reference).count();
                 if placed != 1 {
                     return bad(format!("cable {id}'s point {t} is placed by {placed} references, not one"));
                 }

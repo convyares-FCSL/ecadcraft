@@ -180,6 +180,15 @@ pub enum Op {
         before: Cable,
         after: Cable,
     },
+    /// Link two devices (design 072 §2.6, F-ops `AddDeviceLink`/`RemoveDeviceLink`).
+    AddDeviceLink {
+        id: crate::id::LinkId,
+        link: crate::user::DeviceLink,
+    },
+    RemoveDeviceLink {
+        id: crate::id::LinkId,
+        link: crate::user::DeviceLink,
+    },
     SetProperty {
         object: ObjectRef,
         key: String,
@@ -360,6 +369,8 @@ impl Op {
             Op::SetStyle { layer, catalogue, id, before, after } => Op::SetStyle { layer, catalogue, id, before: after, after: before },
             Op::SetStandard { before, after } => Op::SetStandard { before: after, after: before },
             Op::ModifyProject { before, after } => Op::ModifyProject { before: after, after: before },
+            Op::AddDeviceLink { id, link } => Op::RemoveDeviceLink { id, link },
+            Op::RemoveDeviceLink { id, link } => Op::AddDeviceLink { id, link },
         }
     }
 
@@ -480,6 +491,9 @@ impl Op {
             }
             Op::DeleteDevice { id, device } => {
                 holds(&doc.devices, *id, device, "device", checked)?;
+                if doc.device_links.values().any(|l| l.names(*id)) {
+                    return Err(pre(format!("device {id} is linked to another device; remove its links first")));
+                }
                 if let Some(old) = doc.devices.remove(id) {
                     doc.index.device(*id, &old, Delta::Remove);
                 }
@@ -665,6 +679,20 @@ impl Op {
                 holds(&doc.definitions, *id, definition, "definition", checked)?;
                 doc.definitions.remove(id);
             }
+            Op::AddDeviceLink { id, link } => {
+                absent(&doc.device_links, *id, "device link")?;
+                if link.a == link.b || !doc.devices.contains_key(&link.a) || !doc.devices.contains_key(&link.b) {
+                    return Err(pre(format!("device link {id} must join two different devices that exist")));
+                }
+                if doc.device_links.values().any(|l| l.same_as(link)) {
+                    return Err(pre(format!("device link {id} repeats a link the devices already have")));
+                }
+                doc.device_links.insert(*id, *link);
+            }
+            Op::RemoveDeviceLink { id, link } => {
+                holds(&doc.device_links, *id, link, "device link", checked)?;
+                doc.device_links.remove(id);
+            }
             Op::ModifyProject { before, after } => {
                 if checked && &doc.project != before {
                     return Err(pre("the project's lists differ from the recorded value".into()));
@@ -795,6 +823,8 @@ impl Op {
             Op::SetStyle { .. } => "SetStyle",
             Op::SetStandard { .. } => "SetStandard",
             Op::ModifyProject { .. } => "ModifyProject",
+            Op::AddDeviceLink { .. } => "AddDeviceLink",
+            Op::RemoveDeviceLink { .. } => "RemoveDeviceLink",
         }
     }
 }

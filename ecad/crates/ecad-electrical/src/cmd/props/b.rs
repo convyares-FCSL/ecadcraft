@@ -10,6 +10,11 @@ use crate::error::CmdError;
 /// This lane's rows, asked before [`super::super::prop::PROP_RULES`].
 pub static RULES: &[PropRule] = &[
     PropRule {
+        what: "user fields (072 B)",
+        claims: |_, o, k| matches!(o, ObjectRef::Device(_)) && k.starts_with(crate::cmd::device_link::USER_PREFIX),
+        build: Build::Record(crate::cmd::device_link::user_value),
+    },
+    PropRule {
         what: "device text fields (072 B)",
         claims: |_, o, k| matches!(o, ObjectRef::Device(_)) && TextField::of_key(k).is_some(),
         build: Build::Record(text_value),

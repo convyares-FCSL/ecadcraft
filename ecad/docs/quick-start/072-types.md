@@ -330,6 +330,33 @@ Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspec
 (`…power_supply…`), and `rating::reader::power_supply` in ecad-electrical (automated, not tried
 by hand).
 
+### Lane B, step 5: user fields and device links
+
+The project can define its own **user fields** (design 072 §2.8): each has a name (unique,
+ignoring case) and a kind: text, number (with an optional unit), yes/no, or a choice from a fixed
+list. A device stores its values by field. Two devices can be **linked** (§2.6): a mechanical
+interlock (a reversing pair) or an auxiliary block. A link lives in the project, not in either
+device; deleting a device removes its links in the same step, and undo brings them back.
+
+There is no panel for either yet; they are commands (and MCP `execute`):
+
+- `userfield {"name": "Row", "kind": "number", "unit": "mm"}` adds a field;
+  `{"name": "Side", "kind": "choice", "options": ["Left", "Right"]}` a choice field;
+  `{"name": "Row", "remove": true}` removes one and clears its values.
+- `setprop {"component": <id>, "key": "user.Row", "value": "12.5 mm"}` sets a value; it is read
+  as the field's kind, so `twelve` is refused, and so is `Up` for the choice field. An empty value
+  clears it.
+- `linkdevices {"kind": "mechanical_interlock", "devices": [<id>, <id>]}` answers the link id;
+  the same link twice or a device linked to itself is refused. `unlinkdevices {"link": <id>}`
+  removes it.
+
+The inspector's Raw and Readable views show `ModifyProject` with the field list, a device's
+`user` values, and the `AddDeviceLink` / `RemoveDeviceLink` ops. Nothing reads a link yet (lane F's
+interlock checks will). Nobody has tried it by hand yet.
+
+Tests: `lanes::lane_072b` in ecad-model, ecad-file, ecad-cadcraft, ecad-mcp and ecad-inspector
+(`user_fields…`, `device_links…`) (automated, not tried by hand).
+
 ## Lane D: wires carry typed values
 
 A conductor is now a **wire** in code and files (`Wire`, ops `CreateWire`, `DeleteWire` and the

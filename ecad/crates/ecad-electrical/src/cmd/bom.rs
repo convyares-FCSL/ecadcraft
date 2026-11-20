@@ -212,7 +212,8 @@ pub fn plan_bomitem(doc: &Document, ids: &mut IdAllocator, change: ItemChange) -
                 .ok_or_else(|| CmdError::refused(format!("{} is not an item.", item.hex())))?;
             if delete {
                 let words = item_words(doc, comp);
-                let ops = vec![Op::DeleteDevice { id: item, device: comp.clone() }];
+                let mut ops = crate::cmd::device_link::unlink_ops(doc, item);
+                ops.push(Op::DeleteDevice { id: item, device: comp.clone() });
                 return Ok(ItemPlan { ops, item, label: "Delete item", message: Some(format!("Deleted item {words}.")) });
             }
             let fields = set.ok_or(CmdError::input("Give `set: {field: value}` or `delete: true` with `item`."))?;
