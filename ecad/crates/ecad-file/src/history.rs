@@ -14,7 +14,7 @@
 
 use std::collections::BTreeMap;
 
-use ecad_file::schema::{BranchId, BranchStatus};
+use crate::schema::{BranchId, BranchStatus};
 use ecad_model::{Op, Transaction, TxKind};
 use serde_json::{Value, json};
 

@@ -19,7 +19,7 @@
 //! - The graph reads one page of rows ([`PAGE`]) and the next on request (`limit`); each row
 //!   reads its step's time and author only when it comes into the page.
 //! - The graph's model (rows, lanes, session groups, time text, JSON rows) is
-//!   [`ecad_electrical::history`]; this module reads the project and the local zone for it.
+//!   [`ecad_file::history`]; this module reads the project and the local zone for it.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -39,10 +39,9 @@ use crate::cmd::{on_any_page, on_project};
 use crate::project::Project;
 use crate::revisions;
 
-pub use ecad_electrical::history::{
-    BranchRow, Graph, Join, Layout, MAX_LANES, MAX_VERSION_NAME, Named, Node, NodeKind, PAGE, Point, RestorePlan, STEPS_PAGE, SessionGroup, Show,
-    Span, author_text, branch_json, full_time_in, kind_word, layout, merge_by_time_paged, node_json, sessions, sessions_split, short_time_in,
-    status_word,
+use ecad_file::history::{
+    BranchRow, Graph, MAX_VERSION_NAME, Named, Node, NodeKind, PAGE, Point, RestorePlan, STEPS_PAGE, SessionGroup, Show, author_text, branch_json,
+    full_time_in, kind_word, merge_by_time_paged, node_json, short_time_in, status_word,
 };
 
 // ---------------------------------------------------------------- reading the project

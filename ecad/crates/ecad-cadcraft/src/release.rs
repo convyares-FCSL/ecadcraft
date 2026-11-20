@@ -2,9 +2,9 @@
 //! folder.
 //!
 //! # Semantics
-//! - **Pre-release check** ([`check_rows`], [`grouped`]): the kept Checks of the state to be
+//! - **Pre-release check** ([`check_rows`], [`grouped`](ecad_electrical::release::grouped)): the kept Checks of the state to be
 //!   issued (the project's own kept list and report models: opening it never rescans the
-//!   project), grouped for a release by [`GROUPS`] (a view: kinds keep their severities). A kind
+//!   project), grouped for a release by [`GROUPS`](ecad_electrical::release::GROUPS) (a view: kinds keep their severities). A kind
 //!   not in the table lands in **Other**.
 //! - **Release of the pending revision** ([`run_release`]), in this order so a failure leaves
 //!   nothing half-done (design 027 §5.2): refusals (each with its way out); 026's finalise (behind
@@ -43,9 +43,8 @@ use crate::printbook::{self, Options};
 use crate::project::Project;
 use crate::revisions;
 
-pub use ecad_electrical::release::{
-    DEFAULT_ROWS, GROUPS, Group, MAX_ROWS, MAX_STEM, NO_CABLES, NO_FILES_HERE, NO_STRIPS, SAVE_FIRST, checks_table, clean_stem, counts, folder_name,
-    group_of, grouped,
+use ecad_electrical::release::{
+    DEFAULT_ROWS, Group, MAX_ROWS, NO_CABLES, NO_FILES_HERE, NO_STRIPS, SAVE_FIRST, checks_table, clean_stem, counts, folder_name, grouped,
 };
 use ecad_electrical::release::{errors_refusal, finalising, over_budget, stopped};
 
@@ -228,7 +227,7 @@ fn chosen(params: &Value) -> Result<Option<BTreeSet<String>>, String> {
 // ---------------------------------------------------------------- names and places (§7.1)
 
 /// The file stem: the drawing number, else the project file's name, else the project's name;
-/// `\ / : * ? " < > |` and control characters become `-`; at most [`MAX_STEM`] characters.
+/// `\ / : * ? " < > |` and control characters become `-`; at most [`MAX_STEM`](ecad_electrical::release::MAX_STEM) characters.
 pub fn stem(p: &Project) -> String {
     let doc = p.ledger.document();
     let raw = crate::frames::project_text(doc, crate::frame::DRAWING_NUMBER)

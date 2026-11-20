@@ -210,7 +210,7 @@ impl App {
                     }
                 }
                 if !boxes.is_empty() {
-                    let chip = chip.map_or_else(|| ecad_cadcraft::history::author_text(&t.author), str::to_string);
+                    let chip = chip.map_or_else(|| ecad_file::history::author_text(&t.author), str::to_string);
                     out.push(Outline { kind, chip: if chip == "you" { "You".into() } else { chip }, boxes });
                 }
             };
