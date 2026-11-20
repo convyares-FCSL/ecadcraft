@@ -392,11 +392,6 @@ pub enum Class {
     Other,
 }
 
-/// The starter symbol a representation shows: its definition's (a drawn form has none).
-pub fn starter_of(doc: &Document, r: &Representation) -> Option<&'static Starter> {
-    crate::devices::rep_starter(doc, r)
-}
-
 /// Whether a starter symbol is a head.
 pub fn is_head(s: &Starter) -> bool {
     matches!(s.kind, Kind::Fixed { exclusive: true })
@@ -420,7 +415,7 @@ fn raw_class(doc: &Document, r: &Representation) -> Class {
     if crate::reps::rep_type(doc, r) == ecad_model::PartRole::Head {
         return Class::Head;
     }
-    match starter_of(doc, r) {
+    match crate::devices::rep_starter(doc, r) {
         Some(s) if !poles_of(s).is_empty() => Class::Child,
         _ => Class::Other,
     }
@@ -505,7 +500,7 @@ pub fn device(doc: &Document, c: DeviceId) -> Device {
             continue;
         }
         children.push(rid);
-        let Some(s) = starter_of(doc, r) else { continue };
+        let Some(s) = crate::devices::rep_starter(doc, r) else { continue };
         let kinds = poles_of(s);
         let pts = crate::devices::shown_terminals(doc, c, r);
         let at = anchor(doc, r);
@@ -2197,19 +2192,39 @@ pub fn contact_lines(doc: &Document, c: DeviceId, rep: RepresentationId) -> Vec<
     if !dev.children.contains(&rep) {
         return Vec::new();
     }
-    let noun = |doc: &Document, h: RepresentationId| {
-        doc.representations.get(&h).and_then(|r| starter_of(doc, r)).map_or("Head", |s| match s.key {
-            K::Coil => "Coil",
-            K::Mcb1 | K::Mcb2 => "MCB",
-            _ => "Head",
-        })
-    };
-    match dev.head.and_then(|h| doc.representations.get(&h).map(|r| (h, r))) {
-        Some((h, r)) => {
+    match dev.head.and_then(|h| doc.representations.get(&h)) {
+        Some(r) => {
             let mut places = Places::new(doc);
-            vec![format!("{}: {}  ({})", noun(doc, h), places.text(r.page, anchor(doc, r)), crate::references::page_words(doc, r.page))]
+            let noun = doc.devices.get(&c).map_or("Head", |d| head_noun(&d.device_type));
+            vec![format!("{noun}: {}  ({})", places.text(r.page, anchor(doc, r)), crate::references::page_words(doc, r.page))]
         }
         None => vec!["Coil: not drawn".into()],
+    }
+}
+
+/// What a contact's hover calls its device's head: by the device's stored type (design 072 §2.2).
+fn head_noun(t: &ecad_model::DeviceType) -> &'static str {
+    use ecad_model::DeviceType as T;
+    use ecad_model::device::{OperatorKind, ProtectionKind};
+    match t {
+        T::Switching(s) => match s.operator_kind() {
+            OperatorKind::Coil => "Coil",
+            OperatorKind::SolidState | OperatorKind::Manual => "Head",
+        },
+        T::Protection(p) => match p.kind() {
+            ProtectionKind::Mcb => "MCB",
+            ProtectionKind::Fuse | ProtectionKind::FuseTerminal | ProtectionKind::Rcd | ProtectionKind::Rcbo | ProtectionKind::FuseBank => "Head",
+        },
+        T::PowerSupply(_)
+        | T::Sensor(_)
+        | T::Motor(_)
+        | T::Load(_)
+        | T::Indicator(_)
+        | T::TerminalStrip(_)
+        | T::Connector(_)
+        | T::PlcRack(_)
+        | T::PlcModule(_)
+        | T::General => "Head",
     }
 }
 
