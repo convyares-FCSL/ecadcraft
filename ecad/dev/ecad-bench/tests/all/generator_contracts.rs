@@ -4,7 +4,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_bench::generate::{Generated, REFERENCE_ROLE, Tier, Variant, generate, tier};
+use ecad_bench::generate::{Generated, Tier, Variant, generate, tier};
 use ecad_model::{Document, Subject};
 
 const TINY: Tier = Tier { name: "tiny", pages: 3, devices: 9, wires: 18, cables: 6 };
@@ -45,7 +45,7 @@ fn check_shape(g: &Generated, doc: &Document) {
     }
 
     assert_eq!(g.continuations.len(), t.pages - 1, "one continued cable per page boundary");
-    let references = doc.representations.values().filter(|r| r.role == REFERENCE_ROLE).count();
+    let references = doc.representations.values().filter(|r| r.role == ecad_model::Role::Reference).count();
     assert_eq!(references, 2 * (t.pages - 1));
     // Brief 010's derivation recognises them: two partnered ends per continued cable, no orphans.
     let derived = ecad_model::derive::cable_references(doc);
@@ -56,7 +56,7 @@ fn check_shape(g: &Generated, doc: &Document) {
         let of = |rep| derived.iter().find(|r| r.reference == rep).expect("derived");
         assert_eq!((of(a).partners.as_slice(), of(b).partners.as_slice()), ([b].as_slice(), [a].as_slice()));
         let pages: BTreeSet<_> =
-            doc.representations_of(Subject::Cable(c.cable)).filter(|(_, r)| r.role == REFERENCE_ROLE).map(|(_, r)| r.page).collect();
+            doc.representations_of(Subject::Cable(c.cable)).filter(|(_, r)| r.role == ecad_model::Role::Reference).map(|(_, r)| r.page).collect();
         assert_eq!(pages, BTreeSet::from([c.from, c.to]), "a reference end on each page");
         for (i, rep) in c.references.iter().enumerate() {
             let r = doc.representations.get(rep).unwrap();

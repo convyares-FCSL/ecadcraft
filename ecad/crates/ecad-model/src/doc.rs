@@ -16,6 +16,7 @@ use crate::geom::{Placement, Pt};
 use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, TerminalId, WireId};
 use crate::page::{PageKind, PageTitle};
 use crate::point::PointKey;
+use crate::role::{PartRole, Role};
 use crate::sheet::SheetSpec;
 use crate::style::StyleRef;
 use crate::text::Text;
@@ -557,8 +558,8 @@ pub struct Representation {
     pub subject: Subject,
     pub page: PageId,
     pub form: Form,
-    /// Free text such as `main` or `route`.
-    pub role: String,
+    /// What it is for its subject (design 072 §4.4, F3′): a device symbol's part, or a fixed role.
+    pub role: Role,
     pub items: Vec<ItemId>,
     /// Drawn form: where each terminal sits on the page. Symbol form (brief 018, decision on
     /// I14): empty for a symbol of the component's own definition, whose terminals are matched to
@@ -1117,6 +1118,11 @@ pub struct Definition {
     /// device copies it. Left out of the file for [`DeviceType::General`].
     #[serde(default, skip_serializing_if = "DeviceType::is_general")]
     pub device_type: DeviceType,
+    /// A placed copy's part in its device (design 072 §4.4, F3′): copied into the
+    /// representation's [`Role::Part`] when the symbol is placed. Left out of the file for
+    /// [`PartRole::Other`].
+    #[serde(default, skip_serializing_if = "PartRole::is_other")]
+    pub part_role: PartRole,
 }
 
 impl Definition {

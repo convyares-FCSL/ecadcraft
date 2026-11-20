@@ -32,7 +32,7 @@ fn fixture(syms: &[(u128, u128, &str, usize, f64, f64, &str)]) -> Document {
             subject: Subject::Device(DeviceId(*c)),
             page: pg,
             form: Form::Symbol,
-            role: (*role).into(),
+            role: <ecad_model::Role as ecad_model::Word>::parse(role).expect("a role word"),
             items: vec![item],
             connection_points: BTreeMap::new(),
         };
@@ -65,13 +65,13 @@ fn tags(d: &Document, rank: numbering::Rank<'_>) -> BTreeMap<u128, String> {
 /// Device 1: a contact at the top-left of page 0 and its coil on page 1. Device 2: a coil on page
 /// 0, right of device 1's contact.
 fn two_devices(contact_role: &str) -> Document {
-    fixture(&[(11, 1, "-K09", 0, 50.0, 200.0, contact_role), (12, 1, "-K09", 1, 50.0, 200.0, "coil"), (21, 2, "-K08", 0, 300.0, 200.0, "coil")])
+    fixture(&[(11, 1, "-K09", 0, 50.0, 200.0, contact_role), (12, 1, "-K09", 1, 50.0, 200.0, "head"), (21, 2, "-K08", 0, 300.0, 200.0, "head")])
 }
 
 #[test]
 fn the_rank_hook_anchors_a_device_at_its_head() {
-    let d = two_devices("no");
-    let head_first = |r: &Representation| if r.role == "coil" { 0 } else { 1 };
+    let d = two_devices("contact");
+    let head_first = |r: &Representation| if r.role == ecad_model::Role::Part(ecad_model::PartRole::Head) { 0 } else { 1 };
     let t = tags(&d, &head_first);
     assert_eq!(t[&2], "-K01", "device 2's coil is on page 0");
     assert_eq!(t[&1], "-K02", "device 1 is numbered at its coil on page 1");
@@ -84,8 +84,8 @@ fn the_rank_hook_anchors_a_device_at_its_head() {
 }
 
 #[test]
-fn a_main_role_is_not_read() {
-    let (a, b) = (two_devices("no"), two_devices("main"));
+fn a_role_is_not_read_without_a_rank() {
+    let (a, b) = (two_devices("contact"), two_devices("other"));
     assert_eq!(tags(&a, &|_| 0), tags(&b, &|_| 0));
     let n = numbering::plan(&b, &req(), &HighWater::new()).unwrap();
     let m = numbering::plan(&a, &req(), &HighWater::new()).unwrap();
@@ -94,7 +94,7 @@ fn a_main_role_is_not_read() {
     let want = Some((PageId(1000), Pt::new(50.0, 200.0)));
     assert_eq!(numbering::rep_anchor(&a, Subject::Device(DeviceId(1))), want);
     assert_eq!(numbering::rep_anchor(&b, Subject::Device(DeviceId(1))), want);
-    // The coil (role main in an old file) on page 1 is not preferred over page 0.
-    let c = fixture(&[(11, 1, "-K09", 1, 50.0, 200.0, "main"), (12, 1, "-K09", 0, 300.0, 100.0, "no")]);
+    // The coil (stored as `other`) on page 1 is not preferred over page 0.
+    let c = fixture(&[(11, 1, "-K09", 1, 50.0, 200.0, "other"), (12, 1, "-K09", 0, 300.0, 100.0, "contact")]);
     assert_eq!(numbering::rep_anchor(&c, Subject::Device(DeviceId(1))), Some((PageId(1000), Pt::new(300.0, 100.0))));
 }

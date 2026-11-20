@@ -26,8 +26,8 @@ use std::sync::OnceLock;
 
 use crate::CmdError;
 use ecad_model::{
-    Definition, DefinitionId, DeviceGroup, DeviceType, Document, LibraryId, ObjectRef, Op, Origin, PointKey, Primitive, Pt, Subject, TerminalDef,
-    Word,
+    Definition, DefinitionId, DeviceGroup, DeviceType, Document, LibraryId, ObjectRef, Op, Origin, PartRole, PointKey, Primitive, Pt, Subject,
+    TerminalDef, Word,
 };
 
 /// The library ID of the starter symbols.
@@ -578,12 +578,29 @@ impl Starter {
             graphics: graphics(self.key),
             terminals: terminals(self.key),
             device_type: self.device_type(),
+            part_role: self.part_role(),
             ..Default::default()
         };
         let content_hash =
             ecad_file::definition_hash(&d).map_err(|e| CmdError::refused(format!("The symbol {} could not be prepared ({e}).", self.name)))?;
         d.origin = Some(Origin { library: STARTER_LIBRARY, definition: self.id, library_seq: self.library_seq(), content_hash });
         Ok(d)
+    }
+
+    /// A placed copy's part in its device (design 072 §4.4, F3′): the part its definition
+    /// declares. The power pole sets (`power3`, `power4`) are a contactor's contacts.
+    pub fn part_role(&self) -> PartRole {
+        match self.kind {
+            Kind::ConnectorHalf { .. } if crate::connectors::is_pin_starter(self) => PartRole::Pin,
+            Kind::Fixed { exclusive: false } if !crate::xref::poles_of(self).is_empty() => PartRole::Contact,
+            k @ (Kind::ConnectorHalf { .. }
+            | Kind::Fixed { .. }
+            | Kind::Contact { .. }
+            | Kind::Terminal
+            | Kind::Channel(_)
+            | Kind::ChangeOver
+            | Kind::Tagless) => part_of_kind(k),
+        }
     }
 
     /// What a device this starter begins is: the type its definition declares (design 072 §2.3).
@@ -1305,6 +1322,30 @@ pub use ecad_model::Join;
 /// Whether `d` is a symbol made or edited in a project (its origin is [`PROJECT_SYMBOLS`]).
 pub fn is_project_symbol(d: &Definition) -> bool {
     d.origin.as_ref().is_some_and(|o| o.library == PROJECT_SYMBOLS)
+}
+
+/// The part a symbol of kind `k` plays in its device (design 072 §4.4), with no poles of its own.
+fn part_of_kind(k: Kind) -> PartRole {
+    match k {
+        Kind::Fixed { exclusive: true } => PartRole::Head,
+        Kind::Contact { .. } | Kind::ChangeOver => PartRole::Contact,
+        Kind::Fixed { exclusive: false } => PartRole::Pole,
+        Kind::Terminal => PartRole::Terminal,
+        Kind::Channel(_) => PartRole::Channel,
+        Kind::ConnectorHalf { .. } => PartRole::Half,
+        Kind::Tagless => PartRole::Other,
+    }
+}
+
+/// A project symbol's part in its device (design 072 §4.4, F3′), declared when the symbol is
+/// made: its derived starter's kind, else a head unless its defaults join it as a part (design 048
+/// §5.2). A project symbol carries no poles of its own.
+pub fn project_part_role(d: &Definition) -> PartRole {
+    let kind = match d.derived_from.as_ref().and_then(starter_of_origin) {
+        Some(s) => s.kind,
+        None => Kind::Fixed { exclusive: join_of(d) != Join::Part },
+    };
+    part_of_kind(kind)
 }
 
 /// How project symbol `d` joins a device: `part` only when its defaults say so.
@@ -2835,25 +2876,25 @@ mod tests {
     #[test]
     fn the_basic_starters_keep_their_content_hashes() {
         let want: &[(&str, &str)] = &[
-            ("coil", "3f9e9e787649e4971374b769e219331326437cbb0e1c60e47547f7e5a36a04b8"),
-            ("no", "8e7d4d6a20491b33477c1be8bf321038a36d4e57f1bf1121e81056a4e6d2f17d"),
-            ("nc", "38fc0a82138483b26cee9a4ec60197014d9885b3984f6f344c2c2814e98a1389"),
-            ("power3", "a76a83b7635798ea04d852b03e7d0c079aadf5156dccb6fa40f8b699fb90b4c4"),
-            ("mcb1", "d9339a17cfac13020ac09867d8356da9f2792728f1c7ef0f196c3776e3140955"),
-            ("mcb2", "e9c6ab730790271ae429ab8e9f3b12066bf8ec3172d0502f36efb1bdcd514aaf"),
-            ("fuse", "d208fae68200735acbf282e68dbf577de3152319d63ff52a2ad4f0705cc3c374"),
-            ("psu", "306d6c56a4edea43a2efa8974998b28cffc0f8e8c44a23f8f8e8cee6480fb3d1"),
-            ("pbno", "54a6cb04eb6478b224d693bf85cceb231ac06242f72f7a781dfe2c7d643e8ec2"),
-            ("pbnc", "5e0403a445f7a49f5473931d6570baf1dd138341cce9c16324073bb13f613f57"),
-            ("sel", "6e5f96694929a0f5cfadcbd5dc0f6369f31e5a4c6ad5271786974417a8a10619"),
-            ("lamp", "b482bd48b086c90024ce09e579a6aaa442e8e4335709d2d22d99392e983253a6"),
-            ("motor3", "0b9ef31129c1c87535c7cb4cfe3a5614dd2997d2ad73fa31c8a5e0f8fd1defd7"),
-            ("motor1", "922fed0ffb4dbb4dc3521a05dcd9484801c994406e27ab2db4804d4a365b820d"),
-            ("trafo", "fcf21356d4cfdfd0e56eda5ecf428ed02128f1dcab3340132993c9d3a58c21b6"),
-            ("terminal", "c5c7b47bbddcd35973ad00f1dd8906db9602290ce0b955f0fd7ee1c2bf403a1f"),
-            ("terminalpe", "d38f6429abbaf0e8e110505625b467b6531504a762e11205542230148f9f1c00"),
-            ("di", "92732e642b7d5109705f643341f4d9ee02bb3729275a570182e63b6d126bf7b9"),
-            ("do", "caeab16ca1a100e4c5b4a49a878ebf666a634ef6365db7111ab237ba1e936307"),
+            ("coil", "b01ce659fb3212b18fd235c62e7734263c26382682d7c7dc44d79b53d86521be"),
+            ("no", "de4cdf567f36a022fc66c69d302a96657cbab1e21184d6c700786d268b3cf668"),
+            ("nc", "9cb053ab1f7fa513eeb50bd306a749a36755ab2b012911d881fc7bbf4fe38c39"),
+            ("power3", "937b224a059a08464f22c3222dec0431879afb944df2bce59e37e913f0e47bb3"),
+            ("mcb1", "30110cad09d8eb4e3bbf594fbada91f08087023172607207a8f8a6339c9404a4"),
+            ("mcb2", "729b8b2d385555123c129c78cd42320e4b7d454629668a0cb92b8f21d6503763"),
+            ("fuse", "65c17e3bdd137685591b73b5900de645cbbaee8c5ba158d1650464199cbcbc1d"),
+            ("psu", "f0e8a98d18a2b5d5267e4ceb47379debca60a4b41bef72f853f3be170c89c9e8"),
+            ("pbno", "5188bd56e397980ea66886d9d3782b37c98ce727bb090bf0c80fb9ac9fe88c8a"),
+            ("pbnc", "a4b0f928ce469c761d79e1e6130a3da527108ed51341bf456cbaceef54734064"),
+            ("sel", "7866d97802dce3c5f60dd778432ad668962365edf84cdb6a32da281b866a2320"),
+            ("lamp", "ed1b3a984e1bd21c4f506c49e36cfc1c0b2eaca7aeac05645816efa0ea46c8b7"),
+            ("motor3", "8b9285a9c54393f2662969fd682b740aa9e3bfe23d025d7472ad4f35140f74b3"),
+            ("motor1", "155bd8445ceaf3a663703fc3ef3deeeffcca4387a9aa7aca4f83e04362066778"),
+            ("trafo", "be61de549fbf9fcffc34049d185831e4d7759a93f46e1fb2ffd10012db9c6090"),
+            ("terminal", "065f33dc2121ecf3399489981a3b83e0b670295a2c65ea762a4c416c4a83a84f"),
+            ("terminalpe", "e49dfa23a7aec81f0327f1ec5e7143b9bc60216a4ca47c76508d3ea87d939df5"),
+            ("di", "11ac9ed468c7b43d9c6243e847655c0bdb4182c7f02680657539edef57f04827"),
+            ("do", "3eb4db530b04231c3df246d6da2847f48d86d2dc89ad4b8a037cd0a246d6e2fe"),
             ("junction", "8a6e36eab66ded66ec4ef470682d2d5cecf536a0d1fe6c148c632154232a4868"),
             ("continuation", "7289a1f63b563b3f0ceb6959fd7fb34763daf4c1c6e56bb2366e01129ae7afaf"),
         ];

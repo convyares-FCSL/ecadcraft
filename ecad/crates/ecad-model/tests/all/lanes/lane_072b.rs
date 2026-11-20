@@ -709,3 +709,35 @@ fn contacts_and_the_contact_table_are_typed() {
     }
     l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: d }]).unwrap();
 }
+
+/// Design 072 §4.4 (F3′): a role is stored as one word; a starter key or `main` is not a role and
+/// is a read error; a definition's part is left out of the file only for `other`.
+#[test]
+fn roles_are_stored_as_words_and_an_unknown_word_is_refused() {
+    use ecad_model::{PartRole, Role};
+    let table = [
+        (Role::Part(PartRole::Head), "\"head\""),
+        (Role::Part(PartRole::Contact), "\"contact\""),
+        (Role::Part(PartRole::Pin), "\"pin\""),
+        (Role::Route, "\"route\""),
+        (Role::Slash, "\"slash\""),
+        (Role::Reference, "\"reference\""),
+        (Role::LocationBox, "\"box\""),
+        (Role::FanAnchor, "\"fan-anchor\""),
+        (Role::FuseTerm, "\"termfuse\""),
+        (Role::Drawn, "\"drawn\""),
+    ];
+    for (role, json) in table {
+        assert_eq!(serde_json::to_string(&role).unwrap(), json);
+        assert_eq!(serde_json::from_str::<Role>(json).unwrap(), role);
+    }
+    for bad in ["\"coil\"", "\"main\"", "\"no\"", "\"\""] {
+        assert!(serde_json::from_str::<Role>(bad).is_err(), "{bad} is not a role");
+    }
+    let other = serde_json::to_value(Definition::default()).unwrap();
+    assert!(other.get("part_role").is_none(), "left out for other: {other}");
+    let head = Definition { part_role: PartRole::Head, ..Definition::default() };
+    let v = serde_json::to_value(&head).unwrap();
+    assert_eq!(v["part_role"], "head");
+    assert_eq!(serde_json::from_value::<Definition>(v).unwrap(), head);
+}

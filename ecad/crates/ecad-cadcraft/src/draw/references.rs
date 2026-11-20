@@ -25,7 +25,7 @@ pub(crate) fn run_slash_continue(
 ) -> Result<serde_json::Value, String> {
     let doc = p.ledger.document();
     let crossed: Vec<WireId> = found.members.iter().map(|m| m.conductor).collect();
-    if doc.representations_of(Subject::Cable(cable)).any(|(_, r)| r.page == page && r.role == "slash") {
+    if doc.representations_of(Subject::Cable(cable)).any(|(_, r)| r.page == page && r.role == ecad_model::Role::Slash) {
         return Err(format!("{} already has a slash on this page.", crate::references::title(doc, cable)));
     }
     let blocked: Vec<(WireId, CableId)> = crate::slash::blocked(doc, &found.members).into_iter().map(|(m, k)| (m.conductor, k)).collect();
@@ -50,7 +50,7 @@ pub(crate) fn run_slash_continue(
             subject: Subject::Cable(cable),
             page,
             form: ecad_model::Form::Drawn,
-            role: "slash".into(),
+            role: ecad_model::Role::Slash,
             items: vec![item],
             connection_points: BTreeMap::new(),
         },

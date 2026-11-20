@@ -105,7 +105,7 @@ fn a_cable_is_made_by_two_clicks_from_the_ecad_tab() {
     type_enter(&mut h, "u");
     assert_eq!(head(&mut h), before + 2);
     let d = doc(&mut h);
-    assert!(d.cables.is_empty() && d.representations.values().all(|r| r.role != "slash"));
+    assert!(d.cables.is_empty() && d.representations.values().all(|r| r.role != ecad_model::Role::Slash));
 }
 
 #[test]

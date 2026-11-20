@@ -301,7 +301,7 @@ fn place_definition(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Re
                 subject: Subject::Device(c),
                 page,
                 form: Form::Symbol,
-                role: crate::symbols::of_definition(&def).map_or_else(|| "symbol".to_string(), |s| s.key.to_string()),
+                role: ecad_model::Role::Part(def.part_role),
                 items: vec![item],
                 connection_points: BTreeMap::new(),
             },

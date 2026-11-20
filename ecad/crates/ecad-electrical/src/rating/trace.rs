@@ -22,8 +22,6 @@ use ecad_model::{DeviceId, Document, NetId, Node, Subject, TerminalId};
 use super::RatedSubject;
 use ecad_model::device::ProtectionKind;
 
-use crate::symbols::{Kind, StarterKey as K};
-
 /// Most nets one subject's trace visits (design 057 §4.2).
 pub const MAX_TRACE_NETS: usize = 64;
 
@@ -66,12 +64,6 @@ pub fn load_side(kind: ProtectionKind, label: &str) -> bool {
     }
 }
 
-/// The starters a device's symbols show: which pins are crossed is the symbol's (step 4's
-/// part roles replace it).
-fn starters(doc: &Document, c: DeviceId) -> Vec<&'static crate::symbols::Starter> {
-    doc.representations_of(Subject::Device(c)).filter_map(|(_, r)| crate::devices::rep_starter(doc, r)).collect()
-}
-
 /// The kind of device `c` when it is an overcurrent protective device (design 072 §2.4).
 fn overcurrent_kind(doc: &Document, c: DeviceId) -> Option<ProtectionKind> {
     use crate::traits::Protects;
@@ -112,9 +104,18 @@ pub fn pair(label: &str) -> Option<String> {
     }
 }
 
-/// Whether a starter is crossed by pin pairs: contacts, power contacts, SSR outputs and RCDs.
-fn crossed(s: &crate::symbols::Starter) -> bool {
-    matches!(s.kind, Kind::Contact { .. }) || matches!(s.key, K::Power3 | K::Power4 | K::Ssrout | K::Rcd2 | K::Rcd4)
+/// Whether device `c` is crossed by pin pairs (design 072 §4.4: its stored parts and its type,
+/// never its starters): a device with a contact (contacts, change-overs, power contacts), a
+/// solid-state relay with its output, and an RCD.
+fn crossed(doc: &Document, c: DeviceId) -> bool {
+    use ecad_model::device::Operator;
+    use ecad_model::{DeviceType, PartRole, Role};
+    let has = |p: PartRole| doc.representations_of(Subject::Device(c)).any(|(_, r)| r.role == Role::Part(p));
+    match doc.devices.get(&c).map(|d| &d.device_type) {
+        Some(DeviceType::Protection(p)) if p.kind() == ProtectionKind::Rcd => true,
+        Some(DeviceType::Switching(s)) if matches!(s.operator, Operator::SolidState(_)) && has(PartRole::Pole) => true,
+        _ => has(PartRole::Contact),
+    }
 }
 
 /// What reaching terminal `t` means.
@@ -162,8 +163,7 @@ fn step(doc: &Document, t: TerminalId) -> Step {
         }
         return Step::Stop;
     }
-    let ss = starters(doc, c);
-    if ss.iter().any(|s| crossed(s))
+    if crossed(doc, c)
         && let Some(other) = pair(&label)
     {
         return Step::Cross(doc.terminals_of(c).filter(|(_, x)| x.label.as_deref() == Some(other.as_str())).map(|(id, _)| id).collect());

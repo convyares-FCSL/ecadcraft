@@ -285,15 +285,23 @@ fn a_power_supply_rating_is_shown_raw_and_readable() {
 /// One device created as `before` and changed to `after`: the readable log names `log_words`,
 /// the Readable row view names `readable_word`, and the Raw view is the stored bytes.
 fn shown_raw_and_readable(name: &str, seed: u64, before: Device, after: Device, log_words: &[&str], readable_word: &str) {
-    let dir = TempDir::new(name);
-    let mut l = history();
     let mut ids = IdAllocator::seeded(seed);
     let c: DeviceId = ids.fresh();
-    l.commit(Author::User, "add", vec![Op::CreateDevice { id: c, device: before.clone() }]).unwrap();
-    l.commit(Author::User, "rating", vec![Op::ModifyDevice { id: c, before, after }]).unwrap();
+    let add = vec![Op::CreateDevice { id: c, device: before.clone() }];
+    shown(name, add, vec![Op::ModifyDevice { id: c, before, after }], "ModifyDevice", log_words, readable_word);
+}
+
+/// Commits `setup`, then `last`, and checks that the readable log of the last transaction names
+/// `op` and `log_words`, that its Readable row view names `op` and `readable_word`, and that its
+/// Raw view is exactly the stored bytes.
+fn shown(name: &str, setup: Vec<Op>, last_ops: Vec<Op>, op: &str, log_words: &[&str], readable_word: &str) {
+    let dir = TempDir::new(name);
+    let mut l = history();
+    l.commit(Author::User, "add", setup).unwrap();
+    l.commit(Author::User, "last", last_ops).unwrap();
     let path = written(&dir, &l);
     let log = run(&[path.to_str().unwrap(), "log", "main", "--last", "1"]).unwrap();
-    for want in std::iter::once(&"ModifyDevice").chain(log_words) {
+    for want in std::iter::once(&op).chain(log_words) {
         assert!(log.contains(want), "{want} in the readable log: {log}");
     }
     let f = FileSource::from_path(&path);
@@ -304,7 +312,7 @@ fn shown_raw_and_readable(name: &str, seed: u64, before: Device, after: Device, 
     let key = rows.last().and_then(|r| r["key"].as_str()).unwrap().to_string();
     let readable = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "readable"}));
     let text = readable["ok"]["decoded"].to_string();
-    assert!(text.contains("ModifyDevice") && text.contains(readable_word), "{text}");
+    assert!(text.contains(op) && text.contains(readable_word), "{text}");
     let raw = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "raw"}));
     let r = f.store().unwrap().reader().unwrap();
     let mut bytes = None;
@@ -316,4 +324,32 @@ fn shown_raw_and_readable(name: &str, seed: u64, before: Device, after: Device, 
     })
     .unwrap();
     assert_eq!(raw["ok"]["hex"], ecad_inspector::text::hex(&bytes.unwrap()));
+}
+
+/// Step 4, roles (A15, design 072 §4.4, F3′): a definition's declared part and a representation's
+/// stored role show as their words in the readable log and the Readable row view, and the Raw view
+/// is the stored bytes.
+#[test]
+fn a_symbol_s_part_and_a_representation_s_role_are_shown_raw_and_readable() {
+    use ecad_model::{Definition, DefinitionId, Form, PartRole, Representation, RepresentationId, Role, Subject};
+    let mut ids = IdAllocator::seeded(85);
+    let (c, d, r): (DeviceId, DefinitionId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
+    let page = history().document().page_order[0];
+    let definition = Definition { name: "coil".into(), part_role: PartRole::Head, ..Definition::default() };
+    let rep = Representation {
+        subject: Subject::Device(c),
+        page,
+        form: Form::Drawn,
+        role: Role::Part(PartRole::Contact),
+        items: Vec::new(),
+        connection_points: Default::default(),
+    };
+    shown(
+        "072b-roles",
+        vec![Op::CreateDevice { id: c, device: Device::default() }],
+        vec![Op::EmbedDefinition { id: d, definition }, Op::LinkRepresentation { id: r, rep }],
+        "LinkRepresentation",
+        &["part_role", "head", "contact"],
+        "contact",
+    );
 }

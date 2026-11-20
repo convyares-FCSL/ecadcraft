@@ -118,7 +118,7 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
             Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => {
                 subject(rep.subject, &mut out);
                 // A location box (brief 024) changes the location its page's devices inherit.
-                if matches!(rep.subject, Subject::Device(c) if crate::locations::is_box(doc, c) || rep.role == crate::locations::ROLE) {
+                if matches!(rep.subject, Subject::Device(c) if crate::locations::is_box(doc, c) || rep.role == ecad_model::Role::LocationBox) {
                     out.insert(ObjectRef::Page(rep.page));
                 }
             }
@@ -588,7 +588,7 @@ fn override_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>) {
         row("location.socket", "Location (socket)");
         row("location.plug", "Location (plug)");
     } else if !crate::strips::is_strip(doc, c)
-        && doc.representations_of(Subject::Device(c)).any(|(_, r)| crate::reps::rep_type(doc, r) == crate::reps::RepType::Terminal)
+        && doc.representations_of(Subject::Device(c)).any(|(_, r)| crate::reps::rep_type(doc, r) == ecad_model::PartRole::Terminal)
     {
         row("location.terminal", "Terminals in");
     }

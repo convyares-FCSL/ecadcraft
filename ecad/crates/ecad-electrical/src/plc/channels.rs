@@ -257,7 +257,7 @@ pub fn plan_cell(
             subject: Subject::Device(card),
             page,
             form: Form::Symbol,
-            role: s.key.to_string(),
+            role: ecad_model::Role::Part(s.part_role()),
             items: vec![item],
             connection_points: cps,
         },

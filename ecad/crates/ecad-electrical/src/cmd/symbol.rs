@@ -79,6 +79,8 @@ impl Content {
             defaults: self.defaults.clone(),
             derived_from: None,
             device_type: self.device_type.clone(),
+            // Declared when a version is made ([`version_definition`]).
+            part_role: ecad_model::PartRole::Other,
         }
     }
 
@@ -335,6 +337,7 @@ fn refuse_problems(c: &Content, rules: &Rules<'_>) -> Result<(), CmdError> {
 pub fn version_definition(c: &Content, lineage: DefinitionId, seq: u64, derived_from: Option<Origin>) -> Result<Definition, CmdError> {
     let mut d = c.definition();
     d.derived_from = derived_from;
+    d.part_role = crate::symbols::project_part_role(&d);
     let content_hash = ecad_file::definition_hash(&d).map_err(|e| CmdError::refused(format!("The symbol could not be prepared ({e}).")))?;
     d.origin = Some(Origin { library: PROJECT_SYMBOLS, definition: lineage, library_seq: seq, content_hash });
     Ok(d)
@@ -571,8 +574,14 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
                 cps.insert(t, nd.at);
             }
         }
-        if cps != r.connection_points {
-            ops.push(Op::ModifyRepresentation { id: row.rep, before: r.clone(), after: Representation { connection_points: cps, ..r.clone() } });
+        // The copy's part follows its new definition (design 072 §4.4, F3′).
+        let role = ecad_model::Role::Part(new.part_role);
+        if cps != r.connection_points || role != r.role {
+            ops.push(Op::ModifyRepresentation {
+                id: row.rep,
+                before: r.clone(),
+                after: Representation { connection_points: cps, role, ..r.clone() },
+            });
         }
     }
     for (id, after) in moved_routes {
@@ -1044,6 +1053,7 @@ pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: DeviceId, mut cont
     let (id, lineage, item, new_rep): (DefinitionId, DefinitionId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
     let def = version_definition(&content, lineage, 1, None)?;
     let style = rep.items.first().and_then(|i| doc.items.get(i)).map_or(fallback, |i| i.style.clone());
+    let part = def.part_role;
     let mut ops = vec![Op::EmbedDefinition { id, definition: def }, Op::UnlinkRepresentation { id: rid, rep: rep.clone() }];
     for i in &rep.items {
         if let Some(it) = doc.items.get(i) {
@@ -1067,7 +1077,7 @@ pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: DeviceId, mut cont
             subject: Subject::Device(c),
             page: rep.page,
             form: Form::Symbol,
-            role: rep.role.clone(),
+            role: ecad_model::Role::Part(part),
             items: vec![item],
             connection_points: BTreeMap::new(),
         },
@@ -1138,7 +1148,14 @@ pub fn plan_place(
             ops.push(Op::AddItem { id: item, item: instance });
             ops.push(Op::LinkRepresentation {
                 id: representation,
-                rep: Representation { subject: Subject::Device(c), page, form: Form::Symbol, role: key, items: vec![item], connection_points: cps },
+                rep: Representation {
+                    subject: Subject::Device(c),
+                    page,
+                    form: Form::Symbol,
+                    role: ecad_model::Role::Part(def.part_role),
+                    items: vec![item],
+                    connection_points: cps,
+                },
             });
             Ok(PlacedProject { ops, component: c, representation, tag: crate::devices::tag_words(doc, c) })
         }
@@ -1179,7 +1196,7 @@ pub fn plan_place(
                     subject: Subject::Device(c),
                     page,
                     form: Form::Symbol,
-                    role: key.clone(),
+                    role: ecad_model::Role::Part(def.part_role),
                     items: vec![item],
                     connection_points: BTreeMap::new(),
                 },

@@ -1014,7 +1014,7 @@ mod tests {
                     subject: Subject::Device(DeviceId(*id)),
                     page: pg,
                     form: Form::Symbol,
-                    role: "main".into(),
+                    role: crate::Role::Part(crate::PartRole::Other),
                     items: vec![item],
                     connection_points: BTreeMap::new(),
                 },
