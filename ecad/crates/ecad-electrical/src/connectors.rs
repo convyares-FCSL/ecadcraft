@@ -58,10 +58,7 @@ pub const IGNORE_PREFIX: &str = "ignore.";
 
 /// Connector `c`'s own data (its type's), when it is a connector.
 pub fn connector_of(doc: &Document, c: DeviceId) -> Option<&Connector> {
-    match &doc.devices.get(&c)?.device_type {
-        DeviceType::Connector(x) => Some(x),
-        _ => None,
-    }
+    doc.devices.get(&c)?.device_type.as_connector()
 }
 
 /// The ignorable Checks row of `kind`, if it is one.
@@ -1466,7 +1463,7 @@ pub fn strip_terminal_at(doc: &Document, page: PageId, at: Pt) -> Option<Termina
     // Each terminal symbol shows its own connection point: O(representations on the page).
     doc.representations_on(page).find_map(|(_, r)| {
         let Subject::Device(c) = r.subject else { return None };
-        if !strips::is_strip(doc, c) {
+        if strips::strip_of(doc, c).is_none() {
             return None;
         }
         let placement = crate::devices::rep_definition(doc, r).map(|(_, pl)| pl);

@@ -551,7 +551,7 @@ fn device_section(
     let mut buttons = Vec::new();
     match (one, devices.iter().next().copied()) {
         // Brief 028 (design 028 §7.2): a strip's offer, its counts and the PE row's part.
-        (true, Some(c)) if crate::strips::is_strip(doc, c) => strip_rows(doc, c, &mut rows, &mut buttons),
+        (true, Some(c)) if crate::strips::strip_of(doc, c).is_some() => strip_rows(doc, c, &mut rows, &mut buttons),
         // Brief 049 (design 049 §5.2): a continuation's Caption and Other ends.
         (true, Some(c)) if crate::continuations::is_continuation(doc, c) => continuation_rows(doc, devices, symbol, &mut rows, &mut buttons),
         (true, Some(c)) => {
@@ -605,7 +605,7 @@ fn override_rows(doc: &Document, c: DeviceId, rows: &mut Vec<Row>) {
     if crate::connectors::is_connector(doc, c) {
         row("location.socket", "Location (socket)");
         row("location.plug", "Location (plug)");
-    } else if !crate::strips::is_strip(doc, c)
+    } else if crate::strips::strip_of(doc, c).is_none()
         && doc.representations_of(Subject::Device(c)).any(|(_, r)| crate::reps::rep_type(doc, r) == ecad_model::PartRole::Terminal)
     {
         row("location.terminal", "Terminals in");

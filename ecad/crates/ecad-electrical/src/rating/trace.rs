@@ -132,7 +132,7 @@ fn step(doc: &Document, t: TerminalId) -> Step {
     let c = term.component;
     let label = term.label.clone().unwrap_or_default();
     // A strip: the other terminals of this position and level; a fuse position protects.
-    if crate::strips::is_strip(doc, c) {
+    if crate::strips::strip_of(doc, c).is_some() {
         for p in crate::terminal_types::positions(doc, c) {
             if let Some(ts) = p.levels.values().find(|ts| ts.contains(&t)) {
                 // Review of #108: a fuse position protects only what is on its out point (`.no`); its

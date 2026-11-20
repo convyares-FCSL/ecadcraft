@@ -148,7 +148,7 @@ fn component(o: ObjectRef) -> Option<DeviceId> {
 }
 
 fn strip(doc: &Document, o: ObjectRef) -> Option<DeviceId> {
-    component(o).filter(|c| crate::strips::is_strip(doc, *c))
+    component(o).filter(|c| crate::strips::strip_of(doc, *c).is_some())
 }
 
 /// Whether `o` takes a tag: a cable, or a component that is not tagless (a junction, a
