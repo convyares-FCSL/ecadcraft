@@ -36,7 +36,7 @@
 //! | I20 | A folder's parent exists, the parents form no cycle and it nests at most 8 deep | folder → parent folders | touched folders, their sub-folders (all levels) and the sub-folders of a removed one |
 //! | I21 | A page's `folder` property names an existing folder | page → folder | touched pages and pages whose properties changed; pages in a touched folder |
 //! | I22 | The location and function lists hold each id and code once, codes with their sign | project | any change to the project's own data |
-//! | I23 | A route has 2 to 4096 finite points, lies on an existing page, and its ends land on existing connection points and on other routes of its page (design 072 F31) | route → page, terminals, routes | touched routes; routes on a touched page, landing on a touched terminal or on a touched route |
+//! | I23 | A route has 2 to 4096 finite points, lies on an existing page, and its ends land on existing connection points and on other routes of its page (design 072 F31) | route → page, terminals, routes | touched routes; routes on a touched page, landing on a touched terminal (a cable's or a cable reference's named points count as touched with it) or on a touched route |
 //!
 //! Not invariants of the document: properties (other than a page's `folder`), layer names, project
 //! settings. Named versions are
@@ -130,14 +130,23 @@ impl Touched {
             Effect::Terminal { id, .. } => {
                 self.terminals.insert(*id);
             }
-            Effect::Rep { id, .. } => {
+            Effect::Rep { id, before, after } => {
                 self.representations.insert(*id);
+                // A cable reference places named points (design 072 §4.4, F4): the routes landing
+                // on the points it placed or places are re-checked (I23).
+                for r in [before, after].into_iter().flatten().filter(|r| matches!(r.subject, Subject::Cable(_))) {
+                    self.terminals.extend(r.connection_points.keys().copied());
+                }
             }
             Effect::Wire { id, .. } => {
                 self.wires.insert(*id);
             }
-            Effect::Cable { id, .. } => {
+            Effect::Cable { id, before, after } => {
                 self.cables.insert(*id);
+                // Its cores' named points (F4): the routes landing on them are re-checked (I23).
+                for c in [before, after].into_iter().flatten() {
+                    self.terminals.extend(c.cores.iter().flat_map(|m| m.through.iter().copied()));
+                }
             }
             Effect::Route { id, .. } => {
                 self.routes.insert(*id);

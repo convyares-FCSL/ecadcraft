@@ -158,6 +158,11 @@ check_kinds! {
     LocationUnused = "location-unused", Warning, "Location used by none of its symbols";
     /// The same for its function.
     FunctionUnused = "function-unused", Warning, "Function used by none of its symbols";
+    /// Design 072 §6.3 (A13): a device whose location was set by hand has a symbol inside a
+    /// location box of another location; one row on every placed symbol of the device.
+    TiedLocations = "symbol-tied-locations", Error, "Symbol tied to multiple locations";
+    /// The same for its function.
+    TiedFunctions = "symbol-tied-functions", Error, "Symbol tied to multiple functions";
     /// Devices without a function (one count row, when some function is set).
     NoFunction = "function-none", Info, "Devices without a function";
     /// A stored function or location names no entry of the project's list.
@@ -1221,6 +1226,29 @@ fn designation_checks(places: &mut Places<'_>, c: DeviceId, out: &mut Vec<Check>
             which: format!("{who} is {code}, but none of its symbols is in {code}{use_words}"),
             fix: contexts.first().filter(|f| f.value.is_some() && contexts.iter().all(|x| x.key == f.key)).map(|_| Fix::UseContext(c, a)),
         });
+    }
+    // Design 072 §6.3 (A13): a value set by hand, and a box of another value holding one of the
+    // device's symbols: the error goes on every placed symbol of the device, with one message.
+    for a in Aspect::ALL {
+        let Some(own) = d::device_key(comp, a).filter(|_| d::device_fixed(comp, a)) else { continue };
+        let boxed = |r: &ecad_model::Representation, cache: &mut crate::locations::BoxCache| {
+            let at = crate::locations::anchor(doc, r)?;
+            crate::locations::innermost_in(cache.on(doc, r.page), a, at).and_then(|b| b.key(a)).map(str::to_string)
+        };
+        if !reps.iter().any(|r| boxed(r, &mut cache).is_some_and(|k| k != own)) {
+            continue;
+        }
+        let words = if a == Aspect::Location { Kind::TiedLocations } else { Kind::TiedFunctions };
+        for r in &reps {
+            out.push(Check {
+                kind: words,
+                page: Some(r.page),
+                at: crate::locations::anchor(doc, r),
+                object: Object::Device(c),
+                which: format!("{who}: {}", words.words()),
+                fix: Some(Fix::SetDesignation(c, a)),
+            });
+        }
     }
     let heads = crate::reps::heads(doc, c);
     if let [_, second, ..] = heads.as_slice()

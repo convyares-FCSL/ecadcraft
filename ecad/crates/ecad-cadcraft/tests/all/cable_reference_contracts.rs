@@ -213,9 +213,11 @@ fn continuing_a_cable_adds_routes_of_the_same_conductors_in_one_transaction() {
             "LinkRepresentation"
         ]
     );
+    // The stubs are routes (design 072 §4.3): their points, then the slash's line.
     let lines: Vec<(Pt, Pt)> = ops
         .iter()
         .filter_map(|op| match op {
+            Op::AddRoute { route, .. } => route.end_points().map(|[a, b]| (a, b)),
             Op::AddItem { item: Item { kind: ItemKind::Primitive(Primitive::Line { a, b }), .. }, .. } => Some((*a, *b)),
             _ => None,
         })
@@ -340,7 +342,9 @@ fn texts_follow_page_moves_renames_and_point_moves_live() {
 // ---------------------------------------------------------------- AC3 (check E)
 
 /// Check E: erasing the whole Field drawing makes Supply's end an orphan (red, diagnostic, echo);
-/// conductors and their Field attachments stay; undo restores the link with the same IDs.
+/// Supply's lines and the cable's cores stay, but the wires through Field's points go with
+/// Field's lines (design 072 §4.4, F4: a wire runs only from device point to device point); undo
+/// restores the link with the same IDs.
 #[test]
 fn erasing_one_drawing_makes_the_other_end_an_orphan_and_undo_restores_it() {
     let mut r = connected();
@@ -383,8 +387,10 @@ fn erasing_one_drawing_makes_the_other_end_an_orphan_and_undo_restores_it() {
     let th = r.h.p(|p| p.pages[&r.supply].map.ref_text(srid)).expect("text drawn");
     let te = r.h.pv(|p, pg| pg.entities_of(p, r.supply)).into_iter().find(|e| e.handle == th).unwrap();
     assert_eq!(te.common.color, CColor::Index(1));
-    assert_eq!(doc.wires, before.wires, "conductors and attachments stay");
-    assert_eq!(doc.cables, before.cables);
+    assert!(doc.wires.is_empty(), "no wire without Field's lines");
+    let supply_lines: Vec<&ecad_model::Route> = before.routes.values().filter(|x| x.page == r.supply).collect();
+    assert!(supply_lines.iter().all(|l| doc.routes.values().any(|x| x.points == l.points)), "Supply's lines stay");
+    assert_eq!(doc.cables[&r.c1].cores.len(), before.cables[&r.c1].cores.len(), "the cable keeps its cores");
     assert!(log_since(&r.h, n).contains("Cable -C01's reference on page 1 now has no other end."), "{}", log_since(&r.h, n));
     assert_eq!(ecad_cadcraft::references::diagnostics(&doc), vec!["Orphan: cable -C01 on page 1 (?)".to_string()]);
     let snap = r.h.project.snapshot(&mut r.h.s, None).unwrap();
@@ -777,25 +783,35 @@ fn twenty_thousand_references_of_one_cable_stay_bounded_and_fast() {
     let _ = ecad_cadcraft::views::drawings_on_page(&doc, page, &Default::default(), 1e-6);
 }
 
-/// The per-page movement rule (design 010 §0, translate M3): on the continuation page, moving a
-/// stub whose other end is connected on the first page never detaches that end, and dropping that
-/// end on a terminal here connects nothing and says why.
+/// The per-page movement rule (design 010 §0, translate M3) with named points (design 072 §4.4,
+/// F4): each page's line lands on the core's point on that page's reference, so moving the stub
+/// on the continuation page never touches the line on the first page, which stays on its point
+/// there. The stub's own end leaves Field's point when moved away and lands on it again when
+/// moved back.
 #[test]
 fn moving_a_stub_never_detaches_the_end_connected_on_the_other_page() {
-    let (mut r, _) = continued();
+    let (mut r, v) = continued();
     r.h.activate(r.field);
-    let before = r.h.doc().wires;
-    let w5 = r.h.route_handle(r.field, r.w[1]);
-    // Away from everything: the end at the reference (end A, attached to K1 on Supply) stays.
-    r.h.run("move", json!({"handles": [w5.hex()], "delta": [0, 50]})).unwrap();
-    assert_eq!(r.h.doc().wires, before, "no attachment changed");
-    assert_eq!(r.h.route_ends(r.field, r.w[1]).0, Pt::new(20.0, 55.0));
-    // Back, then onto K2's middle terminal at (100,5): end A stays on K1 and the user is told.
-    r.h.run("move", json!({"handles": [w5.hex()], "delta": [0, -50]})).unwrap();
-    let n = r.h.s.log.len();
-    r.h.run("move", json!({"handles": [w5.hex()], "delta": [80, 0]})).unwrap();
-    assert_eq!(r.h.doc().wires, before, "end A is still connected on Supply only");
-    assert!(log_since(&r.h, n).contains("End A of W5 is connected on another page, so it was not connected here"), "{}", log_since(&r.h, n));
+    let before = r.h.doc();
+    let s = &v["routes"][1];
+    let stub: ecad_model::RouteId = id(s, "route");
+    let core = before.cables[&r.c1].cores[s["core"].as_u64().unwrap() as usize - 1].clone();
+    let line = core.route().expect("the core's line on Supply");
+    assert_eq!(before.routes[&line].ends[1], ecad_model::RouteEnd::Point(core.through[0]), "Supply's line on its point");
+    assert_eq!(before.routes[&stub].ends[0], ecad_model::RouteEnd::Point(core.through[1]), "the stub from Field's point");
+    let h5 = r.h.line_handle(r.field, stub);
+    // Away from everything: the stub's end leaves Field's point; Supply's line stays on its own.
+    r.h.run("move", json!({"handles": [h5.hex()], "delta": [0, 50]})).unwrap();
+    let doc = r.h.doc();
+    assert_eq!(doc.routes[&stub].end_points().map(|[a, _]| a), Some(Pt::new(20.0, 55.0)));
+    assert_eq!(doc.routes[&stub].ends[0], ecad_model::RouteEnd::Free, "moved away: a free end");
+    assert_eq!(doc.routes[&line], before.routes[&line], "Supply's line untouched");
+    // Back onto Field's point: it lands there again, and the page is as it was.
+    r.h.run("move", json!({"handles": [h5.hex()], "delta": [0, -50]})).unwrap();
+    let doc = r.h.doc();
+    assert_eq!(doc.routes, before.routes, "every line as before");
+    assert_eq!(doc.cables, before.cables);
+    assert_eq!(doc.wires, before.wires);
 }
 
 // ---------------------------------------------------------------- scope 5 (check M), fan (check L)
@@ -818,8 +834,15 @@ fn the_debugger_trail_follows_references_across_pages() {
         })
         .collect();
     assert_eq!(reps, vec![r.supply, r.supply, r.field, r.field], "grouped by page in page order");
-    let routes = used_by(&doc, ObjectId::Wire(r.w[0])).into_iter().filter(|o| matches!(o, ObjectId::Representation(_))).count();
-    assert_eq!(routes, 2, "a route on each page");
+    // A route is an object of its own (design 072 §4.3), not a representation of the wire.
+    let pages: std::collections::BTreeSet<PageId> = used_by(&doc, ObjectId::Wire(r.w[0]))
+        .into_iter()
+        .filter_map(|o| match o {
+            ObjectId::Route(x) => doc.routes.get(&x).map(|x| x.page),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(pages, [r.supply, r.field].into_iter().collect(), "a route on each page");
     let snap = r.h.project.snapshot(&mut r.h.s, None).unwrap();
     assert_eq!(snap["checks"]["cable_references"].as_array().map(Vec::len), Some(2));
     assert_eq!(snap["checks"]["orphan_references"], json!([]));
@@ -918,11 +941,19 @@ fn assert_flag_away(h: &mut H, page: PageId, cable: CableId, u: Pt) {
     let m = markers_on_page(&doc, page).into_iter().find(|m| m.cable == cable).expect("a marker");
     let along = |p: Pt| (p.x - m.at.x) * u.x + (p.y - m.at.y) * u.y;
     // The wires leave the point the other way.
+    // Each core's line on the page: its wire's, its loose line, or the line from its named point
+    // on this page's reference (design 072 §4.4, F4).
     let routes: Vec<Pt> = doc.cables[&cable]
         .cores
         .iter()
-        .filter_map(|x| x.wire().and_then(|w| crate::common::wire_line(&doc, w, page)).and_then(|(_, p)| p.path_ends()))
-        .map(|(a, b)| if a.dist(m.at) <= b.dist(m.at) { b } else { a })
+        .flat_map(|x| {
+            let mut lines: Vec<ecad_model::RouteId> = x.through.iter().flat_map(|t| doc.routes_at(*t)).collect();
+            lines.extend(x.route());
+            lines.extend(x.wire().and_then(|w| ecad_cadcraft::wires::route_of_wire_on(&doc, w, page)));
+            lines
+        })
+        .filter_map(|l| doc.routes.get(&l).filter(|l| l.page == page).and_then(|l| l.end_points()))
+        .map(|[a, b]| if a.dist(m.at) <= b.dist(m.at) { b } else { a })
         .collect();
     assert!(!routes.is_empty() && routes.iter().all(|far| along(*far) < 0.0), "the wires leave against {u:?}");
 

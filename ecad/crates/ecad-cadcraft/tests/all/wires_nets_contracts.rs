@@ -487,8 +487,10 @@ fn wire_labels_take_the_wire_label_text_style() {
     assert_eq!(t.style, ecad_cadcraft::text_style::STYLE_BOLD);
 }
 
-/// Review of #65, finding 5: the quiet ends (a cable reference end) come from the document, the
-/// same with no projected page as the page map gives, and a wire ending there stays open.
+/// Review of #65, finding 5: the quiet ends (the ends at a cable reference of the wires that
+/// leave for another page) come from the document, the same with no projected page as the page
+/// map gives. With named points (design 072 §4.4, F4) such an end lands on its core's point on
+/// the reference, so a line drawn from it lands on that point too, never on the wire's line.
 #[test]
 fn quiet_ends_come_from_the_document() {
     let mut h = H::new(0x32_17);
@@ -499,12 +501,18 @@ fn quiet_ends_come_from_the_document() {
     }
     let k: ecad_model::CableId = id(&h.run("cableslash", json!({"from": [30, -3], "to": [30, 13]})).unwrap(), "cable");
     h.run("cableref", json!({"cable": k.hex(), "at": [65, 5]})).unwrap();
-    // Continued on another page: its members leave page 1 at the reference (brief 010 §6.4).
+    // Continued on another page and landed on terminals there: its wires leave page 1 at the
+    // reference (brief 010 §6.4).
     let other: PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
     h.activate(other);
-    h.run("cablecontinue", json!({"cable": k.hex(), "at": [20, 5], "toward": [40, 5]})).unwrap();
+    let v = h.run("cablecontinue", json!({"cable": k.hex(), "at": [20, 5], "toward": [40, 5]})).unwrap();
+    for (s, y) in v["routes"].as_array().cloned().unwrap_or_default().iter().zip([0.0, 5.0, 10.0]) {
+        let t = terminal(&mut h, (40.0, y), "X02");
+        h.run("connect", json!({"route": s["route"], "end": s["free_end"], "terminal": t.hex()})).unwrap();
+    }
     h.activate(page);
     let doc = h.doc();
+    assert_eq!(doc.wires.len(), 3, "a wire per core across the pages");
     // No project, no page map: the document alone.
     let quiet = ecad_cadcraft::wires::quiet_ends_of(&doc, page, &std::collections::BTreeSet::new(), 1e-6);
     let shown = h.p(|p| p.pages.get(&page).map(|v| v.map.quiet_ends().to_vec()).unwrap_or_default());
@@ -516,12 +524,13 @@ fn quiet_ends_come_from_the_document() {
     for q in &shown {
         assert!(quiet.iter().any(|x| x.near(*q, 1e-9)), "{q:?} not in {quiet:?}");
     }
-    // A wire from a quiet end stays a wire of its own.
+    // A line from a quiet end lands on the core's named point there.
     let at = quiet[0];
-    let before = h.doc().wires.len();
     let r = wire(&mut h, &[(at.x, at.y), (at.x + 20.0, at.y - 30.0)], json!({}));
-    assert_eq!(r["created"], json!(true), "{r}");
-    assert_eq!(h.doc().wires.len(), before + 1);
+    let line: RouteId = id(&r, "route");
+    let doc = h.doc();
+    let first = doc.routes[&line].ends[0];
+    assert!(first.point().is_some_and(|t| doc.named_points(t).is_some()), "{first:?}");
 }
 
 // ---------------------------------------------------------------- update maps (§8, §12 item 17)

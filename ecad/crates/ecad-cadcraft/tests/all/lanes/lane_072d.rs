@@ -196,3 +196,44 @@ fn a_point_with_more_wires_than_it_accepts_is_an_error() {
     assert!(over(&mut h).is_empty(), "the row goes with the third wire");
     h.check();
 }
+
+// ---------------------------------------------------------------- symbol tied to multiple locations
+
+/// Design 072 §6.3 (A13): a device whose location was typed (fixed) with a symbol inside a box of
+/// another location gets "Symbol tied to multiple locations" on every placed symbol, one message;
+/// an unfixed device, or a box of its own location, gets none. The kept Checks agree with a
+/// rebuild after each step (the update map).
+#[test]
+fn a_fixed_device_in_a_box_of_another_location_is_tied_to_multiple_locations() {
+    use ecad_cadcraft::checks::{self, Kind};
+    let mut h = H::new(SEED + 30);
+    let p105 = h.first_page();
+    let k = id::<ecad_model::DeviceId>(&h.run("place", json!({"symbol": "coil", "at": [75, 180], "tag": "-K01"})).unwrap(), "component");
+    let p110: PageId = id(&h.run("newpage", json!({"title": "110"})).unwrap(), "page");
+    h.run("place", json!({"symbol": "no", "at": [100, 150], "device": k.hex()})).unwrap();
+    let tied = |h: &mut H| {
+        let doc = h.doc();
+        let fresh: Vec<checks::Check> = checks::all(&doc, 1e-6).into_iter().filter(|r| r.kind == Kind::TiedLocations).collect();
+        let kept: Vec<checks::Check> = h.cfg(|p| {
+            let doc = p.ledger.document().clone();
+            p.checks().sorted(&doc).into_iter().filter(|r| r.kind == Kind::TiedLocations).collect()
+        });
+        assert_eq!(kept, fresh, "the kept Checks equal a rebuild");
+        fresh
+    };
+    // A box of +FIELD around the contact, the device's location not set by hand: no row.
+    h.run("locationbox", json!({"location": "+FIELD", "page": p110.hex(), "corners": [[60, 110], [140, 190]]})).unwrap();
+    assert!(tied(&mut h).is_empty());
+    // Typed: +CP1, fixed. The contact is in +FIELD: one row per placed symbol, one message.
+    h.run("setlocation", json!({"component": k.hex(), "aspect": "location", "value": "+CP1"})).unwrap();
+    assert!(h.doc().devices[&k].location_fixed, "typing sets fixed");
+    let rows = tied(&mut h);
+    let pages: std::collections::BTreeSet<PageId> = rows.iter().filter_map(|r| r.page).collect();
+    assert_eq!(pages, [p105, p110].into_iter().collect(), "{rows:?}");
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    assert!(rows.iter().all(|r| r.which == "-K01: Symbol tied to multiple locations" && r.at.is_some()), "{rows:?}");
+    assert_eq!(rows[0].kind.severity(), checks::Severity::Error);
+    // The device typed as +FIELD: the box agrees, no row.
+    h.run("setlocation", json!({"component": k.hex(), "aspect": "location", "value": "+FIELD"})).unwrap();
+    assert!(tied(&mut h).is_empty());
+}

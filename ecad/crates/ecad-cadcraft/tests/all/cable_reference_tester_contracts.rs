@@ -302,11 +302,24 @@ fn ac1_splitting_a_cable_keeps_its_id_members_conductors_and_nets() {
         if !attached {
             assert!(routes.iter().all(|x| x["free_end"] == "B"), "{row}: {routes:?}");
         }
+        // New items, representations and stubs; besides them only the named points (design 072
+        // §4.4, F4): this cable's cores listing them, Supply's reference placing them, and the
+        // continued cores' Supply lines landing on them, their points unchanged.
         let ops = last_ops(&mut r.h);
-        assert!(
-            ops.iter().all(|o| matches!(o, Op::AddItem { .. } | Op::LinkRepresentation { .. })),
-            "{row}: only new items and representations: {ops:?}"
-        );
+        let source = ref_on(&mut r.h, r.supply).unwrap();
+        for o in &ops {
+            match o {
+                Op::AddItem { .. } | Op::LinkRepresentation { .. } | Op::AddRoute { .. } => {}
+                Op::ModifyCable { id, .. } => assert_eq!(*id, r.c1, "{row}"),
+                Op::ModifyRepresentation { id, .. } => assert_eq!(*id, source, "{row}"),
+                Op::ModifyRoute { before: b, after: a, .. } => {
+                    assert_eq!(a.page, r.supply, "{row}");
+                    assert_eq!(a.points, b.points, "{row}: a Supply line keeps its points");
+                    assert!(a.ends.iter().any(|e| e.point().is_some_and(|t| after.named_points(t).is_some())), "{row}: {a:?}");
+                }
+                other => panic!("{row}: unexpected op {other:?}"),
+            }
+        }
         r.h.cmdline("u");
         assert_eq!(r.h.doc(), before, "{row}: undo returns the document before");
         r.h.cmdline("redo");
@@ -467,34 +480,53 @@ fn ac3_erasing_the_other_end_orphans_this_one_and_undo_redo_round_trip() {
     assert_eq!(r.h.doc(), orphaned, "redo orphans it again");
 }
 
-/// AC3 / design §9: window-erasing the whole Field drawing keeps conductors and attachments and
-/// orphans Supply; `ecaddelete` of the cable removes both references and keeps every route;
+/// AC3 / design §9 with named points (design 072 §4.4, F4): window-erasing the whole Field
+/// drawing orphans Supply and keeps Supply's lines and the cable's cores, but the wires through
+/// Field's points go with Field's stubs (a wire runs only from device point to device point);
+/// `ecaddelete` of the cable removes both references and keeps every line on both pages;
 /// `ecaddelete` of a continued conductor removes its route on every page.
 #[test]
 fn ac3_erase_and_delete_of_cable_drawings_follow_the_section_9_table() {
     let mut r = connected(SEED + 7);
     r.h.activate(r.field);
     let linked = r.h.doc();
+    let supply_lines: Vec<ecad_model::RouteId> = r.w.iter().map(|w| r.h.route_of(r.supply, *w)).collect();
+    let stubs: Vec<ecad_model::RouteId> = r.stubs.iter().map(|(s, _)| *s).collect();
     let handles = continuation_handles(&mut r.h, r.field);
     r.h.run("erase", json!({"handles": handles})).unwrap();
     let doc = r.h.doc();
-    assert_eq!(doc.wires, linked.wires, "attachments made on Field stay");
-    assert_eq!(doc.cables, linked.cables);
+    assert!(doc.wires.is_empty(), "no wire without Field's lines: {:?}", doc.wires.keys());
+    assert!(stubs.iter().all(|s| !doc.routes.contains_key(s)), "Field's stubs erased");
+    for l in &supply_lines {
+        assert_eq!(doc.routes[l].points, linked.routes[l].points, "Supply's line stays");
+    }
+    assert_eq!(doc.cables[&r.c1].cores.len(), linked.cables[&r.c1].cores.len(), "the cable keeps its cores");
     assert_eq!(drawn_text(&mut r.h, r.supply).as_deref(), Some("?"));
     r.h.cmdline("u");
     assert_eq!(r.h.doc(), linked);
-    // ecaddelete {cable}: both references and slashes go; routes on both pages stay.
+    // ecaddelete {cable}: both references and slashes go; the lines on both pages stay.
     r.h.run("ecaddelete", json!({"cable": r.c1.hex()})).unwrap();
     let doc = r.h.doc();
     assert!(cable_references(&doc).is_empty(), "both references removed");
-    for w in r.w {
-        assert_eq!(ecad_cadcraft::references::route_pages(&doc, w).len(), 2, "routes stay on both pages");
+    for l in supply_lines.iter().chain(&stubs) {
+        assert_eq!(doc.routes.get(l).map(|x| &x.points), linked.routes.get(l).map(|x| &x.points), "lines stay on both pages");
     }
     r.h.cmdline("u");
     assert_eq!(r.h.doc(), linked);
-    // ecaddelete {conductor}: its routes on every page go; the references stay linked.
-    r.h.run("ecaddelete", json!({"conductor": r.w[1].hex()})).unwrap();
+    // A continued wire runs as a line on each page (design 072 §4.4, F4): `ecaddelete {conductor}`
+    // refuses it as any wire drawn as more than one line; erasing its line on each page removes
+    // it, and the references stay linked.
+    let head = r.h.head();
+    let e = r.h.run("ecaddelete", json!({"conductor": r.w[1].hex()}));
+    assert_eq!(e, Err("This wire is not drawn as one line between its two points; erase the lines it runs along instead.".to_string()));
+    assert_eq!(r.h.head(), head);
+    for (page, line) in [(r.supply, supply_lines[1]), (r.field, stubs[1])] {
+        r.h.activate(page);
+        let h = r.h.line_handle(page, line);
+        r.h.run("erase", json!({"handles": [h.hex()]})).unwrap();
+    }
     let doc = r.h.doc();
+    assert!(!doc.wires.contains_key(&r.w[1]), "the wire is gone");
     assert!(ecad_cadcraft::references::route_pages(&doc, r.w[1]).is_empty());
     assert_eq!(drawn_text(&mut r.h, r.supply).as_deref(), Some("2/F1"));
     let v = r.h.run("cablerefs", json!({})).unwrap();
@@ -631,19 +663,22 @@ fn ac5_hover_on_member_wires_names_the_other_drawing() {
 fn per_page_edits_touch_only_the_page_they_are_made_on() {
     let mut r = connected(SEED + 11);
     r.h.activate(r.field);
-    let supply_route = r.h.route_ends(r.supply, r.w[0]);
+    // Disconnecting the stub ends the wire through it and connecting makes it again (design 072
+    // §4.3: a wire is its lines'), so Supply's line is followed by its route ID.
+    let line = r.h.route_of(r.supply, r.w[0]);
+    let supply_route = r.h.doc().routes[&line].clone();
     let (stub, end) = r.stubs[0].clone();
     r.h.run("disconnect", json!({"route": stub.hex(), "end": end})).unwrap();
-    assert_eq!(r.h.route_ends(r.supply, r.w[0]), supply_route, "Supply's route untouched");
+    assert_eq!(r.h.doc().routes[&line], supply_route, "Supply's route untouched");
     r.h.run("connect", json!({"route": stub.hex(), "end": end, "terminal": r.k2[0].hex()})).unwrap();
     // Move K2 (its outline lines) down 20: Field's stub ends follow, Supply's routes do not.
     let doc = r.h.doc();
     let k2 = doc.terminals[&r.k2[0]].component;
     let handles = r.h.rep_handles(r.field, k2);
     r.h.run("move", json!({"handles": handles, "delta": [0, -20]})).unwrap();
-    assert_eq!(r.h.route_ends(r.supply, r.w[0]), supply_route, "Supply's route untouched by the drag");
-    let (_, b) = r.h.route_ends(r.field, r.w[0]);
-    assert_eq!(b, r.h.terminal_pos(r.field, r.k2[0]), "Field's stub end followed K2");
+    assert_eq!(r.h.doc().routes[&line], supply_route, "Supply's route untouched by the drag");
+    let b = r.h.doc().routes[&stub].end_points().map(|[_, b]| b);
+    assert_eq!(b, Some(r.h.terminal_pos(r.field, r.k2[0])), "Field's stub end followed K2");
     // A slash across the Field stubs: they are already members of C1.
     let head = r.h.head();
     let e = r.h.run("cableslash", json!({"from": [28, -30], "to": [32, 30]}));
@@ -860,7 +895,9 @@ fn ac6_hostile_documents_never_panic() {
         (
             "reference of a conductor, not a cable",
             Box::new(move |d| {
-                let w = *d.wires.keys().next().unwrap();
+                // The paired fixture's lines are loose (no wire until continued, F4): a wire ID
+                // that names nothing is as hostile.
+                let w = d.wires.keys().next().copied().unwrap_or(WireId::from(0xbad_0012));
                 add_ref(d, 12, Pt::new(3.0, 3.0), page, Subject::Wire(w));
             }),
         ),
@@ -1062,11 +1099,12 @@ fn many_references_of_one_cable_derive_in_bounded_time() {
     }
 }
 
-/// Round 2 nit: an end attached to a terminal on another page gets no mark on this page, even
-/// when it is no longer a leaving end (its page lost its reference): no green dot drawn where
-/// nothing is connected on this page, and no grey "loose" square either.
+/// Round 2 nit, with named points (design 072 §4.4, F4): a stub's end lands on its core's point on
+/// this page's reference, never on a terminal of another page. Erasing the reference takes the
+/// points, so those ends are free here: grey "loose" squares, no green dot where nothing is
+/// connected; the ends on K2 keep their dots.
 #[test]
-fn an_end_attached_on_another_page_gets_no_mark_here() {
+fn an_end_freed_by_erasing_its_reference_shows_as_loose_here() {
     let mut r = connected(SEED + 20);
     r.h.activate(r.field);
     let fid = ref_on(&mut r.h, r.field).unwrap();
@@ -1076,7 +1114,8 @@ fn an_end_attached_on_another_page_gets_no_mark_here() {
     let u = uid(&mut r.h, r.field);
     let marks = r.h.p(|p| overlay_marks(p, u));
     let at_20: Vec<_> = marks.iter().filter(|m| (m.at.x - 20.0).abs() < 1e-9 && m.shape != MarkShape::Ring).collect();
-    assert!(at_20.is_empty(), "marks at the ends attached to K1 on Supply: {at_20:?}");
+    assert_eq!(at_20.len(), 3, "{at_20:?}");
+    assert!(at_20.iter().all(|m| m.shape == MarkShape::Square), "loose, not connected: {at_20:?}");
     let dots_at_k2 = marks.iter().filter(|m| m.shape == MarkShape::Dot && (m.at.x - 100.0).abs() < 1e-9).count();
     assert_eq!(dots_at_k2, 3, "the ends connected here keep their dots");
 }

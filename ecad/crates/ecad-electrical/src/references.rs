@@ -546,7 +546,8 @@ const NO_REFERENCE_STYLES: &[ecad_model::StyleCatalogue] =
 /// text, which pages each member is routed on); its members' end attachments; the cable itself;
 /// and the page order and length unit. So a cable is touched when an op changes or removes an item
 /// of a representation of the cable or of one of its members, links, changes or unlinks such a
-/// representation, or attaches or detaches a member's end. New items, components, terminals,
+/// representation, adds, changes or removes a line of a member or one landing on the cable's named
+/// points, or attaches or detaches a member's end. New items, components, terminals,
 /// definitions and conductors are not shown or not members yet, so they touch nothing.
 pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
     let mut out = BTreeSet::new();
@@ -583,6 +584,13 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
             Op::ModifyRepresentation { before, after, .. } => {
                 note(before, &mut out);
                 note(after, &mut out);
+            }
+            // Design 072 §4.3, §4.4 (F4): a line reaches the cables whose cores it carries (on the
+            // line, or on the wire it draws) and the cables whose named points it lands on.
+            Op::AddRoute { id, route } | Op::RemoveRoute { id, route } => route_cables(doc, *id, route, &mut out),
+            Op::ModifyRoute { id, before, after } => {
+                route_cables(doc, *id, before, &mut out);
+                route_cables(doc, *id, after, &mut out);
             }
             Op::CreateWire { id, .. } if !doc.wires.contains_key(id) => {}
             // Brief 032 (a fold deletes the folded wire; numbering writes wire numbers): a
@@ -653,6 +661,14 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
         }
     }
     Some(out)
+}
+
+/// The cables line `id` (as `route`) reaches, through the indexes: those with a core on it or on
+/// the wire it draws, and those whose named points it lands on.
+fn route_cables(doc: &Document, id: RouteId, route: &ecad_model::Route, out: &mut BTreeSet<CableId>) {
+    out.extend(doc.cables_on_route(id));
+    out.extend(ecad_model::wire_order::wire_of_route(doc, id).into_iter().flat_map(|w| doc.cables_of(w)));
+    out.extend(route.ends.iter().filter_map(|e| doc.cable_point(e.point()?)).map(|(k, _)| k));
 }
 
 /// The cables with a reference on `page` (through the page index).
