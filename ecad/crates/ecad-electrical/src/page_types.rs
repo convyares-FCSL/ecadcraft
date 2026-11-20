@@ -269,16 +269,25 @@ impl PageFix {
 /// type moved to or from such a type, such a page added or removed, a type record whose `checks`
 /// changed. Looked up in `doc` (call it on the state before and after).
 pub fn checks_changed(doc: &Document, ops: &[Op]) -> bool {
+    ecad_model::effect::Effects::of(ops).iter().any(|e| checks_changed_by(doc, e))
+}
+
+/// One effect of [`checks_changed`], looked up in `doc`.
+pub fn checks_changed_by(doc: &Document, effect: &ecad_model::effect::Effect<'_>) -> bool {
+    use ecad_model::effect::Effect;
     let off = |page: &ecad_model::Page| !ecad_model::sheet::type_checks(doc, &ecad_model::sheet::page_type_of(doc, page));
-    ops.iter().any(|op| match op {
-        Op::ModifyPage { before, after, .. } => before.page_type != after.page_type && (off(before) || off(after)),
-        Op::AddPage { page, .. } | Op::RemovePage { page, .. } => off(page),
-        Op::SetStyle { catalogue, before, after, .. } if *catalogue == ecad_model::StyleCatalogue::Page => {
-            let c = |r: &Option<ecad_model::StyleRecord>| r.as_ref().and_then(|r| r.body.page()).and_then(|p| p.checks);
-            c(before) != c(after)
+    match effect {
+        Effect::Page { before: Some(b), after: Some(a), index_before: None, index_after: None, .. } => {
+            b.page_type != a.page_type && (off(b) || off(a))
+        }
+        // Added, removed, or both (a move).
+        Effect::Page { before, after, .. } => before.is_some_and(off) || after.is_some_and(off),
+        Effect::Style { catalogue: ecad_model::StyleCatalogue::Page, before, after, .. } => {
+            let c = |r: Option<&ecad_model::StyleRecord>| r.and_then(|r| r.body.page()).and_then(|p| p.checks);
+            c(*before) != c(*after)
         }
         _ => false,
-    })
+    }
 }
 
 /// Whether `op` can change [`check_rows`].

@@ -508,42 +508,62 @@ pub fn shown_measured(doc: &Document, places: &mut Places<'_>, names: &BTreeSet<
 /// the state before and after the ops).
 pub fn names_named(doc: &Document, ops: &[Op]) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
-    let comp = |out: &mut BTreeSet<String>, c: DeviceId| out.extend(name_of(doc, c));
-    let rep = |out: &mut BTreeSet<String>, r: &Representation| {
-        if let Subject::Device(c) = r.subject {
-            comp(out, c);
-        }
-    };
-    for op in ops {
-        match op {
-            Op::AddItem { id, .. } | Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => {
-                if let Some((_, r)) = doc.representation_of_item(*id) {
-                    rep(&mut out, r);
-                }
-            }
-            Op::LinkRepresentation { rep: r, .. } | Op::UnlinkRepresentation { rep: r, .. } => rep(&mut out, r),
-            Op::ModifyRepresentation { before, after, .. } => {
-                rep(&mut out, before);
-                rep(&mut out, after);
-            }
-            Op::CreateDevice { device: component, .. } | Op::DeleteDevice { device: component, .. } => {
-                out.extend(continuation_key(&component.properties));
-            }
-            Op::SetProperty { object: ObjectRef::Device(c), key, before, after } if key == NAME || key == KIND || key == CAPTION_KEY => {
-                comp(&mut out, *c);
-                if key == NAME && is_continuation(doc, *c) {
-                    out.extend([before, after].into_iter().flatten().map(|n| name_key(n)).filter(|k| !k.is_empty()));
-                }
-            }
-            Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => {
-                for c in doc.components_using(*id) {
-                    comp(&mut out, c);
-                }
-            }
-            _ => {}
-        }
+    for e in &ecad_model::effect::Effects::of(ops) {
+        names_named_by(doc, e, &mut out);
     }
     out
+}
+
+/// One effect of [`names_named`]: adds to `out` the continuation names `effect` could change the
+/// texts or runs of, looked up in `doc`.
+pub fn names_named_by(doc: &Document, effect: &ecad_model::effect::Effect<'_>, out: &mut BTreeSet<String>) {
+    use ecad_model::effect::Effect;
+    let comp = |out: &mut BTreeSet<String>, c: DeviceId| out.extend(name_of(doc, c));
+    match effect {
+        Effect::Item { id, .. } => {
+            if let Some((_, r)) = doc.representation_of_item(*id)
+                && let Subject::Device(c) = r.subject
+            {
+                comp(out, c);
+            }
+        }
+        Effect::Rep { before, after, .. } => {
+            for r in before.iter().chain(after.iter()) {
+                if let Subject::Device(c) = r.subject {
+                    comp(out, c);
+                }
+            }
+        }
+        Effect::Device { before: Some(component), after: None, .. } | Effect::Device { before: None, after: Some(component), .. } => {
+            out.extend(continuation_key(&component.properties));
+        }
+        Effect::Prop { object: ObjectRef::Device(c), key, before, after } if key.raw == NAME || key.raw == KIND || key.raw == CAPTION_KEY => {
+            comp(out, *c);
+            if key.raw == NAME && is_continuation(doc, *c) {
+                out.extend([before, after].into_iter().flatten().map(|n| name_key(n)).filter(|k| !k.is_empty()));
+            }
+        }
+        Effect::Definition { id, .. } => {
+            for c in doc.components_using(*id) {
+                comp(out, c);
+            }
+        }
+        Effect::Page { .. }
+        | Effect::Layer { .. }
+        | Effect::Device { .. }
+        | Effect::DeviceDefinition { .. }
+        | Effect::Terminal { .. }
+        | Effect::Wire { .. }
+        | Effect::Route { .. }
+        | Effect::Cable { .. }
+        | Effect::Prop { .. }
+        | Effect::Settings { .. }
+        | Effect::Version { .. }
+        | Effect::Folder { .. }
+        | Effect::Style { .. }
+        | Effect::Standard { .. }
+        | Effect::Project { .. } => {}
+    }
 }
 
 /// The names of the arrows on `page` (through the page index and the reference index).

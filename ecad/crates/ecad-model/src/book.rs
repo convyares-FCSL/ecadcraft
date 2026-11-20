@@ -131,6 +131,75 @@ impl Outline {
         }
     }
 
+    /// Apply what `effect` changes in the outline, as [`Outline::apply`] does for its ops: a
+    /// folded remove and add (a page or folder moved) applies the remove, then the add. Every
+    /// other effect changes nothing here.
+    pub fn apply_effect(&mut self, effect: &crate::effect::Effect<'_>) {
+        use crate::effect::Effect;
+        match effect {
+            Effect::Page { id, before, after, index_before, index_after } => {
+                if let (Some(_), Some(index)) = (before, index_before) {
+                    if self.page_order.get(*index) == Some(id) {
+                        self.page_order.remove(*index);
+                    }
+                    self.page_folder.remove(id);
+                }
+                let folder = match (after, index_before, index_after) {
+                    (Some(page), _, Some(index)) => {
+                        if *index <= self.page_order.len() {
+                            self.page_order.insert(*index, *id);
+                        }
+                        Some(page.folder)
+                    }
+                    // A change in place states no index.
+                    (Some(page), None, None) => Some(page.folder),
+                    _ => None,
+                };
+                match folder {
+                    Some(Some(f)) => {
+                        self.page_folder.insert(*id, f);
+                    }
+                    Some(None) => {
+                        self.page_folder.remove(id);
+                    }
+                    None => {}
+                }
+            }
+            Effect::Folder { id, before, after, index_before, index_after } => {
+                if let (Some(_), Some(index)) = (before, index_before) {
+                    if self.folder_order.get(*index) == Some(id) {
+                        self.folder_order.remove(*index);
+                    }
+                    self.folders.remove(id);
+                }
+                if let (Some(folder), Some(index)) = (after, index_after) {
+                    if *index <= self.folder_order.len() {
+                        self.folder_order.insert(*index, *id);
+                    }
+                    self.folders.insert(*id, folder.parent);
+                } else if let (Some(folder), None, None) = (after, index_before, index_after) {
+                    self.folders.insert(*id, folder.parent);
+                }
+            }
+            Effect::Layer { .. }
+            | Effect::Item { .. }
+            | Effect::Device { .. }
+            | Effect::DeviceDefinition { .. }
+            | Effect::Terminal { .. }
+            | Effect::Rep { .. }
+            | Effect::Wire { .. }
+            | Effect::Route { .. }
+            | Effect::Cable { .. }
+            | Effect::Prop { .. }
+            | Effect::Definition { .. }
+            | Effect::Settings { .. }
+            | Effect::Version { .. }
+            | Effect::Style { .. }
+            | Effect::Standard { .. }
+            | Effect::Project { .. } => {}
+        }
+    }
+
     /// The book order of this outline.
     pub fn book(&self) -> Book {
         // Children per parent (None = top level), each list in its stored order.
@@ -200,6 +269,32 @@ pub fn positions_changed(doc: &Document, ops: &[crate::op::Op]) -> BTreeSet<Page
     }
     let after = outline.book();
     before.positions.iter().filter(|(p, i)| after.positions.get(p) != Some(i)).map(|(p, _)| *p).collect()
+}
+
+/// [`positions_changed`] over a transaction's effects: the pages of `doc` whose book position
+/// `effects` change. O(pages + folders + effects); empty when `effects` cannot move a page.
+pub fn positions_changed_by(doc: &Document, effects: &crate::effect::Effects<'_>) -> BTreeSet<PageId> {
+    if !moves_pages_by(effects) {
+        return BTreeSet::new();
+    }
+    let mut outline = Outline::of(doc);
+    let before = outline.book();
+    for e in effects {
+        outline.apply_effect(e);
+    }
+    let after = outline.book();
+    before.positions.iter().filter(|(p, i)| after.positions.get(p) != Some(i)).map(|(p, _)| *p).collect()
+}
+
+/// [`moves_pages`] over effects: a page added, removed or moved, a page's folder changed, a folder
+/// effect.
+pub fn moves_pages_by(effects: &crate::effect::Effects<'_>) -> bool {
+    use crate::effect::Effect;
+    effects.iter().any(|e| match e {
+        Effect::Page { before: Some(b), after: Some(a), index_before: None, index_after: None, .. } => b.folder != a.folder,
+        Effect::Page { .. } | Effect::Folder { .. } => true,
+        _ => false,
+    })
 }
 
 impl Book {

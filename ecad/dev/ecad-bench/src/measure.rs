@@ -693,7 +693,7 @@ struct XrefTimes {
 /// added and saved (not timed; then opened once in a headless session), each with a `power3` on its own page and a NO and an NC
 /// on the next page, half of them with an offer (`3P+1NO+1NC`); the first 20 coils' contacts are
 /// all on page 2 (40 targets) and coils 20 to 29 on page 3 (10 tables). Then per run:
-/// - **xbuild**: the reference index built from scratch, as on open;
+/// - **xbuild**: the references view (its index) built from scratch, as `Views::rebuild` does on open;
 /// - **xmove**: a coil moved on its page (MOVE on its symbol: the commit, the reference update and
 ///   the redraw), alternately down and back up;
 /// - **xrenum**: page 2 renumbered (its 40 contacts' rows on other pages), then back (not timed);
@@ -721,7 +721,7 @@ fn xref_edits(path: &Path, copy: &Path, runs: usize) -> Result<XrefTimes, String
         for _ in 0..runs {
             let t = project.read(&mut s, |p, _| {
                 let t = Instant::now();
-                let idx = ecad_cadcraft::xref::RefIndex::build(p.ledger.document());
+                let idx = ecad_cadcraft::derived::RefsView::build(p.ledger.document());
                 let took = ms(t);
                 std::hint::black_box(idx);
                 took

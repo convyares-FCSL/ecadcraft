@@ -69,6 +69,7 @@ pub use ecad_electrical::bom;
 pub use ecad_electrical::cables;
 pub use ecad_electrical::connectors;
 pub use ecad_electrical::defaults;
+pub use ecad_electrical::derived;
 pub use ecad_electrical::designations;
 pub use ecad_electrical::frames;
 pub use ecad_electrical::kinds;

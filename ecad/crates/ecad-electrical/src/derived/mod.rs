@@ -181,7 +181,10 @@ impl Views {
     pub fn begin(&self, before: &Document, ops: &[Op]) -> Pending {
         let effects = Effects::of(ops);
         let cx = NoteCx { doc: before, phase: Phase::Before, effects: &effects };
-        let mut pending = Pending { refs: self.refs.take(before, ops, &*self.inputs.metrics), ..Pending::default() };
+        let mut pending = Pending::default();
+        note_view::<_, Inputs<'_>>(&self.refs, &cx, &mut pending.refs);
+        // The end of the references' Before phase: what they show before the ops.
+        self.refs.take(before, &mut pending.refs, &*self.inputs.metrics);
         note_view::<_, Inputs<'_>>(&self.connectors, &cx, &mut pending.connectors);
         note_view::<_, Inputs<'_>>(&self.pages, &cx, &mut pending.pages);
         note_view::<_, Inputs<'_>>(&self.frame, &cx, &mut pending.frame);
@@ -194,9 +197,10 @@ impl Views {
     /// After phase on the committed transaction's ops, then update every kept view, stage by
     /// stage, and merge their outcomes.
     pub fn finish(&mut self, after: &Document, tx_ops: &[Op], pending: Pending) -> Changes {
-        let Pending { refs, mut connectors, mut pages, mut frame, mut generated, mut tree, mut devices } = pending;
+        let Pending { mut refs, mut connectors, mut pages, mut frame, mut generated, mut tree, mut devices } = pending;
         let effects = Effects::of(tx_ops);
         let cx = NoteCx { doc: after, phase: Phase::After, effects: &effects };
+        note_view::<_, Inputs<'_>>(&self.refs, &cx, &mut refs);
         note_view::<_, Inputs<'_>>(&self.connectors, &cx, &mut connectors);
         note_view::<_, Inputs<'_>>(&self.pages, &cx, &mut pages);
         note_view::<_, Inputs<'_>>(&self.frame, &cx, &mut frame);
@@ -206,7 +210,7 @@ impl Views {
         let inputs = Inputs { engine: &self.inputs, frame_page: self.frame.shown().map(|(p, _)| p) };
         let mut changes = Changes::default();
         // Stage 1: the indexes.
-        merge(&mut changes, self.refs.update(after, tx_ops, refs, &*self.inputs.metrics));
+        merge(&mut changes, self.refs.update(after, refs, &inputs));
         merge(&mut changes, self.connectors.update(after, connectors, &inputs));
         // Stage 3: pages.
         merge(&mut changes, self.pages.update(after, pages, &inputs));
