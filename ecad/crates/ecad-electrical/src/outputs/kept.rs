@@ -583,7 +583,7 @@ impl Outputs {
         // its first drawn half), with that half's tag and location.
         let halves = if item { Vec::new() } else { crate::connectors::half_rows(doc, c, &mut BoxCache::default()) };
         // Sub-items only where `for` can name some or fuses can be uncovered.
-        let fuseterm = !item && bom::is_fuse_terminal(doc, c);
+        let fuseterm = !item && crate::strips::fuse_terminal_of(doc, c).is_some();
         let subs = if item || fuseterm { bom::Subs::None } else { bom::sub_items(doc, c) };
         let mut covered: BTreeSet<&str> = BTreeSet::new();
         let mut inserts = 0;

@@ -957,7 +957,7 @@ impl Strips {
             if strip_of(doc, *c).is_some() {
                 s.set(doc, *c, o, cx);
             }
-            if crate::strips::is_fuse_device(doc, *c) {
+            if fuse_terminal_of(doc, *c).is_some() {
                 s.fuse_devices.insert(*c);
             }
         }
@@ -974,7 +974,7 @@ impl Strips {
     pub fn note_devices(&mut self, doc: &Document, devices: &BTreeSet<DeviceId>) -> bool {
         let mut changed = false;
         for c in devices {
-            changed |= if crate::strips::is_fuse_device(doc, *c) { self.fuse_devices.insert(*c) } else { self.fuse_devices.remove(c) };
+            changed |= if fuse_terminal_of(doc, *c).is_some() { self.fuse_devices.insert(*c) } else { self.fuse_devices.remove(c) };
         }
         changed
     }
@@ -1744,15 +1744,10 @@ pub fn terminal_words(doc: &Document, t: TerminalId) -> String {
     format!("{tag}:{}", crate::terminal_types::terminal_name(doc, t))
 }
 
-/// Whether `c` is a brief 034 fuse terminal device: its stored kind is
-/// [`ecad_model::device::Protection::FuseTerminal`] (design 072 §2.2), set by the `fuseterm` starter.
-pub fn is_fuse_device(doc: &Document, c: DeviceId) -> bool {
-    doc.devices.get(&c).is_some_and(|d| {
-        matches!(
-            &d.device_type,
-            ecad_model::DeviceType::Protection(p) if p.kind() == ecad_model::device::ProtectionKind::FuseTerminal
-        )
-    })
+/// Fuse terminal device `c`'s fuse (brief 034's `fuseterm`): its stored
+/// [`ecad_model::device::Protection::FuseTerminal`] (design 072 §2.2).
+pub fn fuse_terminal_of(doc: &Document, c: DeviceId) -> Option<&ecad_model::device::Fuse> {
+    doc.devices.get(&c)?.device_type.as_protection()?.as_fuse_terminal()
 }
 
 #[cfg(test)]

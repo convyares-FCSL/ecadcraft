@@ -19,7 +19,6 @@ pub use ecad_electrical::cmd::level::{ToPosition, plan_toposition};
 
 use crate::cmd::input::{Command, Typed, nullable};
 use crate::cmd::on_project;
-pub use crate::strips::is_fuse_device;
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[Typed::of::<TermlabelParams>("termlabel"), Typed::of::<TopositionParams>("toposition")];
