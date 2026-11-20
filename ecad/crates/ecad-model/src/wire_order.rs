@@ -191,6 +191,30 @@ pub fn rewrite(doc: &Document, ops: &[Op]) -> Vec<Op> {
             Op::RemoveTerminal { id, .. } => {
                 seeds.points.insert(*id);
             }
+            // A point added to a continuation joins its name group (F5).
+            Op::AddTerminal { id, .. } if doc.named_points(*id).is_some() => {
+                seeds.points.insert(*id);
+            }
+            // A continuation joining or leaving a name group (F5): the lines at its partners, old
+            // and new, may now run on through it or no longer.
+            Op::CreateDevice { id, device } | Op::DeleteDevice { id, device } => seeds.continuation(doc, *id, &device.properties),
+            Op::ModifyDevice { id, before, after } => {
+                seeds.continuation(doc, *id, &before.properties);
+                seeds.continuation(doc, *id, &after.properties);
+            }
+            Op::SetProperty { object: crate::op::ObjectRef::Device(id), key, before, .. }
+                if key == crate::connectivity::KIND || key == crate::connectivity::NAME =>
+            {
+                if let Some(d) = doc.devices.get(id) {
+                    let mut was = d.properties.clone();
+                    match before {
+                        Some(v) => was.insert(key.clone(), v.clone()),
+                        None => was.remove(key),
+                    };
+                    seeds.continuation(doc, *id, &was);
+                    seeds.continuation(doc, *id, &d.properties.clone());
+                }
+            }
             _ => {}
         }
     }
@@ -235,10 +259,19 @@ pub fn wire_of_route(doc: &Document, r: RouteId) -> Option<WireId> {
 /// once both ends have landed, else on the route with the one end that has landed.
 /// [`CorePosition::Unplaced`] when the route is gone.
 pub fn core_position(doc: &Document, r: RouteId) -> CorePosition {
-    let Some(route) = doc.routes.get(&r) else { return CorePosition::Unplaced };
+    if !doc.routes.contains_key(&r) {
+        return CorePosition::Unplaced;
+    }
     if let Some(w) = wire_of_route(doc, r) {
         return CorePosition::Wire(w);
     }
+    line_position(doc, r)
+}
+
+/// Where a core on route `r` sits when the route carries no wire: on the route, with the one end
+/// that has landed on a device point ([`CorePosition::Unplaced`] when the route is gone).
+fn line_position(doc: &Document, r: RouteId) -> CorePosition {
+    let Some(route) = doc.routes.get(&r) else { return CorePosition::Unplaced };
     // A named point (a cable reference's, a continuation's) is an aid, not a landing (F4).
     let open = |e: RouteEnd| e == RouteEnd::Free || e.point().is_some_and(|t| doc.named_points(t).is_some());
     let landed = match route.ends {
@@ -315,6 +348,14 @@ struct Seeds {
 }
 
 impl Seeds {
+    /// Continuation `id` with `props` (before or after an op): its own points and its partners'.
+    fn continuation(&mut self, doc: &Document, id: crate::id::DeviceId, props: &crate::doc::Properties) {
+        if props.get(crate::connectivity::KIND).map(String::as_str) != Some(crate::connectivity::CONTINUATION) {
+            return;
+        }
+        self.points.extend(doc.continuation_points(props, id));
+    }
+
     fn route(&mut self, doc: &Document, id: RouteId, r: &crate::route::Route) {
         if doc.routes.contains_key(&id) {
             self.routes.insert(id);
@@ -513,7 +554,8 @@ impl<'a> Rewrite<'a> {
                 Start::Point(_) | Start::Route(_) => {}
             }
             let c = self.component(s);
-            for t in &c.points {
+            // A wire ending at a named point (one made before its point became one) goes too.
+            for t in c.points.iter().chain(&c.named) {
                 for (w, _) in doc.ends_at(*t) {
                     if let Some(w) = doc.wires.get(&w) {
                         note_net(w.net, &mut todo, &mut old_nets);
@@ -714,7 +756,7 @@ impl<'a> Rewrite<'a> {
                         Some(new) if moved_in.insert((cable, *new)) => Some(CorePosition::Wire(*new)),
                         Some(_) => None,
                         // No wire in its place: the core stays on the line that carried it, now loose.
-                        None => self.loose_line_of(w.ends),
+                        None => self.loose_line_of(*id, w.ends),
                     };
                     per_cable.entry(cable).or_default().push((index, member, position));
                 }
@@ -777,7 +819,7 @@ impl<'a> Rewrite<'a> {
 
     /// The loose line that carried a wire between `ends` (its route now has a free end): one still
     /// landed at an end, else one that `ops` moved off them. Where a core on it now sits.
-    fn loose_line_of(&self, ends: [TerminalId; 2]) -> Option<CorePosition> {
+    fn loose_line_of(&self, gone: WireId, ends: [TerminalId; 2]) -> Option<CorePosition> {
         let doc = self.doc;
         let r = loose_route_at(doc, ends).map(|(r, _)| r).or_else(|| {
             self.lifted
@@ -787,6 +829,11 @@ impl<'a> Rewrite<'a> {
         })?;
         match core_position(doc, r) {
             p @ CorePosition::Route { .. } => Some(p),
+            // The wire this pass deletes still shows here (F5: a renamed continuation broke it).
+            CorePosition::Wire(w) if w == gone => match line_position(doc, r) {
+                p @ CorePosition::Route { .. } => Some(p),
+                CorePosition::Wire(_) | CorePosition::Unplaced => None,
+            },
             CorePosition::Wire(_) | CorePosition::Unplaced => None,
         }
     }
@@ -831,9 +878,14 @@ impl<'a> Rewrite<'a> {
             let Some(here) = route.ends.iter().position(|e| *e == RouteEnd::Point(p)) else { continue };
             match route.ends.get(1 - here).copied() {
                 Some(RouteEnd::Point(q)) if o.has(q) => return Some(Join::From(q)),
-                // Through a named point: from a point beyond it already in the order (F4).
+                // Through a named point: from a point beyond it already in the order (F4), the
+                // first with room for another wire, else the first (F5: a continuation's partner
+                // may sit on a T whose point is already full).
                 Some(RouteEnd::Point(q)) if c.named.contains(&q) => {
-                    if let Some(x) = o.points().iter().copied().find(|x| self.neighbours(c, p).contains(x)) {
+                    let beyond = self.neighbours(c, p);
+                    let mut found = o.points().iter().copied().filter(|x| beyond.contains(x));
+                    let first = found.clone().next();
+                    if let Some(x) = found.find(|x| o.count(*x) < accepts(doc, *x).max(1)).or(first) {
                         return Some(Join::From(x));
                     }
                 }

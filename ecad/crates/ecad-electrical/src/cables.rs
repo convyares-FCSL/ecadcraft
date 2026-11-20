@@ -387,8 +387,10 @@ impl DrawnEnd {
 /// member bound.
 pub fn drawn_ends(doc: &Document, k: CableId) -> [DrawnEnd; 2] {
     let mut out = [DrawnEnd::default(), DrawnEnd::default()];
-    for chain in crate::references::core_chains(doc, k).iter().take(MAX_CABLE_MEMBERS) {
-        let ends = [chain.first().and_then(|w| doc.wires.get(w)).map(|c| c.ends[0]), chain.last().and_then(|w| doc.wires.get(w)).map(|c| c.ends[1])];
+    // Each core is one wire, through any named points (design 072 §4.4, F5).
+    let wires: Vec<ecad_model::WireId> = doc.cables.get(&k).map(|c| c.cores.iter().filter_map(|m| m.wire()).collect()).unwrap_or_default();
+    for w in wires.iter().take(MAX_CABLE_MEMBERS) {
+        let ends = doc.wires.get(w).map(|c| c.ends).map_or([None, None], |[a, b]| [Some(a), Some(b)]);
         for (slot, t) in out.iter_mut().zip(ends) {
             let Some(c) = t.and_then(|t| doc.terminals.get(&t)).map(|x| x.component) else { continue };
             if crate::wires::kind_of(doc, c).is_some() {

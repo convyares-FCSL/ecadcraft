@@ -237,3 +237,89 @@ fn a_fixed_device_in_a_box_of_another_location_is_tied_to_multiple_locations() {
     h.run("setlocation", json!({"component": k.hex(), "aspect": "location", "value": "+FIELD"})).unwrap();
     assert!(tied(&mut h).is_empty());
 }
+
+// ---------------------------------------------------------------- F5: continuations as named points
+
+/// Continuation `name` at `at` on the active page: its device.
+fn continuation(h: &mut H, at: (f64, f64), name: &str) -> ecad_model::DeviceId {
+    id(&h.run("place", json!({"symbol": "continuation", "at": [at.0, at.1], "name": name})).unwrap(), "component")
+}
+
+/// The wires' end pairs, each sorted.
+fn wire_ends(h: &mut H) -> Vec<[TerminalId; 2]> {
+    let mut out: Vec<[TerminalId; 2]> = h
+        .doc()
+        .wires
+        .values()
+        .map(|w| {
+            let mut e = w.ends;
+            e.sort();
+            e
+        })
+        .collect();
+    out.sort();
+    out
+}
+
+/// Design 072 §4.4 (F5): a continuation is a named point. A line from a device point to a
+/// continuation and a line from its partner (same name, another page) to a device point make one
+/// wire between the two device points; neither line ends a wire at the continuation.
+#[test]
+fn a_wire_runs_through_a_continuation_pair_from_device_point_to_device_point() {
+    let mut h = H::new(SEED + 0x50);
+    let p1 = h.first_page();
+    let a = point(&mut h, (0.0, 0.0));
+    continuation(&mut h, (50.0, 0.0), "T1");
+    h.run("wire", json!({"points": [[0, 0], [50, 0]]})).unwrap();
+    assert!(h.doc().wires.is_empty(), "a lonely continuation carries no wire");
+    let p2: PageId = id(&h.run("newpage", json!({"title": "Two"})).unwrap(), "page");
+    h.activate(p2);
+    let k2 = continuation(&mut h, (0.0, 0.0), "T1");
+    let b = point(&mut h, (50.0, 0.0));
+    let r = h.run("wire", json!({"points": [[0, 0], [50, 0]]})).unwrap();
+    let mut want = [a, b];
+    want.sort();
+    assert_eq!(wire_ends(&mut h), [want], "one wire, page 1's point to page 2's: {r}");
+    let doc = h.doc();
+    let t2 = doc.terminals_of(k2).map(|(t, _)| t).next().unwrap();
+    assert_eq!(doc.named_points(t2).map(|g| g.len()), Some(2), "the pair's two points");
+    assert!(doc.ends_at(t2).is_empty(), "no wire ends at a continuation");
+    let w: WireId = *doc.wires.keys().next().unwrap();
+    assert!(ecad_model::derive::route_on_page(&doc, w, p1).is_some() && ecad_model::derive::route_on_page(&doc, w, p2).is_some());
+    h.check();
+}
+
+/// F5: renaming one of the pair takes the wire away in the same transaction (both continuations
+/// are lonely then); undo brings it back with the same ends; renaming back joins them again.
+#[test]
+fn renaming_a_continuation_re_forms_the_wires_through_it() {
+    let mut h = H::new(SEED + 0x51);
+    let a = point(&mut h, (0.0, 0.0));
+    continuation(&mut h, (50.0, 0.0), "T1");
+    h.run("wire", json!({"points": [[0, 0], [50, 0]]})).unwrap();
+    let p2: PageId = id(&h.run("newpage", json!({"title": "Two"})).unwrap(), "page");
+    h.activate(p2);
+    let k2 = continuation(&mut h, (0.0, 0.0), "T1");
+    let b = point(&mut h, (50.0, 0.0));
+    h.run("wire", json!({"points": [[0, 0], [50, 0]]})).unwrap();
+    let mut want = [a, b];
+    want.sort();
+    assert_eq!(wire_ends(&mut h), [want]);
+    let head = h.head();
+    h.run("setprop", json!({"component": k2.hex(), "key": "name", "value": "T2"})).unwrap();
+    assert_eq!(h.head(), head + 1, "one transaction");
+    assert!(wire_ends(&mut h).is_empty(), "the pair is broken: no wire");
+    let lonely = h.run("checks", json!({"kinds": ["lonely-continuation"]})).unwrap();
+    assert_eq!(lonely["total"], json!(2), "{lonely}");
+    h.cmdline("u");
+    assert_eq!(wire_ends(&mut h), [want], "undo brings the wire back");
+    h.cmdline("u");
+    assert!(wire_ends(&mut h).is_empty(), "before page 2's line: no wire");
+    h.cmdline("redo");
+    assert_eq!(wire_ends(&mut h), [want], "redo draws page 2's line again");
+    h.run("setprop", json!({"component": k2.hex(), "key": "name", "value": "T2"})).unwrap();
+    assert!(wire_ends(&mut h).is_empty());
+    h.run("setprop", json!({"component": k2.hex(), "key": "name", "value": "t1 "})).unwrap();
+    assert_eq!(wire_ends(&mut h), [want], "names compare trimmed, upper case");
+    h.check();
+}

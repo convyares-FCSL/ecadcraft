@@ -406,38 +406,38 @@ struct W04 {
     p1: PageId,
     p2: PageId,
     cable: CableId,
-    /// Page 1's members (cores 1–3) and page 2's wires.
-    w1: Vec<WireId>,
-    w2: Vec<WireId>,
+    /// The cable's three cores: each one wire from `-X0n` on page 1 to `-X5n` on page 2, through
+    /// the continuation pair An (design 072 §4.4, F5).
+    w: Vec<WireId>,
 }
 
-/// Design §3.1: page 1 `-X1…3` → arrows A1…A3, slashed `-W04`; page 2 arrows A1…A3 → `-X51…53`.
-/// The second slash is not drawn yet.
+/// Design §3.1, as design 072 §4.4 (F5) has it: page 1 `-X1…3` → arrows A1…A3, slashed `-W04`
+/// (the lines carry no wire yet, the cores sit on them); page 2 arrows A1…A3 → `-X51…53`, which
+/// makes each core one wire across the pages. The second slash is not drawn yet.
 fn w04(seed: u64) -> W04 {
     let mut h = H::new(seed);
     let p1 = h.first_page();
-    let mut w1 = Vec::new();
     for i in 0..3 {
         let x = 100.0 + 20.0 * i as f64;
         let (_, _, tp) = terminal(&mut h, (x, 100.0), &format!("X{}", i + 1));
         continuation(&mut h, (tp.x, 40.0), &format!("A{}", i + 1), 0.0);
-        w1.push(cid(&wire(&mut h, &[(tp.x, tp.y), (tp.x, 40.0)], json!({}))));
+        let r = wire(&mut h, &[(tp.x, tp.y), (tp.x, 40.0)], json!({}));
+        assert!(r["conductor"].is_null(), "fixture: no partner yet, no wire: {r}");
     }
     let v = h.run("cableslash", json!({"from": [90, 70], "to": [150, 70], "tag": "-W04"})).unwrap();
     let cable: CableId = id(&v, "cable");
     let p2: PageId = id(&h.run("newpage", json!({"title": "Field"})).unwrap(), "page");
     h.activate(p2);
-    let mut w2 = Vec::new();
+    let mut w = Vec::new();
     for i in 0..3 {
         let x = 100.0 + 20.0 * i as f64;
         let (_, _, tp) = terminal(&mut h, (x, 100.0), &format!("X5{}", i + 1));
         continuation(&mut h, (tp.x, 40.0), &format!("A{}", i + 1), 180.0);
-        w2.push(cid(&wire(&mut h, &[(tp.x, 40.0), (tp.x, tp.y)], json!({}))));
+        w.push(cid(&wire(&mut h, &[(tp.x, 40.0), (tp.x, tp.y)], json!({}))));
     }
-    for w in w1.iter().chain(&w2) {
-        assert!(h.doc().wires.contains_key(w), "fixture: every wire attached at both ends");
-    }
-    W04 { h, p1, p2, cable, w1, w2 }
+    let members: Vec<WireId> = h.doc().cables[&cable].cores.iter().filter_map(|m| m.wire()).collect();
+    assert_eq!(members, w, "fixture: each core moved onto its wire");
+    W04 { h, p1, p2, cable, w }
 }
 
 fn slash_reps(doc: &Document, k: CableId) -> Vec<(ecad_model::RepresentationId, PageId)> {
@@ -458,20 +458,20 @@ fn same_outputs_as_built(h: &mut H) {
     assert_eq!(kept_checks, built_checks, "Checks from kept outputs = from a rebuild");
 }
 
-/// §12 14: before the second slash, `cablecontinue` says what to do instead.
+/// §12 14, as F5 has it: each core is one wire connected at both ends, so `cablecontinue` has
+/// nothing to continue and is refused, naming the cable; nothing is written.
 #[test]
-fn t14_cablecontinue_on_cores_ending_on_continuations_says_slash_there() {
+fn t14_cablecontinue_on_cores_connected_at_both_ends_is_refused() {
     let mut f = w04(0x7032_0140);
     let head = f.h.head();
     let m = f.h.run("cablecontinue", json!({"cable": f.cable.hex(), "at": [300, 70], "toward": [350, 70]})).unwrap_err();
-    assert!(m.contains("-W04's cores end on continuations"), "{m}");
-    assert!(m.contains("slash the wires there with tag -W04"), "{m}");
+    assert!(m.contains("-W04"), "{m}");
     assert_eq!(f.h.head(), head);
 }
 
-/// §12 13: `cableslash {tag: "-W04"}` on page 2 continues the cable: one cable, six members,
-/// three cores from `-X1…3` to `-X51…53`, no core-twice or too-many-cores rows; erasing the page-2
-/// slash leaves three members.
+/// §12 13, as design 072 §4.4 (F5) has it: `cableslash {tag: "-W04"}` on page 2 shows the cable
+/// there: one cable, three members (each one wire from `-X1…3` to `-X51…53`), no core-twice or
+/// too-many-cores rows; erasing either slash leaves the three members.
 #[test]
 fn t13_a_cable_continued_on_a_second_page() {
     let mut f = w04(0x7032_0130);
@@ -500,35 +500,26 @@ fn t13_a_cable_continued_on_a_second_page() {
     let r = f.h.run("cableslash", json!({"from": [90, 70], "to": [150, 70], "tag": "-W04"})).unwrap();
     assert_eq!(r["continued"], json!(true), "{r}");
     assert_eq!(id::<CableId>(&r, "cable"), f.cable, "{r}");
+    // F5: each core is already one wire through its continuation pair; the slash names them.
     let cores = r["cores"].as_array().cloned().unwrap_or_default();
     assert_eq!(cores.len(), 3, "{r}");
-    for (i, w) in f.w2.iter().enumerate() {
+    for (i, w) in f.w.iter().enumerate() {
         let row = cores.iter().find(|c| c["conductor"] == json!(w.hex())).unwrap_or_else(|| panic!("{w} in {r}"));
-        assert_eq!(row["continues"], json!(f.w1[i].hex()), "{r}");
+        assert_eq!(row["core"], json!(offer[i]), "{r}");
     }
     let tx = last_tx(&mut f.h);
     assert_eq!(tx.label, "Cable slash");
     assert!(!tx.ops.iter().any(|o| matches!(o, Op::CreateCable { .. })), "no new cable: {:?}", tx.ops);
-    // One ModifyCable for the cable, placing three more cores on wires.
-    let placed = |c: &ecad_model::Cable| c.cores.iter().filter(|m| m.wire().is_some()).count() as isize;
-    let added: Vec<isize> = tx
-        .ops
-        .iter()
-        .filter_map(|o| match o {
-            Op::ModifyCable { id, before, after } if *id == f.cable => Some(placed(after) - placed(before)),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(added, vec![3], "{:?}", tx.ops);
+    assert!(!tx.ops.iter().any(|o| matches!(o, Op::ModifyCable { .. })), "no new member: {:?}", tx.ops);
     assert!(tx.ops.iter().any(|o| matches!(o, Op::LinkRepresentation { .. })));
     let doc = f.h.doc();
     assert_eq!(doc.cables.len(), cables_before, "one cable");
     let k = &doc.cables[&f.cable];
-    assert_eq!(k.cores.len(), 6);
-    for (i, w) in f.w2.iter().enumerate() {
+    assert_eq!(k.cores.len(), 3);
+    for (i, w) in f.w.iter().enumerate() {
         let m = k.cores.iter().find(|m| m.wire() == Some(*w)).expect("member");
-        // Design 072 §4.5: setting the offer gave the unlabelled page-1 cores its labels.
-        assert_eq!(m.label_str(), offer.get(i).map(String::as_str), "page-2 member takes its chain's core label");
+        // Design 072 §4.5: setting the offer gave the cores its labels.
+        assert_eq!(m.label_str(), offer.get(i).map(String::as_str));
     }
     let pages: Vec<PageId> = slash_reps(&doc, f.cable).into_iter().map(|(_, p)| p).collect();
     assert!(pages.contains(&f.p1) && pages.contains(&f.p2), "{pages:?}");
@@ -555,7 +546,7 @@ fn t13_a_cable_continued_on_a_second_page() {
     same_outputs_as_built(&mut f.h);
     undo_is_one_step(&mut f.h, &before);
 
-    // Erasing the page-2 slash removes that representation and the page-2 members.
+    // Erasing the page-2 slash removes that representation; the members stay (they run on page 1).
     let doc = f.h.doc();
     let (rep, _) = slash_reps(&doc, f.cable).into_iter().find(|(_, p)| *p == f.p2).unwrap();
     let item = doc.representations[&rep].items[0];
@@ -565,7 +556,7 @@ fn t13_a_cable_continued_on_a_second_page() {
     let doc = f.h.doc();
     assert!(doc.cables.contains_key(&f.cable), "the cable stays");
     let members: Vec<_> = doc.cables[&f.cable].cores.iter().filter_map(|m| m.wire()).collect();
-    assert_eq!(members, f.w1, "page 1's three members are left");
+    assert_eq!(members, f.w, "the three members stay");
     assert_eq!(slash_reps(&doc, f.cable).len(), 1);
     same_outputs_as_built(&mut f.h);
     // Erasing the last slash keeps the cable, as today (009 AC6; design §3.5's table says
@@ -578,7 +569,7 @@ fn t13_a_cable_continued_on_a_second_page() {
     let d = f.h.doc();
     assert!(slash_reps(&d, f.cable).is_empty());
     let members: Vec<_> = d.cables[&f.cable].cores.iter().filter_map(|m| m.wire()).collect();
-    assert_eq!(members, f.w1, "the cable and its page-1 members stay");
+    assert_eq!(members, f.w, "the cable and its members stay");
 }
 
 /// §12 13 (by ID): `cable` instead of `tag` continues it too.
@@ -587,7 +578,7 @@ fn t13b_continue_by_cable_id() {
     let mut f = w04(0x7032_0131);
     let r = f.h.run("cableslash", json!({"from": [90, 70], "to": [150, 70], "cable": f.cable.hex()})).unwrap();
     assert_eq!(r["continued"], json!(true), "{r}");
-    assert_eq!(f.h.doc().cables[&f.cable].cores.len(), 6);
+    assert_eq!(f.h.doc().cables[&f.cable].cores.len(), 3, "F5: no new member");
 }
 
 /// §3.3 refusals, each tested; nothing written.
@@ -605,31 +596,33 @@ fn t13c_continue_refusals() {
     let m = f.h.run("cableslash", json!({"from": [90, 60], "to": [150, 60], "tag": "-W04"})).unwrap_err();
     assert!(m.contains("already"), "{m}");
 
-    // A crossed wire that meets no core through a continuation (strict matching, owner Q5).
+    // A crossed wire that is not one of -W04's cores.
     let mut f = w04(0x7032_0133);
     f.h.points_at(&[(170.0, 100.0), (170.0, 40.0)]);
     let stray = cid(&wire(&mut f.h, &[(170.0, 100.0), (170.0, 40.0)], json!({})));
     let head = f.h.head();
     let m = f.h.run("cableslash", json!({"from": [90, 70], "to": [180, 70], "tag": "-W04"})).unwrap_err();
-    assert!(m.contains("does not continue a core of -W04"), "{m}");
-    assert!(m.contains("through a continuation"), "{m}");
+    assert!(m.contains("is not a core of -W04"), "{m}");
     assert_eq!(f.h.head(), head);
     let _ = stray;
 
-    // Strict: a wire reaching a core through a terminal (not a continuation pair) does not continue it.
+    // A wire on from a core's terminal is not the core.
     let mut f = w04(0x7032_0134);
     let doc = f.h.doc();
-    let x51 = doc.wires[&f.w2[0]].ends.iter().copied().find(|t| wires::kind_of(&doc, doc.terminals[t].component).is_none());
+    let x51 = doc.wires[&f.w[0]]
+        .ends
+        .iter()
+        .copied()
+        .find(|t| ecad_cadcraft::devices::tag_of(&doc, doc.terminals[t].component).is_some_and(|g| g.to_string().starts_with("-X5")));
     let tp = x51.map(|t| f.h.terminal_pos(f.p2, t)).expect("X51's point");
     f.h.points_at(&[(tp.x, tp.y + 40.0)]);
     wire(&mut f.h, &[(tp.x, tp.y), (tp.x, tp.y + 40.0)], json!({}));
     let m = f.h.run("cableslash", json!({"from": [tp.x - 5.0, tp.y + 20.0], "to": [tp.x + 5.0, tp.y + 20.0], "tag": "-W04"})).unwrap_err();
-    assert!(m.contains("does not continue a core of -W04"), "{m}");
+    assert!(m.contains("is not a core of -W04"), "{m}");
 
-    // A wire already in another cable is refused as today.
+    // A new cable over a wire already in -W04 is refused as today.
     let mut f = w04(0x7032_0136);
-    f.h.run("cableslash", json!({"from": [95, 60], "to": [105, 60], "tag": "-W09"})).unwrap();
-    let m = f.h.run("cableslash", json!({"from": [90, 70], "to": [150, 70], "tag": "-W04"})).unwrap_err();
+    let m = f.h.run("cableslash", json!({"from": [95, 60], "to": [105, 60], "tag": "-W09"})).unwrap_err();
     assert!(!m.is_empty());
 
     // A tag used by a device is refused as today.
@@ -637,22 +630,21 @@ fn t13c_continue_refusals() {
     let m = f.h.run("cableslash", json!({"from": [90, 70], "to": [150, 70], "tag": "-X51"})).unwrap_err();
     assert!(!m.is_empty());
 
-    // Two crossed wires continue the same core.
+    // F5 (overseer, 2026-11-20): a page where none of -W04's wires runs gets no empty slash.
     let mut f = w04(0x7032_0135);
-    continuation(&mut f.h, (300.0, 40.0), "A2", 180.0);
-    f.h.points_at(&[(300.0, 100.0)]);
-    wire(&mut f.h, &[(300.0, 40.0), (300.0, 100.0)], json!({}));
+    let p3: PageId = id(&f.h.run("newpage", json!({"title": "Three"})).unwrap(), "page");
+    f.h.activate(p3);
+    f.h.points_at(&[(100.0, 100.0), (100.0, 40.0)]);
+    wire(&mut f.h, &[(100.0, 100.0), (100.0, 40.0)], json!({}));
     let head = f.h.head();
-    let m = f.h.run("cableslash", json!({"from": [90, 70], "to": [310, 70], "tag": "-W04"})).unwrap_err();
-    // Design §3.3: `Two of the wires continue -W04's core 2.` These cores have no stored label
-    // (the page-1 slash gave none), so the words may name the core another way, but must read.
-    assert!(m.starts_with("Two of the wires continue -W04's"), "{m}");
-    assert!(!m.contains("wire wire") && !m.contains("'s the core"), "garbled refusal: {m}");
+    let m = f.h.run("cableslash", json!({"from": [90, 70], "to": [110, 70], "tag": "-W04"})).unwrap_err();
+    assert!(m.contains("-W04 has no wire on this page"), "{m}");
     assert_eq!(f.h.head(), head);
 }
 
-/// Design §10: a cable whose members form a cycle of continuation pairs ends (visited set); a
-/// name group reaching three members of one cable links none of them.
+/// Design §10, as F5 has it: lines that run only between continuations make a loop of named
+/// points with no device point (L–L and R–R pairs); finding its net ends (visited sets), forms no
+/// wire, and the cable commands, Checks and outputs still answer.
 #[test]
 fn t13d_chain_cycles_and_three_member_groups_end() {
     let mut h = H::new(0x7032_0138);
@@ -792,15 +784,21 @@ fn t17_update_map_nets_joined_on_another_page_reproject_labels() {
     wire(&mut h, &[(0.0, 0.0), (100.0, 0.0)], json!({}));
     continuation(&mut h, (100.0, 50.0), "S2", 0.0);
     wire(&mut h, &[(0.0, 50.0), (100.0, 50.0)], json!({}));
-    // Make the label texts equal across both nets (no potential, no colour, no cross-section).
-    assert_eq!(label_entities(&mut h, p1), 2);
     let p2: PageId = id(&h.run("newpage", json!({"title": "Two"})).unwrap(), "page");
     h.activate(p2);
     continuation(&mut h, (0.0, 0.0), "S1", 180.0);
     continuation(&mut h, (0.0, 50.0), "S2", 180.0);
+    // F5: continuations are named points, so each net is one wire from page 1's point to page
+    // 2's, and page 1 shows its labels once page 2's lines land.
+    h.points_at(&[(50.0, 0.0), (50.0, 50.0)]);
     wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({}));
-    wire(&mut h, &[(0.0, 50.0), (50.0, 50.0), (50.0, 0.0)], json!({"join": false}));
-    h.run("joinwires", json!({"at": [50, 0]})).unwrap();
+    wire(&mut h, &[(0.0, 50.0), (50.0, 50.0)], json!({}));
+    // Make the label texts equal across both nets (no potential, no colour, no cross-section).
+    h.activate(p1);
+    assert_eq!(label_entities(&mut h, p1), 2);
+    h.activate(p2);
+    // Join the two nets on page 2.
+    wire(&mut h, &[(50.0, 50.0), (50.0, 0.0)], json!({}));
     let doc = h.doc();
     let c = conductors(&doc);
     let net = net_of(&doc, c[0]);
@@ -816,15 +814,16 @@ fn t17_update_map_nets_joined_on_another_page_reproject_labels() {
     h.check();
 }
 
-/// §8.3/§8.4: cable chain ops keep Checks and the cable outputs equal to a rebuild (rename of a
-/// continuation breaks a chain).
+/// §8.3/§8.4, as F5 has it: renaming a continuation breaks its pair; the core's wire goes and the
+/// core stays on its lines, still used. Checks and the cable outputs stay equal to a rebuild, and
+/// undo puts the core back on its wire.
 #[test]
-fn t17b_update_map_chains_follow_continuation_names() {
+fn t17b_update_map_follows_continuation_names() {
     let mut f = w04(0x7032_0171);
     f.h.run("cableslash", json!({"from": [90, 70], "to": [150, 70], "tag": "-W04"})).unwrap();
     same_outputs_as_built(&mut f.h);
     let doc = f.h.doc();
-    // Rename page 2's A2 to Z9: core 2 is no longer a chain (2 + 1 members as cores).
+    // Rename page 2's A2 to Z9: core 2's wire goes; the core stays on its lines.
     let a2 = doc
         .devices
         .iter()
@@ -835,10 +834,14 @@ fn t17b_update_map_chains_follow_continuation_names() {
         .unwrap();
     f.h.run("setprop", json!({"component": a2.hex(), "key": "name", "value": "Z9"})).unwrap();
     same_outputs_as_built(&mut f.h);
+    let doc = f.h.doc();
+    assert!(!doc.wires.contains_key(&f.w[1]));
+    assert!(matches!(doc.cables[&f.cable].cores[1].position, ecad_model::CorePosition::Route { .. }), "{:?}", doc.cables[&f.cable].cores);
     let cc = f.h.run("cablecores", json!({"cable": f.cable.hex()})).unwrap();
-    assert_eq!(cc["used"], 4, "two chains and two lone members: {cc}");
+    assert_eq!(cc["used"], 3, "the core on its lines is used: {cc}");
     f.h.cmdline("u");
     same_outputs_as_built(&mut f.h);
+    assert_eq!(f.h.doc().cables[&f.cable].cores[1].wire(), Some(f.w[1]));
     let cc = f.h.run("cablecores", json!({"cable": f.cable.hex()})).unwrap();
     assert_eq!(cc["used"], 3, "{cc}");
     let _ = f.p1;

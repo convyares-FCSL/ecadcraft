@@ -122,7 +122,8 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
         "End B: connection point X2 of -H01",
         "Potential 0V (continuation)",
         "Cross-section 0.5 (0 V DC) \u{b7} Colour BU (0 V DC)",
-        "Net 0V-01 \u{b7} 4 wires \u{b7} -G01:-, -H01:X2, -H02:X2, -K01:A2",
+        // F5: continuations are named points, so four points take three wires, page to page.
+        "Net 0V-01 \u{b7} 3 wires \u{b7} -G01:-, -H01:X2, -H02:X2, -K01:A2",
     ] {
         assert!(lines.iter().any(|l| l == want), "{want} missing from {lines:?}");
     }
@@ -170,12 +171,10 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     // Four rows of brief 022, brief 024's count of devices without a part number, brief 052's two
     // function rows (-K01 is =PUMP, which no page or box says; the others have none) and brief
     // 057's open core (the owner rule: -W01's unwired GNYE core is an error until ticked Not used),
-    // and brief 059's two `no-gland` rows (-W01 has no gland size at either end). Until lane F step
-    // F4 the demo does not continue -W01 on page 3, which adds seven: its orphan reference, and an
-    // open end and no wire yet for each of its three lines ending at the reference, and step c's
-    // core landed at one end only for each of their three cores (with F4: 10).
-    assert_eq!(rows.len(), 20, "{rows:?}");
-    assert_eq!(rows.iter().filter(|r| r.check.kind == Kind::CoreOneEnd).count(), 3, "{rows:?}");
+    // and brief 059's two `no-gland` rows (-W01 has no gland size at either end). -W01 continues
+    // on page 3 (F4, F5): no orphan reference, no loose lines, every core landed at both ends.
+    assert_eq!(rows.len(), 10, "{rows:?}");
+    assert_eq!(rows.iter().filter(|r| r.check.kind == Kind::CoreOneEnd).count(), 0, "{rows:?}");
     assert_eq!(rows.iter().filter(|r| r.check.kind == Kind::NoGland).count(), 2, "{rows:?}");
     assert!(rows.iter().any(|r| r.check.kind == Kind::FunctionUnused), "{rows:?}");
     assert!(rows.iter().any(|r| r.check.kind == Kind::NoFunction), "{rows:?}");

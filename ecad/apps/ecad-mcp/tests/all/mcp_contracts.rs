@@ -1013,7 +1013,7 @@ fn wiring_through_mcp_records_the_json_forms_transactions_as_the_agent() {
     };
 
     // Design 072: a wire runs between two connection points; terminals give the lines their ends.
-    for at in [[0, 0], [60, 0], [45, 30], [100, 40]] {
+    for at in [[0, 0], [60, 0], [45, 30], [100, 40], [200, 40]] {
         c.exec("place", json!({"symbol": "terminal", "at": at}));
     }
 
@@ -1050,6 +1050,11 @@ fn wiring_through_mcp_records_the_json_forms_transactions_as_the_agent() {
             .iter()
             .any(|op| matches!(op, Op::CreateDevice { device: component, .. } if component.properties.get("name").map(String::as_str) == Some("0V")))
     );
+    // F5: a continuation is a named point, so the wire runs through a pair of them, from one
+    // terminal to the other; its partner's line is drawn first and carries no wire yet.
+    one(&mut c, "place", json!({"symbol": "continuation", "at": [200, 0], "name": "0V"}));
+    let (r, _) = one(&mut c, "wire", json!({"points": [[200, 0], [200, 40]]}));
+    assert!(r["conductor"].is_null(), "no wire to a lonely continuation: {r}");
     let (r, _) = one(&mut c, "wire", json!({"points": [[100, 0], [100, 40]]}));
     assert_eq!(r["number"], json!("0V-01"), "a net named by a continuation takes its potential");
     let zero = r["conductor"].as_str().unwrap().to_string();
@@ -1089,7 +1094,10 @@ fn wiring_through_mcp_records_the_json_forms_transactions_as_the_agent() {
     let nets = c.exec("nets", json!({}));
     assert_eq!(nets["nets"].as_array().unwrap().len(), 2, "{nets}");
     let checks = c.exec("checks", json!({}));
-    assert!(checks["checks"].as_array().unwrap().iter().any(|x| x["kind"] == json!("lonely-continuation")), "{checks}");
+    // F5: the 0V continuation has its partner now, so no lonely-continuation row; the list answers.
+    let rows = checks["checks"].as_array().unwrap();
+    assert!(rows.iter().all(|x| x["kind"] != json!("lonely-continuation")), "{checks}");
+    assert!(rows.iter().any(|x| x["kind"] == json!("no-part-number")), "{checks}");
 
     // Writes off: every brief 022 write is refused; nets, net and checks answer.
     let mut r = reader();

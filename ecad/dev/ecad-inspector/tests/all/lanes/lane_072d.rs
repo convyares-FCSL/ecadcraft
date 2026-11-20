@@ -319,3 +319,95 @@ fn cable_reference_points_are_shown_raw_and_readable() {
     let member = &cables["ok"]["rows"][0]["members"][0];
     assert_eq!(member["through"], serde_json::json!([point.to_string()]), "the cable row lists the core's point: {cables}");
 }
+
+#[test]
+fn a_cable_with_two_slashes_and_one_wire_per_core_is_shown_raw_and_readable() {
+    // Design 072 §4.4 (F5, overseer 2026-11-20): continuations are named points, so a core through
+    // a continuation pair is one wire from page 1's point to page 2's, and a slash with the cable's
+    // tag on page 2 only shows the cable there. Both slashes, the one member and its two ends read
+    // in the Raw and Readable views and in the cable rows.
+    use ecad_model::{
+        Cable, CableId, Core, Form, Item, ItemId, ItemKind, Page, PageId, Primitive, Pt, Representation, RepresentationId, Style, Subject,
+    };
+    let dir = TempDir::new("072d-two-slashes");
+    let mut l = history();
+    let p1: PageId = *l.document().page_order.first().unwrap();
+    let mut ids = IdAllocator::seeded(76);
+    let p2: PageId = ids.fresh();
+    let (x01, x05, a1, a2): (DeviceId, DeviceId, DeviceId, DeviceId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
+    let (t01, t05, ta1, ta2): (TerminalId, TerminalId, TerminalId, TerminalId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
+    let (w, net, conductor): (WireId, NetId, ConductorId) = (ids.fresh(), ids.fresh(), ids.fresh());
+    let k: CableId = ids.fresh();
+    let (i1, i2, r1, r2): (ItemId, ItemId, RepresentationId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
+    let layer = *l.document().layers.keys().next().unwrap();
+    let style = Style { layer, color: ecad_model::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
+    let point = |component: DeviceId, label: &str| Terminal { component, label: Some(label.into()), key: None, accepts: Default::default() };
+    let arrow = || {
+        let mut d = Device::default();
+        d.properties.insert(ecad_model::connectivity::KIND.into(), ecad_model::connectivity::CONTINUATION.into());
+        d.properties.insert(ecad_model::connectivity::NAME.into(), "A1".into());
+        d
+    };
+    let slash = |id: ItemId, page: PageId| Op::AddItem {
+        id,
+        item: Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(50.0, -5.0), b: Pt::new(50.0, 5.0) }) },
+    };
+    let link = |id: RepresentationId, page: PageId, item: ItemId| Op::LinkRepresentation {
+        id,
+        rep: Representation {
+            subject: Subject::Cable(k),
+            page,
+            form: Form::Drawn,
+            role: "slash".into(),
+            items: vec![item],
+            connection_points: Default::default(),
+        },
+    };
+    l.commit(
+        Author::User,
+        "setup",
+        vec![
+            Op::AddPage { id: p2, page: Page::titled("2").unwrap(), index: 1 },
+            Op::CreateDevice { id: x01, device: Device::default() },
+            Op::CreateDevice { id: x05, device: Device::default() },
+            Op::CreateDevice { id: a1, device: arrow() },
+            Op::CreateDevice { id: a2, device: arrow() },
+            Op::AddTerminal { id: t01, terminal: point(x01, "1") },
+            Op::AddTerminal { id: t05, terminal: point(x05, "1") },
+            Op::AddTerminal { id: ta1, terminal: point(a1, "1") },
+            Op::AddTerminal { id: ta2, terminal: point(a2, "1") },
+            Op::CreateWire { id: w, wire: Wire::new(net, conductor, t01, t05) },
+            Op::CreateCable { id: k, cable: Cable { cores: vec![Core::on_wire(w, ecad_model::CoreLabel::new("1").ok())], ..Cable::default() } },
+            slash(i1, p1),
+            link(r1, p1, i1),
+        ],
+    )
+    .unwrap();
+    // The second slash: the cable shown on page 2, no new member.
+    l.commit(Author::User, "cableslash", vec![slash(i2, p2), link(r2, p2, i2)]).unwrap();
+    let doc = l.document();
+    assert_eq!(doc.named_points(ta2).map(|g| g.len()), Some(2), "the pair is one named point group");
+    assert_eq!(doc.cables[&k].cores.len(), 1);
+    let path = written(&dir, &l);
+    let f = FileSource::from_path(&path);
+    assert!(matches!(f.wait_verified(Duration::from_secs(60)), VerifyState::Done { .. }));
+    let s = Some(&f as &dyn Source);
+    let rows = ask(s, serde_json::json!({"op": "rows", "table": "transactions", "count": 1000}));
+    let rows = rows["ok"]["rows"].as_array().cloned().unwrap_or_default();
+    let key = rows.last().and_then(|r| r["key"].as_str().map(str::to_string)).unwrap();
+    let readable = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "readable"}));
+    let text = readable["ok"]["decoded"].to_string();
+    for want in ["LinkRepresentation", "slash", &k.hex(), &p2.hex()] {
+        assert!(text.contains(want), "{want} in the readable records: {text}");
+    }
+    assert!(!text.contains("ModifyCable"), "the second slash adds no member: {text}");
+    let raw = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "raw"}));
+    assert!(raw["ok"]["hex"].as_str().is_some_and(|h| !h.is_empty()), "the raw row");
+    let cables = ask(s, serde_json::json!({"op": "cables"}));
+    let row = &cables["ok"]["rows"][0];
+    let members = row["members"].as_array().cloned().unwrap_or_default();
+    assert_eq!(members.len(), 1, "one member, one wire: {cables}");
+    assert_eq!(members[0]["core"], "1");
+    let ends = row["ends"].to_string();
+    assert!(!ends.contains("A1"), "the wire runs device to device, never to a continuation: {cables}");
+}
