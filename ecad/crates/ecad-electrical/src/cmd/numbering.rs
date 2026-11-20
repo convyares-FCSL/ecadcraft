@@ -141,7 +141,7 @@ pub fn scope(doc: &Document, input: &RenumberInput, max_objects: usize) -> Resul
 /// # Errors
 /// A named strip that is not a terminal strip or one of its terminals.
 pub fn strips(doc: &Document, named: &[String], scope: &Scope) -> Result<BTreeSet<DeviceId>, CmdError> {
-    let all = || doc.devices.keys().copied().filter(|c| crate::strips::is_strip(doc, *c));
+    let all = || doc.devices.keys().copied().filter(|c| crate::strips::strip_of(doc, *c).is_some());
     Ok(match scope {
         Scope::All | Scope::Folder(_) | Scope::Pages(_) => all().collect(),
         Scope::Prefix(p) => {
@@ -149,14 +149,14 @@ pub fn strips(doc: &Document, named: &[String], scope: &Scope) -> Result<BTreeSe
             all().filter(|c| crate::devices::tag_of(doc, *c).and_then(ecad_model::tag::parse).is_some_and(|(q, _)| q == p)).collect()
         }
         Scope::Selection { devices, .. } => {
-            let mut out: BTreeSet<DeviceId> = devices.iter().copied().filter(|c| crate::strips::is_strip(doc, *c)).collect();
+            let mut out: BTreeSet<DeviceId> = devices.iter().copied().filter(|c| crate::strips::strip_of(doc, *c).is_some()).collect();
             for t in named {
                 let n = hex(t, "strips")?;
                 let c = match doc.terminals.get(&TerminalId(n)) {
                     Some(t) => t.component,
                     None => DeviceId(n),
                 };
-                if !crate::strips::is_strip(doc, c) {
+                if crate::strips::strip_of(doc, c).is_none() {
                     return Err(CmdError::refused(format!("{t} in `strips` is not a terminal strip or one of its terminals.")));
                 }
                 out.insert(c);

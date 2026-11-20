@@ -205,6 +205,60 @@ impl DeviceType {
     pub fn is_general(&self) -> bool {
         matches!(self, DeviceType::General)
     }
+
+    /// A terminal strip's data, when it is one.
+    pub fn as_strip(&self) -> Option<&TerminalStrip> {
+        match self {
+            DeviceType::TerminalStrip(s) => Some(s),
+            DeviceType::PowerSupply(_)
+            | DeviceType::Protection(_)
+            | DeviceType::Switching(_)
+            | DeviceType::Sensor(_)
+            | DeviceType::Motor(_)
+            | DeviceType::Load(_)
+            | DeviceType::Indicator(_)
+            | DeviceType::Connector(_)
+            | DeviceType::PlcRack(_)
+            | DeviceType::PlcModule(_)
+            | DeviceType::General => None,
+        }
+    }
+
+    /// A connector's data, when it is one.
+    pub fn as_connector(&self) -> Option<&Connector> {
+        match self {
+            DeviceType::Connector(c) => Some(c),
+            DeviceType::PowerSupply(_)
+            | DeviceType::Protection(_)
+            | DeviceType::Switching(_)
+            | DeviceType::Sensor(_)
+            | DeviceType::Motor(_)
+            | DeviceType::Load(_)
+            | DeviceType::Indicator(_)
+            | DeviceType::TerminalStrip(_)
+            | DeviceType::PlcRack(_)
+            | DeviceType::PlcModule(_)
+            | DeviceType::General => None,
+        }
+    }
+
+    /// A protective device's data, when it is one.
+    pub fn as_protection(&self) -> Option<&Protection> {
+        match self {
+            DeviceType::Protection(p) => Some(p),
+            DeviceType::PowerSupply(_)
+            | DeviceType::Switching(_)
+            | DeviceType::Sensor(_)
+            | DeviceType::Motor(_)
+            | DeviceType::Load(_)
+            | DeviceType::Indicator(_)
+            | DeviceType::TerminalStrip(_)
+            | DeviceType::Connector(_)
+            | DeviceType::PlcRack(_)
+            | DeviceType::PlcModule(_)
+            | DeviceType::General => None,
+        }
+    }
 }
 
 pub mod contacts;

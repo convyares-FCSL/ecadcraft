@@ -90,12 +90,12 @@ pub fn strip_target(doc: &Document, device: Option<DeviceId>, tag: Option<&str>)
     };
     match (device, tag) {
         (Some(c), _) if !doc.devices.contains_key(&c) => Err(CmdError::NotFound(Noun::Device)),
-        (Some(c), _) if !crate::strips::is_strip(doc, c) => Err(not_strip(c)),
+        (Some(c), _) if crate::strips::strip_of(doc, c).is_none() => Err(not_strip(c)),
         (Some(c), _) => Ok((Some(c), None)),
         (None, Some(t)) => {
             let t = tag::normalise(t, devices::padding(doc))?;
             match devices::holder_of(doc, &t, None) {
-                Some(c) if crate::strips::is_strip(doc, c) => Ok((Some(c), None)),
+                Some(c) if crate::strips::strip_of(doc, c).is_some() => Ok((Some(c), None)),
                 Some(c) => Err(not_strip(c)),
                 None if !doc.cables_tagged(&t).is_empty() => Err(CmdError::refused(format!("Tag {t} is a cable's; choose another tag for a strip."))),
                 None => Ok((None, Some(t))),

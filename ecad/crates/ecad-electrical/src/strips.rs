@@ -69,9 +69,9 @@ pub const PE_KEY: crate::symbols::StarterKey = crate::symbols::StarterKey::Termi
 
 // ---------------------------------------------------------------- strips and terminals
 
-/// Whether `c` is a terminal strip: its typed kind (design 072 §2.2), never its symbol.
-pub fn is_strip(doc: &Document, c: DeviceId) -> bool {
-    doc.devices.get(&c).is_some_and(|x| matches!(x.device_type, ecad_model::DeviceType::TerminalStrip(_)))
+/// Strip `c`'s own data (its type's, design 072 §2.2), when it is a terminal strip.
+pub fn strip_of(doc: &Document, c: DeviceId) -> Option<&ecad_model::device::TerminalStrip> {
+    doc.devices.get(&c)?.device_type.as_strip()
 }
 
 /// Whether representation `r` draws a PE terminal.
@@ -124,7 +124,7 @@ pub fn drawn_points(doc: &Document, c: DeviceId) -> Vec<(TerminalId, Representat
 /// The terminal of a strip a conductor end is on: (strip, terminal).
 pub fn strip_of_terminal(doc: &Document, t: TerminalId) -> Option<DeviceId> {
     let c = doc.terminals.get(&t)?.component;
-    is_strip(doc, c).then_some(c)
+    strip_of(doc, c).map(|_| c)
 }
 
 /// The strip a conductor bridges, when its two ends are on two terminals of one strip.
@@ -954,7 +954,7 @@ impl Strips {
     pub fn build(doc: &Document, o: &Outputs, cx: &PageCx) -> Strips {
         let mut s = Strips::default();
         for c in doc.devices.keys() {
-            if is_strip(doc, *c) {
+            if strip_of(doc, *c).is_some() {
                 s.set(doc, *c, o, cx);
             }
             if crate::strips::is_fuse_device(doc, *c) {
@@ -983,7 +983,7 @@ impl Strips {
     pub fn touched(&self, doc: &Document, scope: &StripScope<'_>) -> BTreeSet<DeviceId> {
         let mut out = BTreeSet::new();
         for c in scope.devices {
-            if self.strips.contains_key(c) || is_strip(doc, *c) {
+            if self.strips.contains_key(c) || strip_of(doc, *c).is_some() {
                 out.insert(*c);
             }
             out.extend(self.by_far.get(c).into_iter().flatten().copied());
@@ -1090,7 +1090,7 @@ impl Strips {
 
     fn set(&mut self, doc: &Document, c: DeviceId, o: &Outputs, cx: &PageCx) {
         self.remove(c);
-        if !is_strip(doc, c) {
+        if strip_of(doc, c).is_none() {
             return;
         }
         let d = strip_data(doc, c, o, cx);

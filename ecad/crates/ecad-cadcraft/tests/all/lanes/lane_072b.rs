@@ -16,7 +16,7 @@ fn predicates_say(doc: &Document, c: DeviceId) -> Option<DeviceGroup> {
         // position in a strip (`termfuse`) is the strip's.
         return Some(DeviceGroup::Protection);
     }
-    if strips::is_strip(doc, c) {
+    if strips::strip_of(doc, c).is_some() {
         return Some(DeviceGroup::TerminalStrip);
     }
     if connectors::is_connector(doc, c) {

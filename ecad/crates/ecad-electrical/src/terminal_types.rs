@@ -402,7 +402,7 @@ pub fn shown_label(doc: &Document, t: TerminalId) -> Option<String> {
     }
     // Brief 044 (FP6): only a strip's `.`-keys are levels; a connector pin (`.s`, `.p`) is named
     // by its half (`-X10.S:3`, design 044 §0).
-    if !crate::strips::is_strip(doc, c) {
+    if crate::strips::strip_of(doc, c).is_none() {
         return Some(crate::connectors::pin_name(doc, t).unwrap_or(p));
     }
     Some(derived_label(doc, c, type_of_terminal(doc, t), &p, n))
@@ -415,7 +415,7 @@ pub fn shown_label(doc: &Document, t: TerminalId) -> Option<String> {
 pub fn orphaned_key_ops(doc: &Document, c: DeviceId, dropped: &[TerminalId]) -> (Vec<ecad_model::Op>, Vec<String>) {
     let (mut ops, mut notes) = (Vec::new(), Vec::new());
     let Some(props) = doc.devices.get(&c).map(|x| &x.properties) else { return (ops, notes) };
-    if dropped.is_empty() || !crate::strips::is_strip(doc, c) {
+    if dropped.is_empty() || crate::strips::strip_of(doc, c).is_none() {
         return (ops, notes);
     }
     let gone: BTreeSet<TerminalId> = dropped.iter().copied().collect();

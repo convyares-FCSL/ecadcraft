@@ -468,7 +468,7 @@ pub fn override_type_ok(t: &str) -> bool {
 /// Representation `r`'s location (design 052 §5.2), first match wins: a strip's own (a strip has
 /// no overrides); the device's override for `r`'s type; the device's; none.
 pub fn rep_location(doc: &Document, c: DeviceId, r: &Representation) -> Located {
-    if crate::strips::is_strip(doc, c) {
+    if crate::strips::strip_of(doc, c).is_some() {
         return resolve(doc, c);
     }
     let props = doc.devices.get(&c).map(|x| &x.properties);

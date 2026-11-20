@@ -299,7 +299,7 @@ impl Outputs {
         for op in ops {
             let Op::SetProperty { object: ObjectRef::Device(c), key, .. } = op else { continue };
             let position = key.strip_prefix(crate::terminal_types::LABEL_PREFIX).and_then(|r| r.rsplit_once('.')).map(|(p, _)| p);
-            if (position.is_none() && !crate::defaults::terminals::is_label_key(key)) || !crate::strips::is_strip(doc, *c) {
+            if (position.is_none() && !crate::defaults::terminals::is_label_key(key)) || crate::strips::strip_of(doc, *c).is_none() {
                 continue;
             }
             for (t, x) in doc.terminals_of(*c) {
@@ -683,7 +683,7 @@ impl Outputs {
             return;
         }
         // Review of PR #57, 4: a link key on a device that is not a strip.
-        let misplaced = !crate::strips::is_strip(doc, c)
+        let misplaced = crate::strips::strip_of(doc, c).is_none()
             && doc.devices.get(&c).is_some_and(|x| x.properties.keys().any(|k| ecad_model::links::link_number(k).is_some()));
         if misplaced {
             let keys = doc
@@ -726,7 +726,7 @@ impl Outputs {
         }
         // Brief 028 (Q13): a strip has one BOM row per terminal type, from the strip model; its
         // part lines are entries like a device's (brief 047).
-        let main = (!crate::strips::is_strip(doc, c) && !connector).then(|| Entry {
+        let main = (crate::strips::strip_of(doc, c).is_none() && !connector).then(|| Entry {
             component: c,
             line: 0,
             item: false,

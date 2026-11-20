@@ -278,7 +278,7 @@ fn head(doc: &Document, c: DeviceId) -> Option<&'static crate::symbols::Starter>
 
 /// What `for` may name on `c`.
 pub fn sub_items(doc: &Document, c: DeviceId) -> Subs {
-    if crate::strips::is_strip(doc, c) {
+    if crate::strips::strip_of(doc, c).is_some() {
         let ps = crate::terminal_types::positions(doc, c);
         let fuses = ps.iter().filter(|p| p.ty.code == "fuse").map(|p| p.label.clone()).collect();
         return Subs::Positions { all: ps.into_iter().map(|p| p.label).collect(), fuses };
@@ -388,7 +388,7 @@ pub fn renumber_for_ops(doc: &Document, ops: &[Op]) -> (Vec<Op>, Vec<String>) {
     let mut out = Vec::new();
     let mut lines = Vec::new();
     for (c, map) in crate::accessories::relabels(ops) {
-        if !crate::strips::is_strip(doc, c) {
+        if crate::strips::strip_of(doc, c).is_none() {
             continue;
         }
         let Some(props) = doc.devices.get(&c).map(|x| &x.properties) else { continue };
@@ -800,7 +800,7 @@ pub fn article_targets(doc: &Document, pn: &str, maker: Option<&str>) -> Vec<Art
             continue;
         }
         let maker_ok = |k: &str| maker.is_none_or(|m| same(comp.get(k), m));
-        let strip = crate::strips::is_strip(doc, *c);
+        let strip = crate::strips::strip_of(doc, *c).is_some();
         if same(comp.part_number.as_ref(), pn) && maker_ok(ecad_model::device::MAKER_KEY) && !strip {
             out.push((ObjectRef::Device(*c), ARTICLE_KEY.to_string(), if item { "item" } else { "device" }));
         }

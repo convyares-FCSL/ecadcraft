@@ -384,7 +384,7 @@ pub fn drop_items(text: &str, drop: &[String]) -> String {
 /// # Errors
 /// A placement or link key on a device that is not a strip, and every refusal of the value.
 pub fn setprop_rule(doc: &Document, c: DeviceId, key: &str, value: Option<&str>) -> Result<Option<Option<String>>, CmdError> {
-    let strip = crate::strips::is_strip(doc, c);
+    let strip = crate::strips::strip_of(doc, c).is_some();
     let not_strip = || CmdError::refused(format!("{} is not a terminal strip. Pick a terminal of the strip.", crate::devices::tag_words(doc, c)));
     if key.starts_with(ACC_PREFIX) {
         if !strip {
@@ -905,7 +905,7 @@ pub fn relabels(ops: &[Op]) -> BTreeMap<DeviceId, BTreeMap<String, String>> {
 fn renumber_strip(
     doc: &Document, c: DeviceId, base: Option<&ecad_model::Device>, map: &BTreeMap<String, String>, out: &mut Vec<Op>, lines: &mut Vec<String>,
 ) {
-    if !crate::strips::is_strip(doc, c) {
+    if crate::strips::strip_of(doc, c).is_none() {
         return;
     }
     let Some(props) = doc.devices.get(&c).map(|x| &x.properties) else { return };

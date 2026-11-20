@@ -106,7 +106,7 @@ pub fn plan_termlabel(doc: &Document, input: TermlabelInput) -> Result<Termlabel
         }
         (None, None) => return Err(CmdError::input("`terminal` or `strip` (hex id) is required")),
     };
-    if !crate::strips::is_strip(doc, c) {
+    if crate::strips::strip_of(doc, c).is_none() {
         return Err(CmdError::refused("That device is not a terminal strip."));
     }
     let tag = crate::devices::tag_words(doc, c);
@@ -230,7 +230,7 @@ pub fn plan_toposition(
 ) -> Result<ToPosition, CmdError> {
     let comp = doc.devices.get(&device).ok_or(CmdError::NotFound(Noun::Device))?;
     let tag = crate::devices::tag_words(doc, device);
-    if crate::strips::is_strip(doc, device) {
+    if crate::strips::strip_of(doc, device).is_some() {
         return Err(CmdError::refused(format!("{tag} is a terminal strip, not a fuse terminal device.")));
     }
     if !is_fuse_device(doc, device) {
@@ -260,7 +260,7 @@ pub fn plan_toposition(
             if c == device {
                 return Err(CmdError::refused(format!("{tag} cannot become a position of itself. Name a terminal strip.")));
             }
-            if !crate::strips::is_strip(doc, c) {
+            if crate::strips::strip_of(doc, c).is_none() {
                 return Err(CmdError::refused(format!("{} is not a terminal strip.", crate::devices::tag_words(doc, c))));
             }
             c
@@ -270,7 +270,7 @@ pub fn plan_toposition(
             let strips: std::collections::BTreeSet<DeviceId> = doc
                 .representations_on(page)
                 .filter_map(|(_, r)| match r.subject {
-                    Subject::Device(c) if crate::strips::is_strip(doc, c) => Some(c),
+                    Subject::Device(c) if crate::strips::strip_of(doc, c).is_some() => Some(c),
                     _ => None,
                 })
                 .collect();

@@ -123,7 +123,7 @@ pub fn plan_fence_typed(
     let legacy = kind.ty.legacy();
     let starter = crate::symbols::starter(kind.ty.starter_key(kind.level));
     if let Some(c) = strip
-        && !strips::is_strip(doc, c)
+        && strips::strip_of(doc, c).is_none()
     {
         return Err(CmdError::refused("That device is not a terminal strip. Press Enter for a new strip, or type the tag of one (-X01)."));
     }
