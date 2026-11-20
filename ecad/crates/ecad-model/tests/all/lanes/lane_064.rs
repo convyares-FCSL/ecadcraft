@@ -21,9 +21,8 @@ fn expected(op: &Op) -> EffectKind {
         "AddTerminal" | "RemoveTerminal" => EffectKind::Terminal,
         "LinkRepresentation" | "ModifyRepresentation" | "UnlinkRepresentation" => EffectKind::Rep,
         "CreateWire" | "DeleteWire" | "ModifyWire" => EffectKind::Wire,
-        "AttachEnd" => EffectKind::End,
-        "CreateCable" | "DeleteCable" => EffectKind::Cable,
-        "AddCableMember" | "RemoveCableMember" => EffectKind::Member,
+        "AddRoute" | "RemoveRoute" | "ModifyRoute" => EffectKind::Route,
+        "CreateCable" | "DeleteCable" | "ModifyCable" => EffectKind::Cable,
         "SetProperty" => EffectKind::Prop,
         "EmbedDefinition" | "RemoveDefinition" => EffectKind::Definition,
         "SetProjectSettings" => EffectKind::Settings,
@@ -63,7 +62,7 @@ fn pairs_fold() {
     let other = b.ids.fresh();
     let mut renamed = b.page_v.clone();
     renamed.title = ecad_model::PageTitle::new("renamed").unwrap();
-    let set = |page| Op::SetProperty { object: ObjectRef::Page(page), key: "number".into(), before: None, after: Some("9".into()) };
+    let set = |page| Op::SetProperty { object: ObjectRef::Page(page), key: "number".parse().unwrap(), before: None, after: Some("9".into()) };
     let page_pair =
         vec![Op::RemovePage { id: b.page, page: b.page_v.clone(), index: 0 }, Op::AddPage { id: b.page, page: renamed.clone(), index: 1 }];
     let term_pair = vec![Op::RemoveTerminal { id: b.term, terminal: b.term_v.clone() }, Op::AddTerminal { id: b.term, terminal: b.term_v.clone() }];
@@ -131,14 +130,11 @@ fn old_touched(ops: &[Op]) -> Touched {
             Op::CreateWire { id, .. } | Op::DeleteWire { id, .. } | Op::ModifyWire { id, .. } => {
                 t.wires.insert(*id);
             }
-            Op::AttachEnd { conductor, .. } => {
-                t.wires.insert(*conductor);
+            Op::AddRoute { id, .. } | Op::RemoveRoute { id, .. } | Op::ModifyRoute { id, .. } => {
+                t.routes.insert(*id);
             }
-            Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
+            Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } | Op::ModifyCable { id, .. } => {
                 t.cables.insert(*id);
-            }
-            Op::AddCableMember { cable, .. } | Op::RemoveCableMember { cable, .. } => {
-                t.cables.insert(*cable);
             }
             Op::SetProperty { object, .. } => match object {
                 ObjectRef::Device(id) => {

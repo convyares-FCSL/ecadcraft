@@ -479,11 +479,8 @@ impl CablesView {
         c.unused = selected
             .and_then(|k| doc.cables.get(&k))
             .map(|x| {
-                x.properties
-                    .iter()
-                    .filter(|(key, v)| key.starts_with(cable::UNUSED_PREFIX) && ecad_model::words::flag(v) == Some(true))
-                    .filter_map(|(key, _)| key.strip_prefix(cable::UNUSED_PREFIX).map(str::to_string))
-                    .collect()
+                // Design 072 §4.5: Not used is the stored core's purpose.
+                x.cores.iter().filter(|m| m.is_spare()).filter_map(|m| m.label_str().map(str::to_string)).collect()
             })
             .unwrap_or_default();
         let rows = c.rows.rows.len();
@@ -689,7 +686,7 @@ pub fn undrawn_line(r: &ecad_cadcraft::outputs::CableRow) -> String {
 fn cable_size(doc: &ecad_model::Document, k: CableId) -> Option<String> {
     use ecad_cadcraft::styles::{self, cable};
     let from_type = cable::of(doc, k)
-        .and_then(|id| styles::field_of(doc, ecad_model::StyleCatalogue::Cable, &id, "cross_section", None))
+        .and_then(|id| styles::field_of(doc, ecad_model::StyleCatalogue::Cable, &id, "size", None))
         .and_then(|r| ecad_cadcraft::rating::parse::cross_section(&r.text()));
     from_type
         .or_else(|| doc.cables.get(&k).and_then(|x| x.properties.get("type")).and_then(|t| ecad_cadcraft::strips::notation_size(t)))
@@ -700,8 +697,7 @@ fn cable_size(doc: &ecad_model::Document, k: CableId) -> Option<String> {
 /// `k`'s cores, else empty.
 fn beyond(doc: &ecad_model::Document, k: CableId, at: &str) -> String {
     let Some((tag, label)) = at.trim().rsplit_once(':') else { return String::new() };
-    let members: Vec<ecad_model::WireId> = doc.cables.get(&k).map(|c| c.members.iter().map(|m| m.conductor).collect()).unwrap_or_default();
-    let conn = doc.connectivity();
+    let members: Vec<ecad_model::WireId> = doc.cables.get(&k).map(|c| c.cores.iter().filter_map(|m| m.wire()).collect()).unwrap_or_default();
     for c in doc.components_tagged(tag) {
         for (t, x) in doc.terminals_of(c) {
             if x.label.as_deref() != Some(label) {
@@ -711,7 +707,7 @@ fn beyond(doc: &ecad_model::Document, k: CableId, at: &str) -> String {
                 if members.contains(&w) {
                     continue;
                 }
-                let n = conn.net_of_conductor(w).and_then(|n| conn.net(n)).and_then(|n| ecad_model::wiring::net_number(doc, n)).unwrap_or_default();
+                let n = ecad_model::wiring::wire_number(doc, w).unwrap_or_default();
                 // The wire on the far side, also when it shares the core's number (one point,
                 // one net).
                 if !n.is_empty() {

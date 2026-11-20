@@ -3,9 +3,8 @@
 //! # Semantics
 //! - [`Wire`] holds what a wire is in fields: its two ends, its size, its colours (an ordered list
 //!   of [`ConductorColour`]s, `GN/YE`), its wire number with its fixed flag, its potential, its
-//!   rating inputs ([`CircuitInputs`]) and its load. Only display choices and defaults-registry
-//!   values (its wire category until lane D's wire-type step, its label's text choices) stay in
-//!   [`Wire::display`].
+//!   rating inputs ([`CircuitInputs`]), its load and its own wire type ([`StyleRef`]). Only display
+//!   choices (its label's text choices) stay in [`Wire::display`].
 //! - Every value is checked when it is made ([`WireSize::parse`], [`Colours::parse`],
 //!   [`CircuitInputs`]'s bounds) and again when it is read from a file: a stored value out of its
 //!   bounds, in another form than the stored one, or an unknown word is a read error.
@@ -21,7 +20,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::colour::{ColourWords, ConductorColour};
 use crate::doc::Properties;
-use crate::id::TerminalId;
+use crate::id::{ConductorId, DeviceId, NetId, TerminalId};
+use crate::style::StyleRef;
 use crate::text::Text;
 use crate::units::{Amps, Celsius, Mm2, Percent, Volts};
 use crate::words::{is_digits, uint};
@@ -29,7 +29,7 @@ use crate::words::{is_digits, uint};
 /// Most characters of a wire number, a potential, a size or a colour list as typed.
 pub const MAX_VALUE_CHARS: usize = 24;
 
-/// One end of a wire. End A is the first route vertex, end B the last.
+/// One end of a wire: `ends[0]` is end A, `ends[1]` end B.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum End {
     A,
@@ -39,19 +39,35 @@ pub enum End {
 impl End {
     pub const BOTH: [End; 2] = [End::A, End::B];
 
-    fn index(self) -> usize {
+    /// The other end.
+    pub fn other(self) -> End {
         match self {
-            End::A => 0,
-            End::B => 1,
+            End::A => End::B,
+            End::B => End::A,
         }
     }
 }
 
-/// A wire (stored intent). Attachments are references (DOC-03).
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+/// A wire (stored intent): one conductor between two connection points of one net (design 072
+/// §4.2). A loose end is a route's, never a wire's.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Wire {
-    pub ends: [Option<TerminalId>; 2],
+    /// The net it belongs to: stable through edits (F39).
+    pub net: NetId,
+    /// This conductor's own identity in the project: given when the wire is made, never reused.
+    pub conductor: ConductorId,
+    /// Its place in its net's order, 1-based (design 072 §4.4).
+    pub net_order: u16,
+    /// Its two connection points.
+    pub ends: [TerminalId; 2],
+    /// The person reordered this net by hand: the rewrite keeps its order.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub order_fixed: bool,
+    /// Its own wire type (a style of catalogue `wire`, design 072 §4.6), over the one its net's
+    /// potential or the registry gives.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wire_type: Option<StyleRef>,
     /// Its own size, over its wire type's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size: Option<WireSize>,
@@ -70,25 +86,64 @@ pub struct Wire {
     /// The current it carries, as typed (Ib).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub load: Option<Amps>,
+    /// The device named as its protection (`rating {protected_by}`), over the trace's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protected_by: Option<ProtectedBy>,
     /// Display choices and defaults-registry values only (design 072 §9.2).
     #[serde(default, skip_serializing_if = "Properties::is_empty")]
     pub display: Properties,
 }
 
 impl Wire {
-    /// A wire between `a` and `b` with no values of its own.
-    pub fn between(a: Option<TerminalId>, b: Option<TerminalId>) -> Self {
-        Wire { ends: [a, b], ..Wire::default() }
-    }
-
-    pub fn end(&self, end: End) -> Option<TerminalId> {
-        self.ends.get(end.index()).copied().flatten()
-    }
-
-    pub fn set_end(&mut self, end: End, t: Option<TerminalId>) {
-        if let Some(slot) = self.ends.get_mut(end.index()) {
-            *slot = t;
+    /// A wire of net `net` between `a` and `b`, first in its net's order, with no values of its own.
+    pub fn new(net: NetId, conductor: ConductorId, a: TerminalId, b: TerminalId) -> Self {
+        Wire {
+            net,
+            conductor,
+            net_order: 1,
+            ends: [a, b],
+            order_fixed: false,
+            wire_type: None,
+            size: None,
+            colours: None,
+            number: None,
+            potential: None,
+            rating: CircuitInputs::default(),
+            load: None,
+            protected_by: None,
+            display: Properties::default(),
         }
+    }
+
+    /// The connection point at `end`.
+    pub fn end(&self, end: End) -> TerminalId {
+        match end {
+            End::A => self.ends[0],
+            End::B => self.ends[1],
+        }
+    }
+
+    /// The end at connection point `t`, if the wire ends there (end A first).
+    pub fn end_at(&self, t: TerminalId) -> Option<End> {
+        End::BOTH.into_iter().find(|e| self.end(*e) == t)
+    }
+
+    /// Its values with `other`'s identity, net, order and ends: what a wire made in its place keeps.
+    pub fn values_onto(&self, other: &Wire) -> Wire {
+        Wire {
+            net: other.net,
+            conductor: other.conductor,
+            net_order: other.net_order,
+            ends: other.ends,
+            order_fixed: other.order_fixed,
+            ..self.clone()
+        }
+    }
+
+    /// Whether `other` differs from it only in values (not in identity or ends): what
+    /// [`crate::op::Op::ModifyWire`] may change, with the net and the order.
+    pub fn same_wire(&self, other: &Wire) -> bool {
+        self.conductor == other.conductor && self.ends == other.ends
     }
 
     /// Its wire number's text, if it has one.
@@ -109,7 +164,10 @@ impl Wire {
     /// Its own values in words, in a fixed order (`("wire number", "24V-07")`), the ones it sets:
     /// for change lists, diffs and the inspector.
     pub fn values(&self) -> Vec<(&'static str, String)> {
-        let mut out = Vec::new();
+        let mut out = vec![("net", self.net.to_string()), ("conductor", self.conductor.to_string()), ("net order", self.net_order.to_string())];
+        if self.order_fixed {
+            out.push(("order fixed", "yes".into()));
+        }
         if let Some(n) = &self.number {
             out.push(("wire number", n.text.to_string()));
             if n.fixed {
@@ -117,6 +175,7 @@ impl Wire {
             }
         }
         out.extend(self.potential.as_ref().map(|p| ("potential", p.to_string())));
+        out.extend(self.wire_type.as_ref().map(|t| ("wire type", t.text())));
         out.extend(self.size.map(|s| ("size", s.to_string())));
         out.extend(self.colours.as_ref().map(|c| ("colours", c.to_string())));
         out.extend(self.rating.values());
@@ -273,7 +332,7 @@ impl Colours {
     }
 
     /// The colours `text` names, in any form and case, separated by `/`, `-`, `+`, spaces or
-    /// commas; two-letter codes may run together (`GNYE`).
+    /// commas; two- or three-letter codes may run together (`GNYE`, `GRNYEL`).
     ///
     /// # Example
     /// ```
@@ -281,6 +340,7 @@ impl Colours {
     /// assert_eq!(Colours::parse("GNYE").map(|c| c.to_string()), Some("GN/YE".into()));
     /// assert_eq!(Colours::parse("green / yellow").map(|c| c.to_string()), Some("GN/YE".into()));
     /// assert_eq!(Colours::parse("blu").map(|c| c.to_string()), Some("BU".into()));
+    /// assert_eq!(Colours::parse("GRNYEL").map(|c| c.to_string()), Some("GN/YE".into()));
     /// assert_eq!(Colours::parse("tartan"), None);
     /// ```
     pub fn parse(text: &str) -> Option<Colours> {
@@ -294,15 +354,22 @@ impl Colours {
                 list.push(c);
                 continue;
             }
-            // Two-letter codes run together (`GNYE`).
+            // Codes of one length run together (`GNYE`, `GRNYEL`).
             let chars: Vec<char> = part.chars().collect();
-            if !chars.len().is_multiple_of(2) {
-                return None;
-            }
-            for pair in chars.chunks(2) {
-                let code: String = pair.iter().collect();
-                list.push(ConductorColour::ALL.iter().copied().find(|c| c.forms().code2.eq_ignore_ascii_case(&code))?);
-            }
+            let run = |n: usize| -> Option<Vec<ConductorColour>> {
+                if !chars.len().is_multiple_of(n) {
+                    return None;
+                }
+                chars
+                    .chunks(n)
+                    .map(|code| {
+                        let code: String = code.iter().collect();
+                        let form = |c: &ConductorColour| if n == 2 { &c.forms().code2 } else { &c.forms().code3 };
+                        ConductorColour::ALL.iter().copied().find(|c| form(c).eq_ignore_ascii_case(&code))
+                    })
+                    .collect()
+            };
+            list.extend(run(2).or_else(|| run(3))?);
         }
         Colours::new(list)
     }
@@ -460,6 +527,18 @@ impl Bundling {
             Bundling::Circuits(n) => bounds::CIRCUITS.contains(&n),
         }
     }
+}
+
+/// The protective device a wire or a cable names (design 072 §4.5): a device, and the fuse or
+/// pole of a multi-way device (`-F01:3` is position 3). Deleting the device clears every
+/// `protected_by` that names it in the same transaction; one read from a file that names nothing
+/// is a check row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProtectedBy {
+    pub device: DeviceId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<u8>,
 }
 
 /// The rating inputs a wire or a cable holds of its own (design 057 §2, design 072 §4.2, §4.5):

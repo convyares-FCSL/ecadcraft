@@ -220,15 +220,13 @@ mod tests {
         assert!(p.head().1.contains("joins -K01"));
     }
 
-    /// Review of #91, 2: a continuation or a junction makes no device and takes no tag.
+    /// Review of #91, 2: a continuation makes no device and takes no tag.
     #[test]
     fn a_tagless_symbol_announces_no_device() {
-        for key in ["continuation", "junction"] {
-            let p = Placing { tag: None, joins: false, symbol: symbols::by_key(key) };
-            assert!(!p.makes_device(), "{key}");
-            let c = p.changes();
-            assert!(c.iter().all(|(m, w)| *m != "warning" && !w.contains("device")), "{key}: {c:?}");
-            assert_eq!(p.head().1, NOT_PLACED, "{key}");
-        }
+        let p = Placing { tag: None, joins: false, symbol: symbols::by_key("continuation") };
+        assert!(!p.makes_device());
+        let c = p.changes();
+        assert!(c.iter().all(|(m, w)| *m != "warning" && !w.contains("device")), "{c:?}");
+        assert_eq!(p.head().1, NOT_PLACED);
     }
 }

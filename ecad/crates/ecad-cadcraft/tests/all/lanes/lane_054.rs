@@ -260,35 +260,17 @@ fn hostile_types_and_starts_read_as_absent_with_their_rows() {
     });
     assert_eq!(ty(&mut h, p1), "schematic");
     h.run("setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"holds": "x", "sheet": "A0 999x999"}})).unwrap_err();
-    // Written past the command's checks, as a hostile file would hold them.
-    h.cfg(|p| {
-        let mut r = ecad_model::StyleRecord::default();
-        r.fields.insert("holds".into(), "x".into());
-        r.fields.insert("sheet".into(), "A0 999x999".into());
-        r.fields.insert("zones".into(), "maybe".into());
-        p.ledger
-            .commit(
-                ecad_model::Author::User,
-                "hostile",
-                vec![ecad_model::Op::SetStyle {
-                    layer: ecad_model::StyleLayer::Project,
-                    catalogue: ecad_model::StyleCatalogue::Page,
-                    id: StyleRef::Builtin("schematic".into()),
-                    before: None,
-                    after: Some(r),
-                }],
-            )
-            .unwrap();
-    });
+    // Design 072 §8: a type record holds typed values, so a file cannot hold these (a read error).
+    let hostile = json!({"name": "", "body": {"page": {"holds": "x", "sheet": "A0 999x999", "zones": "maybe"}}});
+    assert!(serde_json::from_value::<ecad_model::StyleRecord>(hostile).is_err());
     let d = h.doc();
     let look = ptype::look_of(&d, &StyleRef::Builtin("schematic".into()));
     assert_eq!((look.holds, look.zones, look.sheet), (ptype::Holds::None, true, None));
     assert_eq!(sheet_of(&d, p1), d.settings.sheet());
     let rows = kinds(&mut h);
     // A hostile folder start: lane_054_tester's AC15 (a start naming no folder cannot be stored).
-    for k in [Kind::PageTypeUnknown, Kind::PageTypeField] {
-        assert!(rows.iter().any(|(x, _)| *x == k), "{k:?}: {rows:?}");
-    }
+    // Design 072 §8: a page type record holds typed values, so only the unknown type is reported.
+    assert!(rows.iter().any(|(x, _)| *x == Kind::PageTypeUnknown), "{rows:?}");
     assert!(h.run("renumberpages", json!({})).is_ok());
     let _ = NUMBER_KEY;
 }
@@ -381,12 +363,12 @@ fn wire_colour_lines_merge_equal_categories() {
     let l = ecad_cadcraft::front::WireLine {
         names: vec!["L1".into(), "L2".into(), "L3".into()],
         cross_section: "2.5".into(),
-        colour: "BK".into(),
+        colour: ecad_model::wire::Colours::parse("BK"),
         label: None,
     };
     assert_eq!(l.text(), "L1, L2, L3 · 2.5 mm² · black");
-    assert_eq!(ecad_cadcraft::front::colour_words("GNYE"), "green / yellow");
-    assert_eq!(ecad_cadcraft::front::colour_words("orange"), "orange");
+    let gnye = ecad_model::wire::Colours::parse("GNYE").expect("GNYE");
+    assert_eq!(ecad_cadcraft::front::colour_words(&gnye), "green / yellow");
 }
 
 /// Review of #111, 1 and 2: several new copies of a definition in one transaction, and a
@@ -424,13 +406,13 @@ fn wire_categories_in_use_cross_zero_only() {
     let d0 = h.doc();
     let mut uses = ecad_cadcraft::front::Uses::build(&d0);
     let last = |h: &mut H| h.p(|p| p.ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default());
-    let w: ecad_model::WireId = id(&h.run("wire", json!({"points": [[0, 0], [60, 0]]})).unwrap(), "conductor");
+    let w: ecad_model::WireId = id(&h.wire_pp(&[(0.0, 0.0), (60.0, 0.0)]).unwrap(), "conductor");
     let ops = last(&mut h);
     uses.update(&h.doc(), &ops);
     h.run("category", json!({"conductor": w.hex(), "value": "dc24"})).unwrap();
     let ops = last(&mut h);
     assert!(uses.update(&h.doc(), &ops), "the first 24 V DC wire");
-    let w2: ecad_model::WireId = id(&h.run("wire", json!({"points": [[0, 20], [60, 20]]})).unwrap(), "conductor");
+    let w2: ecad_model::WireId = id(&h.wire_pp(&[(0.0, 20.0), (60.0, 20.0)]).unwrap(), "conductor");
     let ops = last(&mut h);
     uses.update(&h.doc(), &ops);
     h.run("category", json!({"conductor": w2.hex(), "value": "dc24"})).unwrap();
@@ -460,11 +442,10 @@ fn a_plain_page_gets_no_checks_numbering_or_references() {
     assert!(!ptype::look_of(&d, &StyleRef::Builtin("plain".into())).checks);
     assert!(!ecad_model::sheet::page_checks(&d, plain));
     let before_numbered = numbered(&mut h);
-    h.run("wire", json!({"points": [[0, 40], [60, 40]]})).unwrap();
+    h.wire_pp(&[(0.0, 40.0), (60.0, 40.0)]).unwrap();
     assert_eq!(on_page(&mut h, plain), 0, "no Checks row on a Plain page");
     let d = h.doc();
-    let on_plain: Vec<_> =
-        d.wires.iter().filter(|(c, _)| d.representations_of(ecad_model::Subject::Wire(**c)).all(|(_, r)| r.page == plain)).collect();
+    let on_plain: Vec<_> = d.wires.iter().filter(|(c, _)| ecad_cadcraft::wires::wire_pages(&d, **c).iter().all(|p| *p == plain)).collect();
     assert!(!on_plain.is_empty());
     assert!(on_plain.iter().all(|(_, c)| !c.number.is_some()), "no wire number on a Plain page");
     let _ = before_numbered;

@@ -13,7 +13,7 @@
 //!
 //! This module holds the stored data only. The calculations on it (supply, load, protection,
 //! switching…) are traits in `ecad-electrical`, implemented on these types (design 072 Part I);
-//! the PLC groups' data is lane C's.
+//! the PLC groups' data is in [`crate::plc`].
 #![deny(clippy::wildcard_enum_match_arm)]
 
 use serde::{Deserialize, Serialize};
@@ -373,15 +373,7 @@ impl HalfPart {
     }
 }
 
-/// A PLC station (group 10, design 072 §3). Its fields are lane C's.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PlcRack {}
-
-/// A module in a PLC station (group 11, design 072 §3). Its fields are lane C's.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PlcModule {}
+pub use crate::plc::{PlcModule, PlcRack};
 
 /// A device's description (design 072 §2.1).
 pub type Description = crate::text::Text<256>;

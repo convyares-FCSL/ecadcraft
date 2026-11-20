@@ -9,7 +9,7 @@ use ecad_cadcraft::rating::{self, parse};
 use ecad_model::{CableId, DeviceId, WireId};
 use serde_json::{Value, json};
 
-use crate::common::{H, id, pts};
+use crate::common::{H, id};
 
 /// The synthetic rating table of design 057 §11 (not from any standard).
 pub const SYNTHETIC: &str = "kind,a,b,c,d,value\n\
@@ -41,7 +41,7 @@ fn place(h: &mut H, symbol: &str, at: [f64; 2], tag: &str) -> DeviceId {
 }
 
 fn wire(h: &mut H, points: &[(f64, f64)]) -> WireId {
-    id(&h.run("wire", json!({"points": pts(points)})).unwrap_or_else(|e| panic!("wire {points:?}: {e}")), "conductor")
+    id(&h.wire_pp(points).unwrap_or_else(|e| panic!("wire {points:?}: {e}")), "conductor")
 }
 
 fn setprop(h: &mut H, what: &str, idv: String, key: &str, value: Value) {
@@ -220,7 +220,7 @@ fn c5_volt_drop_over_names_the_larger_size() {
     let mut f = fixture();
     let t = f.h.run("ratingtable", json!({"name": "Test (synthetic)", "csv": SYNTHETIC})).unwrap();
     f.h.run("setdefault", json!({"key": "rating.table", "level": "project", "value": t["id"]})).unwrap();
-    let ty = f.h.run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Sensor 0.75", "fields": {"cross_section": "0.75", "conductor_class": "5", "max_temperature": "70"}})).unwrap();
+    let ty = f.h.run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Sensor 0.75", "fields": {"size": "0.75", "conductor_class": "5", "max_temperature": "70"}})).unwrap();
     f.h.run(
         "rating",
         json!({"cable": f.w01.hex(), "cable_type": ty["id"], "system": "dc", "voltage": 24, "load": "0.5", "basis": "manual", "manual": "10"}),
@@ -270,8 +270,10 @@ fn c12_protected_by() {
     rate_category(&mut f.h);
     let e = f.h.run("rating", json!({"wire": f.l2.hex(), "protected_by": "-Q09"})).unwrap_err();
     assert!(e.contains("-Q09"), "{e}");
-    setprop(&mut f.h, "conductor", f.l2.hex(), "protected_by", json!("-Q09"));
-    assert_eq!(checks_of(&mut f.h, "rating-device-missing").len(), 1);
+    // Design 072 step d: `protected_by` stores the device itself, so setprop refuses it too; a
+    // dangling one comes only from a file (ecad-electrical's protection tests).
+    assert!(f.h.run("setprop", json!({"conductor": f.l2.hex(), "key": "protected_by", "value": "-Q09"})).is_err());
+    assert!(checks_of(&mut f.h, "rating-device-missing").is_empty());
 }
 
 #[test]
@@ -408,19 +410,17 @@ fn padded(len: usize) -> String {
 
 #[test]
 fn fp8_rows_at_the_cap_are_kept_and_one_over_is_refused_or_ignored() {
-    use ecad_cadcraft::styles::{self, ratingtable};
-    use ecad_model::style::{StyleLayer, StyleRecord, StyleRef};
+    use ecad_cadcraft::styles::ratingtable;
+    use ecad_model::style::StyleRef;
     let cap = dataset::MAX_BYTES;
-    assert_eq!(styles::field_cap(ecad_model::StyleCatalogue::RatingTable, ratingtable::ROWS), cap);
-    assert_eq!(styles::field_cap(ecad_model::StyleCatalogue::RatingTable, ratingtable::SOURCE), ecad_model::style::MAX_FIELD_CHARS);
-    assert_eq!(styles::field_cap(ecad_model::StyleCatalogue::Wire, "rows"), ecad_model::style::MAX_FIELD_CHARS);
     let mut f = fixture();
     // At the cap: written, read back, used.
     let t = f.h.run("ratingtable", json!({"name": "Big (synthetic)", "csv": padded(cap)})).unwrap();
     assert_eq!(t["rows"], json!(5));
     let id = StyleRef::parse(t["id"].as_str().unwrap()).unwrap();
     let doc = f.h.doc();
-    assert_eq!(ratingtable::rows_text(&doc, &id).len(), cap);
+    // Design 072 §8: the rows are stored as validated text, trimmed (the last line end goes).
+    assert_eq!(ratingtable::rows_text(&doc, &id), padded(cap).trim());
     assert_eq!(ratingtable::read(&doc, &id).data.rows.len(), 5);
     assert!(checks_of(&mut f.h, "style-limits").is_empty());
     // One over: refused, nothing written.
@@ -428,28 +428,11 @@ fn fp8_rows_at_the_cap_are_kept_and_one_over_is_refused_or_ignored() {
     let e = f.h.run("ratingtable", json!({"name": "Big (synthetic)", "csv": padded(cap + 1)})).unwrap_err();
     assert!(e.contains("KiB"), "{e}");
     assert_eq!(f.h.head(), head);
-    // One over in a file made elsewhere: ignored with a Checks row, never a crash.
+    // One over in a file made elsewhere: the record does not read (design 072 §8, strict); the
+    // project opens read-only, so the rows are never used.
+    let too_long = ecad_model::text::LongText::<{ ecad_model::style::rating::MAX_ROWS }>::new(&padded(cap + 2));
+    assert!(too_long.is_err());
     let doc = f.h.doc();
-    let before = styles::record(&doc, StyleLayer::Project, ecad_model::StyleCatalogue::RatingTable, &id).cloned();
-    let mut rec: StyleRecord = before.clone().unwrap();
-    rec.fields.insert(ratingtable::ROWS.into(), padded(cap + 1));
-    f.h.cfg(|p| {
-        p.ledger.commit(
-            ecad_model::Author::User,
-            "hostile rows",
-            vec![ecad_model::Op::SetStyle {
-                layer: StyleLayer::Project,
-                catalogue: ecad_model::StyleCatalogue::RatingTable,
-                id: id.clone(),
-                before,
-                after: Some(rec),
-            }],
-        )
-    })
-    .unwrap();
-    let doc = f.h.doc();
-    assert_eq!(ratingtable::rows_text(&doc, &id), "");
-    assert_eq!(checks_of(&mut f.h, "style-limits").len(), 1);
     let _ = rating::Kept::build(&doc);
 }
 

@@ -35,7 +35,7 @@ fn coil_and_wire() -> (H, PageId, DeviceId, WireId) {
     let doc = h.doc();
     let a1 = doc.terminals_of(k1).find(|(_, t)| t.label.as_deref() == Some("A1")).map(|(t, _)| t).unwrap();
     let at = h.terminal_pos(page, a1);
-    let w: WireId = id(&h.run("wire", json!({"points": [[at.x, at.y], [at.x + 60.0, at.y]]})).unwrap(), "conductor");
+    let w: WireId = id(&h.wire_pp(&[(at.x, at.y), (at.x + 60.0, at.y)]).unwrap(), "conductor");
     (h, page, k1, w)
 }
 

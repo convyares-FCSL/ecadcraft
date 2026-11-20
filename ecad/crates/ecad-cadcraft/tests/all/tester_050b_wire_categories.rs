@@ -13,7 +13,7 @@ use cadcraft_engine::doc::color::Color;
 use cadcraft_engine::doc::{EntityKind, Lineweight};
 use ecad_cadcraft::{look, printbook, wires};
 use ecad_drawing_style::sheet::PAPER;
-use ecad_model::{ObjectRef, Op, PageId, WireId};
+use ecad_model::{Op, PageId, WireId};
 use serde_json::{Value, json};
 
 use super::tester_050a_style::{
@@ -26,21 +26,24 @@ use crate::common::{H, id, pts, tmp_dir};
 
 /// The ten built-in categories of §5.2: id, name, potential, colour, cross-section, line colour,
 /// line weight.
-const BUILTIN: [(&str, &str, &str, &str, &str, &str, f64); 10] = [
+const BUILTIN: [(&str, &str, &str, &str, &str, &str, f64); 12] = [
     ("l", "Power L", "L", "BN", "2.5", "ink", 0.6),
     ("l1", "Power L1", "L1", "BN", "2.5", "ink", 0.6),
     ("l2", "Power L2", "L2", "BK", "2.5", "ink", 0.6),
     ("l3", "Power L3", "L3", "GY", "2.5", "ink", 0.6),
     ("n", "Neutral", "N", "BU", "2.5", "ink", 0.6),
-    ("pe", "Protective earth", "PE", "GNYE", "2.5", "wire", 0.25),
+    ("pe", "Protective earth", "PE", "GN/YE", "2.5", "wire", 0.25),
+    ("ac230_l", "230 V AC L", "", "BN", "1.5", "wire", 0.25),
+    ("ac230_n", "230 V AC N", "", "BU", "1.5", "wire", 0.25),
     ("dc24", "24 V DC", "24V", "BU", "0.5", "wire", 0.25),
     ("dc0", "0 V DC", "0V", "BU", "0.5", "wire", 0.25),
-    ("signal", "Signal", "", "none", "0.5", "ink", 0.25),
-    ("analogue", "Analogue", "", "none", "0.5", "ink", 0.25),
+    ("signal", "Signal", "", "", "0.5", "ink", 0.25),
+    ("analogue", "Analogue", "", "", "0.5", "ink", 0.25),
 ];
 
 /// A horizontal wire at height `y` on the active page, with an optional potential.
 fn wire_at(h: &mut H, y: f64, potential: Option<&str>) -> WireId {
+    h.points_at(&[(0.0, y), (60.0, y)]);
     let mut p = json!({"points": pts(&[(0.0, y), (60.0, y)])});
     if let Some(v) = potential {
         p["potential"] = json!(v);
@@ -89,13 +92,13 @@ fn look_category(h: &mut H, c: WireId) -> Option<String> {
 
 // ------------------------------------------------------------------ b11: the built-ins
 
-/// §12.11, §5.2: the ten categories; a 24V wire is labelled `24V-01 0.5 BU`, drawn blue, and its
+/// §12.11, §5.2 (and design 072 F37's two 230 V types): the twelve wire types; a 24V wire is labelled `24V-01 0.5 BU`, drawn blue, and its
 /// wire-report row shows Category "24 V DC".
 #[test]
-fn b11_ten_built_in_categories_and_a_24v_wire_is_dc24() {
+fn b11_twelve_built_in_wire_types_and_a_24v_wire_is_dc24() {
     let mut h = H::new(0x50b_1101);
     let rows = styles(&mut h, "wire");
-    assert_eq!(rows.len(), 10, "{rows:?}");
+    assert_eq!(rows.len(), 12, "{rows:?}");
     let mut part_numbers = Vec::new();
     for (id, name, pot, colour, xs, line, weight) in BUILTIN {
         let r = rows.iter().find(|r| s(&r["id"]) == id).unwrap_or_else(|| panic!("category {id}"));
@@ -104,8 +107,8 @@ fn b11_ten_built_in_categories_and_a_24v_wire_is_dc24() {
         if p != pot {
             part_numbers.push((id, format!("potential {p:?}")));
         }
-        assert_eq!(field_text(r, "colour"), colour, "{id}");
-        assert_eq!(field_text(r, "cross_section"), xs, "{id}");
+        assert_eq!(field_text(r, "colours"), colour, "{id}");
+        assert_eq!(field_text(r, "size"), xs, "{id}");
         assert_eq!(field_text(r, "line_colour"), line, "{id}");
         assert!((field_num(r, "line_weight") - weight).abs() < 1e-9, "{id}");
         assert_eq!(field_text(r, "line_type"), "continuous", "{id}");
@@ -168,7 +171,7 @@ fn b12_a_category_colour_reaches_every_user_but_an_overridden_one() {
     let b = wire_at(&mut h, 40.0, Some("24V"));
     let own = wire_at(&mut h, 60.0, Some("24V"));
     h.run("setprop", json!({"conductor": own.hex(), "key": "colours", "value": "VT"})).unwrap();
-    let (_, tx) = one_tx(&mut h, "setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colour": "RD"}}));
+    let (_, tx) = one_tx(&mut h, "setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colours": "RD"}}));
     assert_eq!(op_names(&tx), ["SetStyle"], "a category is a style record, no new op");
     for w in [a, b] {
         assert!(label(&mut h, page, w).is_some_and(|t| t.ends_with(" RD")), "{:?}", label(&mut h, page, w));
@@ -211,12 +214,13 @@ fn b12_the_wire_report_shows_category_and_resolved_values() {
 fn b13_category_on_a_conductor_and_the_potential_rule() {
     let mut h = H::new(0x50b_1301);
     let a = wire_at(&mut h, 20.0, Some("24V"));
+    h.points_at(&[(30.0, 60.0)]);
     let b: WireId = id(&h.run("wire", json!({"points": pts(&[(30.0, 20.0), (30.0, 60.0)])})).unwrap(), "conductor"); // a tee: its own conductor
     assert_ne!(a, b, "two conductors");
     assert_eq!(net_potential(&mut h, b), "24V", "joined into the 24V net");
     let (_, tx) = one_tx(&mut h, "category", json!({"conductor": a.hex(), "value": "signal"}));
     assert!(
-        matches!(tx.ops.as_slice(), [Op::ModifyWire { id, after, .. }] if *id == a && after.display.get("wire.category").map(String::as_str) == Some("signal")),
+        matches!(tx.ops.as_slice(), [Op::ModifyWire { id, after, .. }] if *id == a && after.wire_type.as_ref().map(ecad_model::StyleRef::text).as_deref() == Some("signal")),
         "{:?}",
         tx.ops
     );
@@ -250,6 +254,7 @@ fn b13_a_potential_change_moves_only_unassigned_conductors() {
     let mut h = H::new(0x50b_1302);
     let page = h.first_page();
     let a = wire_at(&mut h, 20.0, Some("24V"));
+    h.points_at(&[(30.0, 60.0)]);
     let b: WireId = id(&h.run("wire", json!({"points": pts(&[(30.0, 20.0), (30.0, 60.0)])})).unwrap(), "conductor"); // a tee: its own conductor
     assert_ne!(a, b, "two conductors");
     h.run("category", json!({"conductor": b.hex(), "value": "signal"})).unwrap();
@@ -264,12 +269,14 @@ fn b13_a_potential_change_moves_only_unassigned_conductors() {
 #[test]
 fn b13_wire_with_a_category_and_the_prompt_keyword() {
     let mut h = H::new(0x50b_1303);
+    h.points_at(&[(0.0, 20.0), (60.0, 20.0)]);
     let (v, _) = one_tx(&mut h, "wire", json!({"points": pts(&[(0.0, 20.0), (60.0, 20.0)]), "category": "dc24"}));
     let w: WireId = id(&v, "conductor");
-    assert_eq!(h.doc().wires[&w].display.get("wire.category").map(String::as_str), Some("dc24"));
+    assert_eq!(h.doc().wires[&w].wire_type.as_ref().map(ecad_model::StyleRef::text).as_deref(), Some("dc24"));
     assert_eq!(net_potential(&mut h, w), "24V", "no potential before: the category's is written");
     refused(&mut h, "wire", json!({"points": pts(&[(0.0, 40.0), (60.0, 40.0)]), "category": "nope"}));
     // The typed command: the prompt names the keyword.
+    h.points_at(&[(0.0, 80.0), (60.0, 80.0)]);
     h.s.cmdline("wire").unwrap();
     let prompt = h.s.current_prompt().map(|p| p.display()).unwrap_or_default();
     assert!(prompt.contains("Potential/Category"), "{prompt}");
@@ -281,7 +288,7 @@ fn b13_wire_with_a_category_and_the_prompt_keyword() {
     h.cmdline("60,80");
     h.cmdline("");
     let d = h.doc();
-    let last = d.wires.iter().find(|(_, c)| c.display.get("wire.category").map(String::as_str) == Some("signal"));
+    let last = d.wires.iter().find(|(_, c)| c.wire_type.as_ref().map(ecad_model::StyleRef::text).as_deref() == Some("signal"));
     assert!(last.is_some(), "the typed wire took the category");
 }
 
@@ -312,7 +319,11 @@ fn b14_two_defaults_for_one_potential() {
     h.run("setstyle", json!({"catalogue": "wire", "new": true, "name": "Second 24", "copy_of": "signal", "fields": {"potential": "47V"}})).unwrap();
     let mut tx = last_tx_json(&mut h);
     undo(&mut h);
-    let rec = find_obj_mut(&mut tx, "fields").and_then(|m| m.get_mut("fields")).and_then(Value::as_object_mut).expect("the record's fields");
+    let rec = find_obj_mut(&mut tx, "body")
+        .and_then(|m| m.get_mut("body"))
+        .and_then(|b| b.get_mut("wire"))
+        .and_then(Value::as_object_mut)
+        .expect("the record's wire type");
     rec.insert("potential".into(), json!("24V"));
     let ops = decoded_ops(&tx);
     inject(&mut h, ops);
@@ -478,8 +489,11 @@ fn b18_old_potential_colours_are_ignored_and_reported() {
 #[test]
 fn b18_category_records_and_choices_round_trip() {
     let mut h = H::new(0x50b_1803);
-    let a = wire_at(&mut h, 20.0, Some("24V"));
-    h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colour": "RD", "part_number": "W-05", "allowance": 2}})).unwrap();
+    // The wire's two connection points (design 072), before the trail starts.
+    h.points_at(&[(0.0, 20.0), (60.0, 20.0)]);
+    h.trail = vec![h.doc()];
+    let a: WireId = id(&h.run("wire", json!({"points": pts(&[(0.0, 20.0), (60.0, 20.0)]), "potential": "24V"})).unwrap(), "conductor");
+    h.run("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colours": "RD", "part_number": "W-05", "allowance": 2}})).unwrap();
     let ac = own_id(
         &h.run("setstyle", json!({"catalogue": "wire", "new": true, "name": "48 V AC", "copy_of": "signal", "fields": {"potential": "48V"}}))
             .unwrap(),
@@ -523,16 +537,22 @@ fn b_label_rule_none_draws_no_label() {
 }
 
 /// §5.7: a `wire.category` naming no category draws without one and Checks says
+/// The op giving wire `w` its own wire type `v` (design 072 §4.6).
+fn typed(h: &mut H, w: WireId, v: &str) -> Op {
+    let before = h.doc().wires[&w].clone();
+    let mut after = before.clone();
+    after.wire_type = ecad_model::StyleRef::parse(v);
+    Op::ModifyWire { id: w, before, after }
+}
+
 /// `category-unknown` (Info) with a go-to the conductor.
 #[test]
 fn b_an_unknown_category_draws_without_one_and_is_reported() {
     let mut h = H::new(0x50b_1902);
     let page = h.first_page();
     let w = wire_at(&mut h, 20.0, None);
-    inject(
-        &mut h,
-        vec![Op::SetProperty { object: ObjectRef::Wire(w), key: "wire.category".into(), before: None, after: Some(format!("#{}", "d".repeat(32))) }],
-    );
+    let op = typed(&mut h, w, &format!("#{}", "d".repeat(32)));
+    inject(&mut h, vec![op]);
     assert_eq!(look_category(&mut h, w), None);
     assert_eq!(route_colour(&mut h, page, w), None);
     let rows = checks_of(&mut h, "category-unknown");
@@ -553,7 +573,7 @@ fn b_hostile_category_input_never_panics() {
         ("category", json!({"conductor": "zz", "value": "dc24"})),
         ("category", json!({"conductors": (0..10_000).map(|_| w.hex()).collect::<Vec<_>>(), "value": "nope"})),
         ("category", json!({"value": "dc24"})),
-        ("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colour": long}})),
+        ("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"colours": long}})),
         ("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"line_weight": "NaN"}})),
         ("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"line_weight": 1e308}})),
         ("setstyle", json!({"catalogue": "wire", "id": "dc24", "fields": {"line_colour": "PURPLISH"}})),
@@ -564,9 +584,10 @@ fn b_hostile_category_input_never_panics() {
         refused(&mut h, cmd, params);
     }
     // Hostile stored values fall through.
-    for v in ["", "\u{7}", "box", "#zz", long.as_str()] {
-        let before = h.doc().wires[&w].display.get("wire.category").cloned();
-        inject(&mut h, vec![Op::SetProperty { object: ObjectRef::Wire(w), key: "wire.category".into(), before, after: Some(v.to_string()) }]);
+    // Design 072 §4.6: a stored wire type is a style reference; only references to no type remain.
+    for v in ["box", "#eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"] {
+        let op = typed(&mut h, w, v);
+        inject(&mut h, vec![op]);
         assert_eq!(look_category(&mut h, w).as_deref(), Some("dc24"), "{v:.20}: falls to the potential's category");
     }
     let _ = rows_of(h.run("styles", json!({"catalogue": "wire", "users": true})).unwrap());

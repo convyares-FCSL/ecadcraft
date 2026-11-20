@@ -342,7 +342,7 @@ fn convert<'a>(kind: Kind, v: &'a DeValue<'_>, empty: bool) -> Result<Value<'a>,
                 }));
             };
             let s: &'a str = s.as_ref();
-            if empty && s.is_empty() && matches!(kind, Kind::Text { .. } | Kind::Parsed { .. }) {
+            if empty && s.is_empty() && matches!(kind, Kind::Text { .. } | Kind::Parsed { .. } | Kind::Choice(_)) {
                 return Ok(Value::Text(""));
             }
             // A built-in is written exactly; a stored project value is trimmed, a data value is not.
@@ -412,9 +412,12 @@ fn catalogue_of_field(f: &Field) -> Option<&'static Catalogue> {
 
 /// `f`'s built-in value from the data (what [`Field::builtin`] caches).
 pub(crate) fn field_builtin(f: &Field) -> Value<'static> {
-    catalogue_of_field(f)
-        .and_then(|cat| builtin_files().iter().find_map(|file| file.field_value(cat, None, f.key)))
-        .unwrap_or_else(|| safe_value(f.kind))
+    let cat = catalogue_of_field(f);
+    if cat.is_some_and(|c| c.catalogue == ecad_model::StyleCatalogue::Wire) {
+        // A field the defaults leave unset has no value (an empty text), never a guessed word.
+        return styles::wire::get(styles::wire::defaults(), f.key).unwrap_or(Value::Text(""));
+    }
+    cat.and_then(|cat| builtin_files().iter().find_map(|file| file.field_value(cat, None, f.key))).unwrap_or_else(|| safe_value(f.kind))
 }
 
 /// Built-in style `b`'s field values from the data, in its catalogue's field order (what
@@ -424,6 +427,10 @@ pub(crate) fn style_values(b: &BuiltinStyle) -> Vec<(&'static str, Value<'static
     let Some(cat) = styles::CATALOGUES.iter().copied().find(|c| c.builtins.iter().any(|x| std::ptr::eq(x, b))) else {
         return Vec::new();
     };
+    if cat.catalogue == ecad_model::StyleCatalogue::Wire {
+        let Some(w) = styles::wire::builtin_type(b.id) else { return Vec::new() };
+        return cat.fields.iter().filter_map(|f| styles::wire::get(w, f.key).map(|v| (f.key, v))).collect();
+    }
     let mut out: Vec<(&'static str, Value<'static>)> = cat
         .fields
         .iter()
@@ -455,7 +462,9 @@ pub fn builtin_problems() -> &'static [DefaultsError] {
                 out.push(DefaultsError::Missing { file: "pages.toml".to_string(), key: format!("layout.{key}") });
             }
         }
-        for cat in styles::CATALOGUES {
+        // Wire types are typed data (`wire_types.toml`): a missing default is a field the struct
+        // leaves `None`, which the field's safe value covers; a damaged file fails its read test.
+        for cat in styles::CATALOGUES.iter().filter(|c| c.catalogue != ecad_model::StyleCatalogue::Wire) {
             for f in cat.fields {
                 if !files.iter().any(|file| file.has_field(ecad_model::Word::word(cat.catalogue), f.key)) {
                     out.push(DefaultsError::Missing { file: "styles.toml".to_string(), key: format!("fields.{}.{}", cat.catalogue, f.key) });

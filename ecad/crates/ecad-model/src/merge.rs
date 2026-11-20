@@ -37,11 +37,12 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::diff;
 use crate::doc::{
-    Cable, CableMember, Device, Document, End, Folder, Form, Item, ItemKind, Page, Properties, Representation, Subject, Terminal, Wire,
+    Cable, Core, CorePosition, Device, Document, End, Folder, Form, Item, ItemKind, Page, Properties, Representation, Subject, Terminal, Wire,
 };
-use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, TerminalId, WireId};
+use crate::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, TerminalId, WireId};
 use crate::invariant::Touched;
 use crate::op::{ObjectRef, Op};
+use crate::route::{Route, RouteEnd};
 use crate::style::{Standard, StyleCatalogues, StyleLayer, StyleRecord, StyleRef};
 use crate::tag::{self, HighWater};
 
@@ -58,6 +59,8 @@ pub enum Obj {
     Item(ItemId),
     Wire(WireId),
     Cable(CableId),
+    /// A route (design 072 F31).
+    Route(RouteId),
     Project,
 }
 
@@ -75,6 +78,7 @@ impl Obj {
             Obj::Item(i) => i.hex(),
             Obj::Wire(i) => i.hex(),
             Obj::Cable(i) => i.hex(),
+            Obj::Route(i) => i.hex(),
             Obj::Project => "project".into(),
         }
     }
@@ -92,6 +96,7 @@ impl Obj {
             Obj::Item(_) => "drawing item",
             Obj::Wire(_) => "wire",
             Obj::Cable(_) => "cable",
+            Obj::Route(_) => "route",
             Obj::Project => "project",
         }
     }
@@ -135,6 +140,7 @@ impl Scope {
             + t.representations.len()
             + t.wires.len()
             + t.cables.len()
+            + t.routes.len()
             + t.definitions.len()
             + t.folders.len()
             + usize::from(self.project)
@@ -282,6 +288,8 @@ pub struct Inputs<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Use {
     End(End),
+    /// A route's end (0 or 1) lands on it.
+    RouteEnd(usize),
     ConnectionPoint,
     Member,
     PageFolder,
@@ -432,6 +440,56 @@ fn field<T: PartialEq + Clone>(ctx: &mut Ctx<'_, '_>, obj: Obj, name: &str, what
     }
 }
 
+/// Merge a device's type: a PLC station's and module's fields one by one when all three keep the
+/// same group (design 072 §3, FP1: a station is shown by its tag); otherwise the type whole.
+fn merge_device_type(
+    ctx: &mut Ctx<'_, '_>, obj: Obj, what: &str, docs: &[&Document], a: &crate::DeviceType, t: &crate::DeviceType, s: &crate::DeviceType,
+) -> crate::DeviceType {
+    use crate::DeviceType as T;
+    let words = |v: &dyn Fn() -> Option<String>| v().unwrap_or_else(|| "(none)".into());
+    match (a, t, s) {
+        (T::PlcModule(a), T::PlcModule(t), T::PlcModule(s)) => {
+            let rack_name = |r: &Option<DeviceId>| r.map_or_else(|| "no rack".into(), |r| name_of(docs, Obj::Device(r)));
+            T::PlcModule(crate::plc::PlcModule {
+                rack: field(ctx, obj, "plc.rack", format!("{what} · rack"), &a.rack, &t.rack, &s.rack, &rack_name),
+                slot: field(ctx, obj, "plc.slot", format!("{what} · slot"), &a.slot, &t.slot, &s.slot, &|x| words(&|| x.map(|n| n.to_string()))),
+                function: field(ctx, obj, "plc.function", format!("{what} · function and channels"), &a.function, &t.function, &s.function, &|f| {
+                    f.word().replace('_', " ")
+                }),
+                attributes: field(ctx, obj, "plc.attributes", format!("{what} · attributes"), &a.attributes, &t.attributes, &s.attributes, &|x| {
+                    format!("{x:?}")
+                }),
+                address: field(ctx, obj, "plc.addr", format!("{what} · pinned address"), &a.address, &t.address, &s.address, &|x| {
+                    words(&|| x.start.map(|n| n.to_string()))
+                }),
+                supply: field(ctx, obj, "plc.supply", format!("{what} · supply"), &a.supply, &t.supply, &s.supply, &|x| {
+                    words(&|| x.map(|v| v.to_string()))
+                }),
+            })
+        }
+        (T::PlcRack(a), T::PlcRack(t), T::PlcRack(s)) => T::PlcRack(crate::plc::PlcRack {
+            network: field(ctx, obj, "plc.network", format!("{what} · network"), &a.network, &t.network, &s.network, &|x| {
+                words(&|| x.as_ref().map(ToString::to_string))
+            }),
+            address: field(ctx, obj, "plc.network.address", format!("{what} · network address"), &a.address, &t.address, &s.address, &|x| {
+                words(&|| x.map(|v| v.to_string()))
+            }),
+            head: field(ctx, obj, "plc.head", format!("{what} · head"), &a.head, &t.head, &s.head, &|h| format!("{h:?}")),
+            address_style: field(
+                ctx,
+                obj,
+                "plc.address.style",
+                format!("{what} · address style"),
+                &a.address_style,
+                &t.address_style,
+                &s.address_style,
+                &|x| words(&|| x.map(|v| crate::Word::word(v).to_string())),
+            ),
+        }),
+        _ => field(ctx, obj, "device_type", format!("{what} · type"), a, t, s, &|d| d.group().label().into()),
+    }
+}
+
 /// Merge one object: whole when it resolves, else by `fields` when both sides kept it, else a
 /// removed conflict.
 fn object<T: PartialEq + Clone>(
@@ -489,7 +547,11 @@ pub fn name_of(docs: &[&Document], obj: Obj) -> String {
     match obj {
         Obj::Device(c) => tag_of(c),
         Obj::Terminal(t) => match docs.iter().find_map(|d| d.terminals.get(&t)) {
-            Some(term) => format!("{}:{}", tag_of(term.component), term.label.clone().or_else(|| term.key.clone()).unwrap_or_else(|| t.short())),
+            Some(term) => format!(
+                "{}:{}",
+                tag_of(term.component),
+                term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| t.short())
+            ),
             None => t.short(),
         },
         Obj::Wire(c) => match docs.iter().find_map(|d| d.wires.get(&c)).and_then(|w| w.number_text().map(str::to_string)) {
@@ -499,6 +561,10 @@ pub fn name_of(docs: &[&Document], obj: Obj) -> String {
         Obj::Cable(c) => match docs.iter().find_map(|d| d.cables.get(&c)).and_then(|w| w.properties.get(tag::TAG_KEY).cloned()) {
             Some(n) => format!("Cable {n}"),
             None => format!("Cable {}", c.short()),
+        },
+        Obj::Route(r) => match docs.iter().find_map(|d| d.routes.get(&r)) {
+            Some(x) => format!("Line on {}", page_of(x.page).to_lowercase()),
+            None => format!("Line {}", r.short()),
         },
         Obj::Page(p) => match docs.iter().find_map(|d| d.pages.get(&p)) {
             Some(page) => format!("{} \"{}\"", page_of(p), page.title),
@@ -513,6 +579,7 @@ pub fn name_of(docs: &[&Document], obj: Obj) -> String {
                     Subject::Device(c) => tag_of(c),
                     Subject::Wire(c) => name_of(docs, Obj::Wire(c)),
                     Subject::Cable(c) => name_of(docs, Obj::Cable(c)),
+                    Subject::Route(c) => name_of(docs, Obj::Route(c)),
                 };
                 format!("{subject} symbol on {}", page_of(rep.page).to_lowercase())
             }
@@ -535,6 +602,7 @@ fn page_in(doc: &Document, obj: Obj) -> Option<PageId> {
         Obj::Device(c) => doc.representations_of(Subject::Device(c)).map(|(_, r)| r.page).next(),
         Obj::Wire(c) => doc.representations_of(Subject::Wire(c)).map(|(_, r)| r.page).next(),
         Obj::Cable(c) => doc.representations_of(Subject::Cable(c)).map(|(_, r)| r.page).next(),
+        Obj::Route(r) => doc.routes.get(&r).map(|r| r.page),
         Obj::Terminal(t) => doc.terminals.get(&t).and_then(|t| page_in(doc, Obj::Device(t.component))),
         _ => None,
     }
@@ -555,6 +623,7 @@ fn scope_objects(scope: &Scope) -> Vec<Obj> {
     out.extend(t.items.iter().map(|x| Obj::Item(*x)));
     out.extend(t.wires.iter().map(|x| Obj::Wire(*x)));
     out.extend(t.cables.iter().map(|x| Obj::Cable(*x)));
+    out.extend(t.routes.iter().map(|x| Obj::Route(*x)));
     if scope.project {
         out.push(Obj::Project);
     }
@@ -574,6 +643,7 @@ fn differs(a: &Document, b: &Document, obj: Obj) -> bool {
         Obj::Item(i) => a.items.get(&i) != b.items.get(&i),
         Obj::Wire(i) => a.wires.get(&i) != b.wires.get(&i),
         Obj::Cable(i) => a.cables.get(&i) != b.cables.get(&i),
+        Obj::Route(i) => a.routes.get(&i) != b.routes.get(&i),
         Obj::Project => {
             a.properties != b.properties || a.project != b.project || a.settings != b.settings || a.standard != b.standard || a.styles != b.styles
         }
@@ -593,6 +663,7 @@ fn holds(doc: &Document, obj: Obj) -> bool {
         Obj::Item(i) => doc.items.contains_key(&i),
         Obj::Wire(i) => doc.wires.contains_key(&i),
         Obj::Cable(i) => doc.cables.contains_key(&i),
+        Obj::Route(i) => doc.routes.contains_key(&i),
         Obj::Project => true,
     }
 }
@@ -616,6 +687,7 @@ fn copy(to: &mut Document, from: &Document, obj: Obj) {
         Obj::Item(i) => put(&mut to.items, &from.items, i),
         Obj::Wire(i) => put(&mut to.wires, &from.wires, i),
         Obj::Cable(i) => put(&mut to.cables, &from.cables, i),
+        Obj::Route(i) => put(&mut to.routes, &from.routes, i),
         Obj::Project => {}
     }
 }
@@ -707,16 +779,7 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                         definition: field(ctx, obj, "definition", format!("{what} · symbol"), &a.definition, &t.definition, &s.definition, &|d| {
                             d.map_or_else(|| "(none)".into(), |d| name_of(&docs, Obj::Definition(d)))
                         }),
-                        device_type: field(
-                            ctx,
-                            obj,
-                            "device_type",
-                            format!("{what} · type"),
-                            &a.device_type,
-                            &t.device_type,
-                            &s.device_type,
-                            &|d| d.group().label().into(),
-                        ),
+                        device_type: merge_device_type(ctx, obj, &what, &docs, &a.device_type, &t.device_type, &s.device_type),
                         ..Device::default()
                     };
                     with_texts(ctx, &what, d, t, &texts)
@@ -726,8 +789,37 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
             Obj::Wire(id) => {
                 let v = object(ctx, obj, &what, a.wires.get(&id), t.wires.get(&id), s.wires.get(&id), |ctx, a, t, s| {
                     let opt = |x: Option<String>| x.unwrap_or_else(|| "(none)".into());
-                    let mut c = Wire {
-                        ends: t.ends,
+                    Wire {
+                        net: field(ctx, obj, "net", format!("{what} · net"), &a.net, &t.net, &s.net, &|x| x.to_string()),
+                        conductor: t.conductor,
+                        net_order: field(
+                            ctx,
+                            obj,
+                            "net_order",
+                            format!("{what} · place in its net"),
+                            &a.net_order,
+                            &t.net_order,
+                            &s.net_order,
+                            &|x| x.to_string(),
+                        ),
+                        ends: field(ctx, obj, "ends", format!("{what} · connection points"), &a.ends, &t.ends, &s.ends, &|e| {
+                            format!("{} – {}", name_of(&docs, Obj::Terminal(e[0])), name_of(&docs, Obj::Terminal(e[1])))
+                        }),
+                        order_fixed: field(
+                            ctx,
+                            obj,
+                            "order_fixed",
+                            format!("{what} · order fixed"),
+                            &a.order_fixed,
+                            &t.order_fixed,
+                            &s.order_fixed,
+                            &|x| {
+                                if *x { "yes".into() } else { "no".into() }
+                            },
+                        ),
+                        wire_type: field(ctx, obj, "wire_type", format!("{what} · wire type"), &a.wire_type, &t.wire_type, &s.wire_type, &|x| {
+                            opt(x.as_ref().map(StyleRef::text))
+                        }),
                         size: field(ctx, obj, "size", format!("{what} · size"), &a.size, &t.size, &s.size, &|x| opt(x.map(|v| v.to_string()))),
                         colours: field(ctx, obj, "colours", format!("{what} · colours"), &a.colours, &t.colours, &s.colours, &|x| {
                             opt(x.as_ref().map(|v| v.to_string()))
@@ -740,44 +832,57 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                         }),
                         rating: field(ctx, obj, "rating", format!("{what} · rating inputs"), &a.rating, &t.rating, &s.rating, &|x| format!("{x:?}")),
                         load: field(ctx, obj, "load", format!("{what} · load"), &a.load, &t.load, &s.load, &|x| opt(x.map(|v| v.to_string()))),
+                        protected_by: field(
+                            ctx,
+                            obj,
+                            "protected_by",
+                            format!("{what} · protected by"),
+                            &a.protected_by,
+                            &t.protected_by,
+                            &s.protected_by,
+                            &|x| opt(x.map(|p| name_of(&docs, Obj::Device(p.device)))),
+                        ),
                         display: merge_props(ctx, obj, &what, &a.display, &t.display, &s.display, &all),
-                    };
-                    // A connection conflict always offers Leave unconnected (design §5.3, owner
-                    // answer 7): the end stays where the kept drawing has it, loose.
-                    for (end, name, word) in [(End::A, "end.a", "end A"), (End::B, "end.b", "end B")] {
-                        let show = |x: Option<TerminalId>| x.map_or_else(|| "unconnected".into(), |x| name_of(&docs, Obj::Terminal(x)));
-                        let v = match pick(Some(&a.end(end)), Some(&t.end(end)), Some(&s.end(end))) {
-                            Some(Some(v)) => v,
-                            _ => {
-                                let k = Conflict {
-                                    id: format!("{}/{name}", obj.hex()),
-                                    kind: ConflictKind::Value,
-                                    object: obj,
-                                    what: format!("{what} {word}"),
-                                    target: show(t.end(end)),
-                                    source: show(s.end(end)),
-                                    choices: vec![Choice::Target, Choice::Source, Choice::Drop],
-                                    chosen: None,
-                                };
-                                match ctx.ask(k) {
-                                    Some(Choice::Source) => s.end(end),
-                                    Some(Choice::Drop) => None,
-                                    _ => t.end(end),
-                                }
-                            }
-                        };
-                        c.set_end(end, v);
                     }
-                    c
                 });
                 set(&mut m.wires, id, v);
             }
             Obj::Cable(id) => {
                 let v = object(ctx, obj, &what, a.cables.get(&id), t.cables.get(&id), s.cables.get(&id), |ctx, a, t, s| Cable {
                     properties: merge_props(ctx, obj, &what, &a.properties, &t.properties, &s.properties, &all),
-                    members: merge_members(&a.members, &t.members, &s.members),
+                    cores: merge_members(&a.cores, &t.cores, &s.cores),
+                    cable_type: field(ctx, obj, "cable_type", format!("{what} · cable type"), &a.cable_type, &t.cable_type, &s.cable_type, &|x| {
+                        x.as_ref().map_or_else(|| "(none)".to_string(), StyleRef::text)
+                    }),
+                    shield: field(ctx, obj, "shield", format!("{what} · shield"), &a.shield, &t.shield, &s.shield, &|x| {
+                        x.map_or_else(|| "(none)".to_string(), |v| crate::words::Word::word(v).to_string())
+                    }),
+                    rating: field(ctx, obj, "rating", format!("{what} · rating inputs"), &a.rating, &t.rating, &s.rating, &|x| format!("{x:?}")),
+                    load: field(ctx, obj, "load", format!("{what} · load"), &a.load, &t.load, &s.load, &|x| {
+                        x.map_or_else(|| "(none)".to_string(), |v| v.to_string())
+                    }),
+                    protected_by: field(
+                        ctx,
+                        obj,
+                        "protected_by",
+                        format!("{what} · protected by"),
+                        &a.protected_by,
+                        &t.protected_by,
+                        &s.protected_by,
+                        &|x| x.map_or_else(|| "(none)".to_string(), |p| name_of(&docs, Obj::Device(p.device))),
+                    ),
                 });
                 set(&mut m.cables, id, v);
+            }
+            Obj::Route(id) => {
+                let v = object(ctx, obj, &what, a.routes.get(&id), t.routes.get(&id), s.routes.get(&id), |ctx, a, t, s| Route {
+                    page: field(ctx, obj, "page", format!("{what} · page"), &a.page, &t.page, &s.page, &|p| name_of(&docs, Obj::Page(*p))),
+                    points: field(ctx, obj, "points", format!("{what} · drawn differently on both"), &a.points, &t.points, &s.points, &|p| {
+                        format!("{} points", p.len())
+                    }),
+                    ends: field(ctx, obj, "ends", format!("{what} · ends"), &a.ends, &t.ends, &s.ends, &|e| format!("{e:?}")),
+                });
+                set(&mut m.routes, id, v);
             }
             Obj::Page(id) => {
                 let v = object(ctx, obj, &what, a.pages.get(&id), t.pages.get(&id), s.pages.get(&id), |ctx, a, t, s| Page {
@@ -825,12 +930,6 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                 });
                 set(&mut m.folders, id, v);
             }
-            Obj::Representation(id) if let Some(v) = folded(ctx, Obj::Representation(id)) => {
-                set(&mut m.representations, id, v.and_then(|d| d.representations.get(&id).cloned()));
-            }
-            Obj::Item(id) if let Some(v) = folded(ctx, Obj::Item(id)) => {
-                set(&mut m.items, id, v.and_then(|d| d.items.get(&id).cloned()));
-            }
             Obj::Representation(id) => {
                 let v =
                     object(ctx, obj, &what, a.representations.get(&id), t.representations.get(&id), s.representations.get(&id), |ctx, a, t, s| {
@@ -847,7 +946,8 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
             }
             Obj::Terminal(id) => {
                 let v = object(ctx, obj, &what, a.terminals.get(&id), t.terminals.get(&id), s.terminals.get(&id), |ctx, a, t, s| {
-                    let show = |x: &Terminal| x.label.clone().or_else(|| x.key.clone()).unwrap_or_else(|| "(no label)".into());
+                    let show =
+                        |x: &Terminal| x.label.clone().or_else(|| x.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| "(no label)".into());
                     field(ctx, obj, "record", format!("{what} · changed on both"), a, t, s, &show)
                 });
                 set(&mut m.terminals, id, v);
@@ -945,7 +1045,7 @@ fn merge_standard(ctx: &mut Ctx<'_, '_>, m: &mut Document, obj: Obj) {
         _ => None,
     };
     if let Some(target_keeps) = one_sided {
-        let name = a.standard.as_ref().map_or_else(String::new, |x| x.header.name.clone());
+        let name = a.standard.as_ref().map_or_else(String::new, |x| x.header.name.to_string());
         let (on_changed, on_removed) = if target_keeps { (ctx.t(), ctx.s()) } else { (ctx.s(), ctx.t()) };
         let word = |keeps: bool| if keeps { "changed" } else { "removed" };
         let c = Conflict {
@@ -993,10 +1093,10 @@ pub fn style_words(catalogue: crate::style::StyleCatalogue, id: &StyleRef, recor
         C::Text => "Text style",
         C::Location => "Location box style",
         C::Frame => "Frame style",
-        C::Wire => "Wire category",
+        C::Wire => "Wire type",
         C::Page | C::Cable | C::RatingTable => "Style",
     };
-    match record.map(|r| r.name.as_str()).filter(|n| !n.is_empty()) {
+    match record.and_then(|r| r.name.as_ref()).map(|n| n.as_str()) {
         Some(n) => format!("{kind} \"{n}\""),
         None => format!("{kind} {id}"),
     }
@@ -1019,7 +1119,7 @@ fn merge_style_layer(ctx: &mut Ctx<'_, '_>, layer: StyleLayer, a: &StyleCatalogu
                     let show = |r: Option<&StyleRecord>| match r {
                         None => "removed".to_string(),
                         Some(r) => {
-                            let f: Vec<String> = r.fields.iter().map(|(k, v)| format!("{k} {v}")).collect();
+                            let f: Vec<String> = r.body.entries().iter().map(|(k, v)| format!("{k} {v}")).collect();
                             if f.is_empty() { "no changes".into() } else { f.join(", ") }
                         }
                     };
@@ -1043,47 +1143,6 @@ fn merge_style_layer(ctx: &mut Ctx<'_, '_>, layer: StyleLayer, a: &StyleCatalogu
         }
     }
     out
-}
-
-/// A wire's drawing (its symbol or route item) changed on both sides while one of its ends is a
-/// connection conflict: it follows that conflict's answer instead of being a second conflict
-/// (tester 020b, defect 2): the source's drawing for `branch`, else the target's. `None` when
-/// it is not such a case; `Some(None)` when the chosen side has no such object.
-fn folded<'a>(ctx: &Ctx<'a, '_>, obj: Obj) -> Option<Option<&'a Document>> {
-    let (a, t, s) = (ctx.inp.ancestor, ctx.inp.target, ctx.inp.source);
-    let conductor = |d: &Document| -> Option<WireId> {
-        let rep = match obj {
-            Obj::Representation(r) => d.representations.get(&r)?,
-            Obj::Item(i) => d.representation_of_item(i)?.1,
-            _ => return None,
-        };
-        match rep.subject {
-            Subject::Wire(c) => Some(c),
-            _ => None,
-        }
-    };
-    let changed_on_both = match obj {
-        Obj::Representation(r) => {
-            let (x, y, z) = (a.representations.get(&r), t.representations.get(&r), s.representations.get(&r));
-            y.is_some() && z.is_some() && pick(x, y, z).is_none()
-        }
-        Obj::Item(i) => {
-            let (x, y, z) = (a.items.get(&i), t.items.get(&i), s.items.get(&i));
-            y.is_some() && z.is_some() && pick(x, y, z).is_none()
-        }
-        _ => false,
-    };
-    if !changed_on_both {
-        return None;
-    }
-    let c = conductor(t).or_else(|| conductor(s))?;
-    let (ca, ct, cs) = (a.wires.get(&c), t.wires.get(&c)?, s.wires.get(&c)?);
-    let end = End::BOTH.into_iter().find(|e| pick(Some(&ca.and_then(|x| x.end(*e))), Some(&ct.end(*e)), Some(&cs.end(*e))).is_none())?;
-    let id = format!("{}/end.{}", c.hex(), if end == End::A { "a" } else { "b" });
-    Some(match ctx.choices.get(&id) {
-        Some(Choice::Source) => Some(s),
-        _ => Some(t),
-    })
 }
 
 /// The object with ID `hex` in any of `docs`.
@@ -1181,23 +1240,45 @@ fn keep_devices(ctx: &mut Ctx<'_, '_>, m: &mut Document) -> BTreeSet<Obj> {
     out
 }
 
-/// Cable members: adds and removes from both sides combine (design §5.1); a member's core is
-/// the side that changed it (the target's when both did).
-fn merge_members(a: &[CableMember], t: &[CableMember], s: &[CableMember]) -> Vec<CableMember> {
-    fn has(l: &[CableMember], c: WireId) -> Option<&CableMember> {
-        l.iter().find(|m| m.conductor == c)
+/// The cores on a line that went: each stays unplaced or goes ([`Core::off_line`]), in place.
+fn off_line(cores: &mut Vec<Core>, gone: impl Fn(&Core) -> bool) {
+    let mut out: Vec<Core> = Vec::with_capacity(cores.len());
+    for c in cores.drain(..) {
+        if !gone(&c) {
+            out.push(c);
+        } else if let Some(k) = c.off_line(&out) {
+            out.push(k);
+        }
     }
-    let mut out: Vec<CableMember> = Vec::new();
+    *cores = out;
+}
+
+/// Cable cores: adds and removes from both sides combine (design §5.1). A core is the same core
+/// on both sides when it is on the same line, or, unplaced, has the same label. Each of its fields
+/// is the side that changed it (the target's when both did).
+fn merge_members(a: &[Core], t: &[Core], s: &[Core]) -> Vec<Core> {
+    fn has<'a>(l: &'a [Core], c: &Core) -> Option<&'a Core> {
+        l.iter().find(|m| m.position == c.position && (c.position != CorePosition::Unplaced || m.label == c.label))
+    }
+    fn field<T: PartialEq + Clone>(am: Option<&Core>, m: &Core, sm: Option<&Core>, f: fn(&Core) -> &T) -> T {
+        pick(am.map(f), Some(f(m)), sm.map(f)).flatten().unwrap_or_else(|| f(m).clone())
+    }
+    let mut out: Vec<Core> = Vec::new();
     for m in t {
-        let (am, sm) = (has(a, m.conductor), has(s, m.conductor));
+        let (am, sm) = (has(a, m), has(s, m));
         if am.is_some() && sm.is_none() {
             continue; // removed by the source
         }
-        let core = pick(am.map(|x| &x.core), Some(&m.core), sm.map(|x| &x.core)).flatten().unwrap_or_else(|| m.core.clone());
-        out.push(CableMember { conductor: m.conductor, core });
+        out.push(Core {
+            label: field(am, m, sm, |x| &x.label),
+            colours: field(am, m, sm, |x| &x.colours),
+            purpose: field(am, m, sm, |x| &x.purpose),
+            position: m.position,
+            through: field(am, m, sm, |x| &x.through),
+        });
     }
     for m in s {
-        if has(t, m.conductor).is_none() && has(a, m.conductor).is_none() {
+        if has(t, m).is_none() && has(a, m).is_none() {
             out.push(m.clone()); // added by the source
         }
     }
@@ -1276,6 +1357,7 @@ fn refs(m: &Document, obj: Obj) -> Vec<(Obj, Use)> {
                         Subject::Device(c) => Obj::Device(c),
                         Subject::Wire(c) => Obj::Wire(c),
                         Subject::Cable(c) => Obj::Cable(c),
+                        Subject::Route(c) => Obj::Route(c),
                     },
                     Use::Whole,
                 ));
@@ -1287,15 +1369,17 @@ fn refs(m: &Document, obj: Obj) -> Vec<(Obj, Use)> {
         Obj::Wire(c) => {
             if let Some(c) = m.wires.get(&c) {
                 for e in End::BOTH {
-                    if let Some(t) = c.end(e) {
-                        out.push((Obj::Terminal(t), Use::End(e)));
-                    }
+                    out.push((Obj::Terminal(c.end(e)), Use::End(e)));
                 }
             }
         }
         Obj::Cable(c) => {
             if let Some(c) = m.cables.get(&c) {
-                out.extend(c.members.iter().map(|x| (Obj::Wire(x.conductor), Use::Member)));
+                out.extend(c.cores.iter().filter_map(|x| match x.position {
+                    CorePosition::Wire(w) => Some((Obj::Wire(w), Use::Member)),
+                    CorePosition::Route { route, .. } => Some((Obj::Route(route), Use::Member)),
+                    CorePosition::Unplaced => None,
+                }));
             }
         }
         Obj::Page(p) => {
@@ -1306,6 +1390,18 @@ fn refs(m: &Document, obj: Obj) -> Vec<(Obj, Use)> {
         Obj::Folder(f) => {
             if let Some(p) = m.folders.get(&f).and_then(|f| f.parent) {
                 out.push((Obj::Folder(p), Use::FolderParent));
+            }
+        }
+        Obj::Route(r) => {
+            if let Some(r) = m.routes.get(&r) {
+                out.push((Obj::Page(r.page), Use::Whole));
+                for (i, e) in r.ends.iter().enumerate() {
+                    match e {
+                        RouteEnd::Point(t) => out.push((Obj::Terminal(*t), Use::RouteEnd(i))),
+                        RouteEnd::On { route, .. } => out.push((Obj::Route(*route), Use::RouteEnd(i))),
+                        RouteEnd::Free => {}
+                    }
+                }
             }
         }
         Obj::Layer(_) | Obj::Definition(_) | Obj::Project => {}
@@ -1319,15 +1415,21 @@ fn users_of(m: &Document, y: Obj) -> Vec<Obj> {
     let mut all: Vec<Obj> = Vec::new();
     match y {
         Obj::Terminal(t) => {
-            all.extend(m.wires.iter().filter(|(_, c)| c.ends.contains(&Some(t))).map(|(k, _)| Obj::Wire(*k)));
+            all.extend(m.wires.iter().filter(|(_, c)| c.ends.contains(&t)).map(|(k, _)| Obj::Wire(*k)));
             all.extend(m.representations.iter().filter(|(_, r)| r.connection_points.contains_key(&t)).map(|(k, _)| Obj::Representation(*k)));
+            all.extend(m.routes.iter().filter(|(_, r)| r.ends.contains(&RouteEnd::Point(t))).map(|(k, _)| Obj::Route(*k)));
+        }
+        Obj::Route(x) => {
+            all.extend(m.routes.iter().filter(|(_, r)| r.ends.iter().any(|e| e.route() == Some(x))).map(|(k, _)| Obj::Route(*k)));
+            all.extend(m.cables.iter().filter(|(_, c)| c.cores.iter().any(|mm| mm.route() == Some(x))).map(|(k, _)| Obj::Cable(*k)));
+            all.extend(m.representations.iter().filter(|(_, r)| r.subject == Subject::Route(x)).map(|(k, _)| Obj::Representation(*k)));
         }
         Obj::Device(c) => {
             all.extend(m.terminals.iter().filter(|(_, t)| t.component == c).map(|(k, _)| Obj::Terminal(*k)));
             all.extend(m.representations.iter().filter(|(_, r)| r.subject == Subject::Device(c)).map(|(k, _)| Obj::Representation(*k)));
         }
         Obj::Wire(c) => {
-            all.extend(m.cables.iter().filter(|(_, x)| x.members.iter().any(|mm| mm.conductor == c)).map(|(k, _)| Obj::Cable(*k)));
+            all.extend(m.cables.iter().filter(|(_, x)| x.cores.iter().any(|mm| mm.wire() == Some(c))).map(|(k, _)| Obj::Cable(*k)));
             all.extend(m.representations.iter().filter(|(_, r)| r.subject == Subject::Wire(c)).map(|(k, _)| Obj::Representation(*k)));
         }
         Obj::Cable(c) => {
@@ -1340,6 +1442,7 @@ fn users_of(m: &Document, y: Obj) -> Vec<Obj> {
         Obj::Page(p) => {
             all.extend(m.items.iter().filter(|(_, x)| x.page == p).map(|(k, _)| Obj::Item(*k)));
             all.extend(m.representations.iter().filter(|(_, r)| r.page == p).map(|(k, _)| Obj::Representation(*k)));
+            all.extend(m.routes.iter().filter(|(_, r)| r.page == p).map(|(k, _)| Obj::Route(*k)));
         }
         Obj::Layer(l) => all.extend(m.items.iter().filter(|(_, x)| x.style.layer == l).map(|(k, _)| Obj::Item(*k))),
         Obj::Definition(d) => {
@@ -1357,9 +1460,11 @@ fn users_of(m: &Document, y: Obj) -> Vec<Obj> {
 /// Stop `x`'s use of `y` (it was not brought back): detach, drop the entry, or remove `x`.
 fn drop_use(m: &mut Document, x: Obj, y: Obj, how: Use, check: &mut BTreeSet<Obj>) {
     match (x, how) {
-        (Obj::Wire(c), Use::End(e)) => {
-            if let Some(c) = m.wires.get_mut(&c) {
-                c.set_end(e, None);
+        // A wire runs between two connection points: without one it goes.
+        (Obj::Wire(_), Use::End(_)) => remove_whole(m, x, check),
+        (Obj::Route(r), Use::RouteEnd(i)) => {
+            if let Some(e) = m.routes.get_mut(&r).and_then(|r| r.ends.get_mut(i)) {
+                *e = RouteEnd::Free;
             }
         }
         (Obj::Representation(r), Use::ConnectionPoint) => {
@@ -1367,11 +1472,11 @@ fn drop_use(m: &mut Document, x: Obj, y: Obj, how: Use, check: &mut BTreeSet<Obj
                 r.connection_points.remove(&t);
             }
         }
-        (Obj::Cable(c), Use::Member) => {
-            if let (Some(c), Obj::Wire(w)) = (m.cables.get_mut(&c), y) {
-                c.members.retain(|mm| mm.conductor != w);
-            }
-        }
+        (Obj::Cable(c), Use::Member) => match (m.cables.get_mut(&c), y) {
+            (Some(c), Obj::Wire(w)) => off_line(&mut c.cores, |mm| mm.wire() == Some(w)),
+            (Some(c), Obj::Route(r)) => off_line(&mut c.cores, |mm| mm.route() == Some(r)),
+            _ => {}
+        },
         (Obj::Page(p), Use::PageFolder) => {
             if let Some(p) = m.pages.get_mut(&p) {
                 p.folder = None;
@@ -1439,7 +1544,7 @@ fn resolve_needed(ctx: &mut Ctx<'_, '_>, m: &mut Document, mut check: BTreeSet<O
             let user_names: Vec<String> = users.iter().take(3).map(|(x, _)| name_of(&docs, *x)).collect();
             let more = users.len().saturating_sub(3);
             let removed_on = if holds(t, y) { ctx.s().to_string() } else { ctx.t().to_string() };
-            let only_ends = users.iter().all(|(_, u)| matches!(u, Use::End(_) | Use::ConnectionPoint));
+            let only_ends = users.iter().all(|(_, u)| matches!(u, Use::ConnectionPoint));
             let mut choices = Vec::new();
             if from.is_some() {
                 choices.push(Choice::BringBack);
@@ -1558,17 +1663,11 @@ fn objs_of(ops: &[Op]) -> BTreeSet<Obj> {
             Op::LinkRepresentation { id, .. } | Op::UnlinkRepresentation { id, .. } => {
                 out.insert(Obj::Representation(*id));
             }
-            Op::AttachEnd { conductor, .. } => {
-                out.insert(Obj::Wire(*conductor));
-            }
             Op::SetProperty { object: ObjectRef::Device(c), .. } => {
                 out.insert(Obj::Device(*c));
             }
-            Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
+            Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } | Op::ModifyCable { id, .. } => {
                 out.insert(Obj::Cable(*id));
-            }
-            Op::AddCableMember { cable, .. } | Op::RemoveCableMember { cable, .. } => {
-                out.insert(Obj::Cable(*cable));
             }
             _ => {}
         }
@@ -1753,23 +1852,23 @@ pub fn join_cables(doc: &Document, from: CableId, into: CableId) -> Result<Vec<O
     let a = doc.cables.get(&from).ok_or(crate::ParseError::NotFound(crate::Noun::Cable))?;
     let b = doc.cables.get(&into).ok_or(crate::ParseError::NotFound(crate::Noun::Cable))?;
     let mut ops = Vec::new();
-    for (i, mem) in a.members.iter().enumerate().rev() {
-        ops.push(Op::RemoveCableMember { cable: from, index: i, member: mem.clone() });
-    }
-    let mut n = b.members.len();
-    for mem in &a.members {
-        if b.members.iter().any(|x| x.conductor == mem.conductor) {
+    let mut joined = b.clone();
+    for mem in &a.cores {
+        // A line in both stays once; an unplaced core joins only when `into` has no core of its label.
+        let unplaced_dup = mem.position == CorePosition::Unplaced && b.cores.iter().any(|x| x.label == mem.label);
+        if unplaced_dup || (mem.position != CorePosition::Unplaced && b.cores.iter().any(|x| x.position == mem.position)) {
             continue;
         }
-        ops.push(Op::AddCableMember { cable: into, index: n, member: mem.clone() });
-        n += 1;
+        joined.cores.push(mem.clone());
     }
+    let mut empty = a.clone();
+    empty.cores.clear();
+    ops.extend(Op::modify_cable(from, a, empty.clone()));
+    ops.extend(Op::modify_cable(into, b, joined));
     for (rid, r) in doc.representations_of(Subject::Cable(from)) {
         ops.push(Op::UnlinkRepresentation { id: rid, rep: r.clone() });
         ops.push(Op::LinkRepresentation { id: rid, rep: crate::doc::Representation { subject: Subject::Cable(into), ..r.clone() } });
     }
-    let mut empty = a.clone();
-    empty.members.clear();
     ops.push(Op::DeleteCable { id: from, cable: empty });
     Ok(ops)
 }
@@ -1901,6 +2000,7 @@ fn changes(inp: &Inputs<'_>, objects: &[Obj]) -> (Vec<Change>, Vec<PageId>) {
                 Subject::Device(c) => Obj::Device(c),
                 Subject::Wire(c) => Obj::Wire(c),
                 Subject::Cable(c) => Obj::Cable(c),
+                Subject::Route(c) => Obj::Route(c),
             };
             if objects.contains(&subject) && differs(a, s, subject) && holds(a, subject) == holds(a, shown_as) {
                 continue;
@@ -1946,8 +2046,16 @@ fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
                 p.extend(x.tag().map(|t| (tag::TAG_KEY.to_string(), t.to_string())));
                 p
             }),
-            Obj::Wire(c) => d.wires.get(&c).map(|x| x.display.clone()),
-            Obj::Cable(c) => d.cables.get(&c).map(|x| x.properties.clone()),
+            Obj::Wire(c) => d.wires.get(&c).map(|x| {
+                let mut p = x.display.clone();
+                p.extend(x.wire_type.as_ref().map(|t| (crate::wiring::WIRE_CATEGORY.to_string(), t.text())));
+                p
+            }),
+            Obj::Cable(c) => d.cables.get(&c).map(|x| {
+                let mut p = x.properties.clone();
+                p.extend(x.cable_type.as_ref().map(|t| (crate::doc::CABLE_TYPE_KEY.to_string(), t.text())));
+                p
+            }),
             Obj::Page(p) => d.pages.get(&p).map(|x| x.display.clone()),
             Obj::Project => Some(d.properties.clone()),
             _ => None,
@@ -1959,7 +2067,7 @@ fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
         let docs = [s, a];
         for (e, word) in [(End::A, "end A"), (End::B, "end B")] {
             if x.end(e) != y.end(e) {
-                let show = |t: Option<TerminalId>| t.map_or_else(|| "unconnected".into(), |t| name_of(&docs, Obj::Terminal(t)));
+                let show = |t: TerminalId| name_of(&docs, Obj::Terminal(t));
                 return format!("· {word} {} → {}", show(x.end(e)), show(y.end(e)));
             }
         }
@@ -1971,6 +2079,20 @@ fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
             let q = |t: Option<String>| t.map_or_else(|| "(none)".into(), |t| format!("\"{t}\""));
             return format!("· {k} {} → {}", q(name(&vx, k)), q(name(&vy, k)));
         }
+    }
+    // Design 072 §3 (FP1): a module moved to another station shows the stations' tags.
+    if let Obj::Device(c) = obj
+        && let (Some(x), Some(y)) = (a.devices.get(&c), s.devices.get(&c))
+        && let (crate::DeviceType::PlcModule(mx), crate::DeviceType::PlcModule(my)) = (&x.device_type, &y.device_type)
+        && (mx.rack, mx.slot) != (my.rack, my.slot)
+    {
+        let docs = [s, a];
+        let at = |r: Option<DeviceId>, slot: Option<u16>| match (r, slot) {
+            (Some(r), Some(n)) => format!("{} slot {n}", name_of(&docs, Obj::Device(r))),
+            (Some(r), None) => name_of(&docs, Obj::Device(r)),
+            (None, _) => "no rack".into(),
+        };
+        return format!("· rack {} → {}", at(mx.rack, mx.slot), at(my.rack, my.slot));
     }
     match (props(a), props(s)) {
         (Some(pa), Some(ps)) => {
@@ -2144,6 +2266,9 @@ pub fn plan(inp: &Inputs<'_>, choices: &BTreeMap<String, Choice>) -> Plan {
                 Obj::Cable(i) => {
                     scope.cables.insert(i);
                 }
+                Obj::Route(i) => {
+                    scope.routes.insert(i);
+                }
                 Obj::Project => {}
             }
         }
@@ -2170,6 +2295,7 @@ pub fn plan(inp: &Inputs<'_>, choices: &BTreeMap<String, Choice>) -> Plan {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+    use crate::id::{ConductorId, NetId};
 
     fn doc_with(tags: &[(u128, &str)]) -> Document {
         let mut d = Document::default();
@@ -2359,12 +2485,13 @@ mod tests {
     fn device(d: &mut Document, c: u128, tag_text: &str, terminals: &[u128]) {
         d.devices.insert(DeviceId(c), Device::default().with_tag(Some(tag_text)));
         for t in terminals {
-            d.terminals.insert(TerminalId(*t), Terminal { component: DeviceId(c), label: Some(format!("A{t}")), key: None });
+            d.terminals
+                .insert(TerminalId(*t), Terminal { component: DeviceId(c), label: Some(format!("A{t}")), key: None, accepts: Default::default() });
         }
     }
 
-    fn wire(d: &mut Document, w: u128, b: Option<u128>) {
-        d.wires.insert(WireId(w), Wire { ends: [None, b.map(TerminalId)], ..Wire::default() });
+    fn wire(d: &mut Document, w: u128, a: u128, b: u128) {
+        d.wires.insert(WireId(w), Wire::new(NetId(90), ConductorId(91), TerminalId(a), TerminalId(b)));
     }
 
     fn scope_all(ids: &[Obj]) -> Scope {
@@ -2419,41 +2546,42 @@ mod tests {
     }
 
     #[test]
-    fn a_wire_end_conflict_offers_main_branch_and_leave_unconnected() {
+    fn a_wire_ends_conflict_offers_main_and_branch() {
         let mut a = Document::default();
-        device(&mut a, 1, "-K01", &[11, 12, 13]);
-        wire(&mut a, 5, None);
+        device(&mut a, 1, "-K01", &[11, 12, 13, 14]);
+        wire(&mut a, 5, 11, 12);
         let mut t = a.clone();
-        t.wires.get_mut(&WireId(5)).unwrap().set_end(End::B, Some(TerminalId(11)));
+        wire(&mut t, 5, 11, 13);
         let mut s = a.clone();
-        s.wires.get_mut(&WireId(5)).unwrap().set_end(End::B, Some(TerminalId(12)));
+        wire(&mut s, 5, 11, 14);
         let scope = scope_all(&[Obj::Wire(WireId(5))]);
-        let id = format!("{}/end.b", WireId(5).hex());
+        let id = format!("{}/ends", WireId(5).hex());
         let p = run(&a, &t, &s, &scope, &BTreeMap::new());
-        assert_eq!(p.conflicts[0].choices, vec![Choice::Target, Choice::Source, Choice::Drop]);
-        for (c, want) in [(Choice::Target, Some(11)), (Choice::Source, Some(12)), (Choice::Drop, None)] {
+        assert_eq!(p.conflicts[0].id, id);
+        assert_eq!(p.conflicts[0].choices, vec![Choice::Target, Choice::Source]);
+        for (c, want) in [(Choice::Target, 13), (Choice::Source, 14)] {
             let doc = applied(&t, &run(&a, &t, &s, &scope, &one(&id, c.clone())));
-            assert_eq!(doc.wires[&WireId(5)].end(End::B), want.map(TerminalId), "{c:?}");
+            assert_eq!(doc.wires[&WireId(5)].end(End::B), TerminalId(want), "{c:?}");
         }
     }
 
     #[test]
-    fn a_point_the_branch_uses_and_main_removed_is_brought_back_or_left_unconnected() {
+    fn a_point_the_branch_uses_and_main_removed_is_brought_back_or_its_wire_removed() {
         let mut a = Document::default();
         device(&mut a, 1, "-K01", &[11]);
-        wire(&mut a, 5, None);
+        device(&mut a, 2, "-K02", &[21]);
         let mut s = a.clone();
-        s.wires.get_mut(&WireId(5)).unwrap().set_end(End::B, Some(TerminalId(11)));
+        wire(&mut s, 5, 21, 11);
         let mut t = a.clone();
-        t.terminals.clear();
-        t.devices.clear();
+        t.terminals.remove(&TerminalId(11));
+        t.devices.remove(&DeviceId(1));
         let scope = scope_all(&[Obj::Wire(WireId(5)), Obj::Terminal(TerminalId(11)), Obj::Device(DeviceId(1))]);
         let tid = format!("{}/needed", TerminalId(11).hex());
         let cid = format!("{}/needed", DeviceId(1).hex());
-        // Leave unconnected: the end is loose, nothing comes back.
+        // Not brought back: a wire runs between two points, so without one it goes.
         let doc = applied(&t, &run(&a, &t, &s, &scope, &one(&tid, Choice::Drop)));
-        assert_eq!(doc.wires[&WireId(5)].end(End::B), None);
-        assert!(doc.terminals.is_empty());
+        assert!(!doc.wires.contains_key(&WireId(5)));
+        assert!(!doc.terminals.contains_key(&TerminalId(11)));
         // Bring back the point and its device.
         let both = BTreeMap::from([(tid.clone(), Choice::BringBack), (cid.clone(), Choice::BringBack)]);
         let doc = applied(&t, &run(&a, &t, &s, &scope, &both));

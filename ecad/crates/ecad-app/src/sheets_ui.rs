@@ -98,7 +98,7 @@ pub struct ProjectProps {
     /// Starter symbol key → its prefix as the project uses it (`-K`).
     pub prefixes: Vec<(String, String)>,
     colour_style_orig: String,
-    /// `iec` or `three-letter` (brief 022).
+    /// `code2`, `code3` or `name` (design 072 F35).
     pub colour_style: String,
     label_height_orig: String,
     /// Wire label height, millimetres (brief 022).
@@ -181,7 +181,7 @@ impl ProjectProps {
         let padding = v.get("tag_padding").and_then(Value::as_u64).unwrap_or(2).to_string();
         let tag_case =
             v.get("tag_case").and_then(Value::as_str).and_then(<ecad_model::tag::Case as ecad_model::words::Word>::parse).unwrap_or_default();
-        let colour_style = v.get("colour_style").and_then(Value::as_str).unwrap_or("iec").to_string();
+        let colour_style = v.get("colour_style").and_then(Value::as_str).unwrap_or("code2").to_string();
         let label_height = v.get("label_height").and_then(Value::as_f64).map_or_else(String::new, |h| h.to_string());
         let prefixes: Vec<(String, String)> = v
             .get("tag_prefixes")
@@ -612,8 +612,9 @@ impl ProjectProps {
             prim::PropertyGrid::new().show(ui, |g| {
                 g.row("Colours", |ui| {
                     for (word, shown, name) in [
-                        ("iec", "IEC  BN BU GNYE", "ecad.projectsettings.colours.iec"),
-                        ("three-letter", "BRN BLU GRN/YEL", "ecad.projectsettings.colours.three"),
+                        ("code2", "BN BU GN/YE", "ecad.projectsettings.colours.code2"),
+                        ("code3", "BRN BLU GRN/YEL", "ecad.projectsettings.colours.code3"),
+                        ("name", "Brown Blue Green/Yellow", "ecad.projectsettings.colours.name"),
                     ] {
                         if Radio::new(self.colour_style == word, shown).show(ui).accessible_name(name).clicked() {
                             self.colour_style = word.to_string();
@@ -1088,8 +1089,11 @@ pub fn revision_bar(rev: &str, date: &str) -> String {
 
 // ---------------------------------------------------------------- wire labels (brief 032 §4.4)
 
+use ecad_model::wiring::NumberBy;
+
 /// The Project Settings rows of the wire label rule: one label per net per page or every wire, and
-/// the shortest labelled wire (only with every wire). Committed as one `wiresettings` line.
+/// the shortest labelled wire (only with every wire); and what one wire number counts (design 072
+/// F40: one per net or one per wire). Committed as one `wiresettings` line.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WireLabels {
     rule_orig: String,
@@ -1098,6 +1102,9 @@ pub struct WireLabels {
     min_orig: String,
     /// Shortest labelled wire, millimetres, as typed.
     pub min_length: String,
+    number_by_orig: String,
+    /// `net` or `conductor` (design 072 F40).
+    pub number_by: String,
 }
 
 impl WireLabels {
@@ -1105,7 +1112,8 @@ impl WireLabels {
     pub fn from_json(v: &Value) -> Self {
         let rule = v.get("label_rule").and_then(Value::as_str).unwrap_or(ecad_model::wiring::LABEL_RULE_NET).to_string();
         let min = v.get("label_min_length").and_then(Value::as_f64).map_or_else(String::new, |v| v.to_string());
-        WireLabels { rule_orig: rule.clone(), rule, min_orig: min.clone(), min_length: min }
+        let by = v.get("number_by").and_then(Value::as_str).unwrap_or(ecad_model::Word::word(NumberBy::Net)).to_string();
+        WireLabels { rule_orig: rule.clone(), rule, min_orig: min.clone(), min_length: min, number_by_orig: by.clone(), number_by: by }
     }
 
     /// The `wiresettings` line of what changed, `None` when nothing did.
@@ -1127,6 +1135,9 @@ impl WireLabels {
                 .ok_or_else(|| "Shortest labelled wire is 0 to 100 mm.".to_string())?;
             m.insert("label_min_length".into(), json!(v));
         }
+        if self.number_by != self.number_by_orig {
+            m.insert("number_by".into(), Value::String(self.number_by.clone()));
+        }
         Ok((!m.is_empty()).then(|| format!("wiresettings {}", Value::Object(m))))
     }
 
@@ -1147,6 +1158,17 @@ impl WireLabels {
                 ui.add_enabled_ui(each, |ui| {
                     TextEntry::new(&mut self.min_length, "ecad.projectsettings.label_min_length").number("mm").width(SHORT_W * 1.5).show(ui);
                 });
+            });
+            g.row("Wire numbers", |ui| {
+                for (word, shown, name) in [
+                    (NumberBy::Net, "One per net", "ecad.projectsettings.number_by.net"),
+                    (NumberBy::Conductor, "One per wire", "ecad.projectsettings.number_by.conductor"),
+                ] {
+                    let word = ecad_model::Word::word(word);
+                    if Radio::new(self.number_by == word, shown).show(ui).accessible_name(name).clicked() {
+                        self.number_by = word.to_string();
+                    }
+                }
             });
         });
     }

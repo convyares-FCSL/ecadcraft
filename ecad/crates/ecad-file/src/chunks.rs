@@ -19,7 +19,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
     Cable, CableId, Definition, DefinitionId, Device, DeviceId, Document, Folder, FolderId, Item, ItemId, Layer, LayerId, ObjectRef, Op, Page,
-    PageId, Project, ProjectSettings, Representation, RepresentationId, Standard, StyleCatalogues, Terminal, TerminalId, Touched, Wire, WireId,
+    PageId, Project, ProjectSettings, Representation, RepresentationId, Route, RouteId, Standard, StyleCatalogues, Terminal, TerminalId, Touched,
+    Wire, WireId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -179,6 +180,13 @@ impl Dirty {
                     self.pages.insert(before.page);
                     self.pages.insert(after.page);
                 }
+                Op::AddRoute { route, .. } | Op::RemoveRoute { route, .. } => {
+                    self.pages.insert(route.page);
+                }
+                Op::ModifyRoute { before, after, .. } => {
+                    self.pages.insert(before.page);
+                    self.pages.insert(after.page);
+                }
                 _ => {}
             }
         }
@@ -190,6 +198,9 @@ struct PageChunkRef<'a> {
     page: &'a Page,
     items: BTreeMap<&'a ItemId, &'a Item>,
     representations: BTreeMap<&'a RepresentationId, &'a Representation>,
+    /// Design 072 F31: the page's routes; left out while empty.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    routes: BTreeMap<&'a RouteId, &'a Route>,
 }
 
 #[derive(Deserialize)]
@@ -198,6 +209,8 @@ struct PageChunk {
     page: Page,
     items: BTreeMap<ItemId, Item>,
     representations: BTreeMap<RepresentationId, Representation>,
+    #[serde(default)]
+    routes: BTreeMap<RouteId, Route>,
 }
 
 #[derive(Serialize)]
@@ -291,10 +304,21 @@ fn page_chunks(doc: &Document, pages: &BTreeSet<PageId>) -> Result<Vec<(PageId, 
             reps.entry(rep.page).or_default().insert(id, rep);
         }
     }
+    let mut routes: BTreeMap<PageId, BTreeMap<&RouteId, &Route>> = BTreeMap::new();
+    for (id, r) in &doc.routes {
+        if all || pages.contains(&r.page) {
+            routes.entry(r.page).or_default().insert(id, r);
+        }
+    }
     let mut out = Vec::new();
     for id in pages {
         let Some(page) = doc.pages.get(id) else { continue };
-        let chunk = PageChunkRef { page, items: items.remove(id).unwrap_or_default(), representations: reps.remove(id).unwrap_or_default() };
+        let chunk = PageChunkRef {
+            page,
+            items: items.remove(id).unwrap_or_default(),
+            representations: reps.remove(id).unwrap_or_default(),
+            routes: routes.remove(id).unwrap_or_default(),
+        };
         out.push((*id, encode(&chunk)?));
     }
     Ok(out)
@@ -555,6 +579,7 @@ fn merge_parsed(parsed: Vec<Result<Parsed, FileError>>) -> Result<(Document, Opt
                 }
                 merge(&mut doc.items, p.items, "item")?;
                 merge(&mut doc.representations, p.representations, "representation")?;
+                merge(&mut doc.routes, p.routes, "route")?;
             }
             Parsed::Layer(m) => merge(&mut doc.layers, m, "layer")?,
             Parsed::Device(m) => merge(&mut doc.devices, m, "device")?,

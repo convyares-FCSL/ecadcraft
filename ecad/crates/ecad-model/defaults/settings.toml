@@ -8,7 +8,7 @@
 "tags.dash" = "yes"            # tags start with `-`
 "tags.case" = "upper"          # tags written in upper case
 "wiring.digits" = 2            # digits a wire number is padded to
-"wiring.colour_style" = "iec"  # IEC 60757 colour codes (BN, BU, GNYE)
+"wiring.colour_style" = "code2"  # IEC 60757 two-letter codes (BN, BU, GN/YE); code3, name
 "page.number_step" = 1         # what a new page's number adds to the one before it
 "page.sheet" = "A3"            # A3 landscape, columns 1–8, rows A–F
 "print.reference_style" = "page-zone"  # cross-references as 105/B3

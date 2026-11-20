@@ -166,13 +166,17 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
     h.state_mut().reports.as_mut().unwrap().tab = outputs_ui::Tab::Wires;
     h.run_steps(4);
     let wires = h.state().reports.as_ref().unwrap().table().clone();
-    assert!(wires.rows.iter().any(|row| row[9].text.starts_with("-W01 core")), "cores with their cable");
+    // -W01 continues on page 3 (F4, F5): each core is one wire from -K01 to -X02, listed with its
+    // cable.
+    let cored = wires.rows.iter().filter(|row| row[9].text.starts_with("-W01 core")).count();
+    assert_eq!(cored, 3, "the three cores with their cable");
     save(&h, &deltas, "024-reports-wires.png");
     h.state_mut().reports.as_mut().unwrap().tab = outputs_ui::Tab::Cables;
     h.run_steps(4);
     let cables = h.state().reports.as_ref().unwrap().table().clone();
     let row: Vec<String> = cables.rows[0].iter().map(|c| c.text.clone()).collect();
-    // Brief 028: Cores is the offer read from the type, Used the three members.
+    // Brief 028: Cores is the offer read from the type. -W01 continues on page 3, so its ends read
+    // +CP1 (-K01) and +JB1 (-X02); 3 used and 1 open (GNYE).
     assert_eq!(row[..7], ["-W01", "4G1.5", "4", "+CP1", "+JB1", "3", "1 (GNYE)"], "{row:?}");
     h.state_mut().reports = None;
 

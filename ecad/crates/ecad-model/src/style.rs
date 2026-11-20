@@ -17,7 +17,22 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::doc::Properties;
 use crate::id::{LibraryId, StandardId};
-use crate::title_block::StyleBody;
+
+pub mod cable;
+pub mod frame;
+pub mod location;
+pub mod page;
+pub mod rating;
+pub mod text;
+pub mod wire;
+
+pub use cable::CableType;
+pub use frame::FrameStyle;
+pub use location::LocationStyle;
+pub use page::PageType;
+pub use rating::RatingTable;
+pub use text::{StyleColour, TextStyle};
+pub use wire::WireType;
 
 /// The most styles a layer may hold per catalogue. Guard, not a default: it keeps a hostile
 /// file from making the catalogue tables and the users index unbounded. Records past it are kept
@@ -172,44 +187,195 @@ impl<'de> Deserialize<'de> for StyleRef {
     }
 }
 
-/// What a standard or a project stores about one style (design 050 §2.3): its name and the
-/// fields it sets. For a built-in style the name is empty and the record holds only the fields
-/// it overrides. Unknown field keys are kept and ignored.
+/// What a standard or a project stores about one style (design 050 §2.3, design 072 §8): its name
+/// and its typed body. For a built-in style the name is empty and the body holds only the fields
+/// it overrides.
 ///
-/// Brief 055 (FP1): a `frame` record may carry a typed [`StyleBody`], its title block; left out
-/// while absent, so older files read and save the same. Merge treats the record, body included,
-/// as one unit.
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+/// The body's catalogue is the catalogue the record is filed under; a record filed under another
+/// catalogue is refused on apply.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StyleRecord {
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub name: String,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub fields: Properties,
+    /// Its name: an own style's label; none for an override of a built-in style.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub body: Option<StyleBody>,
+    pub name: Option<StyleName>,
+    pub body: StyleBody,
 }
 
+/// A style or standard name: 1–64 characters, one line, no hidden character (design 072 §9.4).
+pub type StyleName = crate::text::Text<MAX_NAME_CHARS>;
+
 impl StyleRecord {
-    /// A record with `name` and `fields`, without a body.
-    pub fn new(name: impl Into<String>, fields: Properties) -> StyleRecord {
-        StyleRecord { name: name.into(), fields, body: None }
+    /// A record with `name` (none when empty or not a valid name) and `body`.
+    pub fn new(name: impl AsRef<str>, body: StyleBody) -> StyleRecord {
+        StyleRecord { name: StyleName::new(name.as_ref()).ok(), body }
     }
 
-    /// Its title block, if its body holds one.
+    /// An unnamed record of `catalogue` that sets nothing.
+    pub fn empty(catalogue: StyleCatalogue) -> StyleRecord {
+        StyleRecord { name: None, body: StyleBody::empty(catalogue) }
+    }
+
+    /// Its name's text, empty when it has none.
+    pub fn name_str(&self) -> &str {
+        self.name.as_ref().map_or("", |n| n.as_str())
+    }
+
+    /// Which catalogue its body belongs to.
+    pub fn catalogue(&self) -> StyleCatalogue {
+        self.body.catalogue()
+    }
+
+    /// Its title block, if it is a frame style holding one.
     pub fn title_block(&self) -> Option<&crate::title_block::TitleBlockLayout> {
-        self.body.as_ref()?.title_block.as_ref()
+        match &self.body {
+            StyleBody::Frame(f) => f.title_block.as_ref(),
+            StyleBody::Cable(_)
+            | StyleBody::Location(_)
+            | StyleBody::Page(_)
+            | StyleBody::RatingTable(_)
+            | StyleBody::Text(_)
+            | StyleBody::Wire(_) => None,
+        }
+    }
+}
+
+/// A style record's typed body (design 072 §8): one variant per catalogue, so a record can only
+/// hold its own catalogue's fields.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum StyleBody {
+    Cable(CableType),
+    Frame(FrameStyle),
+    Location(LocationStyle),
+    Page(PageType),
+    #[serde(rename = "ratingtable")]
+    RatingTable(RatingTable),
+    Text(TextStyle),
+    Wire(WireType),
+}
+
+impl StyleBody {
+    /// A body of `catalogue` that sets nothing.
+    pub fn empty(catalogue: StyleCatalogue) -> StyleBody {
+        match catalogue {
+            StyleCatalogue::Cable => StyleBody::Cable(CableType::default()),
+            StyleCatalogue::Frame => StyleBody::Frame(FrameStyle::default()),
+            StyleCatalogue::Location => StyleBody::Location(LocationStyle::default()),
+            StyleCatalogue::Page => StyleBody::Page(PageType::default()),
+            StyleCatalogue::RatingTable => StyleBody::RatingTable(RatingTable::default()),
+            StyleCatalogue::Text => StyleBody::Text(TextStyle::default()),
+            StyleCatalogue::Wire => StyleBody::Wire(WireType::default()),
+        }
     }
 
-    /// Its stored value of `key`, within the bounds: at most [`MAX_FIELDS_PER_STYLE`] fields
-    /// (by key order) count, and a value longer than [`MAX_FIELD_CHARS`] counts as absent.
-    pub fn field(&self, key: &str) -> Option<&str> {
-        let v = self.fields.get(key)?;
-        if self.fields.len() > MAX_FIELDS_PER_STYLE
-            && self.fields.keys().take_while(|k| k.as_str() < key).take(MAX_FIELDS_PER_STYLE).count() >= MAX_FIELDS_PER_STYLE
-        {
-            return None;
+    /// Which catalogue it belongs to.
+    pub fn catalogue(&self) -> StyleCatalogue {
+        match self {
+            StyleBody::Cable(_) => StyleCatalogue::Cable,
+            StyleBody::Frame(_) => StyleCatalogue::Frame,
+            StyleBody::Location(_) => StyleCatalogue::Location,
+            StyleBody::Page(_) => StyleCatalogue::Page,
+            StyleBody::RatingTable(_) => StyleCatalogue::RatingTable,
+            StyleBody::Text(_) => StyleCatalogue::Text,
+            StyleBody::Wire(_) => StyleCatalogue::Wire,
         }
-        (v.chars().count() <= MAX_FIELD_CHARS).then_some(v.as_str())
+    }
+
+    /// The fields it sets, as `(key, stored text)`: for messages and the inspector.
+    pub fn entries(&self) -> Vec<(String, String)> {
+        match self {
+            StyleBody::Cable(c) => c.entries().into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+            StyleBody::Page(p) => p.entries().into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+            StyleBody::RatingTable(r) => r.entries().into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+            StyleBody::Location(l) => l.entries().into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+            StyleBody::Text(t) => t.entries().into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+            StyleBody::Frame(f) => f.entries().into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+            StyleBody::Wire(w) => w.entries().into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+        }
+    }
+
+    /// Whether it sets nothing.
+    pub fn is_empty(&self) -> bool {
+        match self {
+            StyleBody::Cable(c) => *c == CableType::default(),
+            StyleBody::Page(p) => *p == PageType::default(),
+            StyleBody::RatingTable(r) => *r == RatingTable::default(),
+            StyleBody::Location(l) => *l == LocationStyle::default(),
+            StyleBody::Text(t) => *t == TextStyle::default(),
+            StyleBody::Frame(f) => *f == FrameStyle::default(),
+            StyleBody::Wire(w) => *w == WireType::default(),
+        }
+    }
+
+    /// The stored text of field `key`, if the body sets it.
+    pub fn entry(&self, key: &str) -> Option<String> {
+        self.entries().into_iter().find(|(k, _)| k == key).map(|(_, v)| v)
+    }
+
+    /// Its cable type, if it is one.
+    pub fn cable(&self) -> Option<&CableType> {
+        match self {
+            StyleBody::Cable(c) => Some(c),
+            StyleBody::Frame(_)
+            | StyleBody::Location(_)
+            | StyleBody::Page(_)
+            | StyleBody::RatingTable(_)
+            | StyleBody::Text(_)
+            | StyleBody::Wire(_) => None,
+        }
+    }
+
+    /// Its frame style, if it is one.
+    pub fn frame(&self) -> Option<&FrameStyle> {
+        match self {
+            StyleBody::Frame(f) => Some(f),
+            StyleBody::Cable(_)
+            | StyleBody::Location(_)
+            | StyleBody::Page(_)
+            | StyleBody::RatingTable(_)
+            | StyleBody::Text(_)
+            | StyleBody::Wire(_) => None,
+        }
+    }
+
+    /// Its page type, if it is one.
+    pub fn page(&self) -> Option<&PageType> {
+        match self {
+            StyleBody::Page(p) => Some(p),
+            StyleBody::Cable(_)
+            | StyleBody::Frame(_)
+            | StyleBody::Location(_)
+            | StyleBody::RatingTable(_)
+            | StyleBody::Text(_)
+            | StyleBody::Wire(_) => None,
+        }
+    }
+
+    /// Its text style, if it is one.
+    pub fn text(&self) -> Option<&TextStyle> {
+        match self {
+            StyleBody::Text(t) => Some(t),
+            StyleBody::Cable(_)
+            | StyleBody::Frame(_)
+            | StyleBody::Location(_)
+            | StyleBody::Page(_)
+            | StyleBody::RatingTable(_)
+            | StyleBody::Wire(_) => None,
+        }
+    }
+
+    /// Its wire type, if it is one.
+    pub fn wire(&self) -> Option<&WireType> {
+        match self {
+            StyleBody::Wire(w) => Some(w),
+            StyleBody::Cable(_)
+            | StyleBody::Frame(_)
+            | StyleBody::Location(_)
+            | StyleBody::Page(_)
+            | StyleBody::RatingTable(_)
+            | StyleBody::Text(_) => None,
+        }
     }
 }
 
@@ -218,25 +384,33 @@ pub type StyleCatalogues = BTreeMap<StyleCatalogue, BTreeMap<StyleRef, StyleReco
 
 /// Where a standard came from (reserved for 2.1, `.ecadlib`; always `None` in 050).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StandardOrigin {
     pub library: LibraryId,
 }
 
 /// A standard's header (design 050 §2.3): changed as one unit by [`crate::Op::SetStandard`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StandardHeader {
     /// Kept when a project copies the standard, so 2.1 can match it with a library's.
     pub id: StandardId,
     /// A label, 1–64 characters.
-    pub name: String,
-    /// The built-in it starts from: `iec` (the only one in 050).
-    pub based_on: String,
+    pub name: StyleName,
+    /// The built-in it starts from.
+    pub based_on: BasedOn,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin: Option<StandardOrigin>,
 }
 
-/// The built-in base every standard starts from in 050.
-pub const BASED_ON_IEC: &str = "iec";
+crate::word_enum! {
+    /// The built-in base a standard starts from (only IEC in 050).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+    pub enum BasedOn {
+        #[default]
+        Iec,
+    }
+}
 
 /// A project's copy of a standard (design 050 §2.3, FP1).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -227,21 +227,10 @@ impl Block {
     }
 }
 
-/// The colour words of an IEC 60757 code (design 054 §6.2): `BK` black, `GNYE` green / yellow; a
-/// free text as typed.
-pub fn colour_words(code: &str) -> String {
-    const WORDS: [&str; 14] =
-        ["black", "brown", "red", "orange", "yellow", "green", "blue", "violet", "grey", "white", "pink", "gold", "turquoise", "silver"];
-    match crate::words::colour_code(code) {
-        Some((a, b)) => {
-            let w = |i: usize| WORDS.get(i).copied().unwrap_or_default();
-            match b {
-                Some(b) => format!("{} / {}", w(a), w(b)),
-                None => w(a).to_string(),
-            }
-        }
-        None => code.trim().to_string(),
-    }
+/// The colour words of colours `c` (design 054 §6.2): `BK` black, `GN/YE` green / yellow, from
+/// [`ecad_model::colour::ConductorColour::forms`].
+pub fn colour_words(c: &ecad_model::wire::Colours) -> String {
+    c.list().iter().map(|x| x.shown(ecad_model::colour::ColourWords::Name).to_lowercase()).collect::<Vec<_>>().join(" / ")
 }
 
 /// One line of the wire-colour legend: the categories' names, the cross-section and the colour
@@ -250,7 +239,7 @@ pub fn colour_words(code: &str) -> String {
 pub struct WireLine {
     pub names: Vec<String>,
     pub cross_section: String,
-    pub colour: String,
+    pub colour: Option<ecad_model::wire::Colours>,
     /// The person's own words for the line (the table editor), shown instead of the generated.
     pub label: Option<String>,
 }
@@ -258,7 +247,7 @@ pub struct WireLine {
 impl WireLine {
     /// Its key for the overrides: the colour and cross-section it merges on (`bk/2.5`).
     pub fn key(&self) -> String {
-        format!("{}/{}", self.colour.to_ascii_lowercase(), self.cross_section)
+        format!("{}/{}", self.colour.as_ref().map(ToString::to_string).unwrap_or_default().to_ascii_lowercase(), self.cross_section)
     }
 
     /// `L1, L2, L3 · 2.5 mm² · black`, or the person's label.
@@ -275,8 +264,8 @@ impl WireLine {
         if !self.cross_section.is_empty() {
             parts.push(format!("{} mm²", self.cross_section));
         }
-        if !self.colour.is_empty() {
-            parts.push(colour_words(&self.colour));
+        if let Some(c) = &self.colour {
+            parts.push(colour_words(c));
         }
         parts.join(" · ")
     }
@@ -324,8 +313,8 @@ fn generated_wire_lines(doc: &Document) -> Vec<WireLine> {
                 .and_then(|r| crate::styles::wire::filled(&r))
                 .unwrap_or_default()
         };
-        let (colour, cross_section) = (f("colour"), f("cross_section"));
-        match out.iter_mut().find(|l| l.colour.eq_ignore_ascii_case(&colour) && l.cross_section == cross_section) {
+        let (colour, cross_section) = (ecad_model::wire::Colours::parse(&f("colours")), f("size"));
+        match out.iter_mut().find(|l| l.colour == colour && l.cross_section == cross_section) {
             Some(l) => l.names.push(row.name),
             None => out.push(WireLine { names: vec![row.name], cross_section, colour, label: None }),
         }
@@ -575,11 +564,6 @@ impl Uses {
                 }
                 Op::DeleteWire { id, .. } => {
                     gone.insert(*id);
-                }
-                Op::AttachEnd { conductor, before, after, .. } => {
-                    seeds.insert(*conductor);
-                    at(*before, &mut seeds);
-                    at(*after, &mut seeds);
                 }
                 Op::SetProperty { object: ObjectRef::Device(c), key, .. }
                     if key == ecad_model::connectivity::POTENTIAL

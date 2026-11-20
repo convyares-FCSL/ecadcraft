@@ -24,7 +24,7 @@ use cadcraft_engine::doc::Handle;
 use common::{H, id};
 use ecad_cadcraft::references::markers_on_page;
 use ecad_model::derive::{cable_references, terminal_positions};
-use ecad_model::{CableId, End, PageId, Pt, TerminalId, WireId};
+use ecad_model::{CableId, PageId, Pt, TerminalId, WireId};
 use serde_json::json;
 
 struct Rng(u64);
@@ -82,16 +82,17 @@ fn connected(seed: u64) -> R {
     let _ = h.s.zoom_extents();
     h.run("cableref", json!({"cable": c1.hex(), "at": [65, 5]})).unwrap();
     h.activate(field);
-    h.run("cablecontinue", json!({"cable": c1.hex(), "at": [20, 5], "toward": [40, 5]})).unwrap();
-    for (c, t) in w.iter().zip(k2) {
-        h.run("connect", json!({"conductor": c.hex(), "end": "B", "terminal": t.hex()})).unwrap();
+    let v = h.run("cablecontinue", json!({"cable": c1.hex(), "at": [20, 5], "toward": [40, 5]})).unwrap();
+    // Each stub's free end onto K2 (design 072 §4.3: the stubs are routes).
+    for (s, t) in v["routes"].as_array().cloned().unwrap_or_default().iter().zip(k2) {
+        h.run("connect", json!({"route": s["route"], "end": s["free_end"], "terminal": t.hex()})).unwrap();
     }
     R { h, supply, field, c1, w: [w[0], w[1], w[2]], k1, k2 }
 }
 
 fn route(h: &mut H, page: PageId, c: WireId) -> Option<(Handle, Vec<Pt>)> {
     let doc = h.doc();
-    let (item, prim) = ecad_model::derive::route_on_page(&doc, c, page)?;
+    let (item, prim) = crate::common::wire_line(&doc, c, page)?;
     let pts = match &prim {
         ecad_model::Primitive::Polyline { vertices, .. } => vertices.clone(),
         ecad_model::Primitive::Line { a, b, .. } => vec![*a, *b],
@@ -145,12 +146,12 @@ fn tester_014_r3_random_edits_across_two_pages_match_the_oracle() {
         // Ends attached to a terminal not shown on this page before the edit.
         let doc0 = r.h.doc();
         let here: std::collections::BTreeSet<TerminalId> = terminal_positions(&doc0, page).into_iter().map(|(t, _, _)| t).collect();
-        let elsewhere: Vec<(WireId, End, TerminalId)> =
-            r.w.iter()
-                .flat_map(|c| [End::A, End::B].map(|e| (*c, e)))
-                .filter_map(|(c, e)| doc0.wires[&c].end(e).map(|t| (c, e, t)))
-                .filter(|(_, _, t)| !here.contains(t))
-                .collect();
+        let elsewhere: Vec<(ecad_model::RouteId, usize, TerminalId)> = doc0
+            .routes_on(page)
+            .flat_map(|x| (0..2).map(move |i| (x, i)))
+            .filter_map(|(x, i)| doc0.routes[&x].ends[i].point().map(|t| (x, i, t)))
+            .filter(|(_, _, t)| !here.contains(t))
+            .collect();
         let kind: &str = match rng.below(9) {
             0 => {
                 // Move the page's component (K1 or K2) by its handles.
@@ -237,8 +238,8 @@ fn tester_014_r3_random_edits_across_two_pages_match_the_oracle() {
         let doc = r.h.doc();
         if kind != "undo" {
             for (c, e, t) in &elsewhere {
-                let now = doc.wires[c].end(*e);
-                assert_eq!(now, Some(*t), "step {step} ({kind}): end {e:?} of {c:?} attached elsewhere changed");
+                let Some(now) = doc.routes.get(c).map(|x| x.ends[*e]) else { continue };
+                assert_eq!(now, ecad_model::RouteEnd::Point(*t), "step {step} ({kind}): end {e:?} of {c:?} attached elsewhere changed");
                 *counts.entry("checked ends elsewhere").or_default() += 1;
             }
         }

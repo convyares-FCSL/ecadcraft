@@ -20,8 +20,10 @@ fn last_tx(h: &mut H) -> (String, Vec<Op>) {
     h.p(|p| p.ledger.log().last().map(|t| (t.label.clone(), t.ops.clone())).unwrap_or_default())
 }
 
-/// `n` vertical wires at x = 0, 10, 20…, from y 0 to 50, with no ends attached.
+/// `n` vertical wires at x = 0, 10, 20…, from y 0 to 50, between connection points of one device.
 fn wires(h: &mut H, n: usize) -> Vec<WireId> {
+    let ends: Vec<(f64, f64)> = (0..n).flat_map(|i| [(10.0 * i as f64, 0.0), (10.0 * i as f64, 50.0)]).collect();
+    h.points_at(&ends);
     (0..n)
         .map(|i| {
             let x = 10.0 * i as f64;
@@ -51,7 +53,12 @@ fn cablenew_makes_a_cable_that_is_not_drawn_in_one_transaction() {
     assert_eq!(r["tag"], json!("-W01"), "{r}");
     let (label, ops) = last_tx(&mut h);
     assert_eq!(label, "Create cable");
-    assert!(matches!(ops.as_slice(), [Op::CreateCable { cable, .. }] if cable.members.is_empty()), "{ops:?}");
+    // Design 072 §4.5: the offered cores are stored, on no line yet.
+    assert!(
+        matches!(ops.as_slice(), [Op::CreateCable { cable, .. }]
+        if cable.cores.len() == 4 && cable.cores.iter().all(|m| m.position == ecad_model::CorePosition::Unplaced)),
+        "{ops:?}"
+    );
     let doc = h.doc();
     assert!(!cable_cmds::is_drawn(&doc, k));
     let rows = checks_of(&mut h, "cable-not-drawn");
@@ -91,8 +98,10 @@ fn cableedit_sets_fields_in_one_transaction_and_refuses_bad_values() {
     h.run("cableedit", json!({"cable": k.hex(), "set": {"length": 12, "to": {"gland": "M20", "location": "+FIELD"}, "shield": "overall"}})).unwrap();
     let (label, ops) = last_tx(&mut h);
     assert_eq!(label, "Edit cable");
-    let on_cable = ops.iter().filter(|o| matches!(o, Op::SetProperty { object: ecad_model::ObjectRef::Cable(_), .. })).count();
-    assert_eq!(on_cable, 4, "{ops:?}");
+    // Design 072 §4.5: one ModifyCable for every field, never a SetProperty on the cable.
+    let on_cable = ops.iter().filter(|o| matches!(o, Op::ModifyCable { .. })).count();
+    assert_eq!(on_cable, 1, "{ops:?}");
+    assert!(!ops.iter().any(|o| matches!(o, Op::SetProperty { object: ecad_model::ObjectRef::Cable(_), .. })), "{ops:?}");
     let doc = h.doc();
     assert_eq!(cable_cmds::planned(&doc, k, Side::To, ecad_cadcraft::designations::Aspect::Location).as_deref(), Some("+FIELD"));
     assert_eq!(cable_cmds::gland(&doc, k, Side::To).map(|g| g.0).as_deref(), Some("M20"));
@@ -126,9 +135,7 @@ fn cores_in_use_are_never_reduced() {
     assert!(e.contains("has wires on cores 1, 2, 3 and GNYE; 3G has 3 cores"), "{e}");
     assert_eq!(h.head(), head);
     // A cable type with fewer cores is refused the same way.
-    let ty = h
-        .run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth three", "fields": {"cores": "3G", "cross_section": "1.5"}}))
-        .unwrap();
+    let ty = h.run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth three", "fields": {"cores": "3G", "size": "1.5"}})).unwrap();
     h.run("cableedit", json!({"cable": k.hex(), "set": {"cores": null}})).unwrap_or_else(|e| panic!("{e}"));
     let e = h.run("cableedit", json!({"cable": k.hex(), "set": {"cable_type": ty["id"]}})).unwrap_err();
     assert!(e.contains("has wires on cores"), "{e}");
@@ -137,10 +144,8 @@ fn cores_in_use_are_never_reduced() {
 #[test]
 fn a_cable_type_fills_type_only_when_empty_or_its_own() {
     let mut h = H::new(5905);
-    let a =
-        h.run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth A", "fields": {"cores": "4G", "cross_section": "1.5"}})).unwrap();
-    let b =
-        h.run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth B", "fields": {"cores": "7G", "cross_section": "2.5"}})).unwrap();
+    let a = h.run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth A", "fields": {"cores": "4G", "size": "1.5"}})).unwrap();
+    let b = h.run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth B", "fields": {"cores": "7G", "size": "2.5"}})).unwrap();
     let k = new_cable(&mut h, json!({}));
     h.run("cableedit", json!({"cable": k.hex(), "set": {"cable_type": a["id"]}})).unwrap();
     assert_eq!(h.doc().cables[&k].properties.get("type").map(String::as_str), Some("4G1.5"));
@@ -190,7 +195,8 @@ fn slashing_onto_a_cable_not_drawn_assigns_its_cores_in_order() {
     let (label, _) = last_tx(&mut h);
     assert_eq!(label, "Cable slash");
     let doc = h.doc();
-    let members: Vec<(WireId, Option<String>)> = doc.cables[&k].members.iter().map(|m| (m.conductor, m.core.clone())).collect();
+    let members: Vec<(WireId, Option<String>)> =
+        doc.cables[&k].cores.iter().filter_map(|m| Some((m.wire()?, m.label_str().map(str::to_string)))).collect();
     assert_eq!(members, vec![(ws[0], Some("1".into())), (ws[1], Some("2".into())), (ws[2], Some("3".into()))]);
     assert!(checks_of(&mut h, "cable-not-drawn").is_empty());
     let open = checks_of(&mut h, "core-open");
@@ -263,18 +269,18 @@ fn a_drawn_cable_end_off_its_plan_warns_for_that_end_only() {
 fn hostile_cable_values_are_ignored_and_reported() {
     let mut h = H::new(5911);
     let k = new_cable(&mut h, json!({}));
-    for (key, v) in
-        [("length", "abc".to_string()), ("gland.to", "x".repeat(300)), ("shield", "lead".to_string()), ("end.from.location", "nokey".to_string())]
-    {
+    for (key, v) in [("length", "abc".to_string()), ("gland.to", "x".repeat(300)), ("end.from.location", "nokey".to_string())] {
         h.run("setprop", json!({"cable": k.hex(), "key": key, "value": v})).unwrap();
     }
+    // Design 072 §4.5: the shield is a typed field; no property can hold a word it does not read.
+    assert!(h.run("setprop", json!({"cable": k.hex(), "key": "shield", "value": "lead"})).is_err());
     let doc = h.doc();
     assert!(cable_cmds::read(&doc, k, cable_cmds::CableField::Length).is_none());
     assert!(cable_cmds::gland(&doc, k, Side::To).is_none());
     assert!(cable_cmds::shield(&doc, k).is_none());
     assert!(cable_cmds::plan_words(&doc, k, Side::From).is_none());
     let rows = checks_of(&mut h, "cable-bad-value");
-    assert_eq!(rows.len(), 4, "{rows:?}");
+    assert_eq!(rows.len(), 3, "{rows:?}");
     assert!(rows.iter().any(|r| r["text"].as_str().unwrap_or_default().contains("length \"abc\" is not a number of metres")), "{rows:?}");
 }
 
@@ -295,7 +301,7 @@ fn a_cable_not_drawn_survives_join_and_the_report_lists_it() {
     let doc2 = h.doc();
     let ops = ecad_model::merge::join_cables(&doc2, k, w).unwrap();
     assert!(matches!(ops.last(), Some(Op::DeleteCable { id, .. }) if *id == k));
-    assert!(doc.cables[&k].members.is_empty());
+    assert!(doc.cables[&k].cores.is_empty());
 }
 
 #[test]
@@ -333,7 +339,8 @@ fn the_slash_tool_picks_a_cable_by_its_cable_keyword() {
     h.cmdline("-5,25");
     h.cmdline("500,25");
     let doc = h.doc();
-    let members: Vec<(WireId, Option<String>)> = doc.cables[&k].members.iter().map(|m| (m.conductor, m.core.clone())).collect();
+    let members: Vec<(WireId, Option<String>)> =
+        doc.cables[&k].cores.iter().filter_map(|m| Some((m.wire()?, m.label_str().map(str::to_string)))).collect();
     assert_eq!(members, vec![(ws[0], Some("1".into())), (ws[1], Some("2".into()))]);
     assert_eq!(doc.cables.len(), 1, "no new cable");
     // `New` (the default) makes a new cable with the next free tag.
@@ -389,9 +396,8 @@ fn glands_default_from_the_cable_type_and_a_drawn_end_without_one_is_noted() {
     assert_eq!(rows.len(), 2, "{rows:?}");
     assert_eq!(rows[0]["severity"], json!("info"));
     assert!(rows.iter().any(|r| r["text"].as_str().unwrap_or_default().contains("no gland size at the field end")), "{rows:?}");
-    let ty = h
-        .run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth glanded", "fields": {"gland": "M20", "cross_section": "1.5"}}))
-        .unwrap();
+    let ty =
+        h.run("setstyle", json!({"catalogue": "cable", "new": true, "name": "Synth glanded", "fields": {"gland": "M20", "size": "1.5"}})).unwrap();
     h.run("cableedit", json!({"cable": k.hex(), "set": {"cable_type": ty["id"], "to": {"gland": "M25"}}})).unwrap();
     let doc = h.doc();
     assert_eq!(cable_cmds::gland(&doc, k, Side::From), Some(("M20".to_string(), cable_cmds::Source::Type)));

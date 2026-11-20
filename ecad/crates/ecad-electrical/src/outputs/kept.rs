@@ -53,7 +53,7 @@ pub struct Outputs {
     loc_rows: BTreeMap<LocKey, usize>,
     /// The styles the tables write codes and places in.
     style: ecad_model::ReferenceStyle,
-    colour_style: ecad_model::wiring::ColourStyle,
+    colour_style: ecad_model::colour::ColourWords,
     /// Location box checks by page.
     box_checks: BTreeMap<PageId, Vec<Check>>,
     no_part_number: usize,
@@ -352,9 +352,9 @@ impl Outputs {
         }
         for p in &scope.route_pages {
             if doc.pages.contains_key(p) {
-                for (_, r) in doc.representations_on(*p) {
-                    if let Subject::Wire(w) = r.subject {
-                        scope.wires.insert(w);
+                for r in doc.routes_on(*p).filter_map(|r| doc.routes.get(&r)) {
+                    for t in r.points_landed() {
+                        scope.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
                     }
                 }
             }
@@ -759,9 +759,6 @@ impl Outputs {
         let Some(term) = doc.terminals.get(&t) else { return EndCell { order, ..EndCell::default() } };
         let c = term.component;
         match crate::wires::kind_of(doc, c) {
-            Some(ecad_model::connectivity::JUNCTION) => {
-                EndCell { junction: Some(at.and_then(|(p, a)| cx.place(doc, p, a))), order, ..EndCell::default() }
-            }
             Some(ecad_model::connectivity::CONTINUATION) => {
                 let name = doc.devices.get(&c).and_then(|x| x.properties.get(ecad_model::connectivity::NAME)).cloned().unwrap_or_default();
                 EndCell { name: Some(format!("{name} >")), order, continuation: true, ..EndCell::default() }
@@ -776,7 +773,7 @@ impl Outputs {
                     Some(d) => d.location.value.clone(),
                     None => locations::resolve(doc, c).value,
                 };
-                EndCell { name: Some(name), location, device: Some(c), order, junction: None, continuation: false }
+                EndCell { name: Some(name), location, device: Some(c), order, continuation: false }
             }
         }
     }
@@ -797,27 +794,14 @@ impl Outputs {
             }
         }
         let Some(cond) = doc.wires.get(&w) else { return };
-        // Routes in book order.
-        let mut routes: Vec<(usize, Vec<Pt>, PageId)> = doc
-            .representations_of(Subject::Wire(w))
-            .filter_map(|(_, r)| {
-                let pts = r.items.iter().filter_map(|i| doc.items.get(i)).find_map(|i| match &i.kind {
-                    ecad_model::ItemKind::Primitive(ecad_model::Primitive::Polyline { vertices, .. }) => Some(vertices.clone()),
-                    ecad_model::ItemKind::Primitive(ecad_model::Primitive::Line { a, b }) => Some(vec![*a, *b]),
-                    _ => None,
-                })?;
-                let pos = cx.pos(r.page);
-                Some((pos, pts, r.page))
-            })
-            .collect();
-        routes.sort_by_key(|(pos, _, _)| *pos);
-        let a_at = routes.first().and_then(|(_, v, p)| v.first().map(|x| (*p, *x)));
-        let b_at = routes.last().and_then(|(_, v, p)| v.last().map(|x| (*p, *x)));
-        let mid = routes.first().and_then(|(_, v, p)| {
-            let (Some(a), Some(b)) = (v.first(), v.get(1).or(v.first())) else { return None };
-            Some((*p, Pt::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0)))
+        // Where its ends are drawn (book order), and the middle of the first segment of the first
+        // route landing on its first point.
+        let [a_at, b_at] = crate::outputs::end_points(doc, w, cx);
+        let mid = crate::wires::routes_of_wire(doc, w).into_iter().filter_map(|r| doc.routes.get(&r)).min_by_key(|r| cx.pos(r.page)).and_then(|r| {
+            let (Some(a), Some(b)) = (r.points.first(), r.points.get(1).or(r.points.first())) else { return None };
+            Some((r.page, Pt::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0)))
         });
-        let mut ends = [self.end_cell(doc, cond.end(End::A), a_at, cx), self.end_cell(doc, cond.end(End::B), b_at, cx)];
+        let mut ends = [self.end_cell(doc, Some(cond.end(End::A)), a_at, cx), self.end_cell(doc, Some(cond.end(End::B)), b_at, cx)];
         if ends[1].order < ends[0].order {
             ends.swap(0, 1);
         }
@@ -828,7 +812,7 @@ impl Outputs {
         // Brief 050b: the wire's category gives what the wire has none of its own.
         let look = crate::styles::wire::wire_look(doc, w);
         let cross_section = look.cross_section.as_ref().map(|v| v.0.clone());
-        let colour = look.colour.as_ref().map(|v| v.0.clone());
+        let colour = look.colour.as_ref().map(|v| v.0.to_string());
         let colour_own = look.colour.as_ref().is_some_and(|v| v.1 == crate::defaults::Source::Object);
         let cross_section_own = look.cross_section.as_ref().is_some_and(|v| v.1 == crate::defaults::Source::Object);
         let category = look.category.clone().map(|id| {
@@ -848,8 +832,8 @@ impl Outputs {
             .filter_map(|k| {
                 let cab = doc.cables.get(&k)?;
                 let tag = cab.properties.text(ecad_model::keys::TAG).map(str::to_string).unwrap_or_else(|| "?".into());
-                let i = cab.members.iter().position(|m| m.conductor == w)?;
-                let core = cab.members.get(i).and_then(|m| m.core.clone()).unwrap_or_else(|| (i + 1).to_string());
+                let i = cab.cores.iter().position(|m| m.wire() == Some(w))?;
+                let core = cab.cores.get(i).and_then(|m| m.label_str().map(str::to_string)).unwrap_or_else(|| (i + 1).to_string());
                 Some(format!("{tag} core {core}"))
             })
             .collect::<Vec<_>>()
@@ -866,7 +850,7 @@ impl Outputs {
             w,
             WireRow {
                 conductor: w,
-                wire_number: net.and_then(|n| ecad_model::wiring::net_number(doc, n)),
+                wire_number: ecad_model::wiring::wire_number(doc, w),
                 from,
                 to,
                 cross_section,
@@ -918,9 +902,9 @@ impl Outputs {
         let mut missing = false;
         // Brief 028: the devices at the cores' ends, per location.
         let mut at_loc: BTreeMap<String, BTreeSet<((String, u64, String), DeviceId)>> = BTreeMap::new();
-        for m in &cab.members {
-            let Some(cond) = doc.wires.get(&m.conductor) else { continue };
-            for t in cond.ends.iter().flatten() {
+        for m in &cab.cores {
+            let Some(cond) = m.wire().and_then(|w| doc.wires.get(&w)) else { continue };
+            for t in &cond.ends {
                 let Some(c) = doc.terminals.get(t).map(|x| x.component) else { continue };
                 if crate::wires::kind_of(doc, c).is_some() {
                     continue;
@@ -977,16 +961,23 @@ impl Outputs {
                 length: p("length"),
                 designation: p("designation"),
                 go,
-                count: crate::strips::count_cores(crate::styles::cable::offer(doc, k), &heads),
-                members: heads.iter().map(|m| m.conductor).collect(),
-                member_cores: heads.iter().map(|m| m.core.clone()).collect(),
+                // The chains' heads, then the stored cores with no wire (spare or on a loose line).
+                count: crate::strips::count_cores(
+                    crate::styles::cable::offer(doc, k),
+                    &heads.iter().cloned().chain(cab.cores.iter().filter(|m| m.wire().is_none()).cloned()).collect::<Vec<_>>(),
+                ),
+                members: heads.iter().filter_map(|m| m.wire()).collect(),
+                member_cores: heads.iter().map(|m| m.label_str().map(str::to_string)).collect(),
                 tails,
                 from_devices,
                 to_devices,
                 drawn: crate::cables::is_drawn(doc, k),
                 planned: crate::cables::Side::BOTH.map(|side| crate::cables::plan_words(doc, k, side)),
                 glands: crate::cables::Side::BOTH.map(|side| crate::cables::gland(doc, k, side).map(|(g, _)| g)),
-                shield: crate::cables::shield(doc, k).map(|(w, _)| w).filter(|w| *w != crate::cables::Shield::None).map(|w| w.word().to_string()),
+                shield: crate::cables::shield(doc, k)
+                    .map(|(w, _)| w)
+                    .filter(|w| *w != crate::cables::Shield::None)
+                    .map(|w| ecad_model::words::Word::word(w).to_string()),
             },
         );
     }

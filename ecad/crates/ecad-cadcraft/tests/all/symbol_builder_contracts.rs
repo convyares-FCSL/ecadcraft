@@ -36,7 +36,10 @@ fn place(h: &mut H, x: f64, y: f64) -> Value {
 }
 
 fn term(d: &Document, c: DeviceId, key: &str) -> TerminalId {
-    d.terminals_of(c).find(|(_, t)| t.key.as_deref() == Some(key)).map(|(t, _)| t).unwrap_or_else(|| panic!("no point {key}"))
+    d.terminals_of(c)
+        .find(|(_, t)| t.key.as_ref().map(ToString::to_string).as_deref() == Some(key))
+        .map(|(t, _)| t)
+        .unwrap_or_else(|| panic!("no point {key}"))
 }
 
 /// A wire from point `key` of `c` straight down 20 mm.
@@ -44,7 +47,7 @@ fn wire_from(h: &mut H, page: PageId, c: DeviceId, key: &str) -> WireId {
     let d = h.doc();
     let t = term(&d, c, key);
     let at = h.terminal_pos(page, t);
-    let w: WireId = id(&h.run("wire", json!({"points": pts(&[(at.x, at.y), (at.x + 20.0, at.y)])})).unwrap(), "conductor");
+    let w: WireId = id(&h.wire_pp(&[(at.x, at.y), (at.x + 20.0, at.y)]).unwrap(), "conductor");
     assert!(h.doc().ends_at(t).iter().any(|(c, _)| *c == w), "the wire is attached to point {key}");
     w
 }
@@ -81,7 +84,7 @@ fn row_2_place_makes_a_device_with_its_prefix_description_and_points() {
     let comp = &d.devices[&c];
     assert_eq!(comp.get("description"), Some("Float switch"));
     assert_eq!(comp.properties.get("rating").map(String::as_str), Some("24 V"));
-    let labels: Vec<(String, String)> = d.terminals_of(c).map(|(_, t)| (t.key.clone().unwrap(), t.label.clone().unwrap())).collect();
+    let labels: Vec<(String, String)> = d.terminals_of(c).map(|(_, t)| (t.key.as_ref().unwrap().to_string(), t.label.clone().unwrap())).collect();
     assert!(labels.contains(&("1".into(), "BN".into())) && labels.contains(&("2".into(), "BU".into())), "{labels:?}");
     // The tag sits at its slot (-4, 0) from the origin, right-aligned; the rating at (4, 0).
     let page = h.first_page();
@@ -345,7 +348,7 @@ fn row_12_promotion_keeps_ids_and_wires() {
     let mut wires = Vec::new();
     for t in &terms {
         let at = h.terminal_pos(page, *t);
-        wires.push(id::<WireId>(&h.run("wire", json!({"points": pts(&[(at.x, at.y), (at.x, at.y - 20.0)])})).unwrap(), "conductor"));
+        wires.push(id::<WireId>(&h.wire_pp(&[(at.x, at.y), (at.x, at.y - 20.0)]).unwrap(), "conductor"));
     }
     let v = h.run(
         "makesymbol",
@@ -434,7 +437,7 @@ fn update_available_reaches_the_devices_list_through_its_update_map() {
 fn makesymbol_refusal_names_the_wire_it_cannot_take() {
     let mut h = H::new(4816);
     let page = h.first_page();
-    let w: WireId = id(&h.run("wire", json!({"points": pts(&[(100.0, 100.0), (150.0, 100.0)])})).unwrap(), "conductor");
+    let w: WireId = id(&h.wire_pp(&[(100.0, 100.0), (150.0, 100.0)]).unwrap(), "conductor");
     h.run("wirenumber", json!({"conductor": w.hex(), "value": "24V-05"})).unwrap();
     let route = h.route_handle(page, w).hex();
     let before = h.head();

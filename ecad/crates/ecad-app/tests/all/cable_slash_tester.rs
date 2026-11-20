@@ -292,14 +292,12 @@ fn ac9_cable_slash_by_label_and_reference_screenshots() {
     let d = doc(&mut h);
     assert_eq!(d.cables.len(), 1);
     let k = d.cables.values().next().unwrap();
-    assert_eq!(k.members.len(), 3, "W0, W5, W10");
+    assert_eq!(k.cores.len(), 3, "W0, W5, W10");
     let ys: Vec<f64> = k
-        .members
+        .cores
         .iter()
-        .map(|m| {
-            let (_, prim) = ecad_model::derive::route_on_page(&d, m.conductor, d.page_order[0]).unwrap();
-            prim.path_ends().unwrap().0.y
-        })
+        // Fixture F's lines end free: each core sits on its line (design 072), no wire yet.
+        .map(|m| d.routes[&m.route().unwrap()].points[0].y)
         .collect();
     assert_eq!(ys, vec![0.0, 5.0, 10.0], "crossing order");
     // Design §7.3 / check M: hovering the slash lists the cable's wires in order; hovering writes

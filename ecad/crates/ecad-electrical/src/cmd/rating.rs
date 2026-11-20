@@ -4,7 +4,8 @@
 //! JSON.
 
 use ecad_model::style::{StyleLayer, StyleRecord, StyleRef, is_name};
-use ecad_model::units::Amps;
+use ecad_model::units::{Amps, Celsius, Percent, Volts};
+use ecad_model::wire::{InstallMethod, SupplySystem};
 use ecad_model::{CableId, DeviceId, Document, IdAllocator, ObjectRef, Op, Wire, WireId, Word};
 
 use crate::error::CmdError;
@@ -107,7 +108,7 @@ pub fn check_value(doc: &Document, key: &str, value: &str) -> Result<String, Cmd
         "bundling" => parse::bundling(v)
             .map(|_| v.to_string())
             .ok_or_else(|| no("bundling is a factor 0.30 to 1.00, or a circuit count 1 to 20 (\"3 bunched\").")),
-        "protected_by" => match rating::trace::named(doc, v) {
+        "protected_by" => match rating::trace::protected_by(doc, v).map(|p| (p.device, p.position.map(|n| n.to_string()))) {
             Some((c, fuse)) => {
                 let tag = rating::trace::device_words(doc, c, fuse.as_deref());
                 if rating::trace::amps_of(doc, c, fuse.as_deref()).is_none() {
@@ -115,7 +116,9 @@ pub fn check_value(doc: &Document, key: &str, value: &str) -> Result<String, Cmd
                 }
                 Ok(tag)
             }
-            None => Err(CmdError::refused(format!("There is no device or fuse {shown:?}; give a tag such as -Q01, or -F01:3 for a fuse of a bank."))),
+            None => Err(CmdError::refused(format!(
+                "There is no device or fuse {shown:?}; give a tag such as -Q01, or -F01:3 for a fuse of a bank (positions 1 to 255)."
+            ))),
         },
         "method" => dataset::method(v)
             .map(str::to_string)
@@ -167,20 +170,19 @@ pub fn item_ops(doc: &Document, item: &RatingItem) -> Result<(Vec<Op>, Vec<Rated
                 let Some(w) = doc.wires.get(c) else { continue };
                 let mut after = w.clone();
                 for (key, _, value) in &sets {
-                    set_wire(&mut after, key, value.as_deref());
+                    set_wire(doc, &mut after, key, value.as_deref());
                 }
                 if after != *w {
                     ops.push(Op::ModifyWire { id: *c, before: w.clone(), after });
                 }
             }
             RatedSubject::Cable(k) => {
-                let props = doc.cables.get(k).map(|x| &x.properties);
-                for (_, key, after) in &sets {
-                    let before = props.and_then(|p| p.get(*key)).cloned();
-                    if before != *after {
-                        ops.push(Op::SetProperty { object: s.object(), key: (*key).to_string(), before, after: after.clone() });
-                    }
+                let Some(cab) = doc.cables.get(k) else { continue };
+                let mut after = cab.clone();
+                for (key, _, value) in &sets {
+                    set_cable(doc, &mut after, key, value.as_deref());
                 }
+                ops.extend(Op::modify_cable(*k, cab, after));
             }
         }
     }
@@ -189,18 +191,33 @@ pub fn item_ops(doc: &Document, item: &RatingItem) -> Result<(Vec<Op>, Vec<Rated
 
 /// Set a wire's input `key` (a JSON key of [`KEYS`] for wires) to `value`, already checked by
 /// [`check_value`] (`None` clears it).
-pub fn set_wire(w: &mut Wire, key: &str, value: Option<&str>) {
+pub fn set_wire(doc: &Document, w: &mut Wire, key: &str, value: Option<&str>) {
     match key {
         "basis" => w.rating.basis = value.and_then(Basis::parse),
         "manual" => w.rating.manual = value.and_then(parse::current).map(Amps),
         "bundling" => w.rating.bundling = value.and_then(parse::bundling),
         "load" => w.load = value.and_then(parse::current).map(Amps),
-        "protected_by" => {
-            match value {
-                Some(v) => w.display.insert(rating::PROTECTED_BY.into(), v.to_string()),
-                None => w.display.remove(rating::PROTECTED_BY),
-            };
-        }
+        "protected_by" => w.protected_by = value.and_then(|v| rating::trace::protected_by(doc, v)),
+        _ => {}
+    }
+}
+
+/// Set a cable's input `key` (a JSON key of [`KEYS`] for cables) to `value`, already checked by
+/// [`check_value`] (`None` clears it): a field (the cable type is [`ecad_model::Cable::cable_type`]).
+pub fn set_cable(doc: &Document, c: &mut ecad_model::Cable, key: &str, value: Option<&str>) {
+    let r = &mut c.rating;
+    match key {
+        "basis" => r.basis = value.and_then(Basis::parse),
+        "manual" => r.manual = value.and_then(parse::current).map(Amps),
+        "method" => r.method = value.and_then(InstallMethod::parse),
+        "ambient" => r.ambient = value.and_then(parse::ambient).map(Celsius),
+        "grouped" => r.grouped = value.and_then(parse::count).and_then(|n| u8::try_from(n).ok()),
+        "voltage" => r.voltage = value.and_then(parse::voltage).map(Volts),
+        "system" => r.system = value.and_then(SupplySystem::parse),
+        "vd_limit" => r.vd_limit = value.and_then(parse::percent).map(Percent),
+        "load" => c.load = value.and_then(parse::current).map(Amps),
+        "protected_by" => c.protected_by = value.and_then(|v| rating::trace::protected_by(doc, v)),
+        "cable_type" => c.cable_type = value.and_then(ecad_model::StyleRef::parse),
         _ => {}
     }
 }
@@ -373,14 +390,15 @@ pub fn plan_table(doc: &Document, ids: &mut IdAllocator, w: &TableWrite) -> Resu
     let existing = styles::rows(doc, cat).into_iter().find(|r| r.name.eq_ignore_ascii_case(&w.name)).map(|r| r.id);
     let id = existing.clone().unwrap_or_else(|| StyleRef::Own(ids.fresh::<u128>()));
     let before = styles::record(doc, w.layer, cat.catalogue, &id).cloned();
-    let mut rec = before.clone().unwrap_or(StyleRecord { name: w.name.clone(), fields: Default::default(), body: None });
-    if rec.name.is_empty() && existing.is_none() {
-        rec.name = w.name.clone();
+    let mut rec = before.clone().unwrap_or_else(|| StyleRecord::new(w.name.clone(), ecad_model::style::StyleBody::empty(cat.catalogue)));
+    if rec.name.is_none() && existing.is_none() {
+        rec.name = ecad_model::style::StyleName::new(&w.name).ok();
     }
-    rec.fields.insert(ratingtable::ROWS.into(), w.csv.clone());
+    let mut set = vec![(ratingtable::ROWS.to_string(), Some(w.csv.clone()))];
     if let Some(src) = &w.source {
-        rec.fields.insert(ratingtable::SOURCE.into(), src.clone());
+        set.push((ratingtable::SOURCE.to_string(), Some(src.clone())));
     }
+    let rec = styles::with_fields(cat.catalogue, Some(&rec), None, &set)?;
     styles::check_record(doc, cat, &id, w.layer, &rec)?;
     let rows = data.rows.len();
     let label = format!("Rating table {}: {rows} row{}", w.name, if rows == 1 { "" } else { "s" });

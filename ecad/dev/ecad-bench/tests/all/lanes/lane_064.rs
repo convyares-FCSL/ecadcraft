@@ -53,14 +53,11 @@ fn old_touched(ops: &[Op]) -> Touched {
             Op::CreateWire { id, .. } | Op::DeleteWire { id, .. } | Op::ModifyWire { id, .. } => {
                 t.wires.insert(*id);
             }
-            Op::AttachEnd { conductor, .. } => {
-                t.wires.insert(*conductor);
+            Op::AddRoute { id, .. } | Op::RemoveRoute { id, .. } | Op::ModifyRoute { id, .. } => {
+                t.routes.insert(*id);
             }
-            Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
+            Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } | Op::ModifyCable { id, .. } => {
                 t.cables.insert(*id);
-            }
-            Op::AddCableMember { cable, .. } | Op::RemoveCableMember { cable, .. } => {
-                t.cables.insert(*cable);
             }
             Op::SetProperty { object, .. } => match object {
                 ObjectRef::Device(id) => {

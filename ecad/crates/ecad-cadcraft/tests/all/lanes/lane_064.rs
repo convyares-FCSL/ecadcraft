@@ -427,10 +427,15 @@ fn the_frame_view_follows_the_rest_of_its_map() {
         catalogue,
         id: StyleRef::parse("mine").unwrap(),
         before: None,
-        after: Some(StyleRecord::default()),
+        after: Some(StyleRecord::empty(catalogue)),
     };
     let current = doc.standard.as_ref().map(|s| s.header.clone());
-    let other = Some(StandardHeader { id: StandardId(99), name: "S".into(), based_on: "iec".into(), origin: None });
+    let other = Some(StandardHeader {
+        id: StandardId(99),
+        name: ecad_model::style::StyleName::new("S").unwrap(),
+        based_on: ecad_model::style::BasedOn::Iec,
+        origin: None,
+    });
     let note = Op::SetProperty { object: ObjectRef::Project, key: "note".into(), before: None, after: Some("x".into()) };
     let cases: Vec<(&str, PageId, Vec<Op>, bool)> = vec![
         ("a frame style record", first, vec![style(StyleCatalogue::Frame)], true),

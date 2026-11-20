@@ -38,9 +38,9 @@ fn cableadd_after_opening_a_rule_1_file_skips_the_deleted_cable_number() {
             Op::AddLayer { id: layer, layer: Layer { name: "0".into() } },
             Op::CreateDevice { id: k1, device: Device::default().with_tag(Some("-K1")) },
             Op::CreateDevice { id: x1, device: Device::default().with_tag(Some("-X1")) },
-            Op::AddTerminal { id: a1, terminal: Terminal { component: k1, label: Some("A1".into()), key: None } },
-            Op::AddTerminal { id: t3, terminal: Terminal { component: x1, label: Some("3".into()), key: None } },
-            Op::CreateWire { id: wire, conductor: Wire::between(Some(a1), Some(t3)) },
+            Op::AddTerminal { id: a1, terminal: Terminal { component: k1, label: Some("A1".into()), key: None, accepts: Default::default() } },
+            Op::AddTerminal { id: t3, terminal: Terminal { component: x1, label: Some("3".into()), key: None, accepts: Default::default() } },
+            Op::CreateWire { id: wire, wire: Wire::new(ids.fresh(), ids.fresh(), a1, t3) },
         ],
     )
     .unwrap();
@@ -49,12 +49,17 @@ fn cableadd_after_opening_a_rule_1_file_skips_the_deleted_cable_number() {
         Author::User,
         "Cables",
         vec![
-            Op::CreateCable { id: w1, cable: Cable { properties: tagged("-W01"), members: Vec::new() } },
-            Op::CreateCable { id: w2, cable: Cable { properties: tagged("-W02"), members: Vec::new() } },
+            Op::CreateCable { id: w1, cable: Cable { properties: tagged("-W01"), cores: Vec::new(), ..Default::default() } },
+            Op::CreateCable { id: w2, cable: Cable { properties: tagged("-W02"), cores: Vec::new(), ..Default::default() } },
         ],
     )
     .unwrap();
-    l.commit(Author::User, "Delete", vec![Op::DeleteCable { id: w2, cable: Cable { properties: tagged("-W02"), members: Vec::new() } }]).unwrap();
+    l.commit(
+        Author::User,
+        "Delete",
+        vec![Op::DeleteCable { id: w2, cable: Cable { properties: tagged("-W02"), cores: Vec::new(), ..Default::default() } }],
+    )
+    .unwrap();
     ProjectV2::create(Store::create(&path).unwrap(), PROJECT, &l, Some(1), "tester 029", 16).unwrap();
     // As a build before 026 wrote it: device marks only (-K, -X), no rule in the row.
     {

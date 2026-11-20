@@ -6,7 +6,10 @@
 
 use std::collections::BTreeMap;
 
-use ecad_model::{DeviceId, Document, IdAllocator, ItemKind, Noun, ObjectRef, Op, Representation, RepresentationId, Subject, Terminal, TerminalId};
+use ecad_model::{
+    DeviceId, Document, IdAllocator, ItemKind, LevelIo, Noun, ObjectRef, Op, PointKey, Representation, RepresentationId, Subject, Terminal,
+    TerminalId,
+};
 
 use crate::error::CmdError;
 use crate::strips::is_fuse_device;
@@ -290,20 +293,37 @@ pub fn plan_toposition(
     let mut chooser = tt::Chooser::new(doc, Some(strip));
     let pos = chooser.choose(doc, Some(strip), ty, Some(1), position)?;
     let (tin, tout): (TerminalId, TerminalId) = (ids.fresh(), ids.fresh());
-    ops.push(Op::AddTerminal { id: tin, terminal: Terminal { component: strip, label: Some(pos.clone()), key: Some(".1i".into()) } });
-    ops.push(Op::AddTerminal { id: tout, terminal: Terminal { component: strip, label: Some(pos.clone()), key: Some(".1o".into()) } });
+    ops.push(Op::AddTerminal {
+        id: tin,
+        terminal: Terminal {
+            component: strip,
+            label: Some(pos.clone()),
+            key: Some(PointKey::Level { level: 1, io: Some(LevelIo::In) }),
+            accepts: Default::default(),
+        },
+    });
+    ops.push(Op::AddTerminal {
+        id: tout,
+        terminal: Terminal {
+            component: strip,
+            label: Some(pos.clone()),
+            key: Some(PointKey::Level { level: 1, io: Some(LevelIo::Out) }),
+            accepts: Default::default(),
+        },
+    });
     // The device's points by key: `1` → in, `2` → out.
     let old: Vec<(TerminalId, Terminal)> = doc.terminals_of(device).map(|(t, x)| (t, x.clone())).collect();
+    let mut moved = std::collections::BTreeMap::new();
     for (t, x) in &old {
-        let to = match x.key.as_deref() {
+        let to = match x.key.as_ref().and_then(PointKey::as_def) {
             Some("1") => tin,
             Some("2") => tout,
             _ => return Err(CmdError::refused(format!("{tag} has a connection point that is not 1 or 2; move its wires first."))),
         };
-        for (w, end) in doc.ends_at(*t) {
-            ops.push(Op::AttachEnd { conductor: w, end, before: Some(*t), after: Some(to) });
-        }
+        moved.insert(*t, to);
     }
+    // Its routes land on the strip's points; the commit's rewrite moves the wires.
+    ops.extend(crate::wires::repoint_ops(doc, &moved));
     ops.push(Op::UnlinkRepresentation { id: rid, rep: rep.clone() });
     let mut item_after = item_before.clone();
     if let ItemKind::Symbol(si) = &mut item_after.kind {
@@ -313,7 +333,7 @@ pub fn plan_toposition(
     let d = starter.definition()?;
     let mut cps = BTreeMap::new();
     for td in &d.terminals {
-        cps.insert(if td.key.ends_with('i') { tin } else { tout }, td.at);
+        cps.insert(if matches!(td.key.level(), Some((_, Some(LevelIo::In)))) { tin } else { tout }, td.at);
     }
     let new_rep: RepresentationId = ids.fresh();
     ops.push(Op::LinkRepresentation {

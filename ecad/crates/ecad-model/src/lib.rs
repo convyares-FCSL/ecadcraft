@@ -44,8 +44,11 @@ pub mod merge;
 pub mod numbering;
 pub mod op;
 pub mod page;
+pub mod plc;
+pub mod point;
 pub mod prefix;
 pub mod project;
+pub mod route;
 pub mod sheet;
 pub mod strict;
 pub mod style;
@@ -55,30 +58,33 @@ pub mod title_block;
 pub mod units;
 pub mod view;
 pub mod wire;
+pub mod wire_order;
 pub mod wiring;
 pub mod words;
 
 pub use book::PageNo;
-pub use connectivity::{Connectivity, NetData, NetId, Node};
+pub use connectivity::{Connectivity, NetData, NetKey, Node};
 pub use device::{DeviceGroup, DeviceType, TextField};
 pub use doc::{
-    Cable, CableMember, Color, ContactMirror, ContentHash, DEFINITION_DEFAULT_KEYS, Definition, Device, Document, End, Folder, Form, Item, ItemKind,
-    Layer, LengthUnit, Origin, Page, Primitive, ProjectSettings, Properties, ReferenceStyle, Representation, Style, Subject, SymbolInstance,
-    Terminal, TerminalDef, TextHAlign, TextSlot, TextVAlign, Wire,
+    Accepts, Cable, Color, ContactMirror, ContentHash, Core, CoreLabel, CorePosition, DEFINITION_DEFAULT_KEYS, Definition, Device, Document, End,
+    Folder, Form, Item, ItemKind, Layer, LengthUnit, MAX_CORE_LABEL, Origin, Page, Primitive, ProjectSettings, Properties, Purpose, ReferenceStyle,
+    Representation, Style, Subject, SymbolInstance, Terminal, TerminalDef, TextHAlign, TextSlot, TextVAlign, Wire,
 };
 pub use error::{ModelError, Noun, ParseError, Parsed, Result};
 pub use geom::{Placement, Pt};
 pub use id::{
-    CableId, DefinitionId, DeviceId, FolderId, FunctionId, IdAllocator, ItemId, LayerId, LibraryId, LocationId, PageId, ProjectId, RepresentationId,
-    StandardId, TerminalId, TxId, WireId,
+    CableId, ConductorId, DefinitionId, DeviceId, FolderId, FunctionId, IdAllocator, ItemId, LayerId, LibraryId, LocationId, NetId, PageId,
+    ProjectId, RepresentationId, RouteId, StandardId, TerminalId, TxId, WireId,
 };
 pub use invariant::Touched;
 pub use ledger::{Author, Base, BranchPoint, Check, History, Ledger, StepPoint, Transaction, TxKind};
 pub use op::{ObjectRef, Op};
 pub use page::{GenKind, PageKind, PageTitle};
+pub use point::{ChannelRole, LevelIo, PointKey};
 pub use project::{
     CustomField, Function, InfoField, ListCode, ListDescription, ListEntry, Location, Project, ProjectInfo, Rev, RevField, RevValue, Revision,
 };
+pub use route::{Route, RouteEnd};
 pub use sheet::{GridLabels, PageColumn, PageRow, SheetSpec};
 pub use style::{Standard, StandardHeader, StyleCatalogue, StyleCatalogues, StyleLayer, StyleRecord, StyleRef};
 pub use words::{Side, Word};

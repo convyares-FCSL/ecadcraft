@@ -8,8 +8,8 @@ fn def(bridges: &[&[&str]]) -> Definition {
         name: "test".into(),
         origin: None,
         graphics: Vec::new(),
-        terminals: vec![TerminalDef { key: "1".into(), label: Some("1".into()), at: Pt::new(0.0, 0.0) }],
-        bridges: bridges.iter().map(|g| g.iter().map(|k| k.to_string()).collect()).collect(),
+        terminals: vec![TerminalDef { key: "1".parse().unwrap(), label: Some("1".into()), at: Pt::new(0.0, 0.0), accepts: Default::default() }],
+        bridges: bridges.iter().map(|g| g.iter().map(|k| k.parse().unwrap()).collect()).collect(),
         ..Default::default()
     }
 }
@@ -28,9 +28,11 @@ fn a_bridge_names_only_keys_a_placement_can_write() {
     assert!(embed(&[&[".s", ".p"]]).is_ok(), "the connector halves' bridge (FP2)");
     assert!(embed(&[&[".1", ".2"]]).is_ok(), "036's level keys");
     assert!(embed(&[&[".1i", ".1o"]]).is_ok(), "036's in and out points");
-    let e = embed(&[&[".s", ".x"]]).unwrap_err();
-    assert!(e.contains(".x"), "{e}");
+    let e = embed(&[&[".s", ".in"]]).unwrap_err();
+    assert!(e.contains(".in"), "{e}");
+    assert!(".x".parse::<ecad_model::PointKey>().is_err(), "not a key at all");
     assert!(embed(&[&["1", "2"]]).is_err(), "a plain key the definition lacks");
     assert!(embed(&[&[".100"]]).is_err(), "a level beyond the range");
-    assert!(ecad_model::invariant::is_placement_key(".p") && !ecad_model::invariant::is_placement_key(".q"));
+    let key = |k: &str| k.parse::<ecad_model::PointKey>().unwrap();
+    assert!(ecad_model::invariant::is_placement_key(&key(".p")) && !ecad_model::invariant::is_placement_key(&key(".in")));
 }

@@ -12,7 +12,7 @@ use crate::mcp_contracts::{AGENT, Client, TempDir, reader};
 fn project(dir: &TempDir) -> Client {
     let path = dir.file("history.ecad");
     let mut c = Client::new(EcadMcp::create(&path, Options { write: true, agent: None }).unwrap());
-    c.exec("wire", json!({"points": [[0, 0], [60, 0]]}));
+    c.wire_pp(json!({"points": [[0, 0], [60, 0]]}));
     c.ok("save", json!({}));
     c
 }
@@ -40,8 +40,8 @@ fn version_restore_and_branches_through_execute_record_the_agents_steps() {
     let m = c.refused("execute", json!({"command": "version", "params": {"name": "Rev B"}}));
     assert!(m.contains("names revisions"), "{m}");
     // Two more wires, then Restore: one step back to the version's state, undoable.
-    c.exec("wire", json!({"points": [[0, 20], [60, 20]]}));
-    c.exec("wire", json!({"points": [[0, 40], [60, 40]]}));
+    c.wire_pp(json!({"points": [[0, 20], [60, 20]]}));
+    c.wire_pp(json!({"points": [[0, 40], [60, 40]]}));
     assert_eq!(conductors(&mut c), 3);
     let info = c.exec("pointinfo", json!({"version": "Before change"}));
     assert_eq!(info["restore"], json!(true), "{info}");
@@ -69,7 +69,7 @@ fn version_restore_and_branches_through_execute_record_the_agents_steps() {
     let created_by = c.s.with_session(|s, p| p.read(s, |p, _| p.file.v2().unwrap().branch_record().created_by.clone()).unwrap()).unwrap();
     assert_eq!(created_by.as_deref(), Some(AGENT));
     // An edit on the branch; switching with it unsaved is refused, then saved and switched.
-    c.exec("wire", json!({"points": [[0, 80], [60, 80]]}));
+    c.wire_pp(json!({"points": [[0, 80], [60, 80]]}));
     let m = c.refused("execute", json!({"command": "switchbranch", "params": {"branch": "main"}}));
     assert!(m.contains("unsaved") && m.contains("\"save\": true"), "{m}");
     let sw = c.exec("switchbranch", json!({"branch": "main", "save": true}));
@@ -140,7 +140,7 @@ fn archiving_the_branch_shown_whose_parent_is_archived_shows_main() {
     let dir = TempDir::new("archive-parent");
     let mut c = project(&dir);
     c.exec("branch", json!({"name": "Parent", "switch": true}));
-    c.exec("wire", json!({"points": [[0, 20], [60, 20]]}));
+    c.wire_pp(json!({"points": [[0, 20], [60, 20]]}));
     c.exec("branch", json!({"name": "Child", "switch": false}));
     c.exec("switchbranch", json!({"branch": "Child", "save": true}));
     c.exec("archivebranch", json!({"branch": "Parent"}));

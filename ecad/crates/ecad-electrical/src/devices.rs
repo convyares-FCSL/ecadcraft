@@ -27,7 +27,7 @@ use ecad_model::{
     Definition, DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Placement, Pt,
     Representation, RepresentationId, Style, Subject, SymbolInstance, Terminal, TerminalId,
 };
-use ecad_model::{DeviceType, Noun, TextHAlign as HAlign, TextVAlign as VAlign};
+use ecad_model::{DeviceType, Noun, PointKey, TextHAlign as HAlign, TextVAlign as VAlign};
 
 /// `t` as a device's stored tag (design 072 §2.1): refused when it is not 1 to 40 printable
 /// characters.
@@ -410,7 +410,7 @@ pub fn holder_words_of(doc: &Document, h: Holder) -> String {
     match h {
         Holder::Device(c) => holder_words(doc, c),
         Holder::Cable(k) => {
-            let n = doc.cables.get(&k).map_or(0, |c| c.members.len());
+            let n = doc.cables.get(&k).map_or(0, |c| c.cores.len());
             format!("{} (cable, {n} wire{})", cable_tag_of(doc, k).unwrap_or("(no tag)"), if n == 1 { "" } else { "s" })
         }
     }
@@ -551,7 +551,7 @@ pub struct Placed {
     pub tag: String,
     pub joined: bool,
     /// (definition key, label, terminal), in definition order.
-    pub terminals: Vec<(String, String, TerminalId)>,
+    pub terminals: Vec<(PointKey, String, TerminalId)>,
 }
 
 /// Plan placing starter symbol `s` at `placement` on `page` (design 018 §10).
@@ -606,14 +606,17 @@ pub fn plan_place(
                     tag: Some(crate::devices::stored_tag(&t)?),
                     description: description_of(s.name),
                     definition: Some(definition),
-                    device_type: s.device_type(),
+                    device_type: crate::plc::types::new_type(doc, &s.device_type()),
                     ..Device::default()
                 },
             });
             for td in &def.terminals {
                 let tid: TerminalId = ids.fresh();
-                ops.push(Op::AddTerminal { id: tid, terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()) } });
-                terminals.push((td.key.clone(), td.label.clone().unwrap_or_else(|| td.key.clone()), tid));
+                ops.push(Op::AddTerminal {
+                    id: tid,
+                    terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
+                });
+                terminals.push((td.key.clone(), td.label.clone().unwrap_or_else(|| td.key.to_string()), tid));
             }
             ops.push(Op::AddItem { id: item, item: instance });
             ops.push(Op::LinkRepresentation {
@@ -637,7 +640,10 @@ pub fn plan_place(
             let mut cps = BTreeMap::new();
             for (td, label) in def.terminals.iter().zip(&labels) {
                 let tid: TerminalId = ids.fresh();
-                ops.push(Op::AddTerminal { id: tid, terminal: Terminal { component: c, label: Some(label.clone()), key: Some(label.clone()) } });
+                ops.push(Op::AddTerminal {
+                    id: tid,
+                    terminal: Terminal { component: c, label: Some(label.clone()), key: Some(PointKey::Def(label.clone())), accepts: td.accepts },
+                });
                 cps.insert(tid, td.at);
                 terminals.push((td.key.clone(), label.clone(), tid));
             }
@@ -653,6 +659,15 @@ pub fn plan_place(
                     connection_points: cps,
                 },
             });
+            // Design 072 §3: a PLC card's body is its symbol (a card a channel cell made had the
+            // cell's), so its points are its symbol's.
+            if crate::plc::rack::CardType::of_symbol(s).is_some()
+                && let Some(d) = doc.devices.get(&c)
+                && matches!(d.device_type, ecad_model::DeviceType::PlcModule(_) | ecad_model::DeviceType::PlcRack(_))
+                && d.definition != Some(definition)
+            {
+                ops.push(Op::SetDeviceDefinition { id: c, before: d.definition, after: Some(definition) });
+            }
             let t = tag_words(doc, c);
             Ok(Placed { ops, label: format!("Add symbol to {t}"), component: c, representation, item, definition, tag: t, joined: true, terminals })
         }
@@ -675,7 +690,7 @@ pub(crate) fn shown_terminals(doc: &Document, c: DeviceId, r: &Representation) -
                     .iter()
                     .filter_map(|td| {
                         let with_key: Vec<TerminalId> =
-                            doc.terminals_of(c).filter(|(_, t)| t.key.as_deref() == Some(td.key.as_str())).map(|(t, _)| t).collect();
+                            doc.terminals_of(c).filter(|(_, t)| t.key.as_ref() == Some(&td.key)).map(|(t, _)| t).collect();
                         let t = with_key.iter().find(|t| doc.representations_showing(**t).next().is_none()).or(with_key.first())?;
                         Some((*t, td.at))
                     })
@@ -736,7 +751,10 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
                map: &mut BTreeMap<TerminalId, TerminalId>|
      -> TerminalId {
         let nt: TerminalId = ids.fresh();
-        ops.push(Op::AddTerminal { id: nt, terminal: Terminal { component: into, label, key: Some(name) } });
+        ops.push(Op::AddTerminal {
+            id: nt,
+            terminal: Terminal { component: into, label, key: Some(PointKey::Def(name)), accepts: Default::default() },
+        });
         map.insert(old, nt);
         nt
     };
@@ -807,11 +825,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
     let (unlinks, links): (Vec<Op>, Vec<Op>) = ops_reps.into_iter().unzip();
     ops.extend(unlinks);
     ops.extend(links);
-    for (old, nt) in &new_terminal {
-        for (w, end) in doc.ends_at(*old) {
-            ops.push(Op::AttachEnd { conductor: w, end, before: Some(*old), after: Some(*nt) });
-        }
-    }
+    ops.extend(crate::wires::repoint_ops(doc, &new_terminal.iter().map(|(old, nt)| (*old, *nt)).collect()));
     for (t, term) in doc.terminals_of(from) {
         ops.push(Op::RemoveTerminal { id: t, terminal: term.clone() });
     }
@@ -827,7 +841,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
     }
     // Brief 045 (FP1 condition 2, review of #84, 1): a rack merged away hands its cards to `into`,
     // which takes its rack body (or already is a rack); otherwise they leave it, in this transaction.
-    ops.extend(crate::plc::rack::merge_ops(doc, from, into));
+    crate::plc::rack::merge_into(doc, &mut ops, from, into);
     ops.push(Op::DeleteDevice { id: from, device: from_c });
     Ok(ops)
 }
@@ -840,7 +854,7 @@ const MAX_RENAMED: u32 = 999;
 /// its 32-digit ID (pack re-run, bug 1).
 pub fn label_of(doc: &Document, t: TerminalId) -> String {
     let term = doc.terminals.get(&t);
-    term.and_then(|x| x.label.clone()).or_else(|| term.and_then(|x| x.key.clone())).unwrap_or_else(|| t.hex())
+    term.and_then(|x| x.label.clone()).or_else(|| term.and_then(|x| x.key.as_ref()).map(ToString::to_string)).unwrap_or_else(|| t.hex())
 }
 
 // ---------------------------------------------------------------- erasing (§3.3)
@@ -891,11 +905,7 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
                 .into_iter()
                 .collect()
         };
-        for t in &drop {
-            for (w, end) in doc.ends_at(*t) {
-                ops.push(Op::AttachEnd { conductor: w, end, before: Some(*t), after: None });
-            }
-        }
+        ops.extend(crate::wires::free_points_ops(doc, drop.iter().copied()));
         for t in &drop {
             if let Some(term) = doc.terminals.get(t) {
                 ops.push(Op::RemoveTerminal { id: *t, terminal: term.clone() });
@@ -903,13 +913,15 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
         }
         if remaining.is_empty() {
             // Brief 045 (design 045 §2.2, FP1): a rack's cards leave it in the same transaction.
-            let (released, n) = if crate::plc::rack::is_rack(doc, c) { crate::plc::rack::release_cards(doc, c) } else { (Vec::new(), 0) };
+            let (released, n) =
+                if crate::plc::edit::station_of(doc, c).is_some() { crate::plc::rack::release_cards(doc, c) } else { (Vec::new(), 0) };
             ops.extend(released);
             ops.push(Op::DeleteDevice { id: c, device: component.clone() });
             if n > 0 {
                 notes.push(format!("Deleted {who}; {}", crate::plc::rack::released_words(n)));
             }
             notes.push(format!("Deleted {who} with its last symbol; U brings it back."));
+            notes.extend(crate::rating::trace::cleared_words(doc, c).map(|w| format!("{who}: {w}")));
         } else {
             // Brief 036 (review M1): a level's own label and a fuse position's rating go with
             // the last terminal of their level or position, never left to come back later.
@@ -1399,7 +1411,7 @@ fn slot_texts(
 /// label.
 pub fn point_label_key(doc: &Document, rep: RepresentationId, t: TerminalId) -> String {
     let term = doc.terminals.get(&t);
-    let key = term.and_then(|x| x.key.clone()).or_else(|| term.and_then(|x| x.label.clone())).unwrap_or_else(|| t.hex());
+    let key = term.and_then(|x| x.key.as_ref()).map(ToString::to_string).or_else(|| term.and_then(|x| x.label.clone())).unwrap_or_else(|| t.hex());
     format!("{}point_label.{key}.at", crate::text_style::symbol_prefix(rep))
 }
 

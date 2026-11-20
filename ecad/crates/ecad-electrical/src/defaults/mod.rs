@@ -108,6 +108,18 @@ pub enum Value<'a> {
     /// A [`Kind::Style`] value naming an own style (a standard's or the project's) by its ID
     /// (design 072 §5.1): held as the ID, so a value read from a typed field needs no stored text.
     OwnStyle(u128),
+    /// A typed style field's wire size (design 072 §8): a wire type's `size`.
+    Size(ecad_model::wire::WireSize),
+    /// A typed style field's ordered colours (design 072 §8): a wire type's `colours`.
+    Colours(&'a ecad_model::wire::Colours),
+    /// A typed style field's colour (design 072 §8): a text, location or frame style's.
+    Colour(ecad_model::style::StyleColour),
+    /// A typed style field's sheet (design 072 §8): a page type's or a frame style's own sheet.
+    Sheet(ecad_model::sheet::SheetSpec),
+    /// A typed style field's margins (design 072 §8): a frame style's.
+    Margins(ecad_model::sheet::Margins),
+    /// A typed style field's core colours (design 072 §8): a cable type's.
+    CoreColours(&'a ecad_model::style::cable::CoreColours),
 }
 
 impl Value<'_> {
@@ -116,7 +128,16 @@ impl Value<'_> {
         match *self {
             Value::Text(t) => ecad_model::StyleRef::builtin(t),
             Value::OwnStyle(id) => Some(ecad_model::StyleRef::Own(id)),
-            Value::Length(_) | Value::Number(_) | Value::Choice(_) | Value::Flag(_) => None,
+            Value::Length(_)
+            | Value::Number(_)
+            | Value::Choice(_)
+            | Value::Flag(_)
+            | Value::Size(_)
+            | Value::Colours(_)
+            | Value::Colour(_)
+            | Value::Sheet(_)
+            | Value::Margins(_)
+            | Value::CoreColours(_) => None,
         }
     }
 
@@ -284,6 +305,12 @@ impl Resolved<'_> {
             Value::Flag(b) => ecad_model::words::flag_word(b).to_string(),
             Value::Text(t) => t.to_string(),
             Value::OwnStyle(id) => ecad_model::StyleRef::Own(id).text(),
+            Value::Size(s) => s.to_string(),
+            Value::Colours(c) => c.to_string(),
+            Value::Colour(c) => c.to_string(),
+            Value::Sheet(s) => s.text(),
+            Value::Margins(m) => ecad_model::sheet::margins_text(&m),
+            Value::CoreColours(c) => c.to_string(),
         }
     }
 }
@@ -335,6 +362,17 @@ pub fn accepts(kind: Kind, value: &Value<'_>) -> bool {
             (Kind::Flag, Value::Flag(_)) => true,
             (Kind::Text { .. } | Kind::Parsed { .. } | Kind::Style(_), Value::Text(t)) => parse_value(kind, t) == Some(Value::Text(t)),
             (Kind::Style(_), Value::OwnStyle(_)) => true,
+            // A typed style field read back (design 072 §8): its text must pass the field's rule.
+            (
+                Kind::Parsed { parse, .. },
+                Value::Size(_)
+                | Value::Colours(_)
+                | Value::Colour(_)
+                | Value::Sheet(_)
+                | Value::Margins(_)
+                | Value::CoreColours(_)
+                | Value::Number(_),
+            ) => parse(&Resolved { value: *value, from: Source::Builtin }.text()),
             _ => false,
         }
     }
@@ -460,7 +498,7 @@ pub fn resolve<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Resolved<'a> 
                 return Resolved { value, from: Source::Object };
             }
         }
-        if let Some(value) = at.conductor.and_then(|c| doc.wires.get(&c)).and_then(|c| stored(&c.display, entry.key)) {
+        if let Some(value) = at.conductor.and_then(|c| doc.wires.get(&c)).and_then(|c| wire_value(doc, entry, c)) {
             return Resolved { value, from: Source::Object };
         }
     }
@@ -494,6 +532,15 @@ fn page_value<'a>(doc: &Document, entry: &Entry, page: &'a ecad_model::Page) -> 
         return page.page_type.as_ref().filter(|id| ecad_model::sheet::page_type_exists(doc, id)).map(Value::of_style);
     }
     page.display.get(entry.key).and_then(|v| entry.parse_in(doc, v.as_str()))
+}
+
+/// `entry`'s value stored on wire `w`: its display bag, or for the wire type its field (design
+/// 072 §4.6); a type that does not exist reads as absent.
+fn wire_value<'a>(doc: &Document, entry: &Entry, w: &'a ecad_model::Wire) -> Option<Value<'a>> {
+    if entry.key == ecad_model::wiring::WIRE_CATEGORY {
+        return w.wire_type.as_ref().filter(|id| crate::styles::exists(doc, ecad_model::StyleCatalogue::Wire, id)).map(Value::of_style);
+    }
+    w.display.get(entry.key).and_then(|v| entry.parse_in(doc, v.as_str()))
 }
 
 /// The standard's valid value of `entry`, if the project has a standard that sets one (brief
@@ -530,7 +577,7 @@ pub fn chain<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Vec<(Source, Op
     let symbol = component.zip(at.rep).and_then(|(c, rep)| stored(&c.properties, &symbol_key(entry.key, rep)));
     let object = component
         .and_then(|c| stored(&c.properties, entry.key))
-        .or_else(|| at.conductor.and_then(|c| doc.wires.get(&c)).and_then(|c| stored(&c.display, entry.key)));
+        .or_else(|| at.conductor.and_then(|c| doc.wires.get(&c)).and_then(|c| wire_value(doc, entry, c)));
     if entry.allows(Level::Object) || object.is_some() {
         out.push((Source::Object, object.filter(|_| entry.allows(Level::Object))));
     }
@@ -583,7 +630,7 @@ pub fn users(doc: &Document, entry: &Entry) -> usize {
     let own = |props: &ecad_model::Properties| entry.allows(Level::Object) && props.get(entry.key).is_some_and(|v| entry.parse(v.as_str()).is_some());
     match users_noun(entry) {
         "devices" => doc.devices.values().filter(|c| !own(&c.properties)).count(),
-        "wires" => doc.wires.values().filter(|c| !own(&c.display)).count(),
+        "wires" => doc.wires.values().filter(|c| !(entry.allows(Level::Object) && wire_value(doc, entry, c).is_some())).count(),
         _ => doc.pages.len(),
     }
 }

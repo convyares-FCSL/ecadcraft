@@ -120,9 +120,8 @@ impl<'i> DerivedView<Inputs<'i>> for ConnectorsView {
             | Effect::Page { .. }
             | Effect::Layer { .. }
             | Effect::Wire { .. }
-            | Effect::End { .. }
+            | Effect::Route { .. }
             | Effect::Cable { .. }
-            | Effect::Member { .. }
             | Effect::Settings { .. }
             | Effect::Version { .. }
             | Effect::Folder { .. }

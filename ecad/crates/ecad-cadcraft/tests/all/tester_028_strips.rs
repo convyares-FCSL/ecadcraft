@@ -10,7 +10,7 @@ use ecad_cadcraft::outputs::{Group, Outputs};
 use ecad_model::{CableId, DeviceId, Document, PageId, TerminalId, WireId, tag};
 use serde_json::{Value, json};
 
-use crate::common::{H, id, pts};
+use crate::common::{H, id};
 use crate::common::{place, reopen, tmp_dir};
 
 struct T {
@@ -41,7 +41,7 @@ fn fixture(seed: u64) -> T {
     ];
     let mut wires = Vec::new();
     for r in &routes {
-        let v = h.run("wire", json!({"points": pts(r)})).unwrap();
+        let v = h.wire_pp(r).unwrap();
         wires.push(id::<WireId>(&v, "conductor"));
     }
     let v = h.run("cableslash", json!({"from": [90, 120], "to": [260, 120], "tag": "-W01"})).unwrap();
@@ -255,7 +255,7 @@ fn provisional_strip_tags_from_place_terminals_and_finalise() {
     let p_tag = v["tag"].as_str().unwrap_or_default().to_string();
     assert!(tag::is_provisional(&p_tag), "Place terminal on a wire in provisional mode: {v}");
     for x in [320.0, 330.0, 340.0] {
-        t.h.run("wire", json!({"points": pts(&[(x, 270.0), (x, 160.0)])})).unwrap();
+        t.h.wire_pp(&[(x, 270.0), (x, 160.0)]).unwrap();
     }
     let v = t.h.run("terminals", json!({"from": [310, 200], "to": [350, 200]})).unwrap();
     let x3: DeviceId = id(&v, "strip");
@@ -294,13 +294,13 @@ fn a_swap_by_renumber_keeps_wires_and_cores() {
     // Exchange their places: 3 right by 50, 4 left by 50 (wires follow).
     t.h.run("move", json!({"handles": [h3.hex()], "delta": [60, 0]})).unwrap();
     t.h.run("move", json!({"handles": [h4.hex()], "delta": [-60, 0]})).unwrap();
-    let members_before = t.h.doc().cables[&t.cable].members.clone();
+    let members_before = t.h.doc().cables[&t.cable].cores.clone();
     let ends: Vec<_> = terms.iter().map(|x| t.h.doc().ends_at(*x)).collect();
     t.h.run("renumber", json!({"kind": "terminals"})).unwrap();
     assert_eq!(labels(&mut t.h, &terms), ["1", "2", "4", "3"]);
     let d = t.h.doc();
     assert_eq!(terms.iter().map(|x| d.ends_at(*x)).collect::<Vec<_>>(), ends, "wires stay attached");
-    assert_eq!(d.cables[&t.cable].members, members_before, "cores unchanged");
+    assert_eq!(d.cables[&t.cable].cores, members_before, "cores unchanged");
     let plan = t.h.run("stripplan", json!({})).unwrap();
     let rows = plan["strips"][0]["rows"].as_array().unwrap();
     assert_eq!(rows[2]["terminal"], json!(terms[3].hex()), "row 3 is the moved terminal: {plan}");
@@ -318,7 +318,7 @@ fn generated_pages_and_strips_follow_only_related_edits() {
     let (x1, _) = fence(&mut t.h, 170.0);
     // A second strip on wires no cable crosses.
     for x in [320.0, 330.0] {
-        t.h.run("wire", json!({"points": pts(&[(x, 270.0), (x, 160.0)])})).unwrap();
+        t.h.wire_pp(&[(x, 270.0), (x, 160.0)]).unwrap();
     }
     let v = t.h.run("terminals", json!({"from": [310, 200], "to": [340, 200]})).unwrap();
     let x2: DeviceId = id(&v, "strip");

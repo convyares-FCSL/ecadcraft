@@ -248,9 +248,12 @@ impl PlaceConnector {
     fn line(&mut self, s: &mut Session, a: Pt, b: Pt) -> R<Step> {
         let mut params = self.params();
         if a.near(b, 1e-9) {
-            let w = read(s, |p, page| Ok(crate::wires::wire_at(p.ledger.document(), page, a, crate::wires::ON_WIRE, None).map(|o| o.conductor)))
-                .map_err(other)?
-                .ok_or_else(|| other("Click on a wire, or draw a line across the wires."))?;
+            let w = read(s, |p, page| {
+                let doc = p.ledger.document();
+                Ok(crate::wires::route_at(doc, page, a, crate::wires::ON_WIRE, None).and_then(|o| crate::wires::wire_of_route(doc, o.route)))
+            })
+            .map_err(other)?
+            .ok_or_else(|| other("Click on a wire, or draw a line across the wires."))?;
             params["wire"] = json!(w.hex());
             params["line"] = json!([[a.x, a.y], [a.x, a.y]]);
         } else {
@@ -293,7 +296,7 @@ impl PlaceConnector {
             if n > cn::MAX_PINS {
                 return Ok(Some((format!("-> refused: {n} wires, at most {}", cn::MAX_PINS), true)));
             }
-            let names: Vec<String> = found.members.iter().take(6).map(|m| crate::slash::wire_name(doc, m.conductor)).collect();
+            let names: Vec<String> = found.members.iter().take(6).map(|m| crate::slash::position_name(doc, m.position)).collect();
             let who = if new { tag.clone() } else { format!("{tag} (next free pins)") };
             Ok(Some((
                 format!(
