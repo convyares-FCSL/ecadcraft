@@ -193,6 +193,76 @@ fn the_devices_feed_reaches_the_change_log() {
     assert!(t.is_empty(), "{t:?}");
 }
 
+// ---------------------------------------------------------------- the Properties feed
+
+/// The Properties feed's update map: what each effect names, `None` where any object may change.
+#[test]
+fn the_props_feed_follows_its_update_map() {
+    use crate::common::{applied, props_touched};
+    use ecad_model::Page;
+    let b = ecad_cadcraft::test_support::ProjectBuilder::new(643).page().coil("K1", (20.0, 20.0)).build();
+    let page = b.added_pages[0];
+    let k1 = b.device("K1");
+    let mut h = crate::common::H::from_built(b);
+    let doc = h.doc();
+    let retitled = Page { title: ecad_model::page::PageTitle::new("Other").unwrap(), ..doc.pages[&page].clone() };
+    let settings = doc.settings.clone();
+    let mut info = doc.project.clone();
+    info.info.title = ecad_model::project::InfoText::new("Plant").ok();
+    let note = |object| Op::SetProperty { object, key: "note".into(), before: None, after: Some("x".into()) };
+    let set = |o: &[ObjectRef]| Some(o.iter().copied().collect::<BTreeSet<_>>());
+    let cases: Vec<(&str, Vec<Op>, Option<BTreeSet<ObjectRef>>)> = vec![
+        ("a device property", vec![note(ObjectRef::Device(k1))], set(&[ObjectRef::Device(k1)])),
+        ("a page property", vec![note(ObjectRef::Page(page))], set(&[ObjectRef::Page(page)])),
+        ("a page retitled", vec![Op::ModifyPage { id: page, before: doc.pages[&page].clone(), after: retitled }], set(&[ObjectRef::Page(page)])),
+        ("the project settings", vec![Op::SetProjectSettings { before: settings.clone(), after: settings }], None),
+        ("the project's own data", vec![Op::ModifyProject { before: doc.project.clone(), after: info }], None),
+        ("nothing", vec![], set(&[])),
+    ];
+    for (what, ops, want) in cases {
+        assert_eq!(props_touched(&doc, &applied(&doc, &ops), &ops, &ops), want, "{what}");
+    }
+}
+
+/// The Properties feed's After phase: the transaction's extension (the wire rewrite and the
+/// numbering pass) names the wires it changes and the devices at their ends, and the properties it
+/// writes; with the ops alone it names neither.
+#[test]
+fn the_props_feed_reads_the_extension() {
+    use crate::common::{applied, props_touched};
+    let b = ecad_cadcraft::test_support::ProjectBuilder::new(644).page().coil("K1", (20.0, 20.0)).coil("K2", (80.0, 20.0)).wire("K1", "K2").build();
+    let page = b.added_pages[0];
+    let (k1, k2) = (b.device("K1"), b.device("K2"));
+    let mut h = crate::common::H::from_built(b);
+    let doc = h.doc();
+    let (&w, wire) = doc.wires.iter().next().expect("the builder drew a wire");
+    let given = vec![Op::SetProperty { object: ObjectRef::Page(page), key: "note".into(), before: None, after: Some("x".into()) }];
+    let extension = vec![
+        Op::ModifyWire { id: w, before: wire.clone(), after: ecad_model::Wire { order_fixed: !wire.order_fixed, ..wire.clone() } },
+        Op::SetProperty { object: ObjectRef::Device(k2), key: "note".into(), before: None, after: Some("y".into()) },
+    ];
+    let tx: Vec<Op> = given.iter().chain(&extension).cloned().collect();
+    let after = applied(&doc, &tx);
+    let got = props_touched(&doc, &after, &given, &tx).unwrap();
+    let want: BTreeSet<ObjectRef> = [ObjectRef::Page(page), ObjectRef::Wire(w), ObjectRef::Device(k1), ObjectRef::Device(k2)].into_iter().collect();
+    assert_eq!(got, want);
+    let alone = props_touched(&doc, &applied(&doc, &given), &given, &given).unwrap();
+    assert_eq!(alone, [ObjectRef::Page(page)].into_iter().collect::<BTreeSet<_>>());
+}
+
+/// A device edit through the command path reaches the Properties palette's change log through
+/// the feed.
+#[test]
+fn the_props_feed_reaches_the_change_log() {
+    let b = ecad_cadcraft::test_support::ProjectBuilder::new(645).page().coil("K1", (20.0, 20.0)).build();
+    let k1 = b.device("K1");
+    let mut h = crate::common::H::from_built(b);
+    let n = h.p(|p| p.change_count());
+    h.run("setprop", serde_json::json!({ "component": k1, "key": "note", "value": "x" })).unwrap();
+    let t = h.p(|p| p.props_changes_since(n)).unwrap();
+    assert!(t.contains(&ObjectRef::Device(k1)), "{t:?}");
+}
+
 // ---------------------------------------------------------------- step 5: the connector index
 
 /// `connectors::Index::touched` as it was before design 064 step 5 (`doc` is after `ops`).

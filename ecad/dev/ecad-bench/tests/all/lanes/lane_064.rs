@@ -14,6 +14,9 @@
 //! Step 6: the pages' feed (`PagesView`) equals the old `pages_touched` and `pages_named` (kept
 //! here) on every transaction of the same history.
 //!
+//! The Properties feed (`PropsFeed`) equals the old `props::touched` (kept here) on every
+//! transaction of the same history.
+//!
 //! Step 5: the references view (`RefsView`, its update map over effects) against the whole
 //! document on every transaction of the same history: every page whose reference texts, tables,
 //! connector parts, continuation arrows or cable reference texts differ is among its pages; its
@@ -743,5 +746,167 @@ fn the_refs_view_follows_the_whole_document_on_the_small_corpus() {
 #[ignore = "slow: generates the medium bench project"]
 fn the_refs_view_follows_the_whole_document_on_the_medium_corpus() {
     let n = refs_view_agrees(tier("medium").unwrap());
+    assert!(n > 10, "{n} transactions");
+}
+
+// ---------------------------------------------------------------- PropsFeed
+
+/// `props::touched` as it was before design 064's `PropsFeed` (ecad-cadcraft), on the document
+/// before `ops`. Its partner `Project::with_numbered` read only a transaction's extension past the
+/// ops a command gave; a recorded transaction is replayed whole here, so it has none.
+fn old_props_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
+    let mut out = BTreeSet::new();
+    let subject = |s: Subject, out: &mut BTreeSet<ObjectRef>| {
+        out.insert(match s {
+            Subject::Device(c) => ObjectRef::Device(c),
+            Subject::Wire(c) => ObjectRef::Wire(c),
+            Subject::Cable(c) => ObjectRef::Cable(c),
+            // A route has no properties (design 072 F31).
+            Subject::Route(_) => return,
+        });
+    };
+    for op in ops {
+        match op {
+            Op::ModifyPage { id, .. } => {
+                out.insert(ObjectRef::Page(*id));
+            }
+            Op::SetProperty { object, .. } => {
+                out.insert(*object);
+                // A location box's own location is what its page's devices inherit (brief 024).
+                if let ObjectRef::Device(c) = object
+                    && ecad_electrical::locations::is_box(doc, *c)
+                {
+                    out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| ObjectRef::Page(r.page)));
+                }
+            }
+            Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::ModifyDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
+                out.insert(ObjectRef::Device(*id));
+            }
+            Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
+                out.insert(ObjectRef::Device(terminal.component));
+            }
+            Op::ModifyWire { id, .. } => {
+                out.insert(ObjectRef::Wire(*id));
+            }
+            Op::CreateWire { id, wire } | Op::DeleteWire { id, wire } => {
+                out.insert(ObjectRef::Wire(*id));
+                // The devices at its ends: a wire's net (brief 022) is shown through them.
+                out.extend(wire.ends.iter().filter_map(|t| doc.terminals.get(t)).map(|t| ObjectRef::Device(t.component)));
+            }
+            Op::CreateCable { id, cable } | Op::DeleteCable { id, cable } => {
+                out.insert(ObjectRef::Cable(*id));
+                out.extend(cable.cores.iter().filter_map(|m| m.wire()).map(ObjectRef::Wire));
+            }
+            // A route has no properties (design 072 F31); the devices it lands on show its net.
+            Op::AddRoute { route, .. } | Op::RemoveRoute { route, .. } => {
+                out.extend(route.points_landed().filter_map(|t| doc.terminals.get(&t)).map(|t| ObjectRef::Device(t.component)));
+            }
+            Op::ModifyRoute { before, after, .. } => {
+                let landed = before.points_landed().chain(after.points_landed());
+                out.extend(landed.filter_map(|t| doc.terminals.get(&t)).map(|t| ObjectRef::Device(t.component)));
+            }
+            Op::ModifyCable { id, before, after } => {
+                out.insert(ObjectRef::Cable(*id));
+                out.extend(before.cores.iter().chain(&after.cores).filter_map(|m| m.wire()).map(ObjectRef::Wire));
+            }
+            // A new or removed item is shown through its representation (linked or unlinked in the
+            // same transaction); a moved one changes its subject's place.
+            Op::AddItem { .. } => {}
+            Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => {
+                if let Some((_, r)) = doc.representation_of_item(*id) {
+                    subject(r.subject, &mut out);
+                    if matches!(r.subject, Subject::Device(c) if ecad_electrical::locations::is_box(doc, c)) {
+                        out.insert(ObjectRef::Page(r.page));
+                    }
+                }
+            }
+            Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => {
+                subject(rep.subject, &mut out);
+                // A location box (brief 024) changes the location its page's devices inherit.
+                if matches!(rep.subject, Subject::Device(c) if ecad_electrical::locations::is_box(doc, c) || rep.role == ecad_model::Role::LocationBox) {
+                    out.insert(ObjectRef::Page(rep.page));
+                }
+            }
+            Op::ModifyRepresentation { before, after, .. } => {
+                subject(before.subject, &mut out);
+                subject(after.subject, &mut out);
+            }
+            Op::NameVersion { .. } | Op::UnnameVersion { .. } => {
+                out.insert(ObjectRef::Project);
+            }
+            // Brief 050a: styles and the standard show in the property views of the project (the
+            // inspector's style rows re-read through it).
+            Op::SetStyle { .. } | Op::SetStandard { .. } => {
+                out.insert(ObjectRef::Project);
+            }
+            // Brief 048 (design §8.4): a project symbol's new or removed version changes whether
+            // the devices showing its lineage read "update available".
+            Op::EmbedDefinition { definition, .. } | Op::RemoveDefinition { definition, .. } => {
+                if let Some(o) = definition.origin.as_ref().filter(|o| o.library == symbols::PROJECT_SYMBOLS) {
+                    for v in symbols::versions_of(doc, o.definition) {
+                        for item in doc.items_using(v.id) {
+                            if let Some((_, r)) = doc.representation_of_item(item) {
+                                subject(r.subject, &mut out);
+                            }
+                        }
+                    }
+                }
+            }
+            Op::AddLayer { .. } | Op::RemoveLayer { .. } => {}
+            Op::AddPage { .. }
+            | Op::RemovePage { .. }
+            | Op::AddFolder { .. }
+            | Op::RemoveFolder { .. }
+            | Op::ModifyFolder { .. }
+            | Op::SetProjectSettings { .. }
+            // Design 072 §5.3: a code renamed in the project's list shows on every object storing it.
+            | Op::ModifyProject { .. }
+            | Op::AddDeviceLink { .. }
+            | Op::RemoveDeviceLink { .. } => return None,
+        }
+    }
+    Some(out)
+}
+
+/// The Properties feed equals its old function on every transaction of `tier`'s churned history,
+/// with five undos and five redos at its end. Returns how many transactions were compared.
+fn props_feed_agrees(tier: Tier) -> usize {
+    let mut g = generate(tier, Variant::Churned).unwrap();
+    for undo in [true, true, true, true, true, false, false, false, false, false] {
+        let r = if undo { g.ledger.undo_at(Author::User, None) } else { g.ledger.redo_at(Author::User, None) };
+        r.unwrap();
+    }
+    assert_eq!(g.ledger.base(), 0, "the corpus replays from the empty document");
+    let metrics = std::sync::Arc::new(ecad_electrical::text_style::fonts::FixedWidth);
+    let mut views = Views::new(EngineInputs { metrics });
+    let mut doc = Document::default();
+    let (mut checked, mut some) = (0, 0);
+    for tx in g.ledger.log() {
+        let old = old_props_touched(&doc, &tx.ops);
+        let pending = views.begin(&doc, &tx.ops);
+        for op in &tx.ops {
+            op.apply(&mut doc).unwrap();
+        }
+        let feed = views.finish(&doc, &tx.ops, pending).props;
+        assert_eq!(feed, old, "{} transaction {} {:?}", tier.name, tx.seq, tx.label);
+        some += usize::from(feed.is_some_and(|s| !s.is_empty()));
+        checked += 1;
+    }
+    assert!(some > 0, "some transaction names objects");
+    checked
+}
+
+/// `PropsFeed` on the small tier's recorded history.
+#[test]
+fn the_props_feed_matches_its_old_function_on_the_small_corpus() {
+    let n = props_feed_agrees(tier("small").unwrap());
+    assert!(n > 10, "{n} transactions");
+}
+
+/// `PropsFeed` on the medium tier's recorded history (design 064 §10).
+#[test]
+#[ignore = "slow: generates the medium bench project"]
+fn the_props_feed_matches_its_old_function_on_the_medium_corpus() {
+    let n = props_feed_agrees(tier("medium").unwrap());
     assert!(n > 10, "{n} transactions");
 }

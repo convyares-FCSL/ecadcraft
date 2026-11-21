@@ -23,6 +23,7 @@ mod devices;
 mod frame;
 mod generated;
 mod pages;
+mod props;
 mod refs;
 mod tree;
 
@@ -38,6 +39,7 @@ pub use devices::{DevicesFeed, DevicesScope};
 pub use frame::{FrameScope, FrameView};
 pub use generated::{GeneratedScope, GeneratedView};
 pub use pages::{PagesScope, PagesView, points_pages};
+pub use props::{PropsFeed, PropsScope};
 pub use refs::{RefsScope, RefsView};
 pub use tree::{TreeFeed, TreeScope};
 
@@ -109,6 +111,7 @@ pub struct Pending {
     generated: GeneratedScope,
     tree: TreeScope,
     devices: DevicesScope,
+    props: PropsScope,
 }
 
 /// The views worked out for another document state ([`Views::detached`]): not kept, not
@@ -130,6 +133,7 @@ pub struct Views {
     // Stage 4: feeds for the change log.
     tree: TreeFeed,
     devices: DevicesFeed,
+    props: PropsFeed,
 }
 
 impl Views {
@@ -144,6 +148,7 @@ impl Views {
             generated: GeneratedView::default(),
             tree: TreeFeed,
             devices: DevicesFeed::default(),
+            props: PropsFeed::default(),
         }
     }
 
@@ -191,13 +196,14 @@ impl Views {
         note_view::<_, Inputs<'_>>(&self.generated, &cx, &mut pending.generated);
         note_view::<_, Inputs<'_>>(&self.tree, &cx, &mut pending.tree);
         note_view::<_, Inputs<'_>>(&self.devices, &cx, &mut pending.devices);
+        note_view::<_, Inputs<'_>>(&self.props, &cx, &mut pending.props);
         pending
     }
 
     /// After phase on the committed transaction's ops, then update every kept view, stage by
     /// stage, and merge their outcomes.
     pub fn finish(&mut self, after: &Document, tx_ops: &[Op], pending: Pending) -> Changes {
-        let Pending { mut refs, mut connectors, mut pages, mut frame, mut generated, mut tree, mut devices } = pending;
+        let Pending { mut refs, mut connectors, mut pages, mut frame, mut generated, mut tree, mut devices, mut props } = pending;
         let effects = Effects::of(tx_ops);
         let cx = NoteCx { doc: after, phase: Phase::After, effects: &effects };
         note_view::<_, Inputs<'_>>(&self.refs, &cx, &mut refs);
@@ -207,6 +213,7 @@ impl Views {
         note_view::<_, Inputs<'_>>(&self.generated, &cx, &mut generated);
         note_view::<_, Inputs<'_>>(&self.tree, &cx, &mut tree);
         note_view::<_, Inputs<'_>>(&self.devices, &cx, &mut devices);
+        note_view::<_, Inputs<'_>>(&self.props, &cx, &mut props);
         let inputs = Inputs { engine: &self.inputs, frame_page: self.frame.shown().map(|(p, _)| p) };
         let mut changes = Changes::default();
         // Stage 1: the indexes.
@@ -222,6 +229,8 @@ impl Views {
         merge(&mut changes, self.tree.update(after, tree, &inputs));
         merge(&mut changes, self.devices.update(after, devices, &inputs));
         changes.devices = self.devices.take();
+        merge(&mut changes, self.props.update(after, props, &inputs));
+        changes.props = self.props.take();
         if ecad_model::ledger::verify_mode() {
             changes.problems.extend(self.verify(after));
         }

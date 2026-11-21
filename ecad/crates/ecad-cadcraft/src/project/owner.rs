@@ -111,10 +111,8 @@ impl DocumentOwner for Project {
             self.events.record(EventKind::Refused, Some(c.command), head, Some(page), m.clone());
             return Verdict::Refuse(m);
         }
-        let props = crate::props::touched(self.ledger.document(), &t.ops);
         let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &t.ops));
         let outputs = self.outputs.as_ref().map(|o| o.scope(self.ledger.document(), &t.ops));
-        let n = t.ops.len();
         // Brief 052d (design 052 §5.4): the moved device symbols' contexts before the move.
         let moved = crate::proposals::before_move(self.ledger.document(), &t.ops);
         let pending = self.derived.begin(self.ledger.document(), &t.ops);
@@ -141,9 +139,8 @@ impl DocumentOwner for Project {
         // for a preview of one of them.
         self.update_checks(checks);
         let changed = self.update_outputs(outputs);
-        let props = self.with_numbered(props, n);
         let mut changes = self.finish_derived(pending);
-        pass_through(&mut changes, Old { pages: changed, props, echo: t.notes.clone() });
+        pass_through(&mut changes, Old { pages: changed, echo: t.notes.clone() });
         self.apply_changes(pg, c.command, changes, Path::Interactive { page });
         self.move_follow_up(pg, &moved, &label);
         self.sync_saved(pg);
@@ -313,7 +310,6 @@ impl Project {
         // The ops the undo or redo will apply, scoped as a commit's are (brief 014).
         let ops = if undo { self.ledger.undo_ops() } else { self.ledger.redo_ops() }.unwrap_or_default();
         let order_before = self.ledger.document().page_order.clone();
-        let props = crate::props::touched(self.ledger.document(), &ops);
         let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &ops));
         let outputs = self.outputs.as_ref().map(|o| o.scope(self.ledger.document(), &ops));
         // Undoing an issued revision stops and asks first (owner answer Q7).
@@ -351,7 +347,7 @@ impl Project {
                 self.update_checks(checks);
                 let pages = self.update_outputs(outputs);
                 let mut changes = self.finish_derived(pending);
-                pass_through(&mut changes, Old { pages, props, echo: Vec::new() });
+                pass_through(&mut changes, Old { pages, echo: Vec::new() });
                 self.apply_changes(pg, command, changes, Path::History { order_before: &order_before });
                 Ok(Some(label))
             }
