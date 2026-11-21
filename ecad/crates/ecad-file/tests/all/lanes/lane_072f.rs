@@ -41,6 +41,10 @@ fn a_continuation_device_is_a_read_error() {
     let (_, hi) = ecad_file::schema::SNAPSHOT_EVERY_RANGE;
     let p = dir.path("old.ecad");
     ProjectV2::create(Store::create(&p).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, hi).unwrap();
-    let err = ProjectV2::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).err().map(|e| e.to_string()).unwrap_or_default();
+    // A row or chunk that does not read is damage: the file opens read-only, naming it.
+    let err = match ProjectV2::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER) {
+        Err(e) => e.to_string(),
+        Ok(o) => o.project.read_only().unwrap_or_default().to_string(),
+    };
     assert!(err.contains("continuation"), "a read error naming it: {err:?}");
 }

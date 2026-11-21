@@ -215,8 +215,13 @@ impl H {
     }
 
     pub fn symbol_item(&mut self, c: DeviceId) -> ecad_model::ItemId {
+        self.subject_item(ecad_model::Subject::Device(c))
+    }
+
+    /// The symbol item of `s`'s first representation (a device's, or a continuation aid's).
+    pub fn subject_item(&mut self, s: ecad_model::Subject) -> ecad_model::ItemId {
         let doc = self.doc();
-        let (_, r) = doc.representations_of(ecad_model::Subject::Device(c)).next().unwrap();
+        let (_, r) = doc.representations_of(s).next().unwrap();
         let item = r.items[0];
         assert!(matches!(doc.items[&item].kind, ItemKind::Symbol(_)));
         item

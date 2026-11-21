@@ -89,6 +89,7 @@ fn kind_title(kind: &str) -> &'static str {
         "cable" => "Cable",
         "reference" => "Reference",
         "box" => "Location box",
+        "continuation" => "Continuation",
         "link" => "Link",
         "device" => "Devices",
         _ => "Selection",

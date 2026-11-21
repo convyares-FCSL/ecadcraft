@@ -1396,9 +1396,14 @@ const CONTINUATION_KIND: &str = "continuation";
 pub const CONTINUATION_DEVICE: &str =
     "a device of kind `continuation`: continuations are drawing aids since format change 072 F (no conversion before v1)";
 
+/// Whether `d` is a device of kind [`CONTINUATION_KIND`] (an op's or a snapshot's).
+pub(crate) fn is_continuation_device(d: &m::Device) -> bool {
+    d.properties.get("kind").map(String::as_str) == Some(CONTINUATION_KIND)
+}
+
 /// `d`, unless it is a device of kind [`CONTINUATION_KIND`].
 fn not_continuation(d: m::Device) -> Result<m::Device, ConvertError> {
-    if d.properties.get("kind").map(String::as_str) == Some(CONTINUATION_KIND) {
+    if is_continuation_device(&d) {
         return Err(CONTINUATION_DEVICE.into());
     }
     Ok(d)

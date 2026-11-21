@@ -241,8 +241,8 @@ fn a_fixed_device_in_a_box_of_another_location_is_tied_to_multiple_locations() {
 // ---------------------------------------------------------------- F5: continuations as named points
 
 /// Continuation `name` at `at` on the active page: its device.
-fn continuation(h: &mut H, at: (f64, f64), name: &str) -> ecad_model::DeviceId {
-    id(&h.run("place", json!({"symbol": "continuation", "at": [at.0, at.1], "name": name})).unwrap(), "component")
+fn continuation(h: &mut H, at: (f64, f64), name: &str) -> ecad_model::AidId {
+    id(&h.run("place", json!({"symbol": "continuation", "at": [at.0, at.1], "name": name})).unwrap(), "aid")
 }
 
 /// The wires' end pairs, each sorted.
@@ -306,7 +306,7 @@ fn renaming_a_continuation_re_forms_the_wires_through_it() {
     want.sort();
     assert_eq!(wire_ends(&mut h), [want]);
     let head = h.head();
-    h.run("setprop", json!({"component": k2.hex(), "key": "name", "value": "T2"})).unwrap();
+    h.run("setprop", json!({"aids": [k2.hex()], "key": "name", "value": "T2"})).unwrap();
     assert_eq!(h.head(), head + 1, "one transaction");
     assert!(wire_ends(&mut h).is_empty(), "the pair is broken: no wire");
     let lonely = h.run("checks", json!({"kinds": ["lonely-continuation"]})).unwrap();
@@ -317,9 +317,9 @@ fn renaming_a_continuation_re_forms_the_wires_through_it() {
     assert!(wire_ends(&mut h).is_empty(), "before page 2's line: no wire");
     h.cmdline("redo");
     assert_eq!(wire_ends(&mut h), [want], "redo draws page 2's line again");
-    h.run("setprop", json!({"component": k2.hex(), "key": "name", "value": "T2"})).unwrap();
+    h.run("setprop", json!({"aids": [k2.hex()], "key": "name", "value": "T2"})).unwrap();
     assert!(wire_ends(&mut h).is_empty());
-    h.run("setprop", json!({"component": k2.hex(), "key": "name", "value": "t1 "})).unwrap();
+    h.run("setprop", json!({"aids": [k2.hex()], "key": "name", "value": "t1 "})).unwrap();
     assert_eq!(wire_ends(&mut h), [want], "names compare trimmed, upper case");
     h.check();
 }

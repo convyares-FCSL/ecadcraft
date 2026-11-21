@@ -865,9 +865,10 @@ fn route_words(doc: &Document, r: RouteId) -> String {
 
 /// Where a connection point is shown first (book order).
 fn terminal_place(doc: &Document, t: TerminalId) -> (Option<PageId>, Option<Pt>) {
-    let Some(c) = doc.terminals.get(&t).and_then(|x| x.device()) else { return (None, None) };
+    // A device's point or a drawing aid's (a continuation's, design 072 §6.2).
+    let Some(owner) = doc.terminals.get(&t).map(|x| x.owner.subject()) else { return (None, None) };
     for page in &doc.page_order {
-        let shown = doc.representations_of(Subject::Device(c)).any(|(_, r)| r.page == *page);
+        let shown = doc.representations_of(owner).any(|(_, r)| r.page == *page);
         if shown && let Some(at) = ecad_model::derive::terminal_position(doc, *page, t) {
             return (Some(*page), Some(at));
         }

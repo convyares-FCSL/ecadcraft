@@ -490,7 +490,14 @@ fn parse_chunk(set: &ChunkSet, key: &str, body: &[u8]) -> Result<Parsed, FileErr
     let count = set.buckets.get(kind).copied().ok_or_else(|| FileError::ChunkKindUnknown(key.to_string()))?;
     Ok(match kind {
         "layer" => Parsed::Layer(typed(body, key, b, count)?),
-        "device" => Parsed::Device(typed(body, key, b, count)?),
+        "device" => {
+            let m: BTreeMap<DeviceId, Device> = typed(body, key, b, count)?;
+            // Design 072 §6.2: a continuation is a drawing aid; the old device form is not read.
+            if m.values().any(crate::records::is_continuation_device) {
+                return Err(FileError::ChunkJson { key: key.to_string(), error: crate::records::CONTINUATION_DEVICE.to_string() });
+            }
+            Parsed::Device(m)
+        }
         "terminal" => Parsed::Terminal(typed(body, key, b, count)?),
         "wire" => Parsed::Wire(typed(body, key, b, count)?),
         "cable" => Parsed::Cable(typed(body, key, b, count)?),
