@@ -101,7 +101,7 @@ impl Client {
                         let t: TerminalId = p.ids.fresh();
                         ops.push(Op::AddTerminal {
                             id: t,
-                            terminal: Terminal { component: device, label: Some((i + 1).to_string()), key: None, accepts: Default::default() },
+                            terminal: Terminal { owner: device.into(), label: Some((i + 1).to_string()), key: None, accepts: Default::default() },
                         });
                         cps.insert(t, Pt::new(*x, *y));
                         out.push(t);

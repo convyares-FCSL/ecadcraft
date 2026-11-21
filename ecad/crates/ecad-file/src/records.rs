@@ -219,7 +219,7 @@ pub struct Device {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Terminal {
-    pub component: DeviceId,
+    pub owner: m::TerminalOwner,
     pub label: Option<String>,
     pub key: Option<m::PointKey>,
     /// Design 072 F38: how many conductors it accepts, 1 to 64; left out at two.
@@ -1103,7 +1103,7 @@ impl From<&m::Device> for Device {
 
 impl From<&m::Terminal> for Terminal {
     fn from(t: &m::Terminal) -> Self {
-        Terminal { component: t.component, label: t.label.clone(), key: t.key.clone(), accepts: t.accepts }
+        Terminal { owner: t.owner, label: t.label.clone(), key: t.key.clone(), accepts: t.accepts }
     }
 }
 
@@ -1466,7 +1466,7 @@ impl From<Device> for m::Device {
 
 impl From<Terminal> for m::Terminal {
     fn from(t: Terminal) -> Self {
-        m::Terminal { component: t.component, label: t.label, key: t.key, accepts: t.accepts }
+        m::Terminal { owner: t.owner, label: t.label, key: t.key, accepts: t.accepts }
     }
 }
 

@@ -347,7 +347,9 @@ fn moving_equipment_beside_a_fan_moves_the_hidden_routes() {
         .devices
         .keys()
         .copied()
-        .find(|c| ecad_model::derive::terminal_positions(&doc, g.page).iter().any(|(t, _, at)| doc.terminals[t].component == *c && at.x > 30.0))
+        .find(|c| {
+            ecad_model::derive::terminal_positions(&doc, g.page).iter().any(|(t, _, at)| doc.terminals[t].device().unwrap() == *c && at.x > 30.0)
+        })
         .unwrap();
     let handles = g.h.rep_handles(g.page, right);
     g.h.run("move", json!({"handles": handles, "delta": [10, 0]})).unwrap();

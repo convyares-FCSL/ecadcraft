@@ -673,7 +673,7 @@ fn per_page_edits_touch_only_the_page_they_are_made_on() {
     r.h.run("connect", json!({"route": stub.hex(), "end": end, "terminal": r.k2[0].hex()})).unwrap();
     // Move K2 (its outline lines) down 20: Field's stub ends follow, Supply's routes do not.
     let doc = r.h.doc();
-    let k2 = doc.terminals[&r.k2[0]].component;
+    let k2 = doc.terminals[&r.k2[0]].device().unwrap();
     let handles = r.h.rep_handles(r.field, k2);
     r.h.run("move", json!({"handles": handles, "delta": [0, -20]})).unwrap();
     assert_eq!(r.h.doc().routes[&line], supply_route, "Supply's route untouched by the drag");

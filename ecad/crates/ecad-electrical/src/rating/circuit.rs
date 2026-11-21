@@ -306,7 +306,7 @@ pub(super) fn panel_temperature_at(doc: &Document, ctx: &mut Context, c: WireId)
     let mut locations: Vec<String> = Vec::new();
     if let Some(x) = doc.wires.get(&c) {
         for t in &x.ends {
-            let Some(comp) = doc.terminals.get(t).map(|t| t.component) else { continue };
+            let Some(comp) = doc.terminals.get(t).and_then(|t| t.device()) else { continue };
             // Brief 052: the device's stored location is an entry key; boxes match by key, and the
             // row shows the entry's code.
             let Some(loc) = crate::locations::resolve_with(doc, comp, &mut ctx.boxes).key.map(|l| l.trim().to_string()) else { continue };

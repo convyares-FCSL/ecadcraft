@@ -56,7 +56,7 @@ pub(crate) fn by_tag(d: &Document, t: &str) -> DeviceId {
 pub(crate) fn channel_points(d: &Document, card: DeviceId) -> BTreeMap<String, (String, TerminalId)> {
     d.terminals
         .iter()
-        .filter(|(_, t)| t.component == card && t.key.as_ref().map(ToString::to_string).as_deref().is_some_and(|k| k.starts_with('.')))
+        .filter(|(_, t)| t.device() == Some(card) && t.key.as_ref().map(ToString::to_string).as_deref().is_some_and(|k| k.starts_with('.')))
         .map(|(id, t)| (t.key.as_ref().map(ToString::to_string).unwrap_or_default(), (t.label.clone().unwrap_or_default(), *id)))
         .collect()
 }

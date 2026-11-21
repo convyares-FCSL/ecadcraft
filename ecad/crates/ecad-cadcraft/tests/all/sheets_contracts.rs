@@ -277,7 +277,7 @@ fn issuing_a_revision_names_the_log_point_and_reopens_as_it_was() {
         .map(|x| {
             let coil: ecad_model::DeviceId = id(&s.h.run("place", json!({"symbol": "coil", "at": [x, 200]})).unwrap(), "component");
             let doc = s.h.doc();
-            ecad_model::derive::terminal_positions(&doc, s.supply).into_iter().find(|(t, _, _)| doc.terminals[t].component == coil).unwrap().2
+            ecad_model::derive::terminal_positions(&doc, s.supply).into_iter().find(|(t, _, _)| doc.terminals[t].device().unwrap() == coil).unwrap().2
         })
         .collect();
     let e = s.h.run("issuerevision", json!({"description": "First issue"})).unwrap_err();
@@ -394,7 +394,8 @@ fn wire_and_reference_properties_follow_the_objects_they_name() {
     // A coil and a wire from its first connection point.
     let coil: ecad_model::DeviceId = id(&s.h.run("place", json!({"symbol": "coil", "at": [200, 150]})).unwrap(), "component");
     let doc = s.h.doc();
-    let (_, _, at) = ecad_model::derive::terminal_positions(&doc, s.supply).into_iter().find(|(t, _, _)| doc.terminals[t].component == coil).unwrap();
+    let (_, _, at) =
+        ecad_model::derive::terminal_positions(&doc, s.supply).into_iter().find(|(t, _, _)| doc.terminals[t].device().unwrap() == coil).unwrap();
     let w: WireId = id(&s.h.wire_pp(&[(at.x, at.y), (at.x + 40.0, at.y)]).unwrap(), "conductor");
     let route = s.h.route_handle(s.supply, w);
     let v = props_of(&mut s.h, s.supply, &[route]);

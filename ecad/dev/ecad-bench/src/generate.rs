@@ -381,7 +381,7 @@ pub fn generate(tier: Tier, variant: Variant) -> Result<Generated, String> {
                 let t: TerminalId = ids.fresh();
                 ops.push(Op::AddTerminal {
                     id: t,
-                    terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
+                    terminal: Terminal { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
                 });
                 keyed.push(t);
             }

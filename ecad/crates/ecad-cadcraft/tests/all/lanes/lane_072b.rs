@@ -579,7 +579,7 @@ fn a_connector_s_mating_is_stored_by_its_starter() {
     }
     // The field, not the symbol: with `mating` cleared, a mating half's pins have no side.
     let (_, c) = placed[0];
-    let pin = doc.terminals.iter().find(|(_, t)| t.component == c).map(|(t, _)| *t).unwrap();
+    let pin = doc.terminals.iter().find(|(_, t)| t.device() == Some(c)).map(|(t, _)| *t).unwrap();
     assert!(connectors::side_of(&doc, pin).is_some(), "a socket pin has its side");
     let mut d = doc.devices[&c].clone();
     if let DeviceType::Connector(x) = &mut d.device_type {

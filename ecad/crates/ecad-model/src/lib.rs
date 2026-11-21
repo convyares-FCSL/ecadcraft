@@ -72,8 +72,8 @@ pub use device::{DeviceGroup, DeviceType, TextField};
 pub use doc::{
     Accepts, Cable, Color, ContactMirror, ContentHash, Core, CoreLabel, CorePosition, Definition, Device, Document, End, Folder, Form, Item,
     ItemKind, Join, Layer, LengthUnit, MAX_CORE_LABEL, NotASlotText, Origin, Page, Primitive, ProjectSettings, Properties, Purpose, ReferenceStyle,
-    Representation, SlotText, Style, Subject, SymbolDefault, SymbolDefaultError, SymbolDefaults, SymbolInstance, Terminal, TerminalDef, TextHAlign,
-    TextSlot, TextVAlign, Wire,
+    Representation, SlotText, Style, Subject, SymbolDefault, SymbolDefaultError, SymbolDefaults, SymbolInstance, Terminal, TerminalDef,
+    TerminalOwner, TextHAlign, TextSlot, TextVAlign, Wire,
 };
 pub use error::{ModelError, Noun, ParseError, Parsed, Result};
 pub use geom::{Placement, Pt};

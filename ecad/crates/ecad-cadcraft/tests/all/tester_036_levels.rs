@@ -56,7 +56,7 @@ fn key(d: &Document, t: TerminalId) -> String {
 fn positions(d: &Document, strip: DeviceId) -> BTreeMap<String, BTreeMap<String, TerminalId>> {
     let mut out: BTreeMap<String, BTreeMap<String, TerminalId>> = BTreeMap::new();
     for (tid, t) in &d.terminals {
-        if t.component == strip {
+        if t.device() == Some(strip) {
             out.entry(t.label.clone().unwrap_or_default()).or_default().insert(t.key.as_ref().map(ToString::to_string).unwrap_or_default(), *tid);
         }
     }
@@ -203,7 +203,7 @@ fn read_everything(h: &mut H) {
 
 /// The representation (symbol) that shows terminal `t`, and its item.
 fn symbol_of(d: &Document, t: TerminalId) -> Option<(ecad_model::RepresentationId, ecad_model::ItemId, PageId)> {
-    let comp = d.terminals.get(&t)?.component;
+    let comp = d.terminals.get(&t)?.device()?;
     d.representations_of(Subject::Device(comp))
         .find(|(_, r)| r.connection_points.contains_key(&t))
         .and_then(|(rid, r)| Some((rid, *r.items.first()?, r.page)))
@@ -570,7 +570,7 @@ fn h_toposition_converts_a_fuse_device() {
     let mut m = fixture_m(0x7036_000A);
     let x2 = with_sensor(&mut m);
     let d0 = m.h.doc();
-    let ft: Vec<TerminalId> = d0.terminals.iter().filter(|(_, t)| t.component == m.fuse_dev).map(|(i, _)| *i).collect();
+    let ft: Vec<TerminalId> = d0.terminals.iter().filter(|(_, t)| t.device() == Some(m.fuse_dev)).map(|(i, _)| *i).collect();
     assert_eq!(ft.len(), 2);
     let conductors_of = |d: &Document, t: TerminalId| -> Vec<ecad_model::WireId> {
         let c = d.connectivity();

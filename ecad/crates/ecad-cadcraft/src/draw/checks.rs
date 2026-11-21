@@ -76,7 +76,7 @@ pub fn handles_of(p: &crate::Project, page: PageId, object: Object) -> Vec<cadcr
         }
         Object::Cable(k) => Subject::Cable(k),
         Object::Terminal(t) => match doc.terminals.get(&t) {
-            Some(x) => Subject::Device(x.component),
+            Some(x) => x.owner.subject(),
             None => return Vec::new(),
         },
         Object::None => return Vec::new(),

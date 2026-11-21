@@ -863,7 +863,7 @@ fn route_words(doc: &Document, r: RouteId) -> String {
 
 /// Where a connection point is shown first (book order).
 fn terminal_place(doc: &Document, t: TerminalId) -> (Option<PageId>, Option<Pt>) {
-    let Some(c) = doc.terminals.get(&t).map(|x| x.component) else { return (None, None) };
+    let Some(c) = doc.terminals.get(&t).and_then(|x| x.device()) else { return (None, None) };
     for page in &doc.page_order {
         let shown = doc.representations_of(Subject::Device(c)).any(|(_, r)| r.page == *page);
         if shown && let Some(at) = ecad_model::derive::terminal_position(doc, *page, t) {
@@ -897,11 +897,12 @@ pub fn net_checks(doc: &Document, id: NetKey, net: &NetData) -> Vec<Check> {
     let joined = wiring::joined_potentials(doc, net);
     if !joined.is_empty() {
         // Point at a continuation in it, when it has one.
-        let cont = net.terminals.iter().find(|t| doc.terminals.get(t).is_some_and(|x| kind_of(doc, x.component) == Some(CONTINUATION)));
+        let cont =
+            net.terminals.iter().find(|t| doc.terminals.get(t).is_some_and(|x| x.device().and_then(|c| kind_of(doc, c)) == Some(CONTINUATION)));
         let (page, at, object) = match cont {
             Some(t) => {
                 let (p, a) = terminal_place(doc, *t);
-                (p, a, doc.terminals.get(t).map_or(Object::None, |x| Object::Device(x.component)))
+                (p, a, doc.terminals.get(t).map_or(Object::None, |x| x.device().map_or(Object::None, Object::Device)))
             }
             None => (page, at, object),
         };
@@ -918,7 +919,7 @@ pub fn net_checks(doc: &Document, id: NetKey, net: &NetData) -> Vec<Check> {
     // A net with conductors, one connection point and no continuation.
     if !net.wires.is_empty() && net.terminals.len() == 1 && net.names.is_empty() {
         let t = net.terminals.first().copied();
-        let jc = t.and_then(|t| doc.terminals.get(&t)).map(|x| kind_of(doc, x.component));
+        let jc = t.and_then(|t| doc.terminals.get(&t)).map(|x| x.device().and_then(|c| kind_of(doc, c)));
         if !matches!(jc, Some(Some(CONTINUATION)))
             && let Some(t) = t
         {
@@ -949,8 +950,8 @@ pub fn net_checks(doc: &Document, id: NetKey, net: &NetData) -> Vec<Check> {
         }
         let cont = net.terminals.iter().find_map(|t| {
             let x = doc.terminals.get(t)?;
-            let c = doc.devices.get(&x.component)?;
-            (ecad_model::connectivity::continuation_key(&c.properties).as_ref() == Some(key)).then_some((*t, x.component))
+            let c = x.device().and_then(|c| doc.devices.get(&c))?;
+            (ecad_model::connectivity::continuation_key(&c.properties).as_ref() == Some(key)).then_some((*t, x.device()?))
         });
         let (p, a, o, which) = match cont {
             Some((t, c)) => {
@@ -1063,7 +1064,7 @@ pub fn page_checks(doc: &Document, page: PageId) -> Vec<Check> {
 /// spare connector pin, fuse output or card supply point may stay unwired without an
 /// `Unconnected` check. Every other check on it still runs.
 fn is_quiet_point(doc: &Document, t: TerminalId) -> bool {
-    let Some(c) = doc.terminals.get(&t).map(|x| x.component) else { return false };
+    let Some(c) = doc.terminals.get(&t).and_then(|x| x.device()) else { return false };
     doc.representations_of(Subject::Device(c)).any(|(_, r)| {
         let Some(s) = crate::devices::rep_starter(doc, r) else { return false };
         let Some((def, _)) = crate::devices::rep_definition(doc, r) else { return false };
@@ -1086,7 +1087,7 @@ pub fn terminal_checks(doc: &Document, t: TerminalId) -> Vec<Check> {
         let which = format!("{} takes {takes} conductors; {wired} are connected", wires::point_words(doc, t));
         out.push(Check { kind: Kind::OverCount, page, at, object: Object::Terminal(t), which, fix: None });
     }
-    if matches!(kind_of(doc, term.component), Some(CONTINUATION)) || doc.has_ends(t) || doc.routes_at(t).next().is_some() {
+    if matches!(term.device().and_then(|c| kind_of(doc, c)), Some(CONTINUATION)) || doc.has_ends(t) || doc.routes_at(t).next().is_some() {
         return out;
     }
     // Bridged inside its device to an attached point: connected.
@@ -1507,7 +1508,7 @@ impl Scope {
                 }
                 Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
                     self.terminals.insert(*id);
-                    self.devices.insert(terminal.component);
+                    self.devices.extend(terminal.device());
                     node(self, Node::Terminal(*id));
                 }
                 // Brief 048: another definition may bridge other points.
@@ -1791,7 +1792,7 @@ impl Scope {
     }
 
     fn component_of(&mut self, doc: &Document, t: TerminalId) {
-        if let Some(c) = doc.terminals.get(&t).map(|x| x.component) {
+        if let Some(c) = doc.terminals.get(&t).and_then(|x| x.device()) {
             self.devices.insert(c);
         }
     }

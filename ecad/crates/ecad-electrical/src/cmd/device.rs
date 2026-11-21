@@ -254,7 +254,7 @@ pub fn plan_addterminal(
     let mut after = r.clone();
     after.connection_points.insert(t, at);
     let ops = vec![
-        Op::AddTerminal { id: t, terminal: Terminal { component: c, label, key: None, accepts: Default::default() } },
+        Op::AddTerminal { id: t, terminal: Terminal { owner: c.into(), label, key: None, accepts: Default::default() } },
         Op::ModifyRepresentation { id: rid, before: r.clone(), after },
     ];
     Ok((t, ops))

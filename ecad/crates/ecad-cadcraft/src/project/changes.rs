@@ -476,7 +476,7 @@ impl Project {
                 Op::CreateWire { id, wire } | Op::DeleteWire { id, wire } | Op::ModifyWire { id, after: wire, .. } => {
                     props.insert(ecad_model::ObjectRef::Wire(*id));
                     // The devices at its ends show its net (brief 022).
-                    props.extend(wire.ends.iter().filter_map(|t| doc.terminals.get(t)).map(|t| ecad_model::ObjectRef::Device(t.component)));
+                    props.extend(wire.ends.iter().filter_map(|t| doc.terminals.get(t)).filter_map(|t| t.device()).map(ecad_model::ObjectRef::Device));
                 }
                 _ => {}
             }

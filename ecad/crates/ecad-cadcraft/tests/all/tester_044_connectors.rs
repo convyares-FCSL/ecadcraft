@@ -240,7 +240,7 @@ fn reps_on(d: &Document, c: DeviceId, page: PageId) -> Vec<RepresentationId> {
 
 /// The representation showing `t`.
 fn rep_of(d: &Document, t: TerminalId) -> RepresentationId {
-    let c = d.terminals[&t].component;
+    let c = d.terminals[&t].device().unwrap();
     d.representations_of(Subject::Device(c)).find(|(_, r)| r.connection_points.contains_key(&t)).map(|(rid, _)| rid).expect("shown")
 }
 
@@ -1431,7 +1431,7 @@ fn r12_hand_made_connectors_never_panic() {
         ops.push(Op::AddTerminal {
             id: TerminalId::from(0x7044_00c1_u128 << 64 | i as u128),
             terminal: ecad_model::Terminal {
-                component: x,
+                owner: x.into(),
                 label: label.map(str::to_string),
                 key: key.and_then(|k| k.parse().ok()),
                 accepts: Default::default(),
@@ -1442,7 +1442,7 @@ fn r12_hand_made_connectors_never_panic() {
         ops.push(Op::AddTerminal {
             id: TerminalId::from(0x7044_00c2_u128 << 64 | i),
             terminal: ecad_model::Terminal {
-                component: x,
+                owner: x.into(),
                 label: Some(format!("{}", 100 + i)),
                 key: Some(".p".parse().unwrap()),
                 accepts: Default::default(),

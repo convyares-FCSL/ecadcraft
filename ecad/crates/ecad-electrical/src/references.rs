@@ -825,11 +825,8 @@ fn terminal_on(doc: &Document, shown: &BTreeSet<ecad_model::TerminalId>, c: &eca
         return Some(name);
     }
     let term = doc.terminals.get(&t)?;
-    let comp = doc
-        .devices
-        .get(&term.component)
-        .and_then(|x| x.tag().map(str::to_string))
-        .unwrap_or_else(|| format!("{}…", term.component.hex().get(..8).unwrap_or_default()));
+    let c = term.device()?;
+    let comp = doc.devices.get(&c).and_then(|x| x.tag().map(str::to_string)).unwrap_or_else(|| format!("{}…", c.hex().get(..8).unwrap_or_default()));
     Some(format!("{comp}:{}", crate::terminal_types::terminal_name(doc, t)))
 }
 

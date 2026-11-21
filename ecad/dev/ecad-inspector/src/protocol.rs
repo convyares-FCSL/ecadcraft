@@ -427,6 +427,17 @@ fn tag_of(d: &ecad_model::Device) -> Option<&str> {
     d.tag()
 }
 
+/// The name of what owns a connection point: a device's tag, or a drawing aid's name.
+fn owner_name(d: &Document, owner: ecad_model::TerminalOwner) -> String {
+    match owner {
+        ecad_model::TerminalOwner::Device(c) => device_name(d, c),
+        ecad_model::TerminalOwner::Aid(a) => match d.aids.get(&a).and_then(|x| x.continuation_name()) {
+            Some(name) => format!("\u{2192}{name}"),
+            None => a.short(),
+        },
+    }
+}
+
 fn device_name(d: &Document, c: DeviceId) -> String {
     d.devices.get(&c).and_then(tag_of).map(str::to_string).unwrap_or_else(|| format!("({})", c.short()))
 }
@@ -435,7 +446,7 @@ fn point_name(d: &Document, t: TerminalId) -> String {
     match d.terminals.get(&t) {
         Some(term) => {
             let own = term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| t.short());
-            format!("{}:{own}", device_name(d, term.component))
+            format!("{}:{own}", owner_name(d, term.owner))
         }
         None => format!("({})", t.short()),
     }
@@ -720,7 +731,7 @@ fn cables(d: &Document) -> Vec<Value> {
                 if let Some(w) = m.wire().and_then(|w| d.wires.get(&w)) {
                     for (side, t) in ends.iter_mut().zip(w.ends.iter()) {
                         if let Some(term) = d.terminals.get(t) {
-                            side.insert(device_name(d, term.component));
+                            side.insert(owner_name(d, term.owner));
                         }
                     }
                 }

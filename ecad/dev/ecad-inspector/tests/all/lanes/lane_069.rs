@@ -89,10 +89,10 @@ fn every_op_ledger() -> Ledger {
     let mut comp_v = Device { definition: Some(def), ..Device::default() };
     comp_v.properties.insert("note".into(), "K1".into());
     let term: ecad_model::TerminalId = ids.fresh();
-    let term_v = Terminal { component: comp, label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() };
+    let term_v = Terminal { owner: comp.into(), label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() };
     // More connection points of the device, for the wires' other ends.
     let (term2, term3, term4): (ecad_model::TerminalId, ecad_model::TerminalId, ecad_model::TerminalId) = (ids.fresh(), ids.fresh(), ids.fresh());
-    let point = |label: &str| Terminal { component: comp, label: Some(label.into()), key: None, accepts: Default::default() };
+    let point = |label: &str| Terminal { owner: comp.into(), label: Some(label.into()), key: None, accepts: Default::default() };
     let sym: ecad_model::ItemId = ids.fresh();
     let sym_v = Item { page, style: style(layer), kind: ItemKind::Symbol(SymbolInstance { definition: def, placement: Placement::default() }) };
     let item: ecad_model::ItemId = ids.fresh();
@@ -200,7 +200,7 @@ fn every_op_ledger() -> Ledger {
             before: comp_v.clone(),
             after: Device { device_type: ecad_model::DeviceType::of_group(ecad_model::DeviceGroup::Motor), ..comp_v.clone() },
         },
-        Op::AddTerminal { id: ids.fresh(), terminal: Terminal { component: comp, label: None, key: None, accepts: Default::default() } },
+        Op::AddTerminal { id: ids.fresh(), terminal: Terminal { owner: comp.into(), label: None, key: None, accepts: Default::default() } },
         Op::RemoveTerminal { id: term, terminal: term_v.clone() },
         Op::LinkRepresentation { id: ids.fresh(), rep: rep_wire_v.clone() },
         Op::ModifyRepresentation { id: rep_wire, before: rep_wire_v.clone(), after: rep_after },

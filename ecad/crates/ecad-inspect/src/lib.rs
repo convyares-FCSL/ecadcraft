@@ -186,7 +186,7 @@ fn index(doc: &Document) -> Vec<Value> {
         push("device", format!("{:032x}", id.0), id.short(), label_of(doc, Subject::Device(*id)));
     }
     for (id, t) in &doc.terminals {
-        let owner = label_of(doc, Subject::Device(t.component));
+        let owner = label_of(doc, t.owner.subject());
         let name = t.label.clone().or_else(|| t.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| id.short());
         push("terminal", format!("{:032x}", id.0), id.short(), format!("{owner}:{name}"));
     }
@@ -364,7 +364,7 @@ mod tests {
         let (k, a, b, c): (DeviceId, TerminalId, TerminalId, TerminalId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
         let (w1, w2, net, c1, c2): (WireId, WireId, NetId, ConductorId, ConductorId) =
             (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
-        let point = |label: &str| Terminal { component: k, label: Some(label.into()), key: None, accepts: Default::default() };
+        let point = |label: &str| Terminal { owner: k.into(), label: Some(label.into()), key: None, accepts: Default::default() };
         let number = |n: &str| ecad_model::text::Text::new(n).ok().map(|text| ecad_model::wire::WireNumber { text, fixed: true });
         let ops = vec![
             Op::CreateDevice { id: k, device: Device::default().with_tag(Some("-K1")) },

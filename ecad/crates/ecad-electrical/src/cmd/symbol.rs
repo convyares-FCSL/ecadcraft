@@ -562,7 +562,7 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
         for nd in new.terminals.iter().filter(|nd| !old.terminals.iter().any(|td| td.key == nd.key)) {
             let t: TerminalId = ids.fresh();
             let key = if r.connection_points.is_empty() { nd.key.clone() } else { nd.label.clone().map_or_else(|| nd.key.clone(), PointKey::Def) };
-            ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: nd.label.clone(), key: Some(key), accepts: nd.accepts } });
+            ops.push(Op::AddTerminal { id: t, terminal: Terminal { owner: c.into(), label: nd.label.clone(), key: Some(key), accepts: nd.accepts } });
             if !r.connection_points.is_empty() {
                 cps.insert(t, nd.at);
             }
@@ -1133,7 +1133,7 @@ pub fn plan_place(
                 ops.push(Op::AddTerminal {
                     id: t,
                     terminal: Terminal {
-                        component: c,
+                        owner: c.into(),
                         label: td.label.clone(),
                         key: Some(td.label.clone().map_or_else(|| td.key.clone(), PointKey::Def)),
                         accepts: td.accepts,
@@ -1185,7 +1185,7 @@ pub fn plan_place(
                 let t: TerminalId = ids.fresh();
                 ops.push(Op::AddTerminal {
                     id: t,
-                    terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
+                    terminal: Terminal { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
                 });
             }
             ops.push(Op::AddItem { id: item, item: instance });

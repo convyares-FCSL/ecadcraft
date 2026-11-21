@@ -1242,7 +1242,7 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
             // Brief 028: a terminal relabelled (Remove + Add of one ID) is drawn by its device's
             // symbols only: their pages.
             Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
-                out.extend(doc.representations_of(Subject::Device(terminal.component)).map(|(_, r)| r.page));
+                out.extend(doc.representations_of(terminal.owner.subject()).map(|(_, r)| r.page));
             }
             Op::EmbedDefinition { id, .. } if !doc.definitions.contains_key(id) => {}
             // A page's own properties show in its frame only (brief 019); the references they

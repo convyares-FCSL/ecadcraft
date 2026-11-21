@@ -613,7 +613,7 @@ fn t13c_continue_refusals() {
         .ends
         .iter()
         .copied()
-        .find(|t| ecad_cadcraft::devices::tag_of(&doc, doc.terminals[t].component).is_some_and(|g| g.to_string().starts_with("-X5")));
+        .find(|t| ecad_cadcraft::devices::tag_of(&doc, doc.terminals[t].device().unwrap()).is_some_and(|g| g.to_string().starts_with("-X5")));
     let tp = x51.map(|t| f.h.terminal_pos(f.p2, t)).expect("X51's point");
     f.h.points_at(&[(tp.x, tp.y + 40.0)]);
     wire(&mut f.h, &[(tp.x, tp.y), (tp.x, tp.y + 40.0)], json!({}));
