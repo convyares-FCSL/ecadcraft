@@ -314,8 +314,6 @@ fn place_definition(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Re
     })
 }
 
-pub(crate) use ecad_electrical::cmd::prop::is_device_property;
-
 /// `symbols {query?}` (design 018 §8): the starter symbols and devices matching `query`; read only.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

@@ -21,6 +21,7 @@ pub use error::{CmdError, msg};
 
 pub mod accessories;
 pub mod bom;
+pub mod cable_look;
 pub mod cables;
 pub mod checks;
 pub mod cmd;

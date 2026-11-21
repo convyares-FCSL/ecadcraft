@@ -502,7 +502,7 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
             let fan = view.map.is_fan(k);
             let mut lines = with_view(cable_lines(doc, page, k), if fan { "View: fan" } else { "View: traditional" });
             if fan {
-                let d = crate::look::cable_on_page(doc, page, k, true, p.tolerance, &crate::look::font_width);
+                let d = ecad_electrical::cable_look::cable_on_page(doc, page, k, true, p.tolerance, &crate::look::font_width);
                 lines.extend(d.at_reference.iter().map(|w| format!("{} is attached at the reference end.", crate::slash::wire_name(doc, *w))));
             }
             // A tail, bend or label names its core second (design 009 §8).
@@ -657,7 +657,7 @@ fn cable_lines(doc: &Document, page: PageId, k: CableId) -> Vec<String> {
         .representations
         .iter()
         .filter(|(_, r)| r.page == page && r.subject == Subject::Cable(k) && r.role == ecad_model::Role::Reference)
-        .map(|(id, _)| format!("\"{}\"", crate::look::reference_text(doc, *id)))
+        .map(|(id, _)| format!("\"{}\"", ecad_electrical::cable_look::reference_text(doc, *id)))
         .collect();
     if !refs.is_empty() {
         lines.push(format!("References here: {}", refs.join(", ")));

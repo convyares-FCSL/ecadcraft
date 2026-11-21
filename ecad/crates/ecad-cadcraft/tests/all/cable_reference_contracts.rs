@@ -918,7 +918,7 @@ fn a_ten_thousand_wire_cable_continues_in_bounded_time() {
 
 /// The drawn flag outline and text anchor of `page`'s reference end of `cable` (traditional view).
 fn drawn_flag(h: &mut H, page: PageId, cable: CableId) -> (Vec<Pt>, Pt) {
-    use ecad_cadcraft::look::{Role, Shape};
+    use ecad_electrical::cable_look::{Role, Shape};
     let doc = h.doc();
     let drawings = ecad_cadcraft::views::drawings_on_page(&doc, page, &Default::default(), 1e-6);
     let d = drawings.get(&cable).expect("the cable is drawn");

@@ -16,6 +16,7 @@ pub mod device;
 pub mod device_link;
 pub mod level;
 pub mod location;
+pub mod merge;
 pub mod numbering;
 pub mod output;
 pub mod page_type;

@@ -17,8 +17,9 @@ use cadcraft_engine::ext::MarkShape;
 use cadcraft_engine::geom::Vec2;
 use common::{H, id};
 use ecad_cadcraft::interact::{hover_lines, overlay_marks};
-use ecad_cadcraft::look::{self, MarkerEnd, Role, Shape};
+use ecad_cadcraft::look;
 use ecad_cadcraft::views::{self, FanOnPage};
+use ecad_electrical::cable_look::{self, MarkerEnd, Role, Shape};
 use ecad_model::{
     CableId, Color, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId, Style, Subject, Transaction, WireId,
 };
@@ -502,7 +503,7 @@ fn h_one_sided_fan_stops_at_the_reference_end() {
     }
     // The flag points right, away from the cable.
     let flag = path(of_role(&fan, Role::Flag)[0]);
-    assert!(flag.iter().any(|p| p.x > 125.0 + (look::font_width(look::REFERENCE_PLACEHOLDER) * hh()) + 0.5 * hh() + 1e-9));
+    assert!(flag.iter().any(|p| p.x > 125.0 + (look::font_width(cable_look::REFERENCE_PLACEHOLDER) * hh()) + 0.5 * hh() + 1e-9));
     // No loose-end squares at x = 120.
     let uid = f.h.p(|p| p.pages[&f.page].uid).unwrap();
     let squares: Vec<Vec2> = f.h.p(|p| overlay_marks(p, uid)).into_iter().filter(|m| m.shape == MarkShape::Square).map(|m| m.at).collect();
@@ -664,17 +665,17 @@ fn m_hostile_geometry_never_panics() {
             connection_points: Default::default(),
         },
     );
-    let d = look::cable_on_page(&doc, page, k, true, 1e-6, &look::font_width);
+    let d = cable_look::cable_on_page(&doc, page, k, true, 1e-6, &look::font_width);
     assert!(d.is_fan());
     let (route, _) = crate::common::wire_line(&doc, wires[3], page).unwrap();
     doc.items.get_mut(&route).unwrap().kind = ItemKind::Primitive(Primitive::Line { a: Pt::new(-1e12, 15.0), b: Pt::new(f64::INFINITY, 15.0) });
-    let d = look::cable_on_page(&doc, page, k, true, 1e-6, &look::font_width);
+    let d = cable_look::cable_on_page(&doc, page, k, true, 1e-6, &look::font_width);
     assert!(!d.is_fan(), "drawn traditional when a value is not finite");
     // Two wires ending at the same point (pitch 0).
     let mut doc = h.doc();
     let (r1, _) = crate::common::wire_line(&doc, wires[1], page).unwrap();
     doc.items.get_mut(&r1).unwrap().kind = ItemKind::Primitive(Primitive::Line { a: Pt::new(0.0, 0.0), b: Pt::new(120.0, 0.0) });
-    let _ = look::cable_on_page(&doc, page, k, true, 1e-6, &look::font_width);
+    let _ = cable_look::cable_on_page(&doc, page, k, true, 1e-6, &look::font_width);
 }
 
 // --------------------------------------------------------------------------- review S2

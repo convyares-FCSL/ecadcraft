@@ -785,7 +785,7 @@ fn chunk_summary(p: &Project, pt: &Point, prev: &Named) -> Vec<String> {
     // Devices by tag, from the differing component chunks only (design 020 §8.3: at most three
     // named changes).
     let comp: Vec<&String> = model.iter().copied().filter(|k| k.starts_with("model:device:")).collect();
-    let named = if comp.is_empty() || comp.len() > 8 { None } else { device_changes(&r, &a, &b, &comp) };
+    let named = if comp.is_empty() || comp.len() > 8 { None } else { ecad_file::history::device_changes(&r, &a, &b, &comp) };
     match named {
         Some(lines) => out.extend(lines),
         None if !comp.is_empty() => out.push("devices changed".into()),
@@ -795,46 +795,6 @@ fn chunk_summary(p: &Project, pt: &Point, prev: &Named) -> Vec<String> {
         out.push("wiring changed".into());
     }
     out
-}
-
-/// The devices added, removed and changed between two snapshots, read from their differing
-/// component chunks only: `-K05 added`, at most three named, then how many more.
-fn device_changes(
-    r: &ecad_file::Reader, a: &ecad_file::schema::VersionRecord, b: &ecad_file::schema::VersionRecord, keys: &[&String],
-) -> Option<Vec<String>> {
-    use ecad_file::chunks::{ChunkSet, devices_of};
-    let load = |v: &ecad_file::schema::VersionRecord| -> Option<BTreeMap<ecad_model::DeviceId, ecad_model::Device>> {
-        let set = ChunkSet::from_record(&v.chunks).ok()?;
-        let mut out = BTreeMap::new();
-        for k in keys {
-            let Some(h) = v.chunks.get(*k) else { continue };
-            let hash = ecad_file::chain::parse_hex(h)?;
-            let body = r.chunk_body(&hash).ok()?;
-            out.extend(devices_of(&set, k, &body).ok()?);
-        }
-        Some(out)
-    };
-    let (ca, cb) = (load(a)?, load(b)?);
-    let tag = |c: &ecad_model::Device| c.tag().unwrap_or("a device").to_string();
-    let mut lines: Vec<String> = Vec::new();
-    for (id, c) in &cb {
-        match ca.get(id) {
-            None => lines.push(format!("{} added", tag(c))),
-            Some(old) if old != c => lines.push(format!("{} changed", tag(c))),
-            Some(_) => {}
-        }
-    }
-    for (id, c) in &ca {
-        if !cb.contains_key(id) {
-            lines.push(format!("{} removed", tag(c)));
-        }
-    }
-    let more = lines.len().saturating_sub(3);
-    lines.truncate(3);
-    if more > 0 {
-        lines.push(format!("{more} more device{} changed", if more == 1 { "" } else { "s" }));
-    }
-    Some(lines)
 }
 
 // ---------------------------------------------------------------- the commands

@@ -170,9 +170,9 @@ fn tails(h: &mut H, page: PageId, k: CableId) -> Vec<Vec<Pt>> {
     let views::FanOnPage::Drawn(f) = views::fan_on_page(&doc, page, k, 1e-6) else { return Vec::new() };
     f.parts
         .iter()
-        .filter(|p| p.role == ecad_cadcraft::look::Role::Tail)
+        .filter(|p| p.role == ecad_electrical::cable_look::Role::Tail)
         .filter_map(|p| match &p.shape {
-            ecad_cadcraft::look::Shape::Path { points, .. } => Some(points.clone()),
+            ecad_electrical::cable_look::Shape::Path { points, .. } => Some(points.clone()),
             _ => None,
         })
         .collect()
@@ -832,7 +832,7 @@ fn ac3_fan_lengths_are_capped_at_forty_percent() {
         assert!((tail[0].y - tail[1].y).abs() < 1e-9, "horizontal: {tail:?}");
         // At least tail-min; the core level with the join leaves the spine straight, so its tail
         // also runs the bend radius (owner request of 2026-11-07).
-        assert!(tail[0].dist(tail[1]) >= ecad_cadcraft::look::TAIL_MIN - 1e-9, "{tail:?}");
+        assert!(tail[0].dist(tail[1]) >= ecad_electrical::cable_look::TAIL_MIN - 1e-9, "{tail:?}");
     }
     h.check();
 }
