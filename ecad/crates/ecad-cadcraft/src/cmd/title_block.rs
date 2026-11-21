@@ -142,7 +142,7 @@ impl Command for TitleblocksParams {
 fn block_json(doc: &Document, id: &StyleRef, spec: &SheetSpec) -> Result<Value, CmdError> {
     let cat = &crate::styles::frame::CATALOGUE;
     let row = styles::rows(doc, cat).into_iter().find(|r| r.id == *id).ok_or(CmdError::refused(NOT_A_FRAME))?;
-    let mut v = crate::cmd::style::style_json(doc, cat, &row, false);
+    let mut v = ecad_electrical::cmd::style::style_json(doc, cat, &row, false);
     let layout = layout_of(doc, id, spec);
     v["builtin"] = json!(row.layer == Layer::Builtin);
     v["body"] = serde_json::to_value(&layout).map_err(|e| CmdError::refused(e.to_string()))?;

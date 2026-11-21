@@ -24,8 +24,8 @@ use crate::cmd::input::{Command, Point, Typed};
 use crate::cmd::{err, on_any_page, on_project, plain_style};
 pub use crate::connectors::strip_terminal_at;
 pub use crate::connectors::{Land, plan_land};
+use crate::strips::StripData;
 pub use crate::strips::terminal_words;
-use crate::strips::{self, StripData, TermRow};
 use crate::terminal_types as tt;
 use crate::wires::{ON_WIRE, OnRoute};
 
@@ -360,195 +360,6 @@ impl Command for BridgeParams {
 
 // ---------------------------------------------------------------- reads (§10)
 
-/// Put `v` under `key` in `o` when it is there (absent keys are left out, never null).
-fn put<T: serde::Serialize>(o: &mut serde_json::Map<String, Value>, key: &str, v: Option<T>) {
-    if let Some(v) = v {
-        o.insert(key.into(), json!(v));
-    }
-}
-
-/// A side cell as JSON: `conductor`, and `target`, `wire` (and outside `cable`, `core`) when known.
-fn side_json(c: &strips::SideCell, outside: bool) -> Value {
-    let mut o = serde_json::Map::new();
-    put(&mut o, "target", c.target.as_ref());
-    put(&mut o, "wire", c.wire.as_ref());
-    if outside {
-        put(&mut o, "cable", c.cable.as_ref().map(|(_, t)| t.clone().unwrap_or_else(|| "?".into())));
-        put(&mut o, "core", c.core.as_ref());
-    }
-    o.insert("conductor".into(), json!(c.conductor.hex()));
-    Value::Object(o)
-}
-
-/// The terminal plan's fields (design 036 §9): the row model the terminal manager (2.6, the U3
-/// table) and strip pages (1.8) draw. Each is `(group, key, editable, the command that writes it)`;
-/// the groups mirror the strip: `inside` | `strip` | `outside`, and `either` for the row's place.
-pub const PLAN_FIELDS: &[(&str, &str, bool, Option<&str>)] = &[
-    ("inside", "inside[].target", false, None),
-    ("inside", "inside[].wire", false, None),
-    ("inside", "inside[].conductor", false, None),
-    ("strip", "position", true, Some("termlabel {position}")),
-    ("strip", "level", false, None),
-    ("strip", "level_name", false, None),
-    ("strip", "label", true, Some("termlabel {text}")),
-    ("strip", "type", false, None),
-    ("strip", "type_name", false, None),
-    ("strip", "state", false, None),
-    ("strip", "rating", true, Some("setprop rating.<position>")),
-    ("strip", "links", true, Some("jumper")),
-    ("strip", "internal_bridge", false, None),
-    ("strip", "breaks", false, None),
-    ("strip", "bridge_group", false, None),
-    ("strip", "marker", true, Some("accessory")),
-    ("outside", "outside[].target", false, None),
-    ("outside", "outside[].wire", false, None),
-    ("outside", "outside[].cable", false, None),
-    ("outside", "outside[].core", false, None),
-    ("outside", "outside[].conductor", false, None),
-    ("either", "place", false, None),
-    ("either", "terminal", false, None),
-];
-
-/// [`PLAN_FIELDS`] as JSON: `[{group, key, editable, command?}]`.
-pub fn plan_fields_json() -> Value {
-    Value::Array(
-        PLAN_FIELDS
-            .iter()
-            .map(|(g, k, e, c)| {
-                let mut v = json!({"group": g, "key": k, "editable": e});
-                if let Some(c) = c {
-                    v["command"] = json!(c);
-                }
-                v
-            })
-            .collect(),
-    )
-}
-
-/// One plan row as JSON (the keys 027 exports; design 028 §10, brief 036 §9): `label` is the shown
-/// label (the position for a one-level position, as before); `type` keeps 028's `feed-through` and
-/// `pe` and is the type code otherwise.
-pub fn row_json(r: &TermRow, style: ecad_model::ReferenceStyle) -> Value {
-    let mut o = serde_json::Map::new();
-    put(&mut o, "terminal", r.terminal.map(|t| t.hex()));
-    put(&mut o, "out", r.out.map(|t| t.hex()));
-    o.insert("label".into(), json!(r.shown));
-    o.insert("position".into(), json!(r.label));
-    o.insert("level".into(), json!(r.level));
-    o.insert("level_name".into(), json!(r.level_name));
-    let ty = match r.ty.code {
-        "ft" => "feed-through",
-        "pe" => "pe",
-        c => c,
-    };
-    o.insert("type".into(), json!(ty));
-    o.insert("type_name".into(), json!(r.ty.name));
-    o.insert("state".into(), json!(r.state()));
-    o.insert("label_overridden".into(), json!(r.label_overridden));
-    o.insert("breaks".into(), json!(r.breaks()));
-    put(&mut o, "rating", r.rating.as_ref());
-    put(&mut o, "internal_bridge", r.internal_bridge);
-    o.insert("inside".into(), Value::Array(r.inside.iter().map(|c| side_json(c, false)).collect()));
-    o.insert("outside".into(), Value::Array(r.outside.iter().map(|c| side_json(c, true)).collect()));
-    put(&mut o, "bridge_group", r.bridge_group);
-    put(&mut o, "place", r.place.as_ref().map(|p| p.text(style)));
-    let mut editable = vec!["position", "label", "links", "marker"];
-    if r.breaks() {
-        editable.push("rating");
-    }
-    o.insert("editable".into(), json!(editable));
-    Value::Object(o)
-}
-
-/// A gap row as JSON (design 030 §7.2).
-fn gap_json(s: &StripData, gap: &str, a: crate::accessories::Acc) -> Value {
-    let mut o = serde_json::Map::new();
-    o.insert("kind".into(), json!("accessory"));
-    o.insert("state".into(), json!("accessory"));
-    o.insert("accessory".into(), json!(a.key()));
-    o.insert("gap".into(), json!(gap));
-    put(&mut o, "part_number", s.acc.gap_part(a, crate::outputs::gap_pe(s, gap)));
-    put(&mut o, "maker", s.acc.makers.get(a.key()));
-    o.insert("terminal".into(), Value::Null);
-    o.insert("label".into(), Value::Null);
-    Value::Object(o)
-}
-
-/// One strip as JSON with plan rows `first..end` of it (`first_row` when it does not start at
-/// 0). With `accessories` (brief 030) every row has `kind`, gap rows are in, terminal rows carry
-/// `marker` and `links`, and the strip carries `accessories` and `links`; without, 028's rows.
-pub fn strip_json(s: &StripData, style: ecad_model::ReferenceStyle, first: usize, end: usize, accessories: bool) -> Value {
-    let mut o = serde_json::Map::new();
-    o.insert("strip".into(), json!(s.component.hex()));
-    o.insert("tag".into(), json!(s.tag));
-    put(&mut o, "location", s.location.as_ref());
-    put(&mut o, "offered", s.offer.map(|x| x.text()));
-    o.insert("drawn".into(), json!(s.drawn));
-    o.insert("spare".into(), json!(s.spare));
-    // Brief 036: positions per type, with their BOM part.
-    let types: Vec<Value> = s
-        .types
-        .iter()
-        .map(|t| {
-            let mut v = json!({"code": t.ty.code, "name": t.ty.name, "drawn": t.drawn, "spare": t.spare, "description": t.description});
-            if let Some(pn) = &t.part_number {
-                v["part_number"] = json!(pn);
-            }
-            v
-        })
-        .collect();
-    o.insert("types".into(), Value::Array(types));
-    if first > 0 {
-        o.insert("first_row".into(), json!(first));
-    }
-    let plan = s.plan(accessories);
-    let rows: Vec<Value> = plan
-        .get(first..end)
-        .unwrap_or_default()
-        .iter()
-        .map(|item| match item {
-            strips::PlanItem::Gap { gap, acc } => gap_json(s, gap, *acc),
-            strips::PlanItem::Term(i, r) => {
-                let mut v = row_json(r, style);
-                if accessories {
-                    v["kind"] = json!("terminal");
-                    v["marker"] = json!(s.acc.markers.contains(&r.label));
-                    let links: Vec<Value> =
-                        s.links_at(*i).iter().filter(|(_, on)| *on).map(|(l, _)| json!({"link": l.n, "lane": l.lane, "level": l.level})).collect();
-                    v["links"] = Value::Array(links);
-                }
-                v
-            }
-        })
-        .collect();
-    o.insert("rows".into(), Value::Array(rows));
-    if accessories {
-        let counts: serde_json::Map<String, Value> =
-            crate::accessories::Acc::ALL.iter().map(|a| (a.key().to_string(), json!(s.acc.count(*a)))).collect();
-        o.insert("accessories".into(), Value::Object(counts));
-        let links: Vec<Value> = s
-            .acc
-            .links
-            .iter()
-            .map(|l| {
-                let mut v = json!({"link": l.n, "positions": l.text, "span": l.span, "lane": l.lane, "bars": l.bars, "level": l.level});
-                if let Some((lo, hi)) = l.cross {
-                    v["levels"] = json!([lo, hi]);
-                }
-                if let Some(pn) = &l.part_number {
-                    v["part_number"] = json!(pn);
-                }
-                if let Some(m) = &l.maker {
-                    v["maker"] = json!(m);
-                }
-                v
-            })
-            .collect();
-        o.insert("links".into(), Value::Array(links));
-    }
-    Value::Object(o)
-}
-
 /// `stripplan {strip?, limit?, after?, accessories?}` (read only): the strips in tag order (or
 /// one), paged by rows: `after` rows are skipped and at most `limit` returned, a strip split across
 /// pages carrying `first_row`; `total` counts the rows, `next` is the next `after`.
@@ -585,9 +396,12 @@ impl Command for StripplanParams {
             };
             let lens: Vec<usize> = shown.iter().map(|d| if accessories { d.rows.len() + d.acc.gap_rows() } else { d.rows.len() }).collect();
             let page = rules::plan_page(&lens, after, limit);
-            let out: Vec<Value> =
-                page.parts.iter().filter_map(|(i, first, end)| shown.get(*i).map(|d| strip_json(d, style, *first, *end, accessories))).collect();
-            let mut v = json!({"strips": out, "total": page.total, "fields": plan_fields_json()});
+            let out: Vec<Value> = page
+                .parts
+                .iter()
+                .filter_map(|(i, first, end)| shown.get(*i).map(|d| rules::strip_json(d, style, *first, *end, accessories)))
+                .collect();
+            let mut v = json!({"strips": out, "total": page.total, "fields": rules::plan_fields_json()});
             if let Some(n) = page.next {
                 v["next"] = json!(n);
             }
@@ -620,14 +434,14 @@ impl Command for CablecoresParams {
                 let w = row.members.get(i).copied();
                 let r = w.and_then(wire);
                 let mut o = serde_json::Map::new();
-                put(&mut o, "label", label);
+                rules::put(&mut o, "label", label);
                 o.insert("state".into(), json!(state));
-                put(&mut o, "conductor", w.map(|w| w.hex()));
-                put(&mut o, "wire", r.as_ref().and_then(|r| r.wire_number.clone()));
+                rules::put(&mut o, "conductor", w.map(|w| w.hex()));
+                rules::put(&mut o, "wire", r.as_ref().and_then(|r| r.wire_number.clone()));
                 // Brief 032: a core is a chain of members through continuations, From to To.
                 let (from, to) = o_chain(i);
-                put(&mut o, "from", from);
-                put(&mut o, "to", to);
+                rules::put(&mut o, "from", from);
+                rules::put(&mut o, "to", to);
                 Value::Object(o)
             };
             // Brief 032: the rows are the cable's core chains, each with its stored label.
@@ -652,11 +466,11 @@ impl Command for CablecoresParams {
             let over: Vec<Value> = count.over.iter().map(|i| member_json(*i, stored(*i), "over")).collect();
             let mut v = serde_json::Map::new();
             v.insert("cable".into(), json!(k.hex()));
-            put(&mut v, "tag", row.tag.as_ref());
-            put(&mut v, "offer", count.offer_text.as_ref());
-            put(&mut v, "source", count.source.map(|s| s.word()));
+            rules::put(&mut v, "tag", row.tag.as_ref());
+            rules::put(&mut v, "offer", count.offer_text.as_ref());
+            rules::put(&mut v, "source", count.source.map(|s| s.word()));
             v.insert("used".into(), json!(count.used()));
-            put(&mut v, "spare", count.offer.as_ref().map(|_| count.spare.clone()));
+            rules::put(&mut v, "spare", count.offer.as_ref().map(|_| count.spare.clone()));
             v.insert("cores".into(), Value::Array(cores));
             v.insert("over".into(), Value::Array(over));
             Ok(Value::Object(v))

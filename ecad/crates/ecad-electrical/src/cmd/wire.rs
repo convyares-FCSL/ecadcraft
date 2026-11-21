@@ -3,6 +3,7 @@
 //! Each function reads the document and returns the ops to commit and what to report.
 
 use ecad_model::units::Radians;
+use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::connectivity::{CONTINUATION, KIND, NAME};
@@ -746,4 +747,40 @@ pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<
         },
         _ => Ok(None),
     }
+}
+
+pub fn net_json(n: &NetView) -> Value {
+    let cat = |c: &CategoryName| json!({"id": c.id, "name": c.name});
+    let mut out = json!({
+        "number": n.number,
+        "fixed": n.fixed,
+        "potential": n.potential,
+        "category": n.category.as_ref().map(cat),
+        "conductors": n.wires.iter().map(|c| c.hex()).collect::<Vec<_>>(),
+        "points": n.points.iter().map(|(t, label)| json!({"terminal": t.hex(), "label": label})).collect::<Vec<_>>(),
+        "continuations": n.continuations,
+        "pages": n.pages.iter().map(|(p, c)| json!({"page": p, "column": c})).collect::<Vec<_>>(),
+    });
+    if let Some(list) = &n.categories {
+        out["categories"] = json!(list.iter().map(cat).collect::<Vec<_>>());
+    }
+    out
+}
+
+/// The project's wiring settings as `wiresettings` shows them (the label rule as resolved).
+pub fn settings_json(doc: &Document) -> Value {
+    let w = &doc.settings.wiring;
+    json!({
+        "scheme": w.scheme.name(),
+        "colour_style": ecad_model::words::Word::word(w.colour_style()),
+        "label_height": crate::cmd::sheet::wire_label_height(doc),
+        "label_rule": wires::label_rule_word(doc),
+        "label_min_length": wires::label_min_length(doc),
+        "digits": w.digits(),
+        "number_by": ecad_model::Word::word(w.number_by),
+        "unclassified_prefix": w.unclassified_prefix,
+        "potentials": w.potentials.iter().map(|p| json!({
+            "name": p.name, "prefix": p.prefix, "numbered": p.numbered,
+        })).collect::<Vec<_>>(),
+    })
 }

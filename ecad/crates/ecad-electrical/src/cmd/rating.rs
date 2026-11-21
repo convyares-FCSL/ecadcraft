@@ -3,10 +3,12 @@
 //! `ratingtable` writes. The engine crate's shims read the files, commit the ops and answer in
 //! JSON.
 
+use crate::rating::Rating;
 use ecad_model::style::{StyleLayer, StyleRecord, StyleRef, is_name};
 use ecad_model::units::{Amps, Celsius, Percent, Volts};
 use ecad_model::wire::{InstallMethod, SupplySystem};
 use ecad_model::{CableId, DeviceId, Document, IdAllocator, ObjectRef, Op, Wire, WireId, Word};
+use serde_json::{Value, json};
 
 use crate::error::CmdError;
 use crate::rating::{self, Basis, RatedSubject, dataset, parse};
@@ -408,4 +410,35 @@ pub fn plan_table(doc: &Document, ids: &mut IdAllocator, w: &TableWrite) -> Resu
         vec![Op::SetStyle { layer: w.layer, catalogue: cat.catalogue, id: id.clone(), before, after: Some(rec) }]
     };
     Ok(TablePlan { ops, id, rows, odd: data.odd(), label })
+}
+
+/// One result as `ratings` returns it (design 057 §8.2): the object the panel shows.
+pub fn rating_json(doc: &Document, r: &Rating) -> Value {
+    let subject = match r.subject {
+        RatedSubject::Wire(c) => json!({"wire": r.subject.words(doc), "conductor": c.hex()}),
+        RatedSubject::Cable(k) => json!({"cable": r.subject.words(doc), "id": k.hex()}),
+    };
+    let factors: Vec<Value> = r.factors.iter().map(|f| json!({"name": f.name, "factor": f.factor, "input": f.input, "from": f.from})).collect();
+    let device = r.device.as_ref().map(|d| json!({"tag": d.tag, "in": d.amps, "how": d.how.word()}));
+    let load = r.load.map(|l| json!({"amps": l.amps, "from": if l.from == rating::load::LoadFrom::Typed { "typed" } else { "power" }}));
+    let vd = r.voltdrop.as_ref().map(|v| {
+        json!({"volts": v.volts, "percent": v.percent, "shown": format!("{} %", rating::fmt_percent(v.percent)), "amps": v.amps, "why": v.why, "limit": v.limit})
+    });
+    let kinds: Vec<&str> = rating::rows(doc, r).iter().map(|c| c.kind.name()).collect();
+    json!({
+        "subject": subject,
+        "basis": r.basis.word(),
+        "rated": r.rated.map(|(a, at)| json!({"amps": a, "at": at})),
+        "table_value": r.table_value.map(|(a, size, m)| json!({"amps": a, "size": size, "method": m})),
+        "table": r.table.as_ref().map(|(n, src)| json!({"name": n, "source": src})),
+        "factors": factors,
+        "iz": r.iz,
+        "iz_shown": r.iz.map(|x| format!("{} A", rating::fmt_amps(x, r.device.as_ref().and_then(|d| d.amps)))),
+        "summary": r.summary(),
+        "device": device,
+        "load": load,
+        "voltdrop": vd,
+        "size": r.size,
+        "checks": kinds,
+    })
 }

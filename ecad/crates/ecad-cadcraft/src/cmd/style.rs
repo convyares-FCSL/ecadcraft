@@ -17,16 +17,15 @@ use std::collections::BTreeMap;
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
 use ecad_electrical::cmd::style::{self as rules, FieldInput, StandardChange, StyleEdit};
-use ecad_model::Document;
 use schemars::JsonSchema;
 use serde::Deserialize;
-use serde_json::{Map, Number, Value, json};
+use serde_json::{Number, Value, json};
 
 use crate::cmd::err;
 use crate::cmd::input::{Command, Typed};
 use crate::cmd::{on_any_page, on_project};
 use crate::defaults;
-use crate::styles::{self, Catalogue, Layer};
+use crate::styles::{self, Layer};
 pub use ecad_electrical::cmd::style::{
     BUILTIN_KEPT, IEC, NEEDS_NAME, NOTHING_TO_COPY, STANDARD_FIRST, STYLE_NEEDS_NAME, field_rule, rewrite_users, standard_counts, users_words,
 };
@@ -73,68 +72,6 @@ layer?: \"project\"|\"standard\"} (one transaction)",
 // ---------------------------------------------------------------------------------------------
 // Reading
 
-/// The standard as `standard {}` returns it (design 050 §6.1).
-pub fn standard_json(doc: &Document) -> Value {
-    match &doc.standard {
-        None => json!({"name": IEC, "id": null}),
-        Some(s) => {
-            let styles: Map<String, Value> = s.styles.iter().map(|(c, m)| (c.to_string(), json!(m.len()))).collect();
-            json!({
-                "name": s.header.name,
-                "id": s.header.id.hex(),
-                "based_on": s.header.based_on,
-                "origin": null,
-                "values": s.values.len(),
-                "styles": styles,
-            })
-        }
-    }
-}
-
-/// One style as `styles` returns it.
-pub fn style_json(doc: &Document, cat: &Catalogue, row: &styles::Row, users: bool) -> Value {
-    let fields: Map<String, Value> = cat
-        .fields
-        .iter()
-        .map(|f| {
-            let r = styles::field(doc, cat, &row.id, f, None);
-            (f.key.to_string(), json!({"value": value_json(&r), "from": r.from.as_str()}))
-        })
-        .collect();
-    let mut v = json!({
-        "catalogue": cat.catalogue,
-        "id": row.id.text(),
-        "name": row.name,
-        "layer": row.layer.word(),
-        "fields": fields,
-    });
-    if row.overridden {
-        v["overridden"] = json!(true);
-    }
-    // Design 072 §8: a record holds only its catalogue's typed fields; none is unknown.
-    if users {
-        let c = styles::users(doc, cat.catalogue, &row.id);
-        v["users"] = json!({"explicit": c.explicit, "implicit": c.implicit});
-    }
-    v
-}
-
-fn value_json(r: &defaults::Resolved<'_>) -> Value {
-    match r.value {
-        defaults::Value::Length(x) | defaults::Value::Number(x) => json!(x),
-        defaults::Value::Choice(w) => json!(w),
-        defaults::Value::Flag(b) => json!(ecad_model::words::flag_word(b)),
-        defaults::Value::Text(t) => json!(t),
-        defaults::Value::OwnStyle(id) => json!(ecad_model::StyleRef::Own(id).text()),
-        defaults::Value::Size(s) => json!(s.to_string()),
-        defaults::Value::Colours(c) => json!(c.to_string()),
-        defaults::Value::Colour(c) => json!(c.to_string()),
-        defaults::Value::Sheet(s) => json!(s.text()),
-        defaults::Value::Margins(m) => json!(ecad_model::sheet::margins_text(&m)),
-        defaults::Value::CoreColours(c) => json!(c.to_string()),
-    }
-}
-
 /// `styles {catalogue?, users?}` (read only): every style, catalogue by catalogue; records of
 /// catalogues this build does not know are listed apart (a newer file opens in an older build).
 #[derive(Deserialize, JsonSchema)]
@@ -157,7 +94,7 @@ impl Command for StylesParams {
             let mut out = Vec::new();
             for cat in styles::CATALOGUES.iter().filter(|c| only.is_none_or(|o| o.catalogue == c.catalogue)) {
                 for row in styles::rows(doc, cat) {
-                    out.push(style_json(doc, cat, &row, users));
+                    out.push(rules::style_json(doc, cat, &row, users));
                 }
             }
             Ok(json!({"styles": out}))
@@ -217,7 +154,7 @@ pub(crate) struct StandardParams {
 impl Command for StandardParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         if self.new.is_none() && self.name.is_none() && self.from.is_none() && self.remove.is_none() {
-            return on_any_page(s, |p, _| Ok(standard_json(p.ledger.document())));
+            return on_any_page(s, |p, _| Ok(rules::standard_json(p.ledger.document())));
         }
         // Copying reads the other project before this one is locked; that file is never changed.
         let from = match self.from.as_deref().map(str::trim) {
@@ -232,11 +169,11 @@ impl Command for StandardParams {
         };
         on_project(s, |p, pg, _| {
             let Some(plan) = rules::plan_standard(p.ledger.document(), &mut p.ids, change)? else {
-                return Ok(json!({"changed": false, "standard": standard_json(p.ledger.document())}));
+                return Ok(json!({"changed": false, "standard": rules::standard_json(p.ledger.document())}));
             };
             p.apply_edit(pg, "standard", &plan.label, plan.ops)?;
             let doc = p.ledger.document();
-            Ok(json!({"changed": true, "message": plan.message, "standard": standard_json(doc)}))
+            Ok(json!({"changed": true, "message": plan.message, "standard": rules::standard_json(doc)}))
         })
     }
 }
@@ -311,7 +248,7 @@ impl Command for SetstyleParams {
                 layer: Layer::Project,
                 overridden: false,
             });
-            let mut v = style_json(doc, cat, &row, false);
+            let mut v = rules::style_json(doc, cat, &row, false);
             v["changed"] = json!(changed);
             Ok(v)
         })

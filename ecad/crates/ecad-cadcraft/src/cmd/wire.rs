@@ -8,7 +8,7 @@
 
 use cadcraft_engine::Session;
 use ecad_electrical::CmdError;
-use ecad_electrical::cmd::wire::{self as rules, CategoryName, Conflict, NetChoice, NetView, Numbered, PotentialRow, WireSettingsChange, Wires};
+use ecad_electrical::cmd::wire::{self as rules, Conflict, NetChoice, Numbered, PotentialRow, WireSettingsChange, Wires};
 use ecad_model::connectivity::{KIND, NAME};
 use ecad_model::units::{Degrees, Radians};
 use ecad_model::wiring;
@@ -40,44 +40,6 @@ pub const TYPED: &[Typed] = &[
 /// `auto` (any case) or nothing: leave it to the net.
 fn not_auto(v: Option<String>) -> Option<String> {
     v.filter(|v| !v.trim().eq_ignore_ascii_case("auto"))
-}
-
-// ---------------------------------------------------------------- JSON
-
-fn net_json(n: &NetView) -> Value {
-    let cat = |c: &CategoryName| json!({"id": c.id, "name": c.name});
-    let mut out = json!({
-        "number": n.number,
-        "fixed": n.fixed,
-        "potential": n.potential,
-        "category": n.category.as_ref().map(cat),
-        "conductors": n.wires.iter().map(|c| c.hex()).collect::<Vec<_>>(),
-        "points": n.points.iter().map(|(t, label)| json!({"terminal": t.hex(), "label": label})).collect::<Vec<_>>(),
-        "continuations": n.continuations,
-        "pages": n.pages.iter().map(|(p, c)| json!({"page": p, "column": c})).collect::<Vec<_>>(),
-    });
-    if let Some(list) = &n.categories {
-        out["categories"] = json!(list.iter().map(cat).collect::<Vec<_>>());
-    }
-    out
-}
-
-/// The project's wiring settings as `wiresettings` shows them (the label rule as resolved).
-fn settings_json(doc: &Document) -> Value {
-    let w = &doc.settings.wiring;
-    json!({
-        "scheme": w.scheme.name(),
-        "colour_style": ecad_model::words::Word::word(w.colour_style()),
-        "label_height": crate::cmd::sheet::wire_label_height(doc),
-        "label_rule": wires::label_rule_word(doc),
-        "label_min_length": wires::label_min_length(doc),
-        "digits": w.digits(),
-        "number_by": ecad_model::Word::word(w.number_by),
-        "unclassified_prefix": w.unclassified_prefix,
-        "potentials": w.potentials.iter().map(|p| json!({
-            "name": p.name, "prefix": p.prefix, "numbered": p.numbered,
-        })).collect::<Vec<_>>(),
-    })
 }
 
 // ---------------------------------------------------------------- nets and net
@@ -121,7 +83,7 @@ impl Command for NetsParams {
         };
         on_any_page(s, |p, _| {
             let found = rules::nets(p.ledger.document(), &q)?;
-            let mut r = json!({ "nets": found.nets.iter().map(net_json).collect::<Vec<_>>() });
+            let mut r = json!({ "nets": found.nets.iter().map(rules::net_json).collect::<Vec<_>>() });
             if let Some(n) = found.next {
                 r["next"] = json!(n);
             }
@@ -148,7 +110,7 @@ pub(crate) struct NetParams {
 impl Command for NetParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let choice = NetChoice { conductor: self.conductor, terminal: self.terminal, number: self.number };
-        on_any_page(s, |p, _| Ok(net_json(&rules::net(p.ledger.document(), &choice)?)))
+        on_any_page(s, |p, _| Ok(rules::net_json(&rules::net(p.ledger.document(), &choice)?)))
     }
 }
 
@@ -400,14 +362,14 @@ impl Command for WiresettingsParams {
         };
         on_project(s, |p, pg, _| {
             if change == WireSettingsChange::default() {
-                return Ok(settings_json(p.ledger.document()));
+                return Ok(rules::settings_json(p.ledger.document()));
             }
             let before = p.ledger.document().settings.clone();
             let after = rules::wire_settings(&before, &change)?;
             if after != before {
                 p.apply_edit(pg, "wiresettings", "Wire settings", vec![ecad_model::Op::SetProjectSettings { before, after }])?;
             }
-            Ok(settings_json(p.ledger.document()))
+            Ok(rules::settings_json(p.ledger.document()))
         })
     }
 }
