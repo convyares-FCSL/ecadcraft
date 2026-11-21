@@ -1711,3 +1711,8 @@ pub fn hover_lines_measured(doc: &Document, c: DeviceId, here: RepresentationId,
     lines.push(format!("id {}", c.hex()));
     lines
 }
+
+/// The kind a derived text is; a box label (not a symbol's text) is a location label.
+pub fn derived_text_kind(of: TextOf, symbol: bool) -> crate::text_style::TextKind {
+    if symbol { kind_of(of) } else { crate::text_style::TextKind::LocationLabel }
+}

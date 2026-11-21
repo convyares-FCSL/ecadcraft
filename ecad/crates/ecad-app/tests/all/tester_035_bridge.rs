@@ -405,7 +405,7 @@ fn assert_not_run(r: &Value, says: &str) {
 }
 
 fn authors(log: &[Transaction]) -> Vec<String> {
-    log.iter().map(|t| ecad_mcp::author_text(&t.author)).collect()
+    log.iter().map(|t| ecad_file::history::logged_author_text(&t.author)).collect()
 }
 
 fn agent_author() -> Author {

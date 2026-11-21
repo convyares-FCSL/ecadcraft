@@ -617,18 +617,18 @@ fn default_terminal_names_are_the_smallest_unused_number() {
 fn a_click_lands_on_the_outline_nearest_the_cursor() {
     use ecad_model::{Primitive, Pt};
     let line = Primitive::Line { a: Pt::new(0.0, 0.0), b: Pt::new(10.0, 0.0) };
-    assert_eq!(interact::nearest_on(&line, Pt::new(4.0, 1.0)), Some(Pt::new(4.0, 0.0)));
-    assert_eq!(interact::nearest_on(&line, Pt::new(-4.0, 1.0)), Some(Pt::new(0.0, 0.0)));
+    assert_eq!(ecad_model::geom::nearest_on(&line, Pt::new(4.0, 1.0)), Some(Pt::new(4.0, 0.0)));
+    assert_eq!(ecad_model::geom::nearest_on(&line, Pt::new(-4.0, 1.0)), Some(Pt::new(0.0, 0.0)));
     let square = Primitive::Polyline { vertices: vec![Pt::new(0.0, 0.0), Pt::new(10.0, 0.0), Pt::new(10.0, 10.0), Pt::new(0.0, 10.0)], closed: true };
-    assert_eq!(interact::nearest_on(&square, Pt::new(-1.0, 5.0)), Some(Pt::new(0.0, 5.0)), "the closing side");
+    assert_eq!(ecad_model::geom::nearest_on(&square, Pt::new(-1.0, 5.0)), Some(Pt::new(0.0, 5.0)), "the closing side");
     let circle = Primitive::Circle { center: Pt::new(0.0, 0.0), radius: 5.0 };
-    assert_eq!(interact::nearest_on(&circle, Pt::new(0.0, 7.0)), Some(Pt::new(0.0, 5.0)));
-    assert_eq!(interact::nearest_on(&circle, Pt::new(0.0, 0.0)), None, "the centre has no nearest point");
+    assert_eq!(ecad_model::geom::nearest_on(&circle, Pt::new(0.0, 7.0)), Some(Pt::new(0.0, 5.0)));
+    assert_eq!(ecad_model::geom::nearest_on(&circle, Pt::new(0.0, 0.0)), None, "the centre has no nearest point");
     let arc = Primitive::Arc { center: Pt::new(0.0, 0.0), radius: 5.0, start: 0.0, end: std::f64::consts::FRAC_PI_2 };
-    let q = interact::nearest_on(&arc, Pt::new(-6.0, -1.0)).unwrap();
+    let q = ecad_model::geom::nearest_on(&arc, Pt::new(-6.0, -1.0)).unwrap();
     assert!(q.near(Pt::new(0.0, 5.0), 1e-9) || q.near(Pt::new(5.0, 0.0), 1e-9), "an end of the arc: {q:?}");
     let hostile = Primitive::Line { a: Pt::new(f64::MAX, 0.0), b: Pt::new(-f64::MAX, 0.0) };
-    let _ = interact::nearest_on(&hostile, Pt::new(0.0, 1.0));
+    let _ = ecad_model::geom::nearest_on(&hostile, Pt::new(0.0, 1.0));
     assert_eq!(interact::valid_name("  K1 "), Some("K1".into()));
     assert_eq!(interact::valid_name(""), None);
     assert_eq!(interact::valid_name(&"x".repeat(65)), None);

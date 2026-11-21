@@ -237,54 +237,6 @@ pub fn valid_name(text: &str) -> Option<String> {
     ((1..=MAX_NAME).contains(&n) && !t.chars().any(char::is_control)).then(|| t.to_string())
 }
 
-/// The point on `prim` nearest to `p` (its outline), or `None` for kinds without one.
-pub fn nearest_on(prim: &Primitive, p: Pt) -> Option<Pt> {
-    let seg = |a: Pt, b: Pt| {
-        let (dx, dy) = (b.x - a.x, b.y - a.y);
-        let len2 = dx * dx + dy * dy;
-        if !(len2.is_finite() && len2 > 0.0) {
-            return a;
-        }
-        let t = (((p.x - a.x) * dx + (p.y - a.y) * dy) / len2).clamp(0.0, 1.0);
-        Pt::new(a.x + t * dx, a.y + t * dy)
-    };
-    let best = |cands: Vec<Pt>| cands.into_iter().filter(|q| q.is_finite()).min_by(|a, b| a.dist(p).total_cmp(&b.dist(p)));
-    match prim {
-        Primitive::Line { a, b } => best(vec![seg(*a, *b)]),
-        Primitive::Polyline { vertices, closed } => {
-            let mut cands: Vec<Pt> = vertices.windows(2).filter_map(|w| Some(seg(*w.first()?, *w.get(1)?))).collect();
-            if *closed && let (Some(a), Some(b)) = (vertices.last(), vertices.first()) {
-                cands.push(seg(*a, *b));
-            }
-            if vertices.len() == 1 {
-                cands.extend(vertices.first().copied());
-            }
-            best(cands)
-        }
-        Primitive::Circle { center, radius } => on_circle(*center, *radius, p),
-        Primitive::Arc { center, radius, start, end } => {
-            let on = on_circle(*center, *radius, p)?;
-            let angle = (on.y - center.y).atan2(on.x - center.x);
-            let tau = std::f64::consts::TAU;
-            let sweep = (end - start).rem_euclid(tau);
-            if (angle - start).rem_euclid(tau) <= sweep {
-                return Some(on);
-            }
-            let at = |a: f64| Pt::new(center.x + radius * a.cos(), center.y + radius * a.sin());
-            best(vec![at(*start), at(*end)])
-        }
-        Primitive::Text { .. } | Primitive::Point { .. } => None,
-    }
-}
-
-fn on_circle(center: Pt, radius: f64, p: Pt) -> Option<Pt> {
-    let d = p.dist(center);
-    if !(d.is_finite() && d > 0.0 && radius.is_finite()) {
-        return None;
-    }
-    Some(Pt::new(center.x + (p.x - center.x) * radius / d, center.y + (p.y - center.y) * radius / d))
-}
-
 /// A preview entity drawn in ACI colour `aci` (its own properties, not the current layer's).
 pub(crate) fn preview_entity(s: &Session, kind: EntityKind, aci: u8) -> Entity {
     let mut common = s.current_common();
@@ -634,13 +586,7 @@ fn terminal_lines(doc: &Document, t: TerminalId) -> Vec<String> {
 
 /// The core label of member `w` of cable `k`, when it has one that is not blank, as drawn.
 fn core_of(doc: &Document, k: CableId, w: WireId) -> Option<String> {
-    member_core(doc.cables.get(&k)?.cores.iter().find(|m| m.wire() == Some(w))?)
-}
-
-/// A member's core label, shortened for a hover; `None` when it has none.
-fn member_core(m: &ecad_model::Core) -> Option<String> {
-    let core = m.label_str()?;
-    (!core.trim().is_empty()).then(|| crate::words::shorten(core, crate::words::MAX_CORE_CHARS))
+    ecad_electrical::cables::member_core(doc.cables.get(&k)?.cores.iter().find(|m| m.wire() == Some(w))?)
 }
 
 /// A cable slash (design 004 §7.3, design 009 §8): its tag, ID, designation, type and reference
@@ -672,7 +618,7 @@ fn cable_lines(doc: &Document, page: PageId, k: CableId) -> Vec<String> {
     } else {
         // The stored member order, nothing more (owner answer Q2).
         lines.push(format!("Wires: {}", members.len()));
-        lines.extend(members.iter().map(|m| match member_core(m) {
+        lines.extend(members.iter().map(|m| match ecad_electrical::cables::member_core(m) {
             Some(c) => format!("  {}  core {c}", crate::slash::position_name(doc, m.position)),
             None => format!("  {}", crate::slash::position_name(doc, m.position)),
         }));

@@ -512,3 +512,9 @@ pub fn cable_title(doc: &Document, cable: CableId) -> String {
         None => format!("{}…", cable.hex().get(..8).unwrap_or_default()),
     }
 }
+
+/// A member's core label, shortened for a hover; `None` when it has none.
+pub fn member_core(m: &ecad_model::Core) -> Option<String> {
+    let core = m.label_str()?;
+    (!core.trim().is_empty()).then(|| crate::words::shorten(core, crate::words::MAX_CORE_CHARS))
+}

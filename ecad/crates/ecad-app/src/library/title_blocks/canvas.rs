@@ -369,7 +369,7 @@ fn paint_table(p: &egui::Painter, v: View, at: &BRect, rows: u8, header: bool, n
 }
 
 fn paint_logo(p: &egui::Painter, v: View, at: &BRect, prims: &[Primitive], ink: Color32) {
-    let Some((lo, hi)) = ecad_cadcraft::title_block::layout::extents(prims) else { return };
+    let Some((lo, hi)) = ecad_model::geom::extents(prims) else { return };
     let (w, h) = (hi.x - lo.x, hi.y - lo.y);
     let s = match (w > 1e-9, h > 1e-9) {
         (true, true) => (at.w / w).min(at.h / h),
