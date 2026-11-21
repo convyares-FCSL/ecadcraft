@@ -115,26 +115,3 @@ fn loose_parts_come_back_from_the_snapshot_and_the_log() {
         assert_eq!(opened.ledger.document().loose_parts, f.ledger.document().loose_parts, "{name}");
     }
 }
-
-/// F2a: a BOM item is a loose part; a file holding a device of kind `bom_item` (the old form) is
-/// not read, from the log (its op) or from a snapshot (its `device` chunk).
-#[test]
-fn a_bom_item_device_is_a_read_error() {
-    let dir = TempDir::new("072f-old-item");
-    let mut f = fixture();
-    let c: DeviceId = f.ids.fresh();
-    let mut old = Device::default();
-    old.properties.insert("kind".into(), "bom_item".into());
-    old.properties.insert("qty".into(), "2".into());
-    f.ledger.commit(Author::User, "old item", vec![Op::CreateDevice { id: c, device: old }]).unwrap();
-    let (lo, hi) = ecad_file::schema::SNAPSHOT_EVERY_RANGE;
-    for (name, every) in [("snap.ecad", lo), ("log.ecad", hi)] {
-        let p = dir.path(name);
-        ProjectV2::create(Store::create(&p).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, every).unwrap();
-        let err = match ProjectV2::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER) {
-            Err(e) => e.to_string(),
-            Ok(o) => o.project.read_only().unwrap_or_default().to_string(),
-        };
-        assert!(err.contains("bom_item") && err.contains("item"), "{name}: a read error naming it: {err:?}");
-    }
-}

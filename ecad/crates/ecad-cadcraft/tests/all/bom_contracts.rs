@@ -589,9 +589,7 @@ fn everything_survives_save_and_reopen() {
     )
     .unwrap();
     f.h.run("partline", json!({"component": f.f01.hex(), "add": {"part_number": "FU-5T", "for": "1,2,4", "article_number": "A-0400"}})).unwrap();
-    // Lane 072 F2a: a device of kind `bom_item` is a read error (BOM items are loose parts, design
-    // 072 §6.4); `bomitem` still makes one until F2b moves it to `CreateLoosePart`, so no item is
-    // saved here. F2b puts the item back into this test.
+    f.h.run("bomitem", json!({"description": "DIN rail", "qty": 2.5, "unit": "m", "article_number": "A-0301"})).unwrap();
     f.h.run("setdefault", json!({"key": "bom.column.article", "level": "project", "value": "on"})).unwrap();
     f.h.run("setdefault", json!({"key": "bom.lines", "level": "project", "value": "nested"})).unwrap();
     let before = bom(&mut f.h, json!({}));
@@ -617,7 +615,7 @@ fn everything_survives_save_and_reopen() {
             .collect()
     };
     assert_eq!(strip(&after), strip(&before));
-    assert!(after.iter().any(|r| r["article_number"] == "A-0400"));
+    assert!(after.iter().any(|r| r["article_number"] == "A-0301" && r["qty"] == json!(2.5)));
 }
 
 /// Design 047 §6.3: the BOM-by-location page shows Qty with its unit, the Article column when it
