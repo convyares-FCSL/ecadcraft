@@ -79,18 +79,27 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredWires
         let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::views::Settings::none())?;
         let mut out = MeasuredWires::default();
         let runs = runs.max(1);
-        // The densest page's labels under both rules (read only, on the document).
-        let (lnet, leach, routes) = project.read(&mut s, |p, _| {
+        // The densest page's labels under both rules (read only, on the document). Densest by its
+        // routes (design 072 D: a wire is drawn by routes, not by representations of the wire); a
+        // project whose pages have none is refused, never timed as an empty page.
+        let (lnet, leach, routes) = project.read(&mut s, |p, _| -> Result<_, String> {
             let doc = p.ledger.document();
-            let dense = doc
+            let (page, routes) = doc
                 .page_order
                 .iter()
-                .max_by_key(|pg| doc.representations_on(**pg).filter(|(_, r)| matches!(r.subject, ecad_model::Subject::Wire(_))).count())
-                .copied();
-            let Some(page) = dense else { return (Vec::new(), Vec::new(), 0) };
-            let routes = doc.representations_on(page).filter(|(_, r)| matches!(r.subject, ecad_model::Subject::Wire(_))).count();
+                .map(|pg| (*pg, doc.routes_on(*pg).count()))
+                .max_by_key(|(_, n)| *n)
+                .ok_or("lnet/leach: the project has no page")?;
+            if routes == 0 {
+                return Err(format!("lnet/leach: no page has a route (densest page {}): nothing to label", page.hex()));
+            }
             let mut each_doc = doc.clone();
             each_doc.settings.wiring.label_rule = Some(ecad_model::wiring::LABEL_RULE_EACH.into());
+            for (rule, d) in [("net", doc), ("each", &each_doc)] {
+                if ecad_engine::wires::labels_on_page(d, page).is_empty() {
+                    return Err(format!("lnet/leach: the densest page {} ({routes} routes) has no wire labels under the {rule} rule", page.hex()));
+                }
+            }
             let (mut a, mut b) = (Vec::new(), Vec::new());
             for _ in 0..runs {
                 let t = Instant::now();
@@ -100,8 +109,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredWires
                 std::hint::black_box(ecad_engine::wires::labels_on_page(&each_doc, page));
                 b.push(ms(t));
             }
-            (a, b, routes)
-        })?;
+            Ok((a, b, routes))
+        })??;
         (out.lnet_ms, out.leach_ms, out.routes) = (median(&mut lnet.clone()), median(&mut leach.clone()), routes);
         // A page of its own for the edits.
         let page: PageId = crate_hex(&run(&mut s, "newpage", json!({"title": "bench 032"}))?, "page")?;
