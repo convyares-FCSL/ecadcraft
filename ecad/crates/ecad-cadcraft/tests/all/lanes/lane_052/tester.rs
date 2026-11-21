@@ -508,12 +508,12 @@ fn oversized_input_is_refused() {
 // ------------------------------------------------------------------------------------ format keys
 
 /// The location style (`location.style`, brief 050a) is a style ID, not a list entry: it raises no
-/// `designation-missing` row and is not listed as a missing location. A box has no style of its
-/// own since it is a drawing aid (design 072 §6.2).
+/// `designation-missing` row and is not listed as a missing location. A box's own style is its
+/// aid's field (design 072 §6.2).
 #[test]
 fn a_box_location_style_is_not_a_missing_location() {
     let mut h = H::new(0x52_7401);
-    h.run("locationbox", json!({"location": "+CP1", "corners": [[60, 110], [140, 190]], "proposal": "keep"})).unwrap();
+    let bx: AidId = id(&h.run("locationbox", json!({"location": "+CP1", "corners": [[60, 110], [140, 190]], "proposal": "keep"})).unwrap(), "aid");
     let style = h.run("styles", json!({"catalogue": "location"})).unwrap();
     let ids: Vec<String> = style["styles"]
         .as_array()
@@ -524,8 +524,10 @@ fn a_box_location_style_is_not_a_missing_location() {
         .filter_map(|r| r["id"].as_str().map(str::to_string))
         .collect();
     let pick = ids.last().cloned().unwrap_or_else(|| "box".into());
+    h.run("setprop", json!({"aids": [bx.hex()], "key": "style", "value": pick})).unwrap();
     h.run("setdefault", json!({"key": "location.style", "level": "project", "value": pick})).unwrap();
     let d = h.doc();
+    assert!(d.aids[&bx].as_box().is_some_and(|b| b.style.is_some()), "the box stores its style");
     let rows = checks::all(&d, 1e-6);
     let missing: Vec<&str> = rows.iter().filter(|r| r.kind == Kind::DesignationMissing).map(|r| r.which.as_str()).collect();
     assert!(missing.is_empty(), "a style is not a location: {missing:?}");

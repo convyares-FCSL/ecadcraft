@@ -39,6 +39,8 @@ use crate::designations::{self, Aspect};
 
 /// A location box's panel temperature key (`setprop {aids}`, design 072 §6.2).
 pub const PANEL_TEMPERATURE_KEY: &str = "panel_temperature";
+/// A location box's own location style key (`setprop {aids}`, brief 050a, design 072 §6.2).
+pub const BOX_STYLE_KEY: &str = "style";
 /// The reserved layer of location boxes (`ecad.location-box`).
 pub const LAYER: &str = "ECAD-LOCATIONS";
 /// The linetype of a box outline.

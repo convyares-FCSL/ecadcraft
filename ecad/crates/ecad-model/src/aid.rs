@@ -15,6 +15,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::id::{FunctionId, LocationId};
+use crate::style::StyleRef;
 use crate::text::Text;
 use crate::units::Celsius;
 
@@ -66,6 +67,9 @@ pub struct LocationBox {
     /// The temperature inside the panel it marks, for ratings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub panel_temperature: Option<Celsius>,
+    /// Its own location style (brief 050a); `None`: the project's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style: Option<StyleRef>,
 }
 
 /// An aid's kind, without its data.

@@ -11,8 +11,9 @@
 //! # Update map
 //! The rows are worked out on open, reload or first show, and again only after an op
 //! [`touches`] names: a style record or the standard, a style choice on any object (a wire's or a
-//! cable's type included), or a project property of the old kinds. Every other op leaves them. Working them out reads the
-//! style-choice index (explicit choices only), the project's properties and the style records.
+//! cable's type included, a location box's own style), or a project property of the old kinds.
+//! Every other op leaves them. Working them out reads the style-choice index (explicit choices
+//! only), the location boxes' own styles, the project's properties and the style records.
 
 use ecad_model::style::{MAX_FIELD_CHARS, MAX_FIELDS_PER_STYLE, MAX_STYLES_PER_CATALOGUE, StyleLayer, StyleRef, is_choice_key, is_name};
 use ecad_model::{Document, ObjectRef, Op, Properties};
@@ -57,6 +58,9 @@ pub fn touches(op: &Op) -> bool {
         // Design 072 §4.5: a cable's type (a dangling one is a row).
         Op::CreateCable { cable, .. } | Op::DeleteCable { cable, .. } => cable.cable_type.is_some(),
         Op::ModifyCable { before, after, .. } => before.cable_type != after.cable_type,
+        // Brief 050a: a location box's own style (design 072 §6.2).
+        Op::CreateAid { aid, .. } | Op::DeleteAid { aid, .. } => aid.as_box().is_some_and(|b| b.style.is_some()),
+        Op::ModifyAid { before, after, .. } => before.as_box().and_then(|b| b.style.as_ref()) != after.as_box().and_then(|b| b.style.as_ref()),
         // Brief 054: the page type and folder rows.
         op if crate::page_types::touches_checks(op) => true,
         _ => false,
@@ -212,6 +216,16 @@ pub fn rows(doc: &Document) -> Vec<Check> {
             _ => continue,
         };
         out.push(Check { kind: Kind::StyleUnknown, page, at: None, object, which: words(doc, key, value, &whose), fix: None });
+    }
+    // Brief 050a: a location box's own style naming no location style (boxes are few: one pass).
+    for (a, x) in &doc.aids {
+        let Some(value) = x.as_box().and_then(|b| b.style.as_ref()).map(StyleRef::text) else { continue };
+        if !dangling(doc, ecad_model::StyleCatalogue::Location, &value) {
+            continue;
+        }
+        let page = doc.representations_of(ecad_model::Subject::Aid(*a)).next().map(|(_, r)| r.page);
+        let which = words(doc, "location.style", &value, "A location box");
+        out.push(Check { kind: Kind::StyleUnknown, page, at: None, object: Object::Aid(*a), which, fix: None });
     }
     // Dangling choices of the project and the standard.
     let level = |props: &Properties, whose: &str, out: &mut Vec<Check>| {

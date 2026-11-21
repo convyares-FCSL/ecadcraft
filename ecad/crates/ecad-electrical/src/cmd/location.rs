@@ -101,7 +101,7 @@ fn stored_key(
 /// (`None` clears it). A location box's values are its aid's ([`plan_box_set`]).
 ///
 /// # Errors
-/// No such device; an override on a function or a strip; an override type that is not one; a code
+/// No such device (a location box is named as one); an override on a function or a strip; an override type that is not one; a code
 /// that is not valid.
 pub fn plan(doc: &Document, ids: &mut IdAllocator, objects: &[DeviceId], prop: &str, text: Option<&str>) -> Result<Planned, CmdError> {
     // The type's own refusals first: `location.head` and `location.<bogus>` are no aspect
@@ -115,6 +115,10 @@ pub fn plan(doc: &Document, ids: &mut IdAllocator, objects: &[DeviceId], prop: &
         }
     }
     let a = Aspect::of_property(prop).ok_or(CmdError::refused("not a function or location property"))?;
+    // A location box is a drawing aid (design 072 §6.2): named, not "no such device".
+    if let Some(c) = objects.iter().find(|c| !doc.devices.contains_key(c) && crate::locations::box_values(doc, AidId(c.0)).is_some()) {
+        return Err(CmdError::refused(format!("{} is a location box; edit it with setprop {{aids}}", c.hex())));
+    }
     let mut out = Planned::default();
     let mut pending = designations::Pending::default();
     let key = stored_key(doc, ids, a, text, &mut pending, &mut out)?;

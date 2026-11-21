@@ -1,7 +1,7 @@
 //! The rules of brief 049's command (design 049 §5.1): `contcaption` sets or removes the caption
 //! of continuation arrows, one `ModifyAid` per arrow whose caption changes; and `setprop {aids}`
 //! (design 072 §6.2): a continuation's `name` or `caption`, a location box's `function`,
-//! `location` or `panel_temperature`. The engine crate's shim reads the parameters, commits and
+//! `location`, `panel_temperature` or `style`. The engine crate's shim reads the parameters, commits and
 //! answers in JSON.
 
 use std::collections::BTreeSet;
@@ -84,13 +84,18 @@ pub fn box_op(doc: &Document, a: AidId, edit: impl FnOnce(&mut LocationBox)) -> 
 
 /// The refusal of a key a location box does not have.
 fn box_keys(key: &str) -> CmdError {
-    CmdError::refused(format!("A location box has a `function`, a `location` and a `{}`, not `{key}`.", crate::locations::PANEL_TEMPERATURE_KEY))
+    CmdError::refused(format!(
+        "A location box has a `function`, a `location`, a `{}` and a `{}`, not `{key}`.",
+        crate::locations::PANEL_TEMPERATURE_KEY,
+        crate::locations::BOX_STYLE_KEY
+    ))
 }
 
 /// `setprop {aids, key, value}` (design 072 §6.2), one `ModifyAid` per aid that changes: a
 /// continuation's `name` (checked, required) or `caption` (checked; `None` removes it); a location
 /// box's `function` or `location` (a code, as [`crate::cmd::location::plan_box_set`], without its
-/// proposals) or `panel_temperature` (−40 to 90 °C; `None` clears it).
+/// proposals), `panel_temperature` (−40 to 90 °C; `None` clears it) or `style` (a location style by
+/// name or ID; `None` or empty clears it: the project's).
 ///
 /// # Errors
 /// No aid named, an id that is no aid, a key the aid's kind does not have, or a value the rules
@@ -111,8 +116,14 @@ pub fn plan_aid_prop(doc: &Document, ids: &mut IdAllocator, aids: &[AidId], key:
         match doc.aids.get(a) {
             None => return Err(CmdError::refused("That is not a continuation arrow or a location box.")),
             Some(Aid::Box(_)) if key == crate::locations::PANEL_TEMPERATURE_KEY => {
-                let temp = value.map(crate::cmd::rating::panel_temperature).transpose()?;
+                let temp = value.filter(|v| !v.trim().is_empty()).map(crate::cmd::rating::panel_temperature).transpose()?;
                 ops.extend(box_op(doc, *a, |b| b.panel_temperature = temp));
+                continue;
+            }
+            Some(Aid::Box(_)) if key == crate::locations::BOX_STYLE_KEY => {
+                let style = value.map(str::trim).filter(|v| !v.is_empty());
+                let style = style.map(|v| crate::styles::find(doc, ecad_model::StyleCatalogue::Location, v)).transpose()?;
+                ops.extend(box_op(doc, *a, |b| b.style = style));
                 continue;
             }
             Some(Aid::Box(_)) => return Err(box_keys(key)),

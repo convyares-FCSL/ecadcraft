@@ -226,7 +226,8 @@ fn codes(doc: &Document, key: &str) -> Vec<String> {
 }
 
 /// A location box (design 024 §3.5, design 052 §5.8): Function and Location (editable, either may
-/// be empty), Vertices and Devices inside.
+/// be empty), Panel temperature and Style (editable; unset shows the project's, faint), Vertices
+/// and Devices inside.
 pub fn box_section(doc: &Document, b: ecad_model::AidId) -> Section {
     use crate::designations::{self as d, Aspect};
     let shape = doc.representations_of(Subject::Aid(b)).find_map(|(rid, r)| crate::locations::box_of_rep(doc, rid, r));
@@ -239,6 +240,8 @@ pub fn box_section(doc: &Document, b: ecad_model::AidId) -> Section {
         r.choices = codes(doc, key);
         rows.push(r);
     }
+    rows.push(box_temperature_row(doc, values));
+    rows.push(box_style_row(doc, b));
     let location = shape.as_ref().map_or(location, |s| crate::locations::label_of(s).0);
     if let Some(s) = &shape {
         rows.push(Row::ro("vertices", "Vertices", s.vertices.len().to_string()));
@@ -254,6 +257,32 @@ pub fn box_section(doc: &Document, b: ecad_model::AidId) -> Section {
         note: None,
         buttons: Vec::new(),
     }
+}
+
+/// A box's Panel temperature row (design 072 §6.2), in °C: its own, else the project's (faint).
+fn box_temperature_row(doc: &Document, values: Option<&ecad_model::LocationBox>) -> Row {
+    let key = crate::locations::PANEL_TEMPERATURE_KEY;
+    let label = "Panel temperature (\u{b0}C)";
+    match values.and_then(|x| x.panel_temperature) {
+        Some(t) => Row::rw(key, label, crate::rating::dataset::fmt_num(t.0)),
+        None => {
+            let project = crate::defaults::resolve(doc, &crate::defaults::rating::PANEL_TEMPERATURE, crate::defaults::Scope::project()).number();
+            Row { inherited: true, ..Row::rw(key, label, crate::rating::dataset::fmt_num(project)) }
+        }
+    }
+}
+
+/// A box's Style row (brief 050a): its own location style's name, else the project's (faint); the
+/// location styles' names as choices.
+fn box_style_row(doc: &Document, b: ecad_model::AidId) -> Row {
+    let cat = ecad_model::StyleCatalogue::Location;
+    let style = crate::styles::location::box_style(doc, b);
+    let mut r = Row::rw(crate::locations::BOX_STYLE_KEY, "Style", crate::styles::name(doc, cat, &style));
+    // An own style naming none that exists falls through to the project's, shown faint too (the
+    // Checks list has its row).
+    r.inherited = crate::styles::location::own_style(doc, b).is_none();
+    r.choices = crate::styles::rows(doc, crate::styles::catalogue(cat)).into_iter().map(|x| x.name).collect();
+    r
 }
 
 pub fn device_section(

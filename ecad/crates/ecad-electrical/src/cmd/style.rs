@@ -158,8 +158,9 @@ pub fn fields(doc: &Document, cat: &Catalogue, given: Vec<(String, FieldInput)>)
 // ---------------------------------------------------------------------------------------------
 // Users and their rewrites
 
-/// `4 devices`, `1 wire`, `2 pages and 1 device`: explicit users in words.
-pub fn users_words(users: &[(&'static str, ObjectRef)]) -> String {
+/// `4 devices`, `1 wire`, `2 pages and 1 location box`: explicit users in words, with `boxes`
+/// location boxes of their own style ([`styles::box_users`]).
+pub fn users_words(users: &[(&'static str, ObjectRef)], boxes: usize) -> String {
     let (mut d, mut w, mut p) = (0, 0, 0);
     for (_, o) in users {
         match o {
@@ -170,7 +171,11 @@ pub fn users_words(users: &[(&'static str, ObjectRef)]) -> String {
         }
     }
     let one = |n: usize, s: &str, pl: &str| (n > 0).then(|| format!("{n} {}", if n == 1 { s } else { pl }));
-    let parts: Vec<String> = [one(d, "device", "devices"), one(w, "wire", "wires"), one(p, "page", "pages")].into_iter().flatten().collect();
+    let parts: Vec<String> =
+        [one(d, "device", "devices"), one(w, "wire", "wires"), one(p, "page", "pages"), one(boxes, "location box", "location boxes")]
+            .into_iter()
+            .flatten()
+            .collect();
     parts.join(" and ")
 }
 
@@ -229,6 +234,10 @@ pub fn rewrite_users(doc: &Document, cat: &Catalogue, id: &StyleRef, to: &StyleR
             put(ObjectRef::Standard, e.key);
         }
     }
+    // Brief 050a: a location box's own style is its field (design 072 §6.2).
+    for a in styles::box_users(doc, cat.catalogue, id) {
+        out.extend(super::continuation::box_op(doc, a, |b| b.style = Some(to.clone())));
+    }
     out
 }
 
@@ -274,9 +283,10 @@ fn cables_using(doc: &Document, users: &[(&'static str, ObjectRef)], name: &str)
 const NAMED_CABLES: usize = 8;
 
 /// "4 devices use X" or "The project uses X": who uses a style, for a refusal.
-fn who_uses(users: &[(&'static str, ObjectRef)]) -> (String, &'static str) {
-    let who = if users.is_empty() { "The project".to_string() } else { users_words(users) };
-    (who, if users.len() <= 1 { "uses" } else { "use" })
+fn who_uses(users: &[(&'static str, ObjectRef)], boxes: usize) -> (String, &'static str) {
+    let n = users.len() + boxes;
+    let who = if n == 0 { "The project".to_string() } else { users_words(users, boxes) };
+    (who, if n <= 1 { "uses" } else { "use" })
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -396,11 +406,12 @@ pub fn plan_standard(doc: &Document, ids: &mut IdAllocator, change: StandardChan
                         continue;
                     }
                     let users = styles::explicit_users(doc, cat.catalogue, id);
-                    if users.is_empty() && !chosen_by_levels(doc, cat, id) {
+                    let boxes = styles::box_users(doc, cat.catalogue, id).len();
+                    if users.is_empty() && boxes == 0 && !chosen_by_levels(doc, cat, id) {
                         continue;
                     }
                     let Some(w) = replace_with.get(ecad_model::Word::word(cat.catalogue)) else {
-                        let (who, verb) = who_uses(&users);
+                        let (who, verb) = who_uses(&users, boxes);
                         return Err(CmdError::refused(format!(
                             "{who} {verb} {}, which only the standard has; give replace_with {{\"{}\": style}}.",
                             styles::name(doc, cat.catalogue, id),
@@ -585,14 +596,15 @@ pub fn plan_delete(doc: &Document, cat: &Catalogue, id: StyleRef, replace_with: 
     }
     let name = styles::name(doc, cat.catalogue, &id);
     let users = styles::explicit_users(doc, cat.catalogue, &id);
+    let boxes = styles::box_users(doc, cat.catalogue, &id).len();
     let mut ops = Vec::new();
-    if !users.is_empty() || chosen_by_levels(doc, cat, &id) {
+    if !users.is_empty() || boxes > 0 || chosen_by_levels(doc, cat, &id) {
         let Some(w) = replace_with.map(str::trim) else {
             // Design 072 §4.5: a cable type in use names its cables.
             if cat.catalogue == ecad_model::StyleCatalogue::Cable {
                 return Err(CmdError::refused(cables_using(doc, &users, &name)));
             }
-            let (who, verb) = who_uses(&users);
+            let (who, verb) = who_uses(&users, boxes);
             return Err(CmdError::refused(format!("{who} {verb} {name}; give replace_with.")));
         };
         let to = styles::find(doc, cat.catalogue, w)?;
@@ -606,7 +618,7 @@ pub fn plan_delete(doc: &Document, cat: &Catalogue, id: StyleRef, replace_with: 
             ops.push(Op::SetStyle { layer: l, catalogue: cat.catalogue, id: id.clone(), before: Some(r.clone()), after: None });
         }
     }
-    Ok(DeletePlan { ops, id, name, moved: users.len() })
+    Ok(DeletePlan { ops, id, name, moved: users.len() + boxes })
 }
 
 // ---------------------------------------------------------------------------------------------

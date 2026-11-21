@@ -181,7 +181,14 @@ fn a_location_box_aid_and_its_edit_are_shown_raw_and_readable() {
         ],
     )
     .unwrap();
-    let warmer = Aid::Box(LocationBox { location: Some(LocationId(0xc2)), panel_temperature: Some(Celsius(40.0)), ..LocationBox::default() });
+    // F1c-2: a box keeps its own location style.
+    let own = ecad_model::StyleRef::Own(0x5e);
+    let warmer = Aid::Box(LocationBox {
+        location: Some(LocationId(0xc2)),
+        panel_temperature: Some(Celsius(40.0)),
+        style: Some(own.clone()),
+        ..LocationBox::default()
+    });
     l.commit(Author::User, "edit", vec![Op::ModifyAid { id: a, before: boxed, after: warmer }]).unwrap();
     let path = written(&dir, &l);
     let f = FileSource::from_path(&path);
@@ -194,7 +201,7 @@ fn a_location_box_aid_and_its_edit_are_shown_raw_and_readable() {
     let text =
         |key: &str| ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "readable"}))["ok"]["decoded"].to_string();
     let (edit, placed) = (text(&keys[0]), text(&keys[1]));
-    for want in ["ModifyAid", "box", "location", "panel_temperature", &a.hex()] {
+    for want in ["ModifyAid", "box", "location", "panel_temperature", "style", &own.text(), &a.hex()] {
         assert!(edit.contains(want), "{want} in the edit: {edit}");
     }
     for want in ["CreateAid", "LinkRepresentation", "box", "aid", &a.hex()] {
@@ -204,6 +211,18 @@ fn a_location_box_aid_and_its_edit_are_shown_raw_and_readable() {
         let raw = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "raw"}));
         assert!(raw["ok"]["hex"].as_str().is_some_and(|h| !h.is_empty()), "the raw row");
     }
+    // Raw: exactly the stored bytes of the edit with the style.
+    let raw = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": &keys[0], "form": "raw"}));
+    let r = f.store().unwrap().reader().unwrap();
+    let mut bytes = None;
+    r.raw_rows(|t, k, v| {
+        if t == "transactions" && ecad_inspector::text::hex(k) == keys[0] {
+            bytes = Some(v.to_vec());
+        }
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(raw["ok"]["hex"], ecad_inspector::text::hex(&bytes.unwrap()), "the raw edit is its stored bytes");
     let summary = ask(s, serde_json::json!({"op": "summary"}));
     assert!(summary.get("ok").is_some(), "{summary}");
 }

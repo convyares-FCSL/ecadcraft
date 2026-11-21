@@ -381,7 +381,18 @@ pub fn users(doc: &Document, catalogue: StyleCatalogue, id: &StyleRef) -> Count 
         c.explicit += doc.style_users(entry.key, &value).count();
         c.implicit += implicit(doc, cat, entry, id);
     }
+    c.explicit += box_users(doc, catalogue, id).len();
     c
+}
+
+/// The location boxes whose own style is `id` (brief 050a; a box is a drawing aid, design 072
+/// §6.2, so it is not in the document's style-choice index). Empty for other catalogues. Boxes
+/// are few: one pass over the aids.
+pub fn box_users(doc: &Document, catalogue: StyleCatalogue, id: &StyleRef) -> Vec<ecad_model::AidId> {
+    if catalogue != StyleCatalogue::Location {
+        return Vec::new();
+    }
+    doc.aids.iter().filter(|(_, a)| a.as_box().and_then(|b| b.style.as_ref()) == Some(id)).map(|(a, _)| *a).collect()
 }
 
 /// The objects of `entry`'s kind with no own choice that resolve to `id` through the page,
@@ -398,7 +409,9 @@ fn implicit(doc: &Document, cat: &Catalogue, entry: &defaults::Entry, id: &Style
             .filter(|p| !p.page_type.as_ref().is_some_and(|t| crate::styles::exists(doc, ecad_model::StyleCatalogue::Page, t)))
             .filter(|p| ecad_model::sheet::page_type_of(doc, p) == *id)
             .count(),
-        ecad_model::StyleCatalogue::Location if project == *id => doc.aids.values().filter(|x| x.as_box().is_some()).count(),
+        ecad_model::StyleCatalogue::Location if project == *id => {
+            doc.aids.iter().filter(|(a, x)| x.as_box().is_some() && location::own_style(doc, **a).is_none()).count()
+        }
         // 050b: conductors whose resolved category is `id` and that have none of their own.
         ecad_model::StyleCatalogue::Wire => {
             let looks = wire::WireLooks::new(doc);
@@ -465,6 +478,20 @@ pub fn pages_touched(doc: &Document, op: &Op) -> Option<BTreeSet<PageId>> {
             if cat.catalogue == ecad_model::StyleCatalogue::Text && location::labels_with(doc, id) {
                 return None;
             }
+            let mut out = BTreeSet::new();
+            // A box drawn in its own style (brief 050a): that style's boxes, or the boxes whose own
+            // style labels with this text style.
+            for (a, x) in &doc.aids {
+                let Some(b) = x.as_box() else { continue };
+                let hit = match cat.catalogue {
+                    ecad_model::StyleCatalogue::Location => b.style.as_ref() == Some(id),
+                    ecad_model::StyleCatalogue::Text => location::own_style(doc, *a).is_some_and(|s| location::look_of(doc, s).label_style == *id),
+                    _ => false,
+                };
+                if hit {
+                    out.extend(doc.representations_of(Subject::Aid(*a)).map(|(_, r)| r.page));
+                }
+            }
             // 050b: a category that is (or becomes, or was) a potential's default reaches every
             // net of that potential, on any page (there is no potential index): every page.
             if cat.catalogue == ecad_model::StyleCatalogue::Wire {
@@ -479,7 +506,6 @@ pub fn pages_touched(doc: &Document, op: &Op) -> Option<BTreeSet<PageId>> {
                     return None;
                 }
             }
-            let mut out = BTreeSet::new();
             for (_, o) in explicit_users(doc, *catalogue, id) {
                 pages_of(doc, o, &mut out);
             }

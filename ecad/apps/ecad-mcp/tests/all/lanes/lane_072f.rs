@@ -98,3 +98,39 @@ fn location_boxes_through_mcp_are_aids() {
     r.refused("execute", json!({"command": "setprop", "params": {"aids": [b], "key": "location", "value": "+CP2"}}));
     r.refused("execute", json!({"command": "setprop", "params": {"aids": [b], "key": "panel_temperature", "value": "40"}}));
 }
+
+/// F1c-2: a box keeps its own location style. `setprop {aids, key: "style"}` records one
+/// `ModifyAid` with the style's ID, by the agent, and null clears it; an unknown style is refused;
+/// `setlocation` on a box names it as a box; every write is refused with writes off.
+#[test]
+fn a_location_boxs_own_style_through_mcp() {
+    let mut c = Client::new(EcadMcp::in_memory("lane072f-box-style", 0x72fc, Options { write: true, agent: None }).unwrap());
+    let v = c.exec("locationbox", json!({"location": "+CP1", "corners": [[10, 10], [80, 60]]}));
+    let b = v["aid"].as_str().unwrap_or_else(|| panic!("the box answers its aid: {v}")).to_string();
+
+    let n = c.log().len();
+    c.exec("setprop", json!({"aids": [b], "key": "style", "value": "box"}));
+    let (author, ops) = last_aid(&mut c);
+    assert_eq!(author, Author::Agent(AGENT.into()));
+    assert_eq!(c.log().len(), n + 1, "one transaction");
+    match ops.as_slice() {
+        [Op::ModifyAid { before: Aid::Box(x), after: Aid::Box(y), .. }] => {
+            assert_eq!(x.style, None);
+            assert_eq!(y.style, ecad_model::StyleRef::builtin("box"));
+        }
+        other => panic!("one ModifyAid: {other:?}"),
+    }
+    c.exec("setprop", json!({"aids": [b], "key": "style", "value": null}));
+    let (_, ops) = last_aid(&mut c);
+    assert!(matches!(ops.as_slice(), [Op::ModifyAid { after: Aid::Box(y), .. }] if y.style.is_none()), "cleared: {ops:?}");
+
+    let before = c.log();
+    let m = c.refused("execute", json!({"command": "setprop", "params": {"aids": [b], "key": "style", "value": "No such style"}}));
+    assert!(m.contains("No such style"), "{m}");
+    let m = c.refused("execute", json!({"command": "setlocation", "params": {"component": b, "value": "+CP2"}}));
+    assert!(m.contains(&format!("{b} is a location box; edit it with setprop {{aids}}")), "{m}");
+    assert_eq!(c.log(), before, "nothing recorded");
+
+    let mut r = reader();
+    r.refused("execute", json!({"command": "setprop", "params": {"aids": [b], "key": "style", "value": "box"}}));
+}

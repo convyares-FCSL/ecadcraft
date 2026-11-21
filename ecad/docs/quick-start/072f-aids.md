@@ -17,12 +17,16 @@ What changed for someone using the app:
   "continuation"}` answers `aid` (no `component`); `xrefs {"aid": …}` lists its other ends.
 - **A location box (and a function box) is a drawing aid too.** It is drawn, moved, erased and
   undone as before, and the devices inside are proposed its values as before. Selecting its
-  outline or label shows the **Location box** section (Function, Location, Vertices, Devices
-  inside); a new Function or Location there is one undo step and shows at once. A box no longer
-  has a style of its own: every box is drawn in the project's location style. `locationbox` and
-  `functionbox` answer `aid` (no `component`); agents set a box's values with
-  `setprop {"aids": [<aid>], "key": "location" | "function" | "panel_temperature", "value": …}`
-  (`setlocation {component}` is for devices only), and `rating {location, temperature}` still
+  outline or label shows the **Location box** section (Function, Location, Panel temperature
+  (°C), Style, Vertices, Devices inside); a new value there is one undo step and shows at once.
+  An unset Panel temperature or Style shows the project's, faint. A box keeps a location style of
+  its own (Style): it is drawn in it, counted under the style's **Used by**, and moved to the
+  replacement when the style is deleted; an own style that no longer exists falls back to the
+  project's and is listed in Checks. `locationbox` and `functionbox` answer `aid` (no
+  `component`); agents set a box's values with `setprop {"aids": [<aid>], "key": "location" |
+  "function" | "panel_temperature" | "style", "value": …}` (null clears the temperature or the
+  style; `setlocation {component}` on a box is refused: "<id> is a location box; edit it with
+  setprop {aids}"), and `rating {location, temperature}` still
   sets the panel temperature of every box of a location. Older files with a box stored as a
   device open read-only, naming the old `location_box` device form.
 
@@ -37,8 +41,13 @@ What changed for someone using the app:
 5. Draw a location box `+CP1` round a coil, then click the box's outline: the right panel shows
    **Location box +CP1**. Change Location to `+CP2`: the label reads `+CP2` at once, the coil is
    asked about (it was `+CP1`), and one undo brings `+CP1` back.
+6. In the same section set Panel temperature to `45`: it shows `45` at once (no longer faint).
+   Pick another Style (add one first in Settings ▸ Standards ▸ Location boxes, for example with a
+   continuous line): the outline is redrawn in it; one undo brings the project's style back.
 
 Checked so far: automated headless tests only
 (`lanes::lane_072f::renaming_or_captioning_a_shown_arrow_refreshes_its_section` and
-`lanes::lane_072f::a_new_location_on_a_shown_box_refreshes_its_section` in ecad-app).
+`lanes::lane_072f::a_new_location_on_a_shown_box_refreshes_its_section` and
+`lanes::lane_072f::a_shown_boxs_panel_temperature_and_style_rows_refresh` in ecad-app;
+`lanes::lane_072f` in ecad-cadcraft and ecad-mcp).
 Not yet tried by the owner.
