@@ -86,8 +86,9 @@ fn bag(props: &Properties, place: WordPlace, level: Level, out: &mut Vec<Unknown
     }
 }
 
-/// The kinds a tagless component may be: a continuation, a location box, a BOM item.
-pub const TAGLESS_KINDS: [&str; 3] = [ecad_model::connectivity::CONTINUATION, crate::locations::KIND_VALUE, crate::bom::ITEM_KIND];
+/// The kinds a tagless component may be: a location box, a BOM item. A continuation is a drawing
+/// aid (design 072 §6.2), never a device; ecad-file refuses a device of that kind.
+pub const TAGLESS_KINDS: [&str; 2] = [crate::locations::KIND_VALUE, crate::bom::ITEM_KIND];
 
 /// A tagless component's `kind` that is none of [`TAGLESS_KINDS`]. The junction went with routes
 /// (design 072 D: a T is a route landing on a route), so a file holding one opens read-only
@@ -170,13 +171,10 @@ mod tests {
     #[test]
     fn a_stored_junction_is_an_unknown_kind() {
         let mut d = doc();
-        let (j, c) = (DeviceId(4), DeviceId(5));
+        let j = DeviceId(4);
         let mut junction = Device::default();
         junction.properties.insert(ecad_model::connectivity::KIND.into(), "junction".into());
         d.devices.insert(j, junction);
-        let mut cont = Device::default();
-        cont.properties.insert(ecad_model::connectivity::KIND.into(), ecad_model::connectivity::CONTINUATION.into());
-        d.devices.insert(c, cont);
         let mut boxed = Device::default();
         boxed.properties.insert(ecad_model::connectivity::KIND.into(), crate::locations::KIND_VALUE.into());
         d.devices.insert(DeviceId(6), boxed);
@@ -184,7 +182,7 @@ mod tests {
         assert_eq!(found.len(), 1, "{found:?}");
         assert_eq!(found[0].place(), WordPlace::Device(j));
         let text = found[0].to_string();
-        assert!(text.contains("`junction`") && text.contains("`kind`") && text.contains("continuation"), "{text}");
+        assert!(text.contains("`junction`") && text.contains("`kind`") && text.contains(crate::locations::KIND_VALUE), "{text}");
     }
 
     #[test]

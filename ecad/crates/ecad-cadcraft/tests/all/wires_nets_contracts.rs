@@ -466,9 +466,9 @@ fn renaming_a_continuation_leaves_the_core_on_its_lines() {
     let a1 = doc
         .continuations_named("A1")
         .into_iter()
-        .find(|c| doc.representations_of(ecad_model::Subject::Device(*c)).any(|(_, r)| r.page == f.p115))
+        .find(|c| doc.representations_of(ecad_model::Subject::Aid(*c)).any(|(_, r)| r.page == f.p115))
         .expect("A1 on page 115");
-    f.h.run("setprop", json!({"component": a1.hex(), "key": "name", "value": "Z1"})).unwrap();
+    f.h.run("setprop", json!({"aids": [a1.hex()], "key": "name", "value": "Z1"})).unwrap();
     let doc = f.h.doc();
     assert_eq!(doc.cables[&f.cable].cores.len(), 3, "still three cores: {:?}", doc.cables[&f.cable].cores);
     assert!(!doc.wires.contains_key(&f.wires[0]), "the A1 wire went with the pair");
@@ -612,9 +612,9 @@ fn chain_updates_in_checks_and_outputs_match_a_rebuild() {
     let a2 = doc
         .continuations_named("A2")
         .into_iter()
-        .find(|c| doc.representations_of(ecad_model::Subject::Device(*c)).any(|(_, r)| r.page == f.p115))
+        .find(|c| doc.representations_of(ecad_model::Subject::Aid(*c)).any(|(_, r)| r.page == f.p115))
         .unwrap();
-    f.h.run("setprop", json!({"component": a2.hex(), "key": "name", "value": "Z2"})).unwrap();
+    f.h.run("setprop", json!({"aids": [a2.hex()], "key": "name", "value": "Z2"})).unwrap();
     kept_equals_rebuild(&mut f.h, "continuation renamed");
     let line = f.h.route_of(f.p115, f.wires[2]);
     f.h.run("disconnect", json!({"route": line.hex(), "end": "A"})).unwrap();
@@ -636,18 +636,15 @@ fn the_outputs_map_takes_a_continuation_rename_to_its_cables() {
     let a1 = doc
         .continuations_named("A1")
         .into_iter()
-        .find(|c| doc.representations_of(ecad_model::Subject::Device(*c)).any(|(_, r)| r.page == f.p115))
+        .find(|c| doc.representations_of(ecad_model::Subject::Aid(*c)).any(|(_, r)| r.page == f.p115))
         .unwrap();
     let cable = f.cable;
     let (kept, fresh) = f.h.cfg(|p| {
         p.outputs();
         let before = p.ledger.document().clone();
-        let ops = vec![ecad_model::Op::SetProperty {
-            object: ecad_model::ObjectRef::Device(a1),
-            key: "name".into(),
-            before: Some("A1".into()),
-            after: Some("Z1".into()),
-        }];
+        let before_aid = p.ledger.document().aids.get(&a1).cloned().unwrap();
+        let after_aid = ecad_cadcraft::wires::continuation_aid("Z1", None).unwrap();
+        let ops = vec![ecad_model::Op::ModifyAid { id: a1, before: before_aid, after: after_aid }];
         let scope = p.outputs.as_ref().unwrap().scope(&before, &ops);
         p.ledger.commit(ecad_model::Author::User, "rename", ops.clone()).unwrap();
         // F5: the commit's rewrite pass adds to the rename (the broken pair's wire goes, its core

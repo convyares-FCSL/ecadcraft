@@ -18,6 +18,9 @@ use crate::project::{Mapped, Project};
 struct Picked {
     devices: BTreeSet<DeviceId>,
     symbol: Option<ecad_model::RepresentationId>,
+    /// Continuation arrows (design 072 §6.2), and the first one's symbol.
+    aids: BTreeSet<ecad_model::AidId>,
+    aid_symbol: Option<ecad_model::RepresentationId>,
     wires: BTreeSet<WireId>,
     cables: BTreeSet<CableId>,
     references: BTreeSet<ecad_model::RepresentationId>,
@@ -81,7 +84,12 @@ fn pick(p: &Project, page: PageId, selection: &[Handle]) -> Picked {
             Subject::Cable(k) => {
                 out.cables.insert(k);
             }
-            // An aid is not a device, wire or cable (design 072 §6.2).
+            // An aid is not a device, wire or cable (design 072 §6.2); a continuation has its own
+            // section.
+            Subject::Aid(a) if crate::continuations::continuation(doc, a).is_some() => {
+                out.aids.insert(a);
+                out.aid_symbol.get_or_insert(rid);
+            }
             Subject::Aid(_) => {}
             // A drawn line stands for the wire it carries (design 072 §4.3).
             Subject::Route(x) => match crate::wires::wire_of_route(doc, x) {
@@ -119,6 +127,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
     let k = pick(p, page, selection);
     // Brief 030: a link line alone selects its link.
     if k.devices.is_empty()
+        && k.aids.is_empty()
         && k.wires.is_empty()
         && k.cables.is_empty()
         && k.references.is_empty()
@@ -133,7 +142,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         ));
         return v;
     }
-    let kinds = [!k.devices.is_empty(), !k.wires.is_empty(), !k.cables.is_empty(), !k.references.is_empty()];
+    let kinds = [!k.devices.is_empty(), !k.aids.is_empty(), !k.wires.is_empty(), !k.cables.is_empty(), !k.references.is_empty()];
     let n_kinds = kinds.iter().filter(|x| **x).count();
     if n_kinds == 0 {
         return v;
@@ -142,6 +151,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         let mut words = Vec::new();
         for (n, one, many) in [
             (k.devices.len(), "device", "devices"),
+            (k.aids.len(), "continuation", "continuations"),
             (k.wires.len(), "wire", "wires"),
             (k.cables.len(), "cable", "cables"),
             (k.references.len(), "reference", "references"),
@@ -150,7 +160,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
                 words.push(format!("{n} {}", if n == 1 { one } else { many }));
             }
         }
-        let total = k.devices.len() + k.wires.len() + k.cables.len() + k.references.len();
+        let total = k.devices.len() + k.aids.len() + k.wires.len() + k.cables.len() + k.references.len();
         v.sections.push(Section {
             title: format!("ECAD · {total} OBJECTS"),
             kind: "objects",
@@ -167,13 +177,6 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         // Brief 025: the Coil and Contacts rows name places on the device's pages.
         for c in &k.devices {
             v.deps.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| ObjectRef::Page(r.page)));
-            // Brief 049: an arrow's Other ends row names its partners' places.
-            if let Some(n) = crate::continuations::name_of(doc, *c) {
-                for o in doc.continuations_named(&n) {
-                    v.deps.insert(ObjectRef::Device(o));
-                    v.deps.extend(doc.representations_of(Subject::Device(o)).map(|(_, r)| ObjectRef::Page(r.page)));
-                }
-            }
         }
         // Brief 052: codes come from the project's list, and an unset value's proposal from the
         // selected symbol's page (its boxes and values) and the project's.
@@ -187,6 +190,17 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
             [b] if crate::locations::is_box(doc, *b) => v.sections.push(box_section(doc, *b)),
             _ => v.sections.push(device_section(doc, p.outputs.as_ref().map(|o| &o.plc), &k.devices, k.symbol)),
         }
+    } else if !k.aids.is_empty() {
+        // Design 072 §6.2: an aid has no `ObjectRef`, so an aid op rebuilds the view
+        // (`ecad_electrical::props::touched`); brief 049: the Other ends row names its partners'
+        // places, on their pages.
+        for a in &k.aids {
+            let partners = crate::continuations::name_of(doc, *a).map(|n| doc.continuations_named(&n)).unwrap_or_default();
+            for o in partners.into_iter().chain([*a]) {
+                v.deps.extend(doc.representations_of(Subject::Aid(o)).map(|(_, r)| ObjectRef::Page(r.page)));
+            }
+        }
+        v.sections.push(ecad_electrical::props::continuation_section(doc, &k.aids, k.aid_symbol));
     } else if let [w] = k.wires.iter().copied().collect::<Vec<_>>().as_slice() {
         v.deps.insert(ObjectRef::Wire(*w));
         v.deps.extend(doc.cables_of(*w).into_iter().map(ObjectRef::Cable));

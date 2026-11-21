@@ -88,3 +88,61 @@ fn a_points_owner_is_shown_raw_and_readable() {
     let summary = ask(s, serde_json::json!({"op": "summary"}));
     assert!(summary.get("ok").is_some(), "{summary}");
 }
+
+/// F1b part 2: a continuation is drawn as an aid's symbol (`Subject::Aid`) and renamed with
+/// `ModifyAid`; both read in the Raw and Readable views.
+#[test]
+fn a_continuation_aid_and_its_rename_are_shown_raw_and_readable() {
+    use ecad_model::{Form, Item, ItemId, ItemKind, Primitive, Pt, Representation, RepresentationId, Style, Subject, Terminal, TerminalId};
+    let dir = TempDir::new("072f-rename");
+    let mut l = history();
+    let mut ids = IdAllocator::seeded(0x72f2);
+    let (a, t, i, r): (AidId, TerminalId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
+    let page = *l.document().page_order.first().unwrap();
+    let layer = *l.document().layers.keys().next().unwrap();
+    let style = Style { layer, color: ecad_model::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
+    let named = |n: &str| Aid::Continuation { name: Some(ContinuationName::new(n).unwrap()), caption: None };
+    l.commit(
+        Author::User,
+        "arrow",
+        vec![
+            Op::CreateAid { id: a, aid: named("24V") },
+            Op::AddTerminal { id: t, terminal: Terminal { owner: a.into(), label: None, key: None, accepts: Default::default() } },
+            Op::AddItem { id: i, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Point { at: Pt::new(10.0, 10.0) }) } },
+            Op::LinkRepresentation {
+                id: r,
+                rep: Representation {
+                    subject: Subject::Aid(a),
+                    page,
+                    form: Form::Drawn,
+                    role: ecad_model::Role::Part(Default::default()),
+                    items: vec![i],
+                    connection_points: Default::default(),
+                },
+            },
+        ],
+    )
+    .unwrap();
+    l.commit(Author::User, "rename", vec![Op::ModifyAid { id: a, before: named("24V"), after: named("0V") }]).unwrap();
+    let path = written(&dir, &l);
+    let f = FileSource::from_path(&path);
+    assert!(matches!(f.wait_verified(Duration::from_secs(60)), VerifyState::Done { .. }));
+    let s = Some(&f as &dyn Source);
+    let rows = ask(s, serde_json::json!({"op": "rows", "table": "transactions", "count": 1000}));
+    let rows = rows["ok"]["rows"].as_array().cloned().unwrap_or_default();
+    let keys: Vec<String> = rows.iter().rev().take(2).filter_map(|r| r["key"].as_str().map(str::to_string)).collect();
+    assert_eq!(keys.len(), 2, "{rows:?}");
+    let text =
+        |key: &str| ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "readable"}))["ok"]["decoded"].to_string();
+    let (rename, placed) = (text(&keys[0]), text(&keys[1]));
+    for want in ["ModifyAid", "24V", "0V", &a.hex()] {
+        assert!(rename.contains(want), "{want} in the rename: {rename}");
+    }
+    for want in ["CreateAid", "LinkRepresentation", "aid", &a.hex()] {
+        assert!(placed.contains(want), "{want} in the placing: {placed}");
+    }
+    for key in &keys {
+        let raw = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "raw"}));
+        assert!(raw["ok"]["hex"].as_str().is_some_and(|h| !h.is_empty()), "the raw row");
+    }
+}

@@ -521,14 +521,11 @@ impl Scope {
                         self.devices.insert(*id);
                     }
                 }
-                Op::SetProperty { object: ObjectRef::Device(c), key, .. } => {
+                Op::SetProperty { object: ObjectRef::Device(c), .. } => {
                     if locations::is_box(doc, *c) {
                         self.pages.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
                     } else {
                         self.devices.insert(*c);
-                    }
-                    if key == ecad_model::connectivity::NAME {
-                        self.cables.extend(continuation_group_cables(doc, *c));
                     }
                 }
                 Op::SetProperty { object: ObjectRef::Wire(w), .. } | Op::ModifyWire { id: w, .. } => {
@@ -538,10 +535,15 @@ impl Scope {
                 Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Cable(_), .. } => {}
                 // No check or output reads a device link yet (design 072 §2.6).
                 Op::AddDeviceLink { .. } | Op::RemoveDeviceLink { .. } => {}
-                // Design 072 §6.2: a box's values are its pages' context. A continuation has no
-                // connection point until lane F1b (TerminalOwner::Aid), so no list shows it yet.
+                // Design 072 §6.2: a box's values are its pages' context; a continuation renamed
+                // joins or breaks its name groups' cable core chains (032, design 032 §8.4).
                 Op::CreateAid { id, aid } | Op::DeleteAid { id, aid } => self.aid(doc, *id, [aid]),
-                Op::ModifyAid { id, before, after } => self.aid(doc, *id, [before, after]),
+                Op::ModifyAid { id, before, after } => {
+                    self.aid(doc, *id, [before, after]);
+                    if ecad_model::connectivity::continuation_key(before) != ecad_model::connectivity::continuation_key(after) {
+                        self.cables.extend(continuation_group_cables(doc, *id));
+                    }
+                }
                 Op::ModifyProject { before, after } => {
                     use crate::designations::{Aspect, changed_codes, default_key};
                     // Brief 047: an item without its own location shows the project's.
@@ -707,8 +709,8 @@ impl Scope {
 /// 032 (design 032 §8.4): the cables with a member attached to a continuation of `c`'s name group,
 /// `c` included, read on `doc` (called on the state before and after a rename, so both the old
 /// and the new group): their core chains may join or break.
-fn continuation_group_cables(doc: &Document, c: DeviceId) -> BTreeSet<CableId> {
-    let Some(key) = doc.devices.get(&c).and_then(|x| ecad_model::connectivity::continuation_key(&x.properties)) else {
+fn continuation_group_cables(doc: &Document, c: ecad_model::AidId) -> BTreeSet<CableId> {
+    let Some(key) = crate::continuations::name_of(doc, c) else {
         return BTreeSet::new();
     };
     let mut group = doc.continuations_named(&key);

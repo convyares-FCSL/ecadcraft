@@ -443,12 +443,12 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
         // A device cross-reference (brief 025): a table row's pole, the table's contacts, or the
         // contact's lens with its coil.
         Mapped::Xref(r) => {
-            let Subject::Device(c) = doc.representations.get(&r)?.subject else { return None };
             // Brief 049 (design 049 §5.4): an arrow's reference text, bracket or caption.
-            if crate::continuations::is_continuation(doc, c) {
-                let rep = if crate::continuations::arrow(doc, r).is_some() { r } else { return None };
-                return Some(crate::continuations::hover_lines(doc, c, rep));
+            if let Subject::Aid(a) = doc.representations.get(&r)?.subject {
+                crate::continuations::arrow(doc, r)?;
+                return Some(crate::continuations::hover_lines(doc, a, r));
             }
+            let Subject::Device(c) = doc.representations.get(&r)?.subject else { return None };
             let row = view.map.xref_part(h).and_then(|(_, i)| {
                 let dev = crate::xref::device(doc, c);
                 let mut places = crate::xref::Places::new(doc);
@@ -473,11 +473,11 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
                 // A device (a tagged component, brief 018): design 018 §6.4's lens.
                 Subject::Device(c) if crate::devices::tag_of(doc, c).is_some() => with_xrefs(doc, c, rid, crate::devices::hover_lines(doc, c, rid)),
                 // Brief 049 (design 049 §5.4): a continuation arrow's other ends.
-                Subject::Device(c) if crate::continuations::arrow(doc, rid).is_some() => crate::continuations::hover_lines(doc, c, rid),
                 Subject::Device(c) => component_lines(doc, c),
                 Subject::Wire(w) => wire_lines(doc, Some(w), None, page),
                 Subject::Route(x) => wire_lines(doc, crate::wires::wire_of_route(doc, x), Some(x), page),
-                // Design 072 §6.2: an aid's hover comes with lane F1b/F1c.
+                // Brief 049 (design 049 §5.4): a continuation arrow's other ends (design 072 §6.2).
+                Subject::Aid(a) if crate::continuations::arrow(doc, rid).is_some() => crate::continuations::hover_lines(doc, a, rid),
                 Subject::Aid(_) => Vec::new(),
                 // A drawn slash: traditional, or a fan that cannot be drawn on this page.
                 Subject::Cable(k) => {
@@ -703,7 +703,7 @@ fn wire_lines(doc: &Document, w: Option<WireId>, route: Option<RouteId>, page: P
             let t = c.end(end);
             lines.push(match doc.terminals.get(&t) {
                 // A continuation (brief 022) is named by what it is.
-                Some(x) if x.device().and_then(|c| crate::wires::kind_of(doc, c)).is_some() => {
+                Some(x) if x.owner.aid().is_some() => {
                     let words = crate::wires::point_words(doc, t);
                     match words.strip_prefix('\u{2192}') {
                         Some(name) => format!("End {end:?}: continuation {name}"),

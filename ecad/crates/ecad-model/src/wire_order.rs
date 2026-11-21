@@ -197,23 +197,10 @@ pub fn rewrite(doc: &Document, ops: &[Op]) -> Vec<Op> {
             }
             // A continuation joining or leaving a name group (F5): the lines at its partners, old
             // and new, may now run on through it or no longer.
-            Op::CreateDevice { id, device } | Op::DeleteDevice { id, device } => seeds.continuation(doc, *id, &device.properties),
-            Op::ModifyDevice { id, before, after } => {
-                seeds.continuation(doc, *id, &before.properties);
-                seeds.continuation(doc, *id, &after.properties);
-            }
-            Op::SetProperty { object: crate::op::ObjectRef::Device(id), key, before, .. }
-                if key == crate::connectivity::KIND || key == crate::connectivity::NAME =>
-            {
-                if let Some(d) = doc.devices.get(id) {
-                    let mut was = d.properties.clone();
-                    match before {
-                        Some(v) => was.insert(key.clone(), v.clone()),
-                        None => was.remove(key),
-                    };
-                    seeds.continuation(doc, *id, &was);
-                    seeds.continuation(doc, *id, &d.properties.clone());
-                }
+            Op::CreateAid { id, aid } | Op::DeleteAid { id, aid } => seeds.continuation(doc, *id, aid),
+            Op::ModifyAid { id, before, after } => {
+                seeds.continuation(doc, *id, before);
+                seeds.continuation(doc, *id, after);
             }
             _ => {}
         }
@@ -348,12 +335,12 @@ struct Seeds {
 }
 
 impl Seeds {
-    /// Continuation `id` with `props` (before or after an op): its own points and its partners'.
-    fn continuation(&mut self, doc: &Document, id: crate::id::DeviceId, props: &crate::doc::Properties) {
-        if props.get(crate::connectivity::KIND).map(String::as_str) != Some(crate::connectivity::CONTINUATION) {
+    /// Continuation `id` as `aid` (before or after an op): its own points and its partners'.
+    fn continuation(&mut self, doc: &Document, id: crate::id::AidId, aid: &crate::aid::Aid) {
+        if !matches!(aid, crate::aid::Aid::Continuation { .. }) {
             return;
         }
-        self.points.extend(doc.continuation_points(props, id));
+        self.points.extend(doc.continuation_points(id, aid));
     }
 
     fn route(&mut self, doc: &Document, id: RouteId, r: &crate::route::Route) {

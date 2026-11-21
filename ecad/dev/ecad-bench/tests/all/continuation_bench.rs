@@ -68,16 +68,11 @@ fn pages(n: usize) -> Document {
 
 /// Add an arrow named `name` at `at` on `page` (with a caption when given).
 fn arrow(doc: &mut Document, ids: &mut IdAllocator, page: PageId, at: Pt, name: &str, caption: Option<&str>) {
-    let mut props = ecad_model::Properties::new();
-    props.insert("kind".into(), "continuation".into());
-    props.insert("name".into(), name.into());
-    if let Some(c) = caption {
-        props.insert("caption".into(), c.into());
-    }
+    let aid = ecad_cadcraft::wires::continuation_aid(name, caption).unwrap();
     let style = Style { layer: ecad_model::LayerId(1), color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     let starter = ecad_cadcraft::wires::continuation_starter();
     let pl = Placement { origin: at, rotation: ecad_model::units::Radians(0.0), mirror: false, scale: 1.0 };
-    let t = ecad_cadcraft::wires::plan_tagless(doc, ids, page, style, starter, pl, props).unwrap();
+    let t = ecad_cadcraft::wires::plan_tagless(doc, ids, page, style, starter, pl, aid).unwrap();
     for op in &t.ops {
         op.apply(doc).unwrap();
     }
@@ -86,7 +81,7 @@ fn arrow(doc: &mut Document, ids: &mut IdAllocator, page: PageId, at: Pt, name: 
 /// The ops moving the symbol item of the first arrow named `name` by `dx`.
 fn move_first(doc: &Document, name: &str, dx: f64) -> Vec<Op> {
     let c = doc.continuations_named(name)[0];
-    let (_, r) = doc.representations_of(ecad_model::Subject::Device(c)).next().unwrap();
+    let (_, r) = doc.representations_of(ecad_model::Subject::Aid(c)).next().unwrap();
     let id = r.items[0];
     let before = doc.items[&id].clone();
     let mut after = before.clone();
@@ -155,13 +150,16 @@ fn bench_049_continuation_rows() {
     let mut redrawn = BTreeSet::new();
     let move20 = time_with(runs, || idx.clone(), |mut i| redrawn = commit_work(&doc, &after, &mut i, &ops));
     let partners: BTreeSet<PageId> =
-        doc.continuations_named("N3").iter().flat_map(|c| doc.representations_of(ecad_model::Subject::Device(*c))).map(|(_, r)| r.page).collect();
+        doc.continuations_named("N3").iter().flat_map(|c| doc.representations_of(ecad_model::Subject::Aid(*c))).map(|(_, r)| r.page).collect();
     assert!(redrawn.is_subset(&partners), "only pages with an N3 arrow: {redrawn:?}");
 
     // Rename one arrow from N3 to N4.
     let c = doc.continuations_named("N3")[1];
-    let rename =
-        vec![Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key: "name".into(), before: Some("N3".into()), after: Some("N4".into()) }];
+    let rename = vec![Op::ModifyAid {
+        id: c,
+        before: doc.aids[&c].clone(),
+        after: ecad_cadcraft::wires::continuation_aid("N4", doc.aids[&c].continuation_caption().map(|t| t.as_str())).unwrap(),
+    }];
     let after = applied(&doc, &rename);
     let rename20 = time_with(runs, || idx.clone(), |mut i| drop(commit_work(&doc, &after, &mut i, &rename)));
 

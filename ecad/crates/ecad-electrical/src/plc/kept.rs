@@ -275,11 +275,11 @@ impl Plc {
                 }
                 // A continuation renamed joins or splits nets: every continuation of the old and
                 // the new name, and the nets they are on now.
-                Op::SetProperty { object: ObjectRef::Device(c), key, before, after } if key == ecad_model::connectivity::NAME => {
-                    let mut ts: Vec<ecad_model::TerminalId> = doc.terminals_of(*c).map(|(t, _)| t).collect();
-                    for v in [before, after].into_iter().flatten() {
-                        for k in doc.continuations_named(&ecad_model::connectivity::name_key(v)) {
-                            ts.extend(doc.terminals_of(k).map(|(t, _)| t));
+                Op::ModifyAid { id, before, after } => {
+                    let mut ts: Vec<ecad_model::TerminalId> = doc.terminals_of(*id).map(|(t, _)| t).collect();
+                    for k in [before, after].into_iter().filter_map(ecad_model::connectivity::continuation_key) {
+                        for a in doc.continuations_named(&k) {
+                            ts.extend(doc.terminals_of(a).map(|(t, _)| t));
                         }
                     }
                     self.rows_changed.extend(iolist::cards_on_nets_of_terminals(doc, self, &ts));

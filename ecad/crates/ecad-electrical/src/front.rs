@@ -478,9 +478,7 @@ pub fn touches(doc: &Document, ops: &[Op]) -> bool {
             let ch = before.change(after);
             codes_on && (ch.location || ch.function)
         }
-        Op::CreateDevice { device: component, .. } | Op::DeleteDevice { device: component, .. } => {
-            ecad_model::connectivity::continuation_key(&component.properties).is_some()
-        }
+        Op::CreateAid { aid, .. } | Op::DeleteAid { aid, .. } => ecad_model::connectivity::continuation_key(aid).is_some(),
         _ => false,
     })
 }
@@ -538,8 +536,10 @@ impl Uses {
             Op::SetStyle { catalogue, .. } => *catalogue == ecad_model::StyleCatalogue::Wire,
             Op::SetProjectSettings { before, after } => before.wiring.potentials != after.wiring.potentials,
             Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => key == crate::defaults::styles::WIRE_CATEGORY.key,
-            Op::CreateDevice { device: component, .. } | Op::DeleteDevice { device: component, .. } => {
-                ecad_model::connectivity::continuation_key(&component.properties).is_some()
+            Op::CreateAid { aid, .. } | Op::DeleteAid { aid, .. } => ecad_model::connectivity::continuation_key(aid).is_some(),
+            // A continuation renamed joins or splits nets.
+            Op::ModifyAid { before, after, .. } => {
+                ecad_model::connectivity::continuation_key(before) != ecad_model::connectivity::continuation_key(after)
             }
             _ => false,
         });
@@ -566,9 +566,7 @@ impl Uses {
                     gone.insert(*id);
                 }
                 Op::SetProperty { object: ObjectRef::Device(c), key, .. }
-                    if key == ecad_model::connectivity::POTENTIAL
-                        || key == ecad_model::connectivity::NAME
-                        || key == ecad_model::connectivity::KIND =>
+                    if key == ecad_model::connectivity::POTENTIAL || key == ecad_model::connectivity::KIND =>
                 {
                     for (t, _) in doc.terminals_of(*c) {
                         at(Some(t), &mut seeds);

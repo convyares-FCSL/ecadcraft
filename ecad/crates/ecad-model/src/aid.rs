@@ -92,6 +92,14 @@ impl Aid {
         }
     }
 
+    /// Its caption, when it is a continuation with one.
+    pub fn continuation_caption(&self) -> Option<&Caption> {
+        match self {
+            Aid::Continuation { caption, .. } => caption.as_ref(),
+            Aid::Box(_) => None,
+        }
+    }
+
     /// Its box values, when it is a location box.
     pub fn as_box(&self) -> Option<&LocationBox> {
         match self {

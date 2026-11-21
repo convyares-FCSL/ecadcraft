@@ -26,3 +26,21 @@ fn aids_come_back_from_the_snapshot_and_the_log() {
         assert_eq!(opened.ledger.document().aids, f.ledger.document().aids, "{name}");
     }
 }
+
+/// F1b: a continuation is a drawing aid; a file holding a device of kind `continuation` (the old
+/// form) is not read (pre-v1, no conversion).
+#[test]
+fn a_continuation_device_is_a_read_error() {
+    let dir = TempDir::new("072f-old-continuation");
+    let mut f = fixture();
+    let c: DeviceId = f.ids.fresh();
+    let mut old = Device::default();
+    old.properties.insert("kind".into(), "continuation".into());
+    old.properties.insert("name".into(), "24V".into());
+    f.ledger.commit(Author::User, "old arrow", vec![Op::CreateDevice { id: c, device: old }]).unwrap();
+    let (_, hi) = ecad_file::schema::SNAPSHOT_EVERY_RANGE;
+    let p = dir.path("old.ecad");
+    ProjectV2::create(Store::create(&p).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, hi).unwrap();
+    let err = ProjectV2::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).err().map(|e| e.to_string()).unwrap_or_default();
+    assert!(err.contains("continuation"), "a read error naming it: {err:?}");
+}

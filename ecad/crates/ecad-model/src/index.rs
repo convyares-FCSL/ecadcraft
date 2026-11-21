@@ -98,7 +98,7 @@ pub(crate) struct Index {
     pub(crate) cable_tags: Multi<String, CableId>,
     /// Continuation name key ([`crate::connectivity::name_key`]) → continuation components with
     /// that name (brief 022).
-    pub(crate) continuations: Multi<String, DeviceId>,
+    pub(crate) continuations: Multi<String, crate::id::AidId>,
     /// Folder → pages whose `folder` property names it (brief 019).
     pub(crate) folder_pages: Multi<FolderId, PageId>,
     /// Folder → folders whose parent it is (brief 019).
@@ -180,6 +180,9 @@ impl Index {
         for (id, t) in &doc.terminals {
             rest.terminal(*id, t, Delta::Add);
         }
+        for (id, a) in &doc.aids {
+            rest.aid(*id, a, Delta::Add);
+        }
         for (id, c) in &doc.wires {
             rest.conductor(*id, c, Delta::Add);
         }
@@ -258,15 +261,14 @@ impl Index {
         if let Some(t) = c.tag() {
             self.tag(id, t, delta);
         }
-        if let Some(k) = crate::connectivity::continuation_key(&c.properties) {
-            self.continuation(id, k, delta);
-        }
         self.style_choices(ObjectRef::Device(id), &c.properties, delta);
     }
 
-    /// A continuation's name key is added or removed (brief 022).
-    pub(crate) fn continuation(&mut self, id: DeviceId, key: String, delta: Delta) {
-        bump(&mut self.continuations, key, id, delta);
+    /// A drawing aid is added or removed: a continuation's name key (design 072 §6.2).
+    pub(crate) fn aid(&mut self, id: crate::id::AidId, aid: &crate::aid::Aid, delta: Delta) {
+        if let Some(k) = crate::connectivity::continuation_key(aid) {
+            bump(&mut self.continuations, k, id, delta);
+        }
     }
 
     /// A component's tag `tag` (its stored value) is added or removed.

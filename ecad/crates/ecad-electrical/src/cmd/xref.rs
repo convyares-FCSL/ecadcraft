@@ -58,12 +58,6 @@ pub fn goto(
     let mut places = xref::Places::new(doc);
     let place = places.text(tr.page, Some(at));
     let what = match tr.subject {
-        Subject::Device(c) if crate::continuations::is_continuation(doc, c) => {
-            format!(
-                "continuation {}",
-                doc.devices.get(&c).and_then(|x| x.properties.get(ecad_model::connectivity::NAME)).cloned().unwrap_or_default()
-            )
-        }
         Subject::Device(c) => match xref::device(doc, c).head {
             Some(h) if h == t => format!("{}'s coil", crate::devices::tag_words(doc, c)),
             _ => format!("{}'s contact", crate::devices::tag_words(doc, c)),

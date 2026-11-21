@@ -9,7 +9,6 @@
 use cadcraft_engine::Session;
 use ecad_electrical::CmdError;
 use ecad_electrical::cmd::wire::{self as rules, Conflict, NetChoice, Numbered, PotentialRow, WireSettingsChange, Wires};
-use ecad_model::connectivity::{KIND, NAME};
 use ecad_model::units::{Degrees, Radians};
 use ecad_model::wiring;
 use ecad_model::{PageId, Placement, Pt, TerminalId, WireId};
@@ -577,8 +576,9 @@ pub(crate) fn quiet_ends(p: &Project, page: PageId) -> Vec<Pt> {
 
 // ---------------------------------------------------------------- place (the continuation form)
 
-/// `place {symbol: "continuation", at, rotation?, mirror?, name?, caption?}`: a
-/// tagless component (design 022 §3.2), part of `place` ([`crate::cmd::device::PlaceParams`]).
+/// `place {symbol: "continuation", at, rotation?, mirror?, name, caption?}`: a continuation, a
+/// drawing aid (design 022 §3.2, design 072 §6.2), part of `place`
+/// ([`crate::cmd::device::PlaceParams`]). Answers its `aid`.
 pub(crate) fn place_tagless(
     s: &mut Session, params: &crate::cmd::device::PlaceParams, starter: &'static Starter, at: Pt, degrees: Degrees, mirror: bool,
 ) -> cadcraft_engine::Result<Value> {
@@ -588,22 +588,15 @@ pub(crate) fn place_tagless(
     on_project(s, |p, pg, page| {
         let style = plain_style(p);
         let doc = p.ledger.document();
-        let mut props = ecad_model::Properties::new();
-        props.insert(KIND.into(), starter.key.to_string());
-        if let Some(n) = &name {
-            props.insert(NAME.into(), n.clone());
-        }
-        if let Some(t) = &caption {
-            props.insert(crate::continuations::CAPTION_KEY.into(), t.clone());
-        }
+        let aid = wires::continuation_aid(name.as_deref().unwrap_or_default(), caption.as_deref())?;
         let placement = Placement { origin: at, rotation: Radians::from(degrees), mirror, scale: 1.0 };
-        let t = wires::plan_tagless(doc, &mut p.ids, page, style, starter, placement, props)?;
+        let t = wires::plan_tagless(doc, &mut p.ids, page, style, starter, placement, aid)?;
         p.apply_edit(pg, "place", starter.name, t.ops.clone())?;
         if let Some(n) = &name {
             p.last_continuation = Some(n.clone());
         }
         Ok(json!({
-            "component": t.component.hex(),
+            "aid": t.aid.hex(),
             "representation": t.representation.hex(),
             "item": t.item.hex(),
             "definition": t.definition.hex(),

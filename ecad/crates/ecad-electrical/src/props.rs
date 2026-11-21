@@ -28,6 +28,8 @@ pub enum Target {
     Page(PageId),
     Project,
     Devices(Vec<DeviceId>),
+    /// Continuation arrows (design 072 §6.2).
+    Aids(Vec<ecad_model::AidId>),
     Wire(WireId),
     Cable(CableId),
 }
@@ -109,8 +111,8 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
                 let landed = before.points_landed().chain(after.points_landed());
                 out.extend(landed.filter_map(|t| doc.terminals.get(&t)).filter_map(|t| t.device()).map(ObjectRef::Device));
             }
-            // No panel shows an aid yet (design 072 §6.2; lane F1b/F1c).
-            Op::CreateAid { .. } | Op::DeleteAid { .. } | Op::ModifyAid { .. } => {}
+            // An aid has no `ObjectRef` (design 072 §6.2): the panel reads its selection again.
+            Op::CreateAid { .. } | Op::DeleteAid { .. } | Op::ModifyAid { .. } => return None,
             Op::ModifyCable { id, before, after } => {
                 out.insert(ObjectRef::Cable(*id));
                 out.extend(before.cores.iter().chain(&after.cores).filter_map(|m| m.wire()).map(ObjectRef::Wire));
@@ -348,16 +350,11 @@ pub fn device_section(
     match (one, devices.iter().next().copied()) {
         // Brief 028 (design 028 §7.2): a strip's offer, its counts and the PE row's part.
         (true, Some(c)) if crate::strips::strip_of(doc, c).is_some() => strip_rows(doc, c, &mut rows, &mut buttons),
-        // Brief 049 (design 049 §5.2): a continuation's Caption and Other ends.
-        (true, Some(c)) if crate::continuations::is_continuation(doc, c) => continuation_rows(doc, devices, symbol, &mut rows, &mut buttons),
         (true, Some(c)) => {
             xref_rows(doc, c, symbol, &mut rows, &mut buttons);
             // Brief 045 (design 045 §2.6): Properties ▸ Card and ▸ Rack.
             crate::plc::props_rows(doc, c, &mut rows);
             crate::plc::channel_rows(doc, plc, c, symbol, &mut rows);
-        }
-        (false, _) if devices.iter().all(|c| crate::continuations::is_continuation(doc, *c)) => {
-            continuation_rows(doc, devices, None, &mut rows, &mut buttons);
         }
         _ => {}
     }
@@ -466,10 +463,32 @@ fn xref_rows(doc: &Document, c: DeviceId, symbol: Option<ecad_model::Representat
     }
 }
 
-/// Brief 049's rows of continuation arrows (design 049 §5.2): **Caption** (blank when they
-/// differ), and for one arrow its **Other ends** with Go to (`refgoto:<source>:<target>:<label>`).
+/// Continuation arrows' section (design 072 §6.2, brief 049 §5.2): **Name**, **Caption** (blank
+/// when they differ), and for one arrow its **Other ends** with Go to
+/// (`refgoto:<source>:<target>:<label>`).
+pub fn continuation_section(doc: &Document, arrows: &BTreeSet<ecad_model::AidId>, symbol: Option<ecad_model::RepresentationId>) -> Section {
+    use crate::continuations as k;
+    let names: BTreeSet<String> = arrows.iter().map(|a| k::display_name(doc, *a)).collect();
+    let one_name = (names.len() == 1).then(|| names.iter().next().cloned()).flatten();
+    let mut rows = Vec::new();
+    let mut buttons = Vec::new();
+    let mut r = Row::rw(k::NAME_KEY, "Name", one_name.clone().unwrap_or_default());
+    r.varies = one_name.is_none();
+    rows.push(r);
+    continuation_rows(doc, arrows, symbol, &mut rows, &mut buttons);
+    Section {
+        title: format!("ECAD · CONTINUATION {}", one_name.unwrap_or_else(|| format!("({})", arrows.len()))),
+        kind: "continuation",
+        target: Some(Target::Aids(arrows.iter().copied().collect())),
+        rows,
+        note: None,
+        buttons,
+    }
+}
+
 fn continuation_rows(
-    doc: &Document, arrows: &BTreeSet<DeviceId>, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<Row>, buttons: &mut Vec<String>,
+    doc: &Document, arrows: &BTreeSet<ecad_model::AidId>, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<Row>,
+    buttons: &mut Vec<String>,
 ) {
     use crate::continuations as k;
     let captions: BTreeSet<Option<&str>> = arrows.iter().map(|c| k::caption_of(doc, *c)).collect();
@@ -643,11 +662,10 @@ fn wiring_rows(doc: &Document, w: WireId) -> (Vec<Row>, Vec<Row>) {
     );
     let mut names: BTreeMap<String, usize> = BTreeMap::new();
     for t in &net.terminals {
-        if let Some(x) = doc.terminals.get(t)
-            && x.device().and_then(|c| crate::wires::kind_of(doc, c)) == Some(ecad_model::connectivity::CONTINUATION)
-            && let Some(name) = x.device().and_then(|c| doc.devices.get(&c)).and_then(|c| c.properties.get(ecad_model::connectivity::NAME))
+        if let Some(a) = doc.terminals.get(t).and_then(|x| x.owner.aid())
+            && crate::continuations::continuation(doc, a).is_some()
         {
-            *names.entry(name.clone()).or_default() += 1;
+            *names.entry(crate::continuations::display_name(doc, a)).or_default() += 1;
         }
     }
     let mut block = vec![
@@ -877,6 +895,7 @@ pub fn edit_line(target: &Target, key: &str, value: Option<&str>) -> String {
         }
         Target::Devices(cs) if cs.len() == 1 => ("setprop", serde_json::json!({"component": cs.first().map(|c| c.hex()), "key": key, "value": v})),
         Target::Devices(cs) => ("setprop", serde_json::json!({"devices": cs.iter().map(|c| c.hex()).collect::<Vec<_>>(), "key": key, "value": v})),
+        Target::Aids(cs) => ("setprop", serde_json::json!({"aids": cs.iter().map(|c| c.hex()).collect::<Vec<_>>(), "key": key, "value": v})),
         // Brief 022: the number and the potential belong to the whole net.
         Target::Wire(w) if key == ecad_model::wiring::WIRE_NUMBER_KEY => ("wirenumber", serde_json::json!({"conductor": w.hex(), "value": v})),
         Target::Wire(w) if key == ecad_model::connectivity::WIRE_NUMBER_FIXED => {

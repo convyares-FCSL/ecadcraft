@@ -1232,8 +1232,11 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
             // Brief 049 (design 049 §8.2): a continuation's partners list it on their pages; those
             // pages come from the reference index's watch (`xref::Watch`), and its own pages from
             // its representation ops.
-            Op::CreateDevice { device: component, .. } | Op::DeleteDevice { device: component, .. }
-                if ecad_model::connectivity::continuation_key(&component.properties).is_some() => {}
+            Op::CreateAid { aid, .. } | Op::DeleteAid { aid, .. } if aid.as_box().is_none() => {}
+            // A continuation renamed or captioned: its own pages (design 072 §6.2).
+            Op::ModifyAid { id, before, .. } if before.as_box().is_none() => {
+                out.extend(doc.representations_of(Subject::Aid(*id)).map(|(_, r)| r.page));
+            }
             Op::CreateWire { id, .. } if !doc.wires.contains_key(id) => {}
             // A deleted wire's labels are on the pages of the routes at its ends.
             Op::DeleteWire { wire, .. } => out.extend(points_pages(doc, &wire.ends)),
@@ -1264,18 +1267,8 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
             Op::SetProperty { object: ecad_model::ObjectRef::Page(p), .. } => {
                 out.insert(*p);
             }
-            // A device's tag is drawn beside each of its symbols (brief 018): their pages. Brief
-            // 049 (design 049 §8.2): a continuation's name and kind are drawn on its own pages; its
-            // partners' pages come from the reference index's watch.
-            Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key, .. }
-                if (key == ecad_model::connectivity::NAME || key == ecad_model::connectivity::KIND)
-                    && crate::continuations::is_continuation(doc, *c) =>
-            {
-                out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
-            }
-            Op::SetProperty { object: ecad_model::ObjectRef::Device(_), key, .. }
-                if key == ecad_model::connectivity::NAME || key == ecad_model::connectivity::KIND =>
-            {
+            // A device's tag is drawn beside each of its symbols (brief 018): their pages.
+            Op::SetProperty { object: ecad_model::ObjectRef::Device(_), key, .. } if key == ecad_model::connectivity::KIND => {
                 return None;
             }
             Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key, after, .. } => {

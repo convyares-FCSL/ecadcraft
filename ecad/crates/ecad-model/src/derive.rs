@@ -51,7 +51,11 @@ fn shown_by(doc: &Document, r: &Representation) -> Vec<(TerminalId, Pt)> {
     if let Subject::Cable(_) = r.subject {
         return r.connection_points.iter().map(|(t, p)| (*t, *p)).collect();
     }
-    let Subject::Device(component) = r.subject else { return Vec::new() };
+    let owner: crate::doc::TerminalOwner = match r.subject {
+        Subject::Device(d) => d.into(),
+        Subject::Aid(a) => a.into(),
+        _ => return Vec::new(),
+    };
     match r.form {
         Form::Drawn => r.connection_points.iter().map(|(t, p)| (*t, *p)).collect(),
         Form::Symbol => {
@@ -64,7 +68,7 @@ fn shown_by(doc: &Document, r: &Representation) -> Vec<(TerminalId, Pt)> {
                 return r.connection_points.iter().map(|(t, p)| (*t, inst.placement.apply(*p))).collect();
             }
             let Some(def) = doc.definitions.get(&inst.definition) else { return Vec::new() };
-            doc.terminals_of(component)
+            doc.terminals_of(owner)
                 .filter_map(|(tid, t)| {
                     let td = t.key.as_ref().and_then(|k| def.terminals.iter().find(|d| &d.key == k))?;
                     Some((tid, inst.placement.apply(td.at)))

@@ -221,8 +221,15 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
                     t.name = w.map_or_else(|| "wire line".into(), |w| wire_words(doc, w));
                     t.handles = crate::checks::handles_of(p, page, crate::checks::Object::Route(r));
                 }
-                // Design 072 §6.2: aids are not picked as their own kind until lane F1b/F1c.
-                Subject::Aid(_) => {}
+                // Design 072 §6.2: a continuation arrow is pointed at as a symbol of no device; its
+                // handles are its own.
+                Subject::Aid(a) => {
+                    t.kind = ObjectKind::Device;
+                    t.representation = Some(rid);
+                    t.name = format!("continuation {}", crate::continuations::display_name(doc, a));
+                    let map = p.pages.get(&page).map(|v| &v.map);
+                    t.handles = r.items.iter().filter_map(|i| map.and_then(|m| m.item(*i))).collect();
+                }
             },
             None => {}
         },

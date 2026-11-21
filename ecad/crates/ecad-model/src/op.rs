@@ -615,18 +615,24 @@ impl Op {
                 if let Some(e) = aid.problem() {
                     return Err(pre(format!("aid {id}: {e}")));
                 }
+                doc.index.aid(*id, aid, Delta::Add);
                 doc.aids.insert(*id, aid.clone());
             }
             Op::DeleteAid { id, aid } => {
                 holds(&doc.aids, *id, aid, "aid", checked)?;
-                doc.aids.remove(id);
+                if let Some(old) = doc.aids.remove(id) {
+                    doc.index.aid(*id, &old, Delta::Remove);
+                }
             }
             Op::ModifyAid { id, before, after } => {
                 holds(&doc.aids, *id, before, "aid", checked)?;
                 if let Some(e) = after.problem() {
                     return Err(pre(format!("aid {id}: {e}")));
                 }
-                doc.aids.insert(*id, after.clone());
+                if let Some(old) = doc.aids.insert(*id, after.clone()) {
+                    doc.index.aid(*id, &old, Delta::Remove);
+                }
+                doc.index.aid(*id, after, Delta::Add);
             }
             Op::CreateCable { id, cable } => {
                 absent(&doc.cables, *id, "cable")?;
@@ -674,26 +680,6 @@ impl Op {
                     Some(v) => props.insert(key.clone(), v.clone()),
                     None => props.remove(key),
                 };
-                // A continuation's name is indexed (brief 022).
-                if let ObjectRef::Device(id) = object
-                    && (key == crate::connectivity::KIND || key == crate::connectivity::NAME)
-                {
-                    let mut before_props = props.clone();
-                    match &old {
-                        Some(v) => before_props.insert(key.clone(), v.clone()),
-                        None => before_props.remove(key),
-                    };
-                    let was = crate::connectivity::continuation_key(&before_props);
-                    let now = crate::connectivity::continuation_key(props);
-                    if was != now {
-                        if let Some(k) = was {
-                            doc.index.continuation(*id, k, Delta::Remove);
-                        }
-                        if let Some(k) = now {
-                            doc.index.continuation(*id, k, Delta::Add);
-                        }
-                    }
-                }
                 // A style choice is indexed (brief 050a): the style's explicit users.
                 if crate::style::is_choice_key(key) {
                     let obj = *object;
