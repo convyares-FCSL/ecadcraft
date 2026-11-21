@@ -19,7 +19,7 @@
 //! Excluded: merging between sibling branches; the preview's "Show ▾" window; the count of new
 //! Checks entries (the Checks tab shows them after the merge).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use cadcraft_engine::{CommandSpec, Session};
@@ -222,7 +222,7 @@ pub fn prepare(p: &Project, sides: Sides) -> Result<Prepared, String> {
                 scope.add_ops(&tx.ops);
                 ecad_model::tag::note_ops(&mut high, &tx.ops);
                 if b == sides.target {
-                    for o in objects_of(&tx.ops) {
+                    for o in merge::objects_of(&tx.ops) {
                         target_last.insert(o, tx.seq);
                     }
                 }
@@ -304,26 +304,6 @@ fn join_and(v: &[String]) -> String {
     }
 }
 
-/// The objects `ops` name.
-fn objects_of(ops: &[ecad_model::Op]) -> BTreeSet<Obj> {
-    let mut s = Scope::default();
-    s.add_ops(ops);
-    let t = &s.touched;
-    let mut out = BTreeSet::new();
-    out.extend(t.pages.iter().chain(&t.page_properties).map(|x| Obj::Page(*x)));
-    out.extend(t.devices.iter().map(|x| Obj::Device(*x)));
-    out.extend(t.wires.iter().map(|x| Obj::Wire(*x)));
-    out.extend(t.cables.iter().map(|x| Obj::Cable(*x)));
-    out.extend(t.representations.iter().map(|x| Obj::Representation(*x)));
-    out.extend(t.items.iter().map(|x| Obj::Item(*x)));
-    out.extend(t.terminals.iter().map(|x| Obj::Terminal(*x)));
-    out.extend(t.folders.iter().map(|x| Obj::Folder(*x)));
-    if s.project {
-        out.insert(Obj::Project);
-    }
-    out
-}
-
 /// Whether a merge into `target` writes this project property: revision fields are never
 /// merged into the release line (owner answer 10); an update brings them unchanged. The tag
 /// high-water resets (`numbering.high.<P>`, brief 026) are internal and never merged: the
@@ -331,26 +311,6 @@ fn objects_of(ops: &[ecad_model::Op]) -> BTreeSet<Obj> {
 /// tag brought in (reviewer 026, 4: no conflict row for them either).
 fn keeps(update: bool) -> impl Fn(&str) -> bool {
     move |k: &str| !k.starts_with(ecad_model::tag::HIGH_RESET_PREFIX) && (update || !k.starts_with("rev."))
-}
-
-/// Check a value typed in a conflict's Edit field as an ordinary property edit of that object
-/// would be (design §5.2: the property's own rules from 018/019/022): `Ok(value)` as stored.
-fn edit_rule(doc: &Document, obj: Obj, key: &str, value: &str) -> Result<String, String> {
-    let checked = match obj {
-        Obj::Device(c) if crate::cmd::device::is_device_property(ecad_model::ObjectRef::Device(c), key) => {
-            crate::devices::property_value(doc, key, Some(value))?
-        }
-        Obj::Wire(c) => match ecad_electrical::cmd::wire::setprop_rule(doc, ecad_model::ObjectRef::Wire(c), key, Some(value))? {
-            Some(v) => v,
-            None => crate::devices::property_value(doc, "", Some(value))?,
-        },
-        Obj::Cable(c) => match ecad_electrical::cmd::wire::setprop_rule(doc, ecad_model::ObjectRef::Cable(c), key, Some(value))? {
-            Some(v) => v,
-            None => crate::devices::property_value(doc, "", Some(value))?,
-        },
-        _ => crate::devices::property_value(doc, "", Some(value))?,
-    };
-    checked.ok_or_else(|| "An Edit value cannot be empty: type one, or keep one side's value.".to_string())
 }
 
 /// Plan the prepared merge with `choices` (nothing is written). The plan's ops are then tried
@@ -370,7 +330,7 @@ pub fn plan(p: &mut Project, prep: &Prepared, choices: &BTreeMap<String, Choice>
             Some(d) => d,
             None => p.ledger.document(),
         };
-        let rule = |obj: Obj, key: &str, v: &str| edit_rule(target, obj, key, v);
+        let rule = |obj: Obj, key: &str, v: &str| ecad_electrical::cmd::merge::edit_rule(target, obj, key, v).map_err(String::from);
         // Brief 026, Make them one: 018's device merge, with fresh IDs from the project.
         let ids = std::cell::RefCell::new(&mut p.ids);
         let join = |d: &Document, from: ecad_model::DeviceId, into: ecad_model::DeviceId| {
@@ -545,18 +505,6 @@ fn framed(prep: &Prepared, obj: Obj) -> Option<String> {
     })
 }
 
-fn kind_word(k: ConflictKind) -> &'static str {
-    match k {
-        ConflictKind::Value => "value",
-        ConflictKind::Removed => "removed",
-        ConflictKind::Needed => "needed",
-        ConflictKind::Tag => "tag",
-        ConflictKind::PageNumber => "page_number",
-        ConflictKind::FolderName => "folder_name",
-        ConflictKind::Order => "order",
-    }
-}
-
 /// The preview as JSON (design §10): the header, the counts line, the conflicts with their
 /// choices (`main` / `branch` words), the changes and what Merge would do.
 pub fn preview_json(prep: &Prepared, plan: &Plan) -> Value {
@@ -584,7 +532,7 @@ pub fn preview_json(prep: &Prepared, plan: &Plan) -> Value {
                 _ => main_text.clone(),
             };
             json!({
-                "id": c.id, "kind": kind_word(c.kind), "text": c.what,
+                "id": c.id, "kind": merge::kind_word(c.kind), "text": c.what,
                 "main": main_text, "branch": branch_text,
                 "choices": c.choices.iter().map(|x| choice_word(s, x)).collect::<Vec<_>>(),
                 "editable": c.choices.iter().any(|x| matches!(x, Choice::Value(_))),

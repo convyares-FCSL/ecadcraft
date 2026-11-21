@@ -2300,6 +2300,39 @@ pub fn plan(inp: &Inputs<'_>, choices: &BTreeMap<String, Choice>) -> Plan {
     }
 }
 
+/// The objects `ops` name.
+pub fn objects_of(ops: &[Op]) -> BTreeSet<Obj> {
+    let mut s = Scope::default();
+    s.add_ops(ops);
+    let t = &s.touched;
+    let mut out = BTreeSet::new();
+    out.extend(t.pages.iter().chain(&t.page_properties).map(|x| Obj::Page(*x)));
+    out.extend(t.devices.iter().map(|x| Obj::Device(*x)));
+    out.extend(t.wires.iter().map(|x| Obj::Wire(*x)));
+    out.extend(t.cables.iter().map(|x| Obj::Cable(*x)));
+    out.extend(t.representations.iter().map(|x| Obj::Representation(*x)));
+    out.extend(t.items.iter().map(|x| Obj::Item(*x)));
+    out.extend(t.terminals.iter().map(|x| Obj::Terminal(*x)));
+    out.extend(t.folders.iter().map(|x| Obj::Folder(*x)));
+    if s.project {
+        out.insert(Obj::Project);
+    }
+    out
+}
+
+/// A conflict kind's word in the merge preview's JSON (design 020 §10).
+pub fn kind_word(k: ConflictKind) -> &'static str {
+    match k {
+        ConflictKind::Value => "value",
+        ConflictKind::Removed => "removed",
+        ConflictKind::Needed => "needed",
+        ConflictKind::Tag => "tag",
+        ConflictKind::PageNumber => "page_number",
+        ConflictKind::FolderName => "folder_name",
+        ConflictKind::Order => "order",
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
