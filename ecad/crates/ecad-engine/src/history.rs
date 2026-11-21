@@ -349,10 +349,7 @@ pub fn graph(p: &Project, show: Show) -> Result<Graph, String> {
             }
         }
         if *id == main {
-            let label = match p.file.v2().and_then(|v| v.link_v1()) {
-                Some(_) => "Converted from a version 1 file".to_string(),
-                None => "Project created".to_string(),
-            };
+            let label = "Project created".to_string();
             let created = p.file.v2().and_then(ecad_file::ProjectV2::created_ms);
             nodes.push(Node {
                 branch: main,

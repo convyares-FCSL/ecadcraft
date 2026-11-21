@@ -21,7 +21,7 @@ use serde_json::{Value, json};
 use super::chunks::{self, ChunkSet, Dirty, ModelMeta};
 use super::pack;
 use super::schema::{
-    BranchId, BranchRecord, BranchStatus, CODEC, CONTAINER_VERSION, Cache, FORMAT_PROJECT, LinkV1, MAX_NAME, MergeRow, Merged, Point, Release,
+    BranchId, BranchRecord, BranchStatus, CODEC, CONTAINER_VERSION, Cache, FORMAT_PROJECT, MAX_NAME, MergeRow, Merged, Point, Release,
     SNAPSHOT_EVERY_RANGE, STACK_CAP, SnapshotRef, VersionKind, VersionRecord, auto_name,
 };
 use super::store::{Reader, Store, StoreError};
@@ -129,8 +129,6 @@ pub struct ReportV2 {
     /// redb repaired the file while opening it (it was not closed cleanly).
     pub repaired: bool,
     pub damage: Option<DamageV2>,
-    /// Converted from a version 1 file.
-    pub link_v1: Option<LinkV1>,
 }
 
 impl ReportV2 {
@@ -749,7 +747,6 @@ pub struct ProjectV2 {
     read_only: Option<String>,
     /// Why the file is read-only, apart from damage on the branch shown (kept across a switch).
     file_read_only: Option<String>,
-    link_v1: Option<LinkV1>,
     created_ms: Option<u64>,
     last_save: Option<SavedV2>,
     /// `meta.writer` names this build already (written by the first save of a session).
@@ -818,7 +815,6 @@ fn meta_json(r: &Reader, name: &'static str) -> Result<Option<Value>, OpenErrorV
 struct Facts {
     project: ProjectId,
     cache: Cache,
-    link_v1: Option<LinkV1>,
     created_ms: Option<u64>,
     /// `meta.active`: the branch the project was last shown on (FQ4).
     active: Option<BranchId>,
@@ -851,14 +847,10 @@ fn read_facts(r: &Reader) -> Result<Facts, OpenErrorV2> {
     if !(SNAPSHOT_EVERY_RANGE.0..=SNAPSHOT_EVERY_RANGE.1).contains(&cache.every) {
         return Err(OpenErrorV2::Damaged(FileError::CacheEvery(cache.every)));
     }
-    let link_v1 = match meta_json(r, "link_v1")? {
-        Some(v) => Some(serde_json::from_value(v).map_err(|e| OpenErrorV2::Damaged(FileError::Meta { name: "link_v1", error: e.to_string() }))?),
-        None => None,
-    };
     let created_ms = meta_json(r, "created_ms")?.and_then(|v| v.as_u64());
     // An unreadable `active` is not damage: the project opens on `main`.
     let active = meta_json(r, "active").ok().flatten().and_then(|v| v.as_str().and_then(BranchId::parse));
-    Ok(Facts { project, cache, link_v1, created_ms, active })
+    Ok(Facts { project, cache, created_ms, active })
 }
 
 /// [`main_branch`], for Verify: the check that opening applies.
@@ -893,7 +885,7 @@ struct Loaded {
 /// branch with no snapshot of its own starts from its parent's state at the fork point. Damage
 /// found loads the last state that verifies, with a report.
 fn load_branch(
-    store: &Arc<Store>, project: ProjectId, cache: &Cache, link: Option<&LinkV1>, branch: BranchId, rec: &BranchRecord, seed: u64,
+    store: &Arc<Store>, project: ProjectId, cache: &Cache, branch: BranchId, rec: &BranchRecord, seed: u64,
 ) -> Result<Loaded, OpenErrorV2> {
     let r = store.reader()?;
     let lineage = lineage(&r, project, branch).map_err(OpenErrorV2::Damaged)?;
@@ -1015,15 +1007,7 @@ fn load_branch(
         store.reader()?.tx(branch, verified)?.map(|(_, c, _)| c).unwrap_or(snap_chain)
     };
     let damage_text = damage.as_ref().map(|d| format!("the file is damaged ({})", d.detail));
-    let report = ReportV2 {
-        head,
-        verified_seq: verified,
-        snapshot_seq: snap_seq,
-        tail: verified - snap_seq,
-        repaired: store.repaired(),
-        damage,
-        link_v1: link.cloned(),
-    };
+    let report = ReportV2 { head, verified_seq: verified, snapshot_seq: snap_seq, tail: verified - snap_seq, repaired: store.repaired(), damage };
     Ok(Loaded {
         ledger,
         report,
@@ -1058,7 +1042,7 @@ impl ProjectV2 {
             None => (main, main_rec),
         };
         drop(r);
-        let l = load_branch(&store, facts.project, &facts.cache, facts.link_v1.as_ref(), branch, &rec, seed)?;
+        let l = load_branch(&store, facts.project, &facts.cache, branch, &rec, seed)?;
         let file_read_only = (!store.writable()).then(|| "it is open in another session".to_string());
         let read_only = l.damage.clone().or_else(|| file_read_only.clone());
         let project = ProjectV2 {
@@ -1077,7 +1061,6 @@ impl ProjectV2 {
             writer: writer.to_string(),
             read_only,
             file_read_only,
-            link_v1: facts.link_v1,
             created_ms: facts.created_ms,
             last_save: None,
             wrote_writer: false,
@@ -1214,7 +1197,6 @@ impl ProjectV2 {
             writer: writer.to_string(),
             read_only: None,
             file_read_only: None,
-            link_v1: None,
             created_ms,
             last_save: Some(saved.clone()),
             wrote_writer: true,
@@ -1899,8 +1881,7 @@ impl ProjectV2 {
         if rec.status != BranchStatus::Open {
             return Err(BranchError::Refused(format!("Branch \"{}\" is not open; reopen it first.", rec.name)));
         }
-        let l = load_branch(&self.store, self.project, &self.cache, self.link_v1.as_ref(), branch, &rec, seed)
-            .map_err(|e| BranchError::Refused(e.to_string()))?;
+        let l = load_branch(&self.store, self.project, &self.cache, branch, &rec, seed).map_err(|e| BranchError::Refused(e.to_string()))?;
         let writable = self.file_read_only.is_none();
         if writable {
             let mut w = self.store.writer()?;
@@ -2039,11 +2020,6 @@ impl ProjectV2 {
     /// Make the project read-only (another session holds the file's lock).
     pub fn set_read_only(&mut self, why: String) {
         self.read_only = Some(why);
-    }
-
-    /// The version 1 history this file continues, if converted.
-    pub fn link_v1(&self) -> Option<&LinkV1> {
-        self.link_v1.as_ref()
     }
 
     /// When the file was created (informational).

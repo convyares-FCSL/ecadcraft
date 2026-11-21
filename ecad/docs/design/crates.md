@@ -425,8 +425,7 @@ the redb format stores every transaction as these records) → `records`; `recor
 `tx_value`, `decode_tx`, `check_limits`, `seq_and_prev`, `SCHEMA_VERSION`, `definition_hash`
 (pinned by a known-hash test); `canonical`, `chain`, `crc`. From the v1 `disk`, `ReadOnly`,
 `JUST_ENDED`, `holder_record` (used by `v2/disk.rs`) and `utc` (used by ecad-app's debugger and
-ecad-bench's report) move to a neutral module. `v2::schema::LinkV1` stays: it is part of the
-version 2 format (a converted file's link), read and verified, just never written again.
+ecad-bench's report) move to a neutral module. (`LinkV1` was deleted in 0.2.3: nothing writes it.)
 
 **Agreed knock-ons:** ecad-bench `generate.rs` writes v1 (to the redb format); its
 `generator_contracts`, `tester_contracts` and `lane_benchv2` read v1 or convert; its open, edit and

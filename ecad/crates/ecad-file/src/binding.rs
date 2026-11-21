@@ -132,8 +132,6 @@ pub struct StorageFacts {
     pub snapshot_every: u64,
     /// What the last save wrote: first and last `seq`, bytes, chunks and snapshots written.
     pub last_save: Option<crate::SavedV2>,
-    /// The version 1 history a converted file continues: its final hash and length.
-    pub link_v1: Option<(String, u64)>,
     pub writable: bool,
 }
 
@@ -146,7 +144,6 @@ impl StorageFacts {
             snapshot_seq: p.snapshot_seq(),
             snapshot_every: p.snapshot_every(),
             last_save: p.last_save().cloned(),
-            link_v1: p.link_v1().map(|l| (l.hash.clone(), l.transactions)),
             writable: p.read_only().is_none(),
         }
     }

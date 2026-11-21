@@ -232,7 +232,6 @@ impl FileFacts {
             "storage": self.storage.as_ref().map(|s| json!({
                 "branch": s.branch, "head": s.head, "snapshot_seq": s.snapshot_seq,
                 "snapshot_every": s.snapshot_every, "writable": s.writable,
-                "link_v1": s.link_v1.as_ref().map(|(h, n)| json!({"hash": h, "transactions": n})),
                 "last_save": s.last_save.as_ref().map(|l| json!({
                     "first_seq": l.first_seq, "last_seq": l.last_seq, "bytes": l.bytes,
                     "chunks_written": l.chunks_written, "snapshots": l.snapshots,

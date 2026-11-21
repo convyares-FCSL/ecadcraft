@@ -41,8 +41,7 @@ pub const CODEC: &str = "json/1";
 /// The `meta` names this build writes. A reader ignores any other name (brief 020, forward
 /// compatibility: an optional name added by a newer build does not stop an older one opening the
 /// file); a name this build needs and cannot read is still refused.
-pub const META_NAMES: [&str; 10] =
-    ["format", "container_version", "schema_version", "codec", "file_id", "writer", "created_ms", "cache", "link_v1", "active"];
+pub const META_NAMES: [&str; 9] = ["format", "container_version", "schema_version", "codec", "file_id", "writer", "created_ms", "cache", "active"];
 /// The default number of transactions between automatic snapshots (overseer, 2026-11-08).
 pub const DEFAULT_SNAPSHOT_EVERY: u64 = 2_000;
 /// Smallest and largest snapshot intervals accepted from a file.
@@ -382,21 +381,6 @@ pub struct SnapshotRef {
     pub kind: VersionKind,
     pub name: String,
     pub seq: u64,
-    /// Fields this build does not know (a newer build's optional additions): kept as read and
-    /// written back unchanged (overseer, 2026-11-10: readers ignore, writers preserve).
-    #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub extra: BTreeMap<String, serde_json::Value>,
-}
-
-/// `meta.link_v1`: the version 1 history a converted file continues (EEP-0005 §10).
-/// Unknown fields are ignored (brief 020, forward compatibility).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LinkV1 {
-    /// The version 1 file's final chain hash.
-    pub hash: String,
-    pub transactions: u64,
-    pub source_container: u64,
-    pub source_schema: u64,
     /// Fields this build does not know (a newer build's optional additions): kept as read and
     /// written back unchanged (overseer, 2026-11-10: readers ignore, writers preserve).
     #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]

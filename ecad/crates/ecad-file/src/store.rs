@@ -467,7 +467,7 @@ pub struct Writer {
 }
 
 impl Writer {
-    /// Put a `meta` row. Only the names EEP-0005 §3.1 lists (and `link_v1`) are accepted.
+    /// Put a `meta` row. Only the names EEP-0005 §3.1 lists are accepted.
     ///
     /// # Errors
     /// [`StoreError::Refused`] for another name; the engine failed.
