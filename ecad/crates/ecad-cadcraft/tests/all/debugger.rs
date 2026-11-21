@@ -154,7 +154,7 @@ fn the_trail_leads_from_a_selected_wire_to_its_saved_record() {
     h.run("u", Value::Null).unwrap();
     assert!(panel.refresh(&mut h).unwrap());
     let undo_seq = panel.snap().head;
-    assert_eq!(debug::tx_kind(panel.tx(undo_seq), &panel.log), format!("undo of #{move_seq}"));
+    assert_eq!(ecad_file::history::tx_kind(panel.tx(undo_seq), &panel.log), format!("undo of #{move_seq}"));
     assert_eq!(panel.snap().record_state(undo_seq), RecordState::Pending);
     assert_eq!(panel.snap().file.path.as_deref(), Some(path.as_str()));
     assert!(panel.snap().file.lock_file.is_some(), "the writer lock is held");

@@ -35,7 +35,7 @@ use cadcraft_engine::doc::{Drawing, Handle};
 use ecad_inspect::Event;
 use ecad_model::{
     CableId, DefinitionId, DeviceId, Document, ItemId, ItemKind, LayerId, Ledger, Op, PageId, ProjectId, RepresentationId, RouteId, Subject,
-    TerminalId, Transaction, TxId, TxKind, WireId,
+    TerminalId, Transaction, TxId, WireId,
 };
 use serde_json::{Value, json};
 
@@ -879,19 +879,6 @@ pub fn state_at(log: &[Transaction], seq: u64) -> Result<Document, String> {
     let n = usize::try_from(seq).map_err(|e| e.to_string())?;
     let prefix = log.get(..n).ok_or_else(|| format!("transaction {seq} is past the head {}", log.len()))?;
     Ledger::replay(prefix.to_vec(), 0).map(|l| l.document().clone()).map_err(|e| e.to_string())
-}
-
-/// A transaction's kind in words.
-pub fn tx_kind(tx: &Transaction, log: &[Transaction]) -> String {
-    let seq_of = |id: TxId| log.iter().find(|t| t.id == id).map_or_else(|| id.short(), |t| format!("#{}", t.seq));
-    match tx.kind {
-        TxKind::Edit => "edit".into(),
-        TxKind::Undo { of } => format!("undo of {}", seq_of(of)),
-        TxKind::Redo { of } => format!("redo of {}", seq_of(of)),
-        TxKind::Merge { source, source_head, .. } => {
-            format!("merge of {}… at {}", source.iter().take(4).map(|b| format!("{b:02x}")).collect::<String>(), source_head.seq)
-        }
-    }
 }
 
 /// One op's target, before and after values (JSON of the model's own serialisation).

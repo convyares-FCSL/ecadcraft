@@ -570,7 +570,7 @@ impl Debugger {
         pager(ui, "transactions", self.log.len(), &mut self.history_page);
         for tx in self.log.iter().rev().skip(self.history_page * PAGE).take(PAGE) {
             let state = snap.record_state(tx.seq);
-            let text = format!("#{} {} ({}, {} ops)", tx.seq, tx.label, debug::tx_kind(tx, &self.log), tx.ops.len());
+            let text = format!("#{} {} ({}, {} ops)", tx.seq, tx.label, ecad_file::history::tx_kind(tx, &self.log), tx.ops.len());
             if state_row(ui, &text, state, self.tx == Some(tx.seq)).clicked() {
                 pick = Some(tx.seq);
             }
@@ -863,7 +863,7 @@ impl Debugger {
             ui,
             &format!(
                 "{}, by {}, {}, ID {}",
-                debug::tx_kind(tx, &self.log),
+                ecad_file::history::tx_kind(tx, &self.log),
                 author(&tx.author),
                 tx.time_ms.map_or_else(|| "time unknown".into(), |ms| ecad_file::utc(ms / 1000)),
                 tx.id.short()

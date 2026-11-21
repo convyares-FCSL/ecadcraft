@@ -123,3 +123,10 @@ pub fn frame_reach_of(doc: &Document, effect: &ecad_model::effect::Effect<'_>) -
 pub fn sheet_name(spec: &SheetSpec) -> String {
     spec.preset_name().map_or_else(|| format!("{}×{}", spec.width, spec.height), str::to_string)
 }
+
+/// The block area of a frame on `spec`: the frame's width and half its height (mm).
+pub fn block_area(spec: &SheetSpec, margins: &ecad_model::sheet::Margins) -> (f64, f64) {
+    let w = frame_width(spec, margins);
+    let h = ((f64::from(spec.height) - margins.top - margins.bottom) / 2.0).min(ecad_model::title_block::MAX_BLOCK_HEIGHT_MM);
+    (w, h)
+}

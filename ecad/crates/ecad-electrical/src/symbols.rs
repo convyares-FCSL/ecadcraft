@@ -2725,6 +2725,15 @@ pub fn update_available(doc: &Document, rep: ecad_model::RepresentationId) -> Op
     (n.seq > o.library_seq).then_some((n.id, o.library_seq, n.seq))
 }
 
+/// A connector side's word in the connector tool's prompts.
+pub fn side_word(side: Side) -> &'static str {
+    match side {
+        Side::Socket => "Socket",
+        Side::Plug => "Plug",
+        Side::Both => "Both",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

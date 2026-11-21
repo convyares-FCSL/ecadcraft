@@ -23,7 +23,7 @@ use crate::convert::kind_for_primitive;
 use crate::frame::{FrameInput, Part, THIN_WEIGHT, TextLook};
 use crate::generated::{LAYER, MISSING};
 use crate::outputs::kept::Outputs;
-use crate::strips::{SideCell, StripData, TermRow};
+use crate::strips::{SideCell, StripData};
 use crate::text_style::{Look, TextKind};
 
 /// Guard (design 046 §4.1): at most this many cable bar lanes; further cables share the last.
@@ -32,8 +32,6 @@ pub const MAX_CABLE_LANES: usize = 8;
 pub const MAX_LEADS_PER_SIDE: usize = 2;
 /// Guard (§4.2): far devices named under a cable box; more are counted `+n`.
 pub const MAX_FAR_DEVICES: usize = 3;
-/// Level stagger (§3.1): level *n* is raised by (*n* − 1) × this.
-const STAGGER_MM: f64 = 1.5;
 /// Lane spacing (`ecad.strip.lane-gap`): links, cable bars.
 const LINK_LANE_MM: f64 = 2.0;
 const CABLE_LANE_MM: f64 = 2.5;
@@ -260,11 +258,6 @@ fn lead_x(cx: f64, k: usize, n: usize) -> f64 {
     }
 }
 
-/// How far level `r` is raised (§3.1).
-fn raise(r: &TermRow) -> f64 {
-    if r.ty.multi() { f64::from(r.level.saturating_sub(1).min(16)) * STAGGER_MM } else { 0.0 }
-}
-
 #[allow(clippy::too_many_arguments)]
 fn draw_strip(doc: &Document, pen: &mut Pen, s: &StripData, j: usize, avail: f64, g: &Geometry, fr: &Frame, lk: &Looks, o: &Outputs) {
     let (cols, blocks) = columns(s, g);
@@ -289,7 +282,7 @@ fn draw_strip(doc: &Document, pen: &mut Pen, s: &StripData, j: usize, avail: f64
         match p.col {
             Col::Gap(acc) => gap(pen, acc, p, g, yc, s, lk),
             Col::Term(_, r) => {
-                let up = raise(r);
+                let up = crate::strips::raise(r);
                 let (bot, top) = (yc - half + up, yc + half + up);
                 let cx = p.cx();
                 if r.spare() {
@@ -323,7 +316,7 @@ fn draw_strip(doc: &Document, pen: &mut Pen, s: &StripData, j: usize, avail: f64
                         pen.line((cx, y1 - 2.0), (cx, y1));
                     }
                 }
-                if s.acc.markers.contains(&r.label) && first_of_label(s, r) {
+                if s.acc.markers.contains(&r.label) && crate::strips::first_of_label(s, r) {
                     pen.rect((cx - 1.5, top), (cx + 1.5, top + 1.5));
                 }
                 if r.free {
@@ -348,11 +341,6 @@ fn draw_strip(doc: &Document, pen: &mut Pen, s: &StripData, j: usize, avail: f64
     links(pen, &placed, s, yc);
     bridges(pen, &placed, g, yc, lk);
     cables(doc, pen, &cols, c0, &out_leads, g, fr, lk, o);
-}
-
-/// Whether `r` is the first plan row of its position (a marker is drawn once per position).
-fn first_of_label(s: &StripData, r: &TermRow) -> bool {
-    s.rows.iter().find(|x| x.label == r.label).is_some_and(|x| std::ptr::eq(x, r))
 }
 
 /// §3.2: the tag box left of the first column.
@@ -444,7 +432,7 @@ fn level_boxes(pen: &mut Pen, placed: &[Placed<'_>], g: &Geometry, yc: f64) {
                 .get(i..e)
                 .unwrap_or_default()
                 .iter()
-                .filter_map(|p| if let Col::Term(_, x) = p.col { Some(raise(x)) } else { None })
+                .filter_map(|p| if let Col::Term(_, x) = p.col { Some(crate::strips::raise(x)) } else { None })
                 .fold(0.0, f64::max);
             pen.rect((a.x - 0.5, yc - half - 0.8), (z.x + z.w + 0.5, yc + half + top + 0.8));
             // Internal bridges: levels of one group joined near the bottom.

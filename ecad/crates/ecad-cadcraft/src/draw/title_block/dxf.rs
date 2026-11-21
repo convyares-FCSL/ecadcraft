@@ -140,17 +140,10 @@ pub fn logo(bytes: &[u8]) -> Result<Vec<Primitive>, String> {
     if r.prims.is_empty() {
         return Err(EMPTY.into());
     }
-    if crate::title_block::layout::extents(&r.prims).is_none() {
+    if ecad_model::geom::extents(&r.prims).is_none() {
         return Err(EMPTY.into());
     }
     Ok(r.prims)
-}
-
-/// The block area of a frame on `spec`: the frame's width and half its height (mm).
-pub fn block_area(spec: &SheetSpec, margins: &ecad_model::sheet::Margins) -> (f64, f64) {
-    let w = crate::title_block::frame_width(spec, margins);
-    let h = ((f64::from(spec.height) - margins.top - margins.bottom) / 2.0).min(ecad_model::title_block::MAX_BLOCK_HEIGHT_MM);
-    (w, h)
 }
 
 fn mm(v: f64) -> String {
@@ -168,9 +161,9 @@ pub fn block(bytes: &[u8], spec: &SheetSpec, margins: &ecad_model::sheet::Margin
     if r.over {
         return Err(format!("The DXF has more than {} shapes; simplify it first.", ecad_model::title_block::group(MAX_READ)));
     }
-    let (lo, hi) = crate::title_block::layout::extents(&r.prims).ok_or(EMPTY)?;
+    let (lo, hi) = ecad_model::geom::extents(&r.prims).ok_or(EMPTY)?;
     let (w, h) = (hi.x - lo.x, hi.y - lo.y);
-    let (aw, ah) = block_area(spec, margins);
+    let (aw, ah) = ecad_electrical::title_block::block_area(spec, margins);
     if w > aw + 1e-6 || h > ah + 1e-6 {
         let name = crate::title_block::sheet_name(spec);
         return Err(format!(
@@ -228,7 +221,7 @@ pub fn block(bytes: &[u8], spec: &SheetSpec, margins: &ecad_model::sheet::Margin
                 ecad_model::title_block::group(MAX_BODY_PRIMS)
             ));
         }
-        if let Some((clo, chi)) = crate::title_block::layout::extents(&curves) {
+        if let Some((clo, chi)) = ecad_model::geom::extents(&curves) {
             let (x, y) = at(clo);
             let rect = Rect::new(x, y, (chi.x - clo.x).max(0.5), (chi.y - clo.y).max(0.5));
             // Chunks within the logo bound, each over the same box.

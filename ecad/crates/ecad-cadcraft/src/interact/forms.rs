@@ -8,13 +8,13 @@ use cadcraft_engine::doc::color::{Color as CColor, Rgb};
 use cadcraft_engine::doc::{Entity, EntityKind, Handle};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, EngineError, Input, Interactive, Prompt, Session, Step};
-use ecad_model::{CableId, DeviceId, End, Placement, Primitive, Pt, RouteId, Subject, WireId};
+use ecad_model::{CableId, DeviceId, End, Primitive, Pt, RouteId, Subject, WireId};
 use serde_json::{Value, json};
 
 use super::{
     ATTACHED_ACI, LOOSE_ACI, NO_OUTLINE, OUT_OF_RANGE, REFUSE_ACI, RING_PX, TERMINAL_ACI, TERMINAL_PX, can_start, capture_at, capture_preview,
-    drawn_component, from_cursor, in_range, line_kind, nearest_on, next_terminal_name, pick, pixel, preview_entity, preview_text, pt, read,
-    ring_kind, terminal_for, terminal_name, v2, valid_name,
+    drawn_component, from_cursor, in_range, line_kind, next_terminal_name, pick, pixel, preview_entity, preview_text, pt, read, ring_kind,
+    terminal_for, terminal_name, v2, valid_name,
 };
 use crate::cmd::{MAX_HANDLES, MAX_WIRE_POINTS, on_project};
 use crate::project::Mapped;
@@ -191,7 +191,7 @@ impl AddTerminal {
         let px = pixel(s).unwrap_or(0.0);
         read(s, |proj, page| {
             let (c, prim) = drawn_component(proj, page, h)?;
-            let at = match nearest_on(&prim, pt(p)) {
+            let at = match ecad_model::geom::nearest_on(&prim, pt(p)) {
                 Some(q) if clicked && q.dist(pt(p)) > px * 1e-6 && in_range(v2(q)) => q,
                 _ => pt(p),
             };
@@ -279,19 +279,6 @@ impl Interactive for AddTerminal {
 // ---------------------------------------------------------------- Place Symbol (§6)
 
 // Brief 018 replaced the experiment's coil-only form with `super::devices::place`.
-
-/// A primitive moved by a placement (the shapes the coil and its kind use).
-pub(super) fn placed(prim: &Primitive, pl: &Placement) -> Option<Primitive> {
-    Some(match prim {
-        Primitive::Line { a, b } => Primitive::Line { a: pl.apply(*a), b: pl.apply(*b) },
-        Primitive::Polyline { vertices, closed } => {
-            Primitive::Polyline { vertices: vertices.iter().map(|v| pl.apply(*v)).collect(), closed: *closed }
-        }
-        Primitive::Circle { center, radius } => Primitive::Circle { center: pl.apply(*center), radius: *radius },
-        Primitive::Point { at } => Primitive::Point { at: pl.apply(*at) },
-        _ => return None,
-    })
-}
 
 // ---------------------------------------------------------------- Wire (§7)
 

@@ -20,8 +20,6 @@ pub mod gate;
 pub mod policy;
 pub mod tools;
 
-use ecad_model::Author;
-
 /// Longest request line, in bytes; a longer line is answered with an Invalid Request error and
 /// skipped without being kept in memory.
 pub const MAX_REQUEST_BYTES: usize = 4 * 1024 * 1024;
@@ -55,14 +53,6 @@ pub fn agent_name(given: &str) -> String {
     let s: String = ecad_model::text::strip_hidden(given).chars().take(MAX_AGENT_NAME).collect();
     let s = s.trim();
     if s.is_empty() { UNNAMED_AGENT.to_string() } else { s.to_string() }
-}
-
-/// How a transaction's author is shown (as the debugger shows it).
-pub fn author_text(a: &Author) -> String {
-    match a {
-        Author::User => "user".into(),
-        Author::Agent(n) => format!("agent {n}"),
-    }
 }
 
 /// Said when the project cannot be read to check a call; the call is refused (fail closed).

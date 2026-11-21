@@ -440,3 +440,22 @@ pub fn cards_on_nets_of_terminals(doc: &Document, plc: &Plc, ts: &[ecad_model::T
     out.dedup();
     out
 }
+
+/// The cells of one I/O row, in [`crate::plc::sheets::IO_COLUMNS`] order.
+pub fn io_cells(r: &Row, spare: &str) -> [String; 8] {
+    let desc = match (&r.text, r.state) {
+        (Some(t), _) => t.clone(),
+        (None, "spare") => spare.to_string(),
+        (None, _) => String::new(),
+    };
+    [
+        r.channel.to_string(),
+        address_words(r),
+        pins_words(&r.pins),
+        desc,
+        r.state.to_string(),
+        targets_words(&r.targets),
+        r.wire.clone().unwrap_or_default(),
+        r.place.clone().unwrap_or_default(),
+    ]
+}
