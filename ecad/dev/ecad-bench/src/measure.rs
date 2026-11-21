@@ -503,7 +503,7 @@ struct DrawTarget {
 
 fn draw_target(project: &ecad_engine::ProjectHandle, s: &mut cadcraft_engine::Session) -> Result<DrawTarget, String> {
     use ecad_model::{Form, ItemKind, Subject};
-    let found = project.read(s, |p, _| -> Result<DrawTarget, String> {
+    project.read(s, |p, _| -> Result<DrawTarget, String> {
         let doc = p.ledger.document();
         let page = doc.page_order.first().copied().ok_or("the project has no page")?;
         let (component, item) = doc
@@ -537,8 +537,7 @@ fn draw_target(project: &ecad_engine::ProjectHandle, s: &mut cadcraft_engine::Se
         let (_, _, from) = *others.next().ok_or("page 1 has no connection point of another component")?;
         let (_, _, to) = *others.find(|(_, _, at)| !at.near(from, 1e-6)).ok_or("page 1 has no second connection point of another component")?;
         Ok(DrawTarget { head: p.ledger.head(), symbol, with_wires, from, to })
-    })?;
-    found
+    })?
 }
 
 /// Draw-edit timings: move, move with wires, wire.
@@ -578,7 +577,11 @@ fn draw_edits(path: &Path, copy: &Path, runs: usize) -> Result<DrawTimes, String
             let t = Instant::now();
             s.execute("move", &params).map_err(|e| format!("move with wires {}: {e}", run + 1))?;
             windows.push(ms(t));
-            one_tx(target.head, draw_target(&project, &mut s).map_err(|e| format!("after move with wires {}: {e}", run + 1))?.head, "move with wires")?;
+            one_tx(
+                target.head,
+                draw_target(&project, &mut s).map_err(|e| format!("after move with wires {}: {e}", run + 1))?.head,
+                "move with wires",
+            )?;
         }
         for run in 0..runs {
             let target = draw_target(&project, &mut s).map_err(|e| format!("wire {}: {e}", run + 1))?;
