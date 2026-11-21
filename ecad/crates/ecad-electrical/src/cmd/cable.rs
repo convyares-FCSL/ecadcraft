@@ -10,12 +10,15 @@
 //!
 //! Excludes: the pickers and the UI (the Cables tab).
 
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 
 use ecad_model::words::Word;
-use ecad_model::{CableId, Document, IdAllocator, Ledger, ObjectRef, Op, PageId, Properties, StyleRef};
+use ecad_model::{CableId, Document, IdAllocator, Ledger, ObjectRef, Op, PageId, Properties, StyleRef, Subject};
 
-use crate::cables::{CableField, MAX_LENGTH, MAX_TEXT, MAX_WORDS, MIN_LENGTH, Shield, Side, clip, drawn_pages, is_drawn, length_of, type_notation};
+use crate::cables::{
+    CableField, MAX_LENGTH, MAX_TEXT, MAX_WORDS, MIN_LENGTH, Shield, Side, clip, drawn_pages, is_drawn, length_of, plan_words, planned, read,
+    type_notation,
+};
 use crate::designations::{self, Aspect};
 use crate::devices::TagHigh;
 use crate::error::CmdError;
@@ -461,4 +464,69 @@ pub fn already_in_cable(words: String) -> CmdError {
 /// The refusal of a slash crossing more than the most members a cable takes.
 pub fn too_many() -> CmdError {
     said(crate::slash::too_many())
+}
+
+/// Board 2.06's **Add a core** (design 059 §3): cable `k`'s offer plus one core (`4G` → `5G`,
+/// `7X` → `8X`; a list gains the next number), or its member count plus one with no offer.
+pub fn next_offer(doc: &Document, k: CableId) -> String {
+    let members = doc.cables.get(&k).map_or(0, |c| c.cores.len());
+    let Some((cores, _, text)) = cable::offer(doc, k) else { return (members + 1).to_string() };
+    let t = text.trim();
+    let digits: String = t.chars().take_while(char::is_ascii_digit).collect();
+    let rest = &t[digits.len()..];
+    if let Ok(n) = digits.parse::<usize>()
+        && (rest.is_empty() || rest.eq_ignore_ascii_case("G") || rest.eq_ignore_ascii_case("X"))
+    {
+        return format!("{}{}", n.saturating_add(1), rest.to_ascii_uppercase());
+    }
+    let high = cores.iter().filter_map(|c| c.parse::<usize>().ok()).max().unwrap_or(0);
+    let mut v = cores;
+    v.push((high + 1).to_string());
+    v.join(",")
+}
+
+/// One item of the slash and Add to cable pickers (design 059 §5.6).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PickItem {
+    pub cable: CableId,
+    pub tag: String,
+    /// `-W03  H07RN-F 4G1.5 · +CAB1 → +FIELD`.
+    pub line: String,
+    pub drawn: bool,
+    /// A cable not drawn whose planned end location is this page's (or one of its location boxes').
+    pub matches: bool,
+}
+
+/// The picker's cables on `page` (Q7): not drawn first (those whose planned end location matches
+/// the page's location, or one of its location boxes', before the rest, marked), then drawn cables
+/// not slashed on this page (032). Each group by tag. O(cables), built once when a picker opens.
+pub fn picker(doc: &Document, page: PageId) -> Vec<PickItem> {
+    let mut here: BTreeSet<String> = crate::locations::boxes_on(doc, page).into_iter().filter_map(|b| b.location).collect();
+    let page_loc = doc.pages.get(&page).and_then(|x| designations::page_key(x, Aspect::Location));
+    if let Some(code) = designations::shown(doc, Aspect::Location, page_loc.as_deref()) {
+        here.insert(code);
+    }
+    let mut out: Vec<PickItem> = Vec::new();
+    for k in doc.cables.keys() {
+        let drawn = is_drawn(doc, *k);
+        if drawn && doc.representations_of(Subject::Cable(*k)).any(|(_, r)| r.page == page && r.role == ecad_model::Role::Slash) {
+            continue;
+        }
+        let tag = crate::cables::cable_title(doc, *k);
+        let matches = !drawn
+            && Side::BOTH.into_iter().any(|s| planned(doc, *k, s, Aspect::Location).is_some_and(|c| here.iter().any(|h| h.eq_ignore_ascii_case(&c))));
+        let dash = "\u{2014}";
+        let ends = format!(
+            "{} \u{2192} {}",
+            plan_words(doc, *k, Side::From).unwrap_or_else(|| dash.into()),
+            plan_words(doc, *k, Side::To).unwrap_or_else(|| dash.into())
+        );
+        let line = match read(doc, *k, CableField::Type) {
+            Some(t) => format!("{tag}  {t} \u{b7} {ends}"),
+            None => format!("{tag}  {ends}"),
+        };
+        out.push(PickItem { cable: *k, tag, line, drawn, matches });
+    }
+    out.sort_by(|a, b| (a.drawn, !a.matches).cmp(&(b.drawn, !b.matches)).then_with(|| crate::locations::natural_cmp(&a.tag, &b.tag)));
+    out
 }

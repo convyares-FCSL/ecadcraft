@@ -7,7 +7,7 @@
 //! **Update map.** The list is read once when the tool starts (or the page or project changes),
 //! never per frame: O(cables).
 
-use ecad_cadcraft::cable_cmds::PickItem;
+use ecad_electrical::cmd::cable::PickItem;
 use ecad_ui::control::{self, Select};
 use eframe::egui;
 
@@ -59,7 +59,7 @@ impl App {
         let Some(page) = self.panel.active else { return };
         let read = p.read(&mut self.cad.session, |p, _| {
             let doc = p.ledger.document();
-            (p.ledger.head(), ecad_cadcraft::cable_cmds::picker(doc, page))
+            (p.ledger.head(), ecad_electrical::cmd::cable::picker(doc, page))
         });
         let Ok((head, items)) = read else { return };
         let key = Some((head, page));

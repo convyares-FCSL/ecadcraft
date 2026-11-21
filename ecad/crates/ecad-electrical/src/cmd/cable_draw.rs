@@ -115,6 +115,72 @@ pub fn slash_new(
     Ok(Slashed { cable, item, rep, ops })
 }
 
+/// The hex of the wires a slash crossed, in crossing order (the `conductors` of a result).
+pub fn crossing_wires(members: &[slash::Crossing]) -> Vec<String> {
+    members.iter().filter_map(|m| m.wire()).map(|w| w.hex()).collect()
+}
+
+/// The hex of the loose lines (no wire yet) a slash crossed, in crossing order (the `lines` of a
+/// result).
+pub fn crossing_lines(members: &[slash::Crossing]) -> Vec<String> {
+    members.iter().filter_map(|m| m.position.route()).map(|r| r.hex()).collect()
+}
+
+/// The slash onto a cable not drawn yet (FD5): the ops, the slash's line and representation, and
+/// the core label each crossed line took.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SlashAssign {
+    /// The slash's line.
+    pub item: ItemId,
+    /// Its representation.
+    pub rep: RepresentationId,
+    /// Each crossed line's core label, in crossing order.
+    pub cores: Vec<Option<String>>,
+    pub ops: Vec<Op>,
+}
+
+/// `cableslash` onto cable `k` that is not drawn (FD5): the crossed wires become its members in
+/// crossing order with its free cores' labels, plus the slash `from → to` on `page`.
+///
+/// # Errors
+/// A wire already in a cable, more wires than free cores, too many members; nothing is written.
+#[allow(clippy::too_many_arguments)]
+pub fn plan_slash_assign(
+    doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, k: CableId, from: Pt, to: Pt, found: &Crossings,
+) -> Result<SlashAssign, CmdError> {
+    let blocked: Vec<(CorePosition, CableId)> = slash::blocked(doc, &found.members).into_iter().map(|(m, c)| (m.position, c)).collect();
+    if !blocked.is_empty() {
+        return Err(crate::cmd::cable::already_in_cable(slash::already_in_cable(doc, &blocked, "Nothing was changed.")));
+    }
+    if found.members.len() > MAX_CABLE_MEMBERS {
+        return Err(crate::cmd::cable::too_many());
+    }
+    let cores = crate::cmd::cable::assign_cores(doc, k, found.members.len())?;
+    let (item, rep): (ItemId, RepresentationId) = (ids.fresh(), ids.fresh());
+    let mut ops = Vec::new();
+    // Design 072 §4.5: each crossed line takes its core, the stored unplaced one of that label.
+    if let Some(before) = doc.cables.get(&k) {
+        let mut after = before.clone();
+        for (m, core) in found.members.iter().zip(cores.iter()) {
+            crate::styles::cable::place_core(&mut after, core.as_deref().and_then(|c| ecad_model::CoreLabel::new(c).ok()), m.position);
+        }
+        ops.extend(Op::modify_cable(k, before, after));
+    }
+    ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Line { a: from, b: to }) } });
+    ops.push(Op::LinkRepresentation {
+        id: rep,
+        rep: Representation {
+            subject: Subject::Cable(k),
+            page,
+            form: Form::Drawn,
+            role: ecad_model::Role::Slash,
+            items: vec![item],
+            connection_points: BTreeMap::new(),
+        },
+    });
+    Ok(SlashAssign { item, rep, cores, ops })
+}
+
 /// The ops of `cableadd`: `conductors` become members of `existing`, or of a new cable tagged
 /// `tag` (or the next free tag). A cable with a core offer gives each new member the next free
 /// core, in the order given (brief 028, design 028 §6.2). Returns the cable and the ops.
