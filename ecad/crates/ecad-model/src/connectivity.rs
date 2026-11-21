@@ -49,8 +49,6 @@ pub const WIRE_NUMBER: &str = "wire_number";
 pub const WIRE_NUMBER_FIXED: &str = "wire_number_fixed";
 /// Wire property: the potential (`24V`, `L1`…) the conductor carries.
 pub const POTENTIAL: &str = "potential";
-/// Device property naming what a device made by a tool is (`location box`).
-pub const KIND: &str = "kind";
 
 /// The key two continuation names are compared by: trimmed, upper case.
 pub fn name_key(name: &str) -> String {

@@ -165,7 +165,7 @@ pub fn bom_columns(columns: Option<&[String]>) -> Result<Option<bool>, CmdError>
 pub fn box_json(doc: &Document, plan: &BoxPlan) -> Value {
     let (planned, proposed) = (&plan.planned, &plan.proposed);
     let mut v = json!({
-        "component": planned.component.hex(), "representation": planned.rep.hex(), "item": planned.item.hex(),
+        "aid": planned.aid.hex(), "representation": planned.rep.hex(), "item": planned.item.hex(),
         "inside": plan.inside, "keeps_own": plan.keeps, "message": plan.message,
     });
     if let (Some(o), Some(x)) = (v.as_object_mut(), proposals::json(doc, proposed).as_object()) {

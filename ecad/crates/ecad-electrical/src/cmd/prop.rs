@@ -152,11 +152,10 @@ fn strip(doc: &Document, o: ObjectRef) -> Option<DeviceId> {
     component(o).filter(|c| crate::strips::strip_of(doc, *c).is_some())
 }
 
-/// Whether `o` takes a tag: a cable, or a component that is not tagless (a junction, a
-/// continuation, an item).
+/// Whether `o` takes a tag: a cable, or a component that is not a BOM item.
 fn tagged(doc: &Document, o: ObjectRef) -> bool {
     match o {
-        ObjectRef::Device(c) => crate::wires::kind_of(doc, c).is_none(),
+        ObjectRef::Device(c) => !crate::bom::is_item(doc, c),
         ObjectRef::Cable(_) => true,
         _ => false,
     }

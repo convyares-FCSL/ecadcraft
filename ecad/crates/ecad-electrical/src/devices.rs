@@ -878,17 +878,16 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
     let gone: BTreeSet<RepresentationId> = erased.iter().map(|(id, _)| *id).collect();
     let (mut ops, mut notes) = (Vec::new(), Vec::new());
     // A location box (brief 024) goes with its outline.
-    let boxes: BTreeSet<DeviceId> = erased
+    let boxes: BTreeSet<ecad_model::AidId> = erased
         .iter()
-        .filter_map(|(_, r)| if let Subject::Device(c) = r.subject { Some(c) } else { None })
-        .filter(|c| crate::locations::is_box(doc, *c))
+        .filter_map(|(_, r)| if let Subject::Aid(a) = r.subject { Some(a) } else { None })
+        .filter(|a| crate::locations::box_values(doc, *a).is_some())
         .collect();
-    for c in boxes {
-        if doc.representations_of(Subject::Device(c)).all(|(id, _)| gone.contains(&id))
-            && let Some(component) = doc.devices.get(&c)
+    for a in boxes {
+        if doc.representations_of(Subject::Aid(a)).all(|(id, _)| gone.contains(&id))
+            && let Some(aid) = doc.aids.get(&a)
         {
-            ops.extend(crate::cmd::device_link::unlink_ops(doc, c));
-            ops.push(Op::DeleteDevice { id: c, device: component.clone() });
+            ops.push(Op::DeleteAid { id: a, aid: aid.clone() });
         }
     }
     for (c, reps) in by_component {

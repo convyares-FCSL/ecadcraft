@@ -21,6 +21,8 @@ struct Picked {
     /// Continuation arrows (design 072 §6.2), and the first one's symbol.
     aids: BTreeSet<ecad_model::AidId>,
     aid_symbol: Option<ecad_model::RepresentationId>,
+    /// Location boxes (design 072 §6.2).
+    boxes: BTreeSet<ecad_model::AidId>,
     wires: BTreeSet<WireId>,
     cables: BTreeSet<CableId>,
     references: BTreeSet<ecad_model::RepresentationId>,
@@ -90,6 +92,9 @@ fn pick(p: &Project, page: PageId, selection: &[Handle]) -> Picked {
                 out.aids.insert(a);
                 out.aid_symbol.get_or_insert(rid);
             }
+            Subject::Aid(a) if crate::locations::box_values(doc, a).is_some() => {
+                out.boxes.insert(a);
+            }
             Subject::Aid(_) => {}
             // A drawn line stands for the wire it carries (design 072 §4.3).
             Subject::Route(x) => match crate::wires::wire_of_route(doc, x) {
@@ -128,6 +133,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
     // Brief 030: a link line alone selects its link.
     if k.devices.is_empty()
         && k.aids.is_empty()
+        && k.boxes.is_empty()
         && k.wires.is_empty()
         && k.cables.is_empty()
         && k.references.is_empty()
@@ -142,7 +148,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         ));
         return v;
     }
-    let kinds = [!k.devices.is_empty(), !k.aids.is_empty(), !k.wires.is_empty(), !k.cables.is_empty(), !k.references.is_empty()];
+    let kinds = [!k.devices.is_empty(), !k.aids.is_empty(), !k.boxes.is_empty(), !k.wires.is_empty(), !k.cables.is_empty(), !k.references.is_empty()];
     let n_kinds = kinds.iter().filter(|x| **x).count();
     if n_kinds == 0 {
         return v;
@@ -152,6 +158,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         for (n, one, many) in [
             (k.devices.len(), "device", "devices"),
             (k.aids.len(), "continuation", "continuations"),
+            (k.boxes.len(), "location box", "location boxes"),
             (k.wires.len(), "wire", "wires"),
             (k.cables.len(), "cable", "cables"),
             (k.references.len(), "reference", "references"),
@@ -160,7 +167,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
                 words.push(format!("{n} {}", if n == 1 { one } else { many }));
             }
         }
-        let total = k.devices.len() + k.aids.len() + k.wires.len() + k.cables.len() + k.references.len();
+        let total = k.devices.len() + k.aids.len() + k.boxes.len() + k.wires.len() + k.cables.len() + k.references.len();
         v.sections.push(Section {
             title: format!("ECAD · {total} OBJECTS"),
             kind: "objects",
@@ -186,9 +193,24 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         if let Some(r) = k.symbol.and_then(|s| doc.representations.get(&s)) {
             v.deps.insert(ObjectRef::Page(r.page));
         }
-        match k.devices.iter().copied().collect::<Vec<_>>().as_slice() {
-            [b] if crate::locations::is_box(doc, *b) => v.sections.push(box_section(doc, *b)),
-            _ => v.sections.push(device_section(doc, p.outputs.as_ref().map(|o| &o.plc), &k.devices, k.symbol)),
+        v.sections.push(device_section(doc, p.outputs.as_ref().map(|o| &o.plc), &k.devices, k.symbol));
+    } else if !k.boxes.is_empty() {
+        // Design 072 §6.2: an aid has no `ObjectRef`, so an aid op rebuilds the view
+        // (`ecad_electrical::props::touched`). Devices inside and codes: its page and the list.
+        v.deps.insert(ObjectRef::Project);
+        for b in &k.boxes {
+            v.deps.extend(doc.representations_of(Subject::Aid(*b)).map(|(_, r)| ObjectRef::Page(r.page)));
+        }
+        match k.boxes.iter().copied().collect::<Vec<_>>().as_slice() {
+            [b] => v.sections.push(box_section(doc, *b)),
+            many => v.sections.push(Section {
+                title: format!("ECAD · {} LOCATION BOXES", many.len()),
+                kind: "objects",
+                target: None,
+                rows: Vec::new(),
+                note: Some("Select one location box to edit.".into()),
+                buttons: Vec::new(),
+            }),
         }
     } else if !k.aids.is_empty() {
         // Design 072 §6.2: an aid has no `ObjectRef`, so an aid op rebuilds the view

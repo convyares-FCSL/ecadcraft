@@ -66,6 +66,7 @@ pub fn handles_of(p: &crate::Project, page: PageId, object: Object) -> Vec<cadcr
         }
         Object::Route(r) => Subject::Route(r),
         Object::Device(c) => Subject::Device(c),
+        Object::Aid(a) => Subject::Aid(a),
         Object::Reference(r) => {
             return doc
                 .representations

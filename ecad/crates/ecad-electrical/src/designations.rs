@@ -22,7 +22,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::CmdError;
 use ecad_model::book::{FUNCTION_KEY, LOCATION_KEY};
-use ecad_model::{Device, Document, FunctionId, IdAllocator, Ledger, ListCode, ListDescription, ListEntry, LocationId, ObjectRef, Op, Page, Project};
+use ecad_model::{
+    Aid, AidId, Device, Document, FunctionId, IdAllocator, Ledger, ListCode, ListDescription, ListEntry, LocationBox, LocationId, ObjectRef, Op,
+    Page, Project,
+};
 
 /// Function (`=`) or location (`+`), the two IEC 81346 aspects a device carries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -235,6 +238,25 @@ pub fn with_device_key(d: &Device, a: Aspect, key: Option<&str>, fixed: bool) ->
             x.location = id.map(LocationId);
             x.location_fixed = fixed;
         }
+    }
+    x
+}
+
+/// Location box `b`'s value of aspect `a`, as a key.
+pub fn box_key(b: &LocationBox, a: Aspect) -> Option<String> {
+    match a {
+        Aspect::Function => b.function.map(FunctionId::hex),
+        Aspect::Location => b.location.map(LocationId::hex),
+    }
+}
+
+/// `b` with its value of aspect `a` set to `key` (`None`, or text that is not a key, clears it).
+pub fn with_box_key(b: &LocationBox, a: Aspect, key: Option<&str>) -> LocationBox {
+    let mut x = b.clone();
+    let id = key.and_then(raw);
+    match a {
+        Aspect::Function => x.function = id.map(FunctionId),
+        Aspect::Location => x.location = id.map(LocationId),
     }
     x
 }
@@ -471,6 +493,14 @@ impl Pending {
 pub struct Users {
     /// (object, property) pairs: `location`, `function` or `location.<type>`.
     pub refs: BTreeSet<(ObjectRef, String)>,
+    /// The location boxes carrying it.
+    pub boxes: BTreeSet<AidId>,
+}
+
+impl Users {
+    fn is_empty(&self) -> bool {
+        self.refs.is_empty() && self.boxes.is_empty()
+    }
 }
 
 /// How many of each kind of object use an entry.
@@ -540,6 +570,9 @@ impl Uses {
         for (p, x) in &doc.pages {
             u.page(*p, x, true);
         }
+        for (a, x) in &doc.aids {
+            u.aid(*a, x, true);
+        }
         u.project(&doc.project, true);
         u
     }
@@ -583,6 +616,12 @@ impl Uses {
                     self.device(*id, before, false);
                     self.device(*id, after, true);
                 }
+                Op::CreateAid { id, aid } => self.aid(*id, aid, true),
+                Op::DeleteAid { id, aid } => self.aid(*id, aid, false),
+                Op::ModifyAid { id, before, after } => {
+                    self.aid(*id, before, false);
+                    self.aid(*id, after, true);
+                }
                 Op::AddPage { id, page, .. } => self.page(*id, page, true),
                 Op::RemovePage { id, page, .. } => self.page(*id, page, false),
                 Op::ModifyPage { id, before, after } => {
@@ -625,13 +664,30 @@ impl Uses {
         }
     }
 
+    /// Note (or forget) the keys a location box carries.
+    fn aid(&mut self, id: AidId, aid: &Aid, add: bool) {
+        let Some(b) = aid.as_box() else { return };
+        for a in Aspect::ALL {
+            let Some(k) = box_key(b, a) else { continue };
+            let slot = (a, k);
+            if add {
+                self.by_key.entry(slot).or_default().boxes.insert(id);
+            } else if let Some(u) = self.by_key.get_mut(&slot) {
+                u.boxes.remove(&id);
+                if u.is_empty() {
+                    self.by_key.remove(&slot);
+                }
+            }
+        }
+    }
+
     fn note(&mut self, a: Aspect, key: &str, o: ObjectRef, prop: &str, add: bool) {
         let slot = (a, key.to_string());
         if add {
             self.by_key.entry(slot).or_default().refs.insert((o, prop.to_string()));
         } else if let Some(u) = self.by_key.get_mut(&slot) {
             u.refs.remove(&(o, prop.to_string()));
-            if u.refs.is_empty() {
+            if u.is_empty() {
                 self.by_key.remove(&slot);
             }
         }
@@ -648,14 +704,13 @@ impl Uses {
     }
 
     /// How many devices, boxes, pages and overrides use entry `key`.
-    pub fn counts(&self, doc: &Document, a: Aspect, key: &str) -> Counts {
+    pub fn counts(&self, a: Aspect, key: &str) -> Counts {
         let mut c = Counts::default();
         let Some(u) = self.users(a, key) else { return c };
         let mut devices = BTreeSet::new();
         let mut overrides = BTreeSet::new();
         for (o, prop) in &u.refs {
             match o {
-                ObjectRef::Device(x) if crate::locations::is_box(doc, *x) => c.boxes += 1,
                 ObjectRef::Device(x) if prop == a.property() => {
                     devices.insert(*x);
                 }
@@ -667,6 +722,7 @@ impl Uses {
                 _ => {}
             }
         }
+        c.boxes = u.boxes.len();
         c.devices = devices.len();
         c.overrides = overrides.iter().filter(|x| !devices.contains(x)).count();
         c

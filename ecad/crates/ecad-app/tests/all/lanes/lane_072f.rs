@@ -32,3 +32,29 @@ fn renaming_or_captioning_a_shown_arrow_refreshes_its_section() {
     h.run_steps(2);
     assert_eq!(row(&mut h, "caption").as_deref(), Some("TO PSU"), "a caption shows at once");
 }
+
+fn box_row(h: &mut egui_kittest::Harness<'static, ecad_app::App>, key: &str) -> Option<String> {
+    let props = h.state().props.lock().unwrap();
+    let s = props.view.sections.iter().find(|s| s.kind == "box")?;
+    s.rows.iter().find(|r| r.key == key).map(|r| r.value.clone())
+}
+
+/// F1c: a selected location box shows its own section, and a new location (`setprop {aids}`, one
+/// `ModifyAid`) refreshes it at once.
+#[test]
+fn a_new_location_on_a_shown_box_refreshes_its_section() {
+    let mut h = harness_with(None);
+    ok(&mut h, r#"locationbox {"location":"+CP1","corners":[[10,10],[80,60]]}"#);
+    let d = doc(&mut h);
+    let (aid, _) = d.aids.iter().find(|(_, a)| a.as_box().is_some()).expect("the box is an aid");
+    let aid = *aid;
+    assert!(d.devices.is_empty(), "no device");
+    let rep = d.representations_of(Subject::Aid(aid)).map(|(id, _)| id).next().expect("its outline");
+    h.state_mut().goto_symbols(&[rep]).unwrap();
+    h.run_steps(4);
+    assert_eq!(box_row(&mut h, "location").as_deref(), Some("+CP1"), "the section is shown");
+
+    ok(&mut h, &format!(r#"setprop {{"aids":["{}"],"key":"location","value":"+CP2"}}"#, aid.hex()));
+    h.run_steps(2);
+    assert_eq!(box_row(&mut h, "location").as_deref(), Some("+CP2"), "a new location shows at once");
+}

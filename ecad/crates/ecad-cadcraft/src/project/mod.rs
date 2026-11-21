@@ -1231,10 +1231,12 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
             }
             // Brief 049 (design 049 §8.2): a continuation's partners list it on their pages; those
             // pages come from the reference index's watch (`xref::Watch`), and its own pages from
-            // its representation ops.
-            Op::CreateAid { aid, .. } | Op::DeleteAid { aid, .. } if aid.as_box().is_none() => {}
-            // A continuation renamed or captioned: its own pages (design 072 §6.2).
-            Op::ModifyAid { id, before, .. } if before.as_box().is_none() => {
+            // its representation ops. A location box's pages likewise (its label and the tag
+            // prefixes of the devices inside are drawn on its own pages only).
+            Op::CreateAid { .. } | Op::DeleteAid { .. } => {}
+            // A continuation renamed or captioned, a box's values changed: its own pages (design
+            // 072 §6.2).
+            Op::ModifyAid { id, .. } => {
                 out.extend(doc.representations_of(Subject::Aid(*id)).map(|(_, r)| r.page));
             }
             Op::CreateWire { id, .. } if !doc.wires.contains_key(id) => {}
@@ -1268,9 +1270,6 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
                 out.insert(*p);
             }
             // A device's tag is drawn beside each of its symbols (brief 018): their pages.
-            Op::SetProperty { object: ecad_model::ObjectRef::Device(_), key, .. } if key == ecad_model::connectivity::KIND => {
-                return None;
-            }
             Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key, after, .. } => {
                 out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
                 // Brief 045 (design 045 §11.1): a rack's tag shows in its cards' captions, and a

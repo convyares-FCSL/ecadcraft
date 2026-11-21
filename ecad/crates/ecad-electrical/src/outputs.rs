@@ -480,9 +480,6 @@ impl Scope {
                     self.pages.insert(page);
                 }
             }
-            Subject::Device(c) if locations::is_box(doc, c) => {
-                self.pages.insert(page);
-            }
             Subject::Device(c) => {
                 self.devices.insert(c);
             }
@@ -507,26 +504,11 @@ impl Scope {
     pub fn collect(&mut self, doc: &Document, ops: &[Op]) {
         for op in ops {
             match op {
-                Op::CreateDevice { id, device } | Op::DeleteDevice { id, device } | Op::ModifyDevice { id, after: device, .. } => {
-                    if locations::is_box_component(device) {
-                        self.pages.extend(doc.representations_of(Subject::Device(*id)).map(|(_, r)| r.page));
-                    } else {
-                        self.devices.insert(*id);
-                    }
-                }
-                Op::SetDeviceDefinition { id, .. } => {
-                    if locations::is_box(doc, *id) {
-                        self.pages.extend(doc.representations_of(Subject::Device(*id)).map(|(_, r)| r.page));
-                    } else {
-                        self.devices.insert(*id);
-                    }
+                Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::ModifyDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
+                    self.devices.insert(*id);
                 }
                 Op::SetProperty { object: ObjectRef::Device(c), .. } => {
-                    if locations::is_box(doc, *c) {
-                        self.pages.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
-                    } else {
-                        self.devices.insert(*c);
-                    }
+                    self.devices.insert(*c);
                 }
                 Op::SetProperty { object: ObjectRef::Wire(w), .. } | Op::ModifyWire { id: w, .. } => {
                     self.wires.insert(*w);

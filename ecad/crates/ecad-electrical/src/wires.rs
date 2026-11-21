@@ -36,10 +36,9 @@ use std::collections::BTreeMap;
 
 use std::collections::BTreeSet;
 
-use ecad_model::connectivity::KIND;
 use ecad_model::{
-    Aid, AidId, ConductorId, DefinitionId, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, NetId, Op, PageId, Placement,
-    Primitive, Pt, Representation, RepresentationId, Route, RouteEnd, RouteId, Style, Subject, SymbolInstance, Terminal, TerminalId, Wire, WireId,
+    Aid, AidId, ConductorId, DefinitionId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, NetId, Op, PageId, Placement, Primitive, Pt,
+    Representation, RepresentationId, Route, RouteEnd, RouteId, Style, Subject, SymbolInstance, Terminal, TerminalId, Wire, WireId,
 };
 
 use crate::devices::{DerivedText, TextOf};
@@ -84,11 +83,6 @@ pub const NAME_RULE: &str = "A continuation name is 1 to 16 letters, digits or +
 /// The starter of a continuation.
 pub fn continuation_starter() -> &'static Starter {
     symbols::starter(symbols::StarterKey::Continuation)
-}
-
-/// What a device made by a tool is (`location box`, `item`), from its `kind` property.
-pub fn kind_of(doc: &Document, c: DeviceId) -> Option<&str> {
-    doc.devices.get(&c)?.properties.get(KIND).map(String::as_str)
 }
 
 /// A continuation (design 072 §6.2) named `name` as typed, with `caption`, both checked.

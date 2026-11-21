@@ -54,3 +54,47 @@ fn continuations_through_mcp_are_aids() {
     r.refused("execute", json!({"command": "setprop", "params": {"aids": [a], "key": "name", "value": "0V"}}));
     r.refused("execute", json!({"command": "contcaption", "params": {"continuations": [a], "caption": "X"}}));
 }
+
+/// F1c: a location box is a drawing aid. Placed through `execute` it records `CreateAid` (no
+/// device); `setprop {aids}` with its location records one `ModifyAid`; both by the agent. A key
+/// a box does not have is refused with nothing recorded, and every one is refused with writes off.
+#[test]
+fn location_boxes_through_mcp_are_aids() {
+    let mut c = Client::new(EcadMcp::in_memory("lane072f-box", 0x72fb, Options { write: true, agent: None }).unwrap());
+    let v = c.exec("locationbox", json!({"location": "+CP1", "corners": [[10, 10], [80, 60]]}));
+    let b = v["aid"].as_str().unwrap_or_else(|| panic!("the box answers its aid: {v}")).to_string();
+    let (author, ops) = last_aid(&mut c);
+    assert_eq!(author, Author::Agent(AGENT.into()));
+    assert!(ops.iter().any(|o| matches!(o, Op::CreateAid { aid: Aid::Box(x), .. } if x.location.is_some())), "{ops:?}");
+    assert!(!ops.iter().any(|o| matches!(o, Op::CreateDevice { .. })), "no device: {ops:?}");
+
+    c.exec("setprop", json!({"aids": [b], "key": "location", "value": "+CP1"}));
+    let unchanged = c.log().len();
+    c.exec("setprop", json!({"aids": [b], "key": "panel_temperature", "value": "40"}));
+    let (author, ops) = last_aid(&mut c);
+    assert_eq!(author, Author::Agent(AGENT.into()));
+    assert_eq!(c.log().len(), unchanged + 1);
+    match ops.as_slice() {
+        [Op::ModifyAid { after: Aid::Box(x), .. }] => assert_eq!(x.panel_temperature, Some(ecad_model::units::Celsius(40.0))),
+        other => panic!("one ModifyAid: {other:?}"),
+    }
+    let n = c.log().len();
+    c.exec("setprop", json!({"aids": [b], "key": "location", "value": "+CP2"}));
+    let (author, ops) = last_aid(&mut c);
+    assert_eq!(author, Author::Agent(AGENT.into()));
+    assert_eq!(c.log().len(), n + 1, "one transaction");
+    let modified: Vec<&Op> = ops.iter().filter(|o| matches!(o, Op::ModifyAid { .. })).collect();
+    assert_eq!(modified.len(), 1, "one ModifyAid: {ops:?}");
+    assert!(matches!(modified[0], Op::ModifyAid { before: Aid::Box(x), after: Aid::Box(y), .. } if x.location != y.location), "{ops:?}");
+    assert!(!ops.iter().any(|o| matches!(o, Op::SetProperty { .. } | Op::ModifyDevice { .. })), "{ops:?}");
+
+    let before = c.log();
+    let m = c.refused("execute", json!({"command": "setprop", "params": {"aids": [b], "key": "name", "value": "24V"}}));
+    assert!(m.contains("location box") && m.contains("panel_temperature"), "{m}");
+    assert_eq!(c.log(), before, "nothing recorded");
+
+    let mut r = reader();
+    r.refused("execute", json!({"command": "locationbox", "params": {"location": "+CP1", "corners": [[10, 10], [80, 60]]}}));
+    r.refused("execute", json!({"command": "setprop", "params": {"aids": [b], "key": "location", "value": "+CP2"}}));
+    r.refused("execute", json!({"command": "setprop", "params": {"aids": [b], "key": "panel_temperature", "value": "40"}}));
+}

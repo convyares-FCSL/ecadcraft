@@ -398,9 +398,7 @@ fn implicit(doc: &Document, cat: &Catalogue, entry: &defaults::Entry, id: &Style
             .filter(|p| !p.page_type.as_ref().is_some_and(|t| crate::styles::exists(doc, ecad_model::StyleCatalogue::Page, t)))
             .filter(|p| ecad_model::sheet::page_type_of(doc, p) == *id)
             .count(),
-        ecad_model::StyleCatalogue::Location if project == *id => {
-            doc.devices.iter().filter(|(c, x)| crate::locations::is_box(doc, **c) && !own(&x.properties)).count()
-        }
+        ecad_model::StyleCatalogue::Location if project == *id => doc.aids.values().filter(|x| x.as_box().is_some()).count(),
         // 050b: conductors whose resolved category is `id` and that have none of their own.
         ecad_model::StyleCatalogue::Wire => {
             let looks = wire::WireLooks::new(doc);

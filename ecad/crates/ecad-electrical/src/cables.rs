@@ -393,7 +393,7 @@ pub fn drawn_ends(doc: &Document, k: CableId) -> [DrawnEnd; 2] {
         let ends = doc.wires.get(w).map(|c| c.ends).map_or([None, None], |[a, b]| [Some(a), Some(b)]);
         for (slot, t) in out.iter_mut().zip(ends) {
             let Some(c) = t.and_then(|t| doc.terminals.get(&t)).and_then(|x| x.device()) else { continue };
-            if crate::wires::kind_of(doc, c).is_some() {
+            if crate::bom::is_item(doc, c) {
                 continue;
             }
             match crate::locations::resolve(doc, c).value {

@@ -1,11 +1,12 @@
 //! The rules of brief 049's command (design 049 §5.1): `contcaption` sets or removes the caption
 //! of continuation arrows, one `ModifyAid` per arrow whose caption changes; and `setprop {aids}`
-//! (design 072 §6.2): a continuation's `name` or `caption`. The engine crate's shim reads the
-//! parameters, commits and answers in JSON.
+//! (design 072 §6.2): a continuation's `name` or `caption`, a location box's `function`,
+//! `location` or `panel_temperature`. The engine crate's shim reads the parameters, commits and
+//! answers in JSON.
 
 use std::collections::BTreeSet;
 
-use ecad_model::{Aid, AidId, Document, Op};
+use ecad_model::{Aid, AidId, Document, IdAllocator, LocationBox, Op};
 
 use crate::continuations::{self as k, CAPTION_KEY, NAME_KEY};
 use crate::error::CmdError;
@@ -72,18 +73,51 @@ fn caption_op(doc: &Document, a: AidId, caption: Option<&str>) -> Result<Option<
     Ok((*before != after).then(|| Op::ModifyAid { id: a, before: before.clone(), after }))
 }
 
-/// `setprop {aids, key, value}` (design 072 §6.2): a continuation's `name` (checked, required) or
-/// `caption` (checked; `None` removes it), one `ModifyAid` per arrow that changes.
+/// The `ModifyAid` giving location box `a` the values `edit` leaves; `None` when it is not a box
+/// or nothing changes.
+pub fn box_op(doc: &Document, a: AidId, edit: impl FnOnce(&mut LocationBox)) -> Option<Op> {
+    let before @ Aid::Box(x) = doc.aids.get(&a)? else { return None };
+    let mut after = x.clone();
+    edit(&mut after);
+    (after != *x).then(|| Op::ModifyAid { id: a, before: before.clone(), after: Aid::Box(after) })
+}
+
+/// The refusal of a key a location box does not have.
+fn box_keys(key: &str) -> CmdError {
+    CmdError::refused(format!("A location box has a `function`, a `location` and a `{}`, not `{key}`.", crate::locations::PANEL_TEMPERATURE_KEY))
+}
+
+/// `setprop {aids, key, value}` (design 072 §6.2), one `ModifyAid` per aid that changes: a
+/// continuation's `name` (checked, required) or `caption` (checked; `None` removes it); a location
+/// box's `function` or `location` (a code, as [`crate::cmd::location::plan_box_set`], without its
+/// proposals) or `panel_temperature` (−40 to 90 °C; `None` clears it).
 ///
 /// # Errors
-/// No arrow named, an aid that is not a continuation, another key, or a value the rules refuse.
-pub fn plan_aid_prop(doc: &Document, aids: &[AidId], key: &str, value: Option<&str>) -> Result<Vec<Op>, CmdError> {
+/// No aid named, an id that is no aid, a key the aid's kind does not have, or a value the rules
+/// refuse.
+pub fn plan_aid_prop(doc: &Document, ids: &mut IdAllocator, aids: &[AidId], key: &str, value: Option<&str>) -> Result<Vec<Op>, CmdError> {
     if aids.is_empty() {
-        return Err(CmdError::refused("Name at least one continuation arrow in `aids`."));
+        return Err(CmdError::refused("Name at least one continuation arrow or location box in `aids`."));
+    }
+    if let Some(a) = crate::designations::Aspect::of_property(key) {
+        if aids.iter().any(|a| matches!(doc.aids.get(a), Some(Aid::Continuation { .. }))) {
+            return Err(continuation_keys(key));
+        }
+        return Ok(crate::cmd::location::plan_box_set(doc, ids, aids, a, value)?.ops);
     }
     let mut ops = Vec::new();
     let mut seen = BTreeSet::new();
     for a in aids.iter().filter(|a| seen.insert(**a)) {
+        match doc.aids.get(a) {
+            None => return Err(CmdError::refused("That is not a continuation arrow or a location box.")),
+            Some(Aid::Box(_)) if key == crate::locations::PANEL_TEMPERATURE_KEY => {
+                let temp = value.map(crate::cmd::rating::panel_temperature).transpose()?;
+                ops.extend(box_op(doc, *a, |b| b.panel_temperature = temp));
+                continue;
+            }
+            Some(Aid::Box(_)) => return Err(box_keys(key)),
+            Some(Aid::Continuation { .. }) => {}
+        }
         match key {
             CAPTION_KEY => {
                 let caption = k::caption_value(doc, *a, value)?;
@@ -98,8 +132,13 @@ pub fn plan_aid_prop(doc: &Document, aids: &[AidId], key: &str, value: Option<&s
                     ops.push(Op::ModifyAid { id: *a, before: before.clone(), after });
                 }
             }
-            _ => return Err(CmdError::refused(format!("A continuation has a `{NAME_KEY}` and a `{CAPTION_KEY}`, not `{key}`."))),
+            _ => return Err(continuation_keys(key)),
         }
     }
     Ok(ops)
+}
+
+/// The refusal of a key a continuation does not have.
+fn continuation_keys(key: &str) -> CmdError {
+    CmdError::refused(format!("A continuation has a `{NAME_KEY}` and a `{CAPTION_KEY}`, not `{key}`."))
 }

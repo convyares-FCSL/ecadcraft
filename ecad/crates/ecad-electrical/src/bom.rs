@@ -28,6 +28,8 @@ use crate::defaults::{self, Scope};
 
 /// The `kind` of an item (FP1).
 pub const ITEM_KIND: &str = "bom_item";
+/// The device property saying it is an item ([`ITEM_KIND`]).
+pub const KIND_KEY: &str = "kind";
 /// The prefix of a part line's keys.
 pub const PART_PREFIX: &str = "part.";
 /// The article number of a device's main part, an item, or (with a prefix) a line or strip part.
@@ -569,7 +571,7 @@ pub fn part_set(doc: &Document, c: DeviceId) -> Vec<PartSetRow> {
 
 /// Whether `c` is an item.
 pub fn is_item(doc: &Document, c: DeviceId) -> bool {
-    crate::wires::kind_of(doc, c) == Some(ITEM_KIND)
+    doc.devices.get(&c).is_some_and(is_item_component)
 }
 
 /// An item's stored `qty` and `unit` that do not parse (a file made elsewhere, or a merge that
@@ -596,7 +598,7 @@ pub fn item_bad_keys(props: &Properties) -> Vec<String> {
 
 /// Whether a component's properties make it an item.
 pub fn is_item_component(c: &Device) -> bool {
-    c.properties.get(ecad_model::connectivity::KIND).map(String::as_str) == Some(ITEM_KIND)
+    c.properties.get(KIND_KEY).map(String::as_str) == Some(ITEM_KIND)
 }
 
 /// Whether `c` takes part lines: a device or strip (a tag and no `kind`).
@@ -789,7 +791,7 @@ pub fn article_targets(doc: &Document, pn: &str, maker: Option<&str>) -> Vec<Art
     for (c, comp) in &doc.devices {
         let props = &comp.properties;
         let item = is_item_component(comp);
-        let device = !item && comp.tag.is_some() && !props.contains_key(ecad_model::connectivity::KIND);
+        let device = !item && comp.tag.is_some();
         if !(item || device) {
             continue;
         }

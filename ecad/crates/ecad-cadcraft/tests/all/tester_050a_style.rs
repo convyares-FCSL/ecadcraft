@@ -580,13 +580,13 @@ fn ids_a_dangling_reference_falls_through_and_is_reported() {
     let mut h = H::new(0x50a_0205);
     let page = h.first_page();
     let k = coil(&mut h, 100.0);
-    let b: DeviceId = id(&h.run("locationbox", json!({"location": "+CP1", "corners": [[80, 80], [140, 140]]})).unwrap(), "component");
+    // A box has no style of its own since it is a drawing aid (design 072 §6.2).
+    h.run("locationbox", json!({"location": "+CP1", "corners": [[80, 80], [140, 140]]})).unwrap();
     let ghost = format!("#{}", "a".repeat(32));
     inject(
         &mut h,
         vec![
             Op::SetProperty { object: ObjectRef::Device(k), key: "text.tag.style".into(), before: None, after: Some(ghost.clone()) },
-            Op::SetProperty { object: ObjectRef::Device(b), key: "location.style".into(), before: None, after: Some(ghost.clone()) },
             Op::SetProperty { object: ObjectRef::Page(page), key: "print.frame.style".into(), before: None, after: Some(ghost.clone()) },
         ],
     );
@@ -595,7 +595,7 @@ fn ids_a_dangling_reference_falls_through_and_is_reported() {
     let t = tag(&mut h, k);
     assert!(!texts_on(&mut h, page, &t).is_empty(), "the tag still draws");
     let rows = checks_of(&mut h, "style-unknown");
-    assert_eq!(rows.len(), 3, "one Info row per dangling reference: {rows:?}");
+    assert_eq!(rows.len(), 2, "one Info row per dangling reference: {rows:?}");
     assert!(rows.iter().all(|r| r.to_string().to_lowercase().contains("info")), "{rows:?}");
     assert!(h.doc().check().is_ok(), "§3.3: a dangling reference is not an invariant breach");
 }

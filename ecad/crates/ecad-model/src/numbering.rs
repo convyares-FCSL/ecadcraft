@@ -30,7 +30,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::book::Book;
-use crate::connectivity::{self, NetData, NetKey, split_number};
+use crate::connectivity::{NetData, NetKey, split_number};
 use crate::doc::{Document, ItemKind, Primitive, Representation, Subject};
 use crate::geom::Pt;
 use crate::id::{CableId, DeviceId, FolderId, PageId, TerminalId, WireId};
@@ -550,12 +550,9 @@ fn plan_tags(
     doc: &Document, req: &Request, high: &HighWater, rank: Rank<'_>, places: &mut Places<'_>, pages: Option<&BTreeSet<PageId>>, rows: &mut Vec<Row>,
     ops: &mut Vec<Op>,
 ) {
-    // Every device (tagless junctions and continuations aside) and every tagged cable.
+    // Every device with a tag or a symbol (a BOM item has neither) and every tagged cable.
     let mut items: Vec<Tagged> = Vec::new();
     for (id, c) in &doc.devices {
-        if c.properties.contains_key(connectivity::KIND) {
-            continue;
-        }
         let tag = c.tag().map(str::to_string);
         let has_reps = doc.representations_of(Subject::Device(*id)).next().is_some();
         if tag.is_none() && !has_reps {

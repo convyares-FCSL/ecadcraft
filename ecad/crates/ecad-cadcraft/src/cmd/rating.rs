@@ -240,8 +240,7 @@ impl Command for RatingParams {
 }
 
 /// `rating {location, temperature}` (design 057 FP6; tester F1): the location boxes of
-/// `location` take `rating.temperature`, written here (034's `setprop` rule reads `rating.<n>` as a
-/// fuse bank's and refuses it on a box).
+/// `location` take its panel temperature, one `ModifyAid` per box (design 072 §6.2).
 fn run_location(s: &mut Session, loc: &str, params: &RatingParams) -> cadcraft_engine::Result<Value> {
     let typed = loc.trim().to_string();
     if typed.is_empty() {

@@ -565,9 +565,7 @@ impl Uses {
                 Op::DeleteWire { id, .. } => {
                     gone.insert(*id);
                 }
-                Op::SetProperty { object: ObjectRef::Device(c), key, .. }
-                    if key == ecad_model::connectivity::POTENTIAL || key == ecad_model::connectivity::KIND =>
-                {
+                Op::SetProperty { object: ObjectRef::Device(c), key, .. } if key == ecad_model::connectivity::POTENTIAL => {
                     for (t, _) in doc.terminals_of(*c) {
                         at(Some(t), &mut seeds);
                     }

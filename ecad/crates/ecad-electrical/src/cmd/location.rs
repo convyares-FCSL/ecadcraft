@@ -7,7 +7,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::{DeviceId, Document, IdAllocator, ObjectRef, Op};
+use ecad_model::{Aid, AidId, DeviceId, Document, IdAllocator, ObjectRef, Op};
 
 use crate::designations::{self, Aspect};
 use crate::error::CmdError;
@@ -85,12 +85,24 @@ pub struct Planned {
     pub added: Option<String>,
 }
 
-/// The ops setting property `prop` (an aspect property) of `objects` to the code `text` (`None`
-/// clears it): devices, or boxes (`function` and `location` only).
+/// The key stored for the code `text` of aspect `a` (`None`: cleared), noting it and its code in
+/// `out` (a new entry's op goes in `out.ops`).
+fn stored_key(
+    doc: &Document, ids: &mut IdAllocator, a: Aspect, text: Option<&str>, pending: &mut designations::Pending, out: &mut Planned,
+) -> Result<Option<String>, CmdError> {
+    let Some(t) = text.map(str::trim).filter(|t| !t.is_empty()) else { return Ok(None) };
+    let k = pending.store(doc, ids, a, t, &mut out.ops)?;
+    let code = designations::code_of(doc, a, &k).or_else(|| pending.new_codes.last().map(|(_, c)| c.clone())).unwrap_or_default();
+    out.value = Some((k.clone(), code));
+    Ok(Some(k))
+}
+
+/// The ops setting property `prop` (an aspect property) of devices `objects` to the code `text`
+/// (`None` clears it). A location box's values are its aid's ([`plan_box_set`]).
 ///
 /// # Errors
-/// No such object; an override on a function, a box or a strip; an override type that is not one;
-/// a box left with neither value; a code that is not valid.
+/// No such device; an override on a function or a strip; an override type that is not one; a code
+/// that is not valid.
 pub fn plan(doc: &Document, ids: &mut IdAllocator, objects: &[DeviceId], prop: &str, text: Option<&str>) -> Result<Planned, CmdError> {
     // The type's own refusals first: `location.head` and `location.<bogus>` are no aspect
     // property at all.
@@ -105,36 +117,13 @@ pub fn plan(doc: &Document, ids: &mut IdAllocator, objects: &[DeviceId], prop: &
     let a = Aspect::of_property(prop).ok_or(CmdError::refused("not a function or location property"))?;
     let mut out = Planned::default();
     let mut pending = designations::Pending::default();
-    let key = match text.map(str::trim).filter(|t| !t.is_empty()) {
-        Some(t) => {
-            let k = pending.store(doc, ids, a, t, &mut out.ops)?;
-            let code = designations::code_of(doc, a, &k).or_else(|| pending.new_codes.last().map(|(_, c)| c.clone())).unwrap_or_default();
-            out.value = Some((k.clone(), code));
-            Some(k)
-        }
-        None => None,
-    };
+    let key = stored_key(doc, ids, a, text, &mut pending, &mut out)?;
     for c in objects {
         let comp = doc.devices.get(c).ok_or(CmdError::refused("no such device"))?;
-        let is_box = crate::locations::is_box_component(comp);
-        if prop != a.property() {
-            if is_box {
-                return Err(CmdError::refused("A box has a function and a location, not one per symbol type."));
-            }
-            if crate::strips::strip_of(doc, *c).is_some() {
-                return Err(CmdError::refused(
-                    "A strip's positions and levels are where the strip is; set the strip's location (a split strip is two strips).",
-                ));
-            }
-        }
-        if is_box && key.is_none() {
-            let other = match a {
-                Aspect::Function => Aspect::Location,
-                Aspect::Location => Aspect::Function,
-            };
-            if designations::device_key(comp, other).is_none() {
-                return Err(CmdError::refused(crate::locations::NO_VALUE));
-            }
+        if prop != a.property() && crate::strips::strip_of(doc, *c).is_some() {
+            return Err(CmdError::refused(
+                "A strip's positions and levels are where the strip is; set the strip's location (a split strip is two strips).",
+            ));
         }
         if prop == a.property() {
             // A typed value is set by hand: fixed (design 072 §6.3).
@@ -190,23 +179,55 @@ pub struct SetPlan {
     pub label: String,
 }
 
-/// [`plan`], and when the one object is a box given another entry, the proposals for the devices
-/// inside: unset ones take it in the same transaction; those at the box's old value are asked.
+/// [`plan`] on devices, with its label.
 ///
 /// # Errors
 /// [`plan`]'s refusals.
 pub fn plan_set(doc: &Document, ids: &mut IdAllocator, objects: &[DeviceId], prop: &str, text: Option<&str>) -> Result<SetPlan, CmdError> {
     let a = aspect_of(prop)?;
     let mut planned = plan(doc, ids, objects, prop, text)?;
-    let mut out = SetPlan { label: label(a, planned.value.as_ref(), planned.changed), ..Default::default() };
-    if planned.changed == 0 {
-        out.planned = planned;
-        return Ok(out);
+    let out =
+        SetPlan { label: label(a, planned.value.as_ref(), planned.changed), ops: std::mem::take(&mut planned.ops), planned, ..Default::default() };
+    Ok(out)
+}
+
+/// The refusal of an aid that is not a location box.
+pub const NOT_A_BOX: &str = "That is not a location box.";
+
+/// `setprop {aids, key: function | location, value}` (design 072 §6.2): location boxes `aids`
+/// take the code `text` of aspect `a` (`None` clears it), one `ModifyAid` per box that changes.
+/// When one box takes another entry, the devices inside are proposed it: unset ones take it in
+/// the same transaction; those at the box's old value are asked (design 052 §5.6).
+///
+/// # Errors
+/// An aid that is not a box, a box left with neither value, or a code that is not valid.
+pub fn plan_box_set(doc: &Document, ids: &mut IdAllocator, aids: &[AidId], a: Aspect, text: Option<&str>) -> Result<SetPlan, CmdError> {
+    let mut planned = Planned::default();
+    let mut pending = designations::Pending::default();
+    let key = stored_key(doc, ids, a, text, &mut pending, &mut planned)?;
+    let mut seen = BTreeSet::new();
+    for b in aids.iter().filter(|b| seen.insert(**b)) {
+        let Some(before @ Aid::Box(x)) = doc.aids.get(b) else { return Err(CmdError::refused(NOT_A_BOX)) };
+        let after = designations::with_box_key(x, a, key.as_deref());
+        if after.location.is_none() && after.function.is_none() {
+            return Err(CmdError::refused(crate::locations::NO_VALUE));
+        }
+        if after != *x {
+            planned.ops.push(Op::ModifyAid { id: *b, before: before.clone(), after: Aid::Box(after) });
+            planned.changed += 1;
+        }
     }
-    out.ops = std::mem::take(&mut planned.ops);
-    if let ([b], Some((key, code))) = (objects, planned.value.as_ref())
-        && prop == a.property()
-        && let Some(lb) = doc.representations_of(ecad_model::Subject::Device(*b)).find_map(|(rid, r)| crate::locations::box_of_rep(doc, rid, r))
+    planned.added = pending.words();
+    if planned.changed == 0 {
+        planned.ops.clear();
+        return Ok(SetPlan { label: label(a, planned.value.as_ref(), 0), planned, ..Default::default() });
+    }
+    let n = planned.changed;
+    let what = label(a, planned.value.as_ref(), 1);
+    let mut out =
+        SetPlan { label: if n > 1 { format!("{what} ({n} boxes)") } else { what }, ops: std::mem::take(&mut planned.ops), ..Default::default() };
+    if let ([b], Some((key, code))) = (aids, planned.value.as_ref())
+        && let Some(lb) = doc.representations_of(ecad_model::Subject::Aid(*b)).find_map(|(rid, r)| crate::locations::box_of_rep(doc, rid, r))
     {
         let spots = proposals::spots_inside(doc, &lb);
         let proposed = proposals::plan_change(doc, &out.ops, a, &spots, lb.key(a), key, code, &proposals::Mode::Propose);

@@ -378,6 +378,8 @@ pub enum Object {
     Route(RouteId),
     Terminal(TerminalId),
     Device(DeviceId),
+    /// A drawing aid: a location box (design 072 §6.2).
+    Aid(ecad_model::AidId),
     /// A cable reference end (brief 027).
     Reference(ecad_model::RepresentationId),
     Cable(ecad_model::CableId),
@@ -576,6 +578,7 @@ impl Check {
             Object::Route(r) => json!({"route": r.hex()}),
             Object::Terminal(t) => json!({"terminal": t.hex()}),
             Object::Device(c) => json!({"component": c.hex()}),
+            Object::Aid(a) => json!({"aid": a.hex()}),
             Object::Reference(r) => json!({"reference": r.hex()}),
             Object::Cable(k) => json!({"cable": k.hex()}),
             Object::None => Value::Null,
@@ -1101,9 +1104,13 @@ pub fn terminal_checks(doc: &Document, t: TerminalId) -> Vec<Check> {
     out
 }
 
-/// The checks of continuation `a` (design 072 §6.2): no partner. The row points at its connection
-/// point.
+/// The checks of drawing aid `a` (design 072 §6.2): a continuation with no partner (the row
+/// points at its connection point); a location box whose function or location is no longer in
+/// the list (design 052 §6).
 pub fn aid_checks(doc: &Document, a: ecad_model::AidId) -> Vec<Check> {
+    if let Some(b) = crate::locations::box_values(doc, a) {
+        return box_checks(doc, a, b);
+    }
     let Some(_) = crate::continuations::continuation(doc, a) else { return Vec::new() };
     let partners = crate::continuations::name_of(doc, a).map_or(0, |k| doc.continuations_named(&k).len());
     if partners >= 2 {
@@ -1113,6 +1120,24 @@ pub fn aid_checks(doc: &Document, a: ecad_model::AidId) -> Vec<Check> {
     let (page, at) = t.map_or((None, None), |t| terminal_place(doc, t));
     let object = t.map_or(Object::None, Object::Terminal);
     vec![Check { kind: Kind::LonelyContinuation, page, at, object, which: crate::continuations::display_name(doc, a), fix: None }]
+}
+
+/// Box `a`'s rows: a stored function or location naming no entry. The row points at its outline.
+fn box_checks(doc: &Document, a: ecad_model::AidId, b: &ecad_model::LocationBox) -> Vec<Check> {
+    use crate::designations::{self as d, Aspect};
+    let (page, at) = doc.representations_of(Subject::Aid(a)).next().map_or((None, None), |(_, r)| (Some(r.page), crate::locations::anchor(doc, r)));
+    Aspect::ALL
+        .into_iter()
+        .filter(|x| d::box_key(b, *x).is_some_and(|k| d::code_of(doc, *x, &k).is_none()))
+        .map(|x| Check {
+            kind: Kind::DesignationMissing,
+            page,
+            at,
+            object: Object::Aid(a),
+            which: format!("A box's {} is no longer in the list", x.word()),
+            fix: Some(Fix::ShowDesignations),
+        })
+        .collect()
 }
 
 /// The checks of component `c`.
@@ -1185,16 +1210,11 @@ fn designation_checks(places: &mut Places<'_>, c: DeviceId, out: &mut Vec<Check>
     use crate::designations::{self as d, Aspect};
     let doc = places.doc();
     let Some(comp) = doc.devices.get(&c) else { return };
-    let is_box = crate::locations::is_box_component(comp);
-    if !is_box && !crate::locations::is_device(doc, c) {
+    if !crate::locations::is_device(doc, c) {
         return;
     }
-    let who = if is_box { "A box".to_string() } else { crate::devices::tag_words(doc, c) };
-    let (page, at) = if is_box {
-        doc.representations_of(Subject::Device(c)).next().map_or((None, None), |(_, r)| (Some(r.page), crate::locations::anchor(doc, r)))
-    } else {
-        crate::reps::goto_place_in(places, c).map_or((None, None), |(p, a)| (Some(p), a))
-    };
+    let who = crate::devices::tag_words(doc, c);
+    let (page, at) = crate::reps::goto_place_in(places, c).map_or((None, None), |(p, a)| (Some(p), a));
     for (k, v) in d::device_keys(comp) {
         let Some(a) = Aspect::of_property(&k) else { continue };
         if d::code_of(doc, a, &v).is_none() {
@@ -1207,9 +1227,6 @@ fn designation_checks(places: &mut Places<'_>, c: DeviceId, out: &mut Vec<Check>
                 fix: Some(Fix::SetDesignation(c, a)),
             });
         }
-    }
-    if is_box {
-        return;
     }
     let reps: Vec<&ecad_model::Representation> = doc.representations_of(Subject::Device(c)).map(|(_, r)| r).collect();
     if reps.is_empty() {
@@ -1444,8 +1461,8 @@ pub struct Scope {
     routes: BTreeSet<RouteId>,
     terminals: BTreeSet<TerminalId>,
     devices: BTreeSet<DeviceId>,
-    /// Continuations to re-check (design 072 §6.2): those made, removed or renamed, and their
-    /// partners by name.
+    /// Aids to re-check (design 072 §6.2): continuations made, removed or renamed, and their
+    /// partners by name; boxes made, removed or changed.
     aids: BTreeSet<ecad_model::AidId>,
     /// Cables whose reference ends to re-check (brief 027: orphans).
     cable_references: BTreeSet<CableId>,
@@ -1528,15 +1545,9 @@ impl Scope {
                     for (t, _) in doc.terminals_of(*id) {
                         node(self, Node::Terminal(t));
                     }
-                    // Design 072 §6.3: a device's location and function are fields; a box's are
-                    // contexts for the devices on its pages, a device's are where the cables at its
-                    // points are drawn (as the `SetProperty` arm below).
+                    // Design 072 §6.3: a device's location and function are fields, where the cables
+                    // at its points are drawn (as the `SetProperty` arm below).
                     if before.location != after.location || before.function != after.function {
-                        if crate::locations::is_box(doc, *id) {
-                            for p in doc.representations_of(Subject::Device(*id)).map(|(_, r)| r.page).collect::<Vec<_>>() {
-                                self.devices_on(doc, p);
-                            }
-                        }
                         for (t, _) in doc.terminals_of(*id) {
                             for (w, _) in doc.ends_at(t) {
                                 self.cables.extend(doc.cables_of(w));
@@ -1545,13 +1556,6 @@ impl Scope {
                     }
                 }
                 Op::SetProperty { object: ObjectRef::Device(c), key, before, after } => {
-                    // Brief 052 (design 052 §6): a box's value is a context for the devices on its
-                    // pages.
-                    if crate::locations::is_box(doc, *c) {
-                        for p in doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page).collect::<Vec<_>>() {
-                            self.devices_on(doc, p);
-                        }
-                    }
                     if key == ecad_model::tag::TAG_KEY {
                         self.tag_holders(doc, [before, after].into_iter().flatten().map(String::as_str));
                     }
@@ -1729,6 +1733,11 @@ impl Scope {
                                     self.devices.insert(*c);
                                 }
                             }
+                            for (b, x) in &doc.aids {
+                                if x.as_box().is_some_and(|x| crate::designations::box_key(x, a).as_deref() == Some(entry.as_str())) {
+                                    self.aids.insert(*b);
+                                }
+                            }
                         }
                     }
                 }
@@ -1831,10 +1840,6 @@ impl Scope {
                 }
             }
             Subject::Device(c) => {
-                // Brief 052: a box drawn, moved or erased changes the contexts on its page.
-                if crate::locations::is_box(doc, c) {
-                    self.devices_on(doc, r.page);
-                }
                 // Its points moved: the routes landing on them may now be drawn away.
                 self.component(doc, c);
                 for (t, _) in doc.terminals_of(c) {

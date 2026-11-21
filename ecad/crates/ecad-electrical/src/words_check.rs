@@ -86,15 +86,15 @@ fn bag(props: &Properties, place: WordPlace, level: Level, out: &mut Vec<Unknown
     }
 }
 
-/// The kinds a tagless component may be: a location box, a BOM item. A continuation is a drawing
-/// aid (design 072 §6.2), never a device; ecad-file refuses a device of that kind.
-pub const TAGLESS_KINDS: [&str; 2] = [crate::locations::KIND_VALUE, crate::bom::ITEM_KIND];
+/// The kinds a tagless component may be: a BOM item. A continuation and a location box are drawing
+/// aids (design 072 §6.2), never devices; ecad-file refuses a device of either kind.
+pub const TAGLESS_KINDS: [&str; 1] = [crate::bom::ITEM_KIND];
 
 /// A tagless component's `kind` that is none of [`TAGLESS_KINDS`]. The junction went with routes
 /// (design 072 D: a T is a route landing on a route), so a file holding one opens read-only
 /// (pre-v1, no conversion).
 fn tagless_kind(props: &Properties, place: WordPlace, out: &mut Vec<UnknownWord>) {
-    use ecad_model::connectivity::KIND;
+    use crate::bom::KIND_KEY as KIND;
     if let Some(kind) = props.get(KIND).filter(|k| !TAGLESS_KINDS.contains(&k.as_str())) {
         out.push(UnknownWord::Value { place, setting: KIND.into(), word: kind.clone(), allowed: TAGLESS_KINDS.to_vec() });
     }
@@ -173,16 +173,16 @@ mod tests {
         let mut d = doc();
         let j = DeviceId(4);
         let mut junction = Device::default();
-        junction.properties.insert(ecad_model::connectivity::KIND.into(), "junction".into());
+        junction.properties.insert(crate::bom::KIND_KEY.into(), "junction".into());
         d.devices.insert(j, junction);
-        let mut boxed = Device::default();
-        boxed.properties.insert(ecad_model::connectivity::KIND.into(), crate::locations::KIND_VALUE.into());
-        d.devices.insert(DeviceId(6), boxed);
+        let mut item = Device::default();
+        item.properties.insert(crate::bom::KIND_KEY.into(), crate::bom::ITEM_KIND.into());
+        d.devices.insert(DeviceId(6), item);
         let found = check(&d);
         assert_eq!(found.len(), 1, "{found:?}");
         assert_eq!(found[0].place(), WordPlace::Device(j));
         let text = found[0].to_string();
-        assert!(text.contains("`junction`") && text.contains("`kind`") && text.contains(crate::locations::KIND_VALUE), "{text}");
+        assert!(text.contains("`junction`") && text.contains("`kind`") && text.contains(crate::bom::ITEM_KIND), "{text}");
     }
 
     #[test]

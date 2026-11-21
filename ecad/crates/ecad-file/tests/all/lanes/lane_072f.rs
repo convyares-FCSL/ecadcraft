@@ -48,3 +48,25 @@ fn a_continuation_device_is_a_read_error() {
     };
     assert!(err.contains("continuation"), "a read error naming it: {err:?}");
 }
+
+/// F1c: a location box is a drawing aid; a file holding a device of kind `location_box` (the old
+/// form) is not read, from the log (its op) or from a snapshot (its `device` chunk).
+#[test]
+fn a_location_box_device_is_a_read_error() {
+    let dir = TempDir::new("072f-old-box");
+    let mut f = fixture();
+    let c: DeviceId = f.ids.fresh();
+    let mut old = Device::default();
+    old.properties.insert("kind".into(), "location_box".into());
+    f.ledger.commit(Author::User, "old box", vec![Op::CreateDevice { id: c, device: old }]).unwrap();
+    let (lo, hi) = ecad_file::schema::SNAPSHOT_EVERY_RANGE;
+    for (name, every) in [("snap.ecad", lo), ("log.ecad", hi)] {
+        let p = dir.path(name);
+        ProjectV2::create(Store::create(&p).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, every).unwrap();
+        let err = match ProjectV2::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER) {
+            Err(e) => e.to_string(),
+            Ok(o) => o.project.read_only().unwrap_or_default().to_string(),
+        };
+        assert!(err.contains("location_box"), "{name}: a read error naming it: {err:?}");
+    }
+}

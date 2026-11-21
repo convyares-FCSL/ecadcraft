@@ -7,6 +7,8 @@
 pub enum ObjectKind {
     /// A device's symbol (a tagged or untagged component, not a terminal strip).
     Device,
+    /// A drawing aid (design 072 §6.2): a continuation arrow or a location box.
+    Aid,
     /// A wire, away from its ends.
     Wire,
     /// A wire's end (attached or loose).
@@ -28,8 +30,9 @@ pub enum ObjectKind {
 }
 
 impl ObjectKind {
-    pub const ALL: [ObjectKind; 10] = [
+    pub const ALL: [ObjectKind; 11] = [
         ObjectKind::Device,
+        ObjectKind::Aid,
         ObjectKind::Wire,
         ObjectKind::WireEnd,
         ObjectKind::Terminal,
@@ -45,6 +48,7 @@ impl ObjectKind {
     pub const fn words(self) -> &'static str {
         match self {
             ObjectKind::Device => "device",
+            ObjectKind::Aid => "drawing aid",
             ObjectKind::Wire => "wire",
             ObjectKind::WireEnd => "wire end",
             ObjectKind::Terminal => "terminal",

@@ -492,9 +492,10 @@ fn parse_chunk(set: &ChunkSet, key: &str, body: &[u8]) -> Result<Parsed, FileErr
         "layer" => Parsed::Layer(typed(body, key, b, count)?),
         "device" => {
             let m: BTreeMap<DeviceId, Device> = typed(body, key, b, count)?;
-            // Design 072 §6.2: a continuation is a drawing aid; the old device form is not read.
-            if m.values().any(crate::records::is_continuation_device) {
-                return Err(FileError::ChunkJson { key: key.to_string(), error: crate::records::CONTINUATION_DEVICE.to_string() });
+            // Design 072 §6.2: continuations and location boxes are drawing aids; their old device
+            // form is not read.
+            if let Some(e) = m.values().find_map(crate::records::aid_device_error) {
+                return Err(FileError::ChunkJson { key: key.to_string(), error: e.to_string() });
             }
             Parsed::Device(m)
         }

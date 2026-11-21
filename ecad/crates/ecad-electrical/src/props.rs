@@ -78,12 +78,6 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
             }
             Op::SetProperty { object, .. } => {
                 out.insert(*object);
-                // A location box's own location is what its page's devices inherit (brief 024).
-                if let ObjectRef::Device(c) = object
-                    && crate::locations::is_box(doc, *c)
-                {
-                    out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| ObjectRef::Page(r.page)));
-                }
             }
             Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::ModifyDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
                 out.insert(ObjectRef::Device(*id));
@@ -123,15 +117,15 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
             Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => {
                 if let Some((_, r)) = doc.representation_of_item(*id) {
                     subject(r.subject, &mut out);
-                    if matches!(r.subject, Subject::Device(c) if crate::locations::is_box(doc, c)) {
+                    if matches!(r.subject, Subject::Aid(a) if crate::locations::box_values(doc, a).is_some()) {
                         out.insert(ObjectRef::Page(r.page));
                     }
                 }
             }
             Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => {
                 subject(rep.subject, &mut out);
-                // A location box (brief 024) changes the location its page's devices inherit.
-                if matches!(rep.subject, Subject::Device(c) if crate::locations::is_box(doc, c) || rep.role == ecad_model::Role::LocationBox) {
+                // A location box (brief 024) changes the contexts on its page.
+                if matches!(rep.subject, Subject::Aid(_)) && rep.role == ecad_model::Role::LocationBox {
                     out.insert(ObjectRef::Page(rep.page));
                 }
             }
@@ -233,13 +227,15 @@ fn codes(doc: &Document, key: &str) -> Vec<String> {
 
 /// A location box (design 024 §3.5, design 052 §5.8): Function and Location (editable, either may
 /// be empty), Vertices and Devices inside.
-pub fn box_section(doc: &Document, b: DeviceId) -> Section {
-    let shape = doc.representations_of(Subject::Device(b)).find_map(|(rid, r)| crate::locations::box_of_rep(doc, rid, r));
-    let shown = |key: &str| doc.devices.get(&b).and_then(|c| c.value(key)).map(|v| crate::designations::display(doc, key, &v)).unwrap_or_default();
-    let location = shown(LOCATION_KEY);
+pub fn box_section(doc: &Document, b: ecad_model::AidId) -> Section {
+    use crate::designations::{self as d, Aspect};
+    let shape = doc.representations_of(Subject::Aid(b)).find_map(|(rid, r)| crate::locations::box_of_rep(doc, rid, r));
+    let values = crate::locations::box_values(doc, b);
+    let shown = |a: Aspect| values.and_then(|x| d::box_key(x, a)).map(|k| d::display(doc, a.property(), &k)).unwrap_or_default();
+    let location = shown(Aspect::Location);
     let mut rows = Vec::new();
-    for (key, label) in [(FUNCTION_KEY, "Function"), (LOCATION_KEY, "Location")] {
-        let mut r = Row::rw(key, label, shown(key));
+    for (key, label, a) in [(FUNCTION_KEY, "Function", Aspect::Function), (LOCATION_KEY, "Location", Aspect::Location)] {
+        let mut r = Row::rw(key, label, shown(a));
         r.choices = codes(doc, key);
         rows.push(r);
     }
@@ -253,7 +249,7 @@ pub fn box_section(doc: &Document, b: DeviceId) -> Section {
     Section {
         title: format!("ECAD · LOCATION BOX {location}"),
         kind: "box",
-        target: Some(Target::Devices(vec![b])),
+        target: Some(Target::Aids(vec![b])),
         rows,
         note: None,
         buttons: Vec::new(),

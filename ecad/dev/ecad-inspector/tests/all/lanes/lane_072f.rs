@@ -146,3 +146,64 @@ fn a_continuation_aid_and_its_rename_are_shown_raw_and_readable() {
         assert!(raw["ok"]["hex"].as_str().is_some_and(|h| !h.is_empty()), "the raw row");
     }
 }
+
+/// F1c: a location box is drawn as an aid's outline (`Subject::Aid`, role `box`) and edited with
+/// `ModifyAid`; both read in the Raw and Readable views.
+#[test]
+fn a_location_box_aid_and_its_edit_are_shown_raw_and_readable() {
+    use ecad_model::{Form, Item, ItemId, ItemKind, LocationId, Primitive, Pt, Representation, RepresentationId, Style, Subject};
+    let dir = TempDir::new("072f-box");
+    let mut l = history();
+    let mut ids = IdAllocator::seeded(0x72f3);
+    let (a, i, r): (AidId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh());
+    let page = *l.document().page_order.first().unwrap();
+    let layer = *l.document().layers.keys().next().unwrap();
+    let style = Style { layer, color: ecad_model::Color::ByLayer, linetype: "DASHED".into(), lineweight: 25 };
+    let outline = vec![Pt::new(0.0, 0.0), Pt::new(40.0, 0.0), Pt::new(40.0, 30.0), Pt::new(0.0, 30.0)];
+    let boxed = Aid::Box(LocationBox { location: Some(LocationId(0xc1)), ..LocationBox::default() });
+    l.commit(
+        Author::User,
+        "box",
+        vec![
+            Op::CreateAid { id: a, aid: boxed.clone() },
+            Op::AddItem { id: i, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Polyline { vertices: outline, closed: true }) } },
+            Op::LinkRepresentation {
+                id: r,
+                rep: Representation {
+                    subject: Subject::Aid(a),
+                    page,
+                    form: Form::Drawn,
+                    role: ecad_model::Role::LocationBox,
+                    items: vec![i],
+                    connection_points: Default::default(),
+                },
+            },
+        ],
+    )
+    .unwrap();
+    let warmer = Aid::Box(LocationBox { location: Some(LocationId(0xc2)), panel_temperature: Some(Celsius(40.0)), ..LocationBox::default() });
+    l.commit(Author::User, "edit", vec![Op::ModifyAid { id: a, before: boxed, after: warmer }]).unwrap();
+    let path = written(&dir, &l);
+    let f = FileSource::from_path(&path);
+    assert!(matches!(f.wait_verified(Duration::from_secs(60)), VerifyState::Done { .. }));
+    let s = Some(&f as &dyn Source);
+    let rows = ask(s, serde_json::json!({"op": "rows", "table": "transactions", "count": 1000}));
+    let rows = rows["ok"]["rows"].as_array().cloned().unwrap_or_default();
+    let keys: Vec<String> = rows.iter().rev().take(2).filter_map(|r| r["key"].as_str().map(str::to_string)).collect();
+    assert_eq!(keys.len(), 2, "{rows:?}");
+    let text =
+        |key: &str| ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "readable"}))["ok"]["decoded"].to_string();
+    let (edit, placed) = (text(&keys[0]), text(&keys[1]));
+    for want in ["ModifyAid", "box", "location", "panel_temperature", &a.hex()] {
+        assert!(edit.contains(want), "{want} in the edit: {edit}");
+    }
+    for want in ["CreateAid", "LinkRepresentation", "box", "aid", &a.hex()] {
+        assert!(placed.contains(want), "{want} in the placing: {placed}");
+    }
+    for key in &keys {
+        let raw = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "raw"}));
+        assert!(raw["ok"]["hex"].as_str().is_some_and(|h| !h.is_empty()), "the raw row");
+    }
+    let summary = ask(s, serde_json::json!({"op": "summary"}));
+    assert!(summary.get("ok").is_some(), "{summary}");
+}

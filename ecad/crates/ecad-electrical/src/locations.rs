@@ -11,12 +11,13 @@
 //! - A symbol's **context** for an aspect is the innermost box carrying that aspect at its anchor,
 //!   else its page's value, else the project's. Its tag shows the device's value as a prefix where
 //!   the context differs (`=F1+CP1-K01`, [`shown_tag`]); that reads the symbol's own page only.
-//! - A **location box** is a tagless component with property `kind: "location_box"` carrying a
+//! - A **location box** is a drawing aid ([`ecad_model::Aid::Box`], design 072 §6.2) carrying a
 //!   `location`, a `function` or both (FP9), drawn as one closed polyline item (layer [`LAYER`])
-//!   of a drawn representation with role [`ecad_model::Role::LocationBox`] (design 024 FP2). Its label is derived.
+//!   of a drawn representation with role [`ecad_model::Role::LocationBox`] (design 024 FP2). Its
+//!   label is derived.
 //! - Containment ([`contains`]) is point in polygon by the even-odd rule; a point within
 //!   [`EDGE_TOL`] of the outline counts as inside. Innermost is the smallest polygon area, ties by
-//!   component ID.
+//!   aid ID.
 //!
 //! # Update map (design 024 §9)
 //! Every function here reads one page's boxes and the representations asked about, never the
@@ -29,16 +30,15 @@ use std::collections::BTreeMap;
 
 use crate::CmdError;
 use ecad_model::book::LOCATION_KEY;
-use ecad_model::connectivity::KIND;
 use ecad_model::{
-    Color, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Layer, LayerId, Op, PageId, Primitive, Pt, Representation,
-    RepresentationId, Style, Subject,
+    Aid, AidId, Color, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Layer, LayerId, LocationBox, Op, PageId, Primitive, Pt,
+    Representation, RepresentationId, Style, Subject,
 };
 
 use crate::designations::{self, Aspect};
 
-/// The `kind` of a location box component.
-pub const KIND_VALUE: &str = "location_box";
+/// A location box's panel temperature key (`setprop {aids}`, design 072 §6.2).
+pub const PANEL_TEMPERATURE_KEY: &str = "panel_temperature";
 /// The reserved layer of location boxes (`ecad.location-box`).
 pub const LAYER: &str = "ECAD-LOCATIONS";
 /// The linetype of a box outline.
@@ -59,7 +59,7 @@ pub const NOT_CLOSED: &str = "Pick a closed polyline (an open one can be closed 
 /// One location box on a page.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LocBox {
-    pub component: DeviceId,
+    pub aid: AidId,
     pub rep: RepresentationId,
     pub item: ItemId,
     pub page: PageId,
@@ -77,29 +77,24 @@ pub struct LocBox {
     pub area: f64,
 }
 
-/// Whether component `c` is a location box.
-pub fn is_box(doc: &Document, c: DeviceId) -> bool {
-    doc.devices.get(&c).is_some_and(is_box_component)
-}
-
-/// Whether `c` is a location box component.
-pub fn is_box_component(c: &Device) -> bool {
-    c.properties.get(KIND).is_some_and(|k| k == KIND_VALUE)
-}
-
-/// A device in the sense of locations and the BOM (design 024 §6.1): a component with a tag and
-/// no `kind`.
+/// A device in the sense of locations and the BOM (design 024 §6.1): a component with a tag that
+/// is not a BOM item.
 pub fn is_device(doc: &Document, c: DeviceId) -> bool {
-    doc.devices.get(&c).is_some_and(|x| x.tag.is_some() && !x.properties.contains_key(KIND))
+    doc.devices.get(&c).is_some_and(|x| x.tag.is_some() && !crate::bom::is_item_component(x))
+}
+
+/// Location box `a`'s values, when `a` is one.
+pub fn box_values(doc: &Document, a: AidId) -> Option<&LocationBox> {
+    doc.aids.get(&a).and_then(Aid::as_box)
 }
 
 /// The box representation `r` (`rid`) stands for, if it is one with a drawable outline.
 pub fn box_of_rep(doc: &Document, rid: RepresentationId, r: &Representation) -> Option<LocBox> {
-    let Subject::Device(c) = r.subject else { return None };
+    let Subject::Aid(c) = r.subject else { return None };
     if r.form != Form::Drawn || r.role != ecad_model::Role::LocationBox {
         return None;
     }
-    let comp = doc.devices.get(&c).filter(|x| is_box_component(x))?;
+    let values = box_values(doc, c)?;
     let item = *r.items.first()?;
     let vertices = match &doc.items.get(&item)?.kind {
         ItemKind::Primitive(Primitive::Polyline { vertices, closed: true }) => vertices.clone(),
@@ -109,10 +104,10 @@ pub fn box_of_rep(doc: &Document, rid: RepresentationId, r: &Representation) -> 
         return None;
     }
     let (lo, hi) = bounds(&vertices);
-    let location_key = designations::device_key(comp, Aspect::Location);
-    let function_key = designations::device_key(comp, Aspect::Function);
+    let location_key = designations::box_key(values, Aspect::Location);
+    let function_key = designations::box_key(values, Aspect::Function);
     Some(LocBox {
-        component: c,
+        aid: c,
         rep: rid,
         item,
         page: r.page,
@@ -232,7 +227,7 @@ fn first_point(k: &ItemKind) -> Option<Pt> {
     }
 }
 
-/// The innermost of `boxes` holding `p` (smallest area, then component ID).
+/// The innermost of `boxes` holding `p` (smallest area, then aid ID).
 pub fn innermost(boxes: &[LocBox], p: Pt) -> Option<&LocBox> {
     innermost_where(boxes, p, |_| true)
 }
@@ -249,7 +244,7 @@ fn innermost_where(boxes: &[LocBox], p: Pt, keep: impl Fn(&LocBox) -> bool) -> O
         .filter(|b| keep(b))
         .filter(|b| p.x >= b.lo.x - EDGE_TOL && p.x <= b.hi.x + EDGE_TOL && p.y >= b.lo.y - EDGE_TOL && p.y <= b.hi.y + EDGE_TOL)
         .filter(|b| contains(&b.vertices, p))
-        .min_by(|a, b| a.area.total_cmp(&b.area).then(a.component.cmp(&b.component)))
+        .min_by(|a, b| a.area.total_cmp(&b.area).then(a.aid.cmp(&b.aid)))
 }
 
 impl LocBox {
@@ -279,7 +274,7 @@ pub enum Source {
     /// The device's override for a type of its symbols (`location.<type>`).
     Override,
     /// A location box on a page.
-    Box { component: DeviceId, page: PageId },
+    Box { aid: AidId, page: PageId },
     /// A page's `location`.
     Page(PageId),
     /// The project's `location`.
@@ -378,7 +373,7 @@ pub fn context_in(doc: &Document, a: Aspect, page: PageId, at: Option<Pt>, boxes
     if let Some(b) = at.and_then(|p| innermost_in(boxes, a, p))
         && let Some(k) = b.key(a)
     {
-        return Located::of(doc, a, k, Source::Box { component: b.component, page });
+        return Located::of(doc, a, k, Source::Box { aid: b.aid, page });
     }
     if let Some(k) = doc.pages.get(&page).and_then(|p| designations::page_key(p, a)) {
         return Located::of(doc, a, &k, Source::Page(page));
@@ -525,7 +520,7 @@ pub fn label_of(b: &LocBox) -> (String, Pt) {
 
 /// The style of box `b` on layer `layer`: dash-dot when it carries a function (design 052 §5.8,
 /// `ecad.function-box.linetype`), else dashed.
-fn box_style_for(layer: LayerId, b: &Device) -> Style {
+fn box_style_for(layer: LayerId, b: &LocationBox) -> Style {
     let mut s = box_style(layer);
     if b.function.is_some() {
         s.linetype = FUNCTION_LINETYPE.into();
@@ -581,7 +576,7 @@ pub fn check_outline(v: &[Pt]) -> Result<(), CmdError> {
 /// What a planned box will be.
 #[derive(Debug, Clone)]
 pub struct Planned {
-    pub component: DeviceId,
+    pub aid: AidId,
     pub rep: RepresentationId,
     pub item: ItemId,
     pub ops: Vec<Op>,
@@ -593,15 +588,14 @@ pub struct Planned {
 /// location, each stored as an entry's id ([`designations::Pending`]), typed so fixed.
 fn new_box(
     doc: &Document, ids: &mut IdAllocator, values: &[(Aspect, &str)], pending: &mut designations::Pending, ops: &mut Vec<Op>,
-) -> Result<Device, CmdError> {
-    let mut b = Device::default();
-    b.properties.insert(KIND.into(), KIND_VALUE.into());
+) -> Result<LocationBox, CmdError> {
+    let mut b = LocationBox::default();
     for (a, text) in values {
         if text.trim().is_empty() {
             continue;
         }
         let key = pending.store(doc, ids, *a, text, ops)?;
-        b = designations::with_device_key(&b, *a, Some(&key), true);
+        b = designations::with_box_key(&b, *a, Some(&key));
     }
     if b.location.is_none() && b.function.is_none() {
         return Err(CmdError::refused(NO_VALUE));
@@ -613,7 +607,7 @@ fn new_box(
 pub const NO_VALUE: &str = "A box needs a function or a location, such as =F1 or +CP1.";
 
 /// The ops of a new location box `location` drawn on `page` with outline `vertices`
-/// (design 024 §7): `CreateDevice`, `AddItem` (closed polyline), `LinkRepresentation`.
+/// (design 024 §7): `CreateAid`, `AddItem` (closed polyline), `LinkRepresentation`.
 ///
 /// # Errors
 /// As [`plan_box_with`].
@@ -634,19 +628,19 @@ pub fn plan_box_with(doc: &Document, ids: &mut IdAllocator, page: PageId, values
     check_outline(&vertices)?;
     let mut pending = designations::Pending::default();
     let mut list_ops = Vec::new();
-    let device = new_box(doc, ids, values, &mut pending, &mut list_ops)?;
+    let values = new_box(doc, ids, values, &mut pending, &mut list_ops)?;
     let (layer, mut ops) = layer_ops(doc, ids);
     ops.extend(list_ops);
-    let component: DeviceId = ids.fresh();
+    let aid: AidId = ids.fresh();
     let item: ItemId = ids.fresh();
     let rep: RepresentationId = ids.fresh();
-    let style = box_style_for(layer, &device);
-    ops.push(Op::CreateDevice { id: component, device });
+    let style = box_style_for(layer, &values);
+    ops.push(Op::CreateAid { id: aid, aid: Aid::Box(values) });
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Polyline { vertices, closed: true }) } });
     ops.push(Op::LinkRepresentation {
         id: rep,
         rep: Representation {
-            subject: Subject::Device(component),
+            subject: Subject::Aid(aid),
             page,
             form: Form::Drawn,
             role: ecad_model::Role::LocationBox,
@@ -654,7 +648,7 @@ pub fn plan_box_with(doc: &Document, ids: &mut IdAllocator, page: PageId, values
             connection_points: BTreeMap::new(),
         },
     });
-    Ok(Planned { component, rep, item, ops, added: pending.words() })
+    Ok(Planned { aid, rep, item, ops, added: pending.words() })
 }
 
 /// The ops that turn the existing closed polyline `item` into location box `location`
@@ -674,7 +668,6 @@ pub fn plan_from_item_with(doc: &Document, ids: &mut IdAllocator, item: ItemId, 
     let it = doc.items.get(&item).ok_or(CmdError::refused("no such item"))?;
     if let Some((_, r)) = doc.representation_of_item(item) {
         let who = match r.subject {
-            Subject::Device(c) if is_box(doc, c) => "another location box".to_string(),
             Subject::Device(c) => crate::devices::tag_words(doc, c),
             Subject::Wire(_) | Subject::Route(_) => "a wire".into(),
             Subject::Cable(_) => "a cable".into(),
@@ -692,20 +685,20 @@ pub fn plan_from_item_with(doc: &Document, ids: &mut IdAllocator, item: ItemId, 
     check_outline(&vertices)?;
     let mut pending = designations::Pending::default();
     let mut list_ops = Vec::new();
-    let device = new_box(doc, ids, values, &mut pending, &mut list_ops)?;
+    let values = new_box(doc, ids, values, &mut pending, &mut list_ops)?;
     let (layer, mut ops) = layer_ops(doc, ids);
     ops.extend(list_ops);
-    let component: DeviceId = ids.fresh();
+    let aid: AidId = ids.fresh();
     let rep: RepresentationId = ids.fresh();
-    let after = Item { style: box_style_for(layer, &device), ..it.clone() };
-    ops.push(Op::CreateDevice { id: component, device });
+    let after = Item { style: box_style_for(layer, &values), ..it.clone() };
+    ops.push(Op::CreateAid { id: aid, aid: Aid::Box(values) });
     if after != *it {
         ops.push(Op::ModifyItem { id: item, before: it.clone(), after });
     }
     ops.push(Op::LinkRepresentation {
         id: rep,
         rep: Representation {
-            subject: Subject::Device(component),
+            subject: Subject::Aid(aid),
             page: it.page,
             form: Form::Drawn,
             role: ecad_model::Role::LocationBox,
@@ -713,7 +706,7 @@ pub fn plan_from_item_with(doc: &Document, ids: &mut IdAllocator, item: ItemId, 
             connection_points: BTreeMap::new(),
         },
     });
-    Ok(Planned { component, rep, item, ops, added: pending.words() })
+    Ok(Planned { aid, rep, item, ops, added: pending.words() })
 }
 
 /// The box a [`Planned`] box will be, read from its ops (for proposals before it is committed).
@@ -723,7 +716,7 @@ pub fn planned_box(doc: &Document, p: &Planned) -> Option<LocBox> {
     let mut page = None;
     for op in &p.ops {
         match op {
-            Op::CreateDevice { id, device } if *id == p.component => props = Some(device.clone()),
+            Op::CreateAid { id, aid: Aid::Box(b) } if *id == p.aid => props = Some(b.clone()),
             Op::AddItem { id, item } | Op::ModifyItem { id, after: item, .. } if *id == p.item => {
                 page = Some(item.page);
                 if let ItemKind::Primitive(Primitive::Polyline { vertices: v, .. }) = &item.kind {
@@ -739,8 +732,8 @@ pub fn planned_box(doc: &Document, p: &Planned) -> Option<LocBox> {
         _ => None,
     })?;
     let (lo, hi) = bounds(&vertices);
-    let location_key = designations::device_key(&props, Aspect::Location);
-    let function_key = designations::device_key(&props, Aspect::Function);
+    let location_key = designations::box_key(&props, Aspect::Location);
+    let function_key = designations::box_key(&props, Aspect::Function);
     // A code the box adds to the list is in the ops, not in `doc` yet.
     let code = |a: Aspect, k: &Option<String>| {
         k.as_ref().and_then(|k| {
@@ -753,7 +746,7 @@ pub fn planned_box(doc: &Document, p: &Planned) -> Option<LocBox> {
         })
     };
     Some(LocBox {
-        component: p.component,
+        aid: p.aid,
         rep: p.rep,
         item: p.item,
         page,
@@ -772,15 +765,15 @@ pub fn planned_box(doc: &Document, p: &Planned) -> Option<LocBox> {
 /// box's outline cannot be opened or cut below three points. The words give the way out.
 pub fn reshape_refusal(doc: &Document, id: ItemId, after: &Item) -> Option<String> {
     let (_, r) = doc.representation_of_item(id)?;
-    let Subject::Device(c) = r.subject else { return None };
-    if r.role != ecad_model::Role::LocationBox || !is_box(doc, c) {
+    let Subject::Aid(c) = r.subject else { return None };
+    if r.role != ecad_model::Role::LocationBox || box_values(doc, c).is_none() {
         return None;
     }
     let ok = matches!(&after.kind, ItemKind::Primitive(Primitive::Polyline { vertices, closed: true }) if vertices.len() >= 3);
     if ok {
         return None;
     }
-    let loc = boxes_on(doc, r.page).into_iter().find(|b| b.component == c).map_or_else(|| "+?".to_string(), |b| label_of(&b).0);
+    let loc = boxes_on(doc, r.page).into_iter().find(|b| b.aid == c).map_or_else(|| "+?".to_string(), |b| label_of(&b).0);
     Some(format!(
         "Location box {loc} is a closed outline of at least three points, so it cannot be opened or cut down to a line. \
          To use a plain polyline instead, erase the box (its outline or its {loc} label; U brings it back) and draw the polyline."
@@ -798,7 +791,7 @@ pub fn inside_counts(doc: &Document, b: &LocBox) -> (usize, usize) {
             continue;
         }
         let Some(at) = anchor(doc, r) else { continue };
-        if innermost(cache.on(doc, b.page), at).map(|x| x.component) != Some(b.component) {
+        if innermost(cache.on(doc, b.page), at).map(|x| x.aid) != Some(b.aid) {
             continue;
         }
         n += 1;

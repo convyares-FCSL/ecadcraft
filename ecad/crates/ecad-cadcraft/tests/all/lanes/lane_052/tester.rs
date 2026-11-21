@@ -15,7 +15,7 @@ use ecad_cadcraft::checks::{self, Kind};
 use ecad_cadcraft::designations::{self, Aspect};
 use ecad_cadcraft::outputs::{Group, Outputs};
 use ecad_cadcraft::{Persistence, ProjectHandle, generated, locations};
-use ecad_model::{Author, DeviceId, Document, Op, PageId};
+use ecad_model::{AidId, Author, DeviceId, Document, Op, PageId};
 use serde_json::{Value, json};
 
 struct TempDir(PathBuf);
@@ -106,7 +106,7 @@ const OLD_CP1: u128 = 0xc1;
 const OLD_F1: u128 = 0xf1;
 const OLD_FIELD: u128 = 0xfe;
 
-fn old_project(dir: &TempDir) -> (H, DeviceId, DeviceId, DeviceId, PageId, Document) {
+fn old_project(dir: &TempDir) -> (H, DeviceId, DeviceId, AidId, PageId, Document) {
     let mut h = H::new(0x52_7001);
     let p1 = h.first_page();
     h.run("pageprops", json!({"page": p1.hex(), "number": "100"})).unwrap();
@@ -115,9 +115,9 @@ fn old_project(dir: &TempDir) -> (H, DeviceId, DeviceId, DeviceId, PageId, Docum
     h.run("place", json!({"symbol": "no", "at": [100, 150], "device": k.hex(), "location": "keep", "function": "keep"})).unwrap();
     let x: DeviceId =
         id(&h.run("connector", json!({"halves": "both", "family": "plain", "pins": 2, "layout": "row", "at": [200, 50]})).unwrap(), "component");
-    let bx: DeviceId = id(
+    let bx: AidId = id(
         &h.run("locationbox", json!({"location": "+TMP", "page": p2.hex(), "corners": [[60, 110], [140, 190]], "proposal": "keep"})).unwrap(),
-        "component",
+        "aid",
     );
     h.cfg(|p| {
         let d = p.ledger.document();
@@ -129,7 +129,14 @@ fn old_project(dir: &TempDir) -> (H, DeviceId, DeviceId, DeviceId, PageId, Docum
         };
         let ops = vec![
             Op::ModifyDevice { id: k, before: d.devices[&k].clone(), after: gone(&d.devices[&k], OLD_CP1, Some(OLD_F1)) },
-            Op::ModifyDevice { id: bx, before: d.devices[&bx].clone(), after: gone(&d.devices[&bx], OLD_FIELD, None) },
+            Op::ModifyAid {
+                id: bx,
+                before: d.aids[&bx].clone(),
+                after: ecad_model::Aid::Box(ecad_model::LocationBox {
+                    location: Some(ecad_model::LocationId(OLD_FIELD)),
+                    ..d.aids[&bx].as_box().cloned().unwrap()
+                }),
+            },
         ];
         p.ledger.commit(Author::User, "as v0.2.0 wrote it", ops).unwrap();
     });
@@ -189,7 +196,7 @@ struct Users {
     h: H,
     k: DeviceId,
     x: DeviceId,
-    bx: DeviceId,
+    bx: AidId,
     p1: PageId,
     p2: PageId,
     p3: PageId,
@@ -209,9 +216,9 @@ fn users(seed: u64) -> Users {
     h.run("setlocation", json!({"component": k.hex(), "value": "+CP01"})).unwrap();
     h.run("setlocation", json!({"component": x.hex(), "type": "plug", "value": "+CP01"})).unwrap();
     h.run("setlocation", json!({"component": x.hex(), "value": "+CP2"})).unwrap();
-    let bx: DeviceId = id(
+    let bx: AidId = id(
         &h.run("locationbox", json!({"location": "+CP01", "page": p1.hex(), "corners": [[300, 100], [380, 180]], "proposal": "keep"})).unwrap(),
-        "component",
+        "aid",
     );
     h.run("pageprops", json!({"page": p1.hex(), "location": "+CP01", "proposal": "keep"})).unwrap();
     h.run("projectprops", json!({"location": "+CP01", "proposal": "keep"})).unwrap();
@@ -237,7 +244,7 @@ fn a_merge_moves_every_user_and_undo_redo_are_exact() {
     assert!(designations::find(&after, Aspect::Location, "+CP01").is_none());
     assert_eq!(after.devices[&u.k].value("location"), Some(k1.clone()));
     assert_eq!(after.devices[&u.x].properties.get("location.plug"), Some(&k1), "the override follows");
-    assert_eq!(after.devices[&u.bx].value("location"), Some(k1.clone()), "the box follows");
+    assert_eq!(designations::box_key(after.aids[&u.bx].as_box().unwrap(), Aspect::Location), Some(k1.clone()), "the box follows");
     assert_eq!(designations::page_key(&after.pages[&u.p1], Aspect::Location), Some(k1.clone()), "the page follows");
     assert_eq!(designations::default_key(&after.project, Aspect::Location), Some(k1.clone()), "the project default follows");
     // No stored value anywhere still names the removed key.
@@ -500,13 +507,13 @@ fn oversized_input_is_refused() {
 
 // ------------------------------------------------------------------------------------ format keys
 
-/// A box's own location style (`location.style`, brief 050a) is a style ID, not a list entry:
-/// it raises no `designation-missing` row and is not listed as a missing location.
+/// The location style (`location.style`, brief 050a) is a style ID, not a list entry: it raises no
+/// `designation-missing` row and is not listed as a missing location. A box has no style of its
+/// own since it is a drawing aid (design 072 §6.2).
 #[test]
 fn a_box_location_style_is_not_a_missing_location() {
     let mut h = H::new(0x52_7401);
-    let bx: DeviceId =
-        id(&h.run("locationbox", json!({"location": "+CP1", "corners": [[60, 110], [140, 190]], "proposal": "keep"})).unwrap(), "component");
+    h.run("locationbox", json!({"location": "+CP1", "corners": [[60, 110], [140, 190]], "proposal": "keep"})).unwrap();
     let style = h.run("styles", json!({"catalogue": "location"})).unwrap();
     let ids: Vec<String> = style["styles"]
         .as_array()
@@ -517,10 +524,8 @@ fn a_box_location_style_is_not_a_missing_location() {
         .filter_map(|r| r["id"].as_str().map(str::to_string))
         .collect();
     let pick = ids.last().cloned().unwrap_or_else(|| "box".into());
-    h.run("setdefault", json!({"key": "location.style", "level": "object", "component": bx.hex(), "value": pick})).unwrap();
     h.run("setdefault", json!({"key": "location.style", "level": "project", "value": pick})).unwrap();
     let d = h.doc();
-    assert!(d.devices[&bx].properties.contains_key("location.style"), "the box stores its style");
     let rows = checks::all(&d, 1e-6);
     let missing: Vec<&str> = rows.iter().filter(|r| r.kind == Kind::DesignationMissing).map(|r| r.which.as_str()).collect();
     assert!(missing.is_empty(), "a style is not a location: {missing:?}");

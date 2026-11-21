@@ -6,7 +6,6 @@ use ecad_model::units::Radians;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::connectivity::KIND;
 use ecad_model::text::Text;
 use ecad_model::wiring::{self, Scheme};
 use ecad_model::{
@@ -737,7 +736,7 @@ pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, _value: Option
         ObjectRef::Device(_) if key == crate::continuations::CAPTION_KEY => {
             Err(CmdError::refused("Only continuation arrows have a caption; that is a device."))
         }
-        ObjectRef::Device(c) if wires::kind_of(doc, c).is_some() && key == KIND => {
+        ObjectRef::Device(c) if crate::bom::is_item(doc, c) && key == crate::bom::KIND_KEY => {
             Err(CmdError::refused("It keeps its kind; erase it and place another."))
         }
         _ => Ok(None),

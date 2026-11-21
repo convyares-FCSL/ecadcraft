@@ -8,7 +8,7 @@
 use ecad_model::style::LocationStyle;
 use ecad_model::style::text::StyleColour;
 use ecad_model::units::Mm;
-use ecad_model::{DeviceId, Document, StyleRef, Word};
+use ecad_model::{AidId, Document, StyleRef, Word};
 
 use super::{Builtin, Catalogue, Field};
 use crate::CmdError;
@@ -64,10 +64,10 @@ pub fn linetype(word: &str) -> &'static str {
     }
 }
 
-/// The look of location box `c` (its own `location.style`, else the project's, the standard's,
-/// the built-in `box`).
-pub fn box_look(doc: &Document, c: DeviceId) -> BoxLook {
-    let id = super::chosen(doc, &crate::defaults::styles::LOCATION, Scope::component(c));
+/// The look of location box `_a`: the project's location style, else the standard's, else the
+/// built-in `box` (a box is a drawing aid with no style of its own, design 072 §6.2).
+pub fn box_look(doc: &Document, _a: AidId) -> BoxLook {
+    let id = super::chosen(doc, &crate::defaults::styles::LOCATION, Scope::project());
     look_of(doc, &id)
 }
 

@@ -697,10 +697,6 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
                 es.push(k.style_entry());
                 es.extend(k.show_entry());
             }
-            // A location box shows its Box style.
-            if ecad_cadcraft::locations::is_box(doc, c) {
-                es.push(&defaults::styles::LOCATION);
-            }
             let starter =
                 doc.devices.get(&c).and_then(|c| c.definition).and_then(|d| doc.definitions.get(&d)).and_then(ecad_cadcraft::symbols::of_definition);
             es.extend(starter.and_then(|s| defaults::symbols::prefix_entry(s.key)));
@@ -763,10 +759,9 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
         What::Symbol(_, rep) => ecad_cadcraft::symbol_cmds::update_available(doc, rep).map(|(_, shown, newest)| SymbolUpdate { rep, shown, newest }),
         _ => None,
     };
-    // UI rev 3: the Device and Layout tabs' copy of one device (a location box keeps the plain
-    // view: its own section).
+    // UI rev 3: the Device and Layout tabs' copy of one device.
     let device = match what {
-        What::Symbol(c, rep) if !ecad_cadcraft::locations::is_box(doc, c) => Some(details::build(doc, c, rep, &SYMBOL_KINDS, &mut deps)),
+        What::Symbol(c, rep) => Some(details::build(doc, c, rep, &SYMBOL_KINDS, &mut deps)),
         _ => None,
     };
     let page_words = match what {

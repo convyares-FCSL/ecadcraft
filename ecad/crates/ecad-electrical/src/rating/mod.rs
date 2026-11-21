@@ -23,7 +23,7 @@
 //! | a conductor's or cable's own property | that subject (re-traced) |
 //! | a device's `rating` / `rating.<n>` | `protects[device]` (result only) |
 //! | a device's `tag` | subjects it protects or that name it (result only) |
-//! | a location box's `rating.temperature` or `location`, a device's `location` | every wire's result |
+//! | a location box's panel temperature or location (`ModifyAid`), a device's `location` | every wire's result |
 //! | connectivity (conductors, ends, points, components, definitions, links, cable members) | subjects whose path holds a touched net, and those on a touched net (re-traced) |
 //! | `SetStyle` of a wire category or cable type | its users (result only) |
 //! | `SetStyle` of a rating table, `SetStandard`, a project or standard `rating.*` / `wire.*` key, the potentials | every result (no trace) |
@@ -242,8 +242,6 @@ pub const GROUPED: &str = "rating.grouped";
 pub const VOLTAGE: &str = "rating.voltage";
 pub const SYSTEM: &str = "rating.system";
 pub const VD_LIMIT: &str = "rating.vd_limit";
-/// A location box's panel temperature (FP6).
-pub const TEMPERATURE: &str = "rating.temperature";
 
 /// A problem a result raises (one Checks row each; the count kinds are summed project-wide).
 #[derive(Debug, Clone, PartialEq)]
@@ -298,7 +296,7 @@ pub struct Touch {
     /// Locations whose temperature changed: `at[location]` (D1).
     pub locations: BTreeSet<String>,
     /// Location boxes to read again.
-    pub boxes: BTreeSet<DeviceId>,
+    pub boxes: BTreeSet<ecad_model::AidId>,
     /// Devices whose location may have changed: their wires' results.
     pub moved: BTreeSet<DeviceId>,
     /// Pages a location box moved on: the wires of the devices drawn there.
@@ -338,14 +336,7 @@ impl Touch {
                     }
                 }
                 Op::SetProperty { object: ObjectRef::Device(c), key, .. } => {
-                    let is_box = doc.devices.get(c).is_some_and(crate::locations::is_box_component);
-                    if is_box {
-                        // A box's temperature or location: the wires at its locations (§10).
-                        if key == TEMPERATURE {
-                            self.boxes.insert(*c);
-                            self.box_locations(doc, *c);
-                        }
-                    } else if crate::symbols::is_rating_key(key) || key == ecad_model::tag::TAG_KEY {
+                    if crate::symbols::is_rating_key(key) || key == ecad_model::tag::TAG_KEY {
                         self.devices.insert(*c);
                     } else if key.starts_with("link.") {
                         for (t, _) in doc.terminals_of(*c) {
@@ -395,14 +386,24 @@ impl Touch {
                     }
                 }
                 Op::AddTerminal { id, .. } | Op::RemoveTerminal { id, .. } => net_of_terminal(*id, self),
-                Op::CreateDevice { id, device: component } | Op::DeleteDevice { id, device: component }
-                    if crate::locations::is_box_component(component) =>
-                {
-                    self.boxes.insert(*id);
-                    if let Some(l) = crate::designations::device_key(component, crate::designations::Aspect::Location) {
-                        self.locations.insert(l);
+                Op::CreateAid { id, aid } | Op::DeleteAid { id, aid } => {
+                    if let Some(b) = aid.as_box() {
+                        self.boxes.insert(*id);
+                        self.locations.extend(crate::designations::box_key(b, crate::designations::Aspect::Location));
+                        self.box_pages(doc, *id);
                     }
-                    self.box_pages(doc, *id);
+                }
+                // Design 072 §6.2: a box's temperature reaches the wires at its location; its new
+                // location the wires at both locations and those of the devices on its pages.
+                Op::ModifyAid { id, before, after } => {
+                    let loc = |a: &ecad_model::Aid| a.as_box().and_then(|b| crate::designations::box_key(b, crate::designations::Aspect::Location));
+                    if before.as_box().is_some() || after.as_box().is_some() {
+                        self.boxes.insert(*id);
+                        self.locations.extend([loc(before), loc(after)].into_iter().flatten());
+                        if loc(before) != loc(after) {
+                            self.box_pages(doc, *id);
+                        }
+                    }
                 }
                 // Lane 072 B: a device's description, part or type text is read by no rating row.
                 Op::ModifyDevice { before, after, .. } if before.only_text_differs(after) => {}
@@ -413,15 +414,7 @@ impl Touch {
                 // Design 072 §6.3: a box's new location reaches the wires at both locations; a
                 // device's own location its wires only.
                 Op::ModifyDevice { id, before, after } if before.only_place_differs(after) => {
-                    let loc = |d: &ecad_model::Device| crate::designations::device_key(d, crate::designations::Aspect::Location);
-                    if crate::locations::is_box_component(after) {
-                        self.boxes.insert(*id);
-                        self.box_locations(doc, *id);
-                        if before.location != after.location {
-                            self.locations.extend([loc(before), loc(after)].into_iter().flatten());
-                            self.box_pages(doc, *id);
-                        }
-                    } else if before.location != after.location {
+                    if before.location != after.location {
                         self.moved.insert(*id);
                     }
                 }
@@ -451,14 +444,16 @@ impl Touch {
                 // A device moved may enter another location box: its wires; a box moved: the wires at
                 // its location and those of the devices on its page.
                 Op::ModifyRepresentation { after, .. } | Op::LinkRepresentation { rep: after, .. } | Op::UnlinkRepresentation { rep: after, .. } => {
-                    if let ecad_model::Subject::Device(c) = after.subject {
-                        if doc.devices.get(&c).is_some_and(crate::locations::is_box_component) {
-                            self.boxes.insert(c);
-                            self.box_locations(doc, c);
+                    match after.subject {
+                        ecad_model::Subject::Aid(a) if crate::locations::box_values(doc, a).is_some() => {
+                            self.boxes.insert(a);
+                            self.box_locations(doc, a);
                             self.pages.insert(after.page);
-                        } else {
+                        }
+                        ecad_model::Subject::Device(c) => {
                             self.moved.insert(c);
                         }
+                        _ => {}
                     }
                 }
                 _ => {}
@@ -496,7 +491,7 @@ pub struct Kept {
     /// The chosen rating table as last parsed; read again only when an op reaches it.
     table: Option<std::sync::Arc<ratingtable::Table>>,
     /// Location boxes that set a temperature (read again only when an op reaches one).
-    boxes: BTreeMap<DeviceId, BoxTemp>,
+    boxes: BTreeMap<ecad_model::AidId, BoxTemp>,
     /// location → the wires whose ends are there (design 057 §10, `at`).
     at: BTreeMap<String, BTreeSet<RatedSubject>>,
     /// Panel wires a device protects that have no rating data (`rating-no-data`, §7 and check 13),
@@ -777,7 +772,7 @@ impl Kept {
     }
 
     /// Location boxes whose temperature does not read: (box, location, text).
-    pub fn bad_boxes(&self) -> impl Iterator<Item = (DeviceId, &str, &str)> {
+    pub fn bad_boxes(&self) -> impl Iterator<Item = (ecad_model::AidId, &str, &str)> {
         self.boxes.iter().filter_map(|(c, b)| match &b.temp {
             Temp::Unread(v) => Some((*c, b.location.as_str(), v.as_str())),
             Temp::Read(_) => None,
@@ -825,14 +820,13 @@ fn table_issues(ctx: &Context) -> Vec<Issue> {
 }
 
 impl Touch {
-    fn box_locations(&mut self, doc: &Document, c: DeviceId) {
-        if let Some(l) = doc.devices.get(&c).and_then(|x| crate::designations::device_key(x, crate::designations::Aspect::Location)) {
-            self.locations.insert(l);
-        }
+    fn box_locations(&mut self, doc: &Document, a: ecad_model::AidId) {
+        self.locations
+            .extend(crate::locations::box_values(doc, a).and_then(|x| crate::designations::box_key(x, crate::designations::Aspect::Location)));
     }
 
-    fn box_pages(&mut self, doc: &Document, c: DeviceId) {
-        self.pages.extend(doc.representations_of(ecad_model::Subject::Device(c)).map(|(_, r)| r.page));
+    fn box_pages(&mut self, doc: &Document, a: ecad_model::AidId) {
+        self.pages.extend(doc.representations_of(ecad_model::Subject::Aid(a)).map(|(_, r)| r.page));
     }
 
     /// Whether the ops reach anything here.
@@ -1023,14 +1017,14 @@ pub fn summary_rows(doc: &Document, k: &Kept) -> Vec<Check> {
     for (c, loc, v) in k.bad_boxes() {
         // Brief 052: the box stores an entry key; the row names the entry's code.
         let loc = if loc.is_empty() { String::new() } else { location_code(doc, loc) };
-        let (page, at) = ecad_model::numbering::rep_anchor(doc, ecad_model::Subject::Device(c)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
+        let (page, at) = ecad_model::numbering::rep_anchor(doc, ecad_model::Subject::Aid(c)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
         out.push(Check {
             kind: CheckKind::RatingBadValue,
             page,
             at,
-            object: Object::Device(c),
+            object: Object::Aid(c),
             which: format!(
-                "{} has {TEMPERATURE} '{v}', which ECAD does not read (\u{2212}40 to 90 \u{b0}C)",
+                "{} has panel temperature '{v}', which ECAD does not read (\u{2212}40 to 90 \u{b0}C)",
                 if loc.is_empty() { "A location box" } else { loc.as_str() }
             ),
             fix: None,

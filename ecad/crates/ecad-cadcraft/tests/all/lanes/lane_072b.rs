@@ -16,7 +16,7 @@ use crate::common::{H, id};
 /// lane F deletes with `Aid` and `LoosePart`; this test then becomes "each starter declares its
 /// symbol's type".
 fn predicates_say(doc: &Document, c: DeviceId) -> Option<DeviceGroup> {
-    use ecad_cadcraft::{bom, connectors, locations, plc, strips};
+    use ecad_cadcraft::{bom, connectors, plc, strips};
     if strips::fuse_terminal_of(doc, c).is_some() {
         // The owner's answer (design 072 §2.2): a fuse terminal device is Protection; a fuse
         // position in a strip (`termfuse`) is the strip's.
@@ -37,7 +37,7 @@ fn predicates_say(doc: &Document, c: DeviceId) -> Option<DeviceGroup> {
         Some(_) => return Some(DeviceGroup::PlcModule),
         None => {}
     }
-    if locations::is_box(doc, c) || bom::is_item(doc, c) {
+    if bom::is_item(doc, c) {
         return Some(DeviceGroup::General);
     }
     None

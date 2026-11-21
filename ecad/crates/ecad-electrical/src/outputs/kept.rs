@@ -906,7 +906,7 @@ impl Outputs {
             let Some(cond) = m.wire().and_then(|w| doc.wires.get(&w)) else { continue };
             for t in &cond.ends {
                 let Some(c) = doc.terminals.get(t).and_then(|x| x.device()) else { continue };
-                if crate::wires::kind_of(doc, c).is_some() {
+                if crate::bom::is_item(doc, c) {
                     continue;
                 }
                 let (loc, tag) = match self.devices.get(&c) {
@@ -995,7 +995,7 @@ impl Outputs {
                     kind: Kind::BoxCrosses,
                     page: Some(page),
                     at: b.vertices.first().copied(),
-                    object: Object::Device(b.component),
+                    object: Object::Aid(b.aid),
                     which: b.location.clone().unwrap_or_else(|| "+?".into()),
                     fix: None,
                 });
@@ -1008,7 +1008,7 @@ impl Outputs {
                         kind: Kind::BoxesOverlap,
                         page: Some(page),
                         at: Some(at),
-                        object: Object::Device(a.component),
+                        object: Object::Aid(a.aid),
                         which: format!("{} and {}", a.location.as_deref().unwrap_or("+?"), b.location.as_deref().unwrap_or("+?")),
                         fix: None,
                     });

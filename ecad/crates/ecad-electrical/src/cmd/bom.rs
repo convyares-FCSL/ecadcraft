@@ -289,7 +289,7 @@ pub fn plan_bomitem(doc: &Document, ids: &mut IdAllocator, change: ItemChange) -
             };
             let qty = fields.get(QTY_KEY).cloned().flatten();
             let mut props = Properties::new();
-            props.insert(ecad_model::connectivity::KIND.into(), ITEM_KIND.into());
+            props.insert(crate::bom::KIND_KEY.into(), ITEM_KIND.into());
             if metres {
                 props.insert(UNIT_KEY.into(), METRES.into());
             }
