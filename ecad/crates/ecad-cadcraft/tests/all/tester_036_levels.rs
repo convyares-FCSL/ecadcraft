@@ -12,7 +12,7 @@
 use std::collections::BTreeMap;
 
 use ecad_cadcraft::Persistence;
-use ecad_cadcraft::outputs::{Group, Outputs};
+use ecad_cadcraft::outputs::{Group, kept::Outputs};
 use ecad_model::{Author, DeviceId, Document, Op, PageId, Subject, TerminalId};
 use serde_json::{Value, json};
 
@@ -130,7 +130,7 @@ fn same_as_built(h: &mut H) {
 fn same_as_built_with(h: &mut H, wires: bool) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.outputs().clone();
-        (kept, Outputs::build(p.ledger.document()))
+        (kept, Outputs::build_with(p.ledger.document(), &ecad_cadcraft::text_style::EngineMetrics))
     });
     assert!(kept.strips.same_as(&built.strips), "strips differ from a rebuild");
     assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location));

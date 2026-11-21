@@ -3,7 +3,6 @@
 use super::*;
 
 use ecad_electrical::derived::Changes;
-use ecad_model::view::PageSet;
 
 /// How many recent changes [`Project::changes_since`] can answer for.
 const CHANGE_LOG: usize = 64;
@@ -14,11 +13,11 @@ const CHANGE_LOG: usize = 64;
 pub struct Change {
     pub n: u64,
     pub pages: Option<BTreeSet<PageId>>,
-    /// What it could change in the Devices list ([`crate::device_list::devices_touched`]).
+    /// What it could change in the Devices list (the Devices feed, `ecad_electrical::derived::DevicesFeed`).
     pub devices: crate::device_list::DeviceTouch,
-    /// The objects whose Properties rows it could change ([`ecad_electrical::props::touched`]); `None`: any.
+    /// The objects whose Properties rows it could change (the Properties feed, `ecad_electrical::derived::PropsFeed`); `None`: any.
     pub props: Option<BTreeSet<ecad_model::ObjectRef>>,
-    /// Whether it could change the Pages tree ([`tree_touched`]).
+    /// Whether it could change the Pages tree (the tree feed, `ecad_electrical::derived::TreeFeed`).
     pub tree: bool,
 }
 
@@ -30,6 +29,36 @@ impl Project {
     /// switches) leaves it alone, so the panel keeps its rows.
     pub fn page_list_version(&self) -> u64 {
         self.page_list_version
+    }
+
+    /// The general reference index (brief 025, design 025 §3.3), kept by the views' pipeline
+    /// (`ecad_electrical::derived::RefsView`).
+    pub fn xref(&self) -> &crate::xref::RefIndex {
+        self.derived.refs()
+    }
+
+    /// The kept connector index (brief 044, design 044 §11.1), kept by the views' pipeline
+    /// (`ecad_electrical::derived::ConnectorsView`).
+    pub fn connectors(&self) -> &crate::connectors::Index {
+        self.derived.connectors()
+    }
+
+    /// The derived views (design 064 §5): another document state's are read through
+    /// [`ecad_electrical::derived::Views::detached`].
+    pub fn derived(&self) -> &ecad_electrical::derived::Views {
+        &self.derived
+    }
+
+    /// The derived views, to put a kept view out of step on purpose (tests of verify mode only).
+    #[cfg(feature = "test-support")]
+    pub fn views_mut(&mut self) -> &mut ecad_electrical::derived::Views {
+        &mut self.derived
+    }
+
+    /// Whether the kept frame is marked to be drawn again (tests of the frame's map only).
+    #[cfg(feature = "test-support")]
+    pub fn frame_is_stale(&self) -> bool {
+        self.frame_stale
     }
 
     /// Number of the last change the project went through (a transaction, an undo or redo, a view
@@ -260,7 +289,7 @@ impl Project {
     /// kept for another page means the active page's frame is not kept, so it is drawn.
     pub(super) fn redraw_touched(&mut self, pg: &mut Pages<'_>, command: Option<&str>, pages: Option<&BTreeSet<PageId>>) {
         let active = self.active_page();
-        let frame_other = self.frame.as_ref().is_none_or(|(p, _, _)| Some(*p) != active);
+        let frame_other = self.frame.as_ref().is_none_or(|(p, _)| Some(*p) != active);
         let touched = match (pages, active) {
             (Some(set), Some(a)) => set.contains(&a),
             _ => true,
@@ -326,19 +355,6 @@ impl Project {
         if std::mem::take(&mut self.faults.panic_in_command) {
             crate::fault_panic();
         }
-        // References are derived for the cables and devices the ops could touch only (briefs 014,
-        // 025).
-        let reuse = self.xref_reuse();
-        let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &ops, reuse, &crate::draw::text_style::EngineMetrics);
-        let pages = pages_touched(self.ledger.document(), &ops, self.outputs.as_ref().map(|o| &o.plc));
-        let devices = crate::device_list::devices_touched(self.ledger.document(), &ops);
-        let props = ecad_electrical::props::touched(self.ledger.document(), &ops);
-        let tree = tree_touched(&ops);
-        let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &ops));
-        let outputs = self.outputs.as_ref().map(|o| o.scope(self.ledger.document(), &ops));
-        let n = ops.len();
-        let frame_before = self.frame_stale;
-        self.note_frame_ops(&ops);
         // The numbering pass (brief 022) extends the same transaction.
         let pass = |d: &ecad_model::Document, o: &[Op]| if numbering { ecad_model::wiring::assign(d, o) } else { Vec::new() };
         let pending = self.derived.begin(self.ledger.document(), &ops);
@@ -347,7 +363,6 @@ impl Project {
             None => self.ledger.commit_extended(self.author.clone(), label, ops, now_ms(), pass),
         };
         let tx = committed.map_err(|e| {
-            self.frame_stale = frame_before;
             self.events.record(EventKind::Refused, Some(command), self.ledger.head(), None, e.to_string());
             e.to_string()
         })?;
@@ -355,15 +370,7 @@ impl Project {
         if let Some(id) = rack_page {
             self.pages.entry(id).or_default();
         }
-        let refs = self.finish_watch(watch);
-        let numbered = self.numbered_pages(n);
-        let props = self.with_numbered(props, n);
-        self.update_checks(checks);
-        let generated = self.update_outputs(outputs);
-        let generated = Some(self.generated_touched(generated));
-        let pages = touched(touched(touched(pages, refs.pages), numbered), generated);
-        let mut changes = self.finish_derived(pending);
-        pass_through(&mut changes, Old { pages, named: BTreeSet::new(), devices, props, tree, echo: refs.orphaned.into_iter().collect() });
+        let changes = self.finish_derived(pending);
         self.apply_changes(pg, command, changes, Path::Command);
         Ok(tx)
     }
@@ -377,7 +384,12 @@ impl Project {
     /// What follows every commit, on all three paths (design 064 §5): the change log entry, the
     /// redraw the path calls for, and the lines for the command line.
     pub(super) fn apply_changes(&mut self, pg: &mut Pages<'_>, command: &str, changes: Changes, path: Path<'_>) {
-        let Changes { mut pages, named, devices, props, list, frame_stale, echo, problems: _ } = changes;
+        let Changes { mut pages, named, devices, props, list, frame_stale, echo, problems } = changes;
+        // Verify mode: a kept view that differed from a fresh build (it was rebuilt).
+        let head = self.ledger.head();
+        for line in problems {
+            self.events.record(EventKind::IndexRebuilt, None, head, None, line);
+        }
         if let Path::Interactive { page } = path {
             // The edited page was drawn by the commit itself.
             pages.insert(page);
@@ -415,94 +427,6 @@ impl Project {
             pg.echo(line);
         }
     }
-
-    /// Finish a commit's [`crate::xref::Watch`] with the last transaction: the reference index is
-    /// brought up to date and the pages whose references changed are named.
-    pub(super) fn finish_watch(&mut self, watch: crate::xref::Watch) -> crate::xref::Outcome {
-        let ledger = &self.ledger;
-        let ops = ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
-        let mut out = watch.finish(ledger.document(), &mut self.xref, ops, &crate::draw::text_style::EngineMetrics);
-        let head = ledger.head();
-        // Brief 044 (design 044 §11.1): the connector index, from the ops; verify mode compares it
-        // with a rebuild.
-        let touched = crate::connectors::Index::touched(ledger.document(), ops);
-        self.connectors.update(ledger.document(), &touched);
-        if ecad_model::ledger::verify_mode() && self.connectors != crate::connectors::Index::build(ledger.document()) {
-            self.connectors = crate::connectors::Index::build(ledger.document());
-            out.problems.push("the kept connector index differed from a rebuild; rebuilt".into());
-        }
-        // A project naming or description default redraws the connectors that inherit it.
-        let named = self.connectors.pages_for(ops);
-        if !named.is_empty() {
-            out.pages = out.pages.map(|mut p| {
-                p.extend(named);
-                p
-            });
-        }
-        for line in std::mem::take(&mut out.problems) {
-            self.events.record(EventKind::IndexRebuilt, None, head, None, line);
-        }
-        self.xref_shown = Some((self.state_key(), std::mem::take(&mut out.shown)));
-        out
-    }
-
-    /// The ledger's state: its head and last transaction ID (unique, so a state reached again
-    /// by another route never matches).
-    fn state_key(&self) -> (u64, u128) {
-        (self.ledger.head(), self.ledger.log().last().map_or(0, |t| t.id.0))
-    }
-
-    /// What the last commit derived, when the state has not moved since (brief 025: a device
-    /// edited twice in a row is derived once per commit, not twice).
-    pub(super) fn xref_reuse(&mut self) -> crate::xref::Shown {
-        match self.xref_shown.take() {
-            Some((key, shown)) if key == self.state_key() => shown,
-            _ => crate::xref::Shown::new(),
-        }
-    }
-
-    /// `props` with the wires the extension of the last transaction (its ops after the first `n`)
-    /// made, removed, changed or renumbered: the wire rewrite (design 072 §4.4) and the numbering
-    /// pass (brief 022); the Properties view of a wire reads its number, net and ends.
-    pub(super) fn with_numbered(&self, props: Option<BTreeSet<ecad_model::ObjectRef>>, n: usize) -> Option<BTreeSet<ecad_model::ObjectRef>> {
-        let mut props = props?;
-        let extra = self.ledger.log().last().map(|t| t.ops.get(n..).unwrap_or_default()).unwrap_or_default();
-        let doc = self.ledger.document();
-        for op in extra {
-            match op {
-                Op::SetProperty { object, .. } => {
-                    props.insert(*object);
-                }
-                Op::CreateWire { id, wire } | Op::DeleteWire { id, wire } | Op::ModifyWire { id, after: wire, .. } => {
-                    props.insert(ecad_model::ObjectRef::Wire(*id));
-                    // The devices at its ends show its net (brief 022).
-                    props.extend(wire.ends.iter().filter_map(|t| doc.terminals.get(t)).map(|t| ecad_model::ObjectRef::Device(t.component)));
-                }
-                _ => {}
-            }
-        }
-        Some(props)
-    }
-
-    /// The pages whose labels the extension of the last transaction changed: the pages of the
-    /// wires its ops (after the first `n`, the command's own) made, removed or renumbered (the
-    /// wire rewrite, design 072 §4.4, and the numbering pass, brief 022).
-    pub(super) fn numbered_pages(&self, n: usize) -> Option<BTreeSet<PageId>> {
-        let doc = self.ledger.document();
-        let extra = self.ledger.log().last().map(|t| t.ops.get(n..).unwrap_or_default()).unwrap_or_default();
-        let mut out = BTreeSet::new();
-        for op in extra {
-            match op {
-                Op::SetProperty { object: ecad_model::ObjectRef::Wire(c), .. } | Op::ModifyWire { id: c, .. } => {
-                    out.extend(crate::wires::wire_pages(doc, *c));
-                }
-                // The rewrite's wires (design 072 §4.4): labelled on the routes at their ends.
-                Op::CreateWire { wire, .. } | Op::DeleteWire { wire, .. } => out.extend(super::points_pages(doc, &wire.ends)),
-                _ => {}
-            }
-        }
-        Some(out)
-    }
 }
 
 /// Which commit path a change came from: what [`Project::apply_changes`] redraws.
@@ -520,29 +444,11 @@ pub(super) enum Path<'a> {
 /// What the functions not yet moved into a view worked out (design 064 §9: each view step deletes
 /// one of them and its field here).
 pub(super) struct Old {
-    pub pages: Option<BTreeSet<PageId>>,
-    pub named: BTreeSet<PageId>,
-    pub devices: crate::device_list::DeviceTouch,
-    pub props: Option<BTreeSet<ecad_model::ObjectRef>>,
-    pub tree: bool,
     pub echo: Vec<String>,
 }
 
 /// Add `old` to the views' `changes`.
 pub(super) fn pass_through(changes: &mut Changes, old: Old) {
-    changes.pages.union(PageSet::from_option(old.pages));
-    changes.named.extend(old.named);
-    changes.devices.devices.extend(old.devices.devices);
-    changes.devices.pages |= old.devices.pages;
-    changes.devices.settings |= old.devices.settings;
-    changes.props = match (changes.props.take(), old.props) {
-        (Some(mut a), Some(b)) => {
-            a.extend(b);
-            Some(a)
-        }
-        (None, _) | (_, None) => None,
-    };
-    changes.list |= old.tree;
     changes.echo.extend(old.echo);
 }
 

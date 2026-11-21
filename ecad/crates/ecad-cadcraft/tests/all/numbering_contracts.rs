@@ -131,7 +131,7 @@ fn e_provisional_tags_are_drawn_orange_listed_in_checks_and_finalised() {
     // The kept Checks list against a fresh build of it (`checks::all` adds brief 024's report rows).
     let fresh = f.h.p(|p| {
         let doc = p.ledger.document();
-        ecad_cadcraft::checks::Checks::build(doc, p.tolerance).sorted(doc).iter().map(|r| r.kind.name().to_string()).collect::<Vec<_>>()
+        ecad_cadcraft::project::engine_views().checks(doc, p.tolerance).sorted(doc).iter().map(|r| r.kind.name().to_string()).collect::<Vec<_>>()
     });
     assert_eq!(kept, fresh);
     f.h.run("finalise", json!({})).unwrap();

@@ -3,7 +3,7 @@
 //! table, Import an I/O list, Export tags, the card type, the rack page in the book, Checks, and
 //! hostile files.
 
-use ecad_cadcraft::outputs::Outputs;
+use ecad_cadcraft::outputs::kept::Outputs;
 use ecad_cadcraft::plc::tagtable::{self, Caps, TagFormat};
 use ecad_model::DeviceId;
 use serde_json::{Value, json};
@@ -77,7 +77,8 @@ fn rows(h: &mut H, card: &str) -> Vec<Value> {
 }
 
 fn same_as_built(h: &mut H) {
-    let (kept, built) = h.cfg(|p| (p.outputs().plc.clone(), Outputs::build(p.ledger.document()).plc.clone()));
+    let (kept, built) =
+        h.cfg(|p| (p.outputs().plc.clone(), Outputs::build_with(p.ledger.document(), &ecad_cadcraft::text_style::EngineMetrics).plc.clone()));
     assert!(kept.same_as(&built), "the kept PLC model differs from a rebuild");
 }
 

@@ -61,7 +61,7 @@ fn points(h: &mut H, c: DeviceId) -> Vec<(String, String)> {
 fn addr(h: &mut H, c: DeviceId, i: u32) -> Option<String> {
     h.cfg(|p| {
         p.outputs();
-        let o = p.outputs.as_ref().unwrap();
+        let o = p.kept_outputs().unwrap();
         o.plc.address_of(p.ledger.document(), c, i).0
     })
 }
@@ -69,7 +69,7 @@ fn addr(h: &mut H, c: DeviceId, i: u32) -> Option<String> {
 fn out_addr(h: &mut H, c: DeviceId, i: u32) -> Option<String> {
     h.cfg(|p| {
         p.outputs();
-        let o = p.outputs.as_ref().unwrap();
+        let o = p.kept_outputs().unwrap();
         o.plc.automatic(p.ledger.document(), c, i, true)
     })
 }

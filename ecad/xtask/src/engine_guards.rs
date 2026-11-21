@@ -94,7 +94,6 @@ const ALLOWED: &[(&str, usize, &str)] = &[
     ("crates/ecad-cadcraft/src/interact/text_tools.rs", 1, "the text tool's kind"),
     // Project glue: which views to keep, what an edit touched, the print book's note.
     ("crates/ecad-cadcraft/src/project/mod.rs", 1, "builds the project's views when it opens"),
-    ("crates/ecad-cadcraft/src/project/page_tree.rs", 1, "whether a commit touched the page tree (the open project's cache)"),
     ("crates/ecad-cadcraft/src/printbook.rs", 1, "the print book's pending note, written into the PDF"),
     ("crates/ecad-cadcraft/src/merging.rs", 3, "the merge session's objects, edit rule and conflict words; moves with the merge work"),
     ("crates/ecad-cadcraft/src/history.rs", 2, "the history panel's group words and device changes; next to move after 074"),

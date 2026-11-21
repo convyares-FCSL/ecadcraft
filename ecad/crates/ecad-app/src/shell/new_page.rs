@@ -111,7 +111,7 @@ impl App {
             let after = after.filter(|a| doc.pages.contains_key(a));
             let folder = folder.filter(|f| doc.folders.contains_key(f));
             let (f, _, place) = ecad_electrical::cmd::sheet::new_page_at(doc, &book, folder, after).ok()?;
-            let number = ecad_electrical::cmd::sheet::next_number(doc, &book, f, place, p.outputs.as_ref().map(|o| &o.0));
+            let number = ecad_electrical::cmd::sheet::next_number(doc, &book, f, place, p.kept_outputs());
             let rows: Vec<TypeRow> = ptype::ordered(doc)
                 .into_iter()
                 .map(|r| {

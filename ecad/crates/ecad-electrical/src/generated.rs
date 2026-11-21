@@ -18,7 +18,7 @@
 //! The project keeps the active page's parts with its frame. They are worked out again after an
 //! op of the frame's map ([`crate::frames::touches`]), after any op [`touches`] names for the
 //! active generated page's kind, and when the report models' BOM changes while a BOM page is shown
-//! or the book's sheet count moves (`Project::update_outputs`). A terminal plan or cable schedule
+//! or the book's sheet count moves (`derived::OutputsView`). A terminal plan or cable schedule
 //! page (brief 028) is redrawn the same way when the strip or cable rows changed while it is shown. Contents reads the book order
 //! (O(pages)) only when it is drawn.
 
@@ -293,24 +293,28 @@ pub fn book_sheets_of(doc: &Document, outputs: Option<&Outputs>) -> usize {
     doc.page_order.len() + extra
 }
 
-/// Whether `ops` can change what a generated page of `kind` shows (beyond the frame's own map
-/// and the report models, which the project watches itself).
+/// Whether `ops` can change what a generated page of `kind` shows: [`touched_by`] on each of
+/// their effects.
 pub fn touches(ops: &[Op], kind: GenKind) -> bool {
-    ops.iter().any(|op| match (kind, op) {
-        (
-            GenKind::Contents,
-            Op::AddPage { .. } | Op::RemovePage { .. } | Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. },
-        ) => true,
-        (GenKind::Contents, Op::ModifyPage { before, after, .. }) => {
-            before.title != after.title || before.number != after.number || before.folder != after.folder
+    ecad_model::effect::Effects::of(ops).iter().any(|e| touched_by(e, kind))
+}
+
+/// Whether `effect` can change what a generated page of `kind` shows (beyond the frame's own map
+/// and the report models, which the project watches itself). The cover's own map is
+/// `crate::front::touches` (brief 054b), which needs the document; the report kinds follow their
+/// models.
+pub fn touched_by(effect: &ecad_model::effect::Effect<'_>, kind: GenKind) -> bool {
+    use ecad_model::effect::Effect;
+    match (kind, effect) {
+        (GenKind::Contents, Effect::Page { before: Some(b), after: Some(a), index_before: None, index_after: None, .. }) => {
+            b.title != a.title || b.number != a.number || b.folder != a.folder
         }
-        // Brief 054b: the cover's own map is `crate::front::touches`, which needs the document.
-        (GenKind::Revisions, Op::SetProperty { object: ObjectRef::Project, .. }) => true,
-        (GenKind::Revisions, Op::NameVersion { .. } | Op::UnnameVersion { .. }) => true,
+        (GenKind::Contents, Effect::Page { .. } | Effect::Folder { .. }) => true,
+        (GenKind::Revisions, Effect::Prop { object: ObjectRef::Project, .. } | Effect::Version { .. }) => true,
         // Design 072 §5.3: the revision rows and the project's info are the project's own data.
-        (GenKind::Revisions, Op::ModifyProject { before, after }) => before.revisions != after.revisions || before.info != after.info,
+        (GenKind::Revisions, Effect::Project { before, after }) => before.revisions != after.revisions || before.info != after.info,
         _ => false,
-    })
+    }
 }
 
 /// Whether the content of `terminals` page `page` changed in the last update of `o` (design 046

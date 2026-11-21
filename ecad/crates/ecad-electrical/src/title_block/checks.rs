@@ -9,19 +9,20 @@
 //!   wins. Fix: **Clear the page's sheet**.
 //!
 //! # Update map
-//! Worked out on open, reload or first show, and again only after an op [`touches`] names: a
+//! Worked out on open, reload or first show, and again only after an effect [`touches`] names: a
 //! frame or text style record, the standard, a frame choice, a page added, removed or changed
 //! (title, number, sheet, function, location), a project property, the project's sheet or unit.
-//! Every other op leaves the rows. Working them out reads each page's values once and fits each
+//! Every other effect leaves the rows. Working them out reads each page's values once and fits each
 //! field's value in its box; no frame is drawn (one frame input per frame style and sheet).
 
 use std::collections::BTreeMap;
 
 use ecad_model::book::Book;
+use ecad_model::effect::Effect;
 use ecad_model::sheet;
 use ecad_model::style::StyleLayer;
 use ecad_model::title_block::BlockItem;
-use ecad_model::{Document, ObjectRef, Op, PageId};
+use ecad_model::{Document, ObjectRef, PageId};
 
 use crate::checks::{Check, Fix, Kind, Object};
 use crate::frames::FrameInput;
@@ -29,16 +30,15 @@ use crate::frames::FrameInput;
 /// Most pages the cut check reads (a guard on a hostile file; the check stays bounded).
 pub const MAX_PAGES: usize = 10_000;
 
-/// Whether `op` can change the title block rows.
-pub fn touches(op: &Op) -> bool {
-    match op {
-        Op::SetStyle { .. } | Op::SetStandard { .. } => true,
-        Op::SetProjectSettings { before, after } => before.sheet != after.sheet || before.length_unit != after.length_unit,
-        Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard | ObjectRef::Page(_), .. } => true,
+/// Whether `effect` can change the title block rows.
+pub fn touches(effect: &Effect<'_>) -> bool {
+    match effect {
+        Effect::Style { .. } | Effect::Standard { .. } => true,
+        Effect::Settings { before, after } => before.sheet != after.sheet || before.length_unit != after.length_unit,
+        Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard | ObjectRef::Page(_), .. } => true,
         // Design 072 §5.3: the info, the revision rows and the lists the block shows.
-        Op::ModifyProject { .. } => true,
-        Op::AddPage { .. } | Op::RemovePage { .. } | Op::ModifyPage { .. } => true,
-        Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => true,
+        Effect::Project { .. } => true,
+        Effect::Page { .. } | Effect::Folder { .. } => true,
         _ => false,
     }
 }

@@ -563,13 +563,13 @@ fn kept_equals_rebuild(h: &mut H, what: &str) {
     h.cfg(|p| {
         p.checks();
         let doc = p.ledger.document();
-        let kept_checks = p.checks.as_ref().map(|c| c.sorted(doc)).unwrap_or_default();
-        let fresh = ecad_cadcraft::checks::Checks::build(doc, p.tolerance).sorted(doc);
+        let kept_checks = p.kept_checks().map(|c| c.sorted(doc)).unwrap_or_default();
+        let fresh = ecad_cadcraft::project::engine_views().checks(doc, p.tolerance).sorted(doc);
         assert_eq!(kept_checks, fresh, "{what}: Checks differ from a rebuild");
         p.outputs();
         let doc = p.ledger.document();
-        let kept = p.outputs.as_ref().map(|o| o.cables().into_iter().cloned().collect::<Vec<_>>()).unwrap_or_default();
-        let rebuilt = ecad_cadcraft::outputs::Outputs::build(doc);
+        let kept = p.kept_outputs().map(|o| o.cables().into_iter().cloned().collect::<Vec<_>>()).unwrap_or_default();
+        let rebuilt = ecad_cadcraft::outputs::kept::Outputs::build_with(doc, &ecad_cadcraft::text_style::EngineMetrics);
         let fresh: Vec<_> = rebuilt.cables().into_iter().cloned().collect();
         assert_eq!(kept, fresh, "{what}: cable rows differ from a rebuild");
     });
@@ -621,7 +621,7 @@ fn chain_updates_in_checks_and_outputs_match_a_rebuild() {
     kept_equals_rebuild(&mut f.h, "a member's end detached");
     // Unrelated: a wire far away on page 115 changes no cable row.
     f.h.run("wire", json!({"points": [[400, 400], [440, 400]]})).unwrap();
-    let changed = f.h.p(|p| p.outputs.as_ref().is_some_and(|o| o.last_cables_changed));
+    let changed = f.h.p(|p| p.kept_outputs().is_some_and(|o| o.last_cables_changed));
     assert!(!changed, "an unrelated wire changes no cable row");
     kept_equals_rebuild(&mut f.h, "unrelated wire");
 }
@@ -648,16 +648,16 @@ fn the_outputs_map_takes_a_continuation_rename_to_its_cables() {
             before: Some("A1".into()),
             after: Some("Z1".into()),
         }];
-        let scope = p.outputs.as_ref().unwrap().scope(&before, &ops);
+        let pending = p.views_mut().begin(&before, &ops);
         p.ledger.commit(ecad_model::Author::User, "rename", ops.clone()).unwrap();
         // F5: the commit's rewrite pass adds to the rename (the broken pair's wire goes, its core
         // stays on its lines); the update gets the whole transaction, as the project gives it.
         let all = p.ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default();
         assert!(all.len() > ops.len(), "the rewrite extends the rename");
-        let doc = p.ledger.document();
-        p.outputs.as_mut().unwrap().update(doc, &all, scope);
-        let kept = p.outputs.as_ref().unwrap().cable_row(cable).cloned();
-        let fresh = ecad_cadcraft::outputs::Outputs::build(doc).cable_row(cable).cloned();
+        let doc = p.ledger.document().clone();
+        p.views_mut().finish(&doc, &all, pending);
+        let kept = p.kept_outputs().unwrap().cable_row(cable).cloned();
+        let fresh = p.derived().detached(&doc).outputs().cable_row(cable).cloned();
         (kept, fresh)
     });
     assert_eq!(kept.as_ref().map(|r| r.cores), Some(2), "F5: two cores are wires, the third is on its lines: {kept:?}");

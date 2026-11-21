@@ -15,7 +15,7 @@ fn run(s: &mut Session, cmd: &str, params: serde_json::Value) -> serde_json::Val
 fn sync(view: &mut IoView, s: &mut Session, p: &ProjectHandle) {
     p.configure(s, |p| {
         p.outputs();
-        if let Some(o) = p.outputs.as_ref() {
+        if let Some(o) = p.kept_outputs() {
             view.sync(1, p.ledger.document(), o, true);
         }
     })

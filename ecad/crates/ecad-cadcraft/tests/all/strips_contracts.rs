@@ -3,7 +3,7 @@
 //! the update maps. Driven through the commands' JSON forms on fixture T.
 
 use ecad_cadcraft::checks::{Fix, Kind};
-use ecad_cadcraft::outputs::{Group, Outputs};
+use ecad_cadcraft::outputs::{Group, kept::Outputs};
 use ecad_cadcraft::strips::Strips;
 use ecad_model::{Author, CableId, DeviceId, Op, PageId, RouteEnd, RouteId, TerminalId, WireId};
 use serde_json::{Value, json};
@@ -62,7 +62,7 @@ fn fixture(seed: u64) -> T {
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.outputs().clone();
-        (kept, Outputs::build(p.ledger.document()))
+        (kept, Outputs::build_with(p.ledger.document(), &ecad_cadcraft::text_style::EngineMetrics))
     });
     assert!(kept.strips.same_as(&built.strips), "strips differ:\nkept {:#?}\nbuilt {:#?}", kept.strips.strips, built.strips.strips);
     assert_eq!(kept.cable_table(), built.cable_table());
@@ -254,7 +254,7 @@ fn setting_a_field_device_to_the_strip_location_flips_only_its_rows() {
     assert_eq!(plan["strips"][0]["rows"][4]["outside"][0]["target"], "-H01:X1", "a box proposes, it moves nothing: {plan}");
     // Set -H01 to +CP1: its far side matches the strip's location, so it is inside now.
     t.h.run("setlocation", json!({"component": h1.hex(), "value": "+CP1"})).unwrap();
-    let work = t.h.p(|p| p.outputs.as_ref().unwrap().strips.last_work);
+    let work = t.h.p(|p| p.kept_outputs().unwrap().strips.last_work);
     assert_eq!(work, 1, "one strip recomputed");
     same_as_built(&mut t.h);
     let plan = strip_plan(&mut t.h);
@@ -350,13 +350,13 @@ fn terminal_plan_and_cable_schedule_pages() {
     let doc = t.h.doc();
     assert_eq!(ecad_cadcraft::generated::kind_of(&doc, plan_page), Some(ecad_cadcraft::generated::GenKind::Terminals));
     assert_eq!(ecad_cadcraft::generated::strip_of(&doc, plan_page), Some(x1));
-    let o = Outputs::build(&doc);
-    assert_eq!(ecad_cadcraft::generated::sheets(&doc, plan_page, Some(&o)), 1);
+    let o = Outputs::build_with(&doc, &ecad_cadcraft::text_style::EngineMetrics);
+    assert_eq!(ecad_cadcraft::generated::sheets_of(&doc, plan_page, Some(&o)), 1);
     let parts = ecad_cadcraft::generated::parts_of(&doc, plan_page, None);
     assert!(parts.len() > 20, "the plan draws its table");
     let c = t.h.run("newpage", json!({"generated": "cables"})).unwrap();
     let cables_page: PageId = id(&c, "page");
-    assert_eq!(ecad_cadcraft::generated::sheets(&t.h.doc(), cables_page, Some(&o)), 1);
+    assert_eq!(ecad_cadcraft::generated::sheets_of(&t.h.doc(), cables_page, Some(&o)), 1);
     let e = t.h.run("newpage", json!({"generated": "cables", "strip": x1.hex()})).unwrap_err();
     assert!(e.contains("terminal plan page"), "{e}");
     // Nothing is drawn on it.
@@ -374,13 +374,13 @@ fn no_ordinary_edit_rebuilds_the_strips() {
     });
     t.h.run("terminals", json!({"from": [90, 170], "to": [260, 170]})).unwrap();
     t.h.run("terminals", json!({"from": [90, 190], "to": [260, 190]})).unwrap();
-    assert_eq!(t.h.p(|p| p.outputs.as_ref().unwrap().strips.len()), 2);
+    assert_eq!(t.h.p(|p| p.kept_outputs().unwrap().strips.len()), 2);
     // A coil far from any strip.
     place(&mut t.h, "coil", (350.0, 250.0));
-    assert_eq!(t.h.p(|p| p.outputs.as_ref().unwrap().strips.last_work), 0);
+    assert_eq!(t.h.p(|p| p.kept_outputs().unwrap().strips.last_work), 0);
     // A property of -M01 (a far end of -X01's rows).
     t.h.run("setprop", json!({"component": t.m1.hex(), "key": "tag", "value": "-M07"})).unwrap();
-    assert_eq!(t.h.p(|p| p.outputs.as_ref().unwrap().strips.last_work), 1);
+    assert_eq!(t.h.p(|p| p.kept_outputs().unwrap().strips.last_work), 1);
     let plan = strip_plan(&mut t.h);
     assert!(plan.to_string().contains("-M07:U1"));
     same_as_built(&mut t.h);
@@ -428,7 +428,7 @@ fn relabelling_wired_terminals_by_remove_and_add_needs_no_new_op() {
     let d = t.h.doc();
     assert_eq!(d.terminals[&t3].label.as_deref(), Some("9"));
     assert_eq!(d.ends_at(t3), doc.ends_at(t3));
-    let built = Strips::build(&d, &Outputs::build(&d), &ecad_cadcraft::outputs::PageCx::of(&d));
+    let built = Strips::build(&d, &Outputs::build_with(&d, &ecad_cadcraft::text_style::EngineMetrics), &ecad_cadcraft::outputs::PageCx::of(&d));
     assert!(built.get(id(&v, "strip")).is_some());
 }
 
@@ -550,17 +550,17 @@ fn generated_page_counts_need_no_walk_on_an_unrelated_edit() {
     });
     for shown in [plan_page, cables_page, t.page] {
         t.h.activate(shown);
-        let sorts = t.h.p(|p| p.outputs.as_ref().unwrap().sorts.load(std::sync::atomic::Ordering::Relaxed));
+        let sorts = t.h.p(|p| p.kept_outputs().unwrap().sorts.load(std::sync::atomic::Ordering::Relaxed));
         let builds = t.h.p(|p| p.frame_builds);
         t.h.run("setprop", json!({"component": far.hex(), "key": "part_number", "value": format!("K-{}", shown.hex())})).unwrap();
         t.h.activate(shown);
-        assert_eq!(t.h.p(|p| p.outputs.as_ref().unwrap().sorts.load(std::sync::atomic::Ordering::Relaxed)), sorts, "no sort");
+        assert_eq!(t.h.p(|p| p.kept_outputs().unwrap().sorts.load(std::sync::atomic::Ordering::Relaxed)), sorts, "no sort");
         assert_eq!(t.h.p(|p| p.frame_builds), builds, "no frame rebuilt");
     }
     let (kept, doc) = t.h.cfg(|p| (p.outputs().clone(), p.ledger.document().clone()));
-    let built = Outputs::build(&doc);
+    let built = Outputs::build_with(&doc, &ecad_cadcraft::text_style::EngineMetrics);
     for page in [plan_page, cables_page] {
-        let s = |o: &Outputs| ecad_cadcraft::generated::sheets(&doc, page, Some(o));
+        let s = |o: &Outputs| ecad_cadcraft::generated::sheets_of(&doc, page, Some(o));
         assert_eq!(s(&kept), s(&built));
     }
     assert_eq!(kept.generated_pages(), built.generated_pages());

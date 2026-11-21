@@ -383,7 +383,7 @@ impl Debugger {
                 None => Check { what: "file", at_seq: snap.head, ok: false, lines: vec!["the project has no file yet".into()] },
             },
             // Copies taken under the lock; the rebuild runs with the project unlocked.
-            (CheckKind::Index, Some(snap)) => match project.read(s, |p, _| (p.ledger.document().clone(), p.xref.clone(), p.ledger.head())) {
+            (CheckKind::Index, Some(snap)) => match project.read(s, |p, _| (p.ledger.document().clone(), p.xref().clone(), p.ledger.head())) {
                 Ok((doc, idx, head)) => debug::verify_index(&doc, &idx, head),
                 Err(e) => Check { what: "reference index", at_seq: snap.head, ok: false, lines: vec![e] },
             },

@@ -426,9 +426,9 @@ fn update_available_reaches_the_devices_list_through_its_update_map() {
     h.run("symboledit", float(json!({"definition": def.hex(), "points": moved, "update": "none"}))).unwrap();
     let ops = last_ops(&mut h);
     // The list's and the properties' update maps name the device for the new version.
-    let touched = ecad_cadcraft::device_list::devices_touched(&before, &ops);
+    let touched = crate::common::devices_touched(&before, &h.doc(), &ops);
     assert!(format!("{touched:?}").contains(&format!("{a:?}")), "{touched:?}");
-    let props = ecad_electrical::props::touched(&before, &ops).unwrap();
+    let props = ecad_cadcraft::derived::PropsFeed::touched_by(&before, &ops).unwrap();
     assert!(props.contains(&ecad_model::ObjectRef::Device(a)));
     assert!(entry(&h.doc()).symbols[0].update, "update available");
 }

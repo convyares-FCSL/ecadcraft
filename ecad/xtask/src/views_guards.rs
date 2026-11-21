@@ -31,7 +31,7 @@ const OWN_MODULES: &[&str] = &[
 ];
 
 /// The count on `refactor/0.2.3` at 3e54b06a; lower it as the view steps land.
-const ALLOWED: usize = 26;
+const ALLOWED: usize = 3;
 
 /// Whether `rel` is a view's own module, or `Views`.
 fn is_own_module(rel: &str) -> bool {

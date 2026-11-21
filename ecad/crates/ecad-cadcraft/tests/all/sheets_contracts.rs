@@ -435,7 +435,7 @@ fn old_projects_touch_only_pages_whose_position_changed() {
         Op::AddPage { id: s.supply, page: ecad_model::Page { title: ecad_model::PageTitle::new("Renamed").unwrap(), ..old.clone() }, index: 0 },
     ];
     assert_eq!(ecad_cadcraft::references::cables_touched(&doc, &rename), Some(Default::default()));
-    assert!(ecad_cadcraft::device_list::devices_touched(&doc, &rename).is_empty());
+    assert!(crate::common::devices_touched(&doc, &crate::common::applied(&doc, &rename), &rename).is_empty());
     let append = vec![Op::AddPage { id: PageId(77), page: ecad_model::Page::titled("New").unwrap(), index: 2 }];
     assert_eq!(ecad_cadcraft::references::cables_touched(&doc, &append), Some(Default::default()));
     // Moving Supply after Field: both positions change, so the cable with references on them.

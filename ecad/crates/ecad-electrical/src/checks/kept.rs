@@ -1,11 +1,11 @@
 //! The kept Checks list (see [`super`]'s update map). The rules that measure text (a table over
 //! the title block) take the sheet font metrics, [`TextMetrics`]; ecad-cadcraft's
-//! `crate::checks::Checks` wraps this with today's signatures, passing CADCraft's fonts.
+//! `crate::derived::ChecksView` keeps it, measuring with the engine's fonts.
 
 use std::collections::BTreeSet;
 
 use ecad_model::numbering::Places;
-use ecad_model::{Document, NetKey, Op, PageId};
+use ecad_model::{Document, NetKey, PageId};
 
 use super::*;
 use crate::text_style::fonts::TextMetrics;
@@ -168,20 +168,10 @@ impl Checks {
         sort(doc, self.rows().cloned().collect())
     }
 
-    /// What `ops` (about to be committed on `before`) could change, worked out on the document
-    /// before them: the subjects to re-check after them. Pair with [`Checks::update_with`].
-    pub fn scope(&self, before: &Document, ops: &[Op]) -> Scope {
-        let mut s = Scope::default();
-        s.collect(before, ops, &self.grid);
-        s.checks_pages(before, ops);
-        s
-    }
-
-    /// Re-check the subjects in `scope` (from [`Checks::scope`]) on `doc`, the state after the ops,
-    /// adding what the ops themselves name in this state.
-    pub fn update_with(&mut self, doc: &Document, ops: &[Op], mut scope: Scope, tol: f64, m: &dyn TextMetrics) {
-        scope.collect(doc, ops, &self.grid);
-        scope.checks_pages(doc, ops);
+    /// Re-check the subjects in `scope` on `doc`, the state after the commit. `scope` holds what
+    /// each of the commit's effects names on the state before and on the state after
+    /// ([`Scope::note`]; `crate::derived::ChecksView` notes them).
+    pub fn update(&mut self, doc: &Document, mut scope: Scope, tol: f64, m: &dyn TextMetrics) {
         if scope.all {
             *self = Checks { revision: self.revision + 1, changed: self.changed + 1, ..Checks::build_with(doc, tol, m) };
             return;

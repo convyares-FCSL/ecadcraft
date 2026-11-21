@@ -236,16 +236,16 @@ pub(crate) fn new_page_ops_at(
         p.outputs();
     }
     let doc = p.ledger.document();
-    let outputs = p.outputs.as_ref();
+    let outputs = p.kept_outputs();
     rules::check_folder(doc, folder)?;
     let book = Book::of(doc);
     let (folder, index, place) = rules::new_page_at(doc, &book, folder, after)?;
     let number = match number.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()) {
         Some(n) => {
-            rules::check_number(doc, &book, None, &n, crate::draw::outputs::kept_of(outputs))?;
+            rules::check_number(doc, &book, None, &n, outputs)?;
             n
         }
-        None => rules::next_number(doc, &book, folder, place, crate::draw::outputs::kept_of(outputs)),
+        None => rules::next_number(doc, &book, folder, place, outputs),
     };
     let mut page = Page::new(rules::page_title(&title)?);
     page.number = Some(ecad_model::PageNo::parse(&number).ok_or(CmdError::refused(rules::NUMBER_WORDS))?);
@@ -329,7 +329,7 @@ impl Command for PagepropsParams {
                 if !doc.pages.contains_key(&page) {
                     return Err(CmdError::refused(ecad_electrical::msg::NO_SUCH_PAGE));
                 }
-                Ok(rules::page_json(doc, &Book::of(doc), page, crate::draw::outputs::kept_of(p.outputs.as_ref())))
+                Ok(rules::page_json(doc, &Book::of(doc), page, p.kept_outputs()))
             });
         }
         let proposal = self.proposal;
@@ -342,17 +342,17 @@ impl Command for PagepropsParams {
                 return Err(CmdError::refused(ecad_electrical::msg::NO_SUCH_PAGE));
             }
             change.mode = rules::proposal_mode(proposal.as_deref())?;
-            let kept = crate::draw::outputs::kept_of(p.outputs.as_ref());
+            let kept = p.derived.kept_outputs();
             let plan = rules::page_props(p.ledger.document(), &mut p.ids, page, &change, kept)?;
             if plan.ops.is_empty() {
                 let doc = p.ledger.document();
-                let mut v = rules::page_json(doc, &Book::of(doc), page, crate::draw::outputs::kept_of(p.outputs.as_ref()));
+                let mut v = rules::page_json(doc, &Book::of(doc), page, p.kept_outputs());
                 v["changed"] = json!(false);
                 return Ok(v);
             }
             commit_props(p, pg, "pageprops", "Page properties", plan)?;
             let doc = p.ledger.document();
-            let mut v = rules::page_json(doc, &Book::of(doc), page, crate::draw::outputs::kept_of(p.outputs.as_ref()));
+            let mut v = rules::page_json(doc, &Book::of(doc), page, p.kept_outputs());
             v["changed"] = json!(true);
             Ok(v)
         })

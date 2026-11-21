@@ -1202,18 +1202,8 @@ pub fn hover_words(doc: &Document, c: DeviceId, side: Side) -> Option<String> {
 /// The connector index (design 044 §11.1): which connectors have a symbol on each page, and which
 /// read each naming key (separator, side names) from the project or the built-in. Built on open,
 /// reload and branch switch ([`Index::build`]); kept per commit, undo, redo and merge from the
-/// ops ([`Index::touched`], [`Index::update`]): only the connectors an op names are recomputed.
-///
-/// # Update map
-/// | Op (kind, target) | Recomputed |
-/// | --- | --- |
-/// | `AddTerminal` / `RemoveTerminal` | that terminal's component |
-/// | `LinkRepresentation` / `UnlinkRepresentation` / `ModifyRepresentation` | the component shown |
-/// | `AddItem` of a symbol | the component its representation shows |
-/// | `CreateDevice` / `DeleteDevice` | that component (added / dropped) |
-/// | `SetProperty` of a component | that component (its naming keys) |
-/// | `EmbedDefinition` / `RemoveDefinition` | the components using it |
-/// | anything else | nothing |
+/// ops (its update map is the view's, `crate::derived::ConnectorsView`; [`Index::update`]): only
+/// the connectors an op names are recomputed.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Index {
     /// Page → the connectors with a symbol there.
@@ -1248,42 +1238,6 @@ impl Index {
             idx.set(doc, *c);
         }
         idx
-    }
-
-    /// The components whose entries `ops` (just applied to `doc`) could change.
-    pub fn touched(doc: &Document, ops: &[Op]) -> BTreeSet<DeviceId> {
-        let mut out = BTreeSet::new();
-        let subject = |r: &Representation, out: &mut BTreeSet<DeviceId>| {
-            if let Subject::Device(c) = r.subject {
-                out.insert(c);
-            }
-        };
-        for op in ops {
-            match op {
-                Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
-                    out.insert(terminal.component);
-                }
-                Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => subject(rep, &mut out),
-                Op::ModifyRepresentation { before, after, .. } => {
-                    subject(before, &mut out);
-                    subject(after, &mut out);
-                }
-                Op::AddItem { id, .. } => {
-                    if let Some((_, r)) = doc.representation_of_item(*id) {
-                        subject(r, &mut out);
-                    }
-                }
-                Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::ModifyDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
-                    out.insert(*id);
-                }
-                Op::SetProperty { object: ecad_model::ObjectRef::Device(c), .. } => {
-                    out.insert(*c);
-                }
-                Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => out.extend(doc.components_using(*id)),
-                _ => {}
-            }
-        }
-        out
     }
 
     /// Recompute `touched`'s entries from `doc`.
@@ -1337,20 +1291,6 @@ impl Index {
     /// The pages showing the connectors that inherit `key` (the one wide case of §11.1).
     pub fn pages_inheriting(&self, key: &str) -> BTreeSet<PageId> {
         self.inheriting(key).iter().flat_map(|c| self.pages_of.get(c).into_iter().flatten().copied()).collect()
-    }
-
-    /// The pages a project `connector.` naming or description key in `ops` redraws.
-    pub fn pages_for(&self, ops: &[Op]) -> BTreeSet<PageId> {
-        let mut out = BTreeSet::new();
-        for op in ops {
-            if let Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } = op
-                && key.starts_with("connector.")
-                && (crate::defaults::connectors::is_naming_key(key) || key.ends_with(".description"))
-            {
-                out.extend(self.pages_inheriting(key));
-            }
-        }
-        out
     }
 
     /// How many connectors are indexed.

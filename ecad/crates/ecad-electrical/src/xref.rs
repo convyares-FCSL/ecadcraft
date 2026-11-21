@@ -50,6 +50,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::CmdError;
 use crate::traits::DeviceKind;
 use ecad_model::device::{ContactEntry, ContactLabel, ContactPoles, ContactSet, ContactTable};
+use ecad_model::effect::{Effect, Effects};
 use ecad_model::{
     CableId, ContactMirror, Device as StoredDevice, DeviceId, DeviceType, Document, Form, LengthUnit, ObjectRef, Op, PageId, Pt, Representation,
     RepresentationId, Subject,
@@ -1496,6 +1497,15 @@ impl RefIndex {
     /// state before and after the ops).
     pub fn groups_named(doc: &Document, ops: &[Op]) -> BTreeSet<Group> {
         let mut out = BTreeSet::new();
+        for e in &Effects::of(ops) {
+            RefIndex::groups_named_by(doc, e, &mut out);
+        }
+        out
+    }
+
+    /// One effect of [`RefIndex::groups_named`]: adds to `out` the groups whose members or
+    /// classes `effect` could change, looked up in `doc`.
+    pub fn groups_named_by(doc: &Document, effect: &Effect<'_>, out: &mut BTreeSet<Group>) {
         let of = |r: &Representation, out: &mut BTreeSet<Group>| match r.subject {
             Subject::Cable(k) => {
                 out.insert(Group::Cable(k));
@@ -1507,36 +1517,46 @@ impl RefIndex {
             }
             Subject::Wire(_) | Subject::Route(_) => {}
         };
-        for op in ops {
-            match op {
-                Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => of(rep, &mut out),
-                Op::ModifyRepresentation { before, after, .. } => {
-                    of(before, &mut out);
-                    of(after, &mut out);
+        match effect {
+            Effect::Rep { before, after, .. } => {
+                for r in before.iter().chain(after.iter()) {
+                    of(r, out);
                 }
-                // A symbol item's definition says what the symbol is.
-                Op::AddItem { id, .. } | Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => {
-                    if let Some((_, r)) = doc.representation_of_item(*id) {
-                        of(r, &mut out);
-                    }
-                }
-                Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
-                    out.insert(Group::Device(*id));
-                }
-                Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } | Op::ModifyCable { id, .. } => {
-                    out.insert(Group::Cable(*id));
-                }
-                Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => {
-                    out.extend(doc.components_using(*id).into_iter().map(Group::Device));
-                }
-                _ => {}
             }
+            // A symbol item's definition says what the symbol is.
+            Effect::Item { id, .. } => {
+                if let Some((_, r)) = doc.representation_of_item(*id) {
+                    of(r, out);
+                }
+            }
+            Effect::Device { id, before: None, .. } | Effect::Device { id, after: None, .. } | Effect::DeviceDefinition { id, .. } => {
+                out.insert(Group::Device(*id));
+            }
+            Effect::Cable { id, .. } => {
+                out.insert(Group::Cable(*id));
+            }
+            Effect::Definition { id, .. } => out.extend(doc.components_using(*id).into_iter().map(Group::Device)),
+            Effect::Page { .. }
+            | Effect::Layer { .. }
+            | Effect::Device { .. }
+            | Effect::DeviceLink { .. }
+            | Effect::Terminal { .. }
+            | Effect::Wire { .. }
+            | Effect::Route { .. }
+            | Effect::Prop { .. }
+            | Effect::Settings { .. }
+            | Effect::Version { .. }
+            | Effect::Folder { .. }
+            | Effect::Style { .. }
+            | Effect::Standard { .. }
+            | Effect::Project { .. } => {}
         }
-        // Brief 049 (design 049 §8.1): the name groups the ops name, as `doc` keys them.
-        for n in crate::continuations::names_named(doc, ops) {
+        // Brief 049 (design 049 §8.1): the name groups the effect names, as `doc` keys them.
+        let mut names = BTreeSet::new();
+        crate::continuations::names_named_by(doc, effect, &mut names);
+        for n in names {
             out.extend(crate::continuations::group_key(doc, &n));
         }
-        out
     }
 
     /// The group and class of member `r`.
@@ -1644,7 +1664,7 @@ impl RefIndex {
 
 // ---------------------------------------------------------------- per commit (design 025 §6)
 
-/// What a commit's ops could change in the device references: the devices to compare, or every
+/// What a commit's effects could change in the device references: the devices to compare, or every
 /// page with a device member (`wide`).
 #[derive(Debug, Clone, Default)]
 struct Scope {
@@ -1654,11 +1674,16 @@ struct Scope {
     /// are compared, or every page with an arrow (`arrows_wide`).
     names: BTreeSet<String>,
     arrows_wide: bool,
+    /// Pages whose device members' devices, and whose arrows' names, are added once the reference
+    /// index of the same state is at hand ([`Scope::resolve`]).
+    device_pages: BTreeSet<PageId>,
+    name_pages: BTreeSet<PageId>,
 }
 
 impl Scope {
-    /// Add what `ops` name, looked up in `doc` (called on the state before and after).
-    fn collect(&mut self, doc: &Document, idx: &RefIndex, ops: &[Op]) {
+    /// Add what `effect` names, looked up in `doc` (the state before the commit, or after it).
+    /// `moved` notes that the book positions of `effects` were looked at already in this phase.
+    fn note(&mut self, doc: &Document, effects: &Effects<'_>, effect: &Effect<'_>, moved: &mut bool) {
         let ends = |s: &mut Scope, w: ecad_model::WireId| {
             if let Some(c) = doc.wires.get(&w) {
                 for t in &c.ends {
@@ -1675,144 +1700,147 @@ impl Scope {
             Subject::Wire(w) => ends(s, w),
             Subject::Cable(_) | Subject::Route(_) => {}
         };
-        let mut moved = false;
-        for op in ops {
-            match op {
-                Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } | Op::AddItem { id, .. } => {
-                    if let Some((_, r)) = doc.representation_of_item(*id) {
-                        rep(self, r);
-                    }
+        match effect {
+            Effect::Item { id, .. } => {
+                if let Some((_, r)) = doc.representation_of_item(*id) {
+                    rep(self, r);
                 }
-                Op::LinkRepresentation { rep: r, .. } | Op::UnlinkRepresentation { rep: r, .. } => rep(self, r),
-                Op::ModifyRepresentation { before, after, .. } => {
-                    rep(self, before);
-                    rep(self, after);
-                }
-                Op::CreateWire { wire, .. } | Op::DeleteWire { wire, .. } => {
-                    for t in &wire.ends {
-                        if let Some(x) = doc.terminals.get(t) {
-                            self.devices.insert(x.component);
-                        }
-                    }
-                }
-                Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
-                    self.devices.insert(terminal.component);
-                }
-                Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
-                    self.devices.insert(*id);
-                }
-                Op::ModifyDevice { id, before, after } if contacts_changed(before, after) => {
-                    self.devices.insert(*id);
-                }
-                Op::ModifyPage { id: p, before, after } => {
-                    let ch = before.change(after);
-                    if ch.number || ch.sheet || ch.page_type {
-                        self.devices.extend(idx.devices_on(doc, *p));
-                    }
-                    if ch.folder {
-                        self.moved(doc, idx, ops, &mut moved);
-                    }
-                }
-                // Brief 054 (design 054 §10.2): a page type's sheet changes its pages' grids.
-                Op::SetStyle { catalogue, .. } if *catalogue == ecad_model::StyleCatalogue::Page => {
-                    if let Some((pages, true)) = crate::styles::page::touched_by(doc, op) {
-                        for p in pages {
-                            self.devices.extend(idx.devices_on(doc, p));
-                        }
-                    }
-                }
-                Op::AddPage { .. } | Op::RemovePage { .. } | Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => {
-                    self.moved(doc, idx, ops, &mut moved);
-                }
-                Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => {
-                    self.devices.extend(doc.components_using(*id));
-                }
-                // Brief 033 (design 033 §9.3): the table text's size or the font sizes every table.
-                Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if table_text_key(key) => {
-                    self.wide = true;
-                }
-                // Brief 050a: a change of the text style the table text uses (its height, weight).
-                Op::SetStyle { catalogue, id, .. }
-                    if *catalogue == ecad_model::StyleCatalogue::Text
-                        && *id == crate::text_style::style_of(doc, crate::text_style::TextKind::Table, crate::defaults::Scope::project()) =>
-                {
-                    self.wide = true;
-                }
-                Op::SetProjectSettings { before, after }
-                    if before.reference_style != after.reference_style
-                        || before.sheet != after.sheet
-                        || before.length_unit != after.length_unit
-                        || before.contact_mirror != after.contact_mirror =>
-                {
-                    self.wide = true;
-                }
-                _ => {}
             }
-            // Brief 055 (FP4; review of #110, 1): a frame decides its pages' grids and the free
-            // area above the block, so its pages' devices, tables and arrows follow it.
-            match crate::title_block::frame_reach(doc, op) {
-                crate::title_block::Reach::Pages(ps) => {
-                    for p in ps {
-                        self.devices.extend(idx.devices_on(doc, p));
-                        self.names.extend(crate::continuations::names_on(doc, idx, p));
-                    }
+            Effect::Rep { before, after, .. } => {
+                for r in before.iter().chain(after.iter()) {
+                    rep(self, r);
                 }
-                crate::title_block::Reach::Wide => {
-                    self.wide = true;
-                    self.arrows_wide = true;
-                }
-                crate::title_block::Reach::NotFrame | crate::title_block::Reach::Unchanged => {}
             }
-            // Brief 049: what continuation arrows the op could change.
-            match op {
-                Op::ModifyPage { id: p, before, after } => {
-                    let ch = before.change(after);
-                    if ch.number || ch.sheet || ch.page_type {
-                        self.names.extend(crate::continuations::names_on(doc, idx, *p));
+            Effect::Wire { before: None, after: Some(wire), .. } | Effect::Wire { before: Some(wire), after: None, .. } => {
+                for t in &wire.ends {
+                    if let Some(x) = doc.terminals.get(t) {
+                        self.devices.insert(x.component);
                     }
                 }
-                Op::SetStyle { catalogue, .. } if *catalogue == ecad_model::StyleCatalogue::Page => {
-                    if let Some((pages, true)) = crate::styles::page::touched_by(doc, op) {
-                        for p in pages {
-                            self.names.extend(crate::continuations::names_on(doc, idx, p));
-                        }
-                    }
-                }
-                Op::SetProjectSettings { before, after }
-                    if before.reference_style != after.reference_style || before.sheet != after.sheet || before.length_unit != after.length_unit =>
-                {
-                    self.arrows_wide = true;
-                }
-                Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if crate::continuations::is_wide_key(key) => {
-                    self.arrows_wide = true;
-                }
-                Op::SetStyle { catalogue, id, .. } if crate::continuations::is_wide_style(doc, *catalogue, id) => {
-                    self.arrows_wide = true;
-                }
-                _ => {}
             }
+            Effect::Terminal { before, after, .. } => {
+                self.devices.extend(before.iter().chain(after.iter()).map(|t| t.component));
+            }
+            Effect::Device { id, before: None, .. } | Effect::Device { id, after: None, .. } | Effect::DeviceDefinition { id, .. } => {
+                self.devices.insert(*id);
+            }
+            // Design 072 B: a device's contacts or its contact table (typed fields).
+            Effect::Device { id, before: Some(b), after: Some(a) } if contacts_changed(b, a) => {
+                self.devices.insert(*id);
+            }
+            Effect::Page { id: p, before: Some(b), after: Some(a), index_before: None, index_after: None } => {
+                let ch = b.change(a);
+                if ch.number || ch.sheet || ch.page_type {
+                    self.device_pages.insert(*p);
+                    self.name_pages.insert(*p);
+                }
+                if ch.folder {
+                    self.moved(doc, effects, moved);
+                }
+            }
+            // Brief 054 (design 054 §10.2): a page type's sheet changes its pages' grids.
+            Effect::Style { catalogue: ecad_model::StyleCatalogue::Page, .. } => {
+                if let Some((pages, true)) = crate::styles::page::touched_by_effect(doc, effect) {
+                    self.device_pages.extend(pages.iter().copied());
+                    self.name_pages.extend(pages);
+                }
+            }
+            Effect::Page { .. } | Effect::Folder { .. } => self.moved(doc, effects, moved),
+            Effect::Definition { id, .. } => self.devices.extend(doc.components_using(*id)),
+            // Brief 033 (design 033 §9.3): the table text's size or the font sizes every table.
+            Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if table_text_key(key.raw) => {
+                self.wide = true;
+            }
+            // Brief 050a: a change of the text style the table text uses (its height, weight).
+            Effect::Style { catalogue: ecad_model::StyleCatalogue::Text, id, .. }
+                if **id == crate::text_style::style_of(doc, crate::text_style::TextKind::Table, crate::defaults::Scope::project()) =>
+            {
+                self.wide = true;
+            }
+            Effect::Settings { before, after }
+                if before.reference_style != after.reference_style
+                    || before.sheet != after.sheet
+                    || before.length_unit != after.length_unit
+                    || before.contact_mirror != after.contact_mirror =>
+            {
+                self.wide = true;
+            }
+            Effect::Layer { .. }
+            | Effect::Device { .. }
+            | Effect::DeviceLink { .. }
+            | Effect::Wire { .. }
+            | Effect::Route { .. }
+            | Effect::Cable { .. }
+            | Effect::Prop { .. }
+            | Effect::Settings { .. }
+            | Effect::Version { .. }
+            | Effect::Style { .. }
+            | Effect::Standard { .. }
+            | Effect::Project { .. } => {}
         }
-        self.names.extend(crate::continuations::names_named(doc, ops));
+        // Brief 055 (FP4; review of #110, 1): a frame decides its pages' grids and the free
+        // area above the block, so its pages' devices, tables and arrows follow it.
+        match crate::title_block::frame_reach_of(doc, effect) {
+            crate::title_block::Reach::Pages(ps) => {
+                self.device_pages.extend(ps.iter().copied());
+                self.name_pages.extend(ps);
+            }
+            crate::title_block::Reach::Wide => {
+                self.wide = true;
+                self.arrows_wide = true;
+            }
+            crate::title_block::Reach::NotFrame | crate::title_block::Reach::Unchanged => {}
+        }
+        // Brief 049: what continuation arrows the effect could change.
+        match effect {
+            Effect::Settings { before, after }
+                if before.reference_style != after.reference_style || before.sheet != after.sheet || before.length_unit != after.length_unit =>
+            {
+                self.arrows_wide = true;
+            }
+            Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if crate::continuations::is_wide_key(key.raw) => {
+                self.arrows_wide = true;
+            }
+            Effect::Style { catalogue, id, .. } if crate::continuations::is_wide_style(doc, *catalogue, id) => {
+                self.arrows_wide = true;
+            }
+            _ => {}
+        }
+        crate::continuations::names_named_by(doc, effect, &mut self.names);
     }
 
-    fn moved(&mut self, doc: &Document, idx: &RefIndex, ops: &[Op], done: &mut bool) {
+    fn moved(&mut self, doc: &Document, effects: &Effects<'_>, done: &mut bool) {
         if std::mem::replace(done, true) {
             return;
         }
-        for p in ecad_model::book::positions_changed(doc, ops) {
+        let pages = ecad_model::book::positions_changed_by(doc, effects);
+        self.device_pages.extend(pages.iter().copied());
+        self.name_pages.extend(pages);
+    }
+
+    /// The devices with a member, and the names of the arrows, on the pages noted so far, through
+    /// `idx`, the reference index of `doc`'s state.
+    fn resolve(&mut self, doc: &Document, idx: &RefIndex) {
+        for p in std::mem::take(&mut self.device_pages) {
             self.devices.extend(idx.devices_on(doc, p));
+        }
+        for p in std::mem::take(&mut self.name_pages) {
             self.names.extend(crate::continuations::names_on(doc, idx, p));
         }
     }
 }
 
-/// The references a commit could change, taken before it and finished after it: the cable
-/// references ([`crate::references::Snapshot`], scoped per cable) and the touched devices' texts
-/// and tables (design 025 §6).
-#[derive(Debug, Clone)]
+/// What a commit could change in the references (design 025 §6, the references view's scope):
+/// noted effect by effect on the document before the commit ([`Watch::note`]), derived on it
+/// ([`Watch::take`]), noted again on the document after it, and finished ([`Watch::finish`]):
+/// the cable references ([`crate::references::Snapshot`], scoped per cable) and the touched
+/// devices' texts and tables.
+#[derive(Debug, Clone, Default)]
 pub struct Watch {
-    cable_scope: Option<BTreeSet<CableId>>,
-    cables: crate::references::Snapshot,
+    /// The cables whose references are compared, or every cable (`all_cables`).
+    cable_scope: BTreeSet<CableId>,
+    all_cables: bool,
+    cables: Option<crate::references::Snapshot>,
     scope: Scope,
     before: BTreeMap<DeviceId, BTreeMap<PageId, Vec<Part>>>,
     /// The pages with a device member before (only in the wide case).
@@ -1822,6 +1850,13 @@ pub struct Watch {
     before_names: BTreeMap<PageId, Vec<Part>>,
     arrow_pages: BTreeSet<PageId>,
     groups: BTreeSet<Group>,
+    /// Brief 054 (design 054 §3.4): a page moved to or from a type with checks off changes the
+    /// groups of every device on it: the index is made again ([`Watch::rebuilds`]).
+    rebuild: bool,
+    /// Whether the book positions were looked at already, before and after the commit.
+    moved_before: bool,
+    moved_after: bool,
+    moved_cables: bool,
     /// What verify mode found wrong (bugs), for the caller to record.
     problems: Vec<String>,
 }
@@ -1844,69 +1879,81 @@ pub struct Outcome {
 pub type Shown = BTreeMap<DeviceId, BTreeMap<PageId, Vec<Part>>>;
 
 impl Watch {
-    /// Before `ops` are committed on `doc`. `reuse` holds what the last commit derived, for
-    /// the same `doc` (the caller checks the state is unchanged): a device found there is not
-    /// derived again.
-    pub fn take(doc: &Document, idx: &RefIndex, ops: &[Op], mut reuse: Shown, m: &dyn TextMetrics) -> Watch {
-        let cable_scope = crate::references::cables_touched(doc, ops);
-        let cables = crate::references::Snapshot::take(doc, cable_scope.as_ref());
-        let mut scope = Scope::default();
-        scope.collect(doc, idx, ops);
+    /// Note one effect of the transaction `effects`. `before` says which side `doc` is: the
+    /// state before the commit (the ops given to it) or after it (the transaction as recorded).
+    pub fn note(&mut self, doc: &Document, before: bool, effects: &Effects<'_>, effect: &Effect<'_>) {
+        if before {
+            if !self.all_cables && !crate::references::cables_touched_by(doc, effects, effect, &mut self.moved_cables, &mut self.cable_scope) {
+                self.all_cables = true;
+            }
+            self.scope.note(doc, effects, effect, &mut self.moved_before);
+        } else {
+            self.scope.note(doc, effects, effect, &mut self.moved_after);
+            self.rebuild |= crate::page_types::checks_changed(doc, effect);
+        }
+        RefIndex::groups_named_by(doc, effect, &mut self.groups);
+    }
+
+    /// Whether the index must be made again whole (a page type's checks switched).
+    pub fn rebuilds(&self) -> bool {
+        self.rebuild
+    }
+
+    /// After the Before notes: derive what the noted devices, names and cables show on `doc`, the
+    /// state before the commit, with `idx` its index. `reuse` holds what the last commit derived,
+    /// for the same `doc` (the caller keeps it only while the state is unchanged): a device found
+    /// there is not derived again.
+    pub fn take(&mut self, doc: &Document, idx: &RefIndex, reuse: &Shown, m: &dyn TextMetrics) {
+        self.scope.resolve(doc, idx);
+        let scope = (!self.all_cables).then_some(&self.cable_scope);
+        self.cables = Some(crate::references::Snapshot::take(doc, scope));
         let mut places = Places::new(doc);
-        let mut problems = Vec::new();
-        let before = if scope.wide {
-            BTreeMap::new()
+        if self.scope.wide {
+            self.wide_pages = idx.device_pages(doc);
         } else {
             let verify = ecad_model::ledger::verify_mode();
-            scope
-                .devices
-                .iter()
-                .map(|c| match reuse.remove(c) {
+            for c in &self.scope.devices {
+                let derived = match reuse.get(c) {
                     // Verify mode checks a reuse against a fresh derivation; a stale one (a bug) is
                     // reported and the fresh one used.
                     Some(kept) if verify => {
                         let fresh = shown(doc, &mut places, *c, m);
-                        if kept != fresh {
-                            problems.push(format!("the texts kept for {} were stale; derived again", c.hex()));
+                        if *kept != fresh {
+                            self.problems.push(format!("the texts kept for {} were stale; derived again", c.hex()));
                         }
-                        (*c, fresh)
+                        fresh
                     }
-                    Some(kept) => (*c, kept),
-                    None => (*c, shown(doc, &mut places, *c, m)),
-                })
-                .collect()
-        };
-        let wide_pages = if scope.wide { idx.device_pages(doc) } else { BTreeSet::new() };
-        let (before_names, arrow_pages) = if scope.arrows_wide {
-            (BTreeMap::new(), idx.arrow_pages(doc))
+                    Some(kept) => kept.clone(),
+                    None => shown(doc, &mut places, *c, m),
+                };
+                self.before.insert(*c, derived);
+            }
+        }
+        if self.scope.arrows_wide {
+            self.arrow_pages = idx.arrow_pages(doc);
         } else {
-            (crate::continuations::shown_measured(doc, &mut places, &scope.names, m), BTreeSet::new())
-        };
-        Watch { cable_scope, cables, scope, before, wide_pages, before_names, arrow_pages, groups: RefIndex::groups_named(doc, ops), problems }
+            self.before_names = crate::continuations::shown_measured(doc, &mut places, &self.scope.names, m);
+        }
     }
 
-    /// After the commit: `doc` is the state after it and `ops` its ops as recorded (with any pass
-    /// that extended it). Brings `idx` up to date and says what changed.
-    pub fn finish(mut self, doc: &Document, idx: &mut RefIndex, ops: &[Op], m: &dyn TextMetrics) -> Outcome {
-        self.groups.extend(RefIndex::groups_named(doc, ops));
+    /// Bring `idx` up to date for the groups noted on both sides (the caller makes it again whole
+    /// instead when [`Watch::rebuilds`]).
+    pub fn refresh(&self, doc: &Document, idx: &mut RefIndex) {
         idx.refresh(doc, &self.groups);
-        // Brief 054 (design 054 §3.4): a page moved to or from a type with checks off changes the
-        // groups of every device on it: the index is made again and every device page redrawn.
-        if crate::page_types::checks_changed(doc, ops) {
-            *idx = RefIndex::build(doc);
+    }
+
+    /// After the After notes: `doc` is the state after the commit and `idx` its index, already
+    /// brought up to date. Says what changed. A watch never taken compares nothing.
+    pub fn finish(mut self, doc: &Document, idx: &RefIndex, m: &dyn TextMetrics) -> Outcome {
+        let Some(cables) = self.cables.take() else { return Outcome::default() };
+        if self.rebuild {
             self.scope.wide = true;
         }
-        if ecad_model::ledger::verify_mode()
-            && let Err(e) = idx.verify(doc)
-        {
-            // A bug: reported for the event log, and the index rebuilt so it is never left stale.
-            self.problems.push(format!("the reference index was out of step ({e}); rebuilt"));
-            *idx = RefIndex::build(doc);
-        }
-        let after_cables = crate::references::Snapshot::take(doc, self.cable_scope.as_ref());
-        let orphaned = self.cables.orphaned_line(doc, &after_cables);
-        let mut pages = self.cables.pages_changed(&after_cables);
-        self.scope.collect(doc, idx, ops);
+        let scope = (!self.all_cables).then_some(&self.cable_scope);
+        let after_cables = crate::references::Snapshot::take(doc, scope);
+        let orphaned = cables.orphaned_line(doc, &after_cables);
+        let mut pages = cables.pages_changed(&after_cables);
+        self.scope.resolve(doc, idx);
         let mut shown_after = Shown::new();
         let device_pages: BTreeSet<PageId> = if self.scope.wide {
             let mut p = std::mem::take(&mut self.wide_pages);

@@ -92,7 +92,7 @@ fn index_is_a_rebuild(h: &mut H, what: &str) {
     let r = h.p(|p| {
         let doc = p.ledger.document();
         let fresh = RefIndex::build(doc);
-        (p.xref.verify(doc), p.xref == fresh)
+        (p.xref().verify(doc), *p.xref() == fresh)
     });
     assert!(r.0.is_ok() && r.1, "{what}: {:?}", r.0);
 }
@@ -409,14 +409,14 @@ fn tester_025_save_reopen_keeps_index_and_texts() {
     x.h.cfg(|p| p.persistence = Persistence::File);
     x.h.run("saveas", json!({"path": path})).unwrap();
     let parts_before = parts(&mut x.h);
-    let idx_before = x.h.p(|p| p.xref.clone());
+    let idx_before = x.h.p(|p| p.xref().clone());
     let head_before = x.h.head();
     close_all(&mut x.h.s);
     let mut s = Session::empty();
     let (project, _) = ProjectHandle::open_file(&mut s, &path, 99).unwrap();
     let mut h2 = H { s, project, trail: Vec::new() };
     assert_eq!(h2.head(), head_before, "opening records nothing");
-    assert_eq!(h2.p(|p| p.xref.clone()), idx_before);
+    assert_eq!(h2.p(|p| p.xref().clone()), idx_before);
     assert_eq!(parts(&mut h2), parts_before);
     for p in parts_before.keys() {
         h2.activate(*p);
@@ -436,14 +436,14 @@ fn tester_025_save_reopen_keeps_index_and_texts() {
     h2.run("projectprops", json!({"contact_mirror": "below"})).unwrap();
     h2.run("qsave", Value::Null).unwrap();
     let parts2 = parts(&mut h2);
-    let idx2 = h2.p(|p| p.xref.clone());
+    let idx2 = h2.p(|p| p.xref().clone());
     let doc2 = h2.doc();
     close_all(&mut h2.s);
     let mut s = Session::empty();
     let (project, _) = ProjectHandle::open_file(&mut s, &path, 98).unwrap();
     let mut h3 = H { s, project, trail: Vec::new() };
     assert_eq!(h3.doc(), doc2);
-    assert_eq!(h3.p(|p| p.xref.clone()), idx2);
+    assert_eq!(h3.p(|p| p.xref().clone()), idx2);
     assert_eq!(parts(&mut h3), parts2);
     assert!(
         parts2.values().flatten().any(|p| matches!(&p.shape, xref::Shape::Text { value, .. } if value == xref::SPARE_PLACE)),
@@ -549,7 +549,7 @@ fn tester_025_counts_orphans_and_duplicate_tags() {
     let tag = x.h.doc().devices[&x.k1].tag().map(str::to_string).unwrap_or_default();
     let _ = x.h.run("setprop", json!({"component": k2c.hex(), "key": "tag", "value": tag}));
     index_is_a_rebuild(&mut x.h, "duplicate tag");
-    let groups: Vec<_> = x.h.p(|p| p.xref.groups().collect());
+    let groups: Vec<_> = x.h.p(|p| p.xref().groups().collect());
     assert!(groups.contains(&xref::Group::Device(x.k1)) && groups.contains(&xref::Group::Device(k2c)), "{groups:?}");
 }
 

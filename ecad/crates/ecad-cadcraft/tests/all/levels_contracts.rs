@@ -3,7 +3,7 @@
 //! `toposition`, the plan, the BOM per type and the update maps. Driven through the commands'
 //! JSON forms on a small fixture of loose vertical wires.
 
-use ecad_cadcraft::outputs::{Group, Outputs};
+use ecad_cadcraft::outputs::{Group, kept::Outputs};
 use ecad_model::{DeviceId, TerminalId, WireId};
 use serde_json::{Value, json};
 
@@ -13,7 +13,7 @@ use crate::common::{H, id};
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.outputs().clone();
-        (kept, Outputs::build(p.ledger.document()))
+        (kept, Outputs::build_with(p.ledger.document(), &ecad_cadcraft::text_style::EngineMetrics))
     });
     assert!(kept.strips.same_as(&built.strips), "strips differ:\nkept {:#?}\nbuilt {:#?}", kept.strips.strips, built.strips.strips);
     assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location));

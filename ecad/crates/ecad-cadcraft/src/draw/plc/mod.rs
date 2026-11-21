@@ -36,6 +36,6 @@ impl Plc {
     /// Bring the model in line with `ops`: [`kept::Plc::update_with`]. Returns whether anything
     /// changed.
     pub fn update(&mut self, doc: &Document, ops: &[Op]) -> bool {
-        self.0.update_with(doc, ops, &EngineMetrics)
+        self.0.update_with(doc, &ecad_model::effect::Effects::of(ops), &EngineMetrics)
     }
 }

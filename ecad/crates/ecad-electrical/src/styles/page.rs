@@ -220,7 +220,21 @@ pub fn pages_of(doc: &Document, id: &StyleRef) -> Vec<PageId> {
 /// references to items on them). `None` for any other op. One pass over the pages.
 pub fn touched_by(doc: &Document, op: &ecad_model::Op) -> Option<(Vec<PageId>, bool)> {
     let ecad_model::Op::SetStyle { catalogue, id, before, after, .. } = op else { return None };
-    if *catalogue != ecad_model::StyleCatalogue::Page {
+    reach(doc, *catalogue, id, before.as_ref(), after.as_ref())
+}
+
+/// [`touched_by`] for a style effect: the pages a record of catalogue `page` set from `before` to
+/// `after` reaches, and whether their sheet changes. `None` for any other catalogue.
+pub fn touched_by_effect(doc: &Document, effect: &ecad_model::effect::Effect<'_>) -> Option<(Vec<PageId>, bool)> {
+    let ecad_model::effect::Effect::Style { catalogue, id, before, after, .. } = effect else { return None };
+    reach(doc, *catalogue, id, *before, *after)
+}
+
+fn reach(
+    doc: &Document, catalogue: ecad_model::StyleCatalogue, id: &ecad_model::StyleRef, before: Option<&ecad_model::StyleRecord>,
+    after: Option<&ecad_model::StyleRecord>,
+) -> Option<(Vec<PageId>, bool)> {
+    if catalogue != ecad_model::StyleCatalogue::Page {
         return None;
     }
     let text = id.text();
@@ -230,7 +244,7 @@ pub fn touched_by(doc: &Document, op: &ecad_model::Op) -> Option<(Vec<PageId>, b
         .copied()
         .filter(|p| doc.pages.get(p).is_some_and(|x| x.page_type.as_ref().is_some_and(|v| v.text() == text) || msheet::page_type_of(doc, x) == *id))
         .collect();
-    let sheet = |r: &Option<ecad_model::StyleRecord>| r.as_ref().and_then(|r| r.body.page()).and_then(|p| p.sheet);
+    let sheet = |r: Option<&ecad_model::StyleRecord>| r.and_then(|r| r.body.page()).and_then(|p| p.sheet);
     // A new or removed record can also make a `page.type` start or stop naming a type.
     let sheet_changed = sheet(before) != sheet(after) || before.is_none() != after.is_none();
     Some((pages, sheet_changed))

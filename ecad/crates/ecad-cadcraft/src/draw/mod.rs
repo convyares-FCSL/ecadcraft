@@ -10,7 +10,6 @@ pub mod devices;
 pub mod front;
 pub mod generated;
 pub mod locations;
-pub mod outputs;
 pub mod plc;
 pub mod proposals;
 pub mod references;

@@ -64,7 +64,7 @@ impl Command for IolistParams {
         let after = self.after.map_or(0, |n| usize::try_from(n).unwrap_or(usize::MAX));
         on_any_page(s, |p, _| {
             p.outputs();
-            let o = p.outputs.as_ref().ok_or(CmdError::refused("The PLC model is not available."))?;
+            let o = p.kept_outputs().ok_or(CmdError::refused("The PLC model is not available."))?;
             let doc = p.ledger.document();
             let only_rack = self.rack.as_deref().map(|t| rack_named(doc, t)).transpose()?;
             let only_card = self.card.as_deref().map(|t| card_named(doc, t)).transpose()?;

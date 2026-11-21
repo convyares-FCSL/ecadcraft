@@ -14,7 +14,7 @@
 //!   restores them exactly. A drawn page is refused before anything is written.
 //!
 //! # Update map (design 054 §10.2)
-//! The Checks rows here ([`check_rows`]) are worked out again only after an op [`touches_checks`]
+//! The Checks rows here ([`check_rows`]) are worked out again only after an effect [`touches_checks`]
 //! names: a `folder.*.start` property, a page's folder or type, a page or folder added or removed,
 //! a page type record. Renumber runs on request (O(pages)).
 
@@ -22,7 +22,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::CmdError;
 use ecad_model::book::{self, Book, MAX_FOLDER_DEPTH};
-use ecad_model::{Document, FolderId, ObjectRef, Op, PageId, StyleRef};
+use ecad_model::{Document, FolderId, ObjectRef, PageId, StyleRef};
 use serde_json::{Value, json};
 
 use crate::checks::{Check, Kind, Object};
@@ -265,29 +265,37 @@ impl PageFix {
     }
 }
 
-/// Whether `ops` change which pages have checks and references off (design 054 §3.4): a page's
-/// type moved to or from such a type, such a page added or removed, a type record whose `checks`
-/// changed. Looked up in `doc` (call it on the state before and after).
-pub fn checks_changed(doc: &Document, ops: &[Op]) -> bool {
+/// Whether `effect` changes which pages have checks and references off (design 054 §3.4): a
+/// page's type moved to or from such a type, such a page added or removed, a type record whose
+/// `checks` changed. Looked up in `doc` (call it on the state before and after).
+pub fn checks_changed(doc: &Document, effect: &ecad_model::effect::Effect<'_>) -> bool {
+    use ecad_model::effect::Effect;
     let off = |page: &ecad_model::Page| !ecad_model::sheet::type_checks(doc, &ecad_model::sheet::page_type_of(doc, page));
-    ops.iter().any(|op| match op {
-        Op::ModifyPage { before, after, .. } => before.page_type != after.page_type && (off(before) || off(after)),
-        Op::AddPage { page, .. } | Op::RemovePage { page, .. } => off(page),
-        Op::SetStyle { catalogue, before, after, .. } if *catalogue == ecad_model::StyleCatalogue::Page => {
-            let c = |r: &Option<ecad_model::StyleRecord>| r.as_ref().and_then(|r| r.body.page()).and_then(|p| p.checks);
-            c(before) != c(after)
+    match effect {
+        Effect::Page { before: Some(b), after: Some(a), index_before: None, index_after: None, .. } => {
+            b.page_type != a.page_type && (off(b) || off(a))
+        }
+        // Added, removed, or both (a move).
+        Effect::Page { before, after, .. } => before.is_some_and(off) || after.is_some_and(off),
+        Effect::Style { catalogue: ecad_model::StyleCatalogue::Page, before, after, .. } => {
+            let c = |r: Option<&ecad_model::StyleRecord>| r.and_then(|r| r.body.page()).and_then(|p| p.checks);
+            c(*before) != c(*after)
         }
         _ => false,
-    })
+    }
 }
 
-/// Whether `op` can change [`check_rows`].
-pub fn touches_checks(op: &Op) -> bool {
-    match op {
-        Op::ModifyPage { before, after, .. } => before.folder != after.folder || before.number != after.number || before.page_type != after.page_type,
-        Op::AddPage { .. } | Op::RemovePage { .. } | Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => true,
-        Op::SetProjectSettings { before, after } => before.page_number_step != after.page_number_step,
-        Op::SetStyle { catalogue, .. } => *catalogue == ecad_model::StyleCatalogue::Page,
+/// Whether `effect` can change [`check_rows`].
+pub fn touches_checks(effect: &ecad_model::effect::Effect<'_>) -> bool {
+    use ecad_model::effect::Effect;
+    match effect {
+        Effect::Page { before: Some(before), after: Some(after), index_before: None, index_after: None, .. } => {
+            before.folder != after.folder || before.number != after.number || before.page_type != after.page_type
+        }
+        // Added, removed, or both (a move).
+        Effect::Page { .. } | Effect::Folder { .. } => true,
+        Effect::Settings { before, after } => before.page_number_step != after.page_number_step,
+        Effect::Style { catalogue, .. } => *catalogue == ecad_model::StyleCatalogue::Page,
         _ => false,
     }
 }

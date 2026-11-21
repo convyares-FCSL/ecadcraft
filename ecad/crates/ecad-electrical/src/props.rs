@@ -1,11 +1,12 @@
 //! The ECAD section of CADCraft's Properties palette (brief 019, design 019 §8; moved out of the
 //! engine by brief 074): the sections and rows shown for picked objects, built as a plain copy the
-//! UI draws, what a change touches, and the command line a row edit writes. Edits go through the
+//! UI draws, and the command line a row edit writes. Edits go through the
 //! commands' JSON forms (`setprop`, `pageprops`, `projectprops`), never through here.
 //!
 //! # Update map (design 019 §9, `ecad/CLAUDE.md` "Derived views")
 //! A [`PropsView`] names the objects its rows read ([`PropsView::deps`]). It is rebuilt when the
-//! selection or the active page changes, and after a change whose [`touched`] set meets those
+//! selection or the active page changes, and after a change whose Properties-feed set
+//! ([`crate::derived::PropsFeed`]) meets those
 //! objects (or that could touch anything, `None`); every other change leaves it as it is. A build
 //! reads the selected objects, their pages and the project's properties only: O(selected).
 //!
@@ -18,7 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use ecad_model::Word;
 use ecad_model::book::{Book, FUNCTION_KEY, LOCATION_KEY, NUMBER_KEY};
 use ecad_model::keys::PropsExt;
-use ecad_model::{CableId, DeviceId, Document, End, ObjectRef, Op, PageId, Subject, WireId};
+use ecad_model::{CableId, DeviceId, Document, End, ObjectRef, PageId, Subject, WireId};
 
 use crate::words::Row;
 
@@ -51,123 +52,6 @@ pub struct PropsView {
     pub sections: Vec<Section>,
     /// The objects its rows read: a change touching none of them leaves it as it is.
     pub deps: BTreeSet<ObjectRef>,
-}
-
-/// The objects whose shown properties `ops` (about to be applied to `doc`) could change; `None`
-/// when that could be anything (settings, page order, folders). `ObjectRef::Page(p)` means page
-/// `p`'s own properties (its number, title, sheet…), not the objects drawn on it.
-pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
-    let mut out = BTreeSet::new();
-    let subject = |s: Subject, out: &mut BTreeSet<ObjectRef>| {
-        out.insert(match s {
-            Subject::Device(c) => ObjectRef::Device(c),
-            Subject::Wire(c) => ObjectRef::Wire(c),
-            Subject::Cable(c) => ObjectRef::Cable(c),
-            // A route has no properties (design 072 F31).
-            Subject::Route(_) => return,
-        });
-    };
-    for op in ops {
-        match op {
-            Op::ModifyPage { id, .. } => {
-                out.insert(ObjectRef::Page(*id));
-            }
-            Op::SetProperty { object, .. } => {
-                out.insert(*object);
-                // A location box's own location is what its page's devices inherit (brief 024).
-                if let ObjectRef::Device(c) = object
-                    && crate::locations::is_box(doc, *c)
-                {
-                    out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| ObjectRef::Page(r.page)));
-                }
-            }
-            Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::ModifyDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
-                out.insert(ObjectRef::Device(*id));
-            }
-            Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
-                out.insert(ObjectRef::Device(terminal.component));
-            }
-            Op::ModifyWire { id, .. } => {
-                out.insert(ObjectRef::Wire(*id));
-            }
-            Op::CreateWire { id, wire } | Op::DeleteWire { id, wire } => {
-                out.insert(ObjectRef::Wire(*id));
-                // The devices at its ends: a wire's net (brief 022) is shown through them.
-                out.extend(wire.ends.iter().filter_map(|t| doc.terminals.get(t)).map(|t| ObjectRef::Device(t.component)));
-            }
-            Op::CreateCable { id, cable } | Op::DeleteCable { id, cable } => {
-                out.insert(ObjectRef::Cable(*id));
-                out.extend(cable.cores.iter().filter_map(|m| m.wire()).map(ObjectRef::Wire));
-            }
-            // A route has no properties (design 072 F31); the devices it lands on show its net.
-            Op::AddRoute { route, .. } | Op::RemoveRoute { route, .. } => {
-                out.extend(route.points_landed().filter_map(|t| doc.terminals.get(&t)).map(|t| ObjectRef::Device(t.component)));
-            }
-            Op::ModifyRoute { before, after, .. } => {
-                let landed = before.points_landed().chain(after.points_landed());
-                out.extend(landed.filter_map(|t| doc.terminals.get(&t)).map(|t| ObjectRef::Device(t.component)));
-            }
-            Op::ModifyCable { id, before, after } => {
-                out.insert(ObjectRef::Cable(*id));
-                out.extend(before.cores.iter().chain(&after.cores).filter_map(|m| m.wire()).map(ObjectRef::Wire));
-            }
-            // A new or removed item is shown through its representation (linked or unlinked in the
-            // same transaction); a moved one changes its subject's place.
-            Op::AddItem { .. } => {}
-            Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => {
-                if let Some((_, r)) = doc.representation_of_item(*id) {
-                    subject(r.subject, &mut out);
-                    if matches!(r.subject, Subject::Device(c) if crate::locations::is_box(doc, c)) {
-                        out.insert(ObjectRef::Page(r.page));
-                    }
-                }
-            }
-            Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => {
-                subject(rep.subject, &mut out);
-                // A location box (brief 024) changes the location its page's devices inherit.
-                if matches!(rep.subject, Subject::Device(c) if crate::locations::is_box(doc, c) || rep.role == ecad_model::Role::LocationBox) {
-                    out.insert(ObjectRef::Page(rep.page));
-                }
-            }
-            Op::ModifyRepresentation { before, after, .. } => {
-                subject(before.subject, &mut out);
-                subject(after.subject, &mut out);
-            }
-            Op::NameVersion { .. } | Op::UnnameVersion { .. } => {
-                out.insert(ObjectRef::Project);
-            }
-            // Brief 050a: styles and the standard show in the property views of the project (the
-            // inspector's style rows re-read through it).
-            Op::SetStyle { .. } | Op::SetStandard { .. } => {
-                out.insert(ObjectRef::Project);
-            }
-            // Brief 048 (design §8.4): a project symbol's new or removed version changes whether
-            // the devices showing its lineage read "update available".
-            Op::EmbedDefinition { definition, .. } | Op::RemoveDefinition { definition, .. } => {
-                if let Some(o) = definition.origin.as_ref().filter(|o| o.library == crate::symbols::PROJECT_SYMBOLS) {
-                    for v in crate::symbols::versions_of(doc, o.definition) {
-                        for item in doc.items_using(v.id) {
-                            if let Some((_, r)) = doc.representation_of_item(item) {
-                                subject(r.subject, &mut out);
-                            }
-                        }
-                    }
-                }
-            }
-            Op::AddLayer { .. } | Op::RemoveLayer { .. } => {}
-            Op::AddPage { .. }
-            | Op::RemovePage { .. }
-            | Op::AddFolder { .. }
-            | Op::RemoveFolder { .. }
-            | Op::ModifyFolder { .. }
-            | Op::SetProjectSettings { .. }
-            // Design 072 §5.3: a code renamed in the project's list shows on every object storing it.
-            | Op::ModifyProject { .. }
-            | Op::AddDeviceLink { .. }
-            | Op::RemoveDeviceLink { .. } => return None,
-        }
-    }
-    Some(out)
 }
 
 /// The Sheet combo's choices for a page: the project's sheet, then the presets.

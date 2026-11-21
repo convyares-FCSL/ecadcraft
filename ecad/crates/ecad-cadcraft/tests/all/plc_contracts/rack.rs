@@ -179,7 +179,7 @@ fn a3_a_dangling_rack_id_is_a_rack_missing_row_with_two_fixes() {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].which, "-A03 names a rack that is not in the project");
     // The kept model, rebuilt from the file as a reopen would.
-    h.cfg(|p| p.outputs = None);
+    h.cfg(|p| p.forget_outputs());
     run_fix(&mut h, Fix::Plc(a03, ecad_cadcraft::plc::PlcFix::RackMissing), 0);
     assert_eq!(slot(&mut h, a03), Some("2".into()), "Put in rack: the only rack's lowest free slot");
     assert!(checks_of(&mut h, "rack-missing").is_empty());

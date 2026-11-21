@@ -466,7 +466,7 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
         // A T's dot (lane 072 D): the lens of the line that ends there.
         Mapped::Tee(r) => wire_lines(doc, crate::wires::wire_of_route(doc, r), Some(r), page),
         // A link line (brief 030, design 030 §5.3).
-        Mapped::Link(c, n) => vec![crate::link_lines::hover(doc, p.outputs.as_ref().and_then(|o| o.strips.get(c)), c, n)],
+        Mapped::Link(c, n) => vec![crate::link_lines::hover(doc, p.kept_outputs().and_then(|o| o.strips.get(c)), c, n)],
         Mapped::Item(i) => match doc.representation_of_item(i)? {
             (rid, r) if crate::references::is_reference(r) => crate::references::hover_lines(doc, rid)?,
             (rid, r) => match r.subject {

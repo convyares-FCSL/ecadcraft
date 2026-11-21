@@ -423,7 +423,7 @@ impl Command for CablecoresParams {
         let k = self.cable;
         on_any_page(s, |p, _| {
             p.outputs();
-            let o = p.outputs.as_ref().ok_or(CmdError::refused("The reports could not be built."))?;
+            let o = p.kept_outputs().ok_or(CmdError::refused("The reports could not be built."))?;
             let row = o.cable_row(k).cloned().ok_or(CmdError::refused("no such cable"))?;
             let wire = |w: WireId| o.wire(w).cloned();
             let doc = p.ledger.document();
