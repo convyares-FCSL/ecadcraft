@@ -1100,7 +1100,7 @@ mod tests {
 
     #[test]
     fn old_031_properties_are_ignored() {
-        // Brief 050a (FP4): no conversion; Checks says so (`ignored-old-setting`).
+        // Brief 050a (FP4): 031's old project keys are not read.
         let mut doc = Document::default();
         doc.display.insert("text.tag.height".into(), "3".into());
         doc.display.insert("text.tag.weight".into(), "regular".into());

@@ -258,16 +258,6 @@ pub fn component_key(doc: &Document, c: DeviceId, key: &str) -> String {
     }
 }
 
-/// The op clearing an older build's text size, weight or font on the project (brief 050a, design
-/// 050 §3.4: its Checks row goes; it is never written), when `key` is one and the project has it.
-pub fn clear_old_key(doc: &Document, key: &str) -> Option<Op> {
-    if !crate::styles::checks::is_old_key(key) {
-        return None;
-    }
-    let before = doc.display.get(key).cloned()?;
-    Some(Op::SetProperty { object: ObjectRef::Project, key: key.to_string(), before: Some(before), after: None })
-}
-
 // ---------------------------------------------------------------- values (Device and Value rows)
 
 /// The value `setprop` stores for `key` on `object` by its row of [`PROP_RULES`] (a `Device` or

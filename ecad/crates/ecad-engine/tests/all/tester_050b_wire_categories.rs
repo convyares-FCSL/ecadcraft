@@ -447,44 +447,6 @@ fn b17_mono_prints_ink_and_colour_prints_line_colours() {
 
 // -------------------------------------------------------------- b18: the file format
 
-/// §12.18, FP6 and the overseer's ruling: a potentials table carrying colours (an older file)
-/// reads, the colours are ignored, and Checks shows one `ignored-old-setting` row for potentials,
-/// which a save keeps and a `wiresettings` write clears.
-#[test]
-fn b18_old_potential_colours_are_ignored_and_reported() {
-    let mut h = H::new(0x50b_1801);
-    let page = h.first_page();
-    let w = wire_at(&mut h, 20.0, Some("24V"));
-    // Build the older file's settings record from a real one, with colours on two rows.
-    h.run("wiresettings", json!({"digits": 3})).unwrap();
-    let mut tx = last_tx_json(&mut h);
-    let pots =
-        find_obj_mut(&mut tx, "potentials").and_then(|m| m.get_mut("potentials")).and_then(Value::as_array_mut).expect("potentials in the record");
-    let n = pots.len();
-    for p in pots.iter_mut().filter(|p| p["name"] == json!("24V") || p["name"] == json!("0V")) {
-        p["colour"] = json!("RD");
-        p["cross_section"] = json!("1.5");
-    }
-    assert!(n >= 8);
-    undo(&mut h);
-    let ops = decoded_ops(&tx);
-    inject(&mut h, ops);
-    assert!(label(&mut h, page, w).is_some_and(|t| t.ends_with("0.5 BU")), "the old colours are not read: {:?}", label(&mut h, page, w));
-    let rows = checks_of(&mut h, "ignored-old-setting");
-    assert_eq!(rows.len(), 1, "one row for the potential kind: {rows:?}");
-    assert!(rows[0].to_string().contains("Potential colours and cross-sections set in an older build"), "{}", rows[0]);
-    let dir = tmp_dir("fp6");
-    let mut h = save_and_reopen(h, &dir, "old potentials.ecad", 0x50b_1802);
-    assert_eq!(checks_of(&mut h, "ignored-old-setting").len(), 1, "a save writes them back unchanged");
-    let (v, _) = one_tx(
-        &mut h,
-        "wiresettings",
-        json!({"potentials": [{"name": "24V", "prefix": "24V-", "numbered": true}, {"name": "0V", "prefix": "0V-", "numbered": true}]}),
-    );
-    assert!(checks_of(&mut h, "ignored-old-setting").is_empty(), "writing the table clears them: {v}");
-    let _ = std::fs::remove_dir_all(dir);
-}
-
 /// §12.18: save, reopen, replay, records and undo across `wire.category` and category records.
 #[test]
 fn b18_category_records_and_choices_round_trip() {

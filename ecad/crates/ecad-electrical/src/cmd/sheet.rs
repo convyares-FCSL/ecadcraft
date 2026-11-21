@@ -825,12 +825,6 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
     }
     ops.extend(proposed.ops.iter().cloned());
     for (k, v) in &change.props {
-        // Brief 050a (FP4 ruling): an old 031 text key may be cleared, which removes its
-        // `ignored-old-setting` row; it is never written.
-        if v.is_none() && crate::styles::checks::is_old_key(k) {
-            ops.extend(set(ObjectRef::Project, Some(&doc.display), k, None));
-            continue;
-        }
         check_free_key(doc, k)?;
         let v = free_value(doc, k, v.as_deref())?;
         // Design 072 §5.3: the site and the cover's notes are the project's info.

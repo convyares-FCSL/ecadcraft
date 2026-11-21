@@ -1111,47 +1111,6 @@ fn a08_a_hostile_style_file_opens_draws_and_reports() {
 
 // --------------------------------------------- fp4: old text keys are reported, not read
 
-/// FP4 and the overseer's ruling: 031's `text.<kind>.height` / `.weight` / `.font` project
-/// properties are no longer read; Checks shows one Info row per kind of old key, which goes when
-/// those keys are cleared, and updates only on a project `SetProperty` of such a key.
-#[test]
-fn fp4_old_text_keys_are_ignored_and_reported_once_per_kind() {
-    let mut h = H::new(0x50a_0809);
-    let set = |key: &str, v: Option<&str>, before: Option<String>| Op::SetProperty {
-        object: ObjectRef::Project,
-        key: key.into(),
-        before,
-        after: v.map(str::to_string),
-    };
-    inject(
-        &mut h,
-        vec![
-            set("text.tag.height", Some("5"), None),
-            set("text.description.height", Some("3"), None),
-            set("text.tag.weight", Some("regular"), None),
-            set("text.tag.font", Some("Plex"), None),
-            set("text.title_main.font", Some("Plex"), None),
-        ],
-    );
-    let st = text_style::text_style(&h.doc(), TextKind::Tag);
-    assert!(near(st.height, 2.5) && st.weight == text_style::Weight::Bold, "the old keys are not read");
-    let rows = checks_of(&mut h, "ignored-old-setting");
-    assert_eq!(rows.len(), 3, "one row per kind (heights, weights, fonts): {rows:?}");
-    let all = rows.iter().map(Value::to_string).collect::<String>();
-    assert!(all.contains("Text heights set in an older build, now ignored"), "{all}");
-    assert!(all.to_lowercase().contains("info"), "{all}");
-    // Clearing the weight key removes its row; heights and fonts stay.
-    inject(&mut h, vec![set("text.tag.weight", None, Some("regular".into()))]);
-    assert_eq!(checks_of(&mut h, "ignored-old-setting").len(), 2);
-    inject(&mut h, vec![set("text.tag.font", None, Some("Plex".into())), set("text.title_main.font", None, Some("Plex".into()))]);
-    assert_eq!(checks_of(&mut h, "ignored-old-setting").len(), 1, "only heights are left");
-    // Reopen keeps it: the old keys are still in the file.
-    let dir = tmp_dir("fp4");
-    let mut h = save_and_reopen(h, &dir, "old keys.ecad", 0x50a_0810);
-    assert_eq!(checks_of(&mut h, "ignored-old-setting").len(), 1, "computed on open");
-    let _ = std::fs::remove_dir_all(dir);
-}
-
 // ------------------------------------------------------------- users and the update map
 
 /// §2.5: `styles {users}` counts explicit users (objects naming the style) and implicit ones
@@ -1189,18 +1148,6 @@ fn map_a_style_change_reaches_the_pages_that_use_it() {
     h.activate(p2);
     h.activate(p1);
     h.check();
-}
-
-/// §3.4: "Clearing the old key (`setprop`, project, `null`) removes the row": a person (or an
-/// agent) has a command to clear an old key, so the row can be made to go.
-#[test]
-fn fp4_a_person_can_clear_an_old_key() {
-    let mut h = H::new(0x50a_0811);
-    inject(&mut h, vec![Op::SetProperty { object: ObjectRef::Project, key: "text.tag.font".into(), before: None, after: Some("Plex".into()) }]);
-    assert_eq!(checks_of(&mut h, "ignored-old-setting").len(), 1);
-    let r = h.run("setprop", json!({"project": true, "key": "text.tag.font", "value": null}));
-    assert!(r.is_ok(), "setprop on the project clears an old key (§3.4): {r:?}");
-    assert!(checks_of(&mut h, "ignored-old-setting").is_empty());
 }
 
 /// §4.1, question 1: an object's own text style is the whole style: height, weight, colour and

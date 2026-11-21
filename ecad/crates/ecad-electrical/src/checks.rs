@@ -274,9 +274,6 @@ check_kinds! {
     BadPartKey = "bad-part-key", Info, "Part line or item value ECAD does not read";
     /// Brief 050a: an object's style choice names no style (drawn with the next level's).
     StyleUnknown = "style-unknown", Info, "Style not found; drawn without it";
-    /// Brief 050a (FP4 ruling): 031's text sizes, weights or fonts set as project properties in
-    /// an older build, no longer read. One row per kind of key.
-    IgnoredOldSetting = "ignored-old-setting", Info, "Set in an older build, now ignored: set it in Standards";
     /// Brief 050a (design 050 §3.2): style records past the bounds, ignored.
     StyleLimits = "style-limits", Info, "Style records past the limits are ignored";
     /// Brief 050b: a wire's own category names no category (drawn without one).
@@ -529,7 +526,6 @@ impl Check {
             | Kind::ConnectorLonePin
             | Kind::ConnectorOver
             | Kind::StyleUnknown
-            | Kind::IgnoredOldSetting
             | Kind::StyleLimits
             | Kind::CategoryPotentialTwice
             | Kind::WireAllowance
