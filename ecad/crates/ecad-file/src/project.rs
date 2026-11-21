@@ -15,6 +15,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use ecad_model::{Base, Document, History, Ledger, ModelError, Op, ProjectId, Transaction, TxId, TxKind, Word};
+use rayon::prelude::*;
 use serde_json::{Value, json};
 
 use super::chunks::{self, ChunkSet, Dirty, ModelMeta};
@@ -674,11 +675,8 @@ impl History for StoreHistory {
                 let Some(next) = to.checked_add(1) else { break };
                 from = next;
             }
-            let wanted = ranges.len();
-            let read = chunks::par_map(ranges, read_range);
-            if read.len() != wanted {
-                return Err(bad("the history could not be read: a worker thread did not start".into()));
-            }
+            // One rayon task per range; the results keep the ranges' order.
+            let read: Vec<Result<Range, FileError>> = ranges.into_par_iter().map(read_range).collect();
             for range in read {
                 let range = range.map_err(|e| bad(e.to_string()))?;
                 if range.first_prev != prev {

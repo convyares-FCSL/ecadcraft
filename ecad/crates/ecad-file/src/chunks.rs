@@ -22,6 +22,7 @@ use ecad_model::{
     PageId, Project, ProjectSettings, Representation, RepresentationId, Route, RouteId, Standard, StyleCatalogues, Terminal, TerminalId, Touched,
     Wire, WireId,
 };
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use super::schema::chunk_hash;
@@ -513,55 +514,23 @@ fn parse_chunk(set: &ChunkSet, key: &str, body: &[u8]) -> Result<Parsed, FileErr
     })
 }
 
-/// `f` over `items`, on up to 8 threads where the platform has them (results in the order of
-/// `items`); on one thread on wasm. A share whose thread cannot start is left out.
-pub(crate) fn par_map<T: Send, R: Send>(items: Vec<T>, f: impl Fn(T) -> R + Sync) -> Vec<R> {
-    let threads = if cfg!(target_arch = "wasm32") { 1 } else { std::thread::available_parallelism().map_or(1, std::num::NonZero::get).clamp(1, 8) };
-    if threads == 1 || items.len() < 2 {
-        return items.into_iter().map(f).collect();
-    }
-    let mut groups: Vec<Vec<(usize, T)>> = (0..threads).map(|_| Vec::new()).collect();
-    for (i, item) in items.into_iter().enumerate() {
-        if let Some(g) = groups.get_mut(i % threads) {
-            g.push((i, item));
-        }
-    }
-    let f = &f;
-    let mut out: Vec<(usize, R)> = std::thread::scope(|scope| {
-        // A share whose thread cannot be started is missing from the result: the caller reports
-        // it (never a panic).
-        let handles: Vec<_> = groups
-            .into_iter()
-            .filter_map(|group| {
-                let run = move || group.into_iter().map(|(i, t)| (i, f(t))).collect::<Vec<_>>();
-                std::thread::Builder::new().spawn_scoped(scope, run).ok()
-            })
-            .collect();
-        handles.into_iter().filter_map(|h| h.join().ok()).flatten().collect()
-    });
-    out.sort_by_key(|(i, _)| *i);
-    out.into_iter().map(|(_, r)| r).collect()
-}
-
 /// The document a chunk set describes, from its chunks as stored (key, hash, flag, stored body):
-/// each is decompressed, checked against its hash and parsed in parallel where threads exist,
-/// then merged.
+/// each is decompressed, checked against its hash and parsed in parallel (rayon, one task per
+/// chunk; the results keep the chunks' order), then merged in that order.
 ///
 /// # Errors
-/// As [`assemble`], a chunk that does not decompress or match its hash, or a chunk that could
-/// not be read (a worker thread could not start).
+/// As [`assemble`], or a chunk that does not decompress or match its hash.
 pub fn assemble_stored(set: &ChunkSet, stored: Vec<(String, Hash, u8, Vec<u8>)>) -> Result<(Document, Option<ModelMeta>), FileError> {
-    let n = stored.len();
-    let parsed = par_map(stored, |(key, hash, flag, body)| {
-        let body = super::pack::unpack(flag, &body)?;
-        if chunk_hash(&body) != hash {
-            return Err(FileError::ChunkMismatch(key));
-        }
-        parse_chunk(set, &key, &body)
-    });
-    if parsed.len() != n {
-        return Err(FileError::ChunkThread);
-    }
+    let parsed = stored
+        .into_par_iter()
+        .map(|(key, hash, flag, body)| {
+            let body = super::pack::unpack(flag, &body)?;
+            if chunk_hash(&body) != hash {
+                return Err(FileError::ChunkMismatch(key));
+            }
+            parse_chunk(set, &key, &body)
+        })
+        .collect();
     merge_parsed(parsed)
 }
 

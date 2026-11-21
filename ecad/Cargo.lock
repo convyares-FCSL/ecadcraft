@@ -1448,6 +1448,7 @@ dependencies = [
  "chrono",
  "ecad-model",
  "ecad-store",
+ "rayon",
  "redb",
  "ruzstd",
  "serde",
@@ -1497,6 +1498,7 @@ name = "ecad-model"
 version = "0.3.0-dev"
 dependencies = [
  "ecad-model",
+ "rayon",
  "schemars",
  "serde",
  "serde_json",
