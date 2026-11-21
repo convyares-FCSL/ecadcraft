@@ -8,8 +8,11 @@
 //!   baseline, a junction placed there, went with the junction symbol (design 072 D).
 //! - **lnet** / **leach**: the wire labels of the page with the most routes worked out under the
 //!   `net` and `each` rules. Target: lnet within 10% of leach.
-//! - **ccont**: `cableslash` continuing a 50-core cable on a second page through continuation
-//!   pairs. Target: under 20 ms.
+//! - **ccont**: `cablecontinue` of a 50-core cable on a second page (its reference end, one stub
+//!   per core and the slash). Target: under 20 ms. Until 072 D (F5) this row timed a `cableslash`
+//!   with the cable's tag on the second page, which added members; that form is gone (a slash with
+//!   an existing tag is refused where none of the cable's wires runs), and continuing a cable on
+//!   another page is `cablecontinue`.
 //!
 //! Each edit is undone after it is measured; the setup happens on two pages added to the copy.
 
@@ -27,8 +30,8 @@ const OPEN_SEED: u64 = 0x0032_0000;
 /// Cores of the continued cable.
 const CORES: usize = 50;
 /// The continued cable's tag. The generator tags its cables `-W1` to `-W<cables>` (2 500 on
-/// large), so this must lie beyond every tier's cables, or `cableslash` continues the generated
-/// cable of that tag and is refused (as `-W932` was on large).
+/// large), so this must lie beyond every tier's cables, or `cableslash` shows the generated cable
+/// of that tag and is refused where none of its wires runs.
 pub const CCONT_TAG: &str = "-W8032";
 /// Where the bench draws: right of an A3 sheet, clear of the generated pattern.
 const X0: f64 = 600.0;
@@ -113,22 +116,20 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredWires
             jjoin.push(timed(&mut s, "joinwires", json!({"at": [X0 + 50.0, 40.0]}))?);
         }
         (out.wopen_ms, out.wmerge_ms, out.jjoin_ms) = (median(&mut wopen), median(&mut wmerge), median(&mut jjoin));
-        // A 50-core cable ending on continuations, continued on a second page.
+        // A 50-core cable slashed on this page with its reference end, continued on a second page
+        // (design 072 §4.4, F4).
         let y = |i: usize| 100.0 + 5.0 * i as f64;
         for i in 0..CORES {
-            run(&mut s, "place", json!({"symbol": "continuation", "at": [X0 + 100.0, y(i)], "name": format!("B{i}")}))?;
             run(&mut s, "wire", json!({"points": [[X0, y(i)], [X0 + 100.0, y(i)]]}))?;
         }
-        run(&mut s, "cableslash", json!({"from": [X0 + 50.0, y(0) - 3.0], "to": [X0 + 50.0, y(CORES) + 3.0], "tag": CCONT_TAG}))?;
+        let slashed = run(&mut s, "cableslash", json!({"from": [X0 + 50.0, y(0) - 3.0], "to": [X0 + 50.0, y(CORES) + 3.0], "tag": CCONT_TAG}))?;
+        let cable = slashed["cable"].clone();
+        run(&mut s, "cableref", json!({"cable": cable, "at": [X0 + 100.0, y(CORES)]}))?;
         let second: PageId = crate_hex(&run(&mut s, "newpage", json!({"title": "bench 032 b"}))?, "page")?;
         run(&mut s, "openpage", json!({"page": second.hex()}))?;
-        for i in 0..CORES {
-            run(&mut s, "place", json!({"symbol": "continuation", "at": [X0, y(i)], "name": format!("B{i}")}))?;
-            run(&mut s, "wire", json!({"points": [[X0, y(i)], [X0 + 100.0, y(i)]]}))?;
-        }
         let mut ccont = Vec::new();
         for _ in 0..runs {
-            ccont.push(timed(&mut s, "cableslash", json!({"from": [X0 + 50.0, y(0) - 3.0], "to": [X0 + 50.0, y(CORES) + 3.0], "tag": CCONT_TAG}))?);
+            ccont.push(timed(&mut s, "cablecontinue", json!({"cable": cable, "at": [X0, y(CORES)], "toward": [X0 + 50.0, y(CORES)]}))?);
         }
         out.ccont_ms = median(&mut ccont);
         drop(project);
