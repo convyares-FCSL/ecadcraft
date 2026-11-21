@@ -1,6 +1,7 @@
 //! The pre-release check plan (brief 027, design 027; moved out of the engine by brief 074): the
 //! check's groups ([`GROUPS`]) and counts, `checks.csv`, the file stem and folder names, and the
-//! words of the refusals and stops a release gives.
+//! words of the refusals and stops a release gives, and the generated lists of the folder
+//! ([`LISTS`]).
 //!
 //! # Semantics
 //! - A check row shows in one [`Group`]: every error-severity row in **Errors**, the others by
@@ -202,4 +203,69 @@ pub fn nothing_changed<'a>(doc: &Document, head: u64, tx: impl Fn(u64) -> Option
         seq += 1;
     }
     Some(format!("Nothing has changed since {name}."))
+}
+
+// ---------------------------------------------------------------- slots (design 027 §7.2)
+
+/// A generated list of the folder.
+pub struct Slot {
+    pub id: &'static str,
+    /// After `<stem> Rev B`.
+    pub suffix: &'static str,
+    /// The table, or `None` with [`Slot::missing_why`] when the project gives none.
+    pub build: fn(&Document, &crate::outputs::kept::Outputs) -> Option<Table>,
+    pub missing_why: &'static str,
+}
+
+fn bom(_: &Document, o: &crate::outputs::kept::Outputs) -> Option<Table> {
+    Some(o.bom_table(crate::outputs::Group::Location))
+}
+fn wires(_: &Document, o: &crate::outputs::kept::Outputs) -> Option<Table> {
+    Some(o.wire_table())
+}
+fn cables(_: &Document, o: &crate::outputs::kept::Outputs) -> Option<Table> {
+    Some(o.cable_table())
+}
+/// Brief 028's terminal plan, when the project has strips.
+fn terminal_plan(_: &Document, o: &crate::outputs::kept::Outputs) -> Option<Table> {
+    (!o.strips.is_empty()).then(|| o.terminal_plan_csv())
+}
+/// Brief 028's cable schedule, when the project has cables.
+fn cable_schedule(_: &Document, o: &crate::outputs::kept::Outputs) -> Option<Table> {
+    (o.cable_count() > 0).then(|| o.cable_schedule_csv())
+}
+
+/// The generated lists, in folder order. The book, `checks` and the manifest are always written.
+pub const LISTS: [Slot; 7] = [
+    Slot { id: "bom", suffix: " BOM.csv", build: bom, missing_why: "" },
+    Slot { id: "wires", suffix: " wires.csv", build: wires, missing_why: "" },
+    Slot { id: "cables", suffix: " cables.csv", build: cables, missing_why: "" },
+    Slot { id: "terminal-plan", suffix: " terminal plan.csv", build: terminal_plan, missing_why: NO_STRIPS },
+    Slot { id: "cable-schedule", suffix: " cable schedule.csv", build: cable_schedule, missing_why: NO_CABLES },
+    // Brief 045c (design 045 §8.3): ` IO list.csv` (a `/` cannot be in a file name).
+    // Brief 051 (design 051 §4.2): the rack overview, before the I/O list in the book.
+    Slot { id: "plc-racks", suffix: " PLC racks.csv", build: plc_racks, missing_why: crate::plc::sheets::NO_RACKS },
+    Slot { id: "io-list", suffix: " IO list.csv", build: io_list, missing_why: crate::plc::iolist::NO_CARDS },
+];
+
+/// Brief 051's PLC racks list, when the project has a rack or a card.
+fn plc_racks(doc: &Document, o: &crate::outputs::kept::Outputs) -> Option<Table> {
+    crate::plc::sheets::rack_csv(doc, &o.plc)
+}
+
+/// Brief 045's I/O list, when the project has a card with channels.
+fn io_list(doc: &Document, o: &crate::outputs::kept::Outputs) -> Option<Table> {
+    crate::plc::iolist::csv_table(doc, &o.plc)
+}
+
+/// Whether `slot` gives a list for `doc` (the check's Writes line, before anything is built):
+/// brief 028's lists only when the project has strips or cables.
+pub fn slot_gives(slot: &Slot, doc: &Document) -> bool {
+    match slot.id {
+        "terminal-plan" => doc.devices.keys().any(|c| crate::strips::strip_of(doc, *c).is_some()),
+        "cable-schedule" => !doc.cables.is_empty(),
+        "io-list" => doc.devices.keys().any(|c| crate::plc::card_type_of(doc, *c).is_some_and(|t| t.has_channels())),
+        "plc-racks" => doc.devices.keys().any(|c| crate::plc::card_type_of(doc, *c).is_some()),
+        _ => slot.missing_why.is_empty(),
+    }
 }

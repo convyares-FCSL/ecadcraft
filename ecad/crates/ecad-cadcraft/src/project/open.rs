@@ -79,7 +79,6 @@ impl Project {
             last_caption: None,
             wire_potential: None,
             checks: None,
-            outputs: None,
             open_reports: false,
             #[cfg(not(target_arch = "wasm32"))]
             agent_access_request: None,
@@ -175,7 +174,6 @@ impl Project {
             last_caption: None,
             wire_potential: None,
             checks: None,
-            outputs: None,
             open_reports: false,
             #[cfg(not(target_arch = "wasm32"))]
             agent_access_request: None,
@@ -310,7 +308,6 @@ impl Project {
             last_caption: None,
             wire_potential: None,
             checks: None,
-            outputs: None,
             open_reports: false,
             #[cfg(not(target_arch = "wasm32"))]
             agent_access_request: None,

@@ -191,7 +191,7 @@ impl ChecksPanel {
         let doc = p.ledger.document();
         let Some(list) = p.checks.as_ref() else { return };
         let mut all: Vec<Check> = list.rows().cloned().collect();
-        all.extend(p.outputs.as_ref().map(|o| o.checks()).unwrap_or_default());
+        all.extend(p.kept_outputs().map(|o| o.checks()).unwrap_or_default());
         let rows: Vec<Row> = ecad_cadcraft::checks::sort(doc, all)
             .into_iter()
             .filter(|c| !hidden.contains(&c.kind))

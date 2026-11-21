@@ -763,7 +763,12 @@ fn scope_words(h: &mut H, before: &Document, ops: &[Op]) -> (String, String) {
     h.cfg(|p| {
         let c = p.checks();
         let a = format!("{:?} {:?}", c.scope(before, ops), c.scope(&after, ops));
-        let o = p.outputs.as_ref().map(|o| format!("{:?} {:?}", o.scope(before, ops), o.scope(&after, ops))).unwrap_or_default();
+        let scope = |d: &Document| {
+            let mut s = ecad_cadcraft::outputs::Scope::default();
+            s.collect(d, ops);
+            s
+        };
+        let o = p.kept_outputs().map(|_| format!("{:?} {:?}", scope(before), scope(&after))).unwrap_or_default();
         (a, o)
     })
 }
@@ -797,7 +802,7 @@ fn r8_a_cable_edit_touches_only_that_cables_views() {
         let kept = p.checks().sorted(&doc);
         let built = checks::Checks::build(&doc, tol).sorted(&doc);
         let row = p.outputs().cable_row(k).cloned();
-        let fresh = ecad_cadcraft::outputs::Outputs::build(&doc).cable_row(k).cloned();
+        let fresh = ecad_cadcraft::outputs::kept::Outputs::build_with(&doc, &ecad_cadcraft::text_style::EngineMetrics).cable_row(k).cloned();
         (kept, built, row, fresh)
     });
     assert!(kept == built, "kept checks equal a rebuild");
@@ -823,7 +828,7 @@ fn r8_kept_rows_follow_new_remove_assign_and_undo() {
         let built = checks::Checks::build(&doc, tol).sorted(&doc);
         let o = p.outputs();
         let rows = (o.cable_row(k).cloned(), o.cable_row(k2).cloned(), o.cable_count());
-        let f = ecad_cadcraft::outputs::Outputs::build(&doc);
+        let f = ecad_cadcraft::outputs::kept::Outputs::build_with(&doc, &ecad_cadcraft::text_style::EngineMetrics);
         let fresh = (f.cable_row(k).cloned(), f.cable_row(k2).cloned(), f.cable_count());
         (kept, built, rows, fresh)
     });

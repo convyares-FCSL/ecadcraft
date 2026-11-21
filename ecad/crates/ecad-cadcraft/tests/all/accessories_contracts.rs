@@ -2,7 +2,7 @@
 //! strip and the project, the plan, BOM and Checks rows, renumbering, links made and edited with
 //! `jumper`, and the update maps. Driven through the commands' JSON forms.
 
-use ecad_cadcraft::outputs::{Group, Outputs};
+use ecad_cadcraft::outputs::{Group, kept::Outputs};
 use ecad_model::{DeviceId, TerminalId};
 use serde_json::{Value, json};
 
@@ -71,7 +71,8 @@ impl F {
     }
 
     fn same_as_built(&mut self) {
-        let (kept, built) = self.h.cfg(|p| (p.outputs().clone(), Outputs::build(p.ledger.document())));
+        let (kept, built) =
+            self.h.cfg(|p| (p.outputs().clone(), Outputs::build_with(p.ledger.document(), &ecad_cadcraft::text_style::EngineMetrics)));
         assert!(kept.strips.same_as(&built.strips), "strips differ:\nkept {:#?}\nbuilt {:#?}", kept.strips.strips, built.strips.strips);
         assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location));
         assert_eq!(kept.terminal_table(None), built.terminal_table(None));

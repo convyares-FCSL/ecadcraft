@@ -18,7 +18,7 @@
 //! The project keeps the active page's parts with its frame. They are worked out again after an
 //! op of the frame's map ([`crate::frames::touches`]), after any op [`touches`] names for the
 //! active generated page's kind, and when the report models' BOM changes while a BOM page is shown
-//! or the book's sheet count moves (`Project::update_outputs`). A terminal plan or cable schedule
+//! or the book's sheet count moves (`derived::OutputsView`). A terminal plan or cable schedule
 //! page (brief 028) is redrawn the same way when the strip or cable rows changed while it is shown. Contents reads the book order
 //! (O(pages)) only when it is drawn.
 

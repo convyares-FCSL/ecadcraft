@@ -4,8 +4,8 @@
 //! # Semantics
 //! - `Outputs` keeps one row per device (a component with a tag and no `kind`), per conductor
 //!   and per cable, and the BOM groups. It is built whole only on open, reload or first show
-//!   (`Outputs::build`); after that `Outputs::update` recomputes only the rows a transaction's
-//!   ops could change. Nothing here is stored or recorded.
+//!   (`kept::Outputs::build_with`, by `derived::OutputsView`); after that `kept::Outputs::update`
+//!   recomputes only the rows a transaction's effects could change. Nothing here is stored or recorded.
 //! - Wires never appear on the BOM; cable cores are conductors and appear on the wire report with
 //!   their cable (owner answer Q10). Cables are not on the BOM (Q6). A terminal device counts once
 //!   (Q11).

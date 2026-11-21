@@ -415,7 +415,10 @@ fn half_row_groups_are_kept_not_regrouped() {
     assert_eq!(count(&mut h), n);
     let g1 = h.cfg(|p| p.outputs().half_groupings.load(std::sync::atomic::Ordering::Relaxed));
     assert_eq!(g0, g1, "an unrelated edit and the counts group no half rows");
-    let rebuilt = h.p(|p| ecad_cadcraft::outputs::Outputs::build(p.ledger.document()).bom_count(ecad_cadcraft::outputs::Group::Location));
+    let rebuilt = h.p(|p| {
+        ecad_cadcraft::outputs::kept::Outputs::build_with(p.ledger.document(), &ecad_cadcraft::text_style::EngineMetrics)
+            .bom_count(ecad_cadcraft::outputs::Group::Location)
+    });
     assert_eq!(count(&mut h), rebuilt);
 }
 

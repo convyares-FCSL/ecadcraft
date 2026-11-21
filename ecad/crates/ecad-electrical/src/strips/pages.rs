@@ -370,11 +370,11 @@ impl StripPages {
 
     /// Bring the kept data in line with `strips` (just updated for `effects`) on `doc`, the state
     /// after. See the module's update map; every effect not listed does nothing.
-    pub fn update(&mut self, doc: &Document, effects: &Effects<'_>, strips: &Strips) {
+    /// `named` is what the effects named, noted before the kept indexes are read ([`Named::note`]).
+    pub fn update(&mut self, doc: &Document, named: Named, strips: &Strips) {
         self.last_changed.clear();
         self.last_work = 0;
         self.layout_changed = false;
-        let named = Named::of(effects);
         self.style_changed = named.style;
         for k in &named.cables {
             self.last_changed.extend(self.by_cable.get(k).into_iter().flatten().copied());

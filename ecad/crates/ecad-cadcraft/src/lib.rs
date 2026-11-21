@@ -112,7 +112,7 @@ pub mod front {
 }
 /// `ecad_electrical::generated` and its engine half, [`draw::generated`].
 pub mod generated {
-    pub use crate::draw::generated::{Draw, book_sheets, input_of, missing_mark, page_parts, parts_of, parts_of_pending, sheet_windows, sheets};
+    pub use crate::draw::generated::{Draw, input_of, missing_mark, page_parts, parts_of, parts_of_pending};
     pub use ecad_electrical::generated::*;
 }
 /// `ecad_electrical::locations` and its engine half, [`draw::locations`].
@@ -120,9 +120,8 @@ pub mod locations {
     pub use crate::draw::locations::*;
     pub use ecad_electrical::locations::*;
 }
-/// `ecad_electrical::outputs` and its engine half, [`draw::outputs`].
+/// `ecad_electrical::outputs`.
 pub mod outputs {
-    pub use crate::draw::outputs::Outputs;
     pub use ecad_electrical::outputs::*;
 }
 /// `ecad_electrical::plc` and its engine half, [`draw::plc`].

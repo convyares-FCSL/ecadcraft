@@ -3,7 +3,6 @@
 use super::*;
 
 use ecad_electrical::derived::Changes;
-use ecad_model::view::PageSet;
 
 /// How many recent changes [`Project::changes_since`] can answer for.
 const CHANGE_LOG: usize = 64;
@@ -42,6 +41,12 @@ impl Project {
     /// (`ecad_electrical::derived::ConnectorsView`).
     pub fn connectors(&self) -> &crate::connectors::Index {
         self.derived.connectors()
+    }
+
+    /// The derived views (design 064 §5): another document state's are read through
+    /// [`ecad_electrical::derived::Views::detached`].
+    pub fn derived(&self) -> &ecad_electrical::derived::Views {
+        &self.derived
     }
 
     /// The derived views, to put a kept view out of step on purpose (tests of verify mode only).
@@ -351,7 +356,6 @@ impl Project {
             crate::fault_panic();
         }
         let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &ops));
-        let outputs = self.outputs.as_ref().map(|o| o.scope(self.ledger.document(), &ops));
         // The numbering pass (brief 022) extends the same transaction.
         let pass = |d: &ecad_model::Document, o: &[Op]| if numbering { ecad_model::wiring::assign(d, o) } else { Vec::new() };
         let pending = self.derived.begin(self.ledger.document(), &ops);
@@ -368,9 +372,7 @@ impl Project {
             self.pages.entry(id).or_default();
         }
         self.update_checks(checks);
-        let pages = self.update_outputs(outputs);
-        let mut changes = self.finish_derived(pending);
-        pass_through(&mut changes, Old { pages, echo: Vec::new() });
+        let changes = self.finish_derived(pending);
         self.apply_changes(pg, command, changes, Path::Command);
         Ok(tx)
     }
@@ -448,13 +450,11 @@ pub(super) enum Path<'a> {
 /// What the functions not yet moved into a view worked out (design 064 §9: each view step deletes
 /// one of them and its field here).
 pub(super) struct Old {
-    pub pages: BTreeSet<PageId>,
     pub echo: Vec<String>,
 }
 
 /// Add `old` to the views' `changes`.
 pub(super) fn pass_through(changes: &mut Changes, old: Old) {
-    changes.pages.union(PageSet::Only(old.pages));
     changes.echo.extend(old.echo);
 }
 

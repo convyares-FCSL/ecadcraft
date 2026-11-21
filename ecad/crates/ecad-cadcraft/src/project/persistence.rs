@@ -170,7 +170,6 @@ impl Project {
         self.conflicts.clear();
         self.views.retain(|c| cables.contains(c));
         self.checks = None;
-        self.outputs = None;
         self.goto_ring = None;
         self.frame = None;
         self.frame_stale = false;

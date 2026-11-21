@@ -287,15 +287,48 @@ pub fn positions_changed_by(doc: &Document, effects: &crate::effect::Effects<'_>
     before.positions.iter().filter(|(p, i)| after.positions.get(p) != Some(i)).map(|(p, _)| *p).collect()
 }
 
+/// [`positions_changed_by`] noted effect by effect: the outline of `doc` is taken at the first
+/// effect that can move a page ([`moves_pages_by_one`]) and follows that effect and every later
+/// one, so a commit that moves no page reads no outline.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PositionsNoted {
+    kept: Option<(Book, Outline)>,
+}
+
+impl PositionsNoted {
+    /// Note one effect, read on `doc`.
+    pub fn note(&mut self, doc: &Document, e: &crate::effect::Effect<'_>) {
+        if self.kept.is_none() && moves_pages_by_one(e) {
+            let outline = Outline::of(doc);
+            self.kept = Some((outline.book(), outline));
+        }
+        if let Some((_, outline)) = &mut self.kept {
+            outline.apply_effect(e);
+        }
+    }
+
+    /// The pages whose book position the noted effects change.
+    pub fn changed(&self) -> BTreeSet<PageId> {
+        let Some((before, outline)) = &self.kept else { return BTreeSet::new() };
+        let after = outline.book();
+        before.positions.iter().filter(|(p, i)| after.positions.get(p) != Some(i)).map(|(p, _)| *p).collect()
+    }
+}
+
 /// [`moves_pages`] over effects: a page added, removed or moved, a page's folder changed, a folder
 /// effect.
 pub fn moves_pages_by(effects: &crate::effect::Effects<'_>) -> bool {
+    effects.iter().any(moves_pages_by_one)
+}
+
+/// Whether one effect can move a page in the book (one effect of [`moves_pages_by`]).
+pub fn moves_pages_by_one(e: &crate::effect::Effect<'_>) -> bool {
     use crate::effect::Effect;
-    effects.iter().any(|e| match e {
+    match e {
         Effect::Page { before: Some(b), after: Some(a), index_before: None, index_after: None, .. } => b.folder != a.folder,
         Effect::Page { .. } | Effect::Folder { .. } => true,
         _ => false,
-    })
+    }
 }
 
 impl Book {

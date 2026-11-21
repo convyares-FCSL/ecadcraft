@@ -39,11 +39,11 @@ impl Checks {
 
 /// Every check of the project, worked out from scratch (the `checks` command reads on request).
 pub fn all(doc: &Document, tol: f64) -> Vec<Check> {
-    all_with(doc, tol, &crate::outputs::Outputs::build(doc))
+    all_with(doc, tol, crate::project::engine_views().detached(doc).outputs())
 }
 
 /// [`all`] with the report models already kept (brief 024: the project's, reused by `checks`).
-pub fn all_with(doc: &Document, tol: f64, outputs: &crate::outputs::Outputs) -> Vec<Check> {
+pub fn all_with(doc: &Document, tol: f64, outputs: &crate::outputs::kept::Outputs) -> Vec<Check> {
     crate::checks::all_measured(doc, tol, outputs, &EngineMetrics)
 }
 

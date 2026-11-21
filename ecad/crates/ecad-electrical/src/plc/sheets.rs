@@ -194,26 +194,38 @@ pub const NO_RACKS: &str = "No PLC racks.";
 /// resized, or any page moved in the book. Only the effects' own items and the pages they name are
 /// read.
 pub fn rack_places_touched(doc: &Document, plc: &Plc, effects: &ecad_model::effect::Effects<'_>) -> bool {
-    use ecad_model::Subject;
-    use ecad_model::effect::Effect;
-    let ours = |c: ecad_model::DeviceId| plc.cards.contains_key(&c) || plc.racks.contains_key(&c);
-    let page_holds = |p: PageId| doc.representations_on(p).any(|(_, r)| matches!(r.subject, Subject::Device(c) if ours(c)));
+    let mut places = RackPlaces::default();
     for effect in effects {
+        places.note(effect);
+    }
+    places.touched(doc, plc)
+}
+
+/// What one commit's effects name that can move a place the `plcrack` sheet prints, noted effect
+/// by effect ([`RackPlaces::note`]) and read against the PLC model after its update
+/// ([`RackPlaces::touched`]).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RackPlaces {
+    /// Items changed in place (a symbol moved).
+    items: Vec<ecad_model::ItemId>,
+    /// Pages changed in place whose number, sheet or folder changed.
+    pages: Vec<PageId>,
+    /// A page moved in the book.
+    book_moved: bool,
+}
+
+impl RackPlaces {
+    /// Note what one effect names.
+    pub fn note(&mut self, effect: &ecad_model::effect::Effect<'_>) {
+        use ecad_model::effect::Effect;
+        self.book_moved |= ecad_model::book::moves_pages_by_one(effect);
         match effect {
-            // An item changed in place (a symbol moved).
-            Effect::Item { id, before: Some(_), after: Some(_) } => {
-                if let Some((_, r)) = doc.representation_of_item(*id)
-                    && let Subject::Device(c) = r.subject
-                    && ours(c)
-                {
-                    return true;
-                }
-            }
+            Effect::Item { id, before: Some(_), after: Some(_) } => self.items.push(*id),
             // A page changed in place (`ModifyPage` states no index).
             Effect::Page { id: p, before: Some(before), after: Some(after), index_before: None, index_after: None } => {
                 let ch = before.change(after);
-                if (ch.number || ch.sheet || ch.folder) && page_holds(*p) {
-                    return true;
+                if ch.number || ch.sheet || ch.folder {
+                    self.pages.push(*p);
                 }
             }
             Effect::Item { .. }
@@ -237,8 +249,19 @@ pub fn rack_places_touched(doc: &Document, plc: &Plc, effects: &ecad_model::effe
             | Effect::DeviceLink { .. } => {}
         }
     }
-    // A page moved in the book (rare): every place may change its page number.
-    ecad_model::book::moves_pages_by(effects) && !(plc.cards.is_empty() && plc.racks.is_empty())
+
+    /// Whether what was noted moves a place of a card or rack of `plc` on `doc`, the state after.
+    pub fn touched(&self, doc: &Document, plc: &Plc) -> bool {
+        use ecad_model::Subject;
+        let ours = |c: ecad_model::DeviceId| plc.cards.contains_key(&c) || plc.racks.contains_key(&c);
+        let page_holds = |p: PageId| doc.representations_on(p).any(|(_, r)| matches!(r.subject, Subject::Device(c) if ours(c)));
+        let item_ours =
+            |id: &ecad_model::ItemId| doc.representation_of_item(*id).is_some_and(|(_, r)| matches!(r.subject, Subject::Device(c) if ours(c)));
+        self.items.iter().any(item_ours)
+            || self.pages.iter().any(|p| page_holds(*p))
+            // A page moved in the book (rare): every place may change its page number.
+            || (self.book_moved && !(plc.cards.is_empty() && plc.racks.is_empty()))
+    }
 }
 
 // The release's PLC racks list (design 051 §4.2: in the release like the I/O list): one row per

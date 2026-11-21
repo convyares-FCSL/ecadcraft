@@ -40,7 +40,7 @@ fn texts(h: &mut H, page: PageId) -> Vec<String> {
     let d = h.doc();
     h.cfg(|p| {
         p.outputs();
-        let o = p.outputs.as_ref().unwrap();
+        let o = p.kept_outputs().unwrap();
         ecad_cadcraft::generated::parts_of(&d, page, Some(o))
             .into_iter()
             .filter_map(|x| match x.kind {
@@ -55,7 +55,7 @@ fn sheets_of(h: &mut H, page: PageId) -> usize {
     let d = h.doc();
     h.cfg(|p| {
         p.outputs();
-        ecad_cadcraft::generated::sheets(&d, page, p.outputs.as_ref())
+        ecad_cadcraft::generated::sheets_of(&d, page, p.kept_outputs())
     })
 }
 
@@ -517,16 +517,16 @@ fn h_a_large_address_style_raises_plc_text_wide() {
 /// O: the PLC racks list in the release, and its missing reason without PLC cards.
 #[test]
 fn o_the_release_lists_the_racks_or_says_why_not() {
-    let slot = ecad_cadcraft::release::LISTS.iter().find(|s| s.id == "plc-racks").expect("a plc-racks slot");
+    let slot = ecad_electrical::release::LISTS.iter().find(|s| s.id == "plc-racks").expect("a plc-racks slot");
     assert_eq!((slot.suffix, slot.missing_why), (" PLC racks.csv", "No PLC racks."));
     let F { mut h, .. } = fixture(5150);
     let d = h.doc();
-    let t = h.cfg(|p| (slot.build)(&d, p.outputs()).unwrap()).expect("a table");
+    let t = h.cfg(|p| (slot.build)(&d, p.outputs())).expect("a table");
     assert_eq!(t.headers.first(), Some(&"Rack"));
     assert_eq!(t.rows.len(), 5, "the rack, three cards, the next free slot");
     let mut empty = H::new(5151);
     let d = empty.doc();
-    assert!(empty.cfg(|p| (slot.build)(&d, p.outputs()).unwrap()).is_none());
+    assert!(empty.cfg(|p| (slot.build)(&d, p.outputs())).is_none());
     let pre = empty.run("prerelease", json!({})).unwrap();
     let missing = pre["not_included"].as_array().cloned().unwrap_or_default();
     assert!(missing.iter().any(|x| x["slot"] == "plc-racks"), "{pre}");

@@ -13,7 +13,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use ecad_cadcraft::outputs::Outputs;
+use ecad_cadcraft::outputs::kept::Outputs;
 use ecad_cadcraft::strips::{PlanItem, SideCell, StripData, TermRow};
 use ecad_model::DeviceId;
 use ecad_ui::table::{Align, Cell, Changed, Column, ColumnId, Lane, LaneCell, Table, TableEvent, TableSource, Width};

@@ -22,6 +22,7 @@ mod connectors;
 mod devices;
 mod frame;
 mod generated;
+mod outputs;
 mod pages;
 mod props;
 mod refs;
@@ -38,6 +39,7 @@ pub use connectors::{ConnectorsScope, ConnectorsView};
 pub use devices::{DevicesFeed, DevicesScope};
 pub use frame::{FrameScope, FrameView};
 pub use generated::{GeneratedScope, GeneratedView};
+pub use outputs::{OutputsScope, OutputsView};
 pub use pages::{PagesScope, PagesView, points_pages};
 pub use props::{PropsFeed, PropsScope};
 pub use refs::{RefsScope, RefsView};
@@ -109,6 +111,7 @@ pub struct Pending {
     pages: PagesScope,
     frame: FrameScope,
     generated: GeneratedScope,
+    outputs: OutputsScope,
     tree: TreeScope,
     devices: DevicesScope,
     props: PropsScope,
@@ -116,8 +119,17 @@ pub struct Pending {
 
 /// The views worked out for another document state ([`Views::detached`]): not kept, not
 /// updated, dropped after use.
-#[derive(Debug, Default)]
-pub struct Detached {}
+#[derive(Debug)]
+pub struct Detached {
+    outputs: OutputsView,
+}
+
+impl Detached {
+    /// The report models of that state.
+    pub fn outputs(&self) -> &crate::outputs::kept::Outputs {
+        self.outputs.model()
+    }
+}
 
 /// Every derived view the project keeps, in stage order (design 064 §5).
 #[derive(Debug)]
@@ -126,6 +138,8 @@ pub struct Views {
     // Stage 1: indexes that depend only on the document.
     refs: RefsView,
     connectors: ConnectorsView,
+    // Stage 2: the report models, built on first show.
+    outputs: Lazy<OutputsView>,
     // Stage 3: pages.
     pages: PagesView,
     frame: FrameView,
@@ -143,6 +157,7 @@ impl Views {
             inputs,
             refs: RefsView::default(),
             connectors: ConnectorsView::default(),
+            outputs: Lazy::default(),
             pages: PagesView::default(),
             frame: FrameView::default(),
             generated: GeneratedView::default(),
@@ -182,6 +197,28 @@ impl Views {
         self.connectors.index()
     }
 
+    /// The report models, built on their first show (design 024 §8.1) and kept after that.
+    pub fn outputs(&mut self, doc: &Document) -> &crate::outputs::kept::Outputs {
+        let metrics = &*self.inputs.metrics;
+        self.outputs.get_or_build(|| OutputsView::build(doc, metrics)).model()
+    }
+
+    /// The report models, if shown once.
+    pub fn kept_outputs(&self) -> Option<&crate::outputs::kept::Outputs> {
+        self.outputs.get().map(OutputsView::model)
+    }
+
+    /// The report models' view, if shown once, to put it out of step on purpose (tests of verify
+    /// mode only).
+    pub fn outputs_view_mut(&mut self) -> Option<&mut OutputsView> {
+        self.outputs.get_mut()
+    }
+
+    /// Forget the report models: they are built again on their next show.
+    pub fn forget_outputs(&mut self) {
+        self.outputs.reset();
+    }
+
     /// Before phase: every kept view notes `ops` on the document before them. Changes nothing.
     pub fn begin(&self, before: &Document, ops: &[Op]) -> Pending {
         let effects = Effects::of(ops);
@@ -191,6 +228,11 @@ impl Views {
         // The end of the references' Before phase: what they show before the ops.
         self.refs.take(before, &mut pending.refs, &*self.inputs.metrics);
         note_view::<_, Inputs<'_>>(&self.connectors, &cx, &mut pending.connectors);
+        if let Some(outputs) = self.outputs.get() {
+            note_view::<_, Inputs<'_>>(outputs, &cx, &mut pending.outputs);
+            // The end of the report models' Before phase.
+            outputs.close_before(before, &mut pending.outputs);
+        }
         note_view::<_, Inputs<'_>>(&self.pages, &cx, &mut pending.pages);
         note_view::<_, Inputs<'_>>(&self.frame, &cx, &mut pending.frame);
         note_view::<_, Inputs<'_>>(&self.generated, &cx, &mut pending.generated);
@@ -203,11 +245,14 @@ impl Views {
     /// After phase on the committed transaction's ops, then update every kept view, stage by
     /// stage, and merge their outcomes.
     pub fn finish(&mut self, after: &Document, tx_ops: &[Op], pending: Pending) -> Changes {
-        let Pending { mut refs, mut connectors, mut pages, mut frame, mut generated, mut tree, mut devices, mut props } = pending;
+        let Pending { mut refs, mut connectors, mut outputs, mut pages, mut frame, mut generated, mut tree, mut devices, mut props } = pending;
         let effects = Effects::of(tx_ops);
         let cx = NoteCx { doc: after, phase: Phase::After, effects: &effects };
         note_view::<_, Inputs<'_>>(&self.refs, &cx, &mut refs);
         note_view::<_, Inputs<'_>>(&self.connectors, &cx, &mut connectors);
+        if let Some(view) = self.outputs.get() {
+            note_view::<_, Inputs<'_>>(view, &cx, &mut outputs);
+        }
         note_view::<_, Inputs<'_>>(&self.pages, &cx, &mut pages);
         note_view::<_, Inputs<'_>>(&self.frame, &cx, &mut frame);
         note_view::<_, Inputs<'_>>(&self.generated, &cx, &mut generated);
@@ -219,6 +264,10 @@ impl Views {
         // Stage 1: the indexes.
         merge(&mut changes, self.refs.update(after, refs, &inputs));
         merge(&mut changes, self.connectors.update(after, connectors, &inputs));
+        // Stage 2: the report models.
+        if let Some(view) = self.outputs.get_mut() {
+            merge(&mut changes, view.update(after, outputs, &inputs));
+        }
         // Stage 3: pages.
         merge(&mut changes, self.pages.update(after, pages, &inputs));
         changes.named = self.pages.take_named();
@@ -252,14 +301,15 @@ impl Views {
     pub fn rebuild(&mut self, doc: &Document) {
         self.refs = RefsView::build(doc);
         self.connectors = ConnectorsView::build(doc);
+        self.outputs.reset();
         self.frame.forget();
         self.generated.forget();
     }
 
     /// The views of another document state (an issued or finalised revision), built with the
     /// same engine inputs.
-    pub fn detached(&self, _doc: &Document) -> Detached {
-        Detached {}
+    pub fn detached(&self, doc: &Document) -> Detached {
+        Detached { outputs: OutputsView::build(doc, &*self.inputs.metrics) }
     }
 }
 

@@ -1,12 +1,13 @@
 //! The kept report models (see [`super`]'s update map). The kept PLC model's rules measure text
 //! (an address wider than its cell), so building and updating take the sheet font metrics,
-//! [`TextMetrics`]; ecad-cadcraft's `crate::outputs::Outputs` wraps this with today's
-//! signatures, passing CADCraft's fonts.
+//! [`TextMetrics`]; the project keeps them in its `derived::OutputsView`, which passes the
+//! engine's metrics.
 
+use ecad_model::effect::Effect;
 use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::{CableId, DeviceId, Document, End, ObjectRef, Op, PageId, Pt, Subject, TerminalId, WireId};
+use ecad_model::{CableId, DeviceId, Document, End, ObjectRef, PageId, Pt, Subject, TerminalId, WireId};
 
 use super::*;
 use crate::text_style::fonts::TextMetrics;
@@ -109,6 +110,35 @@ pub struct Outputs {
     /// Brief 046 (review): the last update's ops could move a page number or a sheet count that
     /// the document alone decides (a page's style or sheet): the frame's Total is worked out again.
     pub numbers_moved: bool,
+}
+
+/// What one commit's effects name for the report models, noted effect by effect
+/// ([`Outputs::note_before`], [`Outputs::note_after`]) and recomputed by [`Outputs::update`].
+#[derive(Debug, Clone, Default)]
+pub struct Noted {
+    /// The rows: noted on the state before and on the state after.
+    rows: Scope,
+    /// Wires named only on the state after, added after the net mates ([`Scope::note_after`]).
+    late: Scope,
+    /// The PLC model's touch.
+    plc: crate::plc::kept::Touch,
+    /// What the strip pages' indexes are read for.
+    strips: crate::strips::pages::Named,
+    /// A page number or a sheet count can move ([`Outputs::moves_page_number`]).
+    numbers: bool,
+    /// Pages added, removed or moved ([`Outputs::placed_page`]).
+    placed: Vec<PageId>,
+    /// The pages whose book position changes (the strips on them), read on the state after.
+    positions: ecad_model::book::PositionsNoted,
+}
+
+/// [`Noted`] without the strip pages' names, for the row update.
+struct Rows {
+    scope: Scope,
+    late: Scope,
+    plc: crate::plc::kept::Touch,
+    placed: Vec<PageId>,
+    positions: ecad_model::book::PositionsNoted,
 }
 
 impl Outputs {
@@ -269,47 +299,60 @@ impl Outputs {
         self.strips.sorted()
     }
 
-    /// What `ops`, about to be committed on `before`, could change. Pair with `Outputs::update`.
-    pub fn scope(&self, before: &Document, ops: &[Op]) -> Scope {
-        let mut s = Scope::default();
-        s.collect(before, ops);
-        s
+    /// Before phase: note what one effect, about to be committed on `before`, names. Pair with
+    /// [`Outputs::close_before`], [`Outputs::note_after`] and [`Outputs::update`].
+    pub fn note_before(&self, before: &Document, effect: &Effect<'_>, n: &mut Noted) {
+        n.rows.note(before, effect);
     }
 
-    /// Recompute the rows in `scope` on `doc` (the state after), adding what `ops` (the whole
-    /// committed transaction) name in this state.
-    pub fn update_with(&mut self, doc: &Document, ops: &[Op], scope: Scope, m: &dyn TextMetrics) {
-        let effects = ecad_model::effect::Effects::of(ops);
-        let numbers = effects.iter().any(Self::moves_page_number);
+    /// The end of the Before phase: the noted wires' net mates and the users of renamed entries on
+    /// `before`.
+    pub fn close_before(&self, before: &Document, n: &mut Noted) {
+        n.rows.close(before);
+    }
+
+    /// After phase: note what one effect of the transaction just committed names on `after`,
+    /// reading the models as they are before the update.
+    pub fn note_after(&self, after: &Document, effect: &Effect<'_>, n: &mut Noted) {
+        n.rows.note(after, effect);
+        n.late.note_after(after, effect);
+        self.plc.note(after, effect, &mut n.plc);
+        n.strips.note(effect);
+        n.numbers |= Self::moves_page_number(effect);
+        n.placed.extend(Self::placed_page(effect));
+        n.positions.note(after, effect);
+    }
+
+    /// Recompute what `n` names on `doc` (the state after), with text measured in `m`.
+    pub fn update(&mut self, doc: &Document, n: Noted, m: &dyn TextMetrics) {
+        let Noted { rows, late, plc, strips, numbers, placed, positions } = n;
         self.numbers_moved = numbers;
         let before = self.generated_sheets(doc);
-        self.update_rows(doc, &effects, scope, m);
+        self.update_rows(doc, Rows { scope: rows, late, plc, placed, positions }, m);
         // Brief 046: right after the strips (design 046 §9), also when no row was in scope.
-        self.strip_pages.update(doc, &effects, &self.strips);
+        self.strip_pages.update(doc, strips, &self.strips);
         if numbers || self.generated_sheets(doc) != before {
             self.refresh_continuation(doc);
             self.revision += 1;
         }
     }
 
-    fn update_rows(&mut self, doc: &Document, effects: &ecad_model::effect::Effects<'_>, mut scope: Scope, m: &dyn TextMetrics) {
+    fn update_rows(&mut self, doc: &Document, rows: Rows, m: &dyn TextMetrics) {
+        let Rows { mut scope, late, plc, placed, positions } = rows;
         // What this update changes, for the generated pages that depend on it (brief 028).
         self.last_cables_changed = false;
         self.strips.last_changed.clear();
         // Brief 045: the PLC model follows its own update map (design 045 §11.1).
-        if self.plc.update_with(doc, effects, m) {
+        if self.plc.update_touched(doc, plc, m) {
             self.checks_changed += 1;
             self.revision += 1;
         }
-        for p in effects.iter().filter_map(Self::placed_page) {
+        for p in placed {
             if needs_outputs(doc, p) {
                 self.generated.insert(p);
             } else {
                 self.generated.remove(&p);
             }
-        }
-        for effect in effects {
-            scope.note(doc, effect);
         }
         scope.close(doc);
         if scope.is_empty() {
@@ -335,9 +378,7 @@ impl Outputs {
             scope.devices.extend(self.from_project.iter().copied());
             scope.devices.extend(self.from_none.iter().copied());
         }
-        for effect in effects {
-            scope.note_after(doc, effect);
-        }
+        scope.wires.extend(late.wires);
         // Brief 044 (design 044 §11.1): a connector naming or description default reaches the
         // connectors inheriting it (their half rows); a naming key also their pins' wire rows.
         for k in &scope.connector_keys {
@@ -397,7 +438,7 @@ impl Outputs {
         }
         // Brief 028: the strips these rows touch (design 028 §11.1).
         let mut pages = scope.route_pages.clone();
-        pages.extend(ecad_model::book::positions_changed_by(doc, effects));
+        pages.extend(positions.changed());
         let mut strips = std::mem::take(&mut self.strips);
         let which = strips.touched(
             doc,

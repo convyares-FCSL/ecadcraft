@@ -126,9 +126,6 @@ pub struct Project {
     /// The Checks list (design 022 §8), built on its first show and then kept from each change's
     /// ops ([`crate::checks::Checks::update`]); `None` until first shown.
     pub checks: Option<crate::checks::Checks>,
-    /// The report models (brief 024, [`crate::outputs`]): built on first show (Reports, a BOM
-    /// page, Checks) and then kept from each change's ops; `None` until then.
-    pub outputs: Option<crate::outputs::Outputs>,
     /// `reports` asked for the Reports window (the desktop app opens it and clears this).
     pub open_reports: bool,
     /// Brief 035: `agentaccess` asked for this agent access preference (the desktop app applies it and
@@ -179,15 +176,22 @@ pub struct Project {
     /// what shows the branch (title, bar, Revisions, History) refreshes when it moves (brief 020a).
     branch_gen: u64,
     /// Every derived view, updated by the one commit pipeline (design 064 §5).
-    derived: ecad_electrical::derived::Views,
+    pub(crate) derived: ecad_electrical::derived::Views,
 }
 
 /// The derived views of `doc`, built with this engine's inputs (design 064 §5.2).
 pub(crate) fn views_for(doc: &Document) -> ecad_electrical::derived::Views {
-    let inputs = ecad_electrical::derived::EngineInputs { metrics: Arc::new(crate::draw::text_style::EngineMetrics) };
-    let mut views = ecad_electrical::derived::Views::new(inputs);
+    let mut views = engine_views();
     views.rebuild(doc);
     views
+}
+
+/// The derived views with this engine's inputs, none built yet: for [`Views::detached`] where no
+/// project is at hand.
+///
+/// [`Views::detached`]: ecad_electrical::derived::Views::detached
+pub(crate) fn engine_views() -> ecad_electrical::derived::Views {
+    ecad_electrical::derived::Views::new(ecad_electrical::derived::EngineInputs { metrics: Arc::new(crate::draw::text_style::EngineMetrics) })
 }
 
 /// A new project's first page: titled and numbered `1`.
@@ -694,10 +698,10 @@ impl Project {
         let parts = self.frame_parts(page);
         // Brief 045 (review of #84, 3): a page with PLC channel cells reads its addresses from the
         // kept PLC model, built on its first show.
-        if self.outputs.is_none() && crate::plc::page_has_cells(self.ledger.document(), page) {
+        if self.kept_outputs().is_none() && crate::plc::page_has_cells(self.ledger.document(), page) {
             self.outputs();
         }
-        let plc = self.outputs.as_ref().map(|o| &o.plc);
+        let plc = self.kept_outputs().map(|o| &o.plc);
         project_page_kept(self.ledger.document(), page, base, prev, &self.views, self.tolerance, &parts, self.show_hidden_text, plc)
     }
 
@@ -711,14 +715,14 @@ impl Project {
         }
         // A BOM page's sheet count (and so every page's Total) needs the report models (brief 024);
         // once built they track their pages themselves.
-        if self.outputs.is_none() && crate::generated::has_bom_page(self.ledger.document()) {
+        if self.kept_outputs().is_none() && crate::generated::has_bom_page(self.ledger.document()) {
             self.outputs();
         }
         if !self.pending_known {
             self.refresh_pending();
         }
         let doc = self.ledger.document();
-        let (input, total) = crate::generated::input_of(doc, page, self.outputs.as_ref());
+        let (input, total) = crate::generated::input_of(doc, page, self.kept_outputs());
         let input = input.with_pending(doc, self.pending);
         self.frame_stale = false;
         let generated = crate::generated::kind_of(doc, page).is_some();
@@ -730,7 +734,7 @@ impl Project {
             return parts.clone();
         }
         self.frame_builds += 1;
-        let parts = Arc::new(crate::generated::page_parts(doc, page, &input, self.outputs.as_ref(), total));
+        let parts = Arc::new(crate::generated::page_parts(doc, page, &input, self.kept_outputs(), total));
         self.frame = Some((page, parts.clone()));
         self.derived.frame_mut().show(page, input.0);
         parts
@@ -961,59 +965,20 @@ impl Project {
         self.checks = Some(checks);
     }
 
-    /// Bring the kept report models (if shown once) in line with the last transaction, from its
-    /// ops only (design 024 §9); `scope` was worked out before it. A change of a generated page's
-    /// sheet count marks the frame (its Total) stale. Returns the generated pages drawn from the
-    /// models whose content changed (overseer item O1: they join the commit's touched pages).
-    fn update_outputs(&mut self, scope: Option<crate::outputs::Scope>) -> BTreeSet<PageId> {
-        let (Some(scope), Some(mut o)) = (scope, self.outputs.take()) else { return BTreeSet::new() };
-        let ledger = &self.ledger;
-        let ops = ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
-        // Brief 028: the terminal plan and cable schedule pages count their sheets from the strip
-        // and cable rows, so the book's Total is compared whenever such a page exists.
-        // Only the pages drawn from the models can change their sheet count here (review of PR
-        // #55, finding 1): the kept set, each counted from kept totals; none, no work.
-        let doc = ledger.document();
-        let sheets = |o: &crate::outputs::Outputs| -> usize {
-            o.generated_pages().iter().filter(|p| doc.pages.contains_key(p)).map(|p| crate::generated::sheets(doc, *p, Some(o))).sum()
-        };
-        let (before, revision) = (sheets(&o), o.revision);
-        o.update(doc, ops, scope);
-        // Brief 051 (review of #89, 3): the rack sheet prints each card's place.
-        let plc_places_moved = crate::plc::sheets::rack_places_touched(doc, &o.plc, &ecad_model::effect::Effects::of(ops));
-        if ecad_model::ledger::verify_mode()
-            && let Some(line) = o.verify_strips(doc)
-        {
-            self.events.record(EventKind::IndexRebuilt, None, ledger.head(), None, line);
-        }
-        // The shown generated page redraws only when what it shows changed (tester 028, defect
-        // 2): the BOM page on any row change (024), a terminal plan when a strip it shows changed,
-        // a cable schedule when a cable row changed.
-        // Every such page says whether it was rewritten (overseer item O1), from the kept set.
-        let rewritten = |p: PageId| match crate::generated::kind_of(doc, p) {
-            Some(crate::generated::GenKind::BomLocation) => o.revision != revision,
-            // Brief 046 (design 046 §9): either style, by its own kept change set.
-            Some(crate::generated::GenKind::Terminals) => crate::generated::terminals_rewritten(doc, p, &o),
-            Some(crate::generated::GenKind::Cables) => o.last_cables_changed,
-            // Brief 045c: the I/O list when a card's rows changed.
-            Some(crate::generated::GenKind::IoList) => !o.plc.rows_changed.is_empty(),
-            // Brief 051 (design 051 §9.3): the rack sheet when a card or rack changed.
-            Some(crate::generated::GenKind::PlcRack) => !o.plc.last_changed.is_empty() || !o.plc.rows_changed.is_empty() || plc_places_moved,
-            _ => false,
-        };
-        let changed: BTreeSet<PageId> = o.generated_pages().iter().copied().filter(|p| doc.pages.contains_key(p) && rewritten(*p)).collect();
-        let shown_changed = self.frame.as_ref().is_some_and(|(p, _)| rewritten(*p));
-        if sheets(&o) != before || shown_changed || o.numbers_moved {
-            self.frame_stale = true;
-        }
-        self.outputs = Some(o);
-        changed
+    /// The report models, built whole on their first show (design 024 §8.1) and kept after that
+    /// by the views' pipeline (`ecad_electrical::derived::OutputsView`).
+    pub fn outputs(&mut self) -> &crate::outputs::kept::Outputs {
+        self.derived.outputs(self.ledger.document())
     }
 
-    /// The report models, built whole on their first show (design 024 §8.1) and kept after that.
-    pub fn outputs(&mut self) -> &crate::outputs::Outputs {
-        let doc = self.ledger.document();
-        self.outputs.get_or_insert_with(|| crate::outputs::Outputs::build(doc))
+    /// The report models, if shown once.
+    pub fn kept_outputs(&self) -> Option<&crate::outputs::kept::Outputs> {
+        self.derived.kept_outputs()
+    }
+
+    /// Forget the report models: they are built again on their next show.
+    pub fn forget_outputs(&mut self) {
+        self.derived.forget_outputs();
     }
 
     /// The Checks list, built whole on its first show (design 022 §8) and kept after that.

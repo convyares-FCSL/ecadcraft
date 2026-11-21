@@ -90,7 +90,7 @@ impl Command for RenumberpagesParams {
                 p.outputs();
             }
             let doc = p.ledger.document();
-            let plan = rules::plan_renumber(doc, crate::draw::outputs::kept_of(p.outputs.as_ref()), scope);
+            let plan = rules::plan_renumber(doc, p.kept_outputs(), scope);
             if plan.ops.is_empty() {
                 let line = "Page numbers already in order.".to_string();
                 pg.echo(line.clone());

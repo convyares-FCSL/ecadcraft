@@ -6,7 +6,7 @@
 //! was fixed (all three are fixed and run now).
 
 use ecad_cadcraft::Persistence;
-use ecad_cadcraft::outputs::{Group, Outputs};
+use ecad_cadcraft::outputs::{Group, kept::Outputs};
 use ecad_model::{CableId, DeviceId, Document, PageId, TerminalId, WireId, tag};
 use serde_json::{Value, json};
 
@@ -53,7 +53,7 @@ fn fixture(seed: u64) -> T {
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.outputs().clone();
-        (kept, Outputs::build(p.ledger.document()))
+        (kept, Outputs::build_with(p.ledger.document(), &ecad_cadcraft::text_style::EngineMetrics))
     });
     assert!(kept.strips.same_as(&built.strips), "strips differ from a rebuild");
     assert_eq!(kept.cable_table(), built.cable_table());
@@ -336,7 +336,7 @@ fn generated_pages_and_strips_follow_only_related_edits() {
 
     // Unrelated: a part number of a coil that no strip touches.
     t.h.run("setprop", json!({"component": far.hex(), "key": "part_number", "value": "K-99"})).unwrap();
-    let strips_work = t.h.p(|p| p.outputs.as_ref().unwrap().strips.last_work);
+    let strips_work = t.h.p(|p| p.kept_outputs().unwrap().strips.last_work);
     assert_eq!(strips_work, 0, "an unrelated edit recomputes no strip");
     t.h.activate(plan_page);
     let unrelated = t.h.p(|p| p.frame_builds) - builds;
@@ -344,13 +344,13 @@ fn generated_pages_and_strips_follow_only_related_edits() {
     // Related: the strip's offer adds spare rows on the page.
     let builds = t.h.p(|p| p.frame_builds);
     t.h.run("setprop", json!({"component": x1.hex(), "key": "terminals", "value": "10"})).unwrap();
-    assert_eq!(t.h.p(|p| p.outputs.as_ref().unwrap().strips.last_work), 1, "only -X01");
+    assert_eq!(t.h.p(|p| p.kept_outputs().unwrap().strips.last_work), 1, "only -X01");
     t.h.activate(plan_page);
     assert_eq!(t.h.p(|p| p.frame_builds) - builds, 1, "the plan page rebuilds once for its strip");
 
     // A cable change: only -X01 (on -W01's wires), never -X02.
     t.h.run("setprop", json!({"cable": t.cable.hex(), "key": "cores", "value": "4G"})).unwrap();
-    assert_eq!(t.h.p(|p| p.outputs.as_ref().unwrap().strips.last_work), 1, "only the strip on the cable's members");
+    assert_eq!(t.h.p(|p| p.kept_outputs().unwrap().strips.last_work), 1, "only the strip on the cable's members");
     assert_eq!(x2_plan(&mut t.h), x2_before, "-X02's rows unchanged");
     same_as_built(&mut t.h);
     t.h.check();

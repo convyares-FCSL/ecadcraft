@@ -13,7 +13,7 @@ use cadcraft_engine::Session;
 use cadcraft_engine::doc::EntityKind;
 use ecad_cadcraft::checks::{self, Kind};
 use ecad_cadcraft::designations::{self, Aspect};
-use ecad_cadcraft::outputs::{Group, Outputs};
+use ecad_cadcraft::outputs::{Group, kept::Outputs};
 use ecad_cadcraft::{Persistence, ProjectHandle, generated, locations};
 use ecad_model::{Author, DeviceId, Document, Op, PageId};
 use serde_json::{Value, json};
@@ -77,7 +77,7 @@ fn change_n(h: &mut H) -> u64 {
 fn same_as_built(h: &mut H, what: &str) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.outputs().clone();
-        (kept, Outputs::build(p.ledger.document()))
+        (kept, Outputs::build_with(p.ledger.document(), &ecad_cadcraft::text_style::EngineMetrics))
     });
     assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location), "{what}: BOM by location");
     assert_eq!(kept.bom_table(Group::Part), built.bom_table(Group::Part), "{what}: BOM by part");
@@ -538,7 +538,7 @@ fn the_bom_page_flags_its_question_mark_heading() {
     place(&mut h, "coil", (100.0, 150.0)); // no location
     let bom: PageId = id(&h.run("newpage", json!({"generated": "bom-location"})).unwrap(), "page");
     let doc = h.doc();
-    let parts = generated::parts_of(&doc, bom, Some(&Outputs::build(&doc)));
+    let parts = generated::parts_of(&doc, bom, Some(&Outputs::build_with(&doc, &ecad_cadcraft::text_style::EngineMetrics)));
     let qs: Vec<_> = parts.iter().filter(|p| matches!(&p.kind, EntityKind::Text(t) if t.value == generated::MISSING)).collect();
     // The heading `?`, the maker `?` and the part number `?`.
     assert!(qs.len() >= 3, "{} `?` texts", qs.len());

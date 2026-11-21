@@ -10,7 +10,7 @@
 //! models' revision changed, and only while the tab is shown; the core table also when another
 //! cable is selected.
 
-use ecad_cadcraft::outputs::Outputs;
+use ecad_cadcraft::outputs::kept::Outputs;
 use ecad_model::CableId;
 use ecad_ui::prim::Tone;
 use ecad_ui::table::{Cell, Changed, Column, ColumnId, Table, TableEvent, TableSource, Width};

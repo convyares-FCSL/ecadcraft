@@ -13,7 +13,7 @@ use cadcraft_engine::Input;
 use cadcraft_engine::doc::EntityKind;
 use cadcraft_engine::geom::Vec2;
 use ecad_cadcraft::Persistence;
-use ecad_cadcraft::outputs::{Group, Outputs};
+use ecad_cadcraft::outputs::{Group, kept::Outputs};
 use ecad_model::{DeviceId, Document, PageId, TerminalId};
 use serde_json::{Value, json};
 
@@ -90,7 +90,7 @@ fn second_strip(h: &mut H) -> (DeviceId, Vec<TerminalId>) {
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.outputs().clone();
-        (kept, Outputs::build(p.ledger.document()))
+        (kept, Outputs::build_with(p.ledger.document(), &ecad_cadcraft::text_style::EngineMetrics))
     });
     assert!(kept.strips.same_as(&built.strips), "strips differ from a rebuild");
     assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location));
@@ -501,7 +501,7 @@ fn g_update_maps_recompute_only_what_changed() {
     a.h.cfg(|p| {
         p.outputs();
     });
-    let work = |h: &mut H| h.p(|p| p.outputs.as_ref().unwrap().strips.last_work);
+    let work = |h: &mut H| h.p(|p| p.kept_outputs().unwrap().strips.last_work);
     let x2_before = plan(&mut a.h, x2);
     a.h.run("setprop", json!({"component": a.x1.hex(), "key": "acc.after.2", "value": "partition"})).unwrap();
     assert_eq!(work(&mut a.h), 1, "acc.* on -X01 recomputes -X01 only");

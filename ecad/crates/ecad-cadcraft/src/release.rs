@@ -18,7 +18,7 @@
 //! - **An existing folder** is never overwritten silently: add missing files, replace (the old
 //!   one is moved to `release/replaced/`), or keep both (`Rev B (2)`). Nothing is ever deleted
 //!   but this module's own staging folder.
-//! - **Slots** ([`LISTS`]): the generated lists as a table; brief 028 fills `terminal-plan` and
+//! - **Slots** (`ecad_electrical::release::LISTS`): the generated lists as a table; brief 028 fills `terminal-plan` and
 //!   `cable-schedule` (its terminal plan and cable schedule, columns named by its JSON keys).
 //!
 //! # Update map (design 027 §11.1)
@@ -38,13 +38,14 @@ use serde_json::{Map, Value, json};
 use crate::access::Pages;
 use crate::checks::{self, Check};
 use crate::cmd::opt_typed;
-use crate::outputs::{self, Group as BomGroup, Outputs, Table};
+use crate::outputs;
+use crate::outputs::kept::Outputs;
 use crate::printbook::{self, Options};
 use crate::project::Project;
 use crate::revisions;
 
 use ecad_electrical::release::{
-    DEFAULT_ROWS, Group, MAX_ROWS, NO_CABLES, NO_FILES_HERE, NO_STRIPS, SAVE_FIRST, checks_table, clean_stem, counts, folder_name, grouped,
+    DEFAULT_ROWS, Group, LISTS, MAX_ROWS, NO_FILES_HERE, SAVE_FIRST, checks_table, clean_stem, counts, folder_name, grouped, slot_gives,
 };
 use ecad_electrical::release::{errors_refusal, finalising, over_budget, stopped};
 
@@ -76,7 +77,7 @@ pub fn check_rows(p: &mut Project) -> Vec<Check> {
     p.checks();
     let doc = p.ledger.document();
     let mut rows: Vec<Check> = p.checks.as_ref().map(|c| c.rows().cloned().collect()).unwrap_or_default();
-    rows.extend(p.outputs.as_ref().map(Outputs::checks).unwrap_or_default());
+    rows.extend(p.kept_outputs().map(Outputs::checks).unwrap_or_default());
     checks::sort(doc, rows)
 }
 
@@ -124,69 +125,6 @@ pub mod numbering_seam {
 }
 
 // ---------------------------------------------------------------- slots (design 027 §7.2)
-
-/// A generated list of the folder.
-pub struct Slot {
-    pub id: &'static str,
-    /// After `<stem> Rev B`.
-    pub suffix: &'static str,
-    /// The table, or `None` with [`Slot::missing_why`] when the project gives none.
-    pub build: fn(&Document, &Outputs) -> Result<Option<Table>, String>,
-    pub missing_why: &'static str,
-}
-
-fn bom(_: &Document, o: &Outputs) -> Result<Option<Table>, String> {
-    Ok(Some(o.bom_table(BomGroup::Location)))
-}
-fn wires(_: &Document, o: &Outputs) -> Result<Option<Table>, String> {
-    Ok(Some(o.wire_table()))
-}
-fn cables(_: &Document, o: &Outputs) -> Result<Option<Table>, String> {
-    Ok(Some(o.cable_table()))
-}
-/// Brief 028's terminal plan, when the project has strips.
-fn terminal_plan(_: &Document, o: &Outputs) -> Result<Option<Table>, String> {
-    Ok((!o.strips.is_empty()).then(|| o.terminal_plan_csv()))
-}
-/// Brief 028's cable schedule, when the project has cables.
-fn cable_schedule(_: &Document, o: &Outputs) -> Result<Option<Table>, String> {
-    Ok((o.cable_count() > 0).then(|| o.cable_schedule_csv()))
-}
-
-/// The generated lists, in folder order. The book, `checks` and the manifest are always written.
-pub const LISTS: [Slot; 7] = [
-    Slot { id: "bom", suffix: " BOM.csv", build: bom, missing_why: "" },
-    Slot { id: "wires", suffix: " wires.csv", build: wires, missing_why: "" },
-    Slot { id: "cables", suffix: " cables.csv", build: cables, missing_why: "" },
-    Slot { id: "terminal-plan", suffix: " terminal plan.csv", build: terminal_plan, missing_why: NO_STRIPS },
-    Slot { id: "cable-schedule", suffix: " cable schedule.csv", build: cable_schedule, missing_why: NO_CABLES },
-    // Brief 045c (design 045 §8.3): ` IO list.csv` (a `/` cannot be in a file name).
-    // Brief 051 (design 051 §4.2): the rack overview, before the I/O list in the book.
-    Slot { id: "plc-racks", suffix: " PLC racks.csv", build: plc_racks, missing_why: crate::plc::sheets::NO_RACKS },
-    Slot { id: "io-list", suffix: " IO list.csv", build: io_list, missing_why: crate::plc::iolist::NO_CARDS },
-];
-
-/// Brief 051's PLC racks list, when the project has a rack or a card.
-fn plc_racks(doc: &Document, o: &Outputs) -> Result<Option<Table>, String> {
-    Ok(crate::plc::sheets::rack_csv(doc, &o.plc))
-}
-
-/// Brief 045's I/O list, when the project has a card with channels.
-fn io_list(doc: &Document, o: &Outputs) -> Result<Option<Table>, String> {
-    Ok(crate::plc::iolist::csv_table(doc, &o.plc))
-}
-
-/// Whether `slot` gives a list for `doc` (the check's Writes line, before anything is built):
-/// brief 028's lists only when the project has strips or cables.
-fn slot_gives(slot: &Slot, doc: &Document) -> bool {
-    match slot.id {
-        "terminal-plan" => doc.devices.keys().any(|c| crate::strips::strip_of(doc, *c).is_some()),
-        "cable-schedule" => !doc.cables.is_empty(),
-        "io-list" => doc.devices.keys().any(|c| crate::plc::card_type_of(doc, *c).is_some_and(|t| t.has_channels())),
-        "plc-racks" => doc.devices.keys().any(|c| crate::plc::card_type_of(doc, *c).is_some()),
-        _ => slot.missing_why.is_empty(),
-    }
-}
 
 /// Every slot id `outputs` may name.
 pub fn slot_ids() -> Vec<&'static str> {
@@ -480,7 +418,7 @@ pub fn stage(b: &Build<'_>, dir: &Path, progress: &mut dyn FnMut(usize, usize) -
             st.not_included.push((slot.id.into(), "Not chosen.".into()));
             continue;
         }
-        match (slot.build)(b.doc, b.outputs)? {
+        match (slot.build)(b.doc, b.outputs) {
             Some(t) => {
                 put(dir, slot.id, format!("{base}{}", slot.suffix), outputs::csv(&t, true).as_bytes(), &mut st.files)?;
                 if let Some(w) = st.files.last_mut() {
@@ -872,8 +810,8 @@ pub fn view(p: &mut Project, rev: Option<&str>, accept: bool, limit: usize) -> R
     match &issued_rev {
         Some(row) => {
             let (_, _, then) = crate::history::issued_state(p, row.rev())?;
-            let o = Outputs::build(&then);
-            let rows = checks::all_with(&then, p.tolerance, &o);
+            let detached = p.derived().detached(&then);
+            let rows = checks::all_with(&then, p.tolerance, detached.outputs());
             to_rows(&then, &rows, &mut v);
             v.rev = row.rev().to_string();
             v.issued = Some(v.rev.clone());
@@ -971,7 +909,7 @@ pub fn prerelease(p: &mut Project, params: &Value) -> Result<Value, String> {
 pub fn dialog_key(p: &Project, accept: bool) -> Option<u64> {
     use std::hash::{Hash, Hasher};
     let checks = p.checks.as_ref()?;
-    let outputs = p.outputs.as_ref()?;
+    let outputs = p.kept_outputs()?;
     let doc = p.ledger.document();
     let mut h = std::collections::hash_map::DefaultHasher::new();
     (checks.changed, outputs.checks_key(), accept).hash(&mut h);
@@ -1092,9 +1030,9 @@ pub(crate) fn release_pending(
     // With Finalise, the lists and the check are those of the finalised state (built on this
     // copy, as for a re-release); otherwise the kept ones (the issue changes no list or check).
     let finalised = finalise.as_ref().map(|_| {
-        let o = Outputs::build(&issued_doc);
-        let r = checks::all_with(&issued_doc, p.tolerance, &o);
-        (o, r)
+        let detached = p.derived().detached(&issued_doc);
+        let r = checks::all_with(&issued_doc, p.tolerance, detached.outputs());
+        (detached, r)
     });
     let rows = finalised.as_ref().map_or(rows, |(_, r)| r.clone());
     // The errors gate on the rows the folder ships: after Finalise, when chosen.
@@ -1108,8 +1046,8 @@ pub(crate) fn release_pending(
     let staged = {
         let fail = injected(p, Step::Partial);
         p.outputs();
-        let kept = p.outputs.as_ref().ok_or("the report models could not be built")?;
-        let outputs = finalised.as_ref().map_or(kept, |(o, _)| o);
+        let kept = p.kept_outputs().ok_or("the report models could not be built")?;
+        let outputs = finalised.as_ref().map_or(kept, |(o, _)| o.outputs());
         let b =
             Build { doc: &issued_doc, outputs, rows: &rows, fan: &p.views, tol: p.tolerance, options: o, stem, rev: rev.clone(), accepted, chosen };
         let built = fail.and_then(|()| stage(&b, &staging, progress));
@@ -1160,7 +1098,7 @@ pub(crate) fn release_pending(
     let iss = Issued { branch: crate::history::current_name(p), transaction: tx, point: plan.head, chain };
     let doc = p.ledger.document().clone();
     let row = revisions::list(&doc).into_iter().find(|r| r.n == plan.n).unwrap_or_default();
-    let outputs = p.outputs.clone().unwrap_or_default();
+    let outputs = p.kept_outputs().cloned().unwrap_or_default();
     let fan = p.views.clone();
     let b =
         Build { doc: &doc, outputs: &outputs, rows: &rows, fan: &fan, tol: p.tolerance, options: o, stem, rev: rev.clone(), accepted, chosen: None };
@@ -1231,22 +1169,13 @@ pub fn release_issued(p: &mut Project, params: &Value, rev: &str, progress: &mut
     let default = row.released.as_deref().and_then(|v| from_recorded(p, v)).or_else(|| default_folder(p, &rev));
     let target = folder_param(p, params, default)?;
     let (named, seq, then) = crate::history::issued_state(p, &rev)?;
-    let outputs = Outputs::build(&then);
-    let rows = checks::all_with(&then, p.tolerance, &outputs);
+    let detached = p.derived().detached(&then);
+    let outputs = detached.outputs();
+    let rows = checks::all_with(&then, p.tolerance, outputs);
     let staging = partial_of(&target);
     let fan = p.views.clone();
-    let b = Build {
-        doc: &then,
-        outputs: &outputs,
-        rows: &rows,
-        fan: &fan,
-        tol: p.tolerance,
-        options: o,
-        stem: stem(p),
-        rev: rev.clone(),
-        accepted: false,
-        chosen,
-    };
+    let b =
+        Build { doc: &then, outputs, rows: &rows, fan: &fan, tol: p.tolerance, options: o, stem: stem(p), rev: rev.clone(), accepted: false, chosen };
     let built =
         injected(p, Step::Partial).and_then(|()| stage(&b, &staging, progress)).and_then(|st| landing(&target, &st, existing).map(|l| (st, l)));
     let (st, l) = match built {

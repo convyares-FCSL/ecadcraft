@@ -127,7 +127,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
             doc,
             c,
             n,
-            p.outputs.as_ref().and_then(|o| o.strips.get(c)).and_then(|d| d.acc.links.iter().find(|l| l.n == n)).map(|l| l.bars),
+            p.kept_outputs().and_then(|o| o.strips.get(c)).and_then(|d| d.acc.links.iter().find(|l| l.n == n)).map(|l| l.bars),
         ));
         return v;
     }
@@ -183,7 +183,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         }
         match k.devices.iter().copied().collect::<Vec<_>>().as_slice() {
             [b] if crate::locations::is_box(doc, *b) => v.sections.push(box_section(doc, *b)),
-            _ => v.sections.push(device_section(doc, p.outputs.as_ref().map(|o| &o.plc), &k.devices, k.symbol)),
+            _ => v.sections.push(device_section(doc, p.kept_outputs().map(|o| &o.plc), &k.devices, k.symbol)),
         }
     } else if let [w] = k.wires.iter().copied().collect::<Vec<_>>().as_slice() {
         v.deps.insert(ObjectRef::Wire(*w));

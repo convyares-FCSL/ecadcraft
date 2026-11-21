@@ -199,7 +199,7 @@ fn refresh(t: &mut App, st: &mut State) -> bool {
         let doc = p.ledger.document();
         let pick = ecad_cadcraft::look::pick_routes(p, page, &selection);
         let data = PageData {
-            frames: ecad_cadcraft::generated::sheet_windows(doc, page, p.outputs.as_ref()),
+            frames: ecad_cadcraft::generated::sheet_windows_of(doc, page, p.kept_outputs()),
             painted: ecad_cadcraft::look::painted_marks(p, uid),
             provisional: ecad_cadcraft::look::provisional_tag_handles(p, page),
             related: related(p, page, &selection),
