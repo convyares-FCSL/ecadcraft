@@ -192,12 +192,14 @@ fn effect_routing(rel: &str, text: &str, whole: bool) -> (Vec<String>, Vec<Strin
     let mut depth = 0i64;
     for (i, code) in code_lines(text).iter().enumerate() {
         let t = code.trim();
-        if let Some((arm_depth, over, wilds)) = matches.last_mut() {
-            if depth == *arm_depth && !t.is_empty() && !t.starts_with('}') {
-                *over |= is_effect_arm(t);
-                if t.starts_with("_ =>") || t.starts_with("_ if ") {
-                    wilds.push(i);
-                }
+        if let Some((arm_depth, over, wilds)) = matches.last_mut()
+            && depth == *arm_depth
+            && !t.is_empty()
+            && !t.starts_with('}')
+        {
+            *over |= is_effect_arm(t);
+            if t.starts_with("_ =>") || t.starts_with("_ if ") {
+                wilds.push(i);
             }
         }
         if in_fn.is_none() {
