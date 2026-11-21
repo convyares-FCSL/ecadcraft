@@ -121,7 +121,7 @@ const LAYER_EXCEPTIONS: &[(&str, &str, &str)] = &[];
 const DEV_BY_DEFAULT: &[&str] = &["ecad-app"];
 
 /// Features whose code lives only in a crate's `dev` module (design 029 §12.2, owner Q3).
-const DEV_FEATURES: &[&str] = &["dev", "verify-invariants", "translate-oracle", "fault-injection", "test-ops"];
+const DEV_FEATURES: &[&str] = &["dev", "verify-invariants", "fault-injection", "test-ops"];
 
 /// Files that still read a dev feature outside their crate's `dev` module, with the brief that
 /// will move the code (design 029 §12.4). This list only shrinks: an entry whose file no longer
@@ -133,7 +133,6 @@ const DEV_FEATURE_ALLOWLIST: &[(&str, &str)] = &[
     ("crates/ecad-cadcraft/src/project/changes.rs", "dev tree, part 2 (after 026, 027, 028)"),
     ("crates/ecad-cadcraft/src/project/owner.rs", "dev tree, part 2 (after 026, 027, 028)"),
     ("crates/ecad-cadcraft/src/project/persistence.rs", "dev tree, part 2 (after 026, 027, 028)"),
-    ("crates/ecad-cadcraft/src/translate.rs", "dev tree, part 2 (after 026, 027, 028)"),
 ];
 
 /// Styling written in place, which ECAD UI code may no longer use (design `ui-architecture.md`
@@ -630,7 +629,7 @@ fn drawn_text_violations(meta: &Value) -> Result<Vec<String>, String> {
 const STRING_ERROR_ALLOWLIST: &[(&str, usize, usize)] = &[
     ("ecad-app", 57, 6),
     ("ecad-bench", 95, 22),
-    ("ecad-cadcraft", 155, 41),
+    ("ecad-cadcraft", 147, 39),
     ("ecad-cli", 1, 0),
     ("ecad-desktop", 3, 5),
     ("ecad-electrical", 0, 0),
@@ -1562,7 +1561,7 @@ mod tests {
     fn dev_features_are_read_only_in_the_dev_module() {
         let rows: &[(&str, &str, usize)] = &[
             ("crates/c/src/dev.rs", "fn f() -> bool { cfg!(feature = \"verify-invariants\") }", 0),
-            ("crates/c/src/dev/oracle.rs", "#[cfg(feature = \"translate-oracle\")]\nfn big() {\n}\n", 0),
+            ("crates/c/src/dev/oracle.rs", "#[cfg(feature = \"fault-injection\")]\nfn big() {\n}\n", 0),
             ("crates/c/src/lib.rs", "#[cfg(feature = \"test-ops\")]\nmod dev;\n", 0),
             ("crates/c/src/ledger.rs", "    #[cfg(feature = \"fault-injection\")]\n    crate::dev::maybe_panic(at);\n", 0),
             ("crates/c/src/ledger.rs", "    #[cfg(feature = \"fault-injection\")]\n    if crate::dev::fail() {\n        return;\n    }\n", 1),

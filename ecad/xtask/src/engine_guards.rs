@@ -73,7 +73,6 @@ const ALLOWED: &[(&str, usize, &str)] = &[
     // The dev tools stay (brief 074 "What stays").
     ("crates/ecad-cadcraft/src/debug.rs", 5, "the live debugger: replay to a sequence number and its read-only labels and counts"),
     ("crates/ecad-cadcraft/src/verify.rs", 3, "the projection check's point comparisons (a dev check)"),
-    ("crates/ecad-cadcraft/src/translate_oracle.rs", 1, "the translate oracle's preview (a dev check)"),
     // Judgement calls that stay with the engine code they serve.
     ("crates/ecad-cadcraft/src/draw/title_block/layout.rs", 1, "a title block ink's ACI colour (CADCraft's colour index)"),
     ("crates/ecad-cadcraft/src/translate.rs", 1, "movement: the drawn shape of a moved primitive (a tester area)"),
@@ -94,7 +93,7 @@ const ADAPTERS: &[(&str, &str, &str)] = &[
     ("crates/ecad-cadcraft/src/project/mod.rs", "views_for", "builds the engine's own views"),
     ("crates/ecad-cadcraft/src/cmd/output.rs", "report_result", "writes the report's CSV file"),
     ("crates/ecad-cadcraft/src/draw/title_block/dxf.rs", "block", "reads the DXF with CADCraft's reader"),
-    ("crates/ecad-cadcraft/src/translate.rs", "preview", "applies ops to the live ledger, with the oracle's hook"),
+    ("crates/ecad-cadcraft/src/translate.rs", "preview", "applies ops to the live ledger and rolls them back"),
 ];
 
 /// The parameters of a list, split at its top-level commas.

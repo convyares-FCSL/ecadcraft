@@ -56,9 +56,6 @@ pub mod strip_page;
 #[cfg(feature = "test-support")]
 pub mod test_support;
 mod translate;
-/// The pre-brief-014 translation, compared with the current one on every edit (test oracle).
-#[cfg(feature = "translate-oracle")]
-pub mod translate_oracle;
 pub mod verify;
 pub mod views;
 
