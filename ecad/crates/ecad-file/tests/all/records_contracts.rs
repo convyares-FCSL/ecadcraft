@@ -245,9 +245,9 @@ fn wiring_settings_without_the_label_rule_read_with_its_defaults() {
     assert_eq!((w.label_rule, w.label_min_length, w.label_height), (None, None, None));
 }
 
-/// The golden project (`tests/golden/project.ecad`, written once by this build from the fixture;
-/// regenerate with `ECAD_UPDATE_GOLDEN=1` only for a new format version) still opens to the same
-/// history and document: a file written by an older build keeps working.
+/// The golden project (`tests/golden/project.ecad`, written by this build from the fixture) opens to
+/// the same history and document. Pre-v1 there is no compatibility: when the format changes,
+/// regenerate it with `ECAD_UPDATE_GOLDEN=1` in the same commit.
 #[test]
 fn the_golden_project_opens() {
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/project.ecad");
