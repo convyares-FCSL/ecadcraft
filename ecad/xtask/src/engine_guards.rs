@@ -66,10 +66,8 @@ const ENGINE_TYPES: &[&str] = &["Session", "Project", "Pages", "Self"];
 /// falls.
 #[rustfmt::skip]
 const ALLOWED: &[(&str, usize, &str)] = &[
-    // Waits for R9 (the views lane): the cable fan, label layout and their vector helpers move with
-    // the views. views.rs counts 0 today (its rules take engine types) but moves with R9 all the same.
-    ("crates/ecad-cadcraft/src/look.rs", 17, "waits for R9: cable fan geometry, label layout and their point helpers"),
-    ("crates/ecad-cadcraft/src/views.rs", 0, "waits for R9: the traditional/fan choice moves with the views"),
+    // The cable view: its geometry is in ecad_electrical::cable_look; the one left measures text.
+    ("crates/ecad-cadcraft/src/look.rs", 1, "a reference end's marker box, measured with CADCraft's drafting font"),
     // The agent gate stays in the engine (brief 074 "What stays").
     ("crates/ecad-cadcraft/src/agent/gate.rs", 3, "the agent gate: undo step, issue order and the transaction summary it answers with"),
     ("crates/ecad-cadcraft/src/agent/mod.rs", 1, "the agent gate: an author's words in its answers"),
@@ -84,7 +82,7 @@ const ALLOWED: &[(&str, usize, &str)] = &[
     ("crates/ecad-cadcraft/src/draw/text_style.rs", 1, "text width with this machine's fonts"),
     ("crates/ecad-cadcraft/src/draw/title_block/dxf.rs", 2, "the DXF reader (CADCraft's) and the area it fits into"),
     ("crates/ecad-cadcraft/src/draw/title_block/layout.rs", 3, "title block drawing: ACI colours, extents and placing primitives"),
-    ("crates/ecad-cadcraft/src/draw/xref.rs", 1, "the contact table drawn under a device"),
+    ("crates/ecad-cadcraft/src/draw/xref.rs", 1, "the contact table under a device, measured with CADCraft's fonts"),
     ("crates/ecad-cadcraft/src/strip_page.rs", 2, "the strip page's drawn row heights"),
     ("crates/ecad-cadcraft/src/translate.rs", 2, "movement: the preview ledger and the drawn shape of a moved primitive"),
     ("crates/ecad-cadcraft/src/interact/connectors.rs", 1, "a gesture's side word"),
@@ -92,11 +90,9 @@ const ALLOWED: &[(&str, usize, &str)] = &[
     ("crates/ecad-cadcraft/src/interact/location_form.rs", 1, "the location form's snapping distance"),
     ("crates/ecad-cadcraft/src/interact/mod.rs", 4, "snapping onto primitives and the hover's words"),
     ("crates/ecad-cadcraft/src/interact/text_tools.rs", 1, "the text tool's kind"),
-    // Project glue: which views to keep, what an edit touched, the print book's note.
+    // Project glue: which views to keep when it opens, and the history panel's clock.
     ("crates/ecad-cadcraft/src/project/mod.rs", 1, "builds the project's views when it opens"),
-    ("crates/ecad-cadcraft/src/printbook.rs", 1, "the print book's pending note, written into the PDF"),
-    ("crates/ecad-cadcraft/src/merging.rs", 3, "the merge session's objects, edit rule and conflict words; moves with the merge work"),
-    ("crates/ecad-cadcraft/src/history.rs", 2, "the history panel's group words and device changes; next to move after 074"),
+    ("crates/ecad-cadcraft/src/history.rs", 1, "a session group's time text in the local zone (the clock stays in the engine)"),
     // Command glue: a report's file, and JSON a command still reads by hand.
     ("crates/ecad-cadcraft/src/cmd/output.rs", 1, "a report's page, or the CSV file it writes"),
     ("crates/ecad-cadcraft/src/cmd/title_block.rs", 1, "titleblockimport's frame read from JSON by hand until lane 066d types it"),
