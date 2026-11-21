@@ -21,12 +21,13 @@
 //!   right-click offers switch, merge, update, rename and archive.
 //! - Authors (brief 043, screen f): every row carries its author, "You" for the person or the
 //!   agent's name in the `agent` colour. In the Steps list, consecutive transactions by one agent
-//!   form a **session group** ([`history::sessions`]) that collapses to one row; while that
+//!   form a **session group** ([`ecad_file::history::sessions`]) that collapses to one row; while that
 //!   agent's bridge session is live the group offers Undo session (the banner's plan and
 //!   confirmation, design 035 §8); after it ended its steps undo one by one as any others. The
 //!   groups are made when the Steps list is read (its update map above), never per frame.
 
-use ecad_cadcraft::history::{self, Graph, NodeKind, Show};
+use ecad_cadcraft::history;
+use ecad_file::history::{BranchRow, Graph, Node, NodeKind, PAGE, STEPS_PAGE, SessionGroup, Show, author_text, sessions_split};
 use ecad_file::schema::{BranchId, BranchStatus};
 use ecad_model::Op;
 use eframe::egui::{self, Color32, RichText, Sense, Stroke, pos2, vec2};
@@ -187,7 +188,7 @@ pub struct HistoryPanel {
     steps: Vec<StepRow>,
     /// The Steps list's rows grouped by session (brief 043), made with the rows and again when the
     /// live session changes (its steps are a group of their own).
-    groups: Vec<history::SessionGroup>,
+    groups: Vec<SessionGroup>,
     /// The Steps list's transactions without their ops, to regroup without reading the project.
     step_txs: Vec<ecad_model::Transaction>,
     /// Session groups shown expanded, by their newest step.
@@ -292,7 +293,7 @@ impl HistoryPanel {
             n.label = if unsaved > 0 { format!("Now · {name} · {unsaved} unsaved") } else { format!("Now · {name}") };
             if let Some(t) = p.ledger.transaction(head) {
                 n.time_ms = t.time_ms;
-                n.author = history::author_text(&t.author);
+                n.author = author_text(&t.author);
             }
         }
         if let Some(b) = self.graph.branches.iter_mut().find(|b| b.current) {
@@ -337,7 +338,7 @@ impl HistoryPanel {
         if self.steps_for.as_ref() == Some(&want) {
             return;
         }
-        let limit = history::STEPS_PAGE * (self.steps_more + 1);
+        let limit = STEPS_PAGE * (self.steps_more + 1);
         let rows = history::steps(p, sel.branch, Some(sel.seq + 1), limit).unwrap_or_default();
         let today = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_millis() as u64);
         self.steps = rows
@@ -345,7 +346,7 @@ impl HistoryPanel {
             .map(|t| StepRow {
                 seq: t.seq,
                 label: t.label.clone(),
-                author: history::author_text(&t.author),
+                author: author_text(&t.author),
                 time: history::short_time(t.time_ms, today),
                 agent: match &t.author {
                     ecad_model::Author::Agent(n) => Some(n.clone()),
@@ -716,7 +717,7 @@ impl HistoryPanel {
             ui.painter().line_segment([pos2(x, top), pos2(x, bottom)], Stroke::new(2.0, ecad_ui::color(ecad_ui::SHELL.accent).gamma_multiply(0.7)));
         }
         // Show the rows already read first; past them, read the next page.
-        let more_to_read = self.steps.len() as u64 >= history::STEPS_PAGE * (self.steps_more + 1);
+        let more_to_read = self.steps.len() as u64 >= STEPS_PAGE * (self.steps_more + 1);
         if hidden > 0 || more_to_read {
             let text = if hidden > 0 { format!("Show {hidden} earlier change{}", if hidden == 1 { "" } else { "s" }) } else { EARLIER.to_string() };
             ui.horizontal(|ui| {
@@ -725,7 +726,7 @@ impl HistoryPanel {
                 b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, EARLIER));
                 if b.clicked() {
                     if hidden > 0 {
-                        self.changes_more += history::STEPS_PAGE as usize;
+                        self.changes_more += STEPS_PAGE as usize;
                     } else {
                         self.steps_more += 1;
                     }
@@ -799,8 +800,7 @@ impl HistoryPanel {
         }
         let s = ecad_ui::SHELL;
         let c = ecad_ui::color;
-        let nodes: Vec<history::Node> =
-            self.graph.nodes.iter().filter(|n| matches!(n.kind, NodeKind::Version | NodeKind::Revision)).cloned().collect();
+        let nodes: Vec<Node> = self.graph.nodes.iter().filter(|n| matches!(n.kind, NodeKind::Version | NodeKind::Revision)).cloned().collect();
         let today = now_ms();
         let mut drawn = 0;
         for n in &nodes {
@@ -856,7 +856,7 @@ impl HistoryPanel {
                 let more = ui.add(egui::Label::new(RichText::new(OLDER).color(c(s.accent_text))).sense(Sense::click()));
                 more.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, OLDER));
                 if more.clicked() {
-                    self.show.limit = self.graph.nodes.len() + history::PAGE;
+                    self.show.limit = self.graph.nodes.len() + PAGE;
                     self.invalidate();
                 }
             });
@@ -871,7 +871,7 @@ impl HistoryPanel {
     }
 
     /// A version's or revision's accessible label (`Version Before change on main`).
-    fn version_label(&self, n: &history::Node) -> String {
+    fn version_label(&self, n: &Node) -> String {
         let b = self.graph.branches.iter().find(|b| b.id == n.branch).map_or("main", |b| b.name.as_str());
         match n.kind {
             NodeKind::Revision => format!("{} on {b}, {}", n.label, history::full_time(n.time_ms)),
@@ -939,7 +939,7 @@ impl HistoryPanel {
 
     /// The right-click menu of a branch's Now row: switch, merge into the parent, update from
     /// the parent (the branch shown), rename and archive.
-    fn now_menu(&mut self, ui: &mut egui::Ui, row: Option<&history::BranchRow>, writable: bool, unsaved: u64, read_only: bool) -> Option<Action> {
+    fn now_menu(&mut self, ui: &mut egui::Ui, row: Option<&BranchRow>, writable: bool, unsaved: u64, read_only: bool) -> Option<Action> {
         let b = row?;
         let mut out = None;
         if !b.current && b.status == BranchStatus::Open && ui.button(format!("Switch to \"{}\"", b.name)).clicked() {
@@ -983,12 +983,12 @@ impl HistoryPanel {
         out
     }
 
-    fn parent_name(&self, b: &history::BranchRow) -> String {
+    fn parent_name(&self, b: &BranchRow) -> String {
         b.fork.and_then(|(p, _)| self.graph.branches.iter().find(|x| x.id == p)).map_or_else(|| "main".into(), |x| x.name.clone())
     }
 
     /// Whether `g` belongs to the live agent session (Undo session is offered on it).
-    pub fn group_is_live(&self, g: &history::SessionGroup) -> bool {
+    pub fn group_is_live(&self, g: &SessionGroup) -> bool {
         self.live
             .as_ref()
             .is_some_and(|l| matches!(&g.author, ecad_model::Author::Agent(n) if *n == l.agent) && g.ids.iter().any(|id| l.owned.contains(id)))
@@ -998,11 +998,11 @@ impl HistoryPanel {
     /// sessions of the same agent (the ledger names the agent, not the session).
     pub fn regroup(&mut self) {
         let owned = self.live.as_ref().map(|l| &l.owned);
-        self.groups = history::sessions_split(&self.step_txs, |id| owned.is_some_and(|o| o.contains(id)));
+        self.groups = sessions_split(&self.step_txs, |id| owned.is_some_and(|o| o.contains(id)));
     }
 
     /// The Steps list's rows as read, grouped (tests).
-    pub fn groups(&self) -> &[history::SessionGroup] {
+    pub fn groups(&self) -> &[SessionGroup] {
         &self.groups
     }
 
@@ -1180,9 +1180,9 @@ fn author_pill(ui: &mut egui::Ui, agent: Option<&str>) {
 
 /// A session group's row: chevron, the agent's chip, `14 changes · 20:31–20:44`, and Undo session
 /// while `live`. Returns (expand or collapse clicked, Undo session clicked).
-fn group_row(ui: &mut egui::Ui, g: &history::SessionGroup, open: bool, live: bool) -> (bool, bool) {
+fn group_row(ui: &mut egui::Ui, g: &SessionGroup, open: bool, live: bool) -> (bool, bool) {
     let shell = ecad_ui::SHELL;
-    let text = g.text();
+    let text = history::group_text(g);
     let agent = match &g.author {
         ecad_model::Author::Agent(n) => n.clone(),
         ecad_model::Author::User => String::new(),

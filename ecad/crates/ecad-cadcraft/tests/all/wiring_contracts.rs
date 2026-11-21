@@ -441,6 +441,7 @@ fn the_kept_checks_list_follows_every_edit_and_equals_a_fresh_build() {
 #[test]
 fn a_wires_properties_show_and_edit_its_net() {
     use ecad_cadcraft::props;
+    use ecad_electrical::props::{PropsView, edit_line};
     let mut h = H::new(0x22_07);
     let page = h.first_page();
     h.run("place", json!({"symbol": "continuation", "at": [0, 0], "name": "24V"})).unwrap();
@@ -456,7 +457,7 @@ fn a_wires_properties_show_and_edit_its_net() {
         let route = h.route_handle(page, w);
         h.p(|p| props::view(p, Some(page), &[route]))
     };
-    let row = |v: &props::PropsView, key: &str| {
+    let row = |v: &PropsView, key: &str| {
         v.sections.iter().flat_map(|s| s.rows.iter()).find(|r| r.key == key).cloned().unwrap_or_else(|| panic!("{key}: {v:?}"))
     };
     let v = view(&mut h, a);
@@ -472,7 +473,7 @@ fn a_wires_properties_show_and_edit_its_net() {
     let target = v.sections[0].target.clone().unwrap();
     // Each edit through the line the panel sends.
     let send = |h: &mut H, key: &str, value: Option<&str>| {
-        let line = props::edit_line(&target, key, value);
+        let line = edit_line(&target, key, value);
         h.cmdline(&line);
         line
     };

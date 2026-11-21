@@ -1352,6 +1352,7 @@ dependencies = [
  "ecad-cadcraft",
  "ecad-desktop",
  "ecad-drawing-style",
+ "ecad-electrical",
  "ecad-file",
  "ecad-inspect",
  "ecad-mcp",
@@ -1444,6 +1445,7 @@ dependencies = [
 name = "ecad-file"
 version = "0.3.0-dev"
 dependencies = [
+ "chrono",
  "ecad-model",
  "ecad-store",
  "redb",

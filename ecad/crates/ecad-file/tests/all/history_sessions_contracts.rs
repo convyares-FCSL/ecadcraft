@@ -1,7 +1,7 @@
 //! Brief 043 (U4d): History's session groups ([`history::sessions`]), a read helper over the
 //! log: consecutive transactions by one agent form one group; the person's are one row each.
 
-use ecad_cadcraft::history::{self, SessionGroup};
+use ecad_file::history::{self, SessionGroup};
 use ecad_model::{Author, Transaction, TxId, TxKind};
 
 fn tx(seq: u64, author: &Author, minute: u64) -> Transaction {

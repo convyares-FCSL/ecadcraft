@@ -108,7 +108,7 @@ fn every_allowed_level_of_every_entry_writes_reads_back_and_resets() {
             assert!(matches!(e.kind, Kind::Choice(w) if w.len() == 1) || matches!(e.kind, Kind::Style(c) if single(c)), "{}: no test value", e.key);
             continue;
         };
-        let stored = default_cmds::stored_text(e, &json!(value)).unwrap_or_else(|m| panic!("{}: {m}", e.key));
+        let stored = ecad_electrical::cmd::default::json_stored_text(e, &json!(value)).unwrap_or_else(|m| panic!("{}: {m}", e.key));
         for (level, target, scope, source) in targets(page, c, rep, &doc) {
             let base = defaults::resolve(&doc, e, scope);
             let ops = default_cmds::ops(&doc, e, level, target, Some(stored.clone()));

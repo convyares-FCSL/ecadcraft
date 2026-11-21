@@ -18,13 +18,12 @@
 //!
 //! Programmatic calls never prompt.
 
-use std::collections::{BTreeMap, BTreeSet};
-
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
 use ecad_electrical::cmd::cable::{self as rules, CableInput, EndInput};
 pub use ecad_electrical::cmd::cable::{BadReason, Drawn, assign_cores, bad_value, cable_named, check_remove, drawn, edit_ops};
-use ecad_model::{CableId, CorePosition, Document, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Representation, RepresentationId, Subject};
+use ecad_electrical::cmd::cable_draw::{crossing_lines, crossing_wires};
+use ecad_model::{CableId, Op, PageId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -36,9 +35,6 @@ pub use crate::cables::{
 };
 use crate::cmd::input::{Command, TextOrNumber, Typed, nullable, typed};
 use crate::cmd::on_project;
-use crate::designations::{self, Aspect};
-use crate::slash::MAX_CABLE_MEMBERS;
-use crate::styles::cable;
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] =
@@ -236,19 +232,8 @@ impl Command for CableremoveParams {
 // ---------------------------------------------------------------------------------------------
 // The assign rule (design 059 §4.3, FD5)
 
-/// The hex of the wires a slash crossed, in crossing order (the `conductors` of a result).
-pub(crate) fn crossing_wires(members: &[crate::slash::Crossing]) -> Vec<String> {
-    members.iter().filter_map(|m| m.wire()).map(|w| w.hex()).collect()
-}
-
-/// The hex of the loose lines (no wire yet) a slash crossed, in crossing order (the `lines` of a
-/// result).
-pub(crate) fn crossing_lines(members: &[crate::slash::Crossing]) -> Vec<String> {
-    members.iter().filter_map(|m| m.position.route()).map(|r| r.hex()).collect()
-}
-
-/// `cableslash` onto cable `k` that is not drawn (FD5): the crossed wires become its members in
-/// crossing order with its free cores' labels, plus the slash. One transaction, `Cable slash`.
+/// `cableslash` onto cable `k` that is not drawn (FD5): commits
+/// [`ecad_electrical::cmd::cable_draw::plan_slash_assign`]'s ops as one transaction, `Cable slash`.
 ///
 /// # Errors
 /// A wire already in a cable, more wires than free cores, too many members; nothing is written.
@@ -256,113 +241,18 @@ pub(crate) fn run_slash_assign(
     p: &mut crate::project::Project, pg: &mut crate::access::Pages<'_>, page: PageId, k: CableId, from: ecad_model::Pt, to: ecad_model::Pt,
     found: &crate::slash::Crossings,
 ) -> Result<Value, CmdError> {
-    let doc = p.ledger.document();
-    let blocked: Vec<(CorePosition, CableId)> = crate::slash::blocked(doc, &found.members).into_iter().map(|(m, c)| (m.position, c)).collect();
-    if !blocked.is_empty() {
-        return Err(rules::already_in_cable(crate::slash::already_in_cable(doc, &blocked, "Nothing was changed.")));
-    }
-    if found.members.len() > MAX_CABLE_MEMBERS {
-        return Err(rules::too_many());
-    }
-    let cores = assign_cores(doc, k, found.members.len())?;
-    let (item, rep): (ItemId, RepresentationId) = (p.ids.fresh(), p.ids.fresh());
-    let mut ops = Vec::new();
-    // Design 072 §4.5: each crossed line takes its core, the stored unplaced one of that label.
-    if let Some(before) = doc.cables.get(&k) {
-        let mut after = before.clone();
-        for (m, core) in found.members.iter().zip(cores.iter()) {
-            ecad_electrical::styles::cable::place_core(&mut after, core.as_deref().and_then(|c| ecad_model::CoreLabel::new(c).ok()), m.position);
-        }
-        ops.extend(Op::modify_cable(k, before, after));
-    }
     let style = crate::cmd::plain_style(p);
-    ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Primitive(Primitive::Line { a: from, b: to }) } });
-    ops.push(Op::LinkRepresentation {
-        id: rep,
-        rep: Representation {
-            subject: Subject::Cable(k),
-            page,
-            form: Form::Drawn,
-            role: ecad_model::Role::Slash,
-            items: vec![item],
-            connection_points: BTreeMap::new(),
-        },
-    });
-    p.apply_edit(pg, "cableslash", "Cable slash", ops)?;
+    let plan = ecad_electrical::cmd::cable_draw::plan_slash_assign(p.ledger.document(), &mut p.ids, page, style, k, from, to, found)?;
+    p.apply_edit(pg, "cableslash", "Cable slash", plan.ops)?;
     Ok(json!({
         "cable": k.hex(),
-        "item": item.hex(),
-        "representation": rep.hex(),
+        "item": plan.item.hex(),
+        "representation": plan.rep.hex(),
         "assigned": true,
         "conductors": crossing_wires(&found.members),
         "lines": crossing_lines(&found.members),
-        "cores": cores,
+        "cores": plan.cores,
         "ignored": found.ignored.iter().map(|(i, _)| i.hex()).collect::<Vec<_>>(),
         "touched": found.touched.iter().map(|c| c.hex()).collect::<Vec<_>>(),
     }))
-}
-
-/// Board 2.06's **Add a core** (design 059 §3): cable `k`'s offer plus one core (`4G` → `5G`,
-/// `7X` → `8X`; a list gains the next number), or its member count plus one with no offer.
-pub fn next_offer(doc: &Document, k: CableId) -> String {
-    let members = doc.cables.get(&k).map_or(0, |c| c.cores.len());
-    let Some((cores, _, text)) = cable::offer(doc, k) else { return (members + 1).to_string() };
-    let t = text.trim();
-    let digits: String = t.chars().take_while(char::is_ascii_digit).collect();
-    let rest = &t[digits.len()..];
-    if let Ok(n) = digits.parse::<usize>()
-        && (rest.is_empty() || rest.eq_ignore_ascii_case("G") || rest.eq_ignore_ascii_case("X"))
-    {
-        return format!("{}{}", n.saturating_add(1), rest.to_ascii_uppercase());
-    }
-    let high = cores.iter().filter_map(|c| c.parse::<usize>().ok()).max().unwrap_or(0);
-    let mut v = cores;
-    v.push((high + 1).to_string());
-    v.join(",")
-}
-
-/// One item of the slash and Add to cable pickers (design 059 §5.6).
-#[derive(Debug, Clone, PartialEq)]
-pub struct PickItem {
-    pub cable: CableId,
-    pub tag: String,
-    /// `-W03  H07RN-F 4G1.5 · +CAB1 → +FIELD`.
-    pub line: String,
-    pub drawn: bool,
-    /// A cable not drawn whose planned end location is this page's (or one of its location boxes').
-    pub matches: bool,
-}
-
-/// The picker's cables on `page` (Q7): not drawn first (those whose planned end location matches
-/// the page's location, or one of its location boxes', before the rest, marked), then drawn cables
-/// not slashed on this page (032). Each group by tag. O(cables), built once when a picker opens.
-pub fn picker(doc: &Document, page: PageId) -> Vec<PickItem> {
-    let mut here: BTreeSet<String> = crate::locations::boxes_on(doc, page).into_iter().filter_map(|b| b.location).collect();
-    let page_loc = doc.pages.get(&page).and_then(|x| designations::page_key(x, Aspect::Location));
-    if let Some(code) = designations::shown(doc, Aspect::Location, page_loc.as_deref()) {
-        here.insert(code);
-    }
-    let mut out: Vec<PickItem> = Vec::new();
-    for k in doc.cables.keys() {
-        let drawn = is_drawn(doc, *k);
-        if drawn && doc.representations_of(Subject::Cable(*k)).any(|(_, r)| r.page == page && r.role == ecad_model::Role::Slash) {
-            continue;
-        }
-        let tag = crate::cables::cable_title(doc, *k);
-        let matches = !drawn
-            && Side::BOTH.into_iter().any(|s| planned(doc, *k, s, Aspect::Location).is_some_and(|c| here.iter().any(|h| h.eq_ignore_ascii_case(&c))));
-        let dash = "\u{2014}";
-        let ends = format!(
-            "{} \u{2192} {}",
-            plan_words(doc, *k, Side::From).unwrap_or_else(|| dash.into()),
-            plan_words(doc, *k, Side::To).unwrap_or_else(|| dash.into())
-        );
-        let line = match read(doc, *k, CableField::Type) {
-            Some(t) => format!("{tag}  {t} \u{b7} {ends}"),
-            None => format!("{tag}  {ends}"),
-        };
-        out.push(PickItem { cable: *k, tag, line, drawn, matches });
-    }
-    out.sort_by(|a, b| (a.drawn, !a.matches).cmp(&(b.drawn, !b.matches)).then_with(|| crate::locations::natural_cmp(&a.tag, &b.tag)));
-    out
 }

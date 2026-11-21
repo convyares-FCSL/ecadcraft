@@ -18,6 +18,8 @@
 //!   version is the number the file records (`meta.container_version`), not a module name.
 //!   Opening the database, its transactions and reopening after an I/O error are ecad-store's
 //!   generic handle (`ecad_store::db`); this crate defines the tables and reads and writes them.
+//! - **History** ([`history`]): the version and branch graph the History tab shows (branch and
+//!   graph rows, lanes, named points, session groups), built from the rows above.
 //! - **Binding** ([`binding`]): a project bound to its file (open, Save, Save As, status) and
 //!   the checks on a path typed for one; the caller passes the home folder.
 //!
@@ -33,6 +35,7 @@ mod crc;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod disk;
 mod error;
+pub mod history;
 pub mod pack;
 pub mod project;
 pub mod record;

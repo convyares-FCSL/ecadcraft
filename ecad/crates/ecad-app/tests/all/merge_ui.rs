@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use ecad_app::history_panel;
-use ecad_cadcraft::history::NodeKind;
+use ecad_file::history::NodeKind;
 use egui_kittest::Harness;
 use serde_json::json;
 
