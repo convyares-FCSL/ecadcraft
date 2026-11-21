@@ -72,7 +72,21 @@ fn touches_own(effect: &Effect<'_>) -> bool {
         Effect::Aid { before, after, .. } => {
             before.and_then(|a| a.as_box()).and_then(|b| b.style.as_ref()) != after.and_then(|a| a.as_box()).and_then(|b| b.style.as_ref())
         }
-        _ => false,
+        Effect::Page { .. }
+        | Effect::Layer { .. }
+        | Effect::Item { .. }
+        | Effect::Device { .. }
+        | Effect::DeviceDefinition { .. }
+        | Effect::Terminal { .. }
+        | Effect::Rep { .. }
+        | Effect::Wire { .. }
+        | Effect::Route { .. }
+        | Effect::Definition { .. }
+        | Effect::Version { .. }
+        | Effect::Folder { .. }
+        | Effect::Project { .. }
+        | Effect::LoosePart { .. }
+        | Effect::DeviceLink { .. } => false,
     }
 }
 

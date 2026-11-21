@@ -1811,7 +1811,27 @@ impl Scope {
             Effect::Style { catalogue, id, .. } if crate::continuations::is_wide_style(doc, *catalogue, id) => {
                 self.arrows_wide = true;
             }
-            _ => {}
+            Effect::Page { .. }
+            | Effect::Layer { .. }
+            | Effect::Item { .. }
+            | Effect::Device { .. }
+            | Effect::DeviceDefinition { .. }
+            | Effect::Terminal { .. }
+            | Effect::Rep { .. }
+            | Effect::Wire { .. }
+            | Effect::Route { .. }
+            | Effect::Cable { .. }
+            | Effect::Prop { .. }
+            | Effect::Definition { .. }
+            | Effect::Settings { .. }
+            | Effect::Version { .. }
+            | Effect::Folder { .. }
+            | Effect::Style { .. }
+            | Effect::Standard { .. }
+            | Effect::Project { .. }
+            | Effect::Aid { .. }
+            | Effect::LoosePart { .. }
+            | Effect::DeviceLink { .. } => {}
         }
         crate::continuations::names_named_by(doc, effect, &mut self.names);
     }
