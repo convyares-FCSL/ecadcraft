@@ -226,3 +226,58 @@ fn a_location_box_aid_and_its_edit_are_shown_raw_and_readable() {
     let summary = ask(s, serde_json::json!({"op": "summary"}));
     assert!(summary.get("ok").is_some(), "{summary}");
 }
+
+/// F2a: a loose part (design 072 §6.4) and its edit read in the Raw and Readable views, and the
+/// snapshot (with the part in its own `model:loose_part:` chunk) reads back.
+#[test]
+fn a_loose_part_and_its_edit_are_shown_raw_and_readable() {
+    use ecad_model::device::Description;
+    use ecad_model::loose_part::{ItemUnit, LoosePart, Qty};
+    use ecad_model::{LocationId, LoosePartId};
+    let dir = TempDir::new("072f-loose");
+    let mut l = history();
+    let mut ids = IdAllocator::seeded(0x72f4);
+    let a: LoosePartId = ids.fresh();
+    let rail = LoosePart::new(Description::new("DIN rail").unwrap(), Qty(2000));
+    l.commit(Author::User, "loose part", vec![Op::CreateLoosePart { id: a, part: rail.clone() }]).unwrap();
+    let cut = LoosePart { qty: Qty(3600), unit: ItemUnit::Metres, location: Some(LocationId(0xc1)), ..rail.clone() };
+    l.commit(Author::User, "edit", vec![Op::ModifyLoosePart { id: a, before: rail, after: cut }]).unwrap();
+    let path = written(&dir, &l);
+
+    let log = run(&[path.to_str().unwrap(), "log", "main", "--last", "2"]).unwrap();
+    for want in ["CreateLoosePart", "ModifyLoosePart", "DIN rail", "3.6"] {
+        assert!(log.contains(want), "{want} in the readable log: {log}");
+    }
+    let f = FileSource::from_path(&path);
+    assert!(matches!(f.wait_verified(Duration::from_secs(60)), VerifyState::Done { .. }));
+    let s = Some(&f as &dyn Source);
+    let rows = ask(s, serde_json::json!({"op": "rows", "table": "transactions", "count": 1000}));
+    let rows = rows["ok"]["rows"].as_array().cloned().unwrap_or_default();
+    let keys: Vec<String> = rows.iter().rev().take(2).filter_map(|r| r["key"].as_str().map(str::to_string)).collect();
+    assert_eq!(keys.len(), 2, "{rows:?}");
+    let text =
+        |key: &str| ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "readable"}))["ok"]["decoded"].to_string();
+    let (edit, made) = (text(&keys[0]), text(&keys[1]));
+    for want in ["ModifyLoosePart", "DIN rail", "qty", "3.6", "unit", "location", &a.hex()] {
+        assert!(edit.contains(want), "{want} in the edit: {edit}");
+    }
+    for want in ["CreateLoosePart", "DIN rail", "qty", &a.hex()] {
+        assert!(made.contains(want), "{want} in the making: {made}");
+    }
+    // Raw: exactly the stored bytes of each row.
+    let r = f.store().unwrap().reader().unwrap();
+    let mut stored = std::collections::BTreeMap::new();
+    r.raw_rows(|t, k, v| {
+        if t == "transactions" {
+            stored.insert(ecad_inspector::text::hex(k), ecad_inspector::text::hex(v));
+        }
+        Ok(())
+    })
+    .unwrap();
+    for key in &keys {
+        let raw = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "raw"}));
+        assert_eq!(raw["ok"]["hex"].as_str(), stored.get(key).map(String::as_str), "the raw row of {key} is its stored bytes");
+    }
+    let summary = ask(s, serde_json::json!({"op": "summary"}));
+    assert!(summary.get("ok").is_some(), "{summary}");
+}

@@ -990,6 +990,20 @@ pub enum Op {
         before: m::Aid,
         after: m::Aid,
     },
+    /// Design 072 §6.4: a loose part made, removed or changed, the model's strict record.
+    CreateLoosePart {
+        id: m::LoosePartId,
+        part: m::loose_part::LoosePart,
+    },
+    DeleteLoosePart {
+        id: m::LoosePartId,
+        part: m::loose_part::LoosePart,
+    },
+    ModifyLoosePart {
+        id: m::LoosePartId,
+        before: m::loose_part::LoosePart,
+        after: m::loose_part::LoosePart,
+    },
 }
 
 /// Where a style record lives (brief 050a).
@@ -1355,6 +1369,9 @@ impl From<&m::Op> for Op {
             m::Op::CreateAid { id, aid } => Op::CreateAid { id: *id, aid: aid.clone() },
             m::Op::DeleteAid { id, aid } => Op::DeleteAid { id: *id, aid: aid.clone() },
             m::Op::ModifyAid { id, before, after } => Op::ModifyAid { id: *id, before: before.clone(), after: after.clone() },
+            m::Op::CreateLoosePart { id, part } => Op::CreateLoosePart { id: *id, part: part.clone() },
+            m::Op::DeleteLoosePart { id, part } => Op::DeleteLoosePart { id: *id, part: part.clone() },
+            m::Op::ModifyLoosePart { id, before, after } => Op::ModifyLoosePart { id: *id, before: before.clone(), after: after.clone() },
         }
     }
 }
@@ -1389,27 +1406,29 @@ impl From<&m::TxKind> for TxKind {
 /// A record value the model cannot hold.
 pub type ConvertError = String;
 
-/// The `kind`s drawing aids had while they were devices, with the read error of each. Continuations
-/// and location boxes are drawing aids (design 072 §6.2); pre-v1, a file with a device of one of
-/// these kinds is not read (no conversion).
-const AID_KINDS: [(&str, &str); 2] = [
+/// The `kind`s of things that were devices and are not any more, with the read error of each.
+/// Continuations and location boxes are drawing aids (design 072 §6.2), BOM items loose parts
+/// (§6.4); pre-v1, a file with a device of one of these kinds is not read (no conversion).
+const NOT_DEVICE_KINDS: [(&str, &str); 3] = [
     ("continuation", "a device of kind `continuation`: continuations are drawing aids since format change 072 F (no conversion before v1)"),
     ("location_box", "a device of kind `location_box`: location boxes are drawing aids since format change 072 F (no conversion before v1)"),
+    ("bom_item", "a device of kind `bom_item`: BOM items are loose parts since format change 072 F (no conversion before v1)"),
 ];
 
-/// The read error for a device of kind `kind`, when that kind is a drawing aid's.
-pub(crate) fn aid_kind_error(kind: Option<&str>) -> Option<&'static str> {
-    AID_KINDS.iter().find(|(k, _)| Some(*k) == kind).map(|(_, e)| *e)
+/// The read error for a device of kind `kind`, when that kind is no longer a device's.
+pub(crate) fn not_device_kind_error(kind: Option<&str>) -> Option<&'static str> {
+    NOT_DEVICE_KINDS.iter().find(|(k, _)| Some(*k) == kind).map(|(_, e)| *e)
 }
 
-/// The read error for device `d` (an op's or a snapshot's), when it is a drawing aid's old form.
-pub(crate) fn aid_device_error(d: &m::Device) -> Option<&'static str> {
-    aid_kind_error(d.properties.get("kind").map(String::as_str))
+/// The read error for device `d` (an op's or a snapshot's), when it is the old device form of a
+/// drawing aid or a loose part.
+pub(crate) fn not_device_error(d: &m::Device) -> Option<&'static str> {
+    not_device_kind_error(d.properties.get("kind").map(String::as_str))
 }
 
-/// `d`, unless it is a drawing aid's old device form.
-fn not_aid(d: m::Device) -> Result<m::Device, ConvertError> {
-    match aid_device_error(&d) {
+/// `d`, unless it is the old device form of a drawing aid or a loose part.
+fn a_device(d: m::Device) -> Result<m::Device, ConvertError> {
+    match not_device_error(&d) {
         Some(e) => Err(e.into()),
         None => Ok(d),
     }
@@ -1627,9 +1646,9 @@ impl TryFrom<Op> for m::Op {
             Op::AddItem { id, item } => m::Op::AddItem { id, item: item.into() },
             Op::ModifyItem { id, before, after } => m::Op::ModifyItem { id, before: before.into(), after: after.into() },
             Op::RemoveItem { id, item } => m::Op::RemoveItem { id, item: item.into() },
-            Op::CreateDevice { id, device } => m::Op::CreateDevice { id, device: not_aid(device.into())? },
-            Op::DeleteDevice { id, device } => m::Op::DeleteDevice { id, device: not_aid(device.into())? },
-            Op::ModifyDevice { id, before, after } => m::Op::ModifyDevice { id, before: not_aid(before.into())?, after: not_aid(after.into())? },
+            Op::CreateDevice { id, device } => m::Op::CreateDevice { id, device: a_device(device.into())? },
+            Op::DeleteDevice { id, device } => m::Op::DeleteDevice { id, device: a_device(device.into())? },
+            Op::ModifyDevice { id, before, after } => m::Op::ModifyDevice { id, before: a_device(before.into())?, after: a_device(after.into())? },
             Op::SetDeviceDefinition { id, before, after } => m::Op::SetDeviceDefinition { id, before, after },
             Op::AddTerminal { id, terminal } => m::Op::AddTerminal { id, terminal: terminal.into() },
             Op::RemoveTerminal { id, terminal } => m::Op::RemoveTerminal { id, terminal: terminal.into() },
@@ -1647,7 +1666,7 @@ impl TryFrom<Op> for m::Op {
             Op::ModifyCable { id, before, after } => m::Op::ModifyCable { id, before: before.into(), after: after.into() },
             Op::SetProperty { object, key, before, after } => {
                 if key == "kind"
-                    && let Some(e) = aid_kind_error(after.as_deref()).or_else(|| aid_kind_error(before.as_deref()))
+                    && let Some(e) = not_device_kind_error(after.as_deref()).or_else(|| not_device_kind_error(before.as_deref()))
                 {
                     return Err(e.into());
                 }
@@ -1669,6 +1688,9 @@ impl TryFrom<Op> for m::Op {
             Op::CreateAid { id, aid } => m::Op::CreateAid { id, aid },
             Op::DeleteAid { id, aid } => m::Op::DeleteAid { id, aid },
             Op::ModifyAid { id, before, after } => m::Op::ModifyAid { id, before, after },
+            Op::CreateLoosePart { id, part } => m::Op::CreateLoosePart { id, part },
+            Op::DeleteLoosePart { id, part } => m::Op::DeleteLoosePart { id, part },
+            Op::ModifyLoosePart { id, before, after } => m::Op::ModifyLoosePart { id, before, after },
         })
     }
 }

@@ -526,6 +526,8 @@ impl Scope {
                         self.cables.extend(continuation_group_cables(doc, *id));
                     }
                 }
+                // Design 072 §6.4: no output reads a loose part yet (F2b moves the BOM's items).
+                Op::CreateLoosePart { .. } | Op::DeleteLoosePart { .. } | Op::ModifyLoosePart { .. } => {}
                 Op::ModifyProject { before, after } => {
                     use crate::designations::{Aspect, changed_codes, default_key};
                     // Brief 047: an item without its own location shows the project's.

@@ -100,6 +100,14 @@ pub(crate) struct Base {
     /// A location box (design 072 §6.2).
     aid: ecad_model::AidId,
     aid_v: ecad_model::Aid,
+    /// A loose part (design 072 §6.4).
+    loose: ecad_model::LoosePartId,
+    loose_v: ecad_model::loose_part::LoosePart,
+}
+
+/// `qty` pieces of a loose part.
+fn loose_part(qty: u64) -> ecad_model::loose_part::LoosePart {
+    ecad_model::loose_part::LoosePart::new(ecad_model::device::Description::new("DIN rail").unwrap(), ecad_model::loose_part::Qty(qty * 1000))
 }
 
 pub(crate) fn base() -> Base {
@@ -170,6 +178,8 @@ pub(crate) fn base() -> Base {
     let link_v = ecad_model::DeviceLink { kind: ecad_model::LinkKind::MechanicalInterlock, a: pair[0], b: pair[1] };
     let aid = ids.fresh();
     let aid_v = ecad_model::Aid::Box(ecad_model::LocationBox::default());
+    let loose = ids.fresh();
+    let loose_v = loose_part(2);
     ledger
         .commit(
             Author::User,
@@ -196,6 +206,7 @@ pub(crate) fn base() -> Base {
                 Op::CreateDevice { id: pair[1], device: Device::default() },
                 Op::AddDeviceLink { id: link, link: link_v },
                 Op::CreateAid { id: aid, aid: aid_v.clone() },
+                Op::CreateLoosePart { id: loose, part: loose_v.clone() },
             ],
         )
         .unwrap();
@@ -235,6 +246,8 @@ pub(crate) fn base() -> Base {
         link_v,
         aid,
         aid_v,
+        loose,
+        loose_v,
     }
 }
 
@@ -333,6 +346,9 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
             after: ecad_model::Aid::Box(ecad_model::LocationBox { panel_temperature: Some(ecad_model::units::Celsius(40.0)), ..Default::default() }),
         },
         Op::DeleteAid { id: b.aid, aid: b.aid_v.clone() },
+        Op::CreateLoosePart { id: b.ids.fresh(), part: loose_part(1) },
+        Op::ModifyLoosePart { id: b.loose, before: b.loose_v.clone(), after: loose_part(5) },
+        Op::DeleteLoosePart { id: b.loose, part: b.loose_v.clone() },
     ]
 }
 
@@ -438,6 +454,11 @@ fn failing(b: &mut Base) -> Vec<Op> {
         },
         Op::ModifyAid { id: b.aid, before: ecad_model::Aid::Continuation { name: None, caption: None }, after: b.aid_v.clone() },
         Op::DeleteAid { id: b.ids.fresh(), aid: b.aid_v.clone() },
+        // A loose part twice; a quantity of 0; a `before` not as stored; one that is not there.
+        Op::CreateLoosePart { id: b.loose, part: b.loose_v.clone() },
+        Op::CreateLoosePart { id: b.ids.fresh(), part: loose_part(0) },
+        Op::ModifyLoosePart { id: b.loose, before: loose_part(7), after: b.loose_v.clone() },
+        Op::DeleteLoosePart { id: b.ids.fresh(), part: b.loose_v.clone() },
     ]
 }
 

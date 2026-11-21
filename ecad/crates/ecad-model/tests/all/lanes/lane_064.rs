@@ -18,6 +18,7 @@ fn expected(op: &Op) -> EffectKind {
         "CreateWire" | "DeleteWire" | "ModifyWire" => EffectKind::Wire,
         "AddRoute" | "RemoveRoute" | "ModifyRoute" => EffectKind::Route,
         "CreateAid" | "DeleteAid" | "ModifyAid" => EffectKind::Aid,
+        "CreateLoosePart" | "DeleteLoosePart" | "ModifyLoosePart" => EffectKind::LoosePart,
         "CreateCable" | "DeleteCable" | "ModifyCable" => EffectKind::Cable,
         "SetProperty" => EffectKind::Prop,
         "EmbedDefinition" | "RemoveDefinition" => EffectKind::Definition,
@@ -132,6 +133,9 @@ fn old_touched(ops: &[Op]) -> Touched {
             }
             Op::CreateAid { id, .. } | Op::DeleteAid { id, .. } | Op::ModifyAid { id, .. } => {
                 t.aids.insert(*id);
+            }
+            Op::CreateLoosePart { id, .. } | Op::DeleteLoosePart { id, .. } | Op::ModifyLoosePart { id, .. } => {
+                t.loose_parts.insert(*id);
             }
             Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } | Op::ModifyCable { id, .. } => {
                 t.cables.insert(*id);

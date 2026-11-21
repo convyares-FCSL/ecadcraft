@@ -63,6 +63,8 @@ pub enum Obj {
     Route(RouteId),
     /// A drawing aid (design 072 §6.2).
     Aid(crate::id::AidId),
+    /// A loose part (design 072 §6.4).
+    LoosePart(crate::id::LoosePartId),
     Project,
 }
 
@@ -82,6 +84,7 @@ impl Obj {
             Obj::Cable(i) => i.hex(),
             Obj::Route(i) => i.hex(),
             Obj::Aid(i) => i.hex(),
+            Obj::LoosePart(i) => i.hex(),
             Obj::Project => "project".into(),
         }
     }
@@ -101,6 +104,7 @@ impl Obj {
             Obj::Cable(_) => "cable",
             Obj::Route(_) => "route",
             Obj::Aid(_) => "drawing aid",
+            Obj::LoosePart(_) => "loose part",
             Obj::Project => "project",
         }
     }
@@ -147,6 +151,7 @@ impl Scope {
             + t.wires.len()
             + t.cables.len()
             + t.routes.len()
+            + t.loose_parts.len()
             + t.definitions.len()
             + t.folders.len()
             + usize::from(self.project)
@@ -588,6 +593,10 @@ pub fn name_of(docs: &[&Document], obj: Obj) -> String {
             Some(crate::aid::Aid::Continuation { name: None, .. }) => format!("Continuation {}", x.short()),
             Some(crate::aid::Aid::Box(_)) | None => format!("Box {}", x.short()),
         },
+        Obj::LoosePart(x) => match docs.iter().find_map(|d| d.loose_parts.get(&x)) {
+            Some(p) => format!("Loose part \"{}\"", p.description),
+            None => format!("Loose part {}", x.short()),
+        },
         Obj::Page(p) => match docs.iter().find_map(|d| d.pages.get(&p)) {
             Some(page) => format!("{} \"{}\"", page_of(p), page.title),
             None => page_of(p),
@@ -649,6 +658,7 @@ fn scope_objects(scope: &Scope) -> Vec<Obj> {
     out.extend(t.cables.iter().map(|x| Obj::Cable(*x)));
     out.extend(t.routes.iter().map(|x| Obj::Route(*x)));
     out.extend(t.aids.iter().map(|x| Obj::Aid(*x)));
+    out.extend(t.loose_parts.iter().map(|x| Obj::LoosePart(*x)));
     if scope.project {
         out.push(Obj::Project);
     }
@@ -670,6 +680,7 @@ fn differs(a: &Document, b: &Document, obj: Obj) -> bool {
         Obj::Cable(i) => a.cables.get(&i) != b.cables.get(&i),
         Obj::Route(i) => a.routes.get(&i) != b.routes.get(&i),
         Obj::Aid(i) => a.aids.get(&i) != b.aids.get(&i),
+        Obj::LoosePart(i) => a.loose_parts.get(&i) != b.loose_parts.get(&i),
         Obj::Project => {
             a.properties != b.properties || a.project != b.project || a.settings != b.settings || a.standard != b.standard || a.styles != b.styles
         }
@@ -691,6 +702,7 @@ fn holds(doc: &Document, obj: Obj) -> bool {
         Obj::Cable(i) => doc.cables.contains_key(&i),
         Obj::Route(i) => doc.routes.contains_key(&i),
         Obj::Aid(i) => doc.aids.contains_key(&i),
+        Obj::LoosePart(i) => doc.loose_parts.contains_key(&i),
         Obj::Project => true,
     }
 }
@@ -716,6 +728,7 @@ fn copy(to: &mut Document, from: &Document, obj: Obj) {
         Obj::Cable(i) => put(&mut to.cables, &from.cables, i),
         Obj::Route(i) => put(&mut to.routes, &from.routes, i),
         Obj::Aid(i) => put(&mut to.aids, &from.aids, i),
+        Obj::LoosePart(i) => put(&mut to.loose_parts, &from.loose_parts, i),
         Obj::Project => {}
     }
 }
@@ -907,6 +920,12 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                     field(ctx, obj, "aid", format!("{what} · changed on both"), a, t, s, &|x| format!("{x:?}"))
                 });
                 set(&mut m.aids, id, v);
+            }
+            Obj::LoosePart(id) => {
+                let v = object(ctx, obj, &what, a.loose_parts.get(&id), t.loose_parts.get(&id), s.loose_parts.get(&id), |ctx, a, t, s| {
+                    field(ctx, obj, "loose_part", format!("{what} · changed on both"), a, t, s, &|x| format!("{x:?}"))
+                });
+                set(&mut m.loose_parts, id, v);
             }
             Obj::Route(id) => {
                 let v = object(ctx, obj, &what, a.routes.get(&id), t.routes.get(&id), s.routes.get(&id), |ctx, a, t, s| Route {
@@ -1446,7 +1465,7 @@ fn refs(m: &Document, obj: Obj) -> Vec<(Obj, Use)> {
                 }
             }
         }
-        Obj::Layer(_) | Obj::Definition(_) | Obj::Aid(_) | Obj::Project => {}
+        Obj::Layer(_) | Obj::Definition(_) | Obj::Aid(_) | Obj::LoosePart(_) | Obj::Project => {}
     }
     out
 }
@@ -1480,7 +1499,7 @@ fn users_of(m: &Document, y: Obj) -> Vec<Obj> {
         Obj::Cable(c) => {
             all.extend(m.representations.iter().filter(|(_, r)| r.subject == Subject::Cable(c)).map(|(k, _)| Obj::Representation(*k)));
         }
-        Obj::Representation(_) | Obj::Project => {}
+        Obj::Representation(_) | Obj::LoosePart(_) | Obj::Project => {}
         Obj::Item(i) => {
             all.extend(m.representations.iter().filter(|(_, r)| r.items.contains(&i)).map(|(k, _)| Obj::Representation(*k)));
         }
@@ -2317,6 +2336,9 @@ pub fn plan(inp: &Inputs<'_>, choices: &BTreeMap<String, Choice>) -> Plan {
                 }
                 Obj::Aid(i) => {
                     scope.aids.insert(i);
+                }
+                Obj::LoosePart(i) => {
+                    scope.loose_parts.insert(i);
                 }
                 Obj::Project => {}
             }

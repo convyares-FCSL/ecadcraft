@@ -162,12 +162,17 @@ fn every_op_ledger() -> Ledger {
     let pair: [ecad_model::DeviceId; 2] = [ids.fresh(), ids.fresh()];
     let link = ids.fresh();
     let aid: ecad_model::AidId = ids.fresh();
+    let loose: ecad_model::LoosePartId = ids.fresh();
+    let rail = |n: u64| {
+        ecad_model::loose_part::LoosePart::new(ecad_model::device::Description::new("DIN rail").unwrap(), ecad_model::loose_part::Qty(n * 1000))
+    };
     let link_v = ecad_model::DeviceLink { kind: ecad_model::LinkKind::MechanicalInterlock, a: pair[0], b: pair[1] };
     let linked = vec![
         Op::CreateDevice { id: pair[0], device: ecad_model::Device::default() },
         Op::CreateDevice { id: pair[1], device: ecad_model::Device::default() },
         Op::AddDeviceLink { id: link, link: link_v },
         Op::CreateAid { id: aid, aid: ecad_model::Aid::Box(ecad_model::LocationBox::default()) },
+        Op::CreateLoosePart { id: loose, part: rail(2) },
     ];
     ledger.commit(Author::User, "linked", linked).unwrap();
     let moved = line(page, layer, 7.0);
@@ -262,6 +267,10 @@ fn every_op_ledger() -> Ledger {
             after: ecad_model::Aid::Box(ecad_model::LocationBox { panel_temperature: Some(ecad_model::units::Celsius(40.0)), ..Default::default() }),
         },
         Op::DeleteAid { id: aid, aid: ecad_model::Aid::Box(ecad_model::LocationBox::default()) },
+        // Lane 072 F2a (A15): a loose part made, changed and removed.
+        Op::CreateLoosePart { id: ids.fresh(), part: rail(1) },
+        Op::ModifyLoosePart { id: loose, before: rail(2), after: rail(3) },
+        Op::DeleteLoosePart { id: loose, part: rail(2) },
     ];
     for op in ops {
         let name = op.name();

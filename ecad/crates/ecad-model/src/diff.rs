@@ -133,6 +133,15 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
             (None, Some(b)) => adds.push(Op::CreateAid { id, aid: b.clone() }),
         }
     }
+    // Loose parts change in place (design 072 §6.4).
+    for id in ids(&from.loose_parts, &to.loose_parts, scope.map(|s| &s.loose_parts)) {
+        match (from.loose_parts.get(&id), to.loose_parts.get(&id)) {
+            (Some(a), Some(b)) if a != b => changes.push(Op::ModifyLoosePart { id, before: a.clone(), after: b.clone() }),
+            (Some(_), Some(_)) | (None, None) => {}
+            (Some(a), None) => removes.push(Op::DeleteLoosePart { id, part: a.clone() }),
+            (None, Some(b)) => adds.push(Op::CreateLoosePart { id, part: b.clone() }),
+        }
+    }
     // Representations change in place.
     for id in ids(&from.representations, &to.representations, scope.map(|s| &s.representations)) {
         match (from.representations.get(&id), to.representations.get(&id)) {
@@ -370,6 +379,7 @@ pub fn objects(ops: &[Op]) -> BTreeMap<(&'static str, u128), usize> {
             Op::CreateWire { id, .. } | Op::DeleteWire { id, .. } | Op::ModifyWire { id, .. } => ("wire", id.0),
             Op::AddRoute { id, .. } | Op::RemoveRoute { id, .. } | Op::ModifyRoute { id, .. } => ("route", id.0),
             Op::CreateAid { id, .. } | Op::DeleteAid { id, .. } | Op::ModifyAid { id, .. } => ("aid", id.0),
+            Op::CreateLoosePart { id, .. } | Op::DeleteLoosePart { id, .. } | Op::ModifyLoosePart { id, .. } => ("loose part", id.0),
             Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } | Op::ModifyCable { id, .. } => ("cable", id.0),
             Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => ("definition", id.0),
             Op::AddFolder { id, .. } | Op::RemoveFolder { id, .. } | Op::ModifyFolder { id, .. } => ("folder", id.0),

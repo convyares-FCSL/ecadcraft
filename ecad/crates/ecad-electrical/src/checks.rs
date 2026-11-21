@@ -1661,6 +1661,8 @@ impl Scope {
                         node(self, Node::Name(name_key(n.as_str())));
                     }
                 }
+                // Design 072 §6.4: no check reads a loose part yet (F2b moves the BOM item checks).
+                Op::CreateLoosePart { .. } | Op::DeleteLoosePart { .. } | Op::ModifyLoosePart { .. } => {}
                 Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => {
                     for c in doc.components_using(*id) {
                         self.devices.insert(c);

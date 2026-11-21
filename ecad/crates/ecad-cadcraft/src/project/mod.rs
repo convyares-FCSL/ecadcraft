@@ -1239,6 +1239,8 @@ pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<
             Op::ModifyAid { id, .. } => {
                 out.extend(doc.representations_of(Subject::Aid(*id)).map(|(_, r)| r.page));
             }
+            // A loose part is drawn on no page (design 072 §6.4).
+            Op::CreateLoosePart { .. } | Op::DeleteLoosePart { .. } | Op::ModifyLoosePart { .. } => {}
             Op::CreateWire { id, .. } if !doc.wires.contains_key(id) => {}
             // A deleted wire's labels are on the pages of the routes at its ends.
             Op::DeleteWire { wire, .. } => out.extend(points_pages(doc, &wire.ends)),

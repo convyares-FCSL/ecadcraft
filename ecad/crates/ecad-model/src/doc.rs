@@ -1424,6 +1424,9 @@ pub struct Document {
     /// The drawing aids: continuations and location boxes (design 072 §6.2).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub aids: BTreeMap<crate::id::AidId, crate::aid::Aid>,
+    /// The loose parts: panel-only material on the BOM (design 072 §6.4).
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub loose_parts: BTreeMap<crate::id::LoosePartId, crate::loose_part::LoosePart>,
     /// The typed links between devices (design 072 §2.6).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub device_links: BTreeMap<crate::id::LinkId, crate::user::DeviceLink>,
@@ -1475,6 +1478,8 @@ struct DocumentData {
     #[serde(default)]
     aids: BTreeMap<crate::id::AidId, crate::aid::Aid>,
     #[serde(default)]
+    loose_parts: BTreeMap<crate::id::LoosePartId, crate::loose_part::LoosePart>,
+    #[serde(default)]
     device_links: BTreeMap<crate::id::LinkId, crate::user::DeviceLink>,
     definitions: BTreeMap<DefinitionId, Definition>,
     settings: ProjectSettings,
@@ -1507,6 +1512,7 @@ impl From<DocumentData> for Document {
             cables,
             routes,
             aids,
+            loose_parts,
             device_links,
             definitions,
             settings,
@@ -1530,6 +1536,7 @@ impl From<DocumentData> for Document {
             cables,
             routes,
             aids,
+            loose_parts,
             device_links,
             definitions,
             settings,
@@ -1563,6 +1570,7 @@ impl PartialEq for Document {
             cables,
             routes,
             aids,
+            loose_parts,
             device_links,
             definitions,
             settings,
@@ -1587,6 +1595,7 @@ impl PartialEq for Document {
             && *cables == other.cables
             && *routes == other.routes
             && *aids == other.aids
+            && *loose_parts == other.loose_parts
             && *device_links == other.device_links
             && *definitions == other.definitions
             && *settings == other.settings

@@ -38,6 +38,7 @@
 //! | I22 | The location and function lists hold each id and code once, codes with their sign | project | any change to the project's own data |
 //! | I23 | A route has 2 to 4096 finite points, lies on an existing page, and its ends land on existing connection points and on other routes of its page (design 072 F31) | route → page, terminals, routes | touched routes; routes on a touched page, landing on a touched terminal (a cable's or a cable reference's named points count as touched with it) or on a touched route |
 //! | I25 | A drawing aid is well formed: a box's panel temperature is a number (design 072 §6.2) | aid | touched aids |
+//! | I26 | A loose part is well formed: a description, a quantity more than 0 and at most 9 999, whole for pieces (design 072 §6.4) | loose part | touched loose parts |
 //!
 //! Not invariants of the document: properties (other than a page's `folder`), layer names, project
 //! settings. Named versions are
@@ -82,6 +83,8 @@ pub struct Touched {
     pub routes: BTreeSet<RouteId>,
     /// Drawing aids made, removed or changed (design 072 §6.2).
     pub aids: BTreeSet<crate::id::AidId>,
+    /// Loose parts made, removed or changed (design 072 §6.4).
+    pub loose_parts: BTreeSet<crate::id::LoosePartId>,
     pub definitions: BTreeSet<DefinitionId>,
     /// A folder was added or removed, so the folder order changed.
     pub folder_order: bool,
@@ -154,6 +157,9 @@ impl Touched {
             }
             Effect::Aid { id, .. } => {
                 self.aids.insert(*id);
+            }
+            Effect::LoosePart { id, .. } => {
+                self.loose_parts.insert(*id);
             }
             Effect::Prop { object, .. } => match object {
                 ObjectRef::Device(id) => {
@@ -234,6 +240,9 @@ impl Document {
         for (id, a) in &self.aids {
             self.check_aid(*id, a)?;
         }
+        for (id, p) in &self.loose_parts {
+            self.check_loose_part(*id, p)?;
+        }
         self.check_folder_order()?;
         for id in self.folders.keys() {
             self.check_folder(*id)?;
@@ -254,6 +263,14 @@ impl Document {
     fn check_aid(&self, id: crate::id::AidId, a: &crate::aid::Aid) -> Result<()> {
         match a.problem() {
             Some(e) => bad(format!("aid {id}: {e}")),
+            None => Ok(()),
+        }
+    }
+
+    /// I26: a loose part is well formed (design 072 §6.4).
+    fn check_loose_part(&self, id: crate::id::LoosePartId, p: &crate::loose_part::LoosePart) -> Result<()> {
+        match p.problem() {
+            Some(e) => bad(format!("loose part {id}: {e}")),
             None => Ok(()),
         }
     }
@@ -442,6 +459,11 @@ impl Document {
         for id in &touched.aids {
             if let Some(a) = self.aids.get(id) {
                 self.check_aid(*id, a)?;
+            }
+        }
+        for id in &touched.loose_parts {
+            if let Some(p) = self.loose_parts.get(id) {
+                self.check_loose_part(*id, p)?;
             }
         }
 

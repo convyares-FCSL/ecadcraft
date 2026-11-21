@@ -107,6 +107,9 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
             }
             // An aid has no `ObjectRef` (design 072 §6.2): the panel reads its selection again.
             Op::CreateAid { .. } | Op::DeleteAid { .. } | Op::ModifyAid { .. } => return None,
+            // A loose part is never selected and has no `ObjectRef` (design 072 §6.4): no panel
+            // shows it.
+            Op::CreateLoosePart { .. } | Op::DeleteLoosePart { .. } | Op::ModifyLoosePart { .. } => {}
             Op::ModifyCable { id, before, after } => {
                 out.insert(ObjectRef::Cable(*id));
                 out.extend(before.cores.iter().chain(&after.cores).filter_map(|m| m.wire()).map(ObjectRef::Wire));

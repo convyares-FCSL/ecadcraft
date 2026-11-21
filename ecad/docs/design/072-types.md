@@ -644,6 +644,13 @@ Vec<LoosePart { id, description: Text<200>, part_number, manufacturer, article_n
 unit: ItemUnit, location, function }>`, implementing `Bom`, out of the device store. In 0.2.4 a
 loose part becomes a layout item (`Bom` + `Layout`).
 
+As built (F2a, overseer 2026-11-21): kept as aids are, in `Document.loose_parts: BTreeMap<LoosePartId,
+LoosePart>` (the id is the key, not a field); ops `CreateLoosePart`, `DeleteLoosePart`,
+`ModifyLoosePart` (whole part recorded); bucketed `model:loose_part:` chunks; invariant I26 (a
+quantity more than 0 and at most 9 999, whole for pieces). `Qty` is thousandths written as a
+decimal text (`"3.6"`); the description is the device's `Description` (`Text<256>`). A device of
+kind `bom_item` is a read error. `Bom` itself is not written yet (F2b).
+
 ---
 
 ## 7. Symbol and representation

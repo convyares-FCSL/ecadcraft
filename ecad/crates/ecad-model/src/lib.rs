@@ -41,6 +41,7 @@ pub mod invariant;
 pub mod keys;
 pub mod ledger;
 pub mod links;
+pub mod loose_part;
 pub mod merge;
 pub mod numbering;
 pub mod op;
@@ -78,8 +79,8 @@ pub use doc::{
 pub use error::{ModelError, Noun, ParseError, Parsed, Result};
 pub use geom::{Placement, Pt};
 pub use id::{
-    AidId, CableId, ConductorId, DefinitionId, DeviceId, FolderId, FunctionId, IdAllocator, ItemId, LayerId, LibraryId, LinkId, LocationId, NetId,
-    PageId, ProjectId, RepresentationId, RouteId, StandardId, TerminalId, TxId, UserFieldId, WireId,
+    AidId, CableId, ConductorId, DefinitionId, DeviceId, FolderId, FunctionId, IdAllocator, ItemId, LayerId, LibraryId, LinkId, LocationId,
+    LoosePartId, NetId, PageId, ProjectId, RepresentationId, RouteId, StandardId, TerminalId, TxId, UserFieldId, WireId,
 };
 pub use invariant::Touched;
 pub use ledger::{Author, Base, BranchPoint, Check, History, Ledger, StepPoint, Transaction, TxKind};

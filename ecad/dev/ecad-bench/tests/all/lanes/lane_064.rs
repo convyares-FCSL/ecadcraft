@@ -41,6 +41,9 @@ fn old_touched(ops: &[Op]) -> Touched {
             Op::CreateAid { id, .. } | Op::DeleteAid { id, .. } | Op::ModifyAid { id, .. } => {
                 t.aids.insert(*id);
             }
+            Op::CreateLoosePart { id, .. } | Op::DeleteLoosePart { id, .. } | Op::ModifyLoosePart { id, .. } => {
+                t.loose_parts.insert(*id);
+            }
             Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } | Op::ModifyCable { id, .. } => {
                 t.cables.insert(*id);
             }

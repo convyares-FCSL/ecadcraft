@@ -64,6 +64,8 @@ pub enum ObjectId {
     Route(RouteId),
     /// A drawing aid (design 072 §6.2).
     Aid(ecad_model::AidId),
+    /// A loose part (design 072 §6.4).
+    LoosePart(ecad_model::LoosePartId),
     Definition(DefinitionId),
     /// The project settings (one per project).
     Settings,
@@ -83,6 +85,7 @@ impl ObjectId {
             ObjectId::Cable(_) => "cable",
             ObjectId::Route(_) => "route",
             ObjectId::Aid(_) => "aid",
+            ObjectId::LoosePart(_) => "loose part",
             ObjectId::Definition(_) => "definition",
             ObjectId::Settings => "settings",
         }
@@ -101,6 +104,7 @@ impl ObjectId {
             ObjectId::Cable(i) => i.short(),
             ObjectId::Route(i) => i.short(),
             ObjectId::Aid(i) => i.short(),
+            ObjectId::LoosePart(i) => i.short(),
             ObjectId::Definition(i) => i.short(),
             ObjectId::Settings => "settings".into(),
         }
@@ -119,6 +123,7 @@ impl ObjectId {
             ObjectId::Cable(i) => i.hex(),
             ObjectId::Route(i) => i.hex(),
             ObjectId::Aid(i) => i.hex(),
+            ObjectId::LoosePart(i) => i.hex(),
             ObjectId::Definition(i) => i.hex(),
             ObjectId::Settings => String::new(),
         }
@@ -928,6 +933,9 @@ pub fn op_view(op: &Op) -> OpView {
         Op::CreateAid { aid, .. } => (None, val(aid)),
         Op::DeleteAid { aid, .. } => (val(aid), None),
         Op::ModifyAid { before, after, .. } => (val(before), val(after)),
+        Op::CreateLoosePart { part, .. } => (None, val(part)),
+        Op::DeleteLoosePart { part, .. } => (val(part), None),
+        Op::ModifyLoosePart { before, after, .. } => (val(before), val(after)),
         Op::CreateCable { cable, .. } => (None, val(cable)),
         Op::DeleteCable { cable, .. } => (val(cable), None),
         Op::ModifyCable { before, after, .. } => (val(before), val(after)),
@@ -1032,6 +1040,7 @@ pub fn op_targets(op: &Op) -> Vec<ObjectId> {
             out.extend(before.points_landed().chain(after.points_landed()).map(ObjectId::Terminal));
         }
         Op::CreateAid { id, .. } | Op::DeleteAid { id, .. } | Op::ModifyAid { id, .. } => out.push(ObjectId::Aid(*id)),
+        Op::CreateLoosePart { id, .. } | Op::DeleteLoosePart { id, .. } | Op::ModifyLoosePart { id, .. } => out.push(ObjectId::LoosePart(*id)),
         Op::CreateCable { id, cable } | Op::DeleteCable { id, cable } => {
             out.push(ObjectId::Cable(*id));
             out.extend(cable.cores.iter().filter_map(member_object));
@@ -1160,6 +1169,7 @@ pub fn object_json(doc: &Document, id: ObjectId) -> Option<Value> {
         ObjectId::Cable(i) => doc.cables.get(&i).and_then(val),
         ObjectId::Route(i) => doc.routes.get(&i).and_then(val),
         ObjectId::Aid(i) => doc.aids.get(&i).and_then(val),
+        ObjectId::LoosePart(i) => doc.loose_parts.get(&i).and_then(val),
         ObjectId::Definition(i) => doc.definitions.get(&i).and_then(val),
         ObjectId::Settings => val(&doc.settings),
     }
@@ -1242,7 +1252,7 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
             }
             _ => Vec::new(),
         },
-        ObjectId::Layer(_) | ObjectId::Item(_) | ObjectId::Settings => Vec::new(),
+        ObjectId::Layer(_) | ObjectId::Item(_) | ObjectId::LoosePart(_) | ObjectId::Settings => Vec::new(),
     }
 }
 
@@ -1291,6 +1301,7 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
         ObjectId::Cable(c) => subject_label(doc, Subject::Cable(c)),
         ObjectId::Route(r) => subject_label(doc, Subject::Route(r)),
         ObjectId::Aid(a) => subject_label(doc, Subject::Aid(a)),
+        ObjectId::LoosePart(i) => doc.loose_parts.get(&i).map_or_else(String::new, |p| format!("loose part {}", p.description)),
         ObjectId::Terminal(i) => doc.terminals.get(&i).map_or_else(String::new, |t| {
             let name = t.label.clone().or_else(|| t.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| i.short());
             format!("{}:{name}", subject_label(doc, t.owner.subject()))
@@ -1319,6 +1330,7 @@ pub fn objects(doc: &Document) -> Vec<ObjectId> {
     out.extend(doc.cables.keys().map(|i| ObjectId::Cable(*i)));
     out.extend(doc.routes.keys().map(|i| ObjectId::Route(*i)));
     out.extend(doc.aids.keys().map(|i| ObjectId::Aid(*i)));
+    out.extend(doc.loose_parts.keys().map(|i| ObjectId::LoosePart(*i)));
     out.extend(doc.representations.keys().map(|i| ObjectId::Representation(*i)));
     out.extend(doc.items.keys().map(|i| ObjectId::Item(*i)));
     out.extend(doc.definitions.keys().map(|i| ObjectId::Definition(*i)));

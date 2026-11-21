@@ -216,6 +216,9 @@ fn index(doc: &Document) -> Vec<Value> {
     for id in doc.aids.keys() {
         push("aid", format!("{:032x}", id.0), id.short(), label_of(doc, Subject::Aid(*id)));
     }
+    for (id, p) in &doc.loose_parts {
+        push("loose_part", format!("{:032x}", id.0), id.short(), format!("loose part {}", p.description));
+    }
     for (id, r) in &doc.representations {
         push("representation", format!("{:032x}", id.0), id.short(), format!("{} of {}", r.role, label_of(doc, r.subject)));
     }
