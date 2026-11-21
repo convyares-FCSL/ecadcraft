@@ -112,7 +112,7 @@ fn review_2_renaming_a_continuation_patches_the_cards_io_rows() {
     h.wire_pp(&[(100.0, 250.0), (100.0, 150.0)]).unwrap();
     h.run("plcchannels", json!({"card": di.hex(), "from": [95.0, 200.0], "to": [115.0, 200.0]})).unwrap();
     let b = h.run("place", json!({"symbol": "continuation", "at": [300, 250], "name": "B"})).unwrap();
-    let b: DeviceId = id(&b, "component");
+    let b: ecad_model::AidId = id(&b, "aid");
     placed(&mut h, "lamp", 300.0, 160.0);
     h.wire_pp(&[(300.0, 250.0), (300.0, 170.0)]).unwrap();
     h.run("newpage", json!({"generated": "iolist"})).unwrap();
@@ -120,7 +120,7 @@ fn review_2_renaming_a_continuation_patches_the_cards_io_rows() {
     h.cfg(|p| {
         p.outputs();
     });
-    h.run("setprop", json!({"component": b.hex(), "key": "name", "value": "A"})).unwrap();
+    h.run("setprop", json!({"aids": [b.hex()], "key": "name", "value": "A"})).unwrap();
     let changed = h.cfg(|p| p.outputs().plc.rows_changed.clone());
     assert!(changed.contains(&di), "the card's rows are patched");
     assert!(targets(&mut h).iter().any(|t| t.ends_with(":X1")), "the lamp is a target now: {:?}", targets(&mut h));

@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 
 use cadcraft_engine::doc::Handle;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
-use ecad_model::{DeviceId, Subject};
+use ecad_model::{AidId, Subject};
 use serde_json::json;
 
 use super::forms::{R, Safe, commit, other, paper_guard, safely};
@@ -26,7 +26,7 @@ pub(crate) fn contcaption(s: &Session) -> R<Box<dyn Interactive>> {
 }
 
 struct Caption {
-    arrows: BTreeSet<DeviceId>,
+    arrows: BTreeSet<AidId>,
     /// Picked objects that are not arrows.
     others: usize,
     /// The session's last caption: the prompt's default.
@@ -51,7 +51,7 @@ impl Caption {
                         _ => None,
                     };
                     match rep.map(|r| r.subject) {
-                        Some(Subject::Device(c)) if crate::continuations::is_continuation(doc, c) => Some(c),
+                        Some(Subject::Aid(c)) if crate::continuations::continuation(doc, c).is_some() => Some(c),
                         _ => None,
                     }
                 })

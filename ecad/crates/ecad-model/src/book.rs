@@ -197,6 +197,8 @@ impl Outline {
             | Effect::Version { .. }
             | Effect::Style { .. }
             | Effect::Standard { .. }
+            | Effect::Aid { .. }
+            | Effect::LoosePart { .. }
             | Effect::Project { .. } => {}
         }
     }

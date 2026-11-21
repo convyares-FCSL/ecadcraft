@@ -276,7 +276,7 @@ fn old_connectors_touched(doc: &Document, ops: &[Op]) -> BTreeSet<DeviceId> {
     for op in ops {
         match op {
             Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
-                out.insert(terminal.component);
+                out.extend(terminal.device());
             }
             Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => subject(rep, &mut out),
             Op::ModifyRepresentation { before, after, .. } => {

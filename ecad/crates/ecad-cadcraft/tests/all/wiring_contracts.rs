@@ -337,7 +337,7 @@ fn an_unknown_continuation_name_is_a_warning_never_a_refusal() {
     assert!(kept(&mut h).iter().any(|c| c.which == "Motor-run"), "the name is not in the table");
     let row = kept(&mut h).into_iter().find(|c| c.which == "Motor-run").unwrap();
     assert_eq!(row.severity(), ecad_cadcraft::checks::Severity::Warning);
-    assert!(matches!(row.object, ecad_cadcraft::checks::Object::Device(_)), "{r}");
+    assert!(matches!(row.object, ecad_cadcraft::checks::Object::Terminal(_)), "the arrow's point: {r}");
     assert!(row.page.is_some() && row.at.is_some());
     // Names in the table are not rows: the net takes the potential.
     terminal(&mut h, (100.0, 0.0), "X2");

@@ -95,7 +95,7 @@ impl<'i> DerivedView<Inputs<'i>> for ConnectorsView {
             // Design 072 §2.6: a device link is a relationship, not drawn.
             Effect::DeviceLink { .. } => {}
             Effect::Terminal { before, after, .. } => {
-                out.extend(before.iter().chain(after.iter()).map(|t| t.component));
+                out.extend(before.iter().chain(after.iter()).filter_map(|t| t.device()));
             }
             Effect::Rep { before, after, .. } => {
                 for r in before.iter().chain(after.iter()) {
@@ -129,6 +129,8 @@ impl<'i> DerivedView<Inputs<'i>> for ConnectorsView {
             | Effect::Folder { .. }
             | Effect::Style { .. }
             | Effect::Standard { .. }
+            | Effect::Aid { .. }
+            | Effect::LoosePart { .. }
             | Effect::Project { .. } => {}
         }
     }

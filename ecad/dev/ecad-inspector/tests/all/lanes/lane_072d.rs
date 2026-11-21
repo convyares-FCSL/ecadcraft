@@ -26,7 +26,7 @@ fn a_wires_values_and_its_modify_op_are_shown_raw_and_readable() {
         potential: Text::new("24V").ok(),
         ..Wire::new(net, conductor, a, b)
     };
-    let point = |label: &str| Terminal { component: k, label: Some(label.into()), key: None, accepts: Default::default() };
+    let point = |label: &str| Terminal { owner: k.into(), label: Some(label.into()), key: None, accepts: Default::default() };
     l.commit(
         Author::User,
         "wire",
@@ -158,7 +158,7 @@ fn core_positions_are_shown_raw_and_readable() {
             Op::CreateDevice { id: d, device: Device::default() },
             Op::AddTerminal {
                 id: t,
-                terminal: Terminal { component: d, label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() },
+                terminal: Terminal { owner: d.into(), label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() },
             },
             Op::AddRoute { id: r, route: loose },
             Op::CreateCable { id: k, cable: Cable { cores: vec![on_line, spare], ..Cable::default() } },
@@ -213,7 +213,8 @@ fn accepts_is_shown_raw_readable_and_on_the_device_row() {
     let mut l = history();
     let mut ids = IdAllocator::seeded(74);
     let (d, t): (DeviceId, TerminalId) = (ids.fresh(), ids.fresh());
-    let bar = Terminal { component: d, label: Some("PE".into()), key: Some("PE".parse().unwrap()), accepts: ecad_model::Accepts::new(12).unwrap() };
+    let bar =
+        Terminal { owner: d.into(), label: Some("PE".into()), key: Some("PE".parse().unwrap()), accepts: ecad_model::Accepts::new(12).unwrap() };
     l.commit(Author::User, "bar", vec![Op::CreateDevice { id: d, device: Device::default() }, Op::AddTerminal { id: t, terminal: bar }]).unwrap();
     let path = written(&dir, &l);
     let f = FileSource::from_path(&path);
@@ -334,20 +335,17 @@ fn a_cable_with_two_slashes_and_one_wire_per_core_is_shown_raw_and_readable() {
     let p1: PageId = *l.document().page_order.first().unwrap();
     let mut ids = IdAllocator::seeded(76);
     let p2: PageId = ids.fresh();
-    let (x01, x05, a1, a2): (DeviceId, DeviceId, DeviceId, DeviceId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
+    let (x01, x05): (DeviceId, DeviceId) = (ids.fresh(), ids.fresh());
+    let (a1, a2): (ecad_model::AidId, ecad_model::AidId) = (ids.fresh(), ids.fresh());
     let (t01, t05, ta1, ta2): (TerminalId, TerminalId, TerminalId, TerminalId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
     let (w, net, conductor): (WireId, NetId, ConductorId) = (ids.fresh(), ids.fresh(), ids.fresh());
     let k: CableId = ids.fresh();
     let (i1, i2, r1, r2): (ItemId, ItemId, RepresentationId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
     let layer = *l.document().layers.keys().next().unwrap();
     let style = Style { layer, color: ecad_model::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
-    let point = |component: DeviceId, label: &str| Terminal { component, label: Some(label.into()), key: None, accepts: Default::default() };
-    let arrow = || {
-        let mut d = Device::default();
-        d.properties.insert(ecad_model::connectivity::KIND.into(), ecad_model::connectivity::CONTINUATION.into());
-        d.properties.insert(ecad_model::connectivity::NAME.into(), "A1".into());
-        d
-    };
+    let point = |owner: ecad_model::TerminalOwner, label: &str| Terminal { owner, label: Some(label.into()), key: None, accepts: Default::default() };
+    // Design 072 §6.2: a continuation is a drawing aid.
+    let arrow = || ecad_model::Aid::Continuation { name: Some(ecad_model::aid::ContinuationName::new("A1").unwrap()), caption: None };
     let slash = |id: ItemId, page: PageId| Op::AddItem {
         id,
         item: Item { page, style: style.clone(), kind: ItemKind::Primitive(Primitive::Line { a: Pt::new(50.0, -5.0), b: Pt::new(50.0, 5.0) }) },
@@ -370,12 +368,12 @@ fn a_cable_with_two_slashes_and_one_wire_per_core_is_shown_raw_and_readable() {
             Op::AddPage { id: p2, page: Page::titled("2").unwrap(), index: 1 },
             Op::CreateDevice { id: x01, device: Device::default() },
             Op::CreateDevice { id: x05, device: Device::default() },
-            Op::CreateDevice { id: a1, device: arrow() },
-            Op::CreateDevice { id: a2, device: arrow() },
-            Op::AddTerminal { id: t01, terminal: point(x01, "1") },
-            Op::AddTerminal { id: t05, terminal: point(x05, "1") },
-            Op::AddTerminal { id: ta1, terminal: point(a1, "1") },
-            Op::AddTerminal { id: ta2, terminal: point(a2, "1") },
+            Op::CreateAid { id: a1, aid: arrow() },
+            Op::CreateAid { id: a2, aid: arrow() },
+            Op::AddTerminal { id: t01, terminal: point(x01.into(), "1") },
+            Op::AddTerminal { id: t05, terminal: point(x05.into(), "1") },
+            Op::AddTerminal { id: ta1, terminal: point(a1.into(), "1") },
+            Op::AddTerminal { id: ta2, terminal: point(a2.into(), "1") },
             Op::CreateWire { id: w, wire: Wire::new(net, conductor, t01, t05) },
             Op::CreateCable { id: k, cable: Cable { cores: vec![Core::on_wire(w, ecad_model::CoreLabel::new("1").ok())], ..Cable::default() } },
             slash(i1, p1),

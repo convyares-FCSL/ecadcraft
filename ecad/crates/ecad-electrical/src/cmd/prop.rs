@@ -71,8 +71,8 @@ pub static PROP_RULES: &[PropRule] = &[
         claims: |_, o, k| is_component(o) && super::location::aspect_property(k).is_some(),
         build: Build::Aspect,
     },
-    PropRule { what: "tag (design 026)", claims: |doc, o, k| k == TAG_KEY && tagged(doc, o), build: Build::Tag },
-    PropRule { what: "tag fixed (design 026)", claims: |doc, o, k| k == FIXED_KEY && tagged(doc, o), build: Build::Fixed },
+    PropRule { what: "tag (design 026)", claims: |_, o, k| k == TAG_KEY && tagged(o), build: Build::Tag },
+    PropRule { what: "tag fixed (design 026)", claims: |_, o, k| k == FIXED_KEY && tagged(o), build: Build::Fixed },
     PropRule { what: "device property (design 018)", claims: |_, o, k| is_device_property(o, k), build: Build::Device(device_value) },
     PropRule {
         what: "wire, junction or continuation (briefs 022, 049)",
@@ -112,7 +112,7 @@ pub static PROP_RULES: &[PropRule] = &[
     PropRule { what: "rating (brief 034)", claims: |_, o, k| is_component(o) && crate::symbols::is_rating_key(k), build: Build::Value(rating_value) },
     PropRule {
         what: "parts and items (brief 047)",
-        claims: |doc, o, k| component(o).is_some_and(|c| crate::bom::is_bom_key(doc, c, k)),
+        claims: |_, o, k| component(o).is_some() && crate::bom::is_bom_key(k),
         build: Build::Value(bom_value),
     },
     PropRule { what: "strip accessories, or free text (brief 030)", claims: |_, o, _| is_component(o), build: Build::Value(accessory_value) },
@@ -152,14 +152,9 @@ fn strip(doc: &Document, o: ObjectRef) -> Option<DeviceId> {
     component(o).filter(|c| crate::strips::strip_of(doc, *c).is_some())
 }
 
-/// Whether `o` takes a tag: a cable, or a component that is not tagless (a junction, a
-/// continuation, an item).
-fn tagged(doc: &Document, o: ObjectRef) -> bool {
-    match o {
-        ObjectRef::Device(c) => crate::wires::kind_of(doc, c).is_none(),
-        ObjectRef::Cable(_) => true,
-        _ => false,
-    }
+/// Whether `o` takes a tag: a device or a cable.
+fn tagged(o: ObjectRef) -> bool {
+    matches!(o, ObjectRef::Device(_) | ObjectRef::Cable(_))
 }
 
 /// Whether `key` on `object` is one of design 018 §6.1's device properties.
@@ -289,9 +284,6 @@ pub fn value(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) 
         Build::Tag => device_value,
         Build::Fixed | Build::Aspect | Build::Record(_) => return Err(CmdError::input("that property is set through its own rule")),
     };
-    if let ObjectRef::Device(c) = object {
-        crate::bom::refuse_on_item(doc, c, key, value)?;
-    }
     check(doc, object, key, value)
 }
 

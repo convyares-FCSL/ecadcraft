@@ -235,15 +235,11 @@ impl TableSource for DevicesSource {
 }
 
 /// What the device feed says changed for the Devices table since change `since`: `All` when it
-/// cannot say (rolled over) or when every row may differ (pages, a location box, settings).
+/// cannot say (rolled over) or when every row may differ (pages, settings). A location box is a
+/// drawing aid: no row reads it (a device's location is its own, design 052 §5.1).
 pub fn changes(p: &ecad_cadcraft::Project, since: Option<u64>) -> (Changed<DeviceId>, BTreeSet<DeviceId>) {
     let Some(t) = since.and_then(|n| p.device_changes_since(n)) else { return (Changed::All, BTreeSet::new()) };
     if t.pages || t.settings {
-        return (Changed::All, BTreeSet::new());
-    }
-    let doc = p.ledger.document();
-    // A location box changed: every device's location may differ (it is read from the boxes).
-    if t.devices.iter().any(|c| ecad_cadcraft::locations::is_box(doc, *c)) {
         return (Changed::All, BTreeSet::new());
     }
     if t.devices.is_empty() {

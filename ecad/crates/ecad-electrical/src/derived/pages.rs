@@ -195,9 +195,15 @@ fn before(doc: &Document, effects: &Effects<'_>, effect: &Effect<'_>, scope: &mu
         }
         Effect::Route { before, after, .. } => extend(out, before.iter().chain(after.iter()).map(|r| r.page)),
         // Brief 049 (design 049 §8.2): a continuation's partners list it on their pages (the
-        // reference index's part), and its own pages come from its representation effects.
-        Effect::Device { before: None, after: Some(d), .. } | Effect::Device { before: Some(d), after: None, .. }
-            if ecad_model::connectivity::continuation_key(&d.properties).is_some() => {}
+        // reference index's part), and its own pages come from its representation effects. A
+        // location box's pages likewise (its label and the tag prefixes of the devices inside are
+        // drawn on its own pages only).
+        Effect::Aid { before: None, .. } | Effect::Aid { after: None, .. } => {}
+        // A continuation renamed or captioned, a box's values changed: its own pages (design 072
+        // §6.2).
+        Effect::Aid { id, .. } => extend(out, subject_pages(doc, Subject::Aid(*id))),
+        // A loose part is drawn on no page (design 072 §6.4).
+        Effect::LoosePart { .. } => {}
         Effect::Device { id, before: None, after: Some(_) } if !doc.devices.contains_key(id) => {}
         Effect::Wire { id, before: None, after: Some(_) } if !doc.wires.contains_key(id) => {}
         Effect::Wire { before: Some(w), after: None, .. } => extend(out, points_pages(doc, &w.ends)),
@@ -208,7 +214,7 @@ fn before(doc: &Document, effects: &Effects<'_>, effect: &Effect<'_>, scope: &mu
         Effect::Terminal { id, before: None, after: Some(_) } if !doc.terminals.contains_key(id) => {}
         Effect::Terminal { before, after, .. } => {
             for t in before.iter().chain(after.iter()) {
-                extend(out, subject_pages(doc, Subject::Device(t.component)));
+                extend(out, subject_pages(doc, t.owner.subject()));
             }
         }
         Effect::Definition { id, before: None, after: Some(_) } if !doc.definitions.contains_key(id) => {}
@@ -233,17 +239,7 @@ fn before(doc: &Document, effects: &Effects<'_>, effect: &Effect<'_>, scope: &mu
             }
         }
         Effect::Prop { object: ObjectRef::Page(p), .. } => out.insert(*p),
-        // Brief 018: a device's tag is drawn beside each of its symbols. Brief 049: a
-        // continuation's name and kind on its own pages.
-        Effect::Prop { object: ObjectRef::Device(c), key, .. }
-            if key.raw == ecad_model::connectivity::NAME || key.raw == ecad_model::connectivity::KIND =>
-        {
-            if crate::continuations::is_continuation(doc, *c) {
-                extend(out, subject_pages(doc, Subject::Device(*c)));
-            } else {
-                *out = PageSet::All;
-            }
-        }
+        // Brief 018: a device's tag is drawn beside each of its symbols.
         Effect::Prop { object: ObjectRef::Device(c), key, after, .. } => {
             extend(out, subject_pages(doc, Subject::Device(*c)));
             // Brief 045 (design 045 §11.1): a rack's tag shows in its cards' captions, and a
@@ -341,7 +337,9 @@ fn extension(doc: &Document, effect: &Effect<'_>, out: &mut PageSet) {
         | Effect::Folder { .. }
         | Effect::Style { .. }
         | Effect::Standard { .. }
-        | Effect::Project { .. } => {}
+        | Effect::Project { .. }
+        | Effect::Aid { .. }
+        | Effect::LoosePart { .. } => {}
     }
 }
 

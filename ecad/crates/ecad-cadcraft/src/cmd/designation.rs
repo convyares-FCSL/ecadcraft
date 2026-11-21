@@ -63,7 +63,7 @@ pub fn rows(p: &mut crate::project::Project, only: Option<Aspect>) -> Value {
         let rows: Vec<Value> = designations::entries(doc, a)
             .into_iter()
             .map(|e| {
-                let c = p.designation_uses.counts(doc, a, &e.key);
+                let c = p.designation_uses.counts(a, &e.key);
                 json!({
                     "key": e.key, "code": e.code, "description": e.description,
                     "devices": c.devices, "overrides": c.overrides, "boxes": c.boxes, "pages": c.pages,

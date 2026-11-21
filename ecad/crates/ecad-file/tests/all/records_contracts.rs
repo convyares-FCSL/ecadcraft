@@ -72,7 +72,7 @@ fn embedded_definitions_follow_the_owner_requirements() {
         // Its routes go with their drawings, and the wires to its points with their cable cores.
         for (r, route) in doc.routes.iter() {
             let gone = ops.iter().any(|o| matches!(o, Op::RemoveRoute { id, .. } if id == r));
-            if !gone && route.ends.iter().any(|e| e.point().is_some_and(|t| doc.terminals[&t].component == c)) {
+            if !gone && route.ends.iter().any(|e| e.point().is_some_and(|t| doc.terminals[&t].device() == Some(c))) {
                 for (rid, rep) in doc.representations_of(Subject::Route(*r)) {
                     ops.push(Op::UnlinkRepresentation { id: rid, rep: rep.clone() });
                     for i in &rep.items {
@@ -83,7 +83,9 @@ fn embedded_definitions_follow_the_owner_requirements() {
             }
         }
         for (w, wire) in doc.wires.iter() {
-            if wire.ends.iter().any(|t| doc.terminals[t].component == c) && !ops.iter().any(|o| matches!(o, Op::DeleteWire { id, .. } if id == w)) {
+            if wire.ends.iter().any(|t| doc.terminals[t].device() == Some(c))
+                && !ops.iter().any(|o| matches!(o, Op::DeleteWire { id, .. } if id == w))
+            {
                 for (cable, cv) in doc.cables.iter() {
                     if cv.cores.iter().any(|m| m.wire() == Some(*w)) {
                         let (_, after): &mut (ecad_model::Cable, ecad_model::Cable) =

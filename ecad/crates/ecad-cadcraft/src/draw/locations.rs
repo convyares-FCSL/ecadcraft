@@ -25,7 +25,7 @@ pub fn styled_label_entity(
     use crate::text_style::TextKind;
     let mut e = label_entity(look, value, at, handle);
     let Some(c) = doc.representations.get(&rep).and_then(|r| match r.subject {
-        Subject::Device(c) => Some(c),
+        Subject::Aid(a) => Some(a),
         _ => None,
     }) else {
         return e;
@@ -48,7 +48,7 @@ pub fn styled_label_entity(
 /// the page to install (`install_family`).
 pub fn label_family(doc: &Document, rep: RepresentationId) -> Option<String> {
     let c = doc.representations.get(&rep).and_then(|r| match r.subject {
-        Subject::Device(c) => Some(c),
+        Subject::Aid(a) => Some(a),
         _ => None,
     })?;
     let label = crate::styles::location::box_look(doc, c).label_style;
@@ -67,7 +67,7 @@ pub fn style_boxes(
     }
     let index: std::collections::HashMap<cadcraft_engine::doc::Handle, usize> = ents.iter().enumerate().map(|(i, e)| (e.handle, i)).collect();
     for b in boxes {
-        let look = crate::styles::location::box_look(doc, b.component);
+        let look = crate::styles::location::box_look(doc, b.aid);
         let Some(e) = item_handle(b.item).and_then(|h| index.get(&h)).and_then(|i| ents.get_mut(*i)) else { continue };
         e.common.linetype = look.linetype.into();
         e.common.lineweight = cadcraft_engine::doc::Lineweight::Mm100(u16::try_from(look.lineweight).unwrap_or(25));

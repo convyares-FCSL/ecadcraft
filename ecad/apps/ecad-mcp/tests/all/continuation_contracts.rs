@@ -24,17 +24,17 @@ fn contcaption_and_place_with_a_caption_by_the_agent() {
     let b = c.exec("place", json!({"symbol": "continuation", "at": [300, 150], "name": "24V"}));
 
     let n = c.log().len();
-    let v = c.exec("contcaption", json!({"continuations": [hex(&a, "component"), hex(&b, "component")], "caption": "TO CONTROL SUPPLY"}));
+    let v = c.exec("contcaption", json!({"continuations": [hex(&a, "aid"), hex(&b, "aid")], "caption": "TO CONTROL SUPPLY"}));
     assert_eq!((v["changed"].clone(), v["unchanged"].clone()), (json!(1), json!(1)), "{v}");
     assert_one_labelled(&mut c, n, "Caption TO CONTROL SUPPLY");
 
     let n = c.log().len();
-    c.exec("contcaption", json!({"continuations": [hex(&a, "component")], "caption": null}));
+    c.exec("contcaption", json!({"continuations": [hex(&a, "aid")], "caption": null}));
     assert_one_labelled(&mut c, n, "Remove caption");
 
     // Reading: each arrow lists the other; Go to opens it. Nothing is recorded.
     let n = c.log().len();
-    let v = c.exec("xrefs", json!({"component": hex(&a, "component")}));
+    let v = c.exec("xrefs", json!({"aid": hex(&a, "aid")}));
     let rows = v["references"].as_array().unwrap();
     assert_eq!(rows.len(), 1, "{v}");
     assert_eq!((rows[0]["kind"].clone(), rows[0]["target"].clone()), (json!("continuation"), json!(hex(&b, "representation"))));
@@ -44,13 +44,13 @@ fn contcaption_and_place_with_a_caption_by_the_agent() {
 
     // Hostile captions: errors in words, nothing written.
     for bad in [json!("x".repeat(10_000)), json!("A\nB"), json!(42)] {
-        let m = c.refused("execute", json!({"command": "contcaption", "params": {"continuations": [hex(&a, "component")], "caption": bad}}));
+        let m = c.refused("execute", json!({"command": "contcaption", "params": {"continuations": [hex(&a, "aid")], "caption": bad}}));
         assert!(m.contains("caption"), "{m}");
     }
     let k = c.exec("place", json!({"symbol": "coil", "at": [200, 50]}));
     let n = c.log().len();
     let m = c.refused("execute", json!({"command": "contcaption", "params": {"continuations": [hex(&k, "component")], "caption": "X"}}));
-    assert!(m.starts_with("Only continuation arrows have a caption;"), "{m}");
+    assert_eq!(m, ecad_cadcraft::continuations::NO_SUCH_ARROW, "a device is not an arrow");
     assert_eq!(c.log().len(), n);
 }
 

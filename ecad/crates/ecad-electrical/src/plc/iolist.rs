@@ -143,16 +143,16 @@ pub fn rows_of(doc: &Document, plc: &Plc, card: &CardData) -> Vec<Row> {
             }
             for o in &net.terminals {
                 let Some(term) = doc.terminals.get(o) else { continue };
-                if term.component == card.id || targets.len() >= 2 * MAX_TARGETS {
+                if term.device() == Some(card.id) || targets.len() >= 2 * MAX_TARGETS {
                     continue;
                 }
                 // A junction or continuation is not a target.
-                if crate::devices::tag_of(doc, term.component).is_none() {
+                let Some(device) = term.device().filter(|c| crate::devices::tag_of(doc, *c).is_some()) else {
                     continue;
-                }
+                };
                 // Brief 056: pass-throughs and end devices are capped apart, so terminals never
                 // crowd out what the channel drives.
-                let through = super::signals::is_pass_through(doc, term.component);
+                let through = super::signals::is_pass_through(doc, device);
                 if targets.iter().filter(|t: &&Target| t.through == through).count() >= MAX_TARGETS {
                     continue;
                 }
@@ -160,7 +160,7 @@ pub fn rows_of(doc: &Document, plc: &Plc, card: &CardData) -> Vec<Row> {
                 let (place, at) = shown.map(|(_, r)| rep_place(doc, r)).unwrap_or((None, None));
                 let at = shown.and_then(|(_, r)| r.connection_points.get(o).copied()).or(at);
                 targets.push(Target {
-                    device: crate::devices::tag_words(doc, term.component),
+                    device: crate::devices::tag_words(doc, device),
                     point: crate::terminal_types::terminal_name(doc, *o),
                     place: place.unwrap_or_default(),
                     through,
@@ -407,10 +407,11 @@ pub fn cards_on_nets_of(doc: &Document, plc: &Plc, d: Option<DeviceId>, w: Optio
         let Some(net) = conn.net(n) else { continue };
         for t in &net.terminals {
             if let Some(x) = doc.terminals.get(t)
-                && plc.cards.contains_key(&x.component)
+                && let Some(c) = x.device()
+                && plc.cards.contains_key(&c)
                 && channels::point_of(doc, *t).is_some()
             {
-                out.push(x.component);
+                out.extend(x.device());
             }
         }
     }
@@ -427,10 +428,11 @@ pub fn cards_on_nets_of_terminals(doc: &Document, plc: &Plc, ts: &[ecad_model::T
         let Some(net) = conn.net(n) else { continue };
         for t in &net.terminals {
             if let Some(x) = doc.terminals.get(t)
-                && plc.cards.contains_key(&x.component)
+                && let Some(c) = x.device()
+                && plc.cards.contains_key(&c)
                 && channels::point_of(doc, *t).is_some()
             {
-                out.push(x.component);
+                out.extend(x.device());
             }
         }
     }

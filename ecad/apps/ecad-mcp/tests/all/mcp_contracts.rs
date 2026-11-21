@@ -101,7 +101,7 @@ impl Client {
                         let t: TerminalId = p.ids.fresh();
                         ops.push(Op::AddTerminal {
                             id: t,
-                            terminal: Terminal { component: device, label: Some((i + 1).to_string()), key: None, accepts: Default::default() },
+                            terminal: Terminal { owner: device.into(), label: Some((i + 1).to_string()), key: None, accepts: Default::default() },
                         });
                         cps.insert(t, Pt::new(*x, *y));
                         out.push(t);
@@ -1045,11 +1045,7 @@ fn wiring_through_mcp_records_the_json_forms_transactions_as_the_agent() {
     // `place` a continuation.
     let (r, t) = one(&mut c, "place", json!({"symbol": "continuation", "at": [100, 0], "name": "0V"}));
     assert_eq!(r["name"], json!("0V"));
-    assert!(
-        t.ops
-            .iter()
-            .any(|op| matches!(op, Op::CreateDevice { device: component, .. } if component.properties.get("name").map(String::as_str) == Some("0V")))
-    );
+    assert!(t.ops.iter().any(|op| matches!(op, Op::CreateAid { aid, .. } if aid.continuation_name().map(|n| n.as_str()) == Some("0V"))));
     // F5: a continuation is a named point, so the wire runs through a pair of them, from one
     // terminal to the other; its partner's line is drawn first and carries no wire yet.
     one(&mut c, "place", json!({"symbol": "continuation", "at": [200, 0], "name": "0V"}));

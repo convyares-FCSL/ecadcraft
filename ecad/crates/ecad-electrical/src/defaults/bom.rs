@@ -9,16 +9,6 @@
 use super::{Entry, Kind, Level, ProjectSource, Slot};
 
 ecad_model::word_enum! {
-    /// The unit of a new BOM item: pieces or metres.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum ItemUnit {
-        Pcs,
-        #[strum(serialize = "m")]
-        Metres,
-    }
-}
-
-ecad_model::word_enum! {
     /// Whether part lines are listed flat or under their device.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum BomLines {
@@ -45,7 +35,8 @@ pub static COLUMN_ARTICLE: Entry = entry("bom.column.article", "Article number c
 pub static LINES: Entry = entry("bom.lines", "Part lines", Kind::Choice(<BomLines as ecad_model::Word>::WORDS));
 
 /// `bom.item.unit`: the unit of a new item when none is given.
-pub static ITEM_UNIT: Entry = entry("bom.item.unit", "Unit of a new item", Kind::Choice(<ItemUnit as ecad_model::Word>::WORDS));
+pub static ITEM_UNIT: Entry =
+    entry("bom.item.unit", "Unit of a new item", Kind::Choice(<ecad_model::loose_part::ItemUnit as ecad_model::Word>::WORDS));
 
 /// This lane's entries, in Standards order.
 pub static ENTRIES: &[&Entry] = &[&COLUMN_ARTICLE, &LINES, &ITEM_UNIT];

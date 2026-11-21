@@ -123,7 +123,7 @@ pub fn drawn_points(doc: &Document, c: DeviceId) -> Vec<(TerminalId, Representat
 
 /// The terminal of a strip a conductor end is on: (strip, terminal).
 pub fn strip_of_terminal(doc: &Document, t: TerminalId) -> Option<DeviceId> {
-    let c = doc.terminals.get(&t)?.component;
+    let c = doc.terminals.get(&t)?.device()?;
     strip_of(doc, c).map(|_| c)
 }
 
@@ -1188,7 +1188,7 @@ fn geometric_inside(doc: &Document, w: WireId, end: End, page: PageId) -> Option
 fn far_cell(doc: &Document, o: &Outputs, w: WireId, far: End, cx: &PageCx) -> (Option<String>, Option<DeviceId>) {
     let Some(cond) = doc.wires.get(&w) else { return (None, None) };
     let t = cond.end(far);
-    let comp = doc.terminals.get(&t).map(|x| x.component);
+    let comp = doc.terminals.get(&t).and_then(|x| x.device());
     let cell = o.end_cell_of(doc, Some(t), None, cx);
     (cell.text(doc.settings.reference_style()), comp)
 }
@@ -1616,14 +1616,11 @@ fn far_words(doc: &Document, w: WireId, mine: End) -> (String, Option<DeviceId>)
         End::B => End::A,
     };
     let Some(t) = doc.wires.get(&w).map(|c| c.end(far)) else { return ("loose".into(), None) };
-    let Some(c) = doc.terminals.get(&t).map(|x| x.component) else { return ("loose".into(), None) };
-    match crate::wires::kind_of(doc, c) {
-        Some(ecad_model::connectivity::CONTINUATION) => {
-            let name = doc.devices.get(&c).and_then(|x| x.properties.get(ecad_model::connectivity::NAME)).cloned().unwrap_or_default();
-            (format!("{name} >"), Some(c))
-        }
-        _ => (crate::strips::terminal_words(doc, t), Some(c)),
+    if let Some(a) = doc.terminals.get(&t).and_then(|x| x.owner.aid()) {
+        return (format!("{} >", crate::continuations::display_name(doc, a)), None);
     }
+    let Some(c) = doc.terminals.get(&t).and_then(|x| x.device()) else { return ("loose".into(), None) };
+    (crate::strips::terminal_words(doc, t), Some(c))
 }
 
 /// The hover lines of a terminal symbol `here` of strip `c` (design 028 §7.1), from the document
@@ -1735,7 +1732,7 @@ pub fn core_label(text: Option<&str>) -> Result<Option<String>, CmdError> {
 
 /// `-X01:3`.
 pub fn terminal_words(doc: &Document, t: TerminalId) -> String {
-    let c = doc.terminals.get(&t).map(|x| x.component);
+    let c = doc.terminals.get(&t).and_then(|x| x.device());
     // Brief 044: a connector pin is named by its half (`-X10.S:3`).
     if let Some(name) = crate::connectors::pin_name(doc, t) {
         return name;

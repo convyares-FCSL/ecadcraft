@@ -64,6 +64,8 @@ impl<'i> DerivedView<Inputs<'i>> for TreeFeed {
             | Effect::Version { .. }
             | Effect::Style { .. }
             | Effect::Standard { .. }
+            | Effect::Aid { .. }
+            | Effect::LoosePart { .. }
             | Effect::Project { .. } => false,
         };
         scope.0 |= touched;

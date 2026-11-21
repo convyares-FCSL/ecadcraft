@@ -1079,7 +1079,7 @@ impl<'a> PageIndex<'a> {
                         }
                     }
                 }
-                Subject::Wire(_) | Subject::Device(_) => {}
+                Subject::Wire(_) | Subject::Device(_) | Subject::Aid(_) => {}
                 Subject::Cable(k) => idx.cables.entry(k).or_default().push((id, r)),
             }
         }

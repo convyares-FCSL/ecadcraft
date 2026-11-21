@@ -281,6 +281,8 @@ impl Named {
             | Effect::Style { .. }
             | Effect::Standard { .. }
             | Effect::Project { .. }
+            | Effect::Aid { .. }
+            | Effect::LoosePart { .. }
             | Effect::DeviceLink { .. } => {}
         }
     }

@@ -621,6 +621,8 @@ Not stored; drawn (§4.4). Every `kind = junction` component goes.
 `Aid { Continuation { name, caption }, Box { location: Option<LocationId>, function:
 Option<FunctionId>, panel_temperature: Option<Celsius> } }` in `Document.aids`, drawn by a
 representation (`Subject::Aid`); a continuation's connection point has `TerminalOwner::Aid`.
+Ops `CreateAid`, `DeleteAid`, `ModifyAid` (whole aid recorded; overseer, 2026-11-20); stored in
+bucketed `model:aid:` chunks; invariant I25 (a box's panel temperature is a number).
 
 ### 6.3 Location and function: stored on the device, with `fixed`
 
@@ -641,6 +643,16 @@ Panel-only items (trunking, DIN rail, ties, crimps) are not devices: `Project.lo
 Vec<LoosePart { id, description: Text<200>, part_number, manufacturer, article_number, qty: Qty,
 unit: ItemUnit, location, function }>`, implementing `Bom`, out of the device store. In 0.2.4 a
 loose part becomes a layout item (`Bom` + `Layout`).
+
+As built (F2a, overseer 2026-11-21): kept as aids are, in `Document.loose_parts: BTreeMap<LoosePartId,
+LoosePart>` (the id is the key, not a field); ops `CreateLoosePart`, `DeleteLoosePart`,
+`ModifyLoosePart` (whole part recorded); bucketed `model:loose_part:` chunks; invariant I26 (a
+quantity more than 0 and at most 9 999, whole for pieces). `Qty` is thousandths written as a
+decimal text (`"3.6"`); the description is `Text<200>` (`LooseDescription`: longer input is
+refused, never cut). A device of kind `bom_item` is a read error. F2b: `bomitem` makes and edits
+loose parts, the BOM reads them through `Bom` (`ecad_model::loose_part::Bom`, implemented by
+`LoosePart` and by `Device` for its main part; a device's part lines are still properties), and
+the BOM model keys its entries by `Owner::{Device, Loose}`.
 
 ---
 

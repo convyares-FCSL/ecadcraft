@@ -72,7 +72,7 @@ fn contact_ops(fx: &mut Fx, definition: DefinitionId, at: Pt, labels: [&str; 2],
         connection_points.insert(t2, Pt::new(0.0, -10.0));
     }
     let k1 = fx.k1;
-    let term = |l: &str| Terminal { component: k1, label: Some(l.into()), key: Some(l.parse().unwrap()), accepts: Default::default() };
+    let term = |l: &str| Terminal { owner: k1.into(), label: Some(l.into()), key: Some(l.parse().unwrap()), accepts: Default::default() };
     let ops = vec![
         Op::AddTerminal { id: t1, terminal: term(labels[0]) },
         Op::AddTerminal { id: t2, terminal: term(labels[1]) },
@@ -140,7 +140,7 @@ fn connection_points_must_name_the_components_own_terminals() {
         "other",
         vec![
             Op::CreateDevice { id: other, device: Device::default() },
-            Op::AddTerminal { id: foreign, terminal: Terminal { component: other, label: None, key: None, accepts: Default::default() } },
+            Op::AddTerminal { id: foreign, terminal: Terminal { owner: other.into(), label: None, key: None, accepts: Default::default() } },
         ],
     )
     .unwrap();

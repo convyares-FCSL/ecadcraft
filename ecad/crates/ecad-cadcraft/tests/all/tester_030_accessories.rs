@@ -635,7 +635,7 @@ fn m_link_line_on_every_page_with_stub() {
     let far: TerminalId = ecad_model::derive::terminal_positions(&doc, p2)
         .into_iter()
         .map(|(x, _, _)| x)
-        .find(|x| doc.terminals.get(x).is_some_and(|t| t.component == a.x1))
+        .find(|x| doc.terminals.get(x).is_some_and(|t| t.device() == Some(a.x1)))
         .unwrap_or_else(|| panic!("{v}"));
     let far_label = doc.terminals[&far].label.clone().unwrap();
     a.h.run("jumper", json!({"strip": a.x1.hex(), "positions": format!("3-{far_label}")})).unwrap();
@@ -646,7 +646,7 @@ fn m_link_line_on_every_page_with_stub() {
     // stub past 5").
     let last = ecad_model::derive::terminal_positions(&a.h.doc(), a.page)
         .into_iter()
-        .find(|(x, _, _)| !a.t.contains(x) && doc.terminals.get(x).is_some_and(|t| t.component == a.x1))
+        .find(|(x, _, _)| !a.t.contains(x) && doc.terminals.get(x).is_some_and(|t| t.device() == Some(a.x1)))
         .map(|(_, _, p)| p)
         .expect("the PE terminal on page 1");
     let lines = link_lines(&mut a.h, a.page);

@@ -36,10 +36,9 @@ use std::collections::BTreeMap;
 
 use std::collections::BTreeSet;
 
-use ecad_model::connectivity::{CONTINUATION, KIND, NAME};
 use ecad_model::{
-    ConductorId, DefinitionId, Device, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, NetId, Op, PageId, Placement, Primitive,
-    Pt, Representation, RepresentationId, Route, RouteEnd, RouteId, Style, Subject, SymbolInstance, Terminal, TerminalId, Wire, WireId,
+    Aid, AidId, ConductorId, DefinitionId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, NetId, Op, PageId, Placement, Primitive, Pt,
+    Representation, RepresentationId, Route, RouteEnd, RouteId, Style, Subject, SymbolInstance, Terminal, TerminalId, Wire, WireId,
 };
 
 use crate::devices::{DerivedText, TextOf};
@@ -86,9 +85,17 @@ pub fn continuation_starter() -> &'static Starter {
     symbols::starter(symbols::StarterKey::Continuation)
 }
 
-/// What a tagless component is (`continuation`), from its `kind` property.
-pub fn kind_of(doc: &Document, c: DeviceId) -> Option<&str> {
-    doc.devices.get(&c)?.properties.get(KIND).map(String::as_str)
+/// A continuation (design 072 §6.2) named `name` as typed, with `caption`, both checked.
+///
+/// # Errors
+/// [`NAME_RULE`], or the caption rule ([`crate::continuations::CAPTION_RULE`]).
+pub fn continuation_aid(name: &str, caption: Option<&str>) -> Result<Aid, CmdError> {
+    let name = ecad_model::aid::ContinuationName::new(&valid_name(name)?).map_err(|_| CmdError::refused(NAME_RULE))?;
+    let caption = match crate::continuations::caption_text(caption)? {
+        Some(c) => Some(ecad_model::aid::Caption::new(&c).map_err(|_| CmdError::refused(crate::continuations::CAPTION_RULE))?),
+        None => None,
+    };
+    Ok(Aid::Continuation { name: Some(name), caption })
 }
 
 /// A continuation name as typed, checked: trimmed, 1-16 letters, digits or `+ - / . _`.
@@ -370,15 +377,13 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
 
 // ---------------------------------------------------------------- continuation texts (§3.2)
 
-/// The text beside a continuation symbol (design 022 §3.2): its name; `None` when `c` is not a
+/// The text beside a continuation symbol (design 022 §3.2): its name; `None` when `a` is not a
 /// continuation. Its other ends' places are reference parts since brief 049
 /// ([`crate::continuations`]).
-pub fn continuation_texts(doc: &Document, c: DeviceId, rep: RepresentationId, pl: &Placement) -> Option<Vec<DerivedText>> {
-    if kind_of(doc, c) != Some(CONTINUATION) {
-        return None;
-    }
+pub fn continuation_texts(doc: &Document, a: AidId, rep: RepresentationId, pl: &Placement) -> Option<Vec<DerivedText>> {
+    let (name, _) = crate::continuations::continuation(doc, a)?;
+    let name = name.unwrap_or_default().to_string();
     let mut out = Vec::new();
-    let name = doc.devices.get(&c)?.properties.get(NAME).cloned().unwrap_or_default();
     let at = pl.apply(Pt::new(2.5, -4.0));
     if !at.is_finite() {
         return Some(out);
@@ -712,11 +717,11 @@ pub fn wire_pages(doc: &Document, w: WireId) -> BTreeSet<PageId> {
 
 // ---------------------------------------------------------------- placing (§3)
 
-/// A planned continuation (a tagless component).
+/// A planned continuation (a drawing aid, design 072 §6.2).
 #[derive(Debug, Clone)]
 pub struct Tagless {
     pub ops: Vec<Op>,
-    pub component: DeviceId,
+    pub aid: AidId,
     pub terminal: TerminalId,
     pub item: ItemId,
     pub representation: RepresentationId,
@@ -725,14 +730,13 @@ pub struct Tagless {
     pub attached: Vec<(RouteId, End)>,
 }
 
-/// Plan a tagless component of starter `s` at `placement` on `page`, with properties `props`
-/// (`kind`, and `name` for a continuation); free route ends lying on its connection point land on
-/// it.
+/// Plan aid `aid` drawn with starter `s` at `placement` on `page` (a continuation: its symbol,
+/// its one connection point); free route ends lying on its connection point land on it.
 ///
 /// # Errors
 /// The starter definition cannot be built (never expected).
 pub fn plan_tagless(
-    doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, s: &Starter, placement: Placement, props: ecad_model::Properties,
+    doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, s: &Starter, placement: Placement, aid: Aid,
 ) -> Result<Tagless, CmdError> {
     let mut ops = Vec::new();
     let definition = match symbols::embedded(doc, s) {
@@ -743,21 +747,17 @@ pub fn plan_tagless(
             d
         }
     };
-    let (component, terminal, item, representation): (DeviceId, TerminalId, ItemId, RepresentationId) =
-        (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
-    ops.push(Op::CreateDevice {
-        id: component,
-        device: Device { properties: props, definition: Some(definition), device_type: s.device_type(), ..Device::default() },
-    });
+    let (id, terminal, item, representation): (AidId, TerminalId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
+    ops.push(Op::CreateAid { id, aid });
     ops.push(Op::AddTerminal {
         id: terminal,
-        terminal: Terminal { component, label: None, key: Some(ecad_model::PointKey::def("1")), accepts: Default::default() },
+        terminal: Terminal { owner: id.into(), label: None, key: Some(ecad_model::PointKey::def("1")), accepts: Default::default() },
     });
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition, placement }) } });
     ops.push(Op::LinkRepresentation {
         id: representation,
         rep: Representation {
-            subject: Subject::Device(component),
+            subject: Subject::Aid(id),
             page,
             form: Form::Symbol,
             role: ecad_model::Role::Part(s.part_role()),
@@ -771,7 +771,7 @@ pub fn plan_tagless(
         edits.set_end(*r, *end, RouteEnd::Point(terminal));
     }
     ops.extend(edits.ops());
-    Ok(Tagless { ops, component, terminal, item, representation, definition, attached })
+    Ok(Tagless { ops, aid: id, terminal, item, representation, definition, attached })
 }
 
 /// The nearest point to `p` on segment `a`-`b`, and its distance.
@@ -905,11 +905,10 @@ pub const MAX_POINTS_SHOWN: usize = 6;
 /// A connection point in words: `-K01:A1`; a continuation `→24V`.
 pub fn point_words(doc: &Document, t: TerminalId) -> String {
     let Some(term) = doc.terminals.get(&t) else { return "?".into() };
-    let c = term.component;
-    if kind_of(doc, c) == Some(CONTINUATION) {
-        let name = doc.devices.get(&c).and_then(|x| x.properties.get(NAME)).cloned().unwrap_or_default();
-        return format!("\u{2192}{name}");
+    if let Some(a) = term.owner.aid() {
+        return format!("\u{2192}{}", crate::continuations::display_name(doc, a));
     }
+    let Some(c) = term.device() else { return "?".into() };
     let label = term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| "?".into());
     match crate::devices::tag_of(doc, c) {
         Some(tag) => format!("{tag}:{label}"),
@@ -919,12 +918,8 @@ pub fn point_words(doc: &Document, t: TerminalId) -> String {
 
 /// The device connection points of a net (not continuations), in words, sorted.
 pub fn net_points(doc: &Document, net: &ecad_model::NetData) -> Vec<String> {
-    let mut v: Vec<String> = net
-        .terminals
-        .iter()
-        .filter(|t| doc.terminals.get(t).is_none_or(|x| !matches!(kind_of(doc, x.component), Some(CONTINUATION))))
-        .map(|t| point_words(doc, *t))
-        .collect();
+    let mut v: Vec<String> =
+        net.terminals.iter().filter(|t| doc.terminals.get(t).is_none_or(|x| x.owner.aid().is_none())).map(|t| point_words(doc, *t)).collect();
     v.sort();
     v
 }

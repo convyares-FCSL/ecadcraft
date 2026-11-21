@@ -114,7 +114,7 @@ fn scenario_s1_to_s16() {
     assert!(new_terms.iter().all(|t| !before.terminals.contains_key(t)), "new terminal IDs");
     let r2b = *after.routes.keys().find(|r| !before.routes.contains_key(r)).unwrap();
     let t2b = after.routes[&r2b].ends[0].point().expect("the copied line is attached");
-    assert_eq!(after.terminals[&t2b].component, c1b, "attached to the copied component, not the original");
+    assert_eq!(after.terminals[&t2b].device().unwrap(), c1b, "attached to the copied component, not the original");
     assert!(h.terminal_pos(p1, t2b).near(Pt::new(40.0, -55.0), 1e-9));
     assert_eq!(after.routes[&r2b].ends[1], RouteEnd::Free);
     for k in before.devices.keys() {
