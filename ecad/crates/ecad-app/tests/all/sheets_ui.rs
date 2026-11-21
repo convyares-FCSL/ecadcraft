@@ -78,7 +78,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     type_into(&mut h, "ecad.props.page.number", "100");
     assert_eq!(head(&mut h), before + 1, "one transaction");
     assert_eq!(last_label(&mut h), "Page properties");
-    let refs = ecad_cadcraft::references::markers_on_page(&doc(&mut h), field);
+    let refs = ecad_engine::references::markers_on_page(&doc(&mut h), field);
     assert_eq!(refs.first().map(|m| m.text.as_str()), Some("100/F2"));
     // A refusal keeps the field and says why; nothing recorded.
     let before = head(&mut h);
@@ -114,7 +114,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     click(&mut h, "ecad.projectprops.ok");
     assert_eq!(head(&mut h), before + 1, "OK is one transaction");
     assert!(h.state().project_props.is_none());
-    assert_eq!(ecad_cadcraft::frames::project_text(&doc(&mut h), "customer").as_deref(), Some("ACME"));
+    assert_eq!(ecad_engine::frames::project_text(&doc(&mut h), "customer").as_deref(), Some("ACME"));
     crate::project_panel::project_menu(&mut h, project_panel::PROJECT_INFO);
     click(&mut h, "ecad.projectprops.cancel");
     assert_eq!(head(&mut h), before + 1, "Cancel writes nothing");
@@ -134,7 +134,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     assert_eq!(head(&mut h), before + 1, "one transaction");
     let d = doc(&mut h);
     assert_eq!((d.settings.reference_style(), d.settings.tag_padding()), (ecad_model::ReferenceStyle::PageColumn, 3));
-    let refs = ecad_cadcraft::references::markers_on_page(&d, field);
+    let refs = ecad_engine::references::markers_on_page(&d, field);
     assert_eq!(refs.first().map(|m| m.text.as_str()), Some("/100.2"), "the column");
     ok(&mut h, "u");
     assert_eq!(doc(&mut h).settings.reference_style(), ecad_model::ReferenceStyle::PageZone, "undo: back to the default, 2/B5");
@@ -169,7 +169,7 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
     ok(&mut h, r#"place {"symbol":"coil","at":[200,100]}"#);
     let sym = {
         let t = h.state_mut();
-        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).last().unwrap().handle
+        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).last().unwrap().handle
     };
     let _ = sym;
     let coil_items: Vec<_> = {
@@ -258,8 +258,8 @@ fn sheets_folders_properties_and_revisions_by_the_ui() {
 #[test]
 fn the_demo_on_its_sheets() {
     let Some(file) = std::env::var_os("ECAD_DEMO_FILE") else { return };
-    ecad_cadcraft::install();
-    ecad_cadcraft::views::isolate_for_tests();
+    ecad_engine::install();
+    ecad_engine::views::isolate_for_tests();
     let mut t = App::with_file(None, &file.to_string_lossy()).unwrap();
     t.dismiss_notice();
     let deltas: Deltas = Default::default();

@@ -113,7 +113,7 @@ impl Prop {
 /// black insulation stays black); none for a code that is not a colour.
 fn swatch(code: &str) -> Option<(ecad_ui::tokens::Color, Option<ecad_ui::tokens::Color>)> {
     let sheet = &ecad_drawing_style::sheet::PAPER;
-    ecad_model::wire::Colours::parse(code).and_then(|c| ecad_cadcraft::look::wire_colours(&c, sheet)).map(|c| (c.solid, c.dashes))
+    ecad_model::wire::Colours::parse(code).and_then(|c| ecad_engine::look::wire_colours(&c, sheet)).map(|c| (c.solid, c.dashes))
 }
 
 fn read(label: &'static str, value: impl Into<String>) -> Prop {
@@ -163,7 +163,7 @@ struct Detail {
     /// Its checks (an empty list: "No checks on …").
     checks: Vec<(String, Tone)>,
     /// Brief 057 (owner): the open cores' fixes, as buttons under the checks.
-    core_fixes: Vec<ecad_cadcraft::checks::Fix>,
+    core_fixes: Vec<ecad_engine::checks::Fix>,
     /// The Devices row's property editor goes after the head.
     editor: bool,
     /// Brief 059: the cable editor goes after the head, with the cable's drawn ends.
@@ -242,7 +242,7 @@ fn device(t: &App, c: DeviceId) -> Option<Detail> {
     })
 }
 
-fn side_text(cells: &[ecad_cadcraft::strips::SideCell]) -> String {
+fn side_text(cells: &[ecad_engine::strips::SideCell]) -> String {
     let v: Vec<String> = cells
         .iter()
         .map(|c| {
@@ -311,7 +311,7 @@ fn terminal(t: &App, k: super::terminals::TermKey) -> Option<Detail> {
 
 /// Brief 056 (design 056 §5): a channel row: its signal, where it is drawn and its test.
 fn channel(t: &App, k: super::plc::IoKey) -> Option<Detail> {
-    use ecad_cadcraft::plc::signals;
+    use ecad_engine::plc::signals;
     let r = t.reports.as_ref()?;
     let row = r.io.source.row(k)?;
     let addr = row.address.clone().unwrap_or_default();
@@ -349,8 +349,8 @@ fn channel(t: &App, k: super::plc::IoKey) -> Option<Detail> {
                     set("PLC tag", nonempty(row.tag.as_deref().unwrap_or_default()), ""),
                     set("Description", nonempty(row.text.as_deref().unwrap_or_default()), ""),
                     safe,
-                    set("Address", nonempty(&ecad_cadcraft::plc::iolist::address_words(row)), if row.typed { "typed" } else { "automatic" }),
-                    set("Pins", nonempty(&ecad_cadcraft::plc::iolist::pins_words(&row.pins)), ""),
+                    set("Address", nonempty(&ecad_engine::plc::iolist::address_words(row)), if row.typed { "typed" } else { "automatic" }),
+                    set("Pins", nonempty(&ecad_engine::plc::iolist::pins_words(&row.pins)), ""),
                 ],
                 ..Section::default()
             },
@@ -435,9 +435,9 @@ fn wire(t: &App, k: usize) -> Option<Detail> {
 /// Brief 057 (design 057 §2): the Rating section, after Made as or Part; its folded line is the
 /// result. A wire or cable with no rating data shows none, so a project that does not rate is
 /// not nagged.
-fn rating_section(_t: &App, r: Option<&ecad_cadcraft::rating::Rating>, methods: &[&'static str]) -> Section {
+fn rating_section(_t: &App, r: Option<&ecad_engine::rating::Rating>, methods: &[&'static str]) -> Section {
     let Some(r) = r else { return Section::default() };
-    let methods = if methods.is_empty() { ecad_cadcraft::rating::dataset::METHODS.to_vec() } else { methods.to_vec() };
+    let methods = if methods.is_empty() { ecad_engine::rating::dataset::METHODS.to_vec() } else { methods.to_vec() };
     Section {
         title: "Rating",
         hint: r.summary(),
@@ -464,7 +464,7 @@ fn cable(t: &App, k: usize) -> Option<Detail> {
     for (i, label) in v.source.open.get(k).into_iter().flatten().enumerate() {
         checks.push((format!("Core {label} is open at an end: connect it, or tick Not used."), Tone::Error));
         if let Some(cable) = v.ids.get(k) {
-            core_fixes.push(ecad_cadcraft::checks::Fix::CoreOpen(*cable, u16::try_from(i).unwrap_or(u16::MAX)));
+            core_fixes.push(ecad_engine::checks::Fix::CoreOpen(*cable, u16::try_from(i).unwrap_or(u16::MAX)));
         }
     }
     let spare = rows.text(k, "Spare");
@@ -686,9 +686,9 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
                     }
                     for (c, place) in &cable_checks {
                         let tone = match c.severity() {
-                            ecad_cadcraft::checks::Severity::Error => Tone::Error,
-                            ecad_cadcraft::checks::Severity::Warning => Tone::Warning,
-                            ecad_cadcraft::checks::Severity::Info => Tone::Neutral,
+                            ecad_engine::checks::Severity::Error => Tone::Error,
+                            ecad_engine::checks::Severity::Warning => Tone::Warning,
+                            ecad_engine::checks::Severity::Info => Tone::Neutral,
                         };
                         let words = c.what();
                         panel::status_pill(ui, tone, &words, &words);

@@ -42,12 +42,12 @@ impl App {
     /// No reference selected, or an orphan (also echoed).
     pub fn preview_reference(&mut self) -> Result<(), String> {
         let r = (|| {
-            let st = self.cad.session.state().map_err(|_| ecad_cadcraft::preview::NOT_A_REFERENCE.to_string())?;
+            let st = self.cad.session.state().map_err(|_| ecad_engine::preview::NOT_A_REFERENCE.to_string())?;
             let (uid, handles) = (st.uid, st.selection.clone());
-            let p = self.project.clone().ok_or(ecad_cadcraft::preview::NOT_A_REFERENCE)?;
+            let p = self.project.clone().ok_or(ecad_engine::preview::NOT_A_REFERENCE)?;
             p.read(&mut self.cad.session, |p, _| {
-                let r = ecad_cadcraft::preview::selected_reference(p, uid, &handles).ok_or(ecad_cadcraft::preview::NOT_A_REFERENCE)?;
-                ecad_cadcraft::preview::other_end(p, r)
+                let r = ecad_engine::preview::selected_reference(p, uid, &handles).ok_or(ecad_engine::preview::NOT_A_REFERENCE)?;
+                ecad_engine::preview::other_end(p, r)
             })?
         })();
         match r {
@@ -90,8 +90,8 @@ impl App {
                 if self.show_page(page).is_ok()
                     && let Ok(st) = self.cad.session.state_mut()
                 {
-                    let c = ecad_cadcraft::cad::Vec2::new(view.center.x, view.center.y);
-                    let _ = st.set_view(ecad_cadcraft::cad::View { center: c, height: view.height, twist: 0.0 });
+                    let c = ecad_engine::cad::Vec2::new(view.center.x, view.center.y);
+                    let _ = st.set_view(ecad_engine::cad::View { center: c, height: view.height, twist: 0.0 });
                 }
             }
             None => {}

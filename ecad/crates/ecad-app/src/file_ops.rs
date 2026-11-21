@@ -29,7 +29,7 @@ impl App {
         if self.project_open() {
             return Err("an ECAD project is already open; close it first".into());
         }
-        let path = ecad_cadcraft::normalize_with(path, self.home.as_deref()).map_err(|e| e.to_string())?;
+        let path = ecad_engine::normalize_with(path, self.home.as_deref()).map_err(|e| e.to_string())?;
         let (p, summary) = ProjectHandle::open_file(&mut self.cad.session, &path, session_seed())?;
         self.attach(p);
         for line in summary.lines() {
@@ -82,10 +82,10 @@ impl App {
     /// No project is open, the path is refused, or the save failed (also shown in a dialog).
     pub fn save_as(&mut self, path: &str) -> Result<(), String> {
         self.focus_project()?;
-        let target = ecad_cadcraft::normalize_with(path, self.home.as_deref()).map_err(|e| e.to_string())?;
+        let target = ecad_engine::normalize_with(path, self.home.as_deref()).map_err(|e| e.to_string())?;
         if let Some(dir) = Path::new(&target).parent()
-            && let Ok(default) = ecad_cadcraft::expand_home(DEFAULT_FOLDER, self.home.as_deref())
-            && ecad_cadcraft::same_path(dir, &default)
+            && let Ok(default) = ecad_engine::expand_home(DEFAULT_FOLDER, self.home.as_deref())
+            && ecad_engine::same_path(dir, &default)
             && !dir.exists()
         {
             std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
@@ -170,12 +170,12 @@ impl App {
         let r = match d.kind {
             DialogKind::Open => self.open_project(&path).map(|_| ()),
             DialogKind::SaveAs => {
-                let target = ecad_cadcraft::normalize_with(&path, self.home.as_deref()).map(PathBuf::from);
+                let target = ecad_engine::normalize_with(&path, self.home.as_deref()).map(PathBuf::from);
                 let own = self.status().and_then(|s| s.file.path).map(PathBuf::from);
                 match target {
                     Ok(t)
                         if t.exists()
-                            && !own.as_deref().is_some_and(|o| ecad_cadcraft::same_path(&t, o))
+                            && !own.as_deref().is_some_and(|o| ecad_engine::same_path(&t, o))
                             && d.confirmed_replace.as_deref() != Some(&path) =>
                     {
                         d.confirmed_replace = Some(path.clone());
@@ -296,7 +296,7 @@ impl App {
         let dir = self.snapshots.clone().ok_or("snapshots are not enabled (start with --snapshots <dir>)")?;
         // PowerShell and cmd pass `~` through unexpanded: it is the home folder, never a `~` folder.
         let dir = match dir.to_str() {
-            Some(typed) => ecad_cadcraft::expand_home(typed, self.home.as_deref()).map_err(|e| e.to_string())?,
+            Some(typed) => ecad_engine::expand_home(typed, self.home.as_deref()).map_err(|e| e.to_string())?,
             None => dir,
         };
         let p = self.project.as_ref().ok_or("there is no project")?;
@@ -387,7 +387,7 @@ impl App {
 
     /// A typed output path with `~` expanded.
     pub(crate) fn output_path(&self, path: &str) -> Result<String, String> {
-        ecad_cadcraft::expand_home(path.trim(), self.home.as_deref()).map(|p| p.to_string_lossy().into_owned()).map_err(|e| e.to_string())
+        ecad_engine::expand_home(path.trim(), self.home.as_deref()).map(|p| p.to_string_lossy().into_owned()).map_err(|e| e.to_string())
     }
 }
 

@@ -3,9 +3,9 @@
 //! one-line summary. With anything other than one device selected (nothing: the page; a wire, a
 //! cable…) it shows that object's properties in the same folding sections.
 
-use ecad_cadcraft::checks::{Object, Severity};
 use ecad_electrical::props::Section;
 use ecad_electrical::words::Row;
+use ecad_engine::checks::{Object, Severity};
 use ecad_ui::tokens::{radius, space, ui_type};
 use eframe::egui::{self, Rect, Sense, pos2, vec2};
 
@@ -36,12 +36,12 @@ const PLACED: [&str; 15] = [
     "where",
     "contactrows",
     "coil",
-    ecad_cadcraft::xref::CONTACTS_KEY,
+    ecad_engine::xref::CONTACTS_KEY,
 ];
 
 /// A row the Layout tab draws.
 pub fn on_layout_tab(row: &Row) -> bool {
-    row.key == ecad_cadcraft::xref::MIRROR_KEY || row.label.starts_with("Texts")
+    row.key == ecad_engine::xref::MIRROR_KEY || row.label.starts_with("Texts")
 }
 
 /// The device's own checks: about it or one of its connection points.
@@ -228,7 +228,7 @@ fn device(ui: &mut egui::Ui, cx: &mut Cx<'_>, s: &Section, out: &mut Vec<Inspect
                 out.push(InspectorAction::Placements(vec![rep]));
             }
         }
-        if let Some(row) = find(s, ecad_cadcraft::xref::CONTACTS_KEY) {
+        if let Some(row) = find(s, ecad_engine::xref::CONTACTS_KEY) {
             ui.add_space(space::XS);
             fields::prop(ui, sh, target, "device", row, "Contacts offered", "");
         }
@@ -279,7 +279,7 @@ pub fn parts_summary(lines: usize, maker: Option<&str>, part_number: Option<&str
 
 /// A part line as a card: a dot (blue for the main part), its words, its maker and number, and
 /// the quantity in a box.
-pub(crate) fn part_card(ui: &mut egui::Ui, p: &ecad_cadcraft::bom::PartSetRow) {
+pub(crate) fn part_card(ui: &mut egui::Ui, p: &ecad_engine::bom::PartSetRow) {
     let s = ecad_ui::SHELL;
     let width = ui.available_width();
     let (rect, resp) = ui.allocate_exact_size(vec2(width, 46.0), Sense::hover());

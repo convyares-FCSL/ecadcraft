@@ -19,7 +19,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use cadcraft_engine::Session;
-use ecad_cadcraft::ProjectHandle;
+use ecad_engine::ProjectHandle;
 use ecad_model::{DeviceId, PageId};
 use serde_json::json;
 
@@ -102,7 +102,7 @@ fn populate(s: &mut Session, pages: &[PageId]) -> Result<usize, String> {
 /// # Errors
 /// Opening, a refused command, or a project with no pages.
 pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredConnectors, String> {
-    let _ = ecad_cadcraft::install();
+    let _ = ecad_engine::install();
     let copy = scratch.join("connectors.ecad");
     remove(&copy);
     std::fs::copy(path, &copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
@@ -111,7 +111,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredConne
         // Populated and measured in one session (the population's commands are ordinary
         // commits; the measured edits are each undone).
         let mut s = Session::empty();
-        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_cadcraft::views::Settings::none())?;
+        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::views::Settings::none())?;
         let pages: Vec<PageId> = project.read(&mut s, |p, _| p.ledger.document().page_order.clone())?;
         let page1 = *pages.first().ok_or("the project has no pages")?;
         run(&mut s, "openpage", json!({"page": page1.hex()}))?;
@@ -154,7 +154,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredConne
         let c = project
             .read(&mut s, |p, _| {
                 let doc = p.ledger.document();
-                doc.devices.keys().copied().find(|c| ecad_cadcraft::connectors::connector_of(doc, *c).is_some_and(|x| x.mating))
+                doc.devices.keys().copied().find(|c| ecad_engine::connectors::connector_of(doc, *c).is_some_and(|x| x.mating))
             })?
             .ok_or("no connector was added")?;
         let mut label = Vec::new();

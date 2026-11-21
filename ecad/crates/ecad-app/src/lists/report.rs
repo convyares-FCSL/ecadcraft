@@ -1,4 +1,4 @@
-//! A column set over one of the kept report models' tables (`ecad_cadcraft::outputs::Table`):
+//! A column set over one of the kept report models' tables (`ecad_engine::outputs::Table`):
 //! UI rev 3's Wires and Cables tabs (boards 2.04, 2.05) and the Reports tab's list. Each column
 //! names the report header it reads, or is a placeholder for data that is not built yet (the cable
 //! manager's ferrules, lengths and glands, brief 2.7), shown as a dash.
@@ -8,7 +8,7 @@
 //! Reports window did (design 024 §6.2); every other commit reads nothing. The copy is the
 //! whole table (`Changed::All`): the models do not say which rows a change touched.
 
-use ecad_cadcraft::outputs;
+use ecad_engine::outputs;
 use ecad_ui::prim::Tone;
 use ecad_ui::table::{Cell, Column, ColumnId};
 

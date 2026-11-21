@@ -55,7 +55,7 @@ The same through commands and MCP: `rating {wire|cable, …}` (one transaction),
 
 ## What is checked automatically
 
-`cargo test -p ecad-cadcraft lane_057` (the design's worked examples on synthetic values, the
+`cargo test -p ecad-engine lane_057` (the design's worked examples on synthetic values, the
 parsers' hostile inputs, the CSV import refusals, no shipped values, the update map),
 `cargo test -p ecad-mcp lane_057` (one agent transaction per write, refusals with writes off) and
 `cargo test -p ecad-app lane_057` (the Rating rows of boards 2.05 and 2.06; with

@@ -21,7 +21,7 @@
 //! choice resolves to it, every page. Nothing here rescans the project on an ordinary commit;
 //! [`users`] (the consequence line, Used by) is asked for one style at a time, on demand.
 //!
-//! This module draws nothing and records nothing; `ecad_cadcraft::cmd::style` builds the ops.
+//! This module draws nothing and records nothing; `ecad_engine::cmd::style` builds the ops.
 
 use std::collections::BTreeSet;
 

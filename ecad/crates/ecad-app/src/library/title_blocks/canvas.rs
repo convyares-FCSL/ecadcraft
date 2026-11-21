@@ -3,7 +3,7 @@
 //!
 //! Coordinates: the block's own millimetres, from its bottom-left corner, y up ([`View`]).
 
-use ecad_cadcraft::title_block::bind;
+use ecad_engine::title_block::bind;
 use ecad_model::title_block::{Align, BlockItem, Ink, LineWeight, Newest, Rect as BRect, TextLook, TitleBlockLayout};
 use ecad_model::{Primitive, Pt};
 use ecad_ui::tokens::{space, ui_type};
@@ -230,7 +230,7 @@ fn paint_text(p: &egui::Painter, v: View, r: &BRect, top_gap: f64, value: &str, 
         return false;
     }
     let room = r.w - 2.0;
-    let (shown, wf) = ecad_cadcraft::frame::fit(value, look.size, Some(room));
+    let (shown, wf) = ecad_engine::frame::fit(value, look.size, Some(room));
     let cut = shown.ends_with('…') && !value.ends_with('…');
     let px = (look.size as f32 * v.k / 0.72).max(4.0);
     let y = r.y + (r.h - top_gap).max(0.0) / 2.0;
@@ -340,7 +340,7 @@ fn paint_table(p: &egui::Painter, v: View, at: &BRect, rows: u8, header: bool, n
         p.line_segment([v.at(at.x, y), v.at(at.right(), y)], thin);
     }
     let cols = sample.map(|s| s.input.rev_columns.clone()).unwrap_or_default();
-    let (widths, _) = ecad_cadcraft::revisions::widths(&cols, at.w);
+    let (widths, _) = ecad_engine::revisions::widths(&cols, at.w);
     let mut x = at.x;
     let px = (1.8 * v.k / 0.72).max(4.0);
     let vpx = ((rh * 0.55).min(2.5) as f32 * v.k / 0.72).max(4.0);
@@ -359,7 +359,7 @@ fn paint_table(p: &egui::Painter, v: View, at: &BRect, rows: u8, header: bool, n
                 };
                 let y = at.top() - rh * (row + usize::from(header)) as f64 - rh / 2.0;
                 if let Some(val) = rev.get(i) {
-                    let (shown, _) = ecad_cadcraft::frame::fit(val, 2.5, Some(w - 2.0));
+                    let (shown, _) = ecad_engine::frame::fit(val, 2.5, Some(w - 2.0));
                     p.text(v.at(x + 1.0, y), Align2::LEFT_CENTER, shown, ecad_ui::style::ui_font(vpx), ink);
                 }
             }

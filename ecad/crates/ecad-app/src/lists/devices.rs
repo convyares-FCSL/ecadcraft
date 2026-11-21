@@ -3,7 +3,7 @@
 //! ("from box" where a box gives it), symbol, pages placed (a go-to), part and state read. Filter
 //! chips: Provisional, Not on a page yet.
 //!
-//! **Update map.** The rows are the Devices list's entries ([`ecad_cadcraft::device_list`]) plus
+//! **Update map.** The rows are the Devices list's entries ([`ecad_engine::device_list`]) plus
 //! each device's resolved location. On each sync the project's device feed
 //! (`device_changes_since`) names the touched devices; only their rows are re-read and patched.
 //! A touched location box (its outline or value) or changed project settings re-read every row's
@@ -13,7 +13,7 @@
 
 use std::collections::{BTreeSet, HashMap};
 
-use ecad_cadcraft::device_list::DeviceEntry;
+use ecad_engine::device_list::DeviceEntry;
 use ecad_model::DeviceId;
 use ecad_ui::prim::Tone;
 use ecad_ui::table::{Cell, Changed, Column, ColumnId, TableSource, Width};
@@ -78,7 +78,7 @@ pub struct DeviceRow {
     pub entry: DeviceEntry,
     /// `+CP1`, `+CP1 (from box on 105)`, `?`.
     pub location: String,
-    /// UI rev 3: its part set's lines (`ecad_cadcraft::bom::part_set`).
+    /// UI rev 3: its part set's lines (`ecad_engine::bom::part_set`).
     pub parts: usize,
 }
 
@@ -98,13 +98,13 @@ impl Default for DevicesSource {
     }
 }
 
-fn location(doc: &ecad_model::Document, c: DeviceId, cache: &mut ecad_cadcraft::locations::BoxCache) -> String {
-    ecad_cadcraft::locations::resolve_with(doc, c, cache).shown(doc)
+fn location(doc: &ecad_model::Document, c: DeviceId, cache: &mut ecad_engine::locations::BoxCache) -> String {
+    ecad_engine::locations::resolve_with(doc, c, cache).shown(doc)
 }
 
-fn row(doc: &ecad_model::Document, e: &DeviceEntry, cache: &mut ecad_cadcraft::locations::BoxCache) -> DeviceRow {
+fn row(doc: &ecad_model::Document, e: &DeviceEntry, cache: &mut ecad_engine::locations::BoxCache) -> DeviceRow {
     // A part set lists the main part first; a device with only a main part has that one line.
-    let set = ecad_cadcraft::bom::part_set(doc, e.id).len();
+    let set = ecad_engine::bom::part_set(doc, e.id).len();
     let main = e.properties.get(3).is_some_and(|p| p.as_deref().is_some_and(|p| !p.trim().is_empty()));
     DeviceRow { entry: e.clone(), location: location(doc, e.id, cache), parts: if set > 0 { set } else { usize::from(main) } }
 }
@@ -121,14 +121,14 @@ impl DevicesSource {
 
     /// Read every row from `entries` (the whole list: first show, rebuild).
     pub fn build(&mut self, doc: &ecad_model::Document, entries: &[DeviceEntry]) {
-        let mut cache = ecad_cadcraft::locations::BoxCache::default();
+        let mut cache = ecad_engine::locations::BoxCache::default();
         self.keys = entries.iter().map(|e| e.id).collect();
         self.rows = entries.iter().map(|e| (e.id, row(doc, e, &mut cache))).collect();
     }
 
     /// Re-read the rows of `touched` from `entries` (added, changed or removed), and the order.
     pub fn patch(&mut self, doc: &ecad_model::Document, entries: &[DeviceEntry], touched: &BTreeSet<DeviceId>) {
-        let mut cache = ecad_cadcraft::locations::BoxCache::default();
+        let mut cache = ecad_engine::locations::BoxCache::default();
         for c in touched {
             match entries.iter().find(|e| e.id == *c) {
                 Some(e) => {
@@ -230,14 +230,14 @@ impl TableSource for DevicesSource {
         if !self.search {
             return None;
         }
-        Some(self.rows.get(&key).is_some_and(|r| ecad_cadcraft::device_list::matches(&r.entry, query)))
+        Some(self.rows.get(&key).is_some_and(|r| ecad_engine::device_list::matches(&r.entry, query)))
     }
 }
 
 /// What the device feed says changed for the Devices table since change `since`: `All` when it
 /// cannot say (rolled over) or when every row may differ (pages, settings). A location box is a
 /// drawing aid: no row reads it (a device's location is its own, design 052 §5.1).
-pub fn changes(p: &ecad_cadcraft::Project, since: Option<u64>) -> (Changed<DeviceId>, BTreeSet<DeviceId>) {
+pub fn changes(p: &ecad_engine::Project, since: Option<u64>) -> (Changed<DeviceId>, BTreeSet<DeviceId>) {
     let Some(t) = since.and_then(|n| p.device_changes_since(n)) else { return (Changed::All, BTreeSet::new()) };
     if t.pages || t.settings {
         return (Changed::All, BTreeSet::new());

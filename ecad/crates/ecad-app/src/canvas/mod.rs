@@ -28,7 +28,7 @@ pub mod sheet;
 
 use std::sync::{Arc, Mutex, PoisonError};
 
-use ecad_cadcraft::cad::Handle;
+use ecad_engine::cad::Handle;
 use eframe::egui::{self, Rect};
 use serde::{Deserialize, Serialize};
 
@@ -107,7 +107,7 @@ type Key = (u64, u64, Option<ecad_model::PageId>, Vec<Handle>, bool);
 pub struct PageData {
     /// The sheet frames (one per sheet window).
     pub frames: Vec<(ecad_model::Pt, ecad_model::Pt)>,
-    pub painted: Vec<ecad_cadcraft::look::Painted>,
+    pub painted: Vec<ecad_engine::look::Painted>,
     /// Provisional tag texts: their handles (bounds read from the drawing when painted).
     pub provisional: Vec<Handle>,
     pub related: Related,
@@ -141,7 +141,7 @@ pub fn paint(t: &mut App, ui: &mut egui::Ui, page_rect: Option<Rect>) {
         return;
     }
     let (Some(rect), Some(xf)) = (t.cad.canvas.rect, t.cad.canvas.xf) else { return };
-    if t.cad.session.layout_space() != ecad_cadcraft::cad::Space::Model {
+    if t.cad.session.layout_space() != ecad_engine::cad::Space::Model {
         return;
     }
     let picked = refresh(t, &mut st);
@@ -167,7 +167,7 @@ fn apply_preferences(t: &mut App) {
     t.cad.options.model_background = Some(ecad_ui::color(tokens.sheet));
     t.cad.options.selection_color = Some(ecad_ui::color(tokens.selection));
     // The projection draws wire colours for the sheet in use: tell it, and redraw, on a change.
-    if (ecad_cadcraft::look::sheet().sheet == ecad_drawing_style::sheet::DARK.sheet) != sheet.is_dark() {
+    if (ecad_engine::look::sheet().sheet == ecad_drawing_style::sheet::DARK.sheet) != sheet.is_dark() {
         let _ = t.cad.session.execute("canvassheet", &serde_json::json!({ "dark": sheet.is_dark() }));
     }
     let chrome = t.shell.state.cad_chrome;
@@ -197,13 +197,13 @@ fn refresh(t: &mut App, st: &mut State) -> bool {
     let read = p.read(&mut t.cad.session, |p, _| {
         let Some(page) = p.page_of(uid) else { return (PageData::default(), None) };
         let doc = p.ledger.document();
-        let pick = ecad_cadcraft::look::pick_routes(p, page, &selection);
+        let pick = ecad_engine::look::pick_routes(p, page, &selection);
         let data = PageData {
-            frames: ecad_cadcraft::generated::sheet_windows_of(doc, page, p.kept_outputs()),
-            painted: ecad_cadcraft::look::painted_marks(p, uid),
-            provisional: ecad_cadcraft::look::provisional_tag_handles(p, page),
+            frames: ecad_engine::generated::sheet_windows_of(doc, page, p.kept_outputs()),
+            painted: ecad_engine::look::painted_marks(p, uid),
+            provisional: ecad_engine::look::provisional_tag_handles(p, page),
             related: related(p, page, &selection),
-            tag_height: ecad_cadcraft::text_style::text_style(doc, ecad_cadcraft::text_style::TextKind::Tag).height,
+            tag_height: ecad_engine::text_style::text_style(doc, ecad_engine::text_style::TextKind::Tag).height,
         };
         (data, pick)
     });
@@ -228,7 +228,7 @@ fn leader_to_selection(t: &App, xf: &cadcraft_ui_egui::canvas::Xf, companion: Re
         .selection()
         .iter()
         .take(selection::MAX_LOOKED_AT)
-        .filter_map(|h| d.entity(*h).map(|e| ecad_cadcraft::cad::extent_bounds(d, e)))
+        .filter_map(|h| d.entity(*h).map(|e| ecad_engine::cad::extent_bounds(d, e)))
         .map(|b| Rect::from_two_pos(xf.to_screen(b.min), xf.to_screen(b.max)))
         .filter(|r| r.is_finite())
         .reduce(|a, b| a.union(b))?
@@ -255,10 +255,10 @@ fn first_open_zoom(t: &mut App, st: &mut State, rect: Rect) {
     t.fit_sheet_in(rect);
 }
 
-/// Give CADCraft's font table the sheet font (US3; `ecad_cadcraft::install` does it too, and a
+/// Give CADCraft's font table the sheet font (US3; `ecad_engine::install` does it too, and a
 /// print). Whether it is registered.
 pub fn register_sheet_faces() -> bool {
-    ecad_cadcraft::text_style::register_sheet_font()
+    ecad_engine::text_style::register_sheet_font()
 }
 
 /// Whether `line` is the `ui.sheet` command.

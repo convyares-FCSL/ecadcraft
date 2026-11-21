@@ -19,7 +19,7 @@ fn main() -> ExitCode {
             return ExitCode::SUCCESS;
         }
         Ok(Invocation::Version) => {
-            println!("ecad-mcp {} (CADCraft {})", env!("CARGO_PKG_VERSION"), ecad_cadcraft::UPSTREAM_COMMIT);
+            println!("ecad-mcp {} (CADCraft {})", env!("CARGO_PKG_VERSION"), ecad_engine::UPSTREAM_COMMIT);
             return ExitCode::SUCCESS;
         }
         Err(e) => {
@@ -55,7 +55,7 @@ fn main() -> ExitCode {
     let opened = match (&project, create) {
         (Some(p), true) => EcadMcp::create(p, options).map(|s| (s, format!("Created {p}."))),
         (Some(p), false) => EcadMcp::open(p, options),
-        (None, _) => EcadMcp::in_memory("Untitled", ecad_cadcraft::session_seed(), options)
+        (None, _) => EcadMcp::in_memory("Untitled", ecad_engine::session_seed(), options)
             .map(|s| (s, "A new project in memory; it cannot be saved.".to_string())),
     };
     let mut server = match opened {

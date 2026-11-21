@@ -24,8 +24,8 @@
 use std::collections::{BTreeSet, HashMap};
 
 use cadcraft_ui_egui::palettes::{ExtraTool, ExtraToolGroup, ExtraToolTab};
-use ecad_cadcraft::cad::Handle;
-use ecad_cadcraft::{Mapped, Project};
+use ecad_engine::cad::Handle;
+use ecad_engine::{Mapped, Project};
 use ecad_model::{CableId, DeviceId, ItemId, PageId, Subject, TerminalId, WireId};
 
 /// The tab's name in the Tool Sets panel.
@@ -64,7 +64,7 @@ pub struct Tool {
     pub kind: Kind,
 }
 
-/// The buttons, in panel order. Only commands that exist (`ecad_cadcraft::commands::specs`).
+/// The buttons, in panel order. Only commands that exist (`ecad_engine::commands::specs`).
 pub const TOOLS: &[Tool] = &[
     Tool {
         id: "ecad.findsymbol",
@@ -434,7 +434,7 @@ impl Picked {
                         // A route's line names the wire it carries (design 072 §4); a loose line
                         // carries none.
                         Some(Subject::Route(r)) => {
-                            if let Some(w) = ecad_cadcraft::wires::wire_of_route(doc, *r) {
+                            if let Some(w) = ecad_engine::wires::wire_of_route(doc, *r) {
                                 subjects.insert(Subject::Wire(w));
                             }
                         }
@@ -471,7 +471,7 @@ impl Picked {
                 }
                 // A T's dot names the wire its line carries (lane 072 D).
                 Some(Mapped::Tee(r)) => {
-                    if let Some(w) = ecad_cadcraft::wires::wire_of_route(doc, r) {
+                    if let Some(w) = ecad_engine::wires::wire_of_route(doc, r) {
                         subjects.insert(Subject::Wire(w));
                     }
                 }

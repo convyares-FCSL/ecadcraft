@@ -12,8 +12,8 @@ use egui_kittest::kittest::Queryable;
 use serde_json::json;
 
 fn new_app() -> App {
-    ecad_cadcraft::install();
-    ecad_cadcraft::views::isolate_for_tests();
+    ecad_engine::install();
+    ecad_engine::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
     crate::project_panel::open_panels(&mut t);
     t
@@ -42,7 +42,7 @@ fn rectangle(t: &mut App) -> Vec<Handle> {
         .unwrap()
         .model
         .iter()
-        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+        .filter(|e| e.common.layer != ecad_engine::frame::LAYER)
         .filter(|e| matches!(e.kind, EntityKind::Line(_)))
         .map(|e| e.handle)
         .collect()
@@ -51,8 +51,8 @@ fn rectangle(t: &mut App) -> Vec<Handle> {
 #[test]
 fn the_group_lists_only_implemented_commands_with_namespaced_ids() {
     // Run alone (as nextest runs every test), nothing else has installed ECAD's commands.
-    ecad_cadcraft::install();
-    let specs = ecad_cadcraft::commands::specs();
+    ecad_engine::install();
+    let specs = ecad_engine::commands::specs();
     let ids: Vec<&str> = specs.iter().map(|s| s.id).collect();
     let mut seen = std::collections::BTreeSet::new();
     for t in TOOLS {
@@ -219,7 +219,7 @@ fn a_read_only_project_is_treated_as_the_typed_command_treats_it() {
     let mut first = new_app();
     first.save_as(&path).unwrap();
     // A second window: the same file opens read-only.
-    ecad_cadcraft::views::isolate_for_tests();
+    ecad_engine::views::isolate_for_tests();
     let mut second = App::with_file(None, &path).unwrap();
     assert!(second.status().unwrap().file.read_only.is_some());
     second.tool("ecad.inspect").unwrap();

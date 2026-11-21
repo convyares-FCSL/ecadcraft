@@ -1832,7 +1832,7 @@ pub fn sort(doc: &Document, mut rows: Vec<Check>) -> Vec<Check> {
 }
 
 /// Every check of the project with the report models already kept, measuring text with `m`
-/// (ecad-cadcraft's `crate::checks::all` and `crate::checks::all_with` pass CADCraft's fonts).
+/// (ecad-engine's `crate::checks::all` and `crate::checks::all_with` pass CADCraft's fonts).
 pub fn all_measured(doc: &Document, tol: f64, outputs: &crate::outputs::kept::Outputs, m: &dyn TextMetrics) -> Vec<Check> {
     let mut rows: Vec<Check> = kept::Checks::build_with(doc, tol, m).rows().cloned().collect();
     rows.extend(outputs.checks());

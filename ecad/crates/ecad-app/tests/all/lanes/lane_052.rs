@@ -3,7 +3,7 @@
 
 use ecad_app::App;
 use ecad_app::settings::Section;
-use ecad_cadcraft::designations::{self, Aspect};
+use ecad_engine::designations::{self, Aspect};
 use eframe::egui::vec2;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;

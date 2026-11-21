@@ -8,7 +8,7 @@
     §5). Every view is a protocol call; nothing on the page writes, and the protocol has no op
     that writes.
   - Snapshots mode, opened from disk or with "Open snapshots…": reads ecad-inspect/1 and /2 JSON
-    snapshots exactly as before (`cargo run -p ecad-cadcraft --example experiment_snapshots -- <dir>`).
+    snapshots exactly as before (`cargo run -p ecad-engine --example experiment_snapshots -- <dir>`).
 
   Every value goes through esc(). No inline event handlers: the server's Content-Security-Policy
   runs only this script.

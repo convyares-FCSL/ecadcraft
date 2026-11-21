@@ -5,7 +5,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_cadcraft::text_style::TextKind;
+use ecad_engine::text_style::TextKind;
 use ecad_model::{DeviceId, Document, ObjectRef, PageId, RepresentationId, Subject, TerminalId};
 
 /// At most this many rows in "Where it is drawn" and "Connections" (hostile files can hold
@@ -87,7 +87,7 @@ fn label(doc: &Document, t: TerminalId) -> String {
 
 /// The labels a symbol shows: its connection points, in its definition's order.
 fn rep_labels(doc: &Document, c: DeviceId, r: &ecad_model::Representation) -> Vec<String> {
-    let points = ecad_cadcraft::xref::terminal_points(doc, c, r);
+    let points = ecad_engine::xref::terminal_points(doc, c, r);
     if points.is_empty() {
         return r.connection_points.keys().take(8).map(|t| label(doc, *t)).collect();
     }
@@ -95,17 +95,17 @@ fn rep_labels(doc: &Document, c: DeviceId, r: &ecad_model::Representation) -> Ve
 }
 
 /// A size as the Layout tab shows it: `2.5` and ` B` when bold.
-pub fn size_words(s: &ecad_cadcraft::text_style::TextStyle) -> String {
+pub fn size_words(s: &ecad_engine::text_style::TextStyle) -> String {
     let h = (s.height * 100.0).round() / 100.0;
-    let bold = matches!(s.weight, ecad_cadcraft::text_style::Weight::Bold);
+    let bold = matches!(s.weight, ecad_engine::text_style::Weight::Bold);
     format!("{h}{}", if bold { " B" } else { "" })
 }
 
 /// Build the details of device `c` with symbol `rep` selected, adding what they read to `deps`.
 pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKind], deps: &mut BTreeSet<ObjectRef>) -> DeviceDetails {
-    use ecad_cadcraft::xref;
+    use ecad_engine::xref;
     let mut d = DeviceDetails { component: Some(c), rep: Some(rep), ..DeviceDetails::default() };
-    d.tag = ecad_cadcraft::devices::tag_words(doc, c);
+    d.tag = ecad_engine::devices::tag_words(doc, c);
     d.description = doc.devices.get(&c).and_then(|x| x.description.as_ref()).map(|t| t.to_string()).unwrap_or_default();
     d.standard = doc.standard.as_ref().map_or_else(|| "IEC".to_string(), |s| s.header.name.to_string());
     let dev = xref::device(doc, c);
@@ -113,7 +113,7 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
     let place_of = |places: &mut xref::Places<'_>, r: &ecad_model::Representation| places.text(r.page, xref::anchor(doc, r));
     if let Some(r) = doc.representations.get(&rep) {
         deps.insert(ObjectRef::Page(r.page));
-        d.symbol_name = ecad_cadcraft::devices::rep_starter(doc, r).map_or_else(|| "Drawn symbol".to_string(), |s| s.name.to_string());
+        d.symbol_name = ecad_engine::devices::rep_starter(doc, r).map_or_else(|| "Drawn symbol".to_string(), |s| s.name.to_string());
         let role = if dev.head == Some(rep) {
             "coil".to_string()
         } else if dev.children.contains(&rep) {
@@ -133,8 +133,8 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
             }),
             _ => None,
         });
-        let scope = ecad_cadcraft::defaults::Scope::symbol(doc, rep);
-        d.sizes = kinds.iter().map(|k| (*k, size_words(&ecad_cadcraft::text_style::text_style_at(doc, *k, scope)))).collect();
+        let scope = ecad_engine::defaults::Scope::symbol(doc, rep);
+        d.sizes = kinds.iter().map(|k| (*k, size_words(&ecad_engine::text_style::text_style_at(doc, *k, scope)))).collect();
     }
     // Where it is drawn: the coil (or the symbol) first, then each contact the part offers.
     let reps: Vec<(RepresentationId, &ecad_model::Representation)> = doc.representations_of(Subject::Device(c)).take(MAX_ROWS).collect();
@@ -147,7 +147,7 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
         let what = if id == rep {
             "this symbol".to_string()
         } else {
-            ecad_cadcraft::devices::rep_starter(doc, r).map_or_else(|| "drawn".to_string(), |s| s.name.to_lowercase())
+            ecad_engine::devices::rep_starter(doc, r).map_or_else(|| "drawn".to_string(), |s| s.name.to_lowercase())
         };
         let labels = rep_labels(doc, c, r);
         let first = if dev.head == Some(id) { format!("Coil {}", pins(&labels)) } else { pins(&labels) };
@@ -192,7 +192,7 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
             let Some(oc) = ot.device() else { continue };
             deps.insert(ObjectRef::Device(oc));
             // Junctions and other untagged helpers are not named.
-            let Some(tag) = ecad_cadcraft::devices::tag_of(doc, oc) else { continue };
+            let Some(tag) = ecad_engine::devices::tag_of(doc, oc) else { continue };
             if others.len() < MAX_OTHERS {
                 others.push(format!("{tag}:{}", ot.label.as_deref().unwrap_or("?")));
             } else {

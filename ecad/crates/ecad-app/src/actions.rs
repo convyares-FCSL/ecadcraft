@@ -1,5 +1,5 @@
 //! The action table (brief 041, design `ui-architecture.md` §7.2): where a person finds each
-//! command. A command (`CommandSpec`, in ecad-cadcraft's engine) says **what** happens; an [`Action`]
+//! command. A command (`CommandSpec`, in ecad-engine's engine) says **what** happens; an [`Action`]
 //! says where it appears: in a tool group's flyout, in fixed slots of an object kind's wheel, on a
 //! key, and under which words Ctrl+K finds it. Nothing here defines a command: every action runs
 //! a registered command by id (or, for the few things only the window does, such as showing a
@@ -24,7 +24,7 @@
 
 use ecad_ui::Icon;
 
-use ecad_cadcraft::interact::kind::Target;
+use ecad_engine::interact::kind::Target;
 
 /// A wheel slot, clockwise from the top (spec §5).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -494,7 +494,7 @@ const fn slot(
 
 use ObjectKind as K;
 use Slot as S;
-pub use ecad_cadcraft::kinds::ObjectKind;
+pub use ecad_engine::kinds::ObjectKind;
 
 /// Every action, in table order.
 pub const ACTIONS: &[Action] = &[

@@ -12,7 +12,7 @@
 //!   recomputed; `plcchannel {pins}` relabels them.
 //! - Spare and reserved are derived, never stored (§6).
 //!
-//! Every write (the commands, in ecad-cadcraft's `cmd::plc`) is one transaction.
+//! Every write (the commands, in ecad-engine's `cmd::plc`) is one transaction.
 
 use crate::CmdError;
 use ecad_model::Word;

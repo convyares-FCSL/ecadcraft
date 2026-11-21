@@ -1349,10 +1349,10 @@ dependencies = [
  "cadcraft-mcp",
  "cadcraft-ui-egui",
  "chrono",
- "ecad-cadcraft",
  "ecad-desktop",
  "ecad-drawing-style",
  "ecad-electrical",
+ "ecad-engine",
  "ecad-file",
  "ecad-inspect",
  "ecad-mcp",
@@ -1372,34 +1372,14 @@ name = "ecad-bench"
 version = "0.3.0-dev"
 dependencies = [
  "cadcraft-engine",
- "ecad-cadcraft",
  "ecad-electrical",
+ "ecad-engine",
  "ecad-file",
  "ecad-model",
  "ecad-store",
  "ruzstd",
  "serde_json",
  "zstd",
-]
-
-[[package]]
-name = "ecad-cadcraft"
-version = "0.3.0-dev"
-dependencies = [
- "cadcraft-engine",
- "cadcraft-io",
- "cadcraft-ui-egui",
- "chrono",
- "ecad-cadcraft",
- "ecad-drawing-style",
- "ecad-electrical",
- "ecad-file",
- "ecad-inspect",
- "ecad-model",
- "ecad-store",
- "schemars",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -1415,7 +1395,7 @@ version = "0.3.0-dev"
 dependencies = [
  "cadcraft-ui-egui",
  "ecad-app",
- "ecad-cadcraft",
+ "ecad-engine",
  "ecad-model",
  "eframe",
  "ron",
@@ -1439,6 +1419,26 @@ dependencies = [
  "strum",
  "thiserror 2.0.21",
  "toml",
+]
+
+[[package]]
+name = "ecad-engine"
+version = "0.3.0-dev"
+dependencies = [
+ "cadcraft-engine",
+ "cadcraft-io",
+ "cadcraft-ui-egui",
+ "chrono",
+ "ecad-drawing-style",
+ "ecad-electrical",
+ "ecad-engine",
+ "ecad-file",
+ "ecad-inspect",
+ "ecad-model",
+ "ecad-store",
+ "schemars",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1486,7 +1486,7 @@ version = "0.3.0-dev"
 dependencies = [
  "cadcraft-engine",
  "cadcraft-mcp",
- "ecad-cadcraft",
+ "ecad-engine",
  "ecad-file",
  "ecad-model",
  "serde_json",

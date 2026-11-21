@@ -11,7 +11,7 @@
 use cadcraft_engine::Session;
 use cadcraft_engine::doc::Handle;
 use ecad_bench::generate::{Variant, generate, tier};
-use ecad_cadcraft::{Mapped, ProjectHandle};
+use ecad_engine::{Mapped, ProjectHandle};
 use ecad_model::derive::terminal_positions;
 use ecad_model::{ItemKind, PageId, Primitive, Pt, Subject};
 use serde_json::{Value, json};
@@ -218,15 +218,15 @@ struct Opened {
 }
 
 fn open_small(tag: &str) -> Opened {
-    ecad_cadcraft::install();
-    ecad_cadcraft::views::isolate_for_tests();
+    ecad_engine::install();
+    ecad_engine::views::isolate_for_tests();
     let g = generate(tier("small").unwrap(), Variant::Lean).unwrap();
     let dir = std::env::temp_dir().join(format!("ecad-014-{tag}-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let v2 = dir.join("small-lean.ecad");
     ecad_bench::v2::write(&g, &v2).unwrap();
     let mut s = Session::empty();
-    let (project, _) = ProjectHandle::open_file_in(&mut s, v2.to_str().unwrap(), 14, ecad_cadcraft::views::Settings::none()).unwrap();
+    let (project, _) = ProjectHandle::open_file_in(&mut s, v2.to_str().unwrap(), 14, ecad_engine::views::Settings::none()).unwrap();
     Opened { dir, page: g.pages[0], project, s }
 }
 
@@ -303,7 +303,7 @@ fn incremental_edits_saved_and_reopened_give_the_same_document() {
     o.s.execute("saveas", &json!({"path": saved.to_string_lossy()})).unwrap();
     let live = o.project.read(&mut o.s, |p, _| serde_json::to_value(p.ledger.document()).unwrap()).unwrap();
     let mut s = Session::empty();
-    let (reopened, _) = ProjectHandle::open_file_in(&mut s, saved.to_str().unwrap(), 14, ecad_cadcraft::views::Settings::none()).unwrap();
+    let (reopened, _) = ProjectHandle::open_file_in(&mut s, saved.to_str().unwrap(), 14, ecad_engine::views::Settings::none()).unwrap();
     let read = reopened.read(&mut s, |p, _| serde_json::to_value(p.ledger.document()).unwrap()).unwrap();
     assert!(live == read, "seed {seed:#x}: the reopened document differs from the one saved");
     drop(reopened);

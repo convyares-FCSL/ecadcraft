@@ -1034,7 +1034,7 @@ pub fn kind_words(kind: TextKind) -> &'static str {
 }
 
 // The engine half (design 065 §3, cut 4), at its old paths until the split moves this module to
-// ecad-electrical, where ecad-cadcraft's `text_style` facade takes over (step 6).
+// ecad-electrical, where ecad-engine's `text_style` facade takes over (step 6).
 
 #[cfg(test)]
 mod tests {

@@ -11,7 +11,7 @@ read-only preview of another page, and the top banner replaced by the panel's he
 folded **Developer** section at the bottom of the panel (design 016, "Top bar removed"). Sections 4, 5E, 6, 7 and 8 describe it.
 - *Automated checks:* `ecad/crates/ecad-app/tests/all/project_panel.rs` (design 016 checks A to J by
   label in a 1280×800 headless window, and the six `016-*.png` screenshots), the one-window and
-  undo checks in `ecad/crates/ecad-cadcraft/tests/all/project_pages.rs`, check K in
+  undo checks in `ecad/crates/ecad-engine/tests/all/project_pages.rs`, check K in
   `ecad/apps/ecad-mcp/tests/all/mcp_contracts.rs`, and `the_quick_start_runs_headless`
   (sections 5 to 7 below).
 - *Agent-observed:* the worker rendered the `016-*.png` reference screenshots headless (wgpu) and

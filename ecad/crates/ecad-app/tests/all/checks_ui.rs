@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use ecad_app::{checks_panel, project_panel};
-use ecad_cadcraft::checks::Kind;
+use ecad_engine::checks::Kind;
 use ecad_model::PageId;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -90,12 +90,12 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     // Pages 2 and 1: every net labelled (brief 032: once per net per page by default).
     let (p1, p2, p3) = (page(&mut h, 0), page(&mut h, 1), page(&mut h, 2));
     show(&mut h, p2);
-    let labels = h.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer == ecad_cadcraft::wires::LABEL_LAYER).count();
+    let labels = h.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer == ecad_engine::wires::LABEL_LAYER).count();
     let d = doc(&mut h);
     let nets: std::collections::BTreeSet<_> = d
         .representations_on(p2)
         .filter_map(|(_, r)| match r.subject {
-            ecad_model::Subject::Route(x) => ecad_cadcraft::wires::wire_of_route(&d, x).and_then(|c| d.connectivity().net_of_conductor(c)),
+            ecad_model::Subject::Route(x) => ecad_engine::wires::wire_of_route(&d, x).and_then(|c| d.connectivity().net_of_conductor(c)),
             _ => None,
         })
         .collect();
@@ -283,7 +283,7 @@ fn the_demo_labels_and_the_checks_tab_go_to_a_row() {
     let d = doc(&mut h);
     assert_eq!(d.settings.wiring.colour_style(), ecad_model::colour::ColourWords::Code3);
     assert!(d.settings.wiring.label_height.is_some_and(|x| (x - 3.0).abs() < 1e-9));
-    let labels = ecad_cadcraft::wires::labels_on_page(&d, p2);
+    let labels = ecad_engine::wires::labels_on_page(&d, p2);
     assert!(labels.iter().any(|l| l.text == "24V-04 0.5 BLU") && labels.iter().all(|l| (l.height - 3.0).abs() < 1e-9));
     ok(&mut h, "u");
     let d = doc(&mut h);

@@ -59,7 +59,7 @@ What brief 042 changed, and how to try it by clicking. Listed in the index of
 
 ## Checks run (worker, not owner-tried)
 
-`cargo test -p ecad-cadcraft defaults_contracts` (setdefault over the whole registry, refusals, chain,
+`cargo test -p ecad-engine defaults_contracts` (setdefault over the whole registry, refusals, chain,
 users), `cargo test -p ecad-mcp defaults_contracts` (MCP author and writes off), `cargo test -p ecad-app
 standards_ui` (Settings opening and Esc, Standards, inspector, update map), and the fast tests of the
 three crates.

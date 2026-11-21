@@ -5,8 +5,8 @@
 use std::path::{Path, PathBuf};
 
 use ecad_app::App;
-use ecad_cadcraft::{HOME_UNKNOWN, normalize_with};
 use ecad_desktop::parse_args;
+use ecad_engine::{HOME_UNKNOWN, normalize_with};
 use serde_json::json;
 
 /// A fresh folder under the system temp folder, removed when dropped.
@@ -27,8 +27,8 @@ impl Drop for TempDir {
 }
 
 fn new_app(home: Option<&Path>, snapshots: Option<PathBuf>) -> App {
-    ecad_cadcraft::install();
-    ecad_cadcraft::views::isolate_for_tests();
+    ecad_engine::install();
+    ecad_engine::views::isolate_for_tests();
     let mut t = App::new(snapshots).unwrap();
     t.home = home.map(Path::to_path_buf);
     t.cad.run("wire", json!({"points": [[0, 0], [40, 0]]})).unwrap();
@@ -215,8 +215,8 @@ fn a_second_opener_through_another_spelling_is_read_only() {
     let own = d.0.join("Shared.ecad").display().to_string();
     assert_eq!(save_as(&mut first, &own), None);
     let other = d.0.join("sHARED.ecad").display().to_string().replace('\\', "/");
-    ecad_cadcraft::install();
-    ecad_cadcraft::views::isolate_for_tests();
+    ecad_engine::install();
+    ecad_engine::views::isolate_for_tests();
     let mut second = App::with_file(None, &other).unwrap();
     let s = second.status().unwrap();
     assert!(s.file.read_only.is_some(), "second opener must be read-only: {:?}", s.file);
@@ -231,7 +231,7 @@ fn child_reports_home() {
     if std::env::var_os("ECAD_TEST_CHILD").is_none() {
         return;
     }
-    let home = ecad_cadcraft::home().map(|h| h.display().to_string()).unwrap_or_default();
+    let home = ecad_engine::home().map(|h| h.display().to_string()).unwrap_or_default();
     println!("HOME-FOLDER<{home}>");
 }
 
@@ -323,10 +323,10 @@ fn tilde_without_a_home_says_what_to_do() {
 #[test]
 fn an_unopenable_project_argument_is_reported_in_the_window() {
     let d = TempDir::new("missing-arg");
-    ecad_cadcraft::install();
+    ecad_engine::install();
     for name in ["nothere.ecad", "CON.ecad"] {
         let typed = d.0.join(name).display().to_string();
-        ecad_cadcraft::views::isolate_for_tests();
+        ecad_engine::views::isolate_for_tests();
         let mut t = App::with_file(None, &typed).unwrap();
         let notice = t.notice().unwrap_or_default().to_string();
         assert!(notice.contains("could not be opened"), "{name}: {notice}");
@@ -355,7 +355,7 @@ fn a_unc_path_saves_and_reopens_when_the_share_is_reachable() {
     let mut t = new_app(None, None);
     let typed = unc.join("over unc").display().to_string();
     let saved_as = format!("{typed}.ecad");
-    let model = t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).count();
+    let model = t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).count();
     let p = t.project().unwrap().clone();
     let history = p.read(&mut t.cad.session, |p, _| p.ledger.head() as usize).unwrap();
     match save_as(&mut t, &typed) {
@@ -385,11 +385,7 @@ fn a_unc_path_saves_and_reopens_when_the_share_is_reachable() {
     let s = t.status().unwrap();
     assert!(s.file.read_only.is_none(), "{:?}", s.file);
     assert_eq!(s.file.path.as_deref(), Some(saved_as.as_str()));
-    assert_eq!(
-        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).count(),
-        model,
-        "the same drawing"
-    );
+    assert_eq!(t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).count(), model, "the same drawing");
     let p = t.project().unwrap().clone();
     assert_eq!(p.read(&mut t.cad.session, |p, _| p.ledger.head() as usize).unwrap(), history, "the same history");
 }

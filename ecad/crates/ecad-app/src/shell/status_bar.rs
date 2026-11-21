@@ -93,7 +93,7 @@ impl App {
         if self.shell.well.built_at != Some(built) {
             let mut names = std::collections::BTreeMap::new();
             for r in self.panel.tree() {
-                if let ecad_cadcraft::TreeRow::Folder { id, name, .. } = r {
+                if let ecad_engine::TreeRow::Folder { id, name, .. } = r {
                     names.insert(*id, name.clone());
                 }
             }
@@ -127,9 +127,9 @@ impl App {
         }
         let facts = p.read(&mut self.cad.session, |p, _| {
             let doc = p.ledger.document();
-            let last = ecad_cadcraft::revisions::issued(doc).last().map(|r| r.rev().to_string()).unwrap_or_default();
-            let pending = ecad_cadcraft::revisions::pending_rev(doc);
-            let dirty = ecad_cadcraft::revisions::is_pending(&p.ledger);
+            let last = ecad_engine::revisions::issued(doc).last().map(|r| r.rev().to_string()).unwrap_or_default();
+            let pending = ecad_engine::revisions::pending_rev(doc);
+            let dirty = ecad_engine::revisions::is_pending(&p.ledger);
             let sheet = page.map(|pg| ecad_model::sheet::sheet_of(doc, pg)).unwrap_or_else(|| doc.settings.sheet());
             let sheet = sheet.preset_name().map_or_else(|| format!("{}×{}", sheet.width, sheet.height), str::to_string);
             ((last, pending, dirty), sheet)

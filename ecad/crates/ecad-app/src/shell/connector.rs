@@ -10,7 +10,7 @@
 
 use std::collections::BTreeMap;
 
-use ecad_cadcraft::cad::Input;
+use ecad_engine::cad::Input;
 use ecad_ui::prim;
 use ecad_ui::tokens::{space, ui_type};
 use eframe::egui::{self, vec2};

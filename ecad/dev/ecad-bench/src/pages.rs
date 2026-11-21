@@ -18,7 +18,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use cadcraft_engine::Session;
-use ecad_cadcraft::ProjectHandle;
+use ecad_engine::ProjectHandle;
 use ecad_model::PageId;
 use serde_json::json;
 
@@ -49,14 +49,14 @@ fn exec(s: &mut Session, cmd: &str, params: serde_json::Value) -> Result<(f64, s
 /// # Errors
 /// The copy cannot be made or opened, or a command fails.
 pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredPages, String> {
-    let _ = ecad_cadcraft::install();
+    let _ = ecad_engine::install();
     let copy = scratch.join("pages.ecad");
     remove(&copy);
     std::fs::copy(path, &copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
     let mut out = MeasuredPages::default();
     let result = (|| {
         let mut s = Session::empty();
-        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, SEED, ecad_cadcraft::views::Settings::none())?;
+        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, SEED, ecad_engine::views::Settings::none())?;
         let (pages, densest) = project.read(&mut s, |p, _| {
             let doc = p.ledger.document();
             let d = doc.page_order.iter().copied().max_by_key(|pg| doc.representations_on(*pg).count()).unwrap_or(PageId(0));

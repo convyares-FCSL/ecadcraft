@@ -4,9 +4,9 @@
 //! under a coil, and Line and colour (folded). For anything else it shows the defaults that apply
 //! to what is selected (brief 042), folded the same way.
 
-use ecad_cadcraft::default_cmds;
-use ecad_cadcraft::defaults::Source;
-use ecad_cadcraft::text_style::TextKind;
+use ecad_engine::default_cmds;
+use ecad_engine::defaults::Source;
+use ecad_engine::text_style::TextKind;
 use ecad_ui::tokens::{space, ui_type};
 use eframe::egui::{self, Sense, pos2, vec2};
 
@@ -130,7 +130,7 @@ pub fn show(ui: &mut egui::Ui, cx: &mut Cx<'_>, out: &mut Vec<InspectorAction>) 
         });
     });
     // The contact table under a coil.
-    if let Some((s, row)) = section.and_then(|s| s.rows.iter().find(|r| r.key == ecad_cadcraft::xref::MIRROR_KEY).map(|r| (s, r))) {
+    if let Some((s, row)) = section.and_then(|s| s.rows.iter().find(|r| r.key == ecad_engine::xref::MIRROR_KEY).map(|r| (s, r))) {
         let v = row.value.to_lowercase();
         let selected = if v.starts_with("below") {
             Some(0)

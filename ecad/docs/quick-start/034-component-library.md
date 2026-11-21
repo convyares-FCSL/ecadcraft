@@ -16,9 +16,9 @@ and a heater; plugs, sockets, D-sub and M12 halves, RJ45 and USB bulkheads; PLC 
 fuse. Spare connector pins, a fuse bank's `M` and outputs and an I/O card's supply points are not
 flagged as unconnected. Ratings are stored and listed but not drawn yet (lane T draws text);
 contact tables do not count change-over contacts yet (stage 4, after brief 033). Section 5-034.
-- *Automated checks:* `ecad/crates/ecad-cadcraft/src/symbols.rs` (every symbol on the grid, its
+- *Automated checks:* `ecad/crates/ecad-engine/src/symbols.rs` (every symbol on the grid, its
   hash, box and labels, the change-over rule, quiet points, anchors, search),
-  `ecad/crates/ecad-cadcraft/tests/all/library_contracts.rs` (placing, joining, ratings, nets,
+  `ecad/crates/ecad-engine/tests/all/library_contracts.rs` (placing, joining, ratings, nets,
   quiet points, BOM rows) and `ecad/apps/ecad-mcp/tests/all/library_contracts.rs` (every new symbol,
   a change-over join and ratings through `execute` as the agent; writes off; hostile input).
 - *Agent-observed:* the worker looked at a drawing of every new definition; no agent has clicked

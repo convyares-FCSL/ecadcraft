@@ -21,7 +21,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use cadcraft_engine::Session;
-use ecad_cadcraft::history;
+use ecad_engine::history;
 use serde_json::json;
 
 use crate::measure::{median, path_text, release_lock_file, remove};
@@ -77,9 +77,9 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredHisto
 
 fn measure_on(copy: &Path, runs: usize) -> Result<MeasuredHistory, String> {
     let runs = runs.max(3);
-    ecad_cadcraft::install();
+    ecad_engine::install();
     let mut s = Session::empty();
-    let (p, _) = ecad_cadcraft::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_cadcraft::views::Settings::none())?;
+    let (p, _) = ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::views::Settings::none())?;
     // The history: 20 versions on main, a step apart by 25 toggles, and 5 branches from some of
     // them, each with a few steps of its own.
     let mut n = 0u64;

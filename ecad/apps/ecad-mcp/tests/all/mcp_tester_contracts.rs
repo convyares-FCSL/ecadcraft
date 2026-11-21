@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use cadcraft_engine::Session;
-use ecad_cadcraft::{Persistence, Project, ProjectHandle};
+use ecad_engine::{Persistence, Project, ProjectHandle};
 use ecad_mcp::{EcadMcp, MAX_REQUEST_BYTES, Options, policy};
 use ecad_model::{Author, Document, Transaction};
 use serde_json::{Value, json};
@@ -31,7 +31,7 @@ impl Client {
         let mut c = Client { s, next: 1 };
         let r = c.request("initialize", json!({"protocolVersion": "2025-06-18", "clientInfo": {"name": AGENT}}));
         assert!(r.get("result").is_some(), "{r}");
-        c.s.with_session(|s, p| p.configure(s, |p| p.settings = ecad_cadcraft::views::Settings::none())).unwrap().unwrap();
+        c.s.with_session(|s, p| p.configure(s, |p| p.settings = ecad_engine::views::Settings::none())).unwrap().unwrap();
         c
     }
     fn request(&mut self, method: &str, params: Value) -> Value {
@@ -83,10 +83,10 @@ struct Direct {
 
 impl Direct {
     fn new() -> Self {
-        ecad_cadcraft::install();
+        ecad_engine::install();
         let mut s = Session::empty();
         let p = Project::create_with(&mut s, "tester", SEED, Persistence::File).unwrap();
-        p.configure(&mut s, |p| p.settings = ecad_cadcraft::views::Settings::none()).unwrap();
+        p.configure(&mut s, |p| p.settings = ecad_engine::views::Settings::none()).unwrap();
         Direct { s, p }
     }
     fn log(&mut self) -> Vec<Transaction> {
@@ -444,7 +444,7 @@ fn every_command_ecad_refuses_gets_the_persons_refusal_through_mcp() {
     c.exec("wire", json!({"points": [[0, 0], [60, 0]]}));
     d.s.execute("wire", &json!({"points": [[0, 0], [60, 0]]})).unwrap();
     let before = c.log();
-    for cmd in ecad_cadcraft::project::REFUSED_COMMANDS {
+    for cmd in ecad_engine::project::REFUSED_COMMANDS {
         for params in [json!({}), json!({"name": "x", "handles": ["1"]})] {
             let person = d.s.execute(cmd, &params).map_err(|e| e.to_string());
             let r = c.exec_raw(cmd, params.clone());
@@ -471,7 +471,7 @@ fn saving_in_a_folder_with_spaces_and_reopening_without_ecad_mcp_shows_the_agent
         assert_ne!(r["isError"], json!(true), "{r}");
     }
     // Reopened by the desktop app's own code (no MCP involved), read-only.
-    ecad_cadcraft::install();
+    ecad_engine::install();
     let mut s = Session::empty();
     let (p, _) = ProjectHandle::open_file(&mut s, &path, 1).unwrap();
     let log = p.read(&mut s, |p, _| p.ledger.full_log().unwrap()).unwrap();
@@ -628,7 +628,7 @@ fn rpc(id: u64, method: &str, params: Value) -> String {
 fn run_binary(args: &[&str], input: &[u8], settings: &TempDir) -> (Vec<Value>, Option<i32>, String) {
     let mut child = Command::new(env!("CARGO_BIN_EXE_ecad-mcp"))
         .args(args)
-        .env(ecad_cadcraft::views::SETTINGS_ENV, &settings.0)
+        .env(ecad_engine::views::SETTINGS_ENV, &settings.0)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -753,7 +753,7 @@ fn stdio_a_backslash_path_and_a_second_server_on_a_held_file() {
     // A first server holds the writer lock while a second one opens the file.
     let mut first = Command::new(env!("CARGO_BIN_EXE_ecad-mcp"))
         .args(["--write", &path])
-        .env(ecad_cadcraft::views::SETTINGS_ENV, &dir.0)
+        .env(ecad_engine::views::SETTINGS_ENV, &dir.0)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

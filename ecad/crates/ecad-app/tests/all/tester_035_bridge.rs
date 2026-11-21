@@ -17,7 +17,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::{Duration, Instant};
 
-use ecad_cadcraft::views::Settings;
+use ecad_engine::views::Settings;
 use ecad_model::{Author, Transaction, TxKind};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -45,7 +45,7 @@ fn listening(port: u16) -> bool {
 }
 
 fn settings_dir(what: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("ecad-t035-{what}-{}", ecad_cadcraft::session_seed()))
+    std::env::temp_dir().join(format!("ecad-t035-{what}-{}", ecad_engine::session_seed()))
 }
 
 /// An app whose agent access reads and writes `dir`.
@@ -78,7 +78,7 @@ fn banner(h: &H) -> Option<ecad_app::agent::AgentBanner> {
 }
 
 fn access_file(dir: &std::path::Path) -> PathBuf {
-    ecad_cadcraft::agent_access::file(&Settings::at(dir)).unwrap()
+    ecad_engine::agent_access::file(&Settings::at(dir)).unwrap()
 }
 
 /// An app with agent access set to `mode` at a fresh port. Dropping it turns access Off, removes
@@ -420,7 +420,7 @@ fn agent_author() -> Author {
 fn ac1_with_no_preference_nothing_listens() {
     lock();
     let dir = settings_dir("ac1");
-    let default_before = listening(ecad_cadcraft::agent_access::DEFAULT_PORT);
+    let default_before = listening(ecad_engine::agent_access::DEFAULT_PORT);
     let port = free_port();
     let mut h = app_in(&dir);
     h.run_steps(10);
@@ -1363,7 +1363,7 @@ fn an_unreadable_preference_reads_as_off_with_one_line() {
         assert_eq!(r["listening"], json!(false), "case {i}: {r}");
         assert!(!listening(port), "case {i}: nothing listens");
         let log = &h.state().cad.session.log;
-        assert_eq!(log.iter().filter(|l| l.as_str() == ecad_cadcraft::agent_access::UNREADABLE).count(), 1, "case {i}: one line: {log:?}");
+        assert_eq!(log.iter().filter(|l| l.as_str() == ecad_engine::agent_access::UNREADABLE).count(), 1, "case {i}: one line: {log:?}");
         h.state_mut().on_exit();
         let _ = std::fs::remove_dir_all(&dir);
     }

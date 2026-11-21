@@ -115,4 +115,4 @@ What changed for someone using the app:
       core-at-one-end rows any more; ten rows in all.
 
 Not yet tried by the owner. Checked by the headless tests named in the lane's tests
-(`lanes::lane_072d`, ecad-model, ecad-file, ecad-inspector, ecad-cadcraft, ecad-mcp, ecad-app).
+(`lanes::lane_072d`, ecad-model, ecad-file, ecad-inspector, ecad-engine, ecad-mcp, ecad-app).

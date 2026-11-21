@@ -15,9 +15,9 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use ecad_cadcraft::ProjectHandle;
-use ecad_cadcraft::cad::Session;
-use ecad_cadcraft::debug::{self, Check, DebugSnapshot, ObjectId, RecordBytes, RecordState, Resolved, TxCursor, op_view, resolve};
+use ecad_engine::ProjectHandle;
+use ecad_engine::cad::Session;
+use ecad_engine::debug::{self, Check, DebugSnapshot, ObjectId, RecordBytes, RecordState, Resolved, TxCursor, op_view, resolve};
 use ecad_model::{Author, Document, ProjectId, Transaction};
 use ecad_ui::control::{Select, TextEntry};
 use ecad_ui::prim::{self, Button, IconButton, Kind, ListRow, SectionHeader, Tone};
@@ -290,7 +290,7 @@ impl Debugger {
             self.tx = None;
             self.record = None;
         }
-        self.ref_lines = ecad_cadcraft::references::diagnostics(&snap.doc);
+        self.ref_lines = ecad_engine::references::diagnostics(&snap.doc);
         self.snap = Some(snap);
         self.taken = now();
         self.stale = None;

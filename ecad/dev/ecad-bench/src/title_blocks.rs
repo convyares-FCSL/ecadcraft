@@ -15,8 +15,8 @@ use std::path::Path;
 use std::time::Instant;
 
 use cadcraft_engine::Session;
-use ecad_cadcraft::ProjectHandle;
-use ecad_cadcraft::frame::{self, FrameInput};
+use ecad_engine::ProjectHandle;
+use ecad_engine::frame::{self, FrameInput};
 use ecad_model::book::Book;
 use ecad_model::title_block::{Binding, BlockItem, Rect, TextLook, TitleBlockLayout};
 use ecad_model::{Primitive, Pt};
@@ -82,14 +82,14 @@ fn frame_ms(project: &ProjectHandle, s: &mut Session) -> Result<f64, String> {
 /// # Errors
 /// The copy cannot be made or opened, or a command fails.
 pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredTitleBlocks, String> {
-    let _ = ecad_cadcraft::install();
+    let _ = ecad_engine::install();
     let copy = scratch.join("title-blocks.ecad");
     remove(&copy);
     std::fs::copy(path, &copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
     let mut out = MeasuredTitleBlocks::default();
     let result = (|| {
         let mut s = Session::empty();
-        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_cadcraft::views::Settings::none())?;
+        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::views::Settings::none())?;
         let first = project.read(&mut s, |p, _| p.ledger.document().page_order.first().copied())?.ok_or("the project has no page")?;
         out.pages = project.read(&mut s, |p, _| p.ledger.document().page_order.len())?;
         project.open_page(&mut s, first)?;

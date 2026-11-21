@@ -5,7 +5,7 @@
 
 use ecad_app::App;
 use ecad_app::project_panel::Action;
-use ecad_cadcraft::checks::{Fix, Kind, Object};
+use ecad_engine::checks::{Fix, Kind, Object};
 use eframe::egui::{self, vec2};
 use egui_kittest::Harness;
 
@@ -31,9 +31,9 @@ fn harness() -> H {
     h
 }
 
-fn core_rows(h: &mut H) -> Vec<ecad_cadcraft::checks::Check> {
+fn core_rows(h: &mut H) -> Vec<ecad_engine::checks::Check> {
     let d = doc(h);
-    ecad_cadcraft::checks::all(&d, 0.01).into_iter().filter(|c| c.kind == Kind::CoreOpen).collect()
+    ecad_engine::checks::all(&d, 0.01).into_iter().filter(|c| c.kind == Kind::CoreOpen).collect()
 }
 
 #[test]
@@ -63,7 +63,7 @@ fn core_fixes_go_to_the_cable_and_tick_not_used_in_one_transaction() {
     let row = core_rows(&mut h).into_iter().find(|c| c.object == Object::Cable(w90)).expect("a core-open row for -W90");
     let fix = row.fix.unwrap();
     let Fix::CoreOpen(_, i) = fix else { panic!("{fix:?}") };
-    let open = ecad_cadcraft::styles::cable::open_cores(&d, w90).into_iter().nth(usize::from(i)).unwrap();
+    let open = ecad_engine::styles::cable::open_cores(&d, w90).into_iter().nth(usize::from(i)).unwrap();
     let want_at = ecad_model::numbering::rep_anchor(&d, ecad_model::Subject::Cable(w90)).map(|(_, a)| a);
     // Go to the cable, from another page.
     h.state_mut().show_page(first).unwrap();
@@ -83,7 +83,7 @@ fn core_fixes_go_to_the_cable_and_tick_not_used_in_one_transaction() {
     let want = {
         let t = h.state_mut();
         let p = t.project().unwrap().clone();
-        p.configure(&mut t.cad.session, |p| ecad_cadcraft::checks::handles_of(p, page, Object::Cable(w90))).unwrap()
+        p.configure(&mut t.cad.session, |p| ecad_engine::checks::handles_of(p, page, Object::Cable(w90))).unwrap()
     };
     assert!(!sel.is_empty() && sel == want, "the cable is selected: {sel:?} vs {want:?}");
     // Tick Not used: one transaction; one undo takes it back.

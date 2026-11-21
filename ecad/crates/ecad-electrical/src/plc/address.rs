@@ -11,7 +11,7 @@
 //! - Checked arithmetic: a block passing byte 65 535 has no address (`address-overflow`), never a
 //!   panic (§5.5).
 //!
-//! Every write (the commands, in ecad-cadcraft's `cmd::plc`) is one transaction.
+//! Every write (the commands, in ecad-engine's `cmd::plc`) is one transaction.
 
 use std::collections::BTreeMap;
 

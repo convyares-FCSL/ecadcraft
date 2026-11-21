@@ -1,6 +1,6 @@
 //! Lists ▸ PLC (brief 051, design 051 §3; was 045c's Lists ▸ I/O): rack chips, the rack's tiles as
 //! the table's group strip (screen m of the UI spec), and under them the I/O column set
-//! (`ecad_cadcraft::plc::iolist`) filtered to the selected card (`This card`) or grouped by card
+//! (`ecad_engine::plc::iolist`) filtered to the selected card (`This card`) or grouped by card
 //! (`All cards`). Description, Address and Pins are inputs that run `plcchannel` (Q11); everything
 //! else is read.
 //!
@@ -20,10 +20,10 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use ecad_cadcraft::outputs::kept::Outputs;
-use ecad_cadcraft::plc::iolist::{self, Row};
-use ecad_cadcraft::plc::overview::{self, Chip, Square, Tile, TileKind};
-use ecad_cadcraft::plc::signals;
+use ecad_engine::outputs::kept::Outputs;
+use ecad_engine::plc::iolist::{self, Row};
+use ecad_engine::plc::overview::{self, Chip, Square, Tile, TileKind};
+use ecad_engine::plc::signals;
 use ecad_model::{DeviceId, Document, PageId};
 use ecad_ui::table::strip::{self, Link, Mark, StripEvent, Tone};
 use ecad_ui::table::{Cell, Changed, Column, ColumnId, Table, TableEvent, TableSource, Width};
@@ -476,7 +476,7 @@ fn strip_tile(t: &Tile, numbers: &[String], writable: bool, doc: &Document) -> (
 /// A square's hover (045 §4.7's words): `-A03 channel 3 · Q0.3 · Pump 1 run`.
 fn tip_words(doc: &Document, c: DeviceId, t: &Tile, i: usize) -> String {
     let n = u32::try_from(i).unwrap_or(0);
-    let first = ecad_cadcraft::plc::channels::first_number(doc, c);
+    let first = ecad_engine::plc::channels::first_number(doc, c);
     let state = t.squares.get(i).map_or("", |s| s.words());
     format!("{} channel {} \u{b7} {state}", t.tag, n.saturating_add(first))
 }
@@ -625,7 +625,7 @@ impl IoView {
 
     /// The page numbers of a tile's pages.
     fn numbers_of(doc: &Document, t: &Tile) -> Vec<String> {
-        t.pages.iter().map(|p| ecad_cadcraft::references::page_number(doc, *p)).collect()
+        t.pages.iter().map(|p| ecad_engine::references::page_number(doc, *p)).collect()
     }
 
     /// Make the shown chip's tiles again.
@@ -748,8 +748,8 @@ impl IoView {
             let moved = changed.iter().any(|c| {
                 let here = self.tiles.iter().any(|t| t.card() == Some(*c));
                 let belongs = o.plc.cards.get(c).is_some_and(|card| match (self.chips.get(self.chip), card.rack) {
-                    (Some(Chip::Rack(r, _)), ecad_cadcraft::plc::rack::RackRef::Rack(x)) => *r == x,
-                    (Some(Chip::NoRack(_)), ecad_cadcraft::plc::rack::RackRef::Rack(_)) => false,
+                    (Some(Chip::Rack(r, _)), ecad_engine::plc::rack::RackRef::Rack(x)) => *r == x,
+                    (Some(Chip::NoRack(_)), ecad_engine::plc::rack::RackRef::Rack(_)) => false,
                     (Some(Chip::NoRack(_)), _) => true,
                     _ => false,
                 });
@@ -777,7 +777,7 @@ impl IoView {
     /// model (words only; no rows made).
     fn after_sync(&mut self, doc: &Document, o: &Outputs) {
         let plc = &o.plc;
-        self.project_name = ecad_cadcraft::frames::project_text(doc, ecad_cadcraft::frame::TITLE)
+        self.project_name = ecad_engine::frames::project_text(doc, ecad_engine::frame::TITLE)
             .map(|v| v.trim().to_string())
             .filter(|v| !v.is_empty())
             .unwrap_or_else(|| "Project".into());
@@ -822,7 +822,7 @@ impl IoView {
                     many => format!("drawn in detail on pages {}", many.join(", ")),
                 };
                 let rack = match card.rack {
-                    ecad_cadcraft::plc::rack::RackRef::Rack(r) => Some(r),
+                    ecad_engine::plc::rack::RackRef::Rack(r) => Some(r),
                     _ => None,
                 };
                 CardHead {
@@ -838,8 +838,8 @@ impl IoView {
         self.book_page = doc
             .page_order
             .iter()
-            .find(|p| ecad_cadcraft::generated::kind_of(doc, **p) == Some(ecad_cadcraft::generated::GenKind::PlcRack))
-            .map(|p| (*p, ecad_cadcraft::references::page_number(doc, *p)));
+            .find(|p| ecad_engine::generated::kind_of(doc, **p) == Some(ecad_engine::generated::GenKind::PlcRack))
+            .map(|p| (*p, ecad_engine::references::page_number(doc, *p)));
     }
 
     /// The file name offered for a tag table (design 056 §6.6): `<project> PLC tags.csv` in the

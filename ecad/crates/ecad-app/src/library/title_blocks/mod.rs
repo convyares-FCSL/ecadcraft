@@ -25,9 +25,9 @@ pub mod list;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use ecad_cadcraft::frame::{FrameInput, FrameText};
-use ecad_cadcraft::styles::{self, Layer};
 use ecad_electrical::cmd::title_block::{layout_of, pages_using};
+use ecad_engine::frame::{FrameInput, FrameText};
+use ecad_engine::styles::{self, Layer};
 use ecad_model::book::Book;
 use ecad_model::sheet;
 use ecad_model::title_block::{Binding, BlockItem, TitleBlockLayout};
@@ -126,9 +126,9 @@ impl Sample {
         use ecad_model::title_block::RevisionColumn;
         match b {
             Binding::Project(k) => self.props.get(k.as_str()).cloned().unwrap_or_default(),
-            Binding::Revision(RevisionColumn::Field(RevField::Rev)) => ecad_cadcraft::title_block::bind::value(&self.input, b),
+            Binding::Revision(RevisionColumn::Field(RevField::Rev)) => ecad_engine::title_block::bind::value(&self.input, b),
             Binding::Revision(c) => self.newest.get(c.word()).cloned().unwrap_or_default(),
-            Binding::Page(_) | Binding::Print(_) => ecad_cadcraft::title_block::bind::value(&self.input, b),
+            Binding::Page(_) | Binding::Print(_) => ecad_engine::title_block::bind::value(&self.input, b),
         }
     }
 }
@@ -234,13 +234,13 @@ fn row_line(sheet_text: &str, pages: usize) -> String {
 
 /// The frame's fields as the draft keeps them (every catalogue field, resolved).
 fn fields_of(doc: &ecad_model::Document, id: &StyleRef) -> BTreeMap<String, String> {
-    let cat = &ecad_cadcraft::styles::frame::CATALOGUE;
+    let cat = &ecad_engine::styles::frame::CATALOGUE;
     cat.fields.iter().map(|f| (f.key.to_string(), styles::field(doc, cat, id, f, None).text())).collect()
 }
 
 /// Read the list from `doc` (design 055 §4.1).
 pub fn read_rows(doc: &ecad_model::Document) -> Vec<Row> {
-    let cat = &ecad_cadcraft::styles::frame::CATALOGUE;
+    let cat = &ecad_engine::styles::frame::CATALOGUE;
     let text = FrameText::of(doc);
     styles::rows(doc, cat)
         .into_iter()
@@ -250,7 +250,7 @@ pub fn read_rows(doc: &ecad_model::Document) -> Vec<Row> {
             let layout = layout_of(doc, &r.id, &shown, &text);
             let pages = pages_using(doc, &r.id).len();
             let sheet_text = match spec {
-                Some(s) => format!("{} landscape", ecad_cadcraft::title_block::sheet_name(&s)),
+                Some(s) => format!("{} landscape", ecad_engine::title_block::sheet_name(&s)),
                 None => "Any sheet".to_string(),
             };
             let state = State { name: r.name.clone(), fields: fields_of(doc, &r.id), layout: layout.clone() };
@@ -265,11 +265,11 @@ fn sample_of(doc: &ecad_model::Document, active: Option<PageId>, layout: &TitleB
     let book = Book::of(doc);
     let mut input = FrameInput::of(doc, page, &book);
     input.block.layout = Arc::new(layout.clone());
-    let issued = ecad_cadcraft::revisions::issued(doc).into_iter().next();
-    let newest = ecad_cadcraft::revisions::FIELDS
+    let issued = ecad_engine::revisions::issued(doc).into_iter().next();
+    let newest = ecad_engine::revisions::FIELDS
         .iter()
         .map(|f| f.to_string())
-        .chain(ecad_cadcraft::revisions::columns(doc).into_iter().map(|c| c.field))
+        .chain(ecad_engine::revisions::columns(doc).into_iter().map(|c| c.field))
         .map(|f| {
             let v = issued.as_ref().map(|r| r.get(&f).to_string()).unwrap_or_default();
             (f, v)
@@ -503,7 +503,7 @@ impl App {
     /// The Logo tool (design 055 §4.5, §6): a DXF into the selected logo, or a new logo at `at`;
     /// the draft only (Save writes it).
     fn tb_logo(&mut self, at: Option<ecad_model::title_block::Rect>, path: &str) {
-        let r = std::fs::read(path).map_err(|e| format!("Cannot read {path}: {e}.")).and_then(|b| ecad_cadcraft::title_block::dxf::logo(&b));
+        let r = std::fs::read(path).map_err(|e| format!("Cannot read {path}: {e}.")).and_then(|b| ecad_engine::title_block::dxf::logo(&b));
         let name = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         let ed = &mut self.library.tb;
         let prims = match r {

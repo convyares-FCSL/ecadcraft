@@ -24,7 +24,7 @@ fn opening_a_saved_project_marks_the_shell_then_the_project() {
     // (project, timing on)
     let rows: &[(Option<&str>, bool)] = &[(Some(path.as_str()), true), (Some(path.as_str()), false), (None, false)];
     for (project, timed) in rows {
-        ecad_cadcraft::views::isolate_for_tests();
+        ecad_engine::views::isolate_for_tests();
         let mut t = quiet();
         t.mark(Step::Main);
         let app = App::start(None, *project, timed.then_some(&mut t)).unwrap();

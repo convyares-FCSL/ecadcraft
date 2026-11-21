@@ -9,8 +9,8 @@
 //! # Update map (design 054 §10.2)
 //! None while open: it reads the types, the book and the next number once, on opening.
 
-use ecad_cadcraft::generated::GenKind;
-use ecad_cadcraft::styles::page::{self as ptype, Holds};
+use ecad_engine::generated::GenKind;
+use ecad_engine::styles::page::{self as ptype, Holds};
 use ecad_model::book::Book;
 use ecad_model::{FolderId, PageId, StyleRef};
 use ecad_ui::tokens::{space, ui_type};
@@ -84,18 +84,18 @@ fn kind_rows(holds: Holds, doc: &ecad_model::Document, book: &Book) -> Vec<KindR
         let in_book = |style: Option<&str>| -> Vec<String> {
             book.order
                 .iter()
-                .filter(|p| ecad_cadcraft::generated::kind_of(doc, **p) == Some(*k))
+                .filter(|p| ecad_engine::generated::kind_of(doc, **p) == Some(*k))
                 .filter(|p| {
                     *k != GenKind::Terminals
-                        || (ecad_cadcraft::strip_page::style_of(doc, **p) == ecad_cadcraft::strip_page::Style::Graphic) == style.is_some()
+                        || (ecad_engine::strip_page::style_of(doc, **p) == ecad_engine::strip_page::Style::Graphic) == style.is_some()
                 })
                 .map(|p| book.number(doc, *p))
                 .collect()
         };
         out.push(KindRow { label: k.title(), kind: *k, style: None, in_book: in_book(None) });
         if *k == GenKind::Terminals {
-            let g = ecad_cadcraft::defaults::strip_pages::GRAPHIC;
-            out.push(KindRow { label: ecad_cadcraft::strip_page::TITLE, kind: *k, style: Some(g), in_book: in_book(Some(g)) });
+            let g = ecad_engine::defaults::strip_pages::GRAPHIC;
+            out.push(KindRow { label: ecad_engine::strip_page::TITLE, kind: *k, style: Some(g), in_book: in_book(Some(g)) });
         }
     }
     out

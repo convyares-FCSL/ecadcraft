@@ -49,13 +49,13 @@ fn every_starter_symbol_on_one_page() {
     // The 19 device symbols (brief 028 added the PE terminal); the continuation (brief 022) is
     // not a device.
     // (brief 022) are not devices; brief 034's families have their own tests.
-    let devices = ecad_cadcraft::symbols::STARTERS
+    let devices = ecad_engine::symbols::STARTERS
         .iter()
         // Brief 036's level starters join strips as positions (tested in `levels_contracts`).
         .filter(|s| {
-            s.kind != ecad_cadcraft::symbols::Kind::Tagless
-                && s.family == ecad_cadcraft::symbols::Family::Basic
-                && !ecad_cadcraft::terminal_types::is_level_starter(s.key)
+            s.kind != ecad_engine::symbols::Kind::Tagless
+                && s.family == ecad_engine::symbols::Family::Basic
+                && !ecad_engine::terminal_types::is_level_starter(s.key)
         });
     for (i, s) in devices.enumerate() {
         let (x, y) = (60 * (i % 6), -60 * (i / 6) as i64);
@@ -100,11 +100,11 @@ fn search_place_hover_and_duplicate_by_the_ui() {
     h.run_steps(3);
     assert_eq!(h.state().search.query, "cont");
     let rows = search::rows(Some(&doc(&mut h)), "cont").0;
-    assert!(rows.iter().any(|r| r.pick == search::Pick::Symbol(ecad_cadcraft::symbols::StarterKey::No)));
+    assert!(rows.iter().any(|r| r.pick == search::Pick::Symbol(ecad_engine::symbols::StarterKey::No)));
     save(&h, &deltas, "018-search.png");
 
     // A symbol row starts Place Symbol at the insertion point; D and Enter join -K01.
-    h.state_mut().start_pick(search::Pick::Symbol(ecad_cadcraft::symbols::StarterKey::No)).unwrap();
+    h.state_mut().start_pick(search::Pick::Symbol(ecad_engine::symbols::StarterKey::No)).unwrap();
     h.run_steps(2);
     assert!(prompt(&h).starts_with("Specify insertion point (new device -K02"), "{}", prompt(&h));
     type_enter(&mut h, "D");
@@ -157,27 +157,27 @@ fn find_symbol_offers_new_device_and_the_devices_to_join_by_click() {
         let p = t.project().unwrap().clone();
         p.read(&mut t.cad.session, |p, _| search::choices(p, &pick)).unwrap()
     };
-    let c = choices(&mut h, search::Pick::Symbol(ecad_cadcraft::symbols::StarterKey::No));
+    let c = choices(&mut h, search::Pick::Symbol(ecad_engine::symbols::StarterKey::No));
     assert_eq!(c[0].text, "New device (-K02)");
     assert_eq!(c[0].device, None);
     assert_eq!(c[1].device.as_deref(), Some("-K01"), "the coil's device comes next: {c:?}");
     assert!(c[1].text.ends_with("13/14"), "{c:?}");
     assert_eq!(c.iter().filter(|x| x.device.is_some()).count(), 2, "the fuse can take a contact too, after: {c:?}");
     // A second coil cannot join -K01: it is not offered.
-    let coil = choices(&mut h, search::Pick::Symbol(ecad_cadcraft::symbols::StarterKey::Coil));
+    let coil = choices(&mut h, search::Pick::Symbol(ecad_engine::symbols::StarterKey::Coil));
     assert!(coil.iter().all(|x| x.device.as_deref() != Some("-K01")), "{coil:?}");
     // A device row lists what it can take, its own prefix's symbols first.
     let d = choices(&mut h, search::Pick::Device("-K01".into()));
     assert!(
-        d.iter().all(|x| x.symbol != ecad_cadcraft::symbols::StarterKey::Coil)
-            && d.first().is_some_and(|x| x.symbol == ecad_cadcraft::symbols::StarterKey::No),
+        d.iter().all(|x| x.symbol != ecad_engine::symbols::StarterKey::Coil)
+            && d.first().is_some_and(|x| x.symbol == ecad_engine::symbols::StarterKey::No),
         "{d:?}"
     );
 
     // The window: a row click shows the second step; one click on a choice starts placing.
     button(&mut h, tools::TAB);
     button(&mut h, "Find Symbol");
-    h.state_mut().search.picked = Some(search::Pick::Symbol(ecad_cadcraft::symbols::StarterKey::No));
+    h.state_mut().search.picked = Some(search::Pick::Symbol(ecad_engine::symbols::StarterKey::No));
     h.run_steps(3);
     let label = c[1].text.clone();
     h.get_by_label(&label).click();

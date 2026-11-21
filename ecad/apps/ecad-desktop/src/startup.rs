@@ -38,7 +38,7 @@ pub fn enabled(value: Option<&str>) -> bool {
 pub enum Step {
     /// `main` entered (before it: the OS loader, DLLs, the virus scanner).
     Main,
-    /// `ecad_cadcraft::install()` done.
+    /// `ecad_engine::install()` done.
     Install,
     /// `eframe::run_native` about to be called (options built).
     RunNative,
@@ -100,7 +100,7 @@ impl Step {
     pub fn label(self) -> &'static str {
         match self {
             Step::Main => "main entered",
-            Step::Install => "ecad_cadcraft::install() done",
+            Step::Install => "ecad_engine::install() done",
             Step::RunNative => "run_native called",
             Step::Creator => "creator entered (window, wgpu device, egui context)",
             Step::Shell => "CADCraft app and shell built",
@@ -349,7 +349,7 @@ fn say(line: &str) {
 pub fn preferred_folder(snapshots: Option<&Path>, home: Option<&Path>) -> Option<PathBuf> {
     let dir = snapshots?;
     match dir.to_str() {
-        Some(typed) => ecad_cadcraft::expand_home(typed, home).ok(),
+        Some(typed) => ecad_engine::expand_home(typed, home).ok(),
         None => Some(dir.to_path_buf()),
     }
 }

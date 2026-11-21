@@ -46,12 +46,12 @@ const FRESH_CALLS: &[&str] = &[".detached(", ".report_models("];
 /// project does not keep, or a check that must not trust the kept views (design 064 §5.2). A
 /// file not listed may not; a listed count is exact, so it only falls.
 const FRESH_BUILDS: &[(&str, usize, &str)] = &[
-    ("crates/ecad-cadcraft/src/debug.rs", 1, "debugger projection check, on a copy, must not trust the kept models"),
-    ("crates/ecad-cadcraft/src/draw/checks.rs", 1, "the `checks` command's from-scratch pass, on request"),
-    ("crates/ecad-cadcraft/src/preview.rs", 2, "previews: a page outside its window, and an issued revision's state"),
-    ("crates/ecad-cadcraft/src/project/changes.rs", 1, "recovery check of a rebuilt page, must not trust the kept models"),
-    ("crates/ecad-cadcraft/src/project/mod.rs", 1, "live facts: an open page against a fresh projection"),
-    ("crates/ecad-cadcraft/src/release.rs", 3, "release: the issued and the finalised states, not kept"),
+    ("crates/ecad-engine/src/debug.rs", 1, "debugger projection check, on a copy, must not trust the kept models"),
+    ("crates/ecad-engine/src/draw/checks.rs", 1, "the `checks` command's from-scratch pass, on request"),
+    ("crates/ecad-engine/src/preview.rs", 2, "previews: a page outside its window, and an issued revision's state"),
+    ("crates/ecad-engine/src/project/changes.rs", 1, "recovery check of a rebuilt page, must not trust the kept models"),
+    ("crates/ecad-engine/src/project/mod.rs", 1, "live facts: an open page against a fresh projection"),
+    ("crates/ecad-engine/src/release.rs", 3, "release: the issued and the finalised states, not kept"),
     ("dev/ecad-bench/src/bom.rs", 1, "bench verify mode: the kept BOM model against a rebuild"),
 ];
 
@@ -396,7 +396,7 @@ mod tests {
             ("crates/ecad-electrical/src/derived/mod.rs", true),
             ("crates/ecad-electrical/src/generated.rs", false),
             ("crates/ecad-electrical/src/xref_extra.rs", false),
-            ("crates/ecad-cadcraft/src/release.rs", false),
+            ("crates/ecad-engine/src/release.rs", false),
         ];
         for (rel, want) in rows {
             assert_eq!(is_own_module(rel), *want, "{rel}");

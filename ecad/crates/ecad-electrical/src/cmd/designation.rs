@@ -257,7 +257,7 @@ pub fn plan_remove(doc: &Document, uses: &Uses, a: Aspect, key: Option<&str>, co
 }
 
 /// Whether the transactions after the first `seen` of `ledger`'s log could change the designation
-/// rows (`ecad_cadcraft::cmd::designation::rows`): an op on the list, on a `function` /
+/// rows (`ecad_engine::cmd::designation::rows`): an op on the list, on a `function` /
 /// `location` / `location.<type>` value, or a component or page created or deleted (design 052
 /// §8.2a, the Settings card's update map).
 pub fn rows_changed_since(ledger: &ecad_model::Ledger, seen: usize) -> bool {

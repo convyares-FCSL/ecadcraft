@@ -10,8 +10,8 @@
 use std::collections::BTreeSet;
 use std::time::Instant;
 
-use ecad_cadcraft::continuations;
-use ecad_cadcraft::xref::{Places, RefIndex};
+use ecad_engine::continuations;
+use ecad_engine::xref::{Places, RefIndex};
 use ecad_model::{Color, Document, IdAllocator, ItemKind, Op, PageId, Placement, Pt, Style};
 
 /// Pages, names of 20 arrows, and the size of the big name.
@@ -68,11 +68,11 @@ fn pages(n: usize) -> Document {
 
 /// Add an arrow named `name` at `at` on `page` (with a caption when given).
 fn arrow(doc: &mut Document, ids: &mut IdAllocator, page: PageId, at: Pt, name: &str, caption: Option<&str>) {
-    let aid = ecad_cadcraft::wires::continuation_aid(name, caption).unwrap();
+    let aid = ecad_engine::wires::continuation_aid(name, caption).unwrap();
     let style = Style { layer: ecad_model::LayerId(1), color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
-    let starter = ecad_cadcraft::wires::continuation_starter();
+    let starter = ecad_engine::wires::continuation_starter();
     let pl = Placement { origin: at, rotation: ecad_model::units::Radians(0.0), mirror: false, scale: 1.0 };
-    let t = ecad_cadcraft::wires::plan_tagless(doc, ids, page, style, starter, pl, aid).unwrap();
+    let t = ecad_engine::wires::plan_tagless(doc, ids, page, style, starter, pl, aid).unwrap();
     for op in &t.ops {
         op.apply(doc).unwrap();
     }
@@ -142,7 +142,7 @@ fn bench_049_continuation_rows() {
     let mut idx = RefIndex::build(&doc);
     let project_page = time(runs, || drop(continuations::parts_on_page(&doc, &mut Places::new(&doc), shown_page)));
     let page_parts = continuations::parts_on_page(&doc, &mut Places::new(&doc), shown_page);
-    let all_parts = time(runs, || drop(ecad_cadcraft::xref::parts_on_page(&doc, shown_page)));
+    let all_parts = time(runs, || drop(ecad_engine::xref::parts_on_page(&doc, shown_page)));
 
     // Move one arrow of a 20-arrow name.
     let ops = move_first(&doc, "N3", 5.0);
@@ -158,7 +158,7 @@ fn bench_049_continuation_rows() {
     let rename = vec![Op::ModifyAid {
         id: c,
         before: doc.aids[&c].clone(),
-        after: ecad_cadcraft::wires::continuation_aid("N4", doc.aids[&c].continuation_caption().map(|t| t.as_str())).unwrap(),
+        after: ecad_engine::wires::continuation_aid("N4", doc.aids[&c].continuation_caption().map(|t| t.as_str())).unwrap(),
     }];
     let after = applied(&doc, &rename);
     let rename20 = time_with(runs, || idx.clone(), |mut i| drop(commit_work(&doc, &after, &mut i, &rename)));

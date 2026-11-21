@@ -47,6 +47,6 @@ What brief 046 changed, and how to try it by clicking. Listed in the index of
 
 ## Checks run (worker, not owner-tried)
 
-- `cargo test -p ecad-cadcraft strip_page_contracts`, `cargo test -p ecad-mcp strip_page_contracts`, `cargo test -p
+- `cargo test -p ecad-engine strip_page_contracts`, `cargo test -p ecad-mcp strip_page_contracts`, `cargo test -p
   ecad-app strip_page_ui` (screenshots with `ECAD_TESTER_SHOTS`).
 - Nobody has clicked through it on a display yet.

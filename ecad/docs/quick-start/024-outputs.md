@@ -15,7 +15,7 @@ prefix (`+CP1-K01`). **Reports** (BOM, wires, cables, each exported as Excel-saf
 **Print Book** (one PDF of every page, a folder or a page list) are buttons in the PROJECT panel's
 header; its **v** beside **+** adds generated pages: Cover, Contents, Revision list, BOM by
 location. Section 5K describes it.
-- *Automated checks:* `ecad/crates/ecad-cadcraft/tests/all/outputs_contracts.rs` (precedence, live
+- *Automated checks:* `ecad/crates/ecad-engine/tests/all/outputs_contracts.rs` (precedence, live
   boxes, innermost wins, own value kept and flagged with its fix, the prefix, reports and CSV,
   generated pages and overflow, Print Book; every edit's kept models equal a fresh build),
   `ecad/apps/ecad-mcp/tests/all/outputs_contracts.rs` (MCP writes as the agent, refused with writes

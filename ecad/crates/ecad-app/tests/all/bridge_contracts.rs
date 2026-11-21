@@ -27,8 +27,8 @@ pub(crate) fn free_port() -> u16 {
 
 /// An app with agent access on (Read and change) at a free port, its listener started.
 pub(crate) fn live_app() -> (H, u16) {
-    ecad_cadcraft::install();
-    ecad_cadcraft::views::isolate_for_tests();
+    ecad_engine::install();
+    ecad_engine::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
     let port = free_port();
     t.agent.control_flag(port);
@@ -270,7 +270,7 @@ fn a_batch_of_two_executes_on_one_line_records_at_most_one() {
 #[test]
 fn read_only_access_or_a_server_without_write_refuses_every_change_and_save() {
     let (mut h, port) = live_app();
-    h.state_mut().agent.pref.mode = ecad_cadcraft::agent_access::Mode::Read;
+    h.state_mut().agent.pref.mode = ecad_engine::agent_access::Mode::Read;
     let mut a = server(port, true, "tester");
     let before = log_len(&mut h);
     assert_eq!(a.exec_refused(&mut h, "wire", wire(0.0)), agent::READ_ONLY);
@@ -278,7 +278,7 @@ fn read_only_access_or_a_server_without_write_refuses_every_change_and_save() {
     assert!(a.ok(&mut h, "ecad_project", json!({}))["pages"]["count"].as_u64().unwrap() >= 1);
     assert_eq!(log_len(&mut h), before);
 
-    h.state_mut().agent.pref.mode = ecad_cadcraft::agent_access::Mode::Write;
+    h.state_mut().agent.pref.mode = ecad_engine::agent_access::Mode::Write;
     let mut b = server(port, false, "reader");
     assert_eq!(b.exec_refused(&mut h, "wire", wire(0.0)), ecad_mcp::policy::WRITES_OFF);
     assert!(b.refused(&mut h, "save", json!({})).contains("read-only"));
@@ -367,7 +367,7 @@ fn raw_methods_are_refused_and_change_nothing_and_a_request_without_the_token_is
         assert!(r["error"].as_str().unwrap().starts_with("not offered over ECAD's port"), "{r}");
     }
     assert_eq!(log_len(&mut h), before);
-    assert_eq!(h.state().agent.pref.mode, ecad_cadcraft::agent_access::Mode::Write);
+    assert_eq!(h.state().agent.pref.mode, ecad_engine::agent_access::Mode::Write);
     let r = raw(&mut h, port, vec![json!({"id": 1, "method": "ping"})]);
     assert!(r[0]["error"].as_str().unwrap().starts_with("unauthorized"), "{r:?}");
 }
@@ -425,8 +425,8 @@ fn headless_until_a_window_answers_then_bridged_and_headless_sticks_after_a_chan
     assert!(r["result"]["content"][0]["text"].as_str().unwrap().contains("\"headless\""), "{r}");
     drop((tx, rx));
     // The window opens before anything was recorded headless: the next call is bridged.
-    ecad_cadcraft::install();
-    ecad_cadcraft::views::isolate_for_tests();
+    ecad_engine::install();
+    ecad_engine::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
     t.agent.control_flag(port);
     let mut h: H = Harness::builder().build_ui_state(
@@ -449,7 +449,7 @@ fn headless_until_a_window_answers_then_bridged_and_headless_sticks_after_a_chan
     assert_ne!(r["result"]["isError"], json!(true), "{r}");
     assert_eq!(b.mode(), "headless");
     h.state_mut().agent = {
-        let mut ag = agent::Agent::from_settings(ecad_cadcraft::views::Settings::none());
+        let mut ag = agent::Agent::from_settings(ecad_engine::views::Settings::none());
         ag.control_flag(port2);
         ag
     };
@@ -462,10 +462,10 @@ fn headless_until_a_window_answers_then_bridged_and_headless_sticks_after_a_chan
 
 #[test]
 fn with_no_preference_and_no_control_flag_nothing_listens() {
-    ecad_cadcraft::install();
+    ecad_engine::install();
     let dir = std::env::temp_dir().join(format!("ecad-035-off-{}", std::process::id()));
     let mut t = App::new(None).unwrap();
-    t.agent.use_settings(ecad_cadcraft::views::Settings::at(&dir));
+    t.agent.use_settings(ecad_engine::views::Settings::at(&dir));
     let mut h: H = Harness::builder().build_ui_state(
         |ui, t: &mut App| {
             t.logic(&ui.ctx().clone());
@@ -530,7 +530,7 @@ fn an_agent_author_found_between_frames_is_reset_and_access_stays_on() {
 
 #[test]
 fn a_headless_read_leaves_the_file_for_the_window_and_the_bridged_write_is_recorded() {
-    let dir = std::env::temp_dir().join(format!("ecad-035-lock-{}", ecad_cadcraft::session_seed()));
+    let dir = std::env::temp_dir().join(format!("ecad-035-lock-{}", ecad_engine::session_seed()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("lock.ecad").to_string_lossy().into_owned();
     drop(EcadMcp::create(&path, Options { write: true, agent: None }).unwrap());
@@ -554,8 +554,8 @@ fn a_headless_read_leaves_the_file_for_the_window_and_the_bridged_write_is_recor
     let r = a.rx.recv_timeout(Duration::from_secs(10)).unwrap();
     assert!(r["result"]["content"][0]["text"].as_str().unwrap().contains("\"path\""), "a headless read: {r}");
     // The person opens the same file in the window, writable.
-    ecad_cadcraft::install();
-    ecad_cadcraft::views::isolate_for_tests();
+    ecad_engine::install();
+    ecad_engine::views::isolate_for_tests();
     let mut t = App::with_file(None, &path).unwrap();
     assert!(t.notice().is_none(), "{:?}", t.notice());
     assert_eq!(t.status().unwrap().file.read_only, None, "the window has the file writable");
@@ -582,7 +582,7 @@ fn a_headless_read_leaves_the_file_for_the_window_and_the_bridged_write_is_recor
 fn an_agent_restore_over_the_persons_steps_is_refused_and_over_its_own_works() {
     let (mut h, port) = live_app();
     // Restore works on a saved project (branches live in its file).
-    let dir = std::env::temp_dir().join(format!("ecad-035-restore-{}", ecad_cadcraft::session_seed()));
+    let dir = std::env::temp_dir().join(format!("ecad-035-restore-{}", ecad_engine::session_seed()));
     std::fs::create_dir_all(&dir).unwrap();
     h.state_mut().save_as(&dir.join("restore.ecad").to_string_lossy()).unwrap();
     h.run_steps(1);

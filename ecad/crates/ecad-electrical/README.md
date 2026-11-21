@@ -32,5 +32,5 @@ other Core crate may use it.
 cargo test -p ecad-electrical
 ```
 Its tests are unit tests inside the modules (there is no `tests/` folder); behaviour that needs a
-project is also covered through `ecad-cadcraft`'s tests. Slow tests are marked
+project is also covered through `ecad-engine`'s tests. Slow tests are marked
 `#[ignore = "slow: …"]` and run only at the QA gate.

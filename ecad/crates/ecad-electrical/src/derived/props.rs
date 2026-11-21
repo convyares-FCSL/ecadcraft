@@ -1,5 +1,5 @@
 //! The Properties feed (design 064 §4.1, `PropsFeed`): the objects whose shown properties a
-//! commit could change, so the change log tells the Properties palette (ecad-cadcraft's
+//! commit could change, so the change log tells the Properties palette (ecad-engine's
 //! `props::PropsView`, which names the objects its rows read) whether to read them again.
 //!
 //! # Update map

@@ -13,8 +13,8 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use ecad_cadcraft::outputs::kept::Outputs;
-use ecad_cadcraft::strips::{PlanItem, SideCell, StripData, TermRow};
+use ecad_engine::outputs::kept::Outputs;
+use ecad_engine::strips::{PlanItem, SideCell, StripData, TermRow};
 use ecad_model::DeviceId;
 use ecad_ui::table::{Align, Cell, Changed, Column, ColumnId, Lane, LaneCell, Table, TableEvent, TableSource, Width};
 use serde_json::json;
@@ -113,8 +113,7 @@ fn plan_rows(s: &StripData, accessories: bool, style: ecad_model::ReferenceStyle
     for item in s.plan(accessories) {
         match item {
             PlanItem::Gap { acc, .. } => {
-                let words =
-                    if acc == ecad_cadcraft::accessories::Acc::StripLabel { format!("strip label {}", s.tag) } else { acc.words().to_string() };
+                let words = if acc == ecad_engine::accessories::Acc::StripLabel { format!("strip label {}", s.tag) } else { acc.words().to_string() };
                 out.push(PlanRow::Gap { tag: s.tag.clone(), mark: acc.mark().to_string(), words });
             }
             PlanItem::Term(i, r) => {

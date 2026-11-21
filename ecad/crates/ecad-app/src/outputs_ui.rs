@@ -4,12 +4,12 @@
 //! tab (double-click a cable).
 //!
 //! The Reports window shows a copy of a table of the project's kept report models
-//! ([`ecad_cadcraft::outputs::kept::Outputs`], built on first show and then kept from each change's
+//! ([`ecad_engine::outputs::kept::Outputs`], built on first show and then kept from each change's
 //! ops); the copy is taken again only when the models' revision, the tab or the grouping changed.
 //! Live while open: no refresh button. Rows are virtualised.
 
 use crate::shell::Hosted;
-use ecad_cadcraft::outputs::{BomView, Group, Table};
+use ecad_engine::outputs::{BomView, Group, Table};
 use ecad_ui::control::{Select, TextEntry, Toggle};
 use ecad_ui::prim::{self, Button, Checkbox, Kind, Radio, SearchField, Tone};
 use ecad_ui::tokens::{size, space};
@@ -173,7 +173,7 @@ impl Reports {
     }
 
     /// Bring the copy up to date with the project's kept models (built on the first call).
-    pub fn sync(&mut self, serial: u64, p: &mut ecad_cadcraft::Project) {
+    pub fn sync(&mut self, serial: u64, p: &mut ecad_engine::Project) {
         // Brief 045c: Lists ▸ I/O follows the PLC model's own update map while it is shown.
         if self.io_shown {
             p.outputs();
@@ -212,7 +212,7 @@ impl Reports {
             self.counts = [o.bom_count(self.group), o.wire_count(), o.cable_count(), o.strips.len()];
             let terminals = o.strips.sorted().iter().map(|s| s.rows.len()).sum();
             let cards: Vec<_> = o.plc.cards.values().collect();
-            let channels = usize::try_from(ecad_cadcraft::plc::overview::totals(&cards).0).unwrap_or(usize::MAX);
+            let channels = usize::try_from(ecad_engine::plc::overview::totals(&cards).0).unwrap_or(usize::MAX);
             self.tab_counts = [terminals, channels, o.wire_count(), o.cable_count()];
             self.counted = Some((serial, o.build_id ^ o.revision, self.group));
         }
@@ -289,7 +289,7 @@ impl Reports {
         if let Some((col, desc)) = self.sort {
             v.sort_by(|a, b| {
                 let get = |i: &usize| self.table.rows.get(*i).and_then(|r| r.get(col)).map(|c| c.text.clone()).unwrap_or_default();
-                let o = ecad_cadcraft::locations::natural_cmp(&get(a), &get(b));
+                let o = ecad_engine::locations::natural_cmp(&get(a), &get(b));
                 if desc { o.reverse() } else { o }
             });
         }

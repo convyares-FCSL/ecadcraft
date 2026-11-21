@@ -32,6 +32,6 @@ To see it, give ecad-mcp's `execute` (or the command line) `setprop` with two co
 `components`, key `pins` and value `abc`: it is refused and both stay at 4 pins; with `6`, both
 have 6 pins.
 
-Automated checks: `cargo test -p ecad-cadcraft lane_060`, `cargo test -p ecad-model
+Automated checks: `cargo test -p ecad-engine lane_060`, `cargo test -p ecad-model
 incremental_contracts`, `cargo test -p ecad-xtask`, `cargo xtask layers`. Nobody has tried this
 outside the tests yet.

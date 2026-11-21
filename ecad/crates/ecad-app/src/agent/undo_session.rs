@@ -14,8 +14,8 @@
 //! Excluded: steps on other branches (said, not touched), and a single "undo to point" step
 //! (it would need a new op).
 
-use ecad_cadcraft::ProjectHandle;
-use ecad_cadcraft::agent::gate::{self, OwnedSteps};
+use ecad_engine::ProjectHandle;
+use ecad_engine::agent::gate::{self, OwnedSteps};
 use eframe::egui;
 use serde_json::json;
 
@@ -80,7 +80,7 @@ impl Confirm {
 }
 
 /// The plan for `owned` on the branch shown.
-pub fn plan(s: &mut ecad_cadcraft::cad::Session, p: &ProjectHandle, owned: &OwnedSteps) -> Result<Plan, String> {
+pub fn plan(s: &mut ecad_engine::cad::Session, p: &ProjectHandle, owned: &OwnedSteps) -> Result<Plan, String> {
     p.read(s, |p, _| {
         let stack = p.ledger.undo_stack();
         let log = p.ledger.log();

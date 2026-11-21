@@ -1,14 +1,14 @@
 //! Live agent access to the app (brief 035, design §3–§8): an agent drives the running ECAD
 //! window over a loopback port while the person watches.
 //!
-//! - **Preference** ([`ecad_cadcraft::agent_access`]): Off (default), Read only, Read and change,
+//! - **Preference** ([`ecad_engine::agent_access`]): Off (default), Read only, Read and change,
 //!   and a port; `--control PORT` turns it on (Read and change) for one run. When off, nothing
 //!   listens.
 //! - **Transport**: upstream CADCraft's own control server, included unchanged by path (bounded,
 //!   token-checked, loopback only). Its requests never reach `CadApp` directly: the app's drain
 //!   answers ECAD's methods (`ecad.hello`, `ecad.execute`, `ecad.tool`, `ecad.bye`), forwards a
 //!   short allowlist of reads to `CadApp`'s own channel, and refuses everything else unrun.
-//! - **The gate** ([`ecad_cadcraft::agent::gate`]): the same policy, caps and roll-back as headless, run on the
+//! - **The gate** ([`ecad_engine::agent::gate`]): the same policy, caps and roll-back as headless, run on the
 //!   person's own session between two frames, with `Author::Agent(<name>)` set for that one call
 //!   and the person restored after it, also on refusal, error or panic, and checked again at the
 //!   top of every frame.
@@ -35,10 +35,10 @@ use std::sync::mpsc::{Receiver, SyncSender, TryRecvError};
 use std::time::{Duration, Instant};
 
 use cadcraft_ui_egui::{ControlRequest, PendingReply};
-use ecad_cadcraft::agent::gate::{self, Call, OwnedSteps};
-use ecad_cadcraft::agent::{agent_name, bridge, policy, tools};
-use ecad_cadcraft::agent_access::{self, Mode, Preference, Status};
-use ecad_cadcraft::views::Settings;
+use ecad_engine::agent::gate::{self, Call, OwnedSteps};
+use ecad_engine::agent::{agent_name, bridge, policy, tools};
+use ecad_engine::agent_access::{self, Mode, Preference, Status};
+use ecad_engine::views::Settings;
 use eframe::egui;
 use serde_json::{Value, json};
 
@@ -949,7 +949,7 @@ impl App {
                         Err(m) => Ok(json!({"protocolError": m})),
                     }
                 }
-                Some(t) => Ok(json!({"protocolError": ecad_cadcraft::agent::not_offered(t)})),
+                Some(t) => Ok(json!({"protocolError": ecad_engine::agent::not_offered(t)})),
                 None => {
                     let mut call = call;
                     gate::execute(s, &p, &mut call, params)
@@ -1046,7 +1046,7 @@ impl App {
 
     fn agent_branch(&mut self) -> String {
         let Some(p) = self.project.clone() else { return String::new() };
-        p.read(&mut self.cad.session, |p, _| ecad_cadcraft::history::current(p).hex()).unwrap_or_default()
+        p.read(&mut self.cad.session, |p, _| ecad_engine::history::current(p).hex()).unwrap_or_default()
     }
 
     /// This session's transactions still on the log (on the undo stack of the branch shown).
@@ -1068,7 +1068,7 @@ impl App {
         let seen = self.agent.seen_log.clone();
         let Ok((now, step_changed)) = p.read(&mut self.cad.session, |p, _| {
             let log = p.ledger.log();
-            let now = (ecad_cadcraft::history::current(p).hex(), log.len());
+            let now = (ecad_engine::history::current(p).hex(), log.len());
             let changed = match &seen {
                 Some((b, n)) if *b == now.0 => log.get(*n..).is_some_and(|new| new.iter().any(|t| !matches!(t.kind, ecad_model::TxKind::Edit))),
                 _ => true,

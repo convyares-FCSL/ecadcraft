@@ -158,8 +158,8 @@ pub fn status_pill(ui: &mut egui::Ui, ok: bool, words: &str, after: &str, name: 
 }
 
 /// A severity mark: an error's ring with a bar, a warning's triangle, or a note's ring with an i.
-pub fn severity_mark(p: &egui::Painter, centre: egui::Pos2, severity: ecad_cadcraft::checks::Severity) {
-    use ecad_cadcraft::checks::Severity;
+pub fn severity_mark(p: &egui::Painter, centre: egui::Pos2, severity: ecad_engine::checks::Severity) {
+    use ecad_engine::checks::Severity;
     let s = ecad_ui::SHELL;
     if severity == Severity::Info {
         let c = ecad_ui::color(s.text_2);

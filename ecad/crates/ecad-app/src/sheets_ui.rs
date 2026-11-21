@@ -317,7 +317,7 @@ impl ProjectProps {
         if self.rev_columns.trim() != self.rev_columns_orig.trim() {
             let t = self.rev_columns.trim();
             if !t.is_empty() {
-                ecad_cadcraft::revisions::parse_columns(t)?;
+                ecad_engine::revisions::parse_columns(t)?;
             }
             m.insert("revision_columns".into(), if t.is_empty() { Value::Null } else { Value::String(t.to_string()) });
         }
@@ -432,7 +432,7 @@ impl ProjectProps {
                         TextEntry::new(v, &name).read_only(ro).width(FIELD_W).show(ui).on_hover_text("Any text; or pick one");
                         ui.add_enabled_ui(!ro, |ui| {
                             ui.menu_button("\u{25be}", |ui| {
-                                for s in ecad_cadcraft::sheet_cmds::STATUS_SUGGESTIONS {
+                                for s in ecad_engine::sheet_cmds::STATUS_SUGGESTIONS {
                                     if ui.add(Button::new(s).kind(Kind::Quiet).small()).clicked() {
                                         *v = s.to_string();
                                         ui.close();
@@ -591,7 +591,7 @@ impl ProjectProps {
             });
             let t = self.rev_columns.trim();
             if !t.is_empty()
-                && let Err(e) = ecad_cadcraft::revisions::parse_columns(t)
+                && let Err(e) = ecad_engine::revisions::parse_columns(t)
             {
                 prim::note(ui, &e.to_string(), Tone::Error);
             }
@@ -682,7 +682,7 @@ impl Revisions {
             .into_iter()
             .flatten()
             .filter_map(|c| Some((c["field"].as_str()?.to_string(), c["header"].as_str()?.to_string())))
-            .filter(|(f, _)| !ecad_cadcraft::revisions::FIELDS.contains(&f.as_str()))
+            .filter(|(f, _)| !ecad_engine::revisions::FIELDS.contains(&f.as_str()))
             .collect();
         let rows: Vec<RevRow> = v
             .get("revisions")
@@ -690,7 +690,7 @@ impl Revisions {
             .into_iter()
             .flatten()
             .map(|r| RevRow {
-                fields: ecad_cadcraft::revisions::FIELDS.map(|f| r[f].as_str().unwrap_or_default().to_string()),
+                fields: ecad_engine::revisions::FIELDS.map(|f| r[f].as_str().unwrap_or_default().to_string()),
                 extra: custom.iter().map(|(f, _)| r[f.as_str()].as_str().unwrap_or_default().to_string()).collect(),
                 issued: !r["issued"].is_null(),
                 released: r.get("released").and_then(Value::as_str).map(str::to_string),
@@ -775,7 +775,7 @@ impl Revisions {
                     ui.label("");
                     ui.end_row();
                     if !self.read_only {
-                        for (i, f) in ecad_cadcraft::revisions::FIELDS.iter().enumerate() {
+                        for (i, f) in ecad_engine::revisions::FIELDS.iter().enumerate() {
                             let Some(v) = self.pending.get_mut(i) else { continue };
                             let w = match *f {
                                 "description" => FIELD_W * 0.8,
@@ -865,7 +865,7 @@ impl Revisions {
                             self.confirming = false;
                             // Fields still being typed go with the issue (one transaction).
                             let mut m = Map::new();
-                            for (i, f) in ecad_cadcraft::revisions::FIELDS.iter().enumerate() {
+                            for (i, f) in ecad_engine::revisions::FIELDS.iter().enumerate() {
                                 if let (Some(v), Some(o)) = (self.pending.get(i), self.orig.get(i))
                                     && v != o
                                     && !v.trim().is_empty()
@@ -887,7 +887,7 @@ impl Revisions {
                     }
                     if !self.read_only {
                         let rev = self.pending[0].clone();
-                        let why = (!self.can_issue()).then_some(ecad_cadcraft::revisions::FILL_FIRST);
+                        let why = (!self.can_issue()).then_some(ecad_engine::revisions::FILL_FIRST);
                         // Brief 027: issue and write the folder in one step (design 027 §3, Q1).
                         let r = action(ui, &format!("Release Rev {rev}\u{2026}"), Kind::Primary, "ecad.revisions.release", why);
                         let r = if why.is_none() { r.on_hover_text("Check, issue and write the release folder") } else { r };

@@ -17,7 +17,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use cadcraft_engine::Session;
-use ecad_cadcraft::ProjectHandle;
+use ecad_engine::ProjectHandle;
 use ecad_model::PageId;
 use serde_json::json;
 
@@ -71,9 +71,9 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredWires
     remove(&copy);
     std::fs::copy(path, &copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
     let result = (|| {
-        ecad_cadcraft::install();
+        ecad_engine::install();
         let mut s = Session::empty();
-        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_cadcraft::views::Settings::none())?;
+        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::views::Settings::none())?;
         let mut out = MeasuredWires::default();
         let runs = runs.max(1);
         // The densest page's labels under both rules (read only, on the document).
@@ -91,10 +91,10 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredWires
             let (mut a, mut b) = (Vec::new(), Vec::new());
             for _ in 0..runs {
                 let t = Instant::now();
-                std::hint::black_box(ecad_cadcraft::wires::labels_on_page(doc, page));
+                std::hint::black_box(ecad_engine::wires::labels_on_page(doc, page));
                 a.push(ms(t));
                 let t = Instant::now();
-                std::hint::black_box(ecad_cadcraft::wires::labels_on_page(&each_doc, page));
+                std::hint::black_box(ecad_engine::wires::labels_on_page(&each_doc, page));
                 b.push(ms(t));
             }
             (a, b, routes)

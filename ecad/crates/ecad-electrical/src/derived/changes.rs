@@ -1,6 +1,6 @@
 //! What one commit changed, as the pipeline reports it to the engine (design 064 §5): [`Changes`].
 //!
-//! The record is engine-free: page and object ids, flags and lines. ecad-cadcraft's
+//! The record is engine-free: page and object ids, flags and lines. ecad-engine's
 //! `Project::apply_changes` turns it into the change log entry, the redraw and the echo.
 
 use std::collections::BTreeSet;

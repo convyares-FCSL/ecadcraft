@@ -13,8 +13,8 @@
 
 use std::collections::BTreeSet;
 
-use ecad_cadcraft::device_list::DeviceEntry;
-use ecad_cadcraft::devices::PROPERTIES;
+use ecad_engine::device_list::DeviceEntry;
+use ecad_engine::devices::PROPERTIES;
 use ecad_model::DeviceId;
 use eframe::egui::{self, Rect, RichText, Stroke, pos2, vec2};
 
@@ -116,15 +116,15 @@ pub struct Clash {
 pub struct DevicesPanel {
     /// The search text (the table's search field).
     pub filter: String,
-    /// The list of every device, kept up to date by `ecad-cadcraft`.
-    pub list: ecad_cadcraft::device_list::DeviceList,
+    /// The list of every device, kept up to date by `ecad-engine`.
+    pub list: ecad_engine::device_list::DeviceList,
     /// Brief 039: the rows as a table source, and the table.
     pub source: DevicesSource,
     pub table: ecad_ui::table::Table<DeviceId>,
     /// The (project serial, change count) the table was brought up to.
     seen: Option<(u64, u64)>,
     /// The page selection last followed (handles), so the table follows only a new one.
-    followed: Vec<ecad_cadcraft::cad::Handle>,
+    followed: Vec<ecad_engine::cad::Handle>,
     pub selected: Option<DeviceId>,
     editing: Option<Editing>,
     /// Board 1.03: the grouping, folded groups, groups showing every device, the lines drawn and
@@ -173,13 +173,13 @@ impl Default for DevicesPanel {
 impl DevicesPanel {
     /// The devices listed now (those the filter matches).
     pub fn entries(&self) -> Vec<DeviceEntry> {
-        self.list.entries.iter().filter(|e| ecad_cadcraft::device_list::matches(e, &self.filter)).cloned().collect()
+        self.list.entries.iter().filter(|e| ecad_engine::device_list::matches(e, &self.filter)).cloned().collect()
     }
 
     /// Bring the list and the table up to date: the list through
-    /// [`ecad_cadcraft::device_list::DeviceList::sync`] (built whole once, then only the devices a
+    /// [`ecad_engine::device_list::DeviceList::sync`] (built whole once, then only the devices a
     /// change touched), the table by the update map of [`crate::lists::devices`].
-    pub fn sync(&mut self, serial: u64, p: &ecad_cadcraft::Project) {
+    pub fn sync(&mut self, serial: u64, p: &ecad_engine::Project) {
         let count = p.change_count();
         if self.seen == Some((serial, count)) && self.table.built() {
             return;
@@ -205,7 +205,7 @@ impl DevicesPanel {
 
     /// The page's selection changed: select the devices it holds symbols of, and scroll to the
     /// first (row ↔ object link). Reads only the selected handles.
-    pub fn follow(&mut self, p: &ecad_cadcraft::Project, handles: &[ecad_cadcraft::cad::Handle]) {
+    pub fn follow(&mut self, p: &ecad_engine::Project, handles: &[ecad_engine::cad::Handle]) {
         if self.followed == handles {
             return;
         }
@@ -213,10 +213,10 @@ impl DevicesPanel {
         let doc = p.ledger.document();
         let Some(map) = p.active_page().and_then(|pg| p.pages.get(&pg)).map(|v| &v.map) else { return };
         let mut devices: Vec<DeviceId> = Vec::new();
-        for h in handles.iter().take(ecad_cadcraft::props::MAX_LOOKED_AT) {
+        for h in handles.iter().take(ecad_engine::props::MAX_LOOKED_AT) {
             let rep = match map.get(*h) {
-                Some(ecad_cadcraft::project::Mapped::Item(id)) => doc.representation_of_item(id).map(|(_, r)| r.subject),
-                Some(ecad_cadcraft::project::Mapped::Tag(rep) | ecad_cadcraft::project::Mapped::Marker(rep, _)) => {
+                Some(ecad_engine::project::Mapped::Item(id)) => doc.representation_of_item(id).map(|(_, r)| r.subject),
+                Some(ecad_engine::project::Mapped::Tag(rep) | ecad_engine::project::Mapped::Marker(rep, _)) => {
                     doc.representations.get(&rep).map(|r| r.subject)
                 }
                 _ => None,
@@ -404,7 +404,7 @@ impl DevicesPanel {
             return;
         }
         let shown: Vec<usize> =
-            self.list.entries.iter().enumerate().filter(|(_, e)| ecad_cadcraft::device_list::matches(e, &self.filter)).map(|(i, _)| i).collect();
+            self.list.entries.iter().enumerate().filter(|(_, e)| ecad_engine::device_list::matches(e, &self.filter)).map(|(i, _)| i).collect();
         let (unplaced, placed): (Vec<usize>, Vec<usize>) =
             shown.into_iter().partition(|i| self.list.entries.get(*i).is_some_and(|e| e.symbols.is_empty()));
         let mut lines = Vec::new();

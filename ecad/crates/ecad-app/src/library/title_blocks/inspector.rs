@@ -2,7 +2,7 @@
 //! texts) and Box (every item), folding; with nothing selected, the block itself with Save,
 //! Discard, Duplicate for… and Delete….
 
-use ecad_cadcraft::title_block::bind;
+use ecad_engine::title_block::bind;
 use ecad_model::title_block::{Align, Binding, BlockItem, IfEmpty, Ink, LineWeight, Newest, SIZES, TextLook};
 use ecad_ui::tokens::space;
 use eframe::egui::{self, Color32, RichText};
@@ -490,7 +490,7 @@ pub fn make_field(d: &mut Draft, i: usize) {
 /// The block's panel, with nothing selected.
 #[allow(clippy::too_many_arguments)]
 fn block_panel(
-    ui: &mut egui::Ui, d: &mut Draft, acts: &mut Vec<Act>, writable: bool, pages: usize, layer: Option<ecad_cadcraft::styles::Layer>,
+    ui: &mut egui::Ui, d: &mut Draft, acts: &mut Vec<Act>, writable: bool, pages: usize, layer: Option<ecad_engine::styles::Layer>,
     notice: &Option<String>, ask_discard: &mut bool,
 ) {
     let s = ecad_ui::SHELL;
@@ -580,7 +580,7 @@ fn block_panel(
         }
     });
     let layer_word = match layer {
-        Some(ecad_cadcraft::styles::Layer::Standard) => "Standard",
+        Some(ecad_engine::styles::Layer::Standard) => "Standard",
         _ => "Project",
     };
     ui.horizontal(|ui| {

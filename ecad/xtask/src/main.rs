@@ -2,7 +2,7 @@
 //!
 //! - `layers`: the layer table of design 065 §4 (Core, Engine, UI kit, App, Programs, Dev): Core
 //!   uses no CADCraft crate and no UI toolkit, and Core crates depend only on Core crates before
-//!   them; only the Engine (`ecad-cadcraft`) uses the drawing engine, and App and Programs reach it
+//!   them; only the Engine (`ecad-engine`) uses the drawing engine, and App and Programs reach it
 //!   only through it, in `Cargo.toml` and in their sources (principle P10, proposal §8).
 //!   Developer tools (`ecad/dev/`) are kept apart from product code (design 029 §12.3): no product
 //!   crate depends on one except through its own `dev` feature, dev features are read only in a
@@ -50,7 +50,7 @@ enum Class {
     /// no UI toolkit or UI kit, no Engine, App or Programs crate, and only Core crates before it
     /// in [`CORE_ORDER`].
     Core,
-    /// The link to CADCraft (`ecad-cadcraft`): Core and [`ENGINE_CADCRAFT`]; no UI toolkit or UI
+    /// The link to CADCraft (`ecad-engine`): Core and [`ENGINE_CADCRAFT`]; no UI toolkit or UI
     /// kit, no App or Programs crate.
     Engine,
     /// ECAD's interface kit (design `ui-architecture.md` §2): may use egui, epaint and
@@ -76,7 +76,7 @@ const TABLE: &[(&str, Class)] = &[
     ("ecad-store", Class::Core),
     ("ecad-file", Class::Core),
     ("ecad-drawing-style", Class::Core),
-    ("ecad-cadcraft", Class::Engine),
+    ("ecad-engine", Class::Engine),
     ("ecad-inspect", Class::Core),
     // The electrical rules (design 065; created by the split lane, step 6).
     ("ecad-electrical", Class::Core),
@@ -127,12 +127,12 @@ const DEV_FEATURES: &[&str] = &["dev", "verify-invariants", "fault-injection", "
 /// will move the code (design 029 §12.4). This list only shrinks: an entry whose file no longer
 /// needs it fails `layers`, and a new place is a violation.
 const DEV_FEATURE_ALLOWLIST: &[(&str, &str)] = &[
-    ("crates/ecad-cadcraft/src/access.rs", "dev tree, part 2 (after 026, 027, 028)"),
-    ("crates/ecad-cadcraft/src/interact/forms.rs", "dev tree, part 2 (after 026, 027, 028)"),
-    ("crates/ecad-cadcraft/src/lib.rs", "dev tree, part 2 (after 026, 027, 028)"),
-    ("crates/ecad-cadcraft/src/project/changes.rs", "dev tree, part 2 (after 026, 027, 028)"),
-    ("crates/ecad-cadcraft/src/project/owner.rs", "dev tree, part 2 (after 026, 027, 028)"),
-    ("crates/ecad-cadcraft/src/project/persistence.rs", "dev tree, part 2 (after 026, 027, 028)"),
+    ("crates/ecad-engine/src/access.rs", "dev tree, part 2 (after 026, 027, 028)"),
+    ("crates/ecad-engine/src/interact/forms.rs", "dev tree, part 2 (after 026, 027, 028)"),
+    ("crates/ecad-engine/src/lib.rs", "dev tree, part 2 (after 026, 027, 028)"),
+    ("crates/ecad-engine/src/project/changes.rs", "dev tree, part 2 (after 026, 027, 028)"),
+    ("crates/ecad-engine/src/project/owner.rs", "dev tree, part 2 (after 026, 027, 028)"),
+    ("crates/ecad-engine/src/project/persistence.rs", "dev tree, part 2 (after 026, 027, 028)"),
 ];
 
 /// Styling written in place, which ECAD UI code may no longer use (design `ui-architecture.md`
@@ -296,7 +296,7 @@ const ANYHOW_OK: &[&str] = &["ecad-bench", "ecad-xtask"];
 /// Where `rayon` may appear (design 061 §6, 065 §4), as a plain dependency (normal, not optional,
 /// no target table): where the per-page and per-chunk work is. No wasm `cfg`: ECAD is
 /// desktop-only.
-const RAYON_OK: &[&str] = &["ecad-model", "ecad-file", "ecad-electrical", "ecad-cadcraft"];
+const RAYON_OK: &[&str] = &["ecad-model", "ecad-file", "ecad-electrical", "ecad-engine"];
 
 /// UI toolkits and ECAD's own UI kit: Core and Engine crates may depend on none of them (the
 /// kit too, so the document and engine crates never draw; design `ui-architecture.md` §2).
@@ -500,7 +500,7 @@ fn path_violations(meta: &Value) -> Result<Vec<String>, String> {
             let rel = f.strip_prefix(&root).unwrap_or(&f).to_string_lossy().replace('\\', "/");
             out.extend(forbidden_path_places(name, class, &rel, &text).into_iter().map(|p| match class {
                 Class::Core => format!("{p} (ecad-electrical reads a Document and returns data or ops: no CADCraft crate)"),
-                _ => format!("{p} (the engine is reached only through ecad-cadcraft, e.g. ecad_cadcraft::cad)"),
+                _ => format!("{p} (the engine is reached only through ecad-engine, e.g. ecad_engine::cad)"),
             }));
         }
     }
@@ -541,7 +541,7 @@ fn core_os_violations(meta: &Value) -> Result<Vec<String>, String> {
 /// lay out pages ([`DRAWN_TEXT_CRATES`]) hold no literal text height, style name or text-size
 /// constant outside the places that define styles ([`DRAWN_TEXT_EXEMPT`]): a text's height, weight,
 /// font and colour come from its `TextKind`'s style. A hard zero.
-const DRAWN_TEXT_CRATES: &[&str] = &["ecad-cadcraft", "ecad-electrical"];
+const DRAWN_TEXT_CRATES: &[&str] = &["ecad-engine", "ecad-electrical"];
 
 /// Paths (fragments of a file's path under the workspace) where literal text styling is allowed,
 /// each with why: the styles, their engine half (fonts and CADCraft styles) and their data define
@@ -553,11 +553,11 @@ const DRAWN_TEXT_EXEMPT: &[&str] = &[
     "/styles/",
     "/defaults/",
     "ecad-electrical/src/text_style",
-    "ecad-cadcraft/src/draw/text_style.rs",
+    "ecad-engine/src/draw/text_style.rs",
     "ecad-electrical/src/symbols",
-    "ecad-cadcraft/src/interact/",
-    "ecad-cadcraft/src/draw/title_block/dxf.rs",
-    "ecad-cadcraft/src/cmd/",
+    "ecad-engine/src/interact/",
+    "ecad-engine/src/draw/title_block/dxf.rs",
+    "ecad-engine/src/cmd/",
     "ecad-electrical/src/cmd/",
 ];
 
@@ -629,7 +629,7 @@ fn drawn_text_violations(meta: &Value) -> Result<Vec<String>, String> {
 const STRING_ERROR_ALLOWLIST: &[(&str, usize, usize)] = &[
     ("ecad-app", 57, 6),
     ("ecad-bench", 95, 22),
-    ("ecad-cadcraft", 147, 39),
+    ("ecad-engine", 147, 39),
     ("ecad-cli", 1, 0),
     ("ecad-desktop", 3, 5),
     ("ecad-electrical", 0, 0),
@@ -638,7 +638,7 @@ const STRING_ERROR_ALLOWLIST: &[(&str, usize, usize)] = &[
     ("ecad-model", 6, 7),
 ];
 
-/// Brief 070: the command files (`crates/ecad-cadcraft/src/cmd`) on their own, as the crate rows:
+/// Brief 070: the command files (`crates/ecad-engine/src/cmd`) on their own, as the crate rows:
 /// they reach 0 by the end of 070.
 const CMD_STRING_ERRORS: (usize, usize) = (0, 0);
 
@@ -707,7 +707,7 @@ fn string_error_violations(meta: &Value) -> Result<Vec<String>, String> {
         Ok(sum)
     };
     const FIX: &str = "return CmdError (brief 070)";
-    let cmd = "crates/ecad-cadcraft/src/cmd";
+    let cmd = "crates/ecad-engine/src/cmd";
     let (r, e) = count_in(&root.join(cmd), &string_error_counts)?;
     out.extend(ratchet_problem(cmd, r, CMD_STRING_ERRORS.0, "lines with `Result<_, String>`", FIX));
     out.extend(ratchet_problem(cmd, e, CMD_STRING_ERRORS.1, "lines with `Err(format!(`", FIX));
@@ -1491,7 +1491,7 @@ mod tests {
     fn core_crates_may_not_use_cadcraft() {
         let meta: Value = serde_json::json!({"packages": [
             {"name": "ecad-model", "dependencies": [{"name": "cadcraft-geom", "kind": null}]},
-            {"name": "ecad-cadcraft", "dependencies": [{"name": "cadcraft-engine", "kind": null}, {"name": "egui", "kind": null}]},
+            {"name": "ecad-engine", "dependencies": [{"name": "cadcraft-engine", "kind": null}, {"name": "egui", "kind": null}]},
             {"name": "ecad-store", "dependencies": [{"name": "cadcraft-engine", "kind": "dev"}]},
             {"name": "mystery", "dependencies": []}
         ], "workspace_root": ""});
@@ -1690,7 +1690,7 @@ mod tests {
             [
                 "ecad-app",
                 "ecad-bench",
-                "ecad-cadcraft",
+                "ecad-engine",
                 "ecad-cli",
                 "ecad-desktop",
                 "ecad-electrical",
@@ -1704,9 +1704,9 @@ mod tests {
         assert_eq!(pick("ecad/crates/ecad-app/src/lib.rs"), ["ecad-app", "ecad-desktop"]);
         assert_eq!(
             pick("ecad/crates/ecad-store/src/lib.rs"),
-            ["ecad-app", "ecad-bench", "ecad-cadcraft", "ecad-desktop", "ecad-electrical", "ecad-file", "ecad-inspector", "ecad-mcp", "ecad-store"]
+            ["ecad-app", "ecad-bench", "ecad-engine", "ecad-desktop", "ecad-electrical", "ecad-file", "ecad-inspector", "ecad-mcp", "ecad-store"]
         );
-        assert_eq!(pick("crates/engine/src/lib.rs"), ["ecad-app", "ecad-bench", "ecad-cadcraft", "ecad-desktop", "ecad-mcp"]);
+        assert_eq!(pick("crates/engine/src/lib.rs"), ["ecad-app", "ecad-bench", "ecad-engine", "ecad-desktop", "ecad-mcp"]);
         assert!(pick("ecad/docs/quick-start.md").is_empty());
         // The demo's command list is embedded by ecad-mcp; the app's Checks UI test opens the demo
         // through it (brief 022).
@@ -1853,7 +1853,7 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
             ("ecad-desktop", dep("anyhow", Value::Null, Value::Null), &none, 0, "anyhow in a program"),
             ("ecad-cli", dep("anyhow", Value::Null, Value::Null), &none, 0, "anyhow in a program"),
             ("ecad-app", dep("anyhow", Value::Null, Value::Null), &none, 1, "anyhow in the app library"),
-            ("ecad-cadcraft", dep("anyhow", Value::Null, Value::Null), &none, 1, "anyhow in the Engine"),
+            ("ecad-engine", dep("anyhow", Value::Null, Value::Null), &none, 1, "anyhow in the Engine"),
             ("ecad-xtask", dep("anyhow", Value::Null, Value::Null), &none, 0, "anyhow in xtask"),
             ("ecad-bench", dep("anyhow", Value::Null, Value::Null), &none, 0, "anyhow in ecad-bench"),
             ("ecad-inspector", dep("anyhow", Value::Null, Value::Null), &none, 1, "anyhow in another Dev crate"),
@@ -1861,13 +1861,13 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
             ("ecad-store", dep("tokio", "dev".into(), Value::Null), &none, 1, "tokio in tests"),
             ("ecad-model", dep("rayon", Value::Null, Value::Null), &none, 0, "rayon in the model"),
             ("ecad-electrical", dep("rayon", Value::Null, Value::Null), &none, 0, "rayon in the rules"),
-            ("ecad-cadcraft", dep("rayon", Value::Null, Value::Null), &none, 0, "rayon in the Engine"),
+            ("ecad-engine", dep("rayon", Value::Null, Value::Null), &none, 0, "rayon in the Engine"),
             ("ecad-file", dep("rayon", Value::Null, wasm.clone()), &none, 1, "rayon in a target table"),
             ("ecad-file", dep("rayon", "dev".into(), Value::Null), &none, 1, "rayon as a dev-dependency"),
             ("ecad-file", opt("rayon"), &none, 1, "rayon optional"),
             ("ecad-app", dep("rayon", Value::Null, Value::Null), &none, 1, "rayon in the app"),
             ("ecad-store", dep("rayon", Value::Null, Value::Null), &none, 1, "rayon in the store"),
-            ("ecad-cadcraft", dep("schemars", Value::Null, Value::Null), &none, 0, "schemars in the Engine"),
+            ("ecad-engine", dep("schemars", Value::Null, Value::Null), &none, 0, "schemars in the Engine"),
             ("ecad-model", opt("schemars"), &schema, 0, "schemars behind the model's schema feature"),
             ("ecad-model", dep("schemars", Value::Null, Value::Null), &none, 1, "schemars always on in the model"),
             ("ecad-model", opt("schemars"), &both, 1, "schemars also enabled by another feature"),
@@ -1889,14 +1889,14 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
             ("ecad-app", "use cadcraft_engine::Document;", 1),
             ("ecad-desktop", "fn f(e: &cadcraft_engine::Entity) {}", 1),
             ("ecad-mcp", "use cadcraft_engine as e;", 1),
-            ("ecad-cli", "use ecad_cadcraft::cad::Entity;", 0),
+            ("ecad-cli", "use ecad_engine::cad::Entity;", 0),
             ("ecad-app", "// cadcraft_engine::Document in a comment", 0),
             ("ecad-app", "use cadcraft_ui_egui::App;", 0),
             ("ecad-electrical", "use cadcraft_io::dxf;", 1),
-            ("ecad-electrical", "let m = ecad_cadcraft_like::x();", 0),
+            ("ecad-electrical", "let m = ecad_engine_like::x();", 0),
             ("ecad-electrical", "use ecad_model::Document; // not cadcraft_engine", 0),
             ("ecad-model", "use cadcraft_engine::Document;", 0),
-            ("ecad-cadcraft", "use cadcraft_engine::Document;", 0),
+            ("ecad-engine", "use cadcraft_engine::Document;", 0),
             ("ecad-bench", "use cadcraft_engine::Document;", 0),
         ];
         for (krate, text, n) in rows {
@@ -1992,7 +1992,7 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
         }
     }
 
-    /// Design 065 §4: App and Programs reach the engine only through ecad-cadcraft; App may
+    /// Design 065 §4: App and Programs reach the engine only through ecad-engine; App may
     /// dev-depend on a program (ecad-app's tests use ecad-desktop's startup), never depend on one.
     #[test]
     fn app_and_programs_do_not_use_the_engine_directly() {
@@ -2006,14 +2006,14 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
             ("ecad-desktop", "ecad-app", Value::Null, 0, "a program on the app"),
             ("ecad-mcp", "ecad-cli", Value::Null, 0, "a program on another program"),
             ("ecad-mcp", "cadcraft-mcp", Value::Null, 0, "a program on CADCraft's MCP"),
-            ("ecad-cadcraft", "cadcraft-engine", Value::Null, 0, "the Engine on the engine"),
-            ("ecad-cadcraft", "cadcraft-io", Value::Null, 0, "the Engine on CADCraft's io"),
-            ("ecad-cadcraft", "cadcraft-ui-egui", Value::Null, 1, "the Engine on CADCraft's window"),
-            ("ecad-cadcraft", "cadcraft-fonts", Value::Null, 1, "the Engine on another CADCraft crate"),
-            ("ecad-cadcraft", "cadcraft-ui-egui", "dev".into(), 0, "the Engine's tests on CADCraft's window"),
-            ("ecad-cadcraft", "ecad-app", Value::Null, 1, "the Engine on the app"),
-            ("ecad-cadcraft", "ecad-mcp", Value::Null, 1, "the Engine on a program"),
-            ("ecad-electrical", "ecad-cadcraft", Value::Null, 1, "Core on the Engine"),
+            ("ecad-engine", "cadcraft-engine", Value::Null, 0, "the Engine on the engine"),
+            ("ecad-engine", "cadcraft-io", Value::Null, 0, "the Engine on CADCraft's io"),
+            ("ecad-engine", "cadcraft-ui-egui", Value::Null, 1, "the Engine on CADCraft's window"),
+            ("ecad-engine", "cadcraft-fonts", Value::Null, 1, "the Engine on another CADCraft crate"),
+            ("ecad-engine", "cadcraft-ui-egui", "dev".into(), 0, "the Engine's tests on CADCraft's window"),
+            ("ecad-engine", "ecad-app", Value::Null, 1, "the Engine on the app"),
+            ("ecad-engine", "ecad-mcp", Value::Null, 1, "the Engine on a program"),
+            ("ecad-electrical", "ecad-engine", Value::Null, 1, "Core on the Engine"),
             ("ecad-model", "ecad-app", Value::Null, 1, "Core on the app"),
             ("ecad-inspect", "ecad-cli", Value::Null, 1, "Core on a program"),
             ("ecad-xtask", "cadcraft-engine", Value::Null, 0, "xtask on the engine"),
@@ -2080,8 +2080,8 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
     fn core_and_engine_crates_may_not_use_the_ui_kit() {
         let rows: &[(&str, &str, usize)] = &[
             ("ecad-model", "ecad-ui", 1),
-            ("ecad-cadcraft", "ecad-ui", 1),
-            ("ecad-cadcraft", "epaint", 1),
+            ("ecad-engine", "ecad-ui", 1),
+            ("ecad-engine", "epaint", 1),
             ("ecad-mcp", "egui_extras", 0),
             ("ecad-model", "ecad-tokens", 1),
             // The Core order (design 065 §1): forward edges only.
@@ -2089,7 +2089,7 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
             ("ecad-electrical", "ecad-file", 0),
             ("ecad-file", "ecad-electrical", 1),
             ("ecad-model", "ecad-store", 1),
-            ("ecad-cadcraft", "ecad-tokens", 1),
+            ("ecad-engine", "ecad-tokens", 1),
             ("ecad-app", "ecad-ui", 0),
             ("ecad-desktop", "ecad-ui", 0),
         ];

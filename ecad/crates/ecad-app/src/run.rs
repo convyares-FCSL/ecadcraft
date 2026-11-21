@@ -166,8 +166,8 @@ impl App {
             Some(tag) => self
                 .cad
                 .session
-                .input(ecad_cadcraft::cad::Input::Keyword("Device".into()))
-                .and_then(|()| self.cad.session.input(ecad_cadcraft::cad::Input::Text(tag.clone())))
+                .input(ecad_engine::cad::Input::Keyword("Device".into()))
+                .and_then(|()| self.cad.session.input(ecad_engine::cad::Input::Text(tag.clone())))
                 .map_err(|e| e.to_string()),
             None => Ok(()),
         };
@@ -199,8 +199,7 @@ impl App {
             // Brief 041: pages and actions are run by the shell, not placed.
             search::Pick::Page(_) | search::Pick::Action(_) => return Ok(()),
         };
-        let r =
-            self.cad.session.start("place").and_then(|()| self.cad.session.input(ecad_cadcraft::cad::Input::Text(text))).map_err(|e| e.to_string());
+        let r = self.cad.session.start("place").and_then(|()| self.cad.session.input(ecad_engine::cad::Input::Text(text))).map_err(|e| e.to_string());
         if let Err(e) = &r {
             self.cad.session.echo(e.clone());
         }
@@ -241,22 +240,22 @@ impl App {
                 let items = doc.items.values().filter(|it| it.page == *page).count();
                 out.push(format!("  {:>3}  {title}  ({items} items)  {}", i + 1, page.hex()));
             }
-            let devices = ecad_cadcraft::devices::devices(doc, None);
+            let devices = ecad_engine::devices::devices(doc, None);
             out.push(String::new());
             out.push(format!("Devices ({}):", devices.len()));
             for c in &devices {
                 out.push(format!(
                     "  {:<8} {}  ({})  {}",
-                    ecad_cadcraft::devices::tag_words(doc, *c),
-                    ecad_cadcraft::devices::description(doc, *c),
-                    ecad_cadcraft::devices::pages_words(doc, *c),
+                    ecad_engine::devices::tag_words(doc, *c),
+                    ecad_engine::devices::description(doc, *c),
+                    ecad_engine::devices::pages_words(doc, *c),
                     c.hex()
                 ));
             }
             out.push(String::new());
             out.push(format!("Cables ({}):", doc.cables.len()));
             for (k, cable) in &doc.cables {
-                out.push(format!("  {:<8} {} members  {}", ecad_cadcraft::views::cable_title(doc, *k), cable.cores.len(), k.hex()));
+                out.push(format!("  {:<8} {} members  {}", ecad_engine::views::cable_title(doc, *k), cable.cores.len(), k.hex()));
             }
             out.push(String::new());
             out.push(format!(
@@ -399,7 +398,7 @@ impl App {
             A::RenumberFolder(f) => self.open_renumber(false, false, Some(f)),
             A::UseContext(c, a) => {
                 let code = self.project.clone().and_then(|p| {
-                    p.read(&mut self.cad.session, |p, _| ecad_cadcraft::locations::shared_context(p.ledger.document(), c, a)).ok().flatten()
+                    p.read(&mut self.cad.session, |p, _| ecad_engine::locations::shared_context(p.ledger.document(), c, a)).ok().flatten()
                 });
                 if let Some(code) = code {
                     let _ = self.run_line(&format!("setlocation {}", json!({"component": c.hex(), "aspect": a.word(), "value": code})));
@@ -409,7 +408,7 @@ impl App {
                 let rep = self
                     .project
                     .clone()
-                    .and_then(|p| p.read(&mut self.cad.session, |p, _| ecad_cadcraft::reps::goto(p.ledger.document(), c, None)).ok().flatten());
+                    .and_then(|p| p.read(&mut self.cad.session, |p, _| ecad_engine::reps::goto(p.ledger.document(), c, None)).ok().flatten());
                 if let Some(rep) = rep {
                     let _ = self.goto_symbol(rep);
                 }
@@ -428,7 +427,7 @@ impl App {
                 let value = self.project.clone().and_then(|p| {
                     p.read(&mut self.cad.session, |p, _| {
                         // Brief 036: every type at least its drawn positions.
-                        ecad_cadcraft::strips::offer_drawn_value(p.ledger.document(), c)
+                        ecad_engine::strips::offer_drawn_value(p.ledger.document(), c)
                     })
                     .ok()
                 });
@@ -444,7 +443,7 @@ impl App {
                 let label = self.project.clone().and_then(|p| {
                     p.read(&mut self.cad.session, |p, _| {
                         let doc = p.ledger.document();
-                        doc.cables_of(w).first().and_then(|k| ecad_cadcraft::strips::next_free_label(doc, *k))
+                        doc.cables_of(w).first().and_then(|k| ecad_engine::strips::next_free_label(doc, *k))
                     })
                     .ok()
                     .flatten()
@@ -459,10 +458,10 @@ impl App {
             // halves, draw), as a person answers them.
             A::PlaceMates(c, side) => {
                 let tag = self.project.clone().and_then(|p| {
-                    p.read(&mut self.cad.session, |p, _| ecad_cadcraft::devices::tag_of(p.ledger.document(), c).map(str::to_string)).ok().flatten()
+                    p.read(&mut self.cad.session, |p, _| ecad_engine::devices::tag_of(p.ledger.document(), c).map(str::to_string)).ok().flatten()
                 });
                 if let Some(tag) = tag {
-                    let half = if side == ecad_cadcraft::symbols::Side::Socket { "Socket" } else { "Plug" };
+                    let half = if side == ecad_engine::symbols::Side::Socket { "Socket" } else { "Plug" };
                     for line in ["connector", tag.as_str(), half, "Pins"] {
                         if self.run_line(line).is_some() {
                             break;
@@ -474,7 +473,7 @@ impl App {
                 let cmd: Option<String> = self.project.clone().and_then(|p| {
                     p.configure(&mut self.cad.session, |p| {
                         let o = p.outputs();
-                        ecad_cadcraft::outputs::accessory_fix_commands(o, fix).into_iter().nth(i).map(|(_, c, v)| format!("{c} {v}"))
+                        ecad_engine::outputs::accessory_fix_commands(o, fix).into_iter().nth(i).map(|(_, c, v)| format!("{c} {v}"))
                     })
                     .ok()
                     .flatten()
@@ -728,11 +727,11 @@ impl App {
         };
         let read = p.read(&mut self.cad.session, |p, _| {
             let doc = p.ledger.document();
-            let objects = uid.and_then(|u| p.page_of(u)).map(|pg| ecad_cadcraft::props::selected_objects(p, pg, &handles)).unwrap_or_default();
+            let objects = uid.and_then(|u| p.page_of(u)).map(|pg| ecad_engine::props::selected_objects(p, pg, &handles)).unwrap_or_default();
             (
                 ecad_electrical::cmd::numbering::choices(doc),
                 objects,
-                ecad_cadcraft::devices::padding(doc),
+                ecad_engine::devices::padding(doc),
                 u8::try_from(doc.settings.wiring.digits()).unwrap_or(ecad_model::wiring::MAX_DIGITS),
             )
         });
@@ -801,14 +800,14 @@ impl App {
         let symbol = *symbols.first().ok_or("that device has no symbols")?;
         let p = self.project.clone().ok_or("no ECAD project is open")?;
         let page = p
-            .read(&mut self.cad.session, |p, _| ecad_cadcraft::device_list::symbol_target(p, symbol).map(|t| t.0))?
+            .read(&mut self.cad.session, |p, _| ecad_engine::device_list::symbol_target(p, symbol).map(|t| t.0))?
             .ok_or("that symbol no longer exists")?;
         self.show_page(page)?;
         let (_, at, handles) = p
             .read(&mut self.cad.session, |p, _| {
-                let (pg, at, mut handles) = ecad_cadcraft::device_list::symbol_target(p, symbol)?;
+                let (pg, at, mut handles) = ecad_engine::device_list::symbol_target(p, symbol)?;
                 for rep in symbols.iter().skip(1) {
-                    if let Some((other, _, more)) = ecad_cadcraft::device_list::symbol_target(p, *rep)
+                    if let Some((other, _, more)) = ecad_engine::device_list::symbol_target(p, *rep)
                         && other == pg
                     {
                         handles.extend(more);
@@ -821,7 +820,7 @@ impl App {
             // The current zoom, as Go to Reference keeps it, within a readable range (a page shown
             // only while empty may have a tiny or a huge view).
             let height = st.view().height.clamp(GOTO_MIN_HEIGHT, GOTO_MAX_HEIGHT);
-            let _ = st.set_view(ecad_cadcraft::cad::View { center: ecad_cadcraft::cad::Vec2::new(at.x, at.y), height, twist: 0.0 });
+            let _ = st.set_view(ecad_engine::cad::View { center: ecad_engine::cad::Vec2::new(at.x, at.y), height, twist: 0.0 });
         }
         self.cad.session.set_selection(handles);
         Ok(())
@@ -834,17 +833,17 @@ impl App {
     ///
     /// # Errors
     /// No project, a row with no page, or a page that cannot be shown (echoed).
-    pub fn goto_check(&mut self, check: &ecad_cadcraft::checks::Check) -> Result<(), String> {
+    pub fn goto_check(&mut self, check: &ecad_engine::checks::Check) -> Result<(), String> {
         let p = self.project.clone().ok_or("no ECAD project is open")?;
         let page = check.page.ok_or("that row is not on a page")?;
         self.show_page(page)?;
         let handles = p.configure(&mut self.cad.session, |p| {
             p.goto_ring = check.at.map(|at| (page, at, check.severity()));
-            ecad_cadcraft::checks::handles_of(p, page, check.object)
+            ecad_engine::checks::handles_of(p, page, check.object)
         })?;
         if let (Some(at), Ok(st)) = (check.at, self.cad.session.state_mut()) {
             let height = st.view().height.clamp(GOTO_MIN_HEIGHT, GOTO_MAX_HEIGHT);
-            let _ = st.set_view(ecad_cadcraft::cad::View { center: ecad_cadcraft::cad::Vec2::new(at.x, at.y), height, twist: 0.0 });
+            let _ = st.set_view(ecad_engine::cad::View { center: ecad_engine::cad::Vec2::new(at.x, at.y), height, twist: 0.0 });
         }
         self.cad.session.set_selection(handles);
         Ok(())
@@ -923,7 +922,7 @@ impl App {
             .unwrap_or_default();
         if let (Some(at), Ok(st)) = (at, self.cad.session.state_mut()) {
             let height = st.view().height.clamp(GOTO_MIN_HEIGHT, GOTO_MAX_HEIGHT);
-            let _ = st.set_view(ecad_cadcraft::cad::View { center: ecad_cadcraft::cad::Vec2::new(at.x, at.y), height, twist: 0.0 });
+            let _ = st.set_view(ecad_engine::cad::View { center: ecad_engine::cad::Vec2::new(at.x, at.y), height, twist: 0.0 });
         }
         self.cad.session.set_selection(handles);
     }
@@ -934,7 +933,7 @@ impl App {
             && let Ok(st) = self.cad.session.state_mut()
         {
             let height = st.view().height.clamp(GOTO_MIN_HEIGHT, GOTO_MAX_HEIGHT);
-            let _ = st.set_view(ecad_cadcraft::cad::View { center: ecad_cadcraft::cad::Vec2::new(at.x, at.y), height, twist: 0.0 });
+            let _ = st.set_view(ecad_engine::cad::View { center: ecad_engine::cad::Vec2::new(at.x, at.y), height, twist: 0.0 });
         }
     }
 }

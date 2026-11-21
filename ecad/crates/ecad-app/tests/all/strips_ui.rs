@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use ecad_app::{outputs_ui, project_panel};
-use ecad_cadcraft::checks::Kind;
+use ecad_engine::checks::Kind;
 use ecad_model::Subject;
 use egui_kittest::Harness;
 
@@ -106,10 +106,10 @@ fn terminal_strips_in_the_app() {
     let proposals: Vec<(ecad_model::DeviceId, String)> = d
         .devices
         .keys()
-        .filter(|c| ecad_cadcraft::locations::is_device(&d, **c))
+        .filter(|c| ecad_engine::locations::is_device(&d, **c))
         .filter_map(|c| {
-            let r = &d.representations[&ecad_cadcraft::reps::goto(&d, *c, None)?];
-            ecad_cadcraft::locations::rep_context(&d, r, &mut ecad_cadcraft::locations::BoxCache::default()).value.map(|v| (*c, v))
+            let r = &d.representations[&ecad_engine::reps::goto(&d, *c, None)?];
+            ecad_engine::locations::rep_context(&d, r, &mut ecad_engine::locations::BoxCache::default()).value.map(|v| (*c, v))
         })
         .collect();
     for (c, v) in proposals {

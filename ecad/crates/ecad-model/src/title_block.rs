@@ -16,7 +16,7 @@
 //!   bound are skipped and counted, never a panic.
 //!
 //! This module only holds data and its shape rules. Drawing, binding values and the built-in
-//! house block are `ecad-cadcraft`'s (`title_block`).
+//! house block are `ecad-engine`'s (`title_block`).
 
 use std::fmt;
 

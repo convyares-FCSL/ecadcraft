@@ -11,7 +11,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_cadcraft::symbols::{self, Family, Starter};
+use ecad_engine::symbols::{self, Family, Starter};
 use ecad_model::{Definition, DefinitionId, Document, Primitive, Pt};
 use ecad_ui::tokens::{space, ui_type};
 use eframe::egui::{self, Align2, Color32, Pos2, Rect, Sense, Stroke, pos2, vec2};
@@ -84,7 +84,7 @@ impl LibraryTab {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Tile {
     Project(DefinitionId),
-    Builtin(ecad_cadcraft::symbols::StarterKey),
+    Builtin(ecad_engine::symbols::StarterKey),
     Draft(u64),
 }
 

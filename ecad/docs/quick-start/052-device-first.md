@@ -93,7 +93,7 @@ moves it.
 
 ### Automated checks
 
-- `cargo test -p ecad-cadcraft --test all lane_052`
+- `cargo test -p ecad-engine --test all lane_052`
 - `cargo test -p ecad-model --test all lane_052`
 - `cargo test -p ecad-mcp --test all lane_052`
 - `cargo test -p ecad-app --test all lane_052`

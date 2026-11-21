@@ -16,7 +16,7 @@
 //!   `sheet` property ([`SHEET_KEY`]), a text spec ([`SheetSpec::parse`]).
 //!
 //! This module only computes; it stores nothing and draws nothing (the drawing is
-//! `ecad-cadcraft`'s).
+//! `ecad-engine`'s).
 
 use serde::{Deserialize, Serialize};
 
@@ -242,7 +242,7 @@ pub fn sheet_of(doc: &Document, page: PageId) -> SheetSpec {
     frame_sheet(doc, page).unwrap_or_else(|| own_sheet(doc, page))
 }
 
-/// Brief 055: the choice key of a page's frame style (`ecad-cadcraft`'s `print.frame.style`).
+/// Brief 055: the choice key of a page's frame style (`ecad-engine`'s `print.frame.style`).
 pub const FRAME_STYLE_KEY: &str = "print.frame.style";
 /// The frame style catalogue.
 pub const FRAME_CATALOGUE: StyleCatalogue = StyleCatalogue::Frame;
@@ -349,7 +349,7 @@ pub const TITLE_BLOCK_KEY: &str = "title_block";
 
 /// The frame style `page` uses (design 050 §2.4): the page's own `print.frame.style`, else its
 /// page type's frame, else the project's, else the standard's, else the built-in, each only when
-/// it names a frame style that exists. The one frame resolver: `ecad-cadcraft` asks it too.
+/// it names a frame style that exists. The one frame resolver: `ecad-engine` asks it too.
 pub fn frame_style(doc: &Document, page: PageId) -> StyleRef {
     let pick = |v: Option<&String>| v.and_then(|t| StyleRef::parse(t)).filter(|id| frame_exists(doc, id));
     pick(doc.pages.get(&page).and_then(|p| p.display.get(FRAME_STYLE_KEY)))
@@ -499,7 +499,7 @@ pub fn page_type_exists(doc: &Document, id: &crate::StyleRef) -> bool {
 }
 
 /// The record `layer` holds for page type `id`, within the style bound
-/// ([`crate::style::MAX_STYLES_PER_CATALOGUE`] in ID order, as `ecad-cadcraft` reads them).
+/// ([`crate::style::MAX_STYLES_PER_CATALOGUE`] in ID order, as `ecad-engine` reads them).
 fn type_record<'a>(doc: &'a Document, layer: crate::style::StyleLayer, id: &crate::StyleRef) -> Option<&'a crate::style::StyleRecord> {
     use crate::style::MAX_STYLES_PER_CATALOGUE;
     let map = crate::style::layer_of(doc, layer)?.get(&PAGE_CATALOGUE)?;

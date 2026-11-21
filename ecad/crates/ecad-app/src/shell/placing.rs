@@ -15,7 +15,7 @@
 //! Update map: the tiles come from the built-in table (no project read); the second step is read
 //! from the project when the symbol or the project's change count moved.
 
-use ecad_cadcraft::symbols;
+use ecad_engine::symbols;
 use ecad_ui::prim;
 use ecad_ui::tokens::{Icon, line, radius, space, ui_type};
 use eframe::egui::{self, Rect, pos2, vec2};
@@ -44,7 +44,7 @@ const TILE_H: f32 = 104.0;
 #[derive(Debug, Clone, Default)]
 pub struct State {
     /// The symbol chosen for the running Place Symbol, when the window knows it.
-    pub symbol: Option<ecad_cadcraft::symbols::StarterKey>,
+    pub symbol: Option<ecad_engine::symbols::StarterKey>,
     /// The person opened the picker while the tool asks for a point (Change, P, the chip).
     pub open: bool,
     /// The panel's search text, and whether the field takes the keyboard next frame.

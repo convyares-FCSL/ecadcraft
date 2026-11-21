@@ -25,7 +25,7 @@ Programs   ecad-desktop   ecad-cli   ecad-mcp      (may also use each other)
   App        ecad-app
    |     \        \
    v      v        v
-Engine  ecad-cadcraft      UI kit: ecad-ui, ecad-tokens     <- Engine and UI kit are siblings:
+Engine  ecad-engine      UI kit: ecad-ui, ecad-tokens     <- Engine and UI kit are siblings:
    |            |                       |                      neither uses the other
    v            v                       v
 Core   model -> drawing-style -> store -> file -> inspect -> electrical
@@ -46,7 +46,7 @@ cycle cannot be written. The UI kit may use `ecad-drawing-style` (Core) and noth
 | [`ecad-file`](ecad-file/README.md) | Core | The `.ecad` file: records, integrity chain, read, save, recover. |
 | [`ecad-inspect`](ecad-inspect/README.md) | Core | Read-only snapshots and the runtime event log. |
 | [`ecad-electrical`](ecad-electrical/README.md) | Core | The electrical rules: devices, wires, cables, strips, checks, reports. |
-| [`ecad-cadcraft`](ecad-cadcraft/README.md) | Engine | Draws pages from the model and runs commands on CADCraft; commands are in `cmd/`. |
+| [`ecad-engine`](ecad-engine/README.md) | Engine | Draws pages from the model and runs commands on CADCraft; commands are in `cmd/`. |
 | [`ecad-ui`](ecad-ui/README.md) | UI kit | Widgets: controls, primitives, panels, tables, dialogs. |
 | [`ecad-tokens`](ecad-tokens/README.md) | UI kit | The screen's look as constants: shell colours, spacing, type, icons. |
 | [`ecad-app`](ecad-app/README.md) | App | The application: shell, panels, dialogs, lists, the action table. |
@@ -62,7 +62,7 @@ cycle cannot be written. The UI kit may use `ecad-drawing-style` (Core) and noth
 - **Core has no UI and no CADCraft**: no `cadcraft-*` crate, no UI crate, nothing from a layer above it.
 - **OS access only in `ecad-store`**: other Core crates may not use files, environment, processes, network, clocks or randomness.
 - **Layer order**: each crate uses only the layers (and the Core order) above; nothing outside `dev/` uses a Dev crate, and a crate is under `dev/` exactly when it is Dev.
-- **Engine and UI kit stay apart**; App and Programs reach CADCraft's engine only through `ecad-cadcraft`, never `cadcraft-engine` directly.
+- **Engine and UI kit stay apart**; App and Programs reach CADCraft's engine only through `ecad-engine`, never `cadcraft-engine` directly.
 - **`anyhow` only in Programs, `xtask` and `ecad-bench`'s binary**; libraries use their own error type.
 - **No `tokio`** in any ECAD crate.
 - **UI code uses `ecad-ui` components**: no new raw `egui::TextEdit` or `ComboBox`.

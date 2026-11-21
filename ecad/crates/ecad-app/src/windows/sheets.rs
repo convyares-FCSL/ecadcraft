@@ -110,7 +110,7 @@ impl App {
             }
             return;
         }
-        let view = p.read(&mut self.cad.session, |p, _| ecad_cadcraft::props::view(p, page, &selection));
+        let view = p.read(&mut self.cad.session, |p, _| ecad_engine::props::view(p, page, &selection));
         if let Ok(view) = view {
             let writable = !self.header().read_only;
             if let Ok(mut sh) = self.props.lock() {

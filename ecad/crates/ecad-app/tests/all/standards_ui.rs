@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use ecad_app::settings::{Section, standards};
 use ecad_app::shell::{Workspace, status_bar, top_bar};
-use ecad_cadcraft::defaults::{self, Scope, Source};
+use ecad_engine::defaults::{self, Scope, Source};
 use eframe::egui::Key;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -173,8 +173,7 @@ fn the_inspector_sets_a_symbols_tag_shown_and_resets_it() {
     let (mut h, rep) = fixture(None);
     let before = head(&mut h);
     // The row's list sets it on this symbol (one `setdefault`); Reset takes it off.
-    let line =
-        ecad_cadcraft::default_cmds::line("text.tag.show", defaults::Level::Object, ecad_cadcraft::default_cmds::Target::Symbol(rep), Some("off"));
+    let line = ecad_engine::default_cmds::line("text.tag.show", defaults::Level::Object, ecad_engine::default_cmds::Target::Symbol(rep), Some("off"));
     h.state_mut().inspector_action(ecad_app::shell::right::InspectorAction::Run("text.tag.show", line));
     h.run_steps(3);
     assert_eq!(head(&mut h), before + 1);

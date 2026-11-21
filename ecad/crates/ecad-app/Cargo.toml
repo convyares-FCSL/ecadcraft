@@ -11,7 +11,7 @@ publish = false
 workspace = true
 
 [dependencies]
-ecad-cadcraft = { path = "../../crates/ecad-cadcraft" }
+ecad-engine = { path = "../../crates/ecad-engine" }
 ecad-inspect = { workspace = true }
 ecad-model = { workspace = true }
 ecad-file = { workspace = true }
@@ -29,7 +29,7 @@ serde_json = { workspace = true }
 # Brief 038: the shell state and page views in eframe storage.
 serde = { workspace = true }
 # Brief 035: upstream's control token; the included upstream control server names `egui` and
-# `log` directly (eframe's versions). The shared write gate and tools are `ecad_cadcraft::agent`.
+# `log` directly (eframe's versions). The shared write gate and tools are `ecad_engine::agent`.
 cadcraft-mcp = { path = "../../../crates/mcp" }
 egui = { version = "0.37", default-features = false }
 log = "0.4"
@@ -42,7 +42,7 @@ ecad-model = { workspace = true, features = ["verify-invariants"] }
 ecad-store = { workspace = true }
 # The UI tests build brief 010's cable reference ends with `apply_ops` (test-only feature);
 # brief 035's bridge tests make an ECAD command panic (fault injection).
-ecad-cadcraft = { path = "../../crates/ecad-cadcraft", features = ["test-ops", "fault-injection"] }
+ecad-engine = { path = "../../crates/ecad-engine", features = ["test-ops", "fault-injection"] }
 # The same version CADCraft's UI tests use, to click the Tool Sets panel headless.
 egui_kittest = "=0.37.0"
 # The bridge and Checks tests run the MCP server (`ecad_mcp::EcadMcp`) against the window.
@@ -50,5 +50,5 @@ ecad-mcp = { path = "../../apps/ecad-mcp" }
 # The tests that drive the command line and start-up timing reach them in ecad-desktop (design
 # 065 §2.2); a dev-dependency only, so the library never depends on the program.
 ecad-desktop = { path = "../../apps/ecad-desktop" }
-# The tests name engine types beyond `ecad_cadcraft::cad` (design 065 §3, cut 11); the library does not.
+# The tests name engine types beyond `ecad_engine::cad` (design 065 §3, cut 11); the library does not.
 cadcraft-engine = { path = "../../../crates/engine" }

@@ -10,7 +10,7 @@
 
 use std::collections::BTreeMap;
 
-use ecad_cadcraft::cable_cmds::{self, CableField, Shield, Side, Source};
+use ecad_engine::cable_cmds::{self, CableField, Shield, Side, Source};
 use ecad_model::words::Word;
 use ecad_model::{CableId, Document, PageId};
 use ecad_ui::control::{self, Select, TextEntry};
@@ -64,8 +64,8 @@ pub struct Copy {
 
 /// Read cable `k`'s editor copy.
 pub fn copy(doc: &Document, k: CableId) -> Copy {
-    use ecad_cadcraft::designations::{self, Aspect};
-    let mut c = Copy { cable: Some(k), tag: ecad_cadcraft::views::cable_title(doc, k), drawn: cable_cmds::is_drawn(doc, k), ..Copy::default() };
+    use ecad_engine::designations::{self, Aspect};
+    let mut c = Copy { cable: Some(k), tag: ecad_engine::views::cable_title(doc, k), drawn: cable_cmds::is_drawn(doc, k), ..Copy::default() };
     c.values.insert(CableField::Tag, (c.tag.clone(), ""));
     if let Some(v) = cable_cmds::read(doc, k, CableField::Type) {
         c.values.insert(CableField::Type, (v, Source::Here.hint()));
@@ -86,9 +86,9 @@ pub fn copy(doc: &Document, k: CableId) -> Copy {
             c.values.insert(CableField::Gland(side), (g, s.hint()));
         }
     }
-    let catalogue = ecad_cadcraft::styles::catalogue(ecad_model::StyleCatalogue::Cable);
-    c.types = ecad_cadcraft::styles::rows(doc, catalogue).into_iter().map(|r| (r.id.text(), r.name)).collect();
-    let own_type = ecad_cadcraft::styles::cable::of(doc, k).map(|id| id.text());
+    let catalogue = ecad_engine::styles::catalogue(ecad_model::StyleCatalogue::Cable);
+    c.types = ecad_engine::styles::rows(doc, catalogue).into_iter().map(|r| (r.id.text(), r.name)).collect();
+    let own_type = ecad_engine::styles::cable::of(doc, k).map(|id| id.text());
     c.type_index = own_type.and_then(|t| c.types.iter().position(|(id, _)| *id == t)).map_or(0, |i| i + 1);
     c.locations = designations::entries(doc, Aspect::Location).into_iter().map(|e| e.code).collect();
     c.functions = designations::entries(doc, Aspect::Function).into_iter().map(|e| e.code).collect();
@@ -107,7 +107,7 @@ pub fn copy(doc: &Document, k: CableId) -> Copy {
         _ => "",
     };
     let members = doc.cables.get(&k).map_or(0, |x| x.cores.len());
-    c.cores_line = match ecad_cadcraft::strips::cable_cores(doc, k).and_then(|n| n.offer) {
+    c.cores_line = match ecad_engine::strips::cable_cores(doc, k).and_then(|n| n.offer) {
         Some(o) => format!("{} \u{b7} {members} assigned", o.len()),
         None => format!("{members} assigned"),
     };

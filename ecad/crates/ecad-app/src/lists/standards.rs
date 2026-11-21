@@ -9,7 +9,7 @@
 //! patched and tinted. Any other commit: nothing. A full rebuild only on first show or a new
 //! project.
 
-use ecad_cadcraft::defaults::{self, Entry, Source};
+use ecad_engine::defaults::{self, Entry, Source};
 use ecad_model::Document;
 use ecad_ui::prim::Tone;
 use ecad_ui::table::{Cell, Changed, Column, ColumnId, TableSource, Width};

@@ -12,10 +12,10 @@ terminal on every wire a line crosses; **Draw Bridge** links two terminals of a 
 gives used, spare and over cores, and a new member takes the next free core. The terminal plan
 and the cable schedule are in Reports and on generated pages; the BOM counts a strip per terminal
 type; five Checks rows have fixes. Section 5O describes it.
-- *Automated checks:* `ecad/crates/ecad-cadcraft/tests/all/strips_contracts.rs` (design 028 §12
+- *Automated checks:* `ecad/crates/ecad-engine/tests/all/strips_contracts.rs` (design 028 §12
   A–H, L, the update map and the FP5 finding; the kept strips equal a rebuild after the edits,
   and in verify mode after every commit), `ecad/apps/ecad-mcp/tests/all/strips_contracts.rs` (the
   brief 011 rule), unit tests of the offer and core grammars in
-  `ecad/crates/ecad-cadcraft/src/strips.rs`.
+  `ecad/crates/ecad-engine/src/strips.rs`.
 - *Agent-observed:* none yet; no agent has clicked through the live window.
 - *Owner-tried:* not yet.

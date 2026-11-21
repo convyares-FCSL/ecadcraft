@@ -71,7 +71,7 @@ fn rated(h: &mut H, dir: &std::path::Path) -> (ecad_model::WireId, ecad_model::C
     ok(h, &format!(r#"rating {{"wire":"{}","bundling":"0.80"}}"#, wire.hex()));
     ok(h, &format!(r#"ratingtable {{"name":"Test (synthetic)","source":"made up for tests","csv":"{SYNTHETIC}"}}"#));
     let d = doc(h);
-    let table = ecad_cadcraft::styles::rows(&d, &ecad_cadcraft::styles::ratingtable::CATALOGUE)[0].id.text();
+    let table = ecad_engine::styles::rows(&d, &ecad_engine::styles::ratingtable::CATALOGUE)[0].id.text();
     ok(h, &format!(r#"setdefault {{"key":"rating.table","level":"project","value":"{table}"}}"#));
     ok(h, &format!(r#"setprop {{"cable":"{}","key":"length","value":"12 m"}}"#, w01.hex()));
     ok(h, &format!(r#"setprop {{"cable":"{}","key":"type","value":"H07RN-F 4G1.5"}}"#, w01.hex()));
@@ -124,7 +124,7 @@ fn the_cable_is_drawn_end_to_end_in_its_core_colours() {
     let (_, w01) = rated(&mut h, &dir);
     ok(&mut h, r#"setstyle {"catalogue":"cable","new":true,"name":"H07RN-F 4G1.5","fields":{"size":"1.5","core_colours":"BN,BK,GY,GNYE"}}"#);
     let d = doc(&mut h);
-    let ty = ecad_cadcraft::styles::rows(&d, &ecad_cadcraft::styles::cable::CATALOGUE)[0].id.text();
+    let ty = ecad_engine::styles::rows(&d, &ecad_engine::styles::cable::CATALOGUE)[0].id.text();
     ok(&mut h, &format!(r#"rating {{"cable":"{}","cable_type":"{ty}"}}"#, w01.hex()));
     show(&mut h, ListsView::Cables);
     let k = h.state().reports.as_ref().unwrap().cables.ids.iter().position(|c| *c == w01).unwrap();
@@ -147,12 +147,12 @@ fn the_cable_is_drawn_end_to_end_in_its_core_colours() {
     let r = h.state().reports.as_ref().unwrap();
     let gnye = r.cables.cores.rows.keys.iter().copied().find(|i| r.cables.cores.rows.text(*i, "Core") == "GNYE").unwrap();
     assert!(r.cables.cores.is_open(gnye));
-    let open_rows = |h: &mut H| doc_checks(h).into_iter().filter(|c| c.kind == ecad_cadcraft::checks::Kind::CoreOpen).count();
+    let open_rows = |h: &mut H| doc_checks(h).into_iter().filter(|c| c.kind == ecad_engine::checks::Kind::CoreOpen).count();
     assert_eq!(open_rows(&mut h), 1);
     assert!(h.query_by_label_contains("Field end").is_some(), "the board's columns");
     // v3: the row's fixes and the panel's buttons, the shared splitter.
-    let fix = doc_checks(&mut h).into_iter().find(|c| c.kind == ecad_cadcraft::checks::Kind::CoreOpen).and_then(|c| c.fix);
-    assert_eq!(fix, Some(ecad_cadcraft::checks::Fix::CoreOpen(w01, 0)));
+    let fix = doc_checks(&mut h).into_iter().find(|c| c.kind == ecad_engine::checks::Kind::CoreOpen).and_then(|c| c.fix);
+    assert_eq!(fix, Some(ecad_engine::checks::Fix::CoreOpen(w01, 0)));
     assert!(h.query_by_label(ecad_app::checks_panel::GO_TO_OPEN_END).is_some(), "the panel's Go to the open end");
     assert!(h.query_by_label(ecad_app::lists::cables::SPLIT).is_some(), "the splitter");
     if let Some(out) = crate::project_panel::shots() {
@@ -189,7 +189,7 @@ fn the_cable_is_drawn_end_to_end_in_its_core_colours() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-fn doc_checks(h: &mut H) -> Vec<ecad_cadcraft::checks::Check> {
+fn doc_checks(h: &mut H) -> Vec<ecad_engine::checks::Check> {
     let d = doc(h);
-    ecad_cadcraft::checks::all(&d, 0.01)
+    ecad_engine::checks::all(&d, 0.01)
 }

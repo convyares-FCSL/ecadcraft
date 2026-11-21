@@ -6,7 +6,7 @@ use crate::project_panel::{active, build, click, doc, head, new_app, ok};
 
 use ecad_app::settings::{Section, pages};
 use ecad_app::shell::new_page;
-use ecad_cadcraft::styles::page as ptype;
+use ecad_engine::styles::page as ptype;
 use ecad_model::StyleRef;
 use eframe::egui::Key;
 use egui_kittest::kittest::Queryable;
@@ -152,7 +152,7 @@ fn the_cover_and_its_page_tab_with_the_board_screenshots() {
     h.run_steps(2);
     click(&mut h, ecad_app::shell::table_editor::SAVE);
     assert_eq!(head(&mut h), before + 1, "Save is one transaction");
-    let notes = ecad_cadcraft::frames::project_text(&doc(&mut h), "cover.notes").unwrap_or_default();
+    let notes = ecad_engine::frames::project_text(&doc(&mut h), "cover.notes").unwrap_or_default();
     assert!(notes.starts_with("Line colours") && notes.ends_with("Fifth note"), "{notes}");
     ok(&mut h, "u");
     // The symbol legend's editor: generated rows, hide and relabel.

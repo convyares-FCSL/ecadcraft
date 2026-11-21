@@ -3,7 +3,7 @@
 //! embedding its definition once; a change-over join and ratings are recorded the same way; every
 //! one is refused with writes off; hostile keys and ratings get an error, never a panic.
 
-use ecad_cadcraft::symbols::{Family, STARTER_LIBRARY, STARTERS, StarterKey};
+use ecad_engine::symbols::{Family, STARTER_LIBRARY, STARTERS, StarterKey};
 use ecad_mcp::policy;
 use ecad_model::Op;
 use serde_json::{Value, json};
@@ -31,7 +31,7 @@ fn each_new_symbol_places_as_the_agent_and_reuses_its_definition() {
     let mut c = writer(WRITER_SEED);
     let mut next: std::collections::BTreeMap<&str, u32> = Default::default();
     // Brief 045's channel cells join cards (`plc_contracts`).
-    for (i, s) in STARTERS.iter().filter(|s| s.family != Family::Basic && ecad_cadcraft::plc::channels::cell_type(s).is_none()).enumerate() {
+    for (i, s) in STARTERS.iter().filter(|s| s.family != Family::Basic && ecad_engine::plc::channels::cell_type(s).is_none()).enumerate() {
         let at = json!([80.0 * (i % 8) as f64, -80.0 * (i / 8) as f64]);
         let n = c.log().len();
         let r = c.exec("place", json!({"symbol": s.key, "at": at}));
@@ -46,7 +46,7 @@ fn each_new_symbol_places_as_the_agent_and_reuses_its_definition() {
         assert_eq!(r["tag"], json!(tag), "{}", s.key);
         // Brief 044 (design 044 §4.6): a connector half's description is the registry's
         // `Connector` (each half's BOM description is its own); a pin's label is its pin name.
-        let connector = matches!(s.kind, ecad_cadcraft::symbols::Kind::ConnectorHalf { .. });
+        let connector = matches!(s.kind, ecad_engine::symbols::Kind::ConnectorHalf { .. });
         if !matches!(s.key, StarterKey::Pinpair | StarterKey::Pins | StarterKey::Pinp) {
             assert_eq!(labels(&r), s.labels(), "{}", s.key);
         }

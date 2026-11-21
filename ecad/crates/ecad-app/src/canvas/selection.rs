@@ -3,9 +3,9 @@
 //! outline, [`super::markers`]) and lists the rest ([`Related::elsewhere`], which 042's inspector
 //! shows with a go-to). The selection itself stays CADCraft's; nothing here selects.
 
-use ecad_cadcraft::Project;
-use ecad_cadcraft::cad::Handle;
-use ecad_cadcraft::project::Mapped;
+use ecad_engine::Project;
+use ecad_engine::cad::Handle;
+use ecad_engine::project::Mapped;
 use ecad_model::{DeviceId, PageId, RepresentationId, Subject};
 
 /// Most selected objects looked at.
@@ -52,7 +52,7 @@ pub fn related(p: &Project, page: PageId, selection: &[Handle]) -> Related {
                 continue;
             }
             if r.page == page {
-                let handles = ecad_cadcraft::device_list::symbol_target(p, rid).map(|t| t.2).unwrap_or_default();
+                let handles = ecad_engine::device_list::symbol_target(p, rid).map(|t| t.2).unwrap_or_default();
                 if !handles.is_empty() {
                     out.here.push(handles);
                 }

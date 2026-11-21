@@ -15,8 +15,8 @@ mod hover_and_marks {
     use serde_json::json;
 
     fn harness() -> Harness<'static, App> {
-        ecad_cadcraft::install();
-        ecad_cadcraft::views::isolate_for_tests();
+        ecad_engine::install();
+        ecad_engine::views::isolate_for_tests();
         let mut t = App::new(None).unwrap();
         t.hover_delay = 0.0;
         let mut h = Harness::builder().with_size(egui::vec2(1920.0, 1200.0)).build_ui_state(
@@ -107,13 +107,13 @@ mod hover_and_marks {
     fn scene(h: &mut Harness<'static, App>) -> Vec<(String, f64, f64)> {
         ok(h, "line 0,0 40,0 40,20 0,20 c");
         let model: Vec<_> = h.state().cad.session.doc().unwrap().model.iter().cloned().collect();
-        let hs: Vec<String> = model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle.hex()).collect();
+        let hs: Vec<String> = model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).map(|e| e.handle.hex()).collect();
         ok(h, &format!("convertcomponent {}", json!({ "handles": hs })));
         let edge = |x: f64| {
             model
                 .iter()
                 .find(|e| {
-                    e.common.layer != ecad_cadcraft::frame::LAYER
+                    e.common.layer != ecad_engine::frame::LAYER
                         && matches!(&e.kind, cadcraft_engine::doc::EntityKind::Line(l) if l.a.x == x && l.b.x == x)
                 })
                 .map(|e| e.handle.hex())
@@ -316,8 +316,8 @@ mod layout_refusals {
     const REFUSAL: &str = "Switch to the Model tab to draw ECAD objects.";
 
     fn harness() -> Harness<'static, App> {
-        ecad_cadcraft::install();
-        ecad_cadcraft::views::isolate_for_tests();
+        ecad_engine::install();
+        ecad_engine::views::isolate_for_tests();
         let mut t = App::new(None).unwrap();
         t.hover_delay = 0.0;
         let mut h = Harness::builder().with_size(egui::vec2(1920.0, 1200.0)).build_ui_state(
@@ -408,12 +408,12 @@ mod layout_refusals {
     fn scene(h: &mut Harness<'static, App>) {
         ok(h, "line 0,0 40,0 40,20 0,20 c");
         let model: Vec<_> = h.state().cad.session.doc().unwrap().model.iter().cloned().collect();
-        let hs: Vec<String> = model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle.hex()).collect();
+        let hs: Vec<String> = model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).map(|e| e.handle.hex()).collect();
         ok(h, &format!("convertcomponent {}", json!({ "handles": hs })));
         let right = model
             .iter()
             .find(|e| {
-                e.common.layer != ecad_cadcraft::frame::LAYER
+                e.common.layer != ecad_engine::frame::LAYER
                     && matches!(&e.kind, cadcraft_engine::doc::EntityKind::Line(l) if l.a.x == 40.0 && l.b.x == 40.0)
             })
             .map(|e| e.handle.hex())
@@ -459,7 +459,7 @@ mod layout_refusals {
             esc(&mut h);
         }
         let all: Vec<_> =
-            h.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle).collect();
+            h.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).map(|e| e.handle).collect();
         h.state_mut().cad.session.set_selection(all);
         button(&mut h, "Convert to Device");
         assert!(wrong.is_empty(), "{}", wrong.join("\n"));

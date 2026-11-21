@@ -17,7 +17,7 @@ checked transactions a person gets, recorded as `Author::Agent(<client name>)`.
 - `src/lib.rs`: `EcadMcp`, `Options`, and the caps (`MAX_REQUEST_BYTES`, `MAX_BATCH`, `MAX_TRANSACTIONS_PER_CALL`).
 
 ## Must not depend on
-Programs rule: no `cadcraft-engine` directly (it uses `ecad-cadcraft` and `cadcraft-mcp`), and no
+Programs rule: no `cadcraft-engine` directly (it uses `ecad-engine` and `cadcraft-mcp`), and no
 Dev crate. Left out on purpose: several agents writing at once, proposals held outside the log,
 library tools, and anything beyond loopback on this machine.
 

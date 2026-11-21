@@ -15,7 +15,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use cadcraft_engine::Session;
-use ecad_cadcraft::ProjectHandle;
+use ecad_engine::ProjectHandle;
 use serde_json::{Value, json};
 
 use crate::measure::{median, path_text, remove};
@@ -54,13 +54,13 @@ fn seven(s: &mut Session, x0: f64) -> Result<Value, String> {
 /// # Errors
 /// A copy cannot be made or opened, or a command fails.
 pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredCables, String> {
-    let _ = ecad_cadcraft::install();
+    let _ = ecad_engine::install();
     let copy = scratch.join("cables.ecad");
     remove(&copy);
     std::fs::copy(path, &copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
     let mut out = MeasuredCables::default();
     let mut s = Session::empty();
-    let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_cadcraft::views::Settings::none())?;
+    let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::views::Settings::none())?;
     if let Some(p) = project.read(&mut s, |p, _| p.ledger.document().page_order.first().copied())? {
         project.open_page(&mut s, p)?;
     }

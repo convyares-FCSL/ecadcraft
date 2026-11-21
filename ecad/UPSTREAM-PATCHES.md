@@ -88,7 +88,7 @@ decisions, 2026-11-09):
   provenance, as it refuses a replacement; on plain drawing they are recorded.
 - OOPS brings back erased objects with their old handles. The adapter records it when it brings
   back only plain drawing removed by the last erase on the same page, and refuses it, with a
-  reason, otherwise (`ecad-cadcraft/src/oops.rs`).
+  reason, otherwise (`ecad-engine/src/oops.rs`).
 - `-ARRAY` copies carry provenance (the transform copy path) and are recorded as copies; MINSERT
   of an ECAD symbol is refused by the gate, and BLOCK stays refused, so MINSERT has nothing else
   to insert on an ECAD page.

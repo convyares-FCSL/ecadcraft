@@ -15,7 +15,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use cadcraft_engine::Session;
-use ecad_cadcraft::ProjectHandle;
+use ecad_engine::ProjectHandle;
 use ecad_model::PageId;
 use serde_json::{Value, json};
 
@@ -77,14 +77,14 @@ fn wiredraw(s: &mut Session, runs: usize) -> Result<f64, String> {
 /// # Errors
 /// Opening, a refused command, or a project with no pages.
 pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredSymbols, String> {
-    let _ = ecad_cadcraft::install();
+    let _ = ecad_engine::install();
     let copy = scratch.join("symbols.ecad");
     remove(&copy);
     std::fs::copy(path, &copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
     let result = (|| {
         let mut out = MeasuredSymbols::default();
         let mut s = Session::empty();
-        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_cadcraft::views::Settings::none())?;
+        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::views::Settings::none())?;
         let pages: Vec<PageId> = project.read(&mut s, |p, _| p.ledger.document().page_order.clone())?;
         let page1 = *pages.first().ok_or("the project has no pages")?;
         run(&mut s, "openpage", json!({"page": page1.hex()}))?;

@@ -20,7 +20,7 @@ A merge's tag conflict offers **Make them one device**. Section 5M describes it.
   provisional, hostile requests), `tag.rs` (provisional form, the high-water reset), `merge.rs`
   (Make them one, provisional duplicates), `ecad/apps/ecad-mcp/tests/all/numbering_contracts.rs`
   (every new or changed write through `execute`, its transaction and author, writes off), and
-  `ecad/crates/ecad-cadcraft/tests/all/numbering_contracts.rs` (labels, Checks, save and reopen).
+  `ecad/crates/ecad-engine/tests/all/numbering_contracts.rs` (labels, Checks, save and reopen).
 - *Agent-observed:* the worker looked at the headless screenshots `026-*.png`; no agent has
   clicked through the live window.
 - *Owner-tried:* not yet.

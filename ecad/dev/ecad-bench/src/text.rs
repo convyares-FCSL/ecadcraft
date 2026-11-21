@@ -13,7 +13,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use cadcraft_engine::Session;
-use ecad_cadcraft::ProjectHandle;
+use ecad_engine::ProjectHandle;
 use ecad_model::{PageId, Subject};
 use serde_json::json;
 
@@ -38,13 +38,13 @@ pub struct MeasuredText {
 /// The copy cannot be made or opened, or a command fails.
 pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredText, String> {
     // The ECAD commands (textstyle, setprop) must be in the registry; a second call does nothing.
-    let _ = ecad_cadcraft::install();
+    let _ = ecad_engine::install();
     let copy = scratch.join("text.ecad");
     remove(&copy);
     std::fs::copy(path, &copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
     let result = (|| {
         let mut s = Session::empty();
-        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_cadcraft::views::Settings::none())?;
+        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::views::Settings::none())?;
         let (page, symbols, device) = project.read(&mut s, |p, _| {
             let doc = p.ledger.document();
             let page: Option<PageId> = doc.page_order.iter().copied().max_by_key(|pg| doc.representations_on(*pg).count());
@@ -61,7 +61,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredText,
         for _ in 0..runs.max(1) {
             let ms = project.read(&mut s, |p, _| {
                 let t = Instant::now();
-                let n = ecad_cadcraft::devices::all_texts_on_page(p.ledger.document(), page).len();
+                let n = ecad_engine::devices::all_texts_on_page(p.ledger.document(), page).len();
                 (t.elapsed().as_secs_f64() * 1e3, n)
             })?;
             texts = ms.1;

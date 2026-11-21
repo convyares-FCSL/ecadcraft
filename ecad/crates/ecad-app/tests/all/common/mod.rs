@@ -10,7 +10,7 @@
 use std::path::PathBuf;
 
 use ecad_app::App;
-use ecad_cadcraft::views::Settings;
+use ecad_engine::views::Settings;
 use eframe::egui::{self, Event, Modifiers, PointerButton, Pos2};
 use egui_kittest::Harness;
 
@@ -84,8 +84,8 @@ impl Opts {
 
 /// A kittest harness around an app, run for five frames.
 pub(crate) fn harness(opts: Opts) -> Harness<'static, App> {
-    ecad_cadcraft::install();
-    ecad_cadcraft::views::isolate_for_tests();
+    ecad_engine::install();
+    ecad_engine::views::isolate_for_tests();
     let mut t = match opts.app {
         Some(t) => t,
         None => {

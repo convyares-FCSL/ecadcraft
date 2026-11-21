@@ -51,7 +51,7 @@ Rules:
   - Tests: `tests/all/lanes/lane_<NNN>.rs` (submodules in `tests/all/lanes/lane_<NNN>/`), and one
     line `mod lane_<NNN>;` at the end of that crate's `tests/all/lanes/mod.rs`; not the list in
     `tests/all/main.rs`. Your tests run as `cargo test -p <crate> lane_<NNN>`.
-  - Commands: register a new module's `specs` with one line in `ecad-cadcraft/src/lanes.rs`,
+  - Commands: register a new module's `specs` with one line in `ecad-engine/src/lanes.rs`,
     `("<NNN>", crate::<module>::specs),`; not in `commands::specs`.
   - Canvas tokens: new `ecad.*` tokens in a section of `docs/design/<NNN>.md`, not at the end of
     `docs/design/tokens.md`.

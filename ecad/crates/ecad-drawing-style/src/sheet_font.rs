@@ -1,6 +1,6 @@
 //! The sheet font's two faces (spec §4 "Type"; design `ui-architecture.md` §4): Barlow Semi
 //! Condensed Regular and SemiBold, from `ecad/assets/fonts/` (OFL-1.1, `ATTRIBUTION.md`), embedded
-//! once here so the shell (`ecad-ui`, egui) and the page (`ecad-cadcraft`, CADCraft's text
+//! once here so the shell (`ecad-ui`, egui) and the page (`ecad-engine`, CADCraft's text
 //! renderer through US3) use the same bytes (brief 040). Plain data: nothing is read at run time.
 
 /// The family name the page's text styles name.

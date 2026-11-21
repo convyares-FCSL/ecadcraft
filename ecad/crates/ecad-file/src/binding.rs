@@ -1,5 +1,5 @@
 //! A project's file on disk (persistence stage 2a; container version 2 since brief 021): the
-//! binding between a project (ecad-cadcraft's `Project`) and its `.ecad` file, through
+//! binding between a project (ecad-engine's `Project`) and its `.ecad` file, through
 //! [`crate::disk::DiskProjectV2`], and the checks on a path typed for one.
 //! Native only; in a browser build every operation reports that project files are not available.
 //!

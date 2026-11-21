@@ -1,11 +1,11 @@
 //! The Rating section of Project ▸ Wires and Cables (brief 057, design 057 §2 and §9; boards 2.05
 //! and 2.06): the basis, the factors with where each came from, what the conductor carries
 //! against its protective device, and for a cable its volt drop. It reads one kept result
-//! ([`ecad_cadcraft::rating::Rating`], copied by the tab's view) and writes through `rating`.
+//! ([`ecad_engine::rating::Rating`], copied by the tab's view) and writes through `rating`.
 //!
 //! **Update map.** Nothing of its own: it shows the result the view holds this frame.
 
-use ecad_cadcraft::rating::{self, Basis, RatedSubject, Rating, dataset};
+use ecad_engine::rating::{self, Basis, RatedSubject, Rating, dataset};
 use ecad_model::Word;
 use ecad_ui::prim::{self, Tone};
 use ecad_ui::tokens::{line, space, ui_type};
@@ -262,8 +262,8 @@ pub fn show(ui: &mut egui::Ui, p: &Panel) -> Vec<(&'static str, Value)> {
 
 impl crate::App {
     /// Act on a rating row's fix (design 057 §7).
-    pub(crate) fn rating_fix(&mut self, f: ecad_cadcraft::checks::Fix) {
-        use ecad_cadcraft::checks::Fix;
+    pub(crate) fn rating_fix(&mut self, f: ecad_engine::checks::Fix) {
+        use ecad_engine::checks::Fix;
         let words = |s: RatedSubject| subject_key(s);
         match f {
             Fix::ShowRating(s) => self.show_rating(s),
@@ -324,7 +324,7 @@ impl crate::App {
 pub(crate) fn catalogue_ui(
     t: &mut crate::App, ui: &mut egui::Ui, writable: bool, word: ecad_model::StyleCatalogue, focus: Option<ecad_model::StyleRef>,
 ) -> bool {
-    use ecad_cadcraft::styles::ratingtable;
+    use ecad_engine::styles::ratingtable;
     let s = ecad_ui::SHELL;
     if word == ecad_model::StyleCatalogue::RatingTable {
         ui.add(
@@ -534,12 +534,12 @@ fn value_row(ui: &mut egui::Ui, x: &Row, id: &str, what: &'static str, writable:
                     call = Some(match (key, &x.loc) {
                         // A typed °C goes to the location, or to the project when the wire has none.
                         ("panel", Some(loc)) => {
-                            ("rating", json!({"location": loc, "temperature": ecad_cadcraft::rating::parse::ambient(t).map_or(v, |n| json!(n))}))
+                            ("rating", json!({"location": loc, "temperature": ecad_engine::rating::parse::ambient(t).map_or(v, |n| json!(n))}))
                         }
                         ("panel", None) if clear => ("setdefault", json!({"key": "rating.panel_temperature", "level": "project", "reset": true})),
                         ("panel", None) => (
                             "setdefault",
-                            json!({"key": "rating.panel_temperature", "level": "project", "value": ecad_cadcraft::rating::parse::ambient(t).map_or(v, |n| json!(n.to_string()))}),
+                            json!({"key": "rating.panel_temperature", "level": "project", "value": ecad_engine::rating::parse::ambient(t).map_or(v, |n| json!(n.to_string()))}),
                         ),
                         _ => ("rating", json!({what: id, key: v})),
                     });

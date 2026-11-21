@@ -4,7 +4,7 @@
 //! Code that needs the value asks [`resolve`] (or a typed reader over it, such as
 //! [`crate::text_style::text_style`]); it never writes the number where it is used. The read-only
 //! `defaults` command and Settings ▸ Standards (brief 042) list the entries; `setdefault`
-//! (`ecad_cadcraft::cmd::default`) writes them at a level.
+//! (`ecad_engine::cmd::default`) writes them at a level.
 //!
 //! Each lane owns one file and appends to its own `ENTRIES` slice: `text.rs` (lane T, 031),
 //! `wires.rs` (W, 032), `print.rs` (P, 033), `symbols.rs` (S, 034). [`all`] chains them and does

@@ -94,7 +94,7 @@ hand stays. A version no copy uses any more after an update is removed in the sa
 
 ## Checked by the worker (automated, not owner-tried)
 
-- `cargo test -p ecad-model symbol_definition_contracts`, `-p ecad-file symbol_definition_contracts`, `-p ecad-cadcraft symbol_builder_contracts`,
+- `cargo test -p ecad-model symbol_definition_contracts`, `-p ecad-file symbol_definition_contracts`, `-p ecad-engine symbol_builder_contracts`,
   `-p ecad-mcp symbol_builder_contracts`: the op `SetComponentDefinition` (apply, undo, diff, merge), the
   definition's new fields and their content hash, design 048 §12 rows 1–9 and 11–14, and the MCP
   contract.

@@ -11,7 +11,7 @@
 //!   changes ([`bind`]).
 //! - Drawing never fails: items breaking a bound are skipped and counted (`layout`).
 //!
-//! This module records nothing; the commands are `ecad_cadcraft::cmd::title_block`.
+//! This module records nothing; the commands are `ecad_engine::cmd::title_block`.
 
 pub mod bind;
 pub mod checks;

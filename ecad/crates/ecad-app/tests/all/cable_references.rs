@@ -12,8 +12,8 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 
 fn new_app() -> App {
-    ecad_cadcraft::install();
-    ecad_cadcraft::views::isolate_for_tests();
+    ecad_engine::install();
+    ecad_engine::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
     crate::project_panel::open_panels(&mut t);
     t
@@ -159,7 +159,7 @@ fn the_click_only_path_continues_a_cable_and_jumps_between_its_ends() {
         .read(&mut t.cad.session, |p, _| {
             let doc = p.ledger.document();
             let page = p.page_of(field_uid)?;
-            let r = ecad_cadcraft::references::references_on_page(doc, page).into_iter().next()?;
+            let r = ecad_engine::references::references_on_page(doc, page).into_iter().next()?;
             p.pages.get(&page)?.map.item(r.item?)
         })
         .unwrap()
@@ -187,7 +187,7 @@ fn drawn_ref_texts(t: &mut App) -> (Option<ecad_model::PageId>, Vec<String>) {
         let texts = p.pages[&page]
             .map
             .ref_text_handles()
-            .filter_map(|hd| d.model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).find(|e| e.handle == hd))
+            .filter_map(|hd| d.model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).find(|e| e.handle == hd))
             .filter_map(|e| match &e.kind {
                 cadcraft_engine::doc::EntityKind::Text(x) => Some(x.value.clone()),
                 _ => None,
@@ -230,9 +230,9 @@ fn undo_typed_on_page_1_brings_page_2_back_after_an_erase_there() {
                 .unwrap()
                 .model
                 .iter()
-                .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+                .filter(|e| e.common.layer != ecad_engine::frame::LAYER)
                 .map(|e| e.handle)
-                .filter(|hd| !matches!(map.get(*hd), Some(ecad_cadcraft::Mapped::Marker(..))))
+                .filter(|hd| !matches!(map.get(*hd), Some(ecad_engine::Mapped::Marker(..))))
                 .map(|hd| hd.hex())
                 .collect()
         })
@@ -265,7 +265,7 @@ fn undo_typed_on_page_1_brings_page_2_back_after_an_erase_there() {
     // says, with no frame in which the change count moved and the text did not.
     let derived = |t: &mut App, page: ecad_model::PageId| {
         let d = doc(t);
-        let mut v: Vec<String> = ecad_cadcraft::references::markers_on_page(&d, page).into_iter().map(|m| m.text).collect();
+        let mut v: Vec<String> = ecad_engine::references::markers_on_page(&d, page).into_iter().map(|m| m.text).collect();
         v.sort();
         v
     };
