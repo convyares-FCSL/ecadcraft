@@ -11,7 +11,7 @@
 //!
 //! This crate intentionally contains no file format, op or document code of its own: projects
 //! are made of existing ops and opened, derived, projected and saved by the product crates. The
-//! generator does not use CADCraft; only the first-page timing does (through `ecad-cadcraft`).
+//! generator does not use CADCraft; only the first-page timing does (through `ecad-engine`).
 //! Peak memory is not measured (it cannot be read cheaply on Windows without new dependencies).
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 

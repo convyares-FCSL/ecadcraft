@@ -39,5 +39,5 @@ Kept: **V** Select, **D** Draw, **T** Text, **W** Wire, **C** Cable (groups that
 
 ## Automated checks
 
-`cargo test -p ecad-app uiv3_tools`; `cargo test -p ecad-app actions_contracts` (the cursor half: `-p ecad-cadcraft actions_contracts`).
+`cargo test -p ecad-app uiv3_tools`; `cargo test -p ecad-app actions_contracts` (the cursor half: `-p ecad-engine actions_contracts`).
 Screenshots: set `ECAD_TESTER_SHOTS` to a folder before `uiv3_tools`.

@@ -166,8 +166,8 @@ pub(crate) fn new_app() -> App {
 
 /// The app as it starts (UI rev 3, board 1.01: both sides closed).
 pub(crate) fn rev3_app() -> App {
-    ecad_cadcraft::install();
-    ecad_cadcraft::views::isolate_for_tests();
+    ecad_engine::install();
+    ecad_engine::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
     t.hover_delay = 0.0;
     t
@@ -331,7 +331,7 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     }
     assert_eq!(h.state().cad.session.docs.len(), 1, "exactly one ECAD file tab after clicking every row");
     click(&mut h, "Page 1: Supply");
-    let shown = h.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).count();
+    let shown = h.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).count();
     assert!(shown > 3, "the page window shows Supply's items ({shown})");
 
     // J: after a row click, Down, Down, Enter makes row 3 active; typing then reaches the
@@ -453,7 +453,7 @@ fn the_project_panel_lists_switches_edits_and_follows_the_project() {
     assert!(matches!(ops.as_slice(), [Op::RemovePage { id, index: 2, .. }, Op::AddPage { index: 0, .. }] if *id == spare), "{ops:?}");
     assert_eq!(titles(&mut h), ["Spare", "Supply", "Field", "4"]);
     // Page numbers are stored (brief 019): the move changes no reference text.
-    let texts: Vec<String> = ecad_cadcraft::references::markers_on_page(&doc(&mut h), supply).into_iter().map(|m| m.text).collect();
+    let texts: Vec<String> = ecad_engine::references::markers_on_page(&doc(&mut h), supply).into_iter().map(|m| m.text).collect();
     assert_eq!(texts, ["2/F1"]);
     // Alt+Down on the cursor row (Spare, row 1): `movepage {index: 2}`.
     click(&mut h, "Page 3: Spare");
@@ -529,7 +529,7 @@ fn preview_reference_shows_the_other_end_and_records_nothing() {
         let t = h.state_mut();
         let p = t.project().unwrap().clone();
         p.read(&mut t.cad.session, |p, _| {
-            let r = ecad_cadcraft::references::references_on_page(p.ledger.document(), supply).into_iter().next()?;
+            let r = ecad_engine::references::references_on_page(p.ledger.document(), supply).into_iter().next()?;
             p.pages.get(&supply)?.map.item(r.item?)
         })
         .unwrap()
@@ -703,7 +703,7 @@ fn a_read_only_project_lists_and_switches_but_writes_nothing() {
     let mut first = new_app();
     assert!(first.submit_command(r#"newpage {"title":"Field"}"#).is_none());
     first.save_as(&path).unwrap();
-    ecad_cadcraft::views::isolate_for_tests();
+    ecad_engine::views::isolate_for_tests();
     let mut second = App::with_file(None, &path).unwrap();
     second.dismiss_notice();
     open_panels(&mut second);
@@ -796,7 +796,7 @@ fn devices_tab_goes_to_a_symbol_and_filters() {
     let mapped = p.read(&mut t.cad.session, |p, _| {
         let doc = p.ledger.document();
         let rep = doc.representations_of(ecad_model::Subject::Device(coil)).find(|(_, r)| r.page == page1).unwrap().0;
-        ecad_cadcraft::device_list::symbol_target(p, rep).unwrap().2
+        ecad_engine::device_list::symbol_target(p, rep).unwrap().2
     });
     assert_eq!(selected, mapped.unwrap(), "exactly the coil's drawing is selected");
     assert_eq!(head(&mut h), before, "a go to records nothing");
@@ -935,7 +935,7 @@ fn page_rows_and_find_symbol_are_read_only_when_their_inputs_change() {
         let s = &mut h.state_mut().search;
         s.open = true;
         s.query = "k".into();
-        s.picked = Some(ecad_app::search::Pick::Symbol(ecad_cadcraft::symbols::StarterKey::No));
+        s.picked = Some(ecad_app::search::Pick::Symbol(ecad_engine::symbols::StarterKey::No));
     }
     h.run_steps(3);
     let count = |h: &Harness<'static, App>| (h.state().panel.rebuilds, h.state().search.rebuilds);

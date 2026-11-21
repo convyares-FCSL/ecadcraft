@@ -13,8 +13,8 @@
 //! commit: nothing. A full build only on first show or another project. Used by is asked for the
 //! selected row once per change count, never per frame.
 
-use ecad_cadcraft::defaults::{self, Source};
-use ecad_cadcraft::styles::{self, Catalogue, Layer};
+use ecad_engine::defaults::{self, Source};
+use ecad_engine::styles::{self, Catalogue, Layer};
 use ecad_model::{Document, StyleRef};
 use ecad_ui::prim::Tone;
 use ecad_ui::table::{Cell, Changed, Column, ColumnId, TableSource, Width};
@@ -251,7 +251,7 @@ pub fn detail(doc: &Document, cat: &Catalogue, id: &StyleRef) -> Detail {
         .collect();
     let c = styles::users(doc, cat.catalogue, id);
     let boxes = styles::box_users(doc, cat.catalogue, id).len();
-    let explicit = ecad_cadcraft::style_cmds::users_words(&styles::explicit_users(doc, cat.catalogue, id), boxes);
+    let explicit = ecad_engine::style_cmds::users_words(&styles::explicit_users(doc, cat.catalogue, id), boxes);
     let layer = styles::rows(doc, cat).into_iter().find(|r| r.id == *id).map_or(Layer::Project, |r| r.layer);
     Detail {
         id: id.clone(),

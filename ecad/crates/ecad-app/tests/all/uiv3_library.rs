@@ -6,7 +6,7 @@ use ecad_app::App;
 use ecad_app::library::browser;
 use ecad_app::library::draft::Picked;
 use ecad_app::shell::Workspace;
-use ecad_cadcraft::symbols;
+use ecad_engine::symbols;
 use ecad_model::Subject;
 use eframe::egui::vec2;
 use egui_kittest::Harness;
@@ -195,7 +195,7 @@ fn screenshots_of_section_f() {
     // 3.01: Library ▸ Symbols, a tile selected.
     h.state_mut().set_workspace(Workspace::Library);
     h.run_steps(3);
-    h.state_mut().library.browser.selected = Some(browser::Tile::Builtin(ecad_cadcraft::symbols::StarterKey::Coil));
+    h.state_mut().library.browser.selected = Some(browser::Tile::Builtin(ecad_engine::symbols::StarterKey::Coil));
     h.state_mut().open_inspector(ecad_app::shell::RightTab::Device);
     h.run_steps(4);
     shot(&h, "3.01");

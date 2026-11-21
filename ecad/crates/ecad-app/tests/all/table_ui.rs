@@ -109,7 +109,7 @@ fn a_device_row_selects_all_its_symbols_on_the_page() {
     let t = h.state_mut();
     let p = t.project().unwrap().clone();
     let targets: Vec<_> =
-        reps.iter().map(|(rep, _)| p.read(&mut t.cad.session, |p, _| ecad_cadcraft::device_list::symbol_target(p, *rep)).unwrap().unwrap()).collect();
+        reps.iter().map(|(rep, _)| p.read(&mut t.cad.session, |p, _| ecad_engine::device_list::symbol_target(p, *rep)).unwrap().unwrap()).collect();
     let mut expected: Vec<_> = targets.iter().filter(|(pg, _, _)| *pg == page1).flat_map(|(_, _, hs)| hs.clone()).collect();
     expected.sort();
     assert!(targets.iter().filter(|(pg, _, hs)| *pg == page1 && !hs.is_empty()).count() == 2, "both page-1 symbols are drawn");

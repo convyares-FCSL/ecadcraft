@@ -2,7 +2,7 @@
 //! times start-up is `ecad-desktop` (design 065 §2.2).
 //!
 //! It is CADCraft's own window ([`CadApp`]) with the ECAD commands installed and one ECAD project
-//! open at a time. Everything ECAD-specific runs through `ecad-cadcraft`; this crate only adds
+//! open at a time. Everything ECAD-specific runs through `ecad-engine`; this crate only adds
 //! what a person needs to try it:
 //!
 //! - the **Project** panel on the far left ([`project_panel`], brief 016): the project's pages,
@@ -89,9 +89,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use cadcraft_ui_egui::closing::{Choice, Closing};
 use cadcraft_ui_egui::{CadApp, Services};
 use debugger::Debugger;
-use ecad_cadcraft::cad::Handle;
-use ecad_cadcraft::cad::Session;
-use ecad_cadcraft::{FileStatus, Persistence, Project, ProjectHandle, session_seed};
+use ecad_engine::cad::Handle;
+use ecad_engine::cad::Session;
+use ecad_engine::{FileStatus, Persistence, Project, ProjectHandle, session_seed};
 use ecad_inspect::EventKind;
 use ecad_model::PageId;
 use eframe::egui::{self, RichText};
@@ -303,7 +303,7 @@ pub struct App {
     hover: Option<Vec<String>>,
     /// How long the pointer rests on an object before its description shows, in seconds.
     pub hover_delay: f64,
-    /// The home folder that `~` in typed paths stands for ([`ecad_cadcraft::home`] by default).
+    /// The home folder that `~` in typed paths stands for ([`ecad_engine::home`] by default).
     pub home: Option<PathBuf>,
     /// The lineweight display the app last set when it opened a project; `None` before the
     /// first. A different value now means the user chose Show/Hide Lineweight, which is kept.
@@ -441,7 +441,7 @@ impl App {
         // the allowlisted reads; the port's requests never reach it directly.
         let (cad_tx, cad_rx) = std::sync::mpsc::sync_channel(64);
         let mut cad = CadApp::new(Session::empty(), services(Arc::clone(&requested))).with_control(cad_rx);
-        let mut agent = agent::Agent::from_settings(ecad_cadcraft::views::Settings::from_env());
+        let mut agent = agent::Agent::from_settings(ecad_engine::views::Settings::from_env());
         agent.set_cad_channel(cad_tx);
         cad.extra_tool_tabs = vec![tools::tab()];
         let props: sheets_ui::Shared = Arc::default();
@@ -478,7 +478,7 @@ impl App {
             hovered: None,
             hover: None,
             hover_delay: HOVER_DELAY,
-            home: ecad_cadcraft::home(),
+            home: ecad_engine::home(),
             lwdisplay_set: None,
             search: search::SymbolSearch::default(),
             library: library::Library::default(),
@@ -574,9 +574,9 @@ impl App {
     /// the whole sheet). Returns `false` when there is no drawing to zoom to.
     pub fn zoom_to_drawing(&mut self) -> bool {
         let Ok(d) = self.cad.session.doc() else { return false };
-        let mut b = ecad_cadcraft::cad::Bounds2::default();
-        for e in d.model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER) {
-            b = b.union(&ecad_cadcraft::cad::entity_bounds(d, e, 0));
+        let mut b = ecad_engine::cad::Bounds2::default();
+        for e in d.model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER) {
+            b = b.union(&ecad_engine::cad::entity_bounds(d, e, 0));
         }
         if b.is_empty() {
             return false;
@@ -594,10 +594,10 @@ impl App {
         if sel == self.frame_checked {
             return;
         }
-        let only_frame = ecad_cadcraft::frame::drop_from_selection(&mut self.cad.session);
+        let only_frame = ecad_engine::frame::drop_from_selection(&mut self.cad.session);
         self.frame_checked = self.cad.session.selection();
         if only_frame {
-            self.cad.session.echo(ecad_cadcraft::frame::DERIVED);
+            self.cad.session.echo(ecad_engine::frame::DERIVED);
         }
     }
 
@@ -695,7 +695,7 @@ impl App {
     /// Open History with `seq` selected (the banner's last change).
     pub fn open_history_at(&mut self, seq: u64) {
         let Some(p) = self.project.clone() else { return };
-        let Ok(branch) = p.read(&mut self.cad.session, |p, _| ecad_cadcraft::history::current(p)) else { return };
+        let Ok(branch) = p.read(&mut self.cad.session, |p, _| ecad_engine::history::current(p)) else { return };
         self.panel.tab = project_panel::Tab::History;
         self.panel.history.steps_open = true;
         self.panel.history.selected = Some(history_panel::Sel { branch, seq, kind: ecad_file::history::NodeKind::Fork, name: None });
@@ -723,7 +723,7 @@ impl App {
             match &p.revision_view {
                 Some(rv) => {
                     if *panel_revision != Some(rv.id) {
-                        panel.set_tree(ecad_cadcraft::tree_rows(&rv.doc, |_| false));
+                        panel.set_tree(ecad_engine::tree_rows(&rv.doc, |_| false));
                         panel.revision = Some(rv.bar.clone().unwrap_or_else(|| sheets_ui::revision_bar(&rv.rev, &rv.date)));
                         *panel_revision = Some(rv.id);
                     }
@@ -745,8 +745,8 @@ impl App {
             // Brief 054: folder start numbers and the generated pages, when anything changed.
             if panel.starts_at != Some(p.change_count()) {
                 let doc = p.ledger.document();
-                panel.starts = ecad_cadcraft::page_types::starts(doc);
-                panel.generated = doc.page_order.iter().copied().filter(|pg| ecad_cadcraft::generated::kind_of(doc, *pg).is_some()).collect();
+                panel.starts = ecad_engine::page_types::starts(doc);
+                panel.generated = doc.page_order.iter().copied().filter(|pg| ecad_engine::generated::kind_of(doc, *pg).is_some()).collect();
                 panel.starts_at = Some(p.change_count());
             }
             // The Devices tab's copy, only while it is shown: rebuilt once, then refreshed only for
@@ -816,7 +816,7 @@ impl App {
         let p = self.project.clone()?;
         let info = p
             .read(&mut self.cad.session, |p, _| {
-                use ecad_cadcraft::history;
+                use ecad_engine::history;
                 let file = p.path.as_deref().and_then(|x| std::path::Path::new(x).file_name()).map(|f| f.to_string_lossy().into_owned());
                 let Some(v) = p.file.v2() else {
                     return BranchInfo { name: "main".into(), count: 1, bar: None, parent: None, release_line: true, file };

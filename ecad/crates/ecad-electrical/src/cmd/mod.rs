@@ -1,6 +1,6 @@
 //! The electrical work of ECAD's commands (brief 070): typed input in, ops and a plain result (or a
 //! [`crate::CmdError`]) out, and the JSON answers built from the document (`*_json`). No engine
-//! and no locking: the engine crate's shims in `ecad_cadcraft::cmd` read the parameters, take the
+//! and no locking: the engine crate's shims in `ecad_engine::cmd` read the parameters, take the
 //! project, call these functions and commit the ops.
 
 pub mod accessory;

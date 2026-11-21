@@ -21,8 +21,8 @@ texts dimmed, never printed. Tags (with any shown description and part number un
 placed beside their symbol where they cross no wire, symbol or other text; **Move Text** and
 `movetext` store a place that follows the symbol; `text` with `justify` is recorded. The cable look's texts (core labels, label box) are drawn at the cable text height (1.6 mm) and
 reference ends at the reference height (2.0 mm); a copied symbol keeps its own text settings.
-- *Automated checks:* `ecad/crates/ecad-cadcraft/src/defaults/mod.rs` and `text_style.rs` (the
-  registry, hostile values, levels), `ecad/crates/ecad-cadcraft/tests/all/text_style_contracts.rs`
+- *Automated checks:* `ecad/crates/ecad-engine/src/defaults/mod.rs` and `text_style.rs` (the
+  registry, hostile values, levels), `ecad/crates/ecad-engine/tests/all/text_style_contracts.rs`
   (drawn sizes and styles, redraw, a font change then an edit),
   `ecad/apps/ecad-mcp/tests/all/text_contracts.rs` (`textstyle`, `defaults`, the `text.` key
   refusals, writes off) and `ecad/crates/ecad-app/tests/all/text_ui.rs` (the Text section).

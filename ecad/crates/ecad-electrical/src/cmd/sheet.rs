@@ -728,10 +728,10 @@ pub fn tag_style_ops(doc: &Document, dash: Option<bool>, case: Option<Case>) -> 
     let after = tag::Style { dash: dash.unwrap_or(before.dash), case: case.unwrap_or(before.case), ..before };
     let mut ops = Vec::new();
     if let Some(d) = dash {
-        ops.extend(set(ObjectRef::Project, Some(&doc.properties), DASH_KEY, Some(ecad_model::words::flag_word(d).to_string())));
+        ops.extend(set(ObjectRef::Project, Some(&doc.display), DASH_KEY, Some(ecad_model::words::flag_word(d).to_string())));
     }
     if let Some(c) = case {
-        ops.extend(set(ObjectRef::Project, Some(&doc.properties), CASE_KEY, Some(ecad_model::Word::word(c).to_string())));
+        ops.extend(set(ObjectRef::Project, Some(&doc.display), CASE_KEY, Some(ecad_model::Word::word(c).to_string())));
     }
     let rewrite = after.dash != before.dash || (after.case == Case::Upper && before.case == Case::Typed);
     let mut n = 0usize;
@@ -828,7 +828,7 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
         // Brief 050a (FP4 ruling): an old 031 text key may be cleared, which removes its
         // `ignored-old-setting` row; it is never written.
         if v.is_none() && crate::styles::checks::is_old_key(k) {
-            ops.extend(set(ObjectRef::Project, Some(&doc.properties), k, None));
+            ops.extend(set(ObjectRef::Project, Some(&doc.display), k, None));
             continue;
         }
         check_free_key(doc, k)?;
@@ -843,16 +843,11 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
             }
             continue;
         }
-        ops.extend(set(ObjectRef::Project, Some(&doc.properties), k, v));
+        ops.extend(set(ObjectRef::Project, Some(&doc.display), k, v));
     }
     // Brief 026 (design §5.1): Provisional tags until Finalise, as `numbering` writes it.
     if let Some(on) = change.provisional {
-        ops.extend(set(
-            ObjectRef::Project,
-            Some(&doc.properties),
-            tag::PROVISIONAL_SETTING,
-            on.then(|| ecad_model::words::flag_word(true).to_string()),
-        ));
+        ops.extend(set(ObjectRef::Project, Some(&doc.display), tag::PROVISIONAL_SETTING, on.then(|| ecad_model::words::flag_word(true).to_string())));
     }
     let mut settings = doc.settings.clone();
     if let Some(t) = &change.sheet {
@@ -897,12 +892,12 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
                 Some(t.trim().to_string())
             }
         };
-        ops.extend(set(ObjectRef::Project, Some(&doc.properties), revisions::COLUMNS_KEY, t));
+        ops.extend(set(ObjectRef::Project, Some(&doc.display), revisions::COLUMNS_KEY, t));
     }
     if let Some(w) = &change.revision_pending {
         let w = Some(w.trim()).filter(|w| ["star", "draft", "off"].contains(w));
         let w = w.ok_or(CmdError::refused("`revision_pending` must be \"star\", \"draft\" or \"off\""))?;
-        ops.extend(set(ObjectRef::Project, Some(&doc.properties), revisions::PENDING_KEY, Some(w.to_string())));
+        ops.extend(set(ObjectRef::Project, Some(&doc.display), revisions::PENDING_KEY, Some(w.to_string())));
     }
     // Brief 033 (design 033 §8.4): the tag style, and its rewrite of the stored tags.
     let (tag_ops, message) = tag_style_ops(doc, change.tag_dash, change.tag_case)?;
@@ -1209,7 +1204,7 @@ pub fn project_json(doc: &Document) -> Value {
         .into_iter()
         .filter_map(|f| doc.project.info.get(f).map(|v| (ecad_model::Word::word(f).to_string(), Value::String(v.to_string()))));
     let free: Map<String, Value> = doc
-        .properties
+        .display
         .iter()
         .filter(|(k, _)| {
             !PROJECT_KEYS.contains(&k.as_str())
@@ -1255,7 +1250,7 @@ pub fn project_json(doc: &Document) -> Value {
     v["tag_case"] = json!(ecad_model::Word::word(style.case));
     let cols = revisions::columns(doc);
     v["revision_columns"] = json!(cols.iter().map(|c| json!({"field": c.field, "header": c.header, "width": c.width})).collect::<Vec<_>>());
-    v["revision_columns_stored"] = json!(doc.properties.get(revisions::COLUMNS_KEY));
+    v["revision_columns_stored"] = json!(doc.display.get(revisions::COLUMNS_KEY));
     v["revision_pending"] = json!(match revisions::PendingStyle::of(doc) {
         revisions::PendingStyle::Star => "star",
         revisions::PendingStyle::Draft => "draft",

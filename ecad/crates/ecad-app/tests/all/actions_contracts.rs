@@ -1,4 +1,4 @@
-//! Brief 041 (U4b): the action table over the existing commands (moved here from ecad-cadcraft
+//! Brief 041 (U4b): the action table over the existing commands (moved here from ecad-engine
 //! with the table, design 065 §3 cut 13).
 
 use ecad_app::actions::{self, ACTIONS, Key, ObjectKind, PROGRAMMATIC_ONLY, Params, SHELL_KEYS, Slot, ToolGroup};
@@ -171,7 +171,7 @@ const ECAD_COMMANDS: &[&str] = &[
 ];
 
 fn ecad_ids() -> BTreeSet<String> {
-    ecad_cadcraft::commands::specs().iter().map(|s| s.id.to_string()).collect()
+    ecad_engine::commands::specs().iter().map(|s| s.id.to_string()).collect()
 }
 
 #[test]
@@ -182,7 +182,7 @@ fn the_lane_adds_no_command_so_mcp_lists_the_same_ones() {
 
 #[test]
 fn every_action_runs_a_registered_command() {
-    ecad_cadcraft::install();
+    ecad_engine::install();
     for a in ACTIONS {
         if a.command.is_empty() {
             assert!(matches!(a.params, Params::App(_)), "{}: only a window action may name no command", a.id);
@@ -293,7 +293,7 @@ fn search_finds_actions_by_label_and_words_but_not_undo() {
 }
 
 // ------------------------------------------------------------------------------- Place group (041)
-// Moved from ecad-cadcraft's `tester_044_connectors` with the table.
+// Moved from ecad-engine's `tester_044_connectors` with the table.
 
 /// §4.1: Place ▸ Connector is one action in the Place group, slot 2, starting `connector`, found by
 /// its search words; the device wheel and the terminal wheel gain §9.3's slots.

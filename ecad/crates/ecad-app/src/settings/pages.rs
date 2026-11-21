@@ -10,7 +10,7 @@
 //! ledger's head moves (any commit or undo while Settings is open); nothing is read per frame
 //! beyond the head.
 
-use ecad_cadcraft::styles::page::{self as ptype, Holds};
+use ecad_engine::styles::page::{self as ptype, Holds};
 use ecad_model::sheet::{GridLabels, PRESETS, SheetSpec};
 use ecad_model::{PageId, StyleRef};
 use ecad_ui::tokens::{size, space, ui_type};
@@ -125,7 +125,7 @@ pub fn read(t: &mut App) -> Option<Snapshot> {
                 let look = ptype::look_of(doc, &r.id);
                 TypeRow {
                     subtitle: ptype::subtitle(&r.id),
-                    own: r.layer != ecad_cadcraft::styles::Layer::Builtin,
+                    own: r.layer != ecad_engine::styles::Layer::Builtin,
                     overridden: r.overridden,
                     shown: look.sheet.unwrap_or(project_sheet),
                     sheet: look.sheet,
@@ -141,7 +141,7 @@ pub fn read(t: &mut App) -> Option<Snapshot> {
                 }
             })
             .collect();
-        let frames = ecad_cadcraft::styles::rows(doc, &ecad_cadcraft::styles::frame::CATALOGUE).into_iter().map(|r| (r.id, r.name)).collect();
+        let frames = ecad_engine::styles::rows(doc, &ecad_engine::styles::frame::CATALOGUE).into_iter().map(|r| (r.id, r.name)).collect();
         Snapshot { head: p.ledger.head(), rows, project_sheet, frames }
     })
     .ok()

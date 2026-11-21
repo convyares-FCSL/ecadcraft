@@ -7,8 +7,8 @@ use std::path::PathBuf;
 use cadcraft_engine::Session;
 use ecad_app::App;
 use ecad_app::debugger::{Action, CheckKind, View, saved_summary};
-use ecad_cadcraft::BUSY;
-use ecad_cadcraft::debug::{ObjectId, RecordState};
+use ecad_engine::BUSY;
+use ecad_engine::debug::{ObjectId, RecordState};
 use serde_json::Value;
 
 struct TempDir(PathBuf);
@@ -31,8 +31,8 @@ impl Drop for TempDir {
 }
 
 fn new_app() -> App {
-    ecad_cadcraft::install();
-    ecad_cadcraft::views::isolate_for_tests();
+    ecad_engine::install();
+    ecad_engine::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
     crate::project_panel::open_panels(&mut t);
     t
@@ -174,7 +174,7 @@ is not counted as a change until the project has a file."
     let touching = t.debugger.touching();
     assert!(touching.contains(&3), "{touching:?}");
     t.debugger.select_tx(Some(3));
-    let views: Vec<_> = t.debugger.log()[2].ops.iter().map(ecad_cadcraft::debug::op_view).collect();
+    let views: Vec<_> = t.debugger.log()[2].ops.iter().map(ecad_engine::debug::op_view).collect();
     assert!(views.iter().any(|v| v.name == "AddRoute" && v.before.is_none()), "the route drawn");
     let made = views.iter().find(|v| v.name == "CreateWire").unwrap();
     assert!(made.before.is_none());

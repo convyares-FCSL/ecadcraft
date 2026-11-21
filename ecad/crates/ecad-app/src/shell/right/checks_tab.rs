@@ -3,7 +3,7 @@
 //! the project". The rows are the Checks copy ([`crate::checks_panel::ChecksPanel`]), kept from
 //! each change; the bottom bar's counter opens this tab. The full table is Project ▸ Check list.
 
-use ecad_cadcraft::checks::Severity;
+use ecad_engine::checks::Severity;
 use ecad_model::PageId;
 use ecad_ui::tokens::{space, ui_type};
 use eframe::egui::{self, Rect, Sense, pos2, vec2};
@@ -206,7 +206,7 @@ pub fn show(ui: &mut egui::Ui, panel: &mut ChecksPanel, project_scope: &mut bool
             let label = if panel.hidden.is_empty() { "All kinds" } else { "Some kinds" };
             ui.label(w::rich(ui, "Show:", ui_type::SMALL, w::text_3()));
             ui.menu_button(w::rich(ui, format!("{label} \u{25be}"), ui_type::SMALL, w::text_2()), |ui| {
-                for k in ecad_cadcraft::checks::Kind::ALL {
+                for k in ecad_engine::checks::Kind::ALL {
                     let mut on = !panel.hidden.contains(&k);
                     if ui.checkbox(&mut on, k.words()).changed() {
                         if on {

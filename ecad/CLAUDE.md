@@ -40,7 +40,7 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
     opens one **phase-end tidy-up** PR into `dev`: finished briefs' files in `docs/quick-start/`
     are folded into the guide or deleted (with the owner) and the index in `docs/quick-start.md`
     is brought up to date; each crate's `tests/all/lanes/` modules move into `tests/all/main.rs`'s
-    list (`lanes/mod.rs` keeps only its comment); `ecad-cadcraft/src/lanes.rs`'s registrations
+    list (`lanes/mod.rs` keeps only its comment); `ecad-engine/src/lanes.rs`'s registrations
     move into `commands::specs`; lanes' `ecad.*` token sections move from their design specs into
     `docs/design/tokens.md`. Behaviour stays the same; test names lose their `lanes::lane_<NNN>::`
     prefix.
@@ -54,7 +54,7 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
     - **Tests:** `tests/all/lanes/lane_<NNN>.rs` (submodules in `tests/all/lanes/lane_<NNN>/`) in
       each crate it tests, plus one line `mod lane_<NNN>;` at the end of `tests/all/lanes/mod.rs`.
       Not the list in `tests/all/main.rs`. Still one test executable per crate.
-    - **Commands:** a new module of commands registers in `ecad-cadcraft/src/lanes.rs`, one line
+    - **Commands:** a new module of commands registers in `ecad-engine/src/lanes.rs`, one line
       `("<NNN>", crate::<module>::specs),`, not in `commands::specs`. Its `mod` line in `lib.rs`
       stays where rustfmt sorts it.
     - **Tokens:** new `ecad.*` canvas tokens go in a section of the lane's design spec
@@ -63,7 +63,7 @@ This folder holds all ECAD code as a Cargo workspace of its own. CADCraft (the p
       doc-sync test reads that file.
     - `lanes/mod.rs` and `lanes.rs` merge with `merge=union` (`ecad/.gitattributes`): two lanes'
       added lines are both kept. After such a merge run `cargo fmt`; `lanes_are_in_brief_order`
-      (ecad-cadcraft's unit tests) says if two registrations need swapping. Git applies this in
+      (ecad-engine's unit tests) says if two registrations need swapping. Git applies this in
       local merges (the merge train); GitHub's own conflict check may not, so merge `dev` into
       the feature branch locally.
 - **Checks are scoped to the change (owner decisions, 2026-11-02 and 2026-11-08).** This is Rust:
@@ -145,12 +145,12 @@ cargo xtask patches               # only when files outside ecad/ changed
   CADCraft crates' tests.
 - **Layers (design 065, `docs/design/crates.md` §1 and §4).** **Core** (what a project is and
   means): `ecad-model`, `ecad-drawing-style`, `ecad-store`, `ecad-file`, `ecad-inspect`,
-  `ecad-electrical`. **Engine** (the link to CADCraft): `ecad-cadcraft`. **UI kit**: `ecad-ui`,
+  `ecad-electrical`. **Engine** (the link to CADCraft): `ecad-engine`. **UI kit**: `ecad-ui`,
   `ecad-tokens`. **App**: `ecad-app`. **Programs** (one `main` each): `ecad-desktop`, `ecad-cli`,
-  `ecad-mcp`. **Dev** (never shipped): `ecad-bench`, `ecad-inspector` under `dev/`, and `xtask`.
+  `ecad-mcp`. **Dev** (never shipped): `ecad-bench`, `ecad-inspector` and `xtask` under `dev/`.
   A crate uses only layers above it; `cargo xtask layers` enforces the table.
-- No Core crate depends on a `cadcraft-*` crate. Only `ecad-cadcraft` touches the engine; App and
-  Programs reach it through `ecad_cadcraft::cad`.
+- No Core crate depends on a `cadcraft-*` crate. Only `ecad-engine` touches the engine; App and
+  Programs reach it through `ecad_engine::cad`.
 - **ECAD is desktop-only (owner ruling, 2026-11-15):** no web or wasm product, so no ECAD crate
   has to build for wasm and there is no `cargo xtask wasm`. CADCraft's own wasm build is not
   affected.

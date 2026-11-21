@@ -125,7 +125,7 @@ fn the_frame_decides_sheet_margins_and_keep_out() {
     doc.styles.entry(ecad_model::StyleCatalogue::Frame).or_default().insert(StyleRef::Own(7), frame("A2", "15,10,12,8", 55.0));
     // Not chosen yet: nothing changes.
     assert_eq!(sheet::sheet_of(&doc, page), SheetSpec::default());
-    doc.properties.insert(sheet::FRAME_STYLE_KEY.into(), StyleRef::Own(7).text());
+    doc.display.insert(sheet::FRAME_STYLE_KEY.into(), StyleRef::Own(7).text());
     assert_eq!(sheet::sheet_of(&doc, page), SheetSpec::preset("A2").unwrap());
     assert_eq!(sheet::margins_of(&doc, page), Margins { left: 15.0, right: 10.0, bottom: 12.0, top: 8.0 });
     assert_eq!(sheet::keep_out(&doc, page), 55.0);
@@ -218,7 +218,7 @@ fn a_page_borrows_a_title_block_and_the_page_type_steps_wait_for_054() {
     assert_eq!(sheet::page_type_zones(&doc, page), Some(true), "a Schematic page shows zones (054)");
     doc.styles.entry(ecad_model::StyleCatalogue::Frame).or_default().insert(StyleRef::Own(7), frame("A2", "15,10,12,8", 55.0));
     doc.styles.entry(ecad_model::StyleCatalogue::Frame).or_default().insert(StyleRef::Own(8), frame("A3", "10,10,10,7", 30.0));
-    doc.properties.insert(sheet::FRAME_STYLE_KEY.into(), StyleRef::Own(7).text());
+    doc.display.insert(sheet::FRAME_STYLE_KEY.into(), StyleRef::Own(7).text());
     assert_eq!(sheet::title_block_style(&doc, page), StyleRef::Own(7), "the frame's own block");
     if let Some(p) = doc.pages.get_mut(&page) {
         p.title_block = Some(StyleRef::Own(8));

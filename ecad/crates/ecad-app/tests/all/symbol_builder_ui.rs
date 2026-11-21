@@ -11,7 +11,7 @@ use ecad_app::library::builder::{self, Tool};
 use ecad_app::library::draft::Picked;
 use ecad_app::library::{browser, details, review};
 use ecad_app::shell::Workspace;
-use ecad_cadcraft::symbols;
+use ecad_engine::symbols;
 use ecad_model::{DeviceId, Pt, RepresentationId, Subject};
 use eframe::egui::{Event, Key, Modifiers, PointerButton, Pos2, vec2};
 use egui_kittest::Harness;
@@ -226,8 +226,8 @@ fn edit_symbol_reviews_every_copy_with_update_selected_when_one_clashes() {
     h.run_steps(4);
     assert_eq!(head(&mut h), before + 1, "one transaction");
     let d = doc(&mut h);
-    assert!(ecad_cadcraft::symbol_cmds::update_available(&d, reps[0]).is_some(), "the clashing copy keeps v1");
-    assert!(ecad_cadcraft::symbol_cmds::update_available(&d, reps[1]).is_none(), "updated");
+    assert!(ecad_engine::symbol_cmds::update_available(&d, reps[0]).is_some(), "the clashing copy keeps v1");
+    assert!(ecad_engine::symbol_cmds::update_available(&d, reps[1]).is_none(), "updated");
     assert!(h.state().library.builder.is_none());
 }
 
@@ -237,7 +237,7 @@ fn the_device_wheel_offers_edit_symbol_and_a_drawn_device_make_symbol() {
     assert_eq!(w[Slot::TopLeft.index()].map(|a| a.id), Some("symbol.edit"));
     assert_eq!(actions::wheel(ObjectKind::Mixed)[Slot::Right.index()].map(|a| a.id), Some("symbol.make"));
     assert_eq!(actions::wheel(ObjectKind::Mixed)[Slot::TopLeft.index()].map(|a| a.id), Some("edit.mirror"), "Mirror keeps the selection wheel");
-    let mut t = ecad_cadcraft::interact::kind::Target::new(ObjectKind::Device, [0.0, 0.0], "-A01");
+    let mut t = ecad_engine::interact::kind::Target::new(ObjectKind::Device, [0.0, 0.0], "-A01");
     t.drawn = true;
     assert_eq!(actions::wheel_for(&t)[Slot::TopLeft.index()].map(|a| a.id), Some("symbol.make"));
 }
@@ -300,7 +300,7 @@ fn make_symbol_on_a_drawn_device_promotes_it_keeping_its_ids_and_wires() {
     }
     let w = crate::common::wire_pp(h.state_mut(), &[(100.0, 100.0), (100.0, 80.0)]);
     h.run_steps(2);
-    let mut t = ecad_cadcraft::interact::kind::Target::new(ObjectKind::Device, [100.0, 100.0], "component");
+    let mut t = ecad_engine::interact::kind::Target::new(ObjectKind::Device, [100.0, 100.0], "component");
     t.component = Some(c);
     t.drawn = true;
     h.state_mut().make_symbol(Some(&t)).unwrap();
@@ -330,7 +330,7 @@ fn make_symbol_on_a_drawn_device_promotes_it_keeping_its_ids_and_wires() {
 #[test]
 fn editing_a_built_in_from_the_browser_saves_a_copy_that_remembers_it() {
     let mut h = shell(None);
-    h.state_mut().edit_starter(ecad_cadcraft::symbols::StarterKey::Coil).unwrap();
+    h.state_mut().edit_starter(ecad_engine::symbols::StarterKey::Coil).unwrap();
     h.run_steps(3);
     let main = h.state().shell.slots.unwrap().main;
     h.event(Event::PointerMoved(main.center()));
@@ -423,7 +423,7 @@ fn update_from_properties_and_compare_show_the_copy_in_the_drawer() {
     assert!(h.query_by_label(review::HEADER).is_some(), "Compare in the drawer");
     h.get_by_label(review::UPDATE).click();
     h.run_steps(3);
-    assert!(ecad_cadcraft::symbol_cmds::update_available(&doc(&mut h), reps[2]).is_none(), "updated from Compare");
+    assert!(ecad_engine::symbol_cmds::update_available(&doc(&mut h), reps[2]).is_none(), "updated from Compare");
     assert!(h.state().library.compare.is_none());
 }
 

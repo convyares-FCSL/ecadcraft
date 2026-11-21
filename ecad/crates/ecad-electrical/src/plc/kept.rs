@@ -1,5 +1,5 @@
 //! The kept PLC model (design 045 §11.1, see [`super`]'s update map). The rules that measure text
-//! (an address wider than its cell) take the sheet font metrics, [`TextMetrics`]; ecad-cadcraft's
+//! (an address wider than its cell) take the sheet font metrics, [`TextMetrics`]; ecad-engine's
 //! `crate::plc::Plc` wraps this with today's signatures, passing CADCraft's fonts.
 
 use std::collections::{BTreeMap, BTreeSet};

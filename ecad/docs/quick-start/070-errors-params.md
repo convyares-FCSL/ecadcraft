@@ -12,7 +12,7 @@ reads stay the same. What changes is underneath, plus one thing an agent or a sc
 - **A parameter a command does not take is now refused**, naming it (`unknown field `colour`, …`).
   Before, it was silently ignored. So far this applies to the commands above.
 - Each of those commands has a JSON Schema of its parameters
-  (`ecad_cadcraft::cmd::schema_of("wire")`). The `params` text in the command list is unchanged.
+  (`ecad_engine::cmd::schema_of("wire")`). The `params` text in the command list is unchanged.
 - `setprop` walks one table of property rules (`ecad_electrical::cmd::prop::PROP_RULES`) for one
   object and for several devices (`devices`), so the two give the same refusals. One visible
   difference: `tag_fixed` on several devices now follows the tag rules ("yes" or null, a tag to
@@ -49,6 +49,6 @@ or null ``; `cableview {"cable": "zz"}` with `` `cable` must be a hex id, or nul
 
 ## Checked
 
-Automated: `cargo test -p ecad-cadcraft lane_070` (the registry, the ratchet of untyped commands,
+Automated: `cargo test -p ecad-engine lane_070` (the registry, the ratchet of untyped commands,
 the refusal wording table, unknown parameters, and the commands still working). Not yet tried by
 the owner.

@@ -14,7 +14,7 @@
 //!   device it was (design 044 §3.1).
 //!
 //! Everything here reads the document; the planners return ops and change nothing. Excludes: the
-//! commands themselves (`ecad_cadcraft::cmd::connector`), BOM rows (`outputs.rs` reads [`half_rows`]),
+//! commands themselves (`ecad_engine::cmd::connector`), BOM rows (`outputs.rs` reads [`half_rows`]),
 //! and reference texts (`xref.rs` reads [`ref_classes`]).
 
 use std::collections::{BTreeMap, BTreeSet};

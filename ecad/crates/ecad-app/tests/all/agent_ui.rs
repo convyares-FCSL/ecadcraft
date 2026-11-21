@@ -8,8 +8,8 @@ use ecad_app::agent::banner as b;
 use ecad_app::agent::undo_session as us;
 use ecad_app::agent::{self, BannerAction, BannerState};
 use ecad_app::{App, developer};
-use ecad_cadcraft::agent_access::{self, Mode, Preference};
-use ecad_cadcraft::views::Settings;
+use ecad_engine::agent_access::{self, Mode, Preference};
+use ecad_engine::views::Settings;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::json;
@@ -17,13 +17,13 @@ use serde_json::json;
 use crate::bridge_contracts::{H, conductors, live_app, person_wire, server, wire};
 
 fn dir(what: &str) -> std::path::PathBuf {
-    std::env::temp_dir().join(format!("ecad-035-{what}-{}", ecad_cadcraft::session_seed()))
+    std::env::temp_dir().join(format!("ecad-035-{what}-{}", ecad_engine::session_seed()))
 }
 
 /// An app with its own settings folder, Settings ▸ Agent access open (brief 042 moved the row
 /// there from the Developer section).
 fn app_with(settings: &std::path::Path) -> H {
-    ecad_cadcraft::install();
+    ecad_engine::install();
     let mut t = App::new(None).unwrap();
     t.agent.use_settings(Settings::at(settings));
     t.open_settings(ecad_app::settings::Section::AgentAccess);

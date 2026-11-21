@@ -6,7 +6,7 @@
 //! - [`pack`]: groups follow each other on a sheet with a gap; a group goes to the next sheet only
 //!   when it does not fit in what is left; a group taller than a whole sheet splits, its heading
 //!   repeated with `(continued)`. The sheet count comes from kept counts only (no rows made).
-//! - Drawing the sheets is ecad-cadcraft's (`draw::plc::sheets`).
+//! - Drawing the sheets is ecad-engine's (`draw::plc::sheets`).
 //!
 //! Excludes: the CSV (unchanged, [`super::iolist::csv_table`]); Checks (not printed).
 

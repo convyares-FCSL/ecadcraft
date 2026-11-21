@@ -255,7 +255,7 @@ fn screenshots_of_boards_1_09_to_1_14() {
     }
 
     // 1.11 and 1.12: placing a contactor coil, the picker folded and then open.
-    h.state_mut().start_pick(ecad_app::search::Pick::Symbol(ecad_cadcraft::symbols::StarterKey::Coil)).unwrap();
+    h.state_mut().start_pick(ecad_app::search::Pick::Symbol(ecad_engine::symbols::StarterKey::Coil)).unwrap();
     h.run_steps(3);
     hover(&mut h, Pos2::new(1200.0, 380.0));
     shot(&h, "uiv3-C-1.11-ours.png");
@@ -311,7 +311,7 @@ fn p_does_not_open_the_picker_while_a_tag_is_being_typed() {
     let dir = temp("ptag");
     let mut h = window(None);
     demo(&mut h, &dir);
-    h.state_mut().start_pick(ecad_app::search::Pick::Symbol(ecad_cadcraft::symbols::StarterKey::Lamp)).unwrap();
+    h.state_mut().start_pick(ecad_app::search::Pick::Symbol(ecad_engine::symbols::StarterKey::Lamp)).unwrap();
     h.run_steps(3);
     h.state_mut().cad.session.input(cadcraft_engine::Input::Keyword("Tag".into())).unwrap();
     h.run_steps(2);
@@ -334,7 +334,7 @@ fn the_chip_names_a_symbol_typed_at_the_command_line() {
     h.state_mut().start_tool(ecad_app::actions::find("place.symbol").unwrap());
     h.run_steps(3);
     type_answer(&mut h, "lamp");
-    assert_eq!(h.state().shell.tools.placing.symbol, Some(ecad_cadcraft::symbols::StarterKey::Lamp));
+    assert_eq!(h.state().shell.tools.placing.symbol, Some(ecad_engine::symbols::StarterKey::Lamp));
     let chip = h.state().shell.tools.chip_text.clone();
     assert!(chip.starts_with("Indicator lamp as -"), "{chip}");
     h.state_mut().cad.session.cancel();

@@ -38,7 +38,7 @@ fn view(h: &mut H, x0: f64, y0: f64, x1: f64, y1: f64) {
     h.run_steps(4);
 }
 
-/// Fixture G (design 046 §11), as `ecad-cadcraft`'s `strip_page_contracts` builds it.
+/// Fixture G (design 046 §11), as `ecad-engine`'s `strip_page_contracts` builds it.
 fn fixture_g(h: &mut H) -> DeviceId {
     exec(h, "locationbox", json!({"location": "+CP1", "corners": [[20, 150], [400, 280]]}));
     exec(h, "locationbox", json!({"location": "+FIELD", "corners": [[20, 20], [400, 140]]}));
@@ -99,8 +99,8 @@ fn new_page_terminal_strips_makes_and_opens_a_graphic_page() {
     let d = doc(&mut h);
     assert_eq!(d.page_order.len(), pages + 1, "one new page");
     let page: PageId = *d.page_order.last().unwrap();
-    assert_eq!(d.pages[&page].title, ecad_cadcraft::strip_page::TITLE);
-    assert!(ecad_cadcraft::strip_page::is_graphic(&d, page));
+    assert_eq!(d.pages[&page].title, ecad_engine::strip_page::TITLE);
+    assert!(ecad_engine::strip_page::is_graphic(&d, page));
     let Some(out) = shots() else { return };
     let _ = std::fs::create_dir_all(&out);
     view(&mut h, 0.0, 0.0, 420.0, 297.0);

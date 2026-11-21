@@ -142,7 +142,7 @@ fn a_page_first_opens_with_the_sheet_fitted_24_px_inside_the_canvas() {
     let xf = h.state().cad.canvas.xf.unwrap();
     let d = h.state().cad.session.doc().unwrap();
     let mut b = cadcraft_engine::geom::Bounds2::default();
-    for e in d.model.iter().filter(|e| e.common.layer == ecad_cadcraft::frame::LAYER) {
+    for e in d.model.iter().filter(|e| e.common.layer == ecad_engine::frame::LAYER) {
         b = b.union(&cadcraft_engine::doc::entity_bounds(d, e, 0));
     }
     assert!(!b.is_empty(), "the page has a frame");

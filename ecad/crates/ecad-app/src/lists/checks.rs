@@ -10,7 +10,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::hash::{Hash, Hasher};
 
-use ecad_cadcraft::checks::{Fix, Kind, Severity};
+use ecad_engine::checks::{Fix, Kind, Severity};
 use ecad_ui::prim::Tone;
 use ecad_ui::table::{Align, Cell, Changed, Column, ColumnId, TableSource, Width};
 
@@ -52,8 +52,8 @@ pub fn fix_names(f: Fix) -> Vec<&'static str> {
         Fix::NumberThem => cp::NUMBER_THEM,
         Fix::Finalise => cp::FINALISE,
         Fix::UseContext(..) => cp::USE_CONTEXT,
-        Fix::SetDesignation(_, ecad_cadcraft::designations::Aspect::Location) => cp::SET_LOCATION,
-        Fix::SetDesignation(_, ecad_cadcraft::designations::Aspect::Function) => cp::SET_FUNCTION,
+        Fix::SetDesignation(_, ecad_engine::designations::Aspect::Location) => cp::SET_LOCATION,
+        Fix::SetDesignation(_, ecad_engine::designations::Aspect::Function) => cp::SET_FUNCTION,
         Fix::ShowDesignations => cp::SHOW_IN_SETTINGS,
         Fix::ShowReports | Fix::ShowCables => cp::SHOW,
         Fix::OpenStandards(_) => cp::GO_TO_STANDARDS,
@@ -70,7 +70,7 @@ pub fn fix_names(f: Fix) -> Vec<&'static str> {
         Fix::LevelMissing(..) => cp::DROP_MISSING_LEVELS,
         Fix::FuseDevices => cp::MAKE_STRIP_POSITION,
         // Brief 045: the pairs are in `cp::pair`.
-        Fix::Plc(_, ecad_cadcraft::plc::PlcFix::Unracked) => cp::PUT_IN_RACK,
+        Fix::Plc(_, ecad_engine::plc::PlcFix::Unracked) => cp::PUT_IN_RACK,
         Fix::Plc(..) => cp::MOVE_TO_FREE_SLOT,
         // Brief 044.
         Fix::ConnectorNextPin(_) => cp::MOVE_NEXT_FREE,

@@ -4,13 +4,13 @@
 //! follows (the dialog's copy is taken again only when the kept Checks or the project change).
 //!
 //! Everything it does goes through the commands' JSON forms: `revision` for a field, `release`
-//! to release; the engine's [`ecad_cadcraft::release::View`] is what it shows.
+//! to release; the engine's [`ecad_engine::release::View`] is what it shows.
 
 use std::collections::BTreeSet;
 
-use ecad_cadcraft::checks::{Check, Severity};
-use ecad_cadcraft::release::View;
 use ecad_electrical::release::Group;
+use ecad_engine::checks::{Check, Severity};
+use ecad_engine::release::View;
 use ecad_ui::control::TextEntry;
 use ecad_ui::dialog::action;
 use ecad_ui::prim::{self, Button, Kind, Tone};
@@ -129,7 +129,7 @@ impl ReleaseDialog {
             return None;
         }
         if [0, 2, 3].iter().any(|i| self.fields.get(*i).is_none_or(|f| f.trim().is_empty())) {
-            return Some(ecad_cadcraft::revisions::FILL_FIRST.into());
+            return Some(ecad_engine::revisions::FILL_FIRST.into());
         }
         if v.errors > 0 && !self.accept {
             let n = if v.errors == 1 { "1 error".to_string() } else { format!("{} errors", v.errors) };
@@ -169,7 +169,7 @@ impl ReleaseDialog {
             let editable = self.rev.is_none() && !self.read_only;
             prim::PropertyGrid::new().show(ui, |g| {
                 for (i, (f, label)) in
-                    ecad_cadcraft::revisions::FIELDS.iter().zip(["Rev", "Date", "Description", "Drawn", "Checked", "Approved"]).enumerate()
+                    ecad_engine::revisions::FIELDS.iter().zip(["Rev", "Date", "Description", "Drawn", "Checked", "Approved"]).enumerate()
                 {
                     let Some(val) = self.fields.get_mut(i) else { continue };
                     let name = format!("ecad.release.{f}");
@@ -335,18 +335,18 @@ pub fn open_folder(folder: &std::path::Path) -> Result<(), String> {
 }
 
 /// The folders of issued rows, resolved against the project, and whether each exists.
-pub fn fill_folders(rows: &mut [crate::sheets_ui::RevRow], p: &ecad_cadcraft::Project) {
+pub fn fill_folders(rows: &mut [crate::sheets_ui::RevRow], p: &ecad_engine::Project) {
     for r in rows {
-        r.folder = r.released.as_deref().and_then(|v| ecad_cadcraft::release::from_recorded(p, v));
-        r.folder_exists = r.folder.as_deref().is_some_and(|f| f.join(ecad_cadcraft::release::MANIFEST).exists());
+        r.folder = r.released.as_deref().and_then(|v| ecad_engine::release::from_recorded(p, v));
+        r.folder_exists = r.folder.as_deref().is_some_and(|f| f.join(ecad_engine::release::MANIFEST).exists());
     }
 }
 
 /// The badge of the Project panel's Release button (design 027 §3): errors (red), else warnings,
 /// from the counts the kept Checks and report models keep (O(1); no row is counted again);
 /// `None` when the Checks have not been kept yet (nothing is built for it).
-pub fn badge(p: &ecad_cadcraft::Project) -> Option<(usize, usize)> {
+pub fn badge(p: &ecad_engine::Project) -> Option<(usize, usize)> {
     let (e, w, _) = p.kept_checks()?.counts();
-    let (oe, ow, _) = p.kept_outputs().map_or((0, 0, 0), ecad_cadcraft::outputs::kept::Outputs::check_counts);
+    let (oe, ow, _) = p.kept_outputs().map_or((0, 0, 0), ecad_engine::outputs::kept::Outputs::check_counts);
     Some((e + oe, w + ow))
 }

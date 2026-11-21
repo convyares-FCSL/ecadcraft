@@ -11,7 +11,7 @@ publish = false
 workspace = true
 
 [dependencies]
-ecad-cadcraft = { path = "../../crates/ecad-cadcraft" }
+ecad-engine = { path = "../../crates/ecad-engine" }
 ecad-model = { workspace = true }
 cadcraft-mcp = { path = "../../../crates/mcp" }
 serde_json = { workspace = true }
@@ -19,5 +19,5 @@ serde_json = { workspace = true }
 [dev-dependencies]
 # Brief 021: tests read a version 2 file's history.
 ecad-file = { workspace = true }
-# The tests name engine types beyond `ecad_cadcraft::cad` (design 065 §3, cut 11); the library does not.
+# The tests name engine types beyond `ecad_engine::cad` (design 065 §3, cut 11); the library does not.
 cadcraft-engine = { path = "../../../crates/engine" }

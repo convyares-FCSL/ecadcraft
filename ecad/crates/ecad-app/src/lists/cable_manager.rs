@@ -4,9 +4,9 @@
 //! The app is thin: every write is a command (`cableedit`, `cableremove`); this module only picks
 //! the command and its parameters, and moves the view.
 
-use ecad_cadcraft::cable_cmds::{self, Side};
-use ecad_cadcraft::checks::{Check, Fix, Kind, Object};
-use ecad_cadcraft::designations::Aspect;
+use ecad_engine::cable_cmds::{self, Side};
+use ecad_engine::checks::{Check, Fix, Kind, Object};
+use ecad_engine::designations::Aspect;
 use serde_json::json;
 
 /// **Assign in the drawing…** (the `cable-not-drawn` fix's first button).
@@ -68,7 +68,7 @@ impl crate::App {
                 let check = Check { kind: Kind::CableEndOffPlan, page, at, object: Object::Cable(cable), which: String::new(), fix: None };
                 self.panel_action(crate::project_panel::Action::GotoCheck(Box::new(check)));
             }
-            (Fix::ShowCableField(cable, _), _) => self.show_rating(ecad_cadcraft::rating::RatedSubject::Cable(cable)),
+            (Fix::ShowCableField(cable, _), _) => self.show_rating(ecad_engine::rating::RatedSubject::Cable(cable)),
             _ => {}
         }
     }
@@ -82,8 +82,8 @@ impl crate::App {
             let doc = p.ledger.document();
             let plan = cable_cmds::planned(doc, cable, Side::From, Aspect::Location)?;
             doc.page_order.iter().copied().find(|pg| {
-                let key = doc.pages.get(pg).and_then(|x| ecad_cadcraft::designations::page_key(x, Aspect::Location));
-                ecad_cadcraft::designations::shown(doc, Aspect::Location, key.as_deref()).is_some_and(|c| c.eq_ignore_ascii_case(&plan))
+                let key = doc.pages.get(pg).and_then(|x| ecad_engine::designations::page_key(x, Aspect::Location));
+                ecad_engine::designations::shown(doc, Aspect::Location, key.as_deref()).is_some_and(|c| c.eq_ignore_ascii_case(&plan))
             })
         });
         self.set_workspace(crate::shell::Workspace::Draw);
@@ -92,15 +92,15 @@ impl crate::App {
         }
         // The slash tool with the cable already picked: the same `Cable` keyword the command
         // line takes; the tool says `Slash the wires of -W03 (4 cores).`
-        let tag = p.read(&mut self.cad.session, |p, _| ecad_cadcraft::views::cable_title(p.ledger.document(), cable));
+        let tag = p.read(&mut self.cad.session, |p, _| ecad_engine::views::cable_title(p.ledger.document(), cable));
         let Ok(tag) = tag else { return };
         self.focus_drawing = true;
         if let Err(e) = self.cad.session.start("cableslash") {
             self.cad.session.echo(e.to_string());
             return;
         }
-        let _ = self.cad.session.input(ecad_cadcraft::cad::Input::Keyword("Cable".into()));
-        match self.cad.session.input(ecad_cadcraft::cad::Input::Text(tag)) {
+        let _ = self.cad.session.input(ecad_engine::cad::Input::Keyword("Cable".into()));
+        match self.cad.session.input(ecad_engine::cad::Input::Text(tag)) {
             Ok(_) => self.shell.slash_picker = crate::shell::right::slash_picker::Picker { want: Some(cable), ..Default::default() },
             Err(e) => self.cad.session.echo(e.to_string()),
         }

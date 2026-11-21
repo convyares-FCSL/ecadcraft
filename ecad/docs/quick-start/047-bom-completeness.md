@@ -53,7 +53,7 @@ that `for` as it rewrites links.
 
 ## Checks
 
-- *Automated (agent, native Windows 11, 2026-11-13):* `cargo test -p ecad-cadcraft --test all
+- *Automated (agent, native Windows 11, 2026-11-13):* `cargo test -p ecad-engine --test all
   bom_contracts` (14 tests: the BOM page; items in metres and undo; refusals on items; one line on four devices;
   fuse inserts per fuse and the uncovered-fuse check; the article column, command and conflict
   with its fix; kits and the nested layout; missing `for` names and unread keys; the update map;

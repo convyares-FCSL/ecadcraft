@@ -237,7 +237,7 @@ pub fn name_band(doc: &Document, lines: &[(String, TextKind)]) -> f64 {
     (band / BAND_STEP).ceil() * BAND_STEP
 }
 
-/// Every frame part on `page` (design 051 §2.6), its texts measured with `m` (ecad-cadcraft's
+/// Every frame part on `page` (design 051 §2.6), its texts measured with `m` (ecad-engine's
 /// `parts_on_page` passes CADCraft's fonts).
 pub fn parts_on_page_measured(doc: &Document, page: PageId, m: &dyn TextMetrics) -> Vec<Part> {
     let mut out = Vec::new();

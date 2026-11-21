@@ -468,9 +468,9 @@ impl App {
     /// [`App::fit_sheet`] in `rect`.
     pub fn fit_sheet_in(&mut self, rect: Rect) -> bool {
         let Ok(d) = self.cad.session.doc() else { return false };
-        let mut b = ecad_cadcraft::cad::Bounds2::default();
-        for e in d.model.iter().filter(|e| e.common.layer == ecad_cadcraft::frame::LAYER) {
-            b = b.union(&ecad_cadcraft::cad::entity_bounds(d, e, 0));
+        let mut b = ecad_engine::cad::Bounds2::default();
+        for e in d.model.iter().filter(|e| e.common.layer == ecad_engine::frame::LAYER) {
+            b = b.union(&ecad_engine::cad::entity_bounds(d, e, 0));
         }
         if b.is_empty() {
             return self.zoom_to_drawing();
@@ -479,7 +479,7 @@ impl App {
     }
 
     /// Fit `b` (drawing units) in `rect` with [`FIT_MARGIN`] px all round.
-    pub fn fit_bounds(&mut self, b: ecad_cadcraft::cad::Bounds2, rect: Rect) -> bool {
+    pub fn fit_bounds(&mut self, b: ecad_engine::cad::Bounds2, rect: Rect) -> bool {
         let (bw, bh) = (b.max.x - b.min.x, b.max.y - b.min.y);
         let (w, h) = (f64::from(rect.width() - 2.0 * FIT_MARGIN), f64::from(rect.height() - 2.0 * FIT_MARGIN));
         if !(bw > 0.0 && bh > 0.0 && w > 0.0 && h > 0.0) {
@@ -488,7 +488,7 @@ impl App {
         let scale = (w / bw).min(h / bh);
         let Ok(st) = self.cad.session.state_mut() else { return false };
         let mut view = st.view();
-        view.center = ecad_cadcraft::cad::Vec2::new((b.min.x + b.max.x) / 2.0, (b.min.y + b.max.y) / 2.0);
+        view.center = ecad_engine::cad::Vec2::new((b.min.x + b.max.x) / 2.0, (b.min.y + b.max.y) / 2.0);
         view.height = f64::from(rect.height()) / scale;
         view.height.is_finite() && st.set_view(view)
     }
@@ -670,7 +670,7 @@ impl App {
                 && let Ok(st) = self.cad.session.state_mut()
             {
                 let mut view = st.view();
-                view.center = ecad_cadcraft::cad::Vec2::new(v.cx, v.cy);
+                view.center = ecad_engine::cad::Vec2::new(v.cx, v.cy);
                 view.height = v.height;
                 let _ = st.set_view(view);
             }

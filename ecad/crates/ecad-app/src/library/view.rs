@@ -1,8 +1,8 @@
 //! The Library workspace in the shell's slots: the main view (browser or builder), the right
 //! panel (the selected symbol's details, or the builder's Details) and the drawer's review.
 
-use ecad_cadcraft::defaults::symbols::{Field, project_value};
-use ecad_cadcraft::symbols;
+use ecad_engine::defaults::symbols::{Field, project_value};
+use ecad_engine::symbols;
 use ecad_model::DefinitionId;
 use eframe::egui::{self, Rect};
 

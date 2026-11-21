@@ -7,7 +7,7 @@ Layer: App
 
 ## Purpose
 The ECAD application: the shell, workspaces, panels, dialogs, lists and tabs, on a CADCraft window.
-Everything about a project goes through `ecad-cadcraft`; this crate is what a person sees and
+Everything about a project goes through `ecad-engine`; this crate is what a person sees and
 clicks.
 
 ## Contents
@@ -22,7 +22,7 @@ clicks.
 
 ## Must not depend on
 App rules: Core, Engine and UI kit crates, `cadcraft-ui-egui`, `eframe` and `egui`. Never
-`cadcraft-engine` directly (go through `ecad-cadcraft`), and no Programs or Dev crate (except
+`cadcraft-engine` directly (go through `ecad-engine`), and no Programs or Dev crate (except
 through a `dev` feature). Panels and dialogs use only `ecad-ui` components for values.
 
 ## Key types

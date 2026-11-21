@@ -12,7 +12,7 @@ use std::process::{Command, Stdio};
 
 use crate::common::writer;
 use cadcraft_engine::Session;
-use ecad_cadcraft::{Persistence, Project, ProjectHandle};
+use ecad_engine::{Persistence, Project, ProjectHandle};
 use ecad_mcp::{EcadMcp, MAX_BATCH, MAX_REQUEST_BYTES, Options, policy};
 use ecad_model::{Author, Document, Transaction};
 use serde_json::{Value, json};
@@ -37,7 +37,7 @@ impl Client {
 
     /// Cable views are remembered nowhere in these tests.
     fn no_settings(&mut self) {
-        self.s.with_session(|s, p| p.configure(s, |p| p.settings = ecad_cadcraft::views::Settings::none())).unwrap().unwrap();
+        self.s.with_session(|s, p| p.configure(s, |p| p.settings = ecad_engine::views::Settings::none())).unwrap().unwrap();
     }
 
     fn request(&mut self, method: &str, params: Value) -> Value {
@@ -158,10 +158,10 @@ struct Direct {
 
 impl Direct {
     fn new() -> Self {
-        ecad_cadcraft::install();
+        ecad_engine::install();
         let mut s = Session::empty();
         let p = Project::create_with(&mut s, "mcp", SEED, Persistence::File).unwrap();
-        p.configure(&mut s, |p| p.settings = ecad_cadcraft::views::Settings::none()).unwrap();
+        p.configure(&mut s, |p| p.settings = ecad_engine::views::Settings::none()).unwrap();
         Direct { s, p }
     }
     fn log(&mut self) -> Vec<Transaction> {
@@ -211,7 +211,7 @@ fn a_client_lists_the_ecad_commands_with_their_docs_and_the_ecad_tools() {
 
     let catalog = c.ok("list_commands", json!({}));
     let catalog = catalog.as_array().unwrap();
-    for spec in ecad_cadcraft::commands::specs() {
+    for spec in ecad_engine::commands::specs() {
         let info = catalog.iter().find(|i| i["id"] == spec.id).unwrap_or_else(|| panic!("{} not listed", spec.id));
         assert_eq!(info["params"].as_str(), Some(spec.params), "{}", spec.id);
         assert!(info["params"].as_str().is_some_and(|p| !p.is_empty()), "{} has no parameter docs", spec.id);
@@ -427,7 +427,7 @@ fn raw_cadcraft_commands_cannot_get_round_ecads_refusals() {
     let mut d = Direct::new();
     let mut c = writer(SEED);
     let before = c.log();
-    for cmd in ecad_cadcraft::project::REFUSED_COMMANDS {
+    for cmd in ecad_engine::project::REFUSED_COMMANDS {
         let ui = d.s.execute(cmd, &json!({})).expect_err("refused for a person").to_string();
         let typed = d.s.cmdline(cmd).expect_err("refused when typed").to_string();
         let m = c.refused("execute", json!({"command": cmd, "params": {}}));
@@ -437,7 +437,7 @@ fn raw_cadcraft_commands_cannot_get_round_ecads_refusals() {
         // is given; BSAVE, BSAVEAS, BCLOSE, REFSET and REFCLOSE are refused earlier by CADCraft
         // ("The Block Editor is not open"), for a person and an agent alike.
         let reason = match *cmd {
-            "lisp" | "appload" => Some(ecad_cadcraft::project::LISP_REFUSED.to_string()),
+            "lisp" | "appload" => Some(ecad_engine::project::LISP_REFUSED.to_string()),
             "bedit" | "refedit" => Some(format!("{} is not available on ECAD pages", cmd.to_ascii_uppercase())),
             _ => None,
         };
@@ -596,7 +596,7 @@ fn an_oversized_or_non_utf8_line_is_answered_and_skipped() {
 fn spawn(args: &[&str], settings: &TempDir) -> std::process::Child {
     Command::new(env!("CARGO_BIN_EXE_ecad-mcp"))
         .args(args)
-        .env(ecad_cadcraft::views::SETTINGS_ENV, &settings.0)
+        .env(ecad_engine::views::SETTINGS_ENV, &settings.0)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

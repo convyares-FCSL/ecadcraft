@@ -53,7 +53,7 @@ fn ok(h: &mut Harness<'static, App>, line: &str) {
 fn component(h: &mut Harness<'static, App>, rectangle: &str, x: f64) {
     let t = h.state_mut();
     let before: Vec<_> =
-        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle).collect();
+        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).map(|e| e.handle).collect();
     t.cad.session.cmdline(rectangle).unwrap();
     let lines: Vec<String> = t
         .cad
@@ -62,7 +62,7 @@ fn component(h: &mut Harness<'static, App>, rectangle: &str, x: f64) {
         .unwrap()
         .model
         .iter()
-        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+        .filter(|e| e.common.layer != ecad_engine::frame::LAYER)
         .map(|e| e.handle)
         .filter(|x| !before.contains(x))
         .map(|x| x.hex())
@@ -239,7 +239,7 @@ fn said(h: &Harness<'static, App>) -> String {
 fn shown_text(h: &mut Harness<'static, App>) -> String {
     let page = current_page(h);
     let d = doc(h);
-    ecad_cadcraft::references::markers_on_page(&d, page).first().map(|m| m.text.clone()).unwrap_or_default()
+    ecad_engine::references::markers_on_page(&d, page).first().map(|m| m.text.clone()).unwrap_or_default()
 }
 
 /// Park the pointer on empty canvas (no hover) and let the frame settle.
@@ -265,7 +265,7 @@ fn zoom_e(h: &mut Harness<'static, App>) {
 /// The drawn handle of `page`'s reference point.
 fn reference_point(h: &mut Harness<'static, App>, page: PageId) -> cadcraft_engine::doc::Handle {
     let d = doc(h);
-    let r = ecad_cadcraft::references::references_on_page(&d, page).into_iter().next().expect("a reference");
+    let r = ecad_engine::references::references_on_page(&d, page).into_iter().next().expect("a reference");
     let t = h.state_mut();
     let p = t.project().unwrap().clone();
     p.read(&mut t.cad.session, |p, _| p.pages[&page].map.item(r.item.unwrap())).unwrap().expect("point drawn")

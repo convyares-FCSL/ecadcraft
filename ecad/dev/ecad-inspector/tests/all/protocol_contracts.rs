@@ -60,7 +60,9 @@ fn every_op_answers_in_shape_on_the_rich_fixture() {
             assert_eq!(o["revisions"]["1"]["rev"], "A");
             assert_eq!(o["revisions"]["1"]["issued"], "Rev A");
             assert_eq!(o["counts"]["pages"], 2);
-            assert!(o["properties"].get("rev.1.rev").is_none(), "revision rows are grouped");
+            assert!(o["display"].get("rev.1.rev").is_none(), "revision rows are grouped");
+            assert_eq!(o["display"]["note"], "issued", "the project's display bag is shown as `display`");
+            assert!(o.get("properties").is_none());
         }),
         (json!({"op": "pages"}), |o| {
             assert_eq!(o["total"], 2);

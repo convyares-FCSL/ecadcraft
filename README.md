@@ -47,7 +47,7 @@ Not yet: `.ecadlib` symbol libraries and a parts catalogue (0.4.0); panel layout
 You draw on the CADCraft engine. Every edit is a transaction recorded in the project file. Everything else (nets, cross-references, reports, the PDF book) is derived from that record.
 
 - **Core:** the project model, the electrical rules (devices, wires, cables, strips, checks, reports) and the `.ecad` file. No screen and no drawing engine.
-- **Engine:** `ecad-cadcraft`, the one link to [CADCraft](https://github.com/storytold/cadcraft) for drawing pages and running commands.
+- **Engine:** `ecad-engine`, the one link to [CADCraft](https://github.com/storytold/cadcraft) for drawing pages and running commands.
 - **UI kit and App:** ECAD's widgets, and the application built from them (`ecad-app`).
 - **Programs:** one thin `main` each: `ecad-desktop`, `ecad-cli` and `ecad-mcp`.
 - **Dev:** the benchmark and the inspector, never shipped.

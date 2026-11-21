@@ -12,7 +12,7 @@ own numbers and sit in folders; project and page properties are edited in CADCra
 **Properties** palette and a **Project Properties** dialog; revisions are issued and opened
 read-only. Section 5H describes it; 5D, 5E and 5G changed with it (texts such as `/2.1` now read
 `2-A-6`, and moving a page no longer renumbers it).
-- *Automated checks:* `ecad/crates/ecad-cadcraft/tests/all/sheets_contracts.rs` (design 019 checks
+- *Automated checks:* `ecad/crates/ecad-engine/tests/all/sheets_contracts.rs` (design 019 checks
   A–G and J), `ecad/crates/ecad-model/tests/all/sheet_contracts.rs` (folders and their
   invariants), the round trip in `ecad/crates/ecad-file/tests/all/records_contracts.rs`, check I in
   `ecad/apps/ecad-mcp/tests/all/mcp_contracts.rs`, and

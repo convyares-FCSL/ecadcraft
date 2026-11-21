@@ -27,7 +27,7 @@ started.
 
 ## The commands in `history` and `merging` move to `cmd/` (lane 067 step 11)
 
-- **What:** lane 067 step 11 moved ecad-cadcraft's commands into `cmd/` (`commands.rs` →
+- **What:** lane 067 step 11 moved ecad-engine's commands into `cmd/` (`commands.rs` →
   `cmd/mod.rs`, each `*_cmds.rs` → `cmd/<area>.rs`, `plc_cmds/` → `cmd/plc/`, and `release.rs`'s
   `specs`, `run_prerelease` and `run_release` → `cmd/release.rs`). The `specs` and `run_*`
   functions of `history.rs` (`run_history`, `run_steps`, `run_pointinfo`, `run_version`,
@@ -89,7 +89,7 @@ started.
 - Persistence stage 3 (libraries, `.ecadlib`) and its UI; stage 4 (checkpoints); migration
   rewriting of older files (E4); "Save a Copy As" with a new project ID (E9). See
   `docs/document-architecture-proposal.md` §22-§23.
-- Delete `ProjectHandle::apply_ops` and the `test-ops` feature of `ecad-cadcraft` once brief
+- Delete `ProjectHandle::apply_ops` and the `test-ops` feature of `ecad-engine` once brief
   010's `cableref` is merged: brief 009's tests build cable reference ends with it only because no
   command makes them on that branch (brief 009 review S3).
 - **Stage 4 (checkpoints) is on hold** until stage 3 (libraries) and the core domain features
@@ -112,7 +112,7 @@ started.
 - **Every edit still goes through the whole document to find what is on a page.** After brief
   014, a move costs about 0.2 ms on small, 0.4 ms on medium and 1.2 ms on large (2026-11-08):
   pages are the same size, so the growth is whole-document scans, none of them in the
-  translation. Redrawing the page after every edit (`ecad-cadcraft/src/project.rs`,
+  translation. Redrawing the page after every edit (`ecad-engine/src/project.rs`,
   `project_page_with`) goes through every item twice and every representation once to find
   those on the page: measured on large, projecting page 1 takes about 1 to 3 ms, of which those
   scans are 0.5 to 1.5 ms. `derive::terminal_positions` does the same, once per edit that moves a

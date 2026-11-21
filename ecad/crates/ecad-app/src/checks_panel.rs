@@ -2,7 +2,7 @@
 //! false-looking connections, nets with one connection point, unconnected device points and
 //! number or potential conflicts, each row with where it is and a go-to.
 //!
-//! The rows are a copy of [`ecad_cadcraft::checks::kept::Checks`], which the project builds whole on the
+//! The rows are a copy of [`ecad_engine::checks::kept::Checks`], which the project builds whole on the
 //! tab's first show and then keeps from each transaction's ops; the copy is taken again only when
 //! that list's revision moved (or the project or the Show filter changed). Live: no refresh button.
 //! Brief 039: the rows are drawn by the one table ([`crate::lists::checks`]), patched with the rows
@@ -10,7 +10,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_cadcraft::checks::{Check, Fix, Kind, Severity};
+use ecad_engine::checks::{Check, Fix, Kind, Severity};
 use eframe::egui::{self, RichText};
 
 use crate::project_panel::Action;
@@ -83,8 +83,8 @@ pub fn pair(f: Fix) -> Option<[&'static str; 2]> {
         Fix::LevelMissing(..) => Some([DROP_MISSING_LEVELS, DELETE_LINK]),
         Fix::CoreOpen(..) => Some([TICK_NOT_USED, GO_TO_OPEN_END]),
         Fix::AssignCable(_) | Fix::UseDrawing(..) => crate::lists::cable_manager::pair(f),
-        Fix::Plc(_, ecad_cadcraft::plc::PlcFix::RackMissing) => Some([PUT_IN_RACK, TAKE_OUT_OF_RACK]),
-        Fix::Plc(_, ecad_cadcraft::plc::PlcFix::SlotRange) => Some([RAISE_SLOTS, MOVE_TO_FREE_SLOT]),
+        Fix::Plc(_, ecad_engine::plc::PlcFix::RackMissing) => Some([PUT_IN_RACK, TAKE_OUT_OF_RACK]),
+        Fix::Plc(_, ecad_engine::plc::PlcFix::SlotRange) => Some([RAISE_SLOTS, MOVE_TO_FREE_SLOT]),
         _ => None,
     }
 }
@@ -179,7 +179,7 @@ impl ChecksPanel {
     }
 
     /// Bring the copy up to date with the project's kept list (built on the first call).
-    pub fn sync(&mut self, serial: u64, p: &mut ecad_cadcraft::Project) {
+    pub fn sync(&mut self, serial: u64, p: &mut ecad_engine::Project) {
         let hidden = self.hidden.clone();
         // Brief 024: the location rows come from the report models, kept the same way.
         let revision = p.checks().revision.wrapping_mul(1_000_003).wrapping_add(p.outputs().revision);
@@ -187,12 +187,12 @@ impl ChecksPanel {
             return;
         }
         // Built now if it was not; read without changing anything from here on.
-        let p: &ecad_cadcraft::Project = p;
+        let p: &ecad_engine::Project = p;
         let doc = p.ledger.document();
         let Some(list) = p.kept_checks() else { return };
         let mut all: Vec<Check> = list.rows().cloned().collect();
         all.extend(p.kept_outputs().map(|o| o.checks()).unwrap_or_default());
-        let rows: Vec<Row> = ecad_cadcraft::checks::sort(doc, all)
+        let rows: Vec<Row> = ecad_engine::checks::sort(doc, all)
             .into_iter()
             .filter(|c| !hidden.contains(&c.kind))
             .map(|c| Row { locator: c.locator(doc), check: c })

@@ -7,7 +7,7 @@
 //! (`tag`, `box`, `dc24`) or an own style's `#<32 hex>`.
 //!
 //! This module holds only stored data and its shape rules. What a catalogue's fields mean, its
-//! built-in styles and how a field resolves live in `ecad-cadcraft` (`styles`). Excluded: library
+//! built-in styles and how a field resolves live in `ecad-engine` (`styles`). Excluded: library
 //! origins (2.1; [`StandardHeader::origin`] is reserved and always `None`).
 
 use std::collections::BTreeMap;

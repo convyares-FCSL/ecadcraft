@@ -61,6 +61,6 @@ Checked so far: automated headless tests only
 (`lanes::lane_072f::renaming_or_captioning_a_shown_arrow_refreshes_its_section` and
 `lanes::lane_072f::a_new_location_on_a_shown_box_refreshes_its_section` and
 `lanes::lane_072f::a_shown_boxs_panel_temperature_and_style_rows_refresh` in ecad-app;
-`lanes::lane_072f` in ecad-cadcraft and ecad-mcp; `lanes::lane_072f` in ecad-file and
+`lanes::lane_072f` in ecad-engine and ecad-mcp; `lanes::lane_072f` in ecad-file and
 ecad-inspector for the old `bom_item` device form; `bom_contracts` and `bom_ui` for items).
 Not yet tried by the owner.

@@ -13,7 +13,7 @@ workspace = true
 [dependencies]
 # The application the window runs (design 065 §2.2).
 ecad-app = { path = "../../crates/ecad-app" }
-ecad-cadcraft = { path = "../../crates/ecad-cadcraft" }
+ecad-engine = { path = "../../crates/ecad-engine" }
 ecad-model = { workspace = true }
 cadcraft-ui-egui = { path = "../../../crates/ui-egui" }
 # The same eframe build as CADCraft's desktop app (system clipboard included); `persistence`

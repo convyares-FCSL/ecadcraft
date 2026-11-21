@@ -9,7 +9,7 @@
 //! - A route has at least two points, every coordinate finite. An end on another route names a
 //!   route other than itself.
 //!
-//! This module excludes how routes are drawn and edited (ecad-electrical, ecad-cadcraft) and the
+//! This module excludes how routes are drawn and edited (ecad-electrical, ecad-engine) and the
 //! nets they make (connectivity).
 
 use serde::{Deserialize, Serialize};

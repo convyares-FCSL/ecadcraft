@@ -1,5 +1,5 @@
 //! The kept Checks list (see [`super`]'s update map). The rules that measure text (a table over
-//! the title block) take the sheet font metrics, [`TextMetrics`]; ecad-cadcraft's
+//! the title block) take the sheet font metrics, [`TextMetrics`]; ecad-engine's
 //! `crate::derived::ChecksView` keeps it, measuring with the engine's fonts.
 
 use std::collections::BTreeSet;

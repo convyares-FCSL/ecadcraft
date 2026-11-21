@@ -49,10 +49,10 @@ pub use widgets::section_name;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_cadcraft::default_cmds::{self, Target};
-use ecad_cadcraft::defaults::{self, Entry, Kind, Level, Scope, Source};
-use ecad_cadcraft::project::Mapped;
-use ecad_cadcraft::text_style::TextKind;
+use ecad_engine::default_cmds::{self, Target};
+use ecad_engine::defaults::{self, Entry, Kind, Level, Scope, Source};
+use ecad_engine::project::Mapped;
+use ecad_engine::text_style::TextKind;
 use ecad_model::{ObjectRef, PageId, RepresentationId, Subject};
 use ecad_ui::tokens::{Icon, size, space, ui_type};
 use eframe::egui::{self, Rect, RichText, pos2, vec2};
@@ -471,8 +471,8 @@ pub struct ConnectorRow {
 /// The connector rows for symbol `rep` of `c` (design 044 §9.4): Pins, each drawn half's
 /// Description, Maker, Part number and Location, and for a pin symbol its Pin and Mate.
 fn connector_rows(doc: &ecad_model::Document, c: ecad_model::DeviceId, rep: RepresentationId) -> Vec<ConnectorRow> {
-    use ecad_cadcraft::connectors as cn;
-    use ecad_cadcraft::symbols::Side;
+    use ecad_engine::connectors as cn;
+    use ecad_engine::symbols::Side;
     if !cn::connector_of(doc, c).is_some_and(|x| x.mating) {
         return Vec::new();
     }
@@ -487,7 +487,7 @@ fn connector_rows(doc: &ecad_model::Document, c: ecad_model::DeviceId, rep: Repr
         set: Some(("setprop", serde_json::json!({"component": comp, "key": cn::PINS_KEY}), "value")),
         goto: Vec::new(),
     }];
-    let mut cache = ecad_cadcraft::locations::BoxCache::default();
+    let mut cache = ecad_engine::locations::BoxCache::default();
     for h in cn::half_rows(doc, c, &mut cache) {
         let Some(letter) = h.side.letter() else { continue };
         let own = |f: &str| cn::half_prop(doc, c, h.side, f).is_some();
@@ -502,15 +502,15 @@ fn connector_rows(doc: &ecad_model::Document, c: ecad_model::DeviceId, rep: Repr
         };
         let desc_origin = if own("description") {
             "set here"
-        } else if doc.properties.keys().any(|k| k.starts_with("connector.") && k.ends_with(".description")) {
+        } else if doc.display.keys().any(|k| k.starts_with("connector.") && k.ends_with(".description")) {
             "from project"
         } else {
             "from standard"
         };
         // Brief 052 (design 052 §5.2): the half's override, else the connector's stored value.
         let loc_origin = match h.location.source {
-            ecad_cadcraft::locations::Source::Override => "set here",
-            ecad_cadcraft::locations::Source::Device => "from device",
+            ecad_engine::locations::Source::Override => "set here",
+            ecad_engine::locations::Source::Device => "from device",
             _ => "none",
         };
         out.push(row("description", "Description", h.description.clone(), desc_origin, Some(h.tag.clone())));
@@ -577,7 +577,7 @@ pub struct Inspector {
     what: Option<What>,
     deps: BTreeSet<ObjectRef>,
     /// (project serial, change count, page, selection).
-    seen: Option<(u64, u64, Option<PageId>, Vec<ecad_cadcraft::cad::Handle>)>,
+    seen: Option<(u64, u64, Option<PageId>, Vec<ecad_engine::cad::Handle>)>,
     /// The device's placements (its symbols), for "Select all placements".
     placements: Vec<RepresentationId>,
     /// Brief 044: a connector's Halves group and the selected pin's rows.
@@ -591,7 +591,7 @@ pub struct Inspector {
     pub rebuilds: u64,
     /// Brief 047 (design 047 §6.2): the selected device's part set, read only; empty when it has
     /// no part lines.
-    pub parts: Vec<ecad_cadcraft::bom::PartSetRow>,
+    pub parts: Vec<ecad_engine::bom::PartSetRow>,
     /// Brief 048: "update available" for the selected symbol.
     pub symbol_update: Option<SymbolUpdate>,
     /// UI rev 3: what the Device and Layout tabs show about one selected device.
@@ -610,7 +610,7 @@ const SYMBOL_KINDS: [TextKind; 4] = [TextKind::Tag, TextKind::PointLabel, TextKi
 /// A value as the inspector shows it: a show word in words (spec §3), else as the Standards table.
 fn shown(e: &Entry, r: &defaults::Resolved<'_>) -> String {
     if e.key.ends_with(".show") {
-        use ecad_cadcraft::text_style::Shown;
+        use ecad_engine::text_style::Shown;
         return match <Shown as ecad_model::Word>::parse(r.word()).unwrap_or_default() {
             Shown::Off => "Hidden".into(),
             Shown::First => "Shown on the first of each run".into(),
@@ -625,7 +625,7 @@ fn shown(e: &Entry, r: &defaults::Resolved<'_>) -> String {
 fn style_row(
     doc: &ecad_model::Document, e: &Entry, cat: ecad_model::StyleCatalogue, scope: Scope, r: &defaults::Resolved<'_>,
 ) -> (String, Vec<(String, String)>, Option<String>) {
-    use ecad_cadcraft::styles;
+    use ecad_engine::styles;
     // Brief 050b (design 050 §7.5): a wire's category with where it comes from.
     if e.key == ecad_model::wiring::WIRE_CATEGORY
         && let Some(c) = scope.conductor
@@ -664,7 +664,7 @@ struct Built {
     deps: BTreeSet<ObjectRef>,
     placements: Vec<RepresentationId>,
     connector: Vec<ConnectorRow>,
-    parts: Vec<ecad_cadcraft::bom::PartSetRow>,
+    parts: Vec<ecad_engine::bom::PartSetRow>,
     update: Option<SymbolUpdate>,
     device: Option<DeviceDetails>,
     page_words: Option<(String, String)>,
@@ -698,7 +698,7 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
                 es.extend(k.show_entry());
             }
             let starter =
-                doc.devices.get(&c).and_then(|c| c.definition).and_then(|d| doc.definitions.get(&d)).and_then(ecad_cadcraft::symbols::of_definition);
+                doc.devices.get(&c).and_then(|c| c.definition).and_then(|d| doc.definitions.get(&d)).and_then(ecad_engine::symbols::of_definition);
             es.extend(starter.and_then(|s| defaults::symbols::prefix_entry(s.key)));
             (Scope::symbol(doc, rep), es, Some((Level::Object, Target::Symbol(rep))))
         }
@@ -752,11 +752,11 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
     };
     // Brief 047: the part set reads the device's own properties (already a dependency).
     let parts = match what {
-        What::Symbol(c, _) => ecad_cadcraft::bom::part_set(doc, c),
+        What::Symbol(c, _) => ecad_engine::bom::part_set(doc, c),
         _ => Vec::new(),
     };
     let update = match what {
-        What::Symbol(_, rep) => ecad_cadcraft::symbol_cmds::update_available(doc, rep).map(|(_, shown, newest)| SymbolUpdate { rep, shown, newest }),
+        What::Symbol(_, rep) => ecad_engine::symbol_cmds::update_available(doc, rep).map(|(_, shown, newest)| SymbolUpdate { rep, shown, newest }),
         _ => None,
     };
     // UI rev 3: the Device and Layout tabs' copy of one device.
@@ -826,7 +826,7 @@ fn sync(t: &mut App) {
 
 /// What the selection on `page` is, for the inspector: nothing selected is the page; one symbol
 /// (or its tag text) is that symbol; one wire is that wire; anything else shows no defaults.
-fn what_of(p: &ecad_cadcraft::Project, page: PageId, selection: &[ecad_cadcraft::cad::Handle]) -> Option<What> {
+fn what_of(p: &ecad_engine::Project, page: PageId, selection: &[ecad_engine::cad::Handle]) -> Option<What> {
     if selection.is_empty() {
         return Some(What::Page(page));
     }

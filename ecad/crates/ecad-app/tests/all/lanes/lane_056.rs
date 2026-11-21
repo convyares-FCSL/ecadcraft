@@ -34,7 +34,7 @@ fn harness(deltas: Deltas) -> H {
     h
 }
 
-/// Fixture P56 (design 056 §13), as `ecad-cadcraft`'s lane test builds it. The first rack brings
+/// Fixture P56 (design 056 §13), as `ecad-engine`'s lane test builds it. The first rack brings
 /// the `plcrack` page into the book (tester F1), so the fixture adds none of its own.
 fn p56(h: &mut H) {
     ok(h, r#"place {"symbol":"plccpu","at":[30,250]}"#);
@@ -179,7 +179,7 @@ fn f_import_an_io_list_from_the_path_row_is_one_transaction_and_refusals_stay_in
     let before = head_of(&mut h);
     run_path(&mut h, ListAction::ImportTags, &dir.join("x.csv"));
     let err = view(&h).path_row.as_ref().and_then(|r| r.error.clone());
-    assert_eq!(err.as_deref(), Some(ecad_cadcraft::plc::tagtable::UNKNOWN));
+    assert_eq!(err.as_deref(), Some(ecad_engine::plc::tagtable::UNKNOWN));
     assert_eq!(head_of(&mut h), before);
     // The path row, filled in (a screenshot for the owner), then the import: one transaction, and
     // the row closes.
@@ -250,10 +250,10 @@ fn the_card_editor_edits_type_id_rack_slot_parts_and_start() {
         &mut h,
         &format!("partline {}", json!({"component": a03.hex(), "add": {"description": "Front connector, 20-pin, screw", "part_number": "FC-20-S"}})),
     );
-    let parts = ecad_cadcraft::bom::part_set(&doc(&mut h), a03);
+    let parts = ecad_engine::bom::part_set(&doc(&mut h), a03);
     assert_eq!(parts.len(), 3, "the main part and the two accessories: {parts:?}");
     // The type: picking one shows the confirm step, which says what happens to the signals.
-    use ecad_cadcraft::plc::rack::CardType;
+    use ecad_engine::plc::rack::CardType;
     let before = head_of(&mut h);
     h.get_by_label("ecad.plc.card.editor.type.ao").click();
     h.run_steps(4);
@@ -266,7 +266,7 @@ fn the_card_editor_edits_type_id_rack_slot_parts_and_start() {
     h.run_steps(4);
     assert_eq!(head_of(&mut h), before);
     assert!(h.query_by_label("-A03 has 9 signals; an AO card has 4 channels. Move or remove 5 signals first.").is_some(), "the refusal shows");
-    assert_eq!(ecad_cadcraft::plc::card_type_of(&doc(&mut h), a03), Some(CardType::Dq));
+    assert_eq!(ecad_engine::plc::card_type_of(&doc(&mut h), a03), Some(CardType::Dq));
     take(&h, &deltas, "056-card-type-refused.png");
     // DI has room: one transaction; tags and descriptions stay.
     h.get_by_label("ecad.plc.card.editor.type.di").click();
@@ -274,7 +274,7 @@ fn the_card_editor_edits_type_id_rack_slot_parts_and_start() {
     h.get_by_label("Change type").click();
     h.run_steps(4);
     assert_eq!(head_of(&mut h), before + 1);
-    assert_eq!(ecad_cadcraft::plc::card_type_of(&doc(&mut h), a03), Some(CardType::Di), "the card is now a DI card");
+    assert_eq!(ecad_engine::plc::card_type_of(&doc(&mut h), a03), Some(CardType::Di), "the card is now a DI card");
     let d = doc(&mut h);
     let ecad_model::DeviceType::PlcModule(m) = &d.devices[&a03].device_type else { panic!("a module") };
     assert_eq!(m.channel(2).and_then(|c| c.tag.as_ref()).map(|t| t.as_str()), Some("Valve_Inlet"));
@@ -318,12 +318,8 @@ fn m_the_rack_sheet_prints_the_new_tile_lines() {
     let mut h = harness(deltas.clone());
     p56(&mut h);
     let d = doc(&mut h);
-    let racks: Vec<_> = d
-        .page_order
-        .iter()
-        .copied()
-        .filter(|p| ecad_cadcraft::generated::kind_of(&d, *p) == Some(ecad_cadcraft::generated::GenKind::PlcRack))
-        .collect();
+    let racks: Vec<_> =
+        d.page_order.iter().copied().filter(|p| ecad_engine::generated::kind_of(&d, *p) == Some(ecad_engine::generated::GenKind::PlcRack)).collect();
     assert_eq!(racks.len(), 1, "one rack page, the one the first rack brought");
     h.state_mut().set_workspace(Workspace::Draw);
     h.state_mut().show_page(racks[0]).unwrap();

@@ -6,12 +6,12 @@ use ecad_model::Word;
 use eframe::egui::{self, RichText};
 use serde_json::{Map, Value, json};
 
-use ecad_cadcraft::text_style::{Shown, TextKind};
+use ecad_engine::text_style::{Shown, TextKind};
 
 /// The section's element name.
 pub const SECTION_ID: &str = "ecad.projectsettings.text";
 /// The height refusal under a field (design 031 §4.1).
-pub const BAD_HEIGHT: &str = ecad_cadcraft::text_cmds::BAD_HEIGHT;
+pub const BAD_HEIGHT: &str = ecad_engine::text_cmds::BAD_HEIGHT;
 
 /// One row: a kind's fields as shown and as they were.
 #[derive(Debug, Clone, PartialEq)]
@@ -126,7 +126,7 @@ impl TextSection {
             });
         }
         let font = v.get("font").and_then(Value::as_str).unwrap_or_default().to_string();
-        let mut families: Vec<String> = ecad_cadcraft::cad::installed_fonts().into_iter().filter_map(|f| f.family).collect();
+        let mut families: Vec<String> = ecad_engine::cad::installed_fonts().into_iter().filter_map(|f| f.family).collect();
         families.sort();
         families.dedup();
         families.truncate(MAX_FAMILIES);
@@ -147,11 +147,11 @@ impl TextSection {
         if self.rows.iter().any(|r| valid_height(&r.height).is_none()) {
             return Some(BAD_HEIGHT);
         }
-        if self.rows.iter().any(|r| !r.font.trim().is_empty() && ecad_cadcraft::defaults::text::FONT.parse(&r.font).is_none()) {
-            return Some(ecad_cadcraft::text_cmds::BAD_FONT);
+        if self.rows.iter().any(|r| !r.font.trim().is_empty() && ecad_engine::defaults::text::FONT.parse(&r.font).is_none()) {
+            return Some(ecad_engine::text_cmds::BAD_FONT);
         }
-        if ecad_cadcraft::defaults::text::FONT.parse(&self.font).is_none() {
-            return Some(ecad_cadcraft::text_cmds::BAD_FONT);
+        if ecad_engine::defaults::text::FONT.parse(&self.font).is_none() {
+            return Some(ecad_engine::text_cmds::BAD_FONT);
         }
         None
     }
@@ -211,8 +211,8 @@ impl TextSection {
             return;
         }
         let mut doc = ecad_model::Document::default();
-        doc.properties.insert(ecad_cadcraft::defaults::text::FONT.key.into(), self.font.trim().to_string());
-        let f = ecad_cadcraft::text_style::Fonts::resolve(&doc);
+        doc.display.insert(ecad_engine::defaults::text::FONT.key.into(), self.font.trim().to_string());
+        let f = ecad_engine::text_style::Fonts::resolve(&doc);
         self.status = f.status();
         self.warn = !f.is_wanted();
         self.status_for.clone_from(&self.font);
@@ -292,7 +292,7 @@ mod tests {
 
     fn read() -> TextSection {
         let doc = ecad_model::Document::default();
-        let fonts = ecad_cadcraft::text_style::Fonts::resolve(&doc);
+        let fonts = ecad_engine::text_style::Fonts::resolve(&doc);
         TextSection::from_json(&ecad_electrical::cmd::text::textstyle_json(&doc, &fonts, false))
     }
 

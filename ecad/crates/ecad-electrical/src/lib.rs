@@ -9,7 +9,7 @@
 //!
 //! It works on [`ecad_model`]'s document and the drawing style ([`ecad_drawing_style`]). What it
 //! decides is plain data: positions in mm, texts, styles and model ids. The engine crate
-//! (`ecad-cadcraft`) turns that into drawing entities and runs it inside commands.
+//! (`ecad-engine`) turns that into drawing entities and runs it inside commands.
 //!
 //! This crate intentionally contains **no** drawing engine (no `cadcraft-*` crate, no entities or
 //! handles), **no** UI, **no** OS access (no files, clock, environment or process: callers pass the

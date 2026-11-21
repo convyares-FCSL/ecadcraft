@@ -17,8 +17,8 @@ use crate::bridge_contracts::{H, conductors, live_app, person_wire, server, wire
 
 /// An app with no bridge, 1920 × 1080, its banner set by hand.
 fn plain() -> H {
-    ecad_cadcraft::install();
-    ecad_cadcraft::views::isolate_for_tests();
+    ecad_engine::install();
+    ecad_engine::views::isolate_for_tests();
     let t = App::new(None).unwrap();
     let mut h = Harness::builder().with_size(eframe::egui::vec2(1920.0, 1080.0)).build_ui_state(
         |ui, t: &mut App| {
@@ -219,8 +219,8 @@ fn the_last_write_is_outlined_on_the_page_and_costs_nothing_idle() {
 fn screenshots_of_the_banner_history_and_outline() {
     let Some(out) = crate::project_panel::shots() else { return };
     let deltas: crate::mouse_tester::Deltas = std::sync::Arc::default();
-    ecad_cadcraft::install();
-    ecad_cadcraft::views::isolate_for_tests();
+    ecad_engine::install();
+    ecad_engine::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
     let port = crate::bridge_contracts::free_port();
     t.agent.control_flag(port);

@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 
 use ecad_app::{App, DialogKind, status_line};
-use ecad_cadcraft::{HOME_UNKNOWN, normalize_with};
+use ecad_engine::{HOME_UNKNOWN, normalize_with};
 use serde_json::{Value, json};
 
 /// A fresh folder under the system temp folder, removed when dropped.
@@ -124,8 +124,8 @@ fn child_prints_its_home_folder() {
     if std::env::var_os("ECAD_TEST_CHILD").is_none() {
         return;
     }
-    let home = ecad_cadcraft::home().map(|h| h.display().to_string()).unwrap_or_default();
-    let p = ecad_cadcraft::normalize("~/p").unwrap_or_default();
+    let home = ecad_engine::home().map(|h| h.display().to_string()).unwrap_or_default();
+    let p = ecad_engine::normalize("~/p").unwrap_or_default();
     println!("HOME-FOLDER<{home}>\nNORMALIZED<{p}>");
 }
 
@@ -156,8 +156,8 @@ fn the_home_folder_is_known_without_the_home_variable() {
 }
 
 fn app_with_home(home: Option<&Path>) -> App {
-    ecad_cadcraft::install();
-    ecad_cadcraft::views::isolate_for_tests();
+    ecad_engine::install();
+    ecad_engine::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
     t.home = home.map(Path::to_path_buf);
     t.cad.run("wire", json!({"points": [[0, 0], [40, 0]]})).unwrap();
@@ -313,8 +313,8 @@ fn the_banner_names_the_file_as_saved() {
 fn a_tilde_snapshots_folder_is_under_the_home_folder() {
     let home = TempDir::new("snaps-home");
     for typed in ["~/snaps", r"~\snaps"] {
-        ecad_cadcraft::install();
-        ecad_cadcraft::views::isolate_for_tests();
+        ecad_engine::install();
+        ecad_engine::views::isolate_for_tests();
         let mut t = App::new(Some(PathBuf::from(typed))).unwrap();
         t.home = Some(home.0.clone());
         let written = t.export_snapshot("paths").unwrap();
@@ -322,7 +322,7 @@ fn a_tilde_snapshots_folder_is_under_the_home_folder() {
     }
     assert!(!home.0.join("~").exists());
     // With no home folder known, the export is refused and nothing is made.
-    ecad_cadcraft::views::isolate_for_tests();
+    ecad_engine::views::isolate_for_tests();
     let mut t = App::new(Some(PathBuf::from("~/snaps"))).unwrap();
     t.home = None;
     assert_eq!(t.export_snapshot("paths").unwrap_err(), HOME_UNKNOWN);

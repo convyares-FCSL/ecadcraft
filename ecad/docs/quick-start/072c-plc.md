@@ -46,5 +46,5 @@ a file holding one opens read-only (design 045 FP2 is withdrawn: no compatibilit
 
 ## Checked
 
-Automated (agent-run): `lane_072c` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector. Not
+Automated (agent-run): `lane_072c` in ecad-model, ecad-engine, ecad-mcp and ecad-inspector. Not
 yet tried by the owner.

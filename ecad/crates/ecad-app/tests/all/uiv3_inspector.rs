@@ -58,7 +58,7 @@ fn coil(h: &mut H) -> RepresentationId {
     let d = doc(h);
     let k1 = d.devices.iter().find(|(_, c)| c.tag().is_some_and(|t| t.ends_with("K01"))).map(|(id, _)| *id).expect("-K01");
     d.representations_of(Subject::Device(k1))
-        .find(|(_, r)| ecad_cadcraft::devices::rep_starter(&d, r).is_some_and(|s| s.key == ecad_cadcraft::symbols::StarterKey::Coil))
+        .find(|(_, r)| ecad_engine::devices::rep_starter(&d, r).is_some_and(|s| s.key == ecad_engine::symbols::StarterKey::Coil))
         .map(|(id, _)| id)
         .expect("its coil")
 }
@@ -148,7 +148,7 @@ fn the_layout_tab_reads_the_placement_and_sets_the_texts_and_contact_table() {
     h.get_by_label(&format!("{}.right", ecad_app::shell::right::CONTACT_TABLE)).click();
     h.run_steps(4);
     let k1 = h.state().settings.inspector.device.as_ref().and_then(|d| d.component).unwrap();
-    assert_eq!(ecad_cadcraft::xref::placement_of(&doc(&mut h), k1), (ecad_cadcraft::xref::Placement::Right, true));
+    assert_eq!(ecad_engine::xref::placement_of(&doc(&mut h), k1), (ecad_engine::xref::Placement::Right, true));
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -203,7 +203,7 @@ fn screenshots_of_boards_1_05_to_1_07() {
     // 1.11: placing a contactor coil, the picker folded.
     h.state_mut().cad.session.set_selection(Vec::new());
     h.state_mut().open_inspector(RightTab::Device);
-    h.state_mut().start_pick(ecad_app::search::Pick::Symbol(ecad_cadcraft::symbols::StarterKey::Coil)).unwrap();
+    h.state_mut().start_pick(ecad_app::search::Pick::Symbol(ecad_engine::symbols::StarterKey::Coil)).unwrap();
     h.run_steps(4);
     h.event(egui::Event::PointerMoved(egui::pos2(1100.0, 420.0)));
     h.run_steps(4);
@@ -226,7 +226,7 @@ fn screenshots_of_boards_1_05_to_1_07() {
 fn placing_a_coil_shows_the_device_about_to_be_placed() {
     let (mut h, dir, _one) = harness(None);
     h.state_mut().open_inspector(RightTab::Device);
-    h.state_mut().start_pick(ecad_app::search::Pick::Symbol(ecad_cadcraft::symbols::StarterKey::Coil)).unwrap();
+    h.state_mut().start_pick(ecad_app::search::Pick::Symbol(ecad_engine::symbols::StarterKey::Coil)).unwrap();
     h.run_steps(4);
     assert_eq!(h.state().picker_shown(), ecad_app::shell::placing::Shown::Chip);
     let sub = h.query_by_label(right::HEAD_SUB).is_some();

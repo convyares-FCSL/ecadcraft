@@ -340,7 +340,7 @@ fn list_ui(t: &App, ui: &mut egui::Ui, list: Rect, back: &str) -> (Option<Sectio
         bar::text_at(ui, list.left() + space::L, r.center().y, sec.label(), ui_type::BODY, ecad_ui::color(if on { s.text } else { s.text_2 }));
         // Brief 054: Pages and sheets counts its page types.
         let count = match *sec {
-            Section::Standards => Some(ecad_cadcraft::defaults::all().count()),
+            Section::Standards => Some(ecad_engine::defaults::all().count()),
             Section::Pages => t.settings.pages.snapshot.as_ref().map(|s| s.rows.len()),
             _ => None,
         };

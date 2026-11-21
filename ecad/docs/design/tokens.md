@@ -539,7 +539,7 @@ and 024's location label height when 031 lands.
 
 ## Wire codes and markers (040, `design/040.md` §2)
 
-`ecad.wire_colour.<code>`, IEC 60757 codes, paper and dark (`ecad_cadcraft::look::CODE_COLOURS`):
+`ecad.wire_colour.<code>`, IEC 60757 codes, paper and dark (`ecad_engine::look::CODE_COLOURS`):
 
 | Code | Paper | Dark |
 | --- | --- | --- |

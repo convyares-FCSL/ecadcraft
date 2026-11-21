@@ -9,7 +9,7 @@ impl App {
     /// The cable reference end under the pointer (its point within the pick box, or its text),
     /// with its hover lines; model space only, as for terminals.
     fn reference_under(&mut self, at: egui::Pos2) -> Option<(ecad_model::RepresentationId, Vec<String>)> {
-        if self.cad.session.layout_space() != ecad_cadcraft::cad::Space::Model {
+        if self.cad.session.layout_space() != ecad_engine::cad::Space::Model {
             return None;
         }
         let (rect, xf) = (self.cad.canvas.rect?, self.cad.canvas.xf?);
@@ -20,13 +20,13 @@ impl App {
         let radius = self.cad.session.pixel_size() * self.cad.session.settings.pickbox.max(1.0) * 1.5;
         let uid = self.cad.session.state().ok()?.uid;
         let p = self.project.as_ref()?;
-        p.read(&mut self.cad.session, |p, _| ecad_cadcraft::interact::hover_reference(p, uid, world, radius)).ok().flatten()
+        p.read(&mut self.cad.session, |p, _| ecad_engine::interact::hover_reference(p, uid, world, radius)).ok().flatten()
     }
 
     fn terminal_under(&mut self, at: egui::Pos2) -> Option<(ecad_model::TerminalId, Vec<String>)> {
         // Terminals are at model positions: in a paper-space layout (or one of its viewports) the
         // canvas shows the sheet, and nothing on it is a terminal.
-        if self.cad.session.layout_space() != ecad_cadcraft::cad::Space::Model {
+        if self.cad.session.layout_space() != ecad_engine::cad::Space::Model {
             return None;
         }
         let (rect, xf) = (self.cad.canvas.rect?, self.cad.canvas.xf?);
@@ -37,7 +37,7 @@ impl App {
         let aperture = self.cad.session.pixel_size() * self.cad.session.settings.aperture.max(1.0);
         let uid = self.cad.session.state().ok()?.uid;
         let p = self.project.as_ref()?;
-        p.read(&mut self.cad.session, |p, _| ecad_cadcraft::interact::hover_terminal(p, uid, world, aperture)).ok().flatten()
+        p.read(&mut self.cad.session, |p, _| ecad_engine::interact::hover_terminal(p, uid, world, aperture)).ok().flatten()
     }
 
     /// The hover description shown now, if any (design 008 §4.3).
@@ -94,7 +94,7 @@ impl App {
                 Hovered::Object(h) => {
                     let uid = self.cad.session.state().map(|st| st.uid).ok();
                     match (self.project.as_ref(), uid) {
-                        (Some(p), Some(uid)) => p.read(&mut self.cad.session, |p, _| ecad_cadcraft::interact::hover_lines(p, uid, h)).ok().flatten(),
+                        (Some(p), Some(uid)) => p.read(&mut self.cad.session, |p, _| ecad_engine::interact::hover_lines(p, uid, h)).ok().flatten(),
                         _ => None,
                     }
                 }

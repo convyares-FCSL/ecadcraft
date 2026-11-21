@@ -4,7 +4,7 @@
 
 use cadcraft_engine::Session;
 use ecad_app::lists::plc::IoView;
-use ecad_cadcraft::{Project, ProjectHandle};
+use ecad_engine::{Project, ProjectHandle};
 use ecad_ui::table::TableSource;
 use serde_json::json;
 
@@ -24,7 +24,7 @@ fn sync(view: &mut IoView, s: &mut Session, p: &ProjectHandle) {
 
 #[test]
 fn lists_io_shows_every_channel_and_patches_only_the_touched_card() {
-    ecad_cadcraft::install();
+    ecad_engine::install();
     let mut s = Session::empty();
     let p = Project::create(&mut s, "IO", 4561).unwrap();
     run(&mut s, "place", json!({"symbol": "plccpu", "at": [50, 400]}));

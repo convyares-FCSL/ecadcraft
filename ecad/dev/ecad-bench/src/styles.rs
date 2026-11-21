@@ -15,7 +15,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use cadcraft_engine::Session;
-use ecad_cadcraft::ProjectHandle;
+use ecad_engine::ProjectHandle;
 use ecad_model::{PageId, Subject};
 use serde_json::json;
 
@@ -62,7 +62,7 @@ fn time_open(file: &Path, runs: usize) -> Result<f64, String> {
     for _ in 0..runs.max(1) {
         let mut s = Session::empty();
         let t = Instant::now();
-        let (p, _) = ProjectHandle::open_file_in(&mut s, path_text(file)?, OPEN_SEED, ecad_cadcraft::views::Settings::none())?;
+        let (p, _) = ProjectHandle::open_file_in(&mut s, path_text(file)?, OPEN_SEED, ecad_engine::views::Settings::none())?;
         v.push(t.elapsed().as_secs_f64() * 1e3);
         drop(p);
         crate::measure::release_lock_file(file);
@@ -75,7 +75,7 @@ fn time_open(file: &Path, runs: usize) -> Result<f64, String> {
 /// # Errors
 /// A copy cannot be made or opened, or a command fails.
 pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStyles, String> {
-    let _ = ecad_cadcraft::install();
+    let _ = ecad_engine::install();
     let copy = scratch.join("styles.ecad");
     let styled = scratch.join("styled.ecad");
     remove(&copy);
@@ -85,7 +85,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStyle
     let result = (|| {
         out.open_ms = time_open(&copy, runs)?;
         let mut s = Session::empty();
-        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_cadcraft::views::Settings::none())?;
+        let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::views::Settings::none())?;
         let (page, device) = densest(&project, &mut s)?;
         project.open_page(&mut s, page)?;
         let (mut style, mut text, mut prop) = (Vec::new(), Vec::new(), Vec::new());
@@ -130,12 +130,12 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStyle
         // A standard with 50 values and 20 styles, then back to IEC.
         exec(&mut s, "standard", json!({"new": "Bench"}))?;
         let keys: Vec<&'static str> =
-            ecad_cadcraft::defaults::all().filter(|e| e.allows(ecad_cadcraft::defaults::Level::Standard)).map(|e| e.key).take(50).collect();
+            ecad_engine::defaults::all().filter(|e| e.allows(ecad_engine::defaults::Level::Standard)).map(|e| e.key).take(50).collect();
         project.read(&mut s, |_, _| ())?;
         let mut values = 0;
         for k in &keys {
-            let e = ecad_cadcraft::defaults::find(k).ok_or("a registry key")?;
-            let v = ecad_cadcraft::defaults::Resolved { value: e.builtin(), from: ecad_cadcraft::defaults::Source::Builtin }.text();
+            let e = ecad_engine::defaults::find(k).ok_or("a registry key")?;
+            let v = ecad_engine::defaults::Resolved { value: e.builtin(), from: ecad_engine::defaults::Source::Builtin }.text();
             if s.execute("setdefault", &json!({"key": k, "level": "standard", "value": v})).is_ok() {
                 values += 1;
             }
@@ -148,8 +148,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStyle
         // The project saved with a standard of 50 values and 50 styles, for the open row.
         exec(&mut s, "standard", json!({"new": "Bench"}))?;
         for k in &keys {
-            if let Some(e) = ecad_cadcraft::defaults::find(k) {
-                let v = ecad_cadcraft::defaults::Resolved { value: e.builtin(), from: ecad_cadcraft::defaults::Source::Builtin }.text();
+            if let Some(e) = ecad_engine::defaults::find(k) {
+                let v = ecad_engine::defaults::Resolved { value: e.builtin(), from: ecad_engine::defaults::Source::Builtin }.text();
                 let _ = s.execute("setdefault", &json!({"key": k, "level": "standard", "value": v}));
             }
         }

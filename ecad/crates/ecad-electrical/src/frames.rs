@@ -41,7 +41,7 @@ pub const TITLE: &str = "title";
 pub fn project_text(doc: &Document, key: &str) -> Option<String> {
     match <ecad_model::InfoField as ecad_model::Word>::parse(key) {
         Some(f) => doc.project.info.get(f).map(str::to_string),
-        None => doc.properties.get(key).cloned(),
+        None => doc.display.get(key).cloned(),
     }
 }
 

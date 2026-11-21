@@ -14,9 +14,9 @@
 use std::time::Instant;
 
 use cadcraft_engine::Session;
-use ecad_cadcraft::ProjectHandle;
-use ecad_cadcraft::outputs::kept::Outputs;
-use ecad_cadcraft::outputs::{BomView, Group};
+use ecad_engine::ProjectHandle;
+use ecad_engine::outputs::kept::Outputs;
+use ecad_engine::outputs::{BomView, Group};
 use ecad_model::{DeviceId, PageId};
 use serde_json::json;
 

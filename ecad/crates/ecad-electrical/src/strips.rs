@@ -1571,7 +1571,7 @@ fn type_parts(
         }
         let pk = format!("strip_{}_{field}", ty.code);
         inherits.insert(pk.clone());
-        clean(doc.properties.get(&pk))
+        clean(doc.display.get(&pk))
     };
     let own_part = clean(strip.get(&type_key(ty, "part_number"))).is_some();
     let part_number = get("part_number");

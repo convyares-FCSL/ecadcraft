@@ -113,7 +113,7 @@ fn main() -> eframe::Result {
             return Ok(());
         }
         Ok(Invocation::Version) => {
-            println!("ecad-desktop {} (CADCraft {})", env!("CARGO_PKG_VERSION"), ecad_cadcraft::UPSTREAM_COMMIT);
+            println!("ecad-desktop {} (CADCraft {})", env!("CARGO_PKG_VERSION"), ecad_engine::UPSTREAM_COMMIT);
             return Ok(());
         }
         Err(e) => {
@@ -122,11 +122,11 @@ fn main() -> eframe::Result {
         }
     };
     // Before the engine's command list is first built.
-    ecad_cadcraft::install();
+    ecad_engine::install();
     // Brief 040: the sheet font for the page (US3), before any text is drawn.
     ecad_app::canvas::register_sheet_faces();
     // Brief 024: Print Book plots through CADCraft's PDF plotter.
-    ecad_cadcraft::printbook::install_io();
+    ecad_engine::printbook::install_io();
     if let Some(t) = &mut timing {
         t.mark(Step::Install);
     }

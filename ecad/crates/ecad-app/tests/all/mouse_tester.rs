@@ -218,7 +218,7 @@ fn ac3_quick_start_with_clicked_terminals_matches_the_json_example() {
     let mut j = harness();
     ok(&mut j, "line 0,0 40,0 40,20 0,20 c");
     let lines: Vec<String> =
-        j.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle.hex()).collect();
+        j.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).map(|e| e.handle.hex()).collect();
     ok(&mut j, &format!("convertcomponent {}", json!({ "handles": lines })));
     let edge = |j: &Harness<'static, App>, x: f64| {
         j.state()
@@ -228,7 +228,7 @@ fn ac3_quick_start_with_clicked_terminals_matches_the_json_example() {
             .unwrap()
             .model
             .iter()
-            .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+            .filter(|e| e.common.layer != ecad_engine::frame::LAYER)
             .find(|e| matches!(&e.kind, cadcraft_engine::doc::EntityKind::Line(l) if l.a.x == x && l.b.x == x))
             .map(|e| e.handle.hex())
             .unwrap()
@@ -334,7 +334,7 @@ fn ac5_hovering_a_terminal_names_it_and_writes_nothing() {
     ok(&mut h, "line 0,0 40,0 40,20 0,20 c");
     view(&mut h);
     let lines: Vec<String> =
-        h.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle.hex()).collect();
+        h.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).map(|e| e.handle.hex()).collect();
     ok(&mut h, &format!("convertcomponent {}", json!({ "handles": lines })));
     let right = h
         .state()
@@ -344,7 +344,7 @@ fn ac5_hovering_a_terminal_names_it_and_writes_nothing() {
         .unwrap()
         .model
         .iter()
-        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+        .filter(|e| e.common.layer != ecad_engine::frame::LAYER)
         .find(|e| matches!(&e.kind, cadcraft_engine::doc::EntityKind::Line(l) if l.a.x == 40.0 && l.b.x == 40.0))
         .map(|e| e.handle.hex())
         .unwrap();
@@ -357,7 +357,7 @@ fn ac5_hovering_a_terminal_names_it_and_writes_nothing() {
         .unwrap()
         .model
         .iter()
-        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+        .filter(|e| e.common.layer != ecad_engine::frame::LAYER)
         .find(|e| matches!(&e.kind, cadcraft_engine::doc::EntityKind::Line(l) if l.a.x == 0.0 && l.b.x == 0.0))
         .map(|e| e.handle.hex())
         .unwrap();
@@ -439,7 +439,7 @@ fn h_glyphs_keep_their_token_sizes_at_every_zoom() {
     let mut h = harness();
     ok(&mut h, "line 0,0 40,0 40,20 0,20 c");
     let lines: Vec<String> =
-        h.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle.hex()).collect();
+        h.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).map(|e| e.handle.hex()).collect();
     ok(&mut h, &format!("convertcomponent {}", json!({ "handles": lines })));
     ok(&mut h, r#"place {"at":[100,0],"rotation":90}"#);
     ok(&mut h, r#"wire {"points":[[90,0],[90,-20]]}"#);
@@ -697,7 +697,7 @@ fn marks_are_not_painted_over_a_paper_space_layout_at_model_positions() {
     let mut h = harness_with(Some(deltas.clone()));
     ok(&mut h, "line 0,0 40,0 40,20 0,20 c");
     let lines: Vec<String> =
-        h.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle.hex()).collect();
+        h.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).map(|e| e.handle.hex()).collect();
     ok(&mut h, &format!("convertcomponent {}", json!({ "handles": lines })));
     ok(&mut h, r#"place {"at":[100,0],"rotation":90}"#);
     view(&mut h);

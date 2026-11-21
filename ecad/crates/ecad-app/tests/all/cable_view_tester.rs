@@ -21,7 +21,7 @@ use crate::common::{self, Opts, Tmp, click, pointer_to};
 use crate::mouse_tester::Deltas;
 use cadcraft_engine::geom::Vec2;
 use ecad_app::{App, tools};
-use ecad_cadcraft::views::{self};
+use ecad_engine::views::{self};
 use eframe::egui::{self, Key, Pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
@@ -48,7 +48,7 @@ fn views_of(h: &mut Harness<'static, App>) -> Value {
 
 fn fan_lines(h: &mut Harness<'static, App>) -> usize {
     let d = h.state_mut().cad.session.doc().unwrap();
-    d.model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).filter(|e| e.common.layer == views::LAYER).count()
+    d.model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).filter(|e| e.common.layer == views::LAYER).count()
 }
 
 fn screen(h: &Harness<'static, App>, x: f64, y: f64) -> Pos2 {
@@ -69,7 +69,7 @@ fn ok(h: &mut Harness<'static, App>, line: &str) {
 fn component(h: &mut Harness<'static, App>, rectangle: &str, x: f64) {
     let t = h.state_mut();
     let before: Vec<_> =
-        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER).map(|e| e.handle).collect();
+        t.cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::frame::LAYER).map(|e| e.handle).collect();
     t.cad.session.cmdline(rectangle).unwrap();
     let lines: Vec<String> = t
         .cad
@@ -78,7 +78,7 @@ fn component(h: &mut Harness<'static, App>, rectangle: &str, x: f64) {
         .unwrap()
         .model
         .iter()
-        .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+        .filter(|e| e.common.layer != ecad_engine::frame::LAYER)
         .map(|e| e.handle)
         .filter(|x| !before.contains(x))
         .map(|x| x.hex())
@@ -397,8 +397,8 @@ fn child_app_reopen() {
         panic!("run only as a child of ac2_app_reopens_each_cable_in_its_view");
     };
     let settings = PathBuf::from(std::env::var_os("ECAD_SETTINGS_DIR").unwrap());
-    ecad_cadcraft::install();
-    ecad_cadcraft::views::isolate_for_tests();
+    ecad_engine::install();
+    ecad_engine::views::isolate_for_tests();
     let mut t = App::new(None).unwrap();
     t.hover_delay = 0.0;
     let mut h = build(t, None);
@@ -423,7 +423,7 @@ fn child_app_reopen() {
     assert_eq!(h.state_mut().status().unwrap().unsaved, 0, "a switch is not an unsaved change");
     drop(h);
     // Reopen through the app (reads ECAD_SETTINGS_DIR).
-    ecad_cadcraft::views::isolate_for_tests();
+    ecad_engine::views::isolate_for_tests();
     let t = App::with_file(None, &path).unwrap();
     let mut h = build(t, None);
     assert!(h.state().notice().is_none_or(|n| !n.contains("could not be read")), "{:?}", h.state().notice());
@@ -434,7 +434,7 @@ fn child_app_reopen() {
     drop(h);
     // Garbage settings: all traditional, the message once, the open works.
     std::fs::write(settings.join(views::FILE_NAME), [0xde, 0xad, 0xbe, 0xef, 0x00, 0x7b]).unwrap();
-    ecad_cadcraft::views::isolate_for_tests();
+    ecad_engine::views::isolate_for_tests();
     let t = App::with_file(None, &path).unwrap();
     let mut h = build(t, None);
     let log = h.state().cad.session.log.clone();

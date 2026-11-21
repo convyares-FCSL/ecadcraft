@@ -39,12 +39,12 @@ pub const KEYS: &[(&str, &str)] = &[
 
 /// Settings ▸ Libraries: the sources the Library reads, with their counts.
 pub fn libraries(t: &mut App, ui: &mut egui::Ui) {
-    let builtin = ecad_cadcraft::symbols::STARTERS.len();
+    let builtin = ecad_engine::symbols::STARTERS.len();
     let project = t
         .project
         .clone()
         .filter(|p| p.is_attached(&t.cad.session))
-        .and_then(|p| p.read(&mut t.cad.session, |p, _| ecad_cadcraft::symbols::project_symbols(p.ledger.document()).len()).ok());
+        .and_then(|p| p.read(&mut t.cad.session, |p, _| ecad_engine::symbols::project_symbols(p.ledger.document()).len()).ok());
     ui.set_max_width(760.0);
     card(
         ui,

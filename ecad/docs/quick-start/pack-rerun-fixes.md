@@ -2,7 +2,7 @@
 
 Eleven bugs found by the drawing-pack recreation re-run, and what each turned out to be. Listed
 in the index of `docs/quick-start.md` (phase-end tidy-up after M1). The tests are `pack_rerun_fixes` in
-`ecad-cadcraft` (one or more per bug) and in `ecad-mcp` (the changed commands through MCP).
+`ecad-engine` (one or more per bug) and in `ecad-mcp` (the changed commands through MCP).
 
 ## What changed
 

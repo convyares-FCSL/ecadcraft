@@ -38,11 +38,11 @@ fn textstyle_writes_one_transaction_by_the_agent_and_reads_with_writes_off() {
     );
     // The font, and the wire label height in the wiring setting (one stored value, §3.4).
     one_by_agent(&mut c, "textstyle", json!({"font": "X"}));
-    assert_eq!(c.doc().properties.get("text.font").map(String::as_str), Some("X"));
+    assert_eq!(c.doc().display.get("text.font").map(String::as_str), Some("X"));
     one_by_agent(&mut c, "textstyle", json!({"kind": "wire_label", "height": 2}));
     assert!(matches!(c.log().last().unwrap().ops.as_slice(), [Op::SetProjectSettings { .. }]));
     assert_eq!(c.doc().settings.wiring.label_height, Some(2.0));
-    assert!(!c.doc().properties.contains_key("text.wire_label.height"));
+    assert!(!c.doc().display.contains_key("text.wire_label.height"));
     // Several fields: one transaction.
     one_by_agent(&mut c, "textstyle", json!({"kind": "tag", "height": null, "weight": "regular"}));
     // Several kinds (the Text section's OK): one transaction.

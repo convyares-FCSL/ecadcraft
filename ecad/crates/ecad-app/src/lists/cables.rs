@@ -10,7 +10,7 @@
 //! models' revision changed, and only while the tab is shown; the core table also when another
 //! cable is selected.
 
-use ecad_cadcraft::outputs::kept::Outputs;
+use ecad_engine::outputs::kept::Outputs;
 use ecad_model::CableId;
 use ecad_ui::prim::Tone;
 use ecad_ui::table::{Cell, Changed, Column, ColumnId, Table, TableEvent, TableSource, Width};
@@ -86,8 +86,8 @@ impl Default for CablesSource {
 
 impl CablesSource {
     /// Brief 057: row `k`'s rating result.
-    pub fn rating(&self, k: usize) -> Option<&ecad_cadcraft::rating::Rating> {
-        self.ids.get(k).and_then(|c| self.rating.results.get(&ecad_cadcraft::rating::RatedSubject::Cable(*c)))
+    pub fn rating(&self, k: usize) -> Option<&ecad_engine::rating::Rating> {
+        self.ids.get(k).and_then(|c| self.rating.results.get(&ecad_engine::rating::RatedSubject::Cable(*c)))
     }
 
     /// Brief 059: whether row `k`'s cable is drawn (unknown rows count as drawn).
@@ -337,7 +337,7 @@ pub struct CablesView {
     /// Brief 059 (owner, board 2.06): the Details pane's tab, Cable (0) or Checks (1), and the
     /// selected cable's Checks rows with their place (`2/E3`), read with its copy.
     pub detail_tab: usize,
-    pub cable_checks: Vec<(ecad_cadcraft::checks::Check, String)>,
+    pub cable_checks: Vec<(ecad_engine::checks::Check, String)>,
     checks_of: Option<(CableId, u64)>,
 }
 
@@ -419,18 +419,13 @@ impl CablesView {
 
     /// Brief 057: bring the rating copy up to date and patch the Checks cells of the re-checked
     /// cables only.
-    pub fn sync_rating(&mut self, serial: u64, kept: &ecad_cadcraft::rating::Kept) {
+    pub fn sync_rating(&mut self, serial: u64, kept: &ecad_engine::rating::Kept) {
         match self.source.rating.sync(serial, kept) {
             None => self.table.update(&self.source, Changed::All),
             Some(v) if v.is_empty() => {}
             Some(v) => {
-                let rows: Vec<usize> = self
-                    .ids
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, c)| v.contains(&ecad_cadcraft::rating::RatedSubject::Cable(**c)))
-                    .map(|(k, _)| k)
-                    .collect();
+                let rows: Vec<usize> =
+                    self.ids.iter().enumerate().filter(|(_, c)| v.contains(&ecad_engine::rating::RatedSubject::Cable(**c))).map(|(k, _)| k).collect();
                 if !rows.is_empty() {
                     self.table.update(&self.source, Changed::Keys(rows));
                 }
@@ -442,7 +437,7 @@ impl CablesView {
     /// cable's open cores; read again only when the selection or the project changed (as the
     /// cable copy itself is).
     pub fn sync_colours(&mut self, doc: &ecad_model::Document, count: u64) {
-        use ecad_cadcraft::styles::cable;
+        use ecad_engine::styles::cable;
         let selected = self.selected().and_then(|k| self.ids.get(k).copied());
         let want = selected.map(|c| (c, count, self.cores_of));
         if want == self.colours_of {
@@ -457,7 +452,7 @@ impl CablesView {
             .ids
             .iter()
             .map(|k| {
-                if ecad_cadcraft::cable_cmds::is_drawn(doc, *k) {
+                if ecad_engine::cable_cmds::is_drawn(doc, *k) {
                     cable::open_cores(doc, *k).into_iter().map(|o| o.label).collect()
                 } else {
                     Vec::new()
@@ -474,7 +469,7 @@ impl CablesView {
             None => self.edit.set_copy(super::cable_editor::Copy::default()),
         }
         let c = &mut self.cores;
-        c.drawn = selected.is_none_or(|k| ecad_cadcraft::cable_cmds::is_drawn(doc, k));
+        c.drawn = selected.is_none_or(|k| ecad_engine::cable_cmds::is_drawn(doc, k));
         c.size = selected.and_then(|k| cable_size(doc, k)).unwrap_or_default();
         c.unused = selected
             .and_then(|k| doc.cables.get(&k))
@@ -490,7 +485,7 @@ impl CablesView {
 
     /// Brief 059 (board 2.06): the selected cable's Checks rows (the kept list's rows about it),
     /// read again only when the selection or the project's change count changed.
-    pub fn sync_checks(&mut self, p: &mut ecad_cadcraft::project::Project, count: u64) {
+    pub fn sync_checks(&mut self, p: &mut ecad_engine::project::Project, count: u64) {
         let selected = self.selected().and_then(|k| self.ids.get(k).copied());
         let want = selected.map(|k| (k, count));
         if want == self.checks_of {
@@ -499,11 +494,11 @@ impl CablesView {
         self.checks_of = want;
         self.cable_checks.clear();
         let Some(k) = selected else { return };
-        let rows: Vec<ecad_cadcraft::checks::Check> =
-            p.checks().rows().filter(|c| c.object == ecad_cadcraft::checks::Object::Cable(k)).cloned().collect();
+        let rows: Vec<ecad_engine::checks::Check> =
+            p.checks().rows().filter(|c| c.object == ecad_engine::checks::Object::Cable(k)).cloned().collect();
         let doc = p.ledger.document();
         let style = doc.settings.reference_style();
-        let mut rows = ecad_cadcraft::checks::sort(doc, rows);
+        let mut rows = ecad_engine::checks::sort(doc, rows);
         rows.truncate(200);
         self.cable_checks = rows
             .into_iter()
@@ -664,7 +659,7 @@ pub fn show_tab(t: &mut crate::App, ui: &mut eframe::egui::Ui) -> Option<(ecad_m
     let cable = v.ids.get(k).copied();
     // Owner rule (board 2.06): a core is open unless ticked Not used; the tick is one `setprop`.
     if let (Some((label, on)), Some(cable)) = (v.show_cores(ui), cable) {
-        let key = ecad_cadcraft::styles::cable::unused_key(&label);
+        let key = ecad_engine::styles::cable::unused_key(&label);
         let value = if on { serde_json::json!("yes") } else { serde_json::Value::Null };
         let _ = t.run_value("setprop", serde_json::json!({"cable": cable.hex(), "key": key, "value": value}));
     }
@@ -672,7 +667,7 @@ pub fn show_tab(t: &mut crate::App, ui: &mut eframe::egui::Ui) -> Option<(ecad_m
 }
 
 /// Brief 059: a cable not drawn as + Cable's menu lists it: `-W03  H07RN-F 4G1.5 · +CAB1 → +FIELD`.
-pub fn undrawn_line(r: &ecad_cadcraft::outputs::CableRow) -> String {
+pub fn undrawn_line(r: &ecad_engine::outputs::CableRow) -> String {
     let dash = super::report::DASH;
     let ends = format!("{} \u{2192} {}", r.planned[0].as_deref().unwrap_or(dash), r.planned[1].as_deref().unwrap_or(dash));
     let tag = r.tag.clone().unwrap_or_default();
@@ -684,13 +679,13 @@ pub fn undrawn_line(r: &ecad_cadcraft::outputs::CableRow) -> String {
 
 /// A cable's core size: its cable type's cross-section, else its type notation's (`4G1.5` → 1.5).
 fn cable_size(doc: &ecad_model::Document, k: CableId) -> Option<String> {
-    use ecad_cadcraft::styles::{self, cable};
+    use ecad_engine::styles::{self, cable};
     let from_type = cable::of(doc, k)
         .and_then(|id| styles::field_of(doc, ecad_model::StyleCatalogue::Cable, &id, "size", None))
-        .and_then(|r| ecad_cadcraft::rating::parse::cross_section(&r.text()));
+        .and_then(|r| ecad_engine::rating::parse::cross_section(&r.text()));
     from_type
-        .or_else(|| doc.cables.get(&k).and_then(|x| x.properties.get("type")).and_then(|t| ecad_cadcraft::strips::notation_size(t)))
-        .map(ecad_cadcraft::rating::dataset::fmt_num)
+        .or_else(|| doc.cables.get(&k).and_then(|x| x.properties.get("type")).and_then(|t| ecad_engine::strips::notation_size(t)))
+        .map(ecad_engine::rating::dataset::fmt_num)
 }
 
 /// The wire beyond point `at` (`-M01:U1`): the number of a wire there that is not one of cable

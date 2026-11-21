@@ -13,8 +13,8 @@
 //! catalogue ([`crate::lists::style_catalogues`]) with the shared style detail on the right. A
 //! later catalogue (050b's wire categories) adds one line there.
 
-use ecad_cadcraft::default_cmds::{self, Target};
-use ecad_cadcraft::defaults::{self, Entry, Level, Scope, Source};
+use ecad_engine::default_cmds::{self, Target};
+use ecad_engine::defaults::{self, Entry, Level, Scope, Source};
 use ecad_ui::table::{Changed, Table, TableEvent};
 use eframe::egui::{self, RichText};
 
@@ -120,7 +120,7 @@ impl Default for StandardsView {
         table.empty = "No project is open.";
         let cats = CATALOGUES
             .iter()
-            .map(|(w, _, id)| (ecad_cadcraft::styles::catalogue(*w), *id))
+            .map(|(w, _, id)| (ecad_engine::styles::catalogue(*w), *id))
             .map(|(c, id)| {
                 let mut tb = Table::new(id, c.plural);
                 tb.empty = "No project is open.";
@@ -311,9 +311,9 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
     ui.painter().vline(list.right() - 0.5, list.y_range(), line);
     let mut tabs: Vec<(String, &str)> = vec![("All defaults".into(), CATALOGUE_DEFAULTS)];
     for (w, name, _) in CATALOGUES {
-        tabs.push((ecad_cadcraft::styles::catalogue(*w).plural.to_string(), name));
+        tabs.push((ecad_engine::styles::catalogue(*w).plural.to_string(), name));
     }
-    let defaults_n = ecad_cadcraft::defaults::all().count();
+    let defaults_n = ecad_engine::defaults::all().count();
     let mut choose = None;
     let mut y = list.top() + space::S;
     for (i, (label, name)) in tabs.into_iter().enumerate() {
@@ -545,7 +545,7 @@ fn header_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
     let read = t.project.clone().and_then(|p| {
         p.read(&mut t.cad.session, |p, _| {
             let doc = p.ledger.document();
-            let (v, n) = ecad_cadcraft::style_cmds::standard_counts(doc);
+            let (v, n) = ecad_engine::style_cmds::standard_counts(doc);
             (doc.standard.as_ref().map(|s| s.header.name.to_string()), v, n)
         })
         .ok()
@@ -639,7 +639,7 @@ fn header_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
                 line = Some(format!("standard {{\"from\":{}}}", serde_json::Value::String(path.trim().to_string())));
             } else if t.settings.standards.header != HeaderMode::Idle {
                 let fresh = if look {
-                    match ecad_cadcraft::style_cmds::read_standard(path.trim()) {
+                    match ecad_engine::style_cmds::read_standard(path.trim()) {
                         Ok(s) => Some((s.header.name.to_string(), s.values.len(), s.styles.values().map(|m| m.len()).sum())),
                         Err(e) => {
                             t.settings.standards.header_error = Some(e.to_string());
@@ -710,7 +710,7 @@ fn style_detail_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
         let doc = p.ledger.document();
         let d = sc::detail(doc, cat, &id);
         let others: Vec<(String, String)> =
-            ecad_cadcraft::styles::rows(doc, cat).into_iter().filter(|r| r.id != id).map(|r| (r.id.text(), r.name)).collect();
+            ecad_engine::styles::rows(doc, cat).into_iter().filter(|r| r.id != id).map(|r| (r.id.text(), r.name)).collect();
         (d, others)
     });
     let Ok((d, others)) = read else { return };

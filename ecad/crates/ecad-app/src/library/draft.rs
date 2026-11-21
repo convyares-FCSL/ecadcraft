@@ -11,7 +11,7 @@ use ecad_model::units::Degrees;
 use ecad_model::units::Radians;
 use std::collections::BTreeMap;
 
-use ecad_cadcraft::symbol_cmds::{self, Content, POINT_GRID_MM};
+use ecad_engine::symbol_cmds::{self, Content, POINT_GRID_MM};
 use ecad_model::{Document, PointKey, Primitive, Pt, TerminalDef, TextHAlign, TextSlot, TextVAlign};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};

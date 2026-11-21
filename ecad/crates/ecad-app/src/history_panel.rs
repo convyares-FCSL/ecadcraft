@@ -26,7 +26,7 @@
 //!   confirmation, design 035 §8); after it ended its steps undo one by one as any others. The
 //!   groups are made when the Steps list is read (its update map above), never per frame.
 
-use ecad_cadcraft::history;
+use ecad_engine::history;
 use ecad_file::history::{BranchRow, Graph, Node, NodeKind, PAGE, STEPS_PAGE, SessionGroup, Show, author_text, sessions_split};
 use ecad_file::schema::{BranchId, BranchStatus};
 use ecad_model::Op;
@@ -227,7 +227,7 @@ impl HistoryPanel {
     }
 
     /// Bring the copy up to date (the update map above). Reads only.
-    pub fn sync(&mut self, serial: u64, p: &ecad_cadcraft::Project) {
+    pub fn sync(&mut self, serial: u64, p: &ecad_engine::Project) {
         let key = (serial, p.change_count(), p.unsaved_transactions(), p.ledger.head());
         let Some(seen) = self.seen else {
             self.rebuild(p, key);
@@ -252,7 +252,7 @@ impl HistoryPanel {
         self.sync_steps(p);
     }
 
-    fn rebuild(&mut self, p: &ecad_cadcraft::Project, key: (u64, u64, u64, u64)) {
+    fn rebuild(&mut self, p: &ecad_engine::Project, key: (u64, u64, u64, u64)) {
         match history::graph(p, self.show) {
             Ok(g) => {
                 self.graph = g;
@@ -283,7 +283,7 @@ impl HistoryPanel {
     }
 
     /// Only the branch shown's Now row and the defaults change (one integer, a label).
-    fn refresh_now(&mut self, p: &ecad_cadcraft::Project, key: (u64, u64, u64, u64)) {
+    fn refresh_now(&mut self, p: &ecad_engine::Project, key: (u64, u64, u64, u64)) {
         let cur = self.graph.current;
         let unsaved = p.unsaved_transactions();
         let head = p.ledger.head();
@@ -313,7 +313,7 @@ impl HistoryPanel {
         }
     }
 
-    fn sync_details(&mut self, p: &ecad_cadcraft::Project) {
+    fn sync_details(&mut self, p: &ecad_engine::Project) {
         let Some(sel) = self.selected.clone() else {
             self.details = None;
             return;
@@ -331,7 +331,7 @@ impl HistoryPanel {
         self.details = Some((sel, v.unwrap_or_else(|e| json!({"error": e}))));
     }
 
-    fn sync_steps(&mut self, p: &ecad_cadcraft::Project) {
+    fn sync_steps(&mut self, p: &ecad_engine::Project) {
         // UI rev 3: the Changes list always shows the branch shown's steps back from Now.
         let Some(sel) = self.anchor() else { return };
         let want = (sel.clone(), self.steps_more);

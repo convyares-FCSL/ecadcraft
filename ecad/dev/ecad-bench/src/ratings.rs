@@ -15,7 +15,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use cadcraft_engine::Session;
-use ecad_cadcraft::ProjectHandle;
+use ecad_engine::ProjectHandle;
 use serde_json::json;
 
 use crate::measure::{median, path_text, remove};
@@ -45,13 +45,13 @@ fn exec(s: &mut Session, cmd: &str, params: serde_json::Value) -> Result<f64, St
 /// # Errors
 /// A copy cannot be made or opened, or a command fails.
 pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRatings, String> {
-    let _ = ecad_cadcraft::install();
+    let _ = ecad_engine::install();
     let copy = scratch.join("ratings.ecad");
     remove(&copy);
     std::fs::copy(path, &copy).map_err(|e| format!("copying {} to {}: {e}", path.display(), copy.display()))?;
     let mut out = MeasuredRatings::default();
     let mut s = Session::empty();
-    let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_cadcraft::views::Settings::none())?;
+    let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::views::Settings::none())?;
     if let Some(p) = project.read(&mut s, |p, _| p.ledger.document().page_order.first().copied())? {
         project.open_page(&mut s, p)?;
     }
@@ -63,11 +63,11 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRatin
     // A protective device and its load-side pin.
     let found = project.configure(&mut s, |p| {
         let t = Instant::now();
-        let _ = ecad_cadcraft::project::engine_views().checks(p.ledger.document(), p.tolerance).len();
+        let _ = ecad_engine::project::engine_views().checks(p.ledger.document(), p.tolerance).len();
         let build = t.elapsed().as_secs_f64() * 1e3;
         let rated = p.checks().rating.results.len();
         let doc = p.ledger.document();
-        let dev = doc.devices.keys().copied().find(|c| ecad_cadcraft::rating::trace::is_protective_component(doc, *c));
+        let dev = doc.devices.keys().copied().find(|c| ecad_engine::rating::trace::is_protective_component(doc, *c));
         let pin = dev.and_then(|c| {
             doc.terminals_of(c).find_map(|(t, x)| {
                 let label = x.label.clone().unwrap_or_default();

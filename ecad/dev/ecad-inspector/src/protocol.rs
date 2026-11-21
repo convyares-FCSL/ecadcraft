@@ -462,7 +462,7 @@ fn wire_name(d: &Document, c: WireId) -> String {
 
 fn project(d: &Document) -> Value {
     let mut props = Map::new();
-    for (k, v) in &d.properties {
+    for (k, v) in &d.display {
         props.insert(k.clone(), json!(v));
     }
     // Design 072 §5.3 (A15): the revision rows, numbered from 1.
@@ -477,7 +477,7 @@ fn project(d: &Document) -> Value {
     let locations = list(d.project.locations.iter().map(|e| entry(e.id.to_string(), &e.code, &e.tag, &e.descriptions)).collect());
     let functions = list(d.project.functions.iter().map(|e| entry(e.id.to_string(), &e.code, &e.tag, &e.descriptions)).collect());
     json!({
-        "properties": props,
+        "display": props,
         "info": d.project.info,
         // Design 072 §5.2 (A15): each folder with its place and start number.
         "folders": d.folder_order.iter().filter_map(|id| d.folders.get(id).map(|f| json!({

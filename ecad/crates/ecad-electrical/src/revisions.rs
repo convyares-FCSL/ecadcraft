@@ -10,7 +10,7 @@
 //!   and `NameVersion { "Rev <rev>", head }` in one transaction, so `Ledger::state_at(at)` reopens the
 //!   project exactly as it was issued.
 //!
-//! This module reads and plans; the commands commit (`ecad_cadcraft::cmd::sheet`).
+//! This module reads and plans; the commands commit (`ecad_engine::cmd::sheet`).
 
 use crate::CmdError;
 use ecad_model::book::MAX_FOLDER_DEPTH;
@@ -582,7 +582,7 @@ mod tests {
         let mut doc = Document::default();
         for v in ["x".repeat(10_000), "rev, ecr@NaN, description".into(), (0..1000).map(|i| format!("f{i}")).collect::<Vec<_>>().join(","), "".into()]
         {
-            doc.properties.insert(COLUMNS_KEY.into(), v);
+            doc.display.insert(COLUMNS_KEY.into(), v);
             let cols = columns(&doc);
             // Brief 055 (FP5): the built-in columns, ECR after Rev.
             assert_eq!(
@@ -592,11 +592,11 @@ mod tests {
             );
         }
         for v in ["", "x", "STAR?"] {
-            doc.properties.insert(PENDING_KEY.into(), v.into());
+            doc.display.insert(PENDING_KEY.into(), v.into());
             assert_eq!(PendingStyle::of(&doc), PendingStyle::Star);
         }
-        doc.properties.insert("tags.case".into(), "x".into());
-        doc.properties.insert("tags.dash".into(), "maybe".into());
+        doc.display.insert("tags.case".into(), "x".into());
+        doc.display.insert("tags.dash".into(), "maybe".into());
         assert_eq!(crate::defaults::print::tag_style(&doc), ecad_model::tag::Style::from(doc.settings.tag_padding()));
     }
 
@@ -604,8 +604,8 @@ mod tests {
     fn the_registry_and_ecad_model_read_the_tag_style_alike() {
         let mut doc = Document::default();
         for (dash, case) in [("yes", "upper"), ("no", "typed"), ("NO", "Typed"), ("", "")] {
-            doc.properties.insert("tags.dash".into(), dash.into());
-            doc.properties.insert("tags.case".into(), case.into());
+            doc.display.insert("tags.dash".into(), dash.into());
+            doc.display.insert("tags.case".into(), case.into());
             assert_eq!(crate::defaults::print::tag_style(&doc), ecad_model::tag::Style::of(&doc), "{dash} {case}");
         }
     }

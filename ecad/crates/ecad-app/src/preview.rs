@@ -3,7 +3,7 @@
 //! reference without leaving the active page.
 //!
 //! It is drawn when it opens and again only on a resize, a zoom or pan inside it, or a change that
-//! could touch its page (the project's change log, [`ecad_cadcraft::Project::changes_since`]); it
+//! could touch its page (the project's change log, [`ecad_engine::Project::changes_since`]); it
 //! is never redrawn per frame. The project is held only while the page is projected; the display
 //! list is built and rasterised with the project released. It records nothing and never touches
 //! the active page's selection, view or history.
@@ -14,9 +14,9 @@ use std::sync::Arc;
 
 use cadcraft_ui_egui::icons::{self, Icon};
 use cadcraft_ui_egui::theme::Tokens;
-use ecad_cadcraft::ProjectHandle;
-use ecad_cadcraft::cad::Drawing;
-use ecad_cadcraft::preview::{PREVIEW_SPAN_MM, PreviewView, preview_drawing, rasterise};
+use ecad_engine::ProjectHandle;
+use ecad_engine::cad::Drawing;
+use ecad_engine::preview::{PREVIEW_SPAN_MM, PreviewView, preview_drawing, rasterise};
 use ecad_model::{PageId, Pt};
 use eframe::egui::{self, Color32, Rect, RichText, Sense, Stroke, pos2, vec2};
 
@@ -107,7 +107,7 @@ impl Preview {
 
     /// Bring the projection up to date (only when a change could have touched the page). Returns
     /// `false` when the page no longer exists.
-    pub fn update(&mut self, project: &ProjectHandle, s: &mut ecad_cadcraft::cad::Session) -> bool {
+    pub fn update(&mut self, project: &ProjectHandle, s: &mut ecad_engine::cad::Session) -> bool {
         let page = self.page;
         if let Some((doc, name)) = self.revision.clone() {
             // A frozen copy: projected once.
@@ -115,10 +115,10 @@ impl Preview {
                 let tol = project.read(s, |p, _| p.tolerance).unwrap_or(1e-6);
                 self.title = format!(
                     "{name} · page {}: {}",
-                    ecad_cadcraft::references::page_number(&doc, page),
+                    ecad_engine::references::page_number(&doc, page),
                     doc.pages.get(&page).map(|x| x.title.as_str()).unwrap_or_default()
                 );
-                match ecad_cadcraft::preview::preview_drawing_of(&doc, page, tol) {
+                match ecad_engine::preview::preview_drawing_of(&doc, page, tol) {
                     Ok(d) => {
                         if self.view.height <= 0.0 {
                             self.view = PreviewView::extents(&d, self.size[0], self.size[1]);
@@ -143,7 +143,7 @@ impl Preview {
             }
             let title = format!(
                 "page {}: {}",
-                ecad_cadcraft::references::page_number(doc, page),
+                ecad_engine::references::page_number(doc, page),
                 doc.pages.get(&page).map(|x| x.title.as_str()).unwrap_or_default()
             );
             let stale = match since {

@@ -51,7 +51,7 @@ impl App {
                         .map(|c| {
                             (
                                 c.component,
-                                ecad_cadcraft::devices::tag_words(doc, c.component),
+                                ecad_engine::devices::tag_words(doc, c.component),
                                 c.aspect.word(),
                                 c.from.clone(),
                                 c.to.clone(),
@@ -64,7 +64,7 @@ impl App {
                         .iter()
                         .flat_map(|r| doc.representations_of(ecad_model::Subject::Device(r.0)).map(move |(_, x)| (r.0, x)))
                         .filter(|(_, x)| Some(x.page) == shown)
-                        .filter_map(|(c, x)| ecad_cadcraft::locations::anchor(doc, x).map(|a| (c, a)))
+                        .filter_map(|(c, x)| ecad_engine::locations::anchor(doc, x).map(|a| (c, a)))
                         .collect();
                     (rows, anchors)
                 })
@@ -149,7 +149,7 @@ impl App {
             for (c, a) in &anchors {
                 let colour =
                     if Some(*c) == chosen { ecad_drawing_style::sheet::PAPER.warning } else { ecad_drawing_style::sheet::PAPER.wire_end_attached };
-                let at = xf.to_screen(ecad_cadcraft::cad::Vec2::new(a.x, a.y));
+                let at = xf.to_screen(ecad_engine::cad::Vec2::new(a.x, a.y));
                 painter.circle_stroke(at, r, egui::Stroke::new(2.0, ecad_ui::color(colour)));
             }
         }

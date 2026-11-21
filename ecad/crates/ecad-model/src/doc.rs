@@ -1434,10 +1434,10 @@ pub struct Document {
     pub settings: ProjectSettings,
     /// Named versions (bookmarks): name → the `seq` it names (§6.1). History, never pruned.
     pub versions: BTreeMap<String, u64>,
-    /// The project's own properties (brief 019, decision FP1): title, drawing number, customer,
+    /// The project's own display bag (brief 019, decision FP1): title, drawing number, customer,
     /// status, default function and location, revisions (`rev.<n>.<field>`) and free ones.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub properties: Properties,
+    pub display: Properties,
     /// The project's own data: the location and function lists (design 072 §5.3).
     #[serde(skip_serializing_if = "crate::project::Project::is_empty")]
     pub project: crate::project::Project,
@@ -1485,7 +1485,7 @@ struct DocumentData {
     settings: ProjectSettings,
     versions: BTreeMap<String, u64>,
     #[serde(default)]
-    properties: Properties,
+    display: Properties,
     #[serde(default)]
     project: crate::project::Project,
     #[serde(default)]
@@ -1517,7 +1517,7 @@ impl From<DocumentData> for Document {
             definitions,
             settings,
             versions,
-            properties,
+            display,
             project,
             folders,
             folder_order,
@@ -1541,7 +1541,7 @@ impl From<DocumentData> for Document {
             definitions,
             settings,
             versions,
-            properties,
+            display,
             project,
             folders,
             folder_order,
@@ -1575,7 +1575,7 @@ impl PartialEq for Document {
             definitions,
             settings,
             versions,
-            properties,
+            display,
             project,
             folders,
             folder_order,
@@ -1600,7 +1600,7 @@ impl PartialEq for Document {
             && *definitions == other.definitions
             && *settings == other.settings
             && *versions == other.versions
-            && *properties == other.properties
+            && *display == other.display
             && *project == other.project
             && *folders == other.folders
             && *folder_order == other.folder_order

@@ -14,7 +14,7 @@ reference style. Their built-ins are ecad-model's own data (`crates/ecad-model/d
 settings.toml`) and nowhere else; the registry reads them from ecad-model. Report tables'
 row and header heights are data as well, and the rows per A3 sheet (44) are computed from them.
 
-Checked automatically (`cargo test -p ecad-cadcraft lane_066`); the click steps below have not
+Checked automatically (`cargo test -p ecad-engine lane_066`); the click steps below have not
 been tried by the owner yet.
 
 ## Try it

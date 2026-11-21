@@ -387,7 +387,7 @@ fn delete_erases_the_selection() {
             .unwrap()
             .model
             .iter()
-            .filter(|e| e.common.layer != ecad_cadcraft::frame::LAYER)
+            .filter(|e| e.common.layer != ecad_engine::frame::LAYER)
             .map(|e| e.handle)
             .collect::<Vec<_>>()
     };

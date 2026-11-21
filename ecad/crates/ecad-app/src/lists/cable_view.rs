@@ -2,7 +2,7 @@
 //! and the field end with their connection points, the cable body with its tag, type and length,
 //! a gland at each end, each core in its own colour through to its point, and open ends in red.
 //! **Swap ends** draws it mirrored; **Cores only** hides it. The core colours come from the
-//! cable's cable type (`core_colours`, [`ecad_cadcraft::styles::cable::core_colours`]); a core
+//! cable's cable type (`core_colours`, [`ecad_engine::styles::cable::core_colours`]); a core
 //! labelled with a colour code (`GNYE`) is drawn in it.
 //!
 //! **Update map.** Nothing of its own: it draws what the tab's view holds (the core table's copy
@@ -59,7 +59,7 @@ pub struct Drawing {
 /// cable type's colour at that place.
 pub fn core_colour(label: &str, i: usize, colours: &[String]) -> Option<String> {
     let l = label.trim();
-    if l.chars().any(|c| c.is_ascii_alphabetic()) && ecad_cadcraft::look::colour_code(l).is_some() {
+    if l.chars().any(|c| c.is_ascii_alphabetic()) && ecad_engine::look::colour_code(l).is_some() {
         return Some(l.to_ascii_uppercase());
     }
     colours.get(i).cloned()
@@ -74,7 +74,7 @@ fn pin(of: &str) -> &str {
 /// true (paper) colour on either sheet, so black stays black; [`core_line`] gives a dark core an
 /// outline that keeps it readable on the dark sheet (owner look check).
 fn colours(code: Option<&str>) -> (Color32, Option<Color32>) {
-    match code.and_then(ecad_model::wire::Colours::parse).and_then(|c| ecad_cadcraft::look::wire_colours(&c, &ecad_drawing_style::sheet::PAPER)) {
+    match code.and_then(ecad_model::wire::Colours::parse).and_then(|c| ecad_engine::look::wire_colours(&c, &ecad_drawing_style::sheet::PAPER)) {
         Some(w) => (ecad_ui::color(w.solid), w.dashes.map(ecad_ui::color)),
         None => (ecad_ui::color(ecad_ui::SHELL.text_2), None),
     }
@@ -82,7 +82,7 @@ fn colours(code: Option<&str>) -> (Color32, Option<Color32>) {
 
 /// The bars of colour code `code` (one, or two for a two-colour code), in its true colours.
 pub fn bars(code: &str) -> Vec<ecad_ui::tokens::Color> {
-    match ecad_model::wire::Colours::parse(code).and_then(|c| ecad_cadcraft::look::wire_colours(&c, &ecad_drawing_style::sheet::PAPER)) {
+    match ecad_model::wire::Colours::parse(code).and_then(|c| ecad_engine::look::wire_colours(&c, &ecad_drawing_style::sheet::PAPER)) {
         Some(w) => std::iter::once(w.solid).chain(w.dashes).collect(),
         None => Vec::new(),
     }
@@ -91,13 +91,13 @@ pub fn bars(code: &str) -> Vec<ecad_ui::tokens::Color> {
 impl crate::App {
     /// An open core's fix (brief 057, owner): `0` ticks it Not used (one `setprop`); `1` goes to
     /// the cable (an open core has no wire of its own).
-    pub(crate) fn core_fix(&mut self, f: ecad_cadcraft::checks::Fix, k: usize) {
-        use ecad_cadcraft::checks::{Check, Fix, Kind, Object};
+    pub(crate) fn core_fix(&mut self, f: ecad_engine::checks::Fix, k: usize) {
+        use ecad_engine::checks::{Check, Fix, Kind, Object};
         let Fix::CoreOpen(cable, i) = f else { return };
         let Some(p) = self.project.clone() else { return };
         let read = p.read(&mut self.cad.session, |p, _| {
             let doc = p.ledger.document();
-            let open = ecad_cadcraft::styles::cable::open_cores(doc, cable).into_iter().nth(usize::from(i))?;
+            let open = ecad_engine::styles::cable::open_cores(doc, cable).into_iter().nth(usize::from(i))?;
             // An open core is an offered core no member uses: it has no end of its own, so the
             // go-to shows the cable.
             let (page, at) =
@@ -107,7 +107,7 @@ impl crate::App {
         });
         let Ok(Some((label, (page, at, object)))) = read else { return };
         if k == 0 {
-            let key = ecad_cadcraft::styles::cable::unused_key(&label);
+            let key = ecad_engine::styles::cable::unused_key(&label);
             let _ = self.run_value("setprop", json!({"cable": cable.hex(), "key": key, "value": "yes"}));
             return;
         }

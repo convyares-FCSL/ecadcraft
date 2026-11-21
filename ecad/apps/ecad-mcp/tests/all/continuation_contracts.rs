@@ -50,7 +50,7 @@ fn contcaption_and_place_with_a_caption_by_the_agent() {
     let k = c.exec("place", json!({"symbol": "coil", "at": [200, 50]}));
     let n = c.log().len();
     let m = c.refused("execute", json!({"command": "contcaption", "params": {"continuations": [hex(&k, "component")], "caption": "X"}}));
-    assert_eq!(m, ecad_cadcraft::continuations::NO_SUCH_ARROW, "a device is not an arrow");
+    assert_eq!(m, ecad_engine::continuations::NO_SUCH_ARROW, "a device is not an arrow");
     assert_eq!(c.log().len(), n);
 }
 

@@ -41,6 +41,6 @@ No name is stored for a person: History says **You** (owner, 2026-11-13).
   agent_banner_ui` (4 tests: the states and controls by 035's element names; the slot, pill, go-to,
   Pause, Undo session and Dismiss over the live bridge; History's groups and chips; the outline,
   not an entity, absent over Lists, and no project read over 300 idle frames) and `cargo test -p
-  ecad-cadcraft --test all history_sessions_contracts` (session grouping). 035's tests unchanged.
+  ecad-engine --test all history_sessions_contracts` (session grouping). 035's tests unchanged.
 - *Agent-observed:* screenshots in the pull request, from the headless renderer.
 - *Owner-tried:* not yet.

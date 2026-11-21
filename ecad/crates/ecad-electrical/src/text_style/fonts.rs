@@ -3,7 +3,7 @@
 //!
 //! Which fonts a machine has and how wide a text is drawn are the drawing engine's knowledge. It
 //! reaches the rules through one trait, [`TextMetrics`]: is a font found, and how wide is a text in
-//! it. ecad-cadcraft implements it over CADCraft's fonts and keeps wrappers with the engine-free
+//! it. ecad-engine implements it over CADCraft's fonts and keeps wrappers with the engine-free
 //! signatures (`text_style::Fonts::resolve(doc)`, `text_style::Look::new(doc)`, `width_in`,
 //! `text_width`). [`FixedWidth`] is a fixed-width implementation for tests.
 //!

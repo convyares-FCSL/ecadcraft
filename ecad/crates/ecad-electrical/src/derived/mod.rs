@@ -14,7 +14,7 @@
 //! issued or finalised revision) is read through [`Views::detached`].
 //!
 //! This module excludes the engine: what the engine does with [`Changes`] (the change log, the
-//! redraw) is ecad-cadcraft's `Project::apply_changes`.
+//! redraw) is ecad-engine's `Project::apply_changes`.
 #![deny(clippy::wildcard_enum_match_arm)]
 
 mod changes;
@@ -50,7 +50,7 @@ pub use tree::{TreeFeed, TreeScope};
 use crate::text_style::fonts::TextMetrics;
 
 /// What the engine supplies to the views (design 064 §5.2): the text metrics, and any later
-/// engine-made input. ecad-cadcraft fills it in.
+/// engine-made input. ecad-engine fills it in.
 #[derive(Clone)]
 pub struct EngineInputs {
     /// How wide a text is drawn on this machine.

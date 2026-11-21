@@ -13,8 +13,8 @@
 //! action table, by label and search words). Picking one of those runs it at once: a page is
 //! shown, an action runs on the selection or starts its tool ([`SymbolSearch::ran`]).
 
-use ecad_cadcraft::devices;
-use ecad_cadcraft::symbols;
+use ecad_engine::devices;
+use ecad_engine::symbols;
 use ecad_model::{DeviceId, Document, Subject};
 use eframe::egui;
 
@@ -35,7 +35,7 @@ pub const MAX_ROWS: usize = 10;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Pick {
     /// Place Symbol with this starter symbol.
-    Symbol(ecad_cadcraft::symbols::StarterKey),
+    Symbol(ecad_engine::symbols::StarterKey),
     /// Place Symbol adding a symbol to the device with this tag.
     Device(String),
     /// Brief 041: show this page.
@@ -66,9 +66,9 @@ pub fn rows(doc: Option<&Document>, query: &str) -> (Vec<Row>, usize, Option<Str
         && !q.is_empty()
     {
         let ql = q.to_lowercase();
-        let pages = ecad_cadcraft::tree_rows(doc, |_| false).into_iter().filter_map(|r| match r {
-            ecad_cadcraft::TreeRow::Page(p) => Some(p),
-            ecad_cadcraft::TreeRow::Folder { .. } => None,
+        let pages = ecad_engine::tree_rows(doc, |_| false).into_iter().filter_map(|r| match r {
+            ecad_engine::TreeRow::Page(p) => Some(p),
+            ecad_engine::TreeRow::Folder { .. } => None,
         });
         for p in pages.filter(|p| p.number.to_lowercase() == ql || p.title.to_lowercase().contains(&ql)).take(MAX_PAGES) {
             out.push(Row { text: format!("{:<6} {:<26}  (page)", p.number, clip(&p.title, 26)), pick: Pick::Page(p.id) });
@@ -128,7 +128,7 @@ fn clip(t: &str, n: usize) -> String {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Choice {
     pub text: String,
-    pub symbol: ecad_cadcraft::symbols::StarterKey,
+    pub symbol: ecad_engine::symbols::StarterKey,
     pub device: Option<String>,
 }
 
@@ -139,7 +139,7 @@ pub const MAX_CHOICES: usize = 10;
 /// then the devices it can join (those of its own prefix first, and among them those with a main
 /// symbol such as a coil first). A device: the symbols it can take, its own prefix's first. Only
 /// what joining would accept is listed.
-pub fn choices(p: &ecad_cadcraft::Project, pick: &Pick) -> Vec<Choice> {
+pub fn choices(p: &ecad_engine::Project, pick: &Pick) -> Vec<Choice> {
     let doc = p.ledger.document();
     let none = std::collections::BTreeSet::new();
     match pick {
@@ -384,7 +384,7 @@ impl SymbolSearch {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ecad_cadcraft::symbols::StarterKey as K;
+    use ecad_engine::symbols::StarterKey as K;
 
     #[test]
     fn rows_without_a_project_list_symbols() {

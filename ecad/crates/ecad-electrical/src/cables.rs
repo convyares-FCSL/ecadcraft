@@ -1,7 +1,7 @@
 //! The cable planning model (design 059 §2; design 065 §3, cut 2): the fields a cable stores, their
 //! bounds, and the reads over them (planned ends, glands, shield, part values, drawn pages and
 //! ends, off-plan ends and value checks). Pure rules over the document; the commands that write
-//! them are `ecad_cadcraft::cmd::cable`.
+//! them are `ecad_engine::cmd::cable`.
 
 use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};

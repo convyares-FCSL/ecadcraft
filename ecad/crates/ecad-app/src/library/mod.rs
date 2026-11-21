@@ -15,8 +15,8 @@ pub mod review;
 pub mod title_blocks;
 pub mod view;
 
-use ecad_cadcraft::symbol_cmds::Content;
-use ecad_cadcraft::symbols;
+use ecad_engine::symbol_cmds::Content;
+use ecad_engine::symbols;
 use ecad_model::{DefinitionId, Form, ItemKind, Subject};
 use serde_json::{Value, json};
 
@@ -180,7 +180,7 @@ impl App {
     ///
     /// # Errors
     /// Nothing to make a symbol of, or part of the selection has a meaning.
-    pub fn make_symbol(&mut self, target: Option<&ecad_cadcraft::interact::kind::Target>) -> Result<(), String> {
+    pub fn make_symbol(&mut self, target: Option<&ecad_engine::interact::kind::Target>) -> Result<(), String> {
         let p = self.project.clone().ok_or("No project is open.")?;
         if let Some(t) = target.filter(|t| t.drawn)
             && let Some(c) = t.component
@@ -194,7 +194,7 @@ impl App {
                         prims.push(pr.clone());
                     }
                 }
-                let o = ecad_cadcraft::symbol_cmds::grid_origin(&prims);
+                let o = ecad_engine::symbol_cmds::grid_origin(&prims);
                 let points: Vec<ecad_model::TerminalDef> = rep
                     .connection_points
                     .iter()
@@ -213,8 +213,8 @@ impl App {
                         })
                     })
                     .collect();
-                let graphics = prims.iter().map(|g| ecad_cadcraft::symbol_cmds::shifted(g, o)).collect();
-                let tag = ecad_cadcraft::devices::tag_words(doc, c);
+                let graphics = prims.iter().map(|g| ecad_engine::symbol_cmds::shifted(g, o)).collect();
+                let tag = ecad_engine::devices::tag_words(doc, c);
                 Some((graphics, points, tag, [o.x, o.y]))
             })?;
             let (graphics, points, tag, at) = found.ok_or("That device has no drawing to make a symbol of.")?;
@@ -241,19 +241,19 @@ impl App {
             let mut prims = Vec::new();
             for h in &handles {
                 match view.map.get(*h) {
-                    Some(ecad_cadcraft::project::Mapped::Item(i)) if doc.representation_of_item(i).is_none() => {
+                    Some(ecad_engine::project::Mapped::Item(i)) if doc.representation_of_item(i).is_none() => {
                         match doc.items.get(&i).map(|x| &x.kind) {
                             Some(ItemKind::Primitive(pr)) => prims.push(pr.clone()),
                             _ => return Err("Make symbol takes lines, arcs and text.".into()),
                         }
                     }
                     // The same words as `makesymbol`'s refusal, naming the object (design 048 §9.5).
-                    Some(ecad_cadcraft::project::Mapped::Item(i)) => return Err(ecad_cadcraft::symbol_cmds::not_plain(doc, i)),
+                    Some(ecad_engine::project::Mapped::Item(i)) => return Err(ecad_engine::symbol_cmds::not_plain(doc, i)),
                     Some(_) => return Err("Make symbol takes lines, arcs and text; part of the selection already has a meaning.".into()),
                     None => return Err("The selection holds an object this page does not know.".into()),
                 }
             }
-            Ok((prims, ecad_cadcraft::references::page_number(doc, page)))
+            Ok((prims, ecad_engine::references::page_number(doc, page)))
         })??;
         let (prims, number) = found;
         if prims.is_empty() {
@@ -396,7 +396,7 @@ impl App {
         let Some(p) = self.project.clone() else { return };
         let found = p.read(&mut self.cad.session, |p, _| {
             let doc = p.ledger.document();
-            let (shown, _, _) = ecad_cadcraft::symbol_cmds::update_available(doc, rep)?;
+            let (shown, _, _) = ecad_engine::symbol_cmds::update_available(doc, rep)?;
             let lineage = symbols::Version::of(shown, doc.definitions.get(&shown)?)?.lineage;
             let newest = symbols::newest(doc, lineage)?;
             Some((shown, Content::of(newest.def), newest.def.name.clone()))
@@ -449,7 +449,7 @@ impl App {
             self.cad.session.echo(e.to_string());
             return;
         }
-        if let Err(e) = self.cad.session.input(ecad_cadcraft::cad::Input::Text(key.to_string())) {
+        if let Err(e) = self.cad.session.input(ecad_engine::cad::Input::Text(key.to_string())) {
             self.cad.session.echo(e.to_string());
         }
     }

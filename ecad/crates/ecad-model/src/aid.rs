@@ -9,7 +9,7 @@
 //! - A [`Aid::Box`] marks a location (and function) on a page; the devices inside it take its
 //!   values unless their own are fixed (§6.3). No box id is stored on a device.
 //!
-//! This module excludes how aids are drawn and edited (ecad-electrical, ecad-cadcraft) and the
+//! This module excludes how aids are drawn and edited (ecad-electrical, ecad-engine) and the
 //! nets continuations join (connectivity).
 
 use serde::{Deserialize, Serialize};

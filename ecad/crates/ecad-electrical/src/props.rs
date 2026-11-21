@@ -462,7 +462,7 @@ fn part_row(doc: &Document, props: Option<&ecad_model::Properties>, key: &str, l
     match own {
         Some(v) => Row::rw(key, &label, v),
         None => {
-            let from = doc.properties.get(&crate::accessories::project_key(key)).cloned().unwrap_or_default();
+            let from = doc.display.get(&crate::accessories::project_key(key)).cloned().unwrap_or_default();
             Row { inherited: !from.is_empty(), ..Row::rw(key, &label, from) }
         }
     }

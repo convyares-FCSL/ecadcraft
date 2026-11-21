@@ -23,14 +23,14 @@ use cadcraft_mcp::{Backend, Remote};
 use serde_json::{Value, json};
 
 /// The port the desktop app listens on by default (design 035 §17, 1).
-pub const DEFAULT_PORT: u16 = ecad_cadcraft::agent::access::DEFAULT_PORT;
+pub const DEFAULT_PORT: u16 = ecad_engine::agent::access::DEFAULT_PORT;
 /// How long the probe waits for the window to accept.
 pub const PROBE_TIMEOUT: Duration = Duration::from_millis(300);
 /// How long `ecad.bye` may take when the server stops.
 pub const BYE_TIMEOUT: Duration = Duration::from_secs(1);
 
 // The words the window shares (design 065 §3, cut 12), at their old paths.
-pub use ecad_cadcraft::agent::bridge::{ALLOWED_METHODS, SAY_HELLO, not_offered};
+pub use ecad_engine::agent::bridge::{ALLOWED_METHODS, SAY_HELLO, not_offered};
 
 /// Where the server's calls go.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,7 +108,7 @@ pub fn reword(port: u16, method: &str, e: &str) -> String {
 
 /// A fresh bridge session id: 16 hex digits.
 pub fn new_session_id() -> String {
-    format!("{:016x}", ecad_cadcraft::session_seed())
+    format!("{:016x}", ecad_engine::session_seed())
 }
 
 /// One server's connection to the window.

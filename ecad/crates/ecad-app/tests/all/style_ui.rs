@@ -6,7 +6,7 @@
 
 use ecad_app::lists::style_catalogues as sc;
 use ecad_app::settings::standards;
-use ecad_cadcraft::defaults::Source;
+use ecad_engine::defaults::Source;
 use ecad_model::StyleRef;
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};
@@ -113,10 +113,10 @@ fn the_inspector_chooses_a_text_style_for_the_device() {
     h.run_steps(3);
     assert!(h.query_by_label("ecad.inspector.style.text.tag.style").is_some());
     let large = style.styles.iter().find(|(_, n)| n == "Tag large").unwrap().0.clone();
-    let line = ecad_cadcraft::default_cmds::line(
+    let line = ecad_engine::default_cmds::line(
         "text.tag.style",
-        ecad_cadcraft::defaults::Level::Object,
-        ecad_cadcraft::default_cmds::Target::Device(c),
+        ecad_engine::defaults::Level::Object,
+        ecad_engine::default_cmds::Target::Device(c),
         Some(&large),
     );
     h.state_mut().inspector_action(ecad_app::shell::right::InspectorAction::Run("text.tag.style", line));
@@ -195,7 +195,7 @@ fn look_check_screenshots() {
 
     // One page printed mono and in colour.
     if let Some(dir) = &out {
-        ecad_cadcraft::printbook::install_io();
+        ecad_engine::printbook::install_io();
         for (word, file) in [("mono", "050-print-mono.pdf"), ("colour", "050-print-colour.pdf")] {
             let path = dir.join(file).to_string_lossy().into_owned();
             let r = h.state_mut().cad.session.execute("printbook", &serde_json::json!({"scope": {"pages": "1"}, "path": path, "colour": word}));

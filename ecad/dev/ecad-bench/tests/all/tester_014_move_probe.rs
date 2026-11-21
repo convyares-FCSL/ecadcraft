@@ -11,7 +11,7 @@ use std::fmt::Write as _;
 use cadcraft_engine::doc::Handle;
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Input, Session};
-use ecad_cadcraft::{Mapped, ProjectHandle};
+use ecad_engine::{Mapped, ProjectHandle};
 use ecad_model::derive::terminal_positions;
 use ecad_model::{DeviceId, Document, PageId, Subject};
 
@@ -53,8 +53,8 @@ fn move_components_with_wires_on_the_kept_small_project() {
         eprintln!("ECAD_014_PROJECT / ECAD_014_OUT not set: probe skipped");
         return;
     };
-    ecad_cadcraft::install();
-    ecad_cadcraft::views::isolate_for_tests();
+    ecad_engine::install();
+    ecad_engine::views::isolate_for_tests();
     // Work on a copy, so the kept project is left as it is.
     let dir = std::env::temp_dir().join(format!("ecad-014-probe-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -62,7 +62,7 @@ fn move_components_with_wires_on_the_kept_small_project() {
     std::fs::copy(&path, &copy).unwrap();
     let mut s = Session::empty();
     s.viewport_px = (1280.0, 800.0);
-    let (project, _) = ProjectHandle::open_file_in(&mut s, copy.to_str().unwrap(), 14, ecad_cadcraft::views::Settings::none()).unwrap();
+    let (project, _) = ProjectHandle::open_file_in(&mut s, copy.to_str().unwrap(), 14, ecad_engine::views::Settings::none()).unwrap();
 
     // Components on page 1 with at least one wire attached, with their symbol handle and the
     // position of their first terminal.

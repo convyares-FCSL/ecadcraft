@@ -1,5 +1,5 @@
 //! The kept Devices list (see [`super`]): refreshed from a change count and the devices each change
-//! touched. ecad-cadcraft's `crate::device_list::DeviceList` wraps it, reading them from its
+//! touched. ecad-engine's `crate::device_list::DeviceList` wraps it, reading them from its
 //! project.
 
 use ecad_model::Document;

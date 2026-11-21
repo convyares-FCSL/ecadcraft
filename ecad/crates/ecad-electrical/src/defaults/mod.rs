@@ -4,7 +4,7 @@
 //! Code that needs the value asks [`resolve`] (or a typed reader over it, such as
 //! [`crate::text_style::text_style`]); it never writes the number where it is used. The read-only
 //! `defaults` command and Settings ▸ Standards (brief 042) list the entries; `setdefault`
-//! (`ecad_cadcraft::cmd::default`) writes them at a level.
+//! (`ecad_engine::cmd::default`) writes them at a level.
 //!
 //! Each lane owns one file and appends to its own `ENTRIES` slice: `text.rs` (lane T, 031),
 //! `wires.rs` (W, 032), `print.rs` (P, 033), `symbols.rs` (S, 034). [`all`] chains them and does
@@ -509,7 +509,7 @@ pub fn resolve<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Resolved<'a> 
     }
     if entry.allows(Level::Project) {
         let value = match entry.project {
-            ProjectSource::Property => stored(&doc.properties, entry.key),
+            ProjectSource::Property => stored(&doc.display, entry.key),
             ProjectSource::Settings(read) => read(&doc.settings).filter(|v| entry.accepts(v)),
         };
         if let Some(value) = value {
@@ -563,7 +563,7 @@ pub fn chain<'a>(doc: &'a Document, entry: &Entry, at: Scope) -> Vec<(Source, Op
         out.push((Source::Standard, standard_value(doc, entry)));
     }
     let project = match entry.project {
-        ProjectSource::Property => stored(&doc.properties, entry.key),
+        ProjectSource::Property => stored(&doc.display, entry.key),
         ProjectSource::Settings(read) => read(&doc.settings).filter(|v| entry.accepts(v)),
     };
     if entry.allows(Level::Project) || project.is_some() {
@@ -677,7 +677,7 @@ mod tests {
         for bad in ["NaN", "nan", "inf", "-inf", "1e308", "0.1", "11", "abc", "", "  ", "2.5mm", long.as_str()] {
             assert_eq!(tag.parse(bad), None, "height {bad:?}");
             let mut doc = Document::default();
-            doc.properties.insert(tag.key.into(), bad.into());
+            doc.display.insert(tag.key.into(), bad.into());
             assert_eq!(resolve(&doc, tag, Scope::project()), Resolved { value: tag.builtin(), from: Source::Builtin });
         }
         for bad in ["", "a\u{7}b", "line\nbreak", &"f".repeat(65), long.as_str()] {
@@ -695,7 +695,7 @@ mod tests {
         let mut doc = Document::default();
         let page = PageId(7);
         doc.pages.insert(page, Page::titled("p").unwrap());
-        doc.properties.insert(show.key.into(), "no".into());
+        doc.display.insert(show.key.into(), "no".into());
         if let Some(p) = doc.pages.get_mut(&page) {
             p.display.insert(show.key.into(), "sideways".into());
         }
@@ -713,7 +713,7 @@ mod tests {
         doc.devices.insert(comp, Device::default());
         let at = Scope { page: Some(page), component: Some(comp), rep: Some(rep), conductor: None };
         assert_eq!(resolve(&doc, show, at).from, Source::Builtin);
-        doc.properties.insert(show.key.into(), "no".into());
+        doc.display.insert(show.key.into(), "no".into());
         assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("no"), from: Source::Project });
         doc.pages.get_mut(&page).map(|p| p.display.insert(show.key.into(), "yes".into()));
         assert_eq!(resolve(&doc, show, at), Resolved { value: Value::Choice("yes"), from: Source::Page });
@@ -835,7 +835,7 @@ mod kind_tests {
         assert_eq!(PARSED.parse("ka"), None);
         assert_eq!(PARSED.parse("KAAA"), None);
         let mut doc = Document::default();
-        doc.properties.insert(PARSED.key.into(), "x1".into());
+        doc.display.insert(PARSED.key.into(), "x1".into());
         assert_eq!(resolve(&doc, &PARSED, Scope::project()).from, Source::Builtin);
     }
 
@@ -844,7 +844,7 @@ mod kind_tests {
         let mut doc = Document::default();
         assert_eq!(resolve(&doc, &CHOICE, Scope::project()), Resolved { value: Value::Choice("net"), from: Source::Builtin });
         // A property of the same key is never a second project path.
-        doc.properties.insert(CHOICE.key.into(), "each".into());
+        doc.display.insert(CHOICE.key.into(), "each".into());
         assert_eq!(resolve(&doc, &CHOICE, Scope::project()).from, Source::Builtin);
         doc.settings.tag_padding = Some(3);
         assert_eq!(resolve(&doc, &CHOICE, Scope::project()), Resolved { value: Value::Choice("each"), from: Source::Project });
@@ -853,7 +853,7 @@ mod kind_tests {
     #[test]
     fn an_entry_may_declare_fewer_levels() {
         let mut doc = Document::default();
-        doc.properties.insert(PAGE_ONLY.key.into(), "5".into());
+        doc.display.insert(PAGE_ONLY.key.into(), "5".into());
         assert_eq!(resolve(&doc, &PAGE_ONLY, Scope::project()).from, Source::Builtin);
         let page = PageId(9);
         doc.pages.insert(page, ecad_model::Page::titled("p").unwrap());

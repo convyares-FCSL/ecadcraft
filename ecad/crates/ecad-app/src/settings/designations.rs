@@ -11,7 +11,7 @@
 //! on a function or location value, or a component or page made or deleted. Every other commit
 //! leaves it as it is.
 
-use ecad_cadcraft::designations::Aspect;
+use ecad_engine::designations::Aspect;
 use ecad_ui::control;
 use ecad_ui::prim::{self, Tone};
 use ecad_ui::tokens::{space, ui_type};
@@ -48,7 +48,7 @@ pub fn rows(t: &mut App, ctx: &egui::Context) -> Value {
             let n = p.ledger.log().len();
             match seen {
                 Some(s) if !ecad_electrical::cmd::designation::rows_changed_since(&p.ledger, s) => (n, None),
-                _ => (n, Some(ecad_cadcraft::designation_cmds::rows(p, None))),
+                _ => (n, Some(ecad_engine::designation_cmds::rows(p, None))),
             }
         })
         .ok();
@@ -152,7 +152,7 @@ fn aspect(ui: &mut egui::Ui, a: Aspect, entries: &[Value], ro: bool) -> Ask {
         // The new row: Enter adds, Esc drops it.
         if let Some(mut buf) = ui.data(|d| d.get_temp::<String>(adding_id)) {
             let name = format!("ecad.designation.{letter}.new");
-            let r = control::TextEntry::new(&mut buf, &name).placeholder(ecad_cadcraft::designations::example(a)).width(90.0).show(ui);
+            let r = control::TextEntry::new(&mut buf, &name).placeholder(ecad_engine::designations::example(a)).width(90.0).show(ui);
             r.request_focus();
             if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 ui.data_mut(|d| d.remove::<String>(adding_id));

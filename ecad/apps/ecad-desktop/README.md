@@ -14,7 +14,7 @@ and runs `ecad_app::App` in an `eframe` window. What a person sees and clicks in
 - `startup`: start-up timing.
 
 ## Must not depend on
-Programs rules: no `cadcraft-engine` directly and no Dev crate. It uses `ecad-app`, `ecad-cadcraft`,
+Programs rules: no `cadcraft-engine` directly and no Dev crate. It uses `ecad-app`, `ecad-engine`,
 `ecad-model`, `cadcraft-ui-egui` and `eframe`. It holds nothing a person sees inside the window.
 
 ## Key types

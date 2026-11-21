@@ -17,7 +17,7 @@ What changed for someone using the app:
 ## Try it
 
 There is no click-only way to make such a file: it needs a file edited outside ECAD. The headless
-test `lanes::lane_072a::unknown_words_open_read_only` (ecad-cadcraft) makes one and checks the
+test `lanes::lane_072a::unknown_words_open_read_only` (ecad-engine) makes one and checks the
 message, the refused save and the unchanged file. The inspector still shows such a file in its
 Raw and Readable views (`lanes::lane_072a::a_project_with_an_unknown_word_is_still_shown`,
 ecad-inspector).
@@ -25,7 +25,7 @@ ecad-inspector).
 Run them from `ecad/`:
 
 ```sh
-cargo test -p ecad-cadcraft --test all lane_072a
+cargo test -p ecad-engine --test all lane_072a
 cargo test -p ecad-inspector --test all lane_072a
 ```
 
@@ -77,7 +77,7 @@ The project's own tag prefixes are stored by symbol, `starter:coil` for a built-
 3. Save, close and open the project again: it opens writable (no read-only notice).
 
 The headless test `lanes::lane_072a::a_project_symbol_with_its_own_prefix_opens_writable`
-(ecad-cadcraft) runs these steps; nobody has tried them by hand yet.
+(ecad-engine) runs these steps; nobody has tried them by hand yet.
 
 ## Lane B: devices have a type
 
@@ -151,7 +151,7 @@ The headless tests (automated, not tried by hand):
 
 ```sh
 cargo test -p ecad-model --test all lane_072b
-cargo test -p ecad-cadcraft --test all lane_072b
+cargo test -p ecad-engine --test all lane_072b
 cargo test -p ecad-inspector --test all lane_072b
 cargo test -p ecad-mcp --test all lane_072b
 ```
@@ -181,7 +181,7 @@ To try it: place an MCB, type `B16` as its rating in the Properties panel (shown
 `curve B, 16 A`), then `16` (refused, asks for the curve), then `see datasheet` (kept as a note,
 and Checks shows "no rating"). Nobody has tried it by hand yet.
 
-Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector, and
+Tests: `lanes::lane_072b` in ecad-model, ecad-engine, ecad-mcp and ecad-inspector, and
 `rating::reader` in ecad-electrical (automated, not tried by hand).
 
 ### Lane B, step 3: switching devices' ratings are typed
@@ -204,7 +204,7 @@ To try it: place a coil (Checks shows "no rating"), type `24VDC AC-3 9A` as its 
 `coil 24 V DC, AC-3 9 A`, and the warning goes), then `24 V` (refused, asks AC or DC). Place a
 push button and type `24 V DC` (refused: no coil). Nobody has tried it by hand yet.
 
-Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector
+Tests: `lanes::lane_072b` in ecad-model, ecad-engine, ecad-mcp and ecad-inspector
 (`…switching…`), and `rating::reader::switching` in ecad-electrical (automated, not tried by
 hand).
 
@@ -225,7 +225,7 @@ To try it: place a proximity switch (Checks shows "no rating"), type `24VDC` as 
 as `24 V DC`, and the warning goes), then `24 V` (refused, asks AC or DC). Place a float switch:
 no warning, and `250 V AC 5 A` is kept as typed. Nobody has tried it by hand yet.
 
-Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector
+Tests: `lanes::lane_072b` in ecad-model, ecad-engine, ecad-mcp and ecad-inspector
 (`…sensor…`), and `rating::reader::sensor` in ecad-electrical (automated, not tried by hand).
 
 ### Lane B, step 3: a strip's fuse position ratings are typed
@@ -246,7 +246,7 @@ To try it: draw a FUSE fence across two wires, open the terminal list, type `6,3
 position's Rating (shown as `6.3 A, T`; the **no-fuse-rating** warning goes when every fuse
 position is rated), then `see datasheet` (refused). Nobody has tried it by hand yet.
 
-Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector
+Tests: `lanes::lane_072b` in ecad-model, ecad-engine, ecad-mcp and ecad-inspector
 (`…strip…`), and `levels_contracts::relabel_moves_every_position_keyed_property` (automated, not
 tried by hand).
 
@@ -266,7 +266,7 @@ To try it: place a 3-phase motor (Checks shows "no rating"), type `7,5kW 15.2A Y
 (shown as `7.5 kW, 15.2 A, star-delta`, and the warning goes), then `7.5` (refused, asks kW or A).
 Nobody has tried it by hand yet.
 
-Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector
+Tests: `lanes::lane_072b` in ecad-model, ecad-engine, ecad-mcp and ecad-inspector
 (`…motor…`), and `rating::reader::motor` in ecad-electrical (automated, not tried by hand).
 
 ### Lane B, step 3: loads' ratings are typed
@@ -282,7 +282,7 @@ W below 1 kW (`5 W`) and in kW from it (`3 kW`).
 To try it: place a heater (Checks shows "no rating"), type `3000 W` as its rating (shown as `3 kW`,
 and the warning goes), then `3` (refused, asks W or kW). Nobody has tried it by hand yet.
 
-Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector (`…load…`),
+Tests: `lanes::lane_072b` in ecad-model, ecad-engine, ecad-mcp and ecad-inspector (`…load…`),
 and `rating::reader::load` in ecad-electrical (automated, not tried by hand).
 
 ### Lane B, step 3: indicators' ratings are typed
@@ -302,7 +302,7 @@ To try it: place an indicator lamp (Checks shows "no rating"), type `RD 24VDC 2W
 (shown as `red, 24 V DC, 2 W`, and the warning goes), then `24 V` (refused, asks AC or DC).
 Nobody has tried it by hand yet.
 
-Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector
+Tests: `lanes::lane_072b` in ecad-model, ecad-engine, ecad-mcp and ecad-inspector
 (`…indicator…`), and `rating::reader::indicator` in ecad-electrical (automated, not tried by hand).
 
 ### Lane B, step 3: power supplies' and transformers' ratings are typed
@@ -326,7 +326,7 @@ To try it: place a power supply (Checks shows "no rating"), type `230VAC/24VDC 5
 (the warning goes), then `230 V AC` (refused: input or output?). Place a transformer and type
 `250 W` (refused: use VA). Nobody has tried it by hand yet.
 
-Tests: `lanes::lane_072b` in ecad-model, ecad-cadcraft, ecad-mcp and ecad-inspector
+Tests: `lanes::lane_072b` in ecad-model, ecad-engine, ecad-mcp and ecad-inspector
 (`…power_supply…`), and `rating::reader::power_supply` in ecad-electrical (automated, not tried
 by hand).
 
@@ -354,7 +354,7 @@ The inspector's Raw and Readable views show `ModifyProject` with the field list,
 `user` values, and the `AddDeviceLink` / `RemoveDeviceLink` ops. Nothing reads a link yet (lane F's
 interlock checks will). Nobody has tried it by hand yet.
 
-Tests: `lanes::lane_072b` in ecad-model, ecad-file, ecad-cadcraft, ecad-mcp and ecad-inspector
+Tests: `lanes::lane_072b` in ecad-model, ecad-file, ecad-engine, ecad-mcp and ecad-inspector
 (`user_fields…`, `device_links…`) (automated, not tried by hand).
 
 ## Lane D: wires carry typed values
@@ -429,7 +429,7 @@ tried these steps by hand yet.
 2. In the symbol builder, add a text slot and turn it: it turns a quarter turn per click, as before.
 
 The headless test `lanes::lane_072a::a_slot_rotation_is_given_in_degrees_and_stored_in_radians`
-(ecad-cadcraft) covers the slot input; nobody has tried these steps by hand yet.
+(ecad-engine) covers the slot input; nobody has tried these steps by hand yet.
 
 ## Lane G: wire types are typed records
 

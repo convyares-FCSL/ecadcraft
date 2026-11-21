@@ -15,7 +15,7 @@
 //! change count moved, and only while a tool runs; at rest nothing reads the project
 //! ([`Intent::reads`] counts reads).
 
-use ecad_cadcraft::cad::Input;
+use ecad_engine::cad::Input;
 use ecad_ui::prim::{self, Tone};
 use ecad_ui::tokens::space;
 use eframe::egui::{self, Rect};
@@ -164,7 +164,7 @@ impl App {
     fn intent_title(&self) -> (ecad_ui::tokens::Icon, String) {
         let tool = self.cad.session.running.as_ref().map(|r| r.id.to_lowercase()).unwrap_or_default();
         if tool == "place"
-            && let Some(sym) = self.shell.tools.placing.symbol.map(ecad_cadcraft::symbols::starter)
+            && let Some(sym) = self.shell.tools.placing.symbol.map(ecad_engine::symbols::starter)
         {
             return (ecad_ui::tokens::Icon::Pin, sym.name.to_string());
         }
@@ -214,7 +214,7 @@ impl App {
             return s.clone();
         }
         let cursor = self.cad.canvas.xf.map_or(self.cad.session.cursor, |xf| xf.to_world(pos));
-        let s = ecad_cadcraft::interact::intent::at_cursor(&self.cad.session, tool, cursor);
+        let s = ecad_engine::interact::intent::at_cursor(&self.cad.session, tool, cursor);
         self.shell.tools.intent.reads += 1;
         self.shell.tools.intent.cache = Some((key, s.clone()));
         s
@@ -255,7 +255,7 @@ impl App {
         }
         if let (Some(at), Ok(st)) = (rf.at, self.cad.session.state_mut()) {
             let mut v = st.view();
-            v.center = ecad_cadcraft::cad::Vec2::new(at[0], at[1]);
+            v.center = ecad_engine::cad::Vec2::new(at[0], at[1]);
             let _ = st.set_view(v);
         }
     }

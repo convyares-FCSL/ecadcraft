@@ -13,7 +13,7 @@
 //!   `jumper.bar`, else `strip_jumper_bar`, else [`DEFAULT_BAR`].
 //! - Nothing here refuses because of a check; orphans and crossings are Checks rows (§8).
 //!
-//! This module excludes drawing (`link_lines`) and commands (`ecad_cadcraft::cmd::terminal`).
+//! This module excludes drawing (`link_lines`) and commands (`ecad_engine::cmd::terminal`).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -644,7 +644,7 @@ pub fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripA
             _ => a.orphans.push((k.clone(), items)),
         }
     }
-    let mut parts = Parts { strip: props, project: &doc.properties, inherits: BTreeSet::new() };
+    let mut parts = Parts { strip: props, project: &doc.display, inherits: BTreeSet::new() };
     for g in Acc::GAP {
         if a.count(g) > 0 {
             if let Some(pn) = parts.get(&format!("{}.part_number", g.key())) {

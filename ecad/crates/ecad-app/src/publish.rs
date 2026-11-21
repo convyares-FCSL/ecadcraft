@@ -13,12 +13,12 @@
 //!   watermark, bookmarks and numbering. The selected page as it will print. Export PDF runs
 //!   `printbook` through the command path (one call, no transaction).
 //!
-//! Thumbnails are the page drawn from the model ([`ecad_cadcraft::preview`]), at most
+//! Thumbnails are the page drawn from the model ([`ecad_engine::preview`]), at most
 //! [`THUMBS_PER_FRAME`] a frame, kept until a change touches their page.
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_cadcraft::preview::{PreviewView, preview_drawing, rasterise};
+use ecad_engine::preview::{PreviewView, preview_drawing, rasterise};
 use ecad_model::{FolderId, PageId};
 use ecad_ui::tokens::{space, ui_type};
 use eframe::egui::{self, Align2, Rect, Sense, Stroke, pos2, vec2};
@@ -138,7 +138,7 @@ impl App {
     fn publish_groups(&self) -> Vec<Group> {
         let mut names: BTreeMap<FolderId, String> = BTreeMap::new();
         for r in self.panel.tree() {
-            if let ecad_cadcraft::TreeRow::Folder { id, name, .. } = r {
+            if let ecad_engine::TreeRow::Folder { id, name, .. } = r {
                 names.insert(*id, name.clone());
             }
         }
@@ -203,11 +203,11 @@ impl App {
             return;
         }
         let scope = match &self.publish.book.pages {
-            Some(list) => ecad_cadcraft::printbook::Scope::Pages(list.clone()),
-            None => ecad_cadcraft::printbook::Scope::All,
+            Some(list) => ecad_engine::printbook::Scope::Pages(list.clone()),
+            None => ecad_engine::printbook::Scope::All,
         };
         if let Ok(((sheets, unknown, flagged), notes)) =
-            p.configure(&mut self.cad.session, |p| (ecad_cadcraft::printbook::count(p, &scope), ecad_cadcraft::printbook::notes(p, &scope)))
+            p.configure(&mut self.cad.session, |p| (ecad_engine::printbook::count(p, &scope), ecad_engine::printbook::notes(p, &scope)))
             && let Some(d) = &mut self.print_book
         {
             d.sheets = sheets;
@@ -325,7 +325,7 @@ impl App {
         let foot = Rect::from_min_max(pos2(sets.left(), sets.bottom() - 96.0), sets.max);
         ui.painter().hline(foot.x_range(), foot.top() + 0.5, line);
         let pending = if open {
-            self.project.clone().and_then(|p| p.read(&mut self.cad.session, |p, _| ecad_cadcraft::revisions::pending_rev(p.ledger.document())).ok())
+            self.project.clone().and_then(|p| p.read(&mut self.cad.session, |p, _| ecad_engine::revisions::pending_rev(p.ledger.document())).ok())
         } else {
             None
         };
@@ -515,7 +515,7 @@ impl App {
             });
         });
         let pending =
-            self.project.clone().and_then(|p| p.read(&mut self.cad.session, |p, _| ecad_cadcraft::revisions::pending_rev(p.ledger.document())).ok());
+            self.project.clone().and_then(|p| p.read(&mut self.cad.session, |p, _| ecad_engine::revisions::pending_rev(p.ledger.document())).ok());
         let preview = self.publish.preview;
         let preview_words = preview.and_then(|p| self.panel.rows().iter().find(|r| r.id == p)).map(|r| format!("page {:0>2}", r.number));
         let foot_h = 84.0;

@@ -84,7 +84,7 @@ fn headless_marks_are_monotonic_and_add_up() {
         let mut t = quiet(before_main);
         assert_eq!(t.origin(), origin);
         t.mark(Step::Main);
-        ecad_cadcraft::install();
+        ecad_engine::install();
         t.mark(Step::Install);
         t.mark(Step::RunNative);
         let app = App::start(None, project, Some(&mut t));

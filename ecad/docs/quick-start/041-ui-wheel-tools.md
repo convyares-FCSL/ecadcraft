@@ -5,7 +5,7 @@ What brief 041 changed, and how to try it by clicking. Listed in the index of
 
 ## What changed
 
-- **One action table** (`ecad-cadcraft/src/actions.rs`) says where each existing command appears:
+- **One action table** (`ecad-engine/src/actions.rs`) says where each existing command appears:
   in a tool group, in a slot of an object's wheel, on a key, and under which words Ctrl+K finds
   it. It defines no command; MCP's `list_commands` is unchanged.
 - **Tool groups** (V W P C D B T) list only tools whose command exists today:
@@ -50,7 +50,7 @@ What brief 041 changed, and how to try it by clicking. Listed in the index of
    that wire.
 
 Checked by the automated tests (`cargo test -p ecad-app wheel_ui`, `-p ecad-ui wheel`,
-`-p ecad-cadcraft actions_contracts`); the steps above have not been tried by the owner yet.
+`-p ecad-engine actions_contracts`); the steps above have not been tried by the owner yet.
 
 ## Not in this brief
 

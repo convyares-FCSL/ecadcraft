@@ -20,11 +20,11 @@ Standards, **U4d** agent banner and authors. Briefs: [037](../briefs/037-ui-toke
 | # | Question | Decision |
 | --- | --- | --- |
 | 1 | What ECAD owns, what needs a seam | ECAD owns the whole window except the drawing area. Two new upstream seams, both generic: **US1 embedded drawing view** (CADCraft draws only its canvas into a rect the embedder gives it, with four switches), and **US2 font definitions builder** (CADCraft's UI font set as a value the embedder extends). The existing seams (owner overlay marks, owned documents, Tool Sets tabs, Properties section) stay; the last two fall out of use. §1 |
-| 2 | Theme module and token table | Two new crates. **`ecad-tokens`** (Core: no dependencies) holds the one token table, used by the shell and by `ecad-cadcraft`'s canvas marks. **`ecad-ui`** (a new layer class, UiKit: egui, egui_extras, epaint and `ecad-tokens` only) holds the egui style, the nine primitives, the icon painters and, from U3, the table. §2, §3 |
+| 2 | Theme module and token table | Two new crates. **`ecad-tokens`** (Core: no dependencies) holds the one token table, used by the shell and by `ecad-engine`'s canvas marks. **`ecad-ui`** (a new layer class, UiKit: egui, egui_extras, epaint and `ecad-tokens` only) holds the egui style, the nine primitives, the icon painters and, from U3, the table. §2, §3 |
 | 3 | Fonts | IBM Plex Sans (UI) and Barlow Semi Condensed (sheet) are committed in `ecad/assets/fonts/` and embedded by `ecad-ui` with `include_bytes!` (owner, Q1: an exception to the craft-fonts rule; offering them to craft-fonts comes later). OFL-1.1, on the allowlist, with `ATTRIBUTION.md` rows. About 0.8 MB for five faces (estimate; U1 measures it). Always present, no fallback path. The page draws Barlow only from U4a, which needs CADCraft's text resolver to see ECAD's bytes (US3, §4). §4 |
 | 4 | Shell layout | A pure layout function `layout(window, ShellState) -> Slots` (rects only, no egui context), drawn by `ecad-trial`'s `shell` module. State persists in eframe storage under its own key; per-page zoom is kept per project in the same storage, never in the `.ecad` file. Companion view is a split of the main view; pop-out to a second window is later. §5 |
 | 5 | Table | One generic `Table<S: TableSource>` in `ecad-ui` on `egui_extras::TableBuilder` with virtualised rows. Sources are column sets in `ecad-trial` (Checks, Devices, then 036's Terminals). Rows are keyed by object ID, so selection and change tint survive sorting and updates. §6 |
-| 6 | Command registry | Commands stay defined once, as CADCraft `CommandSpec`s installed by `ecad_cadcraft::install`; MCP already lists and runs exactly those (`list_commands`, `execute`). U4b adds an **action table** (UI-free, in `ecad-cadcraft`) that only says where a command appears: tool group, wheel slot per object kind, key, search words. A test fails if an action names a command that does not exist. §7 |
+| 6 | Command registry | Commands stay defined once, as CADCraft `CommandSpec`s installed by `ecad_engine::install`; MCP already lists and runs exactly those (`list_commands`, `execute`). U4b adds an **action table** (UI-free, in `ecad-engine`) that only says where a command appears: tool group, wheel slot per object kind, key, search words. A test fails if an action names a command that does not exist. §7 |
 | 7 | Live updates | Every view pulls the project's change feed (`Project::change_count`, `changes_since` and siblings, which exist today) and applies its update map; a full rebuild only on open, reload, first show or when the feed has rolled over. The known redraw of the active page after every commit (`project.rs` `apply_tx` → `redraw_window`) is **not** fixed in U2: it is a narrow ECAD-core fix of its own (§8.4). |
 | 8 | Tests | Headless and fast by default: layout maths, state and persistence, token contrast, doc-to-code sync and command tables as plain unit tests; widgets and shell flows through `egui_kittest` without a renderer, found by accessible label, as `ecad-trial` does today. Screenshots and the frame-time bench are slow and run only at the QA gate. §9 |
 | 9 | Performance | Shell (everything but the canvas) ≤ 2 ms per frame; idle frame ≤ 8 ms, p95 ≤ 16 ms on the medium bench project (100 pages, larger than the owner's 43-page pack); a 10 000-row table scrolls with its body ≤ 3 ms per frame; a commit updates every open view in the same frame, with work proportional to what the commit touched. §10 |
@@ -169,7 +169,7 @@ click reported and no menu). Both are offered upstream together once U4b has use
 | --- | --- | --- | --- |
 | `ecad/crates/ecad-tokens` (new, U1) | **Core** | nothing | The token table: shell colours, both sheet token sets, overlay meanings, type ramp, sheet text styles, spacing, sizes, radii, line weights, wheel geometry; `Icon` names. Plain data (`Rgb`, `f32`), `const`. |
 | `ecad/crates/ecad-ui` (new, U1) | **UiKit** (new class) | `ecad-tokens`, `egui`, `epaint`, `egui_extras` | The egui style from the tokens, font registration, the nine primitives, icon painters (U1); the table (U3); the wheel widget (U4b). Knows nothing about projects. |
-| `ecad/crates/ecad-cadcraft` | Adapter (unchanged) | + `ecad-tokens` | Canvas marks take their colours from `ecad-tokens` (U4a). The action table (U4b). |
+| `ecad/crates/ecad-engine` | Adapter (unchanged) | + `ecad-tokens` | Canvas marks take their colours from `ecad-tokens` (U4a). The action table (U4b). |
 | `ecad/apps/ecad-trial` | Ui (unchanged) | + `ecad-ui` | The shell (`src/shell/`), column sets (`src/lists/`), the page view's ECAD layer, moved panels. |
 
 **UiKit** is added to `ecad/xtask` in U1: a UiKit crate may use egui, epaint and egui_extras but
@@ -460,7 +460,7 @@ a commit, the source reports the touched keys and the table re-reads those cells
 ### 6.3 Column sets in U3
 
 1. **Checks** (read-mostly): the drawer's list and the Lists ▸ Checks tab (the drawer shows the
-   current page's checks, the tab all of them). Source: `ecad_cadcraft::checks` kept list,
+   current page's checks, the tab all of them). Source: `ecad_engine::checks` kept list,
    updated by `update_checks` (design 022 §11).
 2. **Devices**: Lists ▸ Devices. Source: `device_list` (with `device_changes_since`).
 3. **Terminals** (036): Lists ▸ Terminals, laid out as a terminal plan from design 036 §9's row
@@ -472,7 +472,7 @@ a commit, the source reports the touched keys and the table re-reads those cells
 
 ### 7.1 What exists
 
-- ECAD's commands are CADCraft `CommandSpec`s, installed once by `ecad_cadcraft::install()`
+- ECAD's commands are CADCraft `CommandSpec`s, installed once by `ecad_engine::install()`
   (`cadcraft_engine::cmd::set_extension_commands(commands::specs)`). Each has an id, label,
   parameter docs, a JSON `run` and optionally an interactive prompt machine.
 - MCP (`apps/ecad-mcp`) does not define commands: its `execute` tool runs any registered command
@@ -483,7 +483,7 @@ a commit, the source reports the touched keys and the table re-reads those cells
 ### 7.2 What U4b adds: the action table
 
 A command says **what** happens; an action says **where a person finds it**. The action table is
-data, in `ecad-cadcraft/src/actions.rs` (UI-free, so the MCP server and tests can read it):
+data, in `ecad-engine/src/actions.rs` (UI-free, so the MCP server and tests can read it):
 
 ```rust
 pub struct Action {
@@ -568,7 +568,7 @@ idle window costs nothing. Counts in pills tick over the same way.
 
 ### 8.4 The known issue: the active page redraws after every commit
 
-`Project::apply_tx` (`crates/ecad-cadcraft/src/project.rs:2038`) ends with
+`Project::apply_tx` (`crates/ecad-engine/src/project.rs:2038`) ends with
 `self.redraw_window(pg, Some(command))`, which re-projects the **active page** after every
 commit (`redraw_window`, line 2004, calls `refresh_page` for the active page unconditionally).
 The pages a commit touched are already known (`pages_touched`, the references' pages, the
@@ -581,7 +581,7 @@ case `update_outputs` already works out `shown_changed` for the shown generated 
 `frame_stale`, so generated pages must be added to the touched set (the BOM, terminal-plan and
 cable-schedule pages whose rows changed) rather than only to `frame_stale`.
 
-**U2 does not fix it.** It is in ECAD's core commit path (`ecad-cadcraft`, `project.rs`), which
+**U2 does not fix it.** It is in ECAD's core commit path (`ecad-engine`, `project.rs`), which
 035 (author per commit) and 036 are editing now, and its tests belong with the projection tests,
 not the shell. It does not block U2: the shell's own frame time does not depend on it. It should
 be a narrow fix brief of its own (overseer item O1, §12), after 035 and 036 merge and before U4a,
@@ -604,7 +604,7 @@ layout (one `tests/all` executable per crate, modules per area).
 | US1 and US2 | `crates/ui-egui` tests | CADCraft's own harness: default unchanged; embedded draws no chrome; idle typing; right-click reported | CADCraft fast set |
 | Table: view model (filter, group, sort, patch), selection across sort, tint lifetime, edit commit and revert, 10 000-row source builds the view model within budget | `ecad-ui` `tests/all/table.rs` | Plain Rust for the model; kittest for edit and keys | fast; the timing check uses a generous bound and is not a benchmark |
 | Column sets: Checks and Devices rows equal today's panels' rows on the same project; go-to and edit run the expected command | `ecad-trial` | kittest on a small fixture project | under 2 s each |
-| Update maps: a commit touching one device patches one row and rebuilds nothing; a commit touching nothing leaves every view's build counter unchanged | `ecad-trial` and `ecad-cadcraft` | Counters, as 031's update-map counter test does | fast |
+| Update maps: a commit touching one device patches one row and rebuilds nothing; a commit touching nothing leaves every view's build counter unchanged | `ecad-trial` and `ecad-engine` | Counters, as 031's update-map counter test does | fast |
 | Screenshots against the mock-ups | `ecad-trial`, the existing `shot()` helper (`tests/all/mouse_tester.rs`) | egui-wgpu without a display, written only when `ECAD_TESTER_SHOTS` is set and an adapter exists, as today; never asserted in CI, never committed; compared by a person with the mock-ups | off by default; the tester and the QA gate turn it on |
 | Frame time and table scroll | `ecad-bench` (a `ui` measure) | Release build, headless frames | QA gate only (`cargo xtask bench`) |
 
@@ -641,8 +641,8 @@ but CADCraft's canvas.
 
 | Lane | Scope | Depends on | Touches |
 | --- | --- | --- | --- |
-| **U4a Canvas** | Paper sheet (CADCraft's canvas preferences) and the dark sheet as a second token set; ink versus overlay split, so overlay never prints; the spec's markers and selection with related placements (§1.5); two-colour wires and cores drawn in both colours; Barlow Semi Condensed as the sheet font (registry default); 031's sizes converted to cap heights (owner answer 9: font size = cap / 0.70); text styles defined once against the Standards registry; page opens at the readable zoom and remembers it (§5.4); mono or colour print as a registry setting (owner answer 1). | U1; U2 (page view slot); the redraw fix (O1); US3 or the craft-fonts move for the page font (§4) | `ecad-cadcraft` (look, overlay, text styles, defaults), `ecad-trial` page view |
-| **U4b Wheel, intent line, tools** | The action table (§7); the wheel widget (`ecad-ui`) with slot tables per object kind; the seven tool groups with flyouts and last-used memory; the intent line (output only) with the electrical preview text; the refusal line; Ctrl+K over actions; removing old Tool Sets buttons as their actions land. Right-click while a tool runs finishes the current step; the wheel opens only when idle (owner, Q4). | U1; U2 (tool strip, US1's `canvas_menus` and `idle_typing`) | `ecad-cadcraft/src/actions.rs`, `ecad-ui` wheel, `ecad-trial` shell and tools |
+| **U4a Canvas** | Paper sheet (CADCraft's canvas preferences) and the dark sheet as a second token set; ink versus overlay split, so overlay never prints; the spec's markers and selection with related placements (§1.5); two-colour wires and cores drawn in both colours; Barlow Semi Condensed as the sheet font (registry default); 031's sizes converted to cap heights (owner answer 9: font size = cap / 0.70); text styles defined once against the Standards registry; page opens at the readable zoom and remembers it (§5.4); mono or colour print as a registry setting (owner answer 1). | U1; U2 (page view slot); the redraw fix (O1); US3 or the craft-fonts move for the page font (§4) | `ecad-engine` (look, overlay, text styles, defaults), `ecad-trial` page view |
+| **U4b Wheel, intent line, tools** | The action table (§7); the wheel widget (`ecad-ui`) with slot tables per object kind; the seven tool groups with flyouts and last-used memory; the intent line (output only) with the electrical preview text; the refusal line; Ctrl+K over actions; removing old Tool Sets buttons as their actions land. Right-click while a tool runs finishes the current step; the wheel opens only when idle (owner, Q4). | U1; U2 (tool strip, US1's `canvas_menus` and `idle_typing`) | `ecad-engine/src/actions.rs`, `ecad-ui` wheel, `ecad-trial` shell and tools |
 | **U4c Inspector and Standards** | Right panel as the inspector: origin badges from 031's registry (built-in → standard → project → page → object, page level only for function, location and sheet, owner answer 4), overridden and reset; part sets display. Settings over the window with the **Standards** screen (roadmap 1.13(b)): the U3 table listing every default with its origin, the detail chain on the right, consequences stated before a change. | U1; U2 (right panel, Settings overlay); U3 (table); roadmap 1.13(a) style model for catalogues beyond what 031's registry already holds | `ecad-trial` inspector and settings; read-only use of `defaults/` |
 | **U4d Agent banner and authors** | Restyle 035's banner (its data contract, design 035 §7.1, element names kept) into the shell's banner slot and top-bar agent pill; History rows show author chips and group an agent session for Undo session; "agent's last write" outline on the page (with U4a's marker). | 035 merged; U1; U2 (banner slot) | `ecad-trial/src/agent/banner.rs` (from 035), History tab |
 
@@ -654,7 +654,7 @@ the right panel and Settings, U4d the banner and History. Shared touch points (t
 ### 11.1 U4 file ownership (briefs 040–043, 2026-11-13)
 
 Each lane owns its new files and the files listed as owned in its brief's §0. The per-lane layout
-(#72) covers tests (`tests/all/lanes/lane_04N.rs`), commands (`ecad-cadcraft/src/lanes.rs`),
+(#72) covers tests (`tests/all/lanes/lane_04N.rs`), commands (`ecad-engine/src/lanes.rs`),
 quick start (`docs/quick-start/04N-*.md`) and new `ecad.*` tokens (the lane's design section).
 These files are shared, and each lane touches only the hunk named:
 
@@ -666,8 +666,8 @@ These files are shared, and each lane touches only the hunk named:
 | `ecad-trial/src/shell/state.rs` | `sheet` field | — | — | — |
 | `ecad-trial/src/shell/layout.rs` | — | `intent` row | — | — |
 | `ecad-trial/src/shell/text_panel.rs` | `ui.sheet` arm | — | — | — |
-| `ecad-cadcraft/src/interact/mod.rs` | `overlay_marks` body | two `mod` lines | — | — |
-| `ecad-cadcraft/src/lib.rs` | — | `pub mod actions;` | `mod default_cmds;` | — |
+| `ecad-engine/src/interact/mod.rs` | `overlay_marks` body | two `mod` lines | — | — |
+| `ecad-engine/src/lib.rs` | — | `pub mod actions;` | `mod default_cmds;` | — |
 | `ecad-trial/src/project_panel.rs` | — | one `Action` variant appended | — | — |
 | `ecad-tokens/src/icon.rs` | — | appended block `// 041` | appended block `// 042` if needed | — |
 | `ecad/UPSTREAM-PATCHES.md` | appended U4a block (US3, US1 line) | — | — | — |
@@ -686,7 +686,7 @@ state for list import (M2).
 
 - **FP (format) items: none.** No op, no stored field, no project property. Shell state and
   per-page views live in eframe's app storage, not in the project.
-- **O1. Redraw fix (§8.4).** A narrow fix brief in `ecad-cadcraft`: the active page re-projects
+- **O1. Redraw fix (§8.4).** A narrow fix brief in `ecad-engine`: the active page re-projects
   only when touched (generated pages included). After 035 and 036 merge, before U4a. Needs a test
   that a commit touching another page does not project the active one (it fails today).
 - **O2. 035's banner placement.** 035 places a 24 px strip under the page tabs "until the

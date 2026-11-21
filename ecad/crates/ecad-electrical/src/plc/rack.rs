@@ -11,7 +11,7 @@
 //!   (`crate::plc::Plc::checks`), never a refusal on open and never a crash.
 //! - `plc.rack`, `plc.slot` and `plc.channels` are the `setprop` names of the module's fields.
 //!
-//! Every write (the commands, in ecad-cadcraft's `cmd::plc`) is one transaction.
+//! Every write (the commands, in ecad-engine's `cmd::plc`) is one transaction.
 
 use crate::CmdError;
 use std::collections::BTreeSet;

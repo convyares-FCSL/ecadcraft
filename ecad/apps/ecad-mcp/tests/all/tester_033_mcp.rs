@@ -21,8 +21,8 @@ fn sets(ops: &[Op], key: &str) -> bool {
         let n: u32 = n.parse().unwrap_or(0);
         return ops.iter().any(|o| {
             matches!(o, Op::ModifyProject { before, after }
-                if ecad_cadcraft::revisions::field_of(after, n, field).is_some()
-                    && ecad_cadcraft::revisions::field_of(before, n, field) != ecad_cadcraft::revisions::field_of(after, n, field))
+                if ecad_engine::revisions::field_of(after, n, field).is_some()
+                    && ecad_engine::revisions::field_of(before, n, field) != ecad_engine::revisions::field_of(after, n, field))
         });
     }
     ops.iter().any(|o| matches!(o, Op::SetProperty { key: k, .. } if k == key))
@@ -106,7 +106,7 @@ fn print_and_project_writes_by_the_agent_then_refused_with_writes_off() {
         let n = c.log().len();
         c.exec("u", Value::Null);
         assert_eq!(c.log().len(), n + 1);
-        assert!(!c.doc().properties.contains_key("tags.case"));
+        assert!(!c.doc().display.contains_key("tags.case"));
         // Reads record nothing.
         let n = c.log().len();
         let before = json!({

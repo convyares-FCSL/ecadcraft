@@ -11,7 +11,7 @@
 //! - `setprop {key: "user.<name>"}` on a device reads the value as the field's kind; an empty
 //!   value clears it.
 //!
-//! This module excludes the JSON shims (ecad-cadcraft's `cmd::device_link`) and any check that
+//! This module excludes the JSON shims (ecad-engine's `cmd::device_link`) and any check that
 //! reads a link (lane F's interlock checks).
 
 use ecad_model::id::{LinkId, UserFieldId};

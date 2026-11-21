@@ -463,7 +463,7 @@ impl App {
                 // The card's first drawing on that page, else the page.
                 let at = match (self.project.clone(), card) {
                     (Some(p), Some(c)) => {
-                        p.read(&mut self.cad.session, |p, _| ecad_cadcraft::plc::overview::at_on(p.ledger.document(), c, page)).ok().flatten()
+                        p.read(&mut self.cad.session, |p, _| ecad_engine::plc::overview::at_on(p.ledger.document(), c, page)).ok().flatten()
                     }
                     _ => None,
                 };
@@ -480,7 +480,7 @@ impl App {
                 let tag = self
                     .project
                     .clone()
-                    .and_then(|p| p.read(&mut self.cad.session, |p, _| ecad_cadcraft::devices::tag_words(p.ledger.document(), c)).ok());
+                    .and_then(|p| p.read(&mut self.cad.session, |p, _| ecad_engine::devices::tag_words(p.ledger.document(), c)).ok());
                 if let Some(t) = tag {
                     self.panel.checks.table.query = t;
                 }

@@ -13,7 +13,7 @@
 use std::path::PathBuf;
 
 use cadcraft_engine::Session;
-use ecad_cadcraft::{Persistence, Project, ProjectHandle};
+use ecad_engine::{Persistence, Project, ProjectHandle};
 use ecad_mcp::{EcadMcp, Options, policy};
 use ecad_model::derive::cable_references;
 use ecad_model::{Author, Document, PageId, Transaction};
@@ -36,7 +36,7 @@ impl Client {
         let r = c.request("initialize", json!({"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": AGENT, "version": "1"}}));
         assert!(r.get("result").is_some(), "{r}");
         assert!(c.s.handle_line(r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#).is_none());
-        c.s.with_session(|s, p| p.configure(s, |p| p.settings = ecad_cadcraft::views::Settings::none())).unwrap().unwrap();
+        c.s.with_session(|s, p| p.configure(s, |p| p.settings = ecad_engine::views::Settings::none())).unwrap().unwrap();
         c
     }
 
@@ -103,10 +103,10 @@ struct Direct {
 
 impl Direct {
     fn new() -> Self {
-        ecad_cadcraft::install();
+        ecad_engine::install();
         let mut s = Session::empty();
         let p = Project::create_with(&mut s, "cables", SEED, Persistence::File).unwrap();
-        p.configure(&mut s, |p| p.settings = ecad_cadcraft::views::Settings::none()).unwrap();
+        p.configure(&mut s, |p| p.settings = ecad_engine::views::Settings::none()).unwrap();
         Direct { s, p }
     }
     fn log(&mut self) -> Vec<Transaction> {
@@ -220,7 +220,7 @@ fn the_cable_and_page_commands_are_listed_with_their_parameter_docs() {
     let mut c = writer();
     let catalog = c.ok("list_commands", json!({}));
     let catalog = catalog.as_array().unwrap();
-    let specs = ecad_cadcraft::commands::specs();
+    let specs = ecad_engine::commands::specs();
     for id in COMMANDS {
         let spec = specs.iter().find(|s| s.id == *id).unwrap_or_else(|| panic!("{id} is an ECAD command"));
         let info = catalog.iter().find(|i| i["id"] == *id).unwrap_or_else(|| panic!("{id} not listed"));

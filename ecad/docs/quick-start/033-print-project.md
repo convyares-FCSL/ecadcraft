@@ -21,7 +21,7 @@ as ECR). The Rev box shows `D*` when the drawing changed after the newest issue.
 describes it.
 - *Automated checks:* `crates/io/src/tests.rs` (upstream: a page holds only its window's paths,
   20 pages ≤ 2.2 × 10, a culled page equals its sheet plotted alone),
-  `ecad/crates/ecad-cadcraft/tests/all/print_project_contracts.rs` (the boxed `?`, its print
+  `ecad/crates/ecad-engine/tests/all/print_project_contracts.rs` (the boxed `?`, its print
   colour), `ecad/apps/ecad-mcp/tests/all/print_project_contracts.rs` (the `contacts` reply's
   `table`, the Checks row, `table` refused, writes off), `print_project_q7_contracts.rs` (pending
   marker with undo and save/reopen, revision columns and custom fields, tag style and its

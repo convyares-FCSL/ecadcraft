@@ -7,7 +7,7 @@
 //! **Update map:** see [`super::report`]: the copy is taken again only when the report models'
 //! revision changed, and only while the tab is shown.
 
-use ecad_cadcraft::outputs::kept::Outputs;
+use ecad_engine::outputs::kept::Outputs;
 use ecad_ui::prim::Tone;
 use ecad_ui::table::{Cell, Changed, Column, ColumnId, Table, TableEvent, TableSource, Width};
 
@@ -17,7 +17,7 @@ use super::report::{From, ReportColumns, ReportRows};
 /// next epoch only the subjects the update re-checked are copied again (design 057 §10).
 #[derive(Debug, Default)]
 pub struct RatingCopy {
-    pub results: std::collections::BTreeMap<ecad_cadcraft::rating::RatedSubject, ecad_cadcraft::rating::Rating>,
+    pub results: std::collections::BTreeMap<ecad_engine::rating::RatedSubject, ecad_engine::rating::Rating>,
     seen: Option<(u64, u64)>,
     /// Full copies and patches (tests: the update map).
     pub copies: u64,
@@ -28,7 +28,7 @@ pub struct RatingCopy {
 
 impl RatingCopy {
     /// Bring the copy up to date. Returns the subjects copied again, or `None` for a full copy.
-    pub fn sync(&mut self, serial: u64, kept: &ecad_cadcraft::rating::Kept) -> Option<Vec<ecad_cadcraft::rating::RatedSubject>> {
+    pub fn sync(&mut self, serial: u64, kept: &ecad_engine::rating::Kept) -> Option<Vec<ecad_engine::rating::RatedSubject>> {
         if self.methods != kept.methods {
             self.methods = kept.methods.clone();
         }
@@ -122,8 +122,8 @@ impl WiresSource {
     }
 
     /// Brief 057: row `k`'s rating result.
-    pub fn rating(&self, k: usize) -> Option<&ecad_cadcraft::rating::Rating> {
-        self.ids.get(k).and_then(|c| self.rating.results.get(&ecad_cadcraft::rating::RatedSubject::Wire(*c)))
+    pub fn rating(&self, k: usize) -> Option<&ecad_engine::rating::Rating> {
+        self.ids.get(k).and_then(|c| self.rating.results.get(&ecad_engine::rating::RatedSubject::Wire(*c)))
     }
 }
 
@@ -227,7 +227,7 @@ impl WiresView {
 
     /// Brief 057: bring the rating copy up to date and patch the Status cells of the re-checked
     /// wires only.
-    pub fn sync_rating(&mut self, serial: u64, kept: &ecad_cadcraft::rating::Kept) {
+    pub fn sync_rating(&mut self, serial: u64, kept: &ecad_engine::rating::Kept) {
         match self.source.rating.sync(serial, kept) {
             None => self.table.update(&self.source, Changed::All),
             Some(v) if v.is_empty() => {}
@@ -237,7 +237,7 @@ impl WiresView {
                     .ids
                     .iter()
                     .enumerate()
-                    .filter(|(_, c)| v.contains(&ecad_cadcraft::rating::RatedSubject::Wire(**c)))
+                    .filter(|(_, c)| v.contains(&ecad_engine::rating::RatedSubject::Wire(**c)))
                     .map(|(k, _)| k)
                     .collect();
                 if !rows.is_empty() {

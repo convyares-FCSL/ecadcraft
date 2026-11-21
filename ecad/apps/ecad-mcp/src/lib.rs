@@ -32,21 +32,21 @@ pub mod bridge;
 pub mod demo;
 pub mod launch;
 
-// The gate, policy and tools live in `ecad_cadcraft::agent` (design 065 §3, cut 12), shared with
+// The gate, policy and tools live in `ecad_engine::agent` (design 065 §3, cut 12), shared with
 // the window's live bridge; their old paths here keep working.
-pub use ecad_cadcraft::agent::{gate, policy, tools};
+pub use ecad_engine::agent::{gate, policy, tools};
 
 use std::cell::RefCell;
 use std::io::{BufRead, Write};
 use std::rc::Rc;
 
 use cadcraft_mcp::{Backend, Headless, Server};
-use ecad_cadcraft::cad::Session;
-use ecad_cadcraft::{Persistence, Project, ProjectHandle};
+use ecad_engine::cad::Session;
+use ecad_engine::{Persistence, Project, ProjectHandle};
 use ecad_model::Author;
 use serde_json::{Value, json};
 
-pub use ecad_cadcraft::agent::{
+pub use ecad_engine::agent::{
     CADCRAFT_TOOLS, MAX_AGENT_NAME, MAX_BATCH, MAX_REQUEST_BYTES, MAX_TRANSACTIONS_PER_CALL, UNNAMED_AGENT, UNREADABLE, agent_name, not_offered,
 };
 
@@ -306,10 +306,10 @@ pub struct EcadMcp {
 
 /// Install the ECAD commands, or say why they are missing.
 fn install() -> Result<(), String> {
-    ecad_cadcraft::install();
+    ecad_engine::install();
     // Brief 024: `printbook` plots through CADCraft's PDF plotter.
-    ecad_cadcraft::printbook::install_io();
-    if ecad_cadcraft::cad::find_command("wire").is_none() {
+    ecad_engine::printbook::install_io();
+    if ecad_engine::cad::find_command("wire").is_none() {
         return Err("the ECAD commands could not be installed (the command list was built first)".into());
     }
     Ok(())
@@ -318,11 +318,11 @@ fn install() -> Result<(), String> {
 /// Open the project file at `path` headless; also what opening found, in words.
 fn open_local(path: &str, write: bool) -> Result<(Headless, ProjectHandle, String), String> {
     install()?;
-    let path = ecad_cadcraft::normalize(path).map_err(|e| e.to_string())?;
+    let path = ecad_engine::normalize(path).map_err(|e| e.to_string())?;
     let mut headless = Headless { session: Session::empty() };
     // Writes off: the file is opened for reading only, so it is never changed, not even by the
     // database's own bookkeeping (brief 021: a version 2 file is a redb database).
-    let seed = ecad_cadcraft::session_seed();
+    let seed = ecad_engine::session_seed();
     let (project, summary) = if write {
         ProjectHandle::open_file(&mut headless.session, &path, seed)?
     } else {
@@ -334,7 +334,7 @@ fn open_local(path: &str, write: bool) -> Result<(Headless, ProjectHandle, Strin
 /// Create the project file at `path` headless (it must not exist yet), saved straight away.
 fn create_local(path: &str) -> Result<(Headless, ProjectHandle), String> {
     install()?;
-    let path = ecad_cadcraft::normalize(path).map_err(|e| e.to_string())?;
+    let path = ecad_engine::normalize(path).map_err(|e| e.to_string())?;
     if std::path::Path::new(&path).exists() {
         return Err(format!("{path} already exists; open it without --create"));
     }
@@ -345,7 +345,7 @@ fn create_local(path: &str) -> Result<(Headless, ProjectHandle), String> {
     }
     let mut headless = Headless { session: Session::empty() };
     let name = std::path::Path::new(&path).file_stem().map_or_else(String::new, |s| s.to_string_lossy().into_owned());
-    let project = Project::create_with(&mut headless.session, &name, ecad_cadcraft::session_seed(), Persistence::File)?;
+    let project = Project::create_with(&mut headless.session, &name, ecad_engine::session_seed(), Persistence::File)?;
     headless.session.execute("saveas", &json!({ "path": path })).map_err(|e| e.to_string())?;
     Ok((headless, project))
 }
@@ -368,7 +368,7 @@ pub fn opener(project: Option<String>, create: bool, write: bool) -> Opener {
             create_local(p)
         }
         Some(p) => open_local(p, write).map(|(h, pr, _)| (h, pr)),
-        None => memory_local("Untitled", ecad_cadcraft::session_seed()),
+        None => memory_local("Untitled", ecad_engine::session_seed()),
     })
 }
 

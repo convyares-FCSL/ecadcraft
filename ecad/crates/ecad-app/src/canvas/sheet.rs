@@ -3,7 +3,7 @@
 //! inside the frame only. Worked out from the view each frame; nothing is read from the project.
 
 use cadcraft_ui_egui::canvas::Xf;
-use ecad_cadcraft::cad::Vec2;
+use ecad_engine::cad::Vec2;
 use eframe::egui::{self, Rect, pos2};
 
 /// The grid's pitch and dot size on paper, mm (spec §4 "Canvas colours").

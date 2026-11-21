@@ -13,7 +13,7 @@ use std::collections::BTreeSet;
 use std::time::Instant;
 
 use cadcraft_engine::Session;
-use ecad_cadcraft::ProjectHandle;
+use ecad_engine::ProjectHandle;
 
 fn median(mut v: Vec<f64>) -> f64 {
     v.sort_by(|a, b| a.total_cmp(b));
@@ -38,27 +38,27 @@ fn tester_014_r3_whole_document_work_per_commit() {
         eprintln!("ECAD_R3_PROJECT not set: probe skipped");
         return;
     };
-    ecad_cadcraft::install();
-    ecad_cadcraft::views::isolate_for_tests();
+    ecad_engine::install();
+    ecad_engine::views::isolate_for_tests();
     let dir = std::env::temp_dir().join(format!("ecad-r3-cost-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let copy = dir.join("cost.ecad");
     std::fs::copy(&path, &copy).unwrap();
     let mut s = Session::empty();
-    let (project, _) = ProjectHandle::open_file_in(&mut s, copy.to_str().unwrap(), 14, ecad_cadcraft::views::Settings::none()).unwrap();
+    let (project, _) = ProjectHandle::open_file_in(&mut s, copy.to_str().unwrap(), 14, ecad_engine::views::Settings::none()).unwrap();
     let doc = project.read(&mut s, |p, _| p.ledger.document().clone()).unwrap();
     let page = *doc.page_order.first().unwrap();
     let runs = 9;
     let refs = ecad_model::derive::cable_references(&doc);
     let reps_of_page1 = doc.representations.values().filter(|r| r.page == page).count();
-    let linked = ecad_cadcraft::references::linked(&doc);
+    let linked = ecad_engine::references::linked(&doc);
     let t_refs = time(runs, || drop(ecad_model::derive::cable_references(&doc)));
-    let t_linked = time(runs, || drop(ecad_cadcraft::references::linked(&doc)));
-    let t_orphan = time(runs, || drop(ecad_cadcraft::references::orphaned_line(&doc, &linked)));
+    let t_linked = time(runs, || drop(ecad_engine::references::linked(&doc)));
+    let t_orphan = time(runs, || drop(ecad_engine::references::orphaned_line(&doc, &linked)));
     let t_any = time(runs, || {
-        std::hint::black_box(doc.representations.values().any(ecad_cadcraft::references::is_reference));
+        std::hint::black_box(doc.representations.values().any(ecad_engine::references::is_reference));
     });
-    let t_draw = time(runs, || drop(ecad_cadcraft::views::drawings_on_page(&doc, page, &BTreeSet::new(), 1e-6)));
+    let t_draw = time(runs, || drop(ecad_engine::views::drawings_on_page(&doc, page, &BTreeSet::new(), 1e-6)));
     eprintln!(
         "r3 cost: items {}, representations {} ({} on page 1), cables {}, references {}, linked {}",
         doc.items.len(),

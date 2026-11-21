@@ -38,6 +38,6 @@ once there is more than one. Section 5J describes it.
   switching, reopening on the last branch, snapshots on a branch, deep branches, Verify, readers
   ignoring unknown optional fields), `ecad/apps/ecad-mcp/tests/all/history_contracts.rs` (every
   history and branch command through MCP, refused with writes off), and the unit tests of the
-  graph's order and lanes in `ecad/crates/ecad-cadcraft/src/history.rs`.
+  graph's order and lanes in `ecad/crates/ecad-engine/src/history.rs`.
 - *Agent-observed:* not yet clicked through by an agent in the live window.
 - *Owner-tried:* not yet.

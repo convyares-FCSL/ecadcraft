@@ -1,5 +1,5 @@
 //! The wheel in the window (brief 041 step 3): a right-click on the page while no tool runs
-//! classifies what is under the cursor (`ecad_cadcraft::interact::kind`) and opens that kind's
+//! classifies what is under the cursor (`ecad_engine::interact::kind`) and opens that kind's
 //! wheel there; a right-click on a page row in the Pages tab opens the page row's wheel. Choosing
 //! a slot runs its action ([`crate::App::run_action`]), the same path the tool strip, the keys and
 //! Ctrl+K use.
@@ -11,9 +11,9 @@
 //! nothing while it is closed.
 
 use crate::actions::{self, Action, App, Choices, Context, Enabled, IdOf, ObjectKind, Params};
-use ecad_cadcraft::cad::Input;
-use ecad_cadcraft::cad::Vec2;
-use ecad_cadcraft::interact::kind::{self, Target};
+use ecad_engine::cad::Input;
+use ecad_engine::cad::Vec2;
+use ecad_engine::interact::kind::{self, Target};
 use ecad_model::{PageId, Subject};
 use ecad_ui::wheel::{Event, SlotSpec, Wheel};
 use eframe::egui;
@@ -348,7 +348,7 @@ impl crate::App {
                 };
             }
             // UI rev 3: Wire ▸ Continuation places the continuation arrow, as Find symbol does.
-            App::Continuation => self.start_pick(crate::search::Pick::Symbol(ecad_cadcraft::symbols::StarterKey::Continuation))?,
+            App::Continuation => self.start_pick(crate::search::Pick::Symbol(ecad_engine::symbols::StarterKey::Continuation))?,
             App::Coming => return Err(actions::COMING.into()),
             App::ShowNet => {
                 let t = target.ok_or("no wire")?;
@@ -363,10 +363,7 @@ impl crate::App {
                     .unwrap_or_default();
                 if let (Some(pg), Some(p)) = (page, self.project.clone()) {
                     let handles = p.read(&mut self.cad.session, |p, _| {
-                        wires
-                            .iter()
-                            .flat_map(|w| ecad_cadcraft::checks::handles_of(p, pg, ecad_cadcraft::checks::Object::Wire(*w)))
-                            .collect::<Vec<_>>()
+                        wires.iter().flat_map(|w| ecad_engine::checks::handles_of(p, pg, ecad_engine::checks::Object::Wire(*w))).collect::<Vec<_>>()
                     })?;
                     self.cad.session.set_selection(handles);
                 }
@@ -382,7 +379,7 @@ impl crate::App {
                     p.ledger
                         .document()
                         .representations_of(Subject::Cable(k))
-                        .filter(|(_, r)| ecad_cadcraft::references::is_reference(r))
+                        .filter(|(_, r)| ecad_engine::references::is_reference(r))
                         .map(|(id, r)| (id, r.page))
                         .collect::<Vec<_>>()
                 })?;

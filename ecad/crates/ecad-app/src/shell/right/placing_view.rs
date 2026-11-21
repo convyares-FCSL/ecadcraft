@@ -3,7 +3,7 @@
 //! Function and Location it will take, and what the click changes. Read only: the picker and the
 //! tool do the placing ([`crate::shell::placing`]); nothing here writes or reads the project.
 
-use ecad_cadcraft::symbols;
+use ecad_engine::symbols;
 use ecad_ui::tokens::{space, ui_type};
 use eframe::egui::{self, Sense, Stroke, pos2, vec2};
 
@@ -182,7 +182,7 @@ fn change_line(ui: &mut egui::Ui, mark: &str, words: &str) {
         "free" => {
             p.circle_stroke(at, 4.5, Stroke::new(1.6, ecad_ui::color(s.connect)));
         }
-        _ => w::severity_mark(p, at, ecad_cadcraft::checks::Severity::Warning),
+        _ => w::severity_mark(p, at, ecad_engine::checks::Severity::Warning),
     }
     let width = ui.available_width() - 26.0;
     ui.horizontal(|ui| {

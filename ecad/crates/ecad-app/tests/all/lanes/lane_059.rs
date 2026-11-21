@@ -151,7 +151,7 @@ fn removing_a_drawn_cable_is_refused_with_a_go_to_per_page() {
     assert!(h.query_by_label("ecad.lists.cables.remove.refused").is_some());
     // The Checks tab lists -W01's own rows (its open core) with a Go to.
     let rows = h.state().reports.as_ref().unwrap().cables.cable_checks.clone();
-    assert!(rows.iter().any(|(c, _)| c.kind == ecad_cadcraft::checks::Kind::CoreOpen), "{rows:?}");
+    assert!(rows.iter().any(|(c, _)| c.kind == ecad_engine::checks::Kind::CoreOpen), "{rows:?}");
     h.state_mut().reports.as_mut().unwrap().cables.detail_tab = 1;
     h.run_steps(4);
     assert!(h.query_all_by_label_contains("core GNYE is not assigned").next().is_some(), "the Checks tab lists it");

@@ -4,7 +4,7 @@
 //! (owner, 2026-11-08) its header also holds the project's status, file actions and the
 //! experiment note.
 //!
-//! The panel only reads: it keeps a copy of the rows ([`ecad_cadcraft::PageRow`]) and rebuilds it
+//! The panel only reads: it keeps a copy of the rows ([`ecad_engine::PageRow`]) and rebuilds it
 //! when the project's change count moves (one integer compared per frame; a rebuild reads
 //! `page_order` and page titles only). The list is virtualised, so a frame draws only the visible
 //! rows whatever the page count. Everything it does is returned as [`Action`]s for the app to
@@ -15,7 +15,7 @@
 use std::collections::BTreeSet;
 
 use cadcraft_ui_egui::icons::{self, Icon};
-use ecad_cadcraft::{PageRow, TreeRow};
+use ecad_engine::{PageRow, TreeRow};
 use ecad_model::{FolderId, PageId};
 use eframe::egui::{self, Color32, Key, Modifiers, Rect, RichText, Sense, Stroke, pos2, vec2};
 
@@ -142,7 +142,7 @@ pub enum Action {
     /// Brief 054: a Checks fix's command line (a page type or folder start fix).
     RunLine(String),
     /// Checks tab (brief 022): show this row's page, centre on it, select it, ring it.
-    GotoCheck(Box<ecad_cadcraft::checks::Check>),
+    GotoCheck(Box<ecad_engine::checks::Check>),
     /// Checks tab (brief 032): `joinwires {at}` on this page.
     JoinWires(PageId, ecad_model::Pt),
     /// Checks tab: `renumberwires {scope: "unnumbered"}`.
@@ -151,7 +151,7 @@ pub enum Action {
     Finalise,
     /// Checks tab (brief 033): show this row (a table over the title block), then start Move
     /// Mirror Table.
-    MoveTable(Box<ecad_cadcraft::checks::Check>),
+    MoveTable(Box<ecad_engine::checks::Check>),
     /// Checks tab (brief 033): open this page's number field in the Pages list.
     RenumberPage(PageId),
     /// Devices tab (brief 026): open the Renumber dialog.
@@ -191,7 +191,7 @@ pub enum Action {
     /// Brief 020a: something the History tab asked for.
     History(crate::history_panel::Do),
     /// Brief 052: Checks' **Use it**: the one context a device's symbols share (`setlocation`).
-    UseContext(ecad_model::DeviceId, ecad_cadcraft::designations::Aspect),
+    UseContext(ecad_model::DeviceId, ecad_engine::designations::Aspect),
     /// Brief 052: Checks' **Set location** / **Set function**: select the device's symbol, so the
     /// inspector shows its row.
     GoToDevice(ecad_model::DeviceId),
@@ -206,7 +206,7 @@ pub enum Action {
     /// Brief 027: the Release dialog for the pending revision.
     Release,
     /// Brief 024: `newpage {generated}`.
-    NewGenerated(ecad_cadcraft::generated::GenKind),
+    NewGenerated(ecad_engine::generated::GenKind),
     /// Brief 046: `newpage {generated: "terminals", style: "graphic"}`.
     NewStripPage,
     /// Brief 028 Checks fixes: **Offer n**, **Renumber -X01**, **Set cores…**, **Next free core**,
@@ -220,21 +220,21 @@ pub enum Action {
     OpenStandards(ecad_model::StyleCatalogue),
     /// Brief 057: a rating row's fix (Show rating, Use a size, Use Datasheet, Clear Protected by,
     /// Choose a table, Show the rated wires).
-    RatingFix(ecad_cadcraft::checks::Fix),
+    RatingFix(ecad_engine::checks::Fix),
     /// Brief 057 (owner): an open core's button `0` (Tick Not used) or `1` (Go to the open end).
-    CoreFix(ecad_cadcraft::checks::Fix, usize),
+    CoreFix(ecad_engine::checks::Fix, usize),
     /// Brief 059: a cable manager row's button `k` (Assign in the drawing… / Remove, Use the drawing /
     /// Go to, Set gland, Show).
-    CableFix(ecad_cadcraft::checks::Fix, usize),
+    CableFix(ecad_engine::checks::Fix, usize),
     /// Brief 055: **Edit block** (Library ▸ Title blocks on the page's frame, item selected) and
     /// **Clear the page's sheet** (`pageprops {page, sheet: null}`).
     EditTitleBlock(PageId, u16),
     ClearPageSheet(PageId),
     /// Brief 030 Checks fixes (design 030 §8): the fix's button `0` or `1` (Move to end / Remove,
     /// Split link / Remove partition, Drop missing positions / Delete link).
-    AccessoryFix(ecad_cadcraft::checks::Fix, usize),
+    AccessoryFix(ecad_engine::checks::Fix, usize),
     /// Brief 044: Place ▸ Connector on this connector's lacking side, pin by pin.
-    PlaceMates(ecad_model::DeviceId, ecad_cadcraft::symbols::Side),
+    PlaceMates(ecad_model::DeviceId, ecad_engine::symbols::Side),
     /// Brief 041: a page row's right-click opens its wheel here (screen point).
     PageWheel(PageId, egui::Pos2),
     /// UI rev 3 (board 1.03): the Devices panel's Project →, Project ▸ Device list.
@@ -1245,7 +1245,7 @@ impl ProjectPanel {
                 } else if generated {
                     del
                 } else {
-                    del.disabled(ecad_cadcraft::page_types::DRAWN_PAGE)
+                    del.disabled(ecad_engine::page_types::DRAWN_PAGE)
                 };
                 if ui.add(del).clicked() && writable && generated {
                     out.push(Action::DeletePages(picked.clone()));
@@ -1263,15 +1263,15 @@ impl ProjectPanel {
                     out.push(if self.has_folders() { Action::NewPageIn(self.target_folder()) } else { Action::New });
                     ui.close();
                 }
-                for &k in <ecad_cadcraft::generated::GenKind as ecad_model::Word>::ALL {
+                for &k in <ecad_engine::generated::GenKind as ecad_model::Word>::ALL {
                     let b = ui.button(k.title()).on_hover_text(format!("ecad.project.newpage.{}", ecad_model::Word::word(k)));
                     if b.clicked() {
                         out.push(Action::NewGenerated(k));
                         ui.close();
                     }
                     // Brief 046 (design 046 §8.1): Terminal strips after Terminal plan.
-                    if k == ecad_cadcraft::generated::GenKind::Terminals {
-                        let b = ui.button(ecad_cadcraft::strip_page::TITLE).on_hover_text("ecad.project.newpage.terminals-graphic");
+                    if k == ecad_engine::generated::GenKind::Terminals {
+                        let b = ui.button(ecad_engine::strip_page::TITLE).on_hover_text("ecad.project.newpage.terminals-graphic");
                         if b.clicked() {
                             out.push(Action::NewStripPage);
                             ui.close();
