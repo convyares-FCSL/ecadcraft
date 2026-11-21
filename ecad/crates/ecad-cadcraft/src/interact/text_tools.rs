@@ -81,15 +81,10 @@ impl ShowText {
         })
     }
 
-    /// The kind a derived text is; a box label (not a symbol's text) is a location label.
-    fn kind(of: TextOf, symbol: bool) -> TextKind {
-        if symbol { crate::devices::kind_of(of) } else { TextKind::LocationLabel }
-    }
-
     fn change(&self, s: &mut Session, picked: Picked) -> R<Step> {
         let (rep, component, page, kind, show) = match picked {
             Picked::Text { rep, of, component, symbol, shown, page } => {
-                (rep, component, page, Self::kind(of, symbol), ecad_model::words::flag_word(!shown))
+                (rep, component, page, crate::devices::derived_text_kind(of, symbol), ecad_model::words::flag_word(!shown))
             }
             Picked::Symbol { tag_hidden: false, .. } => return Err(other(NOTHING_HIDDEN)),
             Picked::Symbol { rep, component, page, .. } => (rep, Some(component), page, TextKind::Tag, ecad_model::words::flag_word(true)),

@@ -216,7 +216,7 @@ is not counted as a change until the project has a file."
     frame(&mut t, &ctx);
     let snap = t.debugger.snapshot().unwrap();
     assert_eq!(snap.head, 5);
-    assert_eq!(ecad_cadcraft::debug::tx_kind(&t.debugger.log()[4], t.debugger.log()), "undo of #4");
+    assert_eq!(ecad_file::history::tx_kind(&t.debugger.log()[4], t.debugger.log()), "undo of #4");
     assert_eq!(snap.record_state(5), RecordState::Pending);
     assert_eq!(t.debugger.touching(), vec![2, 3, 4, 5]);
     // History at seq 2 (before the wire) is rebuilt from the copy; the live project is unchanged.

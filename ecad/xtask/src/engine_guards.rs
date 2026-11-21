@@ -8,7 +8,8 @@
 //!
 //! The count is kept per file: a file on [`ALLOWED`] may have exactly that many (a ratchet: lower
 //! the count when one moves out, remove the entry at 0), every other file none. Each entry says
-//! why its functions are still in the engine.
+//! why its functions are still in the engine. Functions on [`ADAPTERS`] (thin wrappers over a font,
+//! the clock, a file write or a CADCraft reader, which the textual test cannot see) are not counted.
 //!
 //! Textual, like the other guards: over `crates/ecad-cadcraft/src/`, outside `//` comments and
 //! outside a file's trailing `#[cfg(test)]` module. A type counts as Core when a Core crate
@@ -63,39 +64,36 @@ const STD_TYPES: &[&str] = &[
 const ENGINE_TYPES: &[&str] = &["Session", "Project", "Pages", "Self"];
 
 /// The files that still have rule functions, how many, and why they stay for now. The count only
-/// falls.
+/// falls. Functions on [`ADAPTERS`] are not counted.
 #[rustfmt::skip]
 const ALLOWED: &[(&str, usize, &str)] = &[
-    // The cable view: its geometry is in ecad_electrical::cable_look; the one left measures text.
-    ("crates/ecad-cadcraft/src/look.rs", 1, "a reference end's marker box, measured with CADCraft's drafting font"),
     // The agent gate stays in the engine (brief 074 "What stays").
     ("crates/ecad-cadcraft/src/agent/gate.rs", 3, "the agent gate: undo step, issue order and the transaction summary it answers with"),
-    ("crates/ecad-cadcraft/src/agent/mod.rs", 1, "the agent gate: an author's words in its answers"),
     ("crates/ecad-cadcraft/src/agent/tools.rs", 1, "the MCP tools' list paging"),
     // The dev tools stay (brief 074 "What stays").
-    ("crates/ecad-cadcraft/src/debug.rs", 6, "the live debugger: replay to a sequence number and its read-only labels"),
+    ("crates/ecad-cadcraft/src/debug.rs", 5, "the live debugger: replay to a sequence number and its read-only labels and counts"),
     ("crates/ecad-cadcraft/src/verify.rs", 3, "the projection check's point comparisons (a dev check)"),
-    ("crates/ecad-cadcraft/src/translate_oracle.rs", 1, "the translate oracle's preview (a dev check)"),
-    // Drawing and interaction: geometry for entities and gestures, measured with CADCraft's own
-    // conventions (ACI colours, snapping, placement), so it stays with `draw/` and `interact/`.
-    ("crates/ecad-cadcraft/src/draw/plc/sheets.rs", 1, "the I/O sheet's cell texts, drawn next to it"),
-    ("crates/ecad-cadcraft/src/draw/text_style.rs", 1, "text width with this machine's fonts"),
-    ("crates/ecad-cadcraft/src/draw/title_block/dxf.rs", 2, "the DXF reader (CADCraft's) and the area it fits into"),
-    ("crates/ecad-cadcraft/src/draw/title_block/layout.rs", 3, "title block drawing: ACI colours, extents and placing primitives"),
-    ("crates/ecad-cadcraft/src/draw/xref.rs", 1, "the contact table under a device, measured with CADCraft's fonts"),
-    ("crates/ecad-cadcraft/src/strip_page.rs", 2, "the strip page's drawn row heights"),
-    ("crates/ecad-cadcraft/src/translate.rs", 2, "movement: the preview ledger and the drawn shape of a moved primitive"),
-    ("crates/ecad-cadcraft/src/interact/connectors.rs", 1, "a gesture's side word"),
-    ("crates/ecad-cadcraft/src/interact/forms.rs", 1, "a form's placed primitive preview"),
-    ("crates/ecad-cadcraft/src/interact/location_form.rs", 1, "the location form's snapping distance"),
-    ("crates/ecad-cadcraft/src/interact/mod.rs", 4, "snapping onto primitives and the hover's words"),
-    ("crates/ecad-cadcraft/src/interact/text_tools.rs", 1, "the text tool's kind"),
-    // Project glue: which views to keep when it opens, and the history panel's clock.
-    ("crates/ecad-cadcraft/src/project/mod.rs", 1, "builds the project's views when it opens"),
-    ("crates/ecad-cadcraft/src/history.rs", 1, "a session group's time text in the local zone (the clock stays in the engine)"),
-    // Command glue: a report's file, and JSON a command still reads by hand.
-    ("crates/ecad-cadcraft/src/cmd/output.rs", 1, "a report's page, or the CSV file it writes"),
+    // Judgement calls that stay with the engine code they serve.
+    ("crates/ecad-cadcraft/src/draw/title_block/layout.rs", 1, "a title block ink's ACI colour (CADCraft's colour index)"),
+    ("crates/ecad-cadcraft/src/translate.rs", 1, "movement: the drawn shape of a moved primitive (a tester area)"),
+    ("crates/ecad-cadcraft/src/interact/mod.rs", 1, "the hover's tag text, one line over Properties"),
     ("crates/ecad-cadcraft/src/cmd/title_block.rs", 1, "titleblockimport's frame read from JSON by hand until lane 066d types it"),
+];
+
+/// Functions the guard's textual test counts that are adapters, not domain rules: each is a thin
+/// wrapper over something only the engine has, which the guard cannot see in a body. They are
+/// left out of the count by file and name; one that no longer exists is a problem, so the list
+/// stays true.
+#[rustfmt::skip]
+const ADAPTERS: &[(&str, &str, &str)] = &[
+    ("crates/ecad-cadcraft/src/look.rs", "marker_box", "measures text with CADCraft's drafting font"),
+    ("crates/ecad-cadcraft/src/draw/text_style.rs", "text_width", "measures text with CADCraft's fonts (EngineMetrics)"),
+    ("crates/ecad-cadcraft/src/draw/xref.rs", "table", "lays the contact table out with CADCraft's fonts (EngineMetrics)"),
+    ("crates/ecad-cadcraft/src/history.rs", "group_text", "reads the local time zone"),
+    ("crates/ecad-cadcraft/src/project/mod.rs", "views_for", "builds the engine's own views"),
+    ("crates/ecad-cadcraft/src/cmd/output.rs", "report_result", "writes the report's CSV file"),
+    ("crates/ecad-cadcraft/src/draw/title_block/dxf.rs", "block", "reads the DXF with CADCraft's reader"),
+    ("crates/ecad-cadcraft/src/translate.rs", "preview", "applies ops to the live ledger and rolls them back"),
 ];
 
 /// The parameters of a list, split at its top-level commas.
@@ -309,10 +307,22 @@ pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
     let mut files = Vec::new();
     super::rust_files(&root.join(ENGINE_SRC), &mut files);
     let mut by_file: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
+    let mut adapter_gone = Vec::new();
+    let mut files_seen = BTreeSet::new();
     for f in files {
         let rel = f.strip_prefix(&root).unwrap_or(&f).to_string_lossy().replace('\\', "/");
+        files_seen.insert(rel.clone());
         let text = std::fs::read_to_string(&f).map_err(|e| format!("{}: {e}", f.display()))?;
-        let found = places(&rel, &product_code(&text), &names);
+        let mut found = places(&rel, &product_code(&text), &names);
+        found.retain(|f| {
+            let name = f.rsplit("fn ").next().unwrap_or_default();
+            !ADAPTERS.iter().any(|(p, n, _)| *p == rel && *n == name)
+        });
+        for (p, n, _) in ADAPTERS.iter().filter(|(p, _, _)| *p == rel) {
+            if !text_has_fn(&text, n) {
+                adapter_gone.push(format!("{p}: adapter `{n}` is on engine_guards::ADAPTERS but no longer there; remove it"));
+            }
+        }
         if !found.is_empty() {
             by_file.insert(rel, found);
         }
@@ -336,12 +346,31 @@ pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
             out.push(p);
         }
     }
+    for (p, n, _) in ADAPTERS {
+        if !files_seen.contains(*p) {
+            out.push(format!("{p}: adapter `{n}` is on engine_guards::ADAPTERS but the file is gone; remove it"));
+        }
+    }
+    out.extend(adapter_gone);
     Ok(out)
+}
+
+/// Whether `text` declares a function named `name`.
+fn text_has_fn(text: &str, name: &str) -> bool {
+    text.match_indices("fn ").any(|(i, _)| text[i + 3..].strip_prefix(name).is_some_and(|r| r.starts_with(['(', '<'])))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_adapter_is_found_by_its_whole_name() {
+        assert!(text_has_fn("pub fn marker_box(at: Pt) -> Pt {", "marker_box"));
+        assert!(text_has_fn("fn table<'a>(doc: &Document) {", "table"));
+        assert!(!text_has_fn("fn marker_boxes(at: Pt) {", "marker_box"));
+        assert!(!text_has_fn("let marker_box = 1;", "marker_box"));
+    }
 
     fn names() -> Names {
         let core = ["Document", "PageId", "StyleRef", "FrameText", "SheetSpec", "CmdError", "IdAllocator", "Op"];

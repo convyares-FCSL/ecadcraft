@@ -1747,6 +1747,19 @@ pub fn fuse_terminal_of(doc: &Document, c: DeviceId) -> Option<&ecad_model::devi
     doc.devices.get(&c)?.device_type.as_protection()?.as_fuse_terminal()
 }
 
+/// Level stagger (§3.1): level *n* is raised by (*n* − 1) × this.
+pub const STAGGER_MM: f64 = 1.5;
+
+/// How far level `r` is raised (§3.1).
+pub fn raise(r: &TermRow) -> f64 {
+    if r.ty.multi() { f64::from(r.level.saturating_sub(1).min(16)) * STAGGER_MM } else { 0.0 }
+}
+
+/// Whether `r` is the first plan row of its position (a marker is drawn once per position).
+pub fn first_of_label(s: &StripData, r: &TermRow) -> bool {
+    s.rows.iter().find(|x| x.label == r.label).is_some_and(|x| std::ptr::eq(x, r))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

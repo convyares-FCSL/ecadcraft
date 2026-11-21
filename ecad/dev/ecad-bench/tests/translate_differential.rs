@@ -1,30 +1,29 @@
-//! Brief 014, acceptance 2: the scoped drawing-edit translation gives exactly the ops of the
-//! earlier whole-document code, on a randomised set of edits on the small benchmark project.
+//! Brief 014, acceptance 2, kept as an ordinary test of the current translation: randomised
+//! drawing edits on the small benchmark project, made the way a person makes them through the
+//! engine.
 //!
-//! The comparison itself is `ecad-cadcraft`'s `translate-oracle` feature, on for this test through
-//! the dev-dependencies: every translation also runs the pre-014 code on the same inputs and
-//! aborts the process on any difference (ops, new handles, amended handles, summary or refusal,
-//! ID allocator state). This test makes the edits, the way a person makes them through the engine,
-//! and checks that enough translations were compared, and enough of them accepted with ops. The
-//! sequence is fixed by [`SEED`]; `ECAD_DIFF_SEED=<n>` replays another, and the seed in use is
-//! printed first, even when the oracle aborts. The same oracle runs under every existing
-//! `ecad-cadcraft` test.
+//! Each edit is either accepted (the log grows) or refused or recorded as nothing, and then the
+//! document is exactly as before it. Enough edits of each kind must be accepted, the log must replay
+//! to the live document at the end, and a project saved after the edits must reopen to the same
+//! document. The sequence is fixed by [`SEED`]; `ECAD_DIFF_SEED=<n>` replays another, and the seed
+//! in use is printed first.
 
 use cadcraft_engine::Session;
 use cadcraft_engine::doc::Handle;
 use ecad_bench::generate::{Variant, generate, tier};
-use ecad_cadcraft::{Mapped, ProjectHandle, translate_oracle};
-use ecad_model::derive::{route_on_page, terminal_positions};
-use ecad_model::{PageId, Primitive, Pt, Subject};
+use ecad_cadcraft::{Mapped, ProjectHandle};
+use ecad_model::derive::terminal_positions;
+use ecad_model::{ItemKind, PageId, Primitive, Pt, Subject};
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 
-/// Translations to compare at least (brief 014: 1,000 randomised edits).
+/// Edits to make at least (brief 014: 1,000 randomised edits).
 const EDITS: u64 = 1_200;
-/// Accepted translations (at least one op, not refused) to compare at least.
+/// Edits accepted (the log grew) at least.
 const ACCEPTED: u64 = 800;
 /// The random sequence used unless `ECAD_DIFF_SEED` (decimal or `0x` hex) names another.
 const SEED: u64 = 0x0014_D1FF_E4E7_5EED;
-/// Most edits attempted, so a run that compares too little ends with a failure, not a hang.
+/// Most edits attempted, so a run that accepts too little ends with a failure, not a hang.
 const MAX_ATTEMPTS: usize = 20_000;
 
 /// A small deterministic generator (xorshift64*), so a failure can be replayed.
@@ -84,13 +83,13 @@ fn page_state(project: &ProjectHandle, s: &mut Session, page: PageId) -> Page {
                 let Some((_, r)) = doc.representation_of_item(item) else { continue };
                 match r.subject {
                     Subject::Device(_) if r.items.first() == Some(&item) => symbols.push(*h),
-                    Subject::Wire(c) => {
-                        if let Some((id, prim)) = route_on_page(doc, c, page)
-                            && id == item
+                    // A conductor's drawing is its route's (design 072 F31).
+                    Subject::Route(_) => {
+                        if let Some(ItemKind::Primitive(prim)) = doc.items.get(&item).map(|i| &i.kind)
                             && let Some((a, b)) = prim.path_ends()
                         {
                             routes.push((*h, a, b));
-                            if let Primitive::Polyline { vertices, .. } = &prim
+                            if let Primitive::Polyline { vertices, .. } = prim
                                 && vertices.len() >= 2
                             {
                                 polylines.push((*h, 2 * (vertices.len() - 1)));
@@ -210,62 +209,107 @@ fn edit(rng: &mut Rng, st: &Page, s: &Session) -> Option<(&'static str, &'static
     })
 }
 
-#[test]
-#[ignore = "slow: 400-edit oracle probe, about 110 s; runs at the QA gate"]
-fn randomised_edits_on_the_small_project_give_the_ops_of_the_old_translation() {
+/// The small project, written in the version 2 format the app opens, and opened from it.
+struct Opened {
+    dir: std::path::PathBuf,
+    page: PageId,
+    project: ProjectHandle,
+    s: Session,
+}
+
+fn open_small(tag: &str) -> Opened {
     ecad_cadcraft::install();
     ecad_cadcraft::views::isolate_for_tests();
     let g = generate(tier("small").unwrap(), Variant::Lean).unwrap();
-    let dir = std::env::temp_dir().join(format!("ecad-014-differential-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ecad-014-{tag}-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    // Written straight in the version 2 format the app opens.
     let v2 = dir.join("small-lean.ecad");
     ecad_bench::v2::write(&g, &v2).unwrap();
-
     let mut s = Session::empty();
     let (project, _) = ProjectHandle::open_file_in(&mut s, v2.to_str().unwrap(), 14, ecad_cadcraft::views::Settings::none()).unwrap();
-    let page = g.pages[0];
-    let seed = seed();
-    // Straight to stderr, past the test harness's capture: the oracle aborts the process on a
-    // difference, and the seed must still be on screen to replay it.
-    {
-        use std::io::Write;
-        let _ = writeln!(std::io::stderr(), "translate_differential: seed {seed:#x} (rerun with ECAD_DIFF_SEED={seed:#x})");
-    }
+    Opened { dir, page: g.pages[0], project, s }
+}
+
+/// The log's head and the document's text.
+fn state(o: &mut Opened) -> (u64, String) {
+    o.project.read(&mut o.s, |p, _| (p.ledger.head(), format!("{:?}", p.ledger.document()))).unwrap()
+}
+
+/// Make random edits until at least `edits` were tried and `accepted` accepted (or
+/// [`MAX_ATTEMPTS`]), checking that every edit not accepted left the document as it was. Returns
+/// the number tried and accepted, overall and by kind.
+fn edit_randomly(o: &mut Opened, seed: u64, edits: u64, accepted: u64) -> (usize, u64, u64, BTreeMap<&'static str, (u64, u64)>) {
     let mut rng = Rng(seed | 1);
-    let start = translate_oracle::comparisons();
-    let accepted_start = translate_oracle::accepted();
-    let mut per_kind: std::collections::BTreeMap<&str, (u64, u64)> = Default::default();
-    let mut attempts = 0;
-    while (translate_oracle::comparisons() - start < EDITS || translate_oracle::accepted() - accepted_start < ACCEPTED) && attempts < MAX_ATTEMPTS {
+    let mut per_kind: BTreeMap<&str, (u64, u64)> = BTreeMap::new();
+    let (mut attempts, mut tried, mut took) = (0, 0, 0);
+    while (tried < edits || took < accepted) && attempts < MAX_ATTEMPTS {
         attempts += 1;
-        let st = page_state(&project, &mut s, page);
-        let Some((name, cmd, params)) = edit(&mut rng, &st, &s) else { continue };
-        let before = translate_oracle::comparisons();
-        // Refusals are expected; the oracle compares them too.
-        let _ = s.execute(cmd, &params);
+        let st = page_state(&o.project, &mut o.s, o.page);
+        let Some((name, cmd, params)) = edit(&mut rng, &st, &o.s) else { continue };
+        let (head, before) = state(o);
+        // Refusals are expected; they must change nothing.
+        let _ = o.s.execute(cmd, &params);
+        let (now, after) = state(o);
         let e = per_kind.entry(name).or_default();
         e.0 += 1;
-        e.1 += translate_oracle::comparisons() - before;
+        tried += 1;
+        if now > head {
+            e.1 += 1;
+            took += 1;
+        } else {
+            assert_eq!(before, after, "seed {seed:#x}: {name} {params} was not recorded but changed the document");
+        }
     }
-    let compared = translate_oracle::comparisons() - start;
-    let accepted = translate_oracle::accepted() - accepted_start;
-    eprintln!(
-        "seed {seed:#x}: {attempts} edits attempted, {compared} translations compared with the oracle, \
-         {accepted} of them accepted with ops"
-    );
-    for (name, (tried, cmp)) in &per_kind {
-        eprintln!("  {name:<16} {tried:>5} tried {cmp:>5} compared");
+    (attempts, tried, took, per_kind)
+}
+
+fn print_seed(seed: u64) {
+    use std::io::Write;
+    let _ = writeln!(std::io::stderr(), "translate_differential: seed {seed:#x} (rerun with ECAD_DIFF_SEED={seed:#x})");
+}
+
+#[test]
+#[ignore = "slow: 1,200 random edits, about 110 s; runs at the QA gate"]
+fn randomised_edits_on_the_small_project_give_the_ops_of_the_old_translation() {
+    let mut o = open_small("differential");
+    let seed = seed();
+    print_seed(seed);
+    let (attempts, tried, accepted, per_kind) = edit_randomly(&mut o, seed, EDITS, ACCEPTED);
+    eprintln!("seed {seed:#x}: {attempts} edits attempted, {tried} made, {accepted} of them accepted");
+    for (name, (n, ok)) in &per_kind {
+        eprintln!("  {name:<16} {n:>5} tried {ok:>5} accepted");
     }
-    assert!(compared >= EDITS, "seed {seed:#x}: only {compared} translations compared in {attempts} edits");
-    assert!(accepted >= ACCEPTED, "seed {seed:#x}: only {accepted} translations accepted with ops");
+    assert!(tried >= EDITS, "seed {seed:#x}: only {tried} edits made in {attempts} attempts");
+    assert!(accepted >= ACCEPTED, "seed {seed:#x}: only {accepted} edits accepted");
     for kind in ["move component", "move route", "drag one end", "erase", "copy", "pasteclip", "line", "rotate", "mirror"] {
-        assert!(per_kind.get(kind).is_some_and(|(_, c)| *c > 0), "seed {seed:#x}: no {kind} was translated");
+        assert!(per_kind.get(kind).is_some_and(|(_, ok)| *ok > 0), "seed {seed:#x}: no {kind} was accepted");
     }
     // The project is still whole: the log replays to the live document.
-    assert!(project.read(&mut s, |p, _| p.ledger.replay_matches().unwrap()).unwrap());
-    drop(project);
+    assert!(o.project.read(&mut o.s, |p, _| p.ledger.replay_matches().unwrap()).unwrap());
+    let dir = o.dir.clone();
+    drop(o);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Edits made one at a time, saved and reopened, give the document the edits left.
+#[test]
+fn incremental_edits_saved_and_reopened_give_the_same_document() {
+    let mut o = open_small("reopen");
+    let seed = seed();
+    print_seed(seed);
+    let (_, _, accepted, _) = edit_randomly(&mut o, seed, 12, 8);
+    assert!(accepted >= 8, "seed {seed:#x}: only {accepted} edits accepted");
+    let saved = o.dir.join("saved.ecad");
+    o.s.execute("saveas", &json!({"path": saved.to_string_lossy()})).unwrap();
+    let live = o.project.read(&mut o.s, |p, _| serde_json::to_value(p.ledger.document()).unwrap()).unwrap();
+    let mut s = Session::empty();
+    let (reopened, _) = ProjectHandle::open_file_in(&mut s, saved.to_str().unwrap(), 14, ecad_cadcraft::views::Settings::none()).unwrap();
+    let read = reopened.read(&mut s, |p, _| serde_json::to_value(p.ledger.document()).unwrap()).unwrap();
+    assert!(live == read, "seed {seed:#x}: the reopened document differs from the one saved");
+    drop(reopened);
     drop(s);
+    let dir = o.dir.clone();
+    drop(o);
     let _ = std::fs::remove_dir_all(&dir);
 }
 

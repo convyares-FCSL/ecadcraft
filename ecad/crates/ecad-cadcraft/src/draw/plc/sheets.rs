@@ -12,25 +12,6 @@ use crate::plc::sheets::*;
 use crate::plc::{iolist, kept::Plc};
 use crate::text_style::{Look, TextKind};
 
-/// The cells of one I/O row, in [`IO_COLUMNS`] order.
-fn io_cells(r: &iolist::Row, spare: &str) -> [String; 8] {
-    let desc = match (&r.text, r.state) {
-        (Some(t), _) => t.clone(),
-        (None, "spare") => spare.to_string(),
-        (None, _) => String::new(),
-    };
-    [
-        r.channel.to_string(),
-        iolist::address_words(r),
-        iolist::pins_words(&r.pins),
-        desc,
-        r.state.to_string(),
-        iolist::targets_words(&r.targets),
-        r.wire.clone().unwrap_or_default(),
-        r.place.clone().unwrap_or_default(),
-    ]
-}
-
 /// Sheet `i` of the I/O list page.
 pub(crate) fn io_sheet(doc: &Document, plc: Option<&Plc>, d: &mut Draw, looks: &Look, unit: LengthUnit, a: Area, i: usize) {
     let look = |k| TextLook::of(looks, k, unit);
@@ -68,7 +49,7 @@ pub(crate) fn io_sheet(doc: &Document, plc: Option<&Plc>, d: &mut Draw, looks: &
         d.line((a.l, y), (a.l + total, y));
         for r in rows.get(seg.start..seg.end).unwrap_or_default() {
             let mut x = a.l;
-            for (v, w) in io_cells(r, &spare).iter().zip(&widths) {
+            for (v, w) in iolist::io_cells(r, &spare).iter().zip(&widths) {
                 d.text((x + 1.0, y - row_mm() / 2.0), cell, v, HAlign::Left, None, Some(w - 2.0));
                 x += w;
             }

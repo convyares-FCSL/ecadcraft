@@ -652,7 +652,7 @@ impl Interactive for Place {
         }
         let pl = self.placement(cursor);
         let Some(def) = self.definition() else { return Vec::new() };
-        def.graphics.iter().filter_map(|g| super::forms::placed(g, &pl)).map(|g| crate::convert::kind_for_primitive(&g)).collect()
+        def.graphics.iter().filter_map(|g| ecad_model::geom::placed(g, &pl)).map(|g| crate::convert::kind_for_primitive(&g)).collect()
     }
     /// Its terminal rings, tag and terminal labels at their would-be positions.
     fn preview_objects(&self, s: &Session, cursor: Vec2) -> Vec<Entity> {

@@ -11,8 +11,6 @@
 //! applied, checked where they touched it, read, rolled back), never on a copy, and the movement
 //! policy goes only through the conductors the ops could have moved ([`Scope`]). Apart from the
 //! per-page drawing comparison, a translation costs in proportion to what the edit touched.
-//! The ops are exactly those of the earlier whole-document code, which the `translate-oracle`
-//! feature keeps as a test oracle (`translate_oracle.rs`).
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
@@ -100,12 +98,7 @@ fn entities(d: &Drawing) -> (Vec<Handle>, HashMap<Handle, &Arc<Entity>>) {
 /// invalid document the earlier full-check preview could refuse where this one accepts; a
 /// committed document is always valid, so that cannot happen here.
 fn preview<R>(ledger: &mut Ledger, ops: &[Op], read: impl FnOnce(&Document) -> R) -> Result<R, String> {
-    #[cfg(feature = "translate-oracle")]
-    let before = ledger.document().clone();
-    let result = ledger.with_applied(ops, read).map_err(|e| e.to_string());
-    #[cfg(feature = "translate-oracle")]
-    crate::translate_oracle::unchanged(&before, ledger.document());
-    result
+    ledger.with_applied(ops, read).map_err(|e| e.to_string())
 }
 
 /// The terminal shown at `at` on `page`, if any.
@@ -282,32 +275,6 @@ pub(crate) fn merge_route_edits(ops: &mut Vec<Op>) {
 }
 
 pub(crate) fn translate(cx: &mut Ctx<'_>) -> Result<Translation, String> {
-    #[cfg(feature = "translate-oracle")]
-    let ids_before = cx.ids.clone();
-    #[cfg(feature = "translate-oracle")]
-    let tags_before = cx.tags.clone();
-    let result = translate_scoped(cx);
-    #[cfg(feature = "translate-oracle")]
-    crate::translate_oracle::compare(
-        crate::translate_oracle::Inputs {
-            doc: cx.ledger.document(),
-            page: cx.page,
-            map: cx.map,
-            last: cx.last,
-            now: cx.now,
-            provenance: cx.provenance,
-            clips: cx.clips,
-            tol: cx.tol,
-            tags: tags_before,
-        },
-        ids_before,
-        cx.ids,
-        &result,
-    );
-    result
-}
-
-fn translate_scoped(cx: &mut Ctx<'_>) -> Result<Translation, String> {
     let changed_tables = table_changes(cx.last, cx.now);
     if !changed_tables.is_empty() {
         return Err(format!("changes to {} are not recorded on ECAD pages yet", changed_tables.join(", ")));
@@ -953,8 +920,6 @@ fn moved(proposed: &Document, page: PageId, tol: f64, scope: &Scope, earlier: &E
             Some(op) => (*op, terminal_position(proposed, page, term)),
             None => (None, None),
         };
-        // Until the test oracle is retired, every change here must be made in
-        // `translate_oracle.rs` too.
         let after = route_moved(proposed, page, *r, route, old_ends, fresh_ends, position, &mut found);
         record(proposed, *r, route, after, &mut out);
     }

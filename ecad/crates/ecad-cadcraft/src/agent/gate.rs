@@ -262,7 +262,7 @@ pub fn tx_summary(t: &Transaction) -> Value {
         "seq": t.seq,
         "id": t.id.hex(),
         "label": t.label,
-        "author": crate::agent::author_text(&t.author),
+        "author": ecad_file::history::logged_author_text(&t.author),
         "ops": t.ops.len(),
     })
 }

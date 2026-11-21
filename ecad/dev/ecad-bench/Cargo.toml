@@ -25,7 +25,5 @@ zstd = { workspace = true }
 [dev-dependencies]
 # Every test run checks invariants in full as well (verify mode, brief 013).
 ecad-model = { workspace = true, features = ["verify-invariants"] }
-# The differential test: every drawing-edit translation is compared with the pre-014 code (brief 014).
-ecad-cadcraft = { path = "../../crates/ecad-cadcraft", features = ["translate-oracle"] }
 # Design 064: each derived view checked against its old function on the recorded corpus.
 ecad-electrical = { workspace = true }

@@ -91,14 +91,6 @@ struct PlaceConnector {
     drawn: usize,
 }
 
-fn word_of(side: Side) -> &'static str {
-    match side {
-        Side::Socket => "Socket",
-        Side::Plug => "Plug",
-        Side::Both => "Both",
-    }
-}
-
 impl PlaceConnector {
     fn bulkhead(&self) -> bool {
         self.family.bulkhead().is_some()
@@ -318,7 +310,7 @@ impl PlaceConnector {
                 Ok(Step::Continue)
             }
             (Stage::Device, Input::Keyword(k) | Input::Text(k)) => self.choose_device(s, &k),
-            (Stage::Halves, Input::Enter) => self.choose_halves(word_of(self.halves)),
+            (Stage::Halves, Input::Enter) => self.choose_halves(crate::symbols::side_word(self.halves)),
             (Stage::Halves, Input::Keyword(k) | Input::Text(k)) => self.choose_halves(&k),
             (Stage::Type, Input::Enter) => self.choose_type(self.family.word()),
             (Stage::Type, Input::Keyword(k) | Input::Text(k)) => self.choose_type(&k),
@@ -380,7 +372,7 @@ impl Interactive for PlaceConnector {
         };
         match self.stage {
             Stage::Device => with("Connector", &["New"], self.next.clone()),
-            Stage::Halves => with("Halves", HALF_WORDS, word_of(self.halves).to_string()),
+            Stage::Halves => with("Halves", HALF_WORDS, crate::symbols::side_word(self.halves).to_string()),
             Stage::Type => with("Type", TYPE_WORDS, self.family.keyword().to_string()),
             Stage::Pins => {
                 let sizes: Vec<String> = self.family.sizes().iter().map(ToString::to_string).collect();

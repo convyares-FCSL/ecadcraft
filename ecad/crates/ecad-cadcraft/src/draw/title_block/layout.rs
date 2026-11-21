@@ -276,55 +276,9 @@ fn rev_table(pen: &mut Pen, input: &FrameInput, r: Rect, origin: (f64, f64), row
     }
 }
 
-/// The extents of `prims` (min, max), when they have any finite points.
-pub fn extents(prims: &[Primitive]) -> Option<(Pt, Pt)> {
-    let mut lo = Pt::new(f64::INFINITY, f64::INFINITY);
-    let mut hi = Pt::new(f64::NEG_INFINITY, f64::NEG_INFINITY);
-    let mut add = |p: Pt| {
-        if p.x.is_finite() && p.y.is_finite() {
-            lo = Pt::new(lo.x.min(p.x), lo.y.min(p.y));
-            hi = Pt::new(hi.x.max(p.x), hi.y.max(p.y));
-        }
-    };
-    for p in prims {
-        match p {
-            Primitive::Line { a, b } => {
-                add(*a);
-                add(*b);
-            }
-            Primitive::Polyline { vertices, .. } => vertices.iter().copied().for_each(&mut add),
-            Primitive::Arc { center, radius, .. } | Primitive::Circle { center, radius } => {
-                add(Pt::new(center.x - radius, center.y - radius));
-                add(Pt::new(center.x + radius, center.y + radius));
-            }
-            Primitive::Text { at, height, value, .. } => {
-                add(*at);
-                add(Pt::new(at.x + height * 0.8 * value.chars().count() as f64, at.y + height));
-            }
-            Primitive::Point { at } => add(*at),
-        }
-    }
-    (lo.x <= hi.x && lo.y <= hi.y).then_some((lo, hi))
-}
-
-/// `prims` scaled by `s` about `from` and moved to `to`, in drawing units `k`.
-fn place(p: &Primitive, from: Pt, s: f64, to: Pt, k: f64) -> Primitive {
-    let t = |q: Pt| Pt::new((to.x + (q.x - from.x) * s) * k, (to.y + (q.y - from.y) * s) * k);
-    match p {
-        Primitive::Line { a, b } => Primitive::Line { a: t(*a), b: t(*b) },
-        Primitive::Polyline { vertices, closed } => Primitive::Polyline { vertices: vertices.iter().map(|v| t(*v)).collect(), closed: *closed },
-        Primitive::Arc { center, radius, start, end } => Primitive::Arc { center: t(*center), radius: radius * s * k, start: *start, end: *end },
-        Primitive::Circle { center, radius } => Primitive::Circle { center: t(*center), radius: radius * s * k },
-        Primitive::Text { at, height, rotation, value, halign, valign } => {
-            Primitive::Text { at: t(*at), height: height * s * k, rotation: *rotation, value: value.clone(), halign: *halign, valign: *valign }
-        }
-        Primitive::Point { at } => Primitive::Point { at: t(*at) },
-    }
-}
-
 /// A logo fitted into its box keeping its proportions, centred (design 055 §6).
 fn logo(pen: &mut Pen, input: &FrameInput, r: Rect, origin: (f64, f64), prims: &[Primitive]) {
-    let Some((lo, hi)) = extents(prims) else { return };
+    let Some((lo, hi)) = ecad_model::geom::extents(prims) else { return };
     let (w, h) = (hi.x - lo.x, hi.y - lo.y);
     let s = match (w > 1e-9, h > 1e-9) {
         (true, true) => (r.w / w).min(r.h / h),
@@ -337,7 +291,7 @@ fn logo(pen: &mut Pen, input: &FrameInput, r: Rect, origin: (f64, f64), prims: &
     }
     let to = Pt::new(origin.0 + pen.dx + r.x + (r.w - w * s) / 2.0, origin.1 + r.y + (r.h - h * s) / 2.0);
     for p in prims {
-        let q = place(p, lo, s, to, pen.k);
+        let q = ecad_model::geom::place(p, lo, s, to, pen.k);
         pen.prim(&q, input.look.inner);
     }
 }

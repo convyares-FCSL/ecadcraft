@@ -47,8 +47,7 @@ use ecad_model::Author;
 use serde_json::{Value, json};
 
 pub use ecad_cadcraft::agent::{
-    CADCRAFT_TOOLS, MAX_AGENT_NAME, MAX_BATCH, MAX_REQUEST_BYTES, MAX_TRANSACTIONS_PER_CALL, UNNAMED_AGENT, UNREADABLE, agent_name, author_text,
-    not_offered,
+    CADCRAFT_TOOLS, MAX_AGENT_NAME, MAX_BATCH, MAX_REQUEST_BYTES, MAX_TRANSACTIONS_PER_CALL, UNNAMED_AGENT, UNREADABLE, agent_name, not_offered,
 };
 
 const PARSE_ERROR: i64 = -32700;

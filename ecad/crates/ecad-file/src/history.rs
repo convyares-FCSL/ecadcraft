@@ -486,6 +486,28 @@ pub fn device_changes(
     Some(lines)
 }
 
+/// How a transaction's author is shown in the log (agent tools and the debugger): `user` or
+/// `agent <name>`.
+pub fn logged_author_text(a: &ecad_model::Author) -> String {
+    match a {
+        ecad_model::Author::User => "user".into(),
+        ecad_model::Author::Agent(n) => format!("agent {n}"),
+    }
+}
+
+/// A transaction's kind in words.
+pub fn tx_kind(tx: &Transaction, log: &[Transaction]) -> String {
+    let seq_of = |id: ecad_model::TxId| log.iter().find(|t| t.id == id).map_or_else(|| id.short(), |t| format!("#{}", t.seq));
+    match tx.kind {
+        TxKind::Edit => "edit".into(),
+        TxKind::Undo { of } => format!("undo of {}", seq_of(of)),
+        TxKind::Redo { of } => format!("redo of {}", seq_of(of)),
+        TxKind::Merge { source, source_head, .. } => {
+            format!("merge of {}… at {}", source.iter().take(4).map(|b| format!("{b:02x}")).collect::<String>(), source_head.seq)
+        }
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {

@@ -8,9 +8,7 @@
 //! - window-style moves of a component together with its wires;
 //! - rotations, and an occasional undo.
 //!
-//! The test oracle (`translate-oracle`, on through this crate's dev-dependencies) compares every
-//! translation with the pre-014 code and aborts on any difference. The harness runs its full
-//! project checks after each command.
+//! The harness runs its full project checks after each command.
 //!
 //! After each edit the probe also checks three things:
 //! - Every end attached on the other page is still attached: the M3 gate never detaches it.

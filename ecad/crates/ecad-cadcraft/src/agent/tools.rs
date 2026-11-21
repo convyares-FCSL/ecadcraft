@@ -1,14 +1,14 @@
 //! The ECAD tools: `ecad_project`, `ecad_history` and `ecad_inspect` (read), and `save` (write).
 
-use crate::debug::tx_kind;
 use ecad_model::{Author, derive};
 use serde_json::{Map, Value, json};
 
 use crate::ProjectHandle;
 use crate::cad::Session;
 
+use crate::agent::MAX_TRANSACTIONS_PER_CALL;
 use crate::agent::gate::{self, Call, tx_summary};
-use crate::agent::{MAX_TRANSACTIONS_PER_CALL, author_text};
+use ecad_file::history::logged_author_text;
 
 /// Names of the tools this module answers.
 pub const ECAD_TOOLS: &[&str] = &["ecad_project", "ecad_history", "ecad_inspect", "save", "ecad_connection", "screenshot"];
@@ -274,7 +274,7 @@ fn history(st: &mut Host<'_>, offset: Option<u64>, limit: Option<u64>) -> Result
             .map(|t| {
                 let mut v = tx_summary(t);
                 if let Some(o) = v.as_object_mut() {
-                    o.insert("kind".into(), json!(tx_kind(t, log)));
+                    o.insert("kind".into(), json!(ecad_file::history::tx_kind(t, log)));
                     o.insert("timeMs".into(), json!(t.time_ms));
                     o.insert("byAgent".into(), json!(matches!(t.author, Author::Agent(_))));
                 }
@@ -286,7 +286,7 @@ fn history(st: &mut Host<'_>, offset: Option<u64>, limit: Option<u64>) -> Result
             "offset": offset,
             "head": p.ledger.head(),
             "persisted": p.ledger.persisted(),
-            "authors": log.iter().map(|t| author_text(&t.author)).collect::<std::collections::BTreeSet<_>>(),
+            "authors": log.iter().map(|t| logged_author_text(&t.author)).collect::<std::collections::BTreeSet<_>>(),
             "transactions": txs,
         })
     })

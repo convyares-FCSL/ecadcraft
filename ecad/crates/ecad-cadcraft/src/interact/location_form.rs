@@ -267,20 +267,15 @@ fn outline_at(doc: &ecad_model::Document, page: ecad_model::PageId, at: Pt, tol:
             ItemKind::Primitive(Primitive::Polyline { vertices, closed }) => {
                 let n = vertices.len();
                 let segs = if *closed { n } else { n.saturating_sub(1) };
-                let d = (0..segs).filter_map(|k| Some(seg_dist(at, *vertices.get(k)?, *vertices.get((k + 1) % n)?))).fold(f64::INFINITY, f64::min);
+                let d = (0..segs)
+                    .filter_map(|k| Some(at.dist(ecad_model::geom::nearest_on_segment(at, *vertices.get(k)?, *vertices.get((k + 1) % n)?))))
+                    .fold(f64::INFINITY, f64::min);
                 (d <= tol).then_some((d, *id))
             }
             _ => None,
         })
         .min_by(|a, b| a.0.total_cmp(&b.0))
         .map(|(_, id)| id)
-}
-
-fn seg_dist(p: Pt, a: Pt, b: Pt) -> f64 {
-    let (dx, dy) = (b.x - a.x, b.y - a.y);
-    let len2 = dx * dx + dy * dy;
-    let t = if len2 > 0.0 { (((p.x - a.x) * dx + (p.y - a.y) * dy) / len2).clamp(0.0, 1.0) } else { 0.0 };
-    p.dist(Pt::new(a.x + t * dx, a.y + t * dy))
 }
 
 impl Interactive for LocationBox {
