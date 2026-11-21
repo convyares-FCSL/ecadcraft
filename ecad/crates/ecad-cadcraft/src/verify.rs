@@ -23,6 +23,7 @@ use cadcraft_engine::doc::{Drawing, Entity, EntityKind, Handle};
 use ecad_model::{CableId, Document, End, Form, ItemId, ItemKind, PageId, Pt, Subject};
 
 use crate::convert::{ECAD_PREFIX, block_name, item_from, kind_for_primitive, marker_position};
+use crate::outputs::kept::Outputs;
 use crate::project::{HandleMap, Mapped, part_entity};
 
 /// What [`verify_page`] compared and what disagreed.
@@ -86,23 +87,28 @@ fn same_points(a: Vec<Pt>, b: Vec<Pt>) -> bool {
 }
 
 /// Check that `drawing` (with `map`) shows `page` of `doc`, without relying on handle numbers.
-pub fn verify_page(doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap) -> Verification {
-    verify_page_with(doc, page, drawing, map, &BTreeSet::new(), 0.0)
+/// Pages drawn from the report models are expected with `outputs`
+/// ([`crate::generated::parts_of`]).
+pub fn verify_page(doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, outputs: Option<&Outputs>) -> Verification {
+    verify_page_with(doc, page, drawing, map, &BTreeSet::new(), 0.0, outputs)
 }
 
 /// [`verify_page`] for a page projected with cable views (brief 005): the cables in `fan` whose
 /// fan can be drawn on the page must show exactly their fan ([`crate::views::fan_on_page`] with
 /// tolerance `tol`) on the reserved layer, and the items the fan replaces must not be drawn.
-pub fn verify_page_with(doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64) -> Verification {
-    verify_page_shown(doc, page, drawing, map, fan, tol, false)
+pub fn verify_page_with(
+    doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, outputs: Option<&Outputs>,
+) -> Verification {
+    verify_page_shown(doc, page, drawing, map, fan, tol, false, outputs)
 }
 
 /// [`verify_page_with`] for a page drawn with Show Hidden Text on or off (brief 031, design §5.7):
 /// with it on, the hidden derived texts are expected too, dimmed.
+#[allow(clippy::too_many_arguments)]
 pub fn verify_page_shown(
-    doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool,
+    doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool, outputs: Option<&Outputs>,
 ) -> Verification {
-    verify_page_pending(doc, page, drawing, map, fan, tol, hidden_text, false)
+    verify_page_pending(doc, page, drawing, map, fan, tol, hidden_text, false, outputs)
 }
 
 /// [`verify_page_shown`] for a project whose title block marks a pending revision (brief 033,
@@ -110,6 +116,7 @@ pub fn verify_page_shown(
 #[allow(clippy::too_many_arguments)]
 pub fn verify_page_pending(
     doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool, pending: bool,
+    outputs: Option<&Outputs>,
 ) -> Verification {
     let mut v = Verification::default();
     let fans = crate::views::drawings_on_page(doc, page, fan, tol);
@@ -161,7 +168,7 @@ pub fn verify_page_pending(
     // The sheet frame (brief 019), derived like the cable parts.
     // Generated pages and Total in sheets (brief 024) come from the same function.
     let frame_rgb = crate::frame::line_colour(doc, page);
-    for part in crate::generated::parts_of_pending(doc, page, None, pending) {
+    for part in crate::generated::parts_of_pending(doc, page, outputs, pending) {
         *fan_expected.entry(computed_key(&crate::frame::styled_entity(&part, Handle(0), frame_rgb))).or_default() += 1;
     }
     let mut problems: Vec<String> = Vec::new();

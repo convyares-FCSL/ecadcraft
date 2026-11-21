@@ -103,7 +103,16 @@ pub fn preview_drawing(p: &Project, page: PageId) -> Result<Drawing, String> {
     if !doc.pages.contains_key(&page) {
         return Err("The previewed page no longer exists.".into());
     }
-    project_page_with(doc, page, &base_drawing(), &HandleMap::default(), &p.views, p.tolerance).map(|(d, _)| d)
+    project_page_with(
+        doc,
+        page,
+        &base_drawing(),
+        &HandleMap::default(),
+        &p.views,
+        p.tolerance,
+        crate::project::engine_views().report_models(doc).as_ref(),
+    )
+    .map(|(d, _)| d)
 }
 
 /// Project `page` of `doc` (another state of a project, such as an issued revision, brief 019)
@@ -115,7 +124,8 @@ pub fn preview_drawing_of(doc: &ecad_model::Document, page: PageId, tol: f64) ->
     if !doc.pages.contains_key(&page) {
         return Err("That page is not in this revision.".into());
     }
-    project_page_with(doc, page, &base_drawing(), &HandleMap::default(), &std::collections::BTreeSet::new(), tol).map(|(d, _)| d)
+    let outputs = crate::project::engine_views().report_models(doc);
+    project_page_with(doc, page, &base_drawing(), &HandleMap::default(), &std::collections::BTreeSet::new(), tol, outputs.as_ref()).map(|(d, _)| d)
 }
 
 /// Rasterise `drawing` at `view` into an image of `width` × `height` pixels on `background`, with

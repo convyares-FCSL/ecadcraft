@@ -352,7 +352,7 @@ fn terminal_plan_and_cable_schedule_pages() {
     assert_eq!(ecad_cadcraft::generated::strip_of(&doc, plan_page), Some(x1));
     let o = Outputs::build_with(&doc, &ecad_cadcraft::text_style::EngineMetrics);
     assert_eq!(ecad_cadcraft::generated::sheets_of(&doc, plan_page, Some(&o)), 1);
-    let parts = ecad_cadcraft::generated::parts_of(&doc, plan_page, None);
+    let parts = ecad_cadcraft::generated::parts_of(&doc, plan_page, Some(&o));
     assert!(parts.len() > 20, "the plan draws its table");
     let c = t.h.run("newpage", json!({"generated": "cables"})).unwrap();
     let cables_page: PageId = id(&c, "page");

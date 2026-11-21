@@ -125,7 +125,13 @@ fn a_gnye_wire_draws_both_colours_and_prints_mono_or_colour() {
     // dashes: it failed before `verify` knew them, so an opened project's page was unavailable.
     let v = h.pv(|p, pg| {
         let d = pg.drawing_of(p, page).unwrap();
-        ecad_cadcraft::verify::verify_page(p.ledger.document(), page, &d, &p.pages[&page].map)
+        ecad_cadcraft::verify::verify_page(
+            p.ledger.document(),
+            page,
+            &d,
+            &p.pages[&page].map,
+            ecad_cadcraft::project::engine_views().report_models(p.ledger.document()).as_ref(),
+        )
     });
     assert!(v.ok(), "{}", v.summary());
     // Colour print: the wire and its dashes in their (paper) colours, the rest in ink.

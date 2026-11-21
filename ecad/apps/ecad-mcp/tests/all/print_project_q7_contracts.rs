@@ -25,13 +25,14 @@ fn frame_texts(c: &mut Client) -> (Vec<String>, String) {
             assert_eq!(p.pending, pending, "the kept flag is the walk's");
             let doc = p.ledger.document();
             let page: PageId = doc.page_order[0];
-            let texts = ecad_cadcraft::generated::parts_of_pending(doc, page, None, pending)
-                .into_iter()
-                .filter_map(|part| match part.kind {
-                    cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value),
-                    _ => None,
-                })
-                .collect();
+            let texts =
+                ecad_cadcraft::generated::parts_of_pending(doc, page, ecad_cadcraft::project::engine_views().report_models(doc).as_ref(), pending)
+                    .into_iter()
+                    .filter_map(|part| match part.kind {
+                        cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value),
+                        _ => None,
+                    })
+                    .collect();
             (texts, ecad_cadcraft::revisions::rev_box(doc, pending))
         })
         .unwrap()
@@ -88,13 +89,18 @@ fn ac9_the_pending_marker_follows_the_undo_stack() {
     let texts =
         c.s.with_session(|s, h| {
             h.read(s, |p, _| {
-                ecad_cadcraft::generated::parts_of_pending(p.ledger.document(), page, None, p.pending)
-                    .into_iter()
-                    .filter_map(|part| match part.kind {
-                        cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
+                ecad_cadcraft::generated::parts_of_pending(
+                    p.ledger.document(),
+                    page,
+                    ecad_cadcraft::project::engine_views().report_models(p.ledger.document()).as_ref(),
+                    p.pending,
+                )
+                .into_iter()
+                .filter_map(|part| match part.kind {
+                    cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
             })
             .unwrap()
         })
@@ -158,7 +164,7 @@ fn ac10_revision_columns_and_custom_fields() {
     let list = c.exec("newpage", json!({"generated": "revisions"}));
     let page = PageId::parse(list["page"].as_str().unwrap()).unwrap();
     let doc = c.doc();
-    let texts: Vec<String> = ecad_cadcraft::generated::parts_of(&doc, page, None)
+    let texts: Vec<String> = ecad_cadcraft::generated::parts_of(&doc, page, ecad_cadcraft::project::engine_views().report_models(&doc).as_ref())
         .into_iter()
         .filter_map(|part| match part.kind {
             cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value),

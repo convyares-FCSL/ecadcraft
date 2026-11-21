@@ -262,6 +262,7 @@ fn check_project(p: &Project, pg: &PagesRef<'_>, unsaved_per_doc: &[(u64, bool)]
         let doc = p.ledger.document();
         // 2. replay equals the document.
         assert!(p.ledger.replay_matches().unwrap(), "replay differs from the live document");
+        let outputs = ecad_cadcraft::project::engine_views().report_models(doc);
         for (page, view) in &p.pages {
             let Some(uid) = view.uid else { continue };
             let Some(st) = pg.doc(uid) else { panic!("open page without a document") };
@@ -269,9 +270,18 @@ fn check_project(p: &Project, pg: &PagesRef<'_>, unsaved_per_doc: &[(u64, bool)]
                 continue;
             }
             // 1. projecting the document equals the engine drawing.
-            let (d, map) =
-                ecad_cadcraft::project::project_page_pending(doc, *page, &st.doc, &view.map, &p.views, p.tolerance, p.show_hidden_text, p.pending)
-                    .unwrap();
+            let (d, map) = ecad_cadcraft::project::project_page_pending(
+                doc,
+                *page,
+                &st.doc,
+                &view.map,
+                &p.views,
+                p.tolerance,
+                p.show_hidden_text,
+                p.pending,
+                outputs.as_ref(),
+            )
+            .unwrap();
             assert!(d.model == st.doc.model, "page {page}: drawing differs from the projection");
             assert_eq!(map, view.map, "page {page}: handle map differs from a fresh projection");
             // 3. the map is one-to-one and every mapped handle exists (and every entity is mapped).

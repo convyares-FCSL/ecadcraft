@@ -525,6 +525,6 @@ fn a_page_with_arrows_verifies() {
         let d = pg.drawing_of(p, f.pages[0]).unwrap().clone();
         (p.ledger.document().clone(), d, p.pages[&f.pages[0]].map.clone())
     });
-    let v = ecad_cadcraft::verify::verify_page(&doc, f.pages[0], &d, &map);
+    let v = ecad_cadcraft::verify::verify_page(&doc, f.pages[0], &d, &map, ecad_cadcraft::project::engine_views().report_models(&doc).as_ref());
     assert!(v.ok(), "{:?}", v.problems);
 }

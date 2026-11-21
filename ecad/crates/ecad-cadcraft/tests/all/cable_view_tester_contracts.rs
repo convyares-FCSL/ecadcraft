@@ -985,7 +985,15 @@ fn ac3_degenerate_reference_routes_fall_back_without_panic() {
         }
         // The projection with the views never panics either.
         let set = BTreeSet::from([g.c1]);
-        let r = ecad_cadcraft::project_page_with(&d, g.page, &cadcraft_engine::doc::Drawing::new_metric(), &Default::default(), &set, 1e-6);
+        let r = ecad_cadcraft::project_page_with(
+            &d,
+            g.page,
+            &cadcraft_engine::doc::Drawing::new_metric(),
+            &Default::default(),
+            &set,
+            1e-6,
+            ecad_cadcraft::project::engine_views().report_models(&d).as_ref(),
+        );
         if let Ok((_, map)) = r {
             assert_eq!(map.fan_handles().next().is_some(), !fails, "{name}");
         }

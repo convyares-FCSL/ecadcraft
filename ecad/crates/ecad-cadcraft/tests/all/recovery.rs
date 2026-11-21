@@ -55,17 +55,18 @@ fn a_rebuilt_page_is_verified_by_content_not_handles() {
     assert_eq!(h.p(|p| p.events.count(EventKind::RecoveryVerified)), 1, "the rebuild was verified");
     assert_eq!(h.p(|p| p.events.count(EventKind::FidelityMismatch)), 0, "no handle comparison after a rebuild");
     let (doc, d, map) = page_state(&mut h, page);
-    let v = verify_page(&doc, page, &d, &map);
+    let v = verify_page(&doc, page, &d, &map, ecad_cadcraft::project::engine_views().report_models(&doc).as_ref());
     assert!(v.ok(), "{:?}", v.problems);
     assert!(v.items > 0 && v.terminals >= 3 && v.attached_ends == 2, "{v:?}");
     // Independent comparison: a projection with completely different handle numbers shows the
     // same content per stable ID.
     let mut far = Drawing::new_metric();
     far.bump_handseed(cadcraft_engine::doc::Handle(0x7000));
-    let (other, other_map) = project_page(&doc, page, &far, &HandleMap::default()).unwrap();
+    let (other, other_map) =
+        project_page(&doc, page, &far, &HandleMap::default(), ecad_cadcraft::project::engine_views().report_models(&doc).as_ref()).unwrap();
     assert!(other_map.handles().all(|x| map.handles().all(|y| x != y)), "no handle in common");
     assert_eq!(content_by_id(&doc, page, &d, &map), content_by_id(&doc, page, &other, &other_map));
-    assert!(verify_page(&doc, page, &other, &other_map).ok());
+    assert!(verify_page(&doc, page, &other, &other_map, ecad_cadcraft::project::engine_views().report_models(&doc).as_ref()).ok());
     h.check();
 }
 
@@ -93,7 +94,7 @@ fn owner_recovery_rebuilds_every_open_page_and_keeps_the_document() {
     for (page, before, before_map) in [(p2, d2, m2), (p1, d1, m1)] {
         h.activate(page);
         let (doc, d, map) = page_state(&mut h, page);
-        assert!(verify_page(&doc, page, &d, &map).ok());
+        assert!(verify_page(&doc, page, &d, &map, ecad_cadcraft::project::engine_views().report_models(&doc).as_ref()).ok());
         assert_eq!(content_by_id(&doc, page, &d, &map), content_by_id(&doc_before, page, &before, &before_map));
     }
     h.check();
@@ -104,11 +105,11 @@ fn verification_catches_each_kind_of_disagreement() {
     let (mut h, c1, c2, w) = small_project(33);
     let page = h.first_page();
     let (doc, d, map) = page_state(&mut h, page);
-    assert!(verify_page(&doc, page, &d, &map).ok());
+    assert!(verify_page(&doc, page, &d, &map, ecad_cadcraft::project::engine_views().report_models(&doc).as_ref()).ok());
     let tamper = |f: &dyn Fn(&mut Drawing)| {
         let mut x = (*d).clone();
         f(&mut x);
-        verify_page(&doc, page, &x, &map)
+        verify_page(&doc, page, &x, &map, ecad_cadcraft::project::engine_views().report_models(&doc).as_ref())
     };
     let edit = |x: &mut Drawing, h: cadcraft_engine::doc::Handle, f: &dyn Fn(&mut cadcraft_engine::doc::Entity)| {
         let mut e = (**x.model.get(h).unwrap()).clone();
@@ -234,6 +235,6 @@ fn an_unavailable_page_is_a_labelled_read_only_placeholder() {
     let i1 = h.page_index(p1).unwrap();
     assert!(!h.s.docs[i1].title.ends_with(ecad_cadcraft::project::UNAVAILABLE_SUFFIX));
     let (doc, d, map) = page_state(&mut h, p1);
-    assert!(verify_page(&doc, p1, &d, &map).ok());
+    assert!(verify_page(&doc, p1, &d, &map, ecad_cadcraft::project::engine_views().report_models(&doc).as_ref()).ok());
     h.check();
 }
