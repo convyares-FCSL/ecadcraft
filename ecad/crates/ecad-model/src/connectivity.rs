@@ -38,8 +38,8 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
-use crate::doc::{Document, Properties, Wire};
-use crate::id::{DeviceId, RouteId, TerminalId, WireId};
+use crate::doc::{Document, Wire};
+use crate::id::{RouteId, TerminalId, WireId};
 use crate::op::{ObjectRef, Op};
 use crate::point::PointKey;
 
@@ -49,24 +49,17 @@ pub const WIRE_NUMBER: &str = "wire_number";
 pub const WIRE_NUMBER_FIXED: &str = "wire_number_fixed";
 /// Wire property: the potential (`24V`, `L1`…) the conductor carries.
 pub const POTENTIAL: &str = "potential";
-/// Device property naming what a tagless component is (`continuation`, the only kind).
+/// Device property naming what a device made by a tool is (`location box`).
 pub const KIND: &str = "kind";
-/// The [`KIND`] of a continuation.
-pub const CONTINUATION: &str = "continuation";
-/// Device property: a continuation's name.
-pub const NAME: &str = "name";
 
 /// The key two continuation names are compared by: trimmed, upper case.
 pub fn name_key(name: &str) -> String {
     name.trim().to_uppercase()
 }
 
-/// The name key of a component with these properties, when it is a named continuation.
-pub fn continuation_key(props: &Properties) -> Option<String> {
-    if props.get(KIND).map(String::as_str) != Some(CONTINUATION) {
-        return None;
-    }
-    let k = name_key(props.get(NAME)?);
+/// The name key of a drawing aid, when it is a named continuation (design 072 §6.2).
+pub fn continuation_key(aid: &crate::aid::Aid) -> Option<String> {
+    let k = name_key(aid.continuation_name()?.as_str());
     (!k.is_empty()).then_some(k)
 }
 
@@ -211,10 +204,10 @@ fn present(doc: &Document, node: &Node) -> bool {
     }
 }
 
-/// The name group a terminal's component joins it to, if it is a named continuation.
+/// The name group a point's owner joins it to, if it is a named continuation.
 fn name_of_terminal(doc: &Document, t: TerminalId) -> Option<String> {
-    let c = doc.terminals.get(&t)?.device()?;
-    continuation_key(&doc.devices.get(&c)?.properties)
+    let a = doc.terminals.get(&t)?.owner.aid()?;
+    continuation_key(doc.aids.get(&a)?)
 }
 
 /// The terminals bridged to `t` inside its device.
@@ -308,8 +301,8 @@ fn neighbors_base(doc: &Document, node: &Node) -> Vec<Node> {
             }
         }
         Node::Name(k) => {
-            for comp in doc.continuations_named(k) {
-                out.extend(doc.terminals_of(comp).map(|(t, _)| Node::Terminal(t)));
+            for aid in doc.continuations_named(k) {
+                out.extend(doc.terminals_of(aid).map(|(t, _)| Node::Terminal(t)));
             }
         }
         Node::Route(r) => {
@@ -609,8 +602,8 @@ impl Connectivity {
     }
 
     /// The terminals of `component` (present ones).
-    fn terminals_of(doc: &Document, component: DeviceId) -> Vec<Node> {
-        doc.terminals_of(component).map(|(t, _)| Node::Terminal(t)).collect()
+    fn terminals_of(doc: &Document, owner: impl Into<crate::doc::TerminalOwner>) -> Vec<Node> {
+        doc.terminals_of(owner).map(|(t, _)| Node::Terminal(t)).collect()
     }
 
     /// Before `op` is applied to `doc`: what it is about to cut.
@@ -622,8 +615,8 @@ impl Connectivity {
     /// | `AddRoute` / `RemoveRoute` (design 072 F31) | node added and joined to the points and routes it lands on and the routes landing on it / node removed, its net suspect |
     /// | `ModifyRoute` | its ends changed: the route and its old neighbours cut (net suspect), then joined to the new |
     /// | `AddTerminal` / `RemoveTerminal` | node added and joined (ends, name group, bridges) / removed |
-    /// | `CreateDevice` / `DeleteDevice` of a continuation | its terminals joined to / cut from its name group |
-    /// | `SetProperty` component `kind` or `name` | cut from the old name group, joined to the new |
+    /// | `CreateAid` / `DeleteAid` of a continuation (design 072 §6.2) | its name group added / its points cut from it |
+    /// | `ModifyAid` changing a continuation's name key | cut from the old name group, joined to the new |
     /// | `SetProperty` conductor `wire_number`, `wire_number_fixed`, `potential` | the net's counts and the number index |
     /// | `EmbedDefinition` / `RemoveDefinition` with bridges | its components' bridged terminals joined / cut |
     /// | `SetDeviceDefinition` (brief 048) | its terminals cut, then joined under the new definition |
@@ -652,7 +645,12 @@ impl Connectivity {
                     self.cut_around(doc, &t);
                 }
             }
-            Op::SetProperty { object: ObjectRef::Device(id), key, .. } if key == KIND || key == NAME => {
+            Op::DeleteAid { id, .. } => {
+                for t in Self::terminals_of(doc, *id) {
+                    self.cut_around(doc, &t);
+                }
+            }
+            Op::ModifyAid { id, before, after } if continuation_key(before) != continuation_key(after) => {
                 for t in Self::terminals_of(doc, *id) {
                     self.cut_around(doc, &t);
                 }
@@ -714,9 +712,14 @@ impl Connectivity {
             Op::CreateWire { id, .. } => self.ensure(doc, Node::Wire(*id)),
             Op::AddTerminal { id, .. } => self.ensure(doc, Node::Terminal(*id)),
             Op::AddRoute { id, .. } | Op::ModifyRoute { id, .. } => self.ensure(doc, Node::Route(*id)),
-            Op::CreateDevice { id, device: component } | Op::DeleteDevice { id, device: component } => {
-                self.name_groups(doc, component.properties.get(NAME).map(|n| name_key(n)));
-                if matches!(op, Op::CreateDevice { .. }) {
+            Op::CreateDevice { id, .. } => {
+                for t in Self::terminals_of(doc, *id) {
+                    self.ensure(doc, t);
+                }
+            }
+            Op::CreateAid { id, aid } | Op::DeleteAid { id, aid } => {
+                self.name_groups(doc, continuation_key(aid));
+                if matches!(op, Op::CreateAid { .. }) {
                     for t in Self::terminals_of(doc, *id) {
                         self.ensure(doc, t);
                     }
@@ -727,14 +730,10 @@ impl Connectivity {
                     self.ensure(doc, t);
                 }
             }
-            Op::SetProperty { object: ObjectRef::Device(id), key, before, after } if key == KIND || key == NAME => {
+            Op::ModifyAid { id, before, after } if continuation_key(before) != continuation_key(after) => {
                 // The old group may be gone, the new one may be new.
-                let old = (key == NAME).then(|| before.as_deref().map(name_key)).flatten();
-                let new = (key == NAME).then(|| after.as_deref().map(name_key)).flatten();
-                self.name_groups(doc, old);
-                let current = doc.devices.get(id).and_then(|c| c.properties.get(NAME)).map(|n| name_key(n));
-                self.name_groups(doc, current);
-                self.name_groups(doc, new);
+                self.name_groups(doc, continuation_key(before));
+                self.name_groups(doc, continuation_key(after));
                 for t in Self::terminals_of(doc, *id) {
                     self.ensure(doc, t);
                 }

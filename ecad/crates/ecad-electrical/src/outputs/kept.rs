@@ -757,13 +757,13 @@ impl Outputs {
         });
         let Some(t) = t else { return EndCell { order, ..EndCell::default() } };
         let Some(term) = doc.terminals.get(&t) else { return EndCell { order, ..EndCell::default() } };
+        if let Some(a) = term.owner.aid() {
+            let name = crate::continuations::display_name(doc, a);
+            return EndCell { name: Some(format!("{name} >")), order, continuation: true, ..EndCell::default() };
+        }
         let Some(c) = term.device() else { return EndCell { order, ..EndCell::default() } };
-        match crate::wires::kind_of(doc, c) {
-            Some(ecad_model::connectivity::CONTINUATION) => {
-                let name = doc.devices.get(&c).and_then(|x| x.properties.get(ecad_model::connectivity::NAME)).cloned().unwrap_or_default();
-                EndCell { name: Some(format!("{name} >")), order, continuation: true, ..EndCell::default() }
-            }
-            _ => {
+        {
+            {
                 let label = crate::terminal_types::terminal_name(doc, t);
                 let device = self.devices.get(&c);
                 let tag = device.map(|d| d.tag.clone()).or_else(|| crate::devices::tag_of(doc, c).map(str::to_string)).unwrap_or_else(|| "?".into());

@@ -1616,14 +1616,11 @@ fn far_words(doc: &Document, w: WireId, mine: End) -> (String, Option<DeviceId>)
         End::B => End::A,
     };
     let Some(t) = doc.wires.get(&w).map(|c| c.end(far)) else { return ("loose".into(), None) };
-    let Some(c) = doc.terminals.get(&t).and_then(|x| x.device()) else { return ("loose".into(), None) };
-    match crate::wires::kind_of(doc, c) {
-        Some(ecad_model::connectivity::CONTINUATION) => {
-            let name = doc.devices.get(&c).and_then(|x| x.properties.get(ecad_model::connectivity::NAME)).cloned().unwrap_or_default();
-            (format!("{name} >"), Some(c))
-        }
-        _ => (crate::strips::terminal_words(doc, t), Some(c)),
+    if let Some(a) = doc.terminals.get(&t).and_then(|x| x.owner.aid()) {
+        return (format!("{} >", crate::continuations::display_name(doc, a)), None);
     }
+    let Some(c) = doc.terminals.get(&t).and_then(|x| x.device()) else { return ("loose".into(), None) };
+    (crate::strips::terminal_words(doc, t), Some(c))
 }
 
 /// The hover lines of a terminal symbol `here` of strip `c` (design 028 §7.1), from the document

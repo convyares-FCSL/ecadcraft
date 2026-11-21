@@ -3,11 +3,11 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::connectivity::{CONTINUATION, KIND, NAME};
+use ecad_model::aid::ContinuationName;
 use ecad_model::wiring::{self, Scheme};
 use ecad_model::{
-    Author, Connectivity, Definition, DefinitionId, Device, DeviceId, Document, IdAllocator, Ledger, ObjectRef, Op, Page, PageId, Terminal,
-    TerminalDef, TerminalId, Wire, WireId,
+    Aid, AidId, Author, Connectivity, Definition, DefinitionId, Device, DeviceId, Document, IdAllocator, Ledger, ObjectRef, Op, Page, PageId,
+    Terminal, TerminalDef, TerminalId, Wire, WireId,
 };
 
 /// A small project driven through the ledger, with the numbering pass as ECAD commits run it.
@@ -63,12 +63,14 @@ impl P {
         (c, ts)
     }
 
-    fn continuation(&mut self, name: &str) -> (DeviceId, TerminalId) {
-        let mut comp = Device::default();
-        comp.properties.insert(KIND.into(), CONTINUATION.into());
-        comp.properties.insert(NAME.into(), name.into());
-        let (c, ts) = self.device_with(1, comp);
-        (c, ts[0])
+    /// A continuation (a drawing aid, design 072 §6.2) named `name`, with its one point.
+    fn continuation(&mut self, name: &str) -> (AidId, TerminalId) {
+        let a: AidId = self.ids.fresh();
+        let t: TerminalId = self.ids.fresh();
+        let aid = Aid::Continuation { name: Some(ContinuationName::new(name).unwrap()), caption: None };
+        let terminal = Terminal { owner: a.into(), label: None, key: None, accepts: Default::default() };
+        self.commit(vec![Op::CreateAid { id: a, aid }, Op::AddTerminal { id: t, terminal }]);
+        (a, t)
     }
 
     /// A connection point of its own (a one-terminal device), joined to nothing: where a wire
@@ -408,6 +410,7 @@ fn random_ops(seed: u64, steps: usize) {
         let terminals: Vec<TerminalId> = doc.terminals.keys().copied().collect();
         let conductors: Vec<WireId> = doc.wires.keys().copied().collect();
         let comps: Vec<DeviceId> = doc.devices.keys().copied().collect();
+        let aids: Vec<AidId> = doc.aids.keys().copied().collect();
         let pick_t = |i: usize| terminals.get(i % terminals.len().max(1)).copied();
         match next(10) {
             0 | 1 => {
@@ -446,13 +449,13 @@ fn random_ops(seed: u64, steps: usize) {
                     p.commit(vec![Op::DeleteWire { id: w, wire: old }, Op::CreateWire { id, wire }]);
                 }
             }
-            7 if !comps.is_empty() => {
-                // Rename a continuation (or a plain device, which changes nothing).
-                let c = comps[next(comps.len())];
-                let before = p.doc().devices.get(&c).unwrap().properties.get(NAME).cloned();
-                let after = Some(names[next(names.len())].to_string());
+            7 if !aids.is_empty() => {
+                // Rename a continuation.
+                let a = aids[next(aids.len())];
+                let before = p.doc().aids.get(&a).unwrap().clone();
+                let after = Aid::Continuation { name: Some(ContinuationName::new(names[next(names.len())]).unwrap()), caption: None };
                 if before != after {
-                    p.commit(vec![Op::SetProperty { object: ObjectRef::Device(c), key: NAME.into(), before, after }]);
+                    p.commit(vec![Op::ModifyAid { id: a, before, after }]);
                 }
             }
             8 if !comps.is_empty() => {

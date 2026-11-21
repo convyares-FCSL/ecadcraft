@@ -450,17 +450,15 @@ fn xrefs_on_a_name_of(m: usize) {
     let mut ids = IdAllocator::seeded(0x49_15);
     let style = Style { layer: LayerId(1), color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     let starter = ecad_cadcraft::wires::continuation_starter();
-    let mut props = ecad_model::Properties::new();
-    props.insert("kind".into(), "continuation".into());
-    props.insert("name".into(), "BIG".into());
+    let aid = ecad_cadcraft::wires::continuation_aid("BIG", None).unwrap();
     let pl = Placement { origin: Pt::new(20.125, 60.0), rotation: ecad_model::units::Radians(0.0), mirror: false, scale: 1.0 };
-    let t = ecad_cadcraft::wires::plan_tagless(ledger.document(), &mut ids, pages[0], style, starter, pl, props).unwrap();
+    let t = ecad_cadcraft::wires::plan_tagless(ledger.document(), &mut ids, pages[0], style, starter, pl, aid).unwrap();
     ledger.commit(ecad_model::Author::User, "first", t.ops.clone()).unwrap();
     // The other arrows: the first one's ops with fresh IDs, place and page, in one transaction
     // (planning and settling each one in a debug build takes seconds; the subject is `xrefs`).
     let template: Vec<String> =
         t.ops.iter().filter(|o| !matches!(o, Op::EmbedDefinition { .. })).map(|o| serde_json::to_string(o).unwrap()).collect();
-    let old = [t.component.hex(), t.terminal.hex(), t.item.hex(), t.representation.hex(), pages[0].hex()];
+    let old = [t.aid.hex(), t.terminal.hex(), t.item.hex(), t.representation.hex(), pages[0].hex()];
     let mut ops = Vec::new();
     for i in 1..m {
         let fresh = [i as u128 * 4 + 0x7000_0000, i as u128 * 4 + 0x7000_0001, i as u128 * 4 + 0x7000_0002, i as u128 * 4 + 0x7000_0003];
@@ -475,19 +473,19 @@ fn xrefs_on_a_name_of(m: usize) {
     }
     ledger.commit(ecad_model::Author::User, "arrows", ops).unwrap();
     let doc = ledger.document().clone();
-    let first = Some(t.component);
+    let first = Some(t.aid);
     assert_eq!(doc.continuations_named("BIG").len(), m);
     let idx = RefIndex::build(&doc);
     let t = std::time::Instant::now();
-    let v = xref::xrefs_json(&doc, &idx, first, None, None, 2000, 0).unwrap();
+    let v = xref::xrefs_json(&doc, &idx, None, first, None, None, 2000, 0).unwrap();
     assert_eq!(v["references"].as_array().unwrap().len(), m - 1);
     assert!(v.get("next").is_none(), "{}", v["next"]);
-    let v = xref::xrefs_json(&doc, &idx, None, None, Some(pages[3]), 30, 10).unwrap();
+    let v = xref::xrefs_json(&doc, &idx, None, None, None, Some(pages[3]), 30, 10).unwrap();
     let rows = v["references"].as_array().unwrap();
     assert_eq!(rows.len(), 30);
     assert!(rows.iter().all(|r| r["kind"] == "continuation"));
     assert_eq!(v["next"], json!(40));
-    let v = xref::xrefs_json(&doc, &idx, None, None, None, 10, m * (m - 1) - 2).unwrap();
+    let v = xref::xrefs_json(&doc, &idx, None, None, None, None, 10, m * (m - 1) - 2).unwrap();
     assert_eq!((v["references"].as_array().unwrap().len(), v.get("next").is_none()), (2, true), "{v}");
     // All m(m−1) rows would take minutes in a debug build for 2,000; the window takes little.
     assert!(t.elapsed().as_secs_f64() < 2.0, "{:?}", t.elapsed());

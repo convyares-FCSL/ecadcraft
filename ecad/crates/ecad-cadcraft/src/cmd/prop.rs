@@ -34,6 +34,9 @@ pub(crate) struct SetpropParams {
     /// Several devices, in one transaction.
     #[serde(default)]
     devices: Option<Bounded<DeviceId, 0, MAX_HANDLES>>,
+    /// Continuation arrows (design 072 §6.2): their `name` or `caption`, in one transaction.
+    #[serde(default)]
+    aids: Option<Bounded<ecad_model::AidId, 0, MAX_HANDLES>>,
     /// A wire.
     #[serde(default)]
     conductor: Option<WireId>,
@@ -85,6 +88,18 @@ impl Command for SetpropParams {
             };
             let objects = objects.map_err(|e| err(e.to_string()))?;
             return crate::cmd::location::apply(s, objects, prop, typed, "setprop");
+        }
+        // Continuation arrows (design 072 §6.2): a name or a caption, one transaction.
+        if let Some(aids) = self.aids {
+            return on_project(s, |p, pg, _| {
+                let ops = ecad_electrical::cmd::continuation::plan_aid_prop(p.ledger.document(), &aids.0, &key, typed.as_deref())?;
+                if ops.is_empty() {
+                    return Ok(json!({"changed": false}));
+                }
+                let n = ops.len();
+                p.apply_edit(pg, "setprop", "Set property", ops)?;
+                Ok(json!({"changed": true, "aids": n}))
+            });
         }
         // Several devices at once (brief 019, the Properties panel): one transaction for all.
         if let Some(cs) = self.devices {

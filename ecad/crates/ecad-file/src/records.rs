@@ -1389,6 +1389,21 @@ impl From<&m::TxKind> for TxKind {
 /// A record value the model cannot hold.
 pub type ConvertError = String;
 
+/// The `kind` a continuation had while it was a device. A continuation is a drawing aid (design
+/// 072 §6.2); pre-v1, a file with a device of this kind is not read (no conversion).
+const CONTINUATION_KIND: &str = "continuation";
+/// The read error for a device of kind [`CONTINUATION_KIND`].
+pub const CONTINUATION_DEVICE: &str =
+    "a device of kind `continuation`: continuations are drawing aids since format change 072 F (no conversion before v1)";
+
+/// `d`, unless it is a device of kind [`CONTINUATION_KIND`].
+fn not_continuation(d: m::Device) -> Result<m::Device, ConvertError> {
+    if d.properties.get("kind").map(String::as_str) == Some(CONTINUATION_KIND) {
+        return Err(CONTINUATION_DEVICE.into());
+    }
+    Ok(d)
+}
+
 fn index(i: u64) -> Result<usize, ConvertError> {
     usize::try_from(i).map_err(|_| format!("index {i} is out of range"))
 }
@@ -1601,9 +1616,11 @@ impl TryFrom<Op> for m::Op {
             Op::AddItem { id, item } => m::Op::AddItem { id, item: item.into() },
             Op::ModifyItem { id, before, after } => m::Op::ModifyItem { id, before: before.into(), after: after.into() },
             Op::RemoveItem { id, item } => m::Op::RemoveItem { id, item: item.into() },
-            Op::CreateDevice { id, device } => m::Op::CreateDevice { id, device: device.into() },
-            Op::DeleteDevice { id, device } => m::Op::DeleteDevice { id, device: device.into() },
-            Op::ModifyDevice { id, before, after } => m::Op::ModifyDevice { id, before: before.into(), after: after.into() },
+            Op::CreateDevice { id, device } => m::Op::CreateDevice { id, device: not_continuation(device.into())? },
+            Op::DeleteDevice { id, device } => m::Op::DeleteDevice { id, device: not_continuation(device.into())? },
+            Op::ModifyDevice { id, before, after } => {
+                m::Op::ModifyDevice { id, before: not_continuation(before.into())?, after: not_continuation(after.into())? }
+            }
             Op::SetDeviceDefinition { id, before, after } => m::Op::SetDeviceDefinition { id, before, after },
             Op::AddTerminal { id, terminal } => m::Op::AddTerminal { id, terminal: terminal.into() },
             Op::RemoveTerminal { id, terminal } => m::Op::RemoveTerminal { id, terminal: terminal.into() },
@@ -1619,7 +1636,12 @@ impl TryFrom<Op> for m::Op {
             Op::CreateCable { id, cable } => m::Op::CreateCable { id, cable: cable.into() },
             Op::DeleteCable { id, cable } => m::Op::DeleteCable { id, cable: cable.into() },
             Op::ModifyCable { id, before, after } => m::Op::ModifyCable { id, before: before.into(), after: after.into() },
-            Op::SetProperty { object, key, before, after } => m::Op::SetProperty { object: mobject(object), key, before, after },
+            Op::SetProperty { object, key, before, after } => {
+                if key == "kind" && after.as_deref() == Some(CONTINUATION_KIND) {
+                    return Err(CONTINUATION_DEVICE.into());
+                }
+                m::Op::SetProperty { object: mobject(object), key, before, after }
+            }
             Op::EmbedDefinition { id, definition } => m::Op::EmbedDefinition { id, definition: definition.into() },
             Op::RemoveDefinition { id, definition } => m::Op::RemoveDefinition { id, definition: definition.into() },
             Op::SetProjectSettings { before, after } => m::Op::SetProjectSettings { before: before.into(), after: after.into() },

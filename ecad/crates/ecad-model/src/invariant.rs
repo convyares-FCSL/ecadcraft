@@ -644,14 +644,19 @@ impl Document {
                 let Some(inst) = instance else {
                     return bad(format!("symbol representation {id} must hold exactly one symbol instance"));
                 };
-                let Subject::Device(c) = r.subject else {
-                    return bad(format!("symbol representation {id} must depict a component"));
-                };
-                // Without connection points its terminals are matched to the definition by key, so
-                // the symbol shown must be the component's own definition. With them (one device
-                // drawn as a coil and its contacts, brief 018), any embedded definition (I5).
-                if r.connection_points.is_empty() && self.devices.get(&c).and_then(|c| c.definition) != Some(inst.definition) {
-                    return bad(format!("symbol representation {id} shows a definition its component does not use"));
+                match r.subject {
+                    // Without connection points its terminals are matched to the definition by key,
+                    // so the symbol shown must be the component's own definition. With them (one
+                    // device drawn as a coil and its contacts, brief 018), any embedded definition
+                    // (I5).
+                    Subject::Device(c) => {
+                        if r.connection_points.is_empty() && self.devices.get(&c).and_then(|c| c.definition) != Some(inst.definition) {
+                            return bad(format!("symbol representation {id} shows a definition its component does not use"));
+                        }
+                    }
+                    // A continuation's arrow (design 072 §6.2): an aid has no definition of its own.
+                    Subject::Aid(a) if matches!(self.aids.get(&a), Some(crate::aid::Aid::Continuation { .. })) => {}
+                    _ => return bad(format!("symbol representation {id} must depict a component or a continuation")),
                 }
             }
             Form::Drawn => {

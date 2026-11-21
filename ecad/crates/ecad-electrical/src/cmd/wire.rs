@@ -6,12 +6,12 @@ use ecad_model::units::Radians;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::connectivity::{CONTINUATION, KIND, NAME};
+use ecad_model::connectivity::KIND;
 use ecad_model::text::Text;
 use ecad_model::wiring::{self, Scheme};
 use ecad_model::{
-    DeviceId, Document, End, IdAllocator, Ledger, NetData, NetKey, Noun, ObjectRef, Op, PageId, Placement, ProjectSettings, Pt, RouteEnd, RouteId,
-    Style, StyleRef, TerminalId, Wire, WireId,
+    Document, End, IdAllocator, Ledger, NetData, NetKey, Noun, ObjectRef, Op, PageId, Placement, ProjectSettings, Pt, RouteEnd, RouteId, Style,
+    StyleRef, TerminalId, Wire, WireId,
 };
 
 use crate::error::{CmdError, msg};
@@ -85,15 +85,15 @@ pub fn net_view(doc: &Document, net: &NetData) -> NetView {
     let points = net
         .terminals
         .iter()
-        .filter(|t| doc.terminals.get(t).is_none_or(|x| !matches!(x.device().and_then(|c| wires::kind_of(doc, c)), Some(CONTINUATION))))
+        .filter(|t| doc.terminals.get(t).is_none_or(|x| x.owner.aid().is_none()))
         .map(|t| (*t, wires::point_words(doc, *t)))
         .collect();
     let continuations = net
         .terminals
         .iter()
         .filter_map(|t| doc.terminals.get(t))
-        .filter(|x| x.device().and_then(|c| wires::kind_of(doc, c)) == Some(CONTINUATION))
-        .filter_map(|x| x.device().and_then(|c| doc.devices.get(&c)).and_then(|c| c.properties.get(NAME)).cloned())
+        .filter_map(|x| x.owner.aid())
+        .filter_map(|a| crate::continuations::continuation(doc, a).map(|(n, _)| n.unwrap_or_default().to_string()))
         .collect();
     let looks = crate::styles::wire::WireLooks::new(doc);
     let cats: BTreeSet<StyleRef> = net.wires.iter().filter_map(|c| looks.category(doc, *c).0).collect();
@@ -337,7 +337,7 @@ pub enum Numbered {
     /// The number was taken, and the other net took this one's.
     Swapped { ops: Vec<Op>, number: String, conductors: usize, swapped: String },
     /// The number was taken, and the nets were joined with a continuation pair.
-    Merged { ops: Vec<Op>, number: String, continuations: Vec<DeviceId> },
+    Merged { ops: Vec<Op>, number: String, continuations: Vec<ecad_model::AidId> },
 }
 
 impl Numbered {
@@ -421,13 +421,11 @@ pub fn wirenumber(
                         where_words(doc, n)
                     ))
                 })?;
-                let mut props = ecad_model::Properties::new();
-                props.insert(KIND.into(), CONTINUATION.into());
-                props.insert(NAME.into(), name.clone());
+                let aid = wires::continuation_aid(&name, None)?;
                 let placement = Placement { origin: at, rotation: arrow_rotation(d), mirror: false, scale: 1.0 };
                 // The plan lands the free route end at the point.
-                let t = wires::plan_tagless(doc, ids, page, style.clone(), starter, placement, props)?;
-                continuations.push(t.component);
+                let t = wires::plan_tagless(doc, ids, page, style.clone(), starter, placement, aid)?;
+                continuations.push(t.aid);
                 ops.extend(t.ops);
             }
             Ok(Numbered::Merged { ops, number: v, continuations })
@@ -731,20 +729,17 @@ pub fn wire(ledger: &Ledger, ids: &mut IdAllocator, input: wires::WireInput<'_>,
 /// (checked), `Err` to refuse; `Ok(None)` when the key is not one of brief 022's.
 ///
 /// # Errors
-/// A wire number or potential (they belong to the whole net), a continuation's kind,
-/// a continuation without a name, or a value that does not read.
-pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Option<String>>, CmdError> {
+/// A wire number or potential (they belong to the whole net), a tool-made device's kind, or a
+/// caption on a device (a continuation's is `setprop {aids}`, design 072 §6.2).
+pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, _value: Option<&str>) -> Result<Option<Option<String>>, CmdError> {
     match object {
-        // Brief 049 (design 049 §3.1): a caption only on a continuation, checked.
-        ObjectRef::Device(c) if key == crate::continuations::CAPTION_KEY => Ok(Some(crate::continuations::caption_value(doc, c, value)?)),
-        ObjectRef::Device(c) if wires::kind_of(doc, c).is_some() => match key {
-            k if k == KIND => Err(CmdError::refused("A continuation keeps its kind; erase it and place another.")),
-            k if k == NAME && wires::kind_of(doc, c) == Some(CONTINUATION) => {
-                let v = value.ok_or(CmdError::refused("A continuation needs a name."))?;
-                Ok(Some(Some(wires::valid_name(v)?)))
-            }
-            _ => Ok(None),
-        },
+        // Brief 049 (design 049 §3.1): a caption only on a continuation (`setprop {aid}`).
+        ObjectRef::Device(_) if key == crate::continuations::CAPTION_KEY => {
+            Err(CmdError::refused("Only continuation arrows have a caption; that is a device."))
+        }
+        ObjectRef::Device(c) if wires::kind_of(doc, c).is_some() && key == KIND => {
+            Err(CmdError::refused("It keeps its kind; erase it and place another."))
+        }
         _ => Ok(None),
     }
 }

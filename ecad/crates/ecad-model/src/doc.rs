@@ -1638,14 +1638,14 @@ impl Document {
         &self.conn
     }
 
-    /// Continuation components whose name has the key `key` ([`crate::connectivity::name_key`]),
-    /// in ID order, through the name index.
-    pub fn continuations_named(&self, key: &str) -> Vec<DeviceId> {
+    /// Continuations (drawing aids) whose name has the key `key`
+    /// ([`crate::connectivity::name_key`]), in ID order, through the name index.
+    pub fn continuations_named(&self, key: &str) -> Vec<crate::id::AidId> {
         referrers(&self.index.continuations, &key.to_string()).collect()
     }
 
-    /// Every continuation name key and its components, through the name index.
-    pub fn continuation_names(&self) -> impl Iterator<Item = (&str, DeviceId)> {
+    /// Every continuation name key and its continuations, through the name index.
+    pub fn continuation_names(&self) -> impl Iterator<Item = (&str, crate::id::AidId)> {
         self.index.continuations.iter().flat_map(|(k, ids)| ids.keys().map(move |c| (k.as_str(), *c)))
     }
 
@@ -1834,21 +1834,19 @@ impl Document {
         if let Some((cable, i)) = self.cable_point(t) {
             return self.cables.get(&cable)?.cores.get(i).map(|c| c.through.clone());
         }
-        let device = self.terminals.get(&t)?.device()?;
-        let props = &self.devices.get(&device)?.properties;
-        if props.get(crate::connectivity::KIND).map(String::as_str) != Some(crate::connectivity::CONTINUATION) {
-            return None;
-        }
-        Some(self.continuation_points(props, device))
+        let aid = self.terminals.get(&t)?.owner.aid()?;
+        Some(self.continuation_points(aid, self.aids.get(&aid)?))
     }
 
-    /// The points of continuation `device` (with `props`) and of its partners by name, in ID order.
-    pub fn continuation_points(&self, props: &Properties, device: DeviceId) -> Vec<TerminalId> {
-        let devices = match crate::connectivity::continuation_key(props) {
+    /// The points of continuation `id` (as `aid`, before or after an edit) and of its partners by
+    /// name, in ID order.
+    pub fn continuation_points(&self, id: crate::id::AidId, aid: &crate::aid::Aid) -> Vec<TerminalId> {
+        let aids = match crate::connectivity::continuation_key(aid) {
             Some(k) => self.continuations_named(&k),
-            None => vec![device],
+            None => Vec::new(),
         };
-        let mut out: Vec<TerminalId> = devices.into_iter().flat_map(|d| self.terminals_of(d).map(|(t, _)| t)).collect();
+        let aids = aids.into_iter().chain(std::iter::once(id));
+        let mut out: Vec<TerminalId> = aids.into_iter().flat_map(|a| self.terminals_of(a).map(|(t, _)| t)).collect();
         out.sort();
         out.dedup();
         out

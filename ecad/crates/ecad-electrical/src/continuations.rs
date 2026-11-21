@@ -2,15 +2,15 @@
 //! other ends are, and arrows that go to the same place can share a caption.
 //!
 //! # Semantics
-//! - A **continuation arrow** is 022's tagless component, `kind = continuation`, that joins its net
-//!   to every arrow with the same name. Its **other ends** are the other arrows of that name, on the
-//!   reference index as one [`Group::Continuation`] (FP4: keyed by the lowest component ID, with
-//!   implicit edges).
+//! - A **continuation arrow** is a drawing aid, [`ecad_model::Aid::Continuation`] (design 072
+//!   §6.2), that joins its net to every arrow with the same name. Its **other ends** are the other
+//!   arrows of that name, on the reference index as one [`Group::Continuation`] (FP4: keyed by the
+//!   lowest aid ID, with implicit edges).
 //! - Each arrow's **reference text** lists its other ends' places in book order, then column, then
 //!   row (`102-C-2 103-B-5`), at most `continuation.places.max` of them then `+n`, past the arrow's
 //!   tip and reading along the wire (`parts_on_page`). The sorted list of a name is worked out
 //!   once per derivation, so a group of m arrows costs O(m log m), never O(pages) per arrow.
-//! - A **caption** is the component property [`CAPTION_KEY`] (FP1). On each page, captioned arrows
+//! - A **caption** is the aid's own caption (FP1; `setprop` key [`CAPTION_KEY`]). On each page, captioned arrows
 //!   with the same caption and direction whose tips are no more than `continuation.caption.run_gap`
 //!   apart form a **run**, drawn under one bracket with the caption (`runs`).
 //! - Everything drawn here is derived, never stored, and refused as an edit ([`TEXT_DERIVED`]).
@@ -29,15 +29,17 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::CmdError;
-use ecad_model::connectivity::{CONTINUATION, KIND, NAME, continuation_key, name_key};
-use ecad_model::{DeviceId, Document, Form, ObjectRef, Op, PageId, Placement, Pt, Representation, RepresentationId, Subject};
+use ecad_model::connectivity::continuation_key;
+use ecad_model::{Aid, AidId, Document, Form, Op, PageId, Placement, Pt, Representation, RepresentationId, Subject};
 
 use crate::defaults::{self, Scope};
 use crate::text_style::fonts::TextMetrics;
 use crate::text_style::{TextKind, TextTarget, text_shown, text_style};
 use crate::xref::{Group, HAlign, Part, Places, RefIndex, Shape, VAlign};
 
-/// The component property holding a continuation's caption (FP1).
+/// The `setprop` key of a continuation's name (design 072 §6.2).
+pub const NAME_KEY: &str = "name";
+/// The `setprop` key of a continuation's caption (FP1).
 pub const CAPTION_KEY: &str = "caption";
 /// Most characters of a caption.
 pub const MAX_CAPTION_CHARS: usize = 80;
@@ -63,48 +65,51 @@ const CAPTION_INDEX: u32 = 4;
 
 // ---------------------------------------------------------------- what an arrow is
 
-/// Whether component `c` is a continuation arrow.
-pub fn is_continuation(doc: &Document, c: DeviceId) -> bool {
-    doc.devices.get(&c).is_some_and(|x| x.properties.get(KIND).map(String::as_str) == Some(CONTINUATION))
+/// Continuation `a`'s name and caption, when `a` is a continuation (design 072 §6.2).
+pub fn continuation(doc: &Document, a: AidId) -> Option<(Option<&str>, Option<&str>)> {
+    match doc.aids.get(&a)? {
+        Aid::Continuation { name, caption } => Some((name.as_ref().map(|n| n.as_str()), caption.as_ref().map(|c| c.as_str()))),
+        Aid::Box(_) => None,
+    }
 }
 
-/// The name key of continuation `c` (`24V`), when it is a named continuation.
-pub fn name_of(doc: &Document, c: DeviceId) -> Option<String> {
-    continuation_key(&doc.devices.get(&c)?.properties)
+/// The name key of continuation `a` (`24V`), when it is a named continuation.
+pub fn name_of(doc: &Document, a: AidId) -> Option<String> {
+    continuation_key(doc.aids.get(&a)?)
 }
 
-/// The name of continuation `c` as typed.
-fn display_name(doc: &Document, c: DeviceId) -> String {
-    doc.devices.get(&c).and_then(|x| x.properties.get(NAME)).cloned().unwrap_or_default()
+/// The name of continuation `a` as typed.
+pub fn display_name(doc: &Document, a: AidId) -> String {
+    continuation(doc, a).and_then(|(n, _)| n).unwrap_or_default().to_string()
 }
 
-/// The caption of continuation `c`, when it has one.
-pub fn caption_of(doc: &Document, c: DeviceId) -> Option<&str> {
-    doc.devices.get(&c)?.properties.get(CAPTION_KEY).map(String::as_str).filter(|t| !t.trim().is_empty())
+/// The caption of continuation `a`, when it has one.
+pub fn caption_of(doc: &Document, a: AidId) -> Option<&str> {
+    continuation(doc, a)?.1.filter(|t| !t.trim().is_empty())
 }
 
-/// The group of the arrows named `key` in `doc`: keyed by their lowest component ID.
+/// The group of the arrows named `key` in `doc`: keyed by their lowest aid ID.
 pub fn group_key(doc: &Document, key: &str) -> Option<Group> {
     doc.continuations_named(key).first().map(|c| Group::Continuation(*c))
 }
 
 /// The group of the arrows named `key` and its members: every symbol representation of each, in
-/// component then representation order. O(arrows of the name).
+/// aid then representation order. O(arrows of the name).
 pub fn group_named(doc: &Document, key: &str) -> Option<(Group, Vec<RepresentationId>)> {
     let ids = doc.continuations_named(key);
     let g = Group::Continuation(*ids.first()?);
     let members: Vec<RepresentationId> =
-        ids.iter().flat_map(|c| doc.representations_of(Subject::Device(*c))).filter(|(_, r)| r.form == Form::Symbol).map(|(id, _)| id).collect();
+        ids.iter().flat_map(|a| doc.representations_of(Subject::Aid(*a))).filter(|(_, r)| r.form == Form::Symbol).map(|(id, _)| id).collect();
     (!members.is_empty()).then_some((g, members))
 }
 
 /// The group a representation is a member of, when it is a continuation arrow's symbol.
 pub fn group_of_rep(doc: &Document, r: &Representation) -> Option<Group> {
-    let Subject::Device(c) = r.subject else { return None };
+    let Subject::Aid(a) = r.subject else { return None };
     if r.form != Form::Symbol {
         return None;
     }
-    group_key(doc, &name_of(doc, c)?)
+    group_key(doc, &name_of(doc, a)?)
 }
 
 /// Where an arrow points, snapped to a quarter turn (design 049 §2.1).
@@ -150,11 +155,11 @@ pub fn direction(pl: &Placement) -> Option<Direction> {
     })
 }
 
-/// One drawn arrow: its symbol, its component, its page, its tip and its direction.
+/// One drawn arrow: its symbol, its aid, its page, its tip and its direction.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Arrow {
     pub rep: RepresentationId,
-    pub component: DeviceId,
+    pub aid: AidId,
     pub page: PageId,
     pub tip: Pt,
     pub direction: Direction,
@@ -163,8 +168,8 @@ pub struct Arrow {
 /// Arrow `rid` as drawn, when it is a continuation symbol with a valid placement.
 pub fn arrow(doc: &Document, rid: RepresentationId) -> Option<Arrow> {
     let r = doc.representations.get(&rid)?;
-    let Subject::Device(c) = r.subject else { return None };
-    if r.form != Form::Symbol || !is_continuation(doc, c) {
+    let Subject::Aid(c) = r.subject else { return None };
+    if r.form != Form::Symbol || continuation(doc, c).is_none() {
         return None;
     }
     let (_, pl) = crate::devices::rep_definition(doc, r)?;
@@ -173,7 +178,7 @@ pub fn arrow(doc: &Document, rid: RepresentationId) -> Option<Arrow> {
     }
     let tip = pl.apply(Pt::new(0.0, -5.0));
     tip.is_finite().then_some(())?;
-    Some(Arrow { rep: rid, component: c, page: r.page, tip, direction: direction(&pl)? })
+    Some(Arrow { rep: rid, aid: c, page: r.page, tip, direction: direction(&pl)? })
 }
 
 // ---------------------------------------------------------------- settings (design 049 §7)
@@ -271,7 +276,7 @@ fn text_for(ends: &[End], me: RepresentationId, member: bool, max: usize) -> Str
 /// The other ends of arrow `rep` (every one, sorted), for hover, Properties and Go to.
 pub fn other_ends(doc: &Document, rep: RepresentationId) -> Vec<End> {
     let Some(a) = arrow(doc, rep) else { return Vec::new() };
-    let Some(key) = name_of(doc, a.component) else { return Vec::new() };
+    let Some(key) = name_of(doc, a.aid) else { return Vec::new() };
     let mut places = Places::new(doc);
     ends_named(doc, &mut places, &key).into_iter().filter(|e| e.rep != rep).collect()
 }
@@ -304,7 +309,7 @@ impl<'m> Cache<'m> {
 
     /// The reference text arrow `a` shows (empty when lonely).
     fn text(&mut self, doc: &Document, places: &mut Places<'_>, a: &Arrow) -> String {
-        let Some(key) = name_of(doc, a.component) else { return String::new() };
+        let Some(key) = name_of(doc, a.aid) else { return String::new() };
         let max = self.settings.max;
         text_for(self.ends(doc, places, &key), a.rep, true, max)
     }
@@ -342,7 +347,7 @@ fn arrows_on(doc: &Document, page: PageId) -> Vec<Arrow> {
 fn runs<'a>(doc: &'a Document, arrows: &[Arrow], run_gap: f64) -> Vec<(&'a str, Vec<Arrow>)> {
     let mut by: BTreeMap<(&'a str, Direction), Vec<Arrow>> = BTreeMap::new();
     for a in arrows {
-        if let Some(c) = caption_of(doc, a.component) {
+        if let Some(c) = caption_of(doc, a.aid) {
             by.entry((c.trim(), a.direction)).or_default().push(*a);
         }
     }
@@ -493,7 +498,7 @@ pub fn shown_measured(doc: &Document, places: &mut Places<'_>, names: &BTreeSet<
         }
     }
     for page in pages {
-        let arrows: Vec<Arrow> = arrows_on(doc, page).into_iter().filter(|a| caption_of(doc, a.component).is_some()).collect();
+        let arrows: Vec<Arrow> = arrows_on(doc, page).into_iter().filter(|a| caption_of(doc, a.aid).is_some()).collect();
         for (caption, run) in runs(doc, &arrows, cache.settings.run_gap) {
             let parts = run_parts(doc, places, &mut cache, caption, &run, page);
             out.entry(page).or_default().extend(parts);
@@ -508,10 +513,9 @@ pub fn shown_measured(doc: &Document, places: &mut Places<'_>, names: &BTreeSet<
 /// the state before and after the ops).
 pub fn names_named(doc: &Document, ops: &[Op]) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
-    let comp = |out: &mut BTreeSet<String>, c: DeviceId| out.extend(name_of(doc, c));
     let rep = |out: &mut BTreeSet<String>, r: &Representation| {
-        if let Subject::Device(c) = r.subject {
-            comp(out, c);
+        if let Subject::Aid(a) = r.subject {
+            out.extend(name_of(doc, a));
         }
     };
     for op in ops {
@@ -526,18 +530,16 @@ pub fn names_named(doc: &Document, ops: &[Op]) -> BTreeSet<String> {
                 rep(&mut out, before);
                 rep(&mut out, after);
             }
-            Op::CreateDevice { device: component, .. } | Op::DeleteDevice { device: component, .. } => {
-                out.extend(continuation_key(&component.properties));
-            }
-            Op::SetProperty { object: ObjectRef::Device(c), key, before, after } if key == NAME || key == KIND || key == CAPTION_KEY => {
-                comp(&mut out, *c);
-                if key == NAME && is_continuation(doc, *c) {
-                    out.extend([before, after].into_iter().flatten().map(|n| name_key(n)).filter(|k| !k.is_empty()));
-                }
+            Op::CreateAid { aid, .. } | Op::DeleteAid { aid, .. } => out.extend(continuation_key(aid)),
+            Op::ModifyAid { before, after, .. } => {
+                out.extend(continuation_key(before));
+                out.extend(continuation_key(after));
             }
             Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => {
-                for c in doc.components_using(*id) {
-                    comp(&mut out, c);
+                for item in doc.items_using(*id) {
+                    if let Some((_, r)) = doc.representation_of_item(item) {
+                        rep(&mut out, r);
+                    }
                 }
             }
             _ => {}
@@ -551,7 +553,7 @@ pub fn names_on(doc: &Document, idx: &RefIndex, page: PageId) -> BTreeSet<String
     doc.representations_on(page)
         .filter(|(rid, _)| matches!(idx.member(*rid), Some((Group::Continuation(_), _))))
         .filter_map(|(_, r)| match r.subject {
-            Subject::Device(c) => name_of(doc, c),
+            Subject::Aid(a) => name_of(doc, a),
             _ => None,
         })
         .collect()
@@ -575,20 +577,19 @@ pub fn is_wide_style(doc: &Document, catalogue: ecad_model::StyleCatalogue, id: 
 
 // ---------------------------------------------------------------- captions (design 049 §3.1)
 
-/// The caption to store on component `c` for a typed `value`: `None` removes it.
+/// Refusal of an aid ID that names no continuation arrow.
+pub const NO_SUCH_ARROW: &str = "There is no such continuation arrow.";
+
+/// The caption to store on aid `a` for a typed `value`: `None` removes it.
 ///
 /// # Errors
-/// `c` is not a continuation arrow, or the caption breaks [`CAPTION_RULE`].
-pub fn caption_value(doc: &Document, c: DeviceId, value: Option<&str>) -> Result<Option<String>, CmdError> {
-    if !is_continuation(doc, c) {
-        let what = match crate::devices::tag_of(doc, c) {
-            Some(t) => format!("{t} is a device"),
-            None if doc.devices.contains_key(&c) => "that is not one".to_string(),
-            None => return Err(CmdError::refused(crate::msg::NO_SUCH_COMPONENT)),
-        };
-        return Err(CmdError::refused(format!("Only continuation arrows have a caption; {what}.")));
+/// `a` is not a continuation arrow, or the caption breaks [`CAPTION_RULE`].
+pub fn caption_value(doc: &Document, a: AidId, value: Option<&str>) -> Result<Option<String>, CmdError> {
+    match doc.aids.get(&a) {
+        Some(Aid::Continuation { .. }) => caption_text(value),
+        Some(Aid::Box(_)) => Err(CmdError::refused("Only continuation arrows have a caption; that is a location box.")),
+        None => Err(CmdError::refused(NO_SUCH_ARROW)),
     }
-    caption_text(value)
 }
 
 /// A typed caption, checked: `None` (remove) for nothing or blanks.
@@ -635,7 +636,7 @@ pub fn end_words(doc: &Document, e: &End) -> String {
 }
 
 /// Hover lines for arrow `rep` of continuation `c` (design 049 §5.4).
-pub fn hover_lines(doc: &Document, c: DeviceId, rep: RepresentationId) -> Vec<String> {
+pub fn hover_lines(doc: &Document, c: AidId, rep: RepresentationId) -> Vec<String> {
     let mut lines = Vec::new();
     if let Some(cap) = caption_of(doc, c) {
         lines.push(format!("Caption: {cap}"));
@@ -655,10 +656,10 @@ pub fn hover_lines(doc: &Document, c: DeviceId, rep: RepresentationId) -> Vec<St
 }
 
 /// The arrows among `cs`, and how many are not arrows.
-pub fn arrows_among(doc: &Document, cs: &[DeviceId]) -> (Vec<DeviceId>, usize) {
+pub fn arrows_among(doc: &Document, cs: &[AidId]) -> (Vec<AidId>, usize) {
     let mut seen = BTreeSet::new();
-    let arrows: Vec<DeviceId> = cs.iter().copied().filter(|c| is_continuation(doc, *c) && seen.insert(*c)).collect();
-    let other = cs.iter().filter(|c| !is_continuation(doc, **c)).collect::<BTreeSet<_>>().len();
+    let arrows: Vec<AidId> = cs.iter().copied().filter(|c| continuation(doc, *c).is_some() && seen.insert(*c)).collect();
+    let other = cs.iter().filter(|c| continuation(doc, **c).is_none()).collect::<BTreeSet<_>>().len();
     (arrows, other)
 }
 

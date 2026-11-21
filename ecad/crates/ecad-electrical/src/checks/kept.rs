@@ -63,6 +63,9 @@ impl Checks {
         for c in doc.devices.keys() {
             ch.set(Key::Device(*c), component_checks_in(&mut places, *c, m));
         }
+        for a in doc.aids.keys() {
+            ch.set(Key::Aid(*a), aid_checks(doc, *a));
+        }
         for k in doc.cables.keys() {
             ch.set(Key::CableReferences(*k), reference_checks(doc, *k));
             ch.set(Key::Cable(*k), cable_checks_in(&mut places, *k));
@@ -247,6 +250,9 @@ impl Checks {
         let mut places = Places::new(doc);
         for c in &scope.devices {
             self.set(Key::Device(*c), component_checks_in(&mut places, *c, m));
+        }
+        for a in &scope.aids {
+            self.set(Key::Aid(*a), aid_checks(doc, *a));
         }
         for k in &scope.cable_references {
             self.set(Key::CableReferences(*k), reference_checks(doc, *k));
