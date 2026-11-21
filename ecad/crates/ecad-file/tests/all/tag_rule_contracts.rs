@@ -3,7 +3,6 @@
 //! without cable tags; it opens with the marks recomputed, Verify reports that as information, and
 //! a re-save writes the current rule. The rule is in the version row, which builds before 029 read
 //! (they ignore fields they do not know).
-#![cfg(not(target_arch = "wasm32"))]
 
 use std::collections::BTreeMap;
 use std::path::Path;

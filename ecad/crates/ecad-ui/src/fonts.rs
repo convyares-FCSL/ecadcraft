@@ -1,5 +1,5 @@
 //! The interface and sheet fonts (design §4; brief 037, owner answer Q1: embedded from ECAD's
-//! repository). The five faces are included with `include_bytes!` on native and wasm, so they
+//! repository). The five faces are included with `include_bytes!`, so they
 //! are always present; nothing is read from disk at run time. Sources, versions and hashes are in
 //! `ecad/assets/fonts/README.md`.
 //!

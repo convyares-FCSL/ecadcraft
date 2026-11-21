@@ -2,7 +2,6 @@
 //! its parent, owns its log, opens from its parent's state at the fork or its own snapshot, and
 //! the project reopens on the branch last shown (`meta.active`). Branch actions write at once;
 //! readers refuse unknown fields in rows (pre-v1, no forward compatibility).
-#![cfg(not(target_arch = "wasm32"))]
 
 use crate::common::*;
 use crate::container_v2::TempDir;

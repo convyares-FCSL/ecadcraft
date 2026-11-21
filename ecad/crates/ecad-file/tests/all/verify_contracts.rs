@@ -2,7 +2,6 @@
 //! then the full check at every snapshot and branch end. It catches everything the old Verify
 //! caught (the full check after every transaction, kept here as [`reference`]), and a history
 //! rewritten with valid ops between two snapshots is caught at the next snapshot.
-#![cfg(not(target_arch = "wasm32"))]
 
 use std::collections::BTreeMap;
 use std::path::Path;

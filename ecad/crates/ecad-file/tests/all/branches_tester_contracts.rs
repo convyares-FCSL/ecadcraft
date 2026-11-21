@@ -10,7 +10,6 @@
 //!   rows alone, and possibly dropping the branch's `cache.latest` entry): this build reopens on
 //!   the branch, both lines are intact, and the file verifies.
 //! - **A second reader** opened before a branch existed shows it afterwards.
-#![cfg(not(target_arch = "wasm32"))]
 
 use std::collections::BTreeMap;
 use std::time::Instant;

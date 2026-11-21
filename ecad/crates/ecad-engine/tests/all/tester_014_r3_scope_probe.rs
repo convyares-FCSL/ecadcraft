@@ -14,7 +14,6 @@
 //! - Every end attached on the other page is still attached: the M3 gate never detaches it.
 //! - Each drawn reference text reads `page-column-row` (or `/page.column`), or `/?` for an orphan.
 //! - The 010 note is echoed when a stub end leaving toward a reference is dropped on a terminal.
-#![cfg(not(target_arch = "wasm32"))]
 
 use crate::common;
 

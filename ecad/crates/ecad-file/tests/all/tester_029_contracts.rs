@@ -7,7 +7,6 @@
 //! The reference (the Verify before 029: the full check after every transaction) is an
 //! independent copy here. With `ECAD_TESTER029_EXPORT=<folder>` the damaged files are also kept
 //! there, so a build of `dev` from before 029 can verify the same bytes (tester report).
-#![cfg(not(target_arch = "wasm32"))]
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};

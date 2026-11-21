@@ -1,6 +1,5 @@
 //! Project files on disk through the adapter (persistence stage 2a): Save As, Save, close and
 //! reopen keep connectivity, IDs and history; a second opener is read-only; paths are checked.
-#![cfg(not(target_arch = "wasm32"))]
 
 use crate::common;
 

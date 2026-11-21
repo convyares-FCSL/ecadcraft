@@ -13,7 +13,6 @@
 //! Excluded: the MCP protocol and its server (`ecad-mcp`, over `cadcraft-mcp`), the bridge's
 //! transport, launching the window, and anything a host shows.
 
-#[cfg(not(target_arch = "wasm32"))]
 pub mod access;
 pub mod bridge;
 pub mod gate;

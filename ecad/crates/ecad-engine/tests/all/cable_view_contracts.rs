@@ -3,7 +3,6 @@
 //!
 //! Fixture G (design §9): two drawn components with connection points at x = 0 and x = 60, y = 0, 5, 10,
 //! three attached wires W0, W5, W10 between them, and the slash C1 from (28,-3) to (32,18).
-#![cfg(not(target_arch = "wasm32"))]
 
 use crate::common;
 

@@ -203,20 +203,11 @@ pub(crate) fn txs(p: &Project, branch: BranchId, from: u64, to: u64) -> Result<V
 }
 
 /// The local zone's offset from UTC at `ms`, in seconds (overseer, 2026-11-10: the graph and the
-/// details show local time; the file keeps UTC). `None` in a wasm build, where times are shown in
-/// UTC, labelled.
+/// details show local time; the file keeps UTC). `None` when the time is out of range.
 pub fn local_offset(ms: u64) -> Option<i64> {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        use chrono::{Offset, TimeZone};
-        let utc = chrono::DateTime::from_timestamp(i64::try_from(ms / 1000).ok()?, 0)?.naive_utc();
-        Some(i64::from(chrono::Local.offset_from_utc_datetime(&utc).fix().local_minus_utc()))
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        let _ = ms;
-        None
-    }
+    use chrono::{Offset, TimeZone};
+    let utc = chrono::DateTime::from_timestamp(i64::try_from(ms / 1000).ok()?, 0)?.naive_utc();
+    Some(i64::from(chrono::Local.offset_from_utc_datetime(&utc).fix().local_minus_utc()))
 }
 
 /// `MM-DD HH:MM` this year, `YYYY-MM-DD` otherwise, in local time (design 020 §2.2); ` UTC`

@@ -1,5 +1,5 @@
 //! Container version 2 timings (brief 021): the v2 columns of `cargo xtask bench`, and the
-//! Zstandard comparison the overseer asked for (`ruzstd` against the `zstd` crate).
+//! Zstandard comparison the overseer asked for (`zstd` levels 1 and 3).
 //!
 //! # Semantics
 //! - **v2 open**: [`DiskProjectV2::open`] from a warm file cache: the latest snapshot and its tail.
@@ -292,8 +292,7 @@ pub struct Compression {
     pub codecs: Vec<Codec>,
 }
 
-/// Compare `ruzstd` (level Fastest, the only one it implements) with the `zstd` crate at levels 1
-/// and 3 on the rows and chunks of the version 2 file at `path`.
+/// Compare the `zstd` crate at levels 1 and 3 on the rows and chunks of the version 2 file at `path`.
 ///
 /// # Errors
 /// The file cannot be read, or a codec failed.
@@ -325,12 +324,7 @@ pub fn compression(path: &Path) -> Result<Compression, String> {
     let mut codecs = Vec::new();
     type Enc = fn(&[u8]) -> Result<Vec<u8>, String>;
     type Dec = fn(&[u8]) -> Result<Vec<u8>, String>;
-    let all: [(&'static str, Enc, Dec); 3] = [
-        (
-            "ruzstd (Fastest)",
-            |b| Ok(ruzstd::encoding::compress_to_vec(b, ruzstd::encoding::CompressionLevel::Fastest)),
-            |b| ecad_file::pack::decode_ruzstd(b).map_err(|e| e.to_string()),
-        ),
+    let all: [(&'static str, Enc, Dec); 2] = [
         (
             "zstd 1",
             |b| zstd::bulk::compress(b, 1).map_err(|e| e.to_string()),

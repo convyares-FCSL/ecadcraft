@@ -30,11 +30,9 @@ use std::io;
 
 pub mod backend;
 pub mod db;
-#[cfg(not(target_arch = "wasm32"))]
 pub mod disk;
 pub mod power;
 pub use backend::MemoryBackend;
-#[cfg(not(target_arch = "wasm32"))]
 pub use disk::{FileIdentity, FileMedium, LockAttempt, MediumFaults, WriterLock};
 
 /// Byte storage a file writer appends to.

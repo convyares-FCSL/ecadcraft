@@ -32,8 +32,6 @@ pub const NO_STRIPS: &str = "No terminal strips in this project.";
 pub const NO_CABLES: &str = "No cables in this project.";
 /// Said for a project that was never saved.
 pub const SAVE_FIRST: &str = "Save the project first, so the revision is kept with it and the folder has a place.";
-/// Said on a build that cannot write files.
-pub const NO_FILES_HERE: &str = "Release writes files; open the project in the desktop app.";
 
 /// A group of the pre-release check.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

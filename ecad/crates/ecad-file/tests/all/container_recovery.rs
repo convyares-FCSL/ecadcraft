@@ -11,7 +11,6 @@
 //! - Damage at rest (bytes changed inside the stored file) in a transaction row, a chunk, the
 //!   row a snapshot stands on, and a snapshot's recorded stacks: detected, never loaded silently;
 //!   EEP-0005 §5.8 says the project then opens read-only with a report.
-#![cfg(not(target_arch = "wasm32"))]
 
 use std::io;
 use std::ops::Bound;

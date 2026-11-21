@@ -1,7 +1,6 @@
 //! A project's file on disk (persistence stage 2a; container version 2 since brief 021): the
 //! binding between a project (ecad-engine's `Project`) and its `.ecad` file, through
 //! [`crate::disk::DiskProjectV2`], and the checks on a path typed for one.
-//! Native only; in a browser build every operation reports that project files are not available.
 //!
 //! It reads no environment: the home folder is passed in ([`normalize_with`]).
 
@@ -71,12 +70,8 @@ pub enum BindingError {
     #[error("{NO_FILE_YET}")]
     NoFileYet,
     /// Opening or saving on disk failed.
-    #[cfg(not(target_arch = "wasm32"))]
     #[error(transparent)]
     Disk(#[from] crate::disk::DiskErrorV2),
-    /// Project files are not available in this build.
-    #[error("project files are not available in a browser build")]
-    NoFiles,
 }
 
 /// Where a project's file stands, for status displays.
@@ -115,7 +110,6 @@ pub struct Opened {
 /// The file a project is bound to, holding its writer lock while bound.
 #[derive(Debug, Default)]
 pub struct Binding {
-    #[cfg(not(target_arch = "wasm32"))]
     disk: Option<Box<crate::disk::DiskProjectV2>>,
 }
 
@@ -151,7 +145,6 @@ impl StorageFacts {
 
 /// Refuse a file that exists but is not an ECAD project (a file that cannot be read is left to
 /// opening, which says why).
-#[cfg(not(target_arch = "wasm32"))]
 fn not_a_project(path: &str) -> Result<(), BindingError> {
     if crate::disk::starts_like_project(std::path::Path::new(path)).ok() == Some(false) {
         return Err(BindingError::NotAProject(path.to_string()));
@@ -236,7 +229,6 @@ pub fn normalize_with(path: &str, home: Option<&std::path::Path>) -> Result<Stri
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 impl Binding {
     /// Open the project file at `path` (already normalised): take its writer lock and open it
     /// from its latest snapshot.
@@ -357,73 +349,4 @@ impl Binding {
     pub fn v2_mut(&mut self) -> Option<&mut crate::ProjectV2> {
         self.disk.as_deref_mut().map(|d| d.project_mut())
     }
-}
-
-#[cfg(target_arch = "wasm32")]
-impl Binding {
-    /// Not available in a browser build.
-    ///
-    /// # Errors
-    /// Always.
-    pub fn open(_path: &str, _seed: u64, _writer: &str) -> Result<Opened, BindingError> {
-        Err(BindingError::NoFiles)
-    }
-
-    /// Not available in a browser build.
-    ///
-    /// # Errors
-    /// Always.
-    pub fn open_read_only(_path: &str, _seed: u64, _writer: &str) -> Result<Opened, BindingError> {
-        Err(BindingError::NoFiles)
-    }
-
-    /// No file.
-    pub fn status(&self) -> FileStatus {
-        FileStatus::default()
-    }
-
-    /// Never bound in a browser build.
-    pub fn bound(&self) -> bool {
-        false
-    }
-
-    /// No file to refuse.
-    pub fn refuse_unknown_words(&mut self, _words: Vec<ecad_model::strict::UnknownWord>) {}
-
-    /// No lock file.
-    pub fn lock_file(&self) -> Option<String> {
-        None
-    }
-
-    /// No file.
-    pub fn storage(&self) -> Option<StorageFacts> {
-        None
-    }
-
-    /// No file.
-    pub fn store(&self) -> Option<std::sync::Arc<crate::Store>> {
-        None
-    }
-
-    /// No file.
-    pub fn v2(&self) -> Option<&crate::ProjectV2> {
-        None
-    }
-
-    /// No file.
-    pub fn v2_mut(&mut self) -> Option<&mut crate::ProjectV2> {
-        None
-    }
-
-    pub fn save(&mut self, _ledger: &mut Ledger) -> Result<(), BindingError> {
-        Err(BindingError::NoFiles)
-    }
-
-    pub fn save_as(
-        &mut self, _path: &str, _project: ProjectId, _ledger: &mut Ledger, _writer: &str, _created_ms: Option<u64>,
-    ) -> Result<Written, BindingError> {
-        Err(BindingError::NoFiles)
-    }
-
-    pub fn release(&mut self) {}
 }

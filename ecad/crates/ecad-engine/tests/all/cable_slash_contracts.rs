@@ -3,7 +3,6 @@
 //!
 //! Fixture F (design §10): three parallel wires W0, W5, W10 (tagged by their y) from x 0 to 60,
 //! and a plain line at y 15. The design's slash S runs from (28,-3) to (32,18).
-#![cfg(not(target_arch = "wasm32"))]
 
 use crate::common;
 

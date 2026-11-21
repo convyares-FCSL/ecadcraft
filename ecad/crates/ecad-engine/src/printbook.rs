@@ -390,15 +390,7 @@ pub fn print(
 /// # Errors
 /// The file system's error, in words.
 pub fn write_file(path: &str, bytes: &[u8]) -> Result<(), String> {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        cadcraft_engine::atomic_write::write_atomic_making_folders(std::path::Path::new(path), bytes).map_err(|e| format!("{path}: {e}"))
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        let _ = bytes;
-        Err(format!("{path}: files cannot be written in this build"))
-    }
+    cadcraft_engine::atomic_write::write_atomic_making_folders(std::path::Path::new(path), bytes).map_err(|e| format!("{path}: {e}"))
 }
 
 /// The dialog's notes for printing `scope` of `p` (brief 033): a continuation sheet's number

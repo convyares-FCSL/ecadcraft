@@ -13,7 +13,6 @@
 //!
 //! Round counts: `ECAD_CRASH_ROUNDS` (default 300 power-loss and torn-write rounds, 100 kill
 //! rounds). Every failure prints its round's seed.
-#![cfg(not(target_arch = "wasm32"))]
 
 use std::io::Write;
 use std::path::{Path, PathBuf};

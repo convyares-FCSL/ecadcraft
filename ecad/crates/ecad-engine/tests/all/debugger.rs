@@ -3,7 +3,6 @@
 //! record's offset and bytes. Pending and saved transactions are told apart; snapshots are copied
 //! under a short lock and never wait for a busy project; checks run only when asked; history views
 //! never change the live project.
-#![cfg(not(target_arch = "wasm32"))]
 
 use crate::common;
 

@@ -2,7 +2,6 @@
 //! the record, the merge index (`versions` kind `merge`) and the source's `merged` status follow
 //! the merge, its undo and its redo through Save, and a branch's first save writes its first
 //! snapshot (so switching to it costs about an open).
-#![cfg(not(target_arch = "wasm32"))]
 
 use crate::common::*;
 use crate::container_v2::TempDir;

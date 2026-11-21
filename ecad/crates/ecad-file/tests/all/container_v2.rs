@@ -1,7 +1,6 @@
 //! Container version 2 (brief 021, EEP-0005): a project written to a redb file opens from its
 //! latest snapshot and tail exactly as the replayed project; saves append only; damage opens
 //! read-only; the append-only API refuses rewrites.
-#![cfg(not(target_arch = "wasm32"))]
 
 use std::path::PathBuf;
 
@@ -266,7 +265,7 @@ fn a_damaged_tail_or_snapshot_opens_read_only_at_what_verifies() {
 
 #[test]
 fn a_file_opens_from_its_bytes_in_memory() {
-    // EEP-0005 §11: what a wasm build does.
+    // `Store::from_bytes`: a file read from its bytes in memory.
     let dir = TempDir::new("bytes");
     let mut f = fixture();
     let p = dir.path("p.ecad");

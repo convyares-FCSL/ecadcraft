@@ -3,7 +3,6 @@
 //! second (read-only) opener sees branches created after it opened and writes nothing, a branch
 //! from an old version starts at that version, Restore is one undoable step that leaves version
 //! names and `rev.*` alone, and the file verifies after all of it.
-#![cfg(not(target_arch = "wasm32"))]
 
 use crate::common::{H, pts, small_project};
 
