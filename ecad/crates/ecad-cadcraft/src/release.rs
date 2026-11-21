@@ -2,9 +2,9 @@
 //! folder.
 //!
 //! # Semantics
-//! - **Pre-release check** ([`check_rows`], [`grouped`]): the kept Checks of the state to be
+//! - **Pre-release check** ([`check_rows`], [`grouped`](ecad_electrical::release::grouped)): the kept Checks of the state to be
 //!   issued (the project's own kept list and report models: opening it never rescans the
-//!   project), grouped for a release by [`GROUPS`] (a view: kinds keep their severities). A kind
+//!   project), grouped for a release by [`GROUPS`](ecad_electrical::release::GROUPS) (a view: kinds keep their severities). A kind
 //!   not in the table lands in **Other**.
 //! - **Release of the pending revision** ([`run_release`]), in this order so a failure leaves
 //!   nothing half-done (design 027 §5.2): refusals (each with its way out); 026's finalise (behind
@@ -36,12 +36,17 @@ use ecad_model::{Document, Op};
 use serde_json::{Map, Value, json};
 
 use crate::access::Pages;
-use crate::checks::{self, Check, Severity};
+use crate::checks::{self, Check};
 use crate::cmd::opt_typed;
 use crate::outputs::{self, Group as BomGroup, Outputs, Table};
 use crate::printbook::{self, Options};
 use crate::project::Project;
 use crate::revisions;
+
+use ecad_electrical::release::{
+    DEFAULT_ROWS, Group, MAX_ROWS, NO_CABLES, NO_FILES_HERE, NO_STRIPS, SAVE_FIRST, checks_table, clean_stem, counts, folder_name, grouped,
+};
+use ecad_electrical::release::{errors_refusal, finalising, over_budget, stopped};
 
 /// The manifest's file name.
 pub const MANIFEST: &str = "release.json";
@@ -56,100 +61,12 @@ pub const PARTIAL: &str = ".partial";
 /// The empty file that marks a staging folder as a release's own (only such a folder is ever
 /// cleared); removed just before the folder is renamed into place.
 pub const STAGING_MARK: &str = ".ecad-release-staging";
-/// Most characters of a file stem.
-pub const MAX_STEM: usize = 80;
-/// Rows per group `prerelease` returns by default, and at most.
-pub const DEFAULT_ROWS: usize = 50;
-pub const MAX_ROWS: usize = 2000;
 /// Largest `release.json` read back (a hostile or foreign file is not read further).
 const MAX_MANIFEST_BYTES: u64 = 4 << 20;
 /// Most `Rev B (n)` folders tried for Keep both.
 const MAX_KEEP_BOTH: u32 = 1000;
-/// Said by 028's slots for a project with no strips or no cables (design 027 §7.2, Q7).
-pub const NO_STRIPS: &str = "No terminal strips in this project.";
-pub const NO_CABLES: &str = "No cables in this project.";
-/// Said for a project that was never saved.
-pub const SAVE_FIRST: &str = "Save the project first, so the revision is kept with it and the folder has a place.";
-/// Said on a build that cannot write files.
-pub const NO_FILES_HERE: &str = "Release writes files; open the project in the desktop app.";
 
 // ---------------------------------------------------------------- groups (design 027 §4.1)
-
-/// A group of the pre-release check.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Group {
-    Errors,
-    OpenEnds,
-    Orphans,
-    Provisional,
-    Parts,
-    Other,
-}
-
-impl Group {
-    pub const ALL: [Group; 6] = [Group::Errors, Group::OpenEnds, Group::Orphans, Group::Provisional, Group::Parts, Group::Other];
-
-    /// The JSON and element name (`ecad.release.group.<id>`).
-    pub fn id(self) -> &'static str {
-        match self {
-            Group::Errors => "errors",
-            Group::OpenEnds => "open-ends",
-            Group::Orphans => "orphans",
-            Group::Provisional => "provisional",
-            Group::Parts => "parts",
-            Group::Other => "other",
-        }
-    }
-
-    /// The header's words.
-    pub fn words(self) -> &'static str {
-        match self {
-            Group::Errors => "Errors",
-            Group::OpenEnds => "Open ends",
-            Group::Orphans => "Orphans",
-            Group::Provisional => "Provisional",
-            Group::Parts => "? parts",
-            Group::Other => "Other",
-        }
-    }
-}
-
-/// Which kinds each group shows (by their JSON names, so 026's kinds are placed before they
-/// exist). Errors take every error-severity kind; a kind in no row is in [`Group::Other`].
-pub const GROUPS: &[(Group, &[&str])] = &[
-    (Group::OpenEnds, &["open-end", "loose-wire", "no-wire-yet", "drawn-away", "looks-connected", "unconnected"]),
-    (Group::Orphans, &["orphan-reference", "lonely-continuation", "single-point"]),
-    (Group::Provisional, &["provisional-tag", "provisional-wires", "unnumbered"]),
-    (Group::Parts, &["no-part-number"]),
-];
-
-/// The group a row shows in.
-pub fn group_of(c: &Check) -> Group {
-    if c.severity() == Severity::Error {
-        return Group::Errors;
-    }
-    let name = c.kind.name();
-    GROUPS.iter().find(|(_, kinds)| kinds.contains(&name)).map_or(Group::Other, |(g, _)| *g)
-}
-
-/// `rows` by group, in [`Group::ALL`] order, each in book order (as `rows` came).
-pub fn grouped(rows: &[Check]) -> BTreeMap<Group, Vec<&Check>> {
-    let mut out: BTreeMap<Group, Vec<&Check>> = BTreeMap::new();
-    for c in rows {
-        out.entry(group_of(c)).or_default().push(c);
-    }
-    out
-}
-
-/// Counts by severity in the release check: (errors, warnings, info). A cable not drawn yet counts
-/// as a warning here (brief 059, Q2).
-pub fn counts(rows: &[Check]) -> (usize, usize, usize) {
-    rows.iter().fold((0, 0, 0), |(e, w, i), c| match c.release_severity() {
-        Severity::Error => (e + 1, w, i),
-        Severity::Warning => (e, w + 1, i),
-        Severity::Info => (e, w, i + 1),
-    })
-}
 
 /// The check rows of the state to be issued (design 027 §4.1): the project's kept Checks and the
 /// report models' rows, in book order. The pending revision's field writes change no check, so
@@ -175,17 +92,12 @@ pub mod numbering_seam {
     use crate::checks::Check;
     use crate::project::Project;
 
-    /// How many provisional rows the check holds (tags, and the wire-numbers row).
-    pub fn provisional_count(rows: &[Check]) -> usize {
-        rows.iter().filter(|c| matches!(c.kind.name(), "provisional-tag" | "provisional-wires")).count()
-    }
-
     /// What `release` would refuse for provisional items without a choice (026's words), if any.
     pub fn refusal(p: &Project, _rows: &[Check], params: &Value) -> Option<String> {
         if params.get("provisional").is_some_and(|v| !v.is_null()) {
             return None;
         }
-        let items = crate::cmd::numbering::provisional_items(p.ledger.document());
+        let items = ecad_electrical::cmd::numbering::provisional_items(p.ledger.document());
         (!items.is_empty()).then(|| {
             format!(
                 "{}. Give provisional: \"finalise\" (number them first, in one transaction before the issue) or \"issue\" (issue as they are).",
@@ -198,7 +110,7 @@ pub mod numbering_seam {
     ///
     /// # Errors
     /// 026's refusal or a bad `provisional`.
-    pub fn plan(p: &mut Project, params: &Value) -> Result<crate::cmd::numbering::BeforeIssue, String> {
+    pub fn plan(p: &mut Project, params: &Value) -> Result<ecad_electrical::cmd::numbering::BeforeIssue, String> {
         crate::cmd::numbering::plan_before_issue(p, params).map_err(String::from)
     }
 
@@ -310,7 +222,7 @@ fn chosen(params: &Value) -> Result<Option<BTreeSet<String>>, String> {
 // ---------------------------------------------------------------- names and places (§7.1)
 
 /// The file stem: the drawing number, else the project file's name, else the project's name;
-/// `\ / : * ? " < > |` and control characters become `-`; at most [`MAX_STEM`] characters.
+/// `\ / : * ? " < > |` and control characters become `-`; at most [`MAX_STEM`](ecad_electrical::release::MAX_STEM) characters.
 pub fn stem(p: &Project) -> String {
     let doc = p.ledger.document();
     let raw = crate::frames::project_text(doc, crate::frame::DRAWING_NUMBER)
@@ -319,18 +231,6 @@ pub fn stem(p: &Project) -> String {
         .or_else(|| p.path.as_deref().and_then(|x| Path::new(x).file_stem()).map(|s| s.to_string_lossy().into_owned()))
         .unwrap_or_else(|| p.name.clone());
     clean_stem(&raw)
-}
-
-/// [`stem`]'s cleaning.
-pub fn clean_stem(raw: &str) -> String {
-    let s: String = raw.chars().map(|c| if c.is_control() || "\\/:*?\"<>|".contains(c) { '-' } else { c }).take(MAX_STEM).collect();
-    let s = s.trim().trim_end_matches('.').trim().to_string();
-    if s.is_empty() { "project".into() } else { s }
-}
-
-/// `Rev B`.
-pub fn folder_name(rev: &str) -> String {
-    revisions::version_name(rev)
 }
 
 /// The project file's folder, when it has a file.
@@ -598,21 +498,6 @@ pub fn stage(b: &Build<'_>, dir: &Path, progress: &mut dyn FnMut(usize, usize) -
         w.rows = Some(t.rows.len());
     }
     Ok(st)
-}
-
-/// `checks.csv` (design 027 §7.2): `Severity, Group, Kind, Where, What, Accepted`.
-pub fn checks_table(doc: &Document, rows: &[Check], accepted: bool) -> Table {
-    let cell = |t: &str| outputs::Cell { text: t.to_string(), flag: None };
-    let mut out: Vec<(Group, Vec<outputs::Cell>)> = rows
-        .iter()
-        .map(|c| {
-            let g = group_of(c);
-            let acc = if accepted && c.severity() == Severity::Error { "yes" } else { "" };
-            (g, vec![cell(c.severity().name()), cell(g.words()), cell(c.kind.words()), cell(&c.locator(doc)), cell(&c.which), cell(acc)])
-        })
-        .collect();
-    out.sort_by_key(|(g, _)| *g);
-    Table { headers: vec!["Severity", "Group", "Kind", "Where", "What", "Accepted"], rows: out.into_iter().map(|(_, r)| r).collect() }
 }
 
 // ---------------------------------------------------------------- the existing folder (§9)
@@ -918,24 +803,6 @@ pub fn pending_refusal(p: &Project, rows: &[Check], params: &Value) -> Option<St
     numbering_seam::refusal(p, rows, params)
 }
 
-/// Whether `params` choose 026's Finalise numbering.
-fn finalising(params: &Value) -> bool {
-    params.get("provisional").and_then(Value::as_str).is_some_and(|w| matches!(w.trim().to_ascii_lowercase().as_str(), "finalise" | "finalize"))
-}
-
-/// The refusal for errors in `rows` without `accept: "errors"` (design 027 §4.3), placed in `doc`.
-fn errors_refusal(doc: &Document, rows: &[Check]) -> Option<String> {
-    let (errors, _, _) = counts(rows);
-    if errors == 0 {
-        return None;
-    }
-    let first = rows.iter().find(|c| c.severity() == Severity::Error);
-    let what = first.map(|c| format!(" ({}, {})", c.kind.words(), c.locator(doc))).unwrap_or_default();
-    let open = if errors == 1 { "1 error is open".to_string() } else { format!("{errors} errors are open") };
-    let it = if errors == 1 { "it" } else { "them" };
-    Some(format!("{open}{what}. Fix {it}, or give accept: \"errors\" to release with {it}; checks.csv lists {it}."))
-}
-
 /// Why the project cannot be written, if it cannot.
 fn read_only(p: &Project) -> Option<String> {
     if p.persistence == crate::project::Persistence::Unavailable {
@@ -945,30 +812,9 @@ fn read_only(p: &Project) -> Option<String> {
 }
 
 /// `Nothing has changed since Rev A.` when every step since the last issue only edited revision
-/// fields (design 027 §6, Q11): a warning, never a refusal. Stops at the first other step.
+/// fields (design 027 §6, Q11): a warning, never a refusal ([`ecad_electrical::release::nothing_changed`]).
 pub fn nothing_changed(p: &Project) -> Option<String> {
-    let doc = p.ledger.document();
-    let last = revisions::issued(doc).into_iter().next()?;
-    let name = last.issued.clone()?;
-    let at = *doc.versions.get(&name)?;
-    let head = p.ledger.head();
-    let only_revisions = |t: &ecad_model::Transaction| {
-        t.ops.iter().all(|o| match o {
-            Op::ModifyProject { before, after } => {
-                ecad_model::Project { revisions: Vec::new(), ..before.clone() } == ecad_model::Project { revisions: Vec::new(), ..after.clone() }
-            }
-            _ => false,
-        })
-    };
-    let mut seq = at.saturating_add(2);
-    while seq <= head {
-        let t = p.ledger.transaction(seq)?;
-        if !only_revisions(t) {
-            return None;
-        }
-        seq += 1;
-    }
-    Some(format!("Nothing has changed since {name}."))
+    ecad_electrical::release::nothing_changed(p.ledger.document(), p.ledger.head(), |seq| p.ledger.transaction(seq))
 }
 
 // ---------------------------------------------------------------- prerelease
@@ -1021,7 +867,7 @@ pub fn view(p: &mut Project, rev: Option<&str>, accept: bool, limit: usize) -> R
             }
         }
         (v.errors, v.warnings, v.info) = counts(rows);
-        v.provisional = numbering_seam::provisional_count(rows);
+        v.provisional = ecad_electrical::release::provisional_count(rows);
     };
     match &issued_rev {
         Some(row) => {
@@ -1214,8 +1060,8 @@ pub(crate) fn release_pending(
     // 2. 026's finalise, when asked: planned now, recorded only with the issue (step 4), so a
     // release that stops before the issue records nothing at all (tester 027, 1).
     let (finalise, note) = match numbering_seam::plan(p, params)? {
-        crate::cmd::numbering::BeforeIssue::Go(note) => (None, note),
-        crate::cmd::numbering::BeforeIssue::Finalise(plan) => (Some(plan), None),
+        ecad_electrical::cmd::numbering::BeforeIssue::Go(note) => (None, note),
+        ecad_electrical::cmd::numbering::BeforeIssue::Finalise(plan) => (Some(plan), None),
     };
     // The caller's transaction budget (an agent's cap of one per call, two with Finalise): known
     // before anything reaches the disk, never found out after (tester 027, 3).
@@ -1360,23 +1206,6 @@ pub(crate) fn release_pending(
         v["warning"] = json!(wn);
     }
     Ok(v)
-}
-
-/// The refusal of a release that would record more transactions than its caller allows.
-fn over_budget(needed: usize, budget: usize) -> String {
-    let what = if needed == 2 { "Finalise numbering and the issue (2 steps)" } else { "the issue (1 step)" };
-    let allowed = match budget {
-        0 => "no more steps in this call".to_string(),
-        1 => "1 step in this call".to_string(),
-        n => format!("{n} steps in this call"),
-    };
-    format!("Release refused: it records {what}, and the caller allows {allowed}. Nothing was issued or written; call release on its own.")
-}
-
-/// The words of a release stopped before the issue.
-fn stopped(reason: &str) -> String {
-    let r = reason.trim_end_matches('.');
-    format!("Release stopped: {r}. Nothing was issued or written. Choose another folder, or try again.")
 }
 
 fn write_manifest(dir: &Path, m: &Value) -> Result<(), String> {

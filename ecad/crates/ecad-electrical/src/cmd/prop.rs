@@ -8,6 +8,7 @@
 
 use ecad_model::tag::{self, FIXED_KEY, TAG_KEY};
 use ecad_model::{CableId, DeviceId, Document, IdAllocator, ObjectRef, Op, Properties, Subject};
+use serde_json::{Value, json};
 
 use crate::devices::{self, Holder, TagHigh};
 use crate::error::CmdError;
@@ -661,4 +662,12 @@ pub fn plan_fixed(doc: &Document, o: ObjectRef, typed: Option<&str>) -> Result<F
         }
     }
     Ok(FixedSet { on, op: write_tag(doc, o, tag_now, on).into_iter().next() })
+}
+
+pub fn object_json(o: ObjectRef) -> Value {
+    match o {
+        ObjectRef::Device(c) => json!({"component": c.hex()}),
+        ObjectRef::Cable(k) => json!({"cable": k.hex()}),
+        _ => Value::Null,
+    }
 }

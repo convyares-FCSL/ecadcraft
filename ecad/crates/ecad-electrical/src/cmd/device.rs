@@ -6,6 +6,7 @@
 //! Excludes: what a handle on the page is (the engine crate's page map), committing and the JSON
 //! answer (the engine crate's shims).
 
+use serde_json::Value;
 use std::collections::BTreeMap;
 
 use ecad_model::{
@@ -258,4 +259,14 @@ pub fn plan_addterminal(
         Op::ModifyRepresentation { id: rid, before: r.clone(), after },
     ];
     Ok((t, ops))
+}
+
+/// Every starter symbol's prefix as this project uses it (`-K`).
+pub fn prefixes_json(doc: &ecad_model::Document) -> serde_json::Map<String, Value> {
+    crate::symbols::STARTERS
+        .iter()
+        // Junctions and continuations have no tag (brief 022).
+        .filter(|s| s.kind != crate::symbols::Kind::Tagless)
+        .map(|s| (s.key.to_string(), Value::String(format!("-{}", devices::prefix_for(doc, s)))))
+        .collect()
 }
