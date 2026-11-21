@@ -115,7 +115,27 @@ pub fn frame_reach_of(doc: &Document, effect: &ecad_model::effect::Effect<'_>) -
                 ),
             }
         }
-        _ => Reach::NotFrame,
+        Effect::Page { .. }
+        | Effect::Layer { .. }
+        | Effect::Item { .. }
+        | Effect::Device { .. }
+        | Effect::DeviceDefinition { .. }
+        | Effect::Terminal { .. }
+        | Effect::Rep { .. }
+        | Effect::Wire { .. }
+        | Effect::Route { .. }
+        | Effect::Cable { .. }
+        | Effect::Prop { .. }
+        | Effect::Definition { .. }
+        | Effect::Settings { .. }
+        | Effect::Version { .. }
+        | Effect::Folder { .. }
+        | Effect::Style { .. }
+        | Effect::Standard { .. }
+        | Effect::Project { .. }
+        | Effect::Aid { .. }
+        | Effect::LoosePart { .. }
+        | Effect::DeviceLink { .. } => Reach::NotFrame,
     }
 }
 

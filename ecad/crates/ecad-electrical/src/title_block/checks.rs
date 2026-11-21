@@ -39,7 +39,21 @@ pub fn touches(effect: &Effect<'_>) -> bool {
         // Design 072 §5.3: the info, the revision rows and the lists the block shows.
         Effect::Project { .. } => true,
         Effect::Page { .. } | Effect::Folder { .. } => true,
-        _ => false,
+        Effect::Layer { .. }
+        | Effect::Item { .. }
+        | Effect::Device { .. }
+        | Effect::DeviceDefinition { .. }
+        | Effect::Terminal { .. }
+        | Effect::Rep { .. }
+        | Effect::Wire { .. }
+        | Effect::Route { .. }
+        | Effect::Cable { .. }
+        | Effect::Prop { .. }
+        | Effect::Definition { .. }
+        | Effect::Version { .. }
+        | Effect::Aid { .. }
+        | Effect::LoosePart { .. }
+        | Effect::DeviceLink { .. } => false,
     }
 }
 

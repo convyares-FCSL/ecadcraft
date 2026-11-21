@@ -281,7 +281,26 @@ pub fn checks_changed(doc: &Document, effect: &ecad_model::effect::Effect<'_>) -
             let c = |r: Option<&ecad_model::StyleRecord>| r.and_then(|r| r.body.page()).and_then(|p| p.checks);
             c(*before) != c(*after)
         }
-        _ => false,
+        Effect::Layer { .. }
+        | Effect::Item { .. }
+        | Effect::Device { .. }
+        | Effect::DeviceDefinition { .. }
+        | Effect::Terminal { .. }
+        | Effect::Rep { .. }
+        | Effect::Wire { .. }
+        | Effect::Route { .. }
+        | Effect::Cable { .. }
+        | Effect::Prop { .. }
+        | Effect::Definition { .. }
+        | Effect::Settings { .. }
+        | Effect::Version { .. }
+        | Effect::Folder { .. }
+        | Effect::Style { .. }
+        | Effect::Standard { .. }
+        | Effect::Project { .. }
+        | Effect::Aid { .. }
+        | Effect::LoosePart { .. }
+        | Effect::DeviceLink { .. } => false,
     }
 }
 
@@ -296,7 +315,23 @@ pub fn touches_checks(effect: &ecad_model::effect::Effect<'_>) -> bool {
         Effect::Page { .. } | Effect::Folder { .. } => true,
         Effect::Settings { before, after } => before.page_number_step != after.page_number_step,
         Effect::Style { catalogue, .. } => *catalogue == ecad_model::StyleCatalogue::Page,
-        _ => false,
+        Effect::Layer { .. }
+        | Effect::Item { .. }
+        | Effect::Device { .. }
+        | Effect::DeviceDefinition { .. }
+        | Effect::Terminal { .. }
+        | Effect::Rep { .. }
+        | Effect::Wire { .. }
+        | Effect::Route { .. }
+        | Effect::Cable { .. }
+        | Effect::Prop { .. }
+        | Effect::Definition { .. }
+        | Effect::Version { .. }
+        | Effect::Standard { .. }
+        | Effect::Project { .. }
+        | Effect::Aid { .. }
+        | Effect::LoosePart { .. }
+        | Effect::DeviceLink { .. } => false,
     }
 }
 

@@ -1,9 +1,4 @@
 //! Lane 064 (design 064 §10): one update pipeline for derived views.
-//!
-//! # Frozen pre-R9 behaviour, test oracle only
-//! Every `old_*` function here is a frozen copy of code R9 replaced, kept only as a test oracle.
-//! It is not live legacy code and nothing outside this module calls it. Delete it when R9's
-//! step 10 matrix covers it; step 10 decides whether it stays.
 
 use std::collections::BTreeSet;
 
@@ -11,7 +6,7 @@ use ecad_cadcraft::{connectors, defaults};
 use ecad_model::Word;
 use ecad_model::keys::{self, Area};
 use ecad_model::view::PageSet;
-use ecad_model::{DeviceId, Document, ObjectRef, Op, PageId, Representation, Subject};
+use ecad_model::{DeviceId, Document, ObjectRef, Op, PageId};
 
 /// C3: every fixed key and every defaults entry classifies to an area other than `Free`, and the
 /// registry's area words, in order, are the 17 written out before design 064.
@@ -265,63 +260,13 @@ fn the_props_feed_reaches_the_change_log() {
 
 // ---------------------------------------------------------------- step 5: the connector index
 
-/// `connectors::Index::touched` as it was before design 064 step 5 (`doc` is after `ops`).
-fn old_connectors_touched(doc: &Document, ops: &[Op]) -> BTreeSet<DeviceId> {
-    let mut out = BTreeSet::new();
-    let subject = |r: &Representation, out: &mut BTreeSet<DeviceId>| {
-        if let Subject::Device(c) = r.subject {
-            out.insert(c);
-        }
-    };
-    for op in ops {
-        match op {
-            Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
-                out.extend(terminal.device());
-            }
-            Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => subject(rep, &mut out),
-            Op::ModifyRepresentation { before, after, .. } => {
-                subject(before, &mut out);
-                subject(after, &mut out);
-            }
-            Op::AddItem { id, .. } => {
-                if let Some((_, r)) = doc.representation_of_item(*id) {
-                    subject(r, &mut out);
-                }
-            }
-            Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::ModifyDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
-                out.insert(*id);
-            }
-            Op::SetProperty { object: ObjectRef::Device(c), .. } => {
-                out.insert(*c);
-            }
-            Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => out.extend(doc.components_using(*id)),
-            _ => {}
-        }
-    }
-    out
-}
-
-/// `connectors::Index::pages_for` as it was before design 064 step 5.
-fn old_pages_for(index: &connectors::Index, ops: &[Op]) -> BTreeSet<PageId> {
-    let mut out = BTreeSet::new();
-    for op in ops {
-        if let Op::SetProperty { object: ObjectRef::Project, key, .. } = op
-            && key.starts_with("connector.")
-            && (ecad_cadcraft::defaults::connectors::is_naming_key(key) || key.ends_with(".description"))
-        {
-            out.extend(index.pages_inheriting(key));
-        }
-    }
-    out
-}
-
 /// Step 5, `ConnectorsView` (design 064 §4.1): over every transaction of a project built with
 /// connector commands (two connectors, a connector-level and a project naming key, a description
-/// default, a half's maker, then undos past the second connector and redos), the view keeps the same index as the old
-/// `Index::touched` and `update`, equal to a fresh build, and names the same pages as the old
-/// `pages_for`.
+/// default, a half's maker, then undos past the second connector and redos), the view's index
+/// equals a fresh build, and it names exactly the pages of the connectors that inherit a project
+/// key the transaction set (none for any other transaction).
 #[test]
-fn the_connectors_view_matches_its_old_functions() {
+fn the_connectors_view_follows_the_document() {
     use serde_json::json;
     let mut h = crate::common::H::new(6451);
     let row = |h: &mut crate::common::H, at: [i32; 2]| -> DeviceId {
@@ -347,7 +292,6 @@ fn the_connectors_view_matches_its_old_functions() {
     let mut views = ecad_electrical::derived::Views::new(ecad_electrical::derived::EngineInputs { metrics });
     let mut doc = Document::default();
     views.rebuild(&doc);
-    let mut old = connectors::Index::build(&doc);
     // The view on its own, for its pages: the pipeline's `Changes.pages` holds every view's.
     let mut alone = ecad_electrical::derived::ConnectorsView::build(&doc);
     let mut named = 0;
@@ -364,13 +308,19 @@ fn the_connectors_view_matches_its_old_functions() {
         views.finish(&doc, &tx.ops, pending);
         note_view::<_, Inputs<'_>>(&alone, &NoteCx { doc: &doc, phase: Phase::After, effects: &effects }, &mut scope);
         let pages = alone.update(&doc, scope, &Inputs { engine: views.inputs(), frame_page: None }).pages;
-        old.update(&doc, &old_connectors_touched(&doc, &tx.ops));
         let what = format!("transaction {} {:?}", tx.seq, tx.label);
-        assert_eq!(views.connectors(), &old, "{what}: the index");
         assert_eq!(views.connectors(), &connectors::Index::build(&doc), "{what}: a fresh build");
-        let old_pages = old_pages_for(&old, &tx.ops);
-        named += old_pages.len();
-        assert_eq!(pages, PageSet::Only(old_pages), "{what}: pages");
+        let want: BTreeSet<PageId> = tx
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                Op::SetProperty { object: ObjectRef::Project, key, .. } => Some(key),
+                _ => None,
+            })
+            .flat_map(|key| views.connectors().pages_inheriting(key))
+            .collect();
+        named += want.len();
+        assert_eq!(pages, PageSet::Only(want), "{what}: pages");
     }
     assert!(!views.connectors().is_empty(), "a connector is indexed at the end");
     assert_eq!(views.connectors(), &h.p(|p| p.connectors().clone()), "the replay ends where the project's index is");

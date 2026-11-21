@@ -63,7 +63,7 @@ pub struct Book {
 
 /// What book order depends on, and nothing else: the page order, each page's folder, the folders
 /// and their order. Light to copy, so the book order after a list of ops can be worked out
-/// without copying the document ([`Outline::apply`], [`positions_changed`]).
+/// without copying the document ([`Outline::apply_effect`], [`positions_changed_by`]).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Outline {
     pub page_order: Vec<PageId>,
@@ -85,53 +85,7 @@ impl Outline {
         }
     }
 
-    /// Apply what `op` changes in the outline (page and folder ops, a page's `folder` property);
-    /// every other op changes nothing here. Out-of-range indexes are ignored (the ledger refuses
-    /// them anyway).
-    pub fn apply(&mut self, op: &crate::op::Op) {
-        use crate::op::Op;
-        match op {
-            Op::AddPage { id, page, index } => {
-                if *index <= self.page_order.len() {
-                    self.page_order.insert(*index, *id);
-                }
-                match page.folder {
-                    Some(f) => self.page_folder.insert(*id, f),
-                    None => self.page_folder.remove(id),
-                };
-            }
-            Op::RemovePage { id, index, .. } => {
-                if self.page_order.get(*index) == Some(id) {
-                    self.page_order.remove(*index);
-                }
-                self.page_folder.remove(id);
-            }
-            Op::ModifyPage { id, after, .. } => {
-                match after.folder {
-                    Some(f) => self.page_folder.insert(*id, f),
-                    None => self.page_folder.remove(id),
-                };
-            }
-            Op::AddFolder { id, folder, index } => {
-                if *index <= self.folder_order.len() {
-                    self.folder_order.insert(*index, *id);
-                }
-                self.folders.insert(*id, folder.parent);
-            }
-            Op::RemoveFolder { id, index, .. } => {
-                if self.folder_order.get(*index) == Some(id) {
-                    self.folder_order.remove(*index);
-                }
-                self.folders.remove(id);
-            }
-            Op::ModifyFolder { id, after, .. } => {
-                self.folders.insert(*id, after.parent);
-            }
-            _ => {}
-        }
-    }
-
-    /// Apply what `effect` changes in the outline, as [`Outline::apply`] does for its ops: a
+    /// Apply what `effect` changes in the outline (page and folder effects, a page's `folder`): a
     /// folded remove and add (a page or folder moved) applies the remove, then the add. Every
     /// other effect changes nothing here.
     pub fn apply_effect(&mut self, effect: &crate::effect::Effect<'_>) {
@@ -247,35 +201,8 @@ impl Outline {
     }
 }
 
-/// Whether `ops` can change book order at all (page and folder ops, a page's `folder`).
-pub fn moves_pages(ops: &[crate::op::Op]) -> bool {
-    use crate::op::Op;
-    ops.iter().any(|op| match op {
-        Op::AddPage { .. } | Op::RemovePage { .. } => true,
-        Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => true,
-        Op::ModifyPage { before, after, .. } => before.folder != after.folder,
-        _ => false,
-    })
-}
-
-/// The pages of `doc` (before `ops`) whose book position `ops` change: a rename in place or an
-/// append changes no other page's position. O(pages + folders + ops); empty when `ops` cannot
-/// move a page.
-pub fn positions_changed(doc: &Document, ops: &[crate::op::Op]) -> BTreeSet<PageId> {
-    if !moves_pages(ops) {
-        return BTreeSet::new();
-    }
-    let mut outline = Outline::of(doc);
-    let before = outline.book();
-    for op in ops {
-        outline.apply(op);
-    }
-    let after = outline.book();
-    before.positions.iter().filter(|(p, i)| after.positions.get(p) != Some(i)).map(|(p, _)| *p).collect()
-}
-
-/// [`positions_changed`] over a transaction's effects: the pages of `doc` whose book position
-/// `effects` change. O(pages + folders + effects); empty when `effects` cannot move a page.
+/// The pages of `doc` (before `effects`) whose book position `effects` change: a rename in place
+/// or an append changes no other page's position. O(pages + folders + effects); empty when `effects` cannot move a page.
 pub fn positions_changed_by(doc: &Document, effects: &crate::effect::Effects<'_>) -> BTreeSet<PageId> {
     if !moves_pages_by(effects) {
         return BTreeSet::new();
@@ -317,8 +244,8 @@ impl PositionsNoted {
     }
 }
 
-/// [`moves_pages`] over effects: a page added, removed or moved, a page's folder changed, a folder
-/// effect.
+/// Whether `effects` can change book order at all: a page added, removed or moved, a page's folder
+/// changed, a folder effect.
 pub fn moves_pages_by(effects: &crate::effect::Effects<'_>) -> bool {
     effects.iter().any(moves_pages_by_one)
 }
