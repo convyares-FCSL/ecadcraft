@@ -563,8 +563,8 @@ fn kept_equals_rebuild(h: &mut H, what: &str) {
     h.cfg(|p| {
         p.checks();
         let doc = p.ledger.document();
-        let kept_checks = p.checks.as_ref().map(|c| c.sorted(doc)).unwrap_or_default();
-        let fresh = ecad_cadcraft::checks::Checks::build(doc, p.tolerance).sorted(doc);
+        let kept_checks = p.kept_checks().map(|c| c.sorted(doc)).unwrap_or_default();
+        let fresh = ecad_cadcraft::project::engine_views().checks(doc, p.tolerance).sorted(doc);
         assert_eq!(kept_checks, fresh, "{what}: Checks differ from a rebuild");
         p.outputs();
         let doc = p.ledger.document();

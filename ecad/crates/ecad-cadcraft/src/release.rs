@@ -76,7 +76,7 @@ pub fn check_rows(p: &mut Project) -> Vec<Check> {
     p.outputs();
     p.checks();
     let doc = p.ledger.document();
-    let mut rows: Vec<Check> = p.checks.as_ref().map(|c| c.rows().cloned().collect()).unwrap_or_default();
+    let mut rows: Vec<Check> = p.kept_checks().map(|c| c.rows().cloned().collect()).unwrap_or_default();
     rows.extend(p.kept_outputs().map(Outputs::checks).unwrap_or_default());
     checks::sort(doc, rows)
 }
@@ -908,7 +908,7 @@ pub fn prerelease(p: &mut Project, params: &Value) -> Result<Value, String> {
 /// these leaves it, and the dialog takes no new view. `None` until the Checks are kept.
 pub fn dialog_key(p: &Project, accept: bool) -> Option<u64> {
     use std::hash::{Hash, Hasher};
-    let checks = p.checks.as_ref()?;
+    let checks = p.kept_checks()?;
     let outputs = p.kept_outputs()?;
     let doc = p.ledger.document();
     let mut h = std::collections::hash_map::DefaultHasher::new();

@@ -355,7 +355,6 @@ impl Project {
         if std::mem::take(&mut self.faults.panic_in_command) {
             crate::fault_panic();
         }
-        let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &ops));
         // The numbering pass (brief 022) extends the same transaction.
         let pass = |d: &ecad_model::Document, o: &[Op]| if numbering { ecad_model::wiring::assign(d, o) } else { Vec::new() };
         let pending = self.derived.begin(self.ledger.document(), &ops);
@@ -371,7 +370,6 @@ impl Project {
         if let Some(id) = rack_page {
             self.pages.entry(id).or_default();
         }
-        self.update_checks(checks);
         let changes = self.finish_derived(pending);
         self.apply_changes(pg, command, changes, Path::Command);
         Ok(tx)
@@ -386,7 +384,7 @@ impl Project {
     /// What follows every commit, on all three paths (design 064 §5): the change log entry, the
     /// redraw the path calls for, and the lines for the command line.
     pub(super) fn apply_changes(&mut self, pg: &mut Pages<'_>, command: &str, changes: Changes, path: Path<'_>) {
-        let Changes { mut pages, named, devices, props, list, frame_stale, cover, echo, problems } = changes;
+        let Changes { mut pages, named, devices, props, list, frame_stale, echo, problems } = changes;
         // Verify mode: a kept view that differed from a fresh build (it was rebuilt).
         let head = self.ledger.head();
         for line in problems {
@@ -398,10 +396,6 @@ impl Project {
         }
         if frame_stale {
             self.frame_stale = true;
-        }
-        // Brief 054b: the cover's Checks rows follow the cover (a cover added or removed too).
-        if cover && let Some(c) = self.checks.as_mut() {
-            c.set_cover(self.ledger.document());
         }
         let pages = pages.into_option();
         // Which page an undo or redo brings to the front is read before the change is recorded.

@@ -87,7 +87,7 @@ pub use ecad_electrical::terminal_types;
 pub use ecad_electrical::words;
 /// `ecad_electrical::checks` and its engine half, [`draw::checks`].
 pub mod checks {
-    pub use crate::draw::checks::{Checks, all, all_with, handles_of};
+    pub use crate::draw::checks::{all, all_with, handles_of};
     pub use ecad_electrical::checks::*;
 }
 /// `ecad_electrical::continuations` and its engine half, [`draw::continuations`].

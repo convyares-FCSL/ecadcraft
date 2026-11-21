@@ -18,6 +18,7 @@
 #![deny(clippy::wildcard_enum_match_arm)]
 
 mod changes;
+mod checks;
 mod connectors;
 mod devices;
 mod frame;
@@ -35,6 +36,7 @@ use ecad_model::view::{DerivedView, NoteCx, Outcome, Phase};
 use ecad_model::{Document, Op};
 
 pub use changes::Changes;
+pub use checks::{ChecksScope, ChecksView};
 pub use connectors::{ConnectorsScope, ConnectorsView};
 pub use devices::{DevicesFeed, DevicesScope};
 pub use frame::{FrameScope, FrameView};
@@ -112,6 +114,7 @@ pub struct Pending {
     frame: FrameScope,
     generated: GeneratedScope,
     outputs: OutputsScope,
+    checks: ChecksScope,
     tree: TreeScope,
     devices: DevicesScope,
     props: PropsScope,
@@ -121,6 +124,7 @@ pub struct Pending {
 /// updated, dropped after use.
 #[derive(Debug)]
 pub struct Detached {
+    inputs: EngineInputs,
     outputs: OutputsView,
 }
 
@@ -128,6 +132,12 @@ impl Detached {
     /// The report models of that state.
     pub fn outputs(&self) -> &crate::outputs::kept::Outputs {
         self.outputs.model()
+    }
+
+    /// Every check of that state `doc`, worked out from scratch with tolerance `tol`, the report
+    /// models' rows included, in book order.
+    pub fn checks(&self, doc: &Document, tol: f64) -> Vec<crate::checks::Check> {
+        crate::checks::all_measured(doc, tol, self.outputs(), &*self.inputs.metrics)
     }
 }
 
@@ -144,6 +154,8 @@ pub struct Views {
     pages: PagesView,
     frame: FrameView,
     generated: GeneratedView,
+    // Stage 3b: the Checks list, built on first show (its cover rows follow stage 3's cover).
+    checks: Lazy<ChecksView>,
     // Stage 4: feeds for the change log.
     tree: TreeFeed,
     devices: DevicesFeed,
@@ -161,6 +173,7 @@ impl Views {
             pages: PagesView::default(),
             frame: FrameView::default(),
             generated: GeneratedView::default(),
+            checks: Lazy::default(),
             tree: TreeFeed,
             devices: DevicesFeed::default(),
             props: PropsFeed::default(),
@@ -219,6 +232,28 @@ impl Views {
         self.outputs.reset();
     }
 
+    /// The Checks list, built on its first show with tolerance `tol` (design 022 §8) and kept
+    /// after that.
+    pub fn checks(&mut self, doc: &Document, tol: f64) -> &crate::checks::kept::Checks {
+        let metrics = &*self.inputs.metrics;
+        self.checks.get_or_build(|| ChecksView::build(doc, tol, metrics)).model()
+    }
+
+    /// The Checks list, if shown once.
+    pub fn kept_checks(&self) -> Option<&crate::checks::kept::Checks> {
+        self.checks.get().map(ChecksView::model)
+    }
+
+    /// The Checks list's view, if shown once (the bench times its update on its own).
+    pub fn checks_view(&self) -> Option<&ChecksView> {
+        self.checks.get()
+    }
+
+    /// The Checks list's view, if shown once, to update it on its own (the bench).
+    pub fn checks_view_mut(&mut self) -> Option<&mut ChecksView> {
+        self.checks.get_mut()
+    }
+
     /// Before phase: every kept view notes `ops` on the document before them. Changes nothing.
     pub fn begin(&self, before: &Document, ops: &[Op]) -> Pending {
         let effects = Effects::of(ops);
@@ -236,6 +271,10 @@ impl Views {
         note_view::<_, Inputs<'_>>(&self.pages, &cx, &mut pending.pages);
         note_view::<_, Inputs<'_>>(&self.frame, &cx, &mut pending.frame);
         note_view::<_, Inputs<'_>>(&self.generated, &cx, &mut pending.generated);
+        if let Some(checks) = self.checks.get() {
+            note_view::<_, Inputs<'_>>(checks, &cx, &mut pending.checks);
+            checks.close_before(&mut pending.checks);
+        }
         note_view::<_, Inputs<'_>>(&self.tree, &cx, &mut pending.tree);
         note_view::<_, Inputs<'_>>(&self.devices, &cx, &mut pending.devices);
         note_view::<_, Inputs<'_>>(&self.props, &cx, &mut pending.props);
@@ -245,7 +284,8 @@ impl Views {
     /// After phase on the committed transaction's ops, then update every kept view, stage by
     /// stage, and merge their outcomes.
     pub fn finish(&mut self, after: &Document, tx_ops: &[Op], pending: Pending) -> Changes {
-        let Pending { mut refs, mut connectors, mut outputs, mut pages, mut frame, mut generated, mut tree, mut devices, mut props } = pending;
+        let Pending { mut refs, mut connectors, mut outputs, mut pages, mut frame, mut generated, mut checks, mut tree, mut devices, mut props } =
+            pending;
         let effects = Effects::of(tx_ops);
         let cx = NoteCx { doc: after, phase: Phase::After, effects: &effects };
         note_view::<_, Inputs<'_>>(&self.refs, &cx, &mut refs);
@@ -256,6 +296,9 @@ impl Views {
         note_view::<_, Inputs<'_>>(&self.pages, &cx, &mut pages);
         note_view::<_, Inputs<'_>>(&self.frame, &cx, &mut frame);
         note_view::<_, Inputs<'_>>(&self.generated, &cx, &mut generated);
+        if let Some(view) = self.checks.get() {
+            note_view::<_, Inputs<'_>>(view, &cx, &mut checks);
+        }
         note_view::<_, Inputs<'_>>(&self.tree, &cx, &mut tree);
         note_view::<_, Inputs<'_>>(&self.devices, &cx, &mut devices);
         note_view::<_, Inputs<'_>>(&self.props, &cx, &mut props);
@@ -273,7 +316,15 @@ impl Views {
         changes.named = self.pages.take_named();
         merge(&mut changes, self.frame.update(after, frame, &inputs));
         merge(&mut changes, self.generated.update(after, generated, &inputs));
-        changes.cover = self.generated.take_cover();
+        let cover = self.generated.take_cover();
+        // Stage 3b: the Checks list; brief 054b: the cover's rows follow the cover (a cover page
+        // added or removed too).
+        if let Some(view) = self.checks.get_mut() {
+            merge(&mut changes, view.update(after, checks, &inputs));
+            if cover {
+                view.set_cover(after);
+            }
+        }
         // Stage 4: the feeds, merged in field order.
         merge(&mut changes, self.tree.update(after, tree, &inputs));
         merge(&mut changes, self.devices.update(after, devices, &inputs));
@@ -302,6 +353,7 @@ impl Views {
         self.refs = RefsView::build(doc);
         self.connectors = ConnectorsView::build(doc);
         self.outputs.reset();
+        self.checks.reset();
         self.frame.forget();
         self.generated.forget();
     }
@@ -309,7 +361,7 @@ impl Views {
     /// The views of another document state (an issued or finalised revision), built with the
     /// same engine inputs.
     pub fn detached(&self, doc: &Document) -> Detached {
-        Detached { outputs: OutputsView::build(doc, &*self.inputs.metrics) }
+        Detached { inputs: self.inputs.clone(), outputs: OutputsView::build(doc, &*self.inputs.metrics) }
     }
 }
 

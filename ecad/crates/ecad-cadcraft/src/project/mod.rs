@@ -123,9 +123,6 @@ pub struct Project {
     pub(crate) last_caption: Option<String>,
     /// The Wire tool's potential for new wires in this session; `None` is `auto` (design 022 §6).
     pub wire_potential: Option<String>,
-    /// The Checks list (design 022 §8), built on its first show and then kept from each change's
-    /// ops ([`crate::checks::Checks::update`]); `None` until first shown.
-    pub checks: Option<crate::checks::Checks>,
     /// `reports` asked for the Reports window (the desktop app opens it and clears this).
     pub open_reports: bool,
     /// Brief 035: `agentaccess` asked for this agent access preference (the desktop app applies it and
@@ -190,7 +187,7 @@ pub(crate) fn views_for(doc: &Document) -> ecad_electrical::derived::Views {
 /// project is at hand.
 ///
 /// [`Views::detached`]: ecad_electrical::derived::Views::detached
-pub(crate) fn engine_views() -> ecad_electrical::derived::Views {
+pub fn engine_views() -> ecad_electrical::derived::Views {
     ecad_electrical::derived::Views::new(ecad_electrical::derived::EngineInputs { metrics: Arc::new(crate::draw::text_style::EngineMetrics) })
 }
 
@@ -955,16 +952,6 @@ impl Project {
         }
     }
 
-    /// Bring the kept Checks list (if shown once) in line with the last transaction, from its
-    /// ops only (design 022 §11); `scope` was worked out before it.
-    fn update_checks(&mut self, scope: Option<crate::checks::Scope>) {
-        let (Some(scope), Some(mut checks)) = (scope, self.checks.take()) else { return };
-        let ledger = &self.ledger;
-        let ops = ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
-        checks.update(ledger.document(), ops, scope, self.tolerance);
-        self.checks = Some(checks);
-    }
-
     /// The report models, built whole on their first show (design 024 §8.1) and kept after that
     /// by the views' pipeline (`ecad_electrical::derived::OutputsView`).
     pub fn outputs(&mut self) -> &crate::outputs::kept::Outputs {
@@ -981,11 +968,15 @@ impl Project {
         self.derived.forget_outputs();
     }
 
-    /// The Checks list, built whole on its first show (design 022 §8) and kept after that.
-    pub fn checks(&mut self) -> &crate::checks::Checks {
-        let doc = self.ledger.document();
-        let tol = self.tolerance;
-        self.checks.get_or_insert_with(|| crate::checks::Checks::build(doc, tol))
+    /// The Checks list, built whole on its first show (design 022 §8) and kept after that by the
+    /// views' pipeline (`ecad_electrical::derived::ChecksView`).
+    pub fn checks(&mut self) -> &crate::checks::kept::Checks {
+        self.derived.checks(self.ledger.document(), self.tolerance)
+    }
+
+    /// The Checks list, if shown once.
+    pub fn kept_checks(&self) -> Option<&crate::checks::kept::Checks> {
+        self.derived.kept_checks()
     }
 
     /// Restore the last projection of `page` after a refusal.

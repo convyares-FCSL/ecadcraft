@@ -323,6 +323,48 @@ fn edit_and_save(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec
     result
 }
 
+/// The kept Checks list as the project keeps it: built through the views (design 064 §5.2) and
+/// updated by its own view for each commit, noted on the state before and after it (the other
+/// views are not kept here, so only the Checks update is timed).
+struct KeptChecks {
+    views: ecad_cadcraft::derived::Views,
+    engine: ecad_cadcraft::derived::EngineInputs,
+}
+
+impl KeptChecks {
+    /// The list of `doc`, built whole (not timed by the callers).
+    fn new(doc: &Document, tol: f64) -> Self {
+        let mut views = ecad_cadcraft::project::engine_views();
+        views.checks(doc, tol);
+        let engine = views.inputs().clone();
+        KeptChecks { views, engine }
+    }
+
+    /// The Before phase: what `ops` name on `before`, the state before them.
+    fn before(&self, before: &Document, ops: &[ecad_model::Op]) -> ecad_cadcraft::derived::ChecksScope {
+        let mut scope = ecad_cadcraft::derived::ChecksScope::default();
+        if let Some(view) = self.views.checks_view() {
+            let effects = ecad_model::effect::Effects::of(ops);
+            let cx = ecad_model::view::NoteCx { doc: before, phase: ecad_model::view::Phase::Before, effects: &effects };
+            ecad_cadcraft::derived::note_view::<_, ecad_cadcraft::derived::Inputs<'_>>(view, &cx, &mut scope);
+            view.close_before(&mut scope);
+        }
+        scope
+    }
+
+    /// The After phase on the committed transaction's ops on `after`, then the update.
+    fn after(&mut self, after: &Document, tx_ops: &[ecad_model::Op], mut scope: ecad_cadcraft::derived::ChecksScope) {
+        use ecad_model::view::DerivedView;
+        let inputs = ecad_cadcraft::derived::Inputs { engine: &self.engine, frame_page: None };
+        if let Some(view) = self.views.checks_view_mut() {
+            let effects = ecad_model::effect::Effects::of(tx_ops);
+            let cx = ecad_model::view::NoteCx { doc: after, phase: ecad_model::view::Phase::After, effects: &effects };
+            ecad_cadcraft::derived::note_view::<_, ecad_cadcraft::derived::Inputs<'_>>(&*view, &cx, &mut scope);
+            view.update(after, scope, &inputs);
+        }
+    }
+}
+
 /// Conductors of the synthetic rail net of [`Measured::rail_ms`].
 pub const RAIL_WIRES: usize = 25_000;
 
@@ -353,22 +395,22 @@ fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
     }
     ledger.commit_extended(Author::User, "Rail", ops, None, ecad_model::wiring::assign).map_err(|e| e.to_string())?;
     let tol = 1e-6;
-    let mut checks = ecad_cadcraft::checks::Checks::build(ledger.document(), tol);
+    let mut checks = KeptChecks::new(ledger.document(), tol);
     let mut out = Vec::with_capacity(runs);
     for run in 0..runs {
         let victim = *leaves.get(run * 997 % wires.max(1)).ok_or("no leaf")?;
         let wire = ledger.document().wires.get(&victim).cloned().ok_or("leaf missing")?;
         let ops = vec![Op::DeleteWire { id: victim, wire }];
         let t = Instant::now();
-        let scope = checks.scope(ledger.document(), &ops);
+        let scope = checks.before(ledger.document(), &ops);
         ledger.commit_extended(Author::User, "Delete", ops, None, ecad_model::wiring::assign).map_err(|e| e.to_string())?;
         let last = ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default();
-        checks.update(ledger.document(), &last, scope, tol);
+        checks.after(ledger.document(), &last, scope);
         out.push(ms(t));
         let undo = ledger.undo_ops().unwrap_or_default();
-        let scope = checks.scope(ledger.document(), &undo);
+        let scope = checks.before(ledger.document(), &undo);
         ledger.undo(Author::User).map_err(|e| e.to_string())?;
-        checks.update(ledger.document(), &undo, scope, tol);
+        checks.after(ledger.document(), &undo, scope);
     }
     Ok(out)
 }
@@ -388,7 +430,7 @@ fn net_edits(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec<f64
         let mut o = open(copy)?;
         let mut ids = IdAllocator::seeded(EDIT_SEED ^ 0x22);
         let tol = 1e-6;
-        let mut checks = ecad_cadcraft::checks::Checks::build(o.ledger.document(), tol);
+        let mut checks = KeptChecks::new(o.ledger.document(), tol);
         let page = *o.ledger.document().page_order.first().ok_or("no page")?;
         let (mut upd, mut cut) = (Vec::with_capacity(runs), Vec::with_capacity(runs));
         // The largest net with a wire in no cable, and that wire.
@@ -406,15 +448,15 @@ fn net_edits(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec<f64
         for _ in 0..runs {
             let ops = crate::generate::added_wire(o.ledger.document(), &mut ids)?;
             let t = Instant::now();
-            let scope = checks.scope(o.ledger.document(), &ops);
+            let scope = checks.before(o.ledger.document(), &ops);
             o.ledger.commit_extended(Author::User, "Wire", ops, None, ecad_model::wiring::assign).map_err(|e| e.to_string())?;
             let last = o.ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default();
-            checks.update(o.ledger.document(), &last, scope, tol);
+            checks.after(o.ledger.document(), &last, scope);
             std::hint::black_box(ecad_cadcraft::wires::labels_on_page(o.ledger.document(), page));
             let undo = o.ledger.undo_ops().unwrap_or_default();
-            let scope = checks.scope(o.ledger.document(), &undo);
+            let scope = checks.before(o.ledger.document(), &undo);
             o.ledger.undo(Author::User).map_err(|e| e.to_string())?;
-            checks.update(o.ledger.document(), &undo, scope, tol);
+            checks.after(o.ledger.document(), &undo, scope);
             upd.push(ms(t));
 
             // The victim's route goes (with its drawing); the commit's rewrite deletes its wire.
@@ -427,15 +469,15 @@ fn net_edits(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec<f64
                 .ok_or("the victim's route is missing")?;
             let ops = ecad_cadcraft::wires::remove_route_ops(doc, route);
             let t = Instant::now();
-            let scope = checks.scope(o.ledger.document(), &ops);
+            let scope = checks.before(o.ledger.document(), &ops);
             o.ledger.commit_extended(Author::User, "Delete", ops, None, ecad_model::wiring::assign).map_err(|e| e.to_string())?;
             let last = o.ledger.log().last().map(|t| t.ops.clone()).unwrap_or_default();
-            checks.update(o.ledger.document(), &last, scope, tol);
+            checks.after(o.ledger.document(), &last, scope);
             cut.push(ms(t));
             let undo = o.ledger.undo_ops().unwrap_or_default();
-            let scope = checks.scope(o.ledger.document(), &undo);
+            let scope = checks.before(o.ledger.document(), &undo);
             o.ledger.undo(Author::User).map_err(|e| e.to_string())?;
-            checks.update(o.ledger.document(), &undo, scope, tol);
+            checks.after(o.ledger.document(), &undo, scope);
         }
         Ok((upd, cut, size))
     })();

@@ -33,9 +33,9 @@ use ecad_model::numbering::Places;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use ecad_model::connectivity::{CONTINUATION, NAME, name_key};
-use ecad_model::effect::{Effect, Effects};
+use ecad_model::effect::Effect;
 use ecad_model::wiring;
-use ecad_model::{CableId, DeviceId, Document, End, NetData, NetKey, ObjectRef, Op, PageId, Pt, RouteEnd, RouteId, Subject, TerminalId, WireId};
+use ecad_model::{CableId, DeviceId, Document, End, NetData, NetKey, ObjectRef, PageId, Pt, RouteEnd, RouteId, Subject, TerminalId, WireId};
 use serde_json::{Value, json};
 
 use crate::text_style::fonts::TextMetrics;
@@ -1467,12 +1467,10 @@ pub struct Scope {
 }
 
 impl Scope {
-    /// Add what `ops` name, looked up in `doc` (called on the state before and after):
-    /// [`Scope::note`] for each of their effects.
-    fn collect(&mut self, doc: &Document, ops: &[Op]) {
-        for effect in &Effects::of(ops) {
-            self.note(doc, effect);
-        }
+    /// Whether the whole list is built again: a numbering or potentials setting, or the pages with
+    /// checks off, changed.
+    pub fn is_all(&self) -> bool {
+        self.all
     }
 
     /// Add what one effect names, looked up in `doc` (call once on the state before, once after).

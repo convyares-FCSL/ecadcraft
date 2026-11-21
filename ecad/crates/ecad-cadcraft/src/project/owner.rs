@@ -111,7 +111,6 @@ impl DocumentOwner for Project {
             self.events.record(EventKind::Refused, Some(c.command), head, Some(page), m.clone());
             return Verdict::Refuse(m);
         }
-        let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &t.ops));
         // Brief 052d (design 052 §5.4): the moved device symbols' contexts before the move.
         let moved = crate::proposals::before_move(self.ledger.document(), &t.ops);
         let pending = self.derived.begin(self.ledger.document(), &t.ops);
@@ -136,7 +135,6 @@ impl DocumentOwner for Project {
         // A reference end on another page may be drawn from this page's objects (brief 010). Only
         // the active page is drawn (brief 016); the change log says which other pages changed,
         // for a preview of one of them.
-        self.update_checks(checks);
         let mut changes = self.finish_derived(pending);
         pass_through(&mut changes, Old { echo: t.notes.clone() });
         self.apply_changes(pg, c.command, changes, Path::Interactive { page });
@@ -308,7 +306,6 @@ impl Project {
         // The ops the undo or redo will apply, scoped as a commit's are (brief 014).
         let ops = if undo { self.ledger.undo_ops() } else { self.ledger.redo_ops() }.unwrap_or_default();
         let order_before = self.ledger.document().page_order.clone();
-        let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &ops));
         // Undoing an issued revision stops and asks first (owner answer Q7).
         if undo
             && let Some((rev, n)) = crate::revisions::issue_in(&crate::revisions::inverse(&ops))
@@ -341,7 +338,6 @@ impl Project {
                 let label = self.ledger.log().last().map(|t| t.label.clone()).unwrap_or_default();
                 let kind = if undo { EventKind::Undo } else { EventKind::Redo };
                 self.events.record(kind, Some(command), self.ledger.head(), None, label.clone());
-                self.update_checks(checks);
                 let changes = self.finish_derived(pending);
                 self.apply_changes(pg, command, changes, Path::History { order_before: &order_before });
                 Ok(Some(label))

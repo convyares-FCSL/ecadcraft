@@ -5,7 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
-use ecad_cadcraft::checks::{Checks, Kind};
+use ecad_cadcraft::checks::Kind;
 use ecad_cadcraft::release::{self, Step};
 use ecad_model::{CableId, Op, PageId};
 use serde_json::{Value, json};
@@ -80,8 +80,9 @@ fn kept_is_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
         p.checks();
         let doc = p.ledger.document();
-        let kept: Vec<String> = p.checks.as_ref().unwrap().sorted(doc).iter().map(|c| format!("{c:?}")).collect();
-        let built: Vec<String> = Checks::build(doc, p.tolerance).sorted(doc).iter().map(|c| format!("{c:?}")).collect();
+        let kept: Vec<String> = p.kept_checks().unwrap().sorted(doc).iter().map(|c| format!("{c:?}")).collect();
+        let built: Vec<String> =
+            ecad_cadcraft::project::engine_views().checks(doc, p.tolerance).sorted(doc).iter().map(|c| format!("{c:?}")).collect();
         (kept, built)
     });
     assert_eq!(kept, built);
@@ -563,9 +564,9 @@ fn the_badge_counts_are_kept_and_an_unrelated_edit_recounts_nothing() {
                 use ecad_cadcraft::checks::Severity::*;
                 (n(Error), n(Warning), n(Info))
             };
-            let rows: Vec<_> = p.checks.as_ref().unwrap().rows().cloned().collect();
+            let rows: Vec<_> = p.kept_checks().unwrap().rows().cloned().collect();
             let o = p.kept_outputs().unwrap();
-            (p.checks.as_ref().unwrap().counts(), tally(&rows), o.check_counts(), tally(&o.checks()))
+            (p.kept_checks().unwrap().counts(), tally(&rows), o.check_counts(), tally(&o.checks()))
         })
     };
     let edits = [
@@ -587,7 +588,7 @@ fn the_badge_counts_are_kept_and_an_unrelated_edit_recounts_nothing() {
     assert_eq!(kept, rows, "after undo");
     assert!(kept.0 + kept.1 > 0, "something to count: {kept:?}");
     // Unrelated edits: nothing changes in the rows, so nothing is recounted or rebuilt.
-    let key = |h: &mut H| h.p(|p| (p.checks.as_ref().unwrap().changed, p.kept_outputs().unwrap().checks_key(), release::dialog_key(p, false)));
+    let key = |h: &mut H| h.p(|p| (p.kept_checks().unwrap().changed, p.kept_outputs().unwrap().checks_key(), release::dialog_key(p, false)));
     let before = key(&mut f.h);
     let page = f.supply;
     f.h.run("renamepage", json!({"page": page.hex(), "title": "Supply renamed"})).unwrap();

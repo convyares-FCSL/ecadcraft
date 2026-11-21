@@ -169,7 +169,6 @@ impl Project {
         self.designation_uses.reset();
         self.conflicts.clear();
         self.views.retain(|c| cables.contains(c));
-        self.checks = None;
         self.goto_ring = None;
         self.frame = None;
         self.frame_stale = false;

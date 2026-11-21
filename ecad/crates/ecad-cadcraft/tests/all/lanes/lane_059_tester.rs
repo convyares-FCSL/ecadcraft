@@ -761,8 +761,14 @@ fn r8_a_refusal_in_the_middle_of_several_fields_writes_none_of_them() {
 fn scope_words(h: &mut H, before: &Document, ops: &[Op]) -> (String, String) {
     let after = h.doc();
     h.cfg(|p| {
-        let c = p.checks();
-        let a = format!("{:?} {:?}", c.scope(before, ops), c.scope(&after, ops));
+        let checks_scope = |d: &Document| {
+            let mut s = checks::Scope::default();
+            for e in &ecad_model::effect::Effects::of(ops) {
+                s.note(d, e);
+            }
+            s
+        };
+        let a = format!("{:?} {:?}", checks_scope(before), checks_scope(&after));
         let scope = |d: &Document| {
             let mut s = ecad_cadcraft::outputs::Scope::default();
             s.collect(d, ops);
@@ -800,7 +806,7 @@ fn r8_a_cable_edit_touches_only_that_cables_views() {
     let (kept, built, row, fresh) = h.cfg(|p| {
         let tol = p.tolerance;
         let kept = p.checks().sorted(&doc);
-        let built = checks::Checks::build(&doc, tol).sorted(&doc);
+        let built = ecad_cadcraft::project::engine_views().checks(&doc, tol).sorted(&doc);
         let row = p.outputs().cable_row(k).cloned();
         let fresh = ecad_cadcraft::outputs::kept::Outputs::build_with(&doc, &ecad_cadcraft::text_style::EngineMetrics).cable_row(k).cloned();
         (kept, built, row, fresh)
@@ -825,7 +831,7 @@ fn r8_kept_rows_follow_new_remove_assign_and_undo() {
     let (kept, built, rows, fresh) = h.cfg(|p| {
         let tol = p.tolerance;
         let kept = p.checks().sorted(&doc);
-        let built = checks::Checks::build(&doc, tol).sorted(&doc);
+        let built = ecad_cadcraft::project::engine_views().checks(&doc, tol).sorted(&doc);
         let o = p.outputs();
         let rows = (o.cable_row(k).cloned(), o.cable_row(k2).cloned(), o.cable_count());
         let f = ecad_cadcraft::outputs::kept::Outputs::build_with(&doc, &ecad_cadcraft::text_style::EngineMetrics);

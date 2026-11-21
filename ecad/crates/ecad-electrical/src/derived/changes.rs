@@ -26,9 +26,6 @@ pub struct Changes {
     pub list: bool,
     /// The kept frame must be drawn again.
     pub frame_stale: bool,
-    /// The cover changed, or a cover page was added, removed or moved: the cover's Checks rows
-    /// follow it.
-    pub cover: bool,
     /// Lines for the command line, in order.
     pub echo: Vec<String>,
     /// Verify-mode disagreements.
@@ -45,7 +42,6 @@ impl Default for Changes {
             props: Some(BTreeSet::new()),
             list: false,
             frame_stale: false,
-            cover: false,
             echo: Vec::new(),
             problems: Vec::new(),
         }

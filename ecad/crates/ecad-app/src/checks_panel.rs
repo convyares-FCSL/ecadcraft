@@ -2,7 +2,7 @@
 //! false-looking connections, nets with one connection point, unconnected device points and
 //! number or potential conflicts, each row with where it is and a go-to.
 //!
-//! The rows are a copy of [`ecad_cadcraft::checks::Checks`], which the project builds whole on the
+//! The rows are a copy of [`ecad_cadcraft::checks::kept::Checks`], which the project builds whole on the
 //! tab's first show and then keeps from each transaction's ops; the copy is taken again only when
 //! that list's revision moved (or the project or the Show filter changed). Live: no refresh button.
 //! Brief 039: the rows are drawn by the one table ([`crate::lists::checks`]), patched with the rows
@@ -189,7 +189,7 @@ impl ChecksPanel {
         // Built now if it was not; read without changing anything from here on.
         let p: &ecad_cadcraft::Project = p;
         let doc = p.ledger.document();
-        let Some(list) = p.checks.as_ref() else { return };
+        let Some(list) = p.kept_checks() else { return };
         let mut all: Vec<Check> = list.rows().cloned().collect();
         all.extend(p.kept_outputs().map(|o| o.checks()).unwrap_or_default());
         let rows: Vec<Row> = ecad_cadcraft::checks::sort(doc, all)
