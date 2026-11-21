@@ -1240,13 +1240,14 @@ fn t11_justified_text_is_recorded_and_reopens_centred() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// T11 (AC 3): the golden project (its records from before 031) opens with no transaction, its
-/// items serialise without alignment fields, and a save and reopen gives the same document.
+/// T11 (AC 3): the golden project (`ecad-file/tests/golden/project.ecad`, in today's format) opens
+/// with no transaction, its items serialise without alignment fields and its display has no
+/// `text.*` keys (opening adds none), and a save and reopen gives the same document.
 #[test]
-fn t11_an_old_file_opens_and_saves_unchanged() {
+fn t11_the_golden_file_opens_and_saves_unchanged() {
     let golden = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../ecad-file/tests/golden/project.ecad");
     let dir = tmp_dir("golden");
-    let path = dir.join("old.ecad");
+    let path = dir.join("golden.ecad");
     std::fs::copy(&golden, &path).unwrap();
     let v2 = path.display().to_string();
     let mut h = reopen(&v2, 0x7031_1103);
@@ -1262,7 +1263,7 @@ fn t11_an_old_file_opens_and_saves_unchanged() {
     let _ = texts(&mut h, page);
     assert_eq!(h.head(), head, "opening and reading record nothing");
     h.check();
-    let mut h2 = save_and_reopen(h, &dir, "old resaved.ecad", 0x7031_1104);
+    let mut h2 = save_and_reopen(h, &dir, "golden resaved.ecad", 0x7031_1104);
     assert_eq!(model_parts(&h2.doc()), model_parts(&doc));
     h2.close_all();
     drop(h2);

@@ -9,13 +9,17 @@
 //! (`ProjectHandle::debug_snapshot`), released before anything is drawn. The snapshot is rebuilt
 //! only when the project, its saved position, its runtime events or the selection change, or on
 //! Refresh; a busy project is never waited for (the previous snapshot stays, marked stale).
-//! Replay, projection and file checks run only when their button is pressed, on copies. History
-//! at an earlier transaction is rebuilt from the panel's own copy of the log.
+//! Replay, projection, file and index checks run only when their button is pressed: their inputs
+//! are copied (the project locked only for the copy), the check runs on the background pool
+//! ([`ecad_engine::background`]) and its result is taken on a later frame, or dropped if the project's
+//! head moved meanwhile. History at an earlier transaction is rebuilt from the panel's own copy of
+//! the log.
 
 use std::collections::BTreeSet;
 use std::path::Path;
 
 use ecad_engine::ProjectHandle;
+use ecad_engine::background::{At, Jobs};
 use ecad_engine::cad::Session;
 use ecad_engine::debug::{self, Check, DebugSnapshot, ObjectId, RecordBytes, RecordState, Resolved, TxCursor, op_view, resolve};
 use ecad_model::{Author, Document, ProjectId, Transaction};
@@ -146,6 +150,8 @@ pub struct Debugger {
     at_text: String,
     historical: Option<Historical>,
     checks: Vec<Ran>,
+    /// Checks running on the background pool.
+    jobs: Jobs<Check>,
     /// The Storage view's file read, on request.
     storage: Option<(Result<debug::StorageRead, String>, String)>,
     /// The Branches view's rows, read after each save (a few rows), and the saved position they
@@ -177,6 +183,7 @@ impl Default for Debugger {
             at_text: String::new(),
             historical: None,
             checks: Vec::new(),
+            jobs: Jobs::default(),
             storage: None,
             branches: None,
             branches_at: None,
@@ -266,6 +273,34 @@ impl Debugger {
             Ok(Some(snap)) => self.take(snap),
             Err(e) => self.stale = Some(e),
         }
+        self.collect();
+    }
+
+    /// Take the checks that finished at the state shown; a result computed at an earlier head is
+    /// dropped. Nothing is taken while the snapshot is stale (the head may have moved unseen).
+    pub fn collect(&mut self) {
+        let Some(snap) = self.snap.as_ref().filter(|_| self.stale.is_none()) else { return };
+        let at = At { project: snap.project, head: snap.head };
+        for r in self.jobs.take(at) {
+            let check = r.unwrap_or_else(|e| Check { what: "check", at_seq: at.head, ok: false, lines: vec![e.to_string()] });
+            self.checks.push(Ran { check, time: now() });
+        }
+    }
+
+    /// Checks started and not yet taken.
+    pub fn running_checks(&self) -> usize {
+        self.jobs.running()
+    }
+
+    /// Check results dropped because the project's head moved while they ran.
+    pub fn dropped_checks(&self) -> u64 {
+        self.jobs.dropped()
+    }
+
+    /// Wait for the running checks, at most `timeout` (tests and headless runs; the app never
+    /// waits); their results are taken by the next [`Debugger::refresh`]. Whether all finished.
+    pub fn wait_for_checks(&mut self, timeout: std::time::Duration) -> bool {
+        self.jobs.wait(timeout)
     }
 
     /// Install a new snapshot.
@@ -369,26 +404,36 @@ impl Debugger {
         self.storage = Some((read, now()));
     }
 
-    /// Run a check now (only ever on request).
+    /// Start a check (only ever on request): its inputs are copied now, under one short lock where
+    /// the snapshot does not hold them, and it runs on the background pool.
     pub fn run_check(&mut self, kind: CheckKind, project: &ProjectHandle, s: &mut Session) {
-        let check = match (kind, &self.snap) {
-            (_, None) => return,
-            (CheckKind::Replay, Some(snap)) => debug::verify_replay_from(snap.base, snap.history.as_ref(), &self.log, &snap.doc),
-            (CheckKind::Projection, Some(snap)) => match project.debug_projection_inputs(s) {
-                Ok(inputs) => debug::verify_projection(&inputs),
-                Err(e) => Check { what: "projection", at_seq: snap.head, ok: false, lines: vec![e] },
+        let Some(snap) = &self.snap else { return };
+        let at = At { project: snap.project, head: snap.head };
+        let failed = |what: &'static str, e: String| Check { what, at_seq: at.head, ok: false, lines: vec![e] };
+        match kind {
+            CheckKind::Replay => {
+                let (base, history, log, doc) = (snap.base, snap.history.clone(), self.log.clone(), snap.doc.clone());
+                self.jobs.spawn(at, move || debug::verify_replay_from(base, history.as_ref(), &log, &doc));
+            }
+            CheckKind::Projection => match project.debug_projection_inputs(s) {
+                Ok(inputs) => {
+                    let at = At { head: inputs.head, ..at };
+                    self.jobs.spawn(at, move || debug::verify_projection(&inputs));
+                }
+                Err(e) => self.checks.push(Ran { check: failed("projection", e), time: now() }),
             },
-            (CheckKind::File, Some(snap)) => match snap.store_arc() {
-                Some(st) => debug::verify_store(&st, snap.base, &self.log, snap.persisted),
-                None => Check { what: "file", at_seq: snap.head, ok: false, lines: vec!["the project has no file yet".into()] },
+            CheckKind::File => match snap.store_arc() {
+                Some(st) => {
+                    let (base, log, persisted) = (snap.base, self.log.clone(), snap.persisted);
+                    self.jobs.spawn(at, move || debug::verify_store(&st, base, &log, persisted));
+                }
+                None => self.checks.push(Ran { check: failed("file", "the project has no file yet".into()), time: now() }),
             },
-            // Copies taken under the lock; the rebuild runs with the project unlocked.
-            (CheckKind::Index, Some(snap)) => match project.read(s, |p, _| (p.ledger.document().clone(), p.xref().clone(), p.ledger.head())) {
-                Ok((doc, idx, head)) => debug::verify_index(&doc, &idx, head),
-                Err(e) => Check { what: "reference index", at_seq: snap.head, ok: false, lines: vec![e] },
+            CheckKind::Index => match project.read(s, |p, _| (p.ledger.document().clone(), p.xref().clone(), p.ledger.head())) {
+                Ok((doc, idx, head)) => self.jobs.spawn(At { head, ..at }, move || debug::verify_index(&doc, &idx, head)),
+                Err(e) => self.checks.push(Ran { check: failed("reference index", e), time: now() }),
             },
-        };
-        self.checks.push(Ran { check, time: now() });
+        }
     }
 
     /// Apply a panel action that needs the project.
@@ -807,6 +852,20 @@ impl Debugger {
                 run = Some(CheckKind::Index);
             }
         });
+        let running = self.jobs.running();
+        if running > 0 {
+            prim::note(ui, &format!("Running {running} check{}…", if running == 1 { "" } else { "s" }), Tone::Neutral);
+            // The result arrives on the background pool's channel: look again shortly.
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
+        }
+        let dropped = self.jobs.dropped();
+        if dropped > 0 {
+            prim::body(
+                ui,
+                &format!("{dropped} result{} dropped: the project changed while the check ran.", if dropped == 1 { "" } else { "s" }),
+                true,
+            );
+        }
         for r in self.checks.iter().rev() {
             let head = format!("{} {} at seq {}, {}", if r.check.ok { "PASS" } else { "FAIL" }, r.check.what, r.check.at_seq, r.time);
             prim::note(ui, &head, if r.check.ok { Tone::Ok } else { Tone::Warning });

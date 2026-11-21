@@ -35,6 +35,10 @@ redb = "=4.5.0"
 # in the wasm reader. Both pinned; a change is a deliberate change with its own review.
 zstd = "=0.13.4"
 ruzstd = "=0.9.1"
+# Per-chunk and per-page work in parallel, and the app's background pool (design 061, lane R11):
+# MIT OR Apache-2.0, the version CADCraft's `cadcraft-render` already links. Results come back in
+# input order; closures return `Result` and never panic.
+rayon = "1.12"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

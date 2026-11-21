@@ -13,6 +13,8 @@ workspace = true
 serde = { workspace = true }
 thiserror = { workspace = true }
 strum = { workspace = true }
+# The index's two large maps are built side by side (design 061, lane R11).
+rayon = { workspace = true }
 schemars = { workspace = true, optional = true }
 # The built-in project settings are TOML data (brief 066c, `defaults/settings.toml`).
 toml = { version = "1.1.8", default-features = false, features = ["std", "parse", "serde"] }

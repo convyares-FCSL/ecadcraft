@@ -173,9 +173,6 @@ pub enum FileError {
     /// A chunk named by a snapshot that is not stored.
     #[error("chunk {0} is missing")]
     ChunkMissing(String),
-    /// A worker thread for reading chunks could not start.
-    #[error("a chunk could not be read: a worker thread did not start; open the project again")]
-    ChunkThread,
     /// A snapshot without its project chunk.
     #[error("the snapshot has no project chunk")]
     NoProjectChunk,

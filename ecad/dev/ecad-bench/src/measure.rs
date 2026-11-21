@@ -488,7 +488,10 @@ fn net_edits(path: &Path, copy: &Path, runs: usize) -> Result<(Vec<f64>, Vec<f64
 /// What a draw-edit run reads from the session before it edits.
 struct DrawTarget {
     head: u64,
-    /// The symbol of a component on page 1 that has wires attached.
+    /// The symbol of the first component on page 1 with routes landing on its connection points. By
+    /// routes, not wire ends: a move with wires leaves the far ends free (translate's M3), so the
+    /// component keeps its routes but not its wires until the next run's move back re-lands them,
+    /// and every run must pick the same component.
     symbol: cadcraft_engine::doc::Handle,
     /// That symbol and the routes on page 1 of every wire attached to the component, as a window
     /// around the component and its wiring selects them.
@@ -500,18 +503,22 @@ struct DrawTarget {
 
 fn draw_target(project: &ecad_engine::ProjectHandle, s: &mut cadcraft_engine::Session) -> Result<DrawTarget, String> {
     use ecad_model::{Form, ItemKind, Subject};
-    let found = project.read(s, |p, _| {
+    project.read(s, |p, _| -> Result<DrawTarget, String> {
         let doc = p.ledger.document();
-        let page = doc.page_order.first().copied()?;
-        let (component, item) = doc.representations.values().find_map(|r| {
-            let Subject::Device(c) = r.subject else { return None };
-            let item = *r.items.first()?;
-            let wired = doc.terminals_of(c).any(|(t, _)| !doc.ends_at(t).is_empty());
-            (r.page == page && r.form == Form::Symbol && wired && matches!(doc.items.get(&item).map(|i| &i.kind), Some(ItemKind::Symbol(_))))
-                .then_some((c, item))
-        })?;
-        let map = &p.pages.get(&page)?.map;
-        let symbol = map.item(item)?;
+        let page = doc.page_order.first().copied().ok_or("the project has no page")?;
+        let (component, item) = doc
+            .representations
+            .values()
+            .find_map(|r| {
+                let Subject::Device(c) = r.subject else { return None };
+                let item = *r.items.first()?;
+                let wired = doc.terminals_of(c).any(|(t, _)| doc.routes_at(t).next().is_some());
+                (r.page == page && r.form == Form::Symbol && wired && matches!(doc.items.get(&item).map(|i| &i.kind), Some(ItemKind::Symbol(_))))
+                    .then_some((c, item))
+            })
+            .ok_or("page 1 has no component with routes landing on it")?;
+        let map = &p.pages.get(&page).ok_or("page 1 is not open")?.map;
+        let symbol = map.item(item).ok_or("the wired component's symbol is not drawn on page 1")?;
         let mut with_wires = vec![symbol];
         // The routes landing on its connection points, by their drawing.
         for (t, _) in doc.terminals_of(component) {
@@ -527,11 +534,10 @@ fn draw_target(project: &ecad_engine::ProjectHandle, s: &mut cadcraft_engine::Se
         }
         let shown = ecad_model::derive::terminal_positions(doc, page);
         let mut others = shown.iter().filter(|(t, _, _)| doc.terminals.get(t).is_some_and(|x| x.device() != Some(component)));
-        let (_, _, from) = *others.next()?;
-        let (_, _, to) = *others.find(|(_, _, at)| !at.near(from, 1e-6))?;
-        Some(DrawTarget { head: p.ledger.head(), symbol, with_wires, from, to })
-    })?;
-    found.ok_or_else(|| "page 1 has no wired component and two other terminals to edit".into())
+        let (_, _, from) = *others.next().ok_or("page 1 has no connection point of another component")?;
+        let (_, _, to) = *others.find(|(_, _, at)| !at.near(from, 1e-6)).ok_or("page 1 has no second connection point of another component")?;
+        Ok(DrawTarget { head: p.ledger.head(), symbol, with_wires, from, to })
+    })?
 }
 
 /// Draw-edit timings: move, move with wires, wire.
@@ -555,32 +561,36 @@ fn draw_edits(path: &Path, copy: &Path, runs: usize) -> Result<DrawTimes, String
         };
         let (mut moves, mut windows, mut wires) = (Vec::with_capacity(runs), Vec::with_capacity(runs), Vec::with_capacity(runs));
         for run in 0..runs {
-            let target = draw_target(&project, &mut s)?;
+            let target = draw_target(&project, &mut s).map_err(|e| format!("move {}: {e}", run + 1))?;
             let dy = if run % 2 == 0 { -5.0 } else { 5.0 };
             let params = json!({"handles": [target.symbol.hex()], "delta": [0.0, dy]});
             let t = Instant::now();
             s.execute("move", &params).map_err(|e| format!("move {}: {e}", run + 1))?;
             moves.push(ms(t));
-            one_tx(target.head, draw_target(&project, &mut s)?.head, "move")?;
+            one_tx(target.head, draw_target(&project, &mut s).map_err(|e| format!("after move {}: {e}", run + 1))?.head, "move")?;
         }
         for run in 0..runs {
-            let target = draw_target(&project, &mut s)?;
+            let target = draw_target(&project, &mut s).map_err(|e| format!("move with wires {}: {e}", run + 1))?;
             let dy = if run % 2 == 0 { -5.0 } else { 5.0 };
             let handles: Vec<String> = target.with_wires.iter().map(|h| h.hex()).collect();
             let params = json!({"handles": handles, "delta": [0.0, dy]});
             let t = Instant::now();
             s.execute("move", &params).map_err(|e| format!("move with wires {}: {e}", run + 1))?;
             windows.push(ms(t));
-            one_tx(target.head, draw_target(&project, &mut s)?.head, "move with wires")?;
+            one_tx(
+                target.head,
+                draw_target(&project, &mut s).map_err(|e| format!("after move with wires {}: {e}", run + 1))?.head,
+                "move with wires",
+            )?;
         }
         for run in 0..runs {
-            let target = draw_target(&project, &mut s)?;
+            let target = draw_target(&project, &mut s).map_err(|e| format!("wire {}: {e}", run + 1))?;
             let (a, b) = (target.from, target.to);
             let params = json!({ "points": [[a.x, a.y], [a.x, b.y], [b.x, b.y]] });
             let t = Instant::now();
             s.execute("wire", &params).map_err(|e| format!("wire {}: {e}", run + 1))?;
             wires.push(ms(t));
-            one_tx(target.head, draw_target(&project, &mut s)?.head, "wire")?;
+            one_tx(target.head, draw_target(&project, &mut s).map_err(|e| format!("after wire {}: {e}", run + 1))?.head, "wire")?;
         }
         // Dropping the session and the handle releases the project and its writer lock.
         drop(project);

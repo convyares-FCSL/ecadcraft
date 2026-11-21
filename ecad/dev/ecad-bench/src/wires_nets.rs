@@ -8,8 +8,11 @@
 //!   baseline, a junction placed there, went with the junction symbol (design 072 D).
 //! - **lnet** / **leach**: the wire labels of the page with the most routes worked out under the
 //!   `net` and `each` rules. Target: lnet within 10% of leach.
-//! - **ccont**: `cableslash` continuing a 50-core cable on a second page through continuation
-//!   pairs. Target: under 20 ms.
+//! - **ccont**: `cablecontinue` of a 50-core cable on a second page (its reference end, one stub
+//!   per core and the slash). Target: under 20 ms. Until 072 D (F5) this row timed a `cableslash`
+//!   with the cable's tag on the second page, which added members; that form is gone (a slash with
+//!   an existing tag is refused where none of the cable's wires runs), and continuing a cable on
+//!   another page is `cablecontinue`.
 //!
 //! Each edit is undone after it is measured; the setup happens on two pages added to the copy.
 
@@ -27,8 +30,8 @@ const OPEN_SEED: u64 = 0x0032_0000;
 /// Cores of the continued cable.
 const CORES: usize = 50;
 /// The continued cable's tag. The generator tags its cables `-W1` to `-W<cables>` (2 500 on
-/// large), so this must lie beyond every tier's cables, or `cableslash` continues the generated
-/// cable of that tag and is refused (as `-W932` was on large).
+/// large), so this must lie beyond every tier's cables, or `cableslash` shows the generated cable
+/// of that tag and is refused where none of its wires runs.
 pub const CCONT_TAG: &str = "-W8032";
 /// Where the bench draws: right of an A3 sheet, clear of the generated pattern.
 const X0: f64 = 600.0;
@@ -76,18 +79,27 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredWires
         let (project, _) = ProjectHandle::open_file_in(&mut s, path_text(&copy)?, OPEN_SEED, ecad_engine::views::Settings::none())?;
         let mut out = MeasuredWires::default();
         let runs = runs.max(1);
-        // The densest page's labels under both rules (read only, on the document).
-        let (lnet, leach, routes) = project.read(&mut s, |p, _| {
+        // The densest page's labels under both rules (read only, on the document). Densest by its
+        // routes (design 072 D: a wire is drawn by routes, not by representations of the wire); a
+        // project whose pages have none is refused, never timed as an empty page.
+        let (lnet, leach, routes) = project.read(&mut s, |p, _| -> Result<_, String> {
             let doc = p.ledger.document();
-            let dense = doc
+            let (page, routes) = doc
                 .page_order
                 .iter()
-                .max_by_key(|pg| doc.representations_on(**pg).filter(|(_, r)| matches!(r.subject, ecad_model::Subject::Wire(_))).count())
-                .copied();
-            let Some(page) = dense else { return (Vec::new(), Vec::new(), 0) };
-            let routes = doc.representations_on(page).filter(|(_, r)| matches!(r.subject, ecad_model::Subject::Wire(_))).count();
+                .map(|pg| (*pg, doc.routes_on(*pg).count()))
+                .max_by_key(|(_, n)| *n)
+                .ok_or("lnet/leach: the project has no page")?;
+            if routes == 0 {
+                return Err(format!("lnet/leach: no page has a route (densest page {}): nothing to label", page.hex()));
+            }
             let mut each_doc = doc.clone();
             each_doc.settings.wiring.label_rule = Some(ecad_model::wiring::LABEL_RULE_EACH.into());
+            for (rule, d) in [("net", doc), ("each", &each_doc)] {
+                if ecad_engine::wires::labels_on_page(d, page).is_empty() {
+                    return Err(format!("lnet/leach: the densest page {} ({routes} routes) has no wire labels under the {rule} rule", page.hex()));
+                }
+            }
             let (mut a, mut b) = (Vec::new(), Vec::new());
             for _ in 0..runs {
                 let t = Instant::now();
@@ -97,8 +109,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredWires
                 std::hint::black_box(ecad_engine::wires::labels_on_page(&each_doc, page));
                 b.push(ms(t));
             }
-            (a, b, routes)
-        })?;
+            Ok((a, b, routes))
+        })??;
         (out.lnet_ms, out.leach_ms, out.routes) = (median(&mut lnet.clone()), median(&mut leach.clone()), routes);
         // A page of its own for the edits.
         let page: PageId = crate_hex(&run(&mut s, "newpage", json!({"title": "bench 032"}))?, "page")?;
@@ -113,22 +125,20 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredWires
             jjoin.push(timed(&mut s, "joinwires", json!({"at": [X0 + 50.0, 40.0]}))?);
         }
         (out.wopen_ms, out.wmerge_ms, out.jjoin_ms) = (median(&mut wopen), median(&mut wmerge), median(&mut jjoin));
-        // A 50-core cable ending on continuations, continued on a second page.
+        // A 50-core cable slashed on this page with its reference end, continued on a second page
+        // (design 072 §4.4, F4).
         let y = |i: usize| 100.0 + 5.0 * i as f64;
         for i in 0..CORES {
-            run(&mut s, "place", json!({"symbol": "continuation", "at": [X0 + 100.0, y(i)], "name": format!("B{i}")}))?;
             run(&mut s, "wire", json!({"points": [[X0, y(i)], [X0 + 100.0, y(i)]]}))?;
         }
-        run(&mut s, "cableslash", json!({"from": [X0 + 50.0, y(0) - 3.0], "to": [X0 + 50.0, y(CORES) + 3.0], "tag": CCONT_TAG}))?;
+        let slashed = run(&mut s, "cableslash", json!({"from": [X0 + 50.0, y(0) - 3.0], "to": [X0 + 50.0, y(CORES) + 3.0], "tag": CCONT_TAG}))?;
+        let cable = slashed["cable"].clone();
+        run(&mut s, "cableref", json!({"cable": cable, "at": [X0 + 100.0, y(CORES)]}))?;
         let second: PageId = crate_hex(&run(&mut s, "newpage", json!({"title": "bench 032 b"}))?, "page")?;
         run(&mut s, "openpage", json!({"page": second.hex()}))?;
-        for i in 0..CORES {
-            run(&mut s, "place", json!({"symbol": "continuation", "at": [X0, y(i)], "name": format!("B{i}")}))?;
-            run(&mut s, "wire", json!({"points": [[X0, y(i)], [X0 + 100.0, y(i)]]}))?;
-        }
         let mut ccont = Vec::new();
         for _ in 0..runs {
-            ccont.push(timed(&mut s, "cableslash", json!({"from": [X0 + 50.0, y(0) - 3.0], "to": [X0 + 50.0, y(CORES) + 3.0], "tag": CCONT_TAG}))?);
+            ccont.push(timed(&mut s, "cablecontinue", json!({"cable": cable, "at": [X0, y(CORES)], "toward": [X0 + 50.0, y(CORES)]}))?);
         }
         out.ccont_ms = median(&mut ccont);
         drop(project);

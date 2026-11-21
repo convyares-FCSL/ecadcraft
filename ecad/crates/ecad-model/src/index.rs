@@ -121,8 +121,8 @@ impl Index {
     /// The index of `doc`, computed from its stored objects.
     pub(crate) fn build(doc: &Document) -> Self {
         // Items and representations are most of a large project, and fill maps of their own: they
-        // are indexed on threads of their own where the platform has them (opening a version 2
-        // snapshot builds the whole index, brief 021). Anything a thread could not do is done here.
+        // are indexed side by side with the rest (rayon; opening a version 2 snapshot builds the
+        // whole index, brief 021).
         let items = || {
             let mut ix = Index::default();
             for (id, item) in &doc.items {
@@ -137,16 +137,12 @@ impl Index {
             }
             ix
         };
-        let (a, b, mut ix) = std::thread::scope(|scope| {
-            let threads = !cfg!(target_arch = "wasm32");
-            let ha = threads.then(|| std::thread::Builder::new().spawn_scoped(scope, items).ok()).flatten();
-            let hb = threads.then(|| std::thread::Builder::new().spawn_scoped(scope, reps).ok()).flatten();
-            let mut rest = Index::default();
-            rest.add_rest(doc);
-            let a = ha.and_then(|h| h.join().ok()).unwrap_or_else(items);
-            let b = hb.and_then(|h| h.join().ok()).unwrap_or_else(reps);
-            (a, b, rest)
-        });
+        let rest = || {
+            let mut ix = Index::default();
+            ix.add_rest(doc);
+            ix
+        };
+        let (a, (b, mut ix)) = rayon::join(items, || rayon::join(reps, rest));
         ix.page_items = a.page_items;
         ix.layer_items = a.layer_items;
         ix.definition_items = a.definition_items;
