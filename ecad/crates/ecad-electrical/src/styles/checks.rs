@@ -11,7 +11,9 @@
 //! # Update map
 //! The rows are worked out on open, reload or first show, and again only after an effect
 //! [`touches`] names: a style record or the standard, a style choice on any object (a wire's or a
-//! cable's type included), or a project property of the old kinds. Every other effect leaves them. Working them out reads the
+//! cable's type included), a project property of the old kinds, or what the page type and folder
+//! rows read (`crate::page_types::touches_checks`: a page added, removed, renumbered, moved to
+//! another folder or given another type, a folder, the page number step). Every other effect leaves them. Working them out reads the
 //! style-choice index (explicit choices only), the project's properties and the style records.
 
 use ecad_model::effect::Effect;
@@ -41,8 +43,14 @@ pub fn is_old_key(key: &str) -> bool {
     OLD_KEYS.iter().any(|(f, _)| is_old_text_key(key, f))
 }
 
-/// Whether `effect` can change the style rows.
+/// Whether `effect` can change the style rows: its own rows ([`touches_own`]) or the page type and
+/// folder rows they include ([`crate::page_types::touches_checks`], brief 054).
 pub fn touches(effect: &Effect<'_>) -> bool {
+    touches_own(effect) || crate::page_types::touches_checks(effect)
+}
+
+/// Whether `effect` can change the style rows other than the page type and folder rows.
+fn touches_own(effect: &Effect<'_>) -> bool {
     match effect {
         Effect::Style { .. } | Effect::Standard { .. } => true,
         // 050b: a potentials table written again clears its older colours.
@@ -53,15 +61,13 @@ pub fn touches(effect: &Effect<'_>) -> bool {
         Effect::Device { before: Some(component), after: None, .. } => component.properties.keys().any(|k| is_choice_key(k)),
         Effect::Wire { before: Some(wire), after: None, .. } => wire.wire_type.is_some() || wire.display.keys().any(|k| is_choice_key(k)),
         Effect::Wire { before: Some(before), after: Some(after), .. } => before.wire_type != after.wire_type || before.display != after.display,
-        // Added (a move included): the page type and folder rows (brief 054).
-        Effect::Page { index_after: Some(_), .. } => true,
+        // A removed page takes its choices with it; a page's type is a choice.
         Effect::Page { before: Some(page), after: None, .. } => page.page_type.is_some() || page.display.keys().any(|k| is_choice_key(k)),
         Effect::Page { before: Some(before), after: Some(after), .. } => before.page_type != after.page_type,
         // Design 072 §4.5: a cable's type (a dangling one is a row).
         Effect::Cable { before: Some(before), after: Some(after), .. } => before.cable_type != after.cable_type,
         Effect::Cable { before, after, .. } => before.or(*after).is_some_and(|c| c.cable_type.is_some()),
-        // Brief 054: the page type and folder rows.
-        e => crate::page_types::touches_checks(e),
+        _ => false,
     }
 }
 

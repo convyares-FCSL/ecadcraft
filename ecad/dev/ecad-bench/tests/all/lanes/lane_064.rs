@@ -1563,7 +1563,7 @@ mod old_checks {
         /// Cables to re-check (brief 026: provisional and shared tags).
         cables: BTreeSet<ecad_model::CableId>,
         /// Brief 050a: the style rows (`ecad_electrical::styles::checks::touches`).
-        styles: bool,
+        pub styles: bool,
         /// Brief 057: what the ops reach of the rating results.
         rating: Touch,
         /// Brief 052: the list's rows (an entry's code changed, added or removed).
@@ -2203,6 +2203,8 @@ fn checks_scope_agrees(tier: Tier) -> (usize, usize) {
         let mut old = old_checks::Scope::default();
         old.collect(doc, ops);
         old.checks_pages(doc, ops);
+        // Exempt (step 8b's fix): the style rows now also follow what the page type rows read.
+        old.styles |= ops.iter().any(old_checks::page_types_touches_checks);
         let mut new = ecad_electrical::checks::Scope::default();
         for e in &effects {
             new.note(doc, e);
@@ -2210,7 +2212,9 @@ fn checks_scope_agrees(tier: Tier) -> (usize, usize) {
         assert_eq!(format!("{new:?}"), format!("{old:?}"), "{what}");
         let any = |f: &dyn Fn(&ecad_model::effect::Effect<'_>) -> bool| effects.iter().any(f);
         let old_any = |f: fn(&Op) -> bool| ops.iter().any(f);
-        assert_eq!(any(&ecad_electrical::styles::checks::touches), old_any(old_checks::styles_touches), "{what}: style rows");
+        // Exempt (step 8b's fix): the style rows now also follow what the page type rows read.
+        let old_styles = old_any(old_checks::styles_touches) || old_any(old_checks::page_types_touches_checks);
+        assert_eq!(any(&ecad_electrical::styles::checks::touches), old_styles, "{what}: style rows");
         let tb = any(&ecad_electrical::title_block::checks::touches);
         assert_eq!(tb, old_any(old_checks::title_block_touches), "{what}: title block rows");
         let pt = any(&ecad_electrical::page_types::touches_checks);

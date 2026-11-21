@@ -651,3 +651,37 @@ fn every_front_kind_redraws_after_its_trigger() {
     // A revision is in every page's frame, so every page redraws: the revisions page's own map is
     // `a_revision_marks_the_revisions_page_behind`.
 }
+
+/// The page type rows of a kept Checks list, as words.
+fn page_type_rows(h: &mut crate::common::H) -> Vec<String> {
+    h.cfg(|p| p.checks().rows().filter(|c| c.kind == ecad_cadcraft::checks::Kind::PageTypeUnknown).map(|c| c.what()).collect())
+}
+
+/// Step 8b's fix: a page's number changed on its own works out the page type rows again (their
+/// words name the page's number), as `page_types::touches_checks` says; the style rows' map used
+/// to hide it.
+#[test]
+fn a_page_number_change_rewords_its_page_type_row() {
+    let mut h = crate::common::H::new(64_081);
+    let p1 = h.first_page();
+    // A `page.type` naming nothing, written before the list is first shown.
+    h.cfg(|p| {
+        let d = p.ledger.document();
+        let before = d.pages[&p1].clone();
+        let after = ecad_model::Page { page_type: Some(ecad_model::StyleRef::Own(0xff)), ..before.clone() };
+        p.ledger.commit(ecad_model::Author::User, "hostile", vec![Op::ModifyPage { id: p1, before, after }]).unwrap();
+    });
+    let shown = page_type_rows(&mut h);
+    assert_eq!(shown.len(), 1, "{shown:?}");
+    assert!(shown[0].contains("Page 1:"), "{shown:?}");
+    h.run("pageprops", serde_json::json!({"page": p1.hex(), "number": "7"})).unwrap();
+    let kept = page_type_rows(&mut h);
+    assert_eq!(kept, vec![shown[0].replacen("Page 1:", "Page 7:", 1)], "the row names the new number");
+    let doc = h.doc();
+    let fresh: Vec<String> = ecad_cadcraft::checks::all(&doc, h.cfg(|p| p.tolerance))
+        .into_iter()
+        .filter(|c| c.kind == ecad_cadcraft::checks::Kind::PageTypeUnknown)
+        .map(|c| c.what())
+        .collect();
+    assert_eq!(kept, fresh, "the kept rows equal a rebuild");
+}
