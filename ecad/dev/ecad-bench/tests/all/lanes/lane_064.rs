@@ -20,6 +20,10 @@
 //! Step 7: the report models' scope (`outputs::Scope::note`, over effects) equals the old per-op
 //! `Scope::collect` notes (kept here) on every transaction of the same history.
 //!
+//! Step 7b: the PLC model's maps (`Plc::touched`, `Plc::rows_touched`), the rack sheet's places,
+//! the strip pages' names, the report rows' after-state notes (`Scope::note_after`) and the
+//! generated pages (`Outputs::placed_page`) over effects equal the old per-op code (kept here).
+//!
 //! Step 5: the references view (`RefsView`, its update map over effects) against the whole
 //! document on every transaction of the same history: every page whose reference texts, tables,
 //! connector parts, continuation arrows or cable reference texts differ is among its pages; its
@@ -1237,4 +1241,273 @@ fn the_outputs_scope_matches_its_old_notes_on_the_small_corpus() {
 fn the_outputs_scope_matches_its_old_notes_on_the_medium_corpus() {
     let n = outputs_scope_agrees(tier("medium").unwrap());
     assert!(n > 10, "{n} transactions");
+}
+
+// Step 7b: the rest of the report models' update over effects.
+
+/// `Plc::touched` as it was before design 064 step 7b (per op).
+fn old_plc_touched(plc: &plc::kept::Plc, doc: &Document, ops: &[Op]) -> BTreeSet<DeviceId> {
+    let mut out = BTreeSet::new();
+    let mut all = false;
+    let mut styles = false;
+    for op in ops {
+        match op {
+            Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } => {
+                out.insert(*id);
+            }
+            Op::ModifyDevice { id, .. } => {
+                out.insert(*id);
+                out.extend(plc.naming.get(id).into_iter().flatten().copied());
+            }
+            Op::SetProperty { object: ObjectRef::Device(c), key, .. } => {
+                if key.starts_with("plc.") || key == ecad_model::tag::TAG_KEY {
+                    if plc.cards.contains_key(c) || plc.racks.contains_key(c) || key.starts_with("plc.") {
+                        out.insert(*c);
+                    }
+                    out.extend(plc.naming.get(c).into_iter().flatten().copied());
+                }
+            }
+            Op::SetProperty { object: ObjectRef::Project, key, .. } if key.starts_with("plc.") => all = true,
+            Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => {
+                if let Subject::Device(c) = rep.subject {
+                    out.insert(c);
+                }
+            }
+            Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
+                out.insert(terminal.component);
+            }
+            Op::CreateWire { wire, .. } | Op::DeleteWire { wire, .. } | Op::ModifyWire { after: wire, .. } => {
+                for t in &wire.ends {
+                    if let Some(x) = doc.terminals.get(t) {
+                        out.insert(x.component);
+                    }
+                }
+                for w in doc.wires_of_net(wire.net) {
+                    let ends = doc.wires.get(&w).map(|x| x.ends);
+                    out.extend(ends.iter().flatten().filter_map(|t| doc.terminals.get(t)).map(|x| x.component).filter(|c| plc.cards.contains_key(c)));
+                }
+            }
+            Op::ModifyItem { id, .. } => {
+                if let Some(Subject::Device(c)) = doc.representation_of_item(*id).map(|(_, r)| r.subject)
+                    && plc.cards.contains_key(&c)
+                {
+                    out.insert(c);
+                }
+            }
+            Op::AddRoute { route, .. } | Op::RemoveRoute { route, .. } => {
+                out.extend(route.points_landed().filter_map(|t| doc.terminals.get(&t)).map(|x| x.component).filter(|c| plc.cards.contains_key(c)));
+            }
+            Op::ModifyRoute { before, after, .. } => {
+                let points = before.points_landed().chain(after.points_landed());
+                out.extend(points.filter_map(|t| doc.terminals.get(&t)).map(|x| x.component).filter(|c| plc.cards.contains_key(c)));
+            }
+            Op::SetStyle { .. } | Op::SetStandard { .. } => styles = true,
+            Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key.starts_with("text.") => styles = true,
+            _ => {}
+        }
+    }
+    if styles {
+        out.extend(plc.cards.keys().copied());
+    }
+    if all {
+        let keys: Vec<&str> = ops
+            .iter()
+            .filter_map(|op| match op {
+                Op::SetProperty { object: ObjectRef::Project, key, .. } if key.starts_with("plc.") => Some(key.as_str()),
+                _ => None,
+            })
+            .collect();
+        let inherits = |c: &DeviceId| doc.devices.get(c).is_none_or(|x| keys.iter().any(|k| !x.properties.contains_key(*k)));
+        out.extend(plc.racks.keys().filter(|c| inherits(c)).copied());
+        out.extend(plc.cards.keys().filter(|c| inherits(c)).copied());
+    }
+    out.retain(|c| plc.cards.contains_key(c) || plc.racks.contains_key(c) || plc::card_type_of(doc, *c).is_some());
+    let racks: Vec<DeviceId> = out.iter().filter(|c| plc.racks.contains_key(c)).copied().collect();
+    for r in racks {
+        out.extend(plc.naming.get(&r).into_iter().flatten().copied());
+    }
+    out
+}
+
+/// The `rows_changed` loop of `Plc::update_with` as it was before design 064 step 7b (per op).
+fn old_plc_rows(plc: &plc::kept::Plc, doc: &Document, ops: &[Op]) -> BTreeSet<DeviceId> {
+    use plc::iolist::{cards_on_nets_of, cards_on_nets_of_terminals};
+    let mut out = BTreeSet::new();
+    for op in ops {
+        match op {
+            Op::ModifyDevice { id: c, before, after } if before.tag != after.tag && !plc.cards.contains_key(c) => {
+                out.extend(cards_on_nets_of(doc, plc, Some(*c), None));
+            }
+            Op::SetProperty { object: ObjectRef::Wire(w), .. } | Op::ModifyWire { id: w, .. } => {
+                out.extend(cards_on_nets_of(doc, plc, None, Some(*w)));
+            }
+            Op::AddTerminal { id, .. } => {
+                out.extend(cards_on_nets_of_terminals(doc, plc, &[*id]));
+            }
+            Op::SetProperty { object: ObjectRef::Device(c), key, before, after } if key == ecad_model::connectivity::NAME => {
+                let mut ts: Vec<ecad_model::TerminalId> = doc.terminals_of(*c).map(|(t, _)| t).collect();
+                for v in [before, after].into_iter().flatten() {
+                    for k in doc.continuations_named(&ecad_model::connectivity::name_key(v)) {
+                        ts.extend(doc.terminals_of(k).map(|(t, _)| t));
+                    }
+                }
+                out.extend(cards_on_nets_of_terminals(doc, plc, &ts));
+            }
+            Op::SetProperty { object: ObjectRef::Device(c), key, .. } if ecad_model::links::link_number(key).is_some() => {
+                out.extend(cards_on_nets_of(doc, plc, Some(*c), None));
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// `plc::sheets::rack_places_touched` as it was before design 064 step 7b (per op).
+fn old_rack_places_touched(doc: &Document, plc: &plc::kept::Plc, ops: &[Op]) -> bool {
+    let ours = |c: DeviceId| plc.cards.contains_key(&c) || plc.racks.contains_key(&c);
+    let page_holds = |p: PageId| doc.representations_on(p).any(|(_, r)| matches!(r.subject, Subject::Device(c) if ours(c)));
+    for op in ops {
+        match op {
+            Op::ModifyItem { id, .. } => {
+                if let Some((_, r)) = doc.representation_of_item(*id)
+                    && let Subject::Device(c) = r.subject
+                    && ours(c)
+                {
+                    return true;
+                }
+            }
+            Op::ModifyPage { id: p, before, after } => {
+                let ch = before.change(after);
+                if (ch.number || ch.sheet || ch.folder) && page_holds(*p) {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    ecad_model::book::moves_pages(ops) && !(plc.cards.is_empty() && plc.racks.is_empty())
+}
+
+/// What `StripPages::update`'s op loop named before design 064 step 7b (per op).
+fn old_strip_pages_named(ops: &[Op]) -> ecad_electrical::strips::pages::Named {
+    use ecad_electrical::defaults::strip_pages as entries;
+    let mut n = ecad_electrical::strips::pages::Named::default();
+    for op in ops {
+        match op {
+            Op::SetProperty { object: ObjectRef::Project, key, .. } if entries::is_layout_key(key) => n.layout = true,
+            Op::SetProperty { object: ObjectRef::Project, key, .. } if key == entries::STYLE.key => n.style = true,
+            Op::SetProjectSettings { before, after } if before.sheet != after.sheet => n.layout = true,
+            Op::ModifyCable { id: k, .. } => {
+                n.cables.insert(*k);
+            }
+            Op::SetProperty { object: ObjectRef::Device(d), .. } | Op::ModifyDevice { id: d, .. } => {
+                n.devices.insert(*d);
+            }
+            _ => {}
+        }
+    }
+    n
+}
+
+/// The two `SetProperty` loops of `Outputs::update_rows` as they were before design 064 step 7b
+/// (per op, on the state after): the wires they add.
+fn old_after_wires(doc: &Document, ops: &[Op]) -> BTreeSet<ecad_model::WireId> {
+    let mut wires = BTreeSet::new();
+    for op in ops {
+        let Op::SetProperty { object: ObjectRef::Device(c), key, .. } = op else { continue };
+        let position = key.strip_prefix(ecad_electrical::terminal_types::LABEL_PREFIX).and_then(|r| r.rsplit_once('.')).map(|(p, _)| p);
+        if (position.is_none() && !ecad_electrical::defaults::terminals::is_label_key(key)) || ecad_electrical::strips::strip_of(doc, *c).is_none() {
+            continue;
+        }
+        for (t, x) in doc.terminals_of(*c) {
+            if position.is_none_or(|p| x.label.as_deref() == Some(p)) {
+                wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+            }
+        }
+    }
+    for op in ops {
+        let Op::SetProperty { object: ObjectRef::Device(c), key, .. } = op else { continue };
+        if ecad_electrical::defaults::connectors::is_naming_key(key) && ecad_electrical::connectors::connector_of(doc, *c).is_some_and(|x| x.mating) {
+            for (t, _) in doc.terminals_of(*c) {
+                wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+            }
+        }
+    }
+    wires
+}
+
+/// The pages `Outputs::update_rows` read the generated set again for before design 064 step 7b.
+fn old_placed_pages(ops: &[Op]) -> BTreeSet<PageId> {
+    ops.iter()
+        .filter_map(|op| match op {
+            Op::AddPage { id, .. } | Op::RemovePage { id, .. } => Some(*id),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Step 7b: the PLC model's maps, the rack sheet's places, the strip pages' names, the report
+/// rows' after-state notes and the generated pages over effects equal the old per-op ones on
+/// every transaction of `tier`'s churned history (on the state after, with the PLC model kept
+/// through the history as the outputs keep it), with five undos and five redos at its end.
+/// Returns how many transactions were compared and how many named something.
+fn outputs_update_agrees(tier: Tier) -> (usize, usize) {
+    use ecad_model::effect::Effects;
+    let mut g = generate(tier, Variant::Churned).unwrap();
+    for undo in [true, true, true, true, true, false, false, false, false, false] {
+        let r = if undo { g.ledger.undo_at(Author::User, None) } else { g.ledger.redo_at(Author::User, None) };
+        r.unwrap();
+    }
+    assert_eq!(g.ledger.base(), 0, "the corpus replays from the empty document");
+    let m = ecad_electrical::text_style::fonts::FixedWidth;
+    let mut doc = Document::default();
+    let mut model = plc::kept::Plc::build_with(&doc, &m);
+    let (mut checked, mut some) = (0, 0);
+    for tx in g.ledger.log() {
+        for op in &tx.ops {
+            op.apply(&mut doc).unwrap();
+        }
+        let what = format!("{} transaction {} {:?}", tier.name, tx.seq, tx.label);
+        let ops = &tx.ops;
+        let effects = Effects::of(ops);
+        let touched = model.touched(&doc, &effects);
+        assert_eq!(touched, old_plc_touched(&model, &doc, ops), "{what}: plc touched");
+        let rows = model.rows_touched(&doc, &effects);
+        assert_eq!(rows, old_plc_rows(&model, &doc, ops), "{what}: plc rows");
+        let places = plc::sheets::rack_places_touched(&doc, &model, &effects);
+        assert_eq!(places, old_rack_places_touched(&doc, &model, ops), "{what}: rack places");
+        let named = ecad_electrical::strips::pages::Named::of(&effects);
+        assert_eq!(named, old_strip_pages_named(ops), "{what}: strip pages");
+        let mut new = ecad_electrical::outputs::Scope::default();
+        for e in &effects {
+            new.note_after(&doc, e);
+        }
+        let old = OldScope { wires: old_after_wires(&doc, ops), ..OldScope::default() };
+        assert_eq!(format!("{new:?}"), format!("{old:?}").replacen("OldScope", "Scope", 1), "{what}: after notes");
+        let placed: BTreeSet<PageId> = effects.iter().filter_map(ecad_electrical::outputs::kept::Outputs::placed_page).collect();
+        assert_eq!(placed, old_placed_pages(ops), "{what}: placed pages");
+        assert_eq!(ecad_model::book::positions_changed_by(&doc, &effects), ecad_model::book::positions_changed(&doc, ops), "{what}: book positions");
+        let named_any = named != ecad_electrical::strips::pages::Named::default();
+        some += usize::from(!touched.is_empty() || !rows.is_empty() || places || named_any || !new.is_empty() || !placed.is_empty());
+        model.update_with(&doc, &effects, &m);
+        checked += 1;
+    }
+    (checked, some)
+}
+
+/// Step 7b: the report models' update on the small tier's recorded history.
+#[test]
+fn the_outputs_update_matches_its_old_functions_on_the_small_corpus() {
+    let (n, some) = outputs_update_agrees(tier("small").unwrap());
+    assert!(n > 10, "{n} transactions");
+    assert!(some > 0, "some transaction names something");
+}
+
+/// Step 7b: the report models' update on the medium tier's recorded history (design 064 §10).
+#[test]
+#[ignore = "slow: generates the medium bench project"]
+fn the_outputs_update_matches_its_old_functions_on_the_medium_corpus() {
+    let (n, some) = outputs_update_agrees(tier("medium").unwrap());
+    assert!(n > 10, "{n} transactions");
+    assert!(some > 0, "some transaction names something");
 }

@@ -4,7 +4,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::{DeviceId, Document, ObjectRef, Op, Subject};
+use ecad_model::effect::{Effect, Effects};
+use ecad_model::{DeviceId, Document, ObjectRef, Subject};
 use serde_json::{Value, json};
 
 use super::*;
@@ -144,23 +145,24 @@ impl Plc {
         );
     }
 
-    /// The devices `ops` (the transaction just committed on `doc`) touch, by design 045 §11.1's
-    /// map; anything not listed touches nothing.
-    pub fn touched(&self, doc: &Document, ops: &[Op]) -> BTreeSet<DeviceId> {
+    /// The devices `effects` (the transaction just committed on `doc`) touch, by design 045
+    /// §11.1's map; anything not listed touches nothing.
+    pub fn touched(&self, doc: &Document, effects: &Effects<'_>) -> BTreeSet<DeviceId> {
         let mut out = BTreeSet::new();
         let mut all = false;
         let mut styles = false;
-        for op in ops {
-            match op {
-                Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } => {
+        for effect in effects {
+            match effect {
+                // Created or deleted; design 072: a device's tag, type, or a station's or module's
+                // own fields (§3) when changed in place.
+                Effect::Device { id, before, after } => {
                     out.insert(*id);
+                    if before.is_some() && after.is_some() {
+                        out.extend(self.naming.get(id).into_iter().flatten().copied());
+                    }
                 }
-                // Design 072: a device's tag, type, or a station's or module's own fields (§3).
-                Op::ModifyDevice { id, .. } => {
-                    out.insert(*id);
-                    out.extend(self.naming.get(id).into_iter().flatten().copied());
-                }
-                Op::SetProperty { object: ObjectRef::Device(c), key, .. } => {
+                Effect::Prop { object: ObjectRef::Device(c), key, .. } => {
+                    let key = key.raw;
                     if key.starts_with("plc.") || key == ecad_model::tag::TAG_KEY {
                         if self.cards.contains_key(c) || self.racks.contains_key(c) || key.starts_with("plc.") {
                             out.insert(*c);
@@ -169,34 +171,41 @@ impl Plc {
                         out.extend(self.naming.get(c).into_iter().flatten().copied());
                     }
                 }
-                Op::SetProperty { object: ObjectRef::Project, key, .. } if key.starts_with("plc.") => all = true,
-                Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => {
+                Effect::Prop { object: ObjectRef::Project, key, .. } if key.raw.starts_with("plc.") => all = true,
+                // Linked or unlinked (a representation changed in place touches nothing here).
+                Effect::Rep { before: None, after: Some(rep), .. } | Effect::Rep { before: Some(rep), after: None, .. } => {
                     if let Subject::Device(c) = rep.subject {
                         out.insert(c);
                     }
                 }
                 // Brief 045b: a card's channel points, and the nets they are on (used or spare).
-                Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
-                    out.insert(terminal.component);
+                Effect::Terminal { before, after, .. } => {
+                    out.extend(before.iter().chain(after.iter()).map(|t| t.component));
                 }
                 // Design 072 §4.4: the commit's rewrite made, removed or moved a wire: the devices
                 // at its ends, and the cards on its net.
-                Op::CreateWire { wire, .. } | Op::DeleteWire { wire, .. } | Op::ModifyWire { after: wire, .. } => {
-                    for t in &wire.ends {
-                        if let Some(x) = doc.terminals.get(t) {
-                            out.insert(x.component);
+                Effect::Wire { before, after, .. } => {
+                    if let Some(wire) = after.or(*before) {
+                        for t in &wire.ends {
+                            if let Some(x) = doc.terminals.get(t) {
+                                out.insert(x.component);
+                            }
+                        }
+                        for w in doc.wires_of_net(wire.net) {
+                            let ends = doc.wires.get(&w).map(|x| x.ends);
+                            out.extend(
+                                ends.iter()
+                                    .flatten()
+                                    .filter_map(|t| doc.terminals.get(t))
+                                    .map(|x| x.component)
+                                    .filter(|c| self.cards.contains_key(c)),
+                            );
                         }
                     }
-                    for w in doc.wires_of_net(wire.net) {
-                        let ends = doc.wires.get(&w).map(|x| x.ends);
-                        out.extend(
-                            ends.iter().flatten().filter_map(|t| doc.terminals.get(t)).map(|x| x.component).filter(|c| self.cards.contains_key(c)),
-                        );
-                    }
                 }
-                // Brief 051 (design 051 §9.1): a card's symbol moved changes its runs and their
-                // Checks rows.
-                Op::ModifyItem { id, .. } => {
+                // Brief 051 (design 051 §9.1): a card's symbol moved (an item changed in place)
+                // changes its runs and their Checks rows.
+                Effect::Item { id, before: Some(_), after: Some(_) } => {
                     if let Some(Subject::Device(c)) = doc.representation_of_item(*id).map(|(_, r)| r.subject)
                         && self.cards.contains_key(&c)
                     {
@@ -204,19 +213,26 @@ impl Plc {
                     }
                 }
                 // A route on one of a card's points re-routed (design 072 §4.3).
-                Op::AddRoute { route, .. } | Op::RemoveRoute { route, .. } => {
-                    out.extend(
-                        route.points_landed().filter_map(|t| doc.terminals.get(&t)).map(|x| x.component).filter(|c| self.cards.contains_key(c)),
-                    );
-                }
-                Op::ModifyRoute { before, after, .. } => {
-                    let points = before.points_landed().chain(after.points_landed());
+                Effect::Route { before, after, .. } => {
+                    let points = before.iter().chain(after.iter()).flat_map(|r| r.points_landed());
                     out.extend(points.filter_map(|t| doc.terminals.get(&t)).map(|x| x.component).filter(|c| self.cards.contains_key(c)));
                 }
                 // A text style or standard changed: the bands of every card (rare).
-                Op::SetStyle { .. } | Op::SetStandard { .. } => styles = true,
-                Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key.starts_with("text.") => styles = true,
-                _ => {}
+                Effect::Style { .. } | Effect::Standard { .. } => styles = true,
+                Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key.raw.starts_with("text.") => styles = true,
+                Effect::Prop { .. }
+                | Effect::Rep { .. }
+                | Effect::Item { .. }
+                | Effect::Page { .. }
+                | Effect::Layer { .. }
+                | Effect::DeviceDefinition { .. }
+                | Effect::Cable { .. }
+                | Effect::Definition { .. }
+                | Effect::Settings { .. }
+                | Effect::Version { .. }
+                | Effect::Folder { .. }
+                | Effect::Project { .. }
+                | Effect::DeviceLink { .. } => {}
             }
         }
         if styles {
@@ -225,10 +241,10 @@ impl Plc {
         if all {
             // A project default: only the racks and cards that inherit it (they have no own value
             // of a `plc.` key read at object level; reading all of them is bounded by the model).
-            let keys: Vec<&str> = ops
+            let keys: Vec<&str> = effects
                 .iter()
-                .filter_map(|op| match op {
-                    Op::SetProperty { object: ObjectRef::Project, key, .. } if key.starts_with("plc.") => Some(key.as_str()),
+                .filter_map(|e| match e {
+                    Effect::Prop { object: ObjectRef::Project, key, .. } if key.raw.starts_with("plc.") => Some(key.raw),
                     _ => None,
                 })
                 .collect();
@@ -246,47 +262,72 @@ impl Plc {
         out
     }
 
-    /// Bring the model in line with `ops` (just committed; `doc` is the state after). Returns
-    /// whether anything changed.
-    pub fn update_with(&mut self, doc: &Document, ops: &[Op], m: &dyn TextMetrics) -> bool {
-        self.last_changed.clear();
-        self.rows_changed.clear();
-        self.updates += 1;
-        self.last_work = 0;
-        let mut touched = self.touched(doc, ops);
-        // Brief 045c (design 045 §11.1): a renamed target or a renumbered wire changes the rows of
-        // the cards on its nets.
-        for op in ops {
-            match op {
-                Op::ModifyDevice { id: c, before, after } if before.tag != after.tag && !self.cards.contains_key(c) => {
-                    self.rows_changed.extend(iolist::cards_on_nets_of(doc, self, Some(*c), None));
+    /// Brief 045c (design 045 §11.1): the cards whose I/O rows `effects` (just committed; `doc`
+    /// is the state after) can change: a renamed target or a renumbered wire changes the rows of
+    /// the cards on its nets.
+    pub fn rows_touched(&self, doc: &Document, effects: &Effects<'_>) -> BTreeSet<DeviceId> {
+        let mut out = BTreeSet::new();
+        for effect in effects {
+            match effect {
+                Effect::Device { id: c, before: Some(before), after: Some(after) } if before.tag != after.tag && !self.cards.contains_key(c) => {
+                    out.extend(iolist::cards_on_nets_of(doc, self, Some(*c), None));
                 }
-                Op::SetProperty { object: ObjectRef::Wire(w), .. } | Op::ModifyWire { id: w, .. } => {
-                    self.rows_changed.extend(iolist::cards_on_nets_of(doc, self, None, Some(*w)));
+                // A wire's property, or the wire changed in place.
+                Effect::Prop { object: ObjectRef::Wire(w), .. } | Effect::Wire { id: w, before: Some(_), after: Some(_) } => {
+                    out.extend(iolist::cards_on_nets_of(doc, self, None, Some(*w)));
                 }
                 // Review of #84, 2: a terminal relabelled (renumber, `termlabel`) or added, on the
                 // nets it is on.
-                Op::AddTerminal { id, .. } => {
-                    self.rows_changed.extend(iolist::cards_on_nets_of_terminals(doc, self, &[*id]));
+                Effect::Terminal { id, after: Some(_), .. } => {
+                    out.extend(iolist::cards_on_nets_of_terminals(doc, self, &[*id]));
                 }
                 // A continuation renamed joins or splits nets: every continuation of the old and
                 // the new name, and the nets they are on now.
-                Op::SetProperty { object: ObjectRef::Device(c), key, before, after } if key == ecad_model::connectivity::NAME => {
+                Effect::Prop { object: ObjectRef::Device(c), key, before, after } if key.raw == ecad_model::connectivity::NAME => {
                     let mut ts: Vec<ecad_model::TerminalId> = doc.terminals_of(*c).map(|(t, _)| t).collect();
                     for v in [before, after].into_iter().flatten() {
                         for k in doc.continuations_named(&ecad_model::connectivity::name_key(v)) {
                             ts.extend(doc.terminals_of(k).map(|(t, _)| t));
                         }
                     }
-                    self.rows_changed.extend(iolist::cards_on_nets_of_terminals(doc, self, &ts));
+                    out.extend(iolist::cards_on_nets_of_terminals(doc, self, &ts));
                 }
                 // A strip link joins its positions' nets.
-                Op::SetProperty { object: ObjectRef::Device(c), key, .. } if ecad_model::links::link_number(key).is_some() => {
-                    self.rows_changed.extend(iolist::cards_on_nets_of(doc, self, Some(*c), None));
+                Effect::Prop { object: ObjectRef::Device(c), key, .. } if ecad_model::links::link_number(key.raw).is_some() => {
+                    out.extend(iolist::cards_on_nets_of(doc, self, Some(*c), None));
                 }
-                _ => {}
+                Effect::Device { .. }
+                | Effect::Prop { .. }
+                | Effect::Wire { .. }
+                | Effect::Terminal { .. }
+                | Effect::Page { .. }
+                | Effect::Layer { .. }
+                | Effect::Item { .. }
+                | Effect::DeviceDefinition { .. }
+                | Effect::Rep { .. }
+                | Effect::Route { .. }
+                | Effect::Cable { .. }
+                | Effect::Definition { .. }
+                | Effect::Settings { .. }
+                | Effect::Version { .. }
+                | Effect::Folder { .. }
+                | Effect::Style { .. }
+                | Effect::Standard { .. }
+                | Effect::Project { .. }
+                | Effect::DeviceLink { .. } => {}
             }
         }
+        out
+    }
+
+    /// Bring the model in line with `effects` (just committed; `doc` is the state after). Returns
+    /// whether anything changed.
+    pub fn update_with(&mut self, doc: &Document, effects: &Effects<'_>, m: &dyn TextMetrics) -> bool {
+        self.last_changed.clear();
+        self.updates += 1;
+        self.last_work = 0;
+        let mut touched = self.touched(doc, effects);
+        self.rows_changed = self.rows_touched(doc, effects);
         touched.extend(self.rows_changed.iter().copied());
         if touched.is_empty() {
             return false;
