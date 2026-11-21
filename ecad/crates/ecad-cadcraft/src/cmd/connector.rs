@@ -51,10 +51,6 @@ transaction; with terminal and to \"next\", moves that one drawn pin to its half
     ]
 }
 
-fn out_of_range(p: Pt) -> bool {
-    !(p.is_finite() && p.x.abs() <= crate::interact::MAX_COORD && p.y.abs() <= crate::interact::MAX_COORD)
-}
-
 // ---------------------------------------------------------------- connector (§4)
 
 /// Pin names: numbers, letters, the names as text, or a list.
@@ -125,7 +121,7 @@ impl Command for ConnectorParams {
             _ => None,
         });
         for p in at.iter().chain(line.iter().flat_map(|(a, b)| [a, b])) {
-            if out_of_range(*p) {
+            if rules::out_of_range(*p) {
                 return Err(err(crate::interact::OUT_OF_RANGE));
             }
         }
