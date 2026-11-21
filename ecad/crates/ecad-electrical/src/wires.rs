@@ -751,7 +751,7 @@ pub fn plan_tagless(
     });
     ops.push(Op::AddTerminal {
         id: terminal,
-        terminal: Terminal { component, label: None, key: Some(ecad_model::PointKey::def("1")), accepts: Default::default() },
+        terminal: Terminal { owner: component.into(), label: None, key: Some(ecad_model::PointKey::def("1")), accepts: Default::default() },
     });
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition, placement }) } });
     ops.push(Op::LinkRepresentation {
@@ -905,7 +905,7 @@ pub const MAX_POINTS_SHOWN: usize = 6;
 /// A connection point in words: `-K01:A1`; a continuation `→24V`.
 pub fn point_words(doc: &Document, t: TerminalId) -> String {
     let Some(term) = doc.terminals.get(&t) else { return "?".into() };
-    let c = term.component;
+    let Some(c) = term.device() else { return "?".into() };
     if kind_of(doc, c) == Some(CONTINUATION) {
         let name = doc.devices.get(&c).and_then(|x| x.properties.get(NAME)).cloned().unwrap_or_default();
         return format!("\u{2192}{name}");
@@ -922,7 +922,7 @@ pub fn net_points(doc: &Document, net: &ecad_model::NetData) -> Vec<String> {
     let mut v: Vec<String> = net
         .terminals
         .iter()
-        .filter(|t| doc.terminals.get(t).is_none_or(|x| !matches!(kind_of(doc, x.component), Some(CONTINUATION))))
+        .filter(|t| doc.terminals.get(t).is_none_or(|x| !matches!(x.device().and_then(|c| kind_of(doc, c)), Some(CONTINUATION))))
         .map(|t| point_words(doc, *t))
         .collect();
     v.sort();

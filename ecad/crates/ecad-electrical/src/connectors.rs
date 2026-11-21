@@ -183,7 +183,7 @@ pub fn size_of(s: &Starter) -> Option<usize> {
 pub fn side_of(doc: &Document, t: TerminalId) -> Option<Side> {
     let term = doc.terminals.get(&t)?;
     let side = Side::of_key(term.key.as_ref()?)?;
-    connector_of(doc, term.component).is_some_and(|x| x.mating).then_some(side)
+    connector_of(doc, term.device()?).is_some_and(|x| x.mating).then_some(side)
 }
 
 /// The starter a representation draws when it is a brief-044 half or pin.
@@ -231,7 +231,7 @@ pub fn half_tag(doc: &Document, c: DeviceId, side: Side) -> String {
 /// The half tag a connector pin belongs to (`-X10.S`); `None` for any other terminal.
 pub fn half_tag_of(doc: &Document, t: TerminalId) -> Option<String> {
     let side = side_of(doc, t)?;
-    let c = doc.terminals.get(&t)?.component;
+    let c = doc.terminals.get(&t)?.device()?;
     Some(half_tag(doc, c, side))
 }
 
@@ -649,7 +649,7 @@ pub fn symbol_ops(
         let name = if pin { names.first() } else { names.get(i) }.ok_or(CmdError::refused("Not enough pin names for this symbol."))?;
         let t: TerminalId = ids.fresh();
         let key = side.key().ok_or(CmdError::refused("A connector symbol's point has no side."))?;
-        ops.push(Op::AddTerminal { id: t, terminal: Terminal { component: c, label: Some(name.clone()), key: Some(key), accepts: td.accepts } });
+        ops.push(Op::AddTerminal { id: t, terminal: Terminal { owner: c.into(), label: Some(name.clone()), key: Some(key), accepts: td.accepts } });
         cps.insert(t, td.at);
         shown.push(Shown { side, name: name.clone(), terminal: t, local: td.at });
     }
@@ -1261,7 +1261,7 @@ impl Index {
         for op in ops {
             match op {
                 Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
-                    out.insert(terminal.component);
+                    out.extend(terminal.device());
                 }
                 Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => subject(rep, &mut out),
                 Op::ModifyRepresentation { before, after, .. } => {

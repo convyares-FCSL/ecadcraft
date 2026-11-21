@@ -580,16 +580,79 @@ impl<'de> Deserialize<'de> for Accepts {
     }
 }
 
-/// A terminal of a component.
+/// What a connection point belongs to (design 072 §3): a device, or a drawing aid (a
+/// continuation's point, §6.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TerminalOwner {
+    Device(DeviceId),
+    Aid(crate::id::AidId),
+}
+
+impl From<DeviceId> for TerminalOwner {
+    fn from(d: DeviceId) -> Self {
+        Self::Device(d)
+    }
+}
+
+impl From<crate::id::AidId> for TerminalOwner {
+    fn from(a: crate::id::AidId) -> Self {
+        Self::Aid(a)
+    }
+}
+
+impl TerminalOwner {
+    /// The device it belongs to, if a device owns it.
+    pub fn device(self) -> Option<DeviceId> {
+        match self {
+            Self::Device(d) => Some(d),
+            Self::Aid(_) => None,
+        }
+    }
+
+    /// The drawing aid it belongs to, if an aid owns it.
+    pub fn aid(self) -> Option<crate::id::AidId> {
+        match self {
+            Self::Aid(a) => Some(a),
+            Self::Device(_) => None,
+        }
+    }
+
+    /// Its id in hex, for texts that name it when nothing better does.
+    pub fn subject_hex(self) -> String {
+        match self {
+            Self::Device(d) => d.hex(),
+            Self::Aid(a) => a.hex(),
+        }
+    }
+
+    /// The subject whose representations draw it.
+    pub fn subject(self) -> Subject {
+        match self {
+            Self::Device(d) => Subject::Device(d),
+            Self::Aid(a) => Subject::Aid(a),
+        }
+    }
+}
+
+/// A connection point of a device or a drawing aid.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Terminal {
-    pub component: DeviceId,
+    /// What it belongs to (design 072 §3).
+    pub owner: TerminalOwner,
     pub label: Option<String>,
     /// The definition terminal this one was created from (LIB-02; design 072 §2.7).
     pub key: Option<PointKey>,
     /// How many conductors it accepts, copied from its definition terminal when it is made.
     #[serde(default, skip_serializing_if = "Accepts::is_two")]
     pub accepts: Accepts,
+}
+
+impl Terminal {
+    /// The device it belongs to; `None` for a drawing aid's point.
+    pub fn device(&self) -> Option<DeviceId> {
+        self.owner.device()
+    }
 }
 
 /// What a representation depicts.
@@ -1632,9 +1695,9 @@ impl Document {
         })
     }
 
-    /// Terminals of `component`, in ID order.
-    pub fn terminals_of(&self, component: DeviceId) -> impl Iterator<Item = (TerminalId, &Terminal)> {
-        referrers(&self.index.component_terminals, &component).filter_map(|id| self.terminals.get(&id).map(|t| (id, t)))
+    /// Connection points of `owner` (a device or a drawing aid), in ID order.
+    pub fn terminals_of(&self, owner: impl Into<TerminalOwner>) -> impl Iterator<Item = (TerminalId, &Terminal)> {
+        referrers(&self.index.component_terminals, &owner.into()).filter_map(|id| self.terminals.get(&id).map(|t| (id, t)))
     }
 
     /// Whether any conductor end is attached to `terminal`, through the index, without listing them.
@@ -1771,7 +1834,7 @@ impl Document {
         if let Some((cable, i)) = self.cable_point(t) {
             return self.cables.get(&cable)?.cores.get(i).map(|c| c.through.clone());
         }
-        let device = self.terminals.get(&t)?.component;
+        let device = self.terminals.get(&t)?.device()?;
         let props = &self.devices.get(&device)?.properties;
         if props.get(crate::connectivity::KIND).map(String::as_str) != Some(crate::connectivity::CONTINUATION) {
             return None;

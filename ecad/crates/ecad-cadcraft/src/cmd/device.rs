@@ -289,7 +289,7 @@ fn place_definition(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Re
             let t: TerminalId = p.ids.fresh();
             ops.push(Op::AddTerminal {
                 id: t,
-                terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
+                terminal: Terminal { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
             });
             terminals.push(json!({"key": td.key, "terminal": t.hex()}));
         }

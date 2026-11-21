@@ -604,7 +604,7 @@ impl Scope {
                 // Other style records and the standard header change no report row.
                 Op::SetStyle { .. } | Op::SetStandard { .. } => {}
                 Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
-                    self.devices.insert(terminal.component);
+                    self.devices.extend(terminal.device());
                     // Brief 028: a relabelled terminal (Remove + Add of one ID) renames its wires' ends.
                     self.wires.extend(doc.ends_at(*id).into_iter().map(|(w, _)| w));
                 }

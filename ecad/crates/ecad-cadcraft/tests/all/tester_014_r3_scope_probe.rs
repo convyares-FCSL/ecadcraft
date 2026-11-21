@@ -157,7 +157,7 @@ fn tester_014_r3_random_edits_across_two_pages_match_the_oracle() {
                 // Move the page's component (K1 or K2) by its handles.
                 let doc = r.h.doc();
                 let terms = if page == r.supply { r.k1 } else { r.k2 };
-                let Some(comp) = doc.terminals.get(&terms[0]).map(|t| t.component) else { continue };
+                let Some(comp) = doc.terminals.get(&terms[0]).and_then(|t| t.device()) else { continue };
                 let hs = r.h.rep_handles(page, comp);
                 let _ = r.h.run("move", json!({"handles": hs, "delta": delta}));
                 "move component"
@@ -209,7 +209,7 @@ fn tester_014_r3_random_edits_across_two_pages_match_the_oracle() {
                 // The component with every route on the page, as a crossing window would select it.
                 let doc = r.h.doc();
                 let terms = if page == r.supply { r.k1 } else { r.k2 };
-                let Some(comp) = doc.terminals.get(&terms[0]).map(|t| t.component) else { continue };
+                let Some(comp) = doc.terminals.get(&terms[0]).and_then(|t| t.device()) else { continue };
                 let mut hs = r.h.rep_handles(page, comp);
                 for c in r.w {
                     if let Some((h, _)) = route(&mut r.h, page, c) {

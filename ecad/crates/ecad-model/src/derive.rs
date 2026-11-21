@@ -36,7 +36,7 @@ pub fn terminal_positions(doc: &Document, page: PageId) -> Vec<(TerminalId, Repr
 /// representation through the same helper, so they cannot drift apart.
 pub fn terminal_position(doc: &Document, page: PageId, terminal: TerminalId) -> Option<Pt> {
     let subject = match doc.terminals.get(&terminal) {
-        Some(t) => Subject::Device(t.component),
+        Some(t) => t.owner.subject(),
         None => Subject::Cable(doc.cable_point(terminal)?.0),
     };
     doc.representations_of(subject)

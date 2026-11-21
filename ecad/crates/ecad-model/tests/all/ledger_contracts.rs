@@ -48,8 +48,8 @@ fn every_op_inverts_to_the_previous_state() {
     let ops = vec![
         Op::AddItem { id: item, item: line(&f, (0.0, 0.0), (1.0, 0.0)) },
         Op::CreateDevice { id: comp, device: Device::default() },
-        Op::AddTerminal { id: term, terminal: Terminal { component: comp, label: None, key: None, accepts: Default::default() } },
-        Op::AddTerminal { id: term2, terminal: Terminal { component: comp, label: None, key: None, accepts: Default::default() } },
+        Op::AddTerminal { id: term, terminal: Terminal { owner: comp.into(), label: None, key: None, accepts: Default::default() } },
+        Op::AddTerminal { id: term2, terminal: Terminal { owner: comp.into(), label: None, key: None, accepts: Default::default() } },
         Op::LinkRepresentation {
             id: rep,
             rep: Representation {
@@ -134,11 +134,11 @@ fn an_item_belongs_to_at_most_one_representation() {
 #[test]
 fn deleting_a_referenced_object_needs_explicit_detachment() {
     let mut f = fixture();
-    let comp = f.ids.fresh();
+    let comp: ecad_model::DeviceId = f.ids.fresh();
     let (term, term2) = (f.ids.fresh(), f.ids.fresh());
     let cond = f.ids.fresh();
     let cable = f.ids.fresh();
-    let t = Terminal { component: comp, label: None, key: None, accepts: Default::default() };
+    let t = Terminal { owner: comp.into(), label: None, key: None, accepts: Default::default() };
     let wire = Wire::new(f.ids.fresh(), f.ids.fresh(), term, term2);
     let with_member = ecad_model::Cable { cores: vec![Core::on_wire(cond, None)], ..Default::default() };
     f.ledger

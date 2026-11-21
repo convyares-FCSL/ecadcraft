@@ -614,7 +614,7 @@ pub fn plan_place(
                 let tid: TerminalId = ids.fresh();
                 ops.push(Op::AddTerminal {
                     id: tid,
-                    terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
+                    terminal: Terminal { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
                 });
                 terminals.push((td.key.clone(), td.label.clone().unwrap_or_else(|| td.key.to_string()), tid));
             }
@@ -642,7 +642,7 @@ pub fn plan_place(
                 let tid: TerminalId = ids.fresh();
                 ops.push(Op::AddTerminal {
                     id: tid,
-                    terminal: Terminal { component: c, label: Some(label.clone()), key: Some(PointKey::Def(label.clone())), accepts: td.accepts },
+                    terminal: Terminal { owner: c.into(), label: Some(label.clone()), key: Some(PointKey::Def(label.clone())), accepts: td.accepts },
                 });
                 cps.insert(tid, td.at);
                 terminals.push((td.key.clone(), label.clone(), tid));
@@ -753,7 +753,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
         let nt: TerminalId = ids.fresh();
         ops.push(Op::AddTerminal {
             id: nt,
-            terminal: Terminal { component: into, label, key: Some(PointKey::Def(name)), accepts: Default::default() },
+            terminal: Terminal { owner: into.into(), label, key: Some(PointKey::Def(name)), accepts: Default::default() },
         });
         map.insert(old, nt);
         nt

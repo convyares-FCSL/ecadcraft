@@ -587,7 +587,7 @@ fn copy_batch(
         for (src_t, term) in sdoc.terminals_of(src_comp) {
             let nt: TerminalId = cx.ids.fresh();
             term_map.insert(src_t, nt);
-            t.ops.push(Op::AddTerminal { id: nt, terminal: Terminal { component: new_comp, ..term.clone() } });
+            t.ops.push(Op::AddTerminal { id: nt, terminal: Terminal { owner: new_comp.into(), ..term.clone() } });
         }
         let new_rep: RepresentationId = cx.ids.fresh();
         let mut items = Vec::new();

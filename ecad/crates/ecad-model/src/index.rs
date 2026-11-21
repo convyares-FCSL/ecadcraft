@@ -72,7 +72,7 @@ pub(crate) struct Index {
     /// A cable reference's named point → the cable whose core lists it (design 072 §4.4, F4).
     pub(crate) cable_points: Multi<TerminalId, CableId>,
     /// Device → its terminals.
-    pub(crate) component_terminals: Multi<DeviceId, TerminalId>,
+    pub(crate) component_terminals: Multi<crate::doc::TerminalOwner, TerminalId>,
     /// PLC station → the modules naming it (design 072 §3).
     pub(crate) station_modules: Multi<DeviceId, DeviceId>,
     /// Subject → representations depicting it.
@@ -275,7 +275,7 @@ impl Index {
     }
 
     pub(crate) fn terminal(&mut self, id: TerminalId, t: &Terminal, delta: Delta) {
-        bump(&mut self.component_terminals, t.component, id, delta);
+        bump(&mut self.component_terminals, t.owner, id, delta);
     }
 
     pub(crate) fn representation(&mut self, id: RepresentationId, r: &Representation, delta: Delta) {

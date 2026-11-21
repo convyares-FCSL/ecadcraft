@@ -177,20 +177,24 @@ impl Plc {
                 }
                 // Brief 045b: a card's channel points, and the nets they are on (used or spare).
                 Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
-                    out.insert(terminal.component);
+                    out.extend(terminal.device());
                 }
                 // Design 072 §4.4: the commit's rewrite made, removed or moved a wire: the devices
                 // at its ends, and the cards on its net.
                 Op::CreateWire { wire, .. } | Op::DeleteWire { wire, .. } | Op::ModifyWire { after: wire, .. } => {
                     for t in &wire.ends {
                         if let Some(x) = doc.terminals.get(t) {
-                            out.insert(x.component);
+                            out.extend(x.device());
                         }
                     }
                     for w in doc.wires_of_net(wire.net) {
                         let ends = doc.wires.get(&w).map(|x| x.ends);
                         out.extend(
-                            ends.iter().flatten().filter_map(|t| doc.terminals.get(t)).map(|x| x.component).filter(|c| self.cards.contains_key(c)),
+                            ends.iter()
+                                .flatten()
+                                .filter_map(|t| doc.terminals.get(t))
+                                .filter_map(|x| x.device())
+                                .filter(|c| self.cards.contains_key(c)),
                         );
                     }
                 }
@@ -206,12 +210,12 @@ impl Plc {
                 // A route on one of a card's points re-routed (design 072 §4.3).
                 Op::AddRoute { route, .. } | Op::RemoveRoute { route, .. } => {
                     out.extend(
-                        route.points_landed().filter_map(|t| doc.terminals.get(&t)).map(|x| x.component).filter(|c| self.cards.contains_key(c)),
+                        route.points_landed().filter_map(|t| doc.terminals.get(&t)).filter_map(|x| x.device()).filter(|c| self.cards.contains_key(c)),
                     );
                 }
                 Op::ModifyRoute { before, after, .. } => {
                     let points = before.points_landed().chain(after.points_landed());
-                    out.extend(points.filter_map(|t| doc.terminals.get(&t)).map(|x| x.component).filter(|c| self.cards.contains_key(c)));
+                    out.extend(points.filter_map(|t| doc.terminals.get(&t)).filter_map(|x| x.device()).filter(|c| self.cards.contains_key(c)));
                 }
                 // A text style or standard changed: the bands of every card (rare).
                 Op::SetStyle { .. } | Op::SetStandard { .. } => styles = true,

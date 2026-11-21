@@ -118,14 +118,14 @@ pub(crate) fn base() -> Base {
         terminals: vec![TerminalDef { key: "1".parse().unwrap(), label: None, at: Pt::new(0.0, 2.0), accepts: Default::default() }],
         ..Default::default()
     };
-    let comp = ids.fresh();
+    let comp: ecad_model::DeviceId = ids.fresh();
     let mut comp_v = Device { definition: Some(def), ..Device::default() };
     comp_v.properties.insert("note".into(), "K1".into());
     let term = ids.fresh();
-    let term_v = Terminal { component: comp, label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() };
+    let term_v = Terminal { owner: comp.into(), label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() };
     // More connection points of the device, for the wires' other ends.
     let (term2, term3, term4) = (ids.fresh(), ids.fresh(), ids.fresh());
-    let point = |label: &str| Terminal { component: comp, label: Some(label.into()), key: None, accepts: Default::default() };
+    let point = |label: &str| Terminal { owner: comp.into(), label: Some(label.into()), key: None, accepts: Default::default() };
     let sym = ids.fresh();
     let sym_v = Item { page, style: style(layer), kind: ItemKind::Symbol(SymbolInstance { definition: def, placement: Placement::default() }) };
     let item = ids.fresh();
@@ -275,7 +275,7 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
             before: b.comp_v.clone(),
             after: Device { device_type: ecad_model::DeviceType::of_group(ecad_model::DeviceGroup::Motor), ..b.comp_v.clone() },
         },
-        Op::AddTerminal { id: b.ids.fresh(), terminal: Terminal { component: b.comp, label: None, key: None, accepts: Default::default() } },
+        Op::AddTerminal { id: b.ids.fresh(), terminal: Terminal { owner: b.comp.into(), label: None, key: None, accepts: Default::default() } },
         Op::RemoveTerminal { id: b.term, terminal: b.term_v.clone() },
         Op::LinkRepresentation { id: b.ids.fresh(), rep: b.rep_wire_v.clone() },
         Op::ModifyRepresentation { id: b.rep_wire, before: b.rep_wire_v.clone(), after: rep_after },
@@ -532,7 +532,7 @@ fn a_later_op_sees_what_an_earlier_op_created() {
     let wire = b.ids.fresh();
     let ops = vec![
         Op::CreateDevice { id: comp, device: Device::default() },
-        Op::AddTerminal { id: term, terminal: Terminal { component: comp, label: None, key: None, accepts: Default::default() } },
+        Op::AddTerminal { id: term, terminal: Terminal { owner: comp.into(), label: None, key: None, accepts: Default::default() } },
         Op::CreateWire { id: wire, wire: Wire::new(b.ids.fresh(), b.ids.fresh(), term, b.term3) },
         Op::ModifyCable {
             id: b.cable,
@@ -891,13 +891,16 @@ impl Gen {
             },
             16..=17 => {
                 let component = if self.rng.chance(85) { self.rng.pick_key(&doc.devices).unwrap_or_else(|| self.comp()) } else { self.comp() };
-                Op::AddTerminal { id: fresh_in!(self, terms), terminal: Terminal { component, label: None, key: None, accepts: Default::default() } }
+                Op::AddTerminal {
+                    id: fresh_in!(self, terms),
+                    terminal: Terminal { owner: component.into(), label: None, key: None, accepts: Default::default() },
+                }
             }
             18 => match self.rng.pick_key(&doc.terminals) {
                 Some(id) => Op::RemoveTerminal {
                     id,
                     terminal: doc.terminals.get(&id).cloned().unwrap_or(Terminal {
-                        component: self.comp(),
+                        owner: self.comp().into(),
                         label: None,
                         key: None,
                         accepts: Default::default(),
@@ -905,7 +908,7 @@ impl Gen {
                 },
                 None => Op::AddTerminal {
                     id: fresh_in!(self, terms),
-                    terminal: Terminal { component: self.comp(), label: None, key: None, accepts: Default::default() },
+                    terminal: Terminal { owner: self.comp().into(), label: None, key: None, accepts: Default::default() },
                 },
             },
             19..=21 => Op::LinkRepresentation { id: fresh_in!(self, reps), rep: self.rep(doc) },

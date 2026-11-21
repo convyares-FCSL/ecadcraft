@@ -542,6 +542,14 @@ fn object<T: PartialEq + Clone>(
     }
 }
 
+/// The object that owns a connection point.
+fn owner_obj(owner: crate::doc::TerminalOwner) -> Obj {
+    match owner {
+        crate::doc::TerminalOwner::Device(c) => Obj::Device(c),
+        crate::doc::TerminalOwner::Aid(a) => Obj::Aid(a),
+    }
+}
+
 /// The name of `obj` for texts, from whichever state holds it.
 pub fn name_of(docs: &[&Document], obj: Obj) -> String {
     let tag_of = |c: DeviceId| docs.iter().find_map(|d| d.devices.get(&c)).and_then(|c| c.tag().map(str::to_string)).unwrap_or_else(|| c.short());
@@ -555,7 +563,10 @@ pub fn name_of(docs: &[&Document], obj: Obj) -> String {
         Obj::Terminal(t) => match docs.iter().find_map(|d| d.terminals.get(&t)) {
             Some(term) => format!(
                 "{}:{}",
-                tag_of(term.component),
+                match term.owner {
+                    crate::doc::TerminalOwner::Device(c) => tag_of(c),
+                    crate::doc::TerminalOwner::Aid(a) => a.short(),
+                },
                 term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| t.short())
             ),
             None => t.short(),
@@ -616,7 +627,7 @@ fn page_in(doc: &Document, obj: Obj) -> Option<PageId> {
         Obj::Cable(c) => doc.representations_of(Subject::Cable(c)).map(|(_, r)| r.page).next(),
         Obj::Route(r) => doc.routes.get(&r).map(|r| r.page),
         Obj::Aid(x) => doc.representations_of(Subject::Aid(x)).map(|(_, r)| r.page).next(),
-        Obj::Terminal(t) => doc.terminals.get(&t).and_then(|t| page_in(doc, Obj::Device(t.component))),
+        Obj::Terminal(t) => doc.terminals.get(&t).and_then(|t| page_in(doc, owner_obj(t.owner))),
         _ => None,
     }
 }
@@ -1202,7 +1213,7 @@ fn obj_by_hex(docs: &[&Document], hex: &str) -> Option<Obj> {
 /// drawing items) that the source has and the result lacks.
 fn device_needs(m: &Document, s: &Document, c: DeviceId) -> Vec<Obj> {
     let mut out: Vec<Obj> =
-        s.terminals.iter().filter(|(k, t)| t.component == c && !m.terminals.contains_key(k)).map(|(k, _)| Obj::Terminal(*k)).collect();
+        s.terminals.iter().filter(|(k, t)| t.device() == Some(c) && !m.terminals.contains_key(k)).map(|(k, _)| Obj::Terminal(*k)).collect();
     for (r, rep) in s.representations.iter().filter(|(_, r)| r.subject == Subject::Device(c)) {
         if !m.representations.contains_key(r) {
             out.push(Obj::Representation(*r));
@@ -1377,7 +1388,7 @@ fn refs(m: &Document, obj: Obj) -> Vec<(Obj, Use)> {
         }
         Obj::Terminal(t) => {
             if let Some(t) = m.terminals.get(&t) {
-                out.push((Obj::Device(t.component), Use::Whole));
+                out.push((owner_obj(t.owner), Use::Whole));
             }
         }
         Obj::Representation(r) => {
@@ -1459,7 +1470,7 @@ fn users_of(m: &Document, y: Obj) -> Vec<Obj> {
             all.extend(m.representations.iter().filter(|(_, r)| r.subject == Subject::Route(x)).map(|(k, _)| Obj::Representation(*k)));
         }
         Obj::Device(c) => {
-            all.extend(m.terminals.iter().filter(|(_, t)| t.component == c).map(|(k, _)| Obj::Terminal(*k)));
+            all.extend(m.terminals.iter().filter(|(_, t)| t.device() == Some(c)).map(|(k, _)| Obj::Terminal(*k)));
             all.extend(m.representations.iter().filter(|(_, r)| r.subject == Subject::Device(c)).map(|(k, _)| Obj::Representation(*k)));
         }
         Obj::Wire(c) => {
@@ -1692,7 +1703,7 @@ fn objs_of(ops: &[Op]) -> BTreeSet<Obj> {
             }
             Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
                 out.insert(Obj::Terminal(*id));
-                out.insert(Obj::Device(terminal.component));
+                out.insert(owner_obj(terminal.owner));
             }
             Op::LinkRepresentation { id, .. } | Op::UnlinkRepresentation { id, .. } => {
                 out.insert(Obj::Representation(*id));
@@ -2524,7 +2535,7 @@ mod tests {
         d.devices.insert(DeviceId(c), Device::default().with_tag(Some(tag_text)));
         for t in terminals {
             d.terminals
-                .insert(TerminalId(*t), Terminal { component: DeviceId(c), label: Some(format!("A{t}")), key: None, accepts: Default::default() });
+                .insert(TerminalId(*t), Terminal { owner: DeviceId(c).into(), label: Some(format!("A{t}")), key: None, accepts: Default::default() });
         }
     }
 

@@ -352,7 +352,7 @@ impl Document {
 
         let mut terminals = touched.terminals.clone();
         for c in &touched.devices {
-            terminals.extend(referrers(&ix.component_terminals, c));
+            terminals.extend(referrers(&ix.component_terminals, &crate::doc::TerminalOwner::Device(*c)));
         }
         for id in &terminals {
             if let Some(t) = self.terminals.get(id) {
@@ -535,7 +535,17 @@ impl Document {
 
     /// I8.
     fn check_terminal(&self, id: TerminalId, t: &Terminal) -> Result<()> {
-        let Some(c) = self.devices.get(&t.component) else {
+        let device = match t.owner {
+            crate::doc::TerminalOwner::Device(d) => d,
+            crate::doc::TerminalOwner::Aid(a) => {
+                return match self.aids.get(&a) {
+                    Some(crate::aid::Aid::Continuation { .. }) => Ok(()),
+                    Some(_) => bad(format!("terminal {id} belongs to drawing aid {a}, which is not a continuation")),
+                    None => bad(format!("terminal {id} belongs to a missing drawing aid")),
+                };
+            }
+        };
+        let Some(c) = self.devices.get(&device) else {
             return bad(format!("terminal {id} belongs to a missing component"));
         };
         // Design 072 §3: a PLC module's point is a channel's (`.3.in`) or one of its own symbol's
@@ -545,7 +555,7 @@ impl Document {
             && let Some(crate::PointKey::Def(k)) = &t.key
             && !c.definition.and_then(|d| self.definitions.get(&d)).is_some_and(|d| d.terminals.iter().any(|td| td.key.as_def() == Some(k)))
         {
-            return bad(format!("terminal {id} of PLC module {} is keyed {k}: neither a channel point nor a point of its symbol", t.component));
+            return bad(format!("terminal {id} of PLC module {} is keyed {k}: neither a channel point nor a point of its symbol", device));
         }
         Ok(())
     }
@@ -661,10 +671,10 @@ impl Document {
                 }
                 continue;
             }
-            let Subject::Device(c) = r.subject else {
+            if !matches!(r.subject, Subject::Device(_) | Subject::Aid(_)) {
                 return bad(format!("representation {id} of a non-component has connection points"));
-            };
-            if self.terminals.get(t).map(|t| t.component) != Some(c) {
+            }
+            if self.terminals.get(t).map(|t| t.owner.subject()) != Some(r.subject) {
                 return bad(format!("representation {id} places terminal {t} of another component"));
             }
             if !p.is_finite() {

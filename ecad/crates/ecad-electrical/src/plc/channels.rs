@@ -241,7 +241,7 @@ pub fn plan_cell(
         ops.push(Op::AddTerminal {
             id: t,
             terminal: Terminal {
-                component: card,
+                owner: card.into(),
                 label: Some(pin.clone()),
                 key: Some(key(j.index, *role).ok_or(CmdError::refused("That channel has no such point."))?),
                 accepts: Default::default(),

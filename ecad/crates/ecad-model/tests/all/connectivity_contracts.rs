@@ -51,7 +51,7 @@ impl P {
             ops.push(Op::AddTerminal {
                 id: t,
                 terminal: Terminal {
-                    component: c,
+                    owner: c.into(),
                     label: Some(k.to_string()),
                     key: Some(k.to_string().parse().unwrap()),
                     accepts: Default::default(),

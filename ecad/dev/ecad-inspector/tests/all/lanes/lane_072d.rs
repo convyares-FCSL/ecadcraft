@@ -26,7 +26,7 @@ fn a_wires_values_and_its_modify_op_are_shown_raw_and_readable() {
         potential: Text::new("24V").ok(),
         ..Wire::new(net, conductor, a, b)
     };
-    let point = |label: &str| Terminal { component: k, label: Some(label.into()), key: None, accepts: Default::default() };
+    let point = |label: &str| Terminal { owner: k.into(), label: Some(label.into()), key: None, accepts: Default::default() };
     l.commit(
         Author::User,
         "wire",
@@ -158,7 +158,7 @@ fn core_positions_are_shown_raw_and_readable() {
             Op::CreateDevice { id: d, device: Device::default() },
             Op::AddTerminal {
                 id: t,
-                terminal: Terminal { component: d, label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() },
+                terminal: Terminal { owner: d.into(), label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() },
             },
             Op::AddRoute { id: r, route: loose },
             Op::CreateCable { id: k, cable: Cable { cores: vec![on_line, spare], ..Cable::default() } },
@@ -213,7 +213,8 @@ fn accepts_is_shown_raw_readable_and_on_the_device_row() {
     let mut l = history();
     let mut ids = IdAllocator::seeded(74);
     let (d, t): (DeviceId, TerminalId) = (ids.fresh(), ids.fresh());
-    let bar = Terminal { component: d, label: Some("PE".into()), key: Some("PE".parse().unwrap()), accepts: ecad_model::Accepts::new(12).unwrap() };
+    let bar =
+        Terminal { owner: d.into(), label: Some("PE".into()), key: Some("PE".parse().unwrap()), accepts: ecad_model::Accepts::new(12).unwrap() };
     l.commit(Author::User, "bar", vec![Op::CreateDevice { id: d, device: Device::default() }, Op::AddTerminal { id: t, terminal: bar }]).unwrap();
     let path = written(&dir, &l);
     let f = FileSource::from_path(&path);
@@ -341,7 +342,8 @@ fn a_cable_with_two_slashes_and_one_wire_per_core_is_shown_raw_and_readable() {
     let (i1, i2, r1, r2): (ItemId, ItemId, RepresentationId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
     let layer = *l.document().layers.keys().next().unwrap();
     let style = Style { layer, color: ecad_model::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
-    let point = |component: DeviceId, label: &str| Terminal { component, label: Some(label.into()), key: None, accepts: Default::default() };
+    let point =
+        |component: DeviceId, label: &str| Terminal { owner: component.into(), label: Some(label.into()), key: None, accepts: Default::default() };
     let arrow = || {
         let mut d = Device::default();
         d.properties.insert(ecad_model::connectivity::KIND.into(), ecad_model::connectivity::CONTINUATION.into());

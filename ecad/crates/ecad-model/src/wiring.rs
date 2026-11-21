@@ -528,7 +528,7 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetKey>, BTreeSet<N
             }
             Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
                 add(Node::Terminal(*id), &mut nets);
-                for (t, _) in doc.terminals_of(terminal.component) {
+                for (t, _) in doc.terminals_of(terminal.owner) {
                     add(Node::Terminal(t), &mut nets);
                 }
             }

@@ -757,7 +757,7 @@ impl Outputs {
         });
         let Some(t) = t else { return EndCell { order, ..EndCell::default() } };
         let Some(term) = doc.terminals.get(&t) else { return EndCell { order, ..EndCell::default() } };
-        let c = term.component;
+        let Some(c) = term.device() else { return EndCell { order, ..EndCell::default() } };
         match crate::wires::kind_of(doc, c) {
             Some(ecad_model::connectivity::CONTINUATION) => {
                 let name = doc.devices.get(&c).and_then(|x| x.properties.get(ecad_model::connectivity::NAME)).cloned().unwrap_or_default();
@@ -905,7 +905,7 @@ impl Outputs {
         for m in &cab.cores {
             let Some(cond) = m.wire().and_then(|w| doc.wires.get(&w)) else { continue };
             for t in &cond.ends {
-                let Some(c) = doc.terminals.get(t).map(|x| x.component) else { continue };
+                let Some(c) = doc.terminals.get(t).and_then(|x| x.device()) else { continue };
                 if crate::wires::kind_of(doc, c).is_some() {
                     continue;
                 }

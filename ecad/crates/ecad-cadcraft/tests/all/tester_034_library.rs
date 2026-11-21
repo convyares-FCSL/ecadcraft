@@ -234,7 +234,7 @@ fn term(v: &Value, label: &str) -> TerminalId {
 
 /// Every label of a device's points, sorted.
 fn device_labels(d: &Document, c: DeviceId) -> BTreeSet<String> {
-    d.terminals.values().filter(|t| t.component == c).filter_map(|t| t.label.clone()).collect()
+    d.terminals.values().filter(|t| t.device() == Some(c)).filter_map(|t| t.label.clone()).collect()
 }
 
 fn set(v: &[&str]) -> BTreeSet<String> {

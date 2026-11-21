@@ -1668,7 +1668,7 @@ impl Scope {
             if let Some(c) = doc.wires.get(&w) {
                 for t in &c.ends {
                     if let Some(x) = doc.terminals.get(t) {
-                        s.devices.insert(x.component);
+                        s.devices.extend(x.device());
                     }
                 }
             }
@@ -1696,12 +1696,12 @@ impl Scope {
                 Op::CreateWire { wire, .. } | Op::DeleteWire { wire, .. } => {
                     for t in &wire.ends {
                         if let Some(x) = doc.terminals.get(t) {
-                            self.devices.insert(x.component);
+                            self.devices.extend(x.device());
                         }
                     }
                 }
                 Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
-                    self.devices.insert(terminal.component);
+                    self.devices.extend(terminal.device());
                 }
                 Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
                     self.devices.insert(*id);

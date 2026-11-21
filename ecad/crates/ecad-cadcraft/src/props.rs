@@ -87,7 +87,7 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
                 out.insert(ObjectRef::Device(*id));
             }
             Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
-                out.insert(ObjectRef::Device(terminal.component));
+                out.extend(terminal.device().map(ObjectRef::Device));
             }
             Op::ModifyWire { id, .. } => {
                 out.insert(ObjectRef::Wire(*id));
@@ -95,7 +95,7 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
             Op::CreateWire { id, wire } | Op::DeleteWire { id, wire } => {
                 out.insert(ObjectRef::Wire(*id));
                 // The devices at its ends: a wire's net (brief 022) is shown through them.
-                out.extend(wire.ends.iter().filter_map(|t| doc.terminals.get(t)).map(|t| ObjectRef::Device(t.component)));
+                out.extend(wire.ends.iter().filter_map(|t| doc.terminals.get(t)).filter_map(|t| t.device()).map(ObjectRef::Device));
             }
             Op::CreateCable { id, cable } | Op::DeleteCable { id, cable } => {
                 out.insert(ObjectRef::Cable(*id));
@@ -103,11 +103,11 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
             }
             // A route has no properties (design 072 F31); the devices it lands on show its net.
             Op::AddRoute { route, .. } | Op::RemoveRoute { route, .. } => {
-                out.extend(route.points_landed().filter_map(|t| doc.terminals.get(&t)).map(|t| ObjectRef::Device(t.component)));
+                out.extend(route.points_landed().filter_map(|t| doc.terminals.get(&t)).filter_map(|t| t.device()).map(ObjectRef::Device));
             }
             Op::ModifyRoute { before, after, .. } => {
                 let landed = before.points_landed().chain(after.points_landed());
-                out.extend(landed.filter_map(|t| doc.terminals.get(&t)).map(|t| ObjectRef::Device(t.component)));
+                out.extend(landed.filter_map(|t| doc.terminals.get(&t)).filter_map(|t| t.device()).map(ObjectRef::Device));
             }
             // No panel shows an aid yet (design 072 §6.2; lane F1b/F1c).
             Op::CreateAid { .. } | Op::DeleteAid { .. } | Op::ModifyAid { .. } => {}
@@ -349,13 +349,13 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         // From and To name each end's device and connection point: a renamed device, or a
         // connection point added or removed, changes them.
         let ends = doc.wires.get(w).map(|c| c.ends.to_vec()).unwrap_or_default();
-        v.deps.extend(ends.iter().filter_map(|t| doc.terminals.get(t)).map(|t| ObjectRef::Device(t.component)));
+        v.deps.extend(ends.iter().filter_map(|t| doc.terminals.get(t)).filter_map(|t| t.device()).map(ObjectRef::Device));
         // Brief 022: the number, potential and Net block read the whole net: its conductors and
         // the devices (junctions and continuations included) at its connection points.
         let conn = doc.connectivity();
         if let Some(net) = conn.net_of_conductor(*w).and_then(|id| conn.net(id)) {
             v.deps.extend(net.wires.iter().map(|c| ObjectRef::Wire(*c)));
-            v.deps.extend(net.terminals.iter().filter_map(|t| doc.terminals.get(t)).map(|t| ObjectRef::Device(t.component)));
+            v.deps.extend(net.terminals.iter().filter_map(|t| doc.terminals.get(t)).filter_map(|t| t.device()).map(ObjectRef::Device));
         }
         v.sections.push(wire_section(doc, *w));
     } else if let [c] = k.cables.iter().copied().collect::<Vec<_>>().as_slice() {
@@ -877,8 +877,8 @@ fn wiring_rows(doc: &Document, w: WireId) -> (Vec<Row>, Vec<Row>) {
     let mut names: BTreeMap<String, usize> = BTreeMap::new();
     for t in &net.terminals {
         if let Some(x) = doc.terminals.get(t)
-            && crate::wires::kind_of(doc, x.component) == Some(ecad_model::connectivity::CONTINUATION)
-            && let Some(name) = doc.devices.get(&x.component).and_then(|c| c.properties.get(ecad_model::connectivity::NAME))
+            && x.device().and_then(|c| crate::wires::kind_of(doc, c)) == Some(ecad_model::connectivity::CONTINUATION)
+            && let Some(name) = x.device().and_then(|c| doc.devices.get(&c)).and_then(|c| c.properties.get(ecad_model::connectivity::NAME))
         {
             *names.entry(name.clone()).or_default() += 1;
         }

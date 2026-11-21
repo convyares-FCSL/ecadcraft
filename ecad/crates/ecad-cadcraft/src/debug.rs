@@ -1003,7 +1003,10 @@ pub fn op_targets(op: &Op) -> Vec<ObjectId> {
         }
         Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
             out.push(ObjectId::Terminal(*id));
-            out.push(ObjectId::Device(terminal.component));
+            out.push(match terminal.owner {
+                ecad_model::TerminalOwner::Device(c) => ObjectId::Device(c),
+                ecad_model::TerminalOwner::Aid(a) => ObjectId::Aid(a),
+            });
         }
         Op::LinkRepresentation { id, rep } | Op::UnlinkRepresentation { id, rep } => {
             out.push(ObjectId::Representation(*id));
@@ -1123,7 +1126,7 @@ pub fn resolve(doc: &Document, mapped: Mapped) -> Resolved {
         _ => r.representation.and_then(|id| doc.representations.get(&id)).map(|rep| rep.subject),
     };
     r.terminals = match r.subject {
-        Some(Subject::Device(c)) => doc.terminals.iter().filter(|(_, t)| t.component == c).map(|(id, _)| *id).collect(),
+        Some(Subject::Device(c)) => doc.terminals.iter().filter(|(_, t)| t.device() == Some(c)).map(|(id, _)| *id).collect(),
         Some(Subject::Wire(c)) => doc.wires.get(&c).map(|x| x.ends.to_vec()).unwrap_or_default(),
         Some(Subject::Route(x)) => doc.routes.get(&x).map(|r| r.points_landed().collect()).unwrap_or_default(),
         _ => Vec::new(),
@@ -1188,9 +1191,13 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
             .map(|(i, _)| ObjectId::Device(*i))
             .chain(doc.items.iter().filter(|(_, it)| matches!(&it.kind, ItemKind::Symbol(s) if s.definition == d)).map(|(i, _)| ObjectId::Item(*i)))
             .collect(),
-        ObjectId::Device(c) => {
-            doc.terminals.iter().filter(|(_, t)| t.component == c).map(|(i, _)| ObjectId::Terminal(*i)).chain(reps_of(Subject::Device(c))).collect()
-        }
+        ObjectId::Device(c) => doc
+            .terminals
+            .iter()
+            .filter(|(_, t)| t.device() == Some(c))
+            .map(|(i, _)| ObjectId::Terminal(*i))
+            .chain(reps_of(Subject::Device(c)))
+            .collect(),
         ObjectId::Terminal(t) => doc
             .wires
             .iter()
@@ -1286,7 +1293,7 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
         ObjectId::Aid(a) => subject_label(doc, Subject::Aid(a)),
         ObjectId::Terminal(i) => doc.terminals.get(&i).map_or_else(String::new, |t| {
             let name = t.label.clone().or_else(|| t.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| i.short());
-            format!("{}:{name}", subject_label(doc, Subject::Device(t.component)))
+            format!("{}:{name}", subject_label(doc, t.owner.subject()))
         }),
         ObjectId::Representation(i) => doc.representations.get(&i).map_or_else(String::new, |r| {
             // A cable's reference end shows the text it draws (design 009 §8).

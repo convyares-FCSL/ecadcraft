@@ -297,7 +297,7 @@ pub fn starter_keys() -> Vec<StarterKey> {
 pub fn type_of_terminal(doc: &Document, t: TerminalId) -> &'static TermType {
     let from_reps = doc.representations_showing(t).find_map(|(_, r)| crate::devices::rep_starter(doc, r));
     let starter = from_reps.or_else(|| {
-        let c = doc.terminals.get(&t)?.component;
+        let c = doc.terminals.get(&t)?.device()?;
         let d = doc.devices.get(&c)?.definition?;
         crate::symbols::of_definition(doc.definitions.get(&d)?)
     });
@@ -393,7 +393,7 @@ pub fn shown_label(doc: &Document, t: TerminalId) -> Option<String> {
     let term = doc.terminals.get(&t)?;
     let p = term.label.clone()?;
     let (n, _) = level_of(doc, t);
-    let c = term.component;
+    let c = term.device()?;
     if let Some(v) = doc.devices.get(&c).and_then(|x| x.properties.get(&label_key(&p, n))) {
         return Some(v.clone());
     }

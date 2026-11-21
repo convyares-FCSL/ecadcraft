@@ -250,7 +250,7 @@ fn d_merging_a_renamed_device_moves_its_symbols_terminals_and_wires() {
     let reps = doc.representations_of(Subject::Device(f.k1)).count();
     assert_eq!(reps, 4);
     let t = doc.routes[&w].ends[0].point().unwrap();
-    assert_eq!(doc.terminals[&t].component, f.k1, "the wire stays attached, now to -K01");
+    assert_eq!(doc.terminals[&t].device().unwrap(), f.k1, "the wire stays attached, now to -K01");
     assert_eq!(doc.terminals[&t].label.as_deref(), Some("33"), "renumbered as when joining");
     assert!(f.h.p(|p| p.ledger.log().last().unwrap().label.clone()).starts_with("Merge into -K01"));
     f.h.check();

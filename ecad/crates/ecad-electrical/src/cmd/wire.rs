@@ -84,15 +84,15 @@ pub fn net_view(doc: &Document, net: &NetData) -> NetView {
     let points = net
         .terminals
         .iter()
-        .filter(|t| doc.terminals.get(t).is_none_or(|x| !matches!(wires::kind_of(doc, x.component), Some(CONTINUATION))))
+        .filter(|t| doc.terminals.get(t).is_none_or(|x| !matches!(x.device().and_then(|c| wires::kind_of(doc, c)), Some(CONTINUATION))))
         .map(|t| (*t, wires::point_words(doc, *t)))
         .collect();
     let continuations = net
         .terminals
         .iter()
         .filter_map(|t| doc.terminals.get(t))
-        .filter(|x| wires::kind_of(doc, x.component) == Some(CONTINUATION))
-        .filter_map(|x| doc.devices.get(&x.component).and_then(|c| c.properties.get(NAME)).cloned())
+        .filter(|x| x.device().and_then(|c| wires::kind_of(doc, c)) == Some(CONTINUATION))
+        .filter_map(|x| x.device().and_then(|c| doc.devices.get(&c)).and_then(|c| c.properties.get(NAME)).cloned())
         .collect();
     let looks = crate::styles::wire::WireLooks::new(doc);
     let cats: BTreeSet<StyleRef> = net.wires.iter().filter_map(|c| looks.category(doc, *c).0).collect();

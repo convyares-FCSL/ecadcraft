@@ -1060,7 +1060,7 @@ fn only_the_active_page_is_drawn_and_another_page_shows_the_new_text_when_made_a
 
     // A commit that moves the cable's wires on Field (K2 moves, its wires follow) but does not
     // change what Supply shows: the change log leaves Supply out.
-    let k2 = r.h.p(|p| p.ledger.document().clone()).terminals[&r.k2[0]].component;
+    let k2 = r.h.p(|p| p.ledger.document().clone()).terminals[&r.k2[0]].device().unwrap();
     r.h.activate(r.field);
     let handles = r.h.rep_handles(r.field, k2);
     let n = r.h.p(|p| p.change_count());

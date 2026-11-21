@@ -153,12 +153,12 @@ pub fn strips(doc: &Document, named: &[String], scope: &Scope) -> Result<BTreeSe
             for t in named {
                 let n = hex(t, "strips")?;
                 let c = match doc.terminals.get(&TerminalId(n)) {
-                    Some(t) => t.component,
-                    None => DeviceId(n),
+                    Some(t) => t.device(),
+                    None => Some(DeviceId(n)),
                 };
-                if crate::strips::strip_of(doc, c).is_none() {
+                let Some(c) = c.filter(|c| crate::strips::strip_of(doc, *c).is_some()) else {
                     return Err(CmdError::refused(format!("{t} in `strips` is not a terminal strip or one of its terminals.")));
-                }
+                };
                 out.insert(c);
             }
             out

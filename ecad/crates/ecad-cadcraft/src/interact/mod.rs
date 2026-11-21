@@ -609,8 +609,8 @@ fn terminal_lines(doc: &Document, t: TerminalId) -> Vec<String> {
     let term = doc.terminals.get(&t);
     let of = term
         .map(|x| {
-            let c = doc.devices.get(&x.component);
-            c.and_then(|c| c.tag()).map_or_else(|| x.component.hex(), str::to_string)
+            let c = x.device().and_then(|c| doc.devices.get(&c));
+            c.and_then(|c| c.tag()).map_or_else(|| x.owner.subject_hex(), str::to_string)
         })
         .unwrap_or_default();
     let mut lines = vec![
@@ -703,7 +703,7 @@ fn wire_lines(doc: &Document, w: Option<WireId>, route: Option<RouteId>, page: P
             let t = c.end(end);
             lines.push(match doc.terminals.get(&t) {
                 // A continuation (brief 022) is named by what it is.
-                Some(x) if crate::wires::kind_of(doc, x.component).is_some() => {
+                Some(x) if x.device().and_then(|c| crate::wires::kind_of(doc, c)).is_some() => {
                     let words = crate::wires::point_words(doc, t);
                     match words.strip_prefix('\u{2192}') {
                         Some(name) => format!("End {end:?}: continuation {name}"),
@@ -711,8 +711,11 @@ fn wire_lines(doc: &Document, w: Option<WireId>, route: Option<RouteId>, page: P
                     }
                 }
                 Some(x) => {
-                    let of =
-                        doc.devices.get(&x.component).and_then(|c| c.tag()).map_or_else(|| short(&x.component.hex()).to_string(), str::to_string);
+                    let of = x
+                        .device()
+                        .and_then(|c| doc.devices.get(&c))
+                        .and_then(|c| c.tag())
+                        .map_or_else(|| short(&x.owner.subject_hex()).to_string(), str::to_string);
                     format!("End {end:?}: connection point {} of {of}", terminal_name(doc, t))
                 }
                 None => format!("End {end:?}: not connected"),

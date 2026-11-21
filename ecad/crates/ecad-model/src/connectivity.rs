@@ -213,7 +213,7 @@ fn present(doc: &Document, node: &Node) -> bool {
 
 /// The name group a terminal's component joins it to, if it is a named continuation.
 fn name_of_terminal(doc: &Document, t: TerminalId) -> Option<String> {
-    let c = doc.terminals.get(&t)?.component;
+    let c = doc.terminals.get(&t)?.device()?;
     continuation_key(&doc.devices.get(&c)?.properties)
 }
 
@@ -241,12 +241,12 @@ fn bridged(doc: &Document, t: TerminalId) -> Vec<TerminalId> {
             return Vec::new();
         }
         return doc
-            .terminals_of(term.component)
+            .terminals_of(term.owner)
             .filter(|(id, x)| *id != t && x.label == term.label && x.key.as_ref().is_some_and(|k| keys.contains(k)))
             .map(|(id, _)| id)
             .collect();
     }
-    let Some(def) = doc.devices.get(&term.component).and_then(|c| c.definition).and_then(|d| doc.definitions.get(&d)) else {
+    let Some(def) = term.device().and_then(|d| doc.devices.get(&d)).and_then(|c| c.definition).and_then(|d| doc.definitions.get(&d)) else {
         return Vec::new();
     };
     if def.bridges.is_empty() {
@@ -256,7 +256,7 @@ fn bridged(doc: &Document, t: TerminalId) -> Vec<TerminalId> {
     if keys.is_empty() {
         return Vec::new();
     }
-    doc.terminals_of(term.component).filter(|(id, x)| *id != t && x.key.as_ref().is_some_and(|k| keys.contains(k))).map(|(id, _)| id).collect()
+    doc.terminals_of(term.owner).filter(|(id, x)| *id != t && x.key.as_ref().is_some_and(|k| keys.contains(k))).map(|(id, _)| id).collect()
 }
 
 /// About how many edges `node` has, read from the indexes without listing them.
