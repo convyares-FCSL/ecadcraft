@@ -21,6 +21,8 @@ sha2 = { version = "0.10", default-features = false }
 # database and its transactions are ecad-store's (`ecad_store::db`).
 redb = { workspace = true }
 ruzstd = { workspace = true }
+# Date text of the history graph (no clock: the caller passes the zone's offset).
+chrono = { version = "0.4.45", default-features = false, features = ["std"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 zstd = { workspace = true }

@@ -6,6 +6,7 @@
 use std::collections::BTreeMap;
 
 use ecad_model::{Device, DeviceId, Document, IdAllocator, ObjectRef, Op, Properties, TextField};
+use serde_json::{Value, json};
 
 use crate::bom::*;
 use crate::designations::{Aspect, Pending};
@@ -40,6 +41,21 @@ pub struct PartlinePlan {
     pub rows: Vec<(DeviceId, Vec<u8>)>,
     pub label: String,
     pub message: String,
+}
+
+/// The JSON `partline` answers for each device and the lines written (`rows`): with no `message`
+/// nothing changed (`{changed: false, devices}`); else one device's row, or `{devices}` for
+/// several, with `changed` and the message.
+pub fn partline_json(rows: &[(DeviceId, Vec<u8>)], message: Option<&str>) -> Value {
+    let rows: Vec<Value> = rows.iter().map(|(c, ns)| json!({"component": c.hex(), "lines": ns})).collect();
+    let Some(message) = message else { return json!({"changed": false, "devices": rows}) };
+    let mut v = match rows.as_slice() {
+        [one] => one.clone(),
+        _ => json!({"devices": rows}),
+    };
+    v["changed"] = json!(true);
+    v["message"] = json!(message);
+    v
 }
 
 /// The devices a `partline` call names: `devices` when given, else `component`; each one a

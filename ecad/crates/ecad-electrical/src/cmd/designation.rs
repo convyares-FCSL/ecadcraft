@@ -247,3 +247,24 @@ pub fn plan_remove(doc: &Document, uses: &Uses, a: Aspect, key: Option<&str>, co
     }
     Ok((modify(doc, designations::without_entry(&doc.project, a, &e.key)).into_iter().collect(), e.code))
 }
+
+/// Whether the transactions after the first `seen` of `ledger`'s log could change the designation
+/// rows (`ecad_cadcraft::cmd::designation::rows`): an op on the list, on a `function` /
+/// `location` / `location.<type>` value, or a component or page created or deleted (design 052
+/// §8.2a, the Settings card's update map).
+pub fn rows_changed_since(ledger: &ecad_model::Ledger, seen: usize) -> bool {
+    let log = ledger.log();
+    if seen > log.len() {
+        return true;
+    }
+    log.get(seen..).unwrap_or_default().iter().flat_map(|tx| tx.ops.iter()).any(|op| match op {
+        Op::SetProperty { key, .. } => Aspect::of_property(key).is_some(),
+        Op::ModifyDevice { before, after, .. } => before.location != after.location || before.function != after.function,
+        Op::CreateDevice { .. } | Op::DeleteDevice { .. } | Op::AddPage { .. } | Op::RemovePage { .. } | Op::ModifyProject { .. } => true,
+        Op::ModifyPage { before, after, .. } => {
+            let ch = before.change(after);
+            ch.location || ch.function
+        }
+        _ => false,
+    })
+}

@@ -116,7 +116,7 @@ impl DocumentOwner for Project {
         let reuse = self.xref_reuse();
         let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &t.ops, reuse, &crate::draw::text_style::EngineMetrics);
         let devices = crate::device_list::devices_touched(self.ledger.document(), &t.ops);
-        let props = crate::props::touched(self.ledger.document(), &t.ops);
+        let props = ecad_electrical::props::touched(self.ledger.document(), &t.ops);
         let tree = tree_touched(&t.ops);
         let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &t.ops));
         let outputs = self.outputs.as_ref().map(|o| o.scope(self.ledger.document(), &t.ops));
@@ -328,7 +328,7 @@ impl Project {
         let order_before = self.ledger.document().page_order.clone();
         let drawn = pages_named(&ops);
         let devices = crate::device_list::devices_touched(self.ledger.document(), &ops);
-        let props = crate::props::touched(self.ledger.document(), &ops);
+        let props = ecad_electrical::props::touched(self.ledger.document(), &ops);
         let tree = tree_touched(&ops);
         let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &ops));
         let outputs = self.outputs.as_ref().map(|o| o.scope(self.ledger.document(), &ops));

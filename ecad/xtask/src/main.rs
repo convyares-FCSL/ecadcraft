@@ -37,6 +37,7 @@ use std::process::{Command, ExitCode};
 use serde_json::Value;
 
 mod clean;
+mod engine_guards;
 mod types_guards;
 mod views_guards;
 
@@ -1150,6 +1151,7 @@ fn layers() -> Result<(), String> {
     v.extend(drawn_text_violations(&meta)?);
     v.extend(types_guards::violations(&meta)?);
     v.extend(views_guards::violations(&meta)?);
+    v.extend(engine_guards::violations(&meta)?);
     if v.is_empty() {
         println!("layers: OK");
         Ok(())

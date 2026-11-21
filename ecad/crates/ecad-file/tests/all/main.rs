@@ -14,6 +14,7 @@ mod canonical_contracts;
 mod container_crash;
 mod container_recovery;
 mod container_v2;
+mod history_sessions_contracts;
 mod merge_store_contracts;
 mod merge_store_tester_contracts;
 mod records_contracts;

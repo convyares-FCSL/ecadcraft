@@ -178,7 +178,7 @@ impl App {
             let mut out = Vec::new();
             let mut one = |seq: u64, kind: Kind, chip: Option<&str>| {
                 let Some(t) = p.ledger.transaction(seq) else { return };
-                let Some(touched) = ecad_cadcraft::props::touched(p.ledger.document(), &t.ops) else { return };
+                let Some(touched) = ecad_electrical::props::touched(p.ledger.document(), &t.ops) else { return };
                 let Some(drawing) = pages.drawing_of(p, page) else { return };
                 let mut boxes = Vec::new();
                 // The routes it drew or changed too (design 072: a loose line is a route with no
@@ -210,7 +210,7 @@ impl App {
                     }
                 }
                 if !boxes.is_empty() {
-                    let chip = chip.map_or_else(|| ecad_cadcraft::history::author_text(&t.author), str::to_string);
+                    let chip = chip.map_or_else(|| ecad_file::history::author_text(&t.author), str::to_string);
                     out.push(Outline { kind, chip: if chip == "you" { "You".into() } else { chip }, boxes });
                 }
             };

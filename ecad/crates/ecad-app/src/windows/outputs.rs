@@ -198,7 +198,7 @@ impl App {
             if key.is_some() && (rev.is_some() || key == ecad_cadcraft::release::dialog_key(p, accept)) {
                 return Ok(None);
             }
-            let v = ecad_cadcraft::release::view(p, rev.as_deref(), accept, ecad_cadcraft::release::MAX_ROWS)?;
+            let v = ecad_cadcraft::release::view(p, rev.as_deref(), accept, ecad_electrical::release::MAX_ROWS)?;
             // The kept lists exist now: the key is read after the view built them.
             let k = if rev.is_some() { 0 } else { ecad_cadcraft::release::dialog_key(p, accept).unwrap_or(0) };
             Ok::<_, String>(Some((v, k)))

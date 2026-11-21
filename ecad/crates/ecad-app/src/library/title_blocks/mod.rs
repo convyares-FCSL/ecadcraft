@@ -25,9 +25,9 @@ pub mod list;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use ecad_cadcraft::frame::FrameInput;
+use ecad_cadcraft::frame::{FrameInput, FrameText};
 use ecad_cadcraft::styles::{self, Layer};
-use ecad_cadcraft::title_block_cmds;
+use ecad_electrical::cmd::title_block::{layout_of, pages_using};
 use ecad_model::book::Book;
 use ecad_model::sheet;
 use ecad_model::title_block::{Binding, BlockItem, TitleBlockLayout};
@@ -241,13 +241,14 @@ fn fields_of(doc: &ecad_model::Document, id: &StyleRef) -> BTreeMap<String, Stri
 /// Read the list from `doc` (design 055 §4.1).
 pub fn read_rows(doc: &ecad_model::Document) -> Vec<Row> {
     let cat = &ecad_cadcraft::styles::frame::CATALOGUE;
+    let text = FrameText::of(doc);
     styles::rows(doc, cat)
         .into_iter()
         .map(|r| {
             let spec = sheet::frame_spec(doc, &r.id);
             let shown = spec.unwrap_or(doc.settings.sheet());
-            let layout = title_block_cmds::layout_of(doc, &r.id, &shown);
-            let pages = title_block_cmds::pages_using(doc, &r.id).len();
+            let layout = layout_of(doc, &r.id, &shown, &text);
+            let pages = pages_using(doc, &r.id).len();
             let sheet_text = match spec {
                 Some(s) => format!("{} landscape", ecad_cadcraft::title_block::sheet_name(&s)),
                 None => "Any sheet".to_string(),
