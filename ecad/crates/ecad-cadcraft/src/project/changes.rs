@@ -16,7 +16,7 @@ pub struct Change {
     pub pages: Option<BTreeSet<PageId>>,
     /// What it could change in the Devices list (the Devices feed, `ecad_electrical::derived::DevicesFeed`).
     pub devices: crate::device_list::DeviceTouch,
-    /// The objects whose Properties rows it could change ([`crate::props::touched`]); `None`: any.
+    /// The objects whose Properties rows it could change (the Properties feed, `ecad_electrical::derived::PropsFeed`); `None`: any.
     pub props: Option<BTreeSet<ecad_model::ObjectRef>>,
     /// Whether it could change the Pages tree (the tree feed, `ecad_electrical::derived::TreeFeed`).
     pub tree: bool,
@@ -350,10 +350,8 @@ impl Project {
         if std::mem::take(&mut self.faults.panic_in_command) {
             crate::fault_panic();
         }
-        let props = crate::props::touched(self.ledger.document(), &ops);
         let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &ops));
         let outputs = self.outputs.as_ref().map(|o| o.scope(self.ledger.document(), &ops));
-        let n = ops.len();
         // The numbering pass (brief 022) extends the same transaction.
         let pass = |d: &ecad_model::Document, o: &[Op]| if numbering { ecad_model::wiring::assign(d, o) } else { Vec::new() };
         let pending = self.derived.begin(self.ledger.document(), &ops);
@@ -369,11 +367,10 @@ impl Project {
         if let Some(id) = rack_page {
             self.pages.entry(id).or_default();
         }
-        let props = self.with_numbered(props, n);
         self.update_checks(checks);
         let pages = self.update_outputs(outputs);
         let mut changes = self.finish_derived(pending);
-        pass_through(&mut changes, Old { pages, props, echo: Vec::new() });
+        pass_through(&mut changes, Old { pages, echo: Vec::new() });
         self.apply_changes(pg, command, changes, Path::Command);
         Ok(tx)
     }
@@ -434,29 +431,6 @@ impl Project {
             pg.echo(line);
         }
     }
-
-    /// `props` with the wires the extension of the last transaction (its ops after the first `n`)
-    /// made, removed, changed or renumbered: the wire rewrite (design 072 §4.4) and the numbering
-    /// pass (brief 022); the Properties view of a wire reads its number, net and ends.
-    pub(super) fn with_numbered(&self, props: Option<BTreeSet<ecad_model::ObjectRef>>, n: usize) -> Option<BTreeSet<ecad_model::ObjectRef>> {
-        let mut props = props?;
-        let extra = self.ledger.log().last().map(|t| t.ops.get(n..).unwrap_or_default()).unwrap_or_default();
-        let doc = self.ledger.document();
-        for op in extra {
-            match op {
-                Op::SetProperty { object, .. } => {
-                    props.insert(*object);
-                }
-                Op::CreateWire { id, wire } | Op::DeleteWire { id, wire } | Op::ModifyWire { id, after: wire, .. } => {
-                    props.insert(ecad_model::ObjectRef::Wire(*id));
-                    // The devices at its ends show its net (brief 022).
-                    props.extend(wire.ends.iter().filter_map(|t| doc.terminals.get(t)).map(|t| ecad_model::ObjectRef::Device(t.component)));
-                }
-                _ => {}
-            }
-        }
-        Some(props)
-    }
 }
 
 /// Which commit path a change came from: what [`Project::apply_changes`] redraws.
@@ -475,20 +449,12 @@ pub(super) enum Path<'a> {
 /// one of them and its field here).
 pub(super) struct Old {
     pub pages: BTreeSet<PageId>,
-    pub props: Option<BTreeSet<ecad_model::ObjectRef>>,
     pub echo: Vec<String>,
 }
 
 /// Add `old` to the views' `changes`.
 pub(super) fn pass_through(changes: &mut Changes, old: Old) {
     changes.pages.union(PageSet::Only(old.pages));
-    changes.props = match (changes.props.take(), old.props) {
-        (Some(mut a), Some(b)) => {
-            a.extend(b);
-            Some(a)
-        }
-        (None, _) | (_, None) => None,
-    };
     changes.echo.extend(old.echo);
 }
 
