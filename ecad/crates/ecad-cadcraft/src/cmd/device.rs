@@ -455,19 +455,9 @@ impl Command for TagsettingsParams {
                 p.apply_edit(pg, "tagsettings", "Tag settings", vec![Op::SetProjectSettings { before, after: after.clone() }])?;
             }
             let doc = p.ledger.document();
-            Ok(json!({"changed": changed, "padding": devices::padding(doc), "prefixes": prefixes_json(doc)}))
+            Ok(json!({"changed": changed, "padding": devices::padding(doc), "prefixes": device_rules::prefixes_json(doc)}))
         })
     }
-}
-
-/// Every starter symbol's prefix as this project uses it (`-K`).
-pub(crate) fn prefixes_json(doc: &ecad_model::Document) -> serde_json::Map<String, Value> {
-    crate::symbols::STARTERS
-        .iter()
-        // Junctions and continuations have no tag (brief 022).
-        .filter(|s| s.kind != crate::symbols::Kind::Tagless)
-        .map(|s| (s.key.to_string(), Value::String(format!("-{}", devices::prefix_for(doc, s)))))
-        .collect()
 }
 
 // ---------------------------------------------------------------- drawn components (experiments)

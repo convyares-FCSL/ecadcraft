@@ -147,12 +147,12 @@ fn prerelease_groups_the_check_and_records_nothing() {
     assert!(group("errors").is_null());
     assert_eq!(v["writes"][0]["file"], "D-1001 Rev B.pdf");
     assert!(v["writes"].as_array().unwrap().iter().any(|w| w["file"] == "D-1001 Rev B checks.csv"));
-    assert_eq!(v["not_included"][0], json!({"slot": "terminal-plan", "why": release::NO_STRIPS}));
+    assert_eq!(v["not_included"][0], json!({"slot": "terminal-plan", "why": ecad_electrical::release::NO_STRIPS}));
     assert_eq!(v["folder"], json!(folder(&f, "B").to_string_lossy()));
     assert_eq!(v["exists"], false);
     // Each refusal is said up front: never saved, a needed field empty, read-only.
     f.h.cfg(|p| p.path = None);
-    assert_eq!(f.h.run("prerelease", json!({})).unwrap()["refusal"], release::SAVE_FIRST);
+    assert_eq!(f.h.run("prerelease", json!({})).unwrap()["refusal"], ecad_electrical::release::SAVE_FIRST);
     f.h.cfg(|p| p.path = Some("x/demo.ecad".into()));
     f.h.run("revision", json!({"drawn": null})).unwrap();
     assert_eq!(f.h.run("prerelease", json!({})).unwrap()["refusal"], ecad_cadcraft::revisions::FILL_FIRST);

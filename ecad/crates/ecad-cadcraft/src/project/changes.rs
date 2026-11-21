@@ -16,7 +16,7 @@ pub struct Change {
     pub pages: Option<BTreeSet<PageId>>,
     /// What it could change in the Devices list ([`crate::device_list::devices_touched`]).
     pub devices: crate::device_list::DeviceTouch,
-    /// The objects whose Properties rows it could change ([`crate::props::touched`]); `None`: any.
+    /// The objects whose Properties rows it could change ([`ecad_electrical::props::touched`]); `None`: any.
     pub props: Option<BTreeSet<ecad_model::ObjectRef>>,
     /// Whether it could change the Pages tree ([`tree_touched`]).
     pub tree: bool,
@@ -332,7 +332,7 @@ impl Project {
         let watch = crate::xref::Watch::take(self.ledger.document(), &self.xref, &ops, reuse, &crate::draw::text_style::EngineMetrics);
         let pages = pages_touched(self.ledger.document(), &ops, self.outputs.as_ref().map(|o| &o.plc));
         let devices = crate::device_list::devices_touched(self.ledger.document(), &ops);
-        let props = crate::props::touched(self.ledger.document(), &ops);
+        let props = ecad_electrical::props::touched(self.ledger.document(), &ops);
         let tree = tree_touched(&ops);
         let checks = self.checks.as_ref().map(|c| c.scope(self.ledger.document(), &ops));
         let outputs = self.outputs.as_ref().map(|o| o.scope(self.ledger.document(), &ops));

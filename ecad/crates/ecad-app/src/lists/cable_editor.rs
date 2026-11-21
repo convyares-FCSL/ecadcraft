@@ -111,7 +111,7 @@ pub fn copy(doc: &Document, k: CableId) -> Copy {
         Some(o) => format!("{} \u{b7} {members} assigned", o.len()),
         None => format!("{members} assigned"),
     };
-    c.next_offer = cable_cmds::next_offer(doc, k);
+    c.next_offer = ecad_electrical::cmd::cable::next_offer(doc, k);
     c.pages = cable_cmds::drawn_pages(doc, k);
     for o in cable_cmds::off_plan(doc, k) {
         if let Some(slot) = c.off_plan.get_mut(usize::from(o.side == Side::To)) {

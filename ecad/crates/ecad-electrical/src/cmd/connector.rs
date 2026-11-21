@@ -5,6 +5,7 @@
 //! in JSON.
 
 use ecad_model::units::{Degrees, Radians};
+use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
 use ecad_model::{DeviceId, Document, IdAllocator, Ledger, Noun, Op, PageId, Placement, Pt, RouteId, Style, Terminal, TerminalId, WireId};
@@ -639,4 +640,28 @@ pub fn renamed_message(doc: &Document, c: DeviceId, tag: &str, from: &str, to: &
     let d = cn::drawn(doc, c);
     let both = d.socket.contains_key(to) && d.plug.contains_key(to);
     format!("{tag}:{from} is now {tag}:{to}{}.", if both { " (both halves)" } else { "" })
+}
+
+pub fn result_json(doc: &Document, m: &Made, message: &str) -> Value {
+    json!({
+        "component": m.component.hex(),
+        "tag": m.tag,
+        "new": m.new,
+        "terminals": m.shown.iter().map(|x| json!({
+            "terminal": x.terminal.hex(),
+            "side": x.side.word(),
+            "key": x.side.key(),
+            "label": x.name,
+            "pin": x.name,
+            "name": cn::pin_name(doc, x.terminal).unwrap_or_else(|| format!("{}:{}", m.tag, x.name)),
+        })).collect::<Vec<_>>(),
+        "split": m.splits.iter().map(|(r, n)| json!({"route": r.hex(), "new": n.hex()})).collect::<Vec<_>>(),
+        "echo": message,
+        "message": message,
+    })
+}
+
+/// Whether a point may not be used: not finite, or beyond [`crate::words::MAX_COORD`].
+pub fn out_of_range(p: Pt) -> bool {
+    !(p.is_finite() && p.x.abs() <= crate::words::MAX_COORD && p.y.abs() <= crate::words::MAX_COORD)
 }

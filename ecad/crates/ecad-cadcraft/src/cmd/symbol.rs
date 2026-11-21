@@ -17,11 +17,11 @@ use std::collections::BTreeSet;
 use cadcraft_engine::doc::Handle;
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
-use ecad_electrical::cmd::symbol::{self as rules, ContentInput, MakeAt, PointInput, Row, SlotInput, Update};
+use ecad_electrical::cmd::symbol::{self as rules, ContentInput, MakeAt, PointInput, SlotInput, Update};
 pub use ecad_electrical::cmd::symbol::{
     Content, MAX_COPIES, MAX_EXTENT, MAX_NAME, MAX_POINTS, MAX_SHAPES, MAX_SLOTS, Rules, grid_origin, not_plain, problems, shifted,
 };
-use ecad_model::{DefinitionId, DeviceId, Document, PageId, Placement, RepresentationId, TextHAlign, TextVAlign};
+use ecad_model::{DefinitionId, DeviceId, PageId, Placement, RepresentationId, TextHAlign, TextVAlign};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
@@ -210,33 +210,6 @@ impl ContentFields {
     }
 }
 
-/// The row of a copy as data; `book` is the project's page book, built once per listing (a page's
-/// number alone walks the book); `places` gives the copy's place (`2-D-4`, in the project's
-/// reference style, design 048 §6.1's page and zone).
-pub fn row_json(r: &Row, doc: &Document, book: &ecad_model::book::Book, places: &mut crate::xref::Places<'_>) -> Value {
-    let at = match doc.items.get(&r.item).map(|i| &i.kind) {
-        Some(ecad_model::ItemKind::Symbol(s)) => Some(s.placement.origin),
-        _ => None,
-    };
-    json!({
-        "rep": r.rep.hex(), "item": r.item.hex(), "page": r.page.hex(),
-        "page_number": book.number(doc, r.page), "place": places.text(r.page, at), "component": r.component.hex(),
-        "tag": r.tag, "from": r.from.hex(), "changes": r.changes, "clash": r.clash, "builtin": r.builtin,
-    })
-}
-
-fn result(doc: &Document, id: DefinitionId) -> Value {
-    let d = doc.definitions.get(&id);
-    let o = d.and_then(|d| d.origin.as_ref());
-    json!({
-        "definition": id.hex(),
-        "lineage": o.map(|o| o.definition.hex()),
-        "version": o.map(|o| o.library_seq),
-        "key": d.and_then(|d| d.defaults.key.as_ref().map(|k| k.as_str())),
-        "name": d.map(|d| d.name.clone()),
-    })
-}
-
 // ---------------------------------------------------------------- commands
 
 /// `symbolnew {name, key, graphics, points, slots?, defaults?, bridges?, from?}` (design 048
@@ -285,7 +258,7 @@ impl Command for NewParams {
         on_project(s, |p, pg, _| {
             let plan = rules::plan_new(p.ledger.document(), &mut p.ids, &content, self.from)?;
             p.apply_edit(pg, "symbolnew", &plan.label, plan.ops)?;
-            Ok(result(p.ledger.document(), plan.id))
+            Ok(rules::result(p.ledger.document(), plan.id))
         })
     }
 }
@@ -342,7 +315,7 @@ impl Command for ImpactParams {
             let pages: BTreeSet<PageId> = i.rows.iter().map(|r| r.page).collect();
             let book = ecad_model::book::Book::of(doc);
             let mut places = crate::xref::Places::new(doc);
-            let rows_json: Vec<Value> = i.rows.iter().map(|r| row_json(r, doc, &book, &mut places)).collect();
+            let rows_json: Vec<Value> = i.rows.iter().map(|r| rules::row_json(r, doc, &book, &mut places)).collect();
             Ok(json!({
                 "name": content.name, "version": i.version, "builtin": i.builtin,
                 "copies": i.rows.len(), "pages": pages.len(), "clashes": i.rows.iter().filter(|r| r.clash.is_some()).count(),
@@ -410,7 +383,7 @@ impl Command for EditParams {
         on_project(s, |p, pg, _| {
             let plan = rules::plan_edit(p.ledger.document(), &mut p.ids, self.definition, &content, update, copies, builtins)?;
             p.apply_edit(pg, "symboledit", &plan.label, plan.ops)?;
-            let mut v = result(p.ledger.document(), plan.id);
+            let mut v = rules::result(p.ledger.document(), plan.id);
             v["updated"] = json!(plan.updated);
             v["left"] = json!(plan.left);
             Ok(v)
@@ -440,7 +413,7 @@ impl Command for UpdateParams {
         on_project(s, |p, pg, _| {
             let plan = rules::plan_update(p.ledger.document(), &mut p.ids, copies, self.lineage, self.to)?;
             p.apply_edit(pg, "symbolupdate", &plan.label, plan.ops)?;
-            let mut v = result(p.ledger.document(), plan.id);
+            let mut v = rules::result(p.ledger.document(), plan.id);
             v["updated"] = json!(plan.updated);
             Ok(v)
         })
@@ -520,7 +493,7 @@ impl Command for MakeParams {
                 let style = plain_style(p);
                 let made = rules::plan_promote(p.ledger.document(), &mut p.ids, c, content, style)?;
                 p.apply_edit(pg, "makesymbol", &made.plan.label, made.plan.ops)?;
-                let mut v = result(p.ledger.document(), made.plan.id);
+                let mut v = rules::result(p.ledger.document(), made.plan.id);
                 v["component"] = json!(c.hex());
                 v["representation"] = json!(made.representation.hex());
                 return Ok(v);
@@ -539,7 +512,7 @@ impl Command for MakeParams {
             let style = plain_style(p);
             let made = rules::plan_make(&p.ledger, &mut p.ids, &mut p.tag_high, &items, content, MakeAt { page, style, at, replace })?;
             p.apply_edit(pg, "makesymbol", &made.plan.label, made.plan.ops)?;
-            let mut v = result(p.ledger.document(), made.plan.id);
+            let mut v = rules::result(p.ledger.document(), made.plan.id);
             if let Some((c, r, t)) = made.placed {
                 v["component"] = json!(c.hex());
                 v["representation"] = json!(r.hex());

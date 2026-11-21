@@ -502,7 +502,7 @@ fn detail_ui(t: &mut App, ui: &mut egui::Ui, writable: bool) {
         ui.label(RichText::new("The project is read-only.").small().weak());
     }
     let typed = v.edit.trim().to_string();
-    let parsed = default_cmds::stored_text(entry, &serde_json::Value::String(typed.clone()));
+    let parsed = ecad_electrical::cmd::default::json_stored_text(entry, &serde_json::Value::String(typed.clone()));
     let changes = match &parsed {
         Ok(s) => entry.parse(s).map(|x| value_text(entry, &defaults::Resolved { value: x, from: Source::Project })).filter(|n| *n != d.current),
         Err(_) => None,

@@ -372,3 +372,17 @@ pub fn plan_family(doc: &Document, key: &str, level: Option<&str>, value: Option
     };
     Ok(Some(FamilySet { symbol, field, ops }))
 }
+
+/// The text a value given as JSON is stored as ([`stored_text`]), for the Standards
+/// screen's field.
+///
+/// # Errors
+/// Not text or a number, or not valid for the entry, in words.
+pub fn json_stored_text(entry: &Entry, value: &serde_json::Value) -> Result<String, CmdError> {
+    let typed = match value {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Number(n) => n.to_string(),
+        _ => return Err(CmdError::input(format!("`value` for `{}` is a string or a number.", entry.key))),
+    };
+    stored_text(entry, &typed)
+}

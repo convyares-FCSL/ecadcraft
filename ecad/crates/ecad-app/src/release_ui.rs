@@ -9,7 +9,8 @@
 use std::collections::BTreeSet;
 
 use ecad_cadcraft::checks::{Check, Severity};
-use ecad_cadcraft::release::{Group, View};
+use ecad_cadcraft::release::View;
+use ecad_electrical::release::Group;
 use ecad_ui::control::TextEntry;
 use ecad_ui::dialog::action;
 use ecad_ui::prim::{self, Button, Kind, Tone};
@@ -301,7 +302,7 @@ impl ReleaseDialog {
                     out = Some(Out::Close);
                 }
                 if self.rev.is_none()
-                    && v.refusal.as_deref() == Some(ecad_cadcraft::release::SAVE_FIRST)
+                    && v.refusal.as_deref() == Some(ecad_electrical::release::SAVE_FIRST)
                     && action(ui, "Save As\u{2026}", Kind::Secondary, "ecad.release.saveas", None).clicked()
                 {
                     out = Some(Out::SaveAs);
