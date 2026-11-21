@@ -13,15 +13,14 @@
 //! input through [`TitleblockimportParams`] and runs the DXF reader's own
 //! ([`crate::title_block::dxf::run_import`]).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
 use ecad_electrical::cmd::title_block::{self as rules, FrameEdit, NewFrame};
-use ecad_model::sheet::{self, Margins, SheetSpec};
+use ecad_model::Document;
 use ecad_model::style::StyleRef;
 use ecad_model::title_block::TitleBlockLayout;
-use ecad_model::{Document, PageId};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -30,8 +29,6 @@ use crate::cmd::input::{Command, Typed};
 use crate::cmd::style::{FieldParam, field_inputs};
 use crate::cmd::{err, on_project};
 use crate::frame::FrameText;
-use crate::styles::{self, Layer};
-use crate::title_block::{bind, house};
 
 pub use rules::{BLANK_SIZE, BUILTIN_READ_ONLY, NOT_A_FRAME};
 
@@ -66,53 +63,6 @@ pub(crate) fn target(doc: &Document, params: &Value) -> Result<StyleRef, CmdErro
     rules::frame(doc, text("id"), text("name"))
 }
 
-/// The pages whose frame is `id`, or whose title block is borrowed from it.
-pub fn pages_using(doc: &Document, id: &StyleRef) -> Vec<PageId> {
-    doc.page_order.iter().copied().filter(|p| sheet::frame_style(doc, *p) == *id || sheet::title_block_style(doc, *p) == *id).collect()
-}
-
-/// The margins of frame `id` (its field, else 019's).
-fn margins(doc: &Document, id: &StyleRef) -> Margins {
-    sheet::frame_margins(doc, id).unwrap_or_default()
-}
-
-/// The layout frame `id` draws on `spec`: its own, or the house block for that sheet.
-pub fn layout_of(doc: &Document, id: &StyleRef, spec: &SheetSpec) -> TitleBlockLayout {
-    match sheet::frame_block(doc, id) {
-        Some(l) => l.clone(),
-        None => house::house(crate::title_block::frame_width(spec, &margins(doc, id)), &FrameText::of(doc)),
-    }
-}
-
-/// The project keys `layout` reads beyond the built-in five (design 055 §7: Settings ▸ Project
-/// info lists them).
-pub fn own_keys(layout: &TitleBlockLayout) -> BTreeSet<String> {
-    let (keys, _) = bind::keys(layout);
-    keys.into_iter().filter(|k| !bind::PROJECT_KEYS.contains(&k.as_str())).collect()
-}
-
-/// The sheet frame `id` is drawn for (`page` for the page's own).
-fn frame_sheet_text(doc: &Document, id: &StyleRef) -> String {
-    sheet::frame_spec(doc, id).map_or_else(|| crate::styles::frame::PAGE_SHEET.to_string(), |s| s.text())
-}
-
-/// One row of `titleblocks`.
-fn row_json(doc: &Document, row: &styles::Row) -> Value {
-    let spec = sheet::frame_spec(doc, &row.id).unwrap_or(doc.settings.sheet());
-    let layout = layout_of(doc, &row.id, &spec);
-    let keys: Vec<String> = own_keys(&layout).into_iter().collect();
-    json!({
-        "id": row.id.text(),
-        "name": row.name,
-        "layer": row.layer.word(),
-        "builtin": row.layer == Layer::Builtin,
-        "sheet": frame_sheet_text(doc, &row.id),
-        "items": layout.items.len(),
-        "users": {"pages": pages_using(doc, &row.id).len()},
-        "keys": keys,
-    })
-}
-
 /// `titleblocks {}` (read only): every frame with its sheet, items, users and keys.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -123,32 +73,9 @@ impl Command for TitleblocksParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         on_project(s, |p, _, _| {
             let doc = p.ledger.document();
-            let rows: Vec<Value> = styles::rows(doc, &crate::styles::frame::CATALOGUE).iter().map(|r| row_json(doc, r)).collect();
-            // The project keys every frame in use reads (Settings ▸ Project info).
-            let mut keys = BTreeSet::new();
-            let mut seen = BTreeSet::new();
-            for page in &doc.page_order {
-                let id = sheet::frame_style(doc, *page);
-                if seen.insert(id.text()) {
-                    keys.extend(own_keys(&layout_of(doc, &id, &sheet::sheet_of(doc, *page))));
-                }
-            }
-            Ok(json!({"title_blocks": rows, "keys": keys.into_iter().collect::<Vec<_>>()}))
+            Ok(rules::titleblocks_json(doc, &FrameText::of(doc)))
         })
     }
-}
-
-/// The JSON `titleblock {id}` returns.
-fn block_json(doc: &Document, id: &StyleRef, spec: &SheetSpec) -> Result<Value, CmdError> {
-    let cat = &crate::styles::frame::CATALOGUE;
-    let row = styles::rows(doc, cat).into_iter().find(|r| r.id == *id).ok_or(CmdError::refused(NOT_A_FRAME))?;
-    let mut v = ecad_electrical::cmd::style::style_json(doc, cat, &row, false);
-    let layout = layout_of(doc, id, spec);
-    v["builtin"] = json!(row.layer == Layer::Builtin);
-    v["body"] = serde_json::to_value(&layout).map_err(|e| CmdError::refused(e.to_string()))?;
-    v["users"] = json!({"pages": pages_using(doc, id).len()});
-    v["keys"] = json!(own_keys(&layout).into_iter().collect::<Vec<_>>());
-    Ok(v)
 }
 
 /// A body from a call's `body`, checked against design 055 §1.3.
@@ -228,7 +155,7 @@ impl Command for TitleblockParams {
             let id = rules::frame(doc, id_text.as_deref(), frame_name.as_deref())?;
             if !writes {
                 let spec = rules::sheet(doc, sheet_text.as_deref())?;
-                return block_json(doc, &id, &spec);
+                return rules::block_json(doc, &id, &spec, &FrameText::of(doc));
             }
             // The body is read when the frame is known to be an own one, as before.
             let body = match body {
@@ -243,7 +170,7 @@ impl Command for TitleblockParams {
             }
             let doc = p.ledger.document();
             let spec = rules::sheet(doc, sheet_text.as_deref())?;
-            let mut v = block_json(doc, &id, &spec)?;
+            let mut v = rules::block_json(doc, &id, &spec, &FrameText::of(doc))?;
             v["changed"] = json!(changed);
             Ok(v)
         })
@@ -260,7 +187,7 @@ fn run_new(s: &mut Session, new: NewParams) -> cadcraft_engine::Result<Value> {
         // Own frames keep their block as made: items stay at their place from the bottom-right
         // corner; built-ins are computed for the chosen sheet.
         let layout = match &source {
-            Some(src) => layout_of(doc, src, &spec),
+            Some(src) => rules::layout_of(doc, src, &spec, &FrameText::of(doc)),
             None => TitleBlockLayout::blank(BLANK_SIZE.0, BLANK_SIZE.1),
         };
         let name = rules::new_name(doc, new.name.as_deref(), &spec)?;

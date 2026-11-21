@@ -373,7 +373,7 @@ fn the_picker_lists_cables_not_drawn_first_and_leaves_out_those_slashed_here() {
     let page = h.first_page();
     h.run("setprop", json!({"page": page.hex(), "key": "location", "value": "+CAB1"})).ok();
     let doc = h.doc();
-    let items = cable_cmds::picker(&doc, page);
+    let items = ecad_electrical::cmd::cable::picker(&doc, page);
     let order: Vec<CableId> = items.iter().map(|i| i.cable).collect();
     assert!(!order.contains(&drawn), "slashed on this page: absent");
     assert_eq!(order.len(), 2);

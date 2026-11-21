@@ -6,7 +6,7 @@
 
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
-use ecad_electrical::cmd::output as rules;
+use ecad_electrical::cmd::output::{self as rules, Paging};
 use ecad_model::{FolderId, ItemId, PageId};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -155,9 +155,9 @@ impl BoxInput {
         let (function, location) = (self.function, self.location);
         on_project(s, |p, pg, active| {
             let page = page.unwrap_or(active);
-            let plan = rules::plan_box(p.ledger.document(), &mut p.ids, page, function.as_deref(), location.as_deref(), shape, &mode)?;
-            p.apply_edit(pg, command, &plan.label, plan.ops)?;
-            let proposed = plan.proposed;
+            let mut plan = rules::plan_box(p.ledger.document(), &mut p.ids, page, function.as_deref(), location.as_deref(), shape, &mode)?;
+            p.apply_edit(pg, command, &plan.label, std::mem::take(&mut plan.ops))?;
+            let proposed = &plan.proposed;
             if proposed.moved == 0 {
                 p.conflicts = proposed.conflicts.clone();
             }
@@ -166,41 +166,8 @@ impl BoxInput {
             for l in crate::proposals::conflict_words(doc, &proposed.conflicts) {
                 pg.echo(l);
             }
-            let planned = plan.planned;
-            let mut v = json!({
-                "component": planned.component.hex(), "representation": planned.rep.hex(), "item": planned.item.hex(),
-                "inside": plan.inside, "keeps_own": plan.keeps, "message": plan.message,
-            });
-            if let (Some(o), Some(x)) = (v.as_object_mut(), crate::proposals::json(doc, &proposed).as_object()) {
-                o.extend(x.clone());
-            }
-            let conflicts: Vec<Value> = proposed
-                .conflicts
-                .iter()
-                .map(|c| json!({"component": c.component.hex(), "tag": crate::devices::tag_words(doc, c.component), "aspect": c.aspect.word(), "from": c.from, "proposed": c.to}))
-                .collect();
-            v["conflicts"] = json!(conflicts);
-            Ok(v)
+            Ok(rules::box_json(doc, &plan))
         })
-    }
-}
-
-/// `limit`, `after`, `excel_safe` and `path` of a report command, read.
-struct Paging {
-    limit: usize,
-    after: usize,
-    excel_safe: bool,
-    path: Option<String>,
-}
-
-impl Paging {
-    fn of(limit: Option<u64>, after: Option<u64>, excel_safe: Option<bool>, path: Option<String>) -> Paging {
-        Paging {
-            limit: limit.map_or(outputs::DEFAULT_LIMIT, |n| usize::try_from(n).unwrap_or(usize::MAX)).clamp(1, outputs::MAX_LIMIT),
-            after: after.map_or(0, |n| usize::try_from(n).unwrap_or(usize::MAX)),
-            excel_safe: excel_safe.unwrap_or(true),
-            path,
-        }
     }
 }
 
@@ -274,47 +241,8 @@ impl Command for BomParams {
             let view = outputs::BomView { article: columns.unwrap_or(o.view.article), nested: lines.unwrap_or(o.view.nested) };
             let nested = view.nested && group == Group::Location;
             let t = o.bom_table_with(group, view, true);
-            let ids: Vec<Value> = o
-                .bom_with(group, nested)
-                .iter()
-                .map(|r| {
-                    let mut v = json!({"devices": r.devices.iter().map(|c| c.hex()).collect::<Vec<_>>()});
-                    // Brief 030 (design 030 §10): an accessory row names its item and its strip.
-                    if let (Some(a), Some(c)) = (r.accessory, r.devices.first()) {
-                        v["accessory"] = json!(a);
-                        v["strip"] = json!(c.hex());
-                    }
-                    // Brief 047: what the row counts.
-                    let entries: Vec<Value> = r
-                        .entries
-                        .iter()
-                        .filter_map(|(c, n)| o.entry(*c, *n))
-                        .map(|e| {
-                            let mut x = json!({"component": e.component.hex(), "line": e.line});
-                            if e.item {
-                                x["item"] = json!(true);
-                            }
-                            if !e.subs.is_empty() || !e.missing.is_empty() {
-                                x["sub"] = json!(e.subs);
-                            }
-                            x
-                        })
-                        .collect();
-                    v["entries"] = json!(entries);
-                    if nested && let Some(k) = &r.kit {
-                        v["kit"] = json!(k);
-                    }
-                    v
-                })
-                .collect();
-            let mut keys = vec!["location", "qty", "unit", "tags"];
-            if nested {
-                keys.push("line");
-            }
-            keys.extend(["description", "maker", "part_number"]);
-            if view.article {
-                keys.push("article_number");
-            }
+            let ids = rules::bom_ids_json(&o, group, nested);
+            let keys = rules::bom_keys(nested, view.article);
             report_result(&t, &keys, &ids, &pg, "BOM")
         })
     }
@@ -344,14 +272,7 @@ impl Command for WirelistParams {
         on_any_page(s, |p, _| {
             let o = p.outputs();
             let t = o.wire_table();
-            let ids: Vec<Value> = o.wires().iter().map(|r| json!({"conductor": r.conductor.hex()})).collect();
-            report_result(
-                &t,
-                &["wire_number", "from", "from_location", "to", "to_location", "cross_section", "colour", "potential", "category", "cable", "page"],
-                &ids,
-                &pg,
-                "wire",
-            )
+            report_result(&t, rules::WIRE_KEYS, &rules::wire_ids_json(&o), &pg, "wire")
         })
     }
 }
@@ -386,37 +307,8 @@ impl Command for CablelistParams {
         on_any_page(s, |p, _| {
             let o = p.outputs();
             let t = o.cable_table_with(include);
-            // Brief 028 (design 028 §9.2): `used` (a count), `spare` (the spare cores, or null when the
-            // offer is unknown) and the devices at each end; these keys are 027's CSV columns.
-            let ids: Vec<Value> = o
-                .cables()
-                .iter()
-                .filter(|r| include || r.drawn)
-                .map(|r| {
-                    let mut v = json!({
-                        "cable": r.cable.hex(), "used": r.count.used(), "over": r.count.over.len(),
-                        "from_devices": r.from_devices, "to_devices": r.to_devices,
-                    });
-                    // `spare` only when the offer is known (absent keys are left out, not null).
-                    if r.count.offer.is_some() {
-                        v["spare"] = json!(r.count.spare);
-                    }
-                    v
-                })
-                .collect();
-            let mut keys = vec!["tag", "type", "cores", "from_location", "to_location", "used_text", "spare_text", "from", "to"];
-            for h in t.headers.iter().skip(9) {
-                keys.push(match *h {
-                    "Maker" => "maker",
-                    "Length" => "length",
-                    "Glands" => "glands",
-                    "Shield" => "shield",
-                    "Planned from" => "planned_from",
-                    "Planned to" => "planned_to",
-                    "Drawn" => "drawn",
-                    _ => "designation",
-                });
-            }
+            let ids = rules::cable_ids_json(&o, include);
+            let keys = rules::cable_keys(&t);
             report_result(&t, &keys, &ids, &pg, "cable")
         })
     }

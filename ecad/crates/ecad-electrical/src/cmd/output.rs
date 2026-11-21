@@ -1,16 +1,19 @@
 //! The output commands' rules (brief 024, design 024 §3.5, §6.4; briefs 047, 052d): location and
 //! function boxes and the proposal they make for the devices inside, and the report parameters
-//! (`bom`'s grouping and columns). The reports themselves are read from the kept outputs by the
-//! engine crate.
+//! (`bom`'s grouping and columns, the paging), and the JSON answers: a box's, and each report's
+//! row ids and column keys, read from the kept outputs. Writing a report's CSV file is the engine
+//! crate's.
 
 use std::collections::BTreeSet;
 
-use ecad_model::{IdAllocator, ItemId, Op, PageId, Pt};
+use ecad_model::{Document, IdAllocator, ItemId, Op, PageId, Pt};
+use serde_json::{Value, json};
 
 use crate::designations::{Aspect, Pending};
 use crate::error::CmdError;
 use crate::locations;
-use crate::outputs::Group;
+use crate::outputs::kept::Outputs;
+use crate::outputs::{self, Group, Table};
 use crate::proposals::{self, Mode};
 
 /// A rectangle's four corners from two opposite ones.
@@ -155,4 +158,146 @@ pub fn bom_columns(columns: Option<&[String]>) -> Result<Option<bool>, CmdError>
         }
     }
     Ok(Some(article))
+}
+
+/// The JSON a box answers (design 024 §7, design 052 §5.6): the box, the proposal it made for the
+/// device symbols inside, and that proposal's conflicts.
+pub fn box_json(doc: &Document, plan: &BoxPlan) -> Value {
+    let (planned, proposed) = (&plan.planned, &plan.proposed);
+    let mut v = json!({
+        "component": planned.component.hex(), "representation": planned.rep.hex(), "item": planned.item.hex(),
+        "inside": plan.inside, "keeps_own": plan.keeps, "message": plan.message,
+    });
+    if let (Some(o), Some(x)) = (v.as_object_mut(), proposals::json(doc, proposed).as_object()) {
+        o.extend(x.clone());
+    }
+    let conflicts: Vec<Value> = proposed
+        .conflicts
+        .iter()
+        .map(|c| json!({"component": c.component.hex(), "tag": crate::devices::tag_words(doc, c.component), "aspect": c.aspect.word(), "from": c.from, "proposed": c.to}))
+        .collect();
+    v["conflicts"] = json!(conflicts);
+    v
+}
+
+/// `limit`, `after`, `excel_safe` and `path` of a report command, read.
+pub struct Paging {
+    pub limit: usize,
+    pub after: usize,
+    pub excel_safe: bool,
+    pub path: Option<String>,
+}
+
+impl Paging {
+    /// The paging a report call asks for: `limit` clamped to 1..=[`outputs::MAX_LIMIT`]
+    /// (default [`outputs::DEFAULT_LIMIT`]), `after` 0 and `excel_safe` true by default.
+    pub fn of(limit: Option<u64>, after: Option<u64>, excel_safe: Option<bool>, path: Option<String>) -> Paging {
+        Paging {
+            limit: limit.map_or(outputs::DEFAULT_LIMIT, |n| usize::try_from(n).unwrap_or(usize::MAX)).clamp(1, outputs::MAX_LIMIT),
+            after: after.map_or(0, |n| usize::try_from(n).unwrap_or(usize::MAX)),
+            excel_safe: excel_safe.unwrap_or(true),
+            path,
+        }
+    }
+}
+
+/// The ids of each `bom` row (`group`, kits `nested`): its devices, an accessory's item and strip
+/// (brief 030, design 030 §10) and what the row counts (brief 047).
+pub fn bom_ids_json(o: &Outputs, group: Group, nested: bool) -> Vec<Value> {
+    o.bom_with(group, nested)
+        .iter()
+        .map(|r| {
+            let mut v = json!({"devices": r.devices.iter().map(|c| c.hex()).collect::<Vec<_>>()});
+            // Brief 030 (design 030 §10): an accessory row names its item and its strip.
+            if let (Some(a), Some(c)) = (r.accessory, r.devices.first()) {
+                v["accessory"] = json!(a);
+                v["strip"] = json!(c.hex());
+            }
+            // Brief 047: what the row counts.
+            let entries: Vec<Value> = r
+                .entries
+                .iter()
+                .filter_map(|(c, n)| o.entry(*c, *n))
+                .map(|e| {
+                    let mut x = json!({"component": e.component.hex(), "line": e.line});
+                    if e.item {
+                        x["item"] = json!(true);
+                    }
+                    if !e.subs.is_empty() || !e.missing.is_empty() {
+                        x["sub"] = json!(e.subs);
+                    }
+                    x
+                })
+                .collect();
+            v["entries"] = json!(entries);
+            if nested && let Some(k) = &r.kit {
+                v["kit"] = json!(k);
+            }
+            v
+        })
+        .collect()
+}
+
+/// The JSON keys of `bom`'s columns: with a `line` column when kits are `nested`, and the article
+/// number when the `article` column is shown.
+pub fn bom_keys(nested: bool, article: bool) -> Vec<&'static str> {
+    let mut keys = vec!["location", "qty", "unit", "tags"];
+    if nested {
+        keys.push("line");
+    }
+    keys.extend(["description", "maker", "part_number"]);
+    if article {
+        keys.push("article_number");
+    }
+    keys
+}
+
+/// The JSON keys of `wirelist`'s columns.
+pub const WIRE_KEYS: &[&str] =
+    &["wire_number", "from", "from_location", "to", "to_location", "cross_section", "colour", "potential", "category", "cable", "page"];
+
+/// The ids of each `wirelist` row.
+pub fn wire_ids_json(o: &Outputs) -> Vec<Value> {
+    o.wires().iter().map(|r| json!({"conductor": r.conductor.hex()})).collect()
+}
+
+/// The ids of each `cablelist` row (the cables not drawn too when `include`).
+///
+/// Brief 028 (design 028 §9.2): `used` (a count), `spare` (the spare cores, or null when the offer
+/// is unknown) and the devices at each end; these keys are 027's CSV columns.
+pub fn cable_ids_json(o: &Outputs, include: bool) -> Vec<Value> {
+    o.cables()
+        .iter()
+        .filter(|r| include || r.drawn)
+        .map(|r| {
+            let mut v = json!({
+                "cable": r.cable.hex(), "used": r.count.used(), "over": r.count.over.len(),
+                "from_devices": r.from_devices, "to_devices": r.to_devices,
+            });
+            // `spare` only when the offer is known (absent keys are left out, not null).
+            if r.count.offer.is_some() {
+                v["spare"] = json!(r.count.spare);
+            }
+            v
+        })
+        .collect()
+}
+
+/// The JSON keys of `cablelist`'s columns in table `t`: the nine fixed ones, then one per optional
+/// column it shows.
+pub fn cable_keys(t: &Table) -> Vec<&'static str> {
+    let mut keys = vec!["tag", "type", "cores", "from_location", "to_location", "used_text", "spare_text", "from", "to"];
+    for h in t.headers.iter().skip(9) {
+        keys.push(match *h {
+            "Maker" => "maker",
+            "Length" => "length",
+            "Glands" => "glands",
+            "Shield" => "shield",
+            "Planned from" => "planned_from",
+            "Planned to" => "planned_to",
+            "Drawn" => "drawn",
+            _ => "designation",
+        });
+    }
+    keys
 }

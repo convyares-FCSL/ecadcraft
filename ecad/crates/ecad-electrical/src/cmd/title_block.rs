@@ -1,19 +1,22 @@
 //! The rules of brief 055's commands (design 055 §9): which frame `titleblock` names, the record a
 //! write or a new frame makes, and the checks a body passes. A title block is a `frame` style
 //! record (050a) with its block as the record's body (FP1). The block's layout and drawing are
-//! [`crate::title_block`]'s; the engine crate's shims lay out built-in blocks with the machine's
-//! fonts, commit the ops and answer in JSON.
+//! [`crate::title_block`]'s. The JSON answers (`titleblocks_json`, `block_json`) take the frame
+//! text looks, so the engine crate's shims pass this machine's fonts, commit the ops and answer.
 
 use std::collections::BTreeSet;
 
-use ecad_model::sheet::{FRAME_CATALOGUE, FRAME_SHEET_FIELD, SheetSpec};
+use ecad_model::sheet::{self, FRAME_CATALOGUE, FRAME_SHEET_FIELD, Margins, SheetSpec};
 use ecad_model::style::{StyleBody, StyleLayer, StyleRef, is_name};
 use ecad_model::title_block::TitleBlockLayout;
-use ecad_model::{Document, IdAllocator, Op};
+use ecad_model::{Document, IdAllocator, Op, PageId};
+use serde_json::{Value, json};
 
 use crate::cmd::style::{FieldInput, STANDARD_FIRST, STYLE_NEEDS_NAME, fields};
 use crate::error::CmdError;
+use crate::frames::FrameText;
 use crate::styles;
+use crate::title_block::{bind, house};
 
 /// Refusals, in words.
 pub const BUILTIN_READ_ONLY: &str = "Built-in. Duplicate it to make your own (`titleblock {new: {from: \"sheet\", sheet}}`).";
@@ -211,4 +214,84 @@ pub fn plan_new(doc: &Document, ids: &mut IdAllocator, new: NewFrame<'_>) -> Res
     styles::check_record(doc, cat, &id, new.layer, &rec)?;
     let ops = vec![Op::SetStyle { layer: new.layer, catalogue: FRAME_CATALOGUE, id: id.clone(), before: None, after: Some(rec) }];
     Ok((ops, id))
+}
+
+/// The pages whose frame is `id`, or whose title block is borrowed from it.
+pub fn pages_using(doc: &Document, id: &StyleRef) -> Vec<PageId> {
+    doc.page_order.iter().copied().filter(|p| sheet::frame_style(doc, *p) == *id || sheet::title_block_style(doc, *p) == *id).collect()
+}
+
+/// The margins of frame `id` (its field, else 019's).
+fn margins(doc: &Document, id: &StyleRef) -> Margins {
+    sheet::frame_margins(doc, id).unwrap_or_default()
+}
+
+/// The layout frame `id` draws on `spec`: its own, or the house block for that sheet in `text`'s
+/// looks (the engine passes this machine's fonts).
+pub fn layout_of(doc: &Document, id: &StyleRef, spec: &SheetSpec, text: &FrameText) -> TitleBlockLayout {
+    match sheet::frame_block(doc, id) {
+        Some(l) => l.clone(),
+        None => house::house(crate::title_block::frame_width(spec, &margins(doc, id)), text),
+    }
+}
+
+/// The project keys `layout` reads beyond the built-in five (design 055 §7: Settings ▸ Project
+/// info lists them).
+pub fn own_keys(layout: &TitleBlockLayout) -> BTreeSet<String> {
+    let (keys, _) = bind::keys(layout);
+    keys.into_iter().filter(|k| !bind::PROJECT_KEYS.contains(&k.as_str())).collect()
+}
+
+/// The sheet frame `id` is drawn for (`page` for the page's own).
+fn frame_sheet_text(doc: &Document, id: &StyleRef) -> String {
+    sheet::frame_spec(doc, id).map_or_else(|| styles::frame::PAGE_SHEET.to_string(), |s| s.text())
+}
+
+/// One row of `titleblocks`.
+fn row_json(doc: &Document, row: &styles::Row, text: &FrameText) -> Value {
+    let spec = sheet::frame_spec(doc, &row.id).unwrap_or(doc.settings.sheet());
+    let layout = layout_of(doc, &row.id, &spec, text);
+    let keys: Vec<String> = own_keys(&layout).into_iter().collect();
+    json!({
+        "id": row.id.text(),
+        "name": row.name,
+        "layer": row.layer.word(),
+        "builtin": row.layer == styles::Layer::Builtin,
+        "sheet": frame_sheet_text(doc, &row.id),
+        "items": layout.items.len(),
+        "users": {"pages": pages_using(doc, &row.id).len()},
+        "keys": keys,
+    })
+}
+
+/// The JSON `titleblocks {}` returns: every frame with its sheet, items, users and keys, and the
+/// project keys every frame in use reads.
+pub fn titleblocks_json(doc: &Document, text: &FrameText) -> Value {
+    let rows: Vec<Value> = styles::rows(doc, &styles::frame::CATALOGUE).iter().map(|r| row_json(doc, r, text)).collect();
+    // The project keys every frame in use reads (Settings ▸ Project info).
+    let mut keys = BTreeSet::new();
+    let mut seen = BTreeSet::new();
+    for page in &doc.page_order {
+        let id = sheet::frame_style(doc, *page);
+        if seen.insert(id.text()) {
+            keys.extend(own_keys(&layout_of(doc, &id, &sheet::sheet_of(doc, *page), text)));
+        }
+    }
+    json!({"title_blocks": rows, "keys": keys.into_iter().collect::<Vec<_>>()})
+}
+
+/// The JSON `titleblock {id}` returns, built-in blocks laid out in `text`'s looks.
+///
+/// # Errors
+/// `id` is not a frame.
+pub fn block_json(doc: &Document, id: &StyleRef, spec: &SheetSpec, text: &FrameText) -> Result<Value, CmdError> {
+    let cat = &styles::frame::CATALOGUE;
+    let row = styles::rows(doc, cat).into_iter().find(|r| r.id == *id).ok_or(CmdError::refused(NOT_A_FRAME))?;
+    let mut v = crate::cmd::style::style_json(doc, cat, &row, false);
+    let layout = layout_of(doc, id, spec, text);
+    v["builtin"] = json!(row.layer == styles::Layer::Builtin);
+    v["body"] = serde_json::to_value(&layout).map_err(|e| CmdError::refused(e.to_string()))?;
+    v["users"] = json!({"pages": pages_using(doc, id).len()});
+    v["keys"] = json!(own_keys(&layout).into_iter().collect::<Vec<_>>());
+    Ok(v)
 }

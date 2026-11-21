@@ -890,7 +890,7 @@ fn f2_the_picker_lists_not_drawn_first_matches_marked_then_drawn_not_slashed_her
     let b = new_cable(&mut h, json!({"tag": "-W11", "to": {"location": "+CAB1"}}));
     let c = new_cable(&mut h, json!({"tag": "-W12", "from": {"location": "+CAB1"}, "type": "Synth 4G1"}));
     page_at(&mut h, p1, "+CAB1");
-    let items = cable_cmds::picker(&h.doc(), p1);
+    let items = ecad_electrical::cmd::cable::picker(&h.doc(), p1);
     let order: Vec<CableId> = items.iter().map(|i| i.cable).collect();
     assert!(!order.contains(&here), "a cable slashed on this page is absent: {items:?}");
     assert_eq!(order, vec![b, c, a, elsewhere], "matches, then other not drawn, then drawn: {items:?}");
@@ -902,7 +902,7 @@ fn f2_the_picker_lists_not_drawn_first_matches_marked_then_drawn_not_slashed_her
         h.wire_pp(&[(x, 0.0), (x, 50.0)]).unwrap();
     }
     slash_across(&mut h, (195.0, 25.0), (215.0, 25.0), Some(a)).unwrap();
-    let items = cable_cmds::picker(&h.doc(), p1);
+    let items = ecad_electrical::cmd::cable::picker(&h.doc(), p1);
     assert!(!items.iter().any(|i| i.cable == a), "slashed here now: absent");
 }
 
