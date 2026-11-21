@@ -154,21 +154,22 @@ cargo xtask patches               # only when files outside ecad/ changed
 - **ECAD is desktop-only (owner ruling, 2026-11-15):** no web or wasm product, so no ECAD crate
   has to build for wasm and there is no `cargo xtask wasm`. CADCraft's own wasm build is not
   affected.
-- **Derived views scale with what changed (owner decision, 2026-11-08).** Anything derived from the
-  model (reference texts, page projections, lists, panels) states what it depends on and is
-  updated from the objects a commit touched (brief 013's touched set and indexes). It never
-  rescans the whole project on an ordinary commit. Only the page on screen redraws; other open
-  pages are marked stale and redraw when brought to the front. The reviewer checks this once per
-  feature, and `cargo xtask bench` is the evidence.
+- **Derived views scale with what changed (owner decision, 2026-11-08; revised 2026-11-21).** Until
+  release, a view, list or index gets an **update map** only where the large-tier bench shows a full
+  rebuild is noticeable: over about **5 ms per edit on the large project** (the Devices list at
+  24–42 ms on 8 Nov is the example that justifies one). Otherwise it rebuilds from scratch after a
+  commit, and no incremental code is kept for it. Incremental code comes back where it earns its
+  keep; a solid foundation comes first. Only the page on screen redraws; other open pages are marked
+  stale and redraw when brought to the front. The loading rule is unchanged: a project opens on
+  demand, and opening does not grow with history. `cargo xtask bench` (large tier) is the evidence
+  for each kept update map.
 - **Benches (owner, 2026-11-12).** While building, bench on the **medium** project. Run the large
   tier once, at the end of the brief, and only for the operations the brief sets targets for. The
   full `cargo xtask bench` runs at the QA gate. Print and PDF benches (Print Book, release builds)
   use a project of **at most 25 pages**, never the 100- or 500-page tiers.
-  **No lazy default (owner, 2026-11-08).** Every command goes through the log, so "rebuild it on
-  every commit" is never the answer, even when it is fast on the medium project. Each new view or
-  panel ships with an **update map**: which ops (by kind and target) change what it shows, what it
-  does for each, and that every other op does nothing. A full rebuild is allowed only on open,
-  reload or first show. No refresh buttons: views stay live.
+  **Update maps (owner, 2026-11-21).** Where a view keeps one (rule above), the map says which
+  effects change what it shows, what it does for each, and that every other effect does nothing.
+  No refresh buttons: views stay live.
 - Changing any file outside `ecad/` is an upstream patch: list it in `UPSTREAM-PATCHES.md` and mark
   code with `// ECAD-SEAM(owner):`. Keep ECAD semantics out of upstream crates.
 - Rust only for product code. **Exception (owner decisions, 2026-10-12 and 2026-11-12):** developer
