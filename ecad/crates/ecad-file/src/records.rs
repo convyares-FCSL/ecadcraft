@@ -234,6 +234,7 @@ pub enum Subject {
     Wire(WireId),
     Cable(CableId),
     Route(RouteId),
+    Aid(m::AidId),
 }
 
 /// A route (design 072 F31): a line drawn on a page and what its ends land on.
@@ -975,6 +976,20 @@ pub enum Op {
         id: m::LinkId,
         link: m::DeviceLink,
     },
+    /// Design 072 §6.2: a drawing aid made, removed or changed, the model's strict record.
+    CreateAid {
+        id: m::AidId,
+        aid: m::Aid,
+    },
+    DeleteAid {
+        id: m::AidId,
+        aid: m::Aid,
+    },
+    ModifyAid {
+        id: m::AidId,
+        before: m::Aid,
+        after: m::Aid,
+    },
 }
 
 /// Where a style record lives (brief 050a).
@@ -1100,6 +1115,7 @@ impl From<&m::Representation> for Representation {
                 m::Subject::Wire(c) => Subject::Wire(c),
                 m::Subject::Cable(c) => Subject::Cable(c),
                 m::Subject::Route(c) => Subject::Route(c),
+                m::Subject::Aid(c) => Subject::Aid(c),
             },
             page: r.page,
             form: match r.form {
@@ -1336,6 +1352,9 @@ impl From<&m::Op> for Op {
             m::Op::ModifyProject { before, after } => Op::ModifyProject { before: before.clone(), after: after.clone() },
             m::Op::AddDeviceLink { id, link } => Op::AddDeviceLink { id: *id, link: *link },
             m::Op::RemoveDeviceLink { id, link } => Op::RemoveDeviceLink { id: *id, link: *link },
+            m::Op::CreateAid { id, aid } => Op::CreateAid { id: *id, aid: aid.clone() },
+            m::Op::DeleteAid { id, aid } => Op::DeleteAid { id: *id, aid: aid.clone() },
+            m::Op::ModifyAid { id, before, after } => Op::ModifyAid { id: *id, before: before.clone(), after: after.clone() },
         }
     }
 }
@@ -1459,6 +1478,7 @@ impl From<Representation> for m::Representation {
                 Subject::Wire(c) => m::Subject::Wire(c),
                 Subject::Cable(c) => m::Subject::Cable(c),
                 Subject::Route(c) => m::Subject::Route(c),
+                Subject::Aid(c) => m::Subject::Aid(c),
             },
             page: r.page,
             form: match r.form {
@@ -1613,6 +1633,9 @@ impl TryFrom<Op> for m::Op {
             Op::ModifyProject { before, after } => m::Op::ModifyProject { before, after },
             Op::AddDeviceLink { id, link } => m::Op::AddDeviceLink { id, link },
             Op::RemoveDeviceLink { id, link } => m::Op::RemoveDeviceLink { id, link },
+            Op::CreateAid { id, aid } => m::Op::CreateAid { id, aid },
+            Op::DeleteAid { id, aid } => m::Op::DeleteAid { id, aid },
+            Op::ModifyAid { id, before, after } => m::Op::ModifyAid { id, before, after },
         })
     }
 }

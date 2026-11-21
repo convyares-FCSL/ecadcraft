@@ -48,7 +48,7 @@ pub struct ModelMeta {
 pub const MAX_BUCKETS: u32 = 1 << 20;
 
 /// The model kinds split into chunks, by their key name.
-pub const KINDS: [&str; 6] = ["layer", "device", "terminal", "wire", "cable", "definition"];
+pub const KINDS: [&str; 7] = ["layer", "device", "terminal", "wire", "cable", "definition", "aid"];
 
 /// The key of page `id`'s chunk.
 pub fn page_key(id: PageId) -> String {
@@ -91,7 +91,7 @@ trait RawId: Copy + Ord + std::fmt::Display {
 macro_rules! raw_id {
     ($($t:ty),*) => {$(impl RawId for $t { fn raw(self) -> u128 { self.0 } })*};
 }
-raw_id!(LayerId, DeviceId, TerminalId, WireId, CableId, DefinitionId);
+raw_id!(LayerId, DeviceId, TerminalId, WireId, CableId, DefinitionId, ecad_model::AidId);
 
 /// A version row's `chunks`: key → hex hash.
 pub type ChunkHashes = BTreeMap<String, String>;
@@ -158,6 +158,7 @@ impl Dirty {
         add("wire", t.wires.iter().map(|i| i.0).collect());
         add("cable", t.cables.iter().map(|i| i.0).collect());
         add("definition", t.definitions.iter().map(|i| i.0).collect());
+        add("aid", t.aids.iter().map(|i| i.0).collect());
         for op in ops {
             match op {
                 Op::AddPage { id, .. } | Op::RemovePage { id, .. } | Op::ModifyPage { id, .. } => {
@@ -277,6 +278,7 @@ fn model_chunk(doc: &Document, kind: &str, b: u32, count: u32) -> Result<NewChun
         "wire" => encode(&pick(&doc.wires, b, count)),
         "cable" => encode(&pick(&doc.cables, b, count)),
         "definition" => encode(&pick(&doc.definitions, b, count)),
+        "aid" => encode(&pick(&doc.aids, b, count)),
         other => Err(FileError::ModelKind(other.to_string())),
     }
 }
@@ -289,6 +291,7 @@ fn kind_len(doc: &Document, kind: &str) -> usize {
         "wire" => doc.wires.len(),
         "cable" => doc.cables.len(),
         "definition" => doc.definitions.len(),
+        "aid" => doc.aids.len(),
         _ => 0,
     }
 }
@@ -437,6 +440,7 @@ enum Parsed {
     Wire(BTreeMap<WireId, Wire>),
     Cable(BTreeMap<CableId, Cable>),
     Definition(BTreeMap<DefinitionId, Definition>),
+    Aid(BTreeMap<ecad_model::AidId, ecad_model::Aid>),
 }
 
 /// A model chunk's objects, checked to belong in bucket `b` of `count`.
@@ -491,6 +495,7 @@ fn parse_chunk(set: &ChunkSet, key: &str, body: &[u8]) -> Result<Parsed, FileErr
         "wire" => Parsed::Wire(typed(body, key, b, count)?),
         "cable" => Parsed::Cable(typed(body, key, b, count)?),
         "definition" => Parsed::Definition(typed(body, key, b, count)?),
+        "aid" => Parsed::Aid(typed(body, key, b, count)?),
         other => return Err(FileError::ChunkKind { key: key.to_string(), kind: other.to_string() }),
     })
 }
@@ -594,6 +599,7 @@ fn merge_parsed(parsed: Vec<Result<Parsed, FileError>>) -> Result<(Document, Opt
             Parsed::Wire(m) => merge(&mut doc.wires, m, "wire")?,
             Parsed::Cable(m) => merge(&mut doc.cables, m, "cable")?,
             Parsed::Definition(m) => merge(&mut doc.definitions, m, "definition")?,
+            Parsed::Aid(m) => merge(&mut doc.aids, m, "aid")?,
         }
     }
     if !project {

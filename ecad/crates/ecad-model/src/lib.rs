@@ -22,6 +22,7 @@
 //!   key list (design 072 §9); [`text`]: validated text; [`colour`]: conductor colours.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+pub mod aid;
 pub mod book;
 pub mod builtins;
 pub mod colour;
@@ -64,6 +65,7 @@ pub mod wire_order;
 pub mod wiring;
 pub mod words;
 
+pub use aid::{Aid, AidKind, LocationBox};
 pub use book::PageNo;
 pub use connectivity::{Connectivity, NetData, NetKey, Node};
 pub use device::{DeviceGroup, DeviceType, TextField};
@@ -76,8 +78,8 @@ pub use doc::{
 pub use error::{ModelError, Noun, ParseError, Parsed, Result};
 pub use geom::{Placement, Pt};
 pub use id::{
-    CableId, ConductorId, DefinitionId, DeviceId, FolderId, FunctionId, IdAllocator, ItemId, LayerId, LibraryId, LinkId, LocationId, NetId, PageId,
-    ProjectId, RepresentationId, RouteId, StandardId, TerminalId, TxId, UserFieldId, WireId,
+    AidId, CableId, ConductorId, DefinitionId, DeviceId, FolderId, FunctionId, IdAllocator, ItemId, LayerId, LibraryId, LinkId, LocationId, NetId,
+    PageId, ProjectId, RepresentationId, RouteId, StandardId, TerminalId, TxId, UserFieldId, WireId,
 };
 pub use invariant::Touched;
 pub use ledger::{Author, Base, BranchPoint, Check, History, Ledger, StepPoint, Transaction, TxKind};

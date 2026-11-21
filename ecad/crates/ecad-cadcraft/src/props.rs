@@ -65,6 +65,8 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
             Subject::Cable(c) => ObjectRef::Cable(c),
             // A route has no properties (design 072 F31).
             Subject::Route(_) => return,
+            // An aid has no properties; its values are its own fields (design 072 §6.2).
+            Subject::Aid(_) => return,
         });
     };
     for op in ops {
@@ -107,6 +109,8 @@ pub fn touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> {
                 let landed = before.points_landed().chain(after.points_landed());
                 out.extend(landed.filter_map(|t| doc.terminals.get(&t)).map(|t| ObjectRef::Device(t.component)));
             }
+            // No panel shows an aid yet (design 072 §6.2; lane F1b/F1c).
+            Op::CreateAid { .. } | Op::DeleteAid { .. } | Op::ModifyAid { .. } => {}
             Op::ModifyCable { id, before, after } => {
                 out.insert(ObjectRef::Cable(*id));
                 out.extend(before.cores.iter().chain(&after.cores).filter_map(|m| m.wire()).map(ObjectRef::Wire));
@@ -238,6 +242,8 @@ fn pick(p: &Project, page: PageId, selection: &[Handle]) -> Picked {
             Subject::Cable(k) => {
                 out.cables.insert(k);
             }
+            // An aid is not a device, wire or cable (design 072 §6.2).
+            Subject::Aid(_) => {}
             // A drawn line stands for the wire it carries (design 072 §4.3).
             Subject::Route(x) => match crate::wires::wire_of_route(doc, x) {
                 Some(w) => {

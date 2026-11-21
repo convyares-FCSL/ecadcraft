@@ -621,6 +621,8 @@ Not stored; drawn (§4.4). Every `kind = junction` component goes.
 `Aid { Continuation { name, caption }, Box { location: Option<LocationId>, function:
 Option<FunctionId>, panel_temperature: Option<Celsius> } }` in `Document.aids`, drawn by a
 representation (`Subject::Aid`); a continuation's connection point has `TerminalOwner::Aid`.
+Ops `CreateAid`, `DeleteAid`, `ModifyAid` (whole aid recorded; overseer, 2026-11-20); stored in
+bucketed `model:aid:` chunks; invariant I25 (a box's panel temperature is a number).
 
 ### 6.3 Location and function: stored on the device, with `fixed`
 

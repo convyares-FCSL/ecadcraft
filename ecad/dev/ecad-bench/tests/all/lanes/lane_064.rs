@@ -38,6 +38,9 @@ fn old_touched(ops: &[Op]) -> Touched {
             Op::AddRoute { id, .. } | Op::RemoveRoute { id, .. } | Op::ModifyRoute { id, .. } => {
                 t.routes.insert(*id);
             }
+            Op::CreateAid { id, .. } | Op::DeleteAid { id, .. } | Op::ModifyAid { id, .. } => {
+                t.aids.insert(*id);
+            }
             Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } | Op::ModifyCable { id, .. } => {
                 t.cables.insert(*id);
             }

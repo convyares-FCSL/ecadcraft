@@ -477,6 +477,8 @@ pub fn hover_lines(p: &Project, uid: u64, h: Handle) -> Option<Vec<String>> {
                 Subject::Device(c) => component_lines(doc, c),
                 Subject::Wire(w) => wire_lines(doc, Some(w), None, page),
                 Subject::Route(x) => wire_lines(doc, crate::wires::wire_of_route(doc, x), Some(x), page),
+                // Design 072 §6.2: an aid's hover comes with lane F1b/F1c.
+                Subject::Aid(_) => Vec::new(),
                 // A drawn slash: traditional, or a fan that cannot be drawn on this page.
                 Subject::Cable(k) => {
                     let shown = match p.view_of(k) {

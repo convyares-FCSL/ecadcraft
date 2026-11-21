@@ -844,7 +844,7 @@ fn what_of(p: &ecad_cadcraft::Project, page: PageId, selection: &[ecad_cadcraft:
                 Some((rid, r)) => match r.subject {
                     Subject::Device(c) => What::Symbol(c, rid),
                     Subject::Wire(w) => What::Wire(w),
-                    Subject::Cable(_) | Subject::Route(_) => return None,
+                    Subject::Cable(_) | Subject::Route(_) | Subject::Aid(_) => return None,
                 },
                 None => return None,
             },

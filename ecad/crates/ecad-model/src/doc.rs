@@ -600,6 +600,8 @@ pub enum Subject {
     Cable(CableId),
     /// A route's drawing (design 072 F31).
     Route(RouteId),
+    /// A drawing aid's drawing (design 072 §6.2).
+    Aid(crate::id::AidId),
 }
 
 /// The two representation forms (proposal §4.1).
@@ -1356,6 +1358,9 @@ pub struct Document {
     pub cables: BTreeMap<CableId, Cable>,
     /// The lines drawn on pages (design 072 F31).
     pub routes: BTreeMap<RouteId, crate::route::Route>,
+    /// The drawing aids: continuations and location boxes (design 072 §6.2).
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub aids: BTreeMap<crate::id::AidId, crate::aid::Aid>,
     /// The typed links between devices (design 072 §2.6).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub device_links: BTreeMap<crate::id::LinkId, crate::user::DeviceLink>,
@@ -1405,6 +1410,8 @@ struct DocumentData {
     #[serde(default)]
     routes: BTreeMap<RouteId, crate::route::Route>,
     #[serde(default)]
+    aids: BTreeMap<crate::id::AidId, crate::aid::Aid>,
+    #[serde(default)]
     device_links: BTreeMap<crate::id::LinkId, crate::user::DeviceLink>,
     definitions: BTreeMap<DefinitionId, Definition>,
     settings: ProjectSettings,
@@ -1436,6 +1443,7 @@ impl From<DocumentData> for Document {
             wires,
             cables,
             routes,
+            aids,
             device_links,
             definitions,
             settings,
@@ -1458,6 +1466,7 @@ impl From<DocumentData> for Document {
             wires,
             cables,
             routes,
+            aids,
             device_links,
             definitions,
             settings,
@@ -1490,6 +1499,7 @@ impl PartialEq for Document {
             wires,
             cables,
             routes,
+            aids,
             device_links,
             definitions,
             settings,
@@ -1513,6 +1523,7 @@ impl PartialEq for Document {
             && *wires == other.wires
             && *cables == other.cables
             && *routes == other.routes
+            && *aids == other.aids
             && *device_links == other.device_links
             && *definitions == other.definitions
             && *settings == other.settings

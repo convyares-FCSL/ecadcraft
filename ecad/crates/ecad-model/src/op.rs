@@ -166,6 +166,21 @@ pub enum Op {
         before: Route,
         after: Route,
     },
+    /// A drawing aid made (design 072 §6.2).
+    CreateAid {
+        id: crate::id::AidId,
+        aid: crate::aid::Aid,
+    },
+    DeleteAid {
+        id: crate::id::AidId,
+        aid: crate::aid::Aid,
+    },
+    /// A drawing aid's values changed, the whole aid recorded.
+    ModifyAid {
+        id: crate::id::AidId,
+        before: crate::aid::Aid,
+        after: crate::aid::Aid,
+    },
     CreateCable {
         id: CableId,
         cable: Cable,
@@ -354,6 +369,9 @@ impl Op {
             Op::AddRoute { id, route } => Op::RemoveRoute { id, route },
             Op::RemoveRoute { id, route } => Op::AddRoute { id, route },
             Op::ModifyRoute { id, before, after } => Op::ModifyRoute { id, before: after, after: before },
+            Op::CreateAid { id, aid } => Op::DeleteAid { id, aid },
+            Op::DeleteAid { id, aid } => Op::CreateAid { id, aid },
+            Op::ModifyAid { id, before, after } => Op::ModifyAid { id, before: after, after: before },
             Op::CreateCable { id, cable } => Op::DeleteCable { id, cable },
             Op::DeleteCable { id, cable } => Op::CreateCable { id, cable },
             Op::ModifyCable { id, before, after } => Op::ModifyCable { id, before: after, after: before },
@@ -592,6 +610,24 @@ impl Op {
                 }
                 doc.index.route(*id, after, Delta::Add);
             }
+            Op::CreateAid { id, aid } => {
+                absent(&doc.aids, *id, "aid")?;
+                if let Some(e) = aid.problem() {
+                    return Err(pre(format!("aid {id}: {e}")));
+                }
+                doc.aids.insert(*id, aid.clone());
+            }
+            Op::DeleteAid { id, aid } => {
+                holds(&doc.aids, *id, aid, "aid", checked)?;
+                doc.aids.remove(id);
+            }
+            Op::ModifyAid { id, before, after } => {
+                holds(&doc.aids, *id, before, "aid", checked)?;
+                if let Some(e) = after.problem() {
+                    return Err(pre(format!("aid {id}: {e}")));
+                }
+                doc.aids.insert(*id, after.clone());
+            }
             Op::CreateCable { id, cable } => {
                 absent(&doc.cables, *id, "cable")?;
                 doc.index.cable(*id, cable, Delta::Add);
@@ -808,6 +844,9 @@ impl Op {
             Op::AddRoute { .. } => "AddRoute",
             Op::RemoveRoute { .. } => "RemoveRoute",
             Op::ModifyRoute { .. } => "ModifyRoute",
+            Op::CreateAid { .. } => "CreateAid",
+            Op::DeleteAid { .. } => "DeleteAid",
+            Op::ModifyAid { .. } => "ModifyAid",
             Op::CreateCable { .. } => "CreateCable",
             Op::DeleteCable { .. } => "DeleteCable",
             Op::ModifyCable { .. } => "ModifyCable",
