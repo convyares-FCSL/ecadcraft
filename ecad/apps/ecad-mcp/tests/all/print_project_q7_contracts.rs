@@ -201,7 +201,7 @@ fn ac11_the_tag_style_rewrites_in_one_undoable_step() {
     // One undo puts the setting and every tag back.
     c.exec("u", json!({}));
     let after_undo = c.doc();
-    assert_eq!(after_undo.properties.get("tags.dash"), before.properties.get("tags.dash"));
+    assert_eq!(after_undo.display.get("tags.dash"), before.display.get("tags.dash"));
     assert_eq!(tags(&mut c), ["-K01", "-K02", "-K03"]);
     // As typed: nothing rewritten; a tag typed now keeps its case.
     let v = c.exec("projectprops", json!({"tag_case": "typed"}));

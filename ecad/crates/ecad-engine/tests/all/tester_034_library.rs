@@ -300,7 +300,7 @@ fn setprop(h: &mut H, c: DeviceId, key: &str, value: Value) -> Result<Value, Str
 }
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.devices, &d.terminals, &d.wires, &d.pages, &d.page_order, &d.representations, &d.items, &d.properties, &d.definitions)
+    (&d.devices, &d.terminals, &d.wires, &d.pages, &d.page_order, &d.representations, &d.items, &d.display, &d.definitions)
 }
 
 /// Grid position of the i-th placement, far enough apart that no two symbols touch.

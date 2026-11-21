@@ -152,7 +152,7 @@ pub fn check_overrides(text: &str) -> Result<(), CmdError> {
 
 /// The rows the project stores under `key`.
 pub fn overrides(doc: &Document, key: &str) -> Vec<RowOverride> {
-    doc.properties.get(key).map(|t| parse_overrides(t)).unwrap_or_default()
+    doc.display.get(key).map(|t| parse_overrides(t)).unwrap_or_default()
 }
 
 /// The text a block's rows are stored as: every row, its label only when the person changed it.

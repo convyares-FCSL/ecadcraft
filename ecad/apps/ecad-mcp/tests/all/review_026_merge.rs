@@ -138,7 +138,7 @@ fn numbering_high_is_not_merged_as_a_property() {
     c.exec("renumber", json!({"kind": "devices", "scope": "all", "start": 20}));
     c.exec("switchbranch", json!({"branch": "main", "save": true}));
     c.exec("renumber", json!({"kind": "devices", "scope": "all", "start": 40}));
-    let main_high = c.doc().properties.get("numbering.high.K").cloned();
+    let main_high = c.doc().display.get("numbering.high.K").cloned();
     assert!(main_high.is_some());
     let pv = c.exec("merge", json!({"from": "Option H", "preview": true}));
     let rows = pv["conflicts"].as_array().cloned().unwrap_or_default();
@@ -151,5 +151,5 @@ fn numbering_high_is_not_merged_as_a_property() {
     }
     let r = c.exec("merge", json!({"from": "Option H", "choices": Value::Object(ch)}));
     assert_eq!(r["merged"], json!(true), "{r}");
-    assert_eq!(c.doc().properties.get("numbering.high.K"), main_high.as_ref(), "main's mark stays");
+    assert_eq!(c.doc().display.get("numbering.high.K"), main_high.as_ref(), "main's mark stays");
 }

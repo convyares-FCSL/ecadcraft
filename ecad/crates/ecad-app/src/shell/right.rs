@@ -502,7 +502,7 @@ fn connector_rows(doc: &ecad_model::Document, c: ecad_model::DeviceId, rep: Repr
         };
         let desc_origin = if own("description") {
             "set here"
-        } else if doc.properties.keys().any(|k| k.starts_with("connector.") && k.ends_with(".description")) {
+        } else if doc.display.keys().any(|k| k.starts_with("connector.") && k.ends_with(".description")) {
             "from project"
         } else {
             "from standard"

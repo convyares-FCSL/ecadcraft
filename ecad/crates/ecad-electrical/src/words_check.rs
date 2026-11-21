@@ -32,7 +32,7 @@ use crate::defaults::{self, Entry, Kind, Level, ProjectSource};
 /// ```
 pub fn check(doc: &Document) -> Vec<UnknownWord> {
     let mut out = Vec::new();
-    bag(&doc.properties, WordPlace::Project, Level::Project, &mut out);
+    bag(&doc.display, WordPlace::Project, Level::Project, &mut out);
     if let Some(std) = &doc.standard {
         bag(&std.values, WordPlace::Standard, Level::Standard, &mut out);
     }
@@ -155,11 +155,11 @@ mod tests {
     #[test]
     fn known_words_pass_and_unknown_ones_are_named() {
         let mut d = doc();
-        d.properties.insert("text.tag.show".into(), "first".into());
+        d.display.insert("text.tag.show".into(), "first".into());
         assert!(check(&d).is_empty(), "a known word passes");
-        d.properties.insert("text.tag.show".into(), " FIRST ".into());
+        d.display.insert("text.tag.show".into(), " FIRST ".into());
         assert!(check(&d).is_empty(), "case and spaces are read as today");
-        d.properties.insert("text.tag.show".into(), "maybe".into());
+        d.display.insert("text.tag.show".into(), "maybe".into());
         let found = check(&d);
         assert_eq!(found.len(), 1);
         let text = found[0].to_string();
@@ -184,8 +184,8 @@ mod tests {
     #[test]
     fn values_that_are_not_words_are_left_to_their_readers() {
         let mut d = doc();
-        d.properties.insert("text.tag.height".into(), "huge".into());
-        d.properties.insert("my_own_field".into(), "anything".into());
+        d.display.insert("text.tag.height".into(), "huge".into());
+        d.display.insert("my_own_field".into(), "anything".into());
         assert!(check(&d).is_empty());
     }
 
@@ -213,7 +213,7 @@ mod tests {
         // A cable's bag still holds `tag_fixed` (a device's is a field, design 072 §2.1).
         let c = ecad_model::CableId(3);
         d.cables.insert(c, ecad_model::Cable::default());
-        d.properties.insert(keys::NUMBERING_PROVISIONAL.as_str().into(), "yes".into());
+        d.display.insert(keys::NUMBERING_PROVISIONAL.as_str().into(), "yes".into());
         if let Some(cable) = d.cables.get_mut(&c) {
             cable.properties.insert(keys::TAG_FIXED.as_str().into(), "no".into());
         }

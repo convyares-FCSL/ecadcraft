@@ -185,7 +185,7 @@ fn props_of(doc: &Document, o: ObjectRef) -> Option<&ecad_model::Properties> {
         ObjectRef::Wire(c) => doc.wires.get(&c).map(|x| &x.display),
         ObjectRef::Cable(c) => doc.cables.get(&c).map(|x| &x.properties),
         ObjectRef::Page(p) => doc.pages.get(&p).map(|x| &x.display),
-        ObjectRef::Project => Some(&doc.properties),
+        ObjectRef::Project => Some(&doc.display),
         ObjectRef::Standard => doc.standard.as_ref().map(|s| &s.values),
     }
 }
@@ -244,7 +244,7 @@ pub fn rewrite_users(doc: &Document, cat: &Catalogue, id: &StyleRef, to: &StyleR
 /// Whether the project's or the standard's own choice names `id`.
 fn chosen_by_levels(doc: &Document, cat: &Catalogue, id: &StyleRef) -> bool {
     (cat.choices)().iter().any(|e| {
-        [Some(&doc.properties), doc.standard.as_ref().map(|s| &s.values)]
+        [Some(&doc.display), doc.standard.as_ref().map(|s| &s.values)]
             .into_iter()
             .flatten()
             .any(|p| p.get(e.key).and_then(|v| StyleRef::parse(v)).as_ref() == Some(id))

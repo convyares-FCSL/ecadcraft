@@ -158,6 +158,7 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
                     ..ecad_model::Project::default()
                 },
             },
+            Op::SetProperty { object: ecad_model::ObjectRef::Project, key: "note".into(), before: None, after: Some("issued".into()) },
             Op::NameVersion { name: "Rev A".into(), at, description: None },
         ],
     )

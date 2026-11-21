@@ -145,7 +145,7 @@ pub fn rows(doc: &Document) -> Vec<Check> {
     let mut places = ecad_model::numbering::Places::new(doc);
     // Old 031 keys: one row per kind found.
     for (field, text) in OLD_KEYS {
-        if doc.properties.keys().any(|k| is_old_text_key(k, field)) {
+        if doc.display.keys().any(|k| is_old_text_key(k, field)) {
             out.push(Check {
                 kind: Kind::IgnoredOldSetting,
                 page: None,
@@ -266,7 +266,7 @@ pub fn rows(doc: &Document) -> Vec<Check> {
             }
         }
     };
-    level(&doc.properties, "Project", &mut out);
+    level(&doc.display, "Project", &mut out);
     if let Some(s) = &doc.standard {
         level(&s.values, "Standard", &mut out);
     }

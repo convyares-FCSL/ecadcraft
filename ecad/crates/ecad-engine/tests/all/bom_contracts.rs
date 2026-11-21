@@ -339,7 +339,7 @@ fn strip_parts_take_article_numbers_from_their_own_level() {
     let v = f.h.run("article", json!({"part_number": "EP-1", "article_number": "A-0210"})).unwrap();
     assert_eq!(f.h.head(), head + 1);
     assert_eq!(v["message"], "Set A-0210 on 1 part (1 strip part).", "{v}");
-    assert_eq!(f.h.doc().properties.get("strip_end_plate_article_number").map(String::as_str), Some("A-0210"));
+    assert_eq!(f.h.doc().display.get("strip_end_plate_article_number").map(String::as_str), Some("A-0210"));
     f.h.run("article", json!({"part_number": "jb-1", "article_number": "A-0310"})).unwrap();
     assert_eq!(f.h.doc().devices[&f.x05].properties.get("link.1.article_number").map(String::as_str), Some("A-0310"));
     let rows = bom(&mut f.h, json!({}));

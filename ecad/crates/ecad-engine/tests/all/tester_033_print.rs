@@ -474,7 +474,7 @@ fn ac9_the_pending_marker_follows_the_undo_stack() {
     assert!(has(&mut h, "A") && !has(&mut h, "A*") && !has(&mut h, "B (draft)"));
     h.run("projectprops", json!({"revision_pending": "star"})).unwrap();
     assert!(has(&mut h, "A*"));
-    assert_eq!(h.doc().properties.get("revisions.pending").map(String::as_str), Some("star"), "FP3 key");
+    assert_eq!(h.doc().display.get("revisions.pending").map(String::as_str), Some("star"), "FP3 key");
     // Save and reopen: the same state, computed on open.
     h.run("qsave", Value::Null).unwrap();
     let medium = h.p(|p| p.store.bytes());
@@ -574,7 +574,7 @@ fn ac11_tag_style_rewrites_in_one_undoable_step() {
     h.run("u", Value::Null).unwrap();
     let after_undo = h.doc();
     assert_eq!(after_undo.devices, before.devices, "undo restores every tag");
-    assert_eq!(after_undo.properties, before.properties, "and the setting");
+    assert_eq!(after_undo.display, before.display, "and the setting");
     h.run("redo", Value::Null).unwrap();
     // Case: typed from now on; existing tags unchanged.
     let v = h.run("projectprops", json!({"tag_case": "typed"})).unwrap();
@@ -660,7 +660,7 @@ fn ac14_a_project_without_033_settings_looks_as_before() {
     let (doc2, unsaved) = r.read(&mut s2, |p, _| (p.ledger.document().clone(), p.ledger.is_unsaved())).unwrap();
     assert_eq!(doc2, doc);
     assert!(!unsaved, "opening writes nothing");
-    assert!(!doc2.properties.keys().any(|k| k.starts_with("tags.") || k.starts_with("revisions.")), "no 033 key appears by itself");
+    assert!(!doc2.display.keys().any(|k| k.starts_with("tags.") || k.starts_with("revisions.")), "no 033 key appears by itself");
 }
 
 /// AC14 after the build: the old project above shows the pending marker only by the pending rule
@@ -673,7 +673,7 @@ fn ac14_an_old_project_shows_the_marker_only_by_the_pending_rule() {
     assert!(!frame_texts(&mut h, page).iter().any(|t| t == "A*"));
     h.run("wire", json!({"points": pts(&[(10.0, 30.0), (60.0, 30.0)])})).unwrap();
     assert!(frame_texts(&mut h, page).iter().any(|t| t == "A*"));
-    assert!(!h.doc().properties.keys().any(|k| k.starts_with("tags.") || k.starts_with("revisions.")));
+    assert!(!h.doc().display.keys().any(|k| k.starts_with("tags.") || k.starts_with("revisions.")));
 }
 
 // ------------------------------------------------------------------------------------ AC15

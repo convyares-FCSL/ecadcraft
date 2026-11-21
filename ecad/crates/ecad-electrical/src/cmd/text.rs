@@ -175,7 +175,7 @@ pub fn textstyle_changes(input: TextStyleInput) -> Result<TextStyleChanges, CmdE
 
 /// One `text.*` project property change, or nothing when it is already so.
 fn set_project(doc: &Document, key: &str, after: Option<String>, ops: &mut Vec<Op>) {
-    let before = doc.properties.get(key).cloned();
+    let before = doc.display.get(key).cloned();
     if before != after {
         ops.push(Op::SetProperty { object: ObjectRef::Project, key: key.to_string(), before, after });
     }
@@ -411,7 +411,7 @@ pub fn show_ops(doc: &Document, level: ShowLevel, kind: TextKind, show: Option<&
         ObjectRef::Device(c) => doc.devices.get(&c).map(|x| &x.properties),
         ObjectRef::Wire(c) => doc.wires.get(&c).map(|x| &x.display),
         ObjectRef::Page(p) => doc.pages.get(&p).map(|x| &x.display),
-        ObjectRef::Project => Some(&doc.properties),
+        ObjectRef::Project => Some(&doc.display),
         ObjectRef::Cable(_) | ObjectRef::Standard => None,
     }
     .ok_or(CmdError::NotFound(Noun::Object))?;

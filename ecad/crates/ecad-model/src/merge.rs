@@ -683,7 +683,7 @@ fn differs(a: &Document, b: &Document, obj: Obj) -> bool {
         Obj::Aid(i) => a.aids.get(&i) != b.aids.get(&i),
         Obj::LoosePart(i) => a.loose_parts.get(&i) != b.loose_parts.get(&i),
         Obj::Project => {
-            a.properties != b.properties || a.project != b.project || a.settings != b.settings || a.standard != b.standard || a.styles != b.styles
+            a.display != b.display || a.project != b.project || a.settings != b.settings || a.standard != b.standard || a.styles != b.styles
         }
     }
 }
@@ -1019,7 +1019,7 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                 set(&mut m.definitions, id, v);
             }
             Obj::Project => {
-                m.properties = merge_props(ctx, obj, "Project", &a.properties, &t.properties, &s.properties, ctx.inp.keep_project_key);
+                m.display = merge_props(ctx, obj, "Project", &a.display, &t.display, &s.display, ctx.inp.keep_project_key);
                 m.project = merge_project(ctx, obj, &a.project, &t.project, &s.project);
                 m.device_links =
                     field(ctx, obj, "device_links", "Project · device links".into(), &a.device_links, &t.device_links, &s.device_links, &|x| {
@@ -2123,7 +2123,7 @@ fn change_detail(a: &Document, s: &Document, obj: Obj) -> String {
                 p
             }),
             Obj::Page(p) => d.pages.get(&p).map(|x| x.display.clone()),
-            Obj::Project => Some(d.properties.clone()),
+            Obj::Project => Some(d.display.clone()),
             _ => None,
         }
     };

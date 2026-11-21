@@ -235,7 +235,7 @@ fn f_g_import_an_io_list_fills_tags_and_descriptions_one_way() {
     assert_eq!(p.get("plc.ch.2.text").map(String::as_str), Some("Inlet valve"));
     assert_eq!(p.get("plc.ch.12.tag").map(String::as_str), Some("Spare_Out4"));
     assert_eq!(p.get("plc.ch.8.tag").map(String::as_str), Some("Dosing_On"), "a channel not in the list keeps its tag");
-    assert!(!h.doc().properties.keys().any(|k| k.starts_with("plc.sync.")), "nothing of the table is kept");
+    assert!(!h.doc().display.keys().any(|k| k.starts_with("plc.sync.")), "nothing of the table is kept");
     same_as_built(&mut h);
     h.cmdline("u");
     let p = crate::common::plc_view(&h.doc(), a03);

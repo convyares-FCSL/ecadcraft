@@ -250,7 +250,7 @@ fn a_merge_moves_every_user_and_undo_redo_are_exact() {
     // No stored value anywhere still names the removed key.
     let old = key(&before, Aspect::Location, "+CP01");
     let dangling = after.devices.values().flat_map(|c| c.properties.values()).chain(after.pages.values().flat_map(|p| p.display.values()));
-    assert!(dangling.chain(after.properties.values()).all(|v| *v != old), "a value still names +CP01's key");
+    assert!(dangling.chain(after.display.values()).all(|v| *v != old), "a value still names +CP01's key");
     same_as_built(h, "after merge");
     let locs: Vec<Option<String>> = h.cfg(|p| p.outputs().bom(Group::Location).into_iter().map(|r| r.location).collect());
     assert!(!locs.contains(&Some("+CP01".into())), "{locs:?}");

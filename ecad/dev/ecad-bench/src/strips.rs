@@ -198,7 +198,7 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
             ops.push(Op::SetProperty { object, key, before: None, after: Some(value) });
         };
         for item in ecad_engine::accessories::PART_ITEMS {
-            if !doc.properties.contains_key(&format!("strip_{item}_part_number")) {
+            if !doc.display.contains_key(&format!("strip_{item}_part_number")) {
                 set(&mut ops, ObjectRef::Project, format!("strip_{item}_part_number"), format!("{}-1", item.to_ascii_uppercase()));
             }
         }

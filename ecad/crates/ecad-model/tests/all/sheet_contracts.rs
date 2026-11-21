@@ -60,7 +60,7 @@ fn page_and_project_properties_set_and_undo() {
     assert_eq!(Book::of(doc).number(doc, p), "100");
     assert_eq!(Book::of(doc).number(doc, f.pages[1]), "2", "unnumbered pages show their position");
     f.ledger.undo(Author::User).unwrap();
-    assert!(f.ledger.document().properties.is_empty());
+    assert!(f.ledger.document().display.is_empty());
     assert!(f.ledger.document().pages[&p].number.is_none());
     assert!(f.ledger.replay_matches().unwrap());
 }

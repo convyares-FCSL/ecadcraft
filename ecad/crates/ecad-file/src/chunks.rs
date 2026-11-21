@@ -2,7 +2,7 @@
 //! the JSON of its objects, content-addressed by [`super::schema::chunk_hash`].
 //!
 //! - `page:<PageId>`: the page, the items on it and the representations on it.
-//! - `model:project`: page order, settings, named versions, project properties, folders and
+//! - `model:project`: page order, settings, named versions, the display bag, folders and
 //!   folder order, and (brief 050a, left out while empty) the standard and the project's style
 //!   records, and (design 072 §2.6, left out while empty) the device links.
 //! - `model:<kind>:<b>`: the layers, devices, terminals, conductors, cables or definitions
@@ -220,7 +220,7 @@ struct ProjectChunkRef<'a> {
     page_order: &'a Vec<PageId>,
     settings: &'a ProjectSettings,
     versions: &'a BTreeMap<String, u64>,
-    properties: &'a BTreeMap<String, String>,
+    display: &'a BTreeMap<String, String>,
     /// Design 072 §5.3: left out while empty.
     #[serde(skip_serializing_if = "Project::is_empty")]
     project: &'a Project,
@@ -242,7 +242,7 @@ struct ProjectChunk {
     page_order: Vec<PageId>,
     settings: ProjectSettings,
     versions: BTreeMap<String, u64>,
-    properties: BTreeMap<String, String>,
+    display: BTreeMap<String, String>,
     #[serde(default)]
     project: Project,
     #[serde(default)]
@@ -340,7 +340,7 @@ fn project_chunk(doc: &Document) -> Result<NewChunk, FileError> {
         page_order: &doc.page_order,
         settings: &doc.settings,
         versions: &doc.versions,
-        properties: &doc.properties,
+        display: &doc.display,
         project: &doc.project,
         device_links: &doc.device_links,
         folders: &doc.folders,
@@ -589,7 +589,7 @@ fn merge_parsed(parsed: Vec<Result<Parsed, FileError>>) -> Result<(Document, Opt
                 doc.page_order = p.page_order;
                 doc.settings = p.settings;
                 doc.versions = p.versions;
-                doc.properties = p.properties;
+                doc.display = p.display;
                 doc.project = p.project;
                 doc.device_links = p.device_links;
                 doc.folders = p.folders;

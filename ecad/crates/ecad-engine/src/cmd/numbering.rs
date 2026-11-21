@@ -156,7 +156,7 @@ impl Command for NumberingParams {
             None => on_any_page(s, |p, _| Ok(read(p.ledger.document()))),
             Some(on) => on_project(s, |p, pg, _| {
                 let doc = p.ledger.document();
-                let before = doc.properties.get(PROVISIONAL_SETTING).cloned();
+                let before = doc.display.get(PROVISIONAL_SETTING).cloned();
                 let after = on.then(|| ecad_model::words::flag_word(true).to_string());
                 if before != after {
                     p.apply_edit(

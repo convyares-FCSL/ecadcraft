@@ -671,7 +671,7 @@ fn a03_textstyle_writes_the_kinds_style_record() {
     let row = v["kinds"].as_array().and_then(|a| a.iter().find(|k| k["kind"] == json!("tag")).cloned()).unwrap_or_default();
     assert_eq!(s(&row["style"]), "tag", "{v}");
     assert!(op_names(&tx).contains(&"SetStyle"), "{:?}", op_names(&tx));
-    assert!(!h.doc().properties.contains_key("text.tag.height"), "FP4: no old property written");
+    assert!(!h.doc().display.contains_key("text.tag.height"), "FP4: no old property written");
     let r = style_row(&mut h, "text", "tag");
     assert!(near(field_num(&r, "height"), 3.0) && field(&r, "height").1 == "project", "the project record: {r}");
     let (_, tx) = one_tx(&mut h, "textstyle", json!({"kind": "wire_label", "height": 2}));

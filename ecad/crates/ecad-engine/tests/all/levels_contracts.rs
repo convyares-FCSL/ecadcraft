@@ -181,7 +181,7 @@ fn termlabel_relabels_a_position_and_sets_a_level_label() {
     // The separator default reaches the strip (design 036 §13 N): `""` on the project is none.
     let t1 = terminals(&s1)[0];
     h.run("projectprops", json!({"props": {"terminal.level.separator": ""}})).unwrap();
-    assert_eq!(h.doc().properties.get("terminal.level.separator").map(String::as_str), Some("none"));
+    assert_eq!(h.doc().display.get("terminal.level.separator").map(String::as_str), Some("none"));
     assert_eq!(h.p(|p| ecad_engine::interact::terminal_name(p.ledger.document(), t1)), "1S");
     same_as_built(&mut h);
     // The strip's own value wins.

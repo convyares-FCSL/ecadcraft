@@ -374,7 +374,7 @@ const views = {
     if (p.error) return msg(p.error, "bad");
     const pr = p.ok;
     const info = Object.entries(pr.info || {}).map(([k, v]) => `<tr><th>${esc(k.replace(/_/g, " "))}</th><td>${esc(v)}</td></tr>`).join("");
-    const props = Object.entries(pr.properties).map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join("");
+    const props = Object.entries(pr.display).map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join("");
     const revs = Object.entries(pr.revisions).map(([n, f]) => `<tr><td>${esc(n)}</td><td>${esc(Object.entries(f).map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : v}`).join(" · "))}</td></tr>`).join("");
     const entries = (l) => (l || []).map((e) => `<tr><td>${esc(e.code)}</td><td>${esc(e.tag)}</td><td>${esc((e.descriptions || []).join(" · "))}</td><td class="mono">${esc(e.id)}</td></tr>`).join("");
     const locs = entries(pr.locations), funcs = entries(pr.functions);

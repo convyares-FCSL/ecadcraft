@@ -207,7 +207,7 @@ fn a_prefix_goes_to_the_tag_settings_and_counts_its_devices() {
     h.run("setdefault", json!({"key": e.key, "value": "-q"})).unwrap();
     let d = h.doc();
     assert_eq!(d.settings.starter_prefix("coil").map(|p| p.as_str()), Some("Q"), "as Tag Settings writes it");
-    assert!(!d.properties.contains_key(e.key), "never a project property too");
+    assert!(!d.display.contains_key(e.key), "never a project property too");
     assert_eq!(defaults::resolve(&d, e, Scope::project()).from, Source::Project);
     // The chain: built-in K, the standard (no value of its own), the project's Q.
     let chain = defaults::chain(&d, e, Scope::project());

@@ -293,7 +293,7 @@ pub fn ops_between_in(from: &Document, to: &Document, keep_project_key: &dyn Fn(
 
     // The project.
     if project {
-        props(ObjectRef::Project, &from.properties, &to.properties, keep_project_key, &mut changes);
+        props(ObjectRef::Project, &from.display, &to.display, keep_project_key, &mut changes);
         // Revision rows are history: kept as they are now unless the filter accepts them.
         let mut target = to.project.clone();
         if !keep_project_key(crate::project::REVISIONS_KEY) {

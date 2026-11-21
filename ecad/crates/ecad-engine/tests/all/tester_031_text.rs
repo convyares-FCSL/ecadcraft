@@ -169,7 +169,7 @@ fn second_page(h: &mut H) -> PageId {
 }
 
 fn project_prop(h: &mut H, key: &str) -> Option<String> {
-    h.doc().properties.get(key).cloned()
+    h.doc().display.get(key).cloned()
 }
 
 fn comp_props(h: &mut H, c: DeviceId, prefix: &str) -> BTreeMap<String, String> {
@@ -177,7 +177,7 @@ fn comp_props(h: &mut H, c: DeviceId, prefix: &str) -> BTreeMap<String, String> 
 }
 
 fn model_parts(d: &Document) -> impl PartialEq + std::fmt::Debug + '_ {
-    (&d.devices, &d.terminals, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.properties, &d.settings)
+    (&d.devices, &d.terminals, &d.wires, &d.cables, &d.pages, &d.page_order, &d.representations, &d.items, &d.display, &d.settings)
 }
 
 fn textstyle_kind(v: &Value, kind: &str) -> Value {
@@ -277,7 +277,7 @@ fn tester_031_fixtures_build_and_store_no_text_keys() {
     let (_, t) = strip_at(&mut f.h, &[100.0, 110.0, 120.0], 100.0, None);
     assert_eq!(t.len(), 3);
     let d = f.h.doc();
-    assert!(d.properties.keys().all(|k| !k.starts_with("text.")));
+    assert!(d.display.keys().all(|k| !k.starts_with("text.")));
     assert!(d.devices.values().all(|c| c.properties.keys().all(|k| !k.starts_with("text."))));
     assert!(d.pages.values().all(|p| p.display.keys().all(|k| !k.starts_with("text."))));
     f.h.check();
@@ -627,7 +627,7 @@ fn t5_levels_symbol_device_page_project_narrowest_wins() {
 
     // Where the keys live (FP1–FP3).
     let d = f.h.doc();
-    assert_eq!(d.properties.get("text.tag.show").map(String::as_str), Some("no"));
+    assert_eq!(d.display.get("text.tag.show").map(String::as_str), Some("no"));
     assert_eq!(d.pages[&f.page].display.get("text.tag.show").map(String::as_str), Some("yes"));
     assert_eq!(d.devices[&f.k1].properties.get("text.tag.show").map(String::as_str), Some("no"));
     let sym = format!("text.{}.tag.show", f.r1[1].hex());
@@ -1256,7 +1256,7 @@ fn t11_an_old_file_opens_and_saves_unchanged() {
         let s = serde_json::to_string(i).unwrap();
         assert!(!s.contains("halign") && !s.contains("valign"), "{s}");
     }
-    assert!(doc.properties.keys().all(|k| !k.starts_with("text.")));
+    assert!(doc.display.keys().all(|k| !k.starts_with("text.")));
     let page = h.first_page();
     h.activate(page);
     let _ = texts(&mut h, page);

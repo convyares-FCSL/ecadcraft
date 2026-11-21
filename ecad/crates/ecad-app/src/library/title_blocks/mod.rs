@@ -275,7 +275,7 @@ fn sample_of(doc: &ecad_model::Document, active: Option<PageId>, layout: &TitleB
             (f, v)
         })
         .collect();
-    Some(Sample { page: format!("on page {}", book.number(doc, page)), props: doc.properties.clone(), newest, input })
+    Some(Sample { page: format!("on page {}", book.number(doc, page)), props: doc.display.clone(), newest, input })
 }
 
 impl App {

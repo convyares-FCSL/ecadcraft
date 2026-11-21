@@ -734,7 +734,7 @@ pub fn article_targets(doc: &Document, pn: &str, maker: Option<&str>) -> Vec<Art
             for (part, mk, article, project_maker) in strip_slots(props) {
                 // The maker as the BOM reads it: the strip's, else the project's.
                 let maker_here =
-                    comp.get(&mk).filter(|v| !v.trim().is_empty()).or_else(|| project_maker.and_then(|k| doc.properties.get(&k)).map(String::as_str));
+                    comp.get(&mk).filter(|v| !v.trim().is_empty()).or_else(|| project_maker.and_then(|k| doc.display.get(&k)).map(String::as_str));
                 if same(comp.get(&part), pn) && maker.is_none_or(|m| same(maker_here, m)) {
                     out.push(ArticleTarget::Key(ObjectRef::Device(*c), article, "strip"));
                 }
@@ -748,7 +748,7 @@ pub fn article_targets(doc: &Document, pn: &str, maker: Option<&str>) -> Vec<Art
     }
     // The project's strip part defaults (`strip_<code>_part_number`, `strip_<item>_part_number`).
     for (part, mk, article) in project_strip_slots() {
-        if same(doc.properties.get(&part), pn) && maker.is_none_or(|m| same(doc.properties.get(&mk), m)) {
+        if same(doc.display.get(&part), pn) && maker.is_none_or(|m| same(doc.display.get(&mk), m)) {
             out.push(ArticleTarget::Key(ObjectRef::Project, article, "strip"));
         }
     }

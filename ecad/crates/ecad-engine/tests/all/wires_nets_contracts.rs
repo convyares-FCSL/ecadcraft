@@ -435,7 +435,7 @@ fn the_join_default_comes_from_the_registry() {
     let mut h = H::new(0x32_41);
     wire(&mut h, &[(0.0, 0.0), (50.0, 0.0)], json!({}));
     h.cfg(|p| {
-        let before = p.ledger.document().properties.get("wire.join").cloned();
+        let before = p.ledger.document().display.get("wire.join").cloned();
         p.ledger
             .commit(
                 ecad_model::Author::User,

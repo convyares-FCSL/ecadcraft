@@ -499,7 +499,7 @@ fn cover_rows_hide_reorder_and_relabel_the_generated_legend() {
     assert!(h.run("projectprops", json!({"props": {"cover.symbol_legend": many.join("\n")}})).is_err());
     assert!(h.run("projectprops", json!({"props": {"cover.wire_colours": format!("bk/2.5\t1\t{}", "x".repeat(65))}})).is_err());
     h.run("u", Value::Null).unwrap();
-    assert!(!h.doc().properties.contains_key("cover.symbol_legend"), "one u");
+    assert!(!h.doc().display.contains_key("cover.symbol_legend"), "one u");
 }
 
 /// Design 054 §6.6 under 052 (FP8): the cover's structure codes show each stored entry key as its

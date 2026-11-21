@@ -354,7 +354,7 @@ pub fn frame_style(doc: &Document, page: PageId) -> StyleRef {
     let pick = |v: Option<&String>| v.and_then(|t| StyleRef::parse(t)).filter(|id| frame_exists(doc, id));
     pick(doc.pages.get(&page).and_then(|p| p.display.get(FRAME_STYLE_KEY)))
         .or_else(|| page_type_frame(doc, page).filter(|id| frame_exists(doc, id)))
-        .or_else(|| pick(doc.properties.get(FRAME_STYLE_KEY)))
+        .or_else(|| pick(doc.display.get(FRAME_STYLE_KEY)))
         .or_else(|| pick(doc.standard.as_ref().and_then(|s| s.values.get(FRAME_STYLE_KEY))))
         .unwrap_or_else(|| StyleRef::Builtin(BUILTIN_FRAME.to_string()))
 }

@@ -264,7 +264,7 @@ pub fn clear_old_key(doc: &Document, key: &str) -> Option<Op> {
     if !crate::styles::checks::is_old_key(key) {
         return None;
     }
-    let before = doc.properties.get(key).cloned()?;
+    let before = doc.display.get(key).cloned()?;
     Some(Op::SetProperty { object: ObjectRef::Project, key: key.to_string(), before: Some(before), after: None })
 }
 

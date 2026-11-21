@@ -1102,8 +1102,8 @@ mod tests {
     fn old_031_properties_are_ignored() {
         // Brief 050a (FP4): no conversion; Checks says so (`ignored-old-setting`).
         let mut doc = Document::default();
-        doc.properties.insert("text.tag.height".into(), "3".into());
-        doc.properties.insert("text.tag.weight".into(), "regular".into());
+        doc.display.insert("text.tag.height".into(), "3".into());
+        doc.display.insert("text.tag.weight".into(), "regular".into());
         assert_eq!(text_style(&doc, TextKind::Tag), TextStyle { height: 2.5, weight: Weight::Bold, style_name: STYLE_BOLD, colour: None });
     }
 
@@ -1149,8 +1149,8 @@ mod tests {
         assert_eq!(text_shown(&doc, plain, TextKind::ContinuationName), Shown::Off);
         assert_eq!(text_shown(&doc, plain, TextKind::Grid), Shown::On);
         // A project-wide tag rule overrides the run rule; `first` is refused for other kinds.
-        doc.properties.insert("text.tag.show".into(), "no".into());
-        doc.properties.insert("text.description.show".into(), "first".into());
+        doc.display.insert("text.tag.show".into(), "no".into());
+        doc.display.insert("text.description.show".into(), "first".into());
         assert_eq!(text_shown(&doc, strip, TextKind::Tag), Shown::Off);
         assert_eq!(text_shown(&doc, plain, TextKind::Description), Shown::Off);
         doc.pages.get_mut(&page).map(|p| p.display.insert("text.tag.show".into(), "yes".into()));
@@ -1161,7 +1161,7 @@ mod tests {
         assert_eq!(text_shown(&doc, plain, TextKind::Tag), Shown::On);
         // The project may turn the strip run rule off.
         let mut doc2 = Document::default();
-        doc2.properties.insert("text.tag.show.strip".into(), "yes".into());
+        doc2.display.insert("text.tag.show.strip".into(), "yes".into());
         assert_eq!(text_shown(&doc2, TextTarget { run: RunRule::Strip, ..TextTarget::project() }, TextKind::Tag), Shown::On);
     }
 }

@@ -66,7 +66,7 @@ fn without_craft_fonts_bold_is_a_heavier_stroke() {
     }
     // A family nobody has falls back the same way and says so.
     let mut doc = ecad_model::Document::default();
-    doc.properties.insert("text.font".into(), "NoSuchFont 031".into());
+    doc.display.insert("text.font".into(), "NoSuchFont 031".into());
     let g = text_style::Fonts::resolve(&doc);
     assert_eq!((g.wanted.as_str(), g.drawn_with.as_str()), ("NoSuchFont 031", f.drawn_with.as_str()));
     assert!(g.status().starts_with("NoSuchFont 031 is not available here; drawn with"), "{}", g.status());
@@ -150,7 +150,7 @@ fn a_kind_may_have_its_own_font() {
         .and_then(|m| m.get(&ecad_model::StyleRef::Builtin("tag".into())))
         .and_then(|r| r.body.entry("font"));
     assert_eq!(font.as_deref(), Some("Kind Font 031"));
-    assert!(!doc.properties.contains_key("text.font"), "the project font is unchanged");
+    assert!(!doc.display.contains_key("text.font"), "the project font is unchanged");
     let s = text_style::text_style(&doc, TextKind::Tag);
     assert_eq!(s.style_name, "ECAD-TAG-BOLD");
     assert_eq!(text_style::text_style(&doc, TextKind::PointLabel).style_name, STYLE_REGULAR);

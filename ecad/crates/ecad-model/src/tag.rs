@@ -282,7 +282,7 @@ impl Style {
     /// words is the built-in. `ecad-electrical` registers the same keys and defaults.
     pub fn of(doc: &crate::Document) -> Style {
         let b = crate::builtins::builtins();
-        let stored = |key: &str| doc.properties.get(key).map(String::as_str);
+        let stored = |key: &str| doc.display.get(key).map(String::as_str);
         let builtin_dash = crate::words::flag(b.tag_dash).unwrap_or(true);
         let builtin_case = <Case as crate::words::Word>::parse(b.tag_case).unwrap_or_default();
         Style {

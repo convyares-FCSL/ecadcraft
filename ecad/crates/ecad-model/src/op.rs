@@ -705,7 +705,7 @@ impl Op {
                     ObjectRef::Wire(id) => doc.wires.get_mut(id).map(|c| &mut c.display),
                     ObjectRef::Cable(_) => None,
                     ObjectRef::Page(id) => doc.pages.get_mut(id).map(|p| &mut p.display),
-                    ObjectRef::Project => Some(&mut doc.properties),
+                    ObjectRef::Project => Some(&mut doc.display),
                     ObjectRef::Standard => doc.standard.as_mut().map(|s| &mut s.values),
                 }
                 .ok_or_else(|| pre(format!("{object:?} does not exist")))?;

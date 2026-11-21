@@ -181,7 +181,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredV2, S
                 let (before, after) = if flip {
                     (Some("b".to_string()), Some("a".to_string()))
                 } else {
-                    let cur = o.ledger.document().properties.get("bench.x10").cloned();
+                    let cur = o.ledger.document().display.get("bench.x10").cloned();
                     (cur, Some("b".to_string()))
                 };
                 flip = after.as_deref() == Some("b");
@@ -375,7 +375,7 @@ pub fn growth(path: &Path, batches: u64) -> Result<(), String> {
     let mut flip = false;
     for b in 1..=batches {
         for _ in 0..1_000 {
-            let before = o.ledger.document().properties.get("bench.growth").cloned();
+            let before = o.ledger.document().display.get("bench.growth").cloned();
             let after = if flip { "a" } else { "b" };
             flip = !flip;
             let ops = vec![Op::SetProperty { object: ObjectRef::Project, key: "bench.growth".into(), before, after: Some(after.into()) }];

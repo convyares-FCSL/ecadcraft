@@ -370,7 +370,7 @@ pub fn plan_article(doc: &Document, part_number: &str, maker: Option<&str>, arti
         }
         let before = match object {
             ObjectRef::Device(c) => doc.devices.get(c).and_then(|x| x.properties.get(key)).cloned(),
-            _ => doc.properties.get(key).cloned(),
+            _ => doc.display.get(key).cloned(),
         };
         if before != after {
             ops.push(Op::SetProperty { object: *object, key: key.clone(), before, after: after.clone() });

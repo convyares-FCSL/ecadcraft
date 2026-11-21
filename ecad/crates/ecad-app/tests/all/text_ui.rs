@@ -57,7 +57,7 @@ fn the_text_section_writes_one_textstyle_transaction() {
         ecad_engine::devices::texts_on_page(&d, page).into_iter().filter(|t| t.of == ecad_engine::devices::TextOf::Tag).map(|t| t.height).collect();
     assert_eq!(tags, vec![3.0]);
     ok(&mut h, "u");
-    assert!(!doc(&mut h).properties.contains_key("text.tag.height"));
+    assert!(!doc(&mut h).display.contains_key("text.tag.height"));
 
     // An out-of-range height keeps OK disabled: nothing is written.
     crate::project_panel::project_menu(&mut h, project_panel::PROJECT_SETTINGS);

@@ -199,7 +199,7 @@ fn project_properties_are_one_transaction() {
     .unwrap();
     assert_eq!(s.h.head(), head + 1);
     let doc = s.h.doc();
-    assert_eq!(doc.properties.get("site_contact").map(String::as_str), Some("J. Smith"));
+    assert_eq!(doc.display.get("site_contact").map(String::as_str), Some("J. Smith"));
     let texts = frame_texts(&mut s.h, s.supply);
     for t in ["Panel 7", "FCS-1", "ACME", "Draft"] {
         assert!(texts.iter().any(|x| x == t), "{t} in {texts:?}");
@@ -207,7 +207,7 @@ fn project_properties_are_one_transaction() {
     let e = s.h.run("projectprops", json!({"props": {"title": "x"}})).unwrap_err();
     assert!(e.contains("\"title\" is set above."), "{e}");
     s.h.run("u", Value::Null).unwrap();
-    assert!(s.h.doc().properties.is_empty());
+    assert!(s.h.doc().display.is_empty());
     // The sheet and the step are settings; a grid change changes every reference text.
     s.h.run("projectprops", json!({"sheet": "A2", "page_number_step": 5})).unwrap();
     let d = s.h.doc();

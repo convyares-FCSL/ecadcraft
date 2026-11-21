@@ -476,7 +476,7 @@ fn the_update_maps_follow_frame_choices_and_frame_geometry() {
     let mut a1 = rec.clone();
     ecad_engine::styles::frame::set(frame_of(&mut a1), "sheet", Some("A1")).unwrap();
     let mut used = doc.clone();
-    used.properties.insert("print.frame.style".into(), id.clone());
+    used.display.insert("print.frame.style".into(), id.clone());
     assert!(references::cables_touched(&used, &[set(a1)]).is_some_and(|s| s.contains(&c1)), "its pages' cables");
 }
 

@@ -185,7 +185,7 @@ pub fn ops(doc: &Document, entry: &Entry, level: Level, target: Target, value: O
     };
     match (level, target) {
         (Level::Project, _) => match entry.project {
-            ProjectSource::Property => property(ObjectRef::Project, Some(&doc.properties), entry.key.to_string()),
+            ProjectSource::Property => property(ObjectRef::Project, Some(&doc.display), entry.key.to_string()),
             ProjectSource::Settings(_) => {
                 let before = doc.settings.clone();
                 let mut after = before.clone();
@@ -366,7 +366,7 @@ pub fn plan_family(doc: &Document, key: &str, level: Option<&str>, value: Option
         }
         _ => {
             let k = family::family_property(&symbol, field).unwrap_or_default();
-            let before = doc.properties.get(&k).cloned();
+            let before = doc.display.get(&k).cloned();
             if before == value { Vec::new() } else { vec![Op::SetProperty { object: ObjectRef::Project, key: k, before, after: value }] }
         }
     };

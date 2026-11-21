@@ -644,7 +644,7 @@ pub fn strip_acc(doc: &Document, props: &Properties, rows: &[TermRow]) -> StripA
             _ => a.orphans.push((k.clone(), items)),
         }
     }
-    let mut parts = Parts { strip: props, project: &doc.properties, inherits: BTreeSet::new() };
+    let mut parts = Parts { strip: props, project: &doc.display, inherits: BTreeSet::new() };
     for g in Acc::GAP {
         if a.count(g) > 0 {
             if let Some(pn) = parts.get(&format!("{}.part_number", g.key())) {

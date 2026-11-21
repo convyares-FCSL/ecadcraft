@@ -406,7 +406,7 @@ pub fn rep_anchor_in(places: &mut Places<'_>, subject: Subject) -> Option<(PageI
 /// Whether a project has provisional tags on (FP2).
 pub fn provisional_on(doc: &Document) -> bool {
     use crate::keys::PropsExt;
-    doc.properties.flag(crate::keys::NUMBERING_PROVISIONAL) == Some(true)
+    doc.display.flag(crate::keys::NUMBERING_PROVISIONAL) == Some(true)
 }
 
 /// Whether a device or cable with these properties is fixed (FP1). A provisional tag never
@@ -725,7 +725,7 @@ fn plan_tags(
     for p in changed_prefixes {
         let n = in_use_after.get(&p).copied().unwrap_or(0);
         let key = format!("{HIGH_RESET_PREFIX}{p}");
-        let before = doc.properties.get(&key).cloned();
+        let before = doc.display.get(&key).cloned();
         // Always written, also when the number is the stored one (tester 026, 6): the reset
         // carries the mark it replaces and a newer generation (`tag::reset_value`).
         let generation = before.as_deref().and_then(tag::parse_reset).map_or(0, |r| r.2).saturating_add(1);

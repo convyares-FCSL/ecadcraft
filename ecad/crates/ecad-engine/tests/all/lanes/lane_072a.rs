@@ -67,7 +67,7 @@ fn unknown_words_open_read_only() {
     let mut s = Session::empty();
     let (project, _) = ProjectHandle::open_file_read_only(&mut s, &file, 0x72_a6).unwrap();
     let mut h = H { s, project, trail: Vec::new() };
-    let (again, word) = h.cfg(|p| (p.ledger.head(), p.ledger.document().properties.get("text.tag.show").cloned()));
+    let (again, word) = h.cfg(|p| (p.ledger.head(), p.ledger.document().display.get("text.tag.show").cloned()));
     assert_eq!((again, word.as_deref()), (head, Some("maybe")), "nothing was written");
     while !h.s.docs.is_empty() {
         h.s.execute("close", &json!({"index": 0})).unwrap();
