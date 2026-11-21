@@ -377,7 +377,6 @@ fn merge_row(p: &Path, b: BranchId, source: BranchId, seq: u64) {
             ancestor: BranchPoint { branch: b.0, seq: 0, chain: [2; 32] },
         }),
         tag_rule: None,
-        extra: Default::default(),
     };
     write(p, |w| {
         let k = schema::version_key(b, VersionKind::Merge, &rec.name);

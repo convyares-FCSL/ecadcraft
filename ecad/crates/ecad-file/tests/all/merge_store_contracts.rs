@@ -172,7 +172,6 @@ fn verify_refuses_a_merge_row_with_no_live_merge_behind_it() {
             ancestor: BranchPoint { branch: main.0, seq: 0, chain: [2; 32] },
         }),
         tag_rule: None,
-        extra: Default::default(),
     };
     let mut w = proj.store().writer().unwrap();
     w.put_version(main, &rec).unwrap();

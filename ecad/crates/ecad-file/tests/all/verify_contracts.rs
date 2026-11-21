@@ -420,7 +420,6 @@ fn merge_row_chain(f: &Fixture2) {
             ancestor: BranchPoint { branch: f.main.0, seq: 0, chain: [2; 32] },
         }),
         tag_rule: None,
-        extra: Default::default(),
     };
     write(&f.path, |w| {
         let k = schema::version_key(f.main, VersionKind::Merge, &rec.name);

@@ -1157,11 +1157,10 @@ impl ProjectV2 {
                     description: None,
                     merge: None,
                     tag_rule: Some(ecad_model::tag::TAG_RULE),
-                    extra: BTreeMap::new(),
                 },
             )?;
             saved.snapshots += 1;
-            latest = Some(SnapshotRef { kind, name, seq: at, extra: BTreeMap::new() });
+            latest = Some(SnapshotRef { kind, name, seq: at });
             snap = (at, set);
         }
         let mut cache = Cache { every, ..Cache::default() };
@@ -1607,14 +1606,13 @@ impl ProjectV2 {
                 description: None,
                 merge: None,
                 tag_rule: Some(ecad_model::tag::TAG_RULE),
-                extra: BTreeMap::new(),
             },
         )?;
         saved.snapshots += 1;
         // The latest snapshot (the one opening uses) only moves forward.
         let latest = cache.latest.get(&self.branch.hex()).map_or(0, |s| s.seq);
         if at >= latest {
-            cache.latest.insert(self.branch.hex(), SnapshotRef { kind, name: name.to_string(), seq: at, extra: BTreeMap::new() });
+            cache.latest.insert(self.branch.hex(), SnapshotRef { kind, name: name.to_string(), seq: at });
         }
         if in_memory {
             *snap = Snap { seq: at, set: Some(set) };
@@ -1770,7 +1768,6 @@ impl ProjectV2 {
             merged: None,
             created_ms,
             created_by,
-            extra: BTreeMap::new(),
         };
         let mut w = self.store.writer()?;
         if w.branch(id)?.is_some() {
@@ -2092,7 +2089,6 @@ fn merge_record(seq: u64, chain: Hash, row: &MergeRow) -> VersionRecord {
         description: None,
         merge: Some(row.clone()),
         tag_rule: None,
-        extra: BTreeMap::new(),
     }
 }
 
@@ -2114,7 +2110,7 @@ fn revision_of(doc: &Document, name: &str) -> Option<Release> {
     if let Some(r) = &row.released {
         fields.insert("released".into(), r.to_string());
     }
-    Some(Release { fields, assets: Vec::new(), extra: BTreeMap::new() })
+    Some(Release { fields, assets: Vec::new() })
 }
 
 /// The release data of revision `name` as issued by `tx`: the revision row's fields once `tx`

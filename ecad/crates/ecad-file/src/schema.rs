@@ -188,8 +188,9 @@ pub struct Merged {
     pub seq: u64,
 }
 
-/// A `branches` row. Unknown fields are ignored (brief 020, forward compatibility).
+/// A `branches` row. Unknown fields are refused (pre-v1: a newer file is refused by its format version).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BranchRecord {
     pub name: String,
     pub status: BranchStatus,
@@ -209,10 +210,6 @@ pub struct BranchRecord {
     /// Who created it (an author's display text; for display).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_by: Option<String>,
-    /// Fields this build does not know (a newer build's optional additions): kept as read and
-    /// written back unchanged (overseer, 2026-11-10: readers ignore, writers preserve).
-    #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
 impl BranchRecord {
@@ -228,28 +225,25 @@ impl BranchRecord {
             merged: None,
             created_ms: None,
             created_by: None,
-            extra: BTreeMap::new(),
         }
     }
 }
 
-/// Release data of an issued revision (EEP-0005 §3.4). Unknown fields are ignored.
+/// Release data of an issued revision (EEP-0005 §3.4). Unknown fields are refused.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Release {
     /// The revision's fields as issued (`rev`, `date`, `description`, `drawn`, `checked`,
     /// `approved`), from the project's `rev.<n>.*` properties.
     pub fields: BTreeMap<String, String>,
     /// Asset hashes of the frozen outputs; none exist yet.
     pub assets: Vec<String>,
-    /// Fields this build does not know (a newer build's optional additions): kept as read and
-    /// written back unchanged (overseer, 2026-11-10: readers ignore, writers preserve).
-    #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
 /// A `versions` row: a point, the hashes of its chunks, and what opening there needs. Unknown
-/// fields are ignored (brief 020, forward compatibility).
+/// fields are refused (pre-v1: a newer file is refused by its format version).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct VersionRecord {
     pub kind: VersionKind,
     pub name: String,
@@ -283,10 +277,6 @@ pub struct VersionRecord {
     /// refuses unknown fields), so builds before it still open files that carry it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tag_rule: Option<u32>,
-    /// Fields this build does not know (a newer build's optional additions): kept as read and
-    /// written back unchanged (overseer, 2026-11-10: readers ignore, writers preserve).
-    #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
 impl VersionRecord {
@@ -306,22 +296,20 @@ impl VersionRecord {
 /// the common ancestor it compared against. The row's `point` is the merge step itself (or the
 /// redo that made it live again).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MergeRow {
     pub source: String,
     pub source_head: Point,
     pub ancestor: AncestorPoint,
-    #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
 /// A step of a named branch.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AncestorPoint {
     pub branch: String,
     pub seq: u64,
     pub chain: String,
-    #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
 impl MergeRow {
@@ -331,13 +319,7 @@ impl MergeRow {
             ecad_model::TxKind::Merge { source, source_head, ancestor } => Some(Self {
                 source: BranchId(*source).hex(),
                 source_head: Point::new(source_head.seq, &source_head.chain),
-                ancestor: AncestorPoint {
-                    branch: BranchId(ancestor.branch).hex(),
-                    seq: ancestor.seq,
-                    chain: chain::hex(&ancestor.chain),
-                    extra: BTreeMap::new(),
-                },
-                extra: BTreeMap::new(),
+                ancestor: AncestorPoint { branch: BranchId(ancestor.branch).hex(), seq: ancestor.seq, chain: chain::hex(&ancestor.chain) },
             }),
             _ => None,
         }
@@ -355,36 +337,30 @@ impl MergeRow {
 }
 
 /// `meta.cache`: the snapshot policy and, per branch, the latest snapshot (EEP-0005 §3.1).
-/// Unknown fields are ignored (brief 020, forward compatibility).
+/// Unknown fields are refused (pre-v1: a newer file is refused by its format version).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Cache {
     /// Transactions between automatic snapshots.
     pub every: u64,
     /// Branch ID (hex) → the latest snapshot on it.
     pub latest: BTreeMap<String, SnapshotRef>,
-    /// Fields this build does not know (a newer build's optional additions): kept as read and
-    /// written back unchanged (overseer, 2026-11-10: readers ignore, writers preserve).
-    #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
 impl Default for Cache {
     fn default() -> Self {
-        Self { every: DEFAULT_SNAPSHOT_EVERY, latest: BTreeMap::new(), extra: BTreeMap::new() }
+        Self { every: DEFAULT_SNAPSHOT_EVERY, latest: BTreeMap::new() }
     }
 }
 
 /// Which `versions` row holds a snapshot.
-/// Unknown fields are ignored (brief 020, forward compatibility).
+/// Unknown fields are refused (pre-v1: a newer file is refused by its format version).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SnapshotRef {
     pub kind: VersionKind,
     pub name: String,
     pub seq: u64,
-    /// Fields this build does not know (a newer build's optional additions): kept as read and
-    /// written back unchanged (overseer, 2026-11-10: readers ignore, writers preserve).
-    #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
 /// The content address of a chunk: `SHA-256("ecad-chunk/1\0" ‖ uncompressed body)`.
