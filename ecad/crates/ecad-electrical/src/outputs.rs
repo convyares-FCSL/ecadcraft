@@ -36,12 +36,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::effect::{Effect, Effects};
-use ecad_model::{CableId, DeviceId, Document, ObjectRef, Op, PageId, Pt, RepresentationId, Subject, WireId};
+use ecad_model::{CableId, DeviceId, Document, LoosePartId, ObjectRef, Op, PageId, Pt, RepresentationId, Subject, WireId};
 use serde_json::{Value, json};
 
 use crate::bom::{self, Qty};
 use crate::checks::{Check, Fix, Kind, Object};
-use crate::locations::{self, BoxCache, Located, Source};
+use crate::locations::{self, BoxCache, Located};
 
 pub mod kept;
 
@@ -111,15 +111,43 @@ fn tag_key(t: &str) -> (String, u64, String) {
     (p, n, t.to_string())
 }
 
+/// What a BOM entry belongs to (design 072 §6.4): a device (or strip), or a loose part (an
+/// item). Devices sort first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Owner {
+    /// A device's main part (line 0) or one of its part lines.
+    Device(DeviceId),
+    /// An item: a loose part, always line 0.
+    Loose(LoosePartId),
+}
+
+impl Owner {
+    /// The device, when it is one.
+    pub fn device(self) -> Option<DeviceId> {
+        match self {
+            Owner::Device(c) => Some(c),
+            Owner::Loose(_) => None,
+        }
+    }
+
+    /// The loose part, when it is one.
+    pub fn loose(self) -> Option<LoosePartId> {
+        match self {
+            Owner::Loose(l) => Some(l),
+            Owner::Device(_) => None,
+        }
+    }
+}
+
 /// The key an entry is grouped by on the BOM (part): maker, part number, description, compared
 /// case-insensitively, and the unit (brief 047: pieces and metres never add up); an entry with no
 /// part number is a group of its own.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct PartKey(String, String, String, Option<(DeviceId, u8)>, bool);
+pub struct PartKey(String, String, String, Option<(Owner, u8)>, bool);
 
 impl PartKey {
     /// The same part, but a row of its own for entry `own` (the nested layout's device rows).
-    fn alone(&self, own: (DeviceId, u8)) -> PartKey {
+    fn alone(&self, own: (Owner, u8)) -> PartKey {
         PartKey(self.0.clone(), self.1.clone(), self.2.clone(), Some(own), self.4)
     }
 }
@@ -127,10 +155,10 @@ impl PartKey {
 /// Brief 047 (design 047 §4.1): one BOM entry, a line of a part set or an item.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Entry {
-    pub component: DeviceId,
+    /// The device or the loose part it lists.
+    pub owner: Owner,
     /// 0 for a device's main part or an item, else the part line.
     pub line: u8,
-    pub item: bool,
     /// The device's tag (empty for an item).
     pub tag: String,
     pub location: Option<String>,
@@ -149,25 +177,29 @@ pub struct Entry {
 }
 
 /// An entry's place in its row: tagged entries by tag, then items by description and part number.
-type EntrySort = (bool, (String, u64, String), DeviceId, u8);
+type EntrySort = (bool, (String, u64, String), Owner, u8);
 
 impl Entry {
+    /// Whether it is an item (a loose part).
+    pub fn is_item(&self) -> bool {
+        matches!(self.owner, Owner::Loose(_))
+    }
     fn part_key(&self) -> PartKey {
         let low = |v: &Option<String>| v.as_deref().unwrap_or("").to_lowercase();
         match &self.part_number {
             Some(_) => PartKey(low(&self.maker), low(&self.part_number), low(&self.description), None, self.metres),
-            None => PartKey(String::new(), String::new(), low(&self.description), Some((self.component, self.line)), self.metres),
+            None => PartKey(String::new(), String::new(), low(&self.description), Some((self.owner, self.line)), self.metres),
         }
     }
     fn loc_key(&self) -> LocKey {
         loc_key(self.location.as_deref())
     }
     fn sort(&self) -> EntrySort {
-        if self.item {
+        if self.is_item() {
             let low = |v: &Option<String>| v.as_deref().unwrap_or("").to_lowercase();
-            (true, (low(&self.description), 0, low(&self.part_number)), self.component, self.line)
+            (true, (low(&self.description), 0, low(&self.part_number)), self.owner, self.line)
         } else {
-            (false, tag_key(&self.tag), self.component, self.line)
+            (false, tag_key(&self.tag), self.owner, self.line)
         }
     }
     /// Whether its `for` names sub-items (its quantity is per sub-item).
@@ -181,7 +213,7 @@ impl Entry {
     }
     /// The tags it shows: `-K03`, or `-F01:1, -F01:2` for a `for` line; none for an item.
     pub fn tags(&self) -> Vec<String> {
-        if self.item {
+        if self.is_item() {
             return Vec::new();
         }
         if !self.per_sub() {
@@ -333,7 +365,7 @@ pub struct BomRow {
     pub article_flag: Option<String>,
     /// Brief 047: the entries counted, `(component, line)`; empty for strip terminal and
     /// accessory rows.
-    pub entries: Vec<(DeviceId, u8)>,
+    pub entries: Vec<(Owner, u8)>,
     /// Brief 047: the row lists items only.
     pub item: bool,
     /// Brief 047, nested layout: the part line this row lists under its device, and its kit.
@@ -424,6 +456,8 @@ impl Table {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Scope {
     devices: BTreeSet<DeviceId>,
+    /// Design 072 §6.4: loose parts made, changed or removed (their BOM entries).
+    loose: BTreeSet<LoosePartId>,
     pages: BTreeSet<PageId>,
     route_pages: BTreeSet<PageId>,
     wires: BTreeSet<WireId>,
@@ -454,6 +488,7 @@ impl Scope {
         !self.project_location
             && self.renamed.is_empty()
             && self.devices.is_empty()
+            && self.loose.is_empty()
             && self.pages.is_empty()
             && self.route_pages.is_empty()
             && self.wires.is_empty()
@@ -467,10 +502,19 @@ impl Scope {
             && !self.all_wires
     }
 
+    /// A drawing aid made, removed or changed: a box's pages.
+    fn aid<'a>(&mut self, doc: &Document, id: ecad_model::AidId, aids: impl IntoIterator<Item = &'a ecad_model::Aid>) {
+        if aids.into_iter().any(|a| a.as_box().is_some()) {
+            self.pages.extend(doc.representations_of(Subject::Aid(id)).map(|(_, r)| r.page));
+        }
+    }
+
     fn subject(&mut self, doc: &Document, s: Subject, page: PageId) {
         match s {
-            Subject::Device(c) if locations::is_box(doc, c) => {
-                self.pages.insert(page);
+            Subject::Aid(a) => {
+                if doc.aids.get(&a).is_some_and(|x| x.as_box().is_some()) {
+                    self.pages.insert(page);
+                }
             }
             Subject::Device(c) => {
                 self.devices.insert(c);
@@ -505,29 +549,11 @@ impl Scope {
     /// Note what one effect names, looked up in `doc` (the state before or after it).
     pub fn note(&mut self, doc: &Document, effect: &Effect<'_>) {
         match effect {
-            Effect::Device { id, before, after } => {
-                if after.or(*before).is_some_and(locations::is_box_component) {
-                    self.pages.extend(doc.representations_of(Subject::Device(*id)).map(|(_, r)| r.page));
-                } else {
-                    self.devices.insert(*id);
-                }
+            Effect::Device { id, .. } | Effect::DeviceDefinition { id, .. } => {
+                self.devices.insert(*id);
             }
-            Effect::DeviceDefinition { id, .. } => {
-                if locations::is_box(doc, *id) {
-                    self.pages.extend(doc.representations_of(Subject::Device(*id)).map(|(_, r)| r.page));
-                } else {
-                    self.devices.insert(*id);
-                }
-            }
-            Effect::Prop { object: ObjectRef::Device(c), key, .. } => {
-                if locations::is_box(doc, *c) {
-                    self.pages.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
-                } else {
-                    self.devices.insert(*c);
-                }
-                if key.raw == ecad_model::connectivity::NAME {
-                    self.cables.extend(continuation_group_cables(doc, *c));
-                }
+            Effect::Prop { object: ObjectRef::Device(c), .. } => {
+                self.devices.insert(*c);
             }
             Effect::Prop { object: ObjectRef::Wire(w), .. } | Effect::Wire { id: w, .. } => {
                 self.wires.insert(*w);
@@ -536,6 +562,20 @@ impl Scope {
             Effect::Prop { object: ObjectRef::Page(_) | ObjectRef::Cable(_), .. } => {}
             // No check or output reads a device link yet (design 072 §2.6).
             Effect::DeviceLink { .. } => {}
+            // Design 072 §6.2: a box's values are its pages' context; a continuation renamed
+            // joins or breaks its name groups' cable core chains (032, design 032 §8.4).
+            Effect::Aid { id, before, after } => {
+                self.aid(doc, *id, before.iter().chain(after.iter()).copied());
+                if let (Some(b), Some(a)) = (before, after)
+                    && ecad_model::connectivity::continuation_key(b) != ecad_model::connectivity::continuation_key(a)
+                {
+                    self.cables.extend(continuation_group_cables(doc, *id));
+                }
+            }
+            // Design 072 §6.4: a loose part is an item on the BOM (its entry only).
+            Effect::LoosePart { id, .. } => {
+                self.loose.insert(*id);
+            }
             Effect::Project { before, after } => {
                 use crate::designations::{Aspect, changed_codes, default_key};
                 // Brief 047: an item without its own location shows the project's.
@@ -599,7 +639,7 @@ impl Scope {
             // Other style records and the standard header change no report row.
             Effect::Style { .. } | Effect::Standard { .. } => {}
             Effect::Terminal { id, before, after } => {
-                self.devices.extend(before.iter().chain(after.iter()).map(|t| t.component));
+                self.devices.extend(before.iter().chain(after.iter()).filter_map(|t| t.device()));
                 // Brief 028: a relabelled terminal (Remove + Add of one ID) renames its wires' ends.
                 self.wires.extend(doc.ends_at(*id).into_iter().map(|(w, _)| w));
             }
@@ -702,6 +742,11 @@ impl Scope {
                     self.devices.insert(*c);
                 }
             }
+            for (id, p) in &doc.loose_parts {
+                if p.location.is_some_and(|l| self.renamed.contains(&l.hex())) {
+                    self.loose.insert(*id);
+                }
+            }
         }
     }
 }
@@ -709,8 +754,8 @@ impl Scope {
 /// 032 (design 032 §8.4): the cables with a member attached to a continuation of `c`'s name group,
 /// `c` included, read on `doc` (called on the state before and after a rename, so both the old
 /// and the new group): their core chains may join or break.
-fn continuation_group_cables(doc: &Document, c: DeviceId) -> BTreeSet<CableId> {
-    let Some(key) = doc.devices.get(&c).and_then(|x| ecad_model::connectivity::continuation_key(&x.properties)) else {
+fn continuation_group_cables(doc: &Document, c: ecad_model::AidId) -> BTreeSet<CableId> {
+    let Some(key) = crate::continuations::name_of(doc, c) else {
         return BTreeSet::new();
     };
     let mut group = doc.continuations_named(&key);
@@ -1034,7 +1079,7 @@ pub fn accessory_fix_commands(o: &kept::Outputs, fix: Fix) -> Vec<(String, &'sta
             vec![(format!("Use {} for all", best.0), "article", params)]
         }
         Fix::DropMissingFor(c, n) => {
-            let Some(e) = o.entry(c, n) else { return Vec::new() };
+            let Some(e) = o.entry(Owner::Device(c), n) else { return Vec::new() };
             let kept = if e.subs.is_empty() { serde_json::Value::Null } else { json!(e.subs.join(", ")) };
             vec![(format!("Remove {}", e.missing.join(", ")), "partline", json!({"component": c.hex(), "line": n, "set": {"for": kept}}))]
         }

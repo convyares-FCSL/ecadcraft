@@ -121,8 +121,8 @@ fn a_box_proposes_when_drawn_and_when_given_another_entry() {
     assert_eq!(loc(&d, a).as_deref(), Some("+CP1"));
     assert_eq!(loc(&d, c).as_deref(), Some("+CP2"), "never changed silently");
     // Give the box +CP3: devices at +CP1 are listed, the one at +CP2 is not.
-    let bx: DeviceId = id(&v, "component");
-    h.run("setlocation", json!({"component": bx.hex(), "value": "+CP3"})).unwrap();
+    let bx: ecad_model::AidId = id(&v, "aid");
+    h.run("setprop", json!({"aids": [bx.hex()], "key": "location", "value": "+CP3"})).unwrap();
     let list = conflicts(&mut h)["location"]["conflicts"].clone();
     let tags: Vec<&str> = list.as_array().unwrap().iter().filter_map(|x| x["tag"].as_str()).collect();
     assert_eq!(tags.len(), 2, "{list}");

@@ -48,7 +48,7 @@ fn strip_of(doc: &Document, strip: Option<DeviceId>, terminal: Option<TerminalId
         (Some(c), _) => (c, None),
         (None, Some(t)) => {
             let term = doc.terminals.get(&t).ok_or(CmdError::NotFound(Noun::TerminalDevice))?;
-            (term.component, Some(crate::terminal_types::position_label(doc, t)))
+            (term.device().ok_or(CmdError::NotFound(Noun::TerminalDevice))?, Some(crate::terminal_types::position_label(doc, t)))
         }
         (None, None) => return Err(CmdError::input("`strip` or `terminal` (hex id) is required")),
     };
@@ -460,7 +460,7 @@ pub fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdErro
         let picks = &input.terminals;
         let c = match (input.strip, picks.first()) {
             (Some(c), _) => c,
-            (None, Some(t)) => doc.terminals.get(t).ok_or(CmdError::NotFound(Noun::TerminalDevice))?.component,
+            (None, Some(t)) => doc.terminals.get(t).and_then(|x| x.device()).ok_or(CmdError::NotFound(Noun::TerminalDevice))?,
             (None, None) => return Err(CmdError::input("`strip` with `positions`, or `terminals`, is required")),
         };
         let (c, _) = strip_of(doc, Some(c), None)?;
@@ -497,7 +497,7 @@ pub fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdErro
                 return Err(CmdError::refused("A link between levels of one position ends there; Enter to finish."));
             }
             let term = doc.terminals.get(t).ok_or(CmdError::NotFound(Noun::TerminalDevice))?;
-            if term.component != c {
+            if term.device() != Some(c) {
                 return Err(CmdError::refused(format!(
                     "{} is on another strip; a link stays on one strip. Pick a terminal of {}.",
                     crate::strips::terminal_words(doc, *t),

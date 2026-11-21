@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 
 use crate::access::Pages;
 use crate::cmd::input::{Bounded, Command, OrNull, Typed, nullable};
-use crate::cmd::{MAX_HANDLES, err, on_project};
+use crate::cmd::{MAX_HANDLES, err, on_any_page, on_project};
 use crate::project::Project;
 
 /// The commands of this module with a typed input.
@@ -34,6 +34,10 @@ pub(crate) struct SetpropParams {
     /// Several devices, in one transaction.
     #[serde(default)]
     devices: Option<Bounded<DeviceId, 0, MAX_HANDLES>>,
+    /// Drawing aids (design 072 §6.2), in one transaction: continuations' `name` or `caption`,
+    /// location boxes' `function`, `location` or `panel_temperature`.
+    #[serde(default)]
+    aids: Option<Bounded<ecad_model::AidId, 0, MAX_HANDLES>>,
     /// A wire.
     #[serde(default)]
     conductor: Option<WireId>,
@@ -85,6 +89,28 @@ impl Command for SetpropParams {
             };
             let objects = objects.map_err(|e| err(e.to_string()))?;
             return crate::cmd::location::apply(s, objects, prop, typed, "setprop");
+        }
+        // Drawing aids (design 072 §6.2), one transaction: a continuation's name or caption; a
+        // location box's function or location (with its proposals, as `setlocation`) or panel
+        // temperature.
+        if let Some(aids) = self.aids {
+            let boxes = |s: &mut Session| {
+                on_any_page(s, |p, _| Ok(aids.0.iter().all(|a| ecad_electrical::locations::box_values(p.ledger.document(), *a).is_some())))
+            };
+            if let Some(a) = ecad_electrical::designations::Aspect::of_property(&key)
+                && boxes(s)?
+            {
+                return crate::cmd::location::apply_box(s, aids.0, a, typed, "setprop");
+            }
+            return on_project(s, |p, pg, _| {
+                let ops = ecad_electrical::cmd::continuation::plan_aid_prop(p.ledger.document(), &mut p.ids, &aids.0, &key, typed.as_deref())?;
+                if ops.is_empty() {
+                    return Ok(json!({"changed": false}));
+                }
+                let n = ops.len();
+                p.apply_edit(pg, "setprop", "Set property", ops)?;
+                Ok(json!({"changed": true, "aids": n}))
+            });
         }
         // Several devices at once (brief 019, the Properties panel): one transaction for all.
         if let Some(cs) = self.devices {

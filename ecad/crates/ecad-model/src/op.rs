@@ -166,6 +166,36 @@ pub enum Op {
         before: Route,
         after: Route,
     },
+    /// A drawing aid made (design 072 §6.2).
+    CreateAid {
+        id: crate::id::AidId,
+        aid: crate::aid::Aid,
+    },
+    DeleteAid {
+        id: crate::id::AidId,
+        aid: crate::aid::Aid,
+    },
+    /// A drawing aid's values changed, the whole aid recorded.
+    ModifyAid {
+        id: crate::id::AidId,
+        before: crate::aid::Aid,
+        after: crate::aid::Aid,
+    },
+    /// A loose part added to the BOM (design 072 §6.4).
+    CreateLoosePart {
+        id: crate::id::LoosePartId,
+        part: crate::loose_part::LoosePart,
+    },
+    DeleteLoosePart {
+        id: crate::id::LoosePartId,
+        part: crate::loose_part::LoosePart,
+    },
+    /// A loose part's values changed, the whole part recorded.
+    ModifyLoosePart {
+        id: crate::id::LoosePartId,
+        before: crate::loose_part::LoosePart,
+        after: crate::loose_part::LoosePart,
+    },
     CreateCable {
         id: CableId,
         cable: Cable,
@@ -354,6 +384,12 @@ impl Op {
             Op::AddRoute { id, route } => Op::RemoveRoute { id, route },
             Op::RemoveRoute { id, route } => Op::AddRoute { id, route },
             Op::ModifyRoute { id, before, after } => Op::ModifyRoute { id, before: after, after: before },
+            Op::CreateAid { id, aid } => Op::DeleteAid { id, aid },
+            Op::DeleteAid { id, aid } => Op::CreateAid { id, aid },
+            Op::ModifyAid { id, before, after } => Op::ModifyAid { id, before: after, after: before },
+            Op::CreateLoosePart { id, part } => Op::DeleteLoosePart { id, part },
+            Op::DeleteLoosePart { id, part } => Op::CreateLoosePart { id, part },
+            Op::ModifyLoosePart { id, before, after } => Op::ModifyLoosePart { id, before: after, after: before },
             Op::CreateCable { id, cable } => Op::DeleteCable { id, cable },
             Op::DeleteCable { id, cable } => Op::CreateCable { id, cable },
             Op::ModifyCable { id, before, after } => Op::ModifyCable { id, before: after, after: before },
@@ -592,6 +628,48 @@ impl Op {
                 }
                 doc.index.route(*id, after, Delta::Add);
             }
+            Op::CreateAid { id, aid } => {
+                absent(&doc.aids, *id, "aid")?;
+                if let Some(e) = aid.problem() {
+                    return Err(pre(format!("aid {id}: {e}")));
+                }
+                doc.index.aid(*id, aid, Delta::Add);
+                doc.aids.insert(*id, aid.clone());
+            }
+            Op::DeleteAid { id, aid } => {
+                holds(&doc.aids, *id, aid, "aid", checked)?;
+                if let Some(old) = doc.aids.remove(id) {
+                    doc.index.aid(*id, &old, Delta::Remove);
+                }
+            }
+            Op::ModifyAid { id, before, after } => {
+                holds(&doc.aids, *id, before, "aid", checked)?;
+                if let Some(e) = after.problem() {
+                    return Err(pre(format!("aid {id}: {e}")));
+                }
+                if let Some(old) = doc.aids.insert(*id, after.clone()) {
+                    doc.index.aid(*id, &old, Delta::Remove);
+                }
+                doc.index.aid(*id, after, Delta::Add);
+            }
+            Op::CreateLoosePart { id, part } => {
+                absent(&doc.loose_parts, *id, "loose part")?;
+                if let Some(e) = part.problem() {
+                    return Err(pre(format!("loose part {id}: {e}")));
+                }
+                doc.loose_parts.insert(*id, part.clone());
+            }
+            Op::DeleteLoosePart { id, part } => {
+                holds(&doc.loose_parts, *id, part, "loose part", checked)?;
+                doc.loose_parts.remove(id);
+            }
+            Op::ModifyLoosePart { id, before, after } => {
+                holds(&doc.loose_parts, *id, before, "loose part", checked)?;
+                if let Some(e) = after.problem() {
+                    return Err(pre(format!("loose part {id}: {e}")));
+                }
+                doc.loose_parts.insert(*id, after.clone());
+            }
             Op::CreateCable { id, cable } => {
                 absent(&doc.cables, *id, "cable")?;
                 doc.index.cable(*id, cable, Delta::Add);
@@ -638,26 +716,6 @@ impl Op {
                     Some(v) => props.insert(key.clone(), v.clone()),
                     None => props.remove(key),
                 };
-                // A continuation's name is indexed (brief 022).
-                if let ObjectRef::Device(id) = object
-                    && (key == crate::connectivity::KIND || key == crate::connectivity::NAME)
-                {
-                    let mut before_props = props.clone();
-                    match &old {
-                        Some(v) => before_props.insert(key.clone(), v.clone()),
-                        None => before_props.remove(key),
-                    };
-                    let was = crate::connectivity::continuation_key(&before_props);
-                    let now = crate::connectivity::continuation_key(props);
-                    if was != now {
-                        if let Some(k) = was {
-                            doc.index.continuation(*id, k, Delta::Remove);
-                        }
-                        if let Some(k) = now {
-                            doc.index.continuation(*id, k, Delta::Add);
-                        }
-                    }
-                }
                 // A style choice is indexed (brief 050a): the style's explicit users.
                 if crate::style::is_choice_key(key) {
                     let obj = *object;
@@ -808,6 +866,12 @@ impl Op {
             Op::AddRoute { .. } => "AddRoute",
             Op::RemoveRoute { .. } => "RemoveRoute",
             Op::ModifyRoute { .. } => "ModifyRoute",
+            Op::CreateAid { .. } => "CreateAid",
+            Op::DeleteAid { .. } => "DeleteAid",
+            Op::ModifyAid { .. } => "ModifyAid",
+            Op::CreateLoosePart { .. } => "CreateLoosePart",
+            Op::DeleteLoosePart { .. } => "DeleteLoosePart",
+            Op::ModifyLoosePart { .. } => "ModifyLoosePart",
             Op::CreateCable { .. } => "CreateCable",
             Op::DeleteCable { .. } => "DeleteCable",
             Op::ModifyCable { .. } => "ModifyCable",

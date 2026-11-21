@@ -64,7 +64,7 @@ fn point_words(doc: &Document, t: TerminalId) -> String {
     if let Some(n) = crate::connectors::pin_name(doc, t) {
         return n;
     }
-    match doc.terminals.get(&t).map(|x| x.component) {
+    match doc.terminals.get(&t).and_then(|x| x.device()) {
         Some(c) if crate::strips::strip_of(doc, c).is_some() => format!("{}:{name}", crate::devices::tag_words(doc, c)),
         Some(c) => match crate::devices::tag_of(doc, c) {
             Some(tag) => format!("{name} of {tag}"),

@@ -449,14 +449,14 @@ pub fn plan_order(labels: impl IntoIterator<Item = String>) -> Vec<String> {
 /// component's terminals per link that names `t`.
 pub fn linked(doc: &Document, t: TerminalId) -> Vec<TerminalId> {
     let Some(term) = doc.terminals.get(&t) else { return Vec::new() };
-    let Some(comp) = doc.devices.get(&term.component) else { return Vec::new() };
+    let Some(comp) = term.device().and_then(|d| doc.devices.get(&d)) else { return Vec::new() };
     let mut out = std::collections::BTreeSet::new();
     for (_, p) in of(&comp.properties) {
         let m = Matcher::of(&p);
         if !m.matches_terminal(term) {
             continue;
         }
-        for (id, x) in doc.terminals_of(term.component) {
+        for (id, x) in doc.terminals_of(term.owner) {
             if id != t && m.matches_terminal(x) {
                 out.insert(id);
             }

@@ -439,8 +439,8 @@ fn fp8_rows_at_the_cap_are_kept_and_one_over_is_refused_or_ignored() {
 // ------------------------------------------------------------------------------- fix round
 
 /// A location box `+CAB1` over the fixture (its devices at x 50–150, y 0–110).
-fn cab1(h: &mut H) -> DeviceId {
-    id(&h.run("locationbox", json!({"location": "+CAB1", "corners": [[0, -30], [200, 130]]})).unwrap(), "component")
+fn cab1(h: &mut H) -> ecad_model::AidId {
+    id(&h.run("locationbox", json!({"location": "+CAB1", "corners": [[0, -30], [200, 130]]})).unwrap(), "aid")
 }
 
 #[test]
@@ -451,7 +451,7 @@ fn f1_a_location_temperature_is_set_by_rating_and_rechecks_only_the_wires_there(
     let b = cab1(&mut f.h);
     let r = f.h.run("rating", json!({"location": "+CAB1", "temperature": 44})).unwrap();
     assert_eq!(r["boxes"], json!(1), "{r}");
-    assert_eq!(f.h.doc().devices[&b].properties.get(rating::TEMPERATURE).map(String::as_str), Some("44"));
+    assert_eq!(f.h.doc().aids[&b].as_box().and_then(|x| x.panel_temperature), Some(ecad_model::units::Celsius(44.0)));
     let r = ratings(&mut f.h, json!({"wire": f.l2.hex()}));
     let panel = r["factors"].as_array().unwrap().iter().find(|x| x["name"] == "panel").cloned().unwrap();
     // round2(√(26/40)) = round2(0.8062) = 0.81.
@@ -492,16 +492,12 @@ fn f1_a_location_temperature_is_set_by_rating_and_rechecks_only_the_wires_there(
     let rows = checks_of(&mut f.h, "rating-bad-value");
     assert!(rows.is_empty(), "{rows:?}");
     f.h.cfg(|p| {
-        p.ledger.commit(
-            ecad_model::Author::User,
-            "hostile box temperature",
-            vec![ecad_model::Op::SetProperty {
-                object: ecad_model::ObjectRef::Device(b),
-                key: rating::TEMPERATURE.into(),
-                before: Some("45".into()),
-                after: Some("95".into()),
-            }],
-        )
+        p.ledger.commit(ecad_model::Author::User, "hostile box temperature", {
+            let before = p.ledger.document().aids[&b].clone();
+            let mut after = before.as_box().cloned().unwrap();
+            after.panel_temperature = Some(ecad_model::units::Celsius(95.0));
+            vec![ecad_model::Op::ModifyAid { id: b, before, after: ecad_model::Aid::Box(after) }]
+        })
     })
     .unwrap();
     let rows = texts(&checks_of(&mut f.h, "rating-bad-value"));

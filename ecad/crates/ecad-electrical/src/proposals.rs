@@ -116,8 +116,8 @@ fn context(doc: &Document, a: Aspect, s: &Spot, extra: &[LocBox], cache: &mut lo
     // A planned box may add its code to the list in the same ops: its entry is not in `doc` yet,
     // so its own code stands in.
     if ctx.value.is_none()
-        && let locations::Source::Box { component, .. } = ctx.source
-        && let Some(b) = extra.iter().find(|b| b.component == component)
+        && let locations::Source::Box { aid, .. } = ctx.source
+        && let Some(b) = extra.iter().find(|b| b.aid == aid)
     {
         ctx.value = b.code(a).map(str::to_string);
     }
@@ -289,11 +289,14 @@ pub fn before_move(doc: &Document, ops: &[Op]) -> Vec<Moved> {
         };
         for id in ids {
             let Some((rid, r)) = doc.representation_of_item(id) else { continue };
-            let ecad_model::Subject::Device(c) = r.subject else { continue };
-            if locations::is_box(doc, c) {
-                box_pages.insert(r.page);
-            } else if locations::is_device(doc, c) {
-                reps.insert(rid);
+            match r.subject {
+                ecad_model::Subject::Aid(a) if locations::box_values(doc, a).is_some() => {
+                    box_pages.insert(r.page);
+                }
+                ecad_model::Subject::Device(c) if locations::is_device(doc, c) => {
+                    reps.insert(rid);
+                }
+                _ => {}
             }
         }
     }

@@ -135,6 +135,18 @@ pub enum Effect<'a> {
         before: &'a Project,
         after: &'a Project,
     },
+    /// A drawing aid made, removed or changed (design 072 §6.2).
+    Aid {
+        id: crate::id::AidId,
+        before: Option<&'a crate::aid::Aid>,
+        after: Option<&'a crate::aid::Aid>,
+    },
+    /// A loose part made, removed or changed (design 072 §6.4).
+    LoosePart {
+        id: crate::id::LoosePartId,
+        before: Option<&'a crate::loose_part::LoosePart>,
+        after: Option<&'a crate::loose_part::LoosePart>,
+    },
     /// A device link made or removed (design 072 §2.6).
     DeviceLink {
         id: crate::id::LinkId,
@@ -166,11 +178,13 @@ pub enum EffectKind {
     Standard,
     Project,
     DeviceLink,
+    Aid,
+    LoosePart,
 }
 
 impl EffectKind {
     /// Every kind, in declaration order.
-    pub const ALL: [EffectKind; 19] = [
+    pub const ALL: [EffectKind; 21] = [
         EffectKind::Page,
         EffectKind::Layer,
         EffectKind::Item,
@@ -190,6 +204,8 @@ impl EffectKind {
         EffectKind::Standard,
         EffectKind::Project,
         EffectKind::DeviceLink,
+        EffectKind::Aid,
+        EffectKind::LoosePart,
     ];
 
     fn bit(self) -> u32 {
@@ -268,6 +284,8 @@ impl Effect<'_> {
             Effect::Standard { .. } => EffectKind::Standard,
             Effect::Project { .. } => EffectKind::Project,
             Effect::DeviceLink { .. } => EffectKind::DeviceLink,
+            Effect::Aid { .. } => EffectKind::Aid,
+            Effect::LoosePart { .. } => EffectKind::LoosePart,
         }
     }
 }
@@ -420,6 +438,12 @@ fn classify(op: &Op) -> Effect<'_> {
         Op::ModifyProject { before, after } => Effect::Project { before, after },
         Op::AddDeviceLink { id, link } => Effect::DeviceLink { id: *id, before: None, after: Some(link) },
         Op::RemoveDeviceLink { id, link } => Effect::DeviceLink { id: *id, before: Some(link), after: None },
+        Op::CreateAid { id, aid } => Effect::Aid { id: *id, before: None, after: Some(aid) },
+        Op::DeleteAid { id, aid } => Effect::Aid { id: *id, before: Some(aid), after: None },
+        Op::ModifyAid { id, before, after } => Effect::Aid { id: *id, before: Some(before), after: Some(after) },
+        Op::CreateLoosePart { id, part } => Effect::LoosePart { id: *id, before: None, after: Some(part) },
+        Op::DeleteLoosePart { id, part } => Effect::LoosePart { id: *id, before: Some(part), after: None },
+        Op::ModifyLoosePart { id, before, after } => Effect::LoosePart { id: *id, before: Some(before), after: Some(after) },
     }
 }
 
@@ -450,7 +474,9 @@ fn fold_key(e: &Effect<'_>, remove: bool) -> Option<Open> {
         | Effect::Style { .. }
         | Effect::Standard { .. }
         | Effect::Project { .. }
-        | Effect::DeviceLink { .. } => None,
+        | Effect::DeviceLink { .. }
+        | Effect::Aid { .. }
+        | Effect::LoosePart { .. } => None,
     }
 }
 

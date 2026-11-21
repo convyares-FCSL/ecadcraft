@@ -153,7 +153,7 @@ pub struct Reports {
     /// the BOM as CSV (Qty a number, a Unit column), row for row with the shown table.
     pub view: BomView,
     pub writable: bool,
-    pub items: Vec<Option<ecad_model::DeviceId>>,
+    pub items: Vec<Option<ecad_model::LoosePartId>>,
     csv: Option<Table>,
 }
 
@@ -237,7 +237,7 @@ impl Reports {
         self.csv = None;
         if self.tab == Tab::Bom {
             self.items =
-                o.bom(self.group).iter().map(|r| if r.item && r.entries.len() == 1 { r.entries.first().map(|e| e.0) } else { None }).collect();
+                o.bom(self.group).iter().map(|r| if r.entries.len() == 1 { r.entries.first().and_then(|e| e.0.loose()) } else { None }).collect();
             self.csv = Some(o.bom_table_with(self.group, o.view, true));
         }
         self.table = match (self.tab, self.cores_of) {

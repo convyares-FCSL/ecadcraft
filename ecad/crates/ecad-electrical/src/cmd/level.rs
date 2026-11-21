@@ -92,7 +92,7 @@ pub fn plan_termlabel(doc: &Document, input: TermlabelInput) -> Result<Termlabel
         (Some(t), _) => {
             let x = doc.terminals.get(&t).ok_or(CmdError::NotFound(Noun::TerminalDevice))?;
             let pos = x.label.clone().ok_or(CmdError::refused("That terminal has no position label."))?;
-            (x.component, pos, tt::level_of(doc, t).0)
+            (x.device().ok_or(CmdError::NotFound(Noun::TerminalDevice))?, pos, tt::level_of(doc, t).0)
         }
         (None, Some(c)) => {
             let pos = match (&at, &text) {
@@ -295,7 +295,7 @@ pub fn plan_toposition(
     ops.push(Op::AddTerminal {
         id: tin,
         terminal: Terminal {
-            component: strip,
+            owner: strip.into(),
             label: Some(pos.clone()),
             key: Some(PointKey::Level { level: 1, io: Some(LevelIo::In) }),
             accepts: Default::default(),
@@ -304,7 +304,7 @@ pub fn plan_toposition(
     ops.push(Op::AddTerminal {
         id: tout,
         terminal: Terminal {
-            component: strip,
+            owner: strip.into(),
             label: Some(pos.clone()),
             key: Some(PointKey::Level { level: 1, io: Some(LevelIo::Out) }),
             accepts: Default::default(),

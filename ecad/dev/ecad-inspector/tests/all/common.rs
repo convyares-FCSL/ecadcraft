@@ -101,7 +101,7 @@ pub fn rich(dir: &TempDir, title: &str) -> PathBuf {
             let t: TerminalId = ids.fresh();
             ops.push(Op::AddTerminal {
                 id: t,
-                terminal: Terminal { component: c, label: Some((*p).into()), key: None, accepts: Default::default() },
+                terminal: Terminal { owner: c.into(), label: Some((*p).into()), key: None, accepts: Default::default() },
             });
             ts.push(t);
         }

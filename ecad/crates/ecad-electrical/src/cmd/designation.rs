@@ -171,7 +171,7 @@ pub fn plan_merge(doc: &Document, uses: &Uses, a: Aspect, from: &str, into: &str
     if from.key == into.key {
         return Err(CmdError::refused(format!("{} and {} are the same entry.", from.code, into.code)));
     }
-    let counts = uses.counts(doc, a, &from.key);
+    let counts = uses.counts(a, &from.key);
     let mut ops = Vec::new();
     let mut project = doc.project.clone();
     for (o, prop) in uses.users(a, &from.key).map(|u| u.refs.clone()).unwrap_or_default() {
@@ -207,6 +207,14 @@ pub fn plan_merge(doc: &Document, uses: &Uses, a: Aspect, from: &str, into: &str
             }
         }
     }
+    // A location box's values are its aid's fields (design 072 §6.2).
+    for b in uses.users(a, &from.key).map(|u| u.boxes.clone()).unwrap_or_default() {
+        let Some(before @ ecad_model::Aid::Box(x)) = doc.aids.get(&b) else { continue };
+        if designations::box_key(x, a).as_deref() == Some(from.key.as_str()) {
+            let after = ecad_model::Aid::Box(designations::with_box_key(x, a, Some(&into.key)));
+            ops.push(Op::ModifyAid { id: b, before: before.clone(), after });
+        }
+    }
     if into.description.is_none()
         && let Some(d) = &from.description
     {
@@ -226,7 +234,7 @@ pub fn plan_remove_unused(doc: &Document, uses: &Uses, only: Option<Aspect>) -> 
     let mut codes = Vec::new();
     for a in Aspect::ALL.into_iter().filter(|a| only.is_none_or(|o| o == *a)) {
         for e in designations::entries(doc, a) {
-            if uses.counts(doc, a, &e.key).unused() {
+            if uses.counts(a, &e.key).unused() {
                 project = designations::without_entry(&project, a, &e.key);
                 codes.push(e.code);
             }
@@ -241,7 +249,7 @@ pub fn plan_remove_unused(doc: &Document, uses: &Uses, only: Option<Aspect>) -> 
 /// No entry named, or one something uses.
 pub fn plan_remove(doc: &Document, uses: &Uses, a: Aspect, key: Option<&str>, code: Option<&str>) -> Result<(Vec<Op>, String), CmdError> {
     let e = named_key_or_code(doc, a, key, code)?;
-    let counts = uses.counts(doc, a, &e.key);
+    let counts = uses.counts(a, &e.key);
     if !counts.unused() {
         return Err(CmdError::refused(format!("{} is used by {}. Give them another {} first.", e.code, counts.words(), a.word())));
     }
@@ -261,6 +269,11 @@ pub fn rows_changed_since(ledger: &ecad_model::Ledger, seen: usize) -> bool {
         Op::SetProperty { key, .. } => Aspect::of_property(key).is_some(),
         Op::ModifyDevice { before, after, .. } => before.location != after.location || before.function != after.function,
         Op::CreateDevice { .. } | Op::DeleteDevice { .. } | Op::AddPage { .. } | Op::RemovePage { .. } | Op::ModifyProject { .. } => true,
+        Op::CreateAid { aid, .. } | Op::DeleteAid { aid, .. } => aid.as_box().is_some(),
+        Op::ModifyAid { before, after, .. } => match (before.as_box(), after.as_box()) {
+            (Some(b), Some(x)) => b.location != x.location || b.function != x.function,
+            (b, x) => b.is_some() || x.is_some(),
+        },
         Op::ModifyPage { before, after, .. } => {
             let ch = before.change(after);
             ch.location || ch.function

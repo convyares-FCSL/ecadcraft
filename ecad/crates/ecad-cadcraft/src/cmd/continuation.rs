@@ -1,5 +1,5 @@
 //! Brief 049's command (design 049 §5.1): `contcaption` sets or removes the caption of continuation
-//! arrows, one transaction of `SetProperty` ops (only for arrows whose caption changes). Its
+//! arrows, one transaction of `ModifyAid` ops (only for arrows whose caption changes). Its
 //! interactive form (select arrows, type the caption) is in [`crate::interact`].
 //!
 //! Excludes: what a caption draws ([`crate::continuations`]); `setprop` and `place` take the same
@@ -10,7 +10,7 @@
 
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::cmd::continuation as rules;
-use ecad_model::DeviceId;
+use ecad_model::AidId;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -38,7 +38,7 @@ pub(crate) fn specs() -> Vec<CommandSpec> {
 #[serde(deny_unknown_fields)]
 pub(crate) struct ContcaptionParams {
     /// The continuation arrows (1 to 2000).
-    continuations: Bounded<DeviceId, 0, MAX_ARROWS>,
+    continuations: Bounded<AidId, 0, MAX_ARROWS>,
     /// The caption, or null to remove it.
     #[serde(deserialize_with = "nullable")]
     #[schemars(required, with = "OrNull<String>")]

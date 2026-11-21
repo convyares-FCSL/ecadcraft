@@ -883,11 +883,13 @@ pub fn relabels(ops: &[Op]) -> BTreeMap<DeviceId, BTreeMap<String, String>> {
     for op in ops {
         match op {
             Op::RemoveTerminal { id, terminal } => {
-                removed.insert(*id, (terminal.component, terminal.label.clone()));
+                if let Some(c) = terminal.device() {
+                    removed.insert(*id, (c, terminal.label.clone()));
+                }
             }
             Op::AddTerminal { id, terminal } => {
                 if let Some((c, Some(old))) = removed.get(id)
-                    && *c == terminal.component
+                    && Some(*c) == terminal.device()
                     && let Some(new) = &terminal.label
                     && old != new
                 {

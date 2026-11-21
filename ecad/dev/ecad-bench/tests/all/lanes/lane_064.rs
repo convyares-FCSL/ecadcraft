@@ -78,6 +78,12 @@ fn old_touched(ops: &[Op]) -> Touched {
             Op::AddRoute { id, .. } | Op::RemoveRoute { id, .. } | Op::ModifyRoute { id, .. } => {
                 t.routes.insert(*id);
             }
+            Op::CreateAid { id, .. } | Op::DeleteAid { id, .. } | Op::ModifyAid { id, .. } => {
+                t.aids.insert(*id);
+            }
+            Op::CreateLoosePart { id, .. } | Op::DeleteLoosePart { id, .. } | Op::ModifyLoosePart { id, .. } => {
+                t.loose_parts.insert(*id);
+            }
             Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } | Op::ModifyCable { id, .. } => {
                 t.cables.insert(*id);
             }
@@ -454,9 +460,16 @@ fn old_pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BTreeSet<
             }
             // Brief 049 (design 049 §8.2): a continuation's partners list it on their pages; those
             // pages come from the reference index's watch (`xref::Watch`), and its own pages from
-            // its representation ops.
-            Op::CreateDevice { device: component, .. } | Op::DeleteDevice { device: component, .. }
-                if ecad_model::connectivity::continuation_key(&component.properties).is_some() => {}
+            // its representation ops. A location box's pages likewise (its label and the tag
+            // prefixes of the devices inside are drawn on its own pages only).
+            Op::CreateAid { .. } | Op::DeleteAid { .. } => {}
+            // A continuation renamed or captioned, a box's values changed: its own pages (design
+            // 072 §6.2).
+            Op::ModifyAid { id, .. } => {
+                out.extend(doc.representations_of(Subject::Aid(*id)).map(|(_, r)| r.page));
+            }
+            // A loose part is drawn on no page (design 072 §6.4).
+            Op::CreateLoosePart { .. } | Op::DeleteLoosePart { .. } | Op::ModifyLoosePart { .. } => {}
             Op::CreateWire { id, .. } if !doc.wires.contains_key(id) => {}
             // A deleted wire's labels are on the pages of the routes at its ends.
             Op::DeleteWire { wire, .. } => out.extend(derived::points_pages(doc, &wire.ends)),
@@ -465,7 +478,7 @@ fn old_pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BTreeSet<
             // Brief 028: a terminal relabelled (Remove + Add of one ID) is drawn by its device's
             // symbols only: their pages.
             Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
-                out.extend(doc.representations_of(Subject::Device(terminal.component)).map(|(_, r)| r.page));
+                out.extend(doc.representations_of(terminal.owner.subject()).map(|(_, r)| r.page));
             }
             Op::EmbedDefinition { id, .. } if !doc.definitions.contains_key(id) => {}
             // A page's own properties show in its frame only (brief 019); the references they
@@ -487,20 +500,7 @@ fn old_pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BTreeSet<
             Op::SetProperty { object: ecad_model::ObjectRef::Page(p), .. } => {
                 out.insert(*p);
             }
-            // A device's tag is drawn beside each of its symbols (brief 018): their pages. Brief
-            // 049 (design 049 §8.2): a continuation's name and kind are drawn on its own pages; its
-            // partners' pages come from the reference index's watch.
-            Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key, .. }
-                if (key == ecad_model::connectivity::NAME || key == ecad_model::connectivity::KIND)
-                    && ecad_electrical::continuations::is_continuation(doc, *c) =>
-            {
-                out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
-            }
-            Op::SetProperty { object: ecad_model::ObjectRef::Device(_), key, .. }
-                if key == ecad_model::connectivity::NAME || key == ecad_model::connectivity::KIND =>
-            {
-                return None;
-            }
+            // A device's tag is drawn beside each of its symbols (brief 018): their pages.
             Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key, after, .. } => {
                 out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
                 // Brief 045 (design 045 §11.1): a rack's tag shows in its cards' captions, and a
@@ -573,7 +573,7 @@ fn old_pages_touched(doc: &ecad_model::Document, ops: &[Op]) -> Option<BTreeSet<
             }
             // Brief 044 (design 044 §11.1): a connector naming or description default is drawn by
             // the connectors that inherit it: their pages. The maker's answers are drawn nowhere.
-            // Their pages come from the connector index view after the commit (`ConnectorsView`).
+            // Their pages come from the connector index after the commit (`ConnectorsView`).
             Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } if key.starts_with("connector.") => {}
             // Brief 030: strip accessory defaults are drawn nowhere (the plan page is a generated
             // page, kept by its own rule).
@@ -692,7 +692,7 @@ fn every_reference(doc: &Document, m: &dyn ecad_electrical::text_style::fonts::T
             out.insert(*p, format!("{parts:?}"));
         }
     }
-    let names: BTreeSet<String> = doc.devices.keys().filter_map(|c| continuations::name_of(doc, *c)).collect();
+    let names: BTreeSet<String> = doc.aids.keys().filter_map(|a| continuations::name_of(doc, *a)).collect();
     let mut places = xref::Places::new(doc);
     for (p, parts) in continuations::shown_measured(doc, &mut places, &names, m) {
         if !parts.is_empty() {
@@ -774,6 +774,8 @@ fn old_props_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> 
             Subject::Cable(c) => ObjectRef::Cable(c),
             // A route has no properties (design 072 F31).
             Subject::Route(_) => return,
+            // An aid has no properties panel yet (design 072 §6.2).
+            Subject::Aid(_) => return,
         });
     };
     for op in ops {
@@ -783,18 +785,12 @@ fn old_props_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> 
             }
             Op::SetProperty { object, .. } => {
                 out.insert(*object);
-                // A location box's own location is what its page's devices inherit (brief 024).
-                if let ObjectRef::Device(c) = object
-                    && ecad_electrical::locations::is_box(doc, *c)
-                {
-                    out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| ObjectRef::Page(r.page)));
-                }
             }
             Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::ModifyDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
                 out.insert(ObjectRef::Device(*id));
             }
             Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
-                out.insert(ObjectRef::Device(terminal.component));
+                out.extend(terminal.device().map(ObjectRef::Device));
             }
             Op::ModifyWire { id, .. } => {
                 out.insert(ObjectRef::Wire(*id));
@@ -802,7 +798,7 @@ fn old_props_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> 
             Op::CreateWire { id, wire } | Op::DeleteWire { id, wire } => {
                 out.insert(ObjectRef::Wire(*id));
                 // The devices at its ends: a wire's net (brief 022) is shown through them.
-                out.extend(wire.ends.iter().filter_map(|t| doc.terminals.get(t)).map(|t| ObjectRef::Device(t.component)));
+                out.extend(wire.ends.iter().filter_map(|t| doc.terminals.get(t)).filter_map(|t| t.device()).map(ObjectRef::Device));
             }
             Op::CreateCable { id, cable } | Op::DeleteCable { id, cable } => {
                 out.insert(ObjectRef::Cable(*id));
@@ -810,12 +806,17 @@ fn old_props_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> 
             }
             // A route has no properties (design 072 F31); the devices it lands on show its net.
             Op::AddRoute { route, .. } | Op::RemoveRoute { route, .. } => {
-                out.extend(route.points_landed().filter_map(|t| doc.terminals.get(&t)).map(|t| ObjectRef::Device(t.component)));
+                out.extend(route.points_landed().filter_map(|t| doc.terminals.get(&t)).filter_map(|t| t.device()).map(ObjectRef::Device));
             }
             Op::ModifyRoute { before, after, .. } => {
                 let landed = before.points_landed().chain(after.points_landed());
-                out.extend(landed.filter_map(|t| doc.terminals.get(&t)).map(|t| ObjectRef::Device(t.component)));
+                out.extend(landed.filter_map(|t| doc.terminals.get(&t)).filter_map(|t| t.device()).map(ObjectRef::Device));
             }
+            // An aid has no `ObjectRef` (design 072 §6.2): the panel reads its selection again.
+            Op::CreateAid { .. } | Op::DeleteAid { .. } | Op::ModifyAid { .. } => return None,
+            // A loose part is never selected and has no `ObjectRef` (design 072 §6.4): no panel
+            // shows it.
+            Op::CreateLoosePart { .. } | Op::DeleteLoosePart { .. } | Op::ModifyLoosePart { .. } => {}
             Op::ModifyCable { id, before, after } => {
                 out.insert(ObjectRef::Cable(*id));
                 out.extend(before.cores.iter().chain(&after.cores).filter_map(|m| m.wire()).map(ObjectRef::Wire));
@@ -826,15 +827,15 @@ fn old_props_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> 
             Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => {
                 if let Some((_, r)) = doc.representation_of_item(*id) {
                     subject(r.subject, &mut out);
-                    if matches!(r.subject, Subject::Device(c) if ecad_electrical::locations::is_box(doc, c)) {
+                    if matches!(r.subject, Subject::Aid(a) if ecad_electrical::locations::box_values(doc, a).is_some()) {
                         out.insert(ObjectRef::Page(r.page));
                     }
                 }
             }
             Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => {
                 subject(rep.subject, &mut out);
-                // A location box (brief 024) changes the location its page's devices inherit.
-                if matches!(rep.subject, Subject::Device(c) if ecad_electrical::locations::is_box(doc, c) || rep.role == ecad_model::Role::LocationBox) {
+                // A location box (brief 024) changes the contexts on its page.
+                if matches!(rep.subject, Subject::Aid(_)) && rep.role == ecad_model::Role::LocationBox {
                     out.insert(ObjectRef::Page(rep.page));
                 }
             }
@@ -853,8 +854,8 @@ fn old_props_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<ObjectRef>> 
             // Brief 048 (design §8.4): a project symbol's new or removed version changes whether
             // the devices showing its lineage read "update available".
             Op::EmbedDefinition { definition, .. } | Op::RemoveDefinition { definition, .. } => {
-                if let Some(o) = definition.origin.as_ref().filter(|o| o.library == symbols::PROJECT_SYMBOLS) {
-                    for v in symbols::versions_of(doc, o.definition) {
+                if let Some(o) = definition.origin.as_ref().filter(|o| o.library == ecad_electrical::symbols::PROJECT_SYMBOLS) {
+                    for v in ecad_electrical::symbols::versions_of(doc, o.definition) {
                         for item in doc.items_using(v.id) {
                             if let Some((_, r)) = doc.representation_of_item(item) {
                                 subject(r.subject, &mut out);
@@ -929,6 +930,7 @@ fn the_props_feed_matches_its_old_function_on_the_medium_corpus() {
 #[derive(Debug, Default)]
 struct OldScope {
     devices: BTreeSet<DeviceId>,
+    loose: BTreeSet<ecad_model::LoosePartId>,
     pages: BTreeSet<PageId>,
     route_pages: BTreeSet<PageId>,
     wires: BTreeSet<ecad_model::WireId>,
@@ -945,10 +947,18 @@ struct OldScope {
 }
 
 impl OldScope {
+    fn aid<'a>(&mut self, doc: &Document, id: ecad_model::AidId, aids: impl IntoIterator<Item = &'a ecad_model::Aid>) {
+        if aids.into_iter().any(|a| a.as_box().is_some()) {
+            self.pages.extend(doc.representations_of(Subject::Aid(id)).map(|(_, r)| r.page));
+        }
+    }
+
     fn subject(&mut self, doc: &Document, s: Subject, page: PageId) {
         match s {
-            Subject::Device(c) if ecad_electrical::locations::is_box(doc, c) => {
-                self.pages.insert(page);
+            Subject::Aid(a) => {
+                if doc.aids.get(&a).is_some_and(|x| x.as_box().is_some()) {
+                    self.pages.insert(page);
+                }
             }
             Subject::Device(c) => {
                 self.devices.insert(c);
@@ -973,29 +983,11 @@ impl OldScope {
     fn notes(&mut self, doc: &Document, ops: &[Op]) {
         for op in ops {
             match op {
-                Op::CreateDevice { id, device } | Op::DeleteDevice { id, device } | Op::ModifyDevice { id, after: device, .. } => {
-                    if ecad_electrical::locations::is_box_component(device) {
-                        self.pages.extend(doc.representations_of(Subject::Device(*id)).map(|(_, r)| r.page));
-                    } else {
-                        self.devices.insert(*id);
-                    }
+                Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::ModifyDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
+                    self.devices.insert(*id);
                 }
-                Op::SetDeviceDefinition { id, .. } => {
-                    if ecad_electrical::locations::is_box(doc, *id) {
-                        self.pages.extend(doc.representations_of(Subject::Device(*id)).map(|(_, r)| r.page));
-                    } else {
-                        self.devices.insert(*id);
-                    }
-                }
-                Op::SetProperty { object: ObjectRef::Device(c), key, .. } => {
-                    if ecad_electrical::locations::is_box(doc, *c) {
-                        self.pages.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
-                    } else {
-                        self.devices.insert(*c);
-                    }
-                    if key == ecad_model::connectivity::NAME {
-                        self.cables.extend(old_continuation_group_cables(doc, *c));
-                    }
+                Op::SetProperty { object: ObjectRef::Device(c), .. } => {
+                    self.devices.insert(*c);
                 }
                 Op::SetProperty { object: ObjectRef::Wire(w), .. } | Op::ModifyWire { id: w, .. } => {
                     self.wires.insert(*w);
@@ -1004,6 +996,19 @@ impl OldScope {
                 Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Cable(_), .. } => {}
                 // No check or output reads a device link yet (design 072 §2.6).
                 Op::AddDeviceLink { .. } | Op::RemoveDeviceLink { .. } => {}
+                // Design 072 §6.2: a box's values are its pages' context; a continuation renamed
+                // joins or breaks its name groups' cable core chains (032, design 032 §8.4).
+                Op::CreateAid { id, aid } | Op::DeleteAid { id, aid } => self.aid(doc, *id, [aid]),
+                Op::ModifyAid { id, before, after } => {
+                    self.aid(doc, *id, [before, after]);
+                    if ecad_model::connectivity::continuation_key(before) != ecad_model::connectivity::continuation_key(after) {
+                        self.cables.extend(old_continuation_group_cables(doc, *id));
+                    }
+                }
+                // Design 072 §6.4: a loose part is an item on the BOM (its entry only).
+                Op::CreateLoosePart { id, .. } | Op::DeleteLoosePart { id, .. } | Op::ModifyLoosePart { id, .. } => {
+                    self.loose.insert(*id);
+                }
                 Op::ModifyProject { before, after } => {
                     use ecad_electrical::designations::{Aspect, changed_codes, default_key};
                     // Brief 047: an item without its own location shows the project's.
@@ -1071,7 +1076,7 @@ impl OldScope {
                 // Other style records and the standard header change no report row.
                 Op::SetStyle { .. } | Op::SetStandard { .. } => {}
                 Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
-                    self.devices.insert(terminal.component);
+                    self.devices.extend(terminal.device());
                     // Brief 028: a relabelled terminal (Remove + Add of one ID) renames its wires' ends.
                     self.wires.extend(doc.ends_at(*id).into_iter().map(|(w, _)| w));
                 }
@@ -1154,8 +1159,8 @@ impl OldScope {
     }
 }
 
-fn old_continuation_group_cables(doc: &Document, c: DeviceId) -> BTreeSet<ecad_model::CableId> {
-    let Some(key) = doc.devices.get(&c).and_then(|x| ecad_model::connectivity::continuation_key(&x.properties)) else {
+fn old_continuation_group_cables(doc: &Document, c: ecad_model::AidId) -> BTreeSet<ecad_model::CableId> {
+    let Some(key) = ecad_electrical::continuations::name_of(doc, c) else {
         return BTreeSet::new();
     };
     let mut group = doc.continuations_named(&key);
@@ -1278,17 +1283,19 @@ fn old_plc_touched(plc: &plc::kept::Plc, doc: &Document, ops: &[Op]) -> BTreeSet
                 }
             }
             Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
-                out.insert(terminal.component);
+                out.extend(terminal.device());
             }
             Op::CreateWire { wire, .. } | Op::DeleteWire { wire, .. } | Op::ModifyWire { after: wire, .. } => {
                 for t in &wire.ends {
                     if let Some(x) = doc.terminals.get(t) {
-                        out.insert(x.component);
+                        out.extend(x.device());
                     }
                 }
                 for w in doc.wires_of_net(wire.net) {
                     let ends = doc.wires.get(&w).map(|x| x.ends);
-                    out.extend(ends.iter().flatten().filter_map(|t| doc.terminals.get(t)).map(|x| x.component).filter(|c| plc.cards.contains_key(c)));
+                    out.extend(
+                        ends.iter().flatten().filter_map(|t| doc.terminals.get(t)).filter_map(|x| x.device()).filter(|c| plc.cards.contains_key(c)),
+                    );
                 }
             }
             Op::ModifyItem { id, .. } => {
@@ -1299,11 +1306,13 @@ fn old_plc_touched(plc: &plc::kept::Plc, doc: &Document, ops: &[Op]) -> BTreeSet
                 }
             }
             Op::AddRoute { route, .. } | Op::RemoveRoute { route, .. } => {
-                out.extend(route.points_landed().filter_map(|t| doc.terminals.get(&t)).map(|x| x.component).filter(|c| plc.cards.contains_key(c)));
+                out.extend(
+                    route.points_landed().filter_map(|t| doc.terminals.get(&t)).filter_map(|x| x.device()).filter(|c| plc.cards.contains_key(c)),
+                );
             }
             Op::ModifyRoute { before, after, .. } => {
                 let points = before.points_landed().chain(after.points_landed());
-                out.extend(points.filter_map(|t| doc.terminals.get(&t)).map(|x| x.component).filter(|c| plc.cards.contains_key(c)));
+                out.extend(points.filter_map(|t| doc.terminals.get(&t)).filter_map(|x| x.device()).filter(|c| plc.cards.contains_key(c)));
             }
             Op::SetStyle { .. } | Op::SetStandard { .. } => styles = true,
             Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key.starts_with("text.") => styles = true,
@@ -1348,11 +1357,11 @@ fn old_plc_rows(plc: &plc::kept::Plc, doc: &Document, ops: &[Op]) -> BTreeSet<De
             Op::AddTerminal { id, .. } => {
                 out.extend(cards_on_nets_of_terminals(doc, plc, &[*id]));
             }
-            Op::SetProperty { object: ObjectRef::Device(c), key, before, after } if key == ecad_model::connectivity::NAME => {
-                let mut ts: Vec<ecad_model::TerminalId> = doc.terminals_of(*c).map(|(t, _)| t).collect();
-                for v in [before, after].into_iter().flatten() {
-                    for k in doc.continuations_named(&ecad_model::connectivity::name_key(v)) {
-                        ts.extend(doc.terminals_of(k).map(|(t, _)| t));
+            Op::ModifyAid { id, before, after } => {
+                let mut ts: Vec<ecad_model::TerminalId> = doc.terminals_of(*id).map(|(t, _)| t).collect();
+                for k in [before, after].into_iter().filter_map(ecad_model::connectivity::continuation_key) {
+                    for a in doc.continuations_named(&k) {
+                        ts.extend(doc.terminals_of(a).map(|(t, _)| t));
                     }
                 }
                 out.extend(cards_on_nets_of_terminals(doc, plc, &ts));
@@ -1526,10 +1535,10 @@ fn the_outputs_update_matches_its_old_functions_on_the_medium_corpus() {
 mod old_checks {
     use std::collections::BTreeSet;
 
-    use ecad_electrical::rating::{RatedSubject, TEMPERATURE};
+    use ecad_electrical::rating::RatedSubject;
     use ecad_electrical::styles::checks::is_old_key;
     use ecad_electrical::{defaults, styles::wire};
-    use ecad_model::connectivity::{NAME, name_key};
+    use ecad_model::connectivity::name_key;
     use ecad_model::style::is_choice_key;
     use ecad_model::{CableId, DeviceId, Document, NetKey, ObjectRef, Op, PageId, RouteId, StyleRef, Subject, TerminalId, WireId};
 
@@ -1558,18 +1567,21 @@ mod old_checks {
         routes: BTreeSet<RouteId>,
         terminals: BTreeSet<TerminalId>,
         devices: BTreeSet<DeviceId>,
+        /// Aids to re-check (design 072 §6.2): continuations made, removed or renamed, and their
+        /// partners by name; boxes made, removed or changed.
+        aids: BTreeSet<ecad_model::AidId>,
         /// Cables whose reference ends to re-check (brief 027: orphans).
         cable_references: BTreeSet<CableId>,
         /// Cables to re-check (brief 026: provisional and shared tags).
         cables: BTreeSet<ecad_model::CableId>,
-        /// Brief 050a: the style rows (`ecad_electrical::styles::checks::touches`).
-        pub styles: bool,
+        /// Brief 050a: the style rows (`crate::styles::checks::touches`).
+        pub(crate) styles: bool,
         /// Brief 057: what the ops reach of the rating results.
         rating: Touch,
         /// Brief 052: the list's rows (an entry's code changed, added or removed).
-        designations: bool,
-        /// Brief 055: the title block rows (`ecad_electrical::title_block::checks::touches`).
-        title_blocks: bool,
+        pub(crate) designations: bool,
+        /// Brief 055: the title block rows (`crate::title_block::checks::touches`).
+        pub(crate) title_blocks: bool,
     }
 
     impl Scope {
@@ -1614,7 +1626,7 @@ mod old_checks {
                     }
                     Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
                         self.terminals.insert(*id);
-                        self.devices.insert(terminal.component);
+                        self.devices.extend(terminal.device());
                         node(self, Node::Terminal(*id));
                     }
                     // Brief 048: another definition may bridge other points.
@@ -1626,7 +1638,7 @@ mod old_checks {
                     }
                     Op::CreateDevice { id, device } | Op::DeleteDevice { id, device } => {
                         self.tag_holders(doc, device.tag());
-                        self.component(doc, *id, device.properties.get(NAME).map(String::as_str));
+                        self.component(doc, *id);
                         for (t, _) in doc.terminals_of(*id) {
                             node(self, Node::Terminal(t));
                         }
@@ -1634,20 +1646,14 @@ mod old_checks {
                     Op::ModifyDevice { id, before, after } => {
                         for device in [before, after] {
                             self.tag_holders(doc, device.tag());
-                            self.component(doc, *id, device.properties.get(NAME).map(String::as_str));
+                            self.component(doc, *id);
                         }
                         for (t, _) in doc.terminals_of(*id) {
                             node(self, Node::Terminal(t));
                         }
-                        // Design 072 §6.3: a device's location and function are fields; a box's are
-                        // contexts for the devices on its pages, a device's are where the cables at its
-                        // points are drawn (as the `SetProperty` arm below).
+                        // Design 072 §6.3: a device's location and function are fields, where the cables
+                        // at its points are drawn (as the `SetProperty` arm below).
                         if before.location != after.location || before.function != after.function {
-                            if ecad_electrical::locations::is_box(doc, *id) {
-                                for p in doc.representations_of(Subject::Device(*id)).map(|(_, r)| r.page).collect::<Vec<_>>() {
-                                    self.devices_on(doc, p);
-                                }
-                            }
                             for (t, _) in doc.terminals_of(*id) {
                                 for (w, _) in doc.ends_at(t) {
                                     self.cables.extend(doc.cables_of(w));
@@ -1656,13 +1662,6 @@ mod old_checks {
                         }
                     }
                     Op::SetProperty { object: ObjectRef::Device(c), key, before, after } => {
-                        // Brief 052 (design 052 §6): a box's value is a context for the devices on its
-                        // pages.
-                        if ecad_electrical::locations::is_box(doc, *c) {
-                            for p in doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page).collect::<Vec<_>>() {
-                                self.devices_on(doc, p);
-                            }
-                        }
                         if key == ecad_model::tag::TAG_KEY {
                             self.tag_holders(doc, [before, after].into_iter().flatten().map(String::as_str));
                         }
@@ -1675,11 +1674,8 @@ mod old_checks {
                                 }
                             }
                         }
-                        for n in [before, after].into_iter().flatten() {
-                            self.component(doc, *c, Some(n));
-                            node(self, Node::Name(name_key(n)));
-                        }
-                        self.component(doc, *c, None);
+                        let _ = (before, after);
+                        self.component(doc, *c);
                         for (t, _) in doc.terminals_of(*c) {
                             node(self, Node::Terminal(t));
                         }
@@ -1753,6 +1749,27 @@ mod old_checks {
                             node(self, Node::Terminal(t));
                         }
                     }
+                    // Design 072 §6.2: a box's values are a context for the devices on its pages; a
+                    // continuation's names join nets.
+                    Op::CreateAid { id, aid } | Op::DeleteAid { id, aid } => {
+                        self.aid(doc, *id, [aid]);
+                        if let Some(n) = aid.continuation_name() {
+                            node(self, Node::Name(name_key(n.as_str())));
+                        }
+                        for (t, _) in doc.terminals_of(*id) {
+                            self.terminals.insert(t);
+                            node(self, Node::Terminal(t));
+                        }
+                    }
+                    Op::ModifyAid { id, before, after } => {
+                        self.aid(doc, *id, [before, after]);
+                        for n in [before, after].into_iter().filter_map(ecad_model::Aid::continuation_name) {
+                            node(self, Node::Name(name_key(n.as_str())));
+                        }
+                    }
+                    // Design 072 §6.4: a loose part's checks (an item with no part number) are the BOM's, kept by
+                    // the outputs model (`Outputs::bom_checks`); no drawing check reads one.
+                    Op::CreateLoosePart { .. } | Op::DeleteLoosePart { .. } | Op::ModifyLoosePart { .. } => {}
                     Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => {
                         for c in doc.components_using(*id) {
                             self.devices.insert(c);
@@ -1828,6 +1845,11 @@ mod old_checks {
                                         self.devices.insert(*c);
                                     }
                                 }
+                                for (b, x) in &doc.aids {
+                                    if x.as_box().is_some_and(|x| ecad_electrical::designations::box_key(x, a).as_deref() == Some(entry.as_str())) {
+                                        self.aids.insert(*b);
+                                    }
+                                }
                             }
                         }
                     }
@@ -1858,6 +1880,21 @@ mod old_checks {
             }
         }
 
+        /// A drawing aid made, removed or changed: a box's pages' devices (their contexts); a
+        /// continuation and its partners by its names.
+        fn aid<'a>(&mut self, doc: &Document, id: ecad_model::AidId, aids: impl IntoIterator<Item = &'a ecad_model::Aid>) {
+            self.aids.insert(id);
+            let aids: Vec<&ecad_model::Aid> = aids.into_iter().collect();
+            for k in aids.iter().filter_map(|a| ecad_model::connectivity::continuation_key(a)) {
+                self.aids.extend(doc.continuations_named(&k));
+            }
+            if aids.iter().any(|a| a.as_box().is_some()) {
+                for p in doc.representations_of(Subject::Aid(id)).map(|(_, r)| r.page).collect::<Vec<_>>() {
+                    self.devices_on(doc, p);
+                }
+            }
+        }
+
         /// Every device with a symbol on `page` (brief 052: their contexts may have changed).
         fn devices_on(&mut self, doc: &Document, page: PageId) {
             for (_, r) in doc.representations_on(page) {
@@ -1878,18 +1915,14 @@ mod old_checks {
         }
 
         fn component_of(&mut self, doc: &Document, t: TerminalId) {
-            if let Some(c) = doc.terminals.get(&t).map(|x| x.component) {
+            if let Some(c) = doc.terminals.get(&t).and_then(|x| x.device()) {
                 self.devices.insert(c);
             }
         }
 
-        /// A component and, for a continuation name, every continuation with that name.
-        fn component(&mut self, doc: &Document, c: DeviceId, name: Option<&str>) {
+        /// A component and its points.
+        fn component(&mut self, doc: &Document, c: DeviceId) {
             self.devices.insert(c);
-            let name = name.map(str::to_string).or_else(|| doc.devices.get(&c).and_then(|x| x.properties.get(NAME).cloned()));
-            if let Some(n) = name {
-                self.devices.extend(doc.continuations_named(&name_key(&n)));
-            }
             for (t, _) in doc.terminals_of(c) {
                 self.terminals.insert(t);
             }
@@ -1911,14 +1944,16 @@ mod old_checks {
                 Subject::Route(x) => {
                     self.routes.insert(x);
                 }
-                Subject::Device(c) => {
-                    // Brief 052: a box drawn, moved or erased changes the contexts on its page.
-                    if ecad_electrical::locations::is_box(doc, c) {
-                        self.devices_on(doc, r.page);
+                // Design 072 §6.2: a box drawn, moved or erased changes the contexts on its page.
+                // A continuation's place moves its own and its partners' rows.
+                Subject::Aid(a) => {
+                    if let Some(x) = doc.aids.get(&a) {
+                        self.aid(doc, a, [x]);
                     }
-                    // Its points moved: the routes landing on them may now be drawn away; a
-                    // continuation's place moves its partners' rows.
-                    self.component(doc, c, None);
+                }
+                Subject::Device(c) => {
+                    // Its points moved: the routes landing on them may now be drawn away.
+                    self.component(doc, c);
                     for (t, _) in doc.terminals_of(c) {
                         self.routes.extend(doc.routes_at(t));
                     }
@@ -1945,7 +1980,7 @@ mod old_checks {
         /// Locations whose temperature changed: `at[location]` (D1).
         pub locations: BTreeSet<String>,
         /// Location boxes to read again.
-        pub boxes: BTreeSet<DeviceId>,
+        pub boxes: BTreeSet<ecad_model::AidId>,
         /// Devices whose location may have changed: their wires' results.
         pub moved: BTreeSet<DeviceId>,
         /// Pages a location box moved on: the wires of the devices drawn there.
@@ -1985,14 +2020,7 @@ mod old_checks {
                         }
                     }
                     Op::SetProperty { object: ObjectRef::Device(c), key, .. } => {
-                        let is_box = doc.devices.get(c).is_some_and(ecad_electrical::locations::is_box_component);
-                        if is_box {
-                            // A box's temperature or location: the wires at its locations (§10).
-                            if key == TEMPERATURE {
-                                self.boxes.insert(*c);
-                                self.box_locations(doc, *c);
-                            }
-                        } else if ecad_electrical::symbols::is_rating_key(key) || key == ecad_model::tag::TAG_KEY {
+                        if ecad_electrical::symbols::is_rating_key(key) || key == ecad_model::tag::TAG_KEY {
                             self.devices.insert(*c);
                         } else if key.starts_with("link.") {
                             for (t, _) in doc.terminals_of(*c) {
@@ -2046,14 +2074,26 @@ mod old_checks {
                         }
                     }
                     Op::AddTerminal { id, .. } | Op::RemoveTerminal { id, .. } => net_of_terminal(*id, self),
-                    Op::CreateDevice { id, device: component } | Op::DeleteDevice { id, device: component }
-                        if ecad_electrical::locations::is_box_component(component) =>
-                    {
-                        self.boxes.insert(*id);
-                        if let Some(l) = ecad_electrical::designations::device_key(component, ecad_electrical::designations::Aspect::Location) {
-                            self.locations.insert(l);
+                    Op::CreateAid { id, aid } | Op::DeleteAid { id, aid } => {
+                        if let Some(b) = aid.as_box() {
+                            self.boxes.insert(*id);
+                            self.locations.extend(ecad_electrical::designations::box_key(b, ecad_electrical::designations::Aspect::Location));
+                            self.box_pages(doc, *id);
                         }
-                        self.box_pages(doc, *id);
+                    }
+                    // Design 072 §6.2: a box's temperature reaches the wires at its location; its new
+                    // location the wires at both locations and those of the devices on its pages.
+                    Op::ModifyAid { id, before, after } => {
+                        let loc = |a: &ecad_model::Aid| {
+                            a.as_box().and_then(|b| ecad_electrical::designations::box_key(b, ecad_electrical::designations::Aspect::Location))
+                        };
+                        if before.as_box().is_some() || after.as_box().is_some() {
+                            self.boxes.insert(*id);
+                            self.locations.extend([loc(before), loc(after)].into_iter().flatten());
+                            if loc(before) != loc(after) {
+                                self.box_pages(doc, *id);
+                            }
+                        }
                     }
                     // Lane 072 B: a device's description, part or type text is read by no rating row.
                     Op::ModifyDevice { before, after, .. } if before.only_text_differs(after) => {}
@@ -2064,16 +2104,7 @@ mod old_checks {
                     // Design 072 §6.3: a box's new location reaches the wires at both locations; a
                     // device's own location its wires only.
                     Op::ModifyDevice { id, before, after } if before.only_place_differs(after) => {
-                        let loc =
-                            |d: &ecad_model::Device| ecad_electrical::designations::device_key(d, ecad_electrical::designations::Aspect::Location);
-                        if ecad_electrical::locations::is_box_component(after) {
-                            self.boxes.insert(*id);
-                            self.box_locations(doc, *id);
-                            if before.location != after.location {
-                                self.locations.extend([loc(before), loc(after)].into_iter().flatten());
-                                self.box_pages(doc, *id);
-                            }
-                        } else if before.location != after.location {
+                        if before.location != after.location {
                             self.moved.insert(*id);
                         }
                     }
@@ -2104,32 +2135,46 @@ mod old_checks {
                     // its location and those of the devices on its page.
                     Op::ModifyRepresentation { after, .. }
                     | Op::LinkRepresentation { rep: after, .. }
-                    | Op::UnlinkRepresentation { rep: after, .. } => {
-                        if let ecad_model::Subject::Device(c) = after.subject {
-                            if doc.devices.get(&c).is_some_and(ecad_electrical::locations::is_box_component) {
-                                self.boxes.insert(c);
-                                self.box_locations(doc, c);
-                                self.pages.insert(after.page);
-                            } else {
-                                self.moved.insert(c);
-                            }
+                    | Op::UnlinkRepresentation { rep: after, .. } => match after.subject {
+                        ecad_model::Subject::Aid(a) if ecad_electrical::locations::box_values(doc, a).is_some() => {
+                            self.boxes.insert(a);
+                            self.box_locations(doc, a);
+                            self.pages.insert(after.page);
                         }
-                    }
+                        ecad_model::Subject::Device(c) => {
+                            self.moved.insert(c);
+                        }
+                        _ => {}
+                    },
                     _ => {}
                 }
             }
         }
 
-        fn box_locations(&mut self, doc: &Document, c: DeviceId) {
-            if let Some(l) =
-                doc.devices.get(&c).and_then(|x| ecad_electrical::designations::device_key(x, ecad_electrical::designations::Aspect::Location))
-            {
-                self.locations.insert(l);
-            }
+        fn box_locations(&mut self, doc: &Document, a: ecad_model::AidId) {
+            self.locations.extend(
+                ecad_electrical::locations::box_values(doc, a)
+                    .and_then(|x| ecad_electrical::designations::box_key(x, ecad_electrical::designations::Aspect::Location)),
+            );
         }
 
-        fn box_pages(&mut self, doc: &Document, c: DeviceId) {
-            self.pages.extend(doc.representations_of(ecad_model::Subject::Device(c)).map(|(_, r)| r.page));
+        fn box_pages(&mut self, doc: &Document, a: ecad_model::AidId) {
+            self.pages.extend(doc.representations_of(ecad_model::Subject::Aid(a)).map(|(_, r)| r.page));
+        }
+
+        /// Whether the ops reach anything here.
+        pub fn any(&self) -> bool {
+            !(self.subjects.is_empty()
+                && self.retrace.is_empty()
+                && self.nets.is_empty()
+                && self.devices.is_empty()
+                && self.styles.is_empty()
+                && self.locations.is_empty()
+                && self.boxes.is_empty()
+                && self.moved.is_empty()
+                && self.pages.is_empty())
+                || self.all_results
+                || self.table
         }
     }
     /// Whether `op` can change the style rows.
@@ -2149,6 +2194,9 @@ mod old_checks {
             // Design 072 §4.5: a cable's type (a dangling one is a row).
             Op::CreateCable { cable, .. } | Op::DeleteCable { cable, .. } => cable.cable_type.is_some(),
             Op::ModifyCable { before, after, .. } => before.cable_type != after.cable_type,
+            // Brief 050a: a location box's own style (design 072 §6.2).
+            Op::CreateAid { aid, .. } | Op::DeleteAid { aid, .. } => aid.as_box().is_some_and(|b| b.style.is_some()),
+            Op::ModifyAid { before, after, .. } => before.as_box().and_then(|b| b.style.as_ref()) != after.as_box().and_then(|b| b.style.as_ref()),
             // Brief 054: the page type and folder rows.
             op if page_types_touches_checks(op) => true,
             _ => false,

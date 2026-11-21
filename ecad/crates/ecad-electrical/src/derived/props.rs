@@ -99,41 +99,38 @@ impl ViewScope for PropsScope {
 
 /// The devices of the connection points `ends`, in `doc`.
 fn devices_at<'a>(doc: &'a Document, ends: impl Iterator<Item = TerminalId> + 'a) -> impl Iterator<Item = ObjectRef> + 'a {
-    ends.filter_map(|t| doc.terminals.get(&t)).map(|t| ObjectRef::Device(t.component))
+    ends.filter_map(|t| doc.terminals.get(&t)).filter_map(|t| t.device()).map(ObjectRef::Device)
 }
 
-/// The object a subject's properties are kept on (a route has none, design 072 F31).
+/// The object a subject's properties are kept on (a route has none, design 072 F31; nor has an
+/// aid, §6.2).
 fn subject_ref(s: Subject) -> Option<ObjectRef> {
     match s {
         Subject::Device(c) => Some(ObjectRef::Device(c)),
         Subject::Wire(c) => Some(ObjectRef::Wire(c)),
         Subject::Cable(c) => Some(ObjectRef::Cable(c)),
         Subject::Route(_) => None,
+        // An aid has no properties panel yet (design 072 §6.2).
+        Subject::Aid(_) => None,
     }
 }
 
 /// The Before phase for one effect, looked up in `doc` before the ops.
 fn before(doc: &Document, effect: &Effect<'_>, objects: &mut Option<BTreeSet<ObjectRef>>) {
     let Some(out) = objects.as_mut() else { return };
-    let is_box = |s: Subject| matches!(s, Subject::Device(c) if crate::locations::is_box(doc, c));
+    let is_box = |s: Subject| matches!(s, Subject::Aid(a) if crate::locations::box_values(doc, a).is_some());
     match effect {
         Effect::Page { id, before: Some(_), after: Some(_), index_before: None, index_after: None } => {
             out.insert(ObjectRef::Page(*id));
         }
         Effect::Prop { object, .. } => {
             out.insert(*object);
-            // A location box's own location is what its page's devices inherit (brief 024).
-            if let ObjectRef::Device(c) = object
-                && crate::locations::is_box(doc, *c)
-            {
-                out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| ObjectRef::Page(r.page)));
-            }
         }
         Effect::Device { id, .. } | Effect::DeviceDefinition { id, .. } => {
             out.insert(ObjectRef::Device(*id));
         }
         Effect::Terminal { before, after, .. } => {
-            out.extend(before.iter().chain(after.iter()).map(|t| ObjectRef::Device(t.component)));
+            out.extend(before.iter().chain(after.iter()).filter_map(|t| t.device()).map(ObjectRef::Device));
         }
         Effect::Wire { id, before: Some(_), after: Some(_) } => {
             out.insert(ObjectRef::Wire(*id));
@@ -172,7 +169,7 @@ fn before(doc: &Document, effect: &Effect<'_>, objects: &mut Option<BTreeSet<Obj
             for rep in before.iter().chain(after.iter()) {
                 out.extend(subject_ref(rep.subject));
                 // A location box (brief 024) changes the location its page's devices inherit.
-                if is_box(rep.subject) || (matches!(rep.subject, Subject::Device(_)) && rep.role == ecad_model::Role::LocationBox) {
+                if matches!(rep.subject, Subject::Aid(_)) && rep.role == ecad_model::Role::LocationBox {
                     out.insert(ObjectRef::Page(rep.page));
                 }
             }
@@ -196,12 +193,16 @@ fn before(doc: &Document, effect: &Effect<'_>, objects: &mut Option<BTreeSet<Obj
                 }
             }
         }
-        Effect::Layer { .. } => {}
+        // A loose part is never selected and has no `ObjectRef` (design 072 §6.4): no panel
+        // shows it.
+        Effect::Layer { .. } | Effect::LoosePart { .. } => {}
         Effect::Page { .. }
         | Effect::Folder { .. }
         | Effect::Settings { .. }
         // Design 072 §5.3: a code renamed in the project's list shows on every object storing it.
         | Effect::Project { .. }
+        // An aid has no `ObjectRef` (design 072 §6.2): the panel reads its selection again.
+        | Effect::Aid { .. }
         | Effect::DeviceLink { .. } => *objects = None,
     }
 }
@@ -235,6 +236,8 @@ fn extension(doc: &Document, effect: &Effect<'_>, out: &mut BTreeSet<ObjectRef>)
         | Effect::Style { .. }
         | Effect::Standard { .. }
         | Effect::Project { .. }
+        | Effect::Aid { .. }
+        | Effect::LoosePart { .. }
         | Effect::DeviceLink { .. } => {}
     }
 }

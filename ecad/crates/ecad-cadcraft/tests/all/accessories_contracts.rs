@@ -344,7 +344,7 @@ fn hostile_accessory_and_link_values_are_refused_in_words() {
     let doc = f.h.doc();
     let far = doc.ends_at(f.terms[0]).into_iter().find_map(|(w, _)| {
         doc.wires[&w].ends.iter().find_map(|t| {
-            let c = doc.terminals[t].component;
+            let c = doc.terminals[t].device().unwrap();
             (c != f.strip).then_some(c)
         })
     });

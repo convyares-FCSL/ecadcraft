@@ -7,7 +7,7 @@ use crate::rating::Rating;
 use ecad_model::style::{StyleLayer, StyleRecord, StyleRef, is_name};
 use ecad_model::units::{Amps, Celsius, Percent, Volts};
 use ecad_model::wire::{InstallMethod, SupplySystem};
-use ecad_model::{CableId, DeviceId, Document, IdAllocator, ObjectRef, Op, Wire, WireId, Word};
+use ecad_model::{CableId, Document, IdAllocator, Op, Wire, WireId, Word};
 use serde_json::{Value, json};
 
 use crate::error::CmdError;
@@ -261,6 +261,14 @@ pub struct PanelTemperature {
     pub label: String,
 }
 
+/// A panel temperature as typed (°C), read.
+///
+/// # Errors
+/// Outside −40 to 90 °C.
+pub fn panel_temperature(text: &str) -> Result<ecad_model::units::Celsius, CmdError> {
+    parse::ambient(text.trim()).map(ecad_model::units::Celsius).ok_or(CmdError::refused("temperature is \u{2212}40 to 90 \u{b0}C."))
+}
+
 /// Check a panel temperature (°C) and give the text stored.
 ///
 /// # Errors
@@ -274,7 +282,8 @@ pub fn check_temperature(text: &str) -> Result<String, CmdError> {
 }
 
 /// `rating {location, temperature}` (design 057 FP6; tester F1): the location boxes of `typed` (a
-/// code or an entry key) take `rating.temperature` (`None` clears it).
+/// code or an entry key) take panel temperature `after` (`None` clears it), one `ModifyAid` per
+/// box that changes (design 072 §6.2).
 ///
 /// # Errors
 /// No location box of that location.
@@ -282,30 +291,28 @@ pub fn plan_temperature(doc: &Document, typed: &str, after: Option<&str>) -> Res
     // Brief 052: `location` is a code (or an entry key); boxes store the entry's key.
     let entry = crate::designations::find(doc, crate::designations::Aspect::Location, typed);
     let loc = entry.as_ref().map_or_else(|| typed.to_string(), |e| e.code.clone());
-    let boxes: Vec<DeviceId> = match &entry {
+    let boxes: Vec<ecad_model::AidId> = match &entry {
         None => Vec::new(),
         Some(e) => doc
-            .devices
+            .aids
             .iter()
             .filter(|(_, x)| {
-                crate::locations::is_box_component(x)
-                    && crate::designations::device_key(x, crate::designations::Aspect::Location).is_some_and(|l| l == e.key)
+                x.as_box().and_then(|b| crate::designations::box_key(b, crate::designations::Aspect::Location)).is_some_and(|l| l == e.key)
             })
-            .map(|(c, _)| *c)
+            .map(|(a, _)| *a)
             .collect(),
     };
     if boxes.is_empty() {
         return Err(CmdError::refused(format!("No location box is {loc}; draw one with Location Box first.")));
     }
-    let after = after.map(str::to_string);
+    let temp = after.map(panel_temperature).transpose()?;
     let mut ops = Vec::new();
-    for c in &boxes {
-        let before = doc.devices.get(c).and_then(|x| x.properties.get(rating::TEMPERATURE)).cloned();
-        if before != after {
-            ops.push(Op::SetProperty { object: ObjectRef::Device(*c), key: rating::TEMPERATURE.into(), before, after: after.clone() });
+    for a in &boxes {
+        if let Some(op) = crate::cmd::continuation::box_op(doc, *a, |b| b.panel_temperature = temp) {
+            ops.push(op);
         }
     }
-    let words = after.as_deref().map_or_else(|| "project default".to_string(), |t| format!("{t} \u{b0}C"));
+    let words = after.map_or_else(|| "project default".to_string(), |t| format!("{t} \u{b0}C"));
     Ok(PanelTemperature { ops, label: format!("Panel temperature {loc}: {words}"), location: loc, boxes: boxes.len() })
 }
 

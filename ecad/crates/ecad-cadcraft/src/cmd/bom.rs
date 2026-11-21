@@ -8,7 +8,7 @@
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::bom::{Field, MAX_COMPONENTS};
 use ecad_electrical::cmd::bom::{self as rules, ItemChange, ItemFields, LineFields, PartlineChange};
-use ecad_model::DeviceId;
+use ecad_model::{DeviceId, LoosePartId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -226,9 +226,9 @@ impl ItemParams {
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct BomitemParams {
-    /// The item to edit or delete.
+    /// The item (a loose part's id) to edit or delete.
     #[serde(default)]
-    item: Option<DeviceId>,
+    item: Option<LoosePartId>,
     /// With `item`: the fields to set (null clears a field).
     #[serde(default)]
     set: Option<ItemParams>,

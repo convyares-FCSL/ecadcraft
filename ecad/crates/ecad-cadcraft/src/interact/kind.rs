@@ -221,6 +221,18 @@ pub fn classify(p: &Project, uid: u64, cursor: Vec2, aperture: f64, picked: Opti
                     t.name = w.map_or_else(|| "wire line".into(), |w| wire_words(doc, w));
                     t.handles = crate::checks::handles_of(p, page, crate::checks::Object::Route(r));
                 }
+                // Design 072 §6.2: a drawing aid (a continuation arrow, a location box) is its own
+                // kind; its handles are its own.
+                Subject::Aid(a) => {
+                    t.kind = ObjectKind::Aid;
+                    t.representation = Some(rid);
+                    t.name = match crate::locations::boxes_on(doc, page).into_iter().find(|b| b.aid == a) {
+                        Some(b) => format!("location box {}", crate::locations::label_of(&b).0),
+                        None => format!("continuation {}", crate::continuations::display_name(doc, a)),
+                    };
+                    let map = p.pages.get(&page).map(|v| &v.map);
+                    t.handles = r.items.iter().filter_map(|i| map.and_then(|m| m.item(*i))).collect();
+                }
             },
             None => {}
         },
@@ -290,7 +302,7 @@ fn reference(doc: &Document, map: &crate::project::HandleMap, page: PageId, mut 
         match rep.subject {
             Subject::Cable(k) => t.cable = Some(k),
             Subject::Device(c) => t.component = Some(c),
-            Subject::Wire(_) | Subject::Route(_) => {}
+            Subject::Wire(_) | Subject::Route(_) | Subject::Aid(_) => {}
         }
         if rep.page == page {
             t.handles = rep.items.iter().filter_map(|i| map.item(*i)).collect();

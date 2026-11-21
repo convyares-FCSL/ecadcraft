@@ -174,14 +174,14 @@ fn conductor_at(h: &mut H, component: DeviceId, label: &str) -> WireId {
 struct R {
     h: H,
     q01: DeviceId,
-    cab: DeviceId,
+    cab: ecad_model::AidId,
     wire: WireId,
     category: String,
 }
 
 fn fixture(seed: u64) -> R {
     let mut h = H::new(seed);
-    let cab: DeviceId = id(&h.run("locationbox", json!({"location": "+CAB1", "corners": [[20, 150], [400, 420]]})).unwrap(), "component");
+    let cab: ecad_model::AidId = id(&h.run("locationbox", json!({"location": "+CAB1", "corners": [[20, 150], [400, 420]]})).unwrap(), "aid");
     let q01 = placed(&mut h, "mcb1", 100.0, 300.0);
     h.run("setprop", json!({"component": q01.hex(), "key": "rating", "value": "4A C"})).unwrap();
     let lamp = placed(&mut h, "lamp", 100.0, 200.0);
@@ -200,26 +200,19 @@ fn fixture(seed: u64) -> R {
     R { h, q01, cab, wire, category }
 }
 
-/// A location box's panel temperature (FP6). No command writes it yet (finding F1), so it is
-/// written as a file made elsewhere would carry it.
-fn box_temp(h: &mut H, cab: DeviceId, v: &str) {
-    if h.run("setprop", json!({"component": cab.hex(), "key": "rating.temperature", "value": v})).is_ok() {
+/// A location box's panel temperature (FP6): `setprop {aids, key: panel_temperature}` (design
+/// 072 §6.2). A value the command refuses (not a number, out of range) is written as a file made
+/// elsewhere would carry it, when it is a number.
+fn box_temp(h: &mut H, cab: ecad_model::AidId, v: &str) {
+    if h.run("setprop", json!({"aids": [cab.hex()], "key": "panel_temperature", "value": v})).is_ok() {
         return;
     }
-    // Fix round: `rating {location, temperature}` writes it on the location's boxes.
-    let loc = h.doc().devices.get(&cab).and_then(|c| c.value(ecad_model::book::LOCATION_KEY)).unwrap_or_default();
-    let t = v.trim().parse::<f64>().map_or_else(|_| json!(v), |n| json!(n));
-    if h.run("rating", json!({"location": loc, "temperature": t})).is_ok() {
-        return;
-    }
-    let before = h.doc().devices.get(&cab).and_then(|c| c.properties.get("rating.temperature").cloned());
+    let Some(t) = v.trim().parse::<f64>().ok().filter(|t| t.is_finite()) else { return };
+    let before = h.doc().aids[&cab].clone();
+    let mut after = before.as_box().cloned().unwrap();
+    after.panel_temperature = Some(ecad_model::units::Celsius(t));
     h.cfg(|p| {
-        let op = ecad_model::Op::SetProperty {
-            object: ecad_model::ObjectRef::Device(cab),
-            key: "rating.temperature".into(),
-            before,
-            after: Some(v.into()),
-        };
+        let op = ecad_model::Op::ModifyAid { id: cab, before, after: ecad_model::Aid::Box(after) };
         p.ledger.commit(ecad_model::Author::User, "a file made elsewhere", vec![op]).unwrap();
     });
 }
@@ -367,7 +360,7 @@ fn c06_a_wire_across_two_locations_takes_the_hotter() {
     let R { mut h, cab, wire, .. } = fixture(5706);
     box_temp(&mut h, cab, "44");
     // +CAB2 over the lamp end only (the lamp's X1 is at y 210).
-    let cab2: DeviceId = id(&h.run("locationbox", json!({"location": "+CAB2", "corners": [[60, 160], [140, 230]]})).unwrap(), "component");
+    let cab2: ecad_model::AidId = id(&h.run("locationbox", json!({"location": "+CAB2", "corners": [[60, 160], [140, 230]]})).unwrap(), "aid");
     box_temp(&mut h, cab2, "56");
     // Brief 052: a box only proposes; the lamp, placed inside +CAB1, is moved to +CAB2 by hand.
     let lamp = h.doc().components_tagged("-H01")[0];
@@ -1072,16 +1065,17 @@ fn u02_a_location_temperature_rechecks_only_the_wires_there() {
     assert_eq!((ev, re), (1, 0), "only the wire in +CAB1, no trace");
 }
 
-/// FP6 and §2.1: a location's panel temperature can be set by a command (the panel's input reaches
-/// it the same way). Today `setprop` refuses it as a fuse-bank key and `rating` has no location form.
+/// FP6 and §2.1: a location's panel temperature can be set by a command: `rating {location}` on
+/// the location's boxes, or `setprop {aids, key: panel_temperature}` on one box (design 072 §6.2).
 #[test]
 fn f01_a_location_temperature_can_be_set() {
     let R { mut h, cab, .. } = fixture(5729);
     let head = h.head();
-    let r = h.run("setprop", json!({"component": cab.hex(), "key": "rating.temperature", "value": "44"}));
-    let r2 = h.run("rating", json!({"location": "+CAB1", "temperature": 44}));
-    assert!(r.is_ok() || r2.is_ok(), "no way to set +CAB1's temperature: setprop {r:?}; rating {r2:?}");
+    h.run("rating", json!({"location": "+CAB1", "temperature": 44})).unwrap();
     assert_eq!(h.head(), head + 1);
+    h.run("setprop", json!({"aids": [cab.hex()], "key": "panel_temperature", "value": "45"})).unwrap();
+    assert_eq!(h.head(), head + 2);
+    assert_eq!(h.doc().aids[&cab].as_box().and_then(|b| b.panel_temperature), Some(ecad_model::units::Celsius(45.0)));
 }
 
 /// The trace crosses connector pin pairs (§4.2): three pairs between -Q01 and the lamp.

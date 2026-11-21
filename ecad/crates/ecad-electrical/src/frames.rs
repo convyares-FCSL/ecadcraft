@@ -355,6 +355,8 @@ pub fn touched_by(effect: &ecad_model::effect::Effect<'_>, page: PageId, shown: 
         | Effect::Wire { .. }
         | Effect::Route { .. }
         | Effect::Cable { .. }
+        | Effect::Aid { .. }
+        | Effect::LoosePart { .. }
         | Effect::Definition { .. } => false,
     }
 }

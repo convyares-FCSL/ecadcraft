@@ -81,10 +81,6 @@ impl DeviceTouch {
 /// is drawn nowhere).
 pub fn device_entry(doc: &Document, c: DeviceId) -> Option<DeviceEntry> {
     let comp = doc.devices.get(&c)?;
-    // Junctions and continuations are not devices (design 022 §3.1).
-    if comp.properties.contains_key(ecad_model::connectivity::KIND) {
-        return None;
-    }
     let prefix = match comp.tag() {
         Some(t) => Some(group_and_number(t).0),
         None if doc.representations_of(Subject::Device(c)).next().is_none() => return None,
@@ -177,8 +173,6 @@ pub fn device_entries(doc: &Document, filter: &str) -> Vec<DeviceEntry> {
         .devices
         .iter()
         .filter(|(_, c)| c.tag.is_none())
-        // Junctions and continuations are not devices (design 022 §3.1).
-        .filter(|(_, c)| !c.properties.contains_key(ecad_model::connectivity::KIND))
         .map(|(id, _)| *id)
         .filter(|id| doc.representations_of(Subject::Device(*id)).next().is_some());
     tagged

@@ -48,7 +48,7 @@ pub struct ModelMeta {
 pub const MAX_BUCKETS: u32 = 1 << 20;
 
 /// The model kinds split into chunks, by their key name.
-pub const KINDS: [&str; 6] = ["layer", "device", "terminal", "wire", "cable", "definition"];
+pub const KINDS: [&str; 8] = ["layer", "device", "terminal", "wire", "cable", "definition", "aid", "loose_part"];
 
 /// The key of page `id`'s chunk.
 pub fn page_key(id: PageId) -> String {
@@ -91,7 +91,7 @@ trait RawId: Copy + Ord + std::fmt::Display {
 macro_rules! raw_id {
     ($($t:ty),*) => {$(impl RawId for $t { fn raw(self) -> u128 { self.0 } })*};
 }
-raw_id!(LayerId, DeviceId, TerminalId, WireId, CableId, DefinitionId);
+raw_id!(LayerId, DeviceId, TerminalId, WireId, CableId, DefinitionId, ecad_model::AidId, ecad_model::LoosePartId);
 
 /// A version row's `chunks`: key → hex hash.
 pub type ChunkHashes = BTreeMap<String, String>;
@@ -158,6 +158,8 @@ impl Dirty {
         add("wire", t.wires.iter().map(|i| i.0).collect());
         add("cable", t.cables.iter().map(|i| i.0).collect());
         add("definition", t.definitions.iter().map(|i| i.0).collect());
+        add("aid", t.aids.iter().map(|i| i.0).collect());
+        add("loose_part", t.loose_parts.iter().map(|i| i.0).collect());
         for op in ops {
             match op {
                 Op::AddPage { id, .. } | Op::RemovePage { id, .. } | Op::ModifyPage { id, .. } => {
@@ -277,6 +279,8 @@ fn model_chunk(doc: &Document, kind: &str, b: u32, count: u32) -> Result<NewChun
         "wire" => encode(&pick(&doc.wires, b, count)),
         "cable" => encode(&pick(&doc.cables, b, count)),
         "definition" => encode(&pick(&doc.definitions, b, count)),
+        "aid" => encode(&pick(&doc.aids, b, count)),
+        "loose_part" => encode(&pick(&doc.loose_parts, b, count)),
         other => Err(FileError::ModelKind(other.to_string())),
     }
 }
@@ -289,6 +293,8 @@ fn kind_len(doc: &Document, kind: &str) -> usize {
         "wire" => doc.wires.len(),
         "cable" => doc.cables.len(),
         "definition" => doc.definitions.len(),
+        "aid" => doc.aids.len(),
+        "loose_part" => doc.loose_parts.len(),
         _ => 0,
     }
 }
@@ -437,6 +443,8 @@ enum Parsed {
     Wire(BTreeMap<WireId, Wire>),
     Cable(BTreeMap<CableId, Cable>),
     Definition(BTreeMap<DefinitionId, Definition>),
+    Aid(BTreeMap<ecad_model::AidId, ecad_model::Aid>),
+    LoosePart(BTreeMap<ecad_model::LoosePartId, ecad_model::loose_part::LoosePart>),
 }
 
 /// A model chunk's objects, checked to belong in bucket `b` of `count`.
@@ -486,11 +494,21 @@ fn parse_chunk(set: &ChunkSet, key: &str, body: &[u8]) -> Result<Parsed, FileErr
     let count = set.buckets.get(kind).copied().ok_or_else(|| FileError::ChunkKindUnknown(key.to_string()))?;
     Ok(match kind {
         "layer" => Parsed::Layer(typed(body, key, b, count)?),
-        "device" => Parsed::Device(typed(body, key, b, count)?),
+        "device" => {
+            let m: BTreeMap<DeviceId, Device> = typed(body, key, b, count)?;
+            // Design 072 §6.2 and §6.4: continuations and location boxes are drawing aids, BOM
+            // items loose parts; their old device form is not read.
+            if let Some(e) = m.values().find_map(crate::records::not_device_error) {
+                return Err(FileError::ChunkJson { key: key.to_string(), error: e.to_string() });
+            }
+            Parsed::Device(m)
+        }
         "terminal" => Parsed::Terminal(typed(body, key, b, count)?),
         "wire" => Parsed::Wire(typed(body, key, b, count)?),
         "cable" => Parsed::Cable(typed(body, key, b, count)?),
         "definition" => Parsed::Definition(typed(body, key, b, count)?),
+        "aid" => Parsed::Aid(typed(body, key, b, count)?),
+        "loose_part" => Parsed::LoosePart(typed(body, key, b, count)?),
         other => return Err(FileError::ChunkKind { key: key.to_string(), kind: other.to_string() }),
     })
 }
@@ -594,6 +612,8 @@ fn merge_parsed(parsed: Vec<Result<Parsed, FileError>>) -> Result<(Document, Opt
             Parsed::Wire(m) => merge(&mut doc.wires, m, "wire")?,
             Parsed::Cable(m) => merge(&mut doc.cables, m, "cable")?,
             Parsed::Definition(m) => merge(&mut doc.definitions, m, "definition")?,
+            Parsed::Aid(m) => merge(&mut doc.aids, m, "aid")?,
+            Parsed::LoosePart(m) => merge(&mut doc.loose_parts, m, "loose part")?,
         }
     }
     if !project {

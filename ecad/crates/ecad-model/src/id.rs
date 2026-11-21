@@ -104,6 +104,10 @@ typed_id!(/// A cable.
     CableId, "cbl");
 typed_id!(/// A route: a line drawn on a page (design 072 F31).
     RouteId, "rte");
+typed_id!(/// A drawing aid: a continuation or a location box (design 072 §6.2).
+    AidId, "aid");
+typed_id!(/// A loose part: panel-only material on the BOM (design 072 §6.4).
+    LoosePartId, "lpt");
 typed_id!(/// A net, stored on each of its wires: given when the net first appears and kept through
     /// edits (design 072 §4.2, F39).
     NetId, "net");

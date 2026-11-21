@@ -35,7 +35,7 @@ fn pin(c: &mut Client, x: &str, side: &str, label: &str) -> String {
     d.terminals
         .iter()
         .find(|(_, t)| {
-            t.component.hex() == x && t.key.as_ref().map(ToString::to_string).as_deref() == Some(side) && t.label.as_deref() == Some(label)
+            t.owner.subject_hex() == x && t.key.as_ref().map(ToString::to_string).as_deref() == Some(side) && t.label.as_deref() == Some(label)
         })
         .map(|(id, _)| id.hex())
         .unwrap_or_else(|| panic!("{x} {side}:{label} missing"))
