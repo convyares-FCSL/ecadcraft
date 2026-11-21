@@ -172,16 +172,14 @@ impl Checks {
     /// before them: the subjects to re-check after them. Pair with [`Checks::update_with`].
     pub fn scope(&self, before: &Document, ops: &[Op]) -> Scope {
         let mut s = Scope::default();
-        s.collect(before, ops, &self.grid);
-        s.checks_pages(before, ops);
+        s.collect(before, ops);
         s
     }
 
     /// Re-check the subjects in `scope` (from [`Checks::scope`]) on `doc`, the state after the ops,
     /// adding what the ops themselves name in this state.
     pub fn update_with(&mut self, doc: &Document, ops: &[Op], mut scope: Scope, tol: f64, m: &dyn TextMetrics) {
-        scope.collect(doc, ops, &self.grid);
-        scope.checks_pages(doc, ops);
+        scope.collect(doc, ops);
         if scope.all {
             *self = Checks { revision: self.revision + 1, changed: self.changed + 1, ..Checks::build_with(doc, tol, m) };
             return;

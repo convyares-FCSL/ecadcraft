@@ -9,13 +9,14 @@
 //! - `defaults-damaged` (Warning, brief 066): a built-in default failed to load.
 //!
 //! # Update map
-//! The rows are worked out on open, reload or first show, and again only after an op
+//! The rows are worked out on open, reload or first show, and again only after an effect
 //! [`touches`] names: a style record or the standard, a style choice on any object (a wire's or a
-//! cable's type included), or a project property of the old kinds. Every other op leaves them. Working them out reads the
+//! cable's type included), or a project property of the old kinds. Every other effect leaves them. Working them out reads the
 //! style-choice index (explicit choices only), the project's properties and the style records.
 
+use ecad_model::effect::Effect;
 use ecad_model::style::{MAX_FIELD_CHARS, MAX_FIELDS_PER_STYLE, MAX_STYLES_PER_CATALOGUE, StyleLayer, StyleRef, is_choice_key, is_name};
-use ecad_model::{Document, ObjectRef, Op, Properties};
+use ecad_model::{Document, ObjectRef, Properties};
 
 use crate::checks::{Check, Fix, Kind, Object};
 
@@ -40,26 +41,27 @@ pub fn is_old_key(key: &str) -> bool {
     OLD_KEYS.iter().any(|(f, _)| is_old_text_key(key, f))
 }
 
-/// Whether `op` can change the style rows.
-pub fn touches(op: &Op) -> bool {
-    match op {
-        Op::SetStyle { .. } | Op::SetStandard { .. } => true,
+/// Whether `effect` can change the style rows.
+pub fn touches(effect: &Effect<'_>) -> bool {
+    match effect {
+        Effect::Style { .. } | Effect::Standard { .. } => true,
         // 050b: a potentials table written again clears its older colours.
-        Op::SetProjectSettings { before, after } => before.wiring.potentials != after.wiring.potentials,
-        Op::SetProperty { object: ObjectRef::Project, key, .. } => is_choice_key(key) || is_old_key(key),
-        Op::SetProperty { key, .. } => is_choice_key(key),
+        Effect::Settings { before, after } => before.wiring.potentials != after.wiring.potentials,
+        Effect::Prop { object: ObjectRef::Project, key, .. } => is_choice_key(key.raw) || is_old_key(key.raw),
+        Effect::Prop { key, .. } => is_choice_key(key.raw),
         // A deleted object takes its choices with it.
-        Op::DeleteDevice { device: component, .. } => component.properties.keys().any(|k| is_choice_key(k)),
-        Op::DeleteWire { wire, .. } => wire.wire_type.is_some() || wire.display.keys().any(|k| is_choice_key(k)),
-        Op::ModifyWire { before, after, .. } => before.wire_type != after.wire_type || before.display != after.display,
-        Op::RemovePage { page, .. } => page.page_type.is_some() || page.display.keys().any(|k| is_choice_key(k)),
-        Op::ModifyPage { before, after, .. } => before.page_type != after.page_type,
+        Effect::Device { before: Some(component), after: None, .. } => component.properties.keys().any(|k| is_choice_key(k)),
+        Effect::Wire { before: Some(wire), after: None, .. } => wire.wire_type.is_some() || wire.display.keys().any(|k| is_choice_key(k)),
+        Effect::Wire { before: Some(before), after: Some(after), .. } => before.wire_type != after.wire_type || before.display != after.display,
+        // Added (a move included): the page type and folder rows (brief 054).
+        Effect::Page { index_after: Some(_), .. } => true,
+        Effect::Page { before: Some(page), after: None, .. } => page.page_type.is_some() || page.display.keys().any(|k| is_choice_key(k)),
+        Effect::Page { before: Some(before), after: Some(after), .. } => before.page_type != after.page_type,
         // Design 072 §4.5: a cable's type (a dangling one is a row).
-        Op::CreateCable { cable, .. } | Op::DeleteCable { cable, .. } => cable.cable_type.is_some(),
-        Op::ModifyCable { before, after, .. } => before.cable_type != after.cable_type,
+        Effect::Cable { before: Some(before), after: Some(after), .. } => before.cable_type != after.cable_type,
+        Effect::Cable { before, after, .. } => before.or(*after).is_some_and(|c| c.cable_type.is_some()),
         // Brief 054: the page type and folder rows.
-        op if crate::page_types::touches_checks(op) => true,
-        _ => false,
+        e => crate::page_types::touches_checks(e),
     }
 }
 

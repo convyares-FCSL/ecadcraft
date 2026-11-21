@@ -1889,7 +1889,7 @@ impl Watch {
             self.scope.note(doc, effects, effect, &mut self.moved_before);
         } else {
             self.scope.note(doc, effects, effect, &mut self.moved_after);
-            self.rebuild |= crate::page_types::checks_changed_by(doc, effect);
+            self.rebuild |= crate::page_types::checks_changed(doc, effect);
         }
         RefIndex::groups_named_by(doc, effect, &mut self.groups);
     }
