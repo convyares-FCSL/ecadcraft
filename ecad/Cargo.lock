@@ -1414,6 +1414,7 @@ dependencies = [
  "ecad-drawing-style",
  "ecad-file",
  "ecad-model",
+ "schemars",
  "serde",
  "serde_json",
  "strum",

@@ -22,11 +22,12 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
-use crate::cmd::input::{Command, Typed, nullable};
+use crate::cmd::input::{Command, Typed};
 use crate::cmd::{err, on_any_page, on_project};
 use crate::project::Project;
 pub use crate::revisions::folder_path;
 use crate::revisions::{self, FIELDS};
+use ecad_electrical::cmd::input::nullable;
 pub use ecad_electrical::cmd::sheet::{IssuePlan, MAX_FOLDER_NAME, MAX_KEY_CHARS, MAX_STEP, PROJECT_KEYS};
 
 /// A revision opened read-only (design 019 §7.3): the project as it was when the revision was
@@ -182,7 +183,7 @@ pub(crate) struct MovefolderParams {
     folder: FolderId,
     /// The folder it goes in, or null for the top level.
     #[serde(deserialize_with = "nullable")]
-    #[schemars(required, with = "crate::cmd::input::OrNull<FolderId>")]
+    #[schemars(required, with = "ecad_electrical::cmd::input::OrNull<FolderId>")]
     parent: Option<Option<FolderId>>,
     /// Its place among its new siblings, 1 = first (default last).
     #[serde(default)]

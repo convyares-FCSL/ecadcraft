@@ -22,9 +22,10 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Bounded, Command, TextOrNumber, Typed, nullable};
+use crate::cmd::input::{Command, Typed};
 use crate::cmd::{err, on_any_page, on_project};
 use crate::rating::{self, RatedSubject, dataset};
+use ecad_electrical::cmd::input::{Bounded, TextOrNumber, nullable};
 
 pub use rules::{MAX_MANY, PAGE};
 

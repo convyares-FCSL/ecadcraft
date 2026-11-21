@@ -49,7 +49,7 @@ pub use widgets::section_name;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_engine::default_cmds::{self, Target};
+use ecad_electrical::cmd::default::{self as default_cmds, Target};
 use ecad_engine::defaults::{self, Entry, Kind, Level, Scope, Source};
 use ecad_engine::project::Mapped;
 use ecad_engine::text_style::TextKind;

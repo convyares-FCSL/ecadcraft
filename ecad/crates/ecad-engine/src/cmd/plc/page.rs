@@ -25,9 +25,10 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Command, TextOrNumber, typed};
+use crate::cmd::input::{Command, typed};
 use crate::cmd::{on_any_page, plain_style};
 use crate::plc::channels::first_number;
+use ecad_electrical::cmd::input::TextOrNumber;
 
 /// Brief 051's commands: `plcpage`.
 pub fn specs() -> Vec<CommandSpec> {

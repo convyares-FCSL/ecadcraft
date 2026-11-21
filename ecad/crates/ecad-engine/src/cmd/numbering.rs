@@ -18,10 +18,11 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Command, Typed, nullable, typed};
+use crate::cmd::input::{Command, Typed, typed};
 use crate::cmd::{on_any_page, on_project, opt_typed};
 use crate::devices;
 use crate::project::Project;
+use ecad_electrical::cmd::input::nullable;
 
 /// Refusal of an Apply on a stale preview (design §3).
 pub const STALE: &str = "The project changed since the preview; check the new list and Apply again.";

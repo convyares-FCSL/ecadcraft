@@ -13,8 +13,9 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Bounded, Command, OrNull, TextOrNumber, Typed, nullable};
+use crate::cmd::input::{Command, Typed};
 use crate::cmd::{err, on_project};
+use ecad_electrical::cmd::input::{Bounded, OrNull, TextOrNumber, nullable};
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[Typed::of::<PartlineParams>("partline"), Typed::of::<BomitemParams>("bomitem"), Typed::of::<ArticleParams>("article")];

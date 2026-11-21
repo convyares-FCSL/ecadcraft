@@ -8,9 +8,10 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Command, TextOrNumber, nullable};
+use crate::cmd::input::Command;
 use crate::cmd::{err, on_any_page, on_project};
 use crate::plc::rack::*;
+use ecad_electrical::cmd::input::{TextOrNumber, nullable};
 
 /// `plcslot {card, rack?, slot?, swap?}` (design 045 §2.5): put a card in a slot, move it, swap it
 /// with the card there (`swap: true`), or take it out (`rack: null`). One transaction.

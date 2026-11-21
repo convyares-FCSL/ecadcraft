@@ -16,8 +16,9 @@ use serde_json::{Value, json};
 
 pub use ecad_electrical::cmd::accessory::{MAX_AT, MAX_PICKS};
 
-use crate::cmd::input::{Bounded, Command, Typed, nullable};
+use crate::cmd::input::{Command, Typed};
 use crate::cmd::on_project;
+use ecad_electrical::cmd::input::{Bounded, nullable};
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[Typed::of::<AccessoryParams>("accessory"), Typed::of::<JumperParams>("jumper")];

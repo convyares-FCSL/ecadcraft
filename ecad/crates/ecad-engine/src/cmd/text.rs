@@ -15,11 +15,12 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::cmd::err;
-use crate::cmd::input::{Bounded, Command, Point, Typed, nullable};
+use crate::cmd::input::{Command, Typed};
 use crate::cmd::{on_any_page, on_project};
 use crate::defaults::{self};
 pub use crate::text_style::kind_words;
 use crate::text_style::{Fonts, TextKind};
+use ecad_electrical::cmd::input::{Bounded, Point, nullable};
 pub use ecad_electrical::cmd::text::{BAD_FONT, BAD_HEIGHT, BAD_JUSTIFY, BAD_POINT, BAD_SHOW, BAD_WEIGHT, NEEDS_KIND, NEEDS_TERMINAL};
 
 /// The commands of this module with a typed input.
@@ -218,7 +219,7 @@ pub(crate) struct ShowtextParams {
     kind: String,
     /// "on", "off" or "first" (tag only), or null to inherit.
     #[serde(deserialize_with = "nullable")]
-    #[schemars(required, with = "crate::cmd::input::OrNull<String>")]
+    #[schemars(required, with = "ecad_electrical::cmd::input::OrNull<String>")]
     show: Option<Option<String>>,
     /// A symbol of a device.
     #[serde(default)]

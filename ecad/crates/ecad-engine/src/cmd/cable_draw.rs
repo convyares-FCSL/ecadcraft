@@ -17,11 +17,12 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Bounded, Command, OrNull, Point, Typed, nullable};
+use crate::cmd::input::{Command, Typed};
 use crate::cmd::{err, on_any_page, on_project, plain_style};
 use crate::slash::MAX_CABLE_MEMBERS;
 use crate::views::{self, View};
 use ecad_electrical::cable_look::{FanEnd, MarkerEnd};
+use ecad_electrical::cmd::input::{Bounded, OrNull, Point, nullable};
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[

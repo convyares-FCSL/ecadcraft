@@ -6,9 +6,10 @@ use ecad_electrical::cmd::plc::{self as rules, AddressInput};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::cmd::input::{Command, TextOrNumber, nullable};
+use crate::cmd::input::Command;
 use crate::cmd::on_project;
 use crate::plc::address::*;
+use ecad_electrical::cmd::input::{TextOrNumber, nullable};
 use serde_json::{Value, json};
 
 /// `plcaddress {rack | card, style?, input_start?, output_start?, start?, size?, fix?, clear?}`

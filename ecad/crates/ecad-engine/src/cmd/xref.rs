@@ -14,9 +14,10 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Command, Point, Typed};
+use crate::cmd::input::{Command, Typed};
 use crate::cmd::{on_any_page, on_project};
 use crate::xref;
+use ecad_electrical::cmd::input::Point;
 
 /// Most references `xrefs` returns per call by default, and at most.
 pub const DEFAULT_LIMIT: usize = 200;

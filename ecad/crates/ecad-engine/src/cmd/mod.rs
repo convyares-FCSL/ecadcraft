@@ -19,15 +19,10 @@ pub mod accessory;
 pub mod bom;
 pub mod cable;
 pub(crate) mod cable_draw;
-pub(crate) mod connect;
 pub mod connector;
-pub mod continuation;
-pub mod default;
-pub mod designation;
 pub(crate) mod device;
-pub(crate) mod device_link;
+pub(crate) mod generic;
 pub mod input;
-pub mod level;
 pub mod location;
 pub mod numbering;
 pub mod output;
@@ -56,11 +51,13 @@ use crate::access::{Pages, owner_of_active, try_lock};
 use crate::interact;
 use crate::project::Project;
 pub use crate::strips::core_label;
+use ecad_electrical::cmd::{connect, continuation, default, designation, device_link, level};
 
 /// The commands this crate adds. Lanes in flight register theirs in [`crate::lanes`], not here;
 /// their lines move here at the phase-end tidy-up.
 pub fn specs() -> Vec<CommandSpec> {
     let mut v = base_specs();
+    v.extend(generic_specs());
     v.extend(crate::cmd::sheet::specs());
     v.extend(crate::history::specs());
     v.extend(crate::merging::specs());
@@ -73,14 +70,11 @@ pub fn specs() -> Vec<CommandSpec> {
     v.extend(crate::cmd::text::specs());
     #[cfg(not(target_arch = "wasm32"))]
     v.extend(crate::agent_access::specs());
-    v.extend(crate::cmd::level::specs());
     v.extend(crate::look::specs());
-    v.extend(crate::cmd::default::specs());
     v.extend(crate::cmd::connector::specs());
     v.extend(crate::cmd::plc::specs());
     v.extend(crate::cmd::bom::specs());
     v.extend(crate::cmd::symbol::specs());
-    v.extend(crate::cmd::continuation::specs());
     v.extend(crate::cmd::style::specs());
     v.extend(crate::cmd::plc::page::specs());
     for (_, lane) in crate::lanes::LANES {
@@ -88,6 +82,44 @@ pub fn specs() -> Vec<CommandSpec> {
     }
     v
 }
+
+/// The generic commands (run by [`generic::run`]) not registered in [`base_specs`].
+fn generic_specs() -> Vec<CommandSpec> {
+    // `linkdevices`, `unlinkdevices` and `userfield` keep CADCraft's undo grouping, as before.
+    let drawing_undo = |c: CommandSpec| CommandSpec { undoable: true, ..c };
+    vec![
+        generic::spec::<default::SetdefaultParams>(),
+        generic::spec::<designation::DesignationsParams>(),
+        generic::spec::<designation::AddParams>(),
+        generic::spec::<designation::EditParams>(),
+        generic::spec::<designation::MergeParams>(),
+        generic::spec::<designation::RemoveParams>(),
+        generic::spec::<level::TermlabelParams>(),
+        generic::spec::<level::TopositionParams>(),
+        generic::spec::<continuation::ContcaptionParams>().interactive(interact::contcaption),
+        drawing_undo(generic::spec::<device_link::LinkParams>()),
+        drawing_undo(generic::spec::<device_link::UnlinkParams>()),
+        drawing_undo(generic::spec::<device_link::UserFieldParams>()),
+    ]
+}
+
+/// The generic commands with their schemas.
+const GENERIC_TYPED: &[input::Typed] = &[
+    generic::typed::<connect::ConnectParams>(),
+    generic::typed::<connect::DisconnectParams>(),
+    generic::typed::<default::SetdefaultParams>(),
+    generic::typed::<designation::DesignationsParams>(),
+    generic::typed::<designation::AddParams>(),
+    generic::typed::<designation::EditParams>(),
+    generic::typed::<designation::MergeParams>(),
+    generic::typed::<designation::RemoveParams>(),
+    generic::typed::<level::TermlabelParams>(),
+    generic::typed::<level::TopositionParams>(),
+    generic::typed::<continuation::ContcaptionParams>(),
+    generic::typed::<device_link::LinkParams>(),
+    generic::typed::<device_link::UnlinkParams>(),
+    generic::typed::<device_link::UserFieldParams>(),
+];
 
 fn base_specs() -> Vec<CommandSpec> {
     vec![
@@ -105,14 +137,8 @@ fn base_specs() -> Vec<CommandSpec> {
             )
             .interactive(interact::wire)
             .noundo(),
-        CommandSpec::new("connect", "Connect", crate::cmd::input::typed::<crate::cmd::connect::ConnectParams>)
-            .params("{route: id, end: \"A\"|\"B\", terminal: id}")
-            .interactive(interact::connect)
-            .noundo(),
-        CommandSpec::new("disconnect", "Disconnect", crate::cmd::input::typed::<crate::cmd::connect::DisconnectParams>)
-            .params("{route: id, end: \"A\"|\"B\"}")
-            .interactive(interact::disconnect)
-            .noundo(),
+        generic::spec::<connect::ConnectParams>().interactive(interact::connect),
+        generic::spec::<connect::DisconnectParams>().interactive(interact::disconnect),
         CommandSpec::new("cableslash", "Cable Slash", crate::cmd::input::typed::<crate::cmd::cable_draw::CableslashParams>)
             .params("{from: [x,y], to: [x,y], tag?} (the wires the slash crosses become one cable)")
             .interactive(interact::cableslash)
@@ -265,12 +291,12 @@ pub(crate) fn on_any_page<R>(s: &mut Session, f: impl FnOnce(&mut Project, &mut 
 /// Every command with a typed input (brief 070): its id, run function and parameter schema.
 pub fn typed_commands() -> Vec<input::Typed> {
     [
+        GENERIC_TYPED,
         crate::cmd::wire::TYPED,
         crate::cmd::sheet::TYPED,
         crate::cmd::output::TYPED,
         crate::cmd::text::TYPED,
         crate::cmd::style::TYPED,
-        crate::cmd::designation::TYPED,
         crate::cmd::symbol::TYPED,
         crate::cmd::xref::TYPED,
         crate::cmd::terminal::TYPED,
@@ -283,15 +309,10 @@ pub fn typed_commands() -> Vec<input::Typed> {
         crate::cmd::page_type::TYPED,
         crate::cmd::cable::TYPED,
         crate::cmd::connector::TYPED,
-        crate::cmd::device_link::TYPED,
         crate::cmd::accessory::TYPED,
         crate::cmd::release::TYPED,
-        crate::cmd::level::TYPED,
-        crate::cmd::continuation::TYPED,
-        crate::cmd::default::TYPED,
         crate::cmd::prop::TYPED,
         crate::cmd::device::TYPED,
-        crate::cmd::connect::TYPED,
         crate::cmd::cable_draw::TYPED,
         crate::cmd::reference::TYPED,
         crate::cmd::page::TYPED,
@@ -322,12 +343,6 @@ pub(crate) fn opt_typed<'a, T>(p: &'a Value, key: &str, what: &str, get: impl Fn
 
 /// Most points one WIRE accepts: a route's own bound (design 072 §4.3).
 pub(crate) const MAX_WIRE_POINTS: usize = ecad_model::route::MAX_POINTS;
-
-pub(crate) fn point(v: &Value) -> Option<Pt> {
-    let a = v.as_array()?;
-    let (x, y) = (a.first()?.as_f64()?, a.get(1)?.as_f64()?);
-    (x.is_finite() && y.is_finite()).then_some(Pt::new(x, y))
-}
 
 pub(crate) use crate::words::MAX_HANDLES;
 

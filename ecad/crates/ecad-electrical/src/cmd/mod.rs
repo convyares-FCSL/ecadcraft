@@ -1,7 +1,8 @@
 //! The electrical work of ECAD's commands (brief 070): typed input in, ops and a plain result (or a
 //! [`crate::CmdError`]) out, and the JSON answers built from the document (`*_json`). No engine
-//! and no locking: the engine crate's shims in `ecad_engine::cmd` read the parameters, take the
-//! project, call these functions and commit the ops.
+//! and no locking. A generic command is a params struct here that implements [`run::Generic`];
+//! the engine's one runner reads it ([`input`]), takes the project, runs it and commits its edit.
+//! Commands that need the session keep a shim in `ecad_engine::cmd`.
 
 pub mod accessory;
 pub mod bom;
@@ -14,6 +15,7 @@ pub mod default;
 pub mod designation;
 pub mod device;
 pub mod device_link;
+pub mod input;
 pub mod level;
 pub mod location;
 pub mod merge;
@@ -26,6 +28,7 @@ pub mod prop;
 pub mod props;
 pub mod rating;
 pub mod reference;
+pub mod run;
 pub mod sheet;
 pub mod style;
 pub mod symbol;

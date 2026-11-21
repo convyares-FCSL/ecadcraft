@@ -319,10 +319,16 @@ impl Command for PromoteParams {
                 let doc = p.ledger.document();
                 rules::needs_standard(doc)?;
                 if !entry.allows(defaults::Level::Standard) {
-                    return Err(CmdError::refused(crate::cmd::default::level_refused(entry, defaults::Level::Standard)));
+                    return Err(CmdError::refused(ecad_electrical::cmd::default::level_refused(entry, defaults::Level::Standard)));
                 }
                 let (mut ops, text) = rules::promote_value(doc, entry)?;
-                ops.extend(crate::cmd::default::ops(doc, entry, defaults::Level::Project, crate::cmd::default::Target::Project, None)?);
+                ops.extend(ecad_electrical::cmd::default::ops(
+                    doc,
+                    entry,
+                    defaults::Level::Project,
+                    ecad_electrical::cmd::default::Target::Project,
+                    None,
+                )?);
                 p.apply_edit(pg, "promote", &format!("Promote {}", entry.label), ops)?;
                 Ok(json!({"changed": true, "key": entry.key, "value": text}))
             });

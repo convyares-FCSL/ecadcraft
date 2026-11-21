@@ -17,9 +17,10 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Bounded, Command, OrNull, Typed, nullable};
+use crate::cmd::input::{Command, Typed};
 use crate::cmd::{MAX_HANDLES, err, on_any_page, on_project};
 use crate::designations::Aspect;
+use ecad_electrical::cmd::input::{Bounded, OrNull, nullable};
 
 pub use rules::aspect_property;
 
@@ -27,14 +28,8 @@ pub use rules::aspect_property;
 pub const TYPED: &[Typed] =
     &[Typed::of::<ConflictsParams>("conflicts"), Typed::of::<SetlocationParams>("setlocation"), Typed::of::<SetfunctionParams>("setfunction")];
 
-/// The commands of brief 052: these and [`crate::cmd::designation::specs`] (one lane line).
+/// The commands of brief 052.
 pub fn specs() -> Vec<CommandSpec> {
-    let mut v = own_specs();
-    v.extend(crate::cmd::designation::specs());
-    v
-}
-
-fn own_specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("conflicts", "Location Conflicts", crate::cmd::input::typed::<ConflictsParams>)
             .params(

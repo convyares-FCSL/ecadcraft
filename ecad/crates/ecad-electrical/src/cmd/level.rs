@@ -1,8 +1,7 @@
 //! The rules of brief 036's commands (design 036 §3.5, §4.2): `termlabel` (relabel a position, set
 //! or clear one level's own label, move a level to another position) and `toposition` (turn a brief
 //! 034 fuse terminal device into a fuse position of a strip). Each function reads the document and
-//! returns the ops to commit and what to report; the engine crate's shims read the parameters,
-//! commit and answer in JSON.
+//! returns the ops to commit and what to report; both commands are generic ([`crate::cmd::run`]).
 
 use std::collections::BTreeMap;
 
@@ -11,6 +10,12 @@ use ecad_model::{
     TerminalId,
 };
 
+use schemars::JsonSchema;
+use serde::Deserialize;
+use serde_json::json;
+
+use crate::cmd::input::nullable;
+use crate::cmd::run::{Cx, Echo, Generic, Outcome};
 use crate::error::CmdError;
 use crate::terminal_types as tt;
 
@@ -392,4 +397,105 @@ pub fn plan_toposition(
     ops.extend(crate::cmd::device_link::unlink_ops(doc, device));
     ops.push(Op::DeleteDevice { id: device, device: comp.clone() });
     Ok(ToPosition { ops, strip, position: pos.clone(), lost, note, label: format!("{tag} \u{2192} {stag}:{pos}") })
+}
+
+// ---------------------------------------------------------------------------------------------
+// The commands (generic: crate::cmd::run)
+
+/// Where a level moves.
+#[derive(Deserialize, JsonSchema, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+enum MoveToParam {
+    /// The next position of its type that lacks the level (a level drawn twice).
+    Next,
+    /// A new position (another type's levels).
+    New,
+}
+
+/// `termlabel {terminal | strip + at, level?, position?, text?, move_to?}` (design 036 §4.2):
+/// relabel a position, set or clear one level's own label, or move a level to another position.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TermlabelParams {
+    /// A terminal of the position (and its level).
+    #[serde(default)]
+    terminal: Option<TerminalId>,
+    /// The strip (with `at`).
+    #[serde(default)]
+    strip: Option<DeviceId>,
+    /// The position's current label.
+    #[serde(default)]
+    at: Option<String>,
+    /// With `strip`: the level (default 1).
+    #[serde(default)]
+    level: Option<u64>,
+    /// The position's new label (relabels every level).
+    #[serde(default)]
+    position: Option<String>,
+    /// A level's own label; null clears it.
+    #[serde(default, deserialize_with = "nullable")]
+    text: Option<Option<String>>,
+    /// "next" or "new", with `terminal`: move the level to another position.
+    #[serde(default)]
+    move_to: Option<MoveToParam>,
+}
+
+impl Generic for TermlabelParams {
+    const ID: &'static str = "termlabel";
+    const TITLE: &'static str = "Terminal Label";
+    const HELP: &'static str = "{terminal?: id | strip?: id + at?: position, level?: n, position?: new position label (relabels every level), text?: a level's own label (null clears it), move_to?: \"next\" | \"new\" (a level drawn twice, or another type's levels)} (design 036 §4.2; one transaction)";
+    const ECHO: Echo = Echo::Message;
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let input = TermlabelInput {
+            terminal: self.terminal,
+            strip: self.strip,
+            at: self.at,
+            level: self.level,
+            position: self.position.map(|x| x.trim().to_string()),
+            text: self.text.map(|t| t.map(|t| t.trim().to_string())),
+            move_to: self.move_to.map(|m| match m {
+                MoveToParam::Next => MoveTo::Next,
+                MoveToParam::New => MoveTo::New,
+            }),
+        };
+        let plan = plan_termlabel(cx.doc, input)?;
+        if plan.ops.is_empty() {
+            return Ok(Outcome::answer(json!({"changed": false, "message": "Nothing to change."})));
+        }
+        let answer = json!({"changed": true, "message": plan.message, "lines": plan.lines});
+        Ok(Outcome::edit(plan.label, plan.ops, answer))
+    }
+}
+
+// ---------------------------------------------------------------- toposition (§3.5)
+
+/// `toposition {device, strip?, position?}` (design 036 §3.5): the fuse terminal device becomes a
+/// fuse position of the strip, wires and rating kept; one transaction.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TopositionParams {
+    /// The fuse terminal device.
+    device: DeviceId,
+    /// The strip (default: the nearest strip on its page).
+    #[serde(default)]
+    strip: Option<DeviceId>,
+    /// The position's label (default the next free one).
+    #[serde(default)]
+    position: Option<String>,
+}
+
+impl Generic for TopositionParams {
+    const ID: &'static str = "toposition";
+    const TITLE: &'static str = "Make Strip Position";
+    const HELP: &'static str = "{device: id (a fuse terminal device), strip?: id (default: the nearest strip on its page), position?: label} (the device becomes a fuse position of the strip, wires and rating kept; one transaction)";
+    const ECHO: Echo = Echo::Message;
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let plan = plan_toposition(cx.doc, cx.ids, self.device, self.strip, self.position.as_deref())?;
+        let message = plan.message();
+        let answer =
+            json!({"changed": true, "strip": plan.strip.hex(), "position": plan.position, "lost": plan.lost, "note": plan.note, "message": message});
+        Ok(Outcome::edit(plan.label, plan.ops, answer))
+    }
 }

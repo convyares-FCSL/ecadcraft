@@ -10,7 +10,7 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
-ecad-model = { workspace = true }
+ecad-model = { workspace = true, features = ["schema"] }
 ecad-drawing-style = { workspace = true }
 # A starter symbol's definition carries its content hash (`ecad_file::definition_hash`; design 065
 # §1, owner 2026-11-15, option A).
@@ -20,6 +20,8 @@ thiserror = { workspace = true }
 # `ecad_model::word_enum!` derives strum's traits in the crate that declares the enum.
 strum = { workspace = true }
 serde_json = { workspace = true }
+# Command parameters carry their JSON Schema (brief 070; the generic runner, design commands).
+schemars = { workspace = true }
 # The built-in defaults are TOML data (brief 066, design 066 §3.1); parsing only, spans kept.
 toml = { version = "1.1.8", default-features = false, features = ["std", "parse", "serde"] }
 # Revision dates (calendar only; no clock: the time is passed in).

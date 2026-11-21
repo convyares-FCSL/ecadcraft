@@ -33,8 +33,9 @@ pub use crate::cables::{
     drawn_ends, drawn_pages, gland, is_drawn, length_of, not_drawn, off_plan, part_value, plan_words, planned, planning, read, shield, type_notation,
     value_checks,
 };
-use crate::cmd::input::{Command, TextOrNumber, Typed, nullable, typed};
+use crate::cmd::input::{Command, Typed, typed};
 use crate::cmd::on_project;
+use ecad_electrical::cmd::input::{TextOrNumber, nullable};
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] =

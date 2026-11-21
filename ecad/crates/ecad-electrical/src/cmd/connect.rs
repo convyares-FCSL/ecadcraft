@@ -6,6 +6,11 @@
 
 use ecad_model::{Document, End, Op, PageId, RouteEnd, RouteId, TerminalId};
 
+use schemars::JsonSchema;
+use serde::Deserialize;
+use serde_json::json;
+
+use crate::cmd::run::{Cx, Generic, Outcome};
 use crate::error::CmdError;
 use crate::wires::{RouteEdits, end_index};
 
@@ -52,4 +57,72 @@ pub fn disconnect(doc: &Document, r: RouteId, end: End) -> Result<Vec<Op>, CmdEr
     let mut edits = RouteEdits::new(doc);
     edits.set_end(r, end, RouteEnd::Free);
     Ok(edits.ops())
+}
+
+// ---------------------------------------------------------------------------------------------
+// The commands (generic: crate::cmd::run)
+
+/// A route's end.
+#[derive(Deserialize, JsonSchema, Clone, Copy)]
+pub enum EndParam {
+    /// The start.
+    #[serde(rename = "A", alias = "a")]
+    A,
+    /// The other end.
+    #[serde(rename = "B", alias = "b")]
+    B,
+}
+
+impl From<EndParam> for End {
+    fn from(e: EndParam) -> Self {
+        match e {
+            EndParam::A => End::A,
+            EndParam::B => End::B,
+        }
+    }
+}
+
+/// `connect {route, end, terminal}`: land the route's end on the connection point, moving it
+/// onto the point.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ConnectParams {
+    /// The route (a drawn wire line).
+    route: RouteId,
+    /// Which end of it.
+    end: EndParam,
+    /// The connection point, shown on the active page.
+    terminal: TerminalId,
+}
+
+impl Generic for ConnectParams {
+    const ID: &'static str = "connect";
+    const TITLE: &'static str = "Connect";
+    const HELP: &'static str = "{route: id, end: \"A\"|\"B\", terminal: id}";
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let ops = connect(cx.doc, self.route, self.end.into(), self.terminal)?;
+        Ok(Outcome::edit("Connect", ops, json!({"connected": true})))
+    }
+}
+
+/// `disconnect {route, end}`: let the route's end go; it ends free where it is.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DisconnectParams {
+    /// The route (a drawn wire line).
+    route: RouteId,
+    /// Which end of it.
+    end: EndParam,
+}
+
+impl Generic for DisconnectParams {
+    const ID: &'static str = "disconnect";
+    const TITLE: &'static str = "Disconnect";
+    const HELP: &'static str = "{route: id, end: \"A\"|\"B\"}";
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let ops = disconnect(cx.doc, self.route, self.end.into())?;
+        Ok(Outcome::edit("Disconnect", ops, json!({"disconnected": true})))
+    }
 }

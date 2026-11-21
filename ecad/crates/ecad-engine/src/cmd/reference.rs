@@ -14,8 +14,9 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::cmd::cable_draw::on_sheet;
-use crate::cmd::input::{Command, Point, Typed};
+use crate::cmd::input::{Command, Typed};
 use crate::cmd::{err, on_any_page, on_project, plain_style};
+use ecad_electrical::cmd::input::Point;
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[

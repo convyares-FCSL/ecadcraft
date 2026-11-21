@@ -16,11 +16,12 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::cmd::input::{Bounded, Command, Point, Typed, nullable};
+use crate::cmd::input::{Command, Typed};
 use crate::cmd::{MAX_HANDLES, MAX_WIRE_POINTS, err, on_any_page, on_project, plain_style};
 use crate::project::Project;
 use crate::symbols::Starter;
 use crate::wires;
+use ecad_electrical::cmd::input::{Bounded, Point, nullable};
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[
@@ -213,7 +214,7 @@ pub(crate) struct PotentialParams {
     conductor: WireId,
     /// The potential (24V, L1…), or null to clear it.
     #[serde(deserialize_with = "nullable")]
-    #[schemars(required, with = "crate::cmd::input::OrNull<String>")]
+    #[schemars(required, with = "ecad_electrical::cmd::input::OrNull<String>")]
     value: Option<Option<String>>,
 }
 
@@ -253,7 +254,7 @@ pub(crate) struct CategoryParams {
     conductors: Option<Bounded<WireId, 0, { MAX_HANDLES }>>,
     /// The wire category (its ID or name), or null to clear the wires' own.
     #[serde(deserialize_with = "nullable")]
-    #[schemars(required, with = "crate::cmd::input::OrNull<String>")]
+    #[schemars(required, with = "ecad_electrical::cmd::input::OrNull<String>")]
     value: Option<Option<String>>,
 }
 

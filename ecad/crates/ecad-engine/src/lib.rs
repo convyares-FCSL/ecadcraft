@@ -161,8 +161,6 @@ pub mod xref {
 // The commands' paths before step 11 of lane 067, used outside the crate.
 pub use cmd as commands;
 pub use cmd::cable as cable_cmds;
-pub use cmd::default as default_cmds;
-pub use cmd::designation as designation_cmds;
 pub use cmd::numbering as numbering_cmds;
 pub use cmd::sheet as sheet_cmds;
 pub use cmd::style as style_cmds;

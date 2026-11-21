@@ -4,7 +4,7 @@
 //! under a coil, and Line and colour (folded). For anything else it shows the defaults that apply
 //! to what is selected (brief 042), folded the same way.
 
-use ecad_engine::default_cmds;
+use ecad_electrical::cmd::default as default_cmds;
 use ecad_engine::defaults::Source;
 use ecad_engine::text_style::TextKind;
 use ecad_ui::tokens::{space, ui_type};

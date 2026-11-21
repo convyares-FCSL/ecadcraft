@@ -14,9 +14,10 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::access::Pages;
-use crate::cmd::input::{Bounded, Command, OrNull, Typed, nullable};
+use crate::cmd::input::{Command, Typed};
 use crate::cmd::{MAX_HANDLES, err, on_any_page, on_project};
 use crate::project::Project;
+use ecad_electrical::cmd::input::{Bounded, OrNull, nullable};
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[Typed::of::<SetpropParams>("setprop")];

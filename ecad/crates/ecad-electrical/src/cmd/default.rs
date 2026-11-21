@@ -21,6 +21,13 @@
 use ecad_model::{DeviceId, Document, Noun, ObjectRef, Op, PageId, ProjectSettings, RepresentationId, WireId};
 
 use crate::defaults::{self, Entry, Level, ProjectSource};
+use schemars::JsonSchema;
+use serde::Deserialize;
+use serde_json::json;
+
+use crate::cmd::input::TextOrNumber;
+use crate::cmd::run::{Cx, Generic, Outcome};
+use crate::defaults::Scope;
 use crate::error::CmdError;
 
 /// Refusals, in words.
@@ -385,4 +392,123 @@ pub fn json_stored_text(entry: &Entry, value: &serde_json::Value) -> Result<Stri
         _ => return Err(CmdError::input(format!("`value` for `{}` is a string or a number.", entry.key))),
     };
     stored_text(entry, &typed)
+}
+
+/// The JSON line the Standards screen and the inspector run for a change (`None`: reset).
+pub fn line(key: &str, level: Level, target: Target, value: Option<&str>) -> String {
+    let mut p = json!({"key": key, "level": level_word(level)});
+    match target {
+        Target::Project => {}
+        Target::Page(pg) => p["page"] = json!(pg.hex()),
+        Target::Device(c) => p["component"] = json!(c.hex()),
+        Target::Wire(c) => p["conductor"] = json!(c.hex()),
+        Target::Symbol(r) => p["representation"] = json!(r.hex()),
+    }
+    match value {
+        Some(v) => p["value"] = json!(v),
+        None => p["reset"] = json!(true),
+    }
+    format!("setdefault {p}")
+}
+
+// ---------------------------------------------------------------------------------------------
+// The commands (generic: crate::cmd::run)
+
+/// `setdefault {key, level, page?, component?, conductor?, representation?, value | reset: true}`:
+/// writes a default at that level (page: the page shown if not given); one transaction.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SetdefaultParams {
+    /// A default's key (see `defaults`).
+    key: String,
+    /// standard, project (the default), page or object.
+    #[serde(default)]
+    level: Option<String>,
+    /// The page level: the page (default the page shown).
+    #[serde(default)]
+    page: Option<PageId>,
+    /// The object level: a device.
+    #[serde(default)]
+    component: Option<DeviceId>,
+    /// The object level: a wire.
+    #[serde(default)]
+    conductor: Option<WireId>,
+    /// The object level: a symbol.
+    #[serde(default)]
+    representation: Option<RepresentationId>,
+    /// The value: text or a number.
+    #[serde(default)]
+    value: Option<TextOrNumber>,
+    /// true: remove this level's value.
+    #[serde(default)]
+    reset: Option<bool>,
+}
+
+impl Generic for SetdefaultParams {
+    const ID: &'static str = "setdefault";
+    const TITLE: &'static str = "Set Default";
+    const HELP: &'static str = "{key, level: \"standard\"|\"project\"|\"page\"|\"object\", page?: id, component?: id, conductor?: id, representation?: id, value: string|number | reset: true} (writes a default at that level; page: the page shown if not given; one transaction)";
+
+    fn check(&self) -> Result<(), CmdError> {
+        // A registry entry's level and value are refused before the project is taken (as before).
+        if let Some(entry) = defaults::find(self.key.trim()) {
+            if let Some(w) = self.level.as_deref() {
+                level_of(w)?;
+            }
+            chosen(entry, self.given(), self.reset.unwrap_or(false))?;
+        }
+        Ok(())
+    }
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let key = self.key.trim().to_string();
+        let reset = self.reset.unwrap_or(false);
+        let given = self.given();
+        let Some(entry) = defaults::find(&key) else {
+            // Brief 048 (FP6): a symbol's family entry, `symbol.<key>.<field>`.
+            let Some(done) = plan_family(cx.doc, &key, self.level.as_deref(), given, reset)? else {
+                return Err(CmdError::refused(format!("No default \"{key}\".")));
+            };
+            let label = format!("Default {}: {}", done.field.label(), done.symbol);
+            let (symbol, field) = (done.symbol, done.field);
+            let changed = !done.ops.is_empty();
+            return Ok(Outcome::edit_then(label, done.ops, move |doc| {
+                let mut v = defaults::symbols::family_json(doc, &symbol, field);
+                v["changed"] = json!(changed);
+                v
+            }));
+        };
+        let level = match self.level.as_deref() {
+            Some(w) => level_of(w)?,
+            None => Level::Project,
+        };
+        let chosen = chosen(entry, given, reset)?;
+        let objects = Objects { representation: self.representation, component: self.component, conductor: self.conductor };
+        let shown = cx.page.ok_or(CmdError::refused("page view not found"))?;
+        let target = target(level, self.page, shown, objects)?;
+        let ops = ops_for(cx.doc, entry, level, target, chosen)?;
+        let changed = !ops.is_empty();
+        Ok(Outcome::edit_then(format!("Default {}", entry.label), ops, move |doc| {
+            let at = match target {
+                Target::Project => Scope::project(),
+                Target::Page(pg) => Scope::page(pg),
+                Target::Device(c) => Scope::component(c),
+                Target::Wire(c) => Scope { conductor: Some(c), ..Scope::project() },
+                Target::Symbol(r) => Scope::symbol(doc, r),
+            };
+            let mut v = crate::cmd::text::entry_json(doc, entry, at);
+            v["changed"] = json!(changed);
+            v
+        }))
+    }
+}
+
+impl SetdefaultParams {
+    /// The value given, as text or a number.
+    fn given(&self) -> Option<Given> {
+        self.value.as_ref().map(|v| match v {
+            TextOrNumber::Text(t) => Given::Text(t.clone()),
+            TextOrNumber::Number(n) => Given::Number(n.to_string()),
+        })
+    }
 }

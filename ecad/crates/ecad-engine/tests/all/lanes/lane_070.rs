@@ -1517,11 +1517,11 @@ fn setdefault_refuses_input_uniformly_and_keeps_its_rule_words() {
     let rules: &[(Value, &str)] = &[
         (json!({"key": "text.nope", "value": 3}), "No default \"text.nope\"."),
         (json!({"key": "text.run.gap", "level": "sideways", "value": 3}), "Unknown level \"sideways\". Levels: standard, project, page, object."),
-        (json!({"key": "text.run.gap"}), ecad_engine::default_cmds::NEEDS_VALUE),
+        (json!({"key": "text.run.gap"}), ecad_electrical::cmd::default::NEEDS_VALUE),
         (json!({"key": "text.run.gap", "value": 3, "reset": true}), "Give either `value` or `reset: true`, not both."),
         (json!({"key": "text.run.gap", "value": 101}), "`text.run.gap` is a length from 0 to 100 mm."),
-        (json!({"key": "text.tag.show", "level": "object", "value": "off"}), ecad_engine::default_cmds::NEEDS_OBJECT),
-        (json!({"key": "text.run.gap", "level": "standard", "value": 3}), ecad_engine::default_cmds::STANDARD_READ_ONLY),
+        (json!({"key": "text.tag.show", "level": "object", "value": "off"}), ecad_electrical::cmd::default::NEEDS_OBJECT),
+        (json!({"key": "text.run.gap", "level": "standard", "value": 3}), ecad_electrical::cmd::default::STANDARD_READ_ONLY),
         (json!({"key": "symbol.coil.prefix", "value": "K1"}), "A prefix is 1 to"),
     ];
     for (params, says) in rules {
@@ -1824,8 +1824,8 @@ fn setdefault_of_a_family_entry_keeps_its_rule_words() {
     let made = h.run("symbolnew", float_switch(json!({}))).unwrap_or(Value::Null);
     assert_eq!(made["key"], json!("float1"), "{made}");
     let rules: &[(Value, &str)] = &[
-        (json!({"key": "symbol.float1.prefix"}), ecad_engine::default_cmds::NEEDS_VALUE),
-        (json!({"key": "symbol.float1.prefix", "value": 3}), ecad_engine::default_cmds::NEEDS_VALUE),
+        (json!({"key": "symbol.float1.prefix"}), ecad_electrical::cmd::default::NEEDS_VALUE),
+        (json!({"key": "symbol.float1.prefix", "value": 3}), ecad_electrical::cmd::default::NEEDS_VALUE),
         (json!({"key": "symbol.float1.prefix", "value": "KA", "reset": true}), "Give either `value` or `reset: true`, not both."),
         (
             json!({"key": "symbol.float1.prefix", "value": "KA", "level": "page"}),

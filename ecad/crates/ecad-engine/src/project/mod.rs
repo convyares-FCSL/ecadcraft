@@ -815,6 +815,13 @@ impl Project {
     }
 
     /// How many pages are open.
+    /// The functions and locations list with its counts, as `designations` answers (Settings ▸
+    /// Project info, design 052 §9.4). Catches the use index up first.
+    pub fn designation_rows(&mut self) -> serde_json::Value {
+        self.designation_uses.catch_up(&self.ledger);
+        ecad_electrical::cmd::designation::rows(self.ledger.document(), &self.designation_uses, None)
+    }
+
     pub fn open_pages(&self) -> usize {
         self.pages.values().filter(|v| v.uid.is_some()).count()
     }
