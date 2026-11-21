@@ -466,13 +466,13 @@ fn review_3_the_rack_sheet_follows_a_moved_card_and_a_renumbered_page() {
         ecad_model::Op::ModifyPage { id: p, before: before.clone(), after: ecad_model::Page { number: ecad_model::PageNo::parse(n), ..before } }
     };
     let renumber = vec![renumbered(first, "7")];
-    assert!(ecad_cadcraft::plc::sheets::rack_places_touched(&d, &plc, &renumber));
+    assert!(ecad_cadcraft::plc::sheets::rack_places_touched(&d, &plc, &ecad_model::effect::Effects::of(&renumber)));
     let empty = vec![renumbered(sheet, "9")];
-    assert!(!ecad_cadcraft::plc::sheets::rack_places_touched(&d, &plc, &empty), "a page with no PLC symbol");
+    assert!(!ecad_cadcraft::plc::sheets::rack_places_touched(&d, &plc, &ecad_model::effect::Effects::of(&empty)), "a page with no PLC symbol");
     let item = h.symbol_item(ai);
     let it = d.items[&item].clone();
     let moved = vec![ecad_model::Op::ModifyItem { id: item, before: it.clone(), after: it }];
-    assert!(ecad_cadcraft::plc::sheets::rack_places_touched(&d, &plc, &moved));
+    assert!(ecad_cadcraft::plc::sheets::rack_places_touched(&d, &plc, &ecad_model::effect::Effects::of(&moved)));
     // Through the command path: the sheet's text follows the renumber.
     h.run("pageprops", json!({"page": first.hex(), "number": "7"})).unwrap();
     let t = texts(&mut h, sheet);

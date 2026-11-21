@@ -661,6 +661,29 @@ impl Scope {
         }
     }
 
+    /// Note what one effect names that only the state after reads (`doc`; call it there, after
+    /// [`Scope::note`]). Brief 036 (tester 036 j, o): a level's label, or a separator or level
+    /// names a strip reads, set on a strip changes the wire rows ending on its terminals (only the
+    /// position named by a `term_label.<p>.<n>` key). Brief 044: a connector naming key set on a
+    /// mating connector changes its pins' wire rows.
+    pub fn note_after(&mut self, doc: &Document, effect: &Effect<'_>) {
+        let Effect::Prop { object: ObjectRef::Device(c), key, .. } = effect else { return };
+        let key = key.raw;
+        let position = key.strip_prefix(crate::terminal_types::LABEL_PREFIX).and_then(|r| r.rsplit_once('.')).map(|(p, _)| p);
+        if (position.is_some() || crate::defaults::terminals::is_label_key(key)) && crate::strips::strip_of(doc, *c).is_some() {
+            for (t, x) in doc.terminals_of(*c) {
+                if position.is_none_or(|p| x.label.as_deref() == Some(p)) {
+                    self.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+                }
+            }
+        }
+        if crate::defaults::connectors::is_naming_key(key) && crate::connectors::connector_of(doc, *c).is_some_and(|x| x.mating) {
+            for (t, _) in doc.terminals_of(*c) {
+                self.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+            }
+        }
+    }
+
     /// After the effects: their wires' net mates, and the users of renamed entries.
     pub fn close(&mut self, doc: &Document) {
         // Net mates: a wire's number and potential are its net's (brief 022).

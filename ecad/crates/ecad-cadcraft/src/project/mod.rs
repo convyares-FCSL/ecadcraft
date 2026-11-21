@@ -980,7 +980,7 @@ impl Project {
         let (before, revision) = (sheets(&o), o.revision);
         o.update(doc, ops, scope);
         // Brief 051 (review of #89, 3): the rack sheet prints each card's place.
-        let plc_places_moved = crate::plc::sheets::rack_places_touched(doc, &o.plc, ops);
+        let plc_places_moved = crate::plc::sheets::rack_places_touched(doc, &o.plc, &ecad_model::effect::Effects::of(ops));
         if ecad_model::ledger::verify_mode()
             && let Some(line) = o.verify_strips(doc)
         {
