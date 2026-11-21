@@ -48,20 +48,6 @@ value: string|number | reset: true} (writes a default at that level; page: the p
     ]
 }
 
-/// The text a value given as JSON is stored as ([`rules::stored_text`]), for the Standards
-/// screen's field.
-///
-/// # Errors
-/// Not text or a number, or not valid for the entry, in words.
-pub fn stored_text(entry: &Entry, value: &Value) -> Result<String, CmdError> {
-    let typed = match value {
-        Value::String(s) => s.clone(),
-        Value::Number(n) => n.to_string(),
-        _ => return Err(CmdError::input(format!("`value` for `{}` is a string or a number.", entry.key))),
-    };
-    rules::stored_text(entry, &typed)
-}
-
 /// [`rules::ops`], its refusal in words (the Standards screen's tests and `promote`).
 ///
 /// # Errors
@@ -165,7 +151,7 @@ impl Command for SetdefaultParams {
                 Target::Wire(c) => Scope { conductor: Some(c), ..Scope::project() },
                 Target::Symbol(r) => Scope::symbol(doc, r),
             };
-            let mut v = crate::cmd::text::entry_json(doc, entry, at);
+            let mut v = ecad_electrical::cmd::text::entry_json(doc, entry, at);
             v["changed"] = json!(changed);
             Ok(v)
         })

@@ -4,7 +4,9 @@
 //! function reads the document and returns the ops to commit and what to report; measuring and
 //! listing the texts drawn on a page is the engine crate's.
 
+use crate::defaults::{Entry, Level, Resolved, Source};
 use ecad_model::Word;
+use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
@@ -533,4 +535,92 @@ pub fn plan_move(
     let label = if after.is_some() { format!("Move {what}") } else { format!("Reset {what}") };
     let op = (before != after).then(|| Op::SetProperty { object: ObjectRef::Device(c), key: t.key.clone(), before, after: after.clone() });
     Ok(MovePlan { op, label, after })
+}
+
+/// The style table as `textstyle` returns it: `{font, drawn_with, status, height_is, kinds: [...],
+/// changed}`. Heights are cap heights (brief 040, owner answer 9): CADCraft draws a text's height
+/// as the height of its capitals, so `height` 2.5 is 2.5 mm from baseline to the top of a `K`.
+/// `fonts` is the project's font resolved on this machine.
+pub fn textstyle_json(doc: &Document, fonts: &crate::text_style::fonts::Fonts, changed: bool) -> Value {
+    let kinds: Vec<Value> = TextKind::ALL
+        .iter()
+        .map(|k| {
+            let id = crate::text_style::style_of(doc, *k, Scope::project());
+            let f = |key: &str| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Text, &id, key, None);
+            let h = f("height").unwrap_or(Resolved { value: defaults::Value::Length(2.5), from: Source::Builtin });
+            let w = f("weight").unwrap_or(Resolved { value: defaults::Value::Choice("regular"), from: Source::Builtin });
+            let colour = f("colour").map(|r| r.text());
+            let sh = k.show_entry().map(|e| defaults::resolve(doc, e, Scope::project()));
+            let default = h.from == Source::Builtin && w.from == Source::Builtin && sh.is_none_or(|r| r.from == Source::Builtin);
+            let builtin = |e: &Entry| Resolved { value: e.builtin(), from: Source::Builtin };
+            let cat = crate::styles::catalogue(ecad_model::StyleCatalogue::Text);
+            let b = |key: &str| cat.builtin(&k.builtin_style()).and_then(|s| s.value(key));
+            json!({
+                "kind": k.word(),
+                "style": id.text(),
+                "height": h.number(),
+                "weight": w.word(),
+                "colour": colour,
+                "font": crate::text_style::kind_font(doc, *k),
+                "show": sh.map(|r| r.word()),
+                "default": default,
+                "builtin": {
+                    "height": b("height").map_or(0.0, |v| Resolved { value: v, from: Source::Builtin }.number()),
+                    "weight": b("weight").map_or("regular", |v| Resolved { value: v, from: Source::Builtin }.word()),
+                    "show": k.show_entry().map(|e| builtin(e).word()),
+                },
+            })
+        })
+        .collect();
+    json!({
+        "font": fonts.wanted,
+        "drawn_with": fonts.drawn_with,
+        "status": fonts.status(),
+        "height_is": "cap height",
+        "kinds": kinds,
+        "changed": changed,
+    })
+}
+
+/// The JSON form of a registry value.
+pub fn value_json(r: &Resolved<'_>) -> Value {
+    match r.value {
+        defaults::Value::Length(x) | defaults::Value::Number(x) => json!(x),
+        defaults::Value::Choice(w) => json!(w),
+        defaults::Value::Flag(b) => json!(ecad_model::words::flag_word(b)),
+        defaults::Value::Text(t) => json!(t),
+        defaults::Value::OwnStyle(id) => json!(ecad_model::StyleRef::Own(id).text()),
+        defaults::Value::Size(s) => json!(s.to_string()),
+        defaults::Value::Colours(c) => json!(c.to_string()),
+        defaults::Value::Colour(c) => json!(c.to_string()),
+        defaults::Value::Sheet(s) => json!(s.text()),
+        defaults::Value::Margins(m) => json!(ecad_model::sheet::margins_text(&m)),
+        defaults::Value::CoreColours(c) => json!(c.to_string()),
+    }
+}
+
+pub fn level_word(l: Level) -> &'static str {
+    match l {
+        Level::Standard => "standard",
+        Level::Project => "project",
+        Level::Page => "page",
+        Level::Object => "object",
+    }
+}
+
+/// One registry entry as `defaults` lists it, resolved at `at`.
+pub fn entry_json(doc: &Document, e: &Entry, at: Scope) -> Value {
+    let r = defaults::resolve(doc, e, at);
+    let builtin = Resolved { value: e.builtin(), from: Source::Builtin };
+    let mut m = Map::new();
+    m.insert("key".into(), json!(e.key));
+    m.insert("label".into(), json!(e.label));
+    m.insert("group".into(), json!(e.group));
+    m.insert("brief".into(), json!(e.brief));
+    m.insert("kind".into(), json!(e.kind_word()));
+    m.insert("builtin".into(), value_json(&builtin));
+    m.insert("levels".into(), json!(e.levels.iter().map(|l| level_word(*l)).collect::<Vec<_>>()));
+    m.insert("value".into(), value_json(&r));
+    m.insert("from".into(), json!(r.from.as_str()));
+    Value::Object(m)
 }

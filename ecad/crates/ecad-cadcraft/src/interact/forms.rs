@@ -300,7 +300,7 @@ pub(super) fn placed(prim: &Primitive, pl: &Placement) -> Option<Primitive> {
 pub(crate) fn wire(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
     // Brief 032 §2.4: joining starts on (the registered default) every time the tool starts.
-    let join = read(s, |p, _| Ok(crate::cmd::wire::join_by_default(p.ledger.document()))).map_err(other)?;
+    let join = read(s, |p, _| Ok(ecad_electrical::cmd::wire::join_by_default(p.ledger.document()))).map_err(other)?;
     Ok(Box::new(Safe(Wire { join, ..Wire::default() })))
 }
 

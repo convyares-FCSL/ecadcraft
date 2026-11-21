@@ -215,7 +215,9 @@ fn set_tag(p: &mut Project, pg: &mut Pages<'_>, o: ObjectRef, typed: Option<&str
         TagSet::Swapped { ops, value, other, other_value, line } => {
             p.apply_edit(pg, "setprop", "Swap tags", ops)?;
             pg.echo(line.clone());
-            Ok(json!({"changed": true, "swapped": true, "value": value, "other": object_json(other), "other_value": other_value, "message": line}))
+            Ok(
+                json!({"changed": true, "swapped": true, "value": value, "other": rules::object_json(other), "other_value": other_value, "message": line}),
+            )
         }
         TagSet::MergedCable { ops, into, tag, before } => {
             p.apply_edit(pg, "setprop", &format!("Merge into {tag}"), ops)?;
@@ -228,13 +230,5 @@ fn set_tag(p: &mut Project, pg: &mut Pages<'_>, o: ObjectRef, typed: Option<&str
             pg.echo(line.clone());
             Ok(json!({"changed": true, "value": value, "fixed": fixed, "message": line}))
         }
-    }
-}
-
-fn object_json(o: ObjectRef) -> Value {
-    match o {
-        ObjectRef::Device(c) => json!({"component": c.hex()}),
-        ObjectRef::Cable(k) => json!({"cable": k.hex()}),
-        _ => Value::Null,
     }
 }

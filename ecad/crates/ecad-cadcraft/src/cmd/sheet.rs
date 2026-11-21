@@ -10,13 +10,13 @@
 //! Each command is a thin shim (brief 070): its params struct reads the JSON, the rules in
 //! [`ecad_electrical::cmd::sheet`] decide, and the shim commits the ops and answers in JSON.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
 use ecad_electrical::cmd::sheet::{self as rules, PageChange, ProjectChange, PropsPlan, RevisionFields};
-use ecad_model::book::{self, Book, FUNCTION_KEY, LOCATION_KEY, Node};
+use ecad_model::book::Book;
 use ecad_model::{Document, FolderId, Op, Page, PageId, ReferenceStyle};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -126,66 +126,6 @@ present, `provisional` says whether to finalise them first or issue them as they
 
 pub use crate::page_types::MAX_NUMBER_CHARS;
 
-/// The number a new page gets after the page shown as `before` (design 019 §6.1): its leading
-/// digits plus the project's step, skipping numbers in use; with no digits or no page before, its
-/// book position `position`.
-pub fn default_number(doc: &Document, book: &Book, before: Option<PageId>, position: usize, outputs: Option<&crate::outputs::Outputs>) -> String {
-    default_number_from(doc, book, before, position, outputs, None)
-}
-
-/// [`default_number`], or for the first page of a folder with a start number (brief 054, design
-/// 054 §4.3) that start when it is free, else the next free after it. Leading zeros keep their
-/// width (`01` gives `01`, `02`), from the start or from the page before.
-pub fn default_number_from(
-    doc: &Document, book: &Book, before: Option<PageId>, position: usize, outputs: Option<&crate::outputs::Outputs>, start: Option<&str>,
-) -> String {
-    // Brief 033: every sheet's number, continuation sheets included, is in use.
-    let used: BTreeSet<String> = book
-        .order
-        .iter()
-        .flat_map(|p| crate::generated::sheet_numbers(doc, book, *p, crate::draw::outputs::kept_of(outputs)))
-        .map(|n| n.to_ascii_lowercase())
-        .collect();
-    let step = u64::from(doc.settings.page_number_step().max(1));
-    let digits = before.map(|p| book.number(doc, p)).map(|n| n.chars().take_while(char::is_ascii_digit).collect::<String>());
-    let from_start = start.and_then(|t| t.parse::<u64>().ok().map(|n| (n, t.len())));
-    let (mut n, step, width) = match (from_start, digits.as_deref().and_then(|d| d.parse::<u64>().ok().map(|n| (n, d)))) {
-        (Some((s, w)), _) => (s, step, w),
-        (None, Some((s, d))) => (s.saturating_add(step), step, if d.len() > 1 && d.starts_with('0') { d.len() } else { 0 }),
-        (None, None) => (position as u64, 1, 0),
-    };
-    for _ in 0..100_000 {
-        let t = format!("{n:0width$}");
-        if !used.contains(&t) && t.len() <= MAX_NUMBER_CHARS {
-            return t;
-        }
-        n = n.saturating_add(step);
-    }
-    n.to_string()
-}
-
-/// Where a new page in `folder` goes in book order: the page before it, and its position.
-fn new_page_place(doc: &Document, book: &Book, folder: Option<FolderId>) -> (Option<PageId>, usize) {
-    let in_folder: Vec<PageId> =
-        doc.page_order.iter().copied().filter(|p| book::folder_of(doc, *p).filter(|f| doc.folders.contains_key(f)) == folder).collect();
-    if let Some(last) = in_folder.last() {
-        let pos = book.position(*last).unwrap_or(0);
-        return (Some(*last), pos + 1);
-    }
-    let Some(f) = folder else { return (None, 1) };
-    // An empty folder: the page before the folder in book order.
-    let mut before = None;
-    for node in &book.nodes {
-        match node {
-            Node::Folder { id, .. } if *id == f => break,
-            Node::Page { id, .. } => before = Some(*id),
-            Node::Folder { .. } => {}
-        }
-    }
-    let pos = before.and_then(|p| book.position(p)).unwrap_or(0) + 1;
-    (before, pos)
-}
-
 // ---------------------------------------------------------------- folders
 
 /// `newfolder {name, parent?}`: a folder, last among its siblings.
@@ -285,36 +225,6 @@ impl Command for DeletefolderParams {
 
 // ---------------------------------------------------------------- pages
 
-/// Where a new page goes (brief 054, design 054 §4.2): right after `after` in its folder, else
-/// last in `folder`. Its folder, its index in the page order, and (the page before it, its book
-/// position).
-///
-/// # Errors
-/// No such page to add after.
-pub fn new_page_at(
-    doc: &Document, book: &Book, folder: Option<FolderId>, after: Option<PageId>,
-) -> Result<(Option<FolderId>, usize, (Option<PageId>, usize)), CmdError> {
-    Ok(match after {
-        Some(a) => {
-            let i = doc.page_order.iter().position(|x| *x == a).ok_or(CmdError::refused("No such page to add after."))?;
-            let f = book::folder_of(doc, a).filter(|f| doc.folders.contains_key(f));
-            (f, i + 1, (Some(a), book.position(a).unwrap_or(0) + 1))
-        }
-        None => (folder, doc.page_order.len(), new_page_place(doc, book, folder)),
-    })
-}
-
-/// The number a new page placed by [`new_page_at`] gets (design 054 §4.3): the first page of a
-/// folder with a start number takes it; every other page the next after the page before it.
-pub fn next_number(
-    doc: &Document, book: &Book, folder: Option<FolderId>, place: (Option<PageId>, usize), outputs: Option<&crate::outputs::Outputs>,
-) -> String {
-    let (before, position) = place;
-    let first = before.is_none_or(|b| book::folder_of(doc, b).filter(|f| doc.folders.contains_key(f)) != folder);
-    let start = folder.filter(|_| first).and_then(|f| crate::page_types::start_of(doc, f));
-    default_number_from(doc, book, before, position, outputs, start.as_deref())
-}
-
 /// The ops of `newpage {title, number?, folder?}`, the new page's ID and number.
 /// The page is placed right after page `after` in its folder when given (brief 054, design
 /// 054 §4.2: the page well's +), else last in `folder`. The first page of a folder with a start
@@ -329,51 +239,19 @@ pub(crate) fn new_page_ops_at(
     let outputs = p.outputs.as_ref();
     rules::check_folder(doc, folder)?;
     let book = Book::of(doc);
-    let (folder, index, place) = new_page_at(doc, &book, folder, after)?;
+    let (folder, index, place) = rules::new_page_at(doc, &book, folder, after)?;
     let number = match number.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()) {
         Some(n) => {
             rules::check_number(doc, &book, None, &n, crate::draw::outputs::kept_of(outputs))?;
             n
         }
-        None => next_number(doc, &book, folder, place, outputs),
+        None => rules::next_number(doc, &book, folder, place, crate::draw::outputs::kept_of(outputs)),
     };
     let mut page = Page::new(rules::page_title(&title)?);
     page.number = Some(ecad_model::PageNo::parse(&number).ok_or(CmdError::refused(rules::NUMBER_WORDS))?);
     page.folder = folder;
     let id: PageId = p.ids.fresh();
     Ok((id, number, vec![Op::AddPage { id, page, index }]))
-}
-
-/// The page's properties as `pageprops` reports them.
-pub fn page_json(doc: &Document, book: &Book, page: PageId, outputs: Option<&crate::outputs::Outputs>) -> Value {
-    let pg = doc.pages.get(&page);
-    use crate::designations::{Aspect, default_key, page_key};
-    let prop = |k: &str| Aspect::of_property(k).and_then(|a| pg.and_then(|x| page_key(x, a)));
-    let project = |k: &str| Aspect::of_property(k).and_then(|a| default_key(&doc.project, a));
-    let folder = book::folder_of(doc, page).filter(|f| doc.folders.contains_key(f));
-    json!({
-        "page": page.hex(),
-        "number": book.number(doc, page),
-        "number_stored": pg.and_then(|x| x.number.as_ref()).map(ecad_model::PageNo::as_str),
-        "position": book.position(page),
-        "title": pg.map(|x| x.title.as_str()),
-        // Brief 052: stored as entry keys of the project's list, shown as codes.
-        "function": prop(FUNCTION_KEY).map(|v| crate::designations::display(doc, FUNCTION_KEY, &v)),
-        "location": prop(LOCATION_KEY).map(|v| crate::designations::display(doc, LOCATION_KEY, &v)),
-        "function_key": prop(FUNCTION_KEY),
-        "location_key": prop(LOCATION_KEY),
-        "function_shown": prop(FUNCTION_KEY).or_else(|| project(FUNCTION_KEY)).map(|v| crate::designations::display(doc, FUNCTION_KEY, &v)),
-        "location_shown": prop(LOCATION_KEY).or_else(|| project(LOCATION_KEY)).map(|v| crate::designations::display(doc, LOCATION_KEY, &v)),
-        "sheet": pg.and_then(|x| x.sheet).map(|s| s.text()),
-        "sheet_shown": ecad_model::sheet::sheet_of(doc, page).summary(),
-        "folder": folder.map(FolderId::hex),
-        "folder_path": folder_path(doc, folder),
-        "generated": pg.and_then(|x| x.kind.generated_kind()).map(ecad_model::Word::word),
-        // Brief 054: the page's type, resolved (design 054 §2.3).
-        "type": crate::styles::page::type_of(doc, page).text(),
-        "sheets": crate::generated::sheets(doc, page, outputs),
-        "sheet_numbers": crate::generated::sheet_numbers(doc, book, page, crate::draw::outputs::kept_of(outputs)),
-    })
 }
 
 /// Commit `plan` (with `label`), keep its conflicts when it moved nothing, echo them, and answer
@@ -451,7 +329,7 @@ impl Command for PagepropsParams {
                 if !doc.pages.contains_key(&page) {
                     return Err(CmdError::refused(ecad_electrical::msg::NO_SUCH_PAGE));
                 }
-                Ok(page_json(doc, &Book::of(doc), page, p.outputs.as_ref()))
+                Ok(rules::page_json(doc, &Book::of(doc), page, crate::draw::outputs::kept_of(p.outputs.as_ref())))
             });
         }
         let proposal = self.proposal;
@@ -468,13 +346,13 @@ impl Command for PagepropsParams {
             let plan = rules::page_props(p.ledger.document(), &mut p.ids, page, &change, kept)?;
             if plan.ops.is_empty() {
                 let doc = p.ledger.document();
-                let mut v = page_json(doc, &Book::of(doc), page, p.outputs.as_ref());
+                let mut v = rules::page_json(doc, &Book::of(doc), page, crate::draw::outputs::kept_of(p.outputs.as_ref()));
                 v["changed"] = json!(false);
                 return Ok(v);
             }
             commit_props(p, pg, "pageprops", "Page properties", plan)?;
             let doc = p.ledger.document();
-            let mut v = page_json(doc, &Book::of(doc), page, p.outputs.as_ref());
+            let mut v = rules::page_json(doc, &Book::of(doc), page, crate::draw::outputs::kept_of(p.outputs.as_ref()));
             v["changed"] = json!(true);
             Ok(v)
         })
@@ -491,96 +369,6 @@ pub const STATUS_SUGGESTIONS: [&str; 4] = ["Draft", "For review", "For construct
 pub use crate::front::{
     MAX_NOTE_CHARS as MAX_COVER_NOTE_CHARS, MAX_NOTES as MAX_COVER_NOTES, NOTES_KEY as COVER_NOTES, NOTES_TOO_LONG as COVER_NOTES_TOO_LONG,
 };
-
-fn style_word(s: ReferenceStyle) -> &'static str {
-    match s {
-        ReferenceStyle::PageColumnRow => "page-column-row",
-        ReferenceStyle::PageColumn => "page-column",
-        ReferenceStyle::PageZone => "page-zone",
-    }
-}
-
-/// Everything `projectprops` reports.
-pub fn project_json(doc: &Document) -> Value {
-    let mut fields = Map::new();
-    for k in PROJECT_KEYS {
-        // Brief 052: the function and location show their codes (design 072 §5.3: fields of the
-        // project).
-        let v = match crate::designations::Aspect::of_property(k) {
-            Some(a) => crate::designations::default_key(&doc.project, a).map(|v| crate::designations::display(doc, k, &v)),
-            None => crate::frames::project_text(doc, k),
-        };
-        fields.insert(k.into(), v.map_or(Value::Null, Value::String));
-    }
-    // The site and the cover's notes are written as free properties and stored as the project's
-    // info (design 072 §5.3): reported with the free ones.
-    let written_free = [ecad_model::InfoField::Site, ecad_model::InfoField::Notes];
-    let info = written_free
-        .into_iter()
-        .filter_map(|f| doc.project.info.get(f).map(|v| (ecad_model::Word::word(f).to_string(), Value::String(v.to_string()))));
-    let free: Map<String, Value> = doc
-        .properties
-        .iter()
-        .filter(|(k, _)| {
-            !PROJECT_KEYS.contains(&k.as_str())
-                && !k.starts_with(revisions::PREFIX)
-                && !k.starts_with("numbering.")
-                && !k.starts_with("tags.")
-                && !k.starts_with("revisions.")
-        })
-        .map(|(k, v)| (k.clone(), Value::String(v.clone())))
-        .chain(info)
-        .collect();
-    let revs: Vec<Value> = revisions::list(doc)
-        .iter()
-        .map(|r| {
-            let mut m = Map::new();
-            for (f, v) in FIELDS.iter().zip(r.fields.iter()) {
-                m.insert((*f).into(), Value::String(v.clone()));
-            }
-            // Brief 033: custom fields.
-            for (f, v) in &r.extra {
-                m.insert(f.clone(), Value::String(v.clone()));
-            }
-            m.insert("issued".into(), r.issued.clone().map_or(Value::Null, Value::String));
-            // Brief 027 (FP1): where it was released, when it was.
-            if let Some(f) = &r.released {
-                m.insert("released".into(), Value::String(f.clone()));
-            }
-            Value::Object(m)
-        })
-        .collect();
-    let mut v = Value::Object(fields);
-    v["props"] = Value::Object(free);
-    v["sheet"] = json!(doc.settings.sheet().text());
-    v["sheet_shown"] = json!(doc.settings.sheet().summary());
-    v["page_number_step"] = json!(doc.settings.page_number_step());
-    v["reference_style"] = json!(style_word(doc.settings.reference_style()));
-    // Brief 025 (FP3): where contact tables go by default.
-    v["contact_mirror"] = json!(doc.settings.contact_mirror.word());
-    v["tag_padding"] = json!(crate::devices::padding(doc));
-    // Brief 033: the tag style, the revision columns and the pending marker.
-    let style = crate::defaults::print::tag_style(doc);
-    v["tag_dash"] = json!(style.dash);
-    v["tag_case"] = json!(ecad_model::Word::word(style.case));
-    let cols = revisions::columns(doc);
-    v["revision_columns"] = json!(cols.iter().map(|c| json!({"field": c.field, "header": c.header, "width": c.width})).collect::<Vec<_>>());
-    v["revision_columns_stored"] = json!(doc.properties.get(revisions::COLUMNS_KEY));
-    v["revision_pending"] = json!(match revisions::PendingStyle::of(doc) {
-        revisions::PendingStyle::Star => "star",
-        revisions::PendingStyle::Draft => "draft",
-        revisions::PendingStyle::Off => "off",
-    });
-    v["tag_prefixes"] = Value::Object(crate::cmd::device::prefixes_json(doc));
-    // Brief 022: the wiring settings the Project settings popout edits.
-    v["colour_style"] = json!(ecad_model::words::Word::word(doc.settings.wiring.colour_style()));
-    v["label_height"] = json!(wire_label_height(doc));
-    // Brief 026: Project settings → Numbering.
-    v["provisional"] = json!(ecad_model::numbering::provisional_on(doc));
-    v["revisions"] = Value::Array(revs);
-    v["pending_rev"] = json!(revisions::pending_rev(doc));
-    v
-}
 
 /// How cross-references are written.
 #[derive(Deserialize, JsonSchema, Clone, Copy)]
@@ -697,7 +485,7 @@ impl ProjectpropsParams {
 impl Command for ProjectpropsParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         if self.is_empty() {
-            return on_any_page(s, |p, _| Ok(project_json(p.ledger.document())));
+            return on_any_page(s, |p, _| Ok(rules::project_json(p.ledger.document())));
         }
         let given = [self.title, self.drawing_number, self.customer, self.status, self.function, self.location];
         let fields = PROJECT_KEYS.into_iter().zip(given).filter_map(|(k, v)| v.map(|v| (k, v))).collect();
@@ -730,14 +518,14 @@ impl Command for ProjectpropsParams {
             change.tag_case = case_word.as_deref().map(rules::tag_case).transpose()?;
             let plan = rules::project_props(p.ledger.document(), &mut p.ids, &change)?;
             if plan.ops.is_empty() {
-                let mut v = project_json(p.ledger.document());
+                let mut v = rules::project_json(p.ledger.document());
                 v["changed"] = json!(false);
                 return Ok(v);
             }
             let message = plan.message.clone();
             commit_props(p, pg, "projectprops", "Project properties", plan)?;
             let doc = p.ledger.document();
-            let mut v = project_json(doc);
+            let mut v = rules::project_json(doc);
             v["changed"] = json!(true);
             if revisions::widths(&revisions::columns(doc), revisions::A3_TABLE_MM).1 {
                 v["narrowed"] = json!(revisions::NARROWED);
@@ -974,10 +762,4 @@ impl Command for UndoissueParams {
 /// where there is no clock.
 pub fn today() -> Option<String> {
     revisions::date_of_ms(crate::project::now_ms()?)
-}
-
-/// The wire label cap height the project resolves to, millimetres (its chosen one, its standard's
-/// or the built-in; brief 066).
-pub(crate) fn wire_label_height(doc: &ecad_model::Document) -> f64 {
-    crate::defaults::resolve(doc, &crate::defaults::text::WIRE_LABEL_HEIGHT, crate::defaults::Scope::project()).number()
 }

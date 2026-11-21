@@ -14,6 +14,7 @@
 
 use ecad_model::PointKey;
 use ecad_model::units::Radians;
+use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
@@ -1210,4 +1211,31 @@ pub fn plan_place(
 /// transaction).
 fn field_value(doc: &Document, key: &str, def: &Definition, field: Field) -> Option<String> {
     crate::defaults::symbols::project_value(doc, key, field).or_else(|| crate::defaults::symbols::definition_value(def, field))
+}
+
+/// The row of a copy as data; `book` is the project's page book, built once per listing (a page's
+/// number alone walks the book); `places` gives the copy's place (`2-D-4`, in the project's
+/// reference style, design 048 §6.1's page and zone).
+pub fn row_json(r: &Row, doc: &Document, book: &ecad_model::book::Book, places: &mut crate::xref::Places<'_>) -> Value {
+    let at = match doc.items.get(&r.item).map(|i| &i.kind) {
+        Some(ecad_model::ItemKind::Symbol(s)) => Some(s.placement.origin),
+        _ => None,
+    };
+    json!({
+        "rep": r.rep.hex(), "item": r.item.hex(), "page": r.page.hex(),
+        "page_number": book.number(doc, r.page), "place": places.text(r.page, at), "component": r.component.hex(),
+        "tag": r.tag, "from": r.from.hex(), "changes": r.changes, "clash": r.clash, "builtin": r.builtin,
+    })
+}
+
+pub fn result(doc: &Document, id: DefinitionId) -> Value {
+    let d = doc.definitions.get(&id);
+    let o = d.and_then(|d| d.origin.as_ref());
+    json!({
+        "definition": id.hex(),
+        "lineage": o.map(|o| o.definition.hex()),
+        "version": o.map(|o| o.library_seq),
+        "key": d.and_then(|d| d.defaults.key.as_ref().map(|k| k.as_str())),
+        "name": d.map(|d| d.name.clone()),
+    })
 }

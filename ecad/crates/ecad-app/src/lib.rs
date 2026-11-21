@@ -698,7 +698,7 @@ impl App {
         let Ok(branch) = p.read(&mut self.cad.session, |p, _| ecad_cadcraft::history::current(p)) else { return };
         self.panel.tab = project_panel::Tab::History;
         self.panel.history.steps_open = true;
-        self.panel.history.selected = Some(history_panel::Sel { branch, seq, kind: ecad_cadcraft::history::NodeKind::Fork, name: None });
+        self.panel.history.selected = Some(history_panel::Sel { branch, seq, kind: ecad_file::history::NodeKind::Fork, name: None });
     }
 
     /// Bring the Project panel's copy up to date: one change-count comparison per frame, the rows
