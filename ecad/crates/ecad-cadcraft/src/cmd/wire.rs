@@ -12,7 +12,7 @@ use ecad_electrical::cmd::wire::{self as rules, Conflict, NetChoice, Numbered, P
 use ecad_model::connectivity::{KIND, NAME};
 use ecad_model::units::{Degrees, Radians};
 use ecad_model::wiring;
-use ecad_model::{Document, PageId, Placement, Pt, TerminalId, WireId};
+use ecad_model::{PageId, Placement, Pt, TerminalId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -518,7 +518,7 @@ impl Command for WireParams {
         on_project(s, |p, pg, page| {
             let style = plain_style(p);
             let quiet = quiet_ends(p, page);
-            let join = join.unwrap_or_else(|| join_by_default(p.ledger.document()));
+            let join = join.unwrap_or_else(|| rules::join_by_default(p.ledger.document()));
             let input = wires::WireInput {
                 page,
                 style,
@@ -573,12 +573,6 @@ pub(crate) fn potential_choices(p: &Project) -> Vec<String> {
 /// cable reference has any, so other pages cost nothing.
 pub(crate) fn quiet_ends(p: &Project, page: PageId) -> Vec<Pt> {
     wires::quiet_ends_of(p.ledger.document(), page, &p.views, p.tolerance)
-}
-
-/// Whether `wire` joins ends that meet other wires when `join` is not given (design 032 §4.5):
-/// the registered default `wire.join`.
-pub(crate) fn join_by_default(doc: &Document) -> bool {
-    crate::defaults::resolve(doc, &crate::defaults::wires::WIRE_JOIN, crate::defaults::Scope::project()).flag()
 }
 
 // ---------------------------------------------------------------- place (the continuation form)

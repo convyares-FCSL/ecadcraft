@@ -241,7 +241,7 @@ impl Command for BomParams {
             let view = outputs::BomView { article: columns.unwrap_or(o.view.article), nested: lines.unwrap_or(o.view.nested) };
             let nested = view.nested && group == Group::Location;
             let t = o.bom_table_with(group, view, true);
-            let ids = rules::bom_ids_json(&o, group, nested);
+            let ids = rules::bom_ids_json(o, group, nested);
             let keys = rules::bom_keys(nested, view.article);
             report_result(&t, &keys, &ids, &pg, "BOM")
         })
@@ -272,7 +272,7 @@ impl Command for WirelistParams {
         on_any_page(s, |p, _| {
             let o = p.outputs();
             let t = o.wire_table();
-            report_result(&t, rules::WIRE_KEYS, &rules::wire_ids_json(&o), &pg, "wire")
+            report_result(&t, rules::WIRE_KEYS, &rules::wire_ids_json(o), &pg, "wire")
         })
     }
 }
@@ -307,7 +307,7 @@ impl Command for CablelistParams {
         on_any_page(s, |p, _| {
             let o = p.outputs();
             let t = o.cable_table_with(include);
-            let ids = rules::cable_ids_json(&o, include);
+            let ids = rules::cable_ids_json(o, include);
             let keys = rules::cable_keys(&t);
             report_result(&t, &keys, &ids, &pg, "cable")
         })

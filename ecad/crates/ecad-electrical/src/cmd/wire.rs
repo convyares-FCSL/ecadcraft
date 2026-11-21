@@ -784,3 +784,9 @@ pub fn settings_json(doc: &Document) -> Value {
         })).collect::<Vec<_>>(),
     })
 }
+
+/// Whether `wire` joins ends that meet other wires when `join` is not given (design 032 §4.5):
+/// the registered default `wire.join`.
+pub fn join_by_default(doc: &Document) -> bool {
+    crate::defaults::resolve(doc, &crate::defaults::wires::WIRE_JOIN, crate::defaults::Scope::project()).flag()
+}
