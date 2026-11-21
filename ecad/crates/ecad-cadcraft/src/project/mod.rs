@@ -249,9 +249,9 @@ fn cables_layer() -> CLayer {
 /// lineweight, bends, tails and frames the wire lineweight, text the layer's. A text takes its
 /// height and style from `look` (brief 031): a reference end's text is a reference, every other
 /// one cable text.
-pub(crate) fn part_entity(look: &crate::text_style::Look, part: &crate::look::Part, handle: Handle) -> Entity {
-    use crate::look::{Role, Shape, Weight};
+pub(crate) fn part_entity(look: &crate::text_style::Look, part: &ecad_electrical::cable_look::Part, handle: Handle) -> Entity {
     use crate::text_style::TextKind;
+    use ecad_electrical::cable_look::{Role, Shape, Weight};
     let text_kind = if part.role == Role::ReferenceText { TextKind::Reference } else { TextKind::CableText };
     use ecad_model::Primitive;
     let kind = match &part.shape {
@@ -273,7 +273,7 @@ pub(crate) fn part_entity(look: &crate::text_style::Look, part: &crate::look::Pa
         }),
     };
     let lineweight = match part.weight {
-        Weight::Cable => Lineweight::Mm100(crate::look::CABLE_WEIGHT),
+        Weight::Cable => Lineweight::Mm100(ecad_electrical::cable_look::CABLE_WEIGHT),
         Weight::Wire => Lineweight::Mm100(crate::look::WIRE_WEIGHT),
         Weight::Text => Lineweight::ByLayer,
     };
@@ -564,7 +564,7 @@ pub fn project_page_kept(
         for (i, part) in f.parts.iter().enumerate() {
             // A reference end's text (brief 009's look, brief 010's live text) is mapped to its
             // reference, so hover, Go to Reference and erasing it act on the reference.
-            if part.role == crate::look::Role::ReferenceText
+            if part.role == ecad_electrical::cable_look::Role::ReferenceText
                 && let Some(r) = part.reference
             {
                 let h = prev.ref_text(r).unwrap_or_else(|| d.new_handle());

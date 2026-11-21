@@ -110,7 +110,7 @@ pub enum FanOnPage {
 }
 
 /// A cable's fan on one page (brief 009's look).
-pub type Fan = crate::look::CableDrawing;
+pub type Fan = ecad_electrical::cable_look::CableDrawing;
 
 /// The fan of `cable` on `page` (design 009 §4), measured with the drafting font. Bounded by the
 /// members and their route points; never panics.
@@ -125,28 +125,20 @@ pub fn fan_on_page(doc: &Document, page: PageId, cable: CableId, tol: f64) -> Fa
     if !routed {
         return FanOnPage::Nothing;
     }
-    let d = crate::look::cable_on_page(doc, page, cable, true, tol, &crate::look::font_width);
+    let d = ecad_electrical::cable_look::cable_on_page(doc, page, cable, true, tol, &crate::look::font_width);
     match d.state {
-        crate::look::FanState::Drawn => FanOnPage::Drawn(d),
-        crate::look::FanState::TooFew => FanOnPage::TooFew,
+        ecad_electrical::cable_look::FanState::Drawn => FanOnPage::Drawn(d),
+        ecad_electrical::cable_look::FanState::TooFew => FanOnPage::TooFew,
         _ => FanOnPage::Failed,
     }
 }
 
 /// Every cable's computed drawing on `page` (design 009): fans for the cables in `fan` where they
 /// can be drawn, and core labels and reference ends for every cable, by cable.
-pub fn drawings_on_page(doc: &Document, page: PageId, fan: &BTreeSet<CableId>, tol: f64) -> BTreeMap<CableId, crate::look::CableDrawing> {
-    crate::look::cables_on_page(doc, page, fan, tol, &crate::look::font_width)
-}
-
-/// `Cable C1 now shown in fan view.`
-pub fn switched(doc: &Document, cable: CableId, view: View) -> String {
-    format!("Cable {} now shown in {} view.", cable_title(doc, cable), view.name())
-}
-
-/// Whether `cable` may be switched to fan view: it has two or more members (owner answer Q4).
-pub fn offers_fan(doc: &Document, cable: CableId) -> bool {
-    doc.cables.get(&cable).is_some_and(|c| c.cores.len() >= 2)
+pub fn drawings_on_page(
+    doc: &Document, page: PageId, fan: &BTreeSet<CableId>, tol: f64,
+) -> BTreeMap<CableId, ecad_electrical::cable_look::CableDrawing> {
+    ecad_electrical::cable_look::cables_on_page(doc, page, fan, tol, &crate::look::font_width)
 }
 
 // ---------------------------------------------------------------- remembering (design §7)

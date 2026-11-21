@@ -146,9 +146,9 @@ fn fan_paths(h: &mut H, page: PageId) -> Vec<Vec<Pt>> {
 fn tails(fan: &views::Fan) -> Vec<Vec<Pt>> {
     fan.parts
         .iter()
-        .filter(|p| p.role == ecad_cadcraft::look::Role::Tail)
+        .filter(|p| p.role == ecad_electrical::cable_look::Role::Tail)
         .filter_map(|p| match &p.shape {
-            ecad_cadcraft::look::Shape::Path { points, .. } => Some(points.clone()),
+            ecad_electrical::cable_look::Shape::Path { points, .. } => Some(points.clone()),
             _ => None,
         })
         .collect()
@@ -225,9 +225,9 @@ fn the_fan_of_g_is_the_worked_example() {
     let tails: Vec<Vec<Pt>> = fan
         .parts
         .iter()
-        .filter(|p| p.role == ecad_cadcraft::look::Role::Tail)
+        .filter(|p| p.role == ecad_electrical::cable_look::Role::Tail)
         .filter_map(|p| match &p.shape {
-            ecad_cadcraft::look::Shape::Path { points, .. } => Some(points.clone()),
+            ecad_electrical::cable_look::Shape::Path { points, .. } => Some(points.clone()),
             _ => None,
         })
         .collect();
