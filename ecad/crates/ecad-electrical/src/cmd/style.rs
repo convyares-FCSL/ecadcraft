@@ -4,6 +4,7 @@
 //! the document and returns the ops to commit and what to report; reading another project's file
 //! for a copy is the engine crate's.
 
+use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 
 use ecad_model::style::{BasedOn, MAX_STYLES_PER_CATALOGUE, StyleName, is_name};
@@ -673,4 +674,66 @@ pub fn plan_promote_style(doc: &Document, cat: &Catalogue, id: &StyleRef) -> Res
         Op::SetStyle { layer: StyleLayer::Standard, catalogue: cat.catalogue, id: id.clone(), before: None, after: Some(rec) },
     ];
     Ok((ops, name))
+}
+
+/// The standard as `standard {}` returns it (design 050 §6.1).
+pub fn standard_json(doc: &Document) -> Value {
+    match &doc.standard {
+        None => json!({"name": IEC, "id": null}),
+        Some(s) => {
+            let styles: Map<String, Value> = s.styles.iter().map(|(c, m)| (c.to_string(), json!(m.len()))).collect();
+            json!({
+                "name": s.header.name,
+                "id": s.header.id.hex(),
+                "based_on": s.header.based_on,
+                "origin": null,
+                "values": s.values.len(),
+                "styles": styles,
+            })
+        }
+    }
+}
+
+/// One style as `styles` returns it.
+pub fn style_json(doc: &Document, cat: &Catalogue, row: &styles::Row, users: bool) -> Value {
+    let fields: Map<String, Value> = cat
+        .fields
+        .iter()
+        .map(|f| {
+            let r = styles::field(doc, cat, &row.id, f, None);
+            (f.key.to_string(), json!({"value": value_json(&r), "from": r.from.as_str()}))
+        })
+        .collect();
+    let mut v = json!({
+        "catalogue": cat.catalogue,
+        "id": row.id.text(),
+        "name": row.name,
+        "layer": row.layer.word(),
+        "fields": fields,
+    });
+    if row.overridden {
+        v["overridden"] = json!(true);
+    }
+    // Design 072 §8: a record holds only its catalogue's typed fields; none is unknown.
+    if users {
+        let c = styles::users(doc, cat.catalogue, &row.id);
+        v["users"] = json!({"explicit": c.explicit, "implicit": c.implicit});
+    }
+    v
+}
+
+pub fn value_json(r: &defaults::Resolved<'_>) -> Value {
+    match r.value {
+        defaults::Value::Length(x) | defaults::Value::Number(x) => json!(x),
+        defaults::Value::Choice(w) => json!(w),
+        defaults::Value::Flag(b) => json!(ecad_model::words::flag_word(b)),
+        defaults::Value::Text(t) => json!(t),
+        defaults::Value::OwnStyle(id) => json!(ecad_model::StyleRef::Own(id).text()),
+        defaults::Value::Size(s) => json!(s.to_string()),
+        defaults::Value::Colours(c) => json!(c.to_string()),
+        defaults::Value::Colour(c) => json!(c.to_string()),
+        defaults::Value::Sheet(s) => json!(s.text()),
+        defaults::Value::Margins(m) => json!(ecad_model::sheet::margins_text(&m)),
+        defaults::Value::CoreColours(c) => json!(c.to_string()),
+    }
 }

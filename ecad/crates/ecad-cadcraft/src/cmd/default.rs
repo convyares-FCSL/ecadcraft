@@ -165,7 +165,7 @@ impl Command for SetdefaultParams {
                 Target::Wire(c) => Scope { conductor: Some(c), ..Scope::project() },
                 Target::Symbol(r) => Scope::symbol(doc, r),
             };
-            let mut v = crate::cmd::text::entry_json(doc, entry, at);
+            let mut v = ecad_electrical::cmd::text::entry_json(doc, entry, at);
             v["changed"] = json!(changed);
             Ok(v)
         })

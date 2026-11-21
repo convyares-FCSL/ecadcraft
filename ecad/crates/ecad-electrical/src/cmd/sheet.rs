@@ -3,6 +3,7 @@
 //! settings, the tag style, and the pending revision and its issue. Each function reads the
 //! document and returns the ops to commit and what to report.
 
+use serde_json::{Map, Value, json};
 use std::collections::{BTreeSet, HashMap};
 
 use ecad_model::book::{self, Book, FUNCTION_KEY, LOCATION_KEY, MAX_FOLDER_DEPTH, PageNo};
@@ -1147,4 +1148,132 @@ pub fn next_number(doc: &Document, book: &Book, folder: Option<FolderId>, place:
     let first = before.is_none_or(|b| book::folder_of(doc, b).filter(|f| doc.folders.contains_key(f)) != folder);
     let start = folder.filter(|_| first).and_then(|f| crate::page_types::start_of(doc, f));
     default_number_from(doc, book, before, position, outputs, start.as_deref())
+}
+
+/// The page's properties as `pageprops` reports them.
+pub fn page_json(doc: &Document, book: &Book, page: PageId, outputs: Option<&Outputs>) -> Value {
+    let pg = doc.pages.get(&page);
+    use crate::designations::{Aspect, default_key, page_key};
+    let prop = |k: &str| Aspect::of_property(k).and_then(|a| pg.and_then(|x| page_key(x, a)));
+    let project = |k: &str| Aspect::of_property(k).and_then(|a| default_key(&doc.project, a));
+    let folder = book::folder_of(doc, page).filter(|f| doc.folders.contains_key(f));
+    json!({
+        "page": page.hex(),
+        "number": book.number(doc, page),
+        "number_stored": pg.and_then(|x| x.number.as_ref()).map(ecad_model::PageNo::as_str),
+        "position": book.position(page),
+        "title": pg.map(|x| x.title.as_str()),
+        // Brief 052: stored as entry keys of the project's list, shown as codes.
+        "function": prop(FUNCTION_KEY).map(|v| crate::designations::display(doc, FUNCTION_KEY, &v)),
+        "location": prop(LOCATION_KEY).map(|v| crate::designations::display(doc, LOCATION_KEY, &v)),
+        "function_key": prop(FUNCTION_KEY),
+        "location_key": prop(LOCATION_KEY),
+        "function_shown": prop(FUNCTION_KEY).or_else(|| project(FUNCTION_KEY)).map(|v| crate::designations::display(doc, FUNCTION_KEY, &v)),
+        "location_shown": prop(LOCATION_KEY).or_else(|| project(LOCATION_KEY)).map(|v| crate::designations::display(doc, LOCATION_KEY, &v)),
+        "sheet": pg.and_then(|x| x.sheet).map(|s| s.text()),
+        "sheet_shown": ecad_model::sheet::sheet_of(doc, page).summary(),
+        "folder": folder.map(FolderId::hex),
+        "folder_path": crate::revisions::folder_path(doc, folder),
+        "generated": pg.and_then(|x| x.kind.generated_kind()).map(ecad_model::Word::word),
+        // Brief 054: the page's type, resolved (design 054 §2.3).
+        "type": crate::styles::page::type_of(doc, page).text(),
+        "sheets": crate::generated::sheets_of(doc, page, outputs),
+        "sheet_numbers": crate::generated::sheet_numbers(doc, book, page, outputs),
+    })
+}
+
+pub fn style_word(s: ReferenceStyle) -> &'static str {
+    match s {
+        ReferenceStyle::PageColumnRow => "page-column-row",
+        ReferenceStyle::PageColumn => "page-column",
+        ReferenceStyle::PageZone => "page-zone",
+    }
+}
+
+/// Everything `projectprops` reports.
+pub fn project_json(doc: &Document) -> Value {
+    let mut fields = Map::new();
+    for k in PROJECT_KEYS {
+        // Brief 052: the function and location show their codes (design 072 §5.3: fields of the
+        // project).
+        let v = match crate::designations::Aspect::of_property(k) {
+            Some(a) => crate::designations::default_key(&doc.project, a).map(|v| crate::designations::display(doc, k, &v)),
+            None => crate::frames::project_text(doc, k),
+        };
+        fields.insert(k.into(), v.map_or(Value::Null, Value::String));
+    }
+    // The site and the cover's notes are written as free properties and stored as the project's
+    // info (design 072 §5.3): reported with the free ones.
+    let written_free = [ecad_model::InfoField::Site, ecad_model::InfoField::Notes];
+    let info = written_free
+        .into_iter()
+        .filter_map(|f| doc.project.info.get(f).map(|v| (ecad_model::Word::word(f).to_string(), Value::String(v.to_string()))));
+    let free: Map<String, Value> = doc
+        .properties
+        .iter()
+        .filter(|(k, _)| {
+            !PROJECT_KEYS.contains(&k.as_str())
+                && !k.starts_with(revisions::PREFIX)
+                && !k.starts_with("numbering.")
+                && !k.starts_with("tags.")
+                && !k.starts_with("revisions.")
+        })
+        .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+        .chain(info)
+        .collect();
+    let revs: Vec<Value> = revisions::list(doc)
+        .iter()
+        .map(|r| {
+            let mut m = Map::new();
+            for (f, v) in FIELDS.iter().zip(r.fields.iter()) {
+                m.insert((*f).into(), Value::String(v.clone()));
+            }
+            // Brief 033: custom fields.
+            for (f, v) in &r.extra {
+                m.insert(f.clone(), Value::String(v.clone()));
+            }
+            m.insert("issued".into(), r.issued.clone().map_or(Value::Null, Value::String));
+            // Brief 027 (FP1): where it was released, when it was.
+            if let Some(f) = &r.released {
+                m.insert("released".into(), Value::String(f.clone()));
+            }
+            Value::Object(m)
+        })
+        .collect();
+    let mut v = Value::Object(fields);
+    v["props"] = Value::Object(free);
+    v["sheet"] = json!(doc.settings.sheet().text());
+    v["sheet_shown"] = json!(doc.settings.sheet().summary());
+    v["page_number_step"] = json!(doc.settings.page_number_step());
+    v["reference_style"] = json!(style_word(doc.settings.reference_style()));
+    // Brief 025 (FP3): where contact tables go by default.
+    v["contact_mirror"] = json!(doc.settings.contact_mirror.word());
+    v["tag_padding"] = json!(crate::devices::padding(doc));
+    // Brief 033: the tag style, the revision columns and the pending marker.
+    let style = crate::defaults::print::tag_style(doc);
+    v["tag_dash"] = json!(style.dash);
+    v["tag_case"] = json!(ecad_model::Word::word(style.case));
+    let cols = revisions::columns(doc);
+    v["revision_columns"] = json!(cols.iter().map(|c| json!({"field": c.field, "header": c.header, "width": c.width})).collect::<Vec<_>>());
+    v["revision_columns_stored"] = json!(doc.properties.get(revisions::COLUMNS_KEY));
+    v["revision_pending"] = json!(match revisions::PendingStyle::of(doc) {
+        revisions::PendingStyle::Star => "star",
+        revisions::PendingStyle::Draft => "draft",
+        revisions::PendingStyle::Off => "off",
+    });
+    v["tag_prefixes"] = Value::Object(crate::cmd::device::prefixes_json(doc));
+    // Brief 022: the wiring settings the Project settings popout edits.
+    v["colour_style"] = json!(ecad_model::words::Word::word(doc.settings.wiring.colour_style()));
+    v["label_height"] = json!(wire_label_height(doc));
+    // Brief 026: Project settings → Numbering.
+    v["provisional"] = json!(ecad_model::numbering::provisional_on(doc));
+    v["revisions"] = Value::Array(revs);
+    v["pending_rev"] = json!(revisions::pending_rev(doc));
+    v
+}
+
+/// The wire label cap height the project resolves to, millimetres (its chosen one, its standard's
+/// or the built-in; brief 066).
+pub fn wire_label_height(doc: &ecad_model::Document) -> f64 {
+    crate::defaults::resolve(doc, &crate::defaults::text::WIRE_LABEL_HEIGHT, crate::defaults::Scope::project()).number()
 }

@@ -12,12 +12,12 @@ use ecad_model::Word;
 use ecad_model::{DeviceId, Document, PageId, RepresentationId, TerminalId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 
 use crate::cmd::err;
 use crate::cmd::input::{Bounded, Command, Point, Typed, nullable};
 use crate::cmd::{on_any_page, on_project};
-use crate::defaults::{self, Entry, Level, Resolved, Scope, Source};
+use crate::defaults::{self};
 pub use crate::text_style::kind_words;
 use crate::text_style::{Fonts, TextKind};
 pub use ecad_electrical::cmd::text::{BAD_FONT, BAD_HEIGHT, BAD_JUSTIFY, BAD_POINT, BAD_SHOW, BAD_WEIGHT, NEEDS_KIND, NEEDS_TERMINAL};
@@ -127,7 +127,10 @@ impl Command for TextstyleParams {
         let given =
             [self.font.is_some(), self.kind.is_some(), self.height.is_some(), self.weight.is_some(), self.show.is_some(), self.kinds.is_some()];
         if !given.contains(&true) {
-            return on_any_page(s, |p, _| Ok(textstyle_json(p.ledger.document(), false)));
+            return on_any_page(s, |p, _| {
+                let doc = p.ledger.document();
+                Ok(rules::textstyle_json(doc, &Fonts::resolve(doc), false))
+            });
         }
         let input = TextStyleInput {
             font: self.font,
@@ -141,97 +144,10 @@ impl Command for TextstyleParams {
             if changed {
                 p.apply_edit(pg, "textstyle", "Text styles", ops)?;
             }
-            Ok(textstyle_json(p.ledger.document(), changed))
+            let doc = p.ledger.document();
+            Ok(rules::textstyle_json(doc, &Fonts::resolve(doc), changed))
         })
     }
-}
-
-/// The style table as `textstyle` returns it: `{font, drawn_with, status, height_is, kinds: [...],
-/// changed}`. Heights are cap heights (brief 040, owner answer 9): CADCraft draws a text's height
-/// as the height of its capitals, so `height` 2.5 is 2.5 mm from baseline to the top of a `K`.
-pub fn textstyle_json(doc: &Document, changed: bool) -> Value {
-    let fonts = Fonts::resolve(doc);
-    let kinds: Vec<Value> = TextKind::ALL
-        .iter()
-        .map(|k| {
-            let id = crate::text_style::style_of(doc, *k, Scope::project());
-            let f = |key: &str| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Text, &id, key, None);
-            let h = f("height").unwrap_or(Resolved { value: defaults::Value::Length(2.5), from: Source::Builtin });
-            let w = f("weight").unwrap_or(Resolved { value: defaults::Value::Choice("regular"), from: Source::Builtin });
-            let colour = f("colour").map(|r| r.text());
-            let sh = k.show_entry().map(|e| defaults::resolve(doc, e, Scope::project()));
-            let default = h.from == Source::Builtin && w.from == Source::Builtin && sh.is_none_or(|r| r.from == Source::Builtin);
-            let builtin = |e: &Entry| Resolved { value: e.builtin(), from: Source::Builtin };
-            let cat = crate::styles::catalogue(ecad_model::StyleCatalogue::Text);
-            let b = |key: &str| cat.builtin(&k.builtin_style()).and_then(|s| s.value(key));
-            json!({
-                "kind": k.word(),
-                "style": id.text(),
-                "height": h.number(),
-                "weight": w.word(),
-                "colour": colour,
-                "font": crate::text_style::kind_font(doc, *k),
-                "show": sh.map(|r| r.word()),
-                "default": default,
-                "builtin": {
-                    "height": b("height").map_or(0.0, |v| Resolved { value: v, from: Source::Builtin }.number()),
-                    "weight": b("weight").map_or("regular", |v| Resolved { value: v, from: Source::Builtin }.word()),
-                    "show": k.show_entry().map(|e| builtin(e).word()),
-                },
-            })
-        })
-        .collect();
-    json!({
-        "font": fonts.wanted,
-        "drawn_with": fonts.drawn_with,
-        "status": fonts.status(),
-        "height_is": "cap height",
-        "kinds": kinds,
-        "changed": changed,
-    })
-}
-
-/// The JSON form of a registry value.
-fn value_json(r: &Resolved<'_>) -> Value {
-    match r.value {
-        defaults::Value::Length(x) | defaults::Value::Number(x) => json!(x),
-        defaults::Value::Choice(w) => json!(w),
-        defaults::Value::Flag(b) => json!(ecad_model::words::flag_word(b)),
-        defaults::Value::Text(t) => json!(t),
-        defaults::Value::OwnStyle(id) => json!(ecad_model::StyleRef::Own(id).text()),
-        defaults::Value::Size(s) => json!(s.to_string()),
-        defaults::Value::Colours(c) => json!(c.to_string()),
-        defaults::Value::Colour(c) => json!(c.to_string()),
-        defaults::Value::Sheet(s) => json!(s.text()),
-        defaults::Value::Margins(m) => json!(ecad_model::sheet::margins_text(&m)),
-        defaults::Value::CoreColours(c) => json!(c.to_string()),
-    }
-}
-
-fn level_word(l: Level) -> &'static str {
-    match l {
-        Level::Standard => "standard",
-        Level::Project => "project",
-        Level::Page => "page",
-        Level::Object => "object",
-    }
-}
-
-/// One registry entry as `defaults` lists it, resolved at `at`.
-pub fn entry_json(doc: &Document, e: &Entry, at: Scope) -> Value {
-    let r = defaults::resolve(doc, e, at);
-    let builtin = Resolved { value: e.builtin(), from: Source::Builtin };
-    let mut m = Map::new();
-    m.insert("key".into(), json!(e.key));
-    m.insert("label".into(), json!(e.label));
-    m.insert("group".into(), json!(e.group));
-    m.insert("brief".into(), json!(e.brief));
-    m.insert("kind".into(), json!(e.kind_word()));
-    m.insert("builtin".into(), value_json(&builtin));
-    m.insert("levels".into(), json!(e.levels.iter().map(|l| level_word(*l)).collect::<Vec<_>>()));
-    m.insert("value".into(), value_json(&r));
-    m.insert("from".into(), json!(r.from.as_str()));
-    Value::Object(m)
 }
 
 /// `defaults {group?, key?, page?, component?, representation?}` (design 031 §10.8, read only):
@@ -270,7 +186,7 @@ impl Command for DefaultsParams {
             let mut list: Vec<Value> = defaults::all()
                 .filter(|e| group.as_deref().is_none_or(|g| e.group.eq_ignore_ascii_case(g)))
                 .filter(|e| key.as_deref().is_none_or(|k| e.key == k))
-                .map(|e| entry_json(doc, e, at))
+                .map(|e| rules::entry_json(doc, e, at))
                 .collect();
             // Brief 048 (FP6): one line per field of each project symbol, and the asked-for family entry.
             let mut family = defaults::symbols::family_lines(doc);
