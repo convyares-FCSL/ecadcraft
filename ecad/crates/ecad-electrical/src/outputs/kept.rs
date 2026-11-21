@@ -165,25 +165,45 @@ impl Outputs {
         self.generated.iter().map(|p| (*p, crate::generated::sheets_of(doc, *p, Some(self)))).collect()
     }
 
-    /// Whether `ops` can move a page number or a contents or revision list sheet count: pages
-    /// added, removed or renumbered, a page's kind, or an issue.
+    /// Whether `ops` can move a page number or a contents or revision list sheet count
+    /// ([`Outputs::moves_page_number`] on any of their effects).
     fn moves_page_numbers(ops: &[Op]) -> bool {
-        ops.iter().any(|op| match op {
-            Op::AddPage { .. } | Op::RemovePage { .. } => true,
+        ecad_model::effect::Effects::of(ops).iter().any(Self::moves_page_number)
+    }
+
+    /// Whether `effect` can move a page number or a contents or revision list sheet count: a page
+    /// added, removed or renumbered, a page's kind, or an issue.
+    pub fn moves_page_number(effect: &ecad_model::effect::Effect<'_>) -> bool {
+        use ecad_model::effect::Effect;
+        let style = crate::defaults::strip_pages::STYLE.key;
+        match effect {
             // Brief 046 (review): a page's style or sheet changes its sheet count on the document
             // alone, so the count before cannot be compared.
-            Op::ModifyPage { before, after, .. } => {
-                before.number != after.number
-                    || before.sheet != after.sheet
-                    || before.display.get(crate::defaults::strip_pages::STYLE.key) != after.display.get(crate::defaults::strip_pages::STYLE.key)
+            Effect::Page { before: Some(before), after: Some(after), index_before: None, index_after: None, .. } => {
+                before.number != after.number || before.sheet != after.sheet || before.display.get(style) != after.display.get(style)
             }
-            Op::SetProperty { object: ObjectRef::Page(_), key, .. } => key == crate::defaults::strip_pages::STYLE.key,
-            Op::SetProperty { object: ObjectRef::Project, key, .. } => key == crate::defaults::strip_pages::STYLE.key,
-            Op::ModifyProject { before, after } => crate::revisions::issue_changed(before, after),
-            Op::SetProperty { object: ObjectRef::Standard, key, .. } => key == crate::defaults::strip_pages::STYLE.key,
-            Op::SetProjectSettings { before, after } => before.sheet != after.sheet,
-            _ => false,
-        })
+            // Added, removed, or both (a move).
+            Effect::Page { .. } => true,
+            Effect::Prop { object: ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard, key, .. } => key.raw == style,
+            Effect::Project { before, after } => crate::revisions::issue_changed(before, after),
+            Effect::Settings { before, after } => before.sheet != after.sheet,
+            Effect::Prop { .. }
+            | Effect::Layer { .. }
+            | Effect::Item { .. }
+            | Effect::Device { .. }
+            | Effect::DeviceDefinition { .. }
+            | Effect::Terminal { .. }
+            | Effect::Rep { .. }
+            | Effect::Wire { .. }
+            | Effect::Route { .. }
+            | Effect::Cable { .. }
+            | Effect::Definition { .. }
+            | Effect::Version { .. }
+            | Effect::Folder { .. }
+            | Effect::Style { .. }
+            | Effect::Standard { .. }
+            | Effect::DeviceLink { .. } => false,
+        }
     }
 
     /// The pages drawn from these models.
