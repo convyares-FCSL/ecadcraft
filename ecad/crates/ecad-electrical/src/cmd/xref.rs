@@ -35,6 +35,10 @@ pub fn goto(
         Subject::Device(_) => "This symbol shows no reference: its device has no coil or no contacts.",
         Subject::Cable(_) => "this reference has no other end",
         Subject::Wire(_) | Subject::Route(_) => "That is not a reference.",
+        Subject::Aid(a) => match doc.aids.get(&a).map(ecad_model::Aid::kind) {
+            Some(ecad_model::AidKind::Continuation) => "This continuation has no other end.",
+            Some(ecad_model::AidKind::Box) | None => "That is not a reference.",
+        },
     };
     if idx.member(source).is_none() {
         return Err(CmdError::refused(none));
@@ -66,6 +70,10 @@ pub fn goto(
         },
         Subject::Cable(k) => format!("the other end of cable {}", crate::cables::cable_title(doc, k)),
         Subject::Wire(_) | Subject::Route(_) => "the reference".into(),
+        Subject::Aid(a) => match doc.aids.get(&a) {
+            Some(ecad_model::Aid::Continuation { name, .. }) => format!("continuation {}", name.as_ref().map_or("", |n| n.as_str())),
+            Some(ecad_model::Aid::Box(_)) | None => "the reference".into(),
+        },
     };
     let message = format!("{}, {what} ({place}).", crate::references::page_words(doc, tr.page).replacen("page", "Page", 1));
     Ok(Jump { page: tr.page, at, item: tr.items.first().copied(), target: t, message })

@@ -97,6 +97,9 @@ pub(crate) struct Base {
     /// The link between two plain devices (design 072 §2.6).
     link: ecad_model::LinkId,
     link_v: ecad_model::DeviceLink,
+    /// A location box (design 072 §6.2).
+    aid: ecad_model::AidId,
+    aid_v: ecad_model::Aid,
 }
 
 pub(crate) fn base() -> Base {
@@ -165,6 +168,8 @@ pub(crate) fn base() -> Base {
     let pair: [ecad_model::DeviceId; 2] = [ids.fresh(), ids.fresh()];
     let link = ids.fresh();
     let link_v = ecad_model::DeviceLink { kind: ecad_model::LinkKind::MechanicalInterlock, a: pair[0], b: pair[1] };
+    let aid = ids.fresh();
+    let aid_v = ecad_model::Aid::Box(ecad_model::LocationBox::default());
     ledger
         .commit(
             Author::User,
@@ -190,6 +195,7 @@ pub(crate) fn base() -> Base {
                 Op::CreateDevice { id: pair[0], device: Device::default() },
                 Op::CreateDevice { id: pair[1], device: Device::default() },
                 Op::AddDeviceLink { id: link, link: link_v },
+                Op::CreateAid { id: aid, aid: aid_v.clone() },
             ],
         )
         .unwrap();
@@ -227,6 +233,8 @@ pub(crate) fn base() -> Base {
         route_v,
         link,
         link_v,
+        aid,
+        aid_v,
     }
 }
 
@@ -318,6 +326,13 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
         Op::ModifyProject { before: ecad_model::Project::default(), after: lists(b) },
         Op::AddDeviceLink { id: b.ids.fresh(), link: ecad_model::DeviceLink { kind: ecad_model::LinkKind::AuxiliaryBlock, ..b.link_v } },
         Op::RemoveDeviceLink { id: b.link, link: b.link_v },
+        Op::CreateAid { id: b.ids.fresh(), aid: ecad_model::Aid::Continuation { name: None, caption: None } },
+        Op::ModifyAid {
+            id: b.aid,
+            before: b.aid_v.clone(),
+            after: ecad_model::Aid::Box(ecad_model::LocationBox { panel_temperature: Some(ecad_model::units::Celsius(40.0)), ..Default::default() }),
+        },
+        Op::DeleteAid { id: b.aid, aid: b.aid_v.clone() },
     ]
 }
 
@@ -412,6 +427,17 @@ fn failing(b: &mut Base) -> Vec<Op> {
         // Lane 072 B step 5: the same link again; a link that is not there.
         Op::AddDeviceLink { id: b.ids.fresh(), link: b.link_v },
         Op::RemoveDeviceLink { id: b.ids.fresh(), link: b.link_v },
+        Op::CreateAid { id: b.aid, aid: b.aid_v.clone() },
+        // A panel temperature must be a number; a `before` must be the stored aid.
+        Op::CreateAid {
+            id: b.ids.fresh(),
+            aid: ecad_model::Aid::Box(ecad_model::LocationBox {
+                panel_temperature: Some(ecad_model::units::Celsius(f64::NAN)),
+                ..Default::default()
+            }),
+        },
+        Op::ModifyAid { id: b.aid, before: ecad_model::Aid::Continuation { name: None, caption: None }, after: b.aid_v.clone() },
+        Op::DeleteAid { id: b.ids.fresh(), aid: b.aid_v.clone() },
     ]
 }
 

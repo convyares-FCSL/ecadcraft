@@ -1646,6 +1646,20 @@ impl Scope {
                         node(self, Node::Terminal(t));
                     }
                 }
+                // Design 072 §6.2: a box's values are a context for the devices on its pages; a
+                // continuation's names join nets.
+                Op::CreateAid { id, aid } | Op::DeleteAid { id, aid } => {
+                    self.aid(doc, *id, [aid]);
+                    if let Some(n) = aid.continuation_name() {
+                        node(self, Node::Name(name_key(n.as_str())));
+                    }
+                }
+                Op::ModifyAid { id, before, after } => {
+                    self.aid(doc, *id, [before, after]);
+                    for n in [before, after].into_iter().filter_map(ecad_model::Aid::continuation_name) {
+                        node(self, Node::Name(name_key(n.as_str())));
+                    }
+                }
                 Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => {
                     for c in doc.components_using(*id) {
                         self.devices.insert(c);
@@ -1748,6 +1762,15 @@ impl Scope {
         }
     }
 
+    /// A drawing aid made, removed or changed: a box's pages' devices (their contexts).
+    fn aid<'a>(&mut self, doc: &Document, id: ecad_model::AidId, aids: impl IntoIterator<Item = &'a ecad_model::Aid>) {
+        if aids.into_iter().any(|a| a.as_box().is_some()) {
+            for p in doc.representations_of(Subject::Aid(id)).map(|(_, r)| r.page).collect::<Vec<_>>() {
+                self.devices_on(doc, p);
+            }
+        }
+    }
+
     /// Every device with a symbol on `page` (brief 052: their contexts may have changed).
     fn devices_on(&mut self, doc: &Document, page: PageId) {
         for (_, r) in doc.representations_on(page) {
@@ -1800,6 +1823,12 @@ impl Scope {
             }
             Subject::Route(x) => {
                 self.routes.insert(x);
+            }
+            // Design 072 §6.2: a box drawn, moved or erased changes the contexts on its page.
+            Subject::Aid(a) => {
+                if doc.aids.get(&a).is_some_and(|x| x.as_box().is_some()) {
+                    self.devices_on(doc, r.page);
+                }
             }
             Subject::Device(c) => {
                 // Brief 052: a box drawn, moved or erased changes the contexts on its page.

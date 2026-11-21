@@ -153,6 +153,8 @@ impl Scope {
                 Subject::Route(x) => {
                     s.routes.insert(x);
                 }
+                // A continuation's point moves with its arrow (design 072 §6.2).
+                Subject::Aid(_) => s.terminals.extend(r.connection_points.keys().copied()),
                 // A cable reference places its cores' named points (F4).
                 Subject::Cable(_) => s.terminals.extend(r.connection_points.keys().copied()),
                 Subject::Wire(_) => {}

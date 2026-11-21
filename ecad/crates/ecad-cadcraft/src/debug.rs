@@ -62,6 +62,8 @@ pub enum ObjectId {
     Cable(CableId),
     /// A route (design 072 F31).
     Route(RouteId),
+    /// A drawing aid (design 072 §6.2).
+    Aid(ecad_model::AidId),
     Definition(DefinitionId),
     /// The project settings (one per project).
     Settings,
@@ -80,6 +82,7 @@ impl ObjectId {
             ObjectId::Wire(_) => "conductor",
             ObjectId::Cable(_) => "cable",
             ObjectId::Route(_) => "route",
+            ObjectId::Aid(_) => "aid",
             ObjectId::Definition(_) => "definition",
             ObjectId::Settings => "settings",
         }
@@ -97,6 +100,7 @@ impl ObjectId {
             ObjectId::Wire(i) => i.short(),
             ObjectId::Cable(i) => i.short(),
             ObjectId::Route(i) => i.short(),
+            ObjectId::Aid(i) => i.short(),
             ObjectId::Definition(i) => i.short(),
             ObjectId::Settings => "settings".into(),
         }
@@ -114,6 +118,7 @@ impl ObjectId {
             ObjectId::Wire(i) => i.hex(),
             ObjectId::Cable(i) => i.hex(),
             ObjectId::Route(i) => i.hex(),
+            ObjectId::Aid(i) => i.hex(),
             ObjectId::Definition(i) => i.hex(),
             ObjectId::Settings => String::new(),
         }
@@ -133,6 +138,7 @@ impl From<Subject> for ObjectId {
             Subject::Wire(c) => ObjectId::Wire(c),
             Subject::Cable(c) => ObjectId::Cable(c),
             Subject::Route(c) => ObjectId::Route(c),
+            Subject::Aid(c) => ObjectId::Aid(c),
         }
     }
 }
@@ -919,6 +925,9 @@ pub fn op_view(op: &Op) -> OpView {
         Op::AddRoute { route, .. } => (None, val(route)),
         Op::RemoveRoute { route, .. } => (val(route), None),
         Op::ModifyRoute { before, after, .. } => (val(before), val(after)),
+        Op::CreateAid { aid, .. } => (None, val(aid)),
+        Op::DeleteAid { aid, .. } => (val(aid), None),
+        Op::ModifyAid { before, after, .. } => (val(before), val(after)),
         Op::CreateCable { cable, .. } => (None, val(cable)),
         Op::DeleteCable { cable, .. } => (val(cable), None),
         Op::ModifyCable { before, after, .. } => (val(before), val(after)),
@@ -1019,6 +1028,7 @@ pub fn op_targets(op: &Op) -> Vec<ObjectId> {
             out.push(ObjectId::Route(*id));
             out.extend(before.points_landed().chain(after.points_landed()).map(ObjectId::Terminal));
         }
+        Op::CreateAid { id, .. } | Op::DeleteAid { id, .. } | Op::ModifyAid { id, .. } => out.push(ObjectId::Aid(*id)),
         Op::CreateCable { id, cable } | Op::DeleteCable { id, cable } => {
             out.push(ObjectId::Cable(*id));
             out.extend(cable.cores.iter().filter_map(member_object));
@@ -1146,6 +1156,7 @@ pub fn object_json(doc: &Document, id: ObjectId) -> Option<Value> {
         ObjectId::Wire(i) => doc.wires.get(&i).and_then(val),
         ObjectId::Cable(i) => doc.cables.get(&i).and_then(val),
         ObjectId::Route(i) => doc.routes.get(&i).and_then(val),
+        ObjectId::Aid(i) => doc.aids.get(&i).and_then(val),
         ObjectId::Definition(i) => doc.definitions.get(&i).and_then(val),
         ObjectId::Settings => val(&doc.settings),
     }
@@ -1198,6 +1209,7 @@ pub fn used_by(doc: &Document, id: ObjectId) -> Vec<ObjectId> {
         ObjectId::Cable(c) => {
             doc.cables.get(&c).into_iter().flat_map(|k| k.cores.iter().filter_map(member_object)).chain(reps_of(Subject::Cable(c))).collect()
         }
+        ObjectId::Aid(a) => reps_of(Subject::Aid(a)).collect(),
         ObjectId::Route(r) => doc
             .routes
             .iter()
@@ -1237,6 +1249,11 @@ fn subject_label(doc: &Document, s: Subject) -> String {
         Subject::Wire(c) => doc.wires.get(&c).and_then(|x| x.number_text()).map(str::to_string),
         Subject::Cable(c) => doc.cables.get(&c).and_then(|x| tag(&x.properties)),
         Subject::Route(r) => doc.routes.get(&r).map(|x| format!("line on {}", x.page.short())),
+        Subject::Aid(a) => doc.aids.get(&a).map(|x| match x {
+            ecad_model::Aid::Continuation { name: Some(n), .. } => format!("continuation {n}"),
+            ecad_model::Aid::Continuation { name: None, .. } => "unnamed continuation".into(),
+            ecad_model::Aid::Box(_) => "location box".into(),
+        }),
     };
     t.unwrap_or_else(|| format!("untagged {}", ObjectId::from(s).kind()))
 }
@@ -1266,6 +1283,7 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
         }
         ObjectId::Cable(c) => subject_label(doc, Subject::Cable(c)),
         ObjectId::Route(r) => subject_label(doc, Subject::Route(r)),
+        ObjectId::Aid(a) => subject_label(doc, Subject::Aid(a)),
         ObjectId::Terminal(i) => doc.terminals.get(&i).map_or_else(String::new, |t| {
             let name = t.label.clone().or_else(|| t.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| i.short());
             format!("{}:{name}", subject_label(doc, Subject::Device(t.component)))
@@ -1293,6 +1311,7 @@ pub fn objects(doc: &Document) -> Vec<ObjectId> {
     out.extend(doc.wires.keys().map(|i| ObjectId::Wire(*i)));
     out.extend(doc.cables.keys().map(|i| ObjectId::Cable(*i)));
     out.extend(doc.routes.keys().map(|i| ObjectId::Route(*i)));
+    out.extend(doc.aids.keys().map(|i| ObjectId::Aid(*i)));
     out.extend(doc.representations.keys().map(|i| ObjectId::Representation(*i)));
     out.extend(doc.items.keys().map(|i| ObjectId::Item(*i)));
     out.extend(doc.definitions.keys().map(|i| ObjectId::Definition(*i)));

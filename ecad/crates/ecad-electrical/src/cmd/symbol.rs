@@ -908,6 +908,10 @@ pub fn not_plain(doc: &Document, i: ItemId) -> String {
             Some(c) => format!("Wire {}", wire_number(doc, c)),
             None => "A line".to_string(),
         },
+        Some(Subject::Aid(a)) => match doc.aids.get(&a).map(ecad_model::Aid::kind) {
+            Some(ecad_model::AidKind::Box) => "A location box".to_string(),
+            Some(ecad_model::AidKind::Continuation) | None => "A continuation".to_string(),
+        },
         None => "Part of the selection".to_string(),
     };
     format!("{what} is not plain geometry; Make symbol takes lines, arcs and text.")

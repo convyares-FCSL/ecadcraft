@@ -37,6 +37,7 @@
 //! | I21 | A page's `folder` property names an existing folder | page → folder | touched pages and pages whose properties changed; pages in a touched folder |
 //! | I22 | The location and function lists hold each id and code once, codes with their sign | project | any change to the project's own data |
 //! | I23 | A route has 2 to 4096 finite points, lies on an existing page, and its ends land on existing connection points and on other routes of its page (design 072 F31) | route → page, terminals, routes | touched routes; routes on a touched page, landing on a touched terminal (a cable's or a cable reference's named points count as touched with it) or on a touched route |
+//! | I25 | A drawing aid is well formed: a box's panel temperature is a number (design 072 §6.2) | aid | touched aids |
 //!
 //! Not invariants of the document: properties (other than a page's `folder`), layer names, project
 //! settings. Named versions are
@@ -79,6 +80,8 @@ pub struct Touched {
     pub cables: BTreeSet<CableId>,
     /// Routes drawn, removed or changed (design 072 F31).
     pub routes: BTreeSet<RouteId>,
+    /// Drawing aids made, removed or changed (design 072 §6.2).
+    pub aids: BTreeSet<crate::id::AidId>,
     pub definitions: BTreeSet<DefinitionId>,
     /// A folder was added or removed, so the folder order changed.
     pub folder_order: bool,
@@ -148,6 +151,9 @@ impl Touched {
             }
             Effect::Route { id, .. } => {
                 self.routes.insert(*id);
+            }
+            Effect::Aid { id, .. } => {
+                self.aids.insert(*id);
             }
             Effect::Prop { object, .. } => match object {
                 ObjectRef::Device(id) => {
@@ -225,6 +231,9 @@ impl Document {
         for (id, r) in &self.routes {
             self.check_route(*id, r)?;
         }
+        for (id, a) in &self.aids {
+            self.check_aid(*id, a)?;
+        }
         self.check_folder_order()?;
         for id in self.folders.keys() {
             self.check_folder(*id)?;
@@ -241,6 +250,14 @@ impl Document {
     /// ([`crate::project::Project::problem`]). A page or the project naming an id with no entry
     /// is not a breach: it shows `?`.
     ///
+    /// I25: a drawing aid is well formed.
+    fn check_aid(&self, id: crate::id::AidId, a: &crate::aid::Aid) -> Result<()> {
+        match a.problem() {
+            Some(e) => bad(format!("aid {id}: {e}")),
+            None => Ok(()),
+        }
+    }
+
     /// I24 (design 072 §2.8, §2.6): every device's user values name a field the project defines
     /// and are of its kind; every device link joins two different devices that exist, once.
     fn check_project(&self) -> Result<()> {
@@ -357,7 +374,8 @@ impl Document {
         let subjects = (touched.devices.iter().map(|c| Subject::Device(*c)))
             .chain(touched.wires.iter().map(|c| Subject::Wire(*c)))
             .chain(touched.cables.iter().map(|c| Subject::Cable(*c)))
-            .chain(touched.routes.iter().map(|c| Subject::Route(*c)));
+            .chain(touched.routes.iter().map(|c| Subject::Route(*c)))
+            .chain(touched.aids.iter().map(|c| Subject::Aid(*c)));
         for s in subjects {
             reps.extend(referrers(&ix.subject_reps, &s));
         }
@@ -419,6 +437,11 @@ impl Document {
         for id in &routes {
             if let Some(r) = self.routes.get(id) {
                 self.check_route(*id, r)?;
+            }
+        }
+        for id in &touched.aids {
+            if let Some(a) = self.aids.get(id) {
+                self.check_aid(*id, a)?;
             }
         }
 
@@ -582,6 +605,7 @@ impl Document {
             Subject::Wire(c) => self.wires.contains_key(&c),
             Subject::Cable(c) => self.cables.contains_key(&c),
             Subject::Route(c) => self.routes.contains_key(&c),
+            Subject::Aid(c) => self.aids.contains_key(&c),
         };
         if !subject_exists {
             return bad(format!("representation {id} depicts a missing subject"));

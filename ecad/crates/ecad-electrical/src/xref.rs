@@ -1505,6 +1505,11 @@ impl RefIndex {
                 // Brief 049: an arrow's name group.
                 out.extend(crate::continuations::name_of(doc, c).and_then(|n| crate::continuations::group_key(doc, &n)));
             }
+            // Design 072 §6.2: a continuation's name group.
+            Subject::Aid(a) => {
+                let key = doc.aids.get(&a).and_then(ecad_model::Aid::continuation_name).map(|n| ecad_model::connectivity::name_key(n.as_str()));
+                out.extend(key.filter(|k| !k.is_empty()).and_then(|k| crate::continuations::group_key(doc, &k)));
+            }
             Subject::Wire(_) | Subject::Route(_) => {}
         };
         for op in ops {
@@ -1673,7 +1678,7 @@ impl Scope {
                 s.devices.insert(c);
             }
             Subject::Wire(w) => ends(s, w),
-            Subject::Cable(_) | Subject::Route(_) => {}
+            Subject::Cable(_) | Subject::Route(_) | Subject::Aid(_) => {}
         };
         let mut moved = false;
         for op in ops {

@@ -161,11 +161,13 @@ fn every_op_ledger() -> Ledger {
     // Lane 072 B step 5 (A15): two devices and a link between them.
     let pair: [ecad_model::DeviceId; 2] = [ids.fresh(), ids.fresh()];
     let link = ids.fresh();
+    let aid: ecad_model::AidId = ids.fresh();
     let link_v = ecad_model::DeviceLink { kind: ecad_model::LinkKind::MechanicalInterlock, a: pair[0], b: pair[1] };
     let linked = vec![
         Op::CreateDevice { id: pair[0], device: ecad_model::Device::default() },
         Op::CreateDevice { id: pair[1], device: ecad_model::Device::default() },
         Op::AddDeviceLink { id: link, link: link_v },
+        Op::CreateAid { id: aid, aid: ecad_model::Aid::Box(ecad_model::LocationBox::default()) },
     ];
     ledger.commit(Author::User, "linked", linked).unwrap();
     let moved = line(page, layer, 7.0);
@@ -252,6 +254,14 @@ fn every_op_ledger() -> Ledger {
         // Lane 072 B step 5 (A15): a link made and one removed.
         Op::AddDeviceLink { id: ids.fresh(), link: ecad_model::DeviceLink { kind: ecad_model::LinkKind::AuxiliaryBlock, ..link_v } },
         Op::RemoveDeviceLink { id: link, link: link_v },
+        // Lane 072 F (A15): a drawing aid made, changed and removed.
+        Op::CreateAid { id: ids.fresh(), aid: ecad_model::Aid::Continuation { name: None, caption: None } },
+        Op::ModifyAid {
+            id: aid,
+            before: ecad_model::Aid::Box(ecad_model::LocationBox::default()),
+            after: ecad_model::Aid::Box(ecad_model::LocationBox { panel_temperature: Some(ecad_model::units::Celsius(40.0)), ..Default::default() }),
+        },
+        Op::DeleteAid { id: aid, aid: ecad_model::Aid::Box(ecad_model::LocationBox::default()) },
     ];
     for op in ops {
         let name = op.name();

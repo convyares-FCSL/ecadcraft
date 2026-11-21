@@ -466,8 +466,20 @@ impl Scope {
             && !self.all_wires
     }
 
+    /// A drawing aid made, removed or changed: a box's pages.
+    fn aid<'a>(&mut self, doc: &Document, id: ecad_model::AidId, aids: impl IntoIterator<Item = &'a ecad_model::Aid>) {
+        if aids.into_iter().any(|a| a.as_box().is_some()) {
+            self.pages.extend(doc.representations_of(Subject::Aid(id)).map(|(_, r)| r.page));
+        }
+    }
+
     fn subject(&mut self, doc: &Document, s: Subject, page: PageId) {
         match s {
+            Subject::Aid(a) => {
+                if doc.aids.get(&a).is_some_and(|x| x.as_box().is_some()) {
+                    self.pages.insert(page);
+                }
+            }
             Subject::Device(c) if locations::is_box(doc, c) => {
                 self.pages.insert(page);
             }
@@ -526,6 +538,10 @@ impl Scope {
                 Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Cable(_), .. } => {}
                 // No check or output reads a device link yet (design 072 §2.6).
                 Op::AddDeviceLink { .. } | Op::RemoveDeviceLink { .. } => {}
+                // Design 072 §6.2: a box's values are its pages' context. A continuation has no
+                // connection point until lane F1b (TerminalOwner::Aid), so no list shows it yet.
+                Op::CreateAid { id, aid } | Op::DeleteAid { id, aid } => self.aid(doc, *id, [aid]),
+                Op::ModifyAid { id, before, after } => self.aid(doc, *id, [before, after]),
                 Op::ModifyProject { before, after } => {
                     use crate::designations::{Aspect, changed_codes, default_key};
                     // Brief 047: an item without its own location shows the project's.

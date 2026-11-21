@@ -678,6 +678,10 @@ pub fn plan_from_item_with(doc: &Document, ids: &mut IdAllocator, item: ItemId, 
             Subject::Device(c) => crate::devices::tag_words(doc, c),
             Subject::Wire(_) | Subject::Route(_) => "a wire".into(),
             Subject::Cable(_) => "a cable".into(),
+            Subject::Aid(a) => match doc.aids.get(&a).map(ecad_model::Aid::kind) {
+                Some(ecad_model::AidKind::Box) => "another location box".to_string(),
+                Some(ecad_model::AidKind::Continuation) | None => "a continuation".into(),
+            },
         };
         return Err(CmdError::refused(format!("That outline belongs to {who}; draw a box instead.")));
     }
