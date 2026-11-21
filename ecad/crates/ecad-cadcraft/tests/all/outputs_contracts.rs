@@ -310,7 +310,7 @@ fn generated_pages_follow_the_project_and_print() {
     h.run("setlocation", json!({"devices": hexes, "value": "+CP1"})).unwrap();
     let doc = h.doc();
     assert_eq!(ecad_cadcraft::generated::sheets_of(&doc, bom_page, Some(&Outputs::build_with(&doc, &ecad_cadcraft::text_style::EngineMetrics))), 2);
-    let parts = ecad_cadcraft::generated::parts_of(&doc, bom_page, None);
+    let parts = ecad_cadcraft::generated::parts_of(&doc, bom_page, ecad_cadcraft::project::engine_views().report_models(&doc).as_ref());
     let texts: Vec<String> = parts
         .iter()
         .filter_map(|p| match &p.kind {
@@ -344,8 +344,9 @@ fn cover_contents_and_revision_list_show_the_project() {
     let r = h.run("newpage", json!({"generated": "revisions"})).unwrap();
     let revs: PageId = id(&r, "page");
     let doc = h.doc();
+    let outputs = ecad_cadcraft::project::engine_views().report_models(&doc);
     let text = |p: PageId| -> Vec<String> {
-        ecad_cadcraft::generated::parts_of(&doc, p, None)
+        ecad_cadcraft::generated::parts_of(&doc, p, outputs.as_ref())
             .into_iter()
             .filter_map(|p| match p.kind {
                 cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value),

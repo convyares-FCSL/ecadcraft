@@ -145,7 +145,7 @@ fn zones_off_draws_no_ticks_or_labels() {
     let p1 = h.first_page();
     let count = |h: &mut H| {
         let d = h.doc();
-        ecad_cadcraft::generated::parts_of(&d, p1, None).len()
+        ecad_cadcraft::generated::parts_of(&d, p1, ecad_cadcraft::project::engine_views().report_models(&d).as_ref()).len()
     };
     let with = count(&mut h);
     h.run("setstyle", json!({"catalogue": "page", "id": "schematic", "fields": {"zones": "off"}})).unwrap();
@@ -294,7 +294,7 @@ fn cover_notes_are_written_one_per_line_and_bounded() {
 
 fn cover_texts(h: &mut H, cover: PageId) -> Vec<String> {
     let d = h.doc();
-    ecad_cadcraft::generated::parts_of(&d, cover, None)
+    ecad_cadcraft::generated::parts_of(&d, cover, ecad_cadcraft::project::engine_views().report_models(&d).as_ref())
         .into_iter()
         .filter_map(|p| match p.kind {
             cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value),
@@ -486,7 +486,7 @@ fn cover_rows_hide_reorder_and_relabel_the_generated_legend() {
     let d = h.doc();
     let shown: Vec<String> = ecad_cadcraft::front::legend_rows(&d).into_iter().filter(|(_, r)| r.shown).map(|(_, r)| r.label).collect();
     assert_eq!(shown, ["My lamp"]);
-    let texts: Vec<String> = ecad_cadcraft::generated::parts_of(&d, cover, None)
+    let texts: Vec<String> = ecad_cadcraft::generated::parts_of(&d, cover, ecad_cadcraft::project::engine_views().report_models(&d).as_ref())
         .into_iter()
         .filter_map(|p| match p.kind {
             cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value),

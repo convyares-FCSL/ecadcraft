@@ -186,6 +186,8 @@ impl Project {
         // Recovery path: fresh handles, so the check is by content against the document.
         let result = match result {
             Ok((d, map)) if recovery || !normal => {
+                // Worked out from scratch, so the check does not trust the kept models.
+                let outputs = self.derived.report_models(self.ledger.document());
                 let v = crate::verify::verify_page_pending(
                     self.ledger.document(),
                     page,
@@ -195,6 +197,7 @@ impl Project {
                     self.tolerance,
                     self.show_hidden_text,
                     self.pending,
+                    outputs.as_ref(),
                 );
                 if v.ok() {
                     self.events.record(EventKind::RecoveryVerified, command, head, Some(page), v.summary());
@@ -390,7 +393,7 @@ impl Project {
         for line in problems {
             self.events.record(EventKind::IndexRebuilt, None, head, None, line);
         }
-        if let Path::Interactive { page } = path {
+        if let Path::Interactive { page, .. } = path {
             // The edited page was drawn by the commit itself.
             pages.insert(page);
         }
@@ -426,6 +429,11 @@ impl Project {
         for line in echo {
             pg.echo(line);
         }
+        if let Path::Interactive { notes, .. } = path {
+            for line in notes {
+                pg.echo(line.clone());
+            }
+        }
     }
 }
 
@@ -434,22 +442,12 @@ impl Project {
 pub(super) enum Path<'a> {
     /// A command's transaction, a merge or a Restore: the touched pages on screen are drawn.
     Command,
-    /// A drawing commit on `page`, which the commit drew itself.
-    Interactive { page: PageId },
+    /// A drawing commit on `page`, which the commit drew itself. `notes` are the lines its
+    /// translation wrote for the command line, echoed after the views' own.
+    Interactive { page: PageId, notes: &'a [String] },
     /// An undo or redo: a page it changed may come to the front. `order_before` is the page order
     /// before it.
     History { order_before: &'a [PageId] },
-}
-
-/// What the functions not yet moved into a view worked out (design 064 §9: each view step deletes
-/// one of them and its field here).
-pub(super) struct Old {
-    pub echo: Vec<String>,
-}
-
-/// Add `old` to the views' `changes`.
-pub(super) fn pass_through(changes: &mut Changes, old: Old) {
-    changes.echo.extend(old.echo);
 }
 
 /// Handles whose entity differs between the engine's committed drawing and the projection, other

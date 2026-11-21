@@ -133,7 +133,7 @@ fn verify(h: &mut H, what: &str) {
 }
 
 fn texts(doc: &Document, page: PageId) -> Vec<String> {
-    ecad_cadcraft::generated::parts_of(doc, page, None)
+    ecad_cadcraft::generated::parts_of(doc, page, ecad_cadcraft::project::engine_views().report_models(doc).as_ref())
         .into_iter()
         .filter_map(|p| match p.kind {
             cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value),

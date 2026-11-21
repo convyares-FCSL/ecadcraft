@@ -264,9 +264,10 @@ pub fn input_of(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> (Fra
     (input, total)
 }
 
-/// Every frame and content part of `page`, with the report models of this state
-/// ([`ecad_electrical::derived::Views::detached`]) only when the project has a BOM page and none
-/// are given (debugger, verification, tests).
+/// Every frame and content part of `page`, the pages drawn from the report models with
+/// `outputs` (the project's kept models, or [`ecad_electrical::derived::Views::report_models`] for a state
+/// it does not keep).
+/// Without them those pages are drawn empty, one sheet each.
 pub fn parts_of(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> Vec<Part> {
     parts_of_pending(doc, page, outputs, false)
 }
@@ -274,15 +275,6 @@ pub fn parts_of(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> Vec<
 /// [`parts_of`] with the project's pending flag (design 033 §6): the Rev box and the cover say
 /// when the drawing has changed since the newest issue.
 pub fn parts_of_pending(doc: &Document, page: PageId, outputs: Option<&Outputs>, pending: bool) -> Vec<Part> {
-    let detached;
-    let outputs = match outputs {
-        Some(o) => Some(o),
-        None if has_bom_page(doc) => {
-            detached = crate::project::engine_views().detached(doc);
-            Some(detached.outputs())
-        }
-        None => None,
-    };
     let (input, total) = input_of(doc, page, outputs);
     let input = input.with_pending(doc, pending);
     page_parts(doc, page, &input, outputs, total)

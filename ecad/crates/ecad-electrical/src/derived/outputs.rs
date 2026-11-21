@@ -49,6 +49,11 @@ impl OutputsView {
         &self.model
     }
 
+    /// The models, the view dropped.
+    pub fn into_model(self) -> Outputs {
+        self.model
+    }
+
     /// The kept models, to put them out of step on purpose (tests of verify mode only).
     pub fn model_mut(&mut self) -> &mut Outputs {
         &mut self.model

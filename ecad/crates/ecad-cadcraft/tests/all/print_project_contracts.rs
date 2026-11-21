@@ -23,7 +23,7 @@ fn bom_with_missing() -> (H, PageId) {
 fn a_missing_value_is_a_boxed_question_mark_yellow_on_screen() {
     let (mut h, bom) = bom_with_missing();
     let doc = h.doc();
-    let parts = ecad_cadcraft::generated::parts_of(&doc, bom, None);
+    let parts = ecad_cadcraft::generated::parts_of(&doc, bom, ecad_cadcraft::project::engine_views().report_models(&doc).as_ref());
     // Missing cells are flagged; a block heading of devices without a location also reads `?`,
     // in the heading's own colour, and is not a cell.
     let marks: Vec<_> = parts.iter().filter(|p| p.aci == Some(FLAGGED_ACI) && matches!(&p.kind, EntityKind::Text(t) if t.value == MISSING)).collect();

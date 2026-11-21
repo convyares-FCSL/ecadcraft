@@ -135,9 +135,8 @@ impl DocumentOwner for Project {
         // A reference end on another page may be drawn from this page's objects (brief 010). Only
         // the active page is drawn (brief 016); the change log says which other pages changed,
         // for a preview of one of them.
-        let mut changes = self.finish_derived(pending);
-        pass_through(&mut changes, Old { echo: t.notes.clone() });
-        self.apply_changes(pg, c.command, changes, Path::Interactive { page });
+        let changes = self.finish_derived(pending);
+        self.apply_changes(pg, c.command, changes, Path::Interactive { page, notes: &t.notes });
         self.move_follow_up(pg, &moved, &label);
         self.sync_saved(pg);
         Verdict::Accept

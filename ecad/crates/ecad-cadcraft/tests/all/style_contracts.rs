@@ -197,7 +197,14 @@ fn a_location_style_restyles_boxes_and_a_page_frame_style_one_page() {
     // The page still verifies (a reopened page is not unavailable).
     let ok = h.pv(|p, pg| {
         let d = pg.drawing_of(p, page).unwrap();
-        ecad_cadcraft::verify::verify_page(p.ledger.document(), page, &d, &p.pages[&page].map).ok()
+        ecad_cadcraft::verify::verify_page(
+            p.ledger.document(),
+            page,
+            &d,
+            &p.pages[&page].map,
+            ecad_cadcraft::project::engine_views().report_models(p.ledger.document()).as_ref(),
+        )
+        .ok()
     });
     assert!(ok);
     // An own frame style chosen on one page changes only that page.

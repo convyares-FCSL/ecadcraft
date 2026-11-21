@@ -363,6 +363,14 @@ impl Views {
     pub fn detached(&self, doc: &Document) -> Detached {
         Detached { inputs: self.inputs.clone(), outputs: OutputsView::build(doc, &*self.inputs.metrics) }
     }
+
+    /// The report models of another state `doc`, worked out from scratch, when it has a page drawn
+    /// from them ([`crate::generated::has_bom_page`]); `None` otherwise. For drawing a state the
+    /// project does not keep (debugger, verification, a revision, tests): the project passes its
+    /// kept models instead.
+    pub fn report_models(&self, doc: &Document) -> Option<crate::outputs::kept::Outputs> {
+        crate::generated::has_bom_page(doc).then(|| OutputsView::build(doc, &*self.inputs.metrics).into_model())
+    }
 }
 
 /// Add one view's outcome to `changes`.

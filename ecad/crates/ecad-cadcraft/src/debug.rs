@@ -779,6 +779,8 @@ pub fn verify_projection(inputs: &ProjectionInputs) -> Check {
     if inputs.pages.is_empty() {
         lines.push("no page is open".into());
     }
+    // The report models of this copy, worked out once for every page.
+    let outputs = crate::project::engine_views().report_models(&inputs.doc);
     for p in &inputs.pages {
         let title = inputs.doc.pages.get(&p.id).map_or_else(|| p.id.short(), |x| x.title.to_string());
         let same = crate::project::project_page_pending(
@@ -790,6 +792,7 @@ pub fn verify_projection(inputs: &ProjectionInputs) -> Check {
             inputs.tolerance,
             inputs.hidden_text,
             inputs.pending,
+            outputs.as_ref(),
         )
         .map(|(d, m)| d.model == p.drawing.model && m == p.map && p.map.is_consistent());
         match same {
@@ -812,6 +815,7 @@ pub fn verify_projection(inputs: &ProjectionInputs) -> Check {
             inputs.tolerance,
             inputs.hidden_text,
             inputs.pending,
+            outputs.as_ref(),
         );
         ok &= v.ok();
         lines.push(format!("page {title}: {}", v.summary()));

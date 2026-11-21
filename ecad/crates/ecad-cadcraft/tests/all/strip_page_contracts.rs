@@ -307,7 +307,7 @@ fn print_book_prints_what_the_page_shows() {
     let page = strip_page(&mut g);
     let shown = parts(&mut g.h, page);
     let doc = g.h.doc();
-    let printed = generated::parts_of(&doc, page, None);
+    let printed = generated::parts_of(&doc, page, ecad_cadcraft::project::engine_views().report_models(&doc).as_ref());
     assert_eq!(shown, printed);
     let content: Vec<Part> = shown.iter().filter(|p| p.layer == generated::LAYER).cloned().collect();
     let flagged = content.iter().filter(|p| p.aci.is_some()).count();
@@ -341,7 +341,7 @@ fn empty_and_hostile_states_draw_without_crashing() {
     // The page's `strip` names a device that is then deleted.
     let mut doc = g.h.doc();
     doc.devices.remove(&g.x1);
-    let p = generated::parts_of(&doc, page, None);
+    let p = generated::parts_of(&doc, page, ecad_cadcraft::project::engine_views().report_models(&doc).as_ref());
     assert!(texts(&p).iter().any(|(t, _)| t == "?"), "a flagged `?`");
 }
 

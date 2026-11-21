@@ -24,6 +24,7 @@ use ecad_store::MemoryBackend;
 use serde_json::{Value, json};
 
 use crate::convert::{ECAD_PREFIX, MARKER_LAYER, block_name, entity_for, kind_for_primitive, marker_entity};
+use crate::outputs::kept::Outputs;
 use crate::translate;
 pub use crate::views::View;
 
@@ -35,7 +36,7 @@ mod page_tree;
 mod persistence;
 
 pub use changes::Change;
-use changes::{Old, Path, pass_through};
+use changes::Path;
 pub use handle_map::{HandleMap, Mapped};
 pub use owner::{LISP_REFUSED, REFUSED_COMMANDS};
 pub use page_tree::{PageRow, PageView, TreeRow, tree_rows};
@@ -386,12 +387,15 @@ fn placeholder_drawing() -> Drawing {
 }
 
 /// Project one page of `doc` onto `base` (a drawing whose tables and header are kept), reusing
-/// handles from `prev` for objects that are still there.
+/// handles from `prev` for objects that are still there. Pages drawn from the report models use
+/// `outputs` ([`crate::generated::parts_of`]).
 ///
 /// # Errors
 /// An item that cannot be drawn (missing layer or definition).
-pub fn project_page(doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap) -> Result<(Drawing, HandleMap), String> {
-    project_page_with(doc, page, base, prev, &BTreeSet::new(), 0.0)
+pub fn project_page(
+    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, outputs: Option<&Outputs>,
+) -> Result<(Drawing, HandleMap), String> {
+    project_page_with(doc, page, base, prev, &BTreeSet::new(), 0.0, outputs)
 }
 
 /// [`project_page`] with cable views (brief 005): each cable in `fan` whose fan can be drawn on
@@ -403,9 +407,9 @@ pub fn project_page(doc: &Document, page: PageId, base: &Drawing, prev: &HandleM
 /// # Errors
 /// As [`project_page`].
 pub fn project_page_with(
-    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64,
+    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, outputs: Option<&Outputs>,
 ) -> Result<(Drawing, HandleMap), String> {
-    project_page_framed(doc, page, base, prev, fan, tol, &crate::generated::parts_of(doc, page, None))
+    project_page_framed(doc, page, base, prev, fan, tol, &crate::generated::parts_of(doc, page, outputs))
 }
 
 /// [`project_page_with`] with the sheet frame's parts already worked out (the project keeps them
@@ -425,10 +429,11 @@ pub fn project_page_framed(
 ///
 /// # Errors
 /// As [`project_page`].
+#[allow(clippy::too_many_arguments)]
 pub fn project_page_with_hidden(
-    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool,
+    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool, outputs: Option<&Outputs>,
 ) -> Result<(Drawing, HandleMap), String> {
-    project_page_pending(doc, page, base, prev, fan, tol, hidden_text, false)
+    project_page_pending(doc, page, base, prev, fan, tol, hidden_text, false, outputs)
 }
 
 /// [`project_page_with_hidden`] with the project's pending flag (brief 033, design 033 §6): the
@@ -439,8 +444,10 @@ pub fn project_page_with_hidden(
 #[allow(clippy::too_many_arguments)]
 pub fn project_page_pending(
     doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool, pending: bool,
+    outputs: Option<&Outputs>,
 ) -> Result<(Drawing, HandleMap), String> {
-    project_page_shown(doc, page, base, prev, fan, tol, &crate::generated::parts_of_pending(doc, page, None, pending), hidden_text)
+    let frame = crate::generated::parts_of_pending(doc, page, outputs, pending);
+    project_page_shown(doc, page, base, prev, fan, tol, &frame, hidden_text)
 }
 
 /// [`project_page_framed`] with Show Hidden Text (see [`project_page_with_hidden`]).
@@ -992,6 +999,8 @@ impl Project {
     /// projection with the same handles.
     pub fn live_facts(&self, pg: &PagesRef<'_>) -> LiveFacts {
         let doc = self.ledger.document();
+        // Worked out from scratch, so the check does not trust the kept models.
+        let outputs = self.derived.report_models(doc);
         let pages = doc
             .page_order
             .iter()
@@ -1000,9 +1009,19 @@ impl Project {
                 let st = view.and_then(|v| v.uid).and_then(|u| pg.doc(u));
                 let matches = match (view, st) {
                     (Some(v), Some(st)) => Some(
-                        project_page_pending(doc, *p, &st.doc, &v.map, &self.views, self.tolerance, self.show_hidden_text, self.pending)
-                            .map(|(d, m)| d.model == st.doc.model && m == v.map && v.map.is_consistent())
-                            .unwrap_or(false),
+                        project_page_pending(
+                            doc,
+                            *p,
+                            &st.doc,
+                            &v.map,
+                            &self.views,
+                            self.tolerance,
+                            self.show_hidden_text,
+                            self.pending,
+                            outputs.as_ref(),
+                        )
+                        .map(|(d, m)| d.model == st.doc.model && m == v.map && v.map.is_consistent())
+                        .unwrap_or(false),
                     ),
                     _ => None,
                 };
