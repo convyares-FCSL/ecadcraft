@@ -354,7 +354,7 @@ pub fn print(
     let (scratch, sheets) = build_in(doc, pages, fan, tol, outputs, o.pending, !o.mono)?;
     let mut done = Printed { sheets: sheets.len(), ..Printed::default() };
     // Design 033 §6.2: nobody prints a pending book by mistake.
-    done.notes.extend(pending_note(doc, o.pending));
+    done.notes.extend(crate::revisions::pending_note(doc, o.pending));
     let generated: BTreeSet<PageId> = pages.iter().copied().filter(|p| crate::generated::kind_of(doc, *p).is_some()).collect();
     done.generated = sheets.iter().filter(|s| generated.contains(&s.page)).count();
     done.flagged = crate::generated::flagged(doc, &generated, outputs);
@@ -401,17 +401,6 @@ pub fn write_file(path: &str, bytes: &[u8]) -> Result<(), String> {
     }
 }
 
-/// Print Book's note for a project whose drawing changed since its newest issue (design 033
-/// §6.2), unless the marker is off.
-pub fn pending_note(doc: &Document, pending: bool) -> Option<String> {
-    let newest = crate::revisions::issued(doc).into_iter().next()?;
-    if !pending || crate::revisions::PendingStyle::of(doc) == crate::revisions::PendingStyle::Off {
-        return None;
-    }
-    let shown = crate::revisions::rev_box(doc, true);
-    Some(format!("The drawing has changed since Rev {}; the title block shows {shown}.", newest.rev()))
-}
-
 /// The dialog's notes for printing `scope` of `p` (brief 033): a continuation sheet's number
 /// chooses its whole page, and the pending-revision note. Reads only.
 pub fn notes(p: &mut crate::Project, scope: &Scope) -> Vec<String> {
@@ -421,7 +410,7 @@ pub fn notes(p: &mut crate::Project, scope: &Scope) -> Vec<String> {
     p.refresh_pending();
     let doc = p.ledger.document();
     let mut out = resolve_with(doc, scope, p.kept_outputs()).map(|r| r.notes).unwrap_or_default();
-    out.extend(pending_note(doc, p.pending));
+    out.extend(crate::revisions::pending_note(doc, p.pending));
     out
 }
 

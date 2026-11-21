@@ -170,7 +170,7 @@ fn one_cable_bar_and_one_box_per_cable() {
     let mut g = fixture(0x46_02);
     let page = strip_page(&mut g);
     let p = parts(&mut g.h, page);
-    let heavy = p.iter().filter(|x| matches!(x.kind, EntityKind::Line(_)) && x.weight == Some(ecad_cadcraft::look::CABLE_WEIGHT * 2)).count();
+    let heavy = p.iter().filter(|x| matches!(x.kind, EntityKind::Line(_)) && x.weight == Some(ecad_electrical::cable_look::CABLE_WEIGHT * 2)).count();
     assert_eq!(heavy, 1, "one cable bar");
     assert_eq!(texts(&p).iter().filter(|(t, _)| t == "-W01").count(), 1, "one cable box");
     let _ = (g.cable, g.m1, g.schematic);

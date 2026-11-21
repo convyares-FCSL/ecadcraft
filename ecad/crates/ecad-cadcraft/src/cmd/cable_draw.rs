@@ -19,9 +19,9 @@ use serde_json::{Value, json};
 
 use crate::cmd::input::{Bounded, Command, OrNull, Point, Typed, nullable};
 use crate::cmd::{err, on_any_page, on_project, plain_style};
-use crate::look::{FanEnd, MarkerEnd};
 use crate::slash::MAX_CABLE_MEMBERS;
 use crate::views::{self, View};
+use ecad_electrical::cable_look::{FanEnd, MarkerEnd};
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[
@@ -236,7 +236,7 @@ impl Command for CablefanParams {
                 return Err(CmdError::refused("no such cable"));
             }
             let title = views::cable_title(doc, cable);
-            let ends = crate::look::fan_ends(doc, page, cable, p.tolerance, &crate::look::font_width);
+            let ends = ecad_electrical::cable_look::fan_ends(doc, page, cable, p.tolerance, &crate::look::font_width);
             if ends.is_empty() {
                 return Err(CmdError::refused(format!("Cable {title} has no fanned end on this page.")));
             }
@@ -361,7 +361,7 @@ impl Command for CableviewParams {
             }
             let current = p.view_of(k);
             let target = view.unwrap_or_else(|| current.toggled());
-            if target == View::Fan && current != View::Fan && !views::offers_fan(doc, k) {
+            if target == View::Fan && current != View::Fan && !ecad_electrical::cable_look::offers_fan(doc, k) {
                 return Err(CmdError::refused(format!("Cable {} {}", views::cable_title(doc, k), views::ONE_WIRE)));
             }
             let (changed, stored) = p.set_view(pg, k, target);

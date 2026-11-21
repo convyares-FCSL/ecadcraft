@@ -1166,7 +1166,7 @@ impl CableView {
         }
         let r = commit(s, "cableview", &params)?;
         let shown = r.get("view").and_then(Value::as_str).and_then(View::parse).unwrap_or(View::Traditional);
-        let mut line = read(s, |p, _| Ok(crate::views::switched(p.ledger.document(), cable, shown)))
+        let mut line = read(s, |p, _| Ok(ecad_electrical::cable_look::switched(p.ledger.document(), cable, shown.name())))
             .unwrap_or_else(|_| format!("Cable {}… now shown in {} view.", short_hex(cable), shown.name()));
         if let Some(reason) = r.get("reason").and_then(Value::as_str) {
             line.pop();
@@ -1191,7 +1191,7 @@ impl CableView {
                 if let Some(k) = map.get(*h).and_then(|m| cable_named(doc, m).ok())
                     && seen.insert(k)
                 {
-                    let one_wire = !crate::views::offers_fan(doc, k);
+                    let one_wire = !ecad_electrical::cable_look::offers_fan(doc, k);
                     out.push((k, p.view_of(k), one_wire, crate::cables::cable_title(doc, k)));
                 }
             }
@@ -1244,7 +1244,7 @@ impl CableView {
                     let m = proj.pages.get(&page).and_then(|v| v.map.get(h)).ok_or(NOT_A_CABLE)?;
                     let doc = proj.ledger.document();
                     let k = cable_named(doc, m)?;
-                    Ok((k, proj.view_of(k), !crate::views::offers_fan(doc, k), crate::cables::cable_title(doc, k)))
+                    Ok((k, proj.view_of(k), !ecad_electrical::cable_look::offers_fan(doc, k), crate::cables::cable_title(doc, k)))
                 })
                 .map_err(other)?;
                 if current == View::Traditional && one_wire {
@@ -1414,7 +1414,7 @@ pub(crate) fn cablefan(s: &Session) -> R<Box<dyn Interactive>> {
 /// The cable end picked (cable, end name, its spine) while the join point is asked for.
 #[derive(Default)]
 struct CableFan {
-    picked: Option<(CableId, &'static str, crate::look::Spine)>,
+    picked: Option<(CableId, &'static str, ecad_electrical::cable_look::Spine)>,
 }
 
 const JOIN_NOTHING: &str = "Nothing there. Click a cable shown as a fan.";
@@ -1423,17 +1423,17 @@ const JOIN_NOT_FAN: &str = "That is not a cable shown as a fan.";
 impl CableFan {
     /// The fanned end a click names: a computed part of a fan-view cable, the end whose spine is
     /// nearest the click.
-    fn end_at(s: &Session, h: Handle, at: Pt) -> R<(CableId, &'static str, crate::look::Spine)> {
+    fn end_at(s: &Session, h: Handle, at: Pt) -> R<(CableId, &'static str, ecad_electrical::cable_look::Spine)> {
         read(s, |p, page| {
             let map = &p.pages.get(&page).ok_or(JOIN_NOT_FAN)?.map;
             let k = match map.get(h) {
                 Some(Mapped::Fan(k)) if map.is_fan(k) => k,
                 _ => return Err(JOIN_NOT_FAN.into()),
             };
-            let ends = crate::look::fan_ends(p.ledger.document(), page, k, p.tolerance, &crate::look::font_width);
-            let d = |f: &crate::look::FanEnd| f.spine.join_for(at).map_or(f64::INFINITY, |j| j.dist(at));
+            let ends = ecad_electrical::cable_look::fan_ends(p.ledger.document(), page, k, p.tolerance, &crate::look::font_width);
+            let d = |f: &ecad_electrical::cable_look::FanEnd| f.spine.join_for(at).map_or(f64::INFINITY, |j| j.dist(at));
             let fe = ends.iter().min_by(|a, b| d(a).total_cmp(&d(b))).ok_or(JOIN_NOT_FAN)?;
-            Ok((k, if fe.end == crate::look::MarkerEnd::A { "A" } else { "B" }, fe.spine))
+            Ok((k, if fe.end == ecad_electrical::cable_look::MarkerEnd::A { "A" } else { "B" }, fe.spine))
         })
         .map_err(other)
     }

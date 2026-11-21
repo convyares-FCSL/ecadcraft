@@ -462,6 +462,17 @@ pub fn pending_rev(doc: &Document) -> String {
     }
 }
 
+/// Print Book's note for a project whose drawing changed since its newest issue (design 033
+/// §6.2), unless the marker is off.
+pub fn pending_note(doc: &Document, pending: bool) -> Option<String> {
+    let newest = issued(doc).into_iter().next()?;
+    if !pending || PendingStyle::of(doc) == PendingStyle::Off {
+        return None;
+    }
+    let shown = rev_box(doc, true);
+    Some(format!("The drawing has changed since Rev {}; the title block shows {shown}.", newest.rev()))
+}
+
 /// Check a rev text.
 ///
 /// # Errors

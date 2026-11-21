@@ -25,9 +25,10 @@ use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Input, Session};
 use common::{H, id};
 use ecad_cadcraft::interact::{hover_lines, overlay_marks};
-use ecad_cadcraft::look::{self, MarkerEnd, Role, Shape};
+use ecad_cadcraft::look;
 use ecad_cadcraft::views::{self, FanOnPage, Settings};
 use ecad_cadcraft::{Persistence, Project, ProjectHandle};
+use ecad_electrical::cable_look::{self, MarkerEnd, Role, Shape};
 use ecad_model::{
     CableId, Color, Core, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId, Style, Subject, Transaction,
     WireId,
@@ -122,10 +123,10 @@ fn view(h: &mut H, k: CableId, v: &str) {
     h.run("cableview", json!({"cable": k.hex(), "view": v})).unwrap();
 }
 
-fn drawing(h: &mut H, page: PageId, k: CableId, fan: bool) -> look::CableDrawing {
+fn drawing(h: &mut H, page: PageId, k: CableId, fan: bool) -> cable_look::CableDrawing {
     let doc = h.doc();
     let tol = h.p(|p| p.tolerance);
-    look::cable_on_page(&doc, page, k, fan, tol, &look::font_width)
+    cable_look::cable_on_page(&doc, page, k, fan, tol, &look::font_width)
 }
 
 fn fan(h: &mut H, page: PageId, k: CableId) -> views::Fan {
@@ -137,7 +138,7 @@ fn fan(h: &mut H, page: PageId, k: CableId) -> views::Fan {
     }
 }
 
-fn of_role(f: &look::CableDrawing, role: Role) -> Vec<&look::Part> {
+fn of_role(f: &cable_look::CableDrawing, role: Role) -> Vec<&cable_look::Part> {
     f.parts.iter().filter(|p| p.role == role).collect()
 }
 
@@ -148,7 +149,7 @@ fn path(s: &Shape) -> Vec<Pt> {
     }
 }
 
-fn text_of(p: &look::Part) -> (Pt, f64, String) {
+fn text_of(p: &cable_look::Part) -> (Pt, f64, String) {
     match &p.shape {
         Shape::Text { at, rotation, value } => (*at, *rotation, value.clone()),
         other => panic!("not a text: {other:?}"),
@@ -159,7 +160,7 @@ fn near(a: Pt, b: Pt) -> bool {
     a.near(b, 1e-9)
 }
 
-fn all_finite(d: &look::CableDrawing) -> bool {
+fn all_finite(d: &cable_look::CableDrawing) -> bool {
     d.parts.iter().all(|p| match &p.shape {
         Shape::Path { points, .. } => points.iter().all(|q| q.is_finite()),
         Shape::Arc { center, radius, start, end } => center.is_finite() && radius.is_finite() && start.is_finite() && end.is_finite(),
@@ -539,7 +540,7 @@ fn ac4_fan_labels_at_the_tail_start_on_both_sides() {
     f.h.run("cablecore", json!({"cable": f.c1.hex(), "cores": ["1", "2", "3", "4"]})).unwrap();
     view(&mut f.h, f.c1, "fan");
     let d = fan(&mut f.h, f.page, f.c1);
-    let (g, lift) = (look::LABEL_GAP, 0.3 * hh());
+    let (g, lift) = (cable_look::LABEL_GAP, 0.3 * hh());
     for (i, y) in [0.0, 5.0, 10.0, 15.0].into_iter().enumerate() {
         let (core, wire) = (format!("{}", i + 1), format!("W{}", i + 1));
         let (wc, ww) = ((look::font_width(&core) * hh()), (look::font_width(&wire) * hh()));
@@ -553,10 +554,10 @@ fn ac4_fan_labels_at_the_tail_start_on_both_sides() {
         };
         // Left: S = (20, y).
         assert!(near(find(Role::CoreLabel, &core, true), Pt::new(20.0 - g - wc, y + lift)), "left core {core}");
-        assert!(near(find(Role::WireNumber, &wire, true), Pt::new(20.0 - g - wc - look::label_spacing(hh()) - ww, y + lift)), "left {wire}");
+        assert!(near(find(Role::WireNumber, &wire, true), Pt::new(20.0 - g - wc - cable_look::label_spacing(hh()) - ww, y + lift)), "left {wire}");
         // Right: S = (100, y).
         assert!(near(find(Role::CoreLabel, &core, false), Pt::new(100.0 + g, y + lift)), "right core {core}");
-        assert!(near(find(Role::WireNumber, &wire, false), Pt::new(100.0 + g + wc + look::label_spacing(hh()), y + lift)), "right {wire}");
+        assert!(near(find(Role::WireNumber, &wire, false), Pt::new(100.0 + g + wc + cable_look::label_spacing(hh()), y + lift)), "right {wire}");
         // Labels sit on their own wire's tail, never on the spine side of the tail start.
         let tail_end_x = |left: bool| if left { 0.0 } else { 120.0 };
         for left in [true, false] {
@@ -744,7 +745,7 @@ fn ac6_long_and_empty_labels_draw_safely_in_both_views() {
             let ww = look::font_width(&"T".repeat(24)) * hh();
             // The gap between core label and wire number is one text height (overseer decision on
             // the brief 009 review); the gaps at either end stay `ecad.label-gap`.
-            let need = 2.0 * look::LABEL_GAP + look::label_spacing(hh()) + wc + ww;
+            let need = 2.0 * cable_look::LABEL_GAP + cable_look::label_spacing(hh()) + wc + ww;
             for t in of_role(&d, Role::Tail) {
                 let p = path(&t.shape);
                 assert!((p[0].dist(p[1]) - need).abs() < 1e-6, "tail {} long, want {need}", p[0].dist(p[1]));
@@ -830,7 +831,7 @@ fn ac6_nan_infinite_and_overflowing_geometry_never_panics() {
         let mut doc = base.clone();
         doc.items.get_mut(&route).unwrap().kind = ItemKind::Primitive(prim);
         for fan_view in [false, true] {
-            let d = look::cable_on_page(&doc, f.page, f.c1, fan_view, 1e-6, &look::font_width);
+            let d = cable_look::cable_on_page(&doc, f.page, f.c1, fan_view, 1e-6, &look::font_width);
             assert!(all_finite(&d), "{name}, fan {fan_view}: every shape finite");
         }
     }
@@ -840,17 +841,17 @@ fn ac6_nan_infinite_and_overflowing_geometry_never_panics() {
         let mut doc = base.clone();
         doc.items.get_mut(&rep_item).unwrap().kind = ItemKind::Primitive(Primitive::Point { at });
         for fan_view in [false, true] {
-            let d = look::cable_on_page(&doc, f.page, f.c1, fan_view, 1e-6, &look::font_width);
+            let d = cable_look::cable_on_page(&doc, f.page, f.c1, fan_view, 1e-6, &look::font_width);
             assert!(all_finite(&d), "reference at {at:?}, fan {fan_view}: every shape finite");
         }
     }
     // Hostile tolerances and measuring functions.
     for tol in [f64::NAN, f64::INFINITY, -1.0, 0.0, 1e300] {
-        let d = look::cable_on_page(&base, f.page, f.c1, true, tol, &look::font_width);
+        let d = cable_look::cable_on_page(&base, f.page, f.c1, true, tol, &look::font_width);
         assert!(all_finite(&d), "tol {tol}");
     }
     for m in [f64::NAN, f64::INFINITY, -5.0, 1e308] {
-        let d = look::cable_on_page(&base, f.page, f.c1, true, 1e-6, &move |_| m);
+        let d = cable_look::cable_on_page(&base, f.page, f.c1, true, 1e-6, &move |_| m);
         assert!(all_finite(&d), "measure {m}");
     }
     // Through the JSON form: wires at ±1e12 and at 1e300 (finite but overflowing in products),
@@ -1021,7 +1022,7 @@ fn ac6_huge_finite_reference_point_draws_only_finite_geometry() {
             f.h.check();
             let d = drawing(&mut f.h, f.page, f.c1, v == "fan");
             let bad: Vec<_> =
-                d.parts.iter().filter(|p| !all_finite(&look::CableDrawing { parts: vec![(*p).clone()], ..Default::default() })).collect();
+                d.parts.iter().filter(|p| !all_finite(&cable_look::CableDrawing { parts: vec![(*p).clone()], ..Default::default() })).collect();
             assert!(bad.is_empty(), "reference at {at:?}, {v}: non-finite parts {bad:?}");
         }
     }
@@ -1060,7 +1061,7 @@ fn ac6_interactive_spaces_clear_like_a_dot() {
 // --------------------------------------------------------------------------- round 2: cablefan
 
 /// The junction of the fan's trunk with the spine at x = `x` (22.5 left, 97.5 right in H).
-fn junction(d: &look::CableDrawing, x: f64) -> Pt {
+fn junction(d: &cable_look::CableDrawing, x: f64) -> Pt {
     of_role(d, Role::Trunk)
         .into_iter()
         .flat_map(|p| path(&p.shape))
@@ -1243,7 +1244,7 @@ fn cablefan_hostile_stored_join_draws_finite() {
     for at in [Pt::new(1e308, 1e308), Pt::new(-1e308, 1e308), Pt::new(f64::NAN, 0.0), Pt::new(0.0, f64::INFINITY)] {
         let mut doc = base.clone();
         doc.items.get_mut(&item).unwrap().kind = ItemKind::Primitive(Primitive::Point { at });
-        let d = look::cable_on_page(&doc, f.page, f.c1, true, 1e-6, &look::font_width);
+        let d = cable_look::cable_on_page(&doc, f.page, f.c1, true, 1e-6, &look::font_width);
         assert!(d.is_fan(), "{at:?}");
         assert!(all_finite(&d), "{at:?}");
         let j = junction(&d, 22.5);

@@ -461,7 +461,7 @@ fn level_boxes(pen: &mut Pen, placed: &[Placed<'_>], g: &Geometry, yc: f64) {
                     && xs.len() > 1
                 {
                     let y = yc - half + 1.5 + k as f64 * 1.0;
-                    pen.line_w((*a, y), (*z, y), crate::look::CABLE_WEIGHT);
+                    pen.line_w((*a, y), (*z, y), ecad_electrical::cable_look::CABLE_WEIGHT);
                 }
             }
         }
@@ -584,7 +584,7 @@ fn cables(
         .collect();
     for ((k, a, b, tag, far), lane) in order.iter().zip(&lanes) {
         let y = bar0 - *lane as f64 * CABLE_LANE_MM;
-        pen.line_w((*a - 1.0, y), (*b + 1.0, y), crate::look::CABLE_WEIGHT.saturating_mul(2));
+        pen.line_w((*a - 1.0, y), (*b + 1.0, y), ecad_electrical::cable_look::CABLE_WEIGHT.saturating_mul(2));
         // The box under the bar's first lead, joined to the bar.
         let (bx0, bx1) = (a - BOX_W_MM / 2.0, a + BOX_W_MM / 2.0);
         pen.line((*a, y), (*a, box_top));
