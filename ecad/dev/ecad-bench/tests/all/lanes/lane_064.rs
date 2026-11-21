@@ -17,6 +17,9 @@
 //! The Properties feed (`PropsFeed`) equals the old `props::touched` (kept here) on every
 //! transaction of the same history.
 //!
+//! Step 7: the report models' scope (`outputs::Scope::note`, over effects) equals the old per-op
+//! `Scope::collect` notes (kept here) on every transaction of the same history.
+//!
 //! Step 5: the references view (`RefsView`, its update map over effects) against the whole
 //! document on every transaction of the same history: every page whose reference texts, tables,
 //! connector parts, continuation arrows or cable reference texts differ is among its pages; its
@@ -908,5 +911,330 @@ fn the_props_feed_matches_its_old_function_on_the_small_corpus() {
 #[ignore = "slow: generates the medium bench project"]
 fn the_props_feed_matches_its_old_function_on_the_medium_corpus() {
     let n = props_feed_agrees(tier("medium").unwrap());
+    assert!(n > 10, "{n} transactions");
+}
+
+// ---------------------------------------------------------------- step 7: the report models' scope
+
+/// `outputs::Scope::collect`'s per-op notes as they were before design 064 step 7 (its net mates
+/// and renamed users, `Scope::close`, are unchanged), with the scope's fields in the same order.
+#[derive(Debug, Default)]
+struct OldScope {
+    devices: BTreeSet<DeviceId>,
+    pages: BTreeSet<PageId>,
+    route_pages: BTreeSet<PageId>,
+    wires: BTreeSet<ecad_model::WireId>,
+    cables: BTreeSet<ecad_model::CableId>,
+    project_location: bool,
+    renamed: BTreeSet<String>,
+    potentials: BTreeSet<String>,
+    sheet: bool,
+    styles: bool,
+    strip_keys: BTreeSet<String>,
+    connector_keys: BTreeSet<String>,
+    bom_view: bool,
+    all_wires: bool,
+}
+
+impl OldScope {
+    fn subject(&mut self, doc: &Document, s: Subject, page: PageId) {
+        match s {
+            Subject::Device(c) if ecad_electrical::locations::is_box(doc, c) => {
+                self.pages.insert(page);
+            }
+            Subject::Device(c) => {
+                self.devices.insert(c);
+            }
+            Subject::Wire(w) => {
+                self.wires.insert(w);
+            }
+            Subject::Cable(k) => {
+                self.cables.insert(k);
+            }
+            // A route's drawing: the wires at the points it lands on (where their ends are drawn).
+            Subject::Route(r) => {
+                if let Some(route) = doc.routes.get(&r) {
+                    for t in route.points_landed() {
+                        self.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+                    }
+                }
+            }
+        }
+    }
+
+    fn notes(&mut self, doc: &Document, ops: &[Op]) {
+        for op in ops {
+            match op {
+                Op::CreateDevice { id, device } | Op::DeleteDevice { id, device } | Op::ModifyDevice { id, after: device, .. } => {
+                    if ecad_electrical::locations::is_box_component(device) {
+                        self.pages.extend(doc.representations_of(Subject::Device(*id)).map(|(_, r)| r.page));
+                    } else {
+                        self.devices.insert(*id);
+                    }
+                }
+                Op::SetDeviceDefinition { id, .. } => {
+                    if ecad_electrical::locations::is_box(doc, *id) {
+                        self.pages.extend(doc.representations_of(Subject::Device(*id)).map(|(_, r)| r.page));
+                    } else {
+                        self.devices.insert(*id);
+                    }
+                }
+                Op::SetProperty { object: ObjectRef::Device(c), key, .. } => {
+                    if ecad_electrical::locations::is_box(doc, *c) {
+                        self.pages.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
+                    } else {
+                        self.devices.insert(*c);
+                    }
+                    if key == ecad_model::connectivity::NAME {
+                        self.cables.extend(old_continuation_group_cables(doc, *c));
+                    }
+                }
+                Op::SetProperty { object: ObjectRef::Wire(w), .. } | Op::ModifyWire { id: w, .. } => {
+                    self.wires.insert(*w);
+                }
+                // A cable is written whole (`ModifyCable`); `SetProperty` on one is refused.
+                Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Cable(_), .. } => {}
+                // No check or output reads a device link yet (design 072 §2.6).
+                Op::AddDeviceLink { .. } | Op::RemoveDeviceLink { .. } => {}
+                Op::ModifyProject { before, after } => {
+                    use ecad_electrical::designations::{Aspect, changed_codes, default_key};
+                    // Brief 047: an item without its own location shows the project's.
+                    if default_key(before, Aspect::Location) != default_key(after, Aspect::Location) {
+                        self.project_location = true;
+                    }
+                    // Brief 052: a rename in the project's list re-keys its users' rows.
+                    for a in Aspect::ALL {
+                        for k in changed_codes(before, after, a) {
+                            // Brief 059: the cables planning an end there show its new code.
+                            self.cables.extend(ecad_electrical::cables::planning(doc, &k));
+                            self.renamed.insert(k);
+                        }
+                    }
+                }
+                // Brief 050a: a standard's value of a registry key reaches the same views.
+                Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => {
+                    // Brief 050b: the project's or standard's wire category reaches every wire row.
+                    if key == ecad_model::wiring::WIRE_CATEGORY {
+                        self.all_wires = true;
+                    }
+                    // Brief 036: the registry's `terminal.*` defaults reach strips the same way.
+                    if key.starts_with("strip_") || key.starts_with("terminal.") {
+                        self.strip_keys.insert(key.clone());
+                    }
+                    // Brief 044: the registry's `connector.*` defaults reach connectors.
+                    if key.starts_with("connector.") {
+                        self.connector_keys.insert(key.clone());
+                    }
+                    // Brief 047 (design 047 §10): the BOM's report settings.
+                    if key.starts_with("bom.") {
+                        self.bom_view = true;
+                    }
+                }
+                // Brief 050b (design 050 §10): a wire category reaches the rows of the conductors
+                // resolving to it: its explicit users, the wires of the potentials it names (before
+                // and after), and every wire when it is the project's or standard's choice.
+                Op::SetStyle { catalogue, id, before, after, .. } if *catalogue == ecad_model::StyleCatalogue::Wire => {
+                    for (_, o) in ecad_electrical::styles::explicit_users(doc, ecad_model::StyleCatalogue::Wire, id) {
+                        if let ObjectRef::Wire(c) = o {
+                            self.wires.insert(c);
+                        }
+                    }
+                    for r in [before, after].into_iter().flatten() {
+                        if let Some(pot) = r.body.wire().and_then(|w| w.potential.as_ref()) {
+                            self.potentials.insert(pot.as_str().to_lowercase());
+                        }
+                    }
+                    if let Some(r) = ecad_electrical::styles::field_of(doc, ecad_model::StyleCatalogue::Wire, id, "potential", None) {
+                        self.potentials.insert(r.text().trim().to_lowercase());
+                    }
+                    if ecad_electrical::styles::chosen(
+                        doc,
+                        &ecad_electrical::defaults::styles::WIRE_CATEGORY,
+                        ecad_electrical::defaults::Scope::project(),
+                    ) == *id
+                    {
+                        self.all_wires = true;
+                    }
+                }
+                // Brief 059 (design 059 §8): a cable type's cores, shield and gland reach its users' rows.
+                Op::SetStyle { catalogue, id, .. } if *catalogue == ecad_model::StyleCatalogue::Cable => {
+                    self.cables.extend(ecad_electrical::styles::cable::users(doc, id));
+                }
+                // Other style records and the standard header change no report row.
+                Op::SetStyle { .. } | Op::SetStandard { .. } => {}
+                Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
+                    self.devices.insert(terminal.component);
+                    // Brief 028: a relabelled terminal (Remove + Add of one ID) renames its wires' ends.
+                    self.wires.extend(doc.ends_at(*id).into_iter().map(|(w, _)| w));
+                }
+                Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => self.subject(doc, rep.subject, rep.page),
+                Op::ModifyRepresentation { before, after, .. } => {
+                    self.subject(doc, before.subject, before.page);
+                    self.subject(doc, after.subject, after.page);
+                }
+                Op::AddItem { id, .. } | Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => {
+                    if let Some((_, r)) = doc.representation_of_item(*id) {
+                        self.subject(doc, r.subject, r.page);
+                    }
+                }
+                Op::CreateWire { id, .. } | Op::DeleteWire { id, .. } => {
+                    self.wires.insert(*id);
+                }
+                // A cable is made or deleted with its cores (design 072 §4.5): their wires' rows.
+                Op::CreateCable { id, cable } | Op::DeleteCable { id, cable } => {
+                    self.cables.insert(*id);
+                    self.wires.extend(cable.cores.iter().filter_map(|m| m.wire()));
+                }
+                // Design 072 §4.3: a route moved, added or removed moves where the wires at the
+                // points it lands on are drawn.
+                Op::AddRoute { route, .. } | Op::RemoveRoute { route, .. } => {
+                    for t in route.points_landed() {
+                        self.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+                    }
+                }
+                Op::ModifyRoute { before, after, .. } => {
+                    for t in before.points_landed().chain(after.points_landed()) {
+                        self.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
+                    }
+                }
+                Op::ModifyCable { id, before, after } => {
+                    self.cables.insert(*id);
+                    self.wires.extend(before.cores.iter().chain(&after.cores).filter_map(|m| m.wire()));
+                }
+                Op::SetProjectSettings { before, after } => {
+                    let rows = |w: &ecad_model::wiring::WiringSettings| -> std::collections::BTreeMap<String, ecad_model::wiring::PotentialDef> {
+                        w.potentials.iter().map(|p| (p.name.trim().to_lowercase(), p.clone())).collect()
+                    };
+                    let (a, b) = (rows(&before.wiring), rows(&after.wiring));
+                    for k in a.keys().chain(b.keys()) {
+                        if a.get(k) != b.get(k) {
+                            self.potentials.insert(k.clone());
+                            if !(a.contains_key(k) && b.contains_key(k)) {
+                                self.potentials.insert(String::new());
+                            }
+                        }
+                    }
+                    self.sheet |= before.sheet != after.sheet;
+                    self.styles |= before.reference_style != after.reference_style || before.wiring.colour_style() != after.wiring.colour_style();
+                }
+                Op::AddPage { id, .. } | Op::RemovePage { id, .. } => {
+                    self.pages.insert(*id);
+                    self.route_pages.insert(*id);
+                }
+                // Design 072 §5.1: a page changed in place; its number and title are where rows
+                // say they are.
+                Op::ModifyPage { id, before, after } => {
+                    if before.title != after.title || before.folder != after.folder {
+                        self.pages.insert(*id);
+                        self.route_pages.insert(*id);
+                    }
+                    if before.number != after.number {
+                        self.route_pages.insert(*id);
+                    }
+                }
+                Op::EmbedDefinition { .. }
+                | Op::RemoveDefinition { .. }
+                | Op::AddLayer { .. }
+                | Op::RemoveLayer { .. }
+                | Op::NameVersion { .. }
+                | Op::UnnameVersion { .. }
+                | Op::AddFolder { .. }
+                | Op::RemoveFolder { .. }
+                | Op::ModifyFolder { .. } => {}
+            }
+        }
+    }
+}
+
+fn old_continuation_group_cables(doc: &Document, c: DeviceId) -> BTreeSet<ecad_model::CableId> {
+    let Some(key) = doc.devices.get(&c).and_then(|x| ecad_model::connectivity::continuation_key(&x.properties)) else {
+        return BTreeSet::new();
+    };
+    let mut group = doc.continuations_named(&key);
+    if !group.contains(&c) {
+        group.push(c);
+    }
+    let mut out = BTreeSet::new();
+    for k in group {
+        for (t, _) in doc.terminals_of(k) {
+            for (w, _) in doc.ends_at(t) {
+                out.extend(doc.cables_of(w));
+            }
+        }
+    }
+    out
+}
+
+/// `Outputs::moves_page_numbers` as it was before design 064 step 7 (per op).
+fn old_moves_page_numbers(ops: &[Op]) -> bool {
+    ops.iter().any(|op| match op {
+        Op::AddPage { .. } | Op::RemovePage { .. } => true,
+        // Brief 046 (review): a page's style or sheet changes its sheet count on the document
+        // alone, so the count before cannot be compared.
+        Op::ModifyPage { before, after, .. } => {
+            before.number != after.number
+                || before.sheet != after.sheet
+                || before.display.get(ecad_electrical::defaults::strip_pages::STYLE.key)
+                    != after.display.get(ecad_electrical::defaults::strip_pages::STYLE.key)
+        }
+        Op::SetProperty { object: ObjectRef::Page(_), key, .. } => key == ecad_electrical::defaults::strip_pages::STYLE.key,
+        Op::SetProperty { object: ObjectRef::Project, key, .. } => key == ecad_electrical::defaults::strip_pages::STYLE.key,
+        Op::ModifyProject { before, after } => ecad_electrical::revisions::issue_changed(before, after),
+        Op::SetProperty { object: ObjectRef::Standard, key, .. } => key == ecad_electrical::defaults::strip_pages::STYLE.key,
+        Op::SetProjectSettings { before, after } => before.sheet != after.sheet,
+        _ => false,
+    })
+}
+
+/// The report models' notes over effects (`Scope::note`, `Outputs::moves_page_number`) equal the
+/// old per-op ones on every
+/// transaction of `tier`'s churned history, on the document before and after it, with five undos
+/// and five redos at its end. Returns how many transactions were compared.
+fn outputs_scope_agrees(tier: Tier) -> usize {
+    let mut g = generate(tier, Variant::Churned).unwrap();
+    for undo in [true, true, true, true, true, false, false, false, false, false] {
+        let r = if undo { g.ledger.undo_at(Author::User, None) } else { g.ledger.redo_at(Author::User, None) };
+        r.unwrap();
+    }
+    assert_eq!(g.ledger.base(), 0, "the corpus replays from the empty document");
+    let mut doc = Document::default();
+    let (mut checked, mut some) = (0, 0);
+    let compare = |doc: &Document, ops: &[Op], what: &str| -> bool {
+        let mut old = OldScope::default();
+        old.notes(doc, ops);
+        let mut new = ecad_electrical::outputs::Scope::default();
+        for e in &ecad_model::effect::Effects::of(ops) {
+            new.note(doc, e);
+        }
+        assert_eq!(format!("{new:?}"), format!("{old:?}").replacen("OldScope", "Scope", 1), "{what}");
+        let moves = ecad_model::effect::Effects::of(ops).iter().any(ecad_electrical::outputs::kept::Outputs::moves_page_number);
+        assert_eq!(moves, old_moves_page_numbers(ops), "{what}: page numbers");
+        !new.is_empty()
+    };
+    for tx in g.ledger.log() {
+        let what = format!("{} transaction {} {:?}", tier.name, tx.seq, tx.label);
+        some += usize::from(compare(&doc, &tx.ops, &format!("{what}: before")));
+        for op in &tx.ops {
+            op.apply(&mut doc).unwrap();
+        }
+        compare(&doc, &tx.ops, &format!("{what}: after"));
+        checked += 1;
+    }
+    assert!(some > 0, "some transaction is in scope");
+    checked
+}
+
+/// Step 7: the report models' notes on the small tier's recorded history.
+#[test]
+fn the_outputs_scope_matches_its_old_notes_on_the_small_corpus() {
+    let n = outputs_scope_agrees(tier("small").unwrap());
+    assert!(n > 10, "{n} transactions");
+}
+
+/// Step 7: the report models' notes on the medium tier's recorded history (design 064 §10).
+#[test]
+#[ignore = "slow: generates the medium bench project"]
+fn the_outputs_scope_matches_its_old_notes_on_the_medium_corpus() {
+    let n = outputs_scope_agrees(tier("medium").unwrap());
     assert!(n > 10, "{n} transactions");
 }
