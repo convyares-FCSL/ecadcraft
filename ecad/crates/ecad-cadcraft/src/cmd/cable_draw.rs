@@ -86,8 +86,8 @@ impl Command for CableslashParams {
                         "cable": plan.cable.hex(),
                         "item": plan.item.hex(),
                         "representation": plan.rep.hex(),
-                        "conductors": crate::cmd::cable::crossing_wires(&found.members),
-                        "lines": crate::cmd::cable::crossing_lines(&found.members),
+                        "conductors": rules::crossing_wires(&found.members),
+                        "lines": rules::crossing_lines(&found.members),
                         "ignored": found.ignored.iter().map(|(i, _)| i.hex()).collect::<Vec<_>>(),
                         "touched": found.touched.iter().map(|c| c.hex()).collect::<Vec<_>>(),
                     }))

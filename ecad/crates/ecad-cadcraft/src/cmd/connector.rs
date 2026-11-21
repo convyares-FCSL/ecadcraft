@@ -17,7 +17,7 @@ use std::collections::BTreeSet;
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
 use ecad_electrical::cmd::connector::{self as rules, ConnectorInput, Made, NamesInput, Pinlabel, PinlabelInput};
-use ecad_model::{Document, PageId, Placement, Pt, TerminalId, WireId};
+use ecad_model::{PageId, Placement, Pt, TerminalId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -51,30 +51,7 @@ transaction; with terminal and to \"next\", moves that one drawn pin to its half
     ]
 }
 
-fn out_of_range(p: Pt) -> bool {
-    !(p.is_finite() && p.x.abs() <= crate::interact::MAX_COORD && p.y.abs() <= crate::interact::MAX_COORD)
-}
-
 // ---------------------------------------------------------------- connector (§4)
-
-fn result_json(doc: &Document, m: &Made, message: &str) -> Value {
-    json!({
-        "component": m.component.hex(),
-        "tag": m.tag,
-        "new": m.new,
-        "terminals": m.shown.iter().map(|x| json!({
-            "terminal": x.terminal.hex(),
-            "side": x.side.word(),
-            "key": x.side.key(),
-            "label": x.name,
-            "pin": x.name,
-            "name": cn::pin_name(doc, x.terminal).unwrap_or_else(|| format!("{}:{}", m.tag, x.name)),
-        })).collect::<Vec<_>>(),
-        "split": m.splits.iter().map(|(r, n)| json!({"route": r.hex(), "new": n.hex()})).collect::<Vec<_>>(),
-        "echo": message,
-        "message": message,
-    })
-}
 
 /// Pin names: numbers, letters, the names as text, or a list.
 #[derive(Deserialize, JsonSchema)]
@@ -144,7 +121,7 @@ impl Command for ConnectorParams {
             _ => None,
         });
         for p in at.iter().chain(line.iter().flat_map(|(a, b)| [a, b])) {
-            if out_of_range(*p) {
+            if rules::out_of_range(*p) {
                 return Err(err(crate::interact::OUT_OF_RANGE));
             }
         }
@@ -176,7 +153,7 @@ impl Command for ConnectorParams {
             p.last_placed = Some(("connector".to_string(), done.made.component));
             let doc = p.ledger.document();
             let message = rules::echo(doc, &done);
-            Ok(result_json(doc, &done.made, &message))
+            Ok(rules::result_json(doc, &done.made, &message))
         })?;
         if let Some(m) = v.get("message").and_then(Value::as_str) {
             s.echo(m.to_string());
@@ -272,7 +249,7 @@ pub(crate) fn place_half(
                 names.join(" and ")
             }
         );
-        let mut v = result_json(doc, &made, &message);
+        let mut v = rules::result_json(doc, &made, &message);
         v["symbol"] = json!(starter.key);
         v["joined"] = json!(!new);
         v["representation"] = json!(rep.hex());

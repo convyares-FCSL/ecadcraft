@@ -92,9 +92,9 @@ pub struct RenumberDialog {
 }
 
 impl RenumberDialog {
-    /// A dialog with `choices` (from `numbering_cmds::choices`), the selection's objects and the
+    /// A dialog with `choices` (from `ecad_electrical::cmd::numbering::choices`), the selection's objects and the
     /// project's digits.
-    pub fn new(choices: &ecad_cadcraft::numbering_cmds::Choices, selection: Vec<String>, digits: u8, read_only: bool, finalise: bool) -> Self {
+    pub fn new(choices: &ecad_electrical::cmd::numbering::Choices, selection: Vec<String>, digits: u8, read_only: bool, finalise: bool) -> Self {
         let mut d = RenumberDialog {
             what: if finalise { What::All } else { What::Devices },
             which: if finalise { Which::Provisional } else { Which::All },

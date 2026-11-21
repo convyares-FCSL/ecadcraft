@@ -29,7 +29,6 @@ mod defaults_contracts;
 mod device_contracts;
 mod experiment;
 mod files;
-mod history_sessions_contracts;
 mod history_tester_contracts;
 mod interactive_contracts;
 mod levels_contracts;

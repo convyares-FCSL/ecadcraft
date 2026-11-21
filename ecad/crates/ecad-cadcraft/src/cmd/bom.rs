@@ -165,18 +165,11 @@ impl Command for PartlineParams {
             let doc = p.ledger.document();
             let cs = rules::partline_targets(doc, component, devices)?;
             let plan = rules::plan_partline(doc, &cs, change)?;
-            let rows: Vec<Value> = plan.rows.iter().map(|(c, ns)| json!({"component": c.hex(), "lines": ns})).collect();
             if plan.ops.is_empty() {
-                return Ok(json!({"changed": false, "devices": rows}));
+                return Ok(rules::partline_json(&plan.rows, None));
             }
             p.apply_edit(pg, "partline", &plan.label, plan.ops)?;
-            let mut v = match rows.as_slice() {
-                [one] => one.clone(),
-                _ => json!({"devices": rows}),
-            };
-            v["changed"] = json!(true);
-            v["message"] = json!(plan.message);
-            Ok(v)
+            Ok(rules::partline_json(&plan.rows, Some(&plan.message)))
         })?;
         echoed(s, v)
     }

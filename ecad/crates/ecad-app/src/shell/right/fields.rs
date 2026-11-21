@@ -3,7 +3,8 @@
 //! its grey placeholder, with where it comes from at the right), or grey text when it cannot be
 //! set. Edits go to the copy's `edits`, run by the app after the frame, exactly as before.
 
-use ecad_cadcraft::props::{Row, Target};
+use ecad_electrical::props::Target;
+use ecad_electrical::words::Row;
 use ecad_ui::tokens::ui_type;
 use eframe::egui::{self, RichText};
 
@@ -101,15 +102,15 @@ fn tag_clash(ui: &mut egui::Ui, sh: &mut PropsShared, target: &Option<Target>, r
         ui.add_space(w::LABEL_W);
         if same_kind {
             if w::button(ui, "Swap", true, None).accessible_name("ecad.tagclash.swap").clicked() {
-                sh.edits.push((tg.clone(), ecad_cadcraft::props::conflict_key("swap"), Some(typed.clone())));
+                sh.edits.push((tg.clone(), ecad_electrical::props::conflict_key("swap"), Some(typed.clone())));
             }
             if w::button(ui, &format!("Make it the same {noun}"), false, None).accessible_name("ecad.tagclash.merge").clicked() {
-                sh.edits.push((tg.clone(), ecad_cadcraft::props::conflict_key("merge"), Some(typed.clone())));
+                sh.edits.push((tg.clone(), ecad_electrical::props::conflict_key("merge"), Some(typed.clone())));
             }
         }
         let label = next.as_deref().map_or_else(|| "Use the next free".to_string(), |n| format!("Use {n}"));
         if w::button(ui, &label, false, None).accessible_name("ecad.tagclash.next").clicked() {
-            sh.edits.push((tg.clone(), ecad_cadcraft::props::conflict_key("next"), Some(typed.clone())));
+            sh.edits.push((tg.clone(), ecad_electrical::props::conflict_key("next"), Some(typed.clone())));
         }
     });
 }

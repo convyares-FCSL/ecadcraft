@@ -292,7 +292,8 @@ mod tests {
 
     fn read() -> TextSection {
         let doc = ecad_model::Document::default();
-        TextSection::from_json(&ecad_cadcraft::text_cmds::textstyle_json(&doc, false))
+        let fonts = ecad_cadcraft::text_style::Fonts::resolve(&doc);
+        TextSection::from_json(&ecad_electrical::cmd::text::textstyle_json(&doc, &fonts, false))
     }
 
     #[test]

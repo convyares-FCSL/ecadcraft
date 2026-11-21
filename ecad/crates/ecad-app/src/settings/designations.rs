@@ -7,7 +7,7 @@
 //!
 //! # Update map
 //! The card reads the list and its counts (`designation_cmds::rows`) when first shown, and again
-//! only after a transaction that `designation_cmds::rows_changed_since` names: an op on the list,
+//! only after a transaction that `ecad_electrical::cmd::designation::rows_changed_since` names: an op on the list,
 //! on a function or location value, or a component or page made or deleted. Every other commit
 //! leaves it as it is.
 
@@ -47,7 +47,7 @@ pub fn rows(t: &mut App, ctx: &egui::Context) -> Value {
         .configure(&mut t.cad.session, |p| {
             let n = p.ledger.log().len();
             match seen {
-                Some(s) if !ecad_cadcraft::designation_cmds::rows_changed_since(&p.ledger, s) => (n, None),
+                Some(s) if !ecad_electrical::cmd::designation::rows_changed_since(&p.ledger, s) => (n, None),
                 _ => (n, Some(ecad_cadcraft::designation_cmds::rows(p, None))),
             }
         })

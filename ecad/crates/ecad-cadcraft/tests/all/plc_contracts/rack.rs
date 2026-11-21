@@ -374,7 +374,7 @@ fn fp1_merge_and_diff_words_show_the_racks_tag_never_its_id() {
     let row = v.sections.iter().flat_map(|s| s.rows.iter()).find(|r| r.key == "plc.rack").cloned().expect("a Rack row");
     assert_eq!(row.value, "-A01");
     assert!(row.choices.contains(&"-A01".to_string()) && row.choices.contains(&"None".to_string()));
-    let line = ecad_cadcraft::props::edit_line(&ecad_cadcraft::props::Target::Devices(vec![a03]), "plc.rack", Some("None"));
+    let line = ecad_electrical::props::edit_line(&ecad_electrical::props::Target::Devices(vec![a03]), "plc.rack", Some("None"));
     assert!(line.starts_with("plcslot ") && line.contains("\"rack\":null"), "{line}");
 }
 

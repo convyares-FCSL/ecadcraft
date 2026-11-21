@@ -34,8 +34,9 @@ use serde_json::{Value, json};
 use crate::access::Pages;
 use crate::cmd::input::{Command, Typed, typed};
 use crate::cmd::{on_any_page, on_project};
-use crate::history::{self, NodeKind, Point};
+use crate::history;
 use crate::project::Project;
+use ecad_file::history::{Named, NodeKind, Point, status_word};
 
 /// The two branches of a merge.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,7 +106,7 @@ pub fn sides(p: &Project, from: &str, into: Option<&str>) -> Result<Sides, Strin
             return Err(format!(
                 "Branch \"{}\" is {}; reopen it (History, Show merged and archived) before it is {what}.",
                 rec.name,
-                history::status_word(&rec.status)
+                status_word(&rec.status)
             ));
         }
     }
@@ -174,7 +175,7 @@ fn head_of(p: &Project, b: BranchId) -> Result<u64, String> {
 /// (with the nearest revision or version before it, when there is one).
 fn point_text(p: &Project, b: BranchId, seq: u64) -> String {
     let named = history::named_points(p, b).unwrap_or_default();
-    let quoted = |n: &history::Named| if n.revision { n.name.clone() } else { format!("version \"{}\"", n.name) };
+    let quoted = |n: &Named| if n.revision { n.name.clone() } else { format!("version \"{}\"", n.name) };
     // A version names the step before the one that named it; both are the same state.
     if let Some(n) = named.iter().filter(|n| n.branch == b && (n.seq == seq || n.seq + 1 == seq)).max_by_key(|n| n.seq) {
         return quoted(n);
