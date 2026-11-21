@@ -730,14 +730,11 @@ pub fn wire(ledger: &Ledger, ids: &mut IdAllocator, input: wires::WireInput<'_>,
 /// # Errors
 /// A wire number or potential (they belong to the whole net), a tool-made device's kind, or a
 /// caption on a device (a continuation's is `setprop {aids}`, design 072 §6.2).
-pub fn setprop_rule(doc: &Document, object: ObjectRef, key: &str, _value: Option<&str>) -> Result<Option<Option<String>>, CmdError> {
+pub fn setprop_rule(_doc: &Document, object: ObjectRef, key: &str, _value: Option<&str>) -> Result<Option<Option<String>>, CmdError> {
     match object {
         // Brief 049 (design 049 §3.1): a caption only on a continuation (`setprop {aid}`).
         ObjectRef::Device(_) if key == crate::continuations::CAPTION_KEY => {
             Err(CmdError::refused("Only continuation arrows have a caption; that is a device."))
-        }
-        ObjectRef::Device(c) if crate::bom::is_item(doc, c) && key == crate::bom::KIND_KEY => {
-            Err(CmdError::refused("It keeps its kind; erase it and place another."))
         }
         _ => Ok(None),
     }

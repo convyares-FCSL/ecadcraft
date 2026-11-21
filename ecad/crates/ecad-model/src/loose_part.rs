@@ -11,15 +11,27 @@
 //!   and removed by `CreateLoosePart`, `ModifyLoosePart` and `DeleteLoosePart` (the whole part
 //!   recorded), as drawing aids are.
 //!
-//! This module excludes the BOM itself and its lines (ecad-electrical's outputs), the `Bom` trait (design
-//! 072 §2.4, not yet written), the commands that add and edit loose parts, and layout (a loose part becomes a layout item in 0.2.4).
+//! - [`Bom`] (design 072 §2.4) is what goes on the bill of materials: a loose part gives one
+//!   [`BomLine`], a device its main part.
+//!
+//! This module excludes the BOM itself (ecad-electrical's outputs: grouping, locations, part lines
+//! of a device, which are still properties), the commands that add and edit loose parts, and layout
+//! (a loose part becomes a layout item in 0.2.4).
 
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::device::{Description, PartText};
+use crate::device::PartText;
+use crate::doc::Device;
 use crate::id::{FunctionId, LocationId};
+
+/// The most characters a loose part's description has (design 072 §6.4).
+pub const MAX_DESCRIPTION: usize = 200;
+
+/// A loose part's description: one line, 1 to [`MAX_DESCRIPTION`] characters. Longer text is
+/// refused, never cut.
+pub type LooseDescription = crate::text::Text<MAX_DESCRIPTION>;
 
 /// The largest quantity, in thousandths (9 999): keeps sums far from overflow.
 pub const MAX_QTY_MILLI: u64 = 9_999_000;
@@ -122,9 +134,8 @@ impl<'de> Deserialize<'de> for Qty {
 ///
 /// # Example
 /// ```
-/// use ecad_model::loose_part::{LoosePart, Qty};
-/// use ecad_model::device::Description;
-/// let p = LoosePart::new(Description::new("DIN rail").unwrap(), Qty(2000));
+/// use ecad_model::loose_part::{LooseDescription, LoosePart, Qty};
+/// let p = LoosePart::new(LooseDescription::new("DIN rail").unwrap(), Qty(2000));
 /// assert_eq!(serde_json::to_string(&p).unwrap(), r#"{"description":"DIN rail","qty":"2"}"#);
 /// assert!(serde_json::from_str::<LoosePart>(r#"{"description":"x","qty":"1","colour":"red"}"#).is_err());
 /// ```
@@ -132,7 +143,7 @@ impl<'de> Deserialize<'de> for Qty {
 #[serde(deny_unknown_fields)]
 pub struct LoosePart {
     /// What it is, in words (always given: a BOM line needs it).
-    pub description: Description,
+    pub description: LooseDescription,
     /// Its part number.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub part_number: Option<PartText>,
@@ -157,7 +168,7 @@ pub struct LoosePart {
 
 impl LoosePart {
     /// `qty` pieces of `description`, with no part, location or function.
-    pub fn new(description: Description, qty: Qty) -> LoosePart {
+    pub fn new(description: LooseDescription, qty: Qty) -> LoosePart {
         LoosePart {
             description,
             part_number: None,
@@ -171,7 +182,7 @@ impl LoosePart {
     }
 
     /// Why it is not well formed, if it is not: a quantity out of range, or a count of pieces
-    /// that is not whole. (Its description is never empty: [`Description`] holds no empty text.)
+    /// that is not whole. (Its description is never empty: [`LooseDescription`] holds no empty text.)
     pub fn problem(&self) -> Option<String> {
         if self.qty.0 == 0 || self.qty.0 > MAX_QTY_MILLI {
             return Some(format!("quantity {} is out of range (more than 0, at most 9999)", self.qty));
@@ -180,5 +191,75 @@ impl LoosePart {
             return Some(format!("quantity {} pieces is not whole", self.qty));
         }
         None
+    }
+}
+
+/// One line on the bill of materials: what the part is and how many (design 072 §2.4).
+#[derive(Debug, Clone, PartialEq)]
+pub struct BomLine {
+    /// What it is, in words.
+    pub description: Option<String>,
+    /// Its part number.
+    pub part_number: Option<String>,
+    /// Its maker.
+    pub manufacturer: Option<String>,
+    /// The supplier's order number.
+    pub article_number: Option<String>,
+    /// How many, in `unit`.
+    pub qty: Qty,
+    /// What `qty` counts.
+    pub unit: ItemUnit,
+}
+
+/// What an object puts on the bill of materials (design 072 §2.4).
+///
+/// # Semantics
+/// - A loose part gives one line: its description, part, quantity and unit.
+/// - A device gives its main part, one piece, when it names a part number or a description. Its
+///   part lines are still `part.<n>.*` properties until their typed move; ecad-electrical's
+///   `bom::lines` reads them.
+///
+/// # Example
+/// ```
+/// use ecad_model::loose_part::{Bom, LooseDescription, LoosePart, Qty};
+/// let p = LoosePart::new(LooseDescription::new("Cable ties").unwrap(), Qty(100_000));
+/// let lines = p.bom_lines();
+/// assert_eq!((lines.len(), lines[0].qty), (1, Qty(100_000)));
+/// ```
+pub trait Bom {
+    /// Its lines, in order.
+    fn bom_lines(&self) -> Vec<BomLine>;
+}
+
+fn text<const N: usize>(t: &Option<crate::text::Text<N>>) -> Option<String> {
+    t.as_ref().map(|t| t.as_str().to_string())
+}
+
+impl Bom for LoosePart {
+    fn bom_lines(&self) -> Vec<BomLine> {
+        vec![BomLine {
+            description: Some(self.description.as_str().to_string()),
+            part_number: text(&self.part_number),
+            manufacturer: text(&self.manufacturer),
+            article_number: text(&self.article_number),
+            qty: self.qty,
+            unit: self.unit,
+        }]
+    }
+}
+
+impl Bom for Device {
+    fn bom_lines(&self) -> Vec<BomLine> {
+        if self.part_number.is_none() && self.description.is_none() {
+            return Vec::new();
+        }
+        vec![BomLine {
+            description: text(&self.description),
+            part_number: text(&self.part_number),
+            manufacturer: text(&self.manufacturer),
+            article_number: text(&self.article_number),
+            qty: Qty::ONE,
+            unit: ItemUnit::Pcs,
+        }]
     }
 }

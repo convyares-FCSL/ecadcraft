@@ -648,8 +648,11 @@ As built (F2a, overseer 2026-11-21): kept as aids are, in `Document.loose_parts:
 LoosePart>` (the id is the key, not a field); ops `CreateLoosePart`, `DeleteLoosePart`,
 `ModifyLoosePart` (whole part recorded); bucketed `model:loose_part:` chunks; invariant I26 (a
 quantity more than 0 and at most 9 999, whole for pieces). `Qty` is thousandths written as a
-decimal text (`"3.6"`); the description is the device's `Description` (`Text<256>`). A device of
-kind `bom_item` is a read error. `Bom` itself is not written yet (F2b).
+decimal text (`"3.6"`); the description is `Text<200>` (`LooseDescription`: longer input is
+refused, never cut). A device of kind `bom_item` is a read error. F2b: `bomitem` makes and edits
+loose parts, the BOM reads them through `Bom` (`ecad_model::loose_part::Bom`, implemented by
+`LoosePart` and by `Device` for its main part; a device's part lines are still properties), and
+the BOM model keys its entries by `Owner::{Device, Loose}`.
 
 ---
 

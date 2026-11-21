@@ -12,11 +12,10 @@ use crate::common::{H, id};
 ///
 /// B step 6 deleted the strip, fuse terminal and connector predicates: those rows now read the
 /// stored type (as their callers do) and only keep the `spoke` count. The checks that are still
-/// independent are the PLC card body and the `kind` predicates (continuation, box, item), which
-/// lane F deletes with `Aid` and `LoosePart`; this test then becomes "each starter declares its
-/// symbol's type".
+/// independent are the PLC card body; lane F replaced the `kind` predicates (continuation, box,
+/// item) with `Aid` and `LoosePart`, which are not devices.
 fn predicates_say(doc: &Document, c: DeviceId) -> Option<DeviceGroup> {
-    use ecad_cadcraft::{bom, connectors, plc, strips};
+    use ecad_cadcraft::{connectors, plc, strips};
     if strips::fuse_terminal_of(doc, c).is_some() {
         // The owner's answer (design 072 §2.2): a fuse terminal device is Protection; a fuse
         // position in a strip (`termfuse`) is the strip's.
@@ -36,9 +35,6 @@ fn predicates_say(doc: &Document, c: DeviceId) -> Option<DeviceGroup> {
         Some(t) if t.is_rack() => return Some(DeviceGroup::PlcRack),
         Some(_) => return Some(DeviceGroup::PlcModule),
         None => {}
-    }
-    if bom::is_item(doc, c) {
-        return Some(DeviceGroup::General);
     }
     None
 }
@@ -137,12 +133,13 @@ fn text_fields_are_written_as_modify_device() {
     // `article` writes the device's article number on every part with that part number.
     h.run("article", json!({"part_number": "v-part_number", "article_number": "A-77"})).unwrap();
     assert_eq!(h.doc().devices[&c].text(TextField::ArticleNumber), Some("A-77"));
-    // An item's description is a field too, and can't be cleared.
-    let item: DeviceId = id(&h.run("bomitem", json!({"description": "Trunking", "qty": "2"})).unwrap(), "item");
-    assert_eq!(h.doc().devices[&item].text(TextField::Description), Some("Trunking"));
+    // An item (a loose part, design 072 §6.4) keeps its texts as fields, and its description
+    // can't be cleared.
+    let item: ecad_model::LoosePartId = id(&h.run("bomitem", json!({"description": "Trunking", "qty": "2"})).unwrap(), "item");
+    assert_eq!(h.doc().loose_parts[&item].description.as_str(), "Trunking");
     h.run("bomitem", json!({"item": item.hex(), "set": {"maker": "Lapp"}})).unwrap();
-    assert_eq!(h.doc().devices[&item].text(TextField::Manufacturer), Some("Lapp"));
-    assert!(h.run("setprop", json!({"component": item.hex(), "key": "description", "value": null})).is_err());
+    assert_eq!(h.doc().loose_parts[&item].manufacturer.as_ref().map(|t| t.as_str()), Some("Lapp"));
+    assert!(h.run("bomitem", json!({"item": item.hex(), "set": {"description": null}})).is_err());
     // Too long for the field: refused with its bound.
     let e = h.run("setprop", json!({"component": c.hex(), "key": "part_number", "value": "9".repeat(65)})).unwrap_err();
     assert!(e.contains("at most 64"), "{e}");

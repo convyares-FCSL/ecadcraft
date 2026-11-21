@@ -182,10 +182,6 @@ pub fn devices_touched(doc: &Document, ops: &[Op]) -> DeviceTouch {
 /// is drawn nowhere).
 pub fn device_entry(doc: &Document, c: DeviceId) -> Option<DeviceEntry> {
     let comp = doc.devices.get(&c)?;
-    // A BOM item is not a device (design 047 §3).
-    if crate::bom::is_item_component(comp) {
-        return None;
-    }
     let prefix = match comp.tag() {
         Some(t) => Some(group_and_number(t).0),
         None if doc.representations_of(Subject::Device(c)).next().is_none() => return None,
@@ -278,8 +274,6 @@ pub fn device_entries(doc: &Document, filter: &str) -> Vec<DeviceEntry> {
         .devices
         .iter()
         .filter(|(_, c)| c.tag.is_none())
-        // A BOM item is not a device (design 047 §3).
-        .filter(|(_, c)| !crate::bom::is_item_component(c))
         .map(|(id, _)| *id)
         .filter(|id| doc.representations_of(Subject::Device(*id)).next().is_some());
     tagged

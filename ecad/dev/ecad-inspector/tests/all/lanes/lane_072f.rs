@@ -231,7 +231,7 @@ fn a_location_box_aid_and_its_edit_are_shown_raw_and_readable() {
 /// snapshot (with the part in its own `model:loose_part:` chunk) reads back.
 #[test]
 fn a_loose_part_and_its_edit_are_shown_raw_and_readable() {
-    use ecad_model::device::Description;
+    use ecad_model::loose_part::LooseDescription as Description;
     use ecad_model::loose_part::{ItemUnit, LoosePart, Qty};
     use ecad_model::{LocationId, LoosePartId};
     let dir = TempDir::new("072f-loose");
@@ -280,4 +280,44 @@ fn a_loose_part_and_its_edit_are_shown_raw_and_readable() {
     }
     let summary = ask(s, serde_json::json!({"op": "summary"}));
     assert!(summary.get("ok").is_some(), "{summary}");
+}
+
+/// F2b: a file holding a BOM item in its old device form (`kind: bom_item`) is not read by the
+/// program (design 072 §6.4), but the inspector still shows it: the Raw view is the stored bytes
+/// and the Readable view names the old kind.
+#[test]
+fn an_old_bom_item_device_is_still_shown_raw_and_readable() {
+    use ecad_model::{Device, DeviceId};
+    let dir = TempDir::new("072f-old-item");
+    let mut l = history();
+    let mut ids = IdAllocator::seeded(0x72f5);
+    let c: DeviceId = ids.fresh();
+    let mut old = Device::default();
+    old.properties.insert("kind".into(), "bom_item".into());
+    old.properties.insert("qty".into(), "2".into());
+    l.commit(Author::User, "old item", vec![Op::CreateDevice { id: c, device: old }]).unwrap();
+    let path = written(&dir, &l);
+
+    let f = FileSource::from_path(&path);
+    assert!(matches!(f.wait_verified(Duration::from_secs(60)), VerifyState::Done { .. }));
+    let s = Some(&f as &dyn Source);
+    let rows = ask(s, serde_json::json!({"op": "rows", "table": "transactions", "count": 1000}));
+    let rows = rows["ok"]["rows"].as_array().cloned().unwrap_or_default();
+    let key = rows.last().and_then(|r| r["key"].as_str()).unwrap_or_else(|| panic!("a transaction row: {rows:?}")).to_string();
+    let readable = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "readable"}));
+    let text = readable["ok"]["decoded"].to_string();
+    for want in ["CreateDevice", "bom_item", &c.hex()] {
+        assert!(text.contains(want), "{want} in the readable row: {readable}");
+    }
+    let r = f.store().unwrap().reader().unwrap();
+    let mut stored = None;
+    r.raw_rows(|t, k, v| {
+        if t == "transactions" && ecad_inspector::text::hex(k) == key {
+            stored = Some(ecad_inspector::text::hex(v));
+        }
+        Ok(())
+    })
+    .unwrap();
+    let raw = ask(s, serde_json::json!({"op": "row", "table": "transactions", "key": key, "form": "raw"}));
+    assert_eq!(raw["ok"]["hex"].as_str(), stored.as_deref(), "the raw row is its stored bytes");
 }

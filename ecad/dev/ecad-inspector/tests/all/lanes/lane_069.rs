@@ -164,7 +164,10 @@ fn every_op_ledger() -> Ledger {
     let aid: ecad_model::AidId = ids.fresh();
     let loose: ecad_model::LoosePartId = ids.fresh();
     let rail = |n: u64| {
-        ecad_model::loose_part::LoosePart::new(ecad_model::device::Description::new("DIN rail").unwrap(), ecad_model::loose_part::Qty(n * 1000))
+        ecad_model::loose_part::LoosePart::new(
+            ecad_model::loose_part::LooseDescription::new("DIN rail").unwrap(),
+            ecad_model::loose_part::Qty(n * 1000),
+        )
     };
     let link_v = ecad_model::DeviceLink { kind: ecad_model::LinkKind::MechanicalInterlock, a: pair[0], b: pair[1] };
     let linked = vec![

@@ -79,10 +79,10 @@ pub struct LocBox {
     pub area: f64,
 }
 
-/// A device in the sense of locations and the BOM (design 024 §6.1): a component with a tag that
-/// is not a BOM item.
+/// A device in the sense of locations and the BOM (design 024 §6.1): a device with a tag (a BOM
+/// item is a loose part, design 072 §6.4).
 pub fn is_device(doc: &Document, c: DeviceId) -> bool {
-    doc.devices.get(&c).is_some_and(|x| x.tag.is_some() && !crate::bom::is_item_component(x))
+    doc.devices.get(&c).is_some_and(|x| x.tag.is_some())
 }
 
 /// Location box `a`'s values, when `a` is one.

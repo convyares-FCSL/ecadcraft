@@ -151,6 +151,7 @@ impl Scope {
             + t.wires.len()
             + t.cables.len()
             + t.routes.len()
+            + t.aids.len()
             + t.loose_parts.len()
             + t.definitions.len()
             + t.folders.len()

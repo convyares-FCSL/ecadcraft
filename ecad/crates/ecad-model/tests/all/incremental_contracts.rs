@@ -107,7 +107,10 @@ pub(crate) struct Base {
 
 /// `qty` pieces of a loose part.
 fn loose_part(qty: u64) -> ecad_model::loose_part::LoosePart {
-    ecad_model::loose_part::LoosePart::new(ecad_model::device::Description::new("DIN rail").unwrap(), ecad_model::loose_part::Qty(qty * 1000))
+    ecad_model::loose_part::LoosePart::new(
+        ecad_model::loose_part::LooseDescription::new("DIN rail").unwrap(),
+        ecad_model::loose_part::Qty(qty * 1000),
+    )
 }
 
 pub(crate) fn base() -> Base {

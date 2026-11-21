@@ -101,7 +101,7 @@ fn the_diff_between_two_documents_records_aid_ops() {
 // ---------------------------------------------------------------- F2a: loose parts (§6.4)
 
 fn rail(qty: &str) -> ecad_model::loose_part::LoosePart {
-    use ecad_model::device::Description;
+    use ecad_model::loose_part::LooseDescription as Description;
     use ecad_model::loose_part::{LoosePart, Qty};
     LoosePart::new(Description::new("DIN rail 35 mm").unwrap(), Qty::parse(qty).unwrap())
 }

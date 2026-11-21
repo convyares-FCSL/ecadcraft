@@ -62,7 +62,7 @@ fn partline_bomitem_and_article_by_the_agent() {
     let aux = rows.iter().find(|r| r["part_number"] == "AB-1NO").unwrap();
     assert_eq!(aux["article_number"], "A-0110");
     let rail = rows.iter().find(|r| r["part_number"] == "DR-35").unwrap();
-    assert_eq!((rail["qty"].clone(), rail["unit"].clone(), rail["entries"][0]["item"].clone()), (json!(2), json!("m"), json!(true)));
+    assert_eq!((rail["qty"].clone(), rail["unit"].clone(), rail["entries"][0]["item"].clone()), (json!(2), json!("m"), json!(item)));
     assert_eq!(c.log().len(), n, "reading records nothing");
 
     let n = c.log().len();

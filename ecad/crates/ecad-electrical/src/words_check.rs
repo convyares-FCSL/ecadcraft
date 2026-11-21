@@ -41,7 +41,7 @@ pub fn check(doc: &Document) -> Vec<UnknownWord> {
     }
     for (id, c) in &doc.devices {
         bag(&c.properties, WordPlace::Device(*id), Level::Object, &mut out);
-        tagless_kind(&c.properties, WordPlace::Device(*id), &mut out);
+        old_kind(&c.properties, WordPlace::Device(*id), &mut out);
     }
     for (id, c) in &doc.wires {
         bag(&c.display, WordPlace::Wire(*id), Level::Object, &mut out);
@@ -86,17 +86,16 @@ fn bag(props: &Properties, place: WordPlace, level: Level, out: &mut Vec<Unknown
     }
 }
 
-/// The kinds a tagless component may be: a BOM item. A continuation and a location box are drawing
-/// aids (design 072 §6.2), never devices; ecad-file refuses a device of either kind.
-pub const TAGLESS_KINDS: [&str; 1] = [crate::bom::ITEM_KIND];
+/// The property a device's kind was kept in before design 072: a device has none now (drawing
+/// aids, loose parts and routes are their own types, §6).
+const OLD_KIND_KEY: &str = "kind";
 
-/// A tagless component's `kind` that is none of [`TAGLESS_KINDS`]. The junction went with routes
-/// (design 072 D: a T is a route landing on a route), so a file holding one opens read-only
-/// (pre-v1, no conversion).
-fn tagless_kind(props: &Properties, place: WordPlace, out: &mut Vec<UnknownWord>) {
-    use crate::bom::KIND_KEY as KIND;
-    if let Some(kind) = props.get(KIND).filter(|k| !TAGLESS_KINDS.contains(&k.as_str())) {
-        out.push(UnknownWord::Value { place, setting: KIND.into(), word: kind.clone(), allowed: TAGLESS_KINDS.to_vec() });
+/// A device's stored `kind`, any word: a junction went with routes (design 072 D: a T is a route
+/// landing on a route), so a file holding one opens read-only (pre-v1, no conversion). The old
+/// device forms of drawing aids and loose parts are read errors in ecad-file.
+fn old_kind(props: &Properties, place: WordPlace, out: &mut Vec<UnknownWord>) {
+    if let Some(kind) = props.get(OLD_KIND_KEY) {
+        out.push(UnknownWord::Value { place, setting: OLD_KIND_KEY.into(), word: kind.clone(), allowed: Vec::new() });
     }
 }
 
@@ -173,16 +172,13 @@ mod tests {
         let mut d = doc();
         let j = DeviceId(4);
         let mut junction = Device::default();
-        junction.properties.insert(crate::bom::KIND_KEY.into(), "junction".into());
+        junction.properties.insert(OLD_KIND_KEY.into(), "junction".into());
         d.devices.insert(j, junction);
-        let mut item = Device::default();
-        item.properties.insert(crate::bom::KIND_KEY.into(), crate::bom::ITEM_KIND.into());
-        d.devices.insert(DeviceId(6), item);
         let found = check(&d);
         assert_eq!(found.len(), 1, "{found:?}");
         assert_eq!(found[0].place(), WordPlace::Device(j));
         let text = found[0].to_string();
-        assert!(text.contains("`junction`") && text.contains("`kind`") && text.contains(crate::bom::ITEM_KIND), "{text}");
+        assert!(text.contains("`junction`") && text.contains("`kind`"), "{text}");
     }
 
     #[test]

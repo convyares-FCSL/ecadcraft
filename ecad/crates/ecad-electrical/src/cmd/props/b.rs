@@ -128,10 +128,9 @@ pub fn with_text(d: &Device, f: TextField, value: Option<&str>) -> Result<Device
 /// A device's description, part number, maker, article number or type text: one `ModifyDevice`.
 ///
 /// # Errors
-/// An item's description cleared ([`crate::bom::refuse_on_item`]); [`text_refusal`].
+/// [`text_refusal`].
 pub fn text_value(doc: &Document, o: ObjectRef, key: &str, value: Option<&str>) -> Result<Option<Op>, CmdError> {
     let (c, d) = device_of(doc, o)?;
-    crate::bom::refuse_on_item(doc, c, key, value)?;
     let f = TextField::of_key(key).ok_or(CmdError::refused(NO_SUCH_OBJECT))?;
     let after = with_text(d, f, value)?;
     Ok((after != *d).then(|| Op::ModifyDevice { id: c, before: d.clone(), after }))

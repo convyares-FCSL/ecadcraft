@@ -1409,11 +1409,10 @@ pub type ConvertError = String;
 /// The `kind`s of things that were devices and are not any more, with the read error of each.
 /// Continuations and location boxes are drawing aids (design 072 §6.2), BOM items loose parts
 /// (§6.4); pre-v1, a file with a device of one of these kinds is not read (no conversion).
-// F2b adds `bom_item` ("a device of kind `bom_item`: BOM items are loose parts since format change
-// 072 F (no conversion before v1)") when `bomitem` makes loose parts: until then items are devices.
-const NOT_DEVICE_KINDS: [(&str, &str); 2] = [
+const NOT_DEVICE_KINDS: [(&str, &str); 3] = [
     ("continuation", "a device of kind `continuation`: continuations are drawing aids since format change 072 F (no conversion before v1)"),
     ("location_box", "a device of kind `location_box`: location boxes are drawing aids since format change 072 F (no conversion before v1)"),
+    ("bom_item", "a device of kind `bom_item`: BOM items are loose parts since format change 072 F (no conversion before v1)"),
 ];
 
 /// The read error for a device of kind `kind`, when that kind is no longer a device's.

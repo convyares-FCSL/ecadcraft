@@ -5,12 +5,14 @@
 
 use std::collections::BTreeMap;
 
-use ecad_model::{Device, DeviceId, Document, IdAllocator, ObjectRef, Op, Properties, TextField};
+use ecad_model::loose_part::{ItemUnit, LooseDescription, LoosePart, MAX_DESCRIPTION, Qty};
+use ecad_model::{DeviceId, Document, IdAllocator, LocationId, LoosePartId, ObjectRef, Op, TextField};
 use serde_json::{Value, json};
 
 use crate::bom::*;
 use crate::designations::{Aspect, Pending};
 use crate::error::CmdError;
+use ecad_model::text::TextError;
 
 // ---------------------------------------------------------------------------------------------
 // partline
@@ -199,7 +201,7 @@ pub enum ItemChange {
     /// Add an item with these fields.
     Add(ItemFields),
     /// Delete item `item`, or set its fields.
-    Edit { item: DeviceId, delete: bool, set: Option<ItemFields> },
+    Edit { item: LoosePartId, delete: bool, set: Option<ItemFields> },
 }
 
 /// What `bomitem` records and says.
@@ -207,117 +209,105 @@ pub enum ItemChange {
 pub struct ItemPlan {
     /// Empty when nothing changes.
     pub ops: Vec<Op>,
-    pub item: DeviceId,
+    pub item: LoosePartId,
     pub label: &'static str,
     /// What happened, in words (none when nothing changes).
     pub message: Option<String>,
 }
 
-/// `bomitem {description, …}` / `{item, set}` / `{item, delete}`: an item added, edited or
-/// deleted (one transaction). A typed location adds its entry to the project's list.
+/// The refusal for a text value of an item field (`key`, at most `max` characters).
+fn text_refusal(key: &str, max: usize, e: TextError) -> CmdError {
+    CmdError::refused(match e {
+        TextError::TooLong { .. } => format!("`{key}` can be at most {max} characters."),
+        TextError::Hidden { .. } | TextError::Lines => format!("`{key}` is one line with no control or hidden characters."),
+        TextError::Empty => format!("`{key}` is empty."),
+    })
+}
+
+/// A part text (part number, maker, article number): `None` clears it.
+fn part_text(key: &str, t: Option<&str>) -> Result<Option<ecad_model::device::PartText>, CmdError> {
+    t.map(|t| ecad_model::device::PartText::new(t).map_err(|e| text_refusal(key, MAX_ARTICLE_CHARS, e))).transpose()
+}
+
+/// Item `p` with `fields` written, each checked, in [`ITEM_FIELDS`] order (unit before qty). A
+/// typed location adds its entry to the project's list (`ops`).
+fn with_fields(doc: &Document, ids: &mut IdAllocator, mut p: LoosePart, fields: &ItemFields, ops: &mut Vec<Op>) -> Result<LoosePart, CmdError> {
+    let mut pending = Pending::default();
+    for key in ITEM_FIELDS {
+        let Some(v) = fields.get(key) else { continue };
+        let t = v.as_deref().map(str::trim).filter(|t| !t.is_empty());
+        match key {
+            "description" => {
+                let t = t.ok_or(CmdError::refused(ITEM_NEEDS_DESCRIPTION))?;
+                p.description = LooseDescription::new(t).map_err(|e| text_refusal(key, MAX_DESCRIPTION, e))?;
+            }
+            UNIT_KEY => p.unit = if parse_unit(t.unwrap_or(""))? { ItemUnit::Metres } else { ItemUnit::Pcs },
+            QTY_KEY => p.qty = t.map_or(Ok(Qty::ONE), |t| parse_qty(t, p.unit == ItemUnit::Metres).map(|q| Qty(q.0)))?,
+            // Brief 052: an item's location is an entry of the project's list.
+            "location" => {
+                p.location = match t {
+                    Some(t) => {
+                        let k = pending.store(doc, ids, Aspect::Location, t, ops)?;
+                        Some(crate::designations::raw(&k).map(LocationId).ok_or(CmdError::refused("That location is not in the list."))?)
+                    }
+                    None => None,
+                }
+            }
+            "part_number" => p.part_number = part_text(key, t)?,
+            "maker" => p.manufacturer = part_text(key, t)?,
+            _ => p.article_number = part_text(key, t)?,
+        }
+    }
+    if p.unit == ItemUnit::Pcs && !p.qty.whole() {
+        return Err(CmdError::refused(format!("The quantity is {}: a count of pieces is whole. Set a whole quantity first.", p.qty)));
+    }
+    Ok(p)
+}
+
+/// `bomitem {description, …}` / `{item, set}` / `{item, delete}`: an item (a loose part, design
+/// 072 §6.4) added, edited or deleted (one transaction). A typed location adds its entry to the
+/// project's list.
 ///
 /// # Errors
 /// Not an item, no description, a value that does not read, or a project full of items.
 pub fn plan_bomitem(doc: &Document, ids: &mut IdAllocator, change: ItemChange) -> Result<ItemPlan, CmdError> {
     match change {
         ItemChange::Edit { item, delete, set } => {
-            let comp = doc
-                .devices
-                .get(&item)
-                .filter(|c| is_item_component(c))
-                .ok_or_else(|| CmdError::refused(format!("{} is not an item.", item.hex())))?;
+            let part = doc.loose_parts.get(&item).ok_or_else(|| CmdError::refused(format!("{} is not an item.", item.hex())))?;
             if delete {
-                let words = item_words(doc, comp);
-                let mut ops = crate::cmd::device_link::unlink_ops(doc, item);
-                ops.push(Op::DeleteDevice { id: item, device: comp.clone() });
+                let words = item_words(doc, part);
+                let ops = vec![Op::DeleteLoosePart { id: item, part: part.clone() }];
                 return Ok(ItemPlan { ops, item, label: "Delete item", message: Some(format!("Deleted item {words}.")) });
             }
             let fields = set.ok_or(CmdError::input("Give `set: {field: value}` or `delete: true` with `item`."))?;
-            let props = &comp.properties;
-            let metres = match fields.get(UNIT_KEY) {
-                Some(u) => parse_unit(u.as_deref().unwrap_or(""))?,
-                None => props.get(UNIT_KEY).is_some_and(|u| parse_unit(u).unwrap_or(false)),
-            };
-            let qty = match fields.get(QTY_KEY) {
-                Some(q) => q.clone(),
-                None => props.get(QTY_KEY).cloned(),
-            };
             let mut ops = Vec::new();
-            let mut sets = Vec::new();
-            let mut pending = Pending::default();
-            let mut typed = comp.clone();
-            for key in ITEM_FIELDS {
-                let Some(v) = fields.get(key) else { continue };
-                let after = match (key, v.as_deref().map(str::trim).filter(|t| !t.is_empty())) {
-                    // Brief 052: an item's location is an entry key of the project's list.
-                    ("location", Some(t)) => Some(pending.store(doc, ids, Aspect::Location, t, &mut ops)?),
-                    _ => item_value(doc, key, v.as_deref(), metres, qty.as_deref())?,
-                };
-                if let Some(f) = TextField::of_key(key) {
-                    typed = super::props::b::with_text(&typed, f, after.as_deref())?;
-                    continue;
-                }
-                if key == "location" {
-                    // Design 072 §6.3: a typed location is a field, set by hand.
-                    typed = crate::designations::with_device_key(&typed, Aspect::Location, after.as_deref(), true);
-                    continue;
-                }
-                let before = props.get(key).cloned();
-                if before != after {
-                    sets.push(Op::SetProperty { object: ObjectRef::Device(item), key: key.to_string(), before, after });
-                }
+            let after = with_fields(doc, ids, part.clone(), &fields, &mut ops)?;
+            if after != *part {
+                ops.push(Op::ModifyLoosePart { id: item, before: part.clone(), after });
             }
-            // The fields first: a `ModifyDevice` records the whole device as it is before.
-            if typed != *comp {
-                ops.push(Op::ModifyDevice { id: item, before: comp.clone(), after: typed });
-            }
-            ops.extend(sets);
             let message = (!ops.is_empty()).then(|| "Edited the item.".to_string());
             Ok(ItemPlan { ops, item, label: "Edit item", message })
         }
         ItemChange::Add(fields) => {
-            if !fields.contains_key("description") {
-                return Err(CmdError::refused(ITEM_NEEDS_DESCRIPTION));
-            }
-            let items = doc.devices.values().filter(|c| is_item_component(c)).count();
+            let description = match fields.get("description") {
+                Some(Some(d)) if !d.trim().is_empty() => {
+                    LooseDescription::new(d.trim()).map_err(|e| text_refusal("description", MAX_DESCRIPTION, e))?
+                }
+                _ => return Err(CmdError::refused(ITEM_NEEDS_DESCRIPTION)),
+            };
+            let items = doc.loose_parts.len();
             if items >= MAX_ITEMS {
                 return Err(CmdError::refused(format!("This project has {items} items, the most a project holds.")));
             }
-            let metres = match fields.get(UNIT_KEY) {
-                Some(u) => parse_unit(u.as_deref().unwrap_or(""))?,
-                None => item_unit_metres(doc),
-            };
-            let qty = fields.get(QTY_KEY).cloned().flatten();
-            let mut props = Properties::new();
-            props.insert(crate::bom::KIND_KEY.into(), ITEM_KIND.into());
-            if metres {
-                props.insert(UNIT_KEY.into(), METRES.into());
+            let mut part = LoosePart::new(description, Qty::ONE);
+            if item_unit_metres(doc) {
+                part.unit = ItemUnit::Metres;
             }
             let mut ops = Vec::new();
-            let mut pending = Pending::default();
-            for key in ITEM_FIELDS {
-                if key == UNIT_KEY {
-                    continue;
-                }
-                let Some(v) = fields.get(key) else { continue };
-                let x = match (key, v.as_deref().map(str::trim).filter(|t| !t.is_empty())) {
-                    ("location", Some(t)) => Some(pending.store(doc, ids, Aspect::Location, t, &mut ops)?),
-                    _ => item_value(doc, key, v.as_deref(), metres, qty.as_deref())?,
-                };
-                if let Some(x) = x {
-                    props.insert(key.to_string(), x);
-                }
-            }
-            let mut device = Device::default();
-            for (k, v) in props {
-                device.set_value(&k, Some(&v)).map_err(|e| match TextField::of_key(&k) {
-                    Some(f) => super::props::b::text_refusal(f, e),
-                    None => CmdError::refused(e.to_string()),
-                })?;
-            }
-            let words = item_words(doc, &device);
-            let item: DeviceId = ids.fresh();
-            ops.push(Op::CreateDevice { id: item, device });
+            let part = with_fields(doc, ids, part, &fields, &mut ops)?;
+            let words = item_words(doc, &part);
+            let item: LoosePartId = ids.fresh();
+            ops.push(Op::CreateLoosePart { id: item, part });
             Ok(ItemPlan { ops, item, label: "Add item", message: Some(format!("Added item {words}.")) })
         }
     }
@@ -354,8 +344,19 @@ pub fn plan_article(doc: &Document, part_number: &str, maker: Option<&str>, arti
     }
     let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
     let mut ops = Vec::new();
-    for (object, key, what) in &targets {
-        *counts.entry(what).or_default() += 1;
+    for t in &targets {
+        *counts.entry(t.what()).or_default() += 1;
+        let (object, key) = match t {
+            ArticleTarget::Item(id) => {
+                let Some(p) = doc.loose_parts.get(id) else { continue };
+                let typed = LoosePart { article_number: part_text(ARTICLE_KEY, after.as_deref())?, ..p.clone() };
+                if typed != *p {
+                    ops.push(Op::ModifyLoosePart { id: *id, before: p.clone(), after: typed });
+                }
+                continue;
+            }
+            ArticleTarget::Key(object, key, _) => (object, key),
+        };
         // A device's main article number is its field (lane 072 B): one `ModifyDevice`, first.
         if let ObjectRef::Device(c) = object
             && let Some(f) = TextField::of_key(key)

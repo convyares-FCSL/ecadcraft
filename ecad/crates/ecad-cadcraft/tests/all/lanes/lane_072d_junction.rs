@@ -52,7 +52,7 @@ fn a_file_holding_a_junction_opens_read_only() {
     let mut s = Session::empty();
     let (project, summary) = ProjectHandle::open_file(&mut s, &file, 0x72_d8).unwrap();
     assert!(summary.contains("Opened read-only"), "{summary}");
-    for named in ["`junction`", "`kind`", "bom_item"] {
+    for named in ["`junction`", "`kind`"] {
         assert!(summary.contains(named), "the message names {named}: {summary}");
     }
     let mut h = H { s, project, trail: Vec::new() };

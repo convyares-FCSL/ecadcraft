@@ -134,3 +134,60 @@ fn a_location_boxs_own_style_through_mcp() {
     let mut r = reader();
     r.refused("execute", json!({"command": "setprop", "params": {"aids": [b], "key": "style", "value": "box"}}));
 }
+
+/// F2b: a BOM item is a loose part (design 072 §6.4). `bomitem` through `execute` records one
+/// `CreateLoosePart` (no device), `{item, set}` one `ModifyLoosePart` and `{item, delete}` one
+/// `DeleteLoosePart`, all by the agent; `bom` names the item by its own id. A description longer
+/// than 200 characters is refused in words, never cut, with nothing recorded; every write is
+/// refused with writes off.
+#[test]
+fn bom_items_through_mcp_are_loose_parts() {
+    let mut c = Client::new(EcadMcp::in_memory("lane072f-loose", 0x72f2, Options { write: true, agent: None }).unwrap());
+    let v = c.exec("bomitem", json!({"description": "DIN rail 35x7.5", "qty": "1.5", "unit": "m", "location": "+CP1"}));
+    let item = v["item"].as_str().unwrap_or_else(|| panic!("the item answers its id: {v}")).to_string();
+    let (author, ops) = last_aid(&mut c);
+    assert_eq!(author, Author::Agent(AGENT.into()));
+    let made = ops.iter().find_map(|o| match o {
+        Op::CreateLoosePart { id, part } => Some((id.hex(), part.clone())),
+        _ => None,
+    });
+    let (id, part) = made.unwrap_or_else(|| panic!("one CreateLoosePart: {ops:?}"));
+    assert_eq!(id, item);
+    assert_eq!(
+        (part.description.as_str(), part.qty.to_string(), part.unit),
+        ("DIN rail 35x7.5", "1.5".to_string(), ecad_model::loose_part::ItemUnit::Metres)
+    );
+    assert!(part.location.is_some(), "the typed location is an entry of the list");
+    assert!(!ops.iter().any(|o| matches!(o, Op::CreateDevice { .. })), "no device: {ops:?}");
+
+    c.exec("bomitem", json!({"item": item, "set": {"part_number": "DR-35", "qty": 2}}));
+    let (author, ops) = last_aid(&mut c);
+    assert_eq!(author, Author::Agent(AGENT.into()));
+    match ops.as_slice() {
+        [Op::ModifyLoosePart { after, .. }] => {
+            assert_eq!((after.part_number.as_ref().map(|t| t.as_str()), after.qty.to_string()), (Some("DR-35"), "2".to_string()))
+        }
+        other => panic!("one ModifyLoosePart: {other:?}"),
+    }
+    let rows = c.exec("bom", json!({}))["rows"].as_array().unwrap().clone();
+    let rail = rows.iter().find(|r| r["part_number"] == "DR-35").unwrap_or_else(|| panic!("the item is on the BOM: {rows:?}"));
+    assert_eq!(rail["entries"], json!([{"item": item}]));
+
+    let before = c.log();
+    let m = c.refused("execute", json!({"command": "bomitem", "params": {"description": "x".repeat(201)}}));
+    assert!(m.contains("description") && m.contains("200"), "{m}");
+    let m = c.refused("execute", json!({"command": "bomitem", "params": {"item": item, "set": {"description": "y".repeat(201)}}}));
+    assert!(m.contains("200"), "{m}");
+    assert_eq!(c.log(), before, "nothing recorded");
+    c.exec("bomitem", json!({"description": "z".repeat(200)}));
+    assert_eq!(c.log().len(), before.len() + 1, "200 characters are taken");
+
+    c.exec("bomitem", json!({"item": item, "delete": true}));
+    let (author, ops) = last_aid(&mut c);
+    assert_eq!(author, Author::Agent(AGENT.into()));
+    assert!(matches!(ops.as_slice(), [Op::DeleteLoosePart { .. }]), "{ops:?}");
+
+    let mut r = reader();
+    r.refused("execute", json!({"command": "bomitem", "params": {"description": "DIN rail"}}));
+    r.refused("execute", json!({"command": "bomitem", "params": {"item": item, "delete": true}}));
+}

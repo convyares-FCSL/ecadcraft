@@ -452,8 +452,8 @@ pub enum Fix {
     /// Brief 044: **Ignore** this warning on this connector (`setprop ignore.<kind> yes`).
     IgnoreConnector(DeviceId, Kind),
     /// Brief 047: **Use A-0110 for all**: the most common article number of the part of line
-    /// `n` of the component (`article`).
-    UseArticle(DeviceId, u8),
+    /// `n` of the device, or of the item (`article`).
+    UseArticle(crate::outputs::Owner, u8),
     /// Brief 047: **Remove 9**: drop the names line `n`'s `for` lists that the device lacks
     /// (`partline set for`).
     DropMissingFor(DeviceId, u8),
@@ -1661,7 +1661,8 @@ impl Scope {
                         node(self, Node::Name(name_key(n.as_str())));
                     }
                 }
-                // Design 072 §6.4: no check reads a loose part yet (F2b moves the BOM item checks).
+                // Design 072 §6.4: a loose part's checks (an item with no part number) are the BOM's, kept by
+                // the outputs model (`Outputs::bom_checks`); no drawing check reads one.
                 Op::CreateLoosePart { .. } | Op::DeleteLoosePart { .. } | Op::ModifyLoosePart { .. } => {}
                 Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => {
                     for c in doc.components_using(*id) {

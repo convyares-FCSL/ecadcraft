@@ -35,12 +35,12 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::{CableId, DeviceId, Document, ObjectRef, Op, PageId, Pt, RepresentationId, Subject, WireId};
+use ecad_model::{CableId, DeviceId, Document, LoosePartId, ObjectRef, Op, PageId, Pt, RepresentationId, Subject, WireId};
 use serde_json::{Value, json};
 
 use crate::bom::{self, Qty};
 use crate::checks::{Check, Fix, Kind, Object};
-use crate::locations::{self, BoxCache, Located, Source};
+use crate::locations::{self, BoxCache, Located};
 
 pub mod kept;
 
@@ -110,15 +110,43 @@ fn tag_key(t: &str) -> (String, u64, String) {
     (p, n, t.to_string())
 }
 
+/// What a BOM entry belongs to (design 072 §6.4): a device (or strip), or a loose part (an
+/// item). Devices sort first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Owner {
+    /// A device's main part (line 0) or one of its part lines.
+    Device(DeviceId),
+    /// An item: a loose part, always line 0.
+    Loose(LoosePartId),
+}
+
+impl Owner {
+    /// The device, when it is one.
+    pub fn device(self) -> Option<DeviceId> {
+        match self {
+            Owner::Device(c) => Some(c),
+            Owner::Loose(_) => None,
+        }
+    }
+
+    /// The loose part, when it is one.
+    pub fn loose(self) -> Option<LoosePartId> {
+        match self {
+            Owner::Loose(l) => Some(l),
+            Owner::Device(_) => None,
+        }
+    }
+}
+
 /// The key an entry is grouped by on the BOM (part): maker, part number, description, compared
 /// case-insensitively, and the unit (brief 047: pieces and metres never add up); an entry with no
 /// part number is a group of its own.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct PartKey(String, String, String, Option<(DeviceId, u8)>, bool);
+pub struct PartKey(String, String, String, Option<(Owner, u8)>, bool);
 
 impl PartKey {
     /// The same part, but a row of its own for entry `own` (the nested layout's device rows).
-    fn alone(&self, own: (DeviceId, u8)) -> PartKey {
+    fn alone(&self, own: (Owner, u8)) -> PartKey {
         PartKey(self.0.clone(), self.1.clone(), self.2.clone(), Some(own), self.4)
     }
 }
@@ -126,10 +154,10 @@ impl PartKey {
 /// Brief 047 (design 047 §4.1): one BOM entry, a line of a part set or an item.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Entry {
-    pub component: DeviceId,
+    /// The device or the loose part it lists.
+    pub owner: Owner,
     /// 0 for a device's main part or an item, else the part line.
     pub line: u8,
-    pub item: bool,
     /// The device's tag (empty for an item).
     pub tag: String,
     pub location: Option<String>,
@@ -148,25 +176,29 @@ pub struct Entry {
 }
 
 /// An entry's place in its row: tagged entries by tag, then items by description and part number.
-type EntrySort = (bool, (String, u64, String), DeviceId, u8);
+type EntrySort = (bool, (String, u64, String), Owner, u8);
 
 impl Entry {
+    /// Whether it is an item (a loose part).
+    pub fn is_item(&self) -> bool {
+        matches!(self.owner, Owner::Loose(_))
+    }
     fn part_key(&self) -> PartKey {
         let low = |v: &Option<String>| v.as_deref().unwrap_or("").to_lowercase();
         match &self.part_number {
             Some(_) => PartKey(low(&self.maker), low(&self.part_number), low(&self.description), None, self.metres),
-            None => PartKey(String::new(), String::new(), low(&self.description), Some((self.component, self.line)), self.metres),
+            None => PartKey(String::new(), String::new(), low(&self.description), Some((self.owner, self.line)), self.metres),
         }
     }
     fn loc_key(&self) -> LocKey {
         loc_key(self.location.as_deref())
     }
     fn sort(&self) -> EntrySort {
-        if self.item {
+        if self.is_item() {
             let low = |v: &Option<String>| v.as_deref().unwrap_or("").to_lowercase();
-            (true, (low(&self.description), 0, low(&self.part_number)), self.component, self.line)
+            (true, (low(&self.description), 0, low(&self.part_number)), self.owner, self.line)
         } else {
-            (false, tag_key(&self.tag), self.component, self.line)
+            (false, tag_key(&self.tag), self.owner, self.line)
         }
     }
     /// Whether its `for` names sub-items (its quantity is per sub-item).
@@ -180,7 +212,7 @@ impl Entry {
     }
     /// The tags it shows: `-K03`, or `-F01:1, -F01:2` for a `for` line; none for an item.
     pub fn tags(&self) -> Vec<String> {
-        if self.item {
+        if self.is_item() {
             return Vec::new();
         }
         if !self.per_sub() {
@@ -332,7 +364,7 @@ pub struct BomRow {
     pub article_flag: Option<String>,
     /// Brief 047: the entries counted, `(component, line)`; empty for strip terminal and
     /// accessory rows.
-    pub entries: Vec<(DeviceId, u8)>,
+    pub entries: Vec<(Owner, u8)>,
     /// Brief 047: the row lists items only.
     pub item: bool,
     /// Brief 047, nested layout: the part line this row lists under its device, and its kit.
@@ -423,6 +455,8 @@ impl Table {
 #[derive(Debug, Clone, Default)]
 pub struct Scope {
     devices: BTreeSet<DeviceId>,
+    /// Design 072 §6.4: loose parts made, changed or removed (their BOM entries).
+    loose: BTreeSet<LoosePartId>,
     pages: BTreeSet<PageId>,
     route_pages: BTreeSet<PageId>,
     wires: BTreeSet<WireId>,
@@ -453,6 +487,7 @@ impl Scope {
         !self.project_location
             && self.renamed.is_empty()
             && self.devices.is_empty()
+            && self.loose.is_empty()
             && self.pages.is_empty()
             && self.route_pages.is_empty()
             && self.wires.is_empty()
@@ -526,8 +561,10 @@ impl Scope {
                         self.cables.extend(continuation_group_cables(doc, *id));
                     }
                 }
-                // Design 072 §6.4: no output reads a loose part yet (F2b moves the BOM's items).
-                Op::CreateLoosePart { .. } | Op::DeleteLoosePart { .. } | Op::ModifyLoosePart { .. } => {}
+                // Design 072 §6.4: a loose part is an item on the BOM (its entry only).
+                Op::CreateLoosePart { id, .. } | Op::DeleteLoosePart { id, .. } | Op::ModifyLoosePart { id, .. } => {
+                    self.loose.insert(*id);
+                }
                 Op::ModifyProject { before, after } => {
                     use crate::designations::{Aspect, changed_codes, default_key};
                     // Brief 047: an item without its own location shows the project's.
@@ -684,6 +721,11 @@ impl Scope {
             for (c, x) in &doc.devices {
                 if crate::designations::device_keys(x).iter().any(|(_, v)| self.renamed.contains(v)) {
                     self.devices.insert(*c);
+                }
+            }
+            for (id, p) in &doc.loose_parts {
+                if p.location.is_some_and(|l| self.renamed.contains(&l.hex())) {
+                    self.loose.insert(*id);
                 }
             }
         }
@@ -1018,7 +1060,7 @@ pub fn accessory_fix_commands(o: &kept::Outputs, fix: Fix) -> Vec<(String, &'sta
             vec![(format!("Use {} for all", best.0), "article", params)]
         }
         Fix::DropMissingFor(c, n) => {
-            let Some(e) = o.entry(c, n) else { return Vec::new() };
+            let Some(e) = o.entry(Owner::Device(c), n) else { return Vec::new() };
             let kept = if e.subs.is_empty() { serde_json::Value::Null } else { json!(e.subs.join(", ")) };
             vec![(format!("Remove {}", e.missing.join(", ")), "partline", json!({"component": c.hex(), "line": n, "set": {"for": kept}}))]
         }

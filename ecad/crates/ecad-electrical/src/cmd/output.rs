@@ -219,10 +219,11 @@ pub fn bom_ids_json(o: &Outputs, group: Group, nested: bool) -> Vec<Value> {
                 .iter()
                 .filter_map(|(c, n)| o.entry(*c, *n))
                 .map(|e| {
-                    let mut x = json!({"component": e.component.hex(), "line": e.line});
-                    if e.item {
-                        x["item"] = json!(true);
-                    }
+                    // Design 072 §6.4: an item is a loose part, named by its own id.
+                    let mut x = match e.owner {
+                        crate::outputs::Owner::Device(c) => json!({"component": c.hex(), "line": e.line}),
+                        crate::outputs::Owner::Loose(l) => json!({"item": l.hex()}),
+                    };
                     if !e.subs.is_empty() || !e.missing.is_empty() {
                         x["sub"] = json!(e.subs);
                     }

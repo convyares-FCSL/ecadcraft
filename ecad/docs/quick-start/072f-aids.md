@@ -1,4 +1,4 @@
-# 072 Typed object model: lane F (drawing aids)
+# 072 Typed object model: lane F (drawing aids and loose parts)
 
 What changed for someone using the app:
 
@@ -29,6 +29,13 @@ What changed for someone using the app:
   setprop {aids}"), and `rating {location, temperature}` still
   sets the panel temperature of every box of a location. Older files with a box stored as a
   device open read-only, naming the old `location_box` device form.
+- **A BOM item is a loose part, not a device** (Reports ▸ BOM ▸ **+ Item**, or `bomitem`). It is
+  listed on the BOM as before, with its quantity, unit and location (its own, else the
+  project's), and deleted from its BOM row's menu (**Delete item**). Its description is at most
+  200 characters: a longer one is refused in words, never cut. `bomitem` answers `item` (the loose
+  part's id), and `bom`'s `entries` name an item as `{"item": <id>}`. `article` sets an item's
+  article number like a device's. Older files with an item stored as a device are not opened,
+  naming the old `bom_item` device form (pre-v1: no conversion).
 
 ## Try it
 
@@ -44,10 +51,16 @@ What changed for someone using the app:
 6. In the same section set Panel temperature to `45`: it shows `45` at once (no longer faint).
    Pick another Style (add one first in Settings ▸ Standards ▸ Location boxes, for example with a
    continuous line): the outline is redrawn in it; one undo brings the project's style back.
+7. Open Lists ▸ Reports ▸ BOM and click **+ Item**: type `DIN rail 35x7.5`, quantity `1.5`, unit
+   Metres, location `+CP1`, then Enter twice. The BOM lists a row `1.5 m DIN rail 35x7.5` under
+   `+CP1`. Right-click the row and choose **Delete item**: the row goes; one undo brings it back.
+8. Click **+ Item** again and paste a description longer than 200 characters: the command line
+   says it can be at most 200 characters, and nothing is added.
 
 Checked so far: automated headless tests only
 (`lanes::lane_072f::renaming_or_captioning_a_shown_arrow_refreshes_its_section` and
 `lanes::lane_072f::a_new_location_on_a_shown_box_refreshes_its_section` and
 `lanes::lane_072f::a_shown_boxs_panel_temperature_and_style_rows_refresh` in ecad-app;
-`lanes::lane_072f` in ecad-cadcraft and ecad-mcp).
+`lanes::lane_072f` in ecad-cadcraft and ecad-mcp; `lanes::lane_072f` in ecad-file and
+ecad-inspector for the old `bom_item` device form; `bom_contracts` and `bom_ui` for items).
 Not yet tried by the owner.
