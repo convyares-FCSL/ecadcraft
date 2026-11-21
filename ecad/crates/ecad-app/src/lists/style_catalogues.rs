@@ -250,7 +250,8 @@ pub fn detail(doc: &Document, cat: &Catalogue, id: &StyleRef) -> Detail {
         })
         .collect();
     let c = styles::users(doc, cat.catalogue, id);
-    let explicit = ecad_cadcraft::style_cmds::users_words(&styles::explicit_users(doc, cat.catalogue, id));
+    let boxes = styles::box_users(doc, cat.catalogue, id).len();
+    let explicit = ecad_cadcraft::style_cmds::users_words(&styles::explicit_users(doc, cat.catalogue, id), boxes);
     let layer = styles::rows(doc, cat).into_iter().find(|r| r.id == *id).map_or(Layer::Project, |r| r.layer);
     Detail {
         id: id.clone(),

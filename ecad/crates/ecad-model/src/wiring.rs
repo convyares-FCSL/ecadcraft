@@ -33,7 +33,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use crate::colour::ColourWords;
-use crate::connectivity::{self, CONTINUATION, KIND, NAME, NetData, NetKey, Node, name_key, split_number};
+use crate::connectivity::{self, NetData, NetKey, Node, split_number};
 use crate::doc::Document;
 use crate::id::{PageId, WireId};
 use crate::op::{ObjectRef, Op};
@@ -528,35 +528,35 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetKey>, BTreeSet<N
             }
             Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
                 add(Node::Terminal(*id), &mut nets);
-                for (t, _) in doc.terminals_of(terminal.component) {
+                for (t, _) in doc.terminals_of(terminal.owner) {
                     add(Node::Terminal(t), &mut nets);
                 }
             }
-            Op::CreateDevice { id, device: component } | Op::DeleteDevice { id, device: component } => {
-                let cont = component.properties.get(KIND).is_some_and(|k| k == CONTINUATION);
+            Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } => {
                 for (t, _) in doc.terminals_of(*id) {
                     add(Node::Terminal(t), &mut nets);
-                    if cont {
-                        add(Node::Terminal(t), &mut potential);
-                    }
-                }
-                if let Some(n) = component.properties.get(NAME) {
-                    add(Node::Name(name_key(n)), &mut nets);
-                    if cont {
-                        add(Node::Name(name_key(n)), &mut potential);
-                    }
                 }
             }
-            Op::SetProperty { object: ObjectRef::Device(c), key, before, after } if key == KIND || key == NAME => {
-                for (t, _) in doc.terminals_of(*c) {
+            // A continuation (design 072 §6.2) added, removed or renamed: its points and its name
+            // groups carry its potential.
+            Op::CreateAid { id, aid } | Op::DeleteAid { id, aid } => {
+                for (t, _) in doc.terminals_of(*id) {
                     add(Node::Terminal(t), &mut nets);
                     add(Node::Terminal(t), &mut potential);
                 }
-                if key == NAME {
-                    for n in [before, after].into_iter().flatten() {
-                        add(Node::Name(name_key(n)), &mut nets);
-                        add(Node::Name(name_key(n)), &mut potential);
-                    }
+                if let Some(k) = connectivity::continuation_key(aid) {
+                    add(Node::Name(k.clone()), &mut nets);
+                    add(Node::Name(k), &mut potential);
+                }
+            }
+            Op::ModifyAid { id, before, after } if connectivity::continuation_key(before) != connectivity::continuation_key(after) => {
+                for (t, _) in doc.terminals_of(*id) {
+                    add(Node::Terminal(t), &mut nets);
+                    add(Node::Terminal(t), &mut potential);
+                }
+                for k in [before, after].into_iter().filter_map(connectivity::continuation_key) {
+                    add(Node::Name(k.clone()), &mut nets);
+                    add(Node::Name(k), &mut potential);
                 }
             }
             // Brief 030 (FP7): a link edit touches the nets of its old and new terminals, so the

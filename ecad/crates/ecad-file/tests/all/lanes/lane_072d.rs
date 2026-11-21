@@ -95,7 +95,7 @@ fn accepts_comes_back_and_a_hostile_count_is_a_read_error() {
     let dir = TempDir::new("072d-accepts");
     let mut f = fixture();
     let (d, t): (DeviceId, TerminalId) = (f.ids.fresh(), f.ids.fresh());
-    let bar = Terminal { component: d, label: Some("PE".into()), key: Some("PE".parse().unwrap()), accepts: Accepts::new(12).unwrap() };
+    let bar = Terminal { owner: d.into(), label: Some("PE".into()), key: Some("PE".parse().unwrap()), accepts: Accepts::new(12).unwrap() };
     f.ledger
         .commit(Author::User, "bar", vec![Op::CreateDevice { id: d, device: Device::default() }, Op::AddTerminal { id: t, terminal: bar.clone() }])
         .unwrap();

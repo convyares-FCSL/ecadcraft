@@ -441,9 +441,12 @@ pub fn through_checks(doc: &Document, c: DeviceId, tag: &str, out: &mut Vec<crat
                     .find(|x| **x != t)
                     .map(|x| {
                         let name = crate::terminal_types::terminal_name(doc, *x);
-                        match doc.terminals.get(x).and_then(|t| crate::devices::tag_of(doc, t.component)) {
+                        match doc.terminals.get(x).and_then(|t| t.device()).and_then(|c| crate::devices::tag_of(doc, c)) {
                             Some(_) if !name.contains(':') => {
-                                format!("{}:{name}", doc.terminals.get(x).map(|t| crate::devices::tag_words(doc, t.component)).unwrap_or_default())
+                                format!(
+                                    "{}:{name}",
+                                    doc.terminals.get(x).and_then(|t| t.device()).map(|c| crate::devices::tag_words(doc, c)).unwrap_or_default()
+                                )
                             }
                             _ => name,
                         }

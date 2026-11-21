@@ -480,8 +480,8 @@ impl CoverNote {
                 codes_on() && crate::designations::Aspect::of_property(key.raw).is_some()
             }
             Effect::Device { before: Some(b), after: Some(a), .. } => codes_on() && (b.location != a.location || b.function != a.function),
-            Effect::Device { before: Some(d), after: None, .. } | Effect::Device { before: None, after: Some(d), .. } => {
-                ecad_model::connectivity::continuation_key(&d.properties).is_some()
+            Effect::Aid { before: Some(a), after: None, .. } | Effect::Aid { before: None, after: Some(a), .. } => {
+                ecad_model::connectivity::continuation_key(a).is_some()
             }
             // Design 072 §5.3: the revision rows, or a code the cover shows.
             Effect::Project { before, after } => {
@@ -518,9 +518,9 @@ pub struct Uses {
 
 /// What a transaction's effects may change in [`Uses`], gathered effect by effect on the document
 /// after them ([`UsesNote::note`]): every conductor again (`wide`: a wire category record, the
-/// potentials, the project's category choice, a continuation made or removed), or the conductors
-/// the effects name, the ones at the connection points of a device whose potential, name or kind
-/// changed, and the conductors removed.
+/// potentials, the project's category choice, a continuation made, removed or renamed), or the conductors
+/// the effects name, the ones at the connection points of a device whose potential changed, and
+/// the conductors removed.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct UsesNote {
     wide: bool,
@@ -538,8 +538,14 @@ impl UsesNote {
             Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key.raw == crate::defaults::styles::WIRE_CATEGORY.key => {
                 self.wide = true;
             }
-            Effect::Device { before: Some(d), after: None, .. } | Effect::Device { before: None, after: Some(d), .. }
-                if ecad_model::connectivity::continuation_key(&d.properties).is_some() =>
+            Effect::Aid { before: Some(a), after: None, .. } | Effect::Aid { before: None, after: Some(a), .. }
+                if ecad_model::connectivity::continuation_key(a).is_some() =>
+            {
+                self.wide = true;
+            }
+            // A continuation renamed joins or splits nets.
+            Effect::Aid { before: Some(b), after: Some(a), .. }
+                if ecad_model::connectivity::continuation_key(b) != ecad_model::connectivity::continuation_key(a) =>
             {
                 self.wide = true;
             }
@@ -549,11 +555,7 @@ impl UsesNote {
             Effect::Wire { id, after: None, .. } => {
                 self.gone.insert(*id);
             }
-            Effect::Prop { object: ObjectRef::Device(c), key, .. }
-                if key.raw == ecad_model::connectivity::POTENTIAL
-                    || key.raw == ecad_model::connectivity::NAME
-                    || key.raw == ecad_model::connectivity::KIND =>
-            {
+            Effect::Prop { object: ObjectRef::Device(c), key, .. } if key.raw == ecad_model::connectivity::POTENTIAL => {
                 for (t, _) in doc.terminals_of(*c) {
                     self.seeds.extend(doc.ends_at(t).into_iter().map(|(c, _)| c));
                 }

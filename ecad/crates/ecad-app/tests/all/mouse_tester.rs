@@ -153,6 +153,7 @@ fn canon(d: &Document) -> Vec<String> {
             }
             Subject::Cable(_) => "cable".into(),
             Subject::Route(_) => "route".into(),
+            Subject::Aid(_) => "aid".into(),
         };
         out.push(format!("{subject} {:?} items {items:?} terminals {pts:?}", r.form));
     }

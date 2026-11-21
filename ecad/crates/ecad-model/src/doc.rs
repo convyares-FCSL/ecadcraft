@@ -580,16 +580,79 @@ impl<'de> Deserialize<'de> for Accepts {
     }
 }
 
-/// A terminal of a component.
+/// What a connection point belongs to (design 072 §3): a device, or a drawing aid (a
+/// continuation's point, §6.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TerminalOwner {
+    Device(DeviceId),
+    Aid(crate::id::AidId),
+}
+
+impl From<DeviceId> for TerminalOwner {
+    fn from(d: DeviceId) -> Self {
+        Self::Device(d)
+    }
+}
+
+impl From<crate::id::AidId> for TerminalOwner {
+    fn from(a: crate::id::AidId) -> Self {
+        Self::Aid(a)
+    }
+}
+
+impl TerminalOwner {
+    /// The device it belongs to, if a device owns it.
+    pub fn device(self) -> Option<DeviceId> {
+        match self {
+            Self::Device(d) => Some(d),
+            Self::Aid(_) => None,
+        }
+    }
+
+    /// The drawing aid it belongs to, if an aid owns it.
+    pub fn aid(self) -> Option<crate::id::AidId> {
+        match self {
+            Self::Aid(a) => Some(a),
+            Self::Device(_) => None,
+        }
+    }
+
+    /// Its id in hex, for texts that name it when nothing better does.
+    pub fn subject_hex(self) -> String {
+        match self {
+            Self::Device(d) => d.hex(),
+            Self::Aid(a) => a.hex(),
+        }
+    }
+
+    /// The subject whose representations draw it.
+    pub fn subject(self) -> Subject {
+        match self {
+            Self::Device(d) => Subject::Device(d),
+            Self::Aid(a) => Subject::Aid(a),
+        }
+    }
+}
+
+/// A connection point of a device or a drawing aid.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Terminal {
-    pub component: DeviceId,
+    /// What it belongs to (design 072 §3).
+    pub owner: TerminalOwner,
     pub label: Option<String>,
     /// The definition terminal this one was created from (LIB-02; design 072 §2.7).
     pub key: Option<PointKey>,
     /// How many conductors it accepts, copied from its definition terminal when it is made.
     #[serde(default, skip_serializing_if = "Accepts::is_two")]
     pub accepts: Accepts,
+}
+
+impl Terminal {
+    /// The device it belongs to; `None` for a drawing aid's point.
+    pub fn device(&self) -> Option<DeviceId> {
+        self.owner.device()
+    }
 }
 
 /// What a representation depicts.
@@ -600,6 +663,8 @@ pub enum Subject {
     Cable(CableId),
     /// A route's drawing (design 072 F31).
     Route(RouteId),
+    /// A drawing aid's drawing (design 072 §6.2).
+    Aid(crate::id::AidId),
 }
 
 /// The two representation forms (proposal §4.1).
@@ -1356,6 +1421,12 @@ pub struct Document {
     pub cables: BTreeMap<CableId, Cable>,
     /// The lines drawn on pages (design 072 F31).
     pub routes: BTreeMap<RouteId, crate::route::Route>,
+    /// The drawing aids: continuations and location boxes (design 072 §6.2).
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub aids: BTreeMap<crate::id::AidId, crate::aid::Aid>,
+    /// The loose parts: panel-only material on the BOM (design 072 §6.4).
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub loose_parts: BTreeMap<crate::id::LoosePartId, crate::loose_part::LoosePart>,
     /// The typed links between devices (design 072 §2.6).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub device_links: BTreeMap<crate::id::LinkId, crate::user::DeviceLink>,
@@ -1405,6 +1476,10 @@ struct DocumentData {
     #[serde(default)]
     routes: BTreeMap<RouteId, crate::route::Route>,
     #[serde(default)]
+    aids: BTreeMap<crate::id::AidId, crate::aid::Aid>,
+    #[serde(default)]
+    loose_parts: BTreeMap<crate::id::LoosePartId, crate::loose_part::LoosePart>,
+    #[serde(default)]
     device_links: BTreeMap<crate::id::LinkId, crate::user::DeviceLink>,
     definitions: BTreeMap<DefinitionId, Definition>,
     settings: ProjectSettings,
@@ -1436,6 +1511,8 @@ impl From<DocumentData> for Document {
             wires,
             cables,
             routes,
+            aids,
+            loose_parts,
             device_links,
             definitions,
             settings,
@@ -1458,6 +1535,8 @@ impl From<DocumentData> for Document {
             wires,
             cables,
             routes,
+            aids,
+            loose_parts,
             device_links,
             definitions,
             settings,
@@ -1490,6 +1569,8 @@ impl PartialEq for Document {
             wires,
             cables,
             routes,
+            aids,
+            loose_parts,
             device_links,
             definitions,
             settings,
@@ -1513,6 +1594,8 @@ impl PartialEq for Document {
             && *wires == other.wires
             && *cables == other.cables
             && *routes == other.routes
+            && *aids == other.aids
+            && *loose_parts == other.loose_parts
             && *device_links == other.device_links
             && *definitions == other.definitions
             && *settings == other.settings
@@ -1564,14 +1647,14 @@ impl Document {
         &self.conn
     }
 
-    /// Continuation components whose name has the key `key` ([`crate::connectivity::name_key`]),
-    /// in ID order, through the name index.
-    pub fn continuations_named(&self, key: &str) -> Vec<DeviceId> {
+    /// Continuations (drawing aids) whose name has the key `key`
+    /// ([`crate::connectivity::name_key`]), in ID order, through the name index.
+    pub fn continuations_named(&self, key: &str) -> Vec<crate::id::AidId> {
         referrers(&self.index.continuations, &key.to_string()).collect()
     }
 
-    /// Every continuation name key and its components, through the name index.
-    pub fn continuation_names(&self) -> impl Iterator<Item = (&str, DeviceId)> {
+    /// Every continuation name key and its continuations, through the name index.
+    pub fn continuation_names(&self) -> impl Iterator<Item = (&str, crate::id::AidId)> {
         self.index.continuations.iter().flat_map(|(k, ids)| ids.keys().map(move |c| (k.as_str(), *c)))
     }
 
@@ -1621,9 +1704,9 @@ impl Document {
         })
     }
 
-    /// Terminals of `component`, in ID order.
-    pub fn terminals_of(&self, component: DeviceId) -> impl Iterator<Item = (TerminalId, &Terminal)> {
-        referrers(&self.index.component_terminals, &component).filter_map(|id| self.terminals.get(&id).map(|t| (id, t)))
+    /// Connection points of `owner` (a device or a drawing aid), in ID order.
+    pub fn terminals_of(&self, owner: impl Into<TerminalOwner>) -> impl Iterator<Item = (TerminalId, &Terminal)> {
+        referrers(&self.index.component_terminals, &owner.into()).filter_map(|id| self.terminals.get(&id).map(|t| (id, t)))
     }
 
     /// Whether any conductor end is attached to `terminal`, through the index, without listing them.
@@ -1760,21 +1843,19 @@ impl Document {
         if let Some((cable, i)) = self.cable_point(t) {
             return self.cables.get(&cable)?.cores.get(i).map(|c| c.through.clone());
         }
-        let device = self.terminals.get(&t)?.component;
-        let props = &self.devices.get(&device)?.properties;
-        if props.get(crate::connectivity::KIND).map(String::as_str) != Some(crate::connectivity::CONTINUATION) {
-            return None;
-        }
-        Some(self.continuation_points(props, device))
+        let aid = self.terminals.get(&t)?.owner.aid()?;
+        Some(self.continuation_points(aid, self.aids.get(&aid)?))
     }
 
-    /// The points of continuation `device` (with `props`) and of its partners by name, in ID order.
-    pub fn continuation_points(&self, props: &Properties, device: DeviceId) -> Vec<TerminalId> {
-        let devices = match crate::connectivity::continuation_key(props) {
+    /// The points of continuation `id` (as `aid`, before or after an edit) and of its partners by
+    /// name, in ID order.
+    pub fn continuation_points(&self, id: crate::id::AidId, aid: &crate::aid::Aid) -> Vec<TerminalId> {
+        let aids = match crate::connectivity::continuation_key(aid) {
             Some(k) => self.continuations_named(&k),
-            None => vec![device],
+            None => Vec::new(),
         };
-        let mut out: Vec<TerminalId> = devices.into_iter().flat_map(|d| self.terminals_of(d).map(|(t, _)| t)).collect();
+        let aids = aids.into_iter().chain(std::iter::once(id));
+        let mut out: Vec<TerminalId> = aids.into_iter().flat_map(|a| self.terminals_of(a).map(|(t, _)| t)).collect();
         out.sort();
         out.dedup();
         out

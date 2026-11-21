@@ -36,6 +36,7 @@ pub fn handles_of(p: &crate::Project, page: PageId, object: Object) -> Vec<cadcr
         }
         Object::Route(r) => Subject::Route(r),
         Object::Device(c) => Subject::Device(c),
+        Object::Aid(a) => Subject::Aid(a),
         Object::Reference(r) => {
             return doc
                 .representations
@@ -46,7 +47,7 @@ pub fn handles_of(p: &crate::Project, page: PageId, object: Object) -> Vec<cadcr
         }
         Object::Cable(k) => Subject::Cable(k),
         Object::Terminal(t) => match doc.terminals.get(&t) {
-            Some(x) => Subject::Device(x.component),
+            Some(x) => x.owner.subject(),
             None => return Vec::new(),
         },
         Object::None => return Vec::new(),

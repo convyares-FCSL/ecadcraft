@@ -61,6 +61,10 @@ pub enum Obj {
     Cable(CableId),
     /// A route (design 072 F31).
     Route(RouteId),
+    /// A drawing aid (design 072 §6.2).
+    Aid(crate::id::AidId),
+    /// A loose part (design 072 §6.4).
+    LoosePart(crate::id::LoosePartId),
     Project,
 }
 
@@ -79,6 +83,8 @@ impl Obj {
             Obj::Wire(i) => i.hex(),
             Obj::Cable(i) => i.hex(),
             Obj::Route(i) => i.hex(),
+            Obj::Aid(i) => i.hex(),
+            Obj::LoosePart(i) => i.hex(),
             Obj::Project => "project".into(),
         }
     }
@@ -97,6 +103,8 @@ impl Obj {
             Obj::Wire(_) => "wire",
             Obj::Cable(_) => "cable",
             Obj::Route(_) => "route",
+            Obj::Aid(_) => "drawing aid",
+            Obj::LoosePart(_) => "loose part",
             Obj::Project => "project",
         }
     }
@@ -143,6 +151,8 @@ impl Scope {
             + t.wires.len()
             + t.cables.len()
             + t.routes.len()
+            + t.aids.len()
+            + t.loose_parts.len()
             + t.definitions.len()
             + t.folders.len()
             + usize::from(self.project)
@@ -538,6 +548,14 @@ fn object<T: PartialEq + Clone>(
     }
 }
 
+/// The object that owns a connection point.
+fn owner_obj(owner: crate::doc::TerminalOwner) -> Obj {
+    match owner {
+        crate::doc::TerminalOwner::Device(c) => Obj::Device(c),
+        crate::doc::TerminalOwner::Aid(a) => Obj::Aid(a),
+    }
+}
+
 /// The name of `obj` for texts, from whichever state holds it.
 pub fn name_of(docs: &[&Document], obj: Obj) -> String {
     let tag_of = |c: DeviceId| docs.iter().find_map(|d| d.devices.get(&c)).and_then(|c| c.tag().map(str::to_string)).unwrap_or_else(|| c.short());
@@ -551,7 +569,10 @@ pub fn name_of(docs: &[&Document], obj: Obj) -> String {
         Obj::Terminal(t) => match docs.iter().find_map(|d| d.terminals.get(&t)) {
             Some(term) => format!(
                 "{}:{}",
-                tag_of(term.component),
+                match term.owner {
+                    crate::doc::TerminalOwner::Device(c) => tag_of(c),
+                    crate::doc::TerminalOwner::Aid(a) => a.short(),
+                },
                 term.label.clone().or_else(|| term.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| t.short())
             ),
             None => t.short(),
@@ -568,6 +589,15 @@ pub fn name_of(docs: &[&Document], obj: Obj) -> String {
             Some(x) => format!("Line on {}", page_of(x.page).to_lowercase()),
             None => format!("Line {}", r.short()),
         },
+        Obj::Aid(x) => match docs.iter().find_map(|d| d.aids.get(&x)) {
+            Some(crate::aid::Aid::Continuation { name: Some(n), .. }) => format!("Continuation {n}"),
+            Some(crate::aid::Aid::Continuation { name: None, .. }) => format!("Continuation {}", x.short()),
+            Some(crate::aid::Aid::Box(_)) | None => format!("Box {}", x.short()),
+        },
+        Obj::LoosePart(x) => match docs.iter().find_map(|d| d.loose_parts.get(&x)) {
+            Some(p) => format!("Loose part \"{}\"", p.description),
+            None => format!("Loose part {}", x.short()),
+        },
         Obj::Page(p) => match docs.iter().find_map(|d| d.pages.get(&p)) {
             Some(page) => format!("{} \"{}\"", page_of(p), page.title),
             None => page_of(p),
@@ -582,6 +612,7 @@ pub fn name_of(docs: &[&Document], obj: Obj) -> String {
                     Subject::Wire(c) => name_of(docs, Obj::Wire(c)),
                     Subject::Cable(c) => name_of(docs, Obj::Cable(c)),
                     Subject::Route(c) => name_of(docs, Obj::Route(c)),
+                    Subject::Aid(c) => name_of(docs, Obj::Aid(c)),
                 };
                 format!("{subject} symbol on {}", page_of(rep.page).to_lowercase())
             }
@@ -605,7 +636,8 @@ fn page_in(doc: &Document, obj: Obj) -> Option<PageId> {
         Obj::Wire(c) => doc.representations_of(Subject::Wire(c)).map(|(_, r)| r.page).next(),
         Obj::Cable(c) => doc.representations_of(Subject::Cable(c)).map(|(_, r)| r.page).next(),
         Obj::Route(r) => doc.routes.get(&r).map(|r| r.page),
-        Obj::Terminal(t) => doc.terminals.get(&t).and_then(|t| page_in(doc, Obj::Device(t.component))),
+        Obj::Aid(x) => doc.representations_of(Subject::Aid(x)).map(|(_, r)| r.page).next(),
+        Obj::Terminal(t) => doc.terminals.get(&t).and_then(|t| page_in(doc, owner_obj(t.owner))),
         _ => None,
     }
 }
@@ -626,6 +658,8 @@ fn scope_objects(scope: &Scope) -> Vec<Obj> {
     out.extend(t.wires.iter().map(|x| Obj::Wire(*x)));
     out.extend(t.cables.iter().map(|x| Obj::Cable(*x)));
     out.extend(t.routes.iter().map(|x| Obj::Route(*x)));
+    out.extend(t.aids.iter().map(|x| Obj::Aid(*x)));
+    out.extend(t.loose_parts.iter().map(|x| Obj::LoosePart(*x)));
     if scope.project {
         out.push(Obj::Project);
     }
@@ -646,6 +680,8 @@ fn differs(a: &Document, b: &Document, obj: Obj) -> bool {
         Obj::Wire(i) => a.wires.get(&i) != b.wires.get(&i),
         Obj::Cable(i) => a.cables.get(&i) != b.cables.get(&i),
         Obj::Route(i) => a.routes.get(&i) != b.routes.get(&i),
+        Obj::Aid(i) => a.aids.get(&i) != b.aids.get(&i),
+        Obj::LoosePart(i) => a.loose_parts.get(&i) != b.loose_parts.get(&i),
         Obj::Project => {
             a.properties != b.properties || a.project != b.project || a.settings != b.settings || a.standard != b.standard || a.styles != b.styles
         }
@@ -666,6 +702,8 @@ fn holds(doc: &Document, obj: Obj) -> bool {
         Obj::Wire(i) => doc.wires.contains_key(&i),
         Obj::Cable(i) => doc.cables.contains_key(&i),
         Obj::Route(i) => doc.routes.contains_key(&i),
+        Obj::Aid(i) => doc.aids.contains_key(&i),
+        Obj::LoosePart(i) => doc.loose_parts.contains_key(&i),
         Obj::Project => true,
     }
 }
@@ -690,6 +728,8 @@ fn copy(to: &mut Document, from: &Document, obj: Obj) {
         Obj::Wire(i) => put(&mut to.wires, &from.wires, i),
         Obj::Cable(i) => put(&mut to.cables, &from.cables, i),
         Obj::Route(i) => put(&mut to.routes, &from.routes, i),
+        Obj::Aid(i) => put(&mut to.aids, &from.aids, i),
+        Obj::LoosePart(i) => put(&mut to.loose_parts, &from.loose_parts, i),
         Obj::Project => {}
     }
 }
@@ -875,6 +915,18 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
                     ),
                 });
                 set(&mut m.cables, id, v);
+            }
+            Obj::Aid(id) => {
+                let v = object(ctx, obj, &what, a.aids.get(&id), t.aids.get(&id), s.aids.get(&id), |ctx, a, t, s| {
+                    field(ctx, obj, "aid", format!("{what} · changed on both"), a, t, s, &|x| format!("{x:?}"))
+                });
+                set(&mut m.aids, id, v);
+            }
+            Obj::LoosePart(id) => {
+                let v = object(ctx, obj, &what, a.loose_parts.get(&id), t.loose_parts.get(&id), s.loose_parts.get(&id), |ctx, a, t, s| {
+                    field(ctx, obj, "loose_part", format!("{what} · changed on both"), a, t, s, &|x| format!("{x:?}"))
+                });
+                set(&mut m.loose_parts, id, v);
             }
             Obj::Route(id) => {
                 let v = object(ctx, obj, &what, a.routes.get(&id), t.routes.get(&id), s.routes.get(&id), |ctx, a, t, s| Route {
@@ -1181,7 +1233,7 @@ fn obj_by_hex(docs: &[&Document], hex: &str) -> Option<Obj> {
 /// drawing items) that the source has and the result lacks.
 fn device_needs(m: &Document, s: &Document, c: DeviceId) -> Vec<Obj> {
     let mut out: Vec<Obj> =
-        s.terminals.iter().filter(|(k, t)| t.component == c && !m.terminals.contains_key(k)).map(|(k, _)| Obj::Terminal(*k)).collect();
+        s.terminals.iter().filter(|(k, t)| t.device() == Some(c) && !m.terminals.contains_key(k)).map(|(k, _)| Obj::Terminal(*k)).collect();
     for (r, rep) in s.representations.iter().filter(|(_, r)| r.subject == Subject::Device(c)) {
         if !m.representations.contains_key(r) {
             out.push(Obj::Representation(*r));
@@ -1356,7 +1408,7 @@ fn refs(m: &Document, obj: Obj) -> Vec<(Obj, Use)> {
         }
         Obj::Terminal(t) => {
             if let Some(t) = m.terminals.get(&t) {
-                out.push((Obj::Device(t.component), Use::Whole));
+                out.push((owner_obj(t.owner), Use::Whole));
             }
         }
         Obj::Representation(r) => {
@@ -1367,6 +1419,7 @@ fn refs(m: &Document, obj: Obj) -> Vec<(Obj, Use)> {
                         Subject::Wire(c) => Obj::Wire(c),
                         Subject::Cable(c) => Obj::Cable(c),
                         Subject::Route(c) => Obj::Route(c),
+                        Subject::Aid(c) => Obj::Aid(c),
                     },
                     Use::Whole,
                 ));
@@ -1413,7 +1466,7 @@ fn refs(m: &Document, obj: Obj) -> Vec<(Obj, Use)> {
                 }
             }
         }
-        Obj::Layer(_) | Obj::Definition(_) | Obj::Project => {}
+        Obj::Layer(_) | Obj::Definition(_) | Obj::Aid(_) | Obj::LoosePart(_) | Obj::Project => {}
     }
     out
 }
@@ -1428,13 +1481,16 @@ fn users_of(m: &Document, y: Obj) -> Vec<Obj> {
             all.extend(m.representations.iter().filter(|(_, r)| r.connection_points.contains_key(&t)).map(|(k, _)| Obj::Representation(*k)));
             all.extend(m.routes.iter().filter(|(_, r)| r.ends.contains(&RouteEnd::Point(t))).map(|(k, _)| Obj::Route(*k)));
         }
+        Obj::Aid(x) => {
+            all.extend(m.representations.iter().filter(|(_, r)| r.subject == Subject::Aid(x)).map(|(k, _)| Obj::Representation(*k)));
+        }
         Obj::Route(x) => {
             all.extend(m.routes.iter().filter(|(_, r)| r.ends.iter().any(|e| e.route() == Some(x))).map(|(k, _)| Obj::Route(*k)));
             all.extend(m.cables.iter().filter(|(_, c)| c.cores.iter().any(|mm| mm.route() == Some(x))).map(|(k, _)| Obj::Cable(*k)));
             all.extend(m.representations.iter().filter(|(_, r)| r.subject == Subject::Route(x)).map(|(k, _)| Obj::Representation(*k)));
         }
         Obj::Device(c) => {
-            all.extend(m.terminals.iter().filter(|(_, t)| t.component == c).map(|(k, _)| Obj::Terminal(*k)));
+            all.extend(m.terminals.iter().filter(|(_, t)| t.device() == Some(c)).map(|(k, _)| Obj::Terminal(*k)));
             all.extend(m.representations.iter().filter(|(_, r)| r.subject == Subject::Device(c)).map(|(k, _)| Obj::Representation(*k)));
         }
         Obj::Wire(c) => {
@@ -1444,7 +1500,7 @@ fn users_of(m: &Document, y: Obj) -> Vec<Obj> {
         Obj::Cable(c) => {
             all.extend(m.representations.iter().filter(|(_, r)| r.subject == Subject::Cable(c)).map(|(k, _)| Obj::Representation(*k)));
         }
-        Obj::Representation(_) | Obj::Project => {}
+        Obj::Representation(_) | Obj::LoosePart(_) | Obj::Project => {}
         Obj::Item(i) => {
             all.extend(m.representations.iter().filter(|(_, r)| r.items.contains(&i)).map(|(k, _)| Obj::Representation(*k)));
         }
@@ -1667,7 +1723,7 @@ fn objs_of(ops: &[Op]) -> BTreeSet<Obj> {
             }
             Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
                 out.insert(Obj::Terminal(*id));
-                out.insert(Obj::Device(terminal.component));
+                out.insert(owner_obj(terminal.owner));
             }
             Op::LinkRepresentation { id, .. } | Op::UnlinkRepresentation { id, .. } => {
                 out.insert(Obj::Representation(*id));
@@ -2010,6 +2066,7 @@ fn changes(inp: &Inputs<'_>, objects: &[Obj]) -> (Vec<Change>, Vec<PageId>) {
                 Subject::Wire(c) => Obj::Wire(c),
                 Subject::Cable(c) => Obj::Cable(c),
                 Subject::Route(c) => Obj::Route(c),
+                Subject::Aid(c) => Obj::Aid(c),
             };
             if objects.contains(&subject) && differs(a, s, subject) && holds(a, subject) == holds(a, shown_as) {
                 continue;
@@ -2278,6 +2335,12 @@ pub fn plan(inp: &Inputs<'_>, choices: &BTreeMap<String, Choice>) -> Plan {
                 Obj::Route(i) => {
                     scope.routes.insert(i);
                 }
+                Obj::Aid(i) => {
+                    scope.aids.insert(i);
+                }
+                Obj::LoosePart(i) => {
+                    scope.loose_parts.insert(i);
+                }
                 Obj::Project => {}
             }
         }
@@ -2495,7 +2558,7 @@ mod tests {
         d.devices.insert(DeviceId(c), Device::default().with_tag(Some(tag_text)));
         for t in terminals {
             d.terminals
-                .insert(TerminalId(*t), Terminal { component: DeviceId(c), label: Some(format!("A{t}")), key: None, accepts: Default::default() });
+                .insert(TerminalId(*t), Terminal { owner: DeviceId(c).into(), label: Some(format!("A{t}")), key: None, accepts: Default::default() });
         }
     }
 

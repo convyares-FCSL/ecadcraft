@@ -189,9 +189,10 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
         let mut more = 0usize;
         for o in net.terminals.iter().filter(|o| **o != t) {
             let Some(ot) = doc.terminals.get(o) else { continue };
-            deps.insert(ObjectRef::Device(ot.component));
+            let Some(oc) = ot.device() else { continue };
+            deps.insert(ObjectRef::Device(oc));
             // Junctions and other untagged helpers are not named.
-            let Some(tag) = ecad_cadcraft::devices::tag_of(doc, ot.component) else { continue };
+            let Some(tag) = ecad_cadcraft::devices::tag_of(doc, oc) else { continue };
             if others.len() < MAX_OTHERS {
                 others.push(format!("{tag}:{}", ot.label.as_deref().unwrap_or("?")));
             } else {

@@ -1420,9 +1420,9 @@ mod tests {
                 Op::AddPage { id: PageId(1), page: Page::titled("1").unwrap(), index: 0 },
                 Op::AddLayer { id: LayerId(2), layer: Layer { name: "0".into() } },
                 Op::CreateDevice { id: c, device: Device::default() },
-                Op::AddTerminal { id: TerminalId(4), terminal: Terminal { component: c, label: None, key: None, accepts: Default::default() } },
-                Op::AddTerminal { id: TerminalId(5), terminal: Terminal { component: c, label: None, key: None, accepts: Default::default() } },
-                Op::AddTerminal { id: TerminalId(10), terminal: Terminal { component: c, label: None, key: None, accepts: Default::default() } },
+                Op::AddTerminal { id: TerminalId(4), terminal: Terminal { owner: c.into(), label: None, key: None, accepts: Default::default() } },
+                Op::AddTerminal { id: TerminalId(5), terminal: Terminal { owner: c.into(), label: None, key: None, accepts: Default::default() } },
+                Op::AddTerminal { id: TerminalId(10), terminal: Terminal { owner: c.into(), label: None, key: None, accepts: Default::default() } },
                 Op::CreateWire { id: w, wire: Wire::new(NetId(14), ConductorId(15), TerminalId(4), TerminalId(10)) },
                 Op::CreateCable { id: CableId(7), cable: Cable { cores: vec![Core::on_wire(w, None)], ..Cable::default() } },
             ],
@@ -1524,7 +1524,7 @@ mod tests {
             Op::AddLayer { id: LayerId(50), layer: Layer { name: "x".into() } },
             Op::RemoveTerminal {
                 id: TerminalId(5),
-                terminal: Terminal { component: DeviceId(3), label: None, key: None, accepts: Default::default() },
+                terminal: Terminal { owner: DeviceId(3).into(), label: None, key: None, accepts: Default::default() },
             },
         ];
         log.push(bad);
@@ -1647,7 +1647,7 @@ mod tests {
         // A terminal written straight into the map: the full check passes, the index check does
         // not, and the scoped check of `three_ops` never looks at it. Only verify mode notices.
         let mut l = ledger();
-        l.doc.terminals.insert(TerminalId(50), Terminal { component: DeviceId(3), label: None, key: None, accepts: Default::default() });
+        l.doc.terminals.insert(TerminalId(50), Terminal { owner: DeviceId(3).into(), label: None, key: None, accepts: Default::default() });
         let doc = json(l.document());
         let r = catch_unwind(AssertUnwindSafe(|| l.with_applied(&three_ops(), |_| ())));
         match r {

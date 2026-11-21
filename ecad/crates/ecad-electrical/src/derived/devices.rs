@@ -157,6 +157,8 @@ impl<'i> DerivedView<Inputs<'i>> for DevicesFeed {
             | Effect::Version { .. }
             | Effect::Style { .. }
             | Effect::Standard { .. }
+            | Effect::Aid { .. }
+            | Effect::LoosePart { .. }
             | Effect::Project { .. } => {}
         }
         if moves && scope.book_before.is_none() {

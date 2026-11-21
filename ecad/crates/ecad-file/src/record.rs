@@ -88,6 +88,12 @@ pub const OP_NAMES: &[&str] = &[
     "ModifyProject",
     "AddDeviceLink",
     "RemoveDeviceLink",
+    "CreateAid",
+    "DeleteAid",
+    "ModifyAid",
+    "CreateLoosePart",
+    "DeleteLoosePart",
+    "ModifyLoosePart",
 ];
 
 /// Why a record could not be decoded (§20.6).

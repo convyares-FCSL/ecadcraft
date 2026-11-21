@@ -486,7 +486,7 @@ pub fn move_target(doc: &Document, rep: RepresentationId, kind: TextKind, termin
         TextKind::Tag => (format!("{}tag.at", text_style::symbol_prefix(rep)), TextOf::Tag),
         TextKind::PointLabel => {
             let t = terminal.ok_or(CmdError::refused(NEEDS_TERMINAL))?;
-            if doc.terminals.get(&t).is_none_or(|x| x.component != c) {
+            if doc.terminals.get(&t).is_none_or(|x| x.device() != Some(c)) {
                 return Err(CmdError::refused(format!("No connection point {} on that symbol.", t.hex())));
             }
             (devices::point_label_key(doc, rep, t), TextOf::Terminal(t))

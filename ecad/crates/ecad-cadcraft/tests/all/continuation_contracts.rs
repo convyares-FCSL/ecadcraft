@@ -8,19 +8,19 @@ use cadcraft_engine::doc::EntityKind;
 use ecad_cadcraft::continuations::{self, CAPTION_KEY, CAPTION_RULE, TEXT_DERIVED};
 use ecad_cadcraft::project::Mapped;
 use ecad_cadcraft::xref::{self, Group, HAlign, Places, RefIndex, Shape};
-use ecad_model::{DeviceId, ObjectRef, PageId, Pt, RepresentationId};
+use ecad_model::{AidId, DeviceId, ObjectRef, PageId, Pt, RepresentationId, Subject};
 use serde_json::{Value, json};
 
 struct F {
     h: H,
     pages: [PageId; 3],
     /// The `24V` arrows on 101, 102 and 103: component and symbol.
-    arrows: [(DeviceId, RepresentationId); 3],
+    arrows: [(AidId, RepresentationId); 3],
 }
 
-fn arrow(h: &mut H, at: (f64, f64), name: &str) -> (DeviceId, RepresentationId) {
+fn arrow(h: &mut H, at: (f64, f64), name: &str) -> (AidId, RepresentationId) {
     let v = h.run("place", json!({"symbol": "continuation", "at": [at.0, at.1], "name": name})).unwrap();
-    (id(&v, "component"), id(&v, "representation"))
+    (id(&v, "aid"), id(&v, "representation"))
 }
 
 fn fixture(seed: u64) -> F {
@@ -83,8 +83,8 @@ fn index_matches(h: &mut H) {
     h.p(|p| p.xref().verify(p.ledger.document())).unwrap();
 }
 
-fn item_handle(h: &mut H, page: PageId, c: DeviceId) -> String {
-    let item = h.symbol_item(c);
+fn item_handle(h: &mut H, page: PageId, a: AidId) -> String {
+    let item = h.subject_item(Subject::Aid(a));
     h.handle_of(page, item).hex()
 }
 
@@ -194,7 +194,7 @@ fn renaming_creating_and_deleting_an_arrow_are_scoped() {
     f.h.activate(f.pages[2]);
     let n = f.h.p(|p| p.change_count());
     let c = f.arrows[2].0;
-    f.h.run("setprop", json!({"component": c.hex(), "key": "name", "value": "0V"})).unwrap();
+    f.h.run("setprop", json!({"aids": [c.hex()], "key": "name", "value": "0V"})).unwrap();
     let changed = f.h.p(|p| p.changes_since(n)).expect("a rename is not an any-page change");
     for p in [f.pages[0], f.pages[1], f.pages[2], p104] {
         assert!(changed.contains(&p), "{p:?} in {changed:?}");
@@ -282,14 +282,14 @@ fn caption_rules_and_wrapping() {
     f.h.activate(f.pages[2]);
     let e = f.h.run("contcaption", json!({"continuations": [c.hex()], "caption": "x".repeat(100)})).unwrap_err();
     assert_eq!(e, CAPTION_RULE);
-    let e = f.h.run("setprop", json!({"component": c.hex(), "key": CAPTION_KEY, "value": "A\nB"})).unwrap_err();
+    let e = f.h.run("setprop", json!({"aids": [c.hex()], "key": CAPTION_KEY, "value": "A\nB"})).unwrap_err();
     assert_eq!(e, CAPTION_RULE);
     let coil = f.h.run("place", json!({"symbol": "coil", "at": [250, 150]})).unwrap();
     let k: DeviceId = id(&coil, "component");
     let e = f.h.run("contcaption", json!({"continuations": [k.hex()], "caption": "X"})).unwrap_err();
-    assert_eq!(e, "Only continuation arrows have a caption; -K01 is a device.");
+    assert_eq!(e, ecad_cadcraft::continuations::NO_SUCH_ARROW, "a device is not an arrow");
     let e = f.h.run("setprop", json!({"component": k.hex(), "key": CAPTION_KEY, "value": "X"})).unwrap_err();
-    assert!(e.contains("-K01 is a device"), "{e}");
+    assert!(e.contains("that is a device"), "{e}");
     // The junction went with routes (design 072 D): a T is a line landing on a line.
     let e = f.h.run("place", json!({"symbol": "junction", "at": [10, 10], "caption": "X"})).unwrap_err();
     assert_eq!(e, "No symbol \"junction\". Type List to see them.");
@@ -304,12 +304,12 @@ fn caption_rules_and_wrapping() {
         })
         .collect();
     assert!((2..=3).contains(&lines.len()), "{lines:?}");
-    let pc: DeviceId = id(&v, "component");
-    f.h.run("setprop", json!({"component": pc.hex(), "key": CAPTION_KEY, "value": "  "})).unwrap();
-    assert_eq!(f.h.doc().devices[&pc].properties.get(CAPTION_KEY), None, "blank removes it");
+    let pc: AidId = id(&v, "aid");
+    f.h.run("setprop", json!({"aids": [pc.hex()], "key": CAPTION_KEY, "value": "  "})).unwrap();
+    assert_eq!(f.h.doc().aids[&pc].continuation_caption(), None, "blank removes it");
     // Hostile: 10 000 characters and control characters are refused, never a panic.
     for bad in ["y".repeat(10_000), "A\u{7}B".to_string()] {
-        assert!(f.h.run("setprop", json!({"component": pc.hex(), "key": CAPTION_KEY, "value": bad})).is_err());
+        assert!(f.h.run("setprop", json!({"aids": [pc.hex()], "key": CAPTION_KEY, "value": bad})).is_err());
     }
     let many: Vec<String> = (0..2001).map(|i| format!("{:x}", i + 1)).collect();
     assert!(f.h.run("contcaption", json!({"continuations": many, "caption": "X"})).is_err());
@@ -332,7 +332,7 @@ fn go_to_cycles_and_xrefs_lists() {
     let rows: Vec<&Value> =
         v["references"].as_array().unwrap().iter().filter(|r| r["kind"] == "continuation" && r["source"] == json!(a.hex())).collect();
     assert_eq!(rows.len(), 2, "{v}");
-    let v = f.h.run("xrefs", json!({"component": a_c.hex()})).unwrap();
+    let v = f.h.run("xrefs", json!({"aid": a_c.hex()})).unwrap();
     assert_eq!(v["references"].as_array().unwrap().len(), 2, "{v}");
     // A lonely arrow says so.
     let (_, lone) = arrow(&mut f.h, (200.0, 200.0), "SPARE");
@@ -350,7 +350,7 @@ fn the_text_is_derived_and_properties_list_the_other_ends() {
     assert_eq!(f.h.mapped(f.pages[0], hd), Some(Mapped::Xref(a)));
     let e = f.h.run("move", json!({"handles": [hd.hex()], "delta": [5, 0]})).unwrap_err();
     assert!(e.contains(TEXT_DERIVED), "{e}");
-    let item = f.h.symbol_item(a_c);
+    let item = f.h.subject_item(Subject::Aid(a_c));
     let sel = vec![f.h.handle_of(f.pages[0], item)];
     let view = f.h.p(|p| ecad_cadcraft::props::view(p, Some(f.pages[0]), &sel));
     let s = &view.sections[0];
@@ -406,9 +406,9 @@ fn the_kept_index_equals_a_rebuild_through_the_update_map() {
     let hd = item_handle(&mut f.h, f.pages[1], b_c);
     f.h.run("move", json!({"handles": [hd], "delta": [10, 0]})).unwrap();
     index_matches(&mut f.h);
-    f.h.run("setprop", json!({"component": a_c.hex(), "key": "name", "value": "0V"})).unwrap();
+    f.h.run("setprop", json!({"aids": [a_c.hex()], "key": "name", "value": "0V"})).unwrap();
     index_matches(&mut f.h);
-    f.h.run("setprop", json!({"component": a_c.hex(), "key": "name", "value": "24V"})).unwrap();
+    f.h.run("setprop", json!({"aids": [a_c.hex()], "key": "name", "value": "24V"})).unwrap();
     index_matches(&mut f.h);
     f.h.run("contcaption", json!({"continuations": [c_c.hex()], "caption": "X"})).unwrap();
     index_matches(&mut f.h);
@@ -450,17 +450,15 @@ fn xrefs_on_a_name_of(m: usize) {
     let mut ids = IdAllocator::seeded(0x49_15);
     let style = Style { layer: LayerId(1), color: Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
     let starter = ecad_cadcraft::wires::continuation_starter();
-    let mut props = ecad_model::Properties::new();
-    props.insert("kind".into(), "continuation".into());
-    props.insert("name".into(), "BIG".into());
+    let aid = ecad_cadcraft::wires::continuation_aid("BIG", None).unwrap();
     let pl = Placement { origin: Pt::new(20.125, 60.0), rotation: ecad_model::units::Radians(0.0), mirror: false, scale: 1.0 };
-    let t = ecad_cadcraft::wires::plan_tagless(ledger.document(), &mut ids, pages[0], style, starter, pl, props).unwrap();
+    let t = ecad_cadcraft::wires::plan_tagless(ledger.document(), &mut ids, pages[0], style, starter, pl, aid).unwrap();
     ledger.commit(ecad_model::Author::User, "first", t.ops.clone()).unwrap();
     // The other arrows: the first one's ops with fresh IDs, place and page, in one transaction
     // (planning and settling each one in a debug build takes seconds; the subject is `xrefs`).
     let template: Vec<String> =
         t.ops.iter().filter(|o| !matches!(o, Op::EmbedDefinition { .. })).map(|o| serde_json::to_string(o).unwrap()).collect();
-    let old = [t.component.hex(), t.terminal.hex(), t.item.hex(), t.representation.hex(), pages[0].hex()];
+    let old = [t.aid.hex(), t.terminal.hex(), t.item.hex(), t.representation.hex(), pages[0].hex()];
     let mut ops = Vec::new();
     for i in 1..m {
         let fresh = [i as u128 * 4 + 0x7000_0000, i as u128 * 4 + 0x7000_0001, i as u128 * 4 + 0x7000_0002, i as u128 * 4 + 0x7000_0003];
@@ -475,19 +473,19 @@ fn xrefs_on_a_name_of(m: usize) {
     }
     ledger.commit(ecad_model::Author::User, "arrows", ops).unwrap();
     let doc = ledger.document().clone();
-    let first = Some(t.component);
+    let first = Some(t.aid);
     assert_eq!(doc.continuations_named("BIG").len(), m);
     let idx = RefIndex::build(&doc);
     let t = std::time::Instant::now();
-    let v = xref::xrefs_json(&doc, &idx, first, None, None, 2000, 0).unwrap();
+    let v = xref::xrefs_json(&doc, &idx, None, first, None, None, 2000, 0).unwrap();
     assert_eq!(v["references"].as_array().unwrap().len(), m - 1);
     assert!(v.get("next").is_none(), "{}", v["next"]);
-    let v = xref::xrefs_json(&doc, &idx, None, None, Some(pages[3]), 30, 10).unwrap();
+    let v = xref::xrefs_json(&doc, &idx, None, None, None, Some(pages[3]), 30, 10).unwrap();
     let rows = v["references"].as_array().unwrap();
     assert_eq!(rows.len(), 30);
     assert!(rows.iter().all(|r| r["kind"] == "continuation"));
     assert_eq!(v["next"], json!(40));
-    let v = xref::xrefs_json(&doc, &idx, None, None, None, 10, m * (m - 1) - 2).unwrap();
+    let v = xref::xrefs_json(&doc, &idx, None, None, None, None, 10, m * (m - 1) - 2).unwrap();
     assert_eq!((v["references"].as_array().unwrap().len(), v.get("next").is_none()), (2, true), "{v}");
     // All m(m−1) rows would take minutes in a debug build for 2,000; the window takes little.
     assert!(t.elapsed().as_secs_f64() < 2.0, "{:?}", t.elapsed());

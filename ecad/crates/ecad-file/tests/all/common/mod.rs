@@ -67,11 +67,11 @@ impl Fixture {
             Op::CreateDevice { id: c, device: Device { definition: Some(def), ..Device::default() } },
             Op::AddTerminal {
                 id: t1,
-                terminal: Terminal { component: c, label: Some("A1".into()), key: Some("A1".parse().unwrap()), accepts: Default::default() },
+                terminal: Terminal { owner: c.into(), label: Some("A1".into()), key: Some("A1".parse().unwrap()), accepts: Default::default() },
             },
             Op::AddTerminal {
                 id: t2,
-                terminal: Terminal { component: c, label: Some("A2".into()), key: Some("A2".parse().unwrap()), accepts: Default::default() },
+                terminal: Terminal { owner: c.into(), label: Some("A2".into()), key: Some("A2".parse().unwrap()), accepts: Default::default() },
             },
             Op::AddItem {
                 id: item,

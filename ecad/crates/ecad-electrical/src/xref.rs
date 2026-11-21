@@ -370,7 +370,7 @@ pub enum Group {
     Device(DeviceId),
     /// Brief 049 (FP4): the continuation arrows of one name, keyed by the lowest component ID
     /// among them. Its edges are implicit: every member shows every other.
-    Continuation(DeviceId),
+    Continuation(ecad_model::AidId),
 }
 
 /// What a member of a group is.
@@ -1512,8 +1512,11 @@ impl RefIndex {
             }
             Subject::Device(c) => {
                 out.insert(Group::Device(c));
-                // Brief 049: an arrow's name group.
-                out.extend(crate::continuations::name_of(doc, c).and_then(|n| crate::continuations::group_key(doc, &n)));
+            }
+            // Design 072 §6.2: a continuation's name group.
+            Subject::Aid(a) => {
+                let key = doc.aids.get(&a).and_then(ecad_model::Aid::continuation_name).map(|n| ecad_model::connectivity::name_key(n.as_str()));
+                out.extend(key.filter(|k| !k.is_empty()).and_then(|k| crate::continuations::group_key(doc, &k)));
             }
             Subject::Wire(_) | Subject::Route(_) => {}
         };
@@ -1549,7 +1552,9 @@ impl RefIndex {
             | Effect::Folder { .. }
             | Effect::Style { .. }
             | Effect::Standard { .. }
-            | Effect::Project { .. } => {}
+            | Effect::Project { .. }
+            | Effect::Aid { .. }
+            | Effect::LoosePart { .. } => {}
         }
         // Brief 049 (design 049 §8.1): the name groups the effect names, as `doc` keys them.
         let mut names = BTreeSet::new();
@@ -1688,7 +1693,7 @@ impl Scope {
             if let Some(c) = doc.wires.get(&w) {
                 for t in &c.ends {
                     if let Some(x) = doc.terminals.get(t) {
-                        s.devices.insert(x.component);
+                        s.devices.extend(x.device());
                     }
                 }
             }
@@ -1698,7 +1703,7 @@ impl Scope {
                 s.devices.insert(c);
             }
             Subject::Wire(w) => ends(s, w),
-            Subject::Cable(_) | Subject::Route(_) => {}
+            Subject::Cable(_) | Subject::Route(_) | Subject::Aid(_) => {}
         };
         match effect {
             Effect::Item { id, .. } => {
@@ -1714,12 +1719,12 @@ impl Scope {
             Effect::Wire { before: None, after: Some(wire), .. } | Effect::Wire { before: Some(wire), after: None, .. } => {
                 for t in &wire.ends {
                     if let Some(x) = doc.terminals.get(t) {
-                        self.devices.insert(x.component);
+                        self.devices.extend(x.device());
                     }
                 }
             }
             Effect::Terminal { before, after, .. } => {
-                self.devices.extend(before.iter().chain(after.iter()).map(|t| t.component));
+                self.devices.extend(before.iter().chain(after.iter()).filter_map(|t| t.device()));
             }
             Effect::Device { id, before: None, .. } | Effect::Device { id, after: None, .. } | Effect::DeviceDefinition { id, .. } => {
                 self.devices.insert(*id);
@@ -1776,6 +1781,8 @@ impl Scope {
             | Effect::Version { .. }
             | Effect::Style { .. }
             | Effect::Standard { .. }
+            | Effect::Aid { .. }
+            | Effect::LoosePart { .. }
             | Effect::Project { .. } => {}
         }
         // Brief 055 (FP4; review of #110, 1): a frame decides its pages' grids and the free
@@ -2070,20 +2077,22 @@ pub fn references(doc: &Document, idx: &RefIndex, groups: &BTreeSet<Group>) -> V
 /// returned), never O(m²) for a name of m arrows.
 ///
 /// # Errors
-/// Unknown component, cable or page.
+/// Unknown component, continuation, cable or page.
 pub fn xrefs_json(
-    doc: &Document, idx: &RefIndex, component: Option<DeviceId>, cable: Option<CableId>, page: Option<PageId>, limit: usize, after: usize,
+    doc: &Document, idx: &RefIndex, component: Option<DeviceId>, aid: Option<ecad_model::AidId>, cable: Option<CableId>, page: Option<PageId>,
+    limit: usize, after: usize,
 ) -> Result<Value, CmdError> {
     let groups: BTreeSet<Group> = match (component, cable) {
+        // Brief 049 (design 049 §5.5): an arrow lists its other ends.
+        (None, None) if let Some(a) = aid => {
+            crate::continuations::continuation(doc, a).ok_or(CmdError::refused(crate::continuations::NO_SUCH_ARROW))?;
+            crate::continuations::name_of(doc, a).and_then(|n| crate::continuations::group_key(doc, &n)).into_iter().collect()
+        }
         (Some(c), _) => {
             if !doc.devices.contains_key(&c) {
                 return Err(CmdError::refused(crate::msg::NO_SUCH_COMPONENT));
             }
-            // Brief 049 (design 049 §5.5): an arrow lists its other ends.
-            match crate::continuations::name_of(doc, c).and_then(|n| crate::continuations::group_key(doc, &n)) {
-                Some(g) => BTreeSet::from([g]),
-                None => BTreeSet::from([Group::Device(c)]),
-            }
+            BTreeSet::from([Group::Device(c)])
         }
         (None, Some(k)) => {
             if !doc.cables.contains_key(&k) {
@@ -2109,6 +2118,7 @@ pub fn xrefs_json(
     // The arrows whose rows are listed: the given arrow's, the arrows on `page`, or every arrow.
     let sources: Vec<(RepresentationId, usize)> = match (component, page) {
         (Some(c), _) => doc.representations_of(Subject::Device(c)).map(|(r, _)| r).collect::<Vec<_>>(),
+        (None, _) if let Some(a) = aid => doc.representations_of(Subject::Aid(a)).map(|(r, _)| r).collect::<Vec<_>>(),
         (None, Some(p)) => doc.representations_on(p).map(|(r, _)| r).collect(),
         (None, None) => cont.iter().flat_map(|g| idx.members(*g)).collect(),
     }
@@ -2139,7 +2149,7 @@ pub fn xrefs_json(
         let next = at.saturating_add(*k);
         if next > after
             && let Some(sr) = doc.representations.get(s)
-            && let Subject::Device(c) = sr.subject
+            && let Subject::Aid(c) = sr.subject
             && let Some(name) = crate::continuations::name_of(doc, c)
         {
             let sorted = ends.entry(name.clone()).or_insert_with(|| crate::continuations::ends_named(doc, &mut places, &name));

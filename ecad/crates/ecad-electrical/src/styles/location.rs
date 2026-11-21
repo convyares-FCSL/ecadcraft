@@ -8,7 +8,7 @@
 use ecad_model::style::LocationStyle;
 use ecad_model::style::text::StyleColour;
 use ecad_model::units::Mm;
-use ecad_model::{DeviceId, Document, StyleRef, Word};
+use ecad_model::{AidId, Document, StyleRef, Word};
 
 use super::{Builtin, Catalogue, Field};
 use crate::CmdError;
@@ -64,11 +64,21 @@ pub fn linetype(word: &str) -> &'static str {
     }
 }
 
-/// The look of location box `c` (its own `location.style`, else the project's, the standard's,
-/// the built-in `box`).
-pub fn box_look(doc: &Document, c: DeviceId) -> BoxLook {
-    let id = super::chosen(doc, &crate::defaults::styles::LOCATION, Scope::component(c));
-    look_of(doc, &id)
+/// The look of location box `a`: its own style when it names one that exists (brief 050a), else
+/// the project's location style, the standard's, the built-in `box`.
+pub fn box_look(doc: &Document, a: AidId) -> BoxLook {
+    look_of(doc, &box_style(doc, a))
+}
+
+/// The location style box `a` is drawn in: its own when it names one that exists, else the
+/// project's (the standard's, the built-in `box`).
+pub fn box_style(doc: &Document, a: AidId) -> StyleRef {
+    own_style(doc, a).cloned().unwrap_or_else(|| super::chosen(doc, &crate::defaults::styles::LOCATION, Scope::project()))
+}
+
+/// Box `a`'s own location style, when it names one that exists (a dangling one falls through).
+pub fn own_style(doc: &Document, a: AidId) -> Option<&StyleRef> {
+    crate::locations::box_values(doc, a).and_then(|b| b.style.as_ref()).filter(|s| super::exists(doc, ecad_model::StyleCatalogue::Location, s))
 }
 
 /// The look of location style `id`.

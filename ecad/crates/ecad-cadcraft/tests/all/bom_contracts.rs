@@ -121,7 +121,7 @@ fn items_add_up_in_metres_and_undo() {
     assert_eq!(r["location"], "+CP1");
     assert_eq!(r["tags"], "");
     assert_eq!(r["entries"].as_array().unwrap().len(), 2);
-    assert_eq!(r["entries"][0]["item"], true);
+    assert!(r["entries"][0]["item"].is_string(), "an item is named by its loose part's id: {r}");
     // The window shows metres in Qty; items after the tagged rows of their location.
     let t = f.h.cfg(|p| p.outputs().bom_table(Group::Location));
     let last = t.rows.iter().position(|c| c[5].text == "TR-5075").unwrap();
@@ -139,26 +139,22 @@ fn items_add_up_in_metres_and_undo() {
     same_as_built(&mut f.h);
 }
 
-/// §3: an item takes no tag and no part lines and keeps its description; edit and delete are
-/// one transaction each.
+/// §3, design 072 §6.4: an item is a loose part, not a device: device commands do not reach it,
+/// it keeps its description; edit and delete are one transaction each.
 #[test]
 fn items_refuse_tags_and_lines_and_edit_and_delete() {
     let mut f = fixture(0x47_03);
-    let item: DeviceId = id(&f.h.run("bomitem", json!({"description": "DIN rail 35x7.5", "qty": 2, "unit": "m"})).unwrap(), "item");
+    let item: ecad_model::LoosePartId = id(&f.h.run("bomitem", json!({"description": "DIN rail 35x7.5", "qty": 2, "unit": "m"})).unwrap(), "item");
     let head = f.h.head();
-    for (key, value, words) in [
-        ("tag", json!("X9"), "An item has no tag"),
-        ("part.1.maker", json!("Generic"), "An item has no part lines"),
-        ("description", Value::Null, "An item needs a description"),
-    ] {
-        let e = f.h.run("setprop", json!({"component": item.hex(), "key": key, "value": value})).unwrap_err();
-        assert!(e.contains(words), "{key}: {e}");
+    for (key, value) in [("tag", json!("X9")), ("part.1.maker", json!("Generic"))] {
+        assert!(f.h.run("setprop", json!({"component": item.hex(), "key": key, "value": value})).is_err(), "{key}: no such device");
     }
-    let e = f.h.run("partline", json!({"component": item.hex(), "add": {"part_number": "X"}})).unwrap_err();
-    assert!(e.contains("partline is for devices and strips"), "{e}");
+    let e = f.h.run("bomitem", json!({"item": item.hex(), "set": {"description": null}})).unwrap_err();
+    assert!(e.contains("An item needs a description"), "{e}");
+    assert!(f.h.run("partline", json!({"component": item.hex(), "add": {"part_number": "X"}})).is_err());
     assert_eq!(f.h.head(), head, "nothing written");
-    // `setprop qty` follows the item's unit: 0.5 m is fine, 0.5 pieces is not.
-    f.h.run("setprop", json!({"component": item.hex(), "key": "qty", "value": "0.5"})).unwrap();
+    // The quantity follows the item's unit: 0.5 m is fine, 0.5 pieces is not.
+    f.h.run("bomitem", json!({"item": item.hex(), "set": {"qty": "0.5"}})).unwrap();
     let e = f.h.run("bomitem", json!({"item": item.hex(), "set": {"unit": "pcs"}})).unwrap_err();
     assert!(e.contains("whole"), "{e}");
     f.h.run("bomitem", json!({"item": item.hex(), "set": {"qty": 3, "unit": "pcs", "location": "CP2"}})).unwrap();
@@ -168,11 +164,11 @@ fn items_refuse_tags_and_lines_and_edit_and_delete() {
     assert_eq!((r["qty"].clone(), r["unit"].clone(), r["location"].clone()), (json!(3), json!("pcs"), json!("+CP2")));
     same_as_built(&mut f.h);
     f.h.run("bomitem", json!({"item": item.hex(), "delete": true})).unwrap();
-    assert!(!f.h.doc().devices.contains_key(&item));
+    assert!(!f.h.doc().loose_parts.contains_key(&item));
     assert!(bom(&mut f.h, json!({})).iter().all(|r| r["description"] != "DIN rail 35x7.5"));
     same_as_built(&mut f.h);
     f.h.cmdline("u");
-    assert!(f.h.doc().devices.contains_key(&item));
+    assert!(f.h.doc().loose_parts.contains_key(&item));
     same_as_built(&mut f.h);
 }
 
@@ -651,39 +647,25 @@ fn the_bom_page_shows_units_articles_and_nested_lines() {
     same_as_built(&mut f.h);
 }
 
-/// Review of #83, 1: an item's `qty` or `unit` that does not parse (here `qty 3.6` with no unit,
-/// written straight through an op as a merge would) counts as 1 piece and is listed in Checks,
-/// never silently.
+/// Review of #83, 1, since design 072 §6.4: an item's quantity is typed, so a value that does
+/// not read cannot be stored. A fractional count of pieces written straight through an op (as a
+/// merge would) breaks invariant I26 and is not committed; the item is unchanged.
 #[test]
 fn an_item_value_that_does_not_parse_is_checked() {
     let mut f = fixture(0x47_0f);
-    let item: DeviceId = id(&f.h.run("bomitem", json!({"description": "Cable tray", "qty": 2})).unwrap(), "item");
-    f.h.cfg(|p| {
-        let ops = vec![
-            ecad_model::Op::SetProperty {
-                object: ecad_model::ObjectRef::Device(item),
-                key: "qty".into(),
-                before: Some("2".into()),
-                after: Some("3.6".into()),
-            },
-            ecad_model::Op::SetProperty {
-                object: ecad_model::ObjectRef::Device(item),
-                key: "unit".into(),
-                before: None,
-                after: Some("yards".into()),
-            },
-        ];
-        p.ledger.commit(ecad_model::Author::User, "a merge", ops).unwrap();
+    let item: ecad_model::LoosePartId = id(&f.h.run("bomitem", json!({"description": "Cable tray", "qty": 2})).unwrap(), "item");
+    let refused = f.h.cfg(|p| {
+        let before = p.ledger.document().loose_parts[&item].clone();
+        let after = ecad_model::loose_part::LoosePart { qty: ecad_model::loose_part::Qty(3600), ..before.clone() };
+        p.ledger.commit(ecad_model::Author::User, "a merge", vec![ecad_model::Op::ModifyLoosePart { id: item, before, after }]).is_err()
     });
+    assert!(refused, "3.6 pieces is not committed");
     let rows = bom(&mut f.h, json!({}));
     let r = rows.iter().find(|r| r["description"] == "Cable tray").unwrap();
-    assert_eq!((r["qty"].clone(), r["unit"].clone()), (json!(1), json!("pcs")));
-    let c = checks(&mut f.h, "bad-part-key");
-    assert_eq!(c.len(), 1, "{c:?}");
-    assert_eq!(c[0]["which"], "The item Cable tray has unit yards (and 1 more), which ECAD does not read; it counts as 1 piece");
-    // Put right through the command: the row is gone from Checks.
-    f.h.s.execute("bomitem", &json!({"item": item.hex(), "set": {"unit": "m"}})).unwrap();
+    assert_eq!((r["qty"].clone(), r["unit"].clone()), (json!(2), json!("pcs")));
     assert!(checks(&mut f.h, "bad-part-key").is_empty());
+    // Metres take the same quantity.
+    f.h.s.execute("bomitem", &json!({"item": item.hex(), "set": {"unit": "m", "qty": "3.6"}})).unwrap();
     let rows = bom(&mut f.h, json!({}));
     assert_eq!(rows.iter().find(|r| r["description"] == "Cable tray").unwrap()["qty"], json!(3.6));
 }

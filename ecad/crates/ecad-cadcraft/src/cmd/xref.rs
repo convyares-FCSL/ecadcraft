@@ -33,7 +33,7 @@ pub const TYPED: &[Typed] = &[
 pub(crate) fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("xrefs", "List References", crate::cmd::input::typed::<XrefsParams>)
-            .params("{component?: id, cable?: id, page?: id, limit?: n (200, max 2000), after?: n} (cable and device references; read only)")
+            .params("{component?: id, aid?: id, cable?: id, page?: id, limit?: n (200, max 2000), after?: n} (cable, device and continuation references; read only)")
             .noundo(),
         CommandSpec::new("contacts", "Device Contacts", crate::cmd::input::typed::<ContactsParams>)
             .params("{component: id} (the device's contact table: offer, head, placement, rows; read only)")
@@ -56,6 +56,9 @@ pub(crate) struct XrefsParams {
     /// Only this device's references.
     #[serde(default)]
     component: Option<DeviceId>,
+    /// Only this continuation arrow's other ends (design 072 §6.2).
+    #[serde(default)]
+    aid: Option<ecad_model::AidId>,
     /// Only this cable's references.
     #[serde(default)]
     cable: Option<CableId>,
@@ -77,8 +80,8 @@ impl Command for XrefsParams {
             None => 0,
             Some(n) => usize::try_from(n).map_err(|_| crate::cmd::err("`after` must be a number"))?,
         };
-        let (component, cable, page) = (self.component, self.cable, self.page);
-        on_any_page(s, |p, _| xref::xrefs_json(p.ledger.document(), p.xref(), component, cable, page, limit, after))
+        let (component, aid, cable, page) = (self.component, self.aid, self.cable, self.page);
+        on_any_page(s, |p, _| xref::xrefs_json(p.ledger.document(), p.xref(), component, aid, cable, page, limit, after))
     }
 }
 

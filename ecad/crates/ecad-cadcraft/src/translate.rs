@@ -153,6 +153,8 @@ impl Scope {
                 Subject::Route(x) => {
                     s.routes.insert(x);
                 }
+                // A continuation's point moves with its arrow (design 072 §6.2).
+                Subject::Aid(_) => s.terminals.extend(r.connection_points.keys().copied()),
                 // A cable reference places its cores' named points (F4).
                 Subject::Cable(_) => s.terminals.extend(r.connection_points.keys().copied()),
                 Subject::Wire(_) => {}
@@ -745,7 +747,7 @@ fn copy_batch(
         for (src_t, term) in sdoc.terminals_of(src_comp) {
             let nt: TerminalId = cx.ids.fresh();
             term_map.insert(src_t, nt);
-            t.ops.push(Op::AddTerminal { id: nt, terminal: Terminal { component: new_comp, ..term.clone() } });
+            t.ops.push(Op::AddTerminal { id: nt, terminal: Terminal { owner: new_comp.into(), ..term.clone() } });
         }
         let new_rep: RepresentationId = cx.ids.fresh();
         let mut items = Vec::new();

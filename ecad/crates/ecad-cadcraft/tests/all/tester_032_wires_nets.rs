@@ -88,9 +88,9 @@ fn terminal(h: &mut H, at: (f64, f64), tag: &str) -> (DeviceId, TerminalId, Pt) 
     (id(&r, "component"), t, at)
 }
 
-fn continuation(h: &mut H, at: (f64, f64), name: &str, rotation: f64) -> DeviceId {
+fn continuation(h: &mut H, at: (f64, f64), name: &str, rotation: f64) -> ecad_model::AidId {
     let r = h.run("place", json!({"symbol": "continuation", "at": [at.0, at.1], "name": name, "rotation": rotation})).unwrap();
-    id(&r, "component")
+    id(&r, "aid")
 }
 
 fn undo_is_one_step(h: &mut H, before: &Document) {
@@ -613,7 +613,7 @@ fn t13c_continue_refusals() {
         .ends
         .iter()
         .copied()
-        .find(|t| ecad_cadcraft::devices::tag_of(&doc, doc.terminals[t].component).is_some_and(|g| g.to_string().starts_with("-X5")));
+        .find(|t| ecad_cadcraft::devices::tag_of(&doc, doc.terminals[t].device().unwrap()).is_some_and(|g| g.to_string().starts_with("-X5")));
     let tp = x51.map(|t| f.h.terminal_pos(f.p2, t)).expect("X51's point");
     f.h.points_at(&[(tp.x, tp.y + 40.0)]);
     wire(&mut f.h, &[(tp.x, tp.y), (tp.x, tp.y + 40.0)], json!({}));
@@ -825,14 +825,14 @@ fn t17b_update_map_follows_continuation_names() {
     let doc = f.h.doc();
     // Rename page 2's A2 to Z9: core 2's wire goes; the core stays on its lines.
     let a2 = doc
-        .devices
+        .aids
         .iter()
-        .find(|(c, x)| {
-            x.properties.get("name").map(String::as_str) == Some("A2") && doc.representations_of(Subject::Device(**c)).any(|(_, r)| r.page == f.p2)
+        .find(|(a, x)| {
+            x.continuation_name().map(|n| n.as_str()) == Some("A2") && doc.representations_of(Subject::Aid(**a)).any(|(_, r)| r.page == f.p2)
         })
-        .map(|(c, _)| *c)
+        .map(|(a, _)| *a)
         .unwrap();
-    f.h.run("setprop", json!({"component": a2.hex(), "key": "name", "value": "Z9"})).unwrap();
+    f.h.run("setprop", json!({"aids": [a2.hex()], "key": "name", "value": "Z9"})).unwrap();
     same_outputs_as_built(&mut f.h);
     let doc = f.h.doc();
     assert!(!doc.wires.contains_key(&f.w[1]));

@@ -12,7 +12,7 @@
 
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::cmd::location::{self as rules, Answer, MAX_DEVICES, Pick};
-use ecad_model::DeviceId;
+use ecad_model::{AidId, DeviceId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -56,13 +56,28 @@ fn own_specs() -> Vec<CommandSpec> {
 /// Run a set on the project and answer in JSON.
 pub(crate) fn apply(s: &mut Session, objects: Vec<DeviceId>, prop: String, text: Option<String>, command: &str) -> cadcraft_engine::Result<Value> {
     let a = rules::aspect_of(&prop).map_err(|e| err(e.to_string()))?;
+    commit(s, a, command, "devices", |doc, ids| rules::plan_set(doc, ids, &objects, &prop, text.as_deref()))
+}
+
+/// `setprop {aids, key: function | location, value}` (design 072 §6.2): location boxes' value,
+/// with the proposals one box's new value makes for the devices inside; answered in JSON.
+pub(crate) fn apply_box(s: &mut Session, aids: Vec<AidId>, a: Aspect, text: Option<String>, command: &str) -> cadcraft_engine::Result<Value> {
+    commit(s, a, command, "aids", |doc, ids| rules::plan_box_set(doc, ids, &aids, a, text.as_deref()))
+}
+
+/// Plan a set with `plan`, commit it, keep its conflicts and answer in JSON (`count`: the word for
+/// the objects changed).
+fn commit(
+    s: &mut Session, a: Aspect, command: &str, count: &str,
+    plan: impl FnOnce(&ecad_model::Document, &mut ecad_model::IdAllocator) -> Result<rules::SetPlan, ecad_electrical::CmdError>,
+) -> cadcraft_engine::Result<Value> {
     let v = on_project(s, |p, pg, _| {
         let doc = p.ledger.document();
-        let plan = rules::plan_set(doc, &mut p.ids, &objects, &prop, text.as_deref())?;
+        let plan = plan(doc, &mut p.ids)?;
         let planned = &plan.planned;
         let mut v = json!({
             "changed": planned.changed > 0,
-            "devices": planned.changed,
+            count: planned.changed,
             a.word(): planned.value.as_ref().map(|(_, c)| c.clone()),
             format!("{}_key", a.word()): planned.value.as_ref().map(|(k, _)| k.clone()),
         });
@@ -89,12 +104,12 @@ pub(crate) fn apply(s: &mut Session, objects: Vec<DeviceId>, prop: String, text:
     Ok(v)
 }
 
-/// `setlocation {component | components, value, aspect?, type?}`: a device's (or box's) location
+/// `setlocation {component | components, value, aspect?, type?}`: a device's location
 /// or function, as a code of the project's list (one transaction; null clears it).
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct SetlocationParams {
-    /// One device or box.
+    /// One device.
     #[serde(default)]
     component: Option<DeviceId>,
     /// Several (at most 10000; one named twice is set once).
@@ -126,7 +141,7 @@ impl Command for SetlocationParams {
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct SetfunctionParams {
-    /// One device or box.
+    /// One device.
     #[serde(default)]
     component: Option<DeviceId>,
     /// Several (at most 10000; one named twice is set once).

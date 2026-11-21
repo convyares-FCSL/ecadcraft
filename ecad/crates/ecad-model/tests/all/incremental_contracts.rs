@@ -97,6 +97,20 @@ pub(crate) struct Base {
     /// The link between two plain devices (design 072 §2.6).
     link: ecad_model::LinkId,
     link_v: ecad_model::DeviceLink,
+    /// A location box (design 072 §6.2).
+    aid: ecad_model::AidId,
+    aid_v: ecad_model::Aid,
+    /// A loose part (design 072 §6.4).
+    loose: ecad_model::LoosePartId,
+    loose_v: ecad_model::loose_part::LoosePart,
+}
+
+/// `qty` pieces of a loose part.
+fn loose_part(qty: u64) -> ecad_model::loose_part::LoosePart {
+    ecad_model::loose_part::LoosePart::new(
+        ecad_model::loose_part::LooseDescription::new("DIN rail").unwrap(),
+        ecad_model::loose_part::Qty(qty * 1000),
+    )
 }
 
 pub(crate) fn base() -> Base {
@@ -115,14 +129,14 @@ pub(crate) fn base() -> Base {
         terminals: vec![TerminalDef { key: "1".parse().unwrap(), label: None, at: Pt::new(0.0, 2.0), accepts: Default::default() }],
         ..Default::default()
     };
-    let comp = ids.fresh();
+    let comp: ecad_model::DeviceId = ids.fresh();
     let mut comp_v = Device { definition: Some(def), ..Device::default() };
     comp_v.properties.insert("note".into(), "K1".into());
     let term = ids.fresh();
-    let term_v = Terminal { component: comp, label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() };
+    let term_v = Terminal { owner: comp.into(), label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() };
     // More connection points of the device, for the wires' other ends.
     let (term2, term3, term4) = (ids.fresh(), ids.fresh(), ids.fresh());
-    let point = |label: &str| Terminal { component: comp, label: Some(label.into()), key: None, accepts: Default::default() };
+    let point = |label: &str| Terminal { owner: comp.into(), label: Some(label.into()), key: None, accepts: Default::default() };
     let sym = ids.fresh();
     let sym_v = Item { page, style: style(layer), kind: ItemKind::Symbol(SymbolInstance { definition: def, placement: Placement::default() }) };
     let item = ids.fresh();
@@ -165,6 +179,10 @@ pub(crate) fn base() -> Base {
     let pair: [ecad_model::DeviceId; 2] = [ids.fresh(), ids.fresh()];
     let link = ids.fresh();
     let link_v = ecad_model::DeviceLink { kind: ecad_model::LinkKind::MechanicalInterlock, a: pair[0], b: pair[1] };
+    let aid = ids.fresh();
+    let aid_v = ecad_model::Aid::Box(ecad_model::LocationBox::default());
+    let loose = ids.fresh();
+    let loose_v = loose_part(2);
     ledger
         .commit(
             Author::User,
@@ -190,6 +208,8 @@ pub(crate) fn base() -> Base {
                 Op::CreateDevice { id: pair[0], device: Device::default() },
                 Op::CreateDevice { id: pair[1], device: Device::default() },
                 Op::AddDeviceLink { id: link, link: link_v },
+                Op::CreateAid { id: aid, aid: aid_v.clone() },
+                Op::CreateLoosePart { id: loose, part: loose_v.clone() },
             ],
         )
         .unwrap();
@@ -227,6 +247,10 @@ pub(crate) fn base() -> Base {
         route_v,
         link,
         link_v,
+        aid,
+        aid_v,
+        loose,
+        loose_v,
     }
 }
 
@@ -267,7 +291,7 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
             before: b.comp_v.clone(),
             after: Device { device_type: ecad_model::DeviceType::of_group(ecad_model::DeviceGroup::Motor), ..b.comp_v.clone() },
         },
-        Op::AddTerminal { id: b.ids.fresh(), terminal: Terminal { component: b.comp, label: None, key: None, accepts: Default::default() } },
+        Op::AddTerminal { id: b.ids.fresh(), terminal: Terminal { owner: b.comp.into(), label: None, key: None, accepts: Default::default() } },
         Op::RemoveTerminal { id: b.term, terminal: b.term_v.clone() },
         Op::LinkRepresentation { id: b.ids.fresh(), rep: b.rep_wire_v.clone() },
         Op::ModifyRepresentation { id: b.rep_wire, before: b.rep_wire_v.clone(), after: rep_after },
@@ -318,6 +342,16 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
         Op::ModifyProject { before: ecad_model::Project::default(), after: lists(b) },
         Op::AddDeviceLink { id: b.ids.fresh(), link: ecad_model::DeviceLink { kind: ecad_model::LinkKind::AuxiliaryBlock, ..b.link_v } },
         Op::RemoveDeviceLink { id: b.link, link: b.link_v },
+        Op::CreateAid { id: b.ids.fresh(), aid: ecad_model::Aid::Continuation { name: None, caption: None } },
+        Op::ModifyAid {
+            id: b.aid,
+            before: b.aid_v.clone(),
+            after: ecad_model::Aid::Box(ecad_model::LocationBox { panel_temperature: Some(ecad_model::units::Celsius(40.0)), ..Default::default() }),
+        },
+        Op::DeleteAid { id: b.aid, aid: b.aid_v.clone() },
+        Op::CreateLoosePart { id: b.ids.fresh(), part: loose_part(1) },
+        Op::ModifyLoosePart { id: b.loose, before: b.loose_v.clone(), after: loose_part(5) },
+        Op::DeleteLoosePart { id: b.loose, part: b.loose_v.clone() },
     ]
 }
 
@@ -412,6 +446,22 @@ fn failing(b: &mut Base) -> Vec<Op> {
         // Lane 072 B step 5: the same link again; a link that is not there.
         Op::AddDeviceLink { id: b.ids.fresh(), link: b.link_v },
         Op::RemoveDeviceLink { id: b.ids.fresh(), link: b.link_v },
+        Op::CreateAid { id: b.aid, aid: b.aid_v.clone() },
+        // A panel temperature must be a number; a `before` must be the stored aid.
+        Op::CreateAid {
+            id: b.ids.fresh(),
+            aid: ecad_model::Aid::Box(ecad_model::LocationBox {
+                panel_temperature: Some(ecad_model::units::Celsius(f64::NAN)),
+                ..Default::default()
+            }),
+        },
+        Op::ModifyAid { id: b.aid, before: ecad_model::Aid::Continuation { name: None, caption: None }, after: b.aid_v.clone() },
+        Op::DeleteAid { id: b.ids.fresh(), aid: b.aid_v.clone() },
+        // A loose part twice; a quantity of 0; a `before` not as stored; one that is not there.
+        Op::CreateLoosePart { id: b.loose, part: b.loose_v.clone() },
+        Op::CreateLoosePart { id: b.ids.fresh(), part: loose_part(0) },
+        Op::ModifyLoosePart { id: b.loose, before: loose_part(7), after: b.loose_v.clone() },
+        Op::DeleteLoosePart { id: b.ids.fresh(), part: b.loose_v.clone() },
     ]
 }
 
@@ -506,7 +556,7 @@ fn a_later_op_sees_what_an_earlier_op_created() {
     let wire = b.ids.fresh();
     let ops = vec![
         Op::CreateDevice { id: comp, device: Device::default() },
-        Op::AddTerminal { id: term, terminal: Terminal { component: comp, label: None, key: None, accepts: Default::default() } },
+        Op::AddTerminal { id: term, terminal: Terminal { owner: comp.into(), label: None, key: None, accepts: Default::default() } },
         Op::CreateWire { id: wire, wire: Wire::new(b.ids.fresh(), b.ids.fresh(), term, b.term3) },
         Op::ModifyCable {
             id: b.cable,
@@ -865,13 +915,16 @@ impl Gen {
             },
             16..=17 => {
                 let component = if self.rng.chance(85) { self.rng.pick_key(&doc.devices).unwrap_or_else(|| self.comp()) } else { self.comp() };
-                Op::AddTerminal { id: fresh_in!(self, terms), terminal: Terminal { component, label: None, key: None, accepts: Default::default() } }
+                Op::AddTerminal {
+                    id: fresh_in!(self, terms),
+                    terminal: Terminal { owner: component.into(), label: None, key: None, accepts: Default::default() },
+                }
             }
             18 => match self.rng.pick_key(&doc.terminals) {
                 Some(id) => Op::RemoveTerminal {
                     id,
                     terminal: doc.terminals.get(&id).cloned().unwrap_or(Terminal {
-                        component: self.comp(),
+                        owner: self.comp().into(),
                         label: None,
                         key: None,
                         accepts: Default::default(),
@@ -879,7 +932,7 @@ impl Gen {
                 },
                 None => Op::AddTerminal {
                     id: fresh_in!(self, terms),
-                    terminal: Terminal { component: self.comp(), label: None, key: None, accepts: Default::default() },
+                    terminal: Terminal { owner: self.comp().into(), label: None, key: None, accepts: Default::default() },
                 },
             },
             19..=21 => Op::LinkRepresentation { id: fresh_in!(self, reps), rep: self.rep(doc) },

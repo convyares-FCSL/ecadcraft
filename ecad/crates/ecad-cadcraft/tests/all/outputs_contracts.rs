@@ -107,14 +107,14 @@ fn location_boxes_propose_to_unset_devices_and_the_innermost_wins() {
     let r = h.run("locationbox", json!({"location": "JB1", "corners": [[80, 80], [160, 130]]})).unwrap();
     assert_eq!(h.head(), head + 1, "one transaction");
     assert_eq!(r["inside"], 2, "{r}");
-    let boxc: DeviceId = id(&r, "component");
+    let boxc: ecad_model::AidId = id(&r, "aid");
     let doc = h.doc();
     assert_eq!(loc(&doc, m), (s("+JB1"), "device"), "the unset devices inside take the box's");
     assert_eq!(loc(&doc, x), (s("+JB1"), "device"));
     assert_eq!(ctx(&doc, m), (s("+JB1"), "box"));
     let rm = ecad_cadcraft::reps::goto(&doc, m, None).unwrap();
     let l = locations::rep_context(&doc, &doc.representations[&rm], &mut locations::BoxCache::default());
-    assert_eq!(l.source, Source::Box { component: boxc, page });
+    assert_eq!(l.source, Source::Box { aid: boxc, page });
     assert!(l.shown(&doc).contains("from box on 1"), "{}", l.shown(&doc));
     same_as_built(&mut h);
     // Move the box off them: the page's location is the context at once, the stored value stays;
@@ -154,7 +154,7 @@ fn location_boxes_propose_to_unset_devices_and_the_innermost_wins() {
     let hd = h.handle_of(page, item);
     h.run("erase", json!({"handles": [hd.hex()]})).unwrap();
     let doc = h.doc();
-    assert!(!doc.devices.contains_key(&boxc), "the box component goes with its outline");
+    assert!(!doc.aids.contains_key(&boxc), "the box goes with its outline");
     assert_eq!(ctx(&doc, x), (s("+FIELD"), "page"));
     same_as_built(&mut h);
 }
@@ -175,7 +175,7 @@ fn a_box_needs_room_and_a_closed_polyline() {
     let made = h.run("locationbox", json!({"location": "+JB9", "item": item.hex()})).unwrap();
     let doc = h.doc();
     assert_eq!(doc.items[&item].style.linetype, "DASHED");
-    assert!(doc.devices.contains_key(&id::<DeviceId>(&made, "component")));
+    assert!(doc.aids.contains_key(&id::<ecad_model::AidId>(&made, "aid")));
     // The same outline again: it belongs to a box now.
     let e = h.run("locationbox", json!({"location": "+JB8", "item": item.hex()})).unwrap_err();
     assert!(e.contains("belongs to another location box"), "{e}");

@@ -49,7 +49,7 @@ fn place_terminals_on_a_loose_line_then_draw_on_to_a_second_device() {
     assert_eq!(terms.len(), 1, "one terminal: {v}");
     let t: TerminalId = id(&terms[0], "terminal");
     let doc = h.doc();
-    assert_eq!(doc.terminals[&t].component, strip);
+    assert_eq!(doc.terminals[&t].device().unwrap(), strip);
     // The route is split at the terminal: one piece from -A's point to the terminal, one from the
     // terminal to the free end.
     let pieces: Vec<(RouteId, [RouteEnd; 2])> = doc.routes.iter().map(|(r, x)| (*r, x.ends)).collect();

@@ -44,7 +44,7 @@ fn level(c: &mut Client, strip: &str, pos: &str, key: &str) -> String {
     d.terminals
         .iter()
         .find(|(_, t)| {
-            t.component.hex() == strip && t.label.as_deref() == Some(pos) && t.key.as_ref().map(ToString::to_string).as_deref() == Some(key)
+            t.owner.subject_hex() == strip && t.label.as_deref() == Some(pos) && t.key.as_ref().map(ToString::to_string).as_deref() == Some(key)
         })
         .map(|(id, _)| id.hex())
         .unwrap_or_else(|| panic!("-X {pos}{key} missing"))

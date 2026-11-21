@@ -23,7 +23,7 @@ use crate::common::{H, id, pts};
 use crate::common::{close_all, reopen};
 use ecad_cadcraft::locations::{self, Source};
 use ecad_cadcraft::outputs::{Cell, Group, Table, csv, kept::Outputs};
-use ecad_model::{DeviceId, Document, ItemId, ItemKind, PageId, Primitive, Pt, Subject};
+use ecad_model::{AidId, DeviceId, Document, ItemId, ItemKind, PageId, Primitive, Pt, Subject};
 use serde_json::{Value, json};
 
 // ---------------------------------------------------------------- helpers
@@ -57,8 +57,8 @@ fn devices(doc: &Document) -> Vec<DeviceId> {
 }
 
 /// Every box: (component, page, outline item, vertex count).
-fn boxes(doc: &Document) -> Vec<(DeviceId, PageId, ItemId, usize)> {
-    doc.page_order.iter().flat_map(|p| locations::boxes_on(doc, *p)).map(|b| (b.component, b.page, b.item, b.vertices.len())).collect()
+fn boxes(doc: &Document) -> Vec<(AidId, PageId, ItemId, usize)> {
+    doc.page_order.iter().flat_map(|p| locations::boxes_on(doc, *p)).map(|b| (b.aid, b.page, b.item, b.vertices.len())).collect()
 }
 
 /// Each device's own `location` property.
@@ -257,7 +257,7 @@ fn step(f: &mut Fx, r: &mut Rng, act: Act) -> Result<Value, String> {
         }
         Act::BoxRelabel => {
             let Some((c, ..)) = r.pick(&boxes(&doc)) else { return Err("no box".into()) };
-            f.h.run("setprop", json!({"component": c.hex(), "key": "location", "value": r.pick(LOCS)}))
+            f.h.run("setprop", json!({"aids": [c.hex()], "key": "location", "value": r.pick(LOCS)}))
         }
         Act::DevMove => {
             let Some(c) = r.pick(&devices(&doc)) else { return Err("no device".into()) };
@@ -492,7 +492,7 @@ fn a_location_box_redraws_the_device_tags_on_its_other_pages() {
     verify(&mut h, "box drawn round the coil");
     let (c, _, item, _) = boxes(&h.doc())[0];
     h.activate(p2);
-    h.run("setprop", json!({"component": c.hex(), "key": "location", "value": "+JB1"})).unwrap();
+    h.run("setprop", json!({"aids": [c.hex()], "key": "location", "value": "+JB1"})).unwrap();
     verify(&mut h, "box relabelled, page 2 shown");
     h.activate(p1);
     let hd = h.handle_of(p1, item).hex();
@@ -567,7 +567,7 @@ fn rotating_mirroring_and_scaling_a_box_with_its_devices_keeps_them_inside() {
     let k2 = place(&mut h, "coil", (130.0, 110.0));
     let out = place(&mut h, "coil", (300.0, 200.0));
     let r = h.run("locationbox", json!({"location": "+JB1", "corners": [[80, 80], [160, 140]]})).unwrap();
-    let (bc, item): (DeviceId, ItemId) = (id(&r, "component"), id(&r, "item"));
+    let (bc, item): (AidId, ItemId) = (id(&r, "aid"), id(&r, "item"));
     let stored = own(&h.doc());
     let sel = |h: &mut H| {
         let mut v = vec![h.handle_of(page, item).hex()];
@@ -586,7 +586,7 @@ fn rotating_mirroring_and_scaling_a_box_with_its_devices_keeps_them_inside() {
         params["handles"] = json!(sel(&mut h));
         let res = h.run(cmd, params.clone());
         let doc = h.doc();
-        assert!(locations::is_box(&doc, bc), "{cmd}: the box is still a box");
+        assert!(locations::box_values(&doc, bc).is_some(), "{cmd}: the box is still a box");
         let (v, closed) = outline(&doc, item);
         assert!(closed && v.len() >= 4, "{cmd}: still a closed outline: {v:?}");
         assert_eq!(doc.items[&item].style.linetype, "DASHED", "{cmd}");
@@ -609,13 +609,13 @@ fn erasing_a_box_with_its_devices_and_undoing() {
     let page = h.first_page();
     let k1 = place(&mut h, "coil", (100.0, 100.0));
     let r = h.run("locationbox", json!({"location": "+JB1", "corners": [[80, 80], [160, 140]]})).unwrap();
-    let (bc, item): (DeviceId, ItemId) = (id(&r, "component"), id(&r, "item"));
+    let (bc, item): (AidId, ItemId) = (id(&r, "aid"), id(&r, "item"));
     let before = h.doc();
     let mut handles = vec![h.handle_of(page, item).hex()];
     handles.extend(h.rep_handles(page, k1));
     h.run("erase", json!({"handles": handles})).unwrap();
     let doc = h.doc();
-    assert!(!doc.devices.contains_key(&bc) && !doc.devices.contains_key(&k1));
+    assert!(!doc.aids.contains_key(&bc) && !doc.devices.contains_key(&k1));
     assert!(!doc.items.contains_key(&item), "the outline goes with the box");
     verify(&mut h, "erase both");
     h.run("u", Value::Null).unwrap();
@@ -632,7 +632,7 @@ fn erasing_the_box_label_alone_leaves_no_half_box() {
     let page = h.first_page();
     let k1 = place(&mut h, "coil", (100.0, 100.0));
     let r = h.run("locationbox", json!({"location": "+JB1", "corners": [[80, 80], [160, 140]]})).unwrap();
-    let (bc, item): (DeviceId, ItemId) = (id(&r, "component"), id(&r, "item"));
+    let (bc, item): (AidId, ItemId) = (id(&r, "aid"), id(&r, "item"));
     let label = h
         .pv(|p, pg| pg.entities_of(p, page))
         .into_iter()
@@ -641,7 +641,7 @@ fn erasing_the_box_label_alone_leaves_no_half_box() {
     let Some(label) = label else { panic!("no +JB1 label drawn") };
     let res = h.run("erase", json!({"handles": [label.hex()]}));
     let doc = h.doc();
-    let gone = !doc.devices.contains_key(&bc);
+    let gone = !doc.aids.contains_key(&bc);
     assert_eq!(gone, !doc.items.contains_key(&item), "box and outline go together: {res:?}");
     if !gone {
         assert_eq!(locations::resolve(&doc, k1).value, s("+JB1"), "{res:?}");
@@ -1078,20 +1078,20 @@ fn merging_a_branch_with_a_box_edited_on_both_sides() {
     let k1 = place(&mut h, "coil", (100.0, 100.0));
     let k2 = place(&mut h, "coil", (250.0, 100.0));
     let r = h.run("locationbox", json!({"location": "+JB1", "corners": [[80, 80], [160, 140]]})).unwrap();
-    let (bc, item): (DeviceId, ItemId) = (id(&r, "component"), id(&r, "item"));
+    let (bc, item): (AidId, ItemId) = (id(&r, "aid"), id(&r, "item"));
     h.run("saveas", json!({"path": d.path("m.ecad")})).unwrap();
     // Branch: move the box over k2 and relabel it.
     raw(&mut h, "branch", json!({"name": "B", "switch": true})).unwrap();
     h.activate(page);
     let hd = h.handle_of(page, item).hex();
     h.run("move", json!({"handles": [hd], "delta": [150, 0]})).unwrap();
-    h.run("setprop", json!({"component": bc.hex(), "key": "location", "value": "+JB2"})).unwrap();
+    h.run("setprop", json!({"aids": [bc.hex()], "key": "location", "value": "+JB2"})).unwrap();
     raw(&mut h, "switchbranch", json!({"branch": "main", "save": true})).unwrap();
     // Main: stretch the same box and give it another label.
     h.activate(page);
     let hd = h.handle_of(page, item).hex();
     h.run("grip.stretch", json!({"handle": hd, "index": 2, "to": [200, 160]})).unwrap();
-    h.run("setprop", json!({"component": bc.hex(), "key": "location", "value": "+JB3"})).unwrap();
+    h.run("setprop", json!({"aids": [bc.hex()], "key": "location", "value": "+JB3"})).unwrap();
     h.run("qsave", Value::Null).unwrap();
     keep_models(&mut h);
     let v = raw(&mut h, "merge", json!({"from": "B", "preview": true})).unwrap();
@@ -1103,7 +1103,7 @@ fn merging_a_branch_with_a_box_edited_on_both_sides() {
     }
     raw(&mut h, "merge", json!({"from": "B", "choices": choices, "close": false})).unwrap();
     let doc = h.doc();
-    assert!(locations::is_box(&doc, bc));
+    assert!(locations::box_values(&doc, bc).is_some());
     let b = locations::boxes_on(&doc, page);
     assert_eq!(b.len(), 1, "one box after the merge");
     assert!(b[0].vertices.len() >= 3);

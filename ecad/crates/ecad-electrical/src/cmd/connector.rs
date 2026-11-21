@@ -575,7 +575,7 @@ pub fn plan_pinlabel(doc: &Document, input: PinlabelInput) -> Result<Pinlabel, C
     let (c, old) = match (terminal, device(doc, dev.as_deref())?) {
         (Some(t), _) => {
             let x = doc.terminals.get(&t).ok_or(CmdError::NotFound(Noun::Terminal))?;
-            (x.component, x.label.clone().ok_or(CmdError::refused("That pin has no name."))?)
+            (x.device().ok_or(CmdError::NotFound(Noun::Terminal))?, x.label.clone().ok_or(CmdError::refused("That pin has no name."))?)
         }
         (None, Some(c)) => (c, pin.map(|p| p.trim().to_string()).ok_or(CmdError::input("`pin` (the pin's current name) is required with `device`"))?),
         (None, None) => return Err(CmdError::input("`device` and `pin`, or `terminal`, is required")),

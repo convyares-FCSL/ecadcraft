@@ -58,7 +58,7 @@ fn terminal_symbol(
     let key = PointKey::Def(if first { "1".to_string() } else { label.to_string() });
     ops.push(Op::AddTerminal {
         id: t,
-        terminal: Terminal { component: strip, label: Some(label.to_string()), key: Some(key), accepts: Default::default() },
+        terminal: Terminal { owner: strip.into(), label: Some(label.to_string()), key: Some(key), accepts: Default::default() },
     });
     let placement = Placement { origin: at, rotation: Radians(0.0), mirror: false, scale: 1.0 };
     ops.push(Op::AddItem { id: item, item: Item { page, style, kind: ItemKind::Symbol(SymbolInstance { definition: def, placement }) } });
@@ -135,7 +135,7 @@ pub fn plan_fence_typed(
     let mut skipped = 0;
     for m in &found.members {
         if let Some(x) = strip_terminal_at(doc, page, m.at)
-            && strip.is_some_and(|c| doc.terminals.get(&x).is_some_and(|t| t.component == c))
+            && strip.is_some_and(|c| doc.terminals.get(&x).is_some_and(|t| t.device() == Some(c)))
         {
             skipped += 1;
             continue;
@@ -226,7 +226,7 @@ pub fn level_symbol(
         let t: TerminalId = ids.fresh();
         ops.push(Op::AddTerminal {
             id: t,
-            terminal: Terminal { component: strip, label: Some(position.to_string()), key: Some(td.key.clone()), accepts: td.accepts },
+            terminal: Terminal { owner: strip.into(), label: Some(position.to_string()), key: Some(td.key.clone()), accepts: td.accepts },
         });
         cps.insert(t, td.at);
         out.push((td.key.clone(), t, td.at));
@@ -430,7 +430,7 @@ pub fn plan_bridge(doc: &Document, ids: &mut IdAllocator, page: PageId, style: S
         return Ok(Bridge::Already { conductor: w, same, message: format!("{wa} and {wb} are already bridged.") });
     }
     let pos = |t: TerminalId| {
-        doc.representations_of(Subject::Device(doc.terminals.get(&t)?.component))
+        doc.representations_of(doc.terminals.get(&t)?.owner.subject())
             .find_map(|(_, r)| (r.page == page).then(|| ecad_model::derive::terminal_position(doc, page, t)).flatten())
     };
     let (Some(pa), Some(pb)) = (pos(a), pos(b)) else {

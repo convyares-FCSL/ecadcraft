@@ -37,6 +37,8 @@
 //! | I21 | A page's `folder` property names an existing folder | page → folder | touched pages and pages whose properties changed; pages in a touched folder |
 //! | I22 | The location and function lists hold each id and code once, codes with their sign | project | any change to the project's own data |
 //! | I23 | A route has 2 to 4096 finite points, lies on an existing page, and its ends land on existing connection points and on other routes of its page (design 072 F31) | route → page, terminals, routes | touched routes; routes on a touched page, landing on a touched terminal (a cable's or a cable reference's named points count as touched with it) or on a touched route |
+//! | I25 | A drawing aid is well formed: a box's panel temperature is a number (design 072 §6.2) | aid | touched aids |
+//! | I26 | A loose part is well formed: a description, a quantity more than 0 and at most 9 999, whole for pieces (design 072 §6.4) | loose part | touched loose parts |
 //!
 //! Not invariants of the document: properties (other than a page's `folder`), layer names, project
 //! settings. Named versions are
@@ -79,6 +81,10 @@ pub struct Touched {
     pub cables: BTreeSet<CableId>,
     /// Routes drawn, removed or changed (design 072 F31).
     pub routes: BTreeSet<RouteId>,
+    /// Drawing aids made, removed or changed (design 072 §6.2).
+    pub aids: BTreeSet<crate::id::AidId>,
+    /// Loose parts made, removed or changed (design 072 §6.4).
+    pub loose_parts: BTreeSet<crate::id::LoosePartId>,
     pub definitions: BTreeSet<DefinitionId>,
     /// A folder was added or removed, so the folder order changed.
     pub folder_order: bool,
@@ -148,6 +154,12 @@ impl Touched {
             }
             Effect::Route { id, .. } => {
                 self.routes.insert(*id);
+            }
+            Effect::Aid { id, .. } => {
+                self.aids.insert(*id);
+            }
+            Effect::LoosePart { id, .. } => {
+                self.loose_parts.insert(*id);
             }
             Effect::Prop { object, .. } => match object {
                 ObjectRef::Device(id) => {
@@ -225,6 +237,12 @@ impl Document {
         for (id, r) in &self.routes {
             self.check_route(*id, r)?;
         }
+        for (id, a) in &self.aids {
+            self.check_aid(*id, a)?;
+        }
+        for (id, p) in &self.loose_parts {
+            self.check_loose_part(*id, p)?;
+        }
         self.check_folder_order()?;
         for id in self.folders.keys() {
             self.check_folder(*id)?;
@@ -241,6 +259,22 @@ impl Document {
     /// ([`crate::project::Project::problem`]). A page or the project naming an id with no entry
     /// is not a breach: it shows `?`.
     ///
+    /// I25: a drawing aid is well formed.
+    fn check_aid(&self, id: crate::id::AidId, a: &crate::aid::Aid) -> Result<()> {
+        match a.problem() {
+            Some(e) => bad(format!("aid {id}: {e}")),
+            None => Ok(()),
+        }
+    }
+
+    /// I26: a loose part is well formed (design 072 §6.4).
+    fn check_loose_part(&self, id: crate::id::LoosePartId, p: &crate::loose_part::LoosePart) -> Result<()> {
+        match p.problem() {
+            Some(e) => bad(format!("loose part {id}: {e}")),
+            None => Ok(()),
+        }
+    }
+
     /// I24 (design 072 §2.8, §2.6): every device's user values name a field the project defines
     /// and are of its kind; every device link joins two different devices that exist, once.
     fn check_project(&self) -> Result<()> {
@@ -335,7 +369,7 @@ impl Document {
 
         let mut terminals = touched.terminals.clone();
         for c in &touched.devices {
-            terminals.extend(referrers(&ix.component_terminals, c));
+            terminals.extend(referrers(&ix.component_terminals, &crate::doc::TerminalOwner::Device(*c)));
         }
         for id in &terminals {
             if let Some(t) = self.terminals.get(id) {
@@ -357,7 +391,8 @@ impl Document {
         let subjects = (touched.devices.iter().map(|c| Subject::Device(*c)))
             .chain(touched.wires.iter().map(|c| Subject::Wire(*c)))
             .chain(touched.cables.iter().map(|c| Subject::Cable(*c)))
-            .chain(touched.routes.iter().map(|c| Subject::Route(*c)));
+            .chain(touched.routes.iter().map(|c| Subject::Route(*c)))
+            .chain(touched.aids.iter().map(|c| Subject::Aid(*c)));
         for s in subjects {
             reps.extend(referrers(&ix.subject_reps, &s));
         }
@@ -419,6 +454,16 @@ impl Document {
         for id in &routes {
             if let Some(r) = self.routes.get(id) {
                 self.check_route(*id, r)?;
+            }
+        }
+        for id in &touched.aids {
+            if let Some(a) = self.aids.get(id) {
+                self.check_aid(*id, a)?;
+            }
+        }
+        for id in &touched.loose_parts {
+            if let Some(p) = self.loose_parts.get(id) {
+                self.check_loose_part(*id, p)?;
             }
         }
 
@@ -512,7 +557,17 @@ impl Document {
 
     /// I8.
     fn check_terminal(&self, id: TerminalId, t: &Terminal) -> Result<()> {
-        let Some(c) = self.devices.get(&t.component) else {
+        let device = match t.owner {
+            crate::doc::TerminalOwner::Device(d) => d,
+            crate::doc::TerminalOwner::Aid(a) => {
+                return match self.aids.get(&a) {
+                    Some(crate::aid::Aid::Continuation { .. }) => Ok(()),
+                    Some(_) => bad(format!("terminal {id} belongs to drawing aid {a}, which is not a continuation")),
+                    None => bad(format!("terminal {id} belongs to a missing drawing aid")),
+                };
+            }
+        };
+        let Some(c) = self.devices.get(&device) else {
             return bad(format!("terminal {id} belongs to a missing component"));
         };
         // Design 072 §3: a PLC module's point is a channel's (`.3.in`) or one of its own symbol's
@@ -522,7 +577,7 @@ impl Document {
             && let Some(crate::PointKey::Def(k)) = &t.key
             && !c.definition.and_then(|d| self.definitions.get(&d)).is_some_and(|d| d.terminals.iter().any(|td| td.key.as_def() == Some(k)))
         {
-            return bad(format!("terminal {id} of PLC module {} is keyed {k}: neither a channel point nor a point of its symbol", t.component));
+            return bad(format!("terminal {id} of PLC module {} is keyed {k}: neither a channel point nor a point of its symbol", device));
         }
         Ok(())
     }
@@ -582,6 +637,7 @@ impl Document {
             Subject::Wire(c) => self.wires.contains_key(&c),
             Subject::Cable(c) => self.cables.contains_key(&c),
             Subject::Route(c) => self.routes.contains_key(&c),
+            Subject::Aid(c) => self.aids.contains_key(&c),
         };
         if !subject_exists {
             return bad(format!("representation {id} depicts a missing subject"));
@@ -610,14 +666,19 @@ impl Document {
                 let Some(inst) = instance else {
                     return bad(format!("symbol representation {id} must hold exactly one symbol instance"));
                 };
-                let Subject::Device(c) = r.subject else {
-                    return bad(format!("symbol representation {id} must depict a component"));
-                };
-                // Without connection points its terminals are matched to the definition by key, so
-                // the symbol shown must be the component's own definition. With them (one device
-                // drawn as a coil and its contacts, brief 018), any embedded definition (I5).
-                if r.connection_points.is_empty() && self.devices.get(&c).and_then(|c| c.definition) != Some(inst.definition) {
-                    return bad(format!("symbol representation {id} shows a definition its component does not use"));
+                match r.subject {
+                    // Without connection points its terminals are matched to the definition by key,
+                    // so the symbol shown must be the component's own definition. With them (one
+                    // device drawn as a coil and its contacts, brief 018), any embedded definition
+                    // (I5).
+                    Subject::Device(c) => {
+                        if r.connection_points.is_empty() && self.devices.get(&c).and_then(|c| c.definition) != Some(inst.definition) {
+                            return bad(format!("symbol representation {id} shows a definition its component does not use"));
+                        }
+                    }
+                    // A continuation's arrow (design 072 §6.2): an aid has no definition of its own.
+                    Subject::Aid(a) if matches!(self.aids.get(&a), Some(crate::aid::Aid::Continuation { .. })) => {}
+                    _ => return bad(format!("symbol representation {id} must depict a component or a continuation")),
                 }
             }
             Form::Drawn => {
@@ -637,10 +698,10 @@ impl Document {
                 }
                 continue;
             }
-            let Subject::Device(c) = r.subject else {
+            if !matches!(r.subject, Subject::Device(_) | Subject::Aid(_)) {
                 return bad(format!("representation {id} of a non-component has connection points"));
-            };
-            if self.terminals.get(t).map(|t| t.component) != Some(c) {
+            }
+            if self.terminals.get(t).map(|t| t.owner.subject()) != Some(r.subject) {
                 return bad(format!("representation {id} places terminal {t} of another component"));
             }
             if !p.is_finite() {

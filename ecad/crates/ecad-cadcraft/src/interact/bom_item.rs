@@ -36,6 +36,9 @@ impl BomItem {
         match (self.step, t) {
             (0, None) => return Err(other(crate::bom::ITEM_NEEDS_DESCRIPTION)),
             (0, Some(d)) => {
+                use ecad_model::loose_part::{LooseDescription, MAX_DESCRIPTION};
+                LooseDescription::new(&d)
+                    .map_err(|_| other(format!("`description` is one line of at most {MAX_DESCRIPTION} characters, with no hidden characters.")))?;
                 self.fields.insert("description".into(), json!(d));
             }
             (1, Some(q)) => {

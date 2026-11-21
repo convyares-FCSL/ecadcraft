@@ -60,7 +60,7 @@ fn worked_example_replays_and_undoes() {
     }
     let mut ops: Vec<Op> = ts
         .iter()
-        .map(|t| Op::AddTerminal { id: *t, terminal: Terminal { component: c1, label: None, key: None, accepts: Default::default() } })
+        .map(|t| Op::AddTerminal { id: *t, terminal: Terminal { owner: c1.into(), label: None, key: None, accepts: Default::default() } })
         .collect();
     ops.push(Op::ModifyRepresentation { id: r1, before: rep1.clone(), after: rep1b.clone() });
     l.commit(Author::User, "Add terminals", ops).unwrap();
@@ -70,7 +70,7 @@ fn worked_example_replays_and_undoes() {
     let us: Vec<TerminalId> = (0..3).map(|_| ids.fresh()).collect();
     let mut ops = vec![Op::AddItem { id: edge, item: line((95.0, 0.0), (95.0, 20.0)) }, Op::CreateDevice { id: c2, device: Device::default() }];
     ops.extend(
-        us.iter().map(|u| Op::AddTerminal { id: *u, terminal: Terminal { component: c2, label: None, key: None, accepts: Default::default() } }),
+        us.iter().map(|u| Op::AddTerminal { id: *u, terminal: Terminal { owner: c2.into(), label: None, key: None, accepts: Default::default() } }),
     );
     ops.push(Op::LinkRepresentation {
         id: r2,

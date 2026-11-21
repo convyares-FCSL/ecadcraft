@@ -614,7 +614,7 @@ pub fn plan_place(
                 let tid: TerminalId = ids.fresh();
                 ops.push(Op::AddTerminal {
                     id: tid,
-                    terminal: Terminal { component: c, label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
+                    terminal: Terminal { owner: c.into(), label: td.label.clone(), key: Some(td.key.clone()), accepts: td.accepts },
                 });
                 terminals.push((td.key.clone(), td.label.clone().unwrap_or_else(|| td.key.to_string()), tid));
             }
@@ -642,7 +642,7 @@ pub fn plan_place(
                 let tid: TerminalId = ids.fresh();
                 ops.push(Op::AddTerminal {
                     id: tid,
-                    terminal: Terminal { component: c, label: Some(label.clone()), key: Some(PointKey::Def(label.clone())), accepts: td.accepts },
+                    terminal: Terminal { owner: c.into(), label: Some(label.clone()), key: Some(PointKey::Def(label.clone())), accepts: td.accepts },
                 });
                 cps.insert(tid, td.at);
                 terminals.push((td.key.clone(), label.clone(), tid));
@@ -753,7 +753,7 @@ pub fn plan_merge(doc: &Document, ids: &mut IdAllocator, from: DeviceId, into: D
         let nt: TerminalId = ids.fresh();
         ops.push(Op::AddTerminal {
             id: nt,
-            terminal: Terminal { component: into, label, key: Some(PointKey::Def(name)), accepts: Default::default() },
+            terminal: Terminal { owner: into.into(), label, key: Some(PointKey::Def(name)), accepts: Default::default() },
         });
         map.insert(old, nt);
         nt
@@ -878,17 +878,16 @@ pub fn erase_followups(doc: &Document, erased: &[(RepresentationId, Representati
     let gone: BTreeSet<RepresentationId> = erased.iter().map(|(id, _)| *id).collect();
     let (mut ops, mut notes) = (Vec::new(), Vec::new());
     // A location box (brief 024) goes with its outline.
-    let boxes: BTreeSet<DeviceId> = erased
+    let boxes: BTreeSet<ecad_model::AidId> = erased
         .iter()
-        .filter_map(|(_, r)| if let Subject::Device(c) = r.subject { Some(c) } else { None })
-        .filter(|c| crate::locations::is_box(doc, *c))
+        .filter_map(|(_, r)| if let Subject::Aid(a) = r.subject { Some(a) } else { None })
+        .filter(|a| crate::locations::box_values(doc, *a).is_some())
         .collect();
-    for c in boxes {
-        if doc.representations_of(Subject::Device(c)).all(|(id, _)| gone.contains(&id))
-            && let Some(component) = doc.devices.get(&c)
+    for a in boxes {
+        if doc.representations_of(Subject::Aid(a)).all(|(id, _)| gone.contains(&id))
+            && let Some(aid) = doc.aids.get(&a)
         {
-            ops.extend(crate::cmd::device_link::unlink_ops(doc, c));
-            ops.push(Op::DeleteDevice { id: c, device: component.clone() });
+            ops.push(Op::DeleteAid { id: a, aid: aid.clone() });
         }
     }
     for (c, reps) in by_component {
@@ -1204,7 +1203,6 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
     };
     let height_of = |c: DeviceId, kind: TextKind, project: f64| own(c, kind).map_or(project, |s| s.style.height);
     for (rid, r) in doc.representations_on(page) {
-        let Subject::Device(c) = r.subject else { continue };
         if r.form != Form::Symbol {
             continue;
         }
@@ -1212,6 +1210,23 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
         if !pl.is_valid() {
             continue;
         }
+        // A continuation (a drawing aid, design 072 §6.2) shows its name and its other places
+        // instead (brief 022), in the project's styles for those kinds (design 031 §7.1).
+        if let Subject::Aid(a) = r.subject {
+            let target = TextTarget { page: Some(page), component: None, representation: Some(rid), conductor: None, run: run_rule(doc, r) };
+            for mut t in crate::wires::continuation_texts(doc, a, rid, &pl).unwrap_or_default() {
+                let kind = kind_of(t.of);
+                t.height = text_style(doc, kind).height;
+                let shown = match text_shown(doc, target, kind) {
+                    Shown::On => true,
+                    Shown::Off => false,
+                    Shown::First => firsts.contains(&rid),
+                };
+                out.push(PageText { text: t, shown, moved: false, overlaps: false });
+            }
+            continue;
+        }
+        let Subject::Device(c) = r.subject else { continue };
         let labels = by_rep.remove(&rid).unwrap_or_default();
         let target = TextTarget { page: Some(page), component: Some(c), representation: Some(rid), conductor: None, run: run_rule(doc, r) };
         let shown = |kind: TextKind| match text_shown(doc, target, kind) {
@@ -1219,17 +1234,6 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
             Shown::Off => false,
             Shown::First => firsts.contains(&rid),
         };
-        // A continuation shows its name and its other places instead (brief 022). Their sizes
-        // and visibility come from the style table (design 031 §7.1): restyled here, by kind.
-        if let Some(texts) = crate::wires::continuation_texts(doc, c, rid, &pl) {
-            out.extend(texts.into_iter().map(|mut t| {
-                t.height = height_of(c, kind_of(t.of), text_style(doc, kind_of(t.of)).height);
-                t.own = own(c, kind_of(t.of));
-                let shown = shown(kind_of(t.of));
-                PageText { text: t, shown, moved: false, overlaps: false }
-            }));
-            continue;
-        }
         // Connection point labels keep their fixed rule (or a stored place, §6.4) and are obstacles.
         let labels_shown = shown(TextKind::PointLabel);
         let label_style = text_style(doc, TextKind::PointLabel);

@@ -145,7 +145,7 @@ impl Rating {
 /// What every evaluation shares, read once per build or update.
 pub struct Context {
     pub looks: wire::WireLooks,
-    /// Location entry key → its panel temperature (location boxes with `rating.temperature`;
+    /// Location entry key → its panel temperature (location boxes with a panel temperature;
     /// brief 052: a stored location is an entry key, shown as its code).
     temps: BTreeMap<String, f64>,
     boxes: crate::locations::BoxCache,
@@ -180,7 +180,7 @@ impl Context {
     }
 
     /// A context from kept location boxes (no scan of the components).
-    pub(super) fn with_boxes(doc: &Document, boxes: &BTreeMap<DeviceId, BoxTemp>) -> Self {
+    pub(super) fn with_boxes(doc: &Document, boxes: &BTreeMap<ecad_model::AidId, BoxTemp>) -> Self {
         let mut temps: BTreeMap<String, f64> = BTreeMap::new();
         for b in boxes.values() {
             if let Temp::Read(t) = b.temp {
@@ -212,12 +212,14 @@ pub enum Temp {
     Unread(String),
 }
 
-/// The temperature of location box `c`, if it is one and sets one.
-pub fn box_temp(doc: &Document, c: DeviceId) -> Option<BoxTemp> {
-    let x = doc.devices.get(&c).filter(|x| crate::locations::is_box_component(x))?;
-    let v = x.properties.get(TEMPERATURE)?;
-    let location = crate::designations::device_key(x, crate::designations::Aspect::Location).unwrap_or_default();
-    Some(BoxTemp { location, temp: parse::ambient(v).map_or_else(|| Temp::Unread(v.chars().take(32).collect()), Temp::Read) })
+/// The temperature of location box `a`, if it is one and sets one. A value outside −40 to 90 °C
+/// (a file made elsewhere) does not read.
+pub fn box_temp(doc: &Document, a: ecad_model::AidId) -> Option<BoxTemp> {
+    let x = crate::locations::box_values(doc, a)?;
+    let t = x.panel_temperature?.0;
+    let location = crate::designations::box_key(x, crate::designations::Aspect::Location).unwrap_or_default();
+    let temp = if t.is_finite() && (-40.0..=90.0).contains(&t) { Temp::Read(t) } else { Temp::Unread(format!("{t}").chars().take(32).collect()) };
+    Some(BoxTemp { location, temp })
 }
 
 /// The code of location entry `key` (brief 052), or the key itself when the list has no entry.
@@ -226,8 +228,8 @@ pub fn location_code(doc: &Document, key: &str) -> String {
 }
 
 /// Every location box that sets a temperature (open, reload, first show).
-pub fn box_temps(doc: &Document) -> BTreeMap<DeviceId, BoxTemp> {
-    doc.devices.keys().filter_map(|c| box_temp(doc, *c).map(|b| (*c, b))).collect()
+pub fn box_temps(doc: &Document) -> BTreeMap<ecad_model::AidId, BoxTemp> {
+    doc.aids.keys().filter_map(|a| box_temp(doc, *a).map(|b| (*a, b))).collect()
 }
 
 pub(super) fn project_number(doc: &Document, e: &defaults::Entry) -> f64 {
@@ -306,7 +308,7 @@ pub(super) fn panel_temperature_at(doc: &Document, ctx: &mut Context, c: WireId)
     let mut locations: Vec<String> = Vec::new();
     if let Some(x) = doc.wires.get(&c) {
         for t in &x.ends {
-            let Some(comp) = doc.terminals.get(t).map(|t| t.component) else { continue };
+            let Some(comp) = doc.terminals.get(t).and_then(|t| t.device()) else { continue };
             // Brief 052: the device's stored location is an entry key; boxes match by key, and the
             // row shows the entry's code.
             let Some(loc) = crate::locations::resolve_with(doc, comp, &mut ctx.boxes).key.map(|l| l.trim().to_string()) else { continue };

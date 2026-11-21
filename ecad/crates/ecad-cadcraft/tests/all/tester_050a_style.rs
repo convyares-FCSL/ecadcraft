@@ -580,13 +580,17 @@ fn ids_a_dangling_reference_falls_through_and_is_reported() {
     let mut h = H::new(0x50a_0205);
     let page = h.first_page();
     let k = coil(&mut h, 100.0);
-    let b: DeviceId = id(&h.run("locationbox", json!({"location": "+CP1", "corners": [[80, 80], [140, 140]]})).unwrap(), "component");
+    // A box's own style is its aid's field (design 072 §6.2).
+    let b: ecad_model::AidId = id(&h.run("locationbox", json!({"location": "+CP1", "corners": [[80, 80], [140, 140]]})).unwrap(), "aid");
     let ghost = format!("#{}", "a".repeat(32));
+    let before = h.doc().aids[&b].clone();
+    let mut boxed = before.as_box().cloned().unwrap();
+    boxed.style = ecad_model::StyleRef::parse(&ghost);
     inject(
         &mut h,
         vec![
             Op::SetProperty { object: ObjectRef::Device(k), key: "text.tag.style".into(), before: None, after: Some(ghost.clone()) },
-            Op::SetProperty { object: ObjectRef::Device(b), key: "location.style".into(), before: None, after: Some(ghost.clone()) },
+            Op::ModifyAid { id: b, before, after: ecad_model::Aid::Box(boxed) },
             Op::SetProperty { object: ObjectRef::Page(page), key: "print.frame.style".into(), before: None, after: Some(ghost.clone()) },
         ],
     );

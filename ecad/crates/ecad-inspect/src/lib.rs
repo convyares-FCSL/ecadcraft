@@ -164,6 +164,12 @@ fn label_of(doc: &Document, s: Subject) -> String {
         Subject::Wire(c) => doc.wires.get(&c).and_then(|x| x.number_text().map(|n| format!("wire {n}"))).unwrap_or_else(|| "unnumbered wire".into()),
         Subject::Cable(c) => doc.cables.get(&c).and_then(|x| tag(&x.properties)).unwrap_or_else(|| "untagged cable".into()),
         Subject::Route(r) => doc.routes.get(&r).map_or_else(|| "line".into(), |x| format!("line on page {}", x.page.short())),
+        Subject::Aid(a) => match doc.aids.get(&a) {
+            Some(ecad_model::Aid::Continuation { name: Some(n), .. }) => format!("continuation {n}"),
+            Some(ecad_model::Aid::Continuation { name: None, .. }) => "unnamed continuation".into(),
+            Some(ecad_model::Aid::Box(_)) => "location box".into(),
+            None => "drawing aid".into(),
+        },
     }
 }
 
@@ -180,7 +186,7 @@ fn index(doc: &Document) -> Vec<Value> {
         push("device", format!("{:032x}", id.0), id.short(), label_of(doc, Subject::Device(*id)));
     }
     for (id, t) in &doc.terminals {
-        let owner = label_of(doc, Subject::Device(t.component));
+        let owner = label_of(doc, t.owner.subject());
         let name = t.label.clone().or_else(|| t.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| id.short());
         push("terminal", format!("{:032x}", id.0), id.short(), format!("{owner}:{name}"));
     }
@@ -206,6 +212,12 @@ fn index(doc: &Document) -> Vec<Value> {
     }
     for id in doc.routes.keys() {
         push("route", format!("{:032x}", id.0), id.short(), label_of(doc, Subject::Route(*id)));
+    }
+    for id in doc.aids.keys() {
+        push("aid", format!("{:032x}", id.0), id.short(), label_of(doc, Subject::Aid(*id)));
+    }
+    for (id, p) in &doc.loose_parts {
+        push("loose_part", format!("{:032x}", id.0), id.short(), format!("loose part {}", p.description));
     }
     for (id, r) in &doc.representations {
         push("representation", format!("{:032x}", id.0), id.short(), format!("{} of {}", r.role, label_of(doc, r.subject)));
@@ -355,7 +367,7 @@ mod tests {
         let (k, a, b, c): (DeviceId, TerminalId, TerminalId, TerminalId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
         let (w1, w2, net, c1, c2): (WireId, WireId, NetId, ConductorId, ConductorId) =
             (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
-        let point = |label: &str| Terminal { component: k, label: Some(label.into()), key: None, accepts: Default::default() };
+        let point = |label: &str| Terminal { owner: k.into(), label: Some(label.into()), key: None, accepts: Default::default() };
         let number = |n: &str| ecad_model::text::Text::new(n).ok().map(|text| ecad_model::wire::WireNumber { text, fixed: true });
         let ops = vec![
             Op::CreateDevice { id: k, device: Device::default().with_tag(Some("-K1")) },

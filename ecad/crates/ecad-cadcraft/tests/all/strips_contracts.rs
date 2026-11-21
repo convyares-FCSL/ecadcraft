@@ -232,7 +232,7 @@ fn setting_a_field_device_to_the_strip_location_flips_only_its_rows() {
     t.h.run("setlocation", json!({"component": h1.hex(), "value": "+FIELD"})).unwrap();
     // A wire from a point in +CP1 at (330, 200) to the lamp's X1 (340, 70).
     let top = t.h.points_at(&[(330.0, 200.0)])[0];
-    let top_device = t.h.doc().terminals[&top].component;
+    let top_device = t.h.doc().terminals[&top].device().unwrap();
     t.h.run("setlocation", json!({"component": top_device.hex(), "value": "+CP1"})).unwrap();
     let k = t.h.wire_pp(&[(330.0, 200.0), (330.0, 70.0), (340.0, 70.0)]).unwrap();
     let _w: WireId = id(&k, "conductor");

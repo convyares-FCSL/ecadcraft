@@ -392,10 +392,7 @@ pub fn drawn_ends(doc: &Document, k: CableId) -> [DrawnEnd; 2] {
     for w in wires.iter().take(MAX_CABLE_MEMBERS) {
         let ends = doc.wires.get(w).map(|c| c.ends).map_or([None, None], |[a, b]| [Some(a), Some(b)]);
         for (slot, t) in out.iter_mut().zip(ends) {
-            let Some(c) = t.and_then(|t| doc.terminals.get(&t)).map(|x| x.component) else { continue };
-            if crate::wires::kind_of(doc, c).is_some() {
-                continue;
-            }
+            let Some(c) = t.and_then(|t| doc.terminals.get(&t)).and_then(|x| x.device()) else { continue };
             match crate::locations::resolve(doc, c).value {
                 Some(l) => {
                     slot.locations.insert(l);

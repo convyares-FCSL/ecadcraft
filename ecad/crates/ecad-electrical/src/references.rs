@@ -571,7 +571,7 @@ pub fn cables_touched_by(
             out.insert(k);
         }
         Subject::Wire(w) => out.extend(doc.cables_of(w)),
-        Subject::Device(_) | Subject::Route(_) => {}
+        Subject::Device(_) | Subject::Route(_) | Subject::Aid(_) => {}
     };
     // Brief 055 (FP4; review of #110, 1): a frame decides its pages' grids, so a frame choice
     // or a frame's sheet, margins or block height reaches the cables on those pages.
@@ -661,7 +661,11 @@ pub fn cables_touched_by(
         // reference reads them. Any other catalogue (the frame, one added later) and a standard,
         // which may come to carry sheets, still reach every cable.
         Effect::Style { catalogue, .. } if NO_REFERENCE_STYLES.contains(catalogue) => {}
-        Effect::Layer { .. }
+        // A loose part is drawn on no page and no reference reads it (design 072 §6.4).
+        Effect::LoosePart { .. } => {}
+        // A drawing aid (design 072 §6.2) still reaches every cable, as its op did.
+        Effect::Aid { .. }
+        | Effect::Layer { .. }
         | Effect::Device { .. }
         | Effect::DeviceDefinition { .. }
         | Effect::DeviceLink { .. }
@@ -840,11 +844,8 @@ fn terminal_on(doc: &Document, shown: &BTreeSet<ecad_model::TerminalId>, c: &eca
         return Some(name);
     }
     let term = doc.terminals.get(&t)?;
-    let comp = doc
-        .devices
-        .get(&term.component)
-        .and_then(|x| x.tag().map(str::to_string))
-        .unwrap_or_else(|| format!("{}…", term.component.hex().get(..8).unwrap_or_default()));
+    let c = term.device()?;
+    let comp = doc.devices.get(&c).and_then(|x| x.tag().map(str::to_string)).unwrap_or_else(|| format!("{}…", c.hex().get(..8).unwrap_or_default()));
     Some(format!("{comp}:{}", crate::terminal_types::terminal_name(doc, t)))
 }
 

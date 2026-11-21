@@ -201,7 +201,7 @@ impl Plc {
             }
             // Brief 045b: a card's channel points, and the nets they are on (used or spare).
             Effect::Terminal { before, after, .. } => {
-                t.devices.extend(before.iter().chain(after.iter()).map(|t| t.component));
+                t.devices.extend(before.iter().chain(after.iter()).filter_map(|t| t.device()));
             }
             // Design 072 §4.4: the commit's rewrite made, removed or moved a wire: the devices
             // at its ends, and the cards on its net.
@@ -209,13 +209,17 @@ impl Plc {
                 if let Some(wire) = after.or(*before) {
                     for end in &wire.ends {
                         if let Some(x) = doc.terminals.get(end) {
-                            t.devices.insert(x.component);
+                            t.devices.extend(x.device());
                         }
                     }
                     for w in doc.wires_of_net(wire.net) {
                         let ends = doc.wires.get(&w).map(|x| x.ends);
                         t.devices.extend(
-                            ends.iter().flatten().filter_map(|t| doc.terminals.get(t)).map(|x| x.component).filter(|c| self.cards.contains_key(c)),
+                            ends.iter()
+                                .flatten()
+                                .filter_map(|t| doc.terminals.get(t))
+                                .filter_map(|x| x.device())
+                                .filter(|c| self.cards.contains_key(c)),
                         );
                     }
                 }
@@ -232,7 +236,7 @@ impl Plc {
             // A route on one of a card's points re-routed (design 072 §4.3).
             Effect::Route { before, after, .. } => {
                 let points = before.iter().chain(after.iter()).flat_map(|r| r.points_landed());
-                t.devices.extend(points.filter_map(|t| doc.terminals.get(&t)).map(|x| x.component).filter(|c| self.cards.contains_key(c)));
+                t.devices.extend(points.filter_map(|t| doc.terminals.get(&t)).filter_map(|x| x.device()).filter(|c| self.cards.contains_key(c)));
             }
             // A text style or standard changed: the bands of every card (rare).
             Effect::Style { .. } | Effect::Standard { .. } => t.styles = true,
@@ -249,6 +253,8 @@ impl Plc {
             | Effect::Version { .. }
             | Effect::Folder { .. }
             | Effect::Project { .. }
+            | Effect::Aid { .. }
+            | Effect::LoosePart { .. }
             | Effect::DeviceLink { .. } => {}
         }
     }
@@ -305,11 +311,11 @@ impl Plc {
             }
             // A continuation renamed joins or splits nets: every continuation of the old and
             // the new name, and the nets they are on now.
-            Effect::Prop { object: ObjectRef::Device(c), key, before, after } if key.raw == ecad_model::connectivity::NAME => {
-                let mut ts: Vec<ecad_model::TerminalId> = doc.terminals_of(*c).map(|(t, _)| t).collect();
-                for v in [before, after].into_iter().flatten() {
-                    for k in doc.continuations_named(&ecad_model::connectivity::name_key(v)) {
-                        ts.extend(doc.terminals_of(k).map(|(t, _)| t));
+            Effect::Aid { id, before: Some(before), after: Some(after) } => {
+                let mut ts: Vec<ecad_model::TerminalId> = doc.terminals_of(*id).map(|(t, _)| t).collect();
+                for k in [before, after].into_iter().filter_map(|a| ecad_model::connectivity::continuation_key(a)) {
+                    for a in doc.continuations_named(&k) {
+                        ts.extend(doc.terminals_of(a).map(|(t, _)| t));
                     }
                 }
                 out.extend(iolist::cards_on_nets_of_terminals(doc, self, &ts));
@@ -336,6 +342,8 @@ impl Plc {
             | Effect::Style { .. }
             | Effect::Standard { .. }
             | Effect::Project { .. }
+            | Effect::Aid { .. }
+            | Effect::LoosePart { .. }
             | Effect::DeviceLink { .. } => {}
         }
     }

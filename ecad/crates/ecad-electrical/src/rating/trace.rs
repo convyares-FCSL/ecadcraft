@@ -129,7 +129,7 @@ enum Step {
 
 fn step(doc: &Document, t: TerminalId) -> Step {
     let Some(term) = doc.terminals.get(&t) else { return Step::Stop };
-    let c = term.component;
+    let Some(c) = term.device() else { return Step::Stop };
     let label = term.label.clone().unwrap_or_default();
     // A strip: the other terminals of this position and level; a fuse position protects.
     if crate::strips::strip_of(doc, c).is_some() {
