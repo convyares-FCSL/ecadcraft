@@ -238,6 +238,9 @@ is not counted as a change until the project has a file."
     for k in [CheckKind::Replay, CheckKind::Projection, CheckKind::File] {
         t.debugger_action(Action::Check(k));
     }
+    // They run on the background pool; the next frame takes their results.
+    assert!(t.debugger.wait_for_checks(std::time::Duration::from_secs(30)));
+    frame(&mut t, &ctx);
     let ran = t.debugger.checks();
     assert_eq!(ran.len(), 3);
     assert!(ran.iter().all(|r| r.check.ok && r.check.at_seq == 5), "{ran:?}");

@@ -33,6 +33,8 @@ ecad-electrical = { workspace = true }
 # dashes, from the drawing style (design 065 §1.1).
 ecad-drawing-style = { workspace = true }
 cadcraft-engine = { path = "../../../crates/engine" }
+# The background pool: checks run off the UI thread, on copies (design 061, lane R11).
+rayon = { workspace = true }
 # Brief 024: Print Book installs CADCraft's PDF plotter as the engine's plot hook (no PDF code in
 # ECAD); already in the graph through `cadcraft-mcp`.
 cadcraft-io = { path = "../../../crates/io" }
