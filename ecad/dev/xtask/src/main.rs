@@ -67,7 +67,7 @@ enum Class {
     /// A developer or test tool under `ecad/dev/`, never shipped: may use anything, and no
     /// product crate may depend on it except through its own `dev` feature (design 029 §12.3).
     Dev,
-    /// `xtask`: a developer tool outside `dev/` (design 065 §4 counts it in Dev); no rules.
+    /// `xtask`: a developer tool under `dev/` (design 065 §4 counts it in Dev), exempt from the source guards; no rules.
     Exempt,
 }
 
@@ -316,7 +316,7 @@ const README_ALLOWLIST: &[&str] = &[];
 const UIKIT_ALLOWED: &[&str] = &["egui", "epaint", "egui_extras", "ecad-tokens", "ecad-drawing-style"];
 
 fn ecad_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."))
+    Path::new(env!("CARGO_MANIFEST_DIR")).parent().and_then(Path::parent).map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."))
 }
 
 fn run(cmd: &mut Command) -> Result<(), String> {
@@ -382,7 +382,7 @@ fn layer_violations(meta: &Value) -> Result<Vec<String>, String> {
             continue;
         };
         let in_dev = under_dev(root, p["manifest_path"].as_str().unwrap_or_default());
-        if in_dev != (class == Class::Dev) {
+        if in_dev != matches!(class, Class::Dev | Class::Exempt) {
             out.push(format!("{name}: a crate is under ecad/dev/ exactly when its class is Dev (it is {class:?})"));
         }
         for d in p["dependencies"].as_array().into_iter().flatten() {
@@ -1690,10 +1690,10 @@ mod tests {
             [
                 "ecad-app",
                 "ecad-bench",
-                "ecad-engine",
                 "ecad-cli",
                 "ecad-desktop",
                 "ecad-electrical",
+                "ecad-engine",
                 "ecad-file",
                 "ecad-inspect",
                 "ecad-inspector",
@@ -1704,9 +1704,9 @@ mod tests {
         assert_eq!(pick("ecad/crates/ecad-app/src/lib.rs"), ["ecad-app", "ecad-desktop"]);
         assert_eq!(
             pick("ecad/crates/ecad-store/src/lib.rs"),
-            ["ecad-app", "ecad-bench", "ecad-engine", "ecad-desktop", "ecad-electrical", "ecad-file", "ecad-inspector", "ecad-mcp", "ecad-store"]
+            ["ecad-app", "ecad-bench", "ecad-desktop", "ecad-electrical", "ecad-engine", "ecad-file", "ecad-inspector", "ecad-mcp", "ecad-store"]
         );
-        assert_eq!(pick("crates/engine/src/lib.rs"), ["ecad-app", "ecad-bench", "ecad-engine", "ecad-desktop", "ecad-mcp"]);
+        assert_eq!(pick("crates/engine/src/lib.rs"), ["ecad-app", "ecad-bench", "ecad-desktop", "ecad-engine", "ecad-mcp"]);
         assert!(pick("ecad/docs/quick-start.md").is_empty());
         // The demo's command list is embedded by ecad-mcp; the app's Checks UI test opens the demo
         // through it (brief 022).
@@ -2019,7 +2019,7 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
             ("ecad-xtask", "cadcraft-engine", Value::Null, 0, "xtask on the engine"),
         ];
         for (krate, dep, kind, n, what) in rows {
-            let meta = serde_json::json!({"packages": [{"name": krate, "dependencies": [{"name": dep, "kind": kind}]}], "workspace_root": ""});
+            let meta = serde_json::json!({"packages": [{"name": krate, "manifest_path": if *krate == "ecad-xtask" { "/dev/xtask/Cargo.toml" } else { "" }, "dependencies": [{"name": dep, "kind": kind}]}], "workspace_root": ""});
             assert_eq!(layer_violations(&meta).unwrap().len(), *n, "{what}: {krate} -> {dep}");
         }
     }
@@ -2094,7 +2094,7 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
             ("ecad-desktop", "ecad-ui", 0),
         ];
         for (krate, dep, n) in rows {
-            let meta = serde_json::json!({"packages": [{"name": krate, "dependencies": [{"name": dep, "kind": null}]}], "workspace_root": ""});
+            let meta = serde_json::json!({"packages": [{"name": krate, "manifest_path": if *krate == "ecad-xtask" { "/dev/xtask/Cargo.toml" } else { "" }, "dependencies": [{"name": dep, "kind": null}]}], "workspace_root": ""});
             assert_eq!(layer_violations(&meta).unwrap().len(), *n, "{krate} -> {dep}");
         }
     }

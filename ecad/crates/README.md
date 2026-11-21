@@ -1,6 +1,6 @@
 # ECAD crates: the overall structure
 
-ECAD is a Cargo workspace in `ecad/` (`crates/`, `apps/`, `dev/`, `xtask/`). Every crate belongs to
+ECAD is a Cargo workspace in `ecad/` (`crates/`, `apps/`, `dev/`). Every crate belongs to
 one of six **layers**, and a crate may use only crates in the layers above it. The full reasoning
 is in [`docs/design/crates.md`](../docs/design/crates.md). ECAD is desktop-only: there is no web
 build.
@@ -55,7 +55,7 @@ cycle cannot be written. The UI kit may use `ecad-drawing-style` (Core) and noth
 | [`ecad-mcp`](../apps/ecad-mcp/README.md) | Programs | ECAD for agents over MCP, with a write gate. |
 | [`ecad-bench`](../dev/ecad-bench/README.md) | Dev | The load benchmark (`cargo xtask bench`). |
 | [`ecad-inspector`](../dev/ecad-inspector/README.md) | Dev | `ecadinspect`: look inside a `.ecad` file, text or web page. |
-| [`ecad-xtask`](../xtask/README.md) (`xtask`) | Dev | The project's own commands: `ci`, `layers`, `bench`, `test-changed`. |
+| [`ecad-xtask`](../dev/xtask/README.md) (`xtask`) | Dev | The project's own commands: `ci`, `layers`, `bench`, `test-changed`. |
 
 ## The rules `cargo xtask layers` checks
 
@@ -68,7 +68,7 @@ cycle cannot be written. The UI kit may use `ecad-drawing-style` (Core) and noth
 - **UI code uses `ecad-ui` components**: no new raw `egui::TextEdit` or `ComboBox`.
 - **Every crate has a README** with the six headings and the right `Layer:` line.
 
-To change a rule, edit the table in `xtask/src/main.rs` and the matching section of
+To change a rule, edit the table in `dev/xtask/src/main.rs` and the matching section of
 [`docs/design/crates.md`](../docs/design/crates.md) (§4), and tell the owner: layers are a recorded
 decision.
 

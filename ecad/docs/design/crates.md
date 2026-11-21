@@ -61,7 +61,7 @@ layer where §4 says so). Engine and UI kit are **siblings**: neither uses the o
 | **UI kit** | ECAD's widgets and screen look: how a value, button, table or panel looks. Knows nothing about projects. | `ecad-ui`, `ecad-tokens` (screen tokens only) |
 | **App** | The ECAD application: shell, workspaces, panels, dialogs, lists, tabs, on a CADCraft window. | `ecad-app` (new, from ecad-trial) |
 | **Programs** | Things a person or agent starts: one `main` each, thin. | `ecad-desktop` (ecad-trial's binary), `ecad-cli`, `ecad-mcp` |
-| **Dev** | Developer and test tools under `ecad/dev/`. Never shipped. | `ecad-bench`, `ecad-inspector`, `xtask` |
+| **Dev** | Developer and test tools under `ecad/dev/`. Never shipped. | `ecad-bench`, `ecad-inspector`, `xtask` (`dev/xtask`) |
 
 **ECAD is desktop-only (owner ruling, 2026-11-15).** There is no web or browser product, so no
 layer has to build for wasm. The `cargo xtask wasm` check of the ECAD crates existed only because
@@ -465,7 +465,7 @@ ecad-store, ecad-electrical (only `definition_hash`).
 ## 4. Guard rules for `cargo xtask layers`
 
 Today's `Class` enum (Core, Adapter, Ui, UiKit, Dev, Exempt) becomes the layer names. The table
-in `xtask/src/main.rs` changes as follows:
+in `dev/xtask/src/main.rs` changes as follows:
 
 | Layer | Crates | May depend on (normal deps) | Must not |
 |---|---|---|---|
@@ -474,7 +474,7 @@ in `xtask/src/main.rs` changes as follows:
 | UI kit | ecad-ui, ecad-tokens | `ecad-tokens`: `ecad-drawing-style` only. `ecad-ui`: `egui`, `epaint`, `egui_extras`, `ecad-tokens`, `ecad-drawing-style` (`UIKIT_ALLOWED` gains `ecad-drawing-style`) | everything else |
 | App | ecad-app | Core, Engine, UI kit; `cadcraft-ui-egui`, `eframe`, `egui` | `cadcraft-engine` directly, Programs, Dev (except through its `dev` feature) |
 | Programs | desktop, cli, mcp | Core, Engine, App, other Programs (owner ruling); `cadcraft-ui-egui` (desktop), `cadcraft-mcp` (mcp) | `cadcraft-engine` directly, Dev (except through `dev`) |
-| Dev | under `dev/`: bench, inspector; `xtask` (Exempt) | anything | — |
+| Dev | under `dev/`: bench, inspector, `dev/xtask` (Exempt) | anything | — |
 
 No layer has to build for wasm: ECAD is desktop-only (owner ruling, 2026-11-15).
 

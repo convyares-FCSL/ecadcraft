@@ -4,7 +4,7 @@
 resolver = "3"
 # `dev/` holds developer and test tools, never shipped (design 029 §12): product crates do not
 # depend on them (`cargo xtask layers`).
-members = ["crates/*", "apps/*", "dev/*", "xtask"]
+members = ["crates/*", "apps/*", "dev/*"]
 
 [workspace.package]
 version = "0.3.0-dev"

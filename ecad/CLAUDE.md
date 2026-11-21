@@ -147,7 +147,7 @@ cargo xtask patches               # only when files outside ecad/ changed
   means): `ecad-model`, `ecad-drawing-style`, `ecad-store`, `ecad-file`, `ecad-inspect`,
   `ecad-electrical`. **Engine** (the link to CADCraft): `ecad-engine`. **UI kit**: `ecad-ui`,
   `ecad-tokens`. **App**: `ecad-app`. **Programs** (one `main` each): `ecad-desktop`, `ecad-cli`,
-  `ecad-mcp`. **Dev** (never shipped): `ecad-bench`, `ecad-inspector` under `dev/`, and `xtask`.
+  `ecad-mcp`. **Dev** (never shipped): `ecad-bench`, `ecad-inspector` and `xtask` under `dev/`.
   A crate uses only layers above it; `cargo xtask layers` enforces the table.
 - No Core crate depends on a `cadcraft-*` crate. Only `ecad-engine` touches the engine; App and
   Programs reach it through `ecad_engine::cad`.
