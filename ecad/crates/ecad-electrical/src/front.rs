@@ -493,7 +493,21 @@ impl CoverNote {
                 let ch = b.change(a);
                 codes_on() && (ch.location || ch.function)
             }
-            _ => false,
+            Effect::Page { .. }
+            | Effect::Layer { .. }
+            | Effect::Device { .. }
+            | Effect::Terminal { .. }
+            | Effect::Rep { .. }
+            | Effect::Wire { .. }
+            | Effect::Route { .. }
+            | Effect::Cable { .. }
+            | Effect::Prop { .. }
+            | Effect::Settings { .. }
+            | Effect::Folder { .. }
+            | Effect::Standard { .. }
+            | Effect::Aid { .. }
+            | Effect::LoosePart { .. }
+            | Effect::DeviceLink { .. } => false,
         };
         self.changed |= changed;
     }
@@ -560,7 +574,26 @@ impl UsesNote {
                     self.seeds.extend(doc.ends_at(t).into_iter().map(|(c, _)| c));
                 }
             }
-            _ => {}
+            Effect::Page { .. }
+            | Effect::Layer { .. }
+            | Effect::Item { .. }
+            | Effect::Device { .. }
+            | Effect::DeviceDefinition { .. }
+            | Effect::Terminal { .. }
+            | Effect::Rep { .. }
+            | Effect::Route { .. }
+            | Effect::Cable { .. }
+            | Effect::Prop { .. }
+            | Effect::Definition { .. }
+            | Effect::Settings { .. }
+            | Effect::Version { .. }
+            | Effect::Folder { .. }
+            | Effect::Style { .. }
+            | Effect::Standard { .. }
+            | Effect::Project { .. }
+            | Effect::Aid { .. }
+            | Effect::LoosePart { .. }
+            | Effect::DeviceLink { .. } => {}
         }
     }
 }

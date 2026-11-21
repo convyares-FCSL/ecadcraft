@@ -1,12 +1,7 @@
-//! Lane 064 (design 064 §10): the one classifier of ops, `Effects::of`, and `Touched` over it.
-//!
-//! # Frozen pre-R9 behaviour, test oracle only
-//! Every `old_*` function here is a frozen copy of code R9 replaced, kept only as a test oracle.
-//! It is not live legacy code and nothing outside this module calls it. Delete it when R9's
-//! step 10 matrix covers it; step 10 decides whether it stays.
+//! Lane 064 (design 064 §10): the one classifier of ops, `Effects::of`.
 
 use ecad_model::effect::{Effect, EffectKind, Effects};
-use ecad_model::{ObjectRef, Op, Touched};
+use ecad_model::{ObjectRef, Op};
 
 use crate::incremental_contracts::{all_ops, applicable, base};
 
@@ -103,104 +98,5 @@ fn pairs_fold() {
     match Effects::of(&before_other).iter().nth(1) {
         Some(Effect::Page { before: Some(_), after: Some(_), .. }) => {}
         other => panic!("the pair stands where the remove stood: {other:?}"),
-    }
-}
-
-/// `Touched::add` as it was before design 064 (one arm per op), kept here as the oracle.
-fn old_touched(ops: &[Op]) -> Touched {
-    let mut t = Touched::default();
-    for op in ops {
-        match op {
-            Op::AddPage { id, .. } | Op::RemovePage { id, .. } | Op::ModifyPage { id, .. } => {
-                t.page_order = true;
-                t.pages.insert(*id);
-            }
-            Op::AddLayer { id, .. } | Op::RemoveLayer { id, .. } => {
-                t.layers.insert(*id);
-            }
-            Op::AddItem { id, .. } | Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => {
-                t.items.insert(*id);
-            }
-            Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::ModifyDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
-                t.devices.insert(*id);
-            }
-            Op::AddTerminal { id, .. } | Op::RemoveTerminal { id, .. } => {
-                t.terminals.insert(*id);
-            }
-            Op::LinkRepresentation { id, .. } | Op::ModifyRepresentation { id, .. } | Op::UnlinkRepresentation { id, .. } => {
-                t.representations.insert(*id);
-            }
-            Op::CreateWire { id, .. } | Op::DeleteWire { id, .. } | Op::ModifyWire { id, .. } => {
-                t.wires.insert(*id);
-            }
-            Op::AddRoute { id, .. } | Op::RemoveRoute { id, .. } | Op::ModifyRoute { id, .. } => {
-                t.routes.insert(*id);
-            }
-            Op::CreateAid { id, .. } | Op::DeleteAid { id, .. } | Op::ModifyAid { id, .. } => {
-                t.aids.insert(*id);
-            }
-            Op::CreateLoosePart { id, .. } | Op::DeleteLoosePart { id, .. } | Op::ModifyLoosePart { id, .. } => {
-                t.loose_parts.insert(*id);
-            }
-            Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } | Op::ModifyCable { id, .. } => {
-                t.cables.insert(*id);
-            }
-            Op::SetProperty { object, .. } => match object {
-                ObjectRef::Device(id) => {
-                    t.devices.insert(*id);
-                }
-                ObjectRef::Wire(id) => {
-                    t.wires.insert(*id);
-                }
-                ObjectRef::Cable(id) => {
-                    t.cables.insert(*id);
-                }
-                ObjectRef::Page(id) => {
-                    t.page_properties.insert(*id);
-                }
-                ObjectRef::Project | ObjectRef::Standard => {}
-            },
-            Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => {
-                t.definitions.insert(*id);
-            }
-            Op::SetProjectSettings { .. } | Op::NameVersion { .. } | Op::UnnameVersion { .. } => {}
-            Op::AddFolder { id, .. } | Op::RemoveFolder { id, .. } => {
-                t.folder_order = true;
-                t.folders.insert(*id);
-            }
-            Op::ModifyFolder { id, .. } => {
-                t.folders.insert(*id);
-            }
-            Op::SetStyle { .. } | Op::SetStandard { .. } => t.styles = true,
-            Op::ModifyProject { .. } | Op::AddDeviceLink { .. } | Op::RemoveDeviceLink { .. } => t.project = true,
-        }
-    }
-    t
-}
-
-/// C2: `Touched` over effects equals the old per-op result: for every sample alone, for all of
-/// them together, and for the folded pairs.
-#[test]
-fn touched_is_unchanged() {
-    let mut b = base();
-    let ops = applicable(&mut b);
-    for op in &ops {
-        let one = std::slice::from_ref(op);
-        assert_eq!(Touched::of(one), old_touched(one), "{}", op.name());
-        let mut added = Touched::default();
-        added.add(op);
-        assert_eq!(added, old_touched(one), "add {}", op.name());
-    }
-    assert_eq!(Touched::of(&ops), old_touched(&ops), "every sample together");
-    let pairs = [
-        vec![Op::RemovePage { id: b.page, page: b.page_v.clone(), index: 0 }, Op::AddPage { id: b.page, page: b.page_v.clone(), index: 1 }],
-        vec![Op::RemoveTerminal { id: b.term, terminal: b.term_v.clone() }, Op::AddTerminal { id: b.term, terminal: b.term_v.clone() }],
-        vec![
-            Op::RemoveFolder { id: b.folder, folder: b.folder_v.clone(), index: 0 },
-            Op::AddFolder { id: b.folder, folder: b.folder_v.clone(), index: 0 },
-        ],
-    ];
-    for pair in &pairs {
-        assert_eq!(Touched::of(pair), old_touched(pair), "{}", pair[0].name());
     }
 }

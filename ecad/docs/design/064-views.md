@@ -5,6 +5,15 @@ day for the approved crate map (`docs/design/crates.md`, lane 065): `Views` and 
 the new Core crate **ecad-electrical** from the start. ECAD is desktop-only (owner ruling: no
 web build), so nothing here depends on wasm. Amended again the same day: every derived view has
 one way in (§5.2, decision 11). Brief: `docs/briefs/064-views.md`.
+**Closed 2026-11-21** under the owner's rule of that day (`ecad/CLAUDE.md`, "Derived views scale
+with what changed"): until release a view keeps an update map only where a full rebuild on the
+large bench is noticeable (over about 5 ms per edit), so the matrix of §7 (step 10's `xtask
+update-maps` and test C4) is not built; the end-gate review measures each view and decides. The
+`xtask layers` guards stand: direct builds outside `Views` (3), from-scratch calls and builds
+inside a view's own module, each listed with its reason, no wildcard arm over `Effect` in
+ecad-electrical, and the `starts_with` key-prefix ratchet (12 in 6 files). The frozen copies of
+the replaced per-op code (the `old_*` test oracles, and ecad-model's op-based `book` functions)
+are deleted: a copy that later lanes edit only confirms itself.
 Source: finding 1 and row R9 of the 2026-11 code review (not committed). This is an internal design
 with no new controls. Its user-facing promise: nothing a person sees changes, except that views
 can no longer go stale after an edit that a hand-written list forgot.
