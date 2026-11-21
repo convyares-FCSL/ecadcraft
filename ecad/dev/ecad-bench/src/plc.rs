@@ -171,7 +171,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredPlc, 
         }
         out.plcbuild_ms = median(&mut build);
         let (racks, cards, first) = project.read(&mut s, |p, _| {
-            let o = p.outputs.as_ref();
+            let o = p.kept_outputs();
             let racks = o.map_or(0, |o| o.plc.racks.len());
             let cards = o.map_or(0, |o| o.plc.cards.len());
             let first =
@@ -186,7 +186,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredPlc, 
             let t = Instant::now();
             run(&mut s, "plcslot", json!({"card": card.hex(), "slot": 20}))?;
             moves.push(ms(t));
-            out.work = out.work.max(project.read(&mut s, |p, _| p.outputs.as_ref().map_or(0, |o| o.plc.last_work))?);
+            out.work = out.work.max(project.read(&mut s, |p, _| p.kept_outputs().map_or(0, |o| o.plc.last_work))?);
             run(&mut s, "undo", json!({}))?;
         }
         out.slotmove_ms = median(&mut moves);
@@ -204,7 +204,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredPlc, 
             run(&mut s, "undo", json!({}))?;
         }
         out.chfence_ms = median(&mut fences);
-        let rack = project.read(&mut s, |p, _| p.outputs.as_ref().and_then(|o| o.plc.racks_by_tag().first().map(|r| r.id)))?.ok_or("no rack")?;
+        let rack = project.read(&mut s, |p, _| p.kept_outputs().and_then(|o| o.plc.racks_by_tag().first().map(|r| r.id)))?.ok_or("no rack")?;
         let mut styles = Vec::new();
         for _ in 0..runs {
             let t = Instant::now();
@@ -218,7 +218,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredPlc, 
             lists.push(project.configure(&mut s, |p| {
                 p.outputs();
                 let doc = p.ledger.document();
-                let Some(o) = p.outputs.as_ref() else { return (0.0, 0) };
+                let Some(o) = p.kept_outputs() else { return (0.0, 0) };
                 let t = Instant::now();
                 let n: usize = ecad_cadcraft::plc::iolist::cards_in_order(&o.plc)
                     .into_iter()
@@ -237,7 +237,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredPlc, 
             project.configure(&mut s, |p| {
                 p.outputs();
                 let doc = p.ledger.document();
-                if let Some(o) = p.outputs.as_ref() {
+                if let Some(o) = p.kept_outputs() {
                     for c in &o.plc.rows_changed {
                         if let Some(cd) = o.plc.cards.get(c) {
                             std::hint::black_box(ecad_cadcraft::plc::iolist::rows_of(doc, &o.plc, cd));
@@ -290,7 +290,7 @@ fn measure_056(project: &ProjectHandle, s: &mut Session, runs: usize, out: &mut 
         drives.push(project.configure(s, |p| {
             p.outputs();
             let doc = p.ledger.document();
-            let Some(o) = p.outputs.as_ref() else { return 0.0 };
+            let Some(o) = p.kept_outputs() else { return 0.0 };
             let t = Instant::now();
             for c in ecad_cadcraft::plc::iolist::cards_in_order(&o.plc) {
                 for r in ecad_cadcraft::plc::iolist::rows_of(doc, &o.plc, c) {
@@ -337,7 +337,7 @@ fn measure_051(project: &ProjectHandle, s: &mut Session, runs: usize, rack: ecad
         strip.push(project.configure(s, |p| {
             p.outputs();
             let doc = p.ledger.document();
-            let Some(o) = p.outputs.as_ref() else { return 0.0 };
+            let Some(o) = p.kept_outputs() else { return 0.0 };
             let Some(r) = o.plc.racks.get(&rack) else { return 0.0 };
             let t = Instant::now();
             std::hint::black_box(ecad_cadcraft::plc::overview::rack_tiles(doc, &o.plc, r));
@@ -353,7 +353,7 @@ fn measure_051(project: &ProjectHandle, s: &mut Session, runs: usize, rack: ecad
             p.outputs();
             let doc = p.ledger.document();
             let t = Instant::now();
-            std::hint::black_box(ecad_cadcraft::generated::parts_of(doc, sheet, p.outputs.as_ref()));
+            std::hint::black_box(ecad_cadcraft::generated::parts_of(doc, sheet, p.kept_outputs()));
             ms(t)
         })?);
     }

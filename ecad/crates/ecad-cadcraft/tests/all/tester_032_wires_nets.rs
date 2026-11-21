@@ -8,7 +8,7 @@ use cadcraft_engine::Input;
 use cadcraft_engine::geom::Vec2;
 use ecad_cadcraft::Persistence;
 use ecad_cadcraft::checks::Kind;
-use ecad_cadcraft::outputs::Outputs;
+use ecad_cadcraft::outputs::kept::Outputs;
 use ecad_cadcraft::wires::{self, LABEL_LAYER};
 use ecad_model::{CableId, DeviceId, Document, Op, PageId, Pt, RouteEnd, RouteId, Subject, TerminalId, WireId};
 use serde_json::{Value, json};
@@ -448,7 +448,7 @@ fn same_outputs_as_built(h: &mut H) {
     let (kept, built, kept_checks, built_checks) = h.cfg(|p| {
         let kept = p.outputs().clone();
         let doc = p.ledger.document();
-        let built = Outputs::build(doc);
+        let built = Outputs::build_with(doc, &ecad_cadcraft::text_style::EngineMetrics);
         let kc: Vec<String> = ecad_cadcraft::checks::all_with(doc, p.tolerance, &kept).iter().map(|c| c.to_json(doc).to_string()).collect();
         let bc: Vec<String> = ecad_cadcraft::checks::all_with(doc, p.tolerance, &built).iter().map(|c| c.to_json(doc).to_string()).collect();
         (kept, built, kc, bc)

@@ -4,7 +4,7 @@
 //! tab (double-click a cable).
 //!
 //! The Reports window shows a copy of a table of the project's kept report models
-//! ([`ecad_cadcraft::outputs::Outputs`], built on first show and then kept from each change's
+//! ([`ecad_cadcraft::outputs::kept::Outputs`], built on first show and then kept from each change's
 //! ops); the copy is taken again only when the models' revision, the tab or the grouping changed.
 //! Live while open: no refresh button. Rows are virtualised.
 
@@ -177,7 +177,7 @@ impl Reports {
         // Brief 045c: Lists ▸ I/O follows the PLC model's own update map while it is shown.
         if self.io_shown {
             p.outputs();
-            if let Some(o) = p.outputs.as_ref() {
+            if let Some(o) = p.kept_outputs() {
                 self.io.sync(serial, p.ledger.document(), o, self.writable);
             }
         }

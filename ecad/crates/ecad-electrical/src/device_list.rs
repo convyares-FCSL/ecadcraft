@@ -11,7 +11,7 @@ use std::collections::BTreeSet;
 
 use ecad_model::book::Book;
 
-use ecad_model::{DeviceId, Document, ItemKind, ObjectRef, Op, PageId, Pt, RepresentationId, Subject};
+use ecad_model::{DeviceId, Document, ItemKind, PageId, Pt, RepresentationId, Subject};
 
 use crate::devices::{self, PROPERTIES};
 
@@ -75,107 +75,6 @@ impl DeviceTouch {
     pub fn leaves_search(&self) -> bool {
         self.is_empty() && !self.settings
     }
-}
-
-/// What `ops`, about to be applied to `doc`, could change in the Devices list: a component
-/// created, deleted or given a property; a representation of a component linked, unlinked or
-/// changed; an item of a component's representation changed (a symbol moved); pages added,
-/// removed or moved. Every other op (wires, cables, plain lines, terminals) changes nothing there.
-pub fn devices_touched(doc: &Document, ops: &[Op]) -> DeviceTouch {
-    let mut t = DeviceTouch::default();
-    let mut component = |s: &Subject| {
-        if let Subject::Device(c) = s {
-            t.devices.insert(*c);
-        }
-    };
-    let mut pages = false;
-    let mut settings = false;
-    // Pages whose book position changes (worked out once, only for ops that can move pages): only
-    // their symbols' places and order may differ; a rename in place or an append moves none.
-    let mut extra: BTreeSet<DeviceId> = BTreeSet::new();
-    let mut moved = false;
-    let mut moved_pages = |t: &mut BTreeSet<DeviceId>| {
-        if std::mem::replace(&mut moved, true) {
-            return;
-        }
-        for p in ecad_model::book::positions_changed(doc, ops) {
-            for (_, r) in doc.representations_on(p) {
-                if let Subject::Device(c) = r.subject {
-                    t.insert(c);
-                }
-            }
-        }
-    };
-    for op in ops {
-        // Brief 055 (FP4; review of #110, 1): a frame decides its pages' grids, so the places of
-        // the devices on them.
-        match crate::title_block::frame_reach(doc, op) {
-            crate::title_block::Reach::Pages(ps) => {
-                for p in ps {
-                    for (_, r) in doc.representations_on(p) {
-                        component(&r.subject);
-                    }
-                }
-            }
-            crate::title_block::Reach::Wide => pages = true,
-            crate::title_block::Reach::NotFrame | crate::title_block::Reach::Unchanged => {}
-        }
-        match op {
-            Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::ModifyDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
-                component(&Subject::Device(*id))
-            }
-            Op::SetProperty { object: ObjectRef::Device(c), .. } => component(&Subject::Device(*c)),
-            Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => component(&rep.subject),
-            Op::ModifyRepresentation { before, after, .. } => {
-                component(&before.subject);
-                component(&after.subject);
-            }
-            Op::ModifyItem { id, .. } => {
-                if let Some((_, r)) = doc.representation_of_item(*id) {
-                    component(&r.subject);
-                }
-            }
-            // Brief 048: a project symbol's new or removed version changes "update available" on
-            // the devices showing its lineage.
-            Op::EmbedDefinition { definition, .. } | Op::RemoveDefinition { definition, .. } => {
-                if let Some(o) = definition.origin.as_ref().filter(|o| o.library == crate::symbols::PROJECT_SYMBOLS) {
-                    for v in crate::symbols::versions_of(doc, o.definition) {
-                        for item in doc.items_using(v.id) {
-                            if let Some((_, r)) = doc.representation_of_item(item) {
-                                component(&r.subject);
-                            }
-                        }
-                    }
-                }
-            }
-            Op::AddPage { .. } | Op::RemovePage { .. } => moved_pages(&mut extra),
-            // Brief 019: a page's number or sheet changes the place of the symbols on it; the book
-            // order (folders) or the project's grid may change every place.
-            Op::ModifyPage { id: pg, before, after } => {
-                let ch = before.change(after);
-                if ch.number || ch.sheet {
-                    for (_, r) in doc.representations_on(*pg) {
-                        component(&r.subject);
-                    }
-                }
-                if ch.folder {
-                    moved_pages(&mut extra);
-                }
-            }
-            Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => moved_pages(&mut extra),
-            Op::SetProjectSettings { before, after } => {
-                settings = true;
-                if before.sheet != after.sheet || before.length_unit != after.length_unit || before.reference_style != after.reference_style {
-                    pages = true;
-                }
-            }
-            _ => {}
-        }
-    }
-    t.devices.extend(extra);
-    t.pages = pages;
-    t.settings = settings;
-    t
 }
 
 /// The list entry of component `c` as it is now (`None`: gone, or a component without a tag that

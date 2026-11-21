@@ -81,8 +81,8 @@ fn o_the_generated_page_heads_each_card_and_marks_typed_addresses() {
     let d = h.doc();
     let (sheets, lines) = h.cfg(|p| {
         p.outputs();
-        let o = p.outputs.as_ref().unwrap();
-        (ecad_cadcraft::generated::sheets(&d, page, Some(o)), ecad_cadcraft::plc::iolist::page_lines(&d, &o.plc))
+        let o = p.kept_outputs().unwrap();
+        (ecad_cadcraft::generated::sheets_of(&d, page, Some(o)), ecad_cadcraft::plc::iolist::page_lines(&d, &o.plc))
     });
     // Brief 051 (design 051 §4.1, W7): cards are packed on sheets; these 44 lines fit one.
     assert_eq!(sheets, 1, "cards packed on one sheet");
@@ -99,17 +99,17 @@ fn o_the_generated_page_heads_each_card_and_marks_typed_addresses() {
 #[test]
 fn p_the_release_csv_and_its_missing_reason() {
     let F { mut h, .. } = fixture(4543);
-    let slot = ecad_cadcraft::release::LISTS.iter().find(|s| s.id == "io-list").expect("an io-list slot");
+    let slot = ecad_electrical::release::LISTS.iter().find(|s| s.id == "io-list").expect("an io-list slot");
     assert_eq!(slot.suffix, " IO list.csv");
     let d = h.doc();
-    let t = h.cfg(|p| (slot.build)(&d, p.outputs()).unwrap()).expect("a table");
+    let t = h.cfg(|p| (slot.build)(&d, p.outputs())).expect("a table");
     assert_eq!(t.headers.first(), Some(&"Rack"));
     assert_eq!(t.rows.len(), 36);
     let csv = ecad_cadcraft::outputs::csv(&t, true);
     assert!(csv.contains("-A02"));
     let mut empty = H::new(4544);
     let d = empty.doc();
-    assert!(empty.cfg(|p| (slot.build)(&d, p.outputs()).unwrap()).is_none());
+    assert!(empty.cfg(|p| (slot.build)(&d, p.outputs())).is_none());
     assert_eq!(slot.missing_why, "No PLC cards with channels.");
 }
 

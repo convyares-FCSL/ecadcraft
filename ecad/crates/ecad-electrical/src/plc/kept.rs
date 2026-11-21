@@ -4,11 +4,25 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::{DeviceId, Document, ObjectRef, Op, Subject};
+use ecad_model::effect::{Effect, Effects};
+use ecad_model::{DeviceId, Document, ObjectRef, Subject};
 use serde_json::{Value, json};
 
 use super::*;
 use crate::text_style::fonts::TextMetrics;
+
+/// What one commit's effects touch in the kept PLC model, noted effect by effect ([`Plc::note`]).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Touch {
+    /// Devices named directly (before the project defaults, styles and racks are added).
+    devices: BTreeSet<DeviceId>,
+    /// Project `plc.*` keys set: the racks and cards inheriting them.
+    project_keys: BTreeSet<String>,
+    /// A text style or the standard changed: every card.
+    styles: bool,
+    /// The cards whose I/O rows can change.
+    rows: BTreeSet<DeviceId>,
+}
 
 /// The kept PLC model (design 045 §11.1).
 #[derive(Debug, Clone, Default)]
@@ -144,52 +158,63 @@ impl Plc {
         );
     }
 
-    /// The devices `ops` (the transaction just committed on `doc`) touch, by design 045 §11.1's
-    /// map; anything not listed touches nothing.
-    pub fn touched(&self, doc: &Document, ops: &[Op]) -> BTreeSet<DeviceId> {
-        let mut out = BTreeSet::new();
-        let mut all = false;
-        let mut styles = false;
-        for op in ops {
-            match op {
-                Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } => {
-                    out.insert(*id);
+    /// The devices `effects` (the transaction just committed on `doc`) touch, by design 045
+    /// §11.1's map; anything not listed touches nothing.
+    pub fn touched(&self, doc: &Document, effects: &Effects<'_>) -> BTreeSet<DeviceId> {
+        let mut t = Touch::default();
+        for effect in effects {
+            self.note_touched(doc, effect, &mut t);
+        }
+        self.touched_of(doc, &t)
+    }
+
+    /// Note what one effect of the transaction just committed on `doc` touches (the devices
+    /// part of [`Plc::touched`]). Reads the model as it was before the update.
+    fn note_touched(&self, doc: &Document, effect: &Effect<'_>, t: &mut Touch) {
+        match effect {
+            // Created or deleted; design 072: a device's tag, type, or a station's or module's
+            // own fields (§3) when changed in place.
+            Effect::Device { id, before, after } => {
+                t.devices.insert(*id);
+                if before.is_some() && after.is_some() {
+                    t.devices.extend(self.naming.get(id).into_iter().flatten().copied());
                 }
-                // Design 072: a device's tag, type, or a station's or module's own fields (§3).
-                Op::ModifyDevice { id, .. } => {
-                    out.insert(*id);
-                    out.extend(self.naming.get(id).into_iter().flatten().copied());
-                }
-                Op::SetProperty { object: ObjectRef::Device(c), key, .. } => {
-                    if key.starts_with("plc.") || key == ecad_model::tag::TAG_KEY {
-                        if self.cards.contains_key(c) || self.racks.contains_key(c) || key.starts_with("plc.") {
-                            out.insert(*c);
-                        }
-                        // A card naming this device as its rack reads its tag and slots.
-                        out.extend(self.naming.get(c).into_iter().flatten().copied());
+            }
+            Effect::Prop { object: ObjectRef::Device(c), key, .. } => {
+                let key = key.raw;
+                if key.starts_with("plc.") || key == ecad_model::tag::TAG_KEY {
+                    if self.cards.contains_key(c) || self.racks.contains_key(c) || key.starts_with("plc.") {
+                        t.devices.insert(*c);
                     }
+                    // A card naming this device as its rack reads its tag and slots.
+                    t.devices.extend(self.naming.get(c).into_iter().flatten().copied());
                 }
-                Op::SetProperty { object: ObjectRef::Project, key, .. } if key.starts_with("plc.") => all = true,
-                Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => {
-                    if let Subject::Device(c) = rep.subject {
-                        out.insert(c);
-                    }
+            }
+            Effect::Prop { object: ObjectRef::Project, key, .. } if key.raw.starts_with("plc.") => {
+                t.project_keys.insert(key.raw.to_string());
+            }
+            // Linked or unlinked (a representation changed in place touches nothing here).
+            Effect::Rep { before: None, after: Some(rep), .. } | Effect::Rep { before: Some(rep), after: None, .. } => {
+                if let Subject::Device(c) = rep.subject {
+                    t.devices.insert(c);
                 }
-                // Brief 045b: a card's channel points, and the nets they are on (used or spare).
-                Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
-                    out.extend(terminal.device());
-                }
-                // Design 072 §4.4: the commit's rewrite made, removed or moved a wire: the devices
-                // at its ends, and the cards on its net.
-                Op::CreateWire { wire, .. } | Op::DeleteWire { wire, .. } | Op::ModifyWire { after: wire, .. } => {
-                    for t in &wire.ends {
-                        if let Some(x) = doc.terminals.get(t) {
-                            out.extend(x.device());
+            }
+            // Brief 045b: a card's channel points, and the nets they are on (used or spare).
+            Effect::Terminal { before, after, .. } => {
+                t.devices.extend(before.iter().chain(after.iter()).filter_map(|t| t.device()));
+            }
+            // Design 072 §4.4: the commit's rewrite made, removed or moved a wire: the devices
+            // at its ends, and the cards on its net.
+            Effect::Wire { before, after, .. } => {
+                if let Some(wire) = after.or(*before) {
+                    for end in &wire.ends {
+                        if let Some(x) = doc.terminals.get(end) {
+                            t.devices.extend(x.device());
                         }
                     }
                     for w in doc.wires_of_net(wire.net) {
                         let ends = doc.wires.get(&w).map(|x| x.ends);
-                        out.extend(
+                        t.devices.extend(
                             ends.iter()
                                 .flatten()
                                 .filter_map(|t| doc.terminals.get(t))
@@ -198,45 +223,53 @@ impl Plc {
                         );
                     }
                 }
-                // Brief 051 (design 051 §9.1): a card's symbol moved changes its runs and their
-                // Checks rows.
-                Op::ModifyItem { id, .. } => {
-                    if let Some(Subject::Device(c)) = doc.representation_of_item(*id).map(|(_, r)| r.subject)
-                        && self.cards.contains_key(&c)
-                    {
-                        out.insert(c);
-                    }
-                }
-                // A route on one of a card's points re-routed (design 072 §4.3).
-                Op::AddRoute { route, .. } | Op::RemoveRoute { route, .. } => {
-                    out.extend(
-                        route.points_landed().filter_map(|t| doc.terminals.get(&t)).filter_map(|x| x.device()).filter(|c| self.cards.contains_key(c)),
-                    );
-                }
-                Op::ModifyRoute { before, after, .. } => {
-                    let points = before.points_landed().chain(after.points_landed());
-                    out.extend(points.filter_map(|t| doc.terminals.get(&t)).filter_map(|x| x.device()).filter(|c| self.cards.contains_key(c)));
-                }
-                // A text style or standard changed: the bands of every card (rare).
-                Op::SetStyle { .. } | Op::SetStandard { .. } => styles = true,
-                Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key.starts_with("text.") => styles = true,
-                _ => {}
             }
+            // Brief 051 (design 051 §9.1): a card's symbol moved (an item changed in place)
+            // changes its runs and their Checks rows.
+            Effect::Item { id, before: Some(_), after: Some(_) } => {
+                if let Some(Subject::Device(c)) = doc.representation_of_item(*id).map(|(_, r)| r.subject)
+                    && self.cards.contains_key(&c)
+                {
+                    t.devices.insert(c);
+                }
+            }
+            // A route on one of a card's points re-routed (design 072 §4.3).
+            Effect::Route { before, after, .. } => {
+                let points = before.iter().chain(after.iter()).flat_map(|r| r.points_landed());
+                t.devices.extend(points.filter_map(|t| doc.terminals.get(&t)).filter_map(|x| x.device()).filter(|c| self.cards.contains_key(c)));
+            }
+            // A text style or standard changed: the bands of every card (rare).
+            Effect::Style { .. } | Effect::Standard { .. } => t.styles = true,
+            Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key.raw.starts_with("text.") => t.styles = true,
+            Effect::Prop { .. }
+            | Effect::Rep { .. }
+            | Effect::Item { .. }
+            | Effect::Page { .. }
+            | Effect::Layer { .. }
+            | Effect::DeviceDefinition { .. }
+            | Effect::Cable { .. }
+            | Effect::Definition { .. }
+            | Effect::Settings { .. }
+            | Effect::Version { .. }
+            | Effect::Folder { .. }
+            | Effect::Project { .. }
+            | Effect::Aid { .. }
+            | Effect::LoosePart { .. }
+            | Effect::DeviceLink { .. } => {}
         }
-        if styles {
+    }
+
+    /// The devices a noted [`Touch`] reaches (the end of [`Plc::touched`]).
+    fn touched_of(&self, doc: &Document, t: &Touch) -> BTreeSet<DeviceId> {
+        let mut out = t.devices.clone();
+        if t.styles {
             out.extend(self.cards.keys().copied());
         }
-        if all {
+        if !t.project_keys.is_empty() {
             // A project default: only the racks and cards that inherit it (they have no own value
             // of a `plc.` key read at object level; reading all of them is bounded by the model).
-            let keys: Vec<&str> = ops
-                .iter()
-                .filter_map(|op| match op {
-                    Op::SetProperty { object: ObjectRef::Project, key, .. } if key.starts_with("plc.") => Some(key.as_str()),
-                    _ => None,
-                })
-                .collect();
-            let inherits = |c: &DeviceId| doc.devices.get(c).is_none_or(|x| keys.iter().any(|k| !x.properties.contains_key(*k)));
+            let keys = &t.project_keys;
+            let inherits = |c: &DeviceId| doc.devices.get(c).is_none_or(|x| keys.iter().any(|k| !x.properties.contains_key(k.as_str())));
             out.extend(self.racks.keys().filter(|c| inherits(c)).copied());
             out.extend(self.cards.keys().filter(|c| inherits(c)).copied());
         }
@@ -250,47 +283,97 @@ impl Plc {
         out
     }
 
-    /// Bring the model in line with `ops` (just committed; `doc` is the state after). Returns
+    /// Brief 045c (design 045 §11.1): the cards whose I/O rows `effects` (just committed; `doc`
+    /// is the state after) can change: a renamed target or a renumbered wire changes the rows of
+    /// the cards on its nets.
+    pub fn rows_touched(&self, doc: &Document, effects: &Effects<'_>) -> BTreeSet<DeviceId> {
+        let mut out = BTreeSet::new();
+        for effect in effects {
+            self.note_rows(doc, effect, &mut out);
+        }
+        out
+    }
+
+    /// Note the cards whose I/O rows one effect can change (one effect of [`Plc::rows_touched`]).
+    fn note_rows(&self, doc: &Document, effect: &Effect<'_>, out: &mut BTreeSet<DeviceId>) {
+        match effect {
+            Effect::Device { id: c, before: Some(before), after: Some(after) } if before.tag != after.tag && !self.cards.contains_key(c) => {
+                out.extend(iolist::cards_on_nets_of(doc, self, Some(*c), None));
+            }
+            // A wire's property, or the wire changed in place.
+            Effect::Prop { object: ObjectRef::Wire(w), .. } | Effect::Wire { id: w, before: Some(_), after: Some(_) } => {
+                out.extend(iolist::cards_on_nets_of(doc, self, None, Some(*w)));
+            }
+            // Review of #84, 2: a terminal relabelled (renumber, `termlabel`) or added, on the
+            // nets it is on.
+            Effect::Terminal { id, after: Some(_), .. } => {
+                out.extend(iolist::cards_on_nets_of_terminals(doc, self, &[*id]));
+            }
+            // A continuation renamed joins or splits nets: every continuation of the old and
+            // the new name, and the nets they are on now.
+            Effect::Aid { id, before: Some(before), after: Some(after) } => {
+                let mut ts: Vec<ecad_model::TerminalId> = doc.terminals_of(*id).map(|(t, _)| t).collect();
+                for k in [before, after].into_iter().filter_map(|a| ecad_model::connectivity::continuation_key(a)) {
+                    for a in doc.continuations_named(&k) {
+                        ts.extend(doc.terminals_of(a).map(|(t, _)| t));
+                    }
+                }
+                out.extend(iolist::cards_on_nets_of_terminals(doc, self, &ts));
+            }
+            // A strip link joins its positions' nets.
+            Effect::Prop { object: ObjectRef::Device(c), key, .. } if ecad_model::links::link_number(key.raw).is_some() => {
+                out.extend(iolist::cards_on_nets_of(doc, self, Some(*c), None));
+            }
+            Effect::Device { .. }
+            | Effect::Prop { .. }
+            | Effect::Wire { .. }
+            | Effect::Terminal { .. }
+            | Effect::Page { .. }
+            | Effect::Layer { .. }
+            | Effect::Item { .. }
+            | Effect::DeviceDefinition { .. }
+            | Effect::Rep { .. }
+            | Effect::Route { .. }
+            | Effect::Cable { .. }
+            | Effect::Definition { .. }
+            | Effect::Settings { .. }
+            | Effect::Version { .. }
+            | Effect::Folder { .. }
+            | Effect::Style { .. }
+            | Effect::Standard { .. }
+            | Effect::Project { .. }
+            | Effect::Aid { .. }
+            | Effect::LoosePart { .. }
+            | Effect::DeviceLink { .. } => {}
+        }
+    }
+
+    /// Note what one effect of the transaction just committed on `doc` (the state after) touches,
+    /// devices and I/O rows ([`Plc::touched`], [`Plc::rows_touched`]), reading the model as it is
+    /// before the update. Pair with [`Plc::update_touched`].
+    pub fn note(&self, doc: &Document, effect: &Effect<'_>, t: &mut Touch) {
+        self.note_touched(doc, effect, t);
+        self.note_rows(doc, effect, &mut t.rows);
+    }
+
+    /// Bring the model in line with `effects` (just committed; `doc` is the state after). Returns
     /// whether anything changed.
-    pub fn update_with(&mut self, doc: &Document, ops: &[Op], m: &dyn TextMetrics) -> bool {
+    pub fn update_with(&mut self, doc: &Document, effects: &Effects<'_>, m: &dyn TextMetrics) -> bool {
+        let mut t = Touch::default();
+        for effect in effects {
+            self.note(doc, effect, &mut t);
+        }
+        self.update_touched(doc, t, m)
+    }
+
+    /// Bring the model in line with what was noted in `t` ([`Plc::note`]) on `doc`, the state
+    /// after. Returns whether anything changed.
+    pub fn update_touched(&mut self, doc: &Document, t: Touch, m: &dyn TextMetrics) -> bool {
         self.last_changed.clear();
-        self.rows_changed.clear();
         self.updates += 1;
         self.last_work = 0;
-        let mut touched = self.touched(doc, ops);
-        // Brief 045c (design 045 §11.1): a renamed target or a renumbered wire changes the rows of
-        // the cards on its nets.
-        for op in ops {
-            match op {
-                Op::ModifyDevice { id: c, before, after } if before.tag != after.tag && !self.cards.contains_key(c) => {
-                    self.rows_changed.extend(iolist::cards_on_nets_of(doc, self, Some(*c), None));
-                }
-                Op::SetProperty { object: ObjectRef::Wire(w), .. } | Op::ModifyWire { id: w, .. } => {
-                    self.rows_changed.extend(iolist::cards_on_nets_of(doc, self, None, Some(*w)));
-                }
-                // Review of #84, 2: a terminal relabelled (renumber, `termlabel`) or added, on the
-                // nets it is on.
-                Op::AddTerminal { id, .. } => {
-                    self.rows_changed.extend(iolist::cards_on_nets_of_terminals(doc, self, &[*id]));
-                }
-                // A continuation renamed joins or splits nets: every continuation of the old and
-                // the new name, and the nets they are on now.
-                Op::ModifyAid { id, before, after } => {
-                    let mut ts: Vec<ecad_model::TerminalId> = doc.terminals_of(*id).map(|(t, _)| t).collect();
-                    for k in [before, after].into_iter().filter_map(ecad_model::connectivity::continuation_key) {
-                        for a in doc.continuations_named(&k) {
-                            ts.extend(doc.terminals_of(a).map(|(t, _)| t));
-                        }
-                    }
-                    self.rows_changed.extend(iolist::cards_on_nets_of_terminals(doc, self, &ts));
-                }
-                // A strip link joins its positions' nets.
-                Op::SetProperty { object: ObjectRef::Device(c), key, .. } if ecad_model::links::link_number(key).is_some() => {
-                    self.rows_changed.extend(iolist::cards_on_nets_of(doc, self, Some(*c), None));
-                }
-                _ => {}
-            }
-        }
+        let mut touched = self.touched_of(doc, &t);
+        self.rows_changed = t.rows;
         touched.extend(self.rows_changed.iter().copied());
         if touched.is_empty() {
             return false;

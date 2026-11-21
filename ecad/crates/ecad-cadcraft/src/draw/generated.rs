@@ -8,10 +8,9 @@ use ecad_model::sheet::unit_scale;
 use ecad_model::{Document, PageId, Primitive, Pt};
 
 use crate::convert::kind_for_primitive;
-use crate::draw::outputs::kept_of;
 use crate::frame::{FrameInput, LABEL_ACI, Part, THIN_WEIGHT, TextLook};
 use crate::generated::*;
-use crate::outputs::Outputs;
+use crate::outputs::kept::Outputs;
 use crate::text_style::{Look, TextKind};
 
 /// Draws in paper millimetres, sheet origin at `x0`.
@@ -121,7 +120,7 @@ fn content(
         return d.out;
     }
     // The table and its sheets are laid out once per page, not once per sheet (brief 053).
-    let Laid { cols, rows, sheets } = laid.get_or_insert_with(|| Laid::of(doc, page, kind, kept_of(outputs)));
+    let Laid { cols, rows, sheets } = laid.get_or_insert_with(|| Laid::of(doc, page, kind, outputs));
     let scale = (r - l) / A3_AREA;
     let widths: Vec<f64> = cols.iter().map(|(_, w)| w * scale).collect();
     let mut y = t;
@@ -219,7 +218,7 @@ fn content(
 /// sheets.
 pub fn page_parts(doc: &Document, page: PageId, input: &FrameInput, outputs: Option<&Outputs>, total: usize) -> Vec<Part> {
     let Some(kind) = kind_of(doc, page) else { return crate::frame::parts(input) };
-    let n = sheets(doc, page, outputs);
+    let n = sheets_of(doc, page, outputs);
     let width = f64::from(input.sheet.width) + SHEET_GAP;
     // Brief 046 (design 046 §6.3): a graphic page titles each sheet by its strip.
     let graphic = (kind == GenKind::Terminals && crate::strips::pages::style_of(doc, page) == crate::strips::pages::Style::Graphic)
@@ -260,13 +259,14 @@ pub fn page_parts(doc: &Document, page: PageId, input: &FrameInput, outputs: Opt
 /// The frame input of `page` with Total counting sheets, and that total.
 pub fn input_of(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> (FrameInput, usize) {
     let mut input = FrameInput::of(doc, page, &Book::of(doc));
-    let total = book_sheets(doc, outputs);
+    let total = book_sheets_of(doc, outputs);
     input.total = total.to_string();
     (input, total)
 }
 
-/// Every frame and content part of `page`, building the report models only when the project has a
-/// BOM page and none are given (debugger, verification, tests).
+/// Every frame and content part of `page`, with the report models of this state
+/// ([`ecad_electrical::derived::Views::detached`]) only when the project has a BOM page and none
+/// are given (debugger, verification, tests).
 pub fn parts_of(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> Vec<Part> {
     parts_of_pending(doc, page, outputs, false)
 }
@@ -274,32 +274,16 @@ pub fn parts_of(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> Vec<
 /// [`parts_of`] with the project's pending flag (design 033 §6): the Rev box and the cover say
 /// when the drawing has changed since the newest issue.
 pub fn parts_of_pending(doc: &Document, page: PageId, outputs: Option<&Outputs>, pending: bool) -> Vec<Part> {
-    let built;
+    let detached;
     let outputs = match outputs {
         Some(o) => Some(o),
         None if has_bom_page(doc) => {
-            built = Outputs::build(doc);
-            Some(&built)
+            detached = crate::project::engine_views().detached(doc);
+            Some(detached.outputs())
         }
         None => None,
     };
     let (input, total) = input_of(doc, page, outputs);
     let input = input.with_pending(doc, pending);
     page_parts(doc, page, &input, outputs, total)
-}
-
-/// How many sheets `page` prints on: [`crate::generated::sheets_of`] with the project's kept
-/// report models.
-pub fn sheets(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> usize {
-    sheets_of(doc, page, kept_of(outputs))
-}
-
-/// How many sheets the whole book has (Total): [`crate::generated::book_sheets_of`].
-pub fn book_sheets(doc: &Document, outputs: Option<&Outputs>) -> usize {
-    book_sheets_of(doc, kept_of(outputs))
-}
-
-/// The sheet windows of `page` in model coordinates: [`crate::generated::sheet_windows_of`].
-pub fn sheet_windows(doc: &Document, page: PageId, outputs: Option<&Outputs>) -> Vec<(Pt, Pt)> {
-    sheet_windows_of(doc, page, kept_of(outputs))
 }

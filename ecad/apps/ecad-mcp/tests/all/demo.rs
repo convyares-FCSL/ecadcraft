@@ -201,7 +201,7 @@ fn the_demo_locations_reports_and_generated_pages() {
     assert!(texts(2).contains(&"=PUMP+CP1-K01".to_string()), "{:?}", texts(2));
     assert!(texts(1).contains(&"=PUMP-K01".to_string()), "{:?}", texts(1));
     // Reports: no wire on the BOM; the cable row.
-    let o = ecad_cadcraft::outputs::Outputs::build(&doc);
+    let o = ecad_cadcraft::outputs::kept::Outputs::build_with(&doc, &ecad_cadcraft::text_style::EngineMetrics);
     let bom = o.bom(ecad_cadcraft::outputs::Group::Location);
     // Brief 028 (Q13): a strip counts its terminals, so -X01 and -X02 add their other terminals.
     let terminals: usize = o.strips.strips.values().map(|s| s.drawn).sum();

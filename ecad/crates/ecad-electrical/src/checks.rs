@@ -33,8 +33,9 @@ use ecad_model::numbering::Places;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use ecad_model::connectivity::name_key;
+use ecad_model::effect::Effect;
 use ecad_model::wiring;
-use ecad_model::{CableId, DeviceId, Document, End, NetData, NetKey, ObjectRef, Op, PageId, Pt, RouteEnd, RouteId, Subject, TerminalId, WireId};
+use ecad_model::{CableId, DeviceId, Document, End, NetData, NetKey, ObjectRef, PageId, Pt, RouteEnd, RouteId, Subject, TerminalId, WireId};
 use serde_json::{Value, json};
 
 use crate::text_style::fonts::TextMetrics;
@@ -1479,18 +1480,14 @@ pub struct Scope {
 }
 
 impl Scope {
-    /// Brief 054: whether the set of pages with checks off may change (then everything is checked
-    /// again).
-    fn checks_pages(&mut self, doc: &Document, ops: &[Op]) {
-        if crate::page_types::checks_changed(doc, ops) {
-            self.all = true;
-        }
+    /// Whether the whole list is built again: a numbering or potentials setting, or the pages with
+    /// checks off, changed.
+    pub fn is_all(&self) -> bool {
+        self.all
     }
-}
 
-impl Scope {
-    /// Add what `ops` name, looked up in `doc` (called on the state before and after).
-    fn collect(&mut self, doc: &Document, ops: &[Op], _grid: &Grid) {
+    /// Add what one effect names, looked up in `doc` (call once on the state before, once after).
+    pub fn note(&mut self, doc: &Document, effect: &Effect<'_>) {
         use ecad_model::Node;
         let conn = doc.connectivity();
         let node = |s: &mut Scope, n: Node| {
@@ -1502,272 +1499,240 @@ impl Scope {
             }
             s.nodes.insert(n);
         };
-        self.rating.collect(doc, ops);
-        for op in ops {
-            self.styles |= crate::styles::checks::touches(op);
-            self.title_blocks |= crate::title_block::checks::touches(op);
-            match op {
-                Op::CreateWire { id, wire } | Op::DeleteWire { id, wire } => {
-                    // Brief 057: a member's ends decide its cable's open cores.
-                    self.cables.extend(doc.cables_of(*id));
-                    self.wires.insert(*id);
-                    node(self, Node::Wire(*id));
-                    for t in &wire.ends {
-                        self.terminals.insert(*t);
-                        node(self, Node::Terminal(*t));
-                        self.component_of(doc, *t);
-                    }
-                }
-                Op::AddTerminal { id, terminal } | Op::RemoveTerminal { id, terminal } => {
-                    self.terminals.insert(*id);
-                    self.devices.extend(terminal.device());
-                    node(self, Node::Terminal(*id));
-                }
-                // Brief 048: another definition may bridge other points.
-                Op::SetDeviceDefinition { id, .. } => {
-                    self.devices.insert(*id);
-                    for (t, _) in doc.terminals_of(*id) {
-                        node(self, Node::Terminal(t));
-                    }
-                }
-                Op::CreateDevice { id, device } | Op::DeleteDevice { id, device } => {
-                    self.tag_holders(doc, device.tag());
-                    self.component(doc, *id);
-                    for (t, _) in doc.terminals_of(*id) {
-                        node(self, Node::Terminal(t));
-                    }
-                }
-                Op::ModifyDevice { id, before, after } => {
-                    for device in [before, after] {
-                        self.tag_holders(doc, device.tag());
-                        self.component(doc, *id);
-                    }
-                    for (t, _) in doc.terminals_of(*id) {
-                        node(self, Node::Terminal(t));
-                    }
-                    // Design 072 §6.3: a device's location and function are fields, where the cables
-                    // at its points are drawn (as the `SetProperty` arm below).
-                    if before.location != after.location || before.function != after.function {
-                        for (t, _) in doc.terminals_of(*id) {
-                            for (w, _) in doc.ends_at(t) {
-                                self.cables.extend(doc.cables_of(w));
-                            }
-                        }
-                    }
-                }
-                Op::SetProperty { object: ObjectRef::Device(c), key, before, after } => {
-                    if key == ecad_model::tag::TAG_KEY {
-                        self.tag_holders(doc, [before, after].into_iter().flatten().map(String::as_str));
-                    }
-                    // Brief 059 (design 059 §8): a device's location or function is where the
-                    // cables at its points are drawn (`cable-end-off-plan`).
-                    if crate::designations::Aspect::of_property(key).is_some() {
-                        for (t, _) in doc.terminals_of(*c) {
-                            for (w, _) in doc.ends_at(t) {
-                                self.cables.extend(doc.cables_of(w));
-                            }
-                        }
-                    }
-                    let _ = (before, after);
-                    self.component(doc, *c);
-                    for (t, _) in doc.terminals_of(*c) {
-                        node(self, Node::Terminal(t));
-                    }
-                }
-                // A cable is written whole (`ModifyCable`); `SetProperty` on one is refused.
-                Op::SetProperty { object: ObjectRef::Cable(_), .. } => {}
-                Op::SetProperty { object: ObjectRef::Wire(c), .. } => {
-                    node(self, Node::Wire(*c));
-                    self.wires.insert(*c);
-                }
-                Op::ModifyWire { id: c, before, after } => {
-                    node(self, Node::Wire(*c));
-                    self.wires.insert(*c);
-                    self.numbers.extend([before, after].into_iter().filter_map(|w| w.number_text().map(str::to_string)));
-                }
-                Op::CreateCable { id: k, .. } | Op::DeleteCable { id: k, .. } | Op::ModifyCable { id: k, .. } => {
-                    // Brief 027: a new or deleted cable, or its tag (the orphan row's words).
-                    self.cable_references.insert(*k);
-                    // Brief 026: the cable's own rows, and every holder of the tags it had or has.
-                    self.cables.insert(*k);
-                    match op {
-                        Op::CreateCable { cable, .. } | Op::DeleteCable { cable, .. } => {
-                            self.tag_holders(doc, cable.properties.get(ecad_model::tag::TAG_KEY).map(String::as_str));
-                        }
-                        Op::ModifyCable { before, after, .. } => {
-                            let tag = |c: &'_ ecad_model::Cable| c.properties.get(ecad_model::tag::TAG_KEY).cloned();
-                            self.tag_holders(doc, [tag(before), tag(after)].iter().flatten().map(String::as_str));
-                        }
-                        _ => {}
-                    }
-                    // A cable's tag and cores are part of its members' words.
-                    if let Some(cable) = doc.cables.get(k) {
-                        self.wires.extend(cable.cores.iter().filter_map(|m| m.wire()));
-                    }
-                    match op {
-                        Op::ModifyCable { before, after, .. } => {
-                            self.wires.extend(before.cores.iter().chain(&after.cores).filter_map(|m| m.wire()));
-                        }
-                        Op::CreateCable { cable, .. } | Op::DeleteCable { cable, .. } => {
-                            self.wires.extend(cable.cores.iter().filter_map(|m| m.wire()));
-                        }
-                        _ => {}
-                    }
-                }
-                Op::AddItem { id, .. } | Op::RemoveItem { id, .. } => self.item(doc, *id),
-                Op::ModifyItem { id, .. } => self.item(doc, *id),
-                Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => self.rep(doc, rep),
-                Op::ModifyRepresentation { before, after, .. } => {
-                    self.rep(doc, before);
-                    self.rep(doc, after);
-                }
-                // Design 072 §4.3: the route's own rows, and the points it lands on (connected or
-                // not).
-                // The commit's rewrite pass makes and removes wires at those points (and at the
-                // points of a route it lands on), which the ops given to `scope` do not hold yet:
-                // their nets as they were lose their rows (design 072 §4.2).
-                Op::AddRoute { id, route } | Op::RemoveRoute { id, route } => {
-                    self.routes.insert(*id);
-                    // The cables with a core on it: their core rows (owner rule, 2026-11-18).
-                    self.cables.extend(doc.cables_on_route(*id));
-                    for t in route_points(doc, route) {
-                        self.terminals.insert(t);
-                        node(self, Node::Terminal(t));
-                    }
-                }
-                Op::ModifyRoute { id, before, after } => {
-                    self.routes.insert(*id);
-                    self.cables.extend(doc.cables_on_route(*id));
-                    for t in route_points(doc, before).into_iter().chain(route_points(doc, after)) {
-                        self.terminals.insert(t);
-                        node(self, Node::Terminal(t));
-                    }
-                }
-                // Design 072 §6.2: a box's values are a context for the devices on its pages; a
-                // continuation's names join nets.
-                Op::CreateAid { id, aid } | Op::DeleteAid { id, aid } => {
-                    self.aid(doc, *id, [aid]);
-                    if let Some(n) = aid.continuation_name() {
-                        node(self, Node::Name(name_key(n.as_str())));
-                    }
-                    for (t, _) in doc.terminals_of(*id) {
-                        self.terminals.insert(t);
-                        node(self, Node::Terminal(t));
-                    }
-                }
-                Op::ModifyAid { id, before, after } => {
-                    self.aid(doc, *id, [before, after]);
-                    for n in [before, after].into_iter().filter_map(ecad_model::Aid::continuation_name) {
-                        node(self, Node::Name(name_key(n.as_str())));
-                    }
-                }
-                // Design 072 §6.4: a loose part's checks (an item with no part number) are the BOM's, kept by
-                // the outputs model (`Outputs::bom_checks`); no drawing check reads one.
-                Op::CreateLoosePart { .. } | Op::DeleteLoosePart { .. } | Op::ModifyLoosePart { .. } => {}
-                Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => {
-                    for c in doc.components_using(*id) {
-                        self.devices.insert(c);
-                        for (t, _) in doc.terminals_of(c) {
-                            self.terminals.insert(t);
-                            node(self, Node::Terminal(t));
-                        }
-                    }
-                }
-                // Only the numbering and potential settings change what checks find; sheet, page
-                // numbering and reference style change where rows say they are; label looks
-                // (colour style, height), tag settings and units change nothing here.
-                Op::SetProjectSettings { before, after } => {
-                    // Brief 033 (review of #64, 1): a table the user placed may enter or leave the
-                    // title block when the project's sheet changes.
-                    if before.sheet != after.sheet {
-                        self.devices.extend(crate::xref::placed_tables(doc));
-                    }
-                    let (b, a) = (&before.wiring, &after.wiring);
-                    if b.scheme != a.scheme || b.digits != a.digits || b.unclassified_prefix != a.unclassified_prefix || b.potentials != a.potentials
-                    {
-                        self.all = true;
-                    } else if before.sheet != after.sheet
-                        || before.page_number_step != after.page_number_step
-                        || before.reference_style != after.reference_style
-                    {
-                        self.relocate = true;
-                    }
-                }
-                // Brief 033 (review of #64, 1): a page's sheet moves its frame, so the devices on it
-                // are checked again for a table over the title block.
-                // Design 072 §5.1: a page changed in place; its sheet moves its frame (as below), its
-                // function or location is a context for the devices on it.
-                Op::ModifyPage { id: p, before, after } => {
-                    let ch = before.change(after);
-                    self.relocate = true;
-                    if ch.sheet {
-                        for (_, r) in doc.representations_on(*p) {
-                            if let Subject::Device(c) = r.subject {
-                                self.devices.insert(c);
-                            }
-                        }
-                    }
-                    if ch.location || ch.function {
-                        self.devices_on(doc, *p);
-                    }
-                }
-                // Brief 052 (design 052 §6): a page's function or location is a context for the
-                // devices on it; the project's for every device (rare); the list's codes for the
-                // objects storing that entry, and the duplicate rows.
-                // No check or output reads a device link yet (design 072 §2.6).
-                Op::AddDeviceLink { .. } | Op::RemoveDeviceLink { .. } => {}
-                Op::ModifyProject { before, after } => {
-                    use crate::designations::{Aspect, changed_codes, default_key};
-                    for a in Aspect::ALL {
-                        if default_key(before, a) != default_key(after, a) {
-                            self.relocate = true;
-                            self.devices.extend(doc.devices.keys().copied());
-                        }
-                        let changed = changed_codes(before, after, a);
-                        if !changed.is_empty() {
-                            self.relocate = true;
-                            self.designations = true;
-                        }
-                        for entry in &changed {
-                            // Brief 059: the cables planning an end there (their rows name its code).
-                            self.cables.extend(crate::cables::planning(doc, entry));
-                            for (c, x) in &doc.devices {
-                                if crate::designations::device_keys(x).iter().any(|(_, v)| v == entry) {
-                                    self.devices.insert(*c);
-                                }
-                            }
-                            for (b, x) in &doc.aids {
-                                if x.as_box().is_some_and(|x| crate::designations::box_key(x, a).as_deref() == Some(entry.as_str())) {
-                                    self.aids.insert(*b);
-                                }
-                            }
-                        }
-                    }
-                }
-                // Page numbers, folders and the page order change where rows say they are (brief
-                // 019), not what they find: the rows are copied again.
-                Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard, .. }
-                | Op::AddFolder { .. }
-                | Op::RemoveFolder { .. }
-                | Op::ModifyFolder { .. }
-                | Op::AddPage { .. } => self.relocate = true,
-                // Brief 027: a removed page's reference ends go with it.
-                Op::RemovePage { id, .. } => {
-                    self.relocate = true;
-                    for (_, r) in doc.representations_on(*id) {
-                        if let Subject::Cable(k) = r.subject {
-                            self.cable_references.insert(k);
-                        }
-                    }
-                }
-                Op::AddLayer { .. } | Op::RemoveLayer { .. } | Op::NameVersion { .. } | Op::UnnameVersion { .. } => {}
-                // Brief 059 (design 059 §8): a cable type's cores and gland reach its users' rows.
-                Op::SetStyle { catalogue, id, .. } if *catalogue == ecad_model::StyleCatalogue::Cable => {
-                    self.cables.extend(crate::styles::cable::users(doc, id));
-                }
-                // Brief 050a: style records and the standard reach only the style rows (above).
-                Op::SetStyle { .. } | Op::SetStandard { .. } => {}
+        self.rating.note(doc, effect);
+        self.styles |= crate::styles::checks::touches(effect);
+        self.title_blocks |= crate::title_block::checks::touches(effect);
+        // Brief 054: the set of pages with checks off may change (then everything is checked
+        // again).
+        self.all |= crate::page_types::checks_changed(doc, effect);
+        match effect {
+            Effect::Wire { id, before: Some(before), after: Some(after) } => {
+                node(self, Node::Wire(*id));
+                self.wires.insert(*id);
+                self.numbers.extend([before, after].into_iter().filter_map(|w| w.number_text().map(str::to_string)));
             }
+            // Made or deleted.
+            Effect::Wire { id, before, after } => {
+                // Brief 057: a member's ends decide its cable's open cores.
+                self.cables.extend(doc.cables_of(*id));
+                self.wires.insert(*id);
+                node(self, Node::Wire(*id));
+                for t in before.iter().chain(after.iter()).flat_map(|w| w.ends.iter()) {
+                    self.terminals.insert(*t);
+                    node(self, Node::Terminal(*t));
+                    self.component_of(doc, *t);
+                }
+            }
+            // Added, removed, or both (brief 028's relabel).
+            Effect::Terminal { id, before, after } => {
+                self.terminals.insert(*id);
+                self.devices.extend(before.iter().chain(after.iter()).filter_map(|t| t.device()));
+                node(self, Node::Terminal(*id));
+            }
+            // Brief 048: another definition may bridge other points.
+            Effect::DeviceDefinition { id, .. } => {
+                self.devices.insert(*id);
+                for (t, _) in doc.terminals_of(*id) {
+                    node(self, Node::Terminal(t));
+                }
+            }
+            Effect::Device { id, before, after } => {
+                for device in before.iter().chain(after.iter()) {
+                    self.tag_holders(doc, device.tag());
+                }
+                self.component(doc, *id);
+                for (t, _) in doc.terminals_of(*id) {
+                    node(self, Node::Terminal(t));
+                }
+                // Design 072 §6.3: a device's location and function are fields, where the cables
+                // at its points are drawn (as the property arm below).
+                if let (Some(before), Some(after)) = (before, after)
+                    && (before.location != after.location || before.function != after.function)
+                {
+                    for (t, _) in doc.terminals_of(*id) {
+                        for (w, _) in doc.ends_at(t) {
+                            self.cables.extend(doc.cables_of(w));
+                        }
+                    }
+                }
+            }
+            Effect::Prop { object: ObjectRef::Device(c), key, before, after } => {
+                let key = key.raw;
+                if key == ecad_model::tag::TAG_KEY {
+                    self.tag_holders(doc, [before, after].into_iter().flatten().copied());
+                }
+                // Brief 059 (design 059 §8): a device's location or function is where the
+                // cables at its points are drawn (`cable-end-off-plan`).
+                if crate::designations::Aspect::of_property(key).is_some() {
+                    for (t, _) in doc.terminals_of(*c) {
+                        for (w, _) in doc.ends_at(t) {
+                            self.cables.extend(doc.cables_of(w));
+                        }
+                    }
+                }
+                self.component(doc, *c);
+                for (t, _) in doc.terminals_of(*c) {
+                    node(self, Node::Terminal(t));
+                }
+            }
+            // A cable is written whole (`ModifyCable`); a property on one is refused.
+            Effect::Prop { object: ObjectRef::Cable(_), .. } => {}
+            Effect::Prop { object: ObjectRef::Wire(c), .. } => {
+                node(self, Node::Wire(*c));
+                self.wires.insert(*c);
+            }
+            Effect::Cable { id: k, before, after } => {
+                // Brief 027: a new or deleted cable, or its tag (the orphan row's words).
+                self.cable_references.insert(*k);
+                // Brief 026: the cable's own rows, and every holder of the tags it had or has.
+                self.cables.insert(*k);
+                let tags: Vec<String> =
+                    before.iter().chain(after.iter()).filter_map(|c| c.properties.get(ecad_model::tag::TAG_KEY).cloned()).collect();
+                self.tag_holders(doc, tags.iter().map(String::as_str));
+                // A cable's tag and cores are part of its members' words.
+                if let Some(cable) = doc.cables.get(k) {
+                    self.wires.extend(cable.cores.iter().filter_map(|m| m.wire()));
+                }
+                self.wires.extend(before.iter().chain(after.iter()).flat_map(|c| c.cores.iter()).filter_map(|m| m.wire()));
+            }
+            Effect::Item { id, .. } => self.item(doc, *id),
+            Effect::Rep { before, after, .. } => {
+                for r in before.iter().chain(after.iter()) {
+                    self.rep(doc, r);
+                }
+            }
+            // Design 072 §4.3: the route's own rows, and the points it lands on (connected or
+            // not).
+            // The commit's rewrite pass makes and removes wires at those points (and at the
+            // points of a route it lands on), which the ops given to `scope` do not hold yet:
+            // their nets as they were lose their rows (design 072 §4.2).
+            Effect::Route { id, before, after } => {
+                self.routes.insert(*id);
+                // The cables with a core on it: their core rows (owner rule, 2026-11-18).
+                self.cables.extend(doc.cables_on_route(*id));
+                for t in before.iter().chain(after.iter()).flat_map(|r| route_points(doc, r)) {
+                    self.terminals.insert(t);
+                    node(self, Node::Terminal(t));
+                }
+            }
+            Effect::Definition { id, .. } => {
+                for c in doc.components_using(*id) {
+                    self.devices.insert(c);
+                    for (t, _) in doc.terminals_of(c) {
+                        self.terminals.insert(t);
+                        node(self, Node::Terminal(t));
+                    }
+                }
+            }
+            // Only the numbering and potential settings change what checks find; sheet, page
+            // numbering and reference style change where rows say they are; label looks
+            // (colour style, height), tag settings and units change nothing here.
+            Effect::Settings { before, after } => {
+                // Brief 033 (review of #64, 1): a table the user placed may enter or leave the
+                // title block when the project's sheet changes.
+                if before.sheet != after.sheet {
+                    self.devices.extend(crate::xref::placed_tables(doc));
+                }
+                let (b, a) = (&before.wiring, &after.wiring);
+                if b.scheme != a.scheme || b.digits != a.digits || b.unclassified_prefix != a.unclassified_prefix || b.potentials != a.potentials {
+                    self.all = true;
+                } else if before.sheet != after.sheet
+                    || before.page_number_step != after.page_number_step
+                    || before.reference_style != after.reference_style
+                {
+                    self.relocate = true;
+                }
+            }
+            // Brief 033 (review of #64, 1): a page's sheet moves its frame, so the devices on it
+            // are checked again for a table over the title block.
+            // Design 072 §5.1: a page changed in place; its sheet moves its frame (as below), its
+            // function or location is a context for the devices on it.
+            Effect::Page { id: p, before: Some(before), after: Some(after), index_before: None, index_after: None } => {
+                let ch = before.change(after);
+                self.relocate = true;
+                if ch.sheet {
+                    for (_, r) in doc.representations_on(*p) {
+                        if let Subject::Device(c) = r.subject {
+                            self.devices.insert(c);
+                        }
+                    }
+                }
+                if ch.location || ch.function {
+                    self.devices_on(doc, *p);
+                }
+            }
+            // Brief 027: a removed page's reference ends go with it (a page moved too: it is
+            // removed and added).
+            Effect::Page { id, before: Some(_), .. } => {
+                self.relocate = true;
+                for (_, r) in doc.representations_on(*id) {
+                    if let Subject::Cable(k) = r.subject {
+                        self.cable_references.insert(k);
+                    }
+                }
+            }
+            // Page numbers, folders and the page order change where rows say they are (brief
+            // 019), not what they find: the rows are copied again.
+            Effect::Page { before: None, .. }
+            | Effect::Folder { .. }
+            | Effect::Prop { object: ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard, .. } => self.relocate = true,
+            // No check or output reads a device link yet (design 072 §2.6).
+            Effect::DeviceLink { .. } => {}
+            // Design 072 §6.2: a box's values are a context for the devices on its pages; a
+            // continuation's names join nets.
+            Effect::Aid { id, before, after } => {
+                self.aid(doc, *id, before.iter().chain(after.iter()).copied());
+                for n in before.iter().chain(after.iter()).filter_map(|a| a.continuation_name()) {
+                    node(self, Node::Name(name_key(n.as_str())));
+                }
+                // Made or deleted: its points.
+                if before.is_none() || after.is_none() {
+                    for (t, _) in doc.terminals_of(*id) {
+                        self.terminals.insert(t);
+                        node(self, Node::Terminal(t));
+                    }
+                }
+            }
+            // Design 072 §6.4: a loose part's checks (an item with no part number) are the BOM's,
+            // kept by the outputs model (`Outputs::bom_checks`); no drawing check reads one.
+            Effect::LoosePart { .. } => {}
+            // Brief 052 (design 052 §6): the project's default context for every device (rare);
+            // the list's codes for the objects storing that entry, and the duplicate rows.
+            Effect::Project { before, after } => {
+                use crate::designations::{Aspect, changed_codes, default_key};
+                for a in Aspect::ALL {
+                    if default_key(before, a) != default_key(after, a) {
+                        self.relocate = true;
+                        self.devices.extend(doc.devices.keys().copied());
+                    }
+                    let changed = changed_codes(before, after, a);
+                    if !changed.is_empty() {
+                        self.relocate = true;
+                        self.designations = true;
+                    }
+                    for entry in &changed {
+                        // Brief 059: the cables planning an end there (their rows name its code).
+                        self.cables.extend(crate::cables::planning(doc, entry));
+                        for (c, x) in &doc.devices {
+                            if crate::designations::device_keys(x).iter().any(|(_, v)| v == entry) {
+                                self.devices.insert(*c);
+                            }
+                        }
+                        for (b, x) in &doc.aids {
+                            if x.as_box().is_some_and(|x| crate::designations::box_key(x, a).as_deref() == Some(entry.as_str())) {
+                                self.aids.insert(*b);
+                            }
+                        }
+                    }
+                }
+            }
+            Effect::Layer { .. } | Effect::Version { .. } => {}
+            // Brief 059 (design 059 §8): a cable type's cores and gland reach its users' rows.
+            Effect::Style { catalogue: ecad_model::StyleCatalogue::Cable, id, .. } => {
+                self.cables.extend(crate::styles::cable::users(doc, id));
+            }
+            // Brief 050a: style records and the standard reach only the style rows (above).
+            Effect::Style { .. } | Effect::Standard { .. } => {}
         }
     }
 

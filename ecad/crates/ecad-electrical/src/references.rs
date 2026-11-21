@@ -547,8 +547,25 @@ const NO_REFERENCE_STYLES: &[ecad_model::StyleCatalogue] =
 /// points, or attaches or detaches a member's end. New items, components, terminals,
 /// definitions and conductors are not shown or not members yet, so they touch nothing.
 pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
+    let effects = ecad_model::effect::Effects::of(ops);
     let mut out = BTreeSet::new();
     let mut moved = false;
+    for e in &effects {
+        if !cables_touched_by(doc, &effects, e, &mut moved, &mut out) {
+            return None;
+        }
+    }
+    Some(out)
+}
+
+/// One effect of [`cables_touched`]: adds to `out` the cables `effect` reaches, looked up in `doc`
+/// before the transaction `effects`; `false` when it could reach any cable. `moved` notes that the
+/// book positions of `effects` were looked at already (once per transaction).
+pub fn cables_touched_by(
+    doc: &Document, effects: &ecad_model::effect::Effects<'_>, effect: &ecad_model::effect::Effect<'_>, moved: &mut bool, out: &mut BTreeSet<CableId>,
+) -> bool {
+    use ecad_model::ObjectRef;
+    use ecad_model::effect::Effect;
     let note = |r: &Representation, out: &mut BTreeSet<CableId>| match r.subject {
         Subject::Cable(k) => {
             out.insert(k);
@@ -556,108 +573,110 @@ pub fn cables_touched(doc: &Document, ops: &[Op]) -> Option<BTreeSet<CableId>> {
         Subject::Wire(w) => out.extend(doc.cables_of(w)),
         Subject::Device(_) | Subject::Route(_) | Subject::Aid(_) => {}
     };
-    for op in ops {
-        // Brief 055 (FP4; review of #110, 1): a frame decides its pages' grids, so a frame choice
-        // or a frame's sheet, margins or block height reaches the cables on those pages.
-        match crate::title_block::frame_reach(doc, op) {
-            crate::title_block::Reach::NotFrame => {}
-            crate::title_block::Reach::Unchanged => continue,
-            crate::title_block::Reach::Pages(ps) => {
-                for p in ps {
+    // Brief 055 (FP4; review of #110, 1): a frame decides its pages' grids, so a frame choice
+    // or a frame's sheet, margins or block height reaches the cables on those pages.
+    match crate::title_block::frame_reach_of(doc, effect) {
+        crate::title_block::Reach::NotFrame => {}
+        crate::title_block::Reach::Unchanged => return true,
+        crate::title_block::Reach::Pages(ps) => {
+            for p in ps {
+                out.extend(cables_on(doc, p));
+            }
+            return true;
+        }
+        crate::title_block::Reach::Wide => return false,
+    }
+    match effect {
+        // A new item is not shown yet; a changed or removed one, through its representation.
+        Effect::Item { before: None, .. } => {}
+        Effect::Item { id, .. } => {
+            if let Some((_, r)) = doc.representation_of_item(*id) {
+                note(r, out);
+            }
+        }
+        Effect::Rep { before, after, .. } => {
+            for r in before.iter().chain(after.iter()) {
+                note(r, out);
+            }
+        }
+        // Design 072 §4.3, §4.4 (F4): a line reaches the cables whose cores it carries (on the
+        // line, or on the wire it draws) and the cables whose named points it lands on.
+        Effect::Route { id, before, after } => {
+            for r in before.iter().chain(after.iter()) {
+                route_cables(doc, *id, r, out);
+            }
+        }
+        Effect::Wire { id, before: None, .. } if !doc.wires.contains_key(id) => {}
+        // A wire made again in one transaction: any cable, as before.
+        Effect::Wire { before: None, .. } => return false,
+        // Brief 032 (a fold deletes the folded wire; numbering writes wire numbers): a
+        // conductor's cables only, never every cable.
+        Effect::Wire { id, .. } | Effect::Prop { object: ObjectRef::Wire(id), .. } => out.extend(doc.cables_of(*id)),
+        Effect::Device { id, before: None, .. } if !doc.devices.contains_key(id) => {}
+        // Brief 053: a deleted component has no terminals and no representations left (the
+        // model's invariants I8 and I10); removing those is its own effect, so the record itself
+        // reaches no reference.
+        Effect::Device { after: None, .. } => {}
+        Effect::Terminal { id, before: None, .. } if !doc.terminals.contains_key(id) => {}
+        // Brief 028: a relabelled terminal reaches only the cables of the wires on it.
+        Effect::Terminal { id, .. } => out.extend(doc.ends_at(*id).into_iter().flat_map(|(w, _)| doc.cables_of(w))),
+        Effect::Definition { id, before: None, .. } if !doc.definitions.contains_key(id) => {}
+        // A device's properties (its tag, brief 018) are drawn beside its symbols only, never
+        // in a cable's drawing or reference texts.
+        Effect::Prop { object: ObjectRef::Device(_), .. } => {}
+        // Brief 019 (design 019 §9): a page's number or sheet changes what the references on it
+        // say about themselves, so their cables (whose other ends show it).
+        Effect::Page { id: p, before: Some(b), after: Some(a), index_before: None, index_after: None } => {
+            let ch = b.change(a);
+            if ch.number || ch.sheet || ch.page_type {
+                out.extend(cables_on(doc, *p));
+            }
+            if ch.folder {
+                moved_cables(doc, effects, moved, out);
+            }
+        }
+        // Brief 054 (design 054 §10.2): a page type's sheet, on its pages only.
+        Effect::Style { catalogue: ecad_model::StyleCatalogue::Page, .. } => {
+            if let Some((pages, true)) = crate::styles::page::touched_by_effect(doc, effect) {
+                for p in pages {
                     out.extend(cables_on(doc, p));
                 }
-                continue;
             }
-            crate::title_block::Reach::Wide => return None,
         }
-        match op {
-            Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => {
-                if let Some((_, r)) = doc.representation_of_item(*id) {
-                    note(r, &mut out);
-                }
-            }
-            Op::AddItem { .. } => {}
-            Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => note(rep, &mut out),
-            Op::ModifyRepresentation { before, after, .. } => {
-                note(before, &mut out);
-                note(after, &mut out);
-            }
-            // Design 072 §4.3, §4.4 (F4): a line reaches the cables whose cores it carries (on the
-            // line, or on the wire it draws) and the cables whose named points it lands on.
-            Op::AddRoute { id, route } | Op::RemoveRoute { id, route } => route_cables(doc, *id, route, &mut out),
-            Op::ModifyRoute { id, before, after } => {
-                route_cables(doc, *id, before, &mut out);
-                route_cables(doc, *id, after, &mut out);
-            }
-            Op::CreateWire { id, .. } if !doc.wires.contains_key(id) => {}
-            // Brief 032 (a fold deletes the folded wire; numbering writes wire numbers): a
-            // conductor's cables only, never every cable.
-            Op::DeleteWire { id, .. } | Op::ModifyWire { id, .. } | Op::SetProperty { object: ecad_model::ObjectRef::Wire(id), .. } => {
-                out.extend(doc.cables_of(*id))
-            }
-            Op::CreateDevice { id, .. } if !doc.devices.contains_key(id) => {}
-            Op::AddTerminal { id, .. } if !doc.terminals.contains_key(id) => {}
-            // Brief 028: a relabelled terminal reaches only the cables of the wires on it.
-            Op::AddTerminal { id, .. } | Op::RemoveTerminal { id, .. } => {
-                out.extend(doc.ends_at(*id).into_iter().flat_map(|(w, _)| doc.cables_of(w)));
-            }
-            Op::EmbedDefinition { id, .. } if !doc.definitions.contains_key(id) => {}
-            // A device's properties (its tag, brief 018) are drawn beside its symbols only, never
-            // in a cable's drawing or reference texts.
-            Op::SetProperty { object: ecad_model::ObjectRef::Device(_), .. } => {}
-            // Brief 019 (design 019 §9): a page's number or sheet changes what the references on it
-            // say about themselves, so their cables (whose other ends show it).
-            Op::ModifyPage { id: p, before, after } => {
-                let ch = before.change(after);
-                if ch.number || ch.sheet || ch.page_type {
-                    out.extend(cables_on(doc, *p));
-                }
-                if ch.folder {
-                    moved_cables(doc, ops, &mut moved, &mut out);
-                }
-            }
-            // Brief 054 (design 054 §10.2): a page type's sheet, on its pages only.
-            Op::SetStyle { catalogue, .. } if *catalogue == ecad_model::StyleCatalogue::Page => {
-                if let Some((pages, true)) = crate::styles::page::touched_by(doc, op) {
-                    for p in pages {
-                        out.extend(cables_on(doc, p));
-                    }
-                }
-            }
-            // A page moved between folders, a page added, removed or moved, a folder op: only the
-            // pages whose book position changed may read differently (an unnumbered page's
-            // number, the order of a cable's partners); a rename in place or an append moves none.
-            Op::SetProperty { object: ecad_model::ObjectRef::Page(_) | ecad_model::ObjectRef::Project, .. } => {}
-            Op::AddPage { .. } | Op::RemovePage { .. } | Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => {
-                moved_cables(doc, ops, &mut moved, &mut out)
-            }
-            Op::NameVersion { .. } | Op::UnnameVersion { .. } => {}
-            // Brief 025 (design 025 §6): a cable op changes that cable's members only, so only its
-            // reference ends may be drawn differently (before, every cable).
-            Op::CreateCable { id, .. } | Op::DeleteCable { id, .. } => {
-                out.insert(*id);
-            }
-            // Brief 053: a cable's fields (its type, tag) are that cable's alone, so only its
-            // reference ends may read differently (before, every cable: `spagetype`).
-            Op::ModifyCable { id, .. } => {
-                out.insert(*id);
-            }
-            Op::SetProjectSettings { before, after }
-                if before.length_unit == after.length_unit && before.sheet == after.sheet && before.reference_style == after.reference_style => {}
-            // Brief 053: the text, wire and location styles only change how things are drawn;
-            // no reference reads them (the derivation reads cables, routes, pages and the sheet),
-            // so they reach none (before, every cable: `textstyle` derived every reference twice).
-            // Any other catalogue (the frame, one added later) and a standard, which may come to
-            // carry sheets, still reach every cable.
-            Op::SetStyle { catalogue, .. } if NO_REFERENCE_STYLES.contains(catalogue) => {}
-            // Brief 053: a deleted component has no terminals and no representations left (the
-            // model's invariants I8 and I10); removing those is its own op above, so the record
-            // itself reaches no reference (`toposition` derived every one twice).
-            Op::DeleteDevice { .. } => {}
-            _ => return None,
+        // A page moved between folders, a page added, removed or moved, a folder effect: only the
+        // pages whose book position changed may read differently (an unnumbered page's number,
+        // the order of a cable's partners); a rename in place or an append moves none.
+        Effect::Prop { object: ObjectRef::Page(_) | ObjectRef::Project, .. } => {}
+        Effect::Page { .. } | Effect::Folder { .. } => moved_cables(doc, effects, moved, out),
+        Effect::Version { .. } => {}
+        // Brief 025 (design 025 §6): a cable op changes that cable's members only, so only its
+        // reference ends may be drawn differently. Brief 053: a cable's fields (its type, tag)
+        // are that cable's alone.
+        Effect::Cable { id, .. } => {
+            out.insert(*id);
         }
+        Effect::Settings { before, after }
+            if before.length_unit == after.length_unit && before.sheet == after.sheet && before.reference_style == after.reference_style => {}
+        // Brief 053: the text, wire and location styles only change how things are drawn; no
+        // reference reads them. Any other catalogue (the frame, one added later) and a standard,
+        // which may come to carry sheets, still reach every cable.
+        Effect::Style { catalogue, .. } if NO_REFERENCE_STYLES.contains(catalogue) => {}
+        // A loose part is drawn on no page and no reference reads it (design 072 §6.4).
+        Effect::LoosePart { .. } => {}
+        // A drawing aid (design 072 §6.2) still reaches every cable, as its op did.
+        Effect::Aid { .. }
+        | Effect::Layer { .. }
+        | Effect::Device { .. }
+        | Effect::DeviceDefinition { .. }
+        | Effect::DeviceLink { .. }
+        | Effect::Definition { .. }
+        | Effect::Prop { .. }
+        | Effect::Settings { .. }
+        | Effect::Style { .. }
+        | Effect::Standard { .. }
+        | Effect::Project { .. } => return false,
     }
-    Some(out)
+    true
 }
 
 /// The cables line `id` (as `route`) reaches, through the indexes: those with a core on it or on
@@ -676,13 +695,13 @@ fn cables_on(doc: &Document, page: PageId) -> impl Iterator<Item = CableId> + '_
     })
 }
 
-/// Add the cables with a reference on a page whose book position `ops` change, once per call
+/// Add the cables with a reference on a page whose book position `effects` change, once per call
 /// (`done`).
-fn moved_cables(doc: &Document, ops: &[Op], done: &mut bool, out: &mut BTreeSet<CableId>) {
+fn moved_cables(doc: &Document, effects: &ecad_model::effect::Effects<'_>, done: &mut bool, out: &mut BTreeSet<CableId>) {
     if std::mem::replace(done, true) {
         return;
     }
-    for p in ecad_model::book::positions_changed(doc, ops) {
+    for p in ecad_model::book::positions_changed_by(doc, effects) {
         out.extend(cables_on(doc, p));
     }
 }

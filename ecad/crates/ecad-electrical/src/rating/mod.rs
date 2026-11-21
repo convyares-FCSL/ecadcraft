@@ -308,147 +308,157 @@ pub struct Touch {
 }
 
 impl Touch {
-    /// Add what `ops` reach in `doc`.
+    /// Add what `ops` reach in `doc`: [`Touch::note`] for each of their effects.
     pub fn collect(&mut self, doc: &Document, ops: &[Op]) {
+        for effect in &ecad_model::effect::Effects::of(ops) {
+            self.note(doc, effect);
+        }
+    }
+
+    /// Add what one effect reaches, looked up in `doc` (call once on the state before, once after).
+    pub fn note(&mut self, doc: &Document, effect: &ecad_model::effect::Effect<'_>) {
+        use ecad_model::effect::Effect;
         let conn = doc.connectivity();
         let net_of_terminal = |t: ecad_model::TerminalId, s: &mut Touch| {
             if let Some(n) = conn.net_of(&ecad_model::Node::Terminal(t)) {
                 s.nets.insert(n);
             }
         };
-        for op in ops {
-            match op {
-                Op::SetProperty { object: ObjectRef::Wire(c), .. } => {
-                    self.retrace.insert(RatedSubject::Wire(*c));
-                    for k in doc.cables_of(*c) {
-                        self.retrace.insert(RatedSubject::Cable(k));
-                    }
+        match effect {
+            Effect::Prop { object: ObjectRef::Wire(c), .. } => {
+                self.retrace.insert(RatedSubject::Wire(*c));
+                for k in doc.cables_of(*c) {
+                    self.retrace.insert(RatedSubject::Cable(k));
                 }
-                Op::ModifyWire { id: c, before, after } => {
-                    self.retrace.insert(RatedSubject::Wire(*c));
-                    if (before.potential != after.potential || before.number != after.number)
-                        && let Some(n) = conn.net_of_conductor(*c)
-                    {
-                        self.nets.insert(n);
-                    }
-                    for k in doc.cables_of(*c) {
-                        self.retrace.insert(RatedSubject::Cable(k));
-                    }
+            }
+            Effect::Wire { id: c, before: Some(before), after: Some(after) } => {
+                self.retrace.insert(RatedSubject::Wire(*c));
+                if (before.potential != after.potential || before.number != after.number)
+                    && let Some(n) = conn.net_of_conductor(*c)
+                {
+                    self.nets.insert(n);
                 }
-                Op::SetProperty { object: ObjectRef::Device(c), key, .. } => {
-                    if crate::symbols::is_rating_key(key) || key == ecad_model::tag::TAG_KEY {
-                        self.devices.insert(*c);
-                    } else if key.starts_with("link.") {
-                        for (t, _) in doc.terminals_of(*c) {
-                            net_of_terminal(t, self);
-                        }
-                    }
+                for k in doc.cables_of(*c) {
+                    self.retrace.insert(RatedSubject::Cable(k));
                 }
-                Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => {
-                    if key.starts_with("rating.") || key.starts_with("wire.") {
-                        self.all_results = true;
-                        self.table |= key == defaults::rating::TABLE.key;
-                    }
+            }
+            // Made or deleted.
+            Effect::Wire { id, before, after } => {
+                self.retrace.insert(RatedSubject::Wire(*id));
+                if let Some(n) = conn.net_of_conductor(*id) {
+                    self.nets.insert(n);
                 }
-                // Brief 052: a location entry's code changed (or the entry came or went): the rows
-                // naming it are worded again.
-                Op::ModifyProject { before, after } => {
-                    self.locations.extend(crate::designations::changed_codes(before, after, crate::designations::Aspect::Location));
+                for t in before.iter().chain(after.iter()).flat_map(|w| w.ends.iter()) {
+                    net_of_terminal(*t, self);
                 }
-                Op::SetStyle { catalogue, id, .. } => {
-                    if *catalogue == ecad_model::StyleCatalogue::RatingTable {
-                        self.all_results = true;
-                        self.table = true;
-                    } else if *catalogue == wire::CATALOGUE.catalogue || *catalogue == ecad_model::StyleCatalogue::Cable {
-                        self.styles.insert((*catalogue, id.clone()));
-                        // A category naming a potential reaches every wire of it.
-                        if *catalogue == wire::CATALOGUE.catalogue {
-                            self.all_results = true;
-                        }
-                    }
-                }
-                Op::SetStandard { .. } => {
-                    self.all_results = true;
-                    self.table = true;
-                }
-                Op::SetProjectSettings { before, after } => {
-                    if before.wiring.potentials != after.wiring.potentials {
-                        self.all_results = true;
-                    }
-                }
-                Op::CreateWire { id, wire } | Op::DeleteWire { id, wire } => {
-                    self.retrace.insert(RatedSubject::Wire(*id));
-                    if let Some(n) = conn.net_of_conductor(*id) {
-                        self.nets.insert(n);
-                    }
-                    for t in &wire.ends {
-                        net_of_terminal(*t, self);
-                    }
-                }
-                Op::AddTerminal { id, .. } | Op::RemoveTerminal { id, .. } => net_of_terminal(*id, self),
-                Op::CreateAid { id, aid } | Op::DeleteAid { id, aid } => {
-                    if let Some(b) = aid.as_box() {
-                        self.boxes.insert(*id);
-                        self.locations.extend(crate::designations::box_key(b, crate::designations::Aspect::Location));
-                        self.box_pages(doc, *id);
-                    }
-                }
-                // Design 072 §6.2: a box's temperature reaches the wires at its location; its new
-                // location the wires at both locations and those of the devices on its pages.
-                Op::ModifyAid { id, before, after } => {
-                    let loc = |a: &ecad_model::Aid| a.as_box().and_then(|b| crate::designations::box_key(b, crate::designations::Aspect::Location));
-                    if before.as_box().is_some() || after.as_box().is_some() {
-                        self.boxes.insert(*id);
-                        self.locations.extend([loc(before), loc(after)].into_iter().flatten());
-                        if loc(before) != loc(after) {
-                            self.box_pages(doc, *id);
-                        }
-                    }
-                }
-                // Lane 072 B: a device's description, part or type text is read by no rating row.
-                Op::ModifyDevice { before, after, .. } if before.only_text_differs(after) => {}
-                // Design 072 §2.2: a device's rating reaches only the subjects it protects.
-                Op::ModifyDevice { id, before, after } if before.only_rating_differs(after) => {
-                    self.devices.insert(*id);
-                }
-                // Design 072 §6.3: a box's new location reaches the wires at both locations; a
-                // device's own location its wires only.
-                Op::ModifyDevice { id, before, after } if before.only_place_differs(after) => {
-                    if before.location != after.location {
-                        self.moved.insert(*id);
-                    }
-                }
-                Op::CreateDevice { id, .. } | Op::DeleteDevice { id, .. } | Op::ModifyDevice { id, .. } | Op::SetDeviceDefinition { id, .. } => {
-                    self.devices.insert(*id);
-                    for (t, _) in doc.terminals_of(*id) {
+            }
+            Effect::Prop { object: ObjectRef::Device(c), key, .. } => {
+                let key = key.raw;
+                if crate::symbols::is_rating_key(key) || key == ecad_model::tag::TAG_KEY {
+                    self.devices.insert(*c);
+                } else if key.starts_with("link.") {
+                    for (t, _) in doc.terminals_of(*c) {
                         net_of_terminal(t, self);
                     }
                 }
-                Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => {
-                    for c in doc.components_using(*id) {
-                        for (t, _) in doc.terminals_of(c) {
-                            net_of_terminal(t, self);
-                        }
+            }
+            Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => {
+                if key.raw.starts_with("rating.") || key.raw.starts_with("wire.") {
+                    self.all_results = true;
+                    self.table |= key.raw == defaults::rating::TABLE.key;
+                }
+            }
+            // A page's properties are read by no rating row; a cable is written whole.
+            Effect::Prop { object: ObjectRef::Page(_) | ObjectRef::Cable(_), .. } => {}
+            // Brief 052: a location entry's code changed (or the entry came or went): the rows
+            // naming it are worded again.
+            Effect::Project { before, after } => {
+                self.locations.extend(crate::designations::changed_codes(before, after, crate::designations::Aspect::Location));
+            }
+            Effect::Style { catalogue, id, .. } => {
+                if *catalogue == ecad_model::StyleCatalogue::RatingTable {
+                    self.all_results = true;
+                    self.table = true;
+                } else if *catalogue == wire::CATALOGUE.catalogue || *catalogue == ecad_model::StyleCatalogue::Cable {
+                    self.styles.insert((*catalogue, (*id).clone()));
+                    // A category naming a potential reaches every wire of it.
+                    if *catalogue == wire::CATALOGUE.catalogue {
+                        self.all_results = true;
                     }
                 }
-                Op::CreateCable { id, cable } | Op::DeleteCable { id, cable } => {
-                    self.retrace.insert(RatedSubject::Cable(*id));
-                    for m in &cable.cores {
-                        self.retrace.extend(m.wire().map(RatedSubject::Wire));
+            }
+            Effect::Standard { .. } => {
+                self.all_results = true;
+                self.table = true;
+            }
+            Effect::Settings { before, after } => {
+                if before.wiring.potentials != after.wiring.potentials {
+                    self.all_results = true;
+                }
+            }
+            Effect::Terminal { id, .. } => net_of_terminal(*id, self),
+            // A location box made or deleted.
+            Effect::Aid { id, before: None, after: Some(aid) } | Effect::Aid { id, before: Some(aid), after: None } => {
+                if let Some(b) = aid.as_box() {
+                    self.boxes.insert(*id);
+                    self.locations.extend(crate::designations::box_key(b, crate::designations::Aspect::Location));
+                    self.box_pages(doc, *id);
+                }
+            }
+            // Design 072 §6.2: a box's temperature reaches the wires at its location; its new
+            // location the wires at both locations and those of the devices on its pages.
+            Effect::Aid { id, before, after } => {
+                let loc = |a: &ecad_model::Aid| a.as_box().and_then(|b| crate::designations::box_key(b, crate::designations::Aspect::Location));
+                if before.iter().chain(after.iter()).any(|a| a.as_box().is_some()) {
+                    self.boxes.insert(*id);
+                    let (b, a) = (before.and_then(loc), after.and_then(loc));
+                    if b != a {
+                        self.box_pages(doc, *id);
+                    }
+                    self.locations.extend([b, a].into_iter().flatten());
+                }
+            }
+            // Lane 072 B: a device's description, part or type text is read by no rating row.
+            Effect::Device { before: Some(before), after: Some(after), .. } if before.only_text_differs(after) => {}
+            // Design 072 §2.2: a device's rating reaches only the subjects it protects.
+            Effect::Device { id, before: Some(before), after: Some(after) } if before.only_rating_differs(after) => {
+                self.devices.insert(*id);
+            }
+            // Design 072 §6.3: a box's new location reaches the wires at both locations; a
+            // device's own location its wires only.
+            Effect::Device { id, before: Some(before), after: Some(after) } if before.only_place_differs(after) => {
+                if before.location != after.location {
+                    self.moved.insert(*id);
+                }
+            }
+            Effect::Device { id, .. } | Effect::DeviceDefinition { id, .. } => {
+                self.devices.insert(*id);
+                for (t, _) in doc.terminals_of(*id) {
+                    net_of_terminal(t, self);
+                }
+            }
+            Effect::Definition { id, .. } => {
+                for c in doc.components_using(*id) {
+                    for (t, _) in doc.terminals_of(c) {
+                        net_of_terminal(t, self);
                     }
                 }
-                Op::ModifyCable { id, before, after } => {
-                    self.retrace.insert(RatedSubject::Cable(*id));
-                    self.retrace.extend(before.cores.iter().chain(&after.cores).filter_map(|m| m.wire()).map(RatedSubject::Wire));
-                }
-                // A device moved may enter another location box: its wires; a box moved: the wires at
-                // its location and those of the devices on its page.
-                Op::ModifyRepresentation { after, .. } | Op::LinkRepresentation { rep: after, .. } | Op::UnlinkRepresentation { rep: after, .. } => {
-                    match after.subject {
+            }
+            Effect::Cable { id, before, after } => {
+                self.retrace.insert(RatedSubject::Cable(*id));
+                let cores = before.iter().chain(after.iter()).flat_map(|c| c.cores.iter());
+                self.retrace.extend(cores.filter_map(|m| m.wire()).map(RatedSubject::Wire));
+            }
+            // A device moved may enter another location box: its wires; a box moved: the wires at
+            // its location and those of the devices on its page. The representation as it is
+            // after (as it was, when unlinked).
+            Effect::Rep { before, after, .. } => {
+                if let Some(rep) = after.or(*before) {
+                    match rep.subject {
                         ecad_model::Subject::Aid(a) if crate::locations::box_values(doc, a).is_some() => {
                             self.boxes.insert(a);
                             self.box_locations(doc, a);
-                            self.pages.insert(after.page);
+                            self.pages.insert(rep.page);
                         }
                         ecad_model::Subject::Device(c) => {
                             self.moved.insert(c);
@@ -456,8 +466,15 @@ impl Touch {
                         _ => {}
                     }
                 }
-                _ => {}
             }
+            Effect::Page { .. }
+            | Effect::Layer { .. }
+            | Effect::Item { .. }
+            | Effect::Route { .. }
+            | Effect::Version { .. }
+            | Effect::Folder { .. }
+            | Effect::LoosePart { .. }
+            | Effect::DeviceLink { .. } => {}
         }
     }
 }

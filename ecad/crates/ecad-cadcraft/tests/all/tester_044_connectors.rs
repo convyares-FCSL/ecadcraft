@@ -14,7 +14,7 @@
 use std::collections::BTreeMap;
 
 use ecad_cadcraft::Persistence;
-use ecad_cadcraft::outputs::{Group, Outputs};
+use ecad_cadcraft::outputs::{Group, kept::Outputs};
 use ecad_model::{Author, DefinitionId, DeviceId, Document, Op, PageId, Pt, RepresentationId, Subject, TerminalId, WireId};
 use serde_json::{Value, json};
 
@@ -160,7 +160,7 @@ fn rows_have(h: &mut H, kind: &str, fix: bool) {
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.outputs().clone();
-        (kept, Outputs::build(p.ledger.document()))
+        (kept, Outputs::build_with(p.ledger.document(), &ecad_cadcraft::text_style::EngineMetrics))
     });
     assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location), "kept BOM differs from a rebuild");
     assert_eq!(kept.bom_table(Group::Part), built.bom_table(Group::Part), "kept BOM by part differs from a rebuild");
@@ -1138,7 +1138,7 @@ fn r09_cross_references_between_the_halves() {
     let refs = v["references"].as_array().cloned().unwrap_or_default();
     assert!(refs.iter().any(|r| s(&r["source"]) == srep.hex() && s(&r["target_page"]) == n100), "{v}");
     // The kept index equals a rebuild (verify mode does this on every commit too).
-    let (kept, built) = c.h.cfg(|p| (p.xref.clone(), ecad_cadcraft::xref::RefIndex::build(p.ledger.document())));
+    let (kept, built) = c.h.cfg(|p| (p.xref().clone(), ecad_cadcraft::xref::RefIndex::build(p.ledger.document())));
     assert!(kept == built, "kept reference index differs from a rebuild");
 }
 

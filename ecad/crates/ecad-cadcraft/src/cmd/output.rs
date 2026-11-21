@@ -357,8 +357,8 @@ pub fn print_project(
     p.refresh_pending();
     let o = Options { pending: p.pending, ..o };
     let doc = p.ledger.document();
-    let resolved = printbook::resolve_with(doc, scope, p.outputs.as_ref()).map_err(CmdError::refused)?;
-    let done = printbook::print(doc, &resolved.pages, &p.views, p.tolerance, p.outputs.as_ref(), o, path, progress).map_err(CmdError::refused)?;
+    let resolved = printbook::resolve_with(doc, scope, p.kept_outputs()).map_err(CmdError::refused)?;
+    let done = printbook::print(doc, &resolved.pages, &p.views, p.tolerance, p.kept_outputs(), o, path, progress).map_err(CmdError::refused)?;
     let files: Vec<Value> = done
         .files
         .iter()

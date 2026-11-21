@@ -94,14 +94,3 @@ pub fn tree_rows(doc: &Document, unavailable: impl Fn(PageId) -> bool) -> Vec<Tr
         })
         .collect()
 }
-
-/// Whether `ops` could change the Pages tree (design 019 §9): pages added, removed, renamed or
-/// moved, a page's title, number or folder changed in place (`ModifyPage`), folder ops. Every other
-/// op, and a `ModifyPage` of anything else, changes nothing there.
-pub fn tree_touched(ops: &[Op]) -> bool {
-    ops.iter().any(|op| match op {
-        Op::AddPage { .. } | Op::RemovePage { .. } | Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => true,
-        Op::ModifyPage { before, after, .. } => before.title != after.title || before.number != after.number || before.folder != after.folder,
-        _ => false,
-    })
-}

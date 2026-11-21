@@ -81,7 +81,7 @@ impl Command for XrefsParams {
             Some(n) => usize::try_from(n).map_err(|_| crate::cmd::err("`after` must be a number"))?,
         };
         let (component, aid, cable, page) = (self.component, self.aid, self.cable, self.page);
-        on_any_page(s, |p, _| xref::xrefs_json(p.ledger.document(), &p.xref, component, aid, cable, page, limit, after))
+        on_any_page(s, |p, _| xref::xrefs_json(p.ledger.document(), p.xref(), component, aid, cable, page, limit, after))
     }
 }
 
@@ -115,7 +115,7 @@ impl Command for RefgotoParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let (uid, jump, opened) = on_any_page(s, |p, pg| {
             let ring = p.goto_ring.map(|(page, at, _)| (page, at));
-            let jump = rules::goto(p.ledger.document(), &p.xref, self.source, self.target, ring)?;
+            let jump = rules::goto(p.ledger.document(), p.xref(), self.source, self.target, ring)?;
             let opened = p.pages.get(&jump.page).and_then(|v| v.uid).is_none();
             let uid = p.open_page(pg, jump.page).map_err(CmdError::refused)?;
             // The go-to ring (display only, until the next change), as the Checks tab's.

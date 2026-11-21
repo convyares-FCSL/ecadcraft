@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 use cadcraft_engine::doc::EntityKind;
 use ecad_cadcraft::frame::Part;
 use ecad_cadcraft::generated;
-use ecad_cadcraft::outputs::Outputs;
+use ecad_cadcraft::outputs::kept::Outputs;
 use ecad_cadcraft::strip_page::{self, StripPages};
 use ecad_model::{CableId, DeviceId, PageId, TerminalId};
 use serde_json::{Value, json};
@@ -187,8 +187,8 @@ fn a_long_strip_runs_onto_a_second_sheet() {
     let page = strip_page(&mut g);
     let o = outputs(&mut g.h);
     let doc = g.h.doc();
-    assert_eq!(generated::sheets(&doc, page, Some(&o)), 2);
-    let before = generated::book_sheets(&doc, Some(&o));
+    assert_eq!(generated::sheets_of(&doc, page, Some(&o)), 2);
+    let before = generated::book_sheets_of(&doc, Some(&o));
     assert_eq!(before, doc.page_order.len() + 1, "Total counts both sheets");
     let p = parts(&mut g.h, page);
     // `<page title>: <tag> <description> (i/n)` (design 046 §6.3).
@@ -335,7 +335,7 @@ fn empty_and_hostile_states_draw_without_crashing() {
     g.h.run("setprop", json!({"component": g.x1.hex(), "key": "terminals", "value": "999"})).unwrap();
     let page = strip_page(&mut g);
     let o = outputs(&mut g.h);
-    let n = generated::sheets(&g.h.doc(), page, Some(&o));
+    let n = generated::sheets_of(&g.h.doc(), page, Some(&o));
     assert!((20..=40).contains(&n), "999 positions at about 40 a sheet: {n}");
     let _ = parts(&mut g.h, page);
     // The page's `strip` names a device that is then deleted.
@@ -366,7 +366,7 @@ fn a_style_switch_moves_the_total_on_the_shown_page() {
     g.h.activate(g.schematic);
     let total = |h: &mut H| {
         let o = outputs(h);
-        generated::book_sheets(&h.doc(), Some(&o))
+        generated::book_sheets_of(&h.doc(), Some(&o))
     };
     let before = total(&mut g.h);
     let (n, _) = counted(&mut g.h, "setdefault", json!({"key": "terminal.plan.style", "level": "project", "value": "graphic"}));

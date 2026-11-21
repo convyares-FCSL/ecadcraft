@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use crate::common::{H, id};
 
 use cadcraft_engine::Session;
-use ecad_cadcraft::outputs::{BomView, Group, Outputs};
+use ecad_cadcraft::outputs::{BomView, Group, kept::Outputs};
 use ecad_cadcraft::{Persistence, ProjectHandle};
 use ecad_model::DeviceId;
 use serde_json::{Value, json};
@@ -65,7 +65,7 @@ fn checks(h: &mut H, kind: &str) -> Vec<Value> {
 fn same_as_built(h: &mut H) {
     let (kept, built) = h.cfg(|p| {
         let kept = p.outputs().clone();
-        (kept, Outputs::build(p.ledger.document()))
+        (kept, Outputs::build_with(p.ledger.document(), &ecad_cadcraft::text_style::EngineMetrics))
     });
     for article in [false, true] {
         for nested in [false, true] {

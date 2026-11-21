@@ -144,7 +144,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
             doc,
             c,
             n,
-            p.outputs.as_ref().and_then(|o| o.strips.get(c)).and_then(|d| d.acc.links.iter().find(|l| l.n == n)).map(|l| l.bars),
+            p.kept_outputs().and_then(|o| o.strips.get(c)).and_then(|d| d.acc.links.iter().find(|l| l.n == n)).map(|l| l.bars),
         ));
         return v;
     }
@@ -193,10 +193,10 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         if let Some(r) = k.symbol.and_then(|s| doc.representations.get(&s)) {
             v.deps.insert(ObjectRef::Page(r.page));
         }
-        v.sections.push(device_section(doc, p.outputs.as_ref().map(|o| &o.plc), &k.devices, k.symbol));
+        v.sections.push(device_section(doc, p.kept_outputs().map(|o| &o.plc), &k.devices, k.symbol));
     } else if !k.boxes.is_empty() {
         // Design 072 §6.2: an aid has no `ObjectRef`, so an aid op rebuilds the view
-        // (`ecad_electrical::props::touched`). Devices inside and codes: its page and the list.
+        // (`ecad_electrical::derived::props`). Devices inside and codes: its page and the list.
         v.deps.insert(ObjectRef::Project);
         for b in &k.boxes {
             v.deps.extend(doc.representations_of(Subject::Aid(*b)).map(|(_, r)| ObjectRef::Page(r.page)));
@@ -214,7 +214,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         }
     } else if !k.aids.is_empty() {
         // Design 072 §6.2: an aid has no `ObjectRef`, so an aid op rebuilds the view
-        // (`ecad_electrical::props::touched`); brief 049: the Other ends row names its partners'
+        // (`ecad_electrical::derived::props`); brief 049: the Other ends row names its partners'
         // places, on their pages.
         for a in &k.aids {
             let partners = crate::continuations::name_of(doc, *a).map(|n| doc.continuations_named(&n)).unwrap_or_default();

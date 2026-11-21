@@ -408,89 +408,161 @@ pub fn structure_codes(doc: &Document) -> (Vec<String>, Vec<String>) {
 }
 
 /// Whether committed `ops` (now in `doc`) change the cover through anything but the wire
-/// categories in use ([`Uses`] keeps those): the heading, customer, site and notes, the revisions,
-/// a block toggle; a definition's first copy placed or last removed (counting the copies the
-/// transaction adds, so several new copies at once are seen), a definition in use redrawn or
-/// renamed; the first cable or the last; a continuation; a stored function or location, or an
-/// entry of the project's list (052), while the structure codes block is on (design 054 §10.2).
+/// categories in use ([`Uses`] keeps those): [`CoverNote`] over their effects.
 pub fn touches(doc: &Document, ops: &[Op]) -> bool {
-    use std::collections::BTreeMap;
-    // Copies of each definition the transaction adds and removes.
-    let mut added: BTreeMap<DefinitionId, usize> = BTreeMap::new();
-    let mut removed: BTreeSet<DefinitionId> = BTreeSet::new();
-    for op in ops {
-        match op {
-            Op::AddItem { item, .. } => {
-                if let ItemKind::Symbol(s) = &item.kind {
-                    *added.entry(s.definition).or_default() += 1;
-                }
-            }
-            Op::RemoveItem { item, .. } => {
-                if let ItemKind::Symbol(s) = &item.kind {
-                    removed.insert(s.definition);
-                }
-            }
-            Op::ModifyItem { before, after, .. } => {
-                if let (ItemKind::Symbol(a), ItemKind::Symbol(b)) = (&before.kind, &after.kind)
-                    && a.definition != b.definition
-                {
-                    removed.insert(a.definition);
-                    *added.entry(b.definition).or_default() += 1;
-                }
-            }
-            _ => {}
-        }
+    let mut n = CoverNote::default();
+    for e in &ecad_model::effect::Effects::of(ops) {
+        n.note(doc, e);
     }
-    // A definition is new to the legend when every copy it has came in this transaction, and
-    // gone when it has none left.
-    if added.iter().any(|(d, n)| doc.items_using(*d).len() <= *n) || removed.iter().any(|d| doc.items_using(*d).is_empty()) {
-        return true;
+    n.changed(doc)
+}
+
+/// What a transaction's effects change on the cover through anything but the wire categories in
+/// use ([`Uses`] keeps those), gathered effect by effect on the document after them
+/// ([`CoverNote::note`]) and read once at the end ([`CoverNote::changed`]): the heading, customer,
+/// site and notes, the revisions, a block toggle; a definition's first copy placed or last removed
+/// (counting the copies the transaction adds, so several new copies at once are seen), a
+/// definition in use redrawn or renamed; the first cable or the last; a continuation; a stored
+/// function or location, or an entry of the project's list (052), while the structure codes block
+/// is on (design 054 §10.2).
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct CoverNote {
+    /// Copies of each definition the transaction adds.
+    added: std::collections::BTreeMap<DefinitionId, usize>,
+    /// Definitions a copy left.
+    removed: BTreeSet<DefinitionId>,
+    /// An effect changed the cover on its own.
+    changed: bool,
+}
+
+impl CoverNote {
+    /// Note `effect`, read in `doc` after the transaction.
+    pub fn note(&mut self, doc: &Document, effect: &ecad_model::effect::Effect<'_>) {
+        use ecad_model::effect::Effect;
+        let codes_on = || Block::StructureCodes.on(doc);
+        let symbol = |i: &Option<&ecad_model::Item>| match i.map(|i| &i.kind) {
+            Some(ItemKind::Symbol(s)) => Some(s.definition),
+            _ => None,
+        };
+        let changed = match effect {
+            Effect::Item { before, after, .. } => {
+                match (before, after, symbol(before), symbol(after)) {
+                    (None, Some(_), _, Some(d)) => *self.added.entry(d).or_default() += 1,
+                    (Some(_), None, Some(d), _) => {
+                        self.removed.insert(d);
+                    }
+                    (Some(_), Some(_), Some(a), Some(b)) if a != b => {
+                        self.removed.insert(a);
+                        *self.added.entry(b).or_default() += 1;
+                    }
+                    _ => {}
+                }
+                false
+            }
+            Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => {
+                let key = key.raw;
+                matches!(key, WIRE_ROWS_KEY | LEGEND_ROWS_KEY)
+                    || key.starts_with("front.cover.")
+                    || key == crate::revisions::COLUMNS_KEY
+                    || key == crate::revisions::PENDING_KEY
+                    || (codes_on() && crate::designations::Aspect::of_property(key).is_some())
+            }
+            Effect::Version { .. } => true,
+            // A text style's size changes the cover's texts; a wire category's name, colour or
+            // cross-section its legend line.
+            Effect::Style { catalogue, .. } => *catalogue == ecad_model::StyleCatalogue::Text || *catalogue == ecad_model::StyleCatalogue::Wire,
+            // A definition in use redrawn or renamed (048's Edit symbol), or a device re-pointed.
+            Effect::Definition { id, .. } => !doc.items_using(*id).is_empty(),
+            Effect::DeviceDefinition { .. } => true,
+            Effect::Cable { before: None, after: Some(_), .. } => doc.cables.len() == 1,
+            Effect::Cable { before: Some(_), after: None, .. } => doc.cables.is_empty(),
+            Effect::Prop { object: ObjectRef::Page(_) | ObjectRef::Device(_), key, .. } => {
+                codes_on() && crate::designations::Aspect::of_property(key.raw).is_some()
+            }
+            Effect::Device { before: Some(b), after: Some(a), .. } => codes_on() && (b.location != a.location || b.function != a.function),
+            Effect::Aid { before: Some(a), after: None, .. } | Effect::Aid { before: None, after: Some(a), .. } => {
+                ecad_model::connectivity::continuation_key(a).is_some()
+            }
+            // Design 072 §5.3: the revision rows, or a code the cover shows.
+            Effect::Project { before, after } => {
+                before.revisions != after.revisions
+                    || before.info != after.info
+                    || (codes_on() && crate::designations::Aspect::ALL.into_iter().any(|a| crate::designations::shown_changed(before, after, a)))
+            }
+            Effect::Page { before: Some(b), after: Some(a), index_before: None, index_after: None, .. } => {
+                let ch = b.change(a);
+                codes_on() && (ch.location || ch.function)
+            }
+            _ => false,
+        };
+        self.changed |= changed;
     }
-    let codes_on = Block::StructureCodes.on(doc);
-    ops.iter().any(|op| match op {
-        Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => {
-            matches!(key.as_str(), WIRE_ROWS_KEY | LEGEND_ROWS_KEY)
-                || key.starts_with("front.cover.")
-                || key == crate::revisions::COLUMNS_KEY
-                || key == crate::revisions::PENDING_KEY
-                || (codes_on && crate::designations::Aspect::of_property(key).is_some())
-        }
-        Op::NameVersion { .. } | Op::UnnameVersion { .. } => true,
-        // A text style's size changes the cover's texts; a wire category's name, colour or
-        // cross-section its legend line.
-        Op::SetStyle { catalogue, .. } => *catalogue == ecad_model::StyleCatalogue::Text || *catalogue == ecad_model::StyleCatalogue::Wire,
-        // A definition in use redrawn or renamed (048's Edit symbol), or a device re-pointed.
-        Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => !doc.items_using(*id).is_empty(),
-        Op::SetDeviceDefinition { .. } => true,
-        Op::CreateCable { .. } => doc.cables.len() == 1,
-        Op::DeleteCable { .. } => doc.cables.is_empty(),
-        Op::SetProperty { object: ObjectRef::Page(_) | ObjectRef::Device(_), key, .. } => {
-            codes_on && crate::designations::Aspect::of_property(key).is_some()
-        }
-        Op::ModifyDevice { before, after, .. } => codes_on && (before.location != after.location || before.function != after.function),
-        // Design 072 §5.3: the revision rows, or a code the cover shows.
-        Op::ModifyProject { before, after } => {
-            before.revisions != after.revisions
-                || before.info != after.info
-                || (codes_on && crate::designations::Aspect::ALL.into_iter().any(|a| crate::designations::shown_changed(before, after, a)))
-        }
-        Op::ModifyPage { before, after, .. } => {
-            let ch = before.change(after);
-            codes_on && (ch.location || ch.function)
-        }
-        Op::CreateAid { aid, .. } | Op::DeleteAid { aid, .. } => ecad_model::connectivity::continuation_key(aid).is_some(),
-        _ => false,
-    })
+
+    /// Whether the noted effects change the cover, read in `doc` after them. A definition is new
+    /// to the legend when every copy it has came in this transaction, and gone when it has none
+    /// left.
+    pub fn changed(&self, doc: &Document) -> bool {
+        self.changed || self.added.iter().any(|(d, n)| doc.items_using(*d).len() <= *n) || self.removed.iter().any(|d| doc.items_using(*d).is_empty())
+    }
 }
 
 /// The wire categories in use (design 054 §10.1): each conductor's category, and how many
 /// conductors each category has. Built once, on the cover's first show; then [`Uses::update`]
 /// re-reads only the conductors of the nets a transaction touched, and says whether a category's
 /// count crossed zero (the only change the wire-colour legend shows).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Uses {
     of: std::collections::BTreeMap<ecad_model::WireId, Option<StyleRef>>,
     counts: std::collections::BTreeMap<StyleRef, usize>,
+}
+
+/// What a transaction's effects may change in [`Uses`], gathered effect by effect on the document
+/// after them ([`UsesNote::note`]): every conductor again (`wide`: a wire category record, the
+/// potentials, the project's category choice, a continuation made, removed or renamed), or the conductors
+/// the effects name, the ones at the connection points of a device whose potential changed, and
+/// the conductors removed.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct UsesNote {
+    wide: bool,
+    seeds: BTreeSet<ecad_model::WireId>,
+    gone: BTreeSet<ecad_model::WireId>,
+}
+
+impl UsesNote {
+    /// Note `effect`, read in `doc` after the transaction.
+    pub fn note(&mut self, doc: &Document, effect: &ecad_model::effect::Effect<'_>) {
+        use ecad_model::effect::Effect;
+        match effect {
+            Effect::Style { catalogue, .. } if *catalogue == ecad_model::StyleCatalogue::Wire => self.wide = true,
+            Effect::Settings { before, after } if before.wiring.potentials != after.wiring.potentials => self.wide = true,
+            Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key.raw == crate::defaults::styles::WIRE_CATEGORY.key => {
+                self.wide = true;
+            }
+            Effect::Aid { before: Some(a), after: None, .. } | Effect::Aid { before: None, after: Some(a), .. }
+                if ecad_model::connectivity::continuation_key(a).is_some() =>
+            {
+                self.wide = true;
+            }
+            // A continuation renamed joins or splits nets.
+            Effect::Aid { before: Some(b), after: Some(a), .. }
+                if ecad_model::connectivity::continuation_key(b) != ecad_model::connectivity::continuation_key(a) =>
+            {
+                self.wide = true;
+            }
+            Effect::Wire { id, after: Some(_), .. } | Effect::Prop { object: ObjectRef::Wire(id), .. } => {
+                self.seeds.insert(*id);
+            }
+            Effect::Wire { id, after: None, .. } => {
+                self.gone.insert(*id);
+            }
+            Effect::Prop { object: ObjectRef::Device(c), key, .. } if key.raw == ecad_model::connectivity::POTENTIAL => {
+                for (t, _) in doc.terminals_of(*c) {
+                    self.seeds.extend(doc.ends_at(t).into_iter().map(|(c, _)| c));
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 impl Uses {
@@ -528,50 +600,25 @@ impl Uses {
         self.counts.keys()
     }
 
-    /// Follow committed `ops` (now in `doc`). Returns whether the set of categories in use
-    /// changed. A change of a category's look or of the potentials is not this map's (the
-    /// cover's `touches` and a full rebuild handle those).
+    /// Follow committed `ops` (now in `doc`): [`UsesNote`] over their effects, then
+    /// [`Uses::apply`].
     pub fn update(&mut self, doc: &Document, ops: &[Op]) -> bool {
-        let wide = ops.iter().any(|op| match op {
-            Op::SetStyle { catalogue, .. } => *catalogue == ecad_model::StyleCatalogue::Wire,
-            Op::SetProjectSettings { before, after } => before.wiring.potentials != after.wiring.potentials,
-            Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } => key == crate::defaults::styles::WIRE_CATEGORY.key,
-            Op::CreateAid { aid, .. } | Op::DeleteAid { aid, .. } => ecad_model::connectivity::continuation_key(aid).is_some(),
-            // A continuation renamed joins or splits nets.
-            Op::ModifyAid { before, after, .. } => {
-                ecad_model::connectivity::continuation_key(before) != ecad_model::connectivity::continuation_key(after)
-            }
-            _ => false,
-        });
+        let mut n = UsesNote::default();
+        for e in &ecad_model::effect::Effects::of(ops) {
+            n.note(doc, e);
+        }
+        self.apply(doc, n)
+    }
+
+    /// Follow a transaction's noted effects (now in `doc`). Returns whether the set of categories
+    /// in use changed. A change of a category's look or of the potentials is not this map's (the
+    /// cover's [`CoverNote`] and a full rebuild handle those).
+    pub fn apply(&mut self, doc: &Document, note: UsesNote) -> bool {
+        let UsesNote { wide, seeds, gone } = note;
         if wide {
             let before: BTreeSet<StyleRef> = self.counts.keys().cloned().collect();
             *self = Uses::build(doc);
             return before != self.counts.keys().cloned().collect::<BTreeSet<_>>();
-        }
-        // The conductors whose category may have changed: those the ops name, the ones at the
-        // terminals an end left or reached, and every conductor of their nets now.
-        let mut seeds: BTreeSet<ecad_model::WireId> = BTreeSet::new();
-        let mut gone: BTreeSet<ecad_model::WireId> = BTreeSet::new();
-        let at = |t: Option<ecad_model::TerminalId>, s: &mut BTreeSet<ecad_model::WireId>| {
-            if let Some(t) = t {
-                s.extend(doc.ends_at(t).into_iter().map(|(c, _)| c));
-            }
-        };
-        for op in ops {
-            match op {
-                Op::CreateWire { id, .. } | Op::ModifyWire { id, .. } | Op::SetProperty { object: ObjectRef::Wire(id), .. } => {
-                    seeds.insert(*id);
-                }
-                Op::DeleteWire { id, .. } => {
-                    gone.insert(*id);
-                }
-                Op::SetProperty { object: ObjectRef::Device(c), key, .. } if key == ecad_model::connectivity::POTENTIAL => {
-                    for (t, _) in doc.terminals_of(*c) {
-                        at(Some(t), &mut seeds);
-                    }
-                }
-                _ => {}
-            }
         }
         if seeds.is_empty() && gone.is_empty() {
             return false;

@@ -15,7 +15,8 @@ use std::time::Instant;
 
 use cadcraft_engine::Session;
 use ecad_cadcraft::ProjectHandle;
-use ecad_cadcraft::outputs::{BomView, Group, Outputs};
+use ecad_cadcraft::outputs::kept::Outputs;
+use ecad_cadcraft::outputs::{BomView, Group};
 use ecad_model::{DeviceId, PageId};
 use serde_json::json;
 
@@ -86,7 +87,7 @@ pub fn measure(s: &mut Session, project: &ProjectHandle, devices: &[DeviceId], b
     }
     out.bomart_ms = median(&mut v);
     run(s, "openpage", json!({"page": bom_page.hex()}))?;
-    out.sheets = project.read(s, |p, _| p.outputs.as_ref().map_or(0, Outputs::bom_sheets))?;
+    out.sheets = project.read(s, |p, _| p.kept_outputs().map_or(0, Outputs::bom_sheets))?;
     let mut v = Vec::new();
     for i in 0..runs {
         let value = ecad_model::words::flag_word(i % 2 == 0);
@@ -96,7 +97,8 @@ pub fn measure(s: &mut Session, project: &ProjectHandle, devices: &[DeviceId], b
     // Verify mode: the kept model against a rebuild, every layout.
     let same = project.configure(s, |p| {
         let kept = p.outputs().clone();
-        let built = Outputs::build(p.ledger.document());
+        let detached = p.derived().detached(p.ledger.document());
+        let built = detached.outputs();
         [false, true].iter().all(|a| {
             [false, true].iter().all(|n| {
                 let v = BomView { article: *a, nested: *n };

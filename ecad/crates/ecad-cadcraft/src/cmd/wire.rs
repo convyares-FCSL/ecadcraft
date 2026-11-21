@@ -471,7 +471,7 @@ impl Command for ChecksParams {
             // The project's kept report models (built on first use, then kept from each change).
             p.outputs();
             let doc = p.ledger.document();
-            let outputs = p.outputs.as_ref().ok_or(CmdError::refused("the report models could not be built"))?;
+            let outputs = p.kept_outputs().ok_or(CmdError::refused("the report models could not be built"))?;
             let rows: Vec<_> = crate::checks::all_with(doc, p.tolerance, outputs)
                 .into_iter()
                 .filter(|c| kinds.as_ref().is_none_or(|k| k.contains(&c.kind)))

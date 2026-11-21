@@ -22,7 +22,7 @@ use crate::accessories::Acc;
 use crate::convert::kind_for_primitive;
 use crate::frame::{FrameInput, Part, THIN_WEIGHT, TextLook};
 use crate::generated::{LAYER, MISSING};
-use crate::outputs::Outputs;
+use crate::outputs::kept::Outputs;
 use crate::strips::{SideCell, StripData, TermRow};
 use crate::text_style::{Look, TextKind};
 

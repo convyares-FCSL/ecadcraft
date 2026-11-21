@@ -172,7 +172,7 @@ fn review_3_the_io_sheet_count_comes_from_kept_row_counts() {
         h.run("setprop", json!({"component": di.hex(), "key": "plc.channels", "value": n})).unwrap();
         let (kept, laid) = h.cfg(|p| {
             p.outputs();
-            let o = p.outputs.as_ref().unwrap();
+            let o = p.kept_outputs().unwrap();
             // Brief 051 (design 051 §4.1): the packing of the rows as made.
             let d = p.ledger.document();
             let made: Vec<usize> =

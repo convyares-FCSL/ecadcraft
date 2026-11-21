@@ -1,12 +1,13 @@
 //! The kept report models (see [`super`]'s update map). The kept PLC model's rules measure text
 //! (an address wider than its cell), so building and updating take the sheet font metrics,
-//! [`TextMetrics`]; ecad-cadcraft's `crate::outputs::Outputs` wraps this with today's
-//! signatures, passing CADCraft's fonts.
+//! [`TextMetrics`]; the project keeps them in its `derived::OutputsView`, which passes the
+//! engine's metrics.
 
+use ecad_model::effect::Effect;
 use ecad_model::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::{CableId, DeviceId, Document, End, LoosePartId, ObjectRef, Op, PageId, Pt, Subject, TerminalId, WireId};
+use ecad_model::{CableId, DeviceId, Document, End, LoosePartId, ObjectRef, PageId, Pt, Subject, TerminalId, WireId};
 
 use super::*;
 use crate::text_style::fonts::TextMetrics;
@@ -111,6 +112,35 @@ pub struct Outputs {
     pub numbers_moved: bool,
 }
 
+/// What one commit's effects name for the report models, noted effect by effect
+/// ([`Outputs::note_before`], [`Outputs::note_after`]) and recomputed by [`Outputs::update`].
+#[derive(Debug, Clone, Default)]
+pub struct Noted {
+    /// The rows: noted on the state before and on the state after.
+    rows: Scope,
+    /// Wires named only on the state after, added after the net mates ([`Scope::note_after`]).
+    late: Scope,
+    /// The PLC model's touch.
+    plc: crate::plc::kept::Touch,
+    /// What the strip pages' indexes are read for.
+    strips: crate::strips::pages::Named,
+    /// A page number or a sheet count can move ([`Outputs::moves_page_number`]).
+    numbers: bool,
+    /// Pages added, removed or moved ([`Outputs::placed_page`]).
+    placed: Vec<PageId>,
+    /// The pages whose book position changes (the strips on them), read on the state after.
+    positions: ecad_model::book::PositionsNoted,
+}
+
+/// [`Noted`] without the strip pages' names, for the row update.
+struct Rows {
+    scope: Scope,
+    late: Scope,
+    plc: crate::plc::kept::Touch,
+    placed: Vec<PageId>,
+    positions: ecad_model::book::PositionsNoted,
+}
+
 impl Outputs {
     /// Every model, from scratch (open, reload, first show), with text measured in `m`.
     pub fn build_with(doc: &Document, m: &dyn TextMetrics) -> Outputs {
@@ -163,25 +193,71 @@ impl Outputs {
         self.generated.iter().map(|p| (*p, crate::generated::sheets_of(doc, *p, Some(self)))).collect()
     }
 
-    /// Whether `ops` can move a page number or a contents or revision list sheet count: pages
+    /// Whether `effect` can move a page number or a contents or revision list sheet count: a page
     /// added, removed or renumbered, a page's kind, or an issue.
-    fn moves_page_numbers(ops: &[Op]) -> bool {
-        ops.iter().any(|op| match op {
-            Op::AddPage { .. } | Op::RemovePage { .. } => true,
+    pub fn moves_page_number(effect: &ecad_model::effect::Effect<'_>) -> bool {
+        use ecad_model::effect::Effect;
+        let style = crate::defaults::strip_pages::STYLE.key;
+        match effect {
             // Brief 046 (review): a page's style or sheet changes its sheet count on the document
             // alone, so the count before cannot be compared.
-            Op::ModifyPage { before, after, .. } => {
-                before.number != after.number
-                    || before.sheet != after.sheet
-                    || before.display.get(crate::defaults::strip_pages::STYLE.key) != after.display.get(crate::defaults::strip_pages::STYLE.key)
+            Effect::Page { before: Some(before), after: Some(after), index_before: None, index_after: None, .. } => {
+                before.number != after.number || before.sheet != after.sheet || before.display.get(style) != after.display.get(style)
             }
-            Op::SetProperty { object: ObjectRef::Page(_), key, .. } => key == crate::defaults::strip_pages::STYLE.key,
-            Op::SetProperty { object: ObjectRef::Project, key, .. } => key == crate::defaults::strip_pages::STYLE.key,
-            Op::ModifyProject { before, after } => crate::revisions::issue_changed(before, after),
-            Op::SetProperty { object: ObjectRef::Standard, key, .. } => key == crate::defaults::strip_pages::STYLE.key,
-            Op::SetProjectSettings { before, after } => before.sheet != after.sheet,
-            _ => false,
-        })
+            // Added, removed, or both (a move).
+            Effect::Page { .. } => true,
+            Effect::Prop { object: ObjectRef::Page(_) | ObjectRef::Project | ObjectRef::Standard, key, .. } => key.raw == style,
+            Effect::Project { before, after } => crate::revisions::issue_changed(before, after),
+            Effect::Settings { before, after } => before.sheet != after.sheet,
+            Effect::Prop { .. }
+            | Effect::Layer { .. }
+            | Effect::Item { .. }
+            | Effect::Device { .. }
+            | Effect::DeviceDefinition { .. }
+            | Effect::Terminal { .. }
+            | Effect::Rep { .. }
+            | Effect::Wire { .. }
+            | Effect::Route { .. }
+            | Effect::Cable { .. }
+            | Effect::Definition { .. }
+            | Effect::Version { .. }
+            | Effect::Folder { .. }
+            | Effect::Style { .. }
+            | Effect::Standard { .. }
+            | Effect::Aid { .. }
+            | Effect::LoosePart { .. }
+            | Effect::DeviceLink { .. } => false,
+        }
+    }
+
+    /// The page `effect` adds, removes or moves (a page changed in place states no index): whether
+    /// it is drawn from these models is read again on the state after.
+    pub fn placed_page(effect: &ecad_model::effect::Effect<'_>) -> Option<PageId> {
+        use ecad_model::effect::Effect;
+        match effect {
+            Effect::Page { id, index_before, index_after, .. } if index_before.is_some() || index_after.is_some() => Some(*id),
+            Effect::Page { .. }
+            | Effect::Layer { .. }
+            | Effect::Item { .. }
+            | Effect::Device { .. }
+            | Effect::DeviceDefinition { .. }
+            | Effect::Terminal { .. }
+            | Effect::Rep { .. }
+            | Effect::Wire { .. }
+            | Effect::Route { .. }
+            | Effect::Cable { .. }
+            | Effect::Prop { .. }
+            | Effect::Definition { .. }
+            | Effect::Settings { .. }
+            | Effect::Version { .. }
+            | Effect::Folder { .. }
+            | Effect::Style { .. }
+            | Effect::Standard { .. }
+            | Effect::Project { .. }
+            | Effect::Aid { .. }
+            | Effect::LoosePart { .. }
+            | Effect::DeviceLink { .. } => None,
+        }
     }
 
     /// The pages drawn from these models.
@@ -225,49 +301,62 @@ impl Outputs {
         self.strips.sorted()
     }
 
-    /// What `ops`, about to be committed on `before`, could change. Pair with `Outputs::update`.
-    pub fn scope(&self, before: &Document, ops: &[Op]) -> Scope {
-        let mut s = Scope::default();
-        s.collect(before, ops);
-        s
+    /// Before phase: note what one effect, about to be committed on `before`, names. Pair with
+    /// [`Outputs::close_before`], [`Outputs::note_after`] and [`Outputs::update`].
+    pub fn note_before(&self, before: &Document, effect: &Effect<'_>, n: &mut Noted) {
+        n.rows.note(before, effect);
     }
 
-    /// Recompute the rows in `scope` on `doc` (the state after), adding what `ops` (the whole
-    /// committed transaction) name in this state.
-    pub fn update_with(&mut self, doc: &Document, ops: &[Op], scope: Scope, m: &dyn TextMetrics) {
-        let numbers = Self::moves_page_numbers(ops);
+    /// The end of the Before phase: the noted wires' net mates and the users of renamed entries on
+    /// `before`.
+    pub fn close_before(&self, before: &Document, n: &mut Noted) {
+        n.rows.close(before);
+    }
+
+    /// After phase: note what one effect of the transaction just committed names on `after`,
+    /// reading the models as they are before the update.
+    pub fn note_after(&self, after: &Document, effect: &Effect<'_>, n: &mut Noted) {
+        n.rows.note(after, effect);
+        n.late.note_after(after, effect);
+        self.plc.note(after, effect, &mut n.plc);
+        n.strips.note(effect);
+        n.numbers |= Self::moves_page_number(effect);
+        n.placed.extend(Self::placed_page(effect));
+        n.positions.note(after, effect);
+    }
+
+    /// Recompute what `n` names on `doc` (the state after), with text measured in `m`.
+    pub fn update(&mut self, doc: &Document, n: Noted, m: &dyn TextMetrics) {
+        let Noted { rows, late, plc, strips, numbers, placed, positions } = n;
         self.numbers_moved = numbers;
         let before = self.generated_sheets(doc);
-        self.update_rows(doc, ops, scope, m);
+        self.update_rows(doc, Rows { scope: rows, late, plc, placed, positions }, m);
         // Brief 046: right after the strips (design 046 §9), also when no row was in scope.
-        self.strip_pages.update(doc, ops, &self.strips);
+        self.strip_pages.update(doc, strips, &self.strips);
         if numbers || self.generated_sheets(doc) != before {
             self.refresh_continuation(doc);
             self.revision += 1;
         }
     }
 
-    fn update_rows(&mut self, doc: &Document, ops: &[Op], mut scope: Scope, m: &dyn TextMetrics) {
+    fn update_rows(&mut self, doc: &Document, rows: Rows, m: &dyn TextMetrics) {
+        let Rows { mut scope, late, plc, placed, positions } = rows;
         // What this update changes, for the generated pages that depend on it (brief 028).
         self.last_cables_changed = false;
         self.strips.last_changed.clear();
         // Brief 045: the PLC model follows its own update map (design 045 §11.1).
-        if self.plc.update_with(doc, ops, m) {
+        if self.plc.update_touched(doc, plc, m) {
             self.checks_changed += 1;
             self.revision += 1;
         }
-        for op in ops {
-            let p = match op {
-                Op::AddPage { id, .. } | Op::RemovePage { id, .. } => *id,
-                _ => continue,
-            };
+        for p in placed {
             if needs_outputs(doc, p) {
                 self.generated.insert(p);
             } else {
                 self.generated.remove(&p);
             }
         }
-        scope.collect(doc, ops);
+        scope.close(doc);
         if scope.is_empty() {
             return;
         }
@@ -291,21 +380,7 @@ impl Outputs {
             scope.loose.extend(self.from_project.iter().copied());
             scope.loose.extend(self.from_none.iter().copied());
         }
-        // Brief 036 (tester 036 j, o): a level's label, or a separator or level names a strip
-        // reads, change the wire rows ending on that strip's terminals (only the position named by
-        // a `term_label.<p>.<n>` key).
-        for op in ops {
-            let Op::SetProperty { object: ObjectRef::Device(c), key, .. } = op else { continue };
-            let position = key.strip_prefix(crate::terminal_types::LABEL_PREFIX).and_then(|r| r.rsplit_once('.')).map(|(p, _)| p);
-            if (position.is_none() && !crate::defaults::terminals::is_label_key(key)) || crate::strips::strip_of(doc, *c).is_none() {
-                continue;
-            }
-            for (t, x) in doc.terminals_of(*c) {
-                if position.is_none_or(|p| x.label.as_deref() == Some(p)) {
-                    scope.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
-                }
-            }
-        }
+        scope.wires.extend(late.wires);
         // Brief 044 (design 044 §11.1): a connector naming or description default reaches the
         // connectors inheriting it (their half rows); a naming key also their pins' wire rows.
         for k in &scope.connector_keys {
@@ -318,14 +393,6 @@ impl Outputs {
                     for (t, _) in doc.terminals_of(c) {
                         scope.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
                     }
-                }
-            }
-        }
-        for op in ops {
-            let Op::SetProperty { object: ObjectRef::Device(c), key, .. } = op else { continue };
-            if crate::defaults::connectors::is_naming_key(key) && crate::connectors::connector_of(doc, *c).is_some_and(|x| x.mating) {
-                for (t, _) in doc.terminals_of(*c) {
-                    scope.wires.extend(doc.ends_at(t).into_iter().map(|(w, _)| w));
                 }
             }
         }
@@ -377,7 +444,7 @@ impl Outputs {
         }
         // Brief 028: the strips these rows touch (design 028 §11.1).
         let mut pages = scope.route_pages.clone();
-        pages.extend(ecad_model::book::positions_changed(doc, ops));
+        pages.extend(positions.changed());
         let mut strips = std::mem::take(&mut self.strips);
         let which = strips.touched(
             doc,

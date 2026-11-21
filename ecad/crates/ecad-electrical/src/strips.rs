@@ -22,7 +22,7 @@
 //!   with its type's levels. Counts (`drawn`, `spare`) and BOM quantities are in positions.
 //!
 //! # Update map (design 028 §11.1)
-//! [`Strips`] lives inside `crate::outputs::Outputs` and is updated with it from the same
+//! [`Strips`] lives inside `crate::outputs::kept::Outputs` and is updated with it from the same
 //! [`crate::outputs::Scope`], after the device, wire and cable rows:
 //!
 //! | In scope (from the ops) | Recomputed |

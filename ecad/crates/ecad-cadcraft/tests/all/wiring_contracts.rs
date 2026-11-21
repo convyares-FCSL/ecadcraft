@@ -1,7 +1,8 @@
 //! Brief 022 acceptance (design 022 §15): nets on the page, labels, stable numbers, the Checks
 //! list and its incremental upkeep. Driven through the commands' JSON forms.
 
-use ecad_cadcraft::checks::{Checks, Fix, Kind};
+use ecad_cadcraft::checks::kept::Checks;
+use ecad_cadcraft::checks::{Fix, Kind};
 use ecad_cadcraft::wires::{self, LABEL_LAYER};
 use ecad_model::{Author, Document, ObjectRef, Op, PageId, WireId};
 use serde_json::{Value, json};
@@ -270,7 +271,7 @@ fn each_seeded_fault_appears_once_where_it_is() {
     let all = ecad_cadcraft::checks::all(&doc, 1e-6);
     let count = |k: Kind| all.iter().filter(|c| c.kind == k).count();
     let has = |k: Kind, o: Object| all.iter().any(|c| c.kind == k && c.object == o);
-    let listing = rows(&doc, &Checks::build(&doc, 1e-6));
+    let listing = rows(&doc, ecad_cadcraft::project::engine_views().checks(&doc, 1e-6));
     assert_eq!(count(Kind::OpenEnd), 2, "{listing:#?}");
     assert!(has(Kind::OpenEnd, Object::Route(open)) && has(Kind::OpenEnd, Object::Route(tee)));
     assert_eq!(count(Kind::LooseWire), 1, "{listing:#?}");
@@ -325,7 +326,7 @@ fn an_unknown_continuation_name_is_a_warning_never_a_refusal() {
         h.cfg(|p| {
             let doc = p.ledger.document().clone();
             let kept = p.checks().clone();
-            assert_eq!(rows(&doc, &kept), rows(&doc, &Checks::build(&doc, p.tolerance)));
+            assert_eq!(rows(&doc, &kept), rows(&doc, ecad_cadcraft::project::engine_views().checks(&doc, p.tolerance)));
             ecad_cadcraft::checks::all(&doc, p.tolerance).into_iter().filter(|c| c.kind == Kind::UnknownName).collect::<Vec<_>>()
         })
     };
@@ -376,7 +377,7 @@ fn the_kept_checks_list_follows_every_edit_and_equals_a_fresh_build() {
         let (kept, fresh) = h.cfg(|p| {
             let doc = p.ledger.document().clone();
             let kept = rows(&doc, p.checks());
-            (kept, rows(&doc, &Checks::build(&doc, p.tolerance)))
+            (kept, rows(&doc, ecad_cadcraft::project::engine_views().checks(&doc, p.tolerance)))
         });
         assert_eq!(kept, fresh, "after {step}");
     };

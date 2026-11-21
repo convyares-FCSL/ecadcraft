@@ -63,7 +63,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRatin
     // A protective device and its load-side pin.
     let found = project.configure(&mut s, |p| {
         let t = Instant::now();
-        let _ = ecad_cadcraft::checks::Checks::build(p.ledger.document(), p.tolerance);
+        let _ = ecad_cadcraft::project::engine_views().checks(p.ledger.document(), p.tolerance).len();
         let build = t.elapsed().as_secs_f64() * 1e3;
         let rated = p.checks().rating.results.len();
         let doc = p.ledger.document();

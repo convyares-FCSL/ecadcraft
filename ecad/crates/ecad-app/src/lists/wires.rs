@@ -7,7 +7,7 @@
 //! **Update map:** see [`super::report`]: the copy is taken again only when the report models'
 //! revision changed, and only while the tab is shown.
 
-use ecad_cadcraft::outputs::Outputs;
+use ecad_cadcraft::outputs::kept::Outputs;
 use ecad_ui::prim::Tone;
 use ecad_ui::table::{Cell, Changed, Column, ColumnId, Table, TableEvent, TableSource, Width};
 

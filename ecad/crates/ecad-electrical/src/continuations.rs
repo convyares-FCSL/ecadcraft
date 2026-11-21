@@ -513,39 +513,62 @@ pub fn shown_measured(doc: &Document, places: &mut Places<'_>, names: &BTreeSet<
 /// the state before and after the ops).
 pub fn names_named(doc: &Document, ops: &[Op]) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
+    for e in &ecad_model::effect::Effects::of(ops) {
+        names_named_by(doc, e, &mut out);
+    }
+    out
+}
+
+/// One effect of [`names_named`]: adds to `out` the continuation names `effect` could change the
+/// texts or runs of, looked up in `doc`.
+pub fn names_named_by(doc: &Document, effect: &ecad_model::effect::Effect<'_>, out: &mut BTreeSet<String>) {
+    use ecad_model::effect::Effect;
     let rep = |out: &mut BTreeSet<String>, r: &Representation| {
         if let Subject::Aid(a) = r.subject {
             out.extend(name_of(doc, a));
         }
     };
-    for op in ops {
-        match op {
-            Op::AddItem { id, .. } | Op::ModifyItem { id, .. } | Op::RemoveItem { id, .. } => {
-                if let Some((_, r)) = doc.representation_of_item(*id) {
-                    rep(&mut out, r);
-                }
+    match effect {
+        Effect::Item { id, .. } => {
+            if let Some((_, r)) = doc.representation_of_item(*id) {
+                rep(out, r);
             }
-            Op::LinkRepresentation { rep: r, .. } | Op::UnlinkRepresentation { rep: r, .. } => rep(&mut out, r),
-            Op::ModifyRepresentation { before, after, .. } => {
-                rep(&mut out, before);
-                rep(&mut out, after);
-            }
-            Op::CreateAid { aid, .. } | Op::DeleteAid { aid, .. } => out.extend(continuation_key(aid)),
-            Op::ModifyAid { before, after, .. } => {
-                out.extend(continuation_key(before));
-                out.extend(continuation_key(after));
-            }
-            Op::EmbedDefinition { id, .. } | Op::RemoveDefinition { id, .. } => {
-                for item in doc.items_using(*id) {
-                    if let Some((_, r)) = doc.representation_of_item(item) {
-                        rep(&mut out, r);
-                    }
-                }
-            }
-            _ => {}
         }
+        Effect::Rep { before, after, .. } => {
+            for r in before.iter().chain(after.iter()) {
+                rep(out, r);
+            }
+        }
+        Effect::Aid { before, after, .. } => {
+            for a in before.iter().chain(after.iter()) {
+                out.extend(continuation_key(a));
+            }
+        }
+        Effect::Definition { id, .. } => {
+            for item in doc.items_using(*id) {
+                if let Some((_, r)) = doc.representation_of_item(item) {
+                    rep(out, r);
+                }
+            }
+        }
+        Effect::Page { .. }
+        | Effect::Layer { .. }
+        | Effect::Device { .. }
+        | Effect::DeviceDefinition { .. }
+        | Effect::DeviceLink { .. }
+        | Effect::Terminal { .. }
+        | Effect::Wire { .. }
+        | Effect::Route { .. }
+        | Effect::Cable { .. }
+        | Effect::Prop { .. }
+        | Effect::Settings { .. }
+        | Effect::Version { .. }
+        | Effect::Folder { .. }
+        | Effect::Style { .. }
+        | Effect::Standard { .. }
+        | Effect::Project { .. }
+        | Effect::LoosePart { .. } => {}
     }
-    out
 }
 
 /// The names of the arrows on `page` (through the page index and the reference index).

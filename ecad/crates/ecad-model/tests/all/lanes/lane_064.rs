@@ -1,4 +1,9 @@
 //! Lane 064 (design 064 §10): the one classifier of ops, `Effects::of`, and `Touched` over it.
+//!
+//! # Frozen pre-R9 behaviour, test oracle only
+//! Every `old_*` function here is a frozen copy of code R9 replaced, kept only as a test oracle.
+//! It is not live legacy code and nothing outside this module calls it. Delete it when R9's
+//! step 10 matrix covers it; step 10 decides whether it stays.
 
 use ecad_model::effect::{Effect, EffectKind, Effects};
 use ecad_model::{ObjectRef, Op, Touched};

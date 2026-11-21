@@ -20,7 +20,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use ecad_cadcraft::outputs::Outputs;
+use ecad_cadcraft::outputs::kept::Outputs;
 use ecad_cadcraft::plc::iolist::{self, Row};
 use ecad_cadcraft::plc::overview::{self, Chip, Square, Tile, TileKind};
 use ecad_cadcraft::plc::signals;

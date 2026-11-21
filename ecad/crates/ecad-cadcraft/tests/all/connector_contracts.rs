@@ -415,7 +415,10 @@ fn half_row_groups_are_kept_not_regrouped() {
     assert_eq!(count(&mut h), n);
     let g1 = h.cfg(|p| p.outputs().half_groupings.load(std::sync::atomic::Ordering::Relaxed));
     assert_eq!(g0, g1, "an unrelated edit and the counts group no half rows");
-    let rebuilt = h.p(|p| ecad_cadcraft::outputs::Outputs::build(p.ledger.document()).bom_count(ecad_cadcraft::outputs::Group::Location));
+    let rebuilt = h.p(|p| {
+        ecad_cadcraft::outputs::kept::Outputs::build_with(p.ledger.document(), &ecad_cadcraft::text_style::EngineMetrics)
+            .bom_count(ecad_cadcraft::outputs::Group::Location)
+    });
     assert_eq!(count(&mut h), rebuilt);
 }
 
@@ -428,7 +431,7 @@ fn the_connector_index_is_kept_from_the_ops() {
     let b: DeviceId = id(&row(&mut h, json!({"at": [50, 150]})), "component");
     h.run("setprop", json!({"component": b.hex(), "key": "connector.side.socket", "value": "F"})).unwrap();
     let key = ecad_cadcraft::defaults::connectors::SIDE_SOCKET.key;
-    let inh = h.p(|p| p.connectors.inheriting(key));
+    let inh = h.p(|p| p.connectors().inheriting(key));
     assert!(inh.contains(&a) && !inh.contains(&b), "{inh:?}");
     h.wire_pp(&[(300.0, 300.0), (350.0, 300.0)]).unwrap();
     assert_eq!(connectors::index_work(), 0, "an unrelated edit recomputes no connector");
@@ -439,10 +442,10 @@ fn the_connector_index_is_kept_from_the_ops() {
     let d = h.doc();
     assert!(connectors::half_tag(&d, a, Side::Socket).ends_with(".B"));
     assert!(connectors::half_tag(&d, b, Side::Socket).ends_with(".F"));
-    let (kept, built) = h.p(|p| (p.connectors.clone(), connectors::Index::build(p.ledger.document())));
+    let (kept, built) = h.p(|p| (p.connectors().clone(), connectors::Index::build(p.ledger.document())));
     assert!(kept == built, "the kept index equals a rebuild");
     h.cmdline("u");
-    let (kept, built) = h.p(|p| (p.connectors.clone(), connectors::Index::build(p.ledger.document())));
+    let (kept, built) = h.p(|p| (p.connectors().clone(), connectors::Index::build(p.ledger.document())));
     assert!(kept == built, "also after undo");
 }
 

@@ -2,7 +2,7 @@
 //! frame's input read from the document, its text looks, the update map of what can change it, and
 //! fitting a value in its box. Drawing it is `frame`.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use ecad_model::book::Book;
 use ecad_model::sheet::{SheetSpec, unit_scale};
@@ -284,37 +284,40 @@ impl FrameInput {
     }
 }
 
-/// Whether `ops` can change the frame of `page`, whose frame
-/// last showed `shown` (design 019 §9, the frame and title block rows). Every op not listed
-/// changes nothing there.
+/// Whether `ops` can change the frame of `page`, whose frame last showed `shown`:
+/// [`touched_by`] on each of their effects.
 pub fn touches(ops: &[Op], page: PageId, shown: &FrameInput) -> bool {
-    // A rename or move is a RemovePage + AddPage pair of one page.
-    let removed: BTreeSet<PageId> = ops.iter().filter_map(|o| if let Op::RemovePage { id, .. } = o { Some(*id) } else { None }).collect();
-    let added: BTreeSet<PageId> = ops.iter().filter_map(|o| if let Op::AddPage { id, .. } = o { Some(*id) } else { None }).collect();
-    let pair = |id: &PageId| removed.contains(id) && added.contains(id);
-    ops.iter().any(|op| match op {
-        Op::SetProjectSettings { before, after } => before.sheet != after.sheet || before.length_unit != after.length_unit,
+    ecad_model::effect::Effects::of(ops).iter().any(|e| touched_by(e, page, shown))
+}
+
+/// Whether `effect` can change the frame of `page`, whose frame last showed `shown` (design 019
+/// §9, the frame and title block rows; design 064 §4.1, `FrameView`). Every effect not listed
+/// changes nothing there.
+pub fn touched_by(effect: &ecad_model::effect::Effect<'_>, page: PageId, shown: &FrameInput) -> bool {
+    use ecad_model::effect::Effect;
+    match effect {
+        Effect::DeviceLink { .. } => false,
+        Effect::Settings { before, after } => before.sheet != after.sheet || before.length_unit != after.length_unit,
         // Only what the title block shows: its fields, the defaults pages inherit, and issuing.
         // Brief 033 (design 033 §9.1): a text size or the font (lane T's `text.` keys).
-        Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if crate::text_style::is_reserved_key(key) => true,
+        Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if crate::text_style::is_reserved_key(key.raw) => true,
         // Brief 050a: the frame style choice, and any frame or text style record (the frame's
         // look and its texts' styles).
-        Op::SetProperty { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key == crate::defaults::styles::FRAME.key => true,
+        Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key.raw == crate::defaults::styles::FRAME.key => true,
         // Brief 054: a page type's sheet, frame, title block or zones.
-        Op::SetStyle { catalogue, .. } => {
+        Effect::Style { catalogue, .. } => {
             *catalogue == ecad_model::StyleCatalogue::Frame
                 || *catalogue == ecad_model::StyleCatalogue::Text
                 || *catalogue == ecad_model::StyleCatalogue::Page
         }
         // Review of #110, 2: switching one standard for another may change its frame records and
         // its `print.frame.style`.
-        Op::SetStandard { before, after } => before != after,
-        // Brief 052 (design 052 §8.2a, tester 052 finding 1): a rename in the project's list
-        // reaches the title block when it shows the entry's old code.
-        // Design 072 §5.3: an issue (the Rev box and the table), the project's default, or a code
-        // it shows renamed.
-        Op::ModifyProject { before, after } if crate::revisions::issue_changed(before, after) || before.info != after.info => true,
-        Op::ModifyProject { before, after } => crate::designations::Aspect::ALL.into_iter().any(|a| {
+        Effect::Standard { before, after } => before != after,
+        // Design 072 §5.3: an issue (the Rev box and the table), the project's info, the project's
+        // default, or a code the block shows renamed (brief 052, design 052 §8.2a, tester 052
+        // finding 1).
+        Effect::Project { before, after } if crate::revisions::issue_changed(before, after) || before.info != after.info => true,
+        Effect::Project { before, after } => crate::designations::Aspect::ALL.into_iter().any(|a| {
             let field = match a {
                 crate::designations::Aspect::Function => &shown.function,
                 crate::designations::Aspect::Location => &shown.location,
@@ -326,34 +329,36 @@ pub fn touches(ops: &[Op], page: PageId, shown: &FrameInput) -> bool {
                 })
         }),
         // Brief 055 (design 055 §10.1): a project key the block's fields read (its bound key
-        // set), the defaults pages inherit, and the revision keys; any other key redraws nothing.
-        Op::SetProperty { object: ObjectRef::Project, key, .. } => {
-            shown.project.contains_key(key.as_str())
-                // Brief 033 (design 033 §9.1).
-                || key == crate::revisions::COLUMNS_KEY
-                || key == crate::revisions::PENDING_KEY
+        // set), and the revision settings (brief 033, design 033 §9.1); any other key redraws
+        // nothing.
+        Effect::Prop { object: ObjectRef::Project, key, .. } => {
+            shown.project.contains_key(key.raw) || key.raw == crate::revisions::COLUMNS_KEY || key.raw == crate::revisions::PENDING_KEY
         }
-        Op::SetProperty { object: ObjectRef::Page(p), .. } => *p == page,
+        Effect::Prop { object: ObjectRef::Page(p), .. } => *p == page,
         // Design 072 §5.1: a page changed in place; a folder move changes the book order (Next,
         // the numbers of unnumbered pages), a number the Next box of the page before it.
-        Op::ModifyPage { id, before, after } => {
-            let ch = before.change(after);
+        Effect::Page { id, before: Some(b), after: Some(a), index_before: None, index_after: None } => {
+            let ch = b.change(a);
             *id == page || ch.folder || (ch.number && shown.next_page == Some(*id))
         }
-        // A page renamed in place changes only its own title box; a page moved changes the book
-        // order (Next, and the numbers of unnumbered pages).
-        Op::AddPage { id, index, .. } | Op::RemovePage { id, index, .. } if pair(id) => {
-            let moved = ops.iter().any(|o| match o {
-                Op::AddPage { id: a, index: i, .. } | Op::RemovePage { id: a, index: i, .. } => a == id && i != index,
-                _ => false,
-            });
-            *id == page || moved
-        }
-        Op::AddPage { .. } | Op::RemovePage { .. } => true,
-        Op::AddFolder { .. } | Op::RemoveFolder { .. } | Op::ModifyFolder { .. } => true,
-        Op::NameVersion { .. } | Op::UnnameVersion { .. } => true,
-        _ => false,
-    })
+        // A page removed and added again: renamed in place changes only its own title box; moved
+        // changes the book order (Next, and the numbers of unnumbered pages).
+        Effect::Page { id, before: Some(_), after: Some(_), index_before, index_after } => *id == page || index_before != index_after,
+        Effect::Page { .. } | Effect::Folder { .. } | Effect::Version { .. } => true,
+        Effect::Prop { .. }
+        | Effect::Layer { .. }
+        | Effect::Item { .. }
+        | Effect::Device { .. }
+        | Effect::DeviceDefinition { .. }
+        | Effect::Terminal { .. }
+        | Effect::Rep { .. }
+        | Effect::Wire { .. }
+        | Effect::Route { .. }
+        | Effect::Cable { .. }
+        | Effect::Aid { .. }
+        | Effect::LoosePart { .. }
+        | Effect::Definition { .. } => false,
+    }
 }
 
 /// Roughly how wide a character of the standard font is, per unit height.

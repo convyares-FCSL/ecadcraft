@@ -38,7 +38,7 @@ pub use changes::Change;
 use changes::{Old, Path, pass_through};
 pub use handle_map::{HandleMap, Mapped};
 pub use owner::{LISP_REFUSED, REFUSED_COMMANDS};
-pub use page_tree::{PageRow, PageView, TreeRow, tree_rows, tree_touched};
+pub use page_tree::{PageRow, PageView, TreeRow, tree_rows};
 pub use persistence::{ClipSnapshot, Faults, MemoryStore, Persistence, SAVE_UNAVAILABLE};
 
 /// An ECAD project attached to a CADCraft session.
@@ -123,12 +123,6 @@ pub struct Project {
     pub(crate) last_caption: Option<String>,
     /// The Wire tool's potential for new wires in this session; `None` is `auto` (design 022 §6).
     pub wire_potential: Option<String>,
-    /// The Checks list (design 022 §8), built on its first show and then kept from each change's
-    /// ops ([`crate::checks::Checks::update`]); `None` until first shown.
-    pub checks: Option<crate::checks::Checks>,
-    /// The report models (brief 024, [`crate::outputs`]): built on first show (Reports, a BOM
-    /// page, Checks) and then kept from each change's ops; `None` until then.
-    pub outputs: Option<crate::outputs::Outputs>,
     /// `reports` asked for the Reports window (the desktop app opens it and clears this).
     pub open_reports: bool,
     /// Brief 035: `agentaccess` asked for this agent access preference (the desktop app applies it and
@@ -141,13 +135,12 @@ pub struct Project {
     /// The Checks tab's go-to ring (design 022 §8): page, point and the row's severity, until the
     /// next change. Display only, never recorded.
     pub goto_ring: Option<(PageId, Pt, crate::checks::Severity)>,
-    /// The active page's frame as last drawn (brief 019): page, what it showed, its parts. Kept
-    /// until an op of the frame's update map ([`crate::frame::touches`]) or another page.
-    frame: Option<(PageId, crate::frame::FrameInput, Arc<Vec<crate::frame::Part>>)>,
-    /// An op of the update map was committed since the frame was drawn.
+    /// The active page's frame as last drawn (brief 019): page and parts. What it showed is the
+    /// frame view's (`ecad_electrical::derived::FrameView`), whose update map sets `frame_stale`.
+    frame: Option<(PageId, Arc<Vec<crate::frame::Part>>)>,
+    /// An effect of the frame's update map was committed since the frame was drawn.
     frame_stale: bool,
     /// Brief 054b: the wire categories in use, kept while the project has a cover.
-    cover_uses: Option<crate::front::Uses>,
     /// Brief 033 (design 033 §6): the drawing changed since the newest issued revision, as the
     /// title block shows it; worked out on first use and after every change.
     pub pending: bool,
@@ -176,28 +169,26 @@ pub struct Project {
     /// The merge last prepared (its states and scope), kept while nothing it read changes
     /// (brief 020b).
     pub merge_cache: Option<Arc<crate::merging::Prepared>>,
-    /// The general reference index (brief 025): built on open and branch switch, kept per commit
-    /// from the ops ([`crate::xref::Watch`]).
-    pub xref: crate::xref::RefIndex,
-    /// Brief 044 (design 044 §11.1): the connector index, built on open and branch switch, kept
-    /// per commit from the ops ([`crate::connectors::Index`]).
-    pub connectors: crate::connectors::Index,
-    /// What the last commit's [`crate::xref::Watch`] derived after it, with the state it was
-    /// derived for (head and last transaction ID): the next commit's "before" while unchanged.
-    xref_shown: Option<((u64, u128), crate::xref::Shown)>,
     /// Counts branch actions (create, rename, switch, archive, reopen), however they were run:
     /// what shows the branch (title, bar, Revisions, History) refreshes when it moves (brief 020a).
     branch_gen: u64,
     /// Every derived view, updated by the one commit pipeline (design 064 §5).
-    derived: ecad_electrical::derived::Views,
+    pub(crate) derived: ecad_electrical::derived::Views,
 }
 
 /// The derived views of `doc`, built with this engine's inputs (design 064 §5.2).
 pub(crate) fn views_for(doc: &Document) -> ecad_electrical::derived::Views {
-    let inputs = ecad_electrical::derived::EngineInputs { metrics: Arc::new(crate::draw::text_style::EngineMetrics) };
-    let mut views = ecad_electrical::derived::Views::new(inputs);
+    let mut views = engine_views();
     views.rebuild(doc);
     views
+}
+
+/// The derived views with this engine's inputs, none built yet: for [`Views::detached`] where no
+/// project is at hand.
+///
+/// [`Views::detached`]: ecad_electrical::derived::Views::detached
+pub fn engine_views() -> ecad_electrical::derived::Views {
+    ecad_electrical::derived::Views::new(ecad_electrical::derived::EngineInputs { metrics: Arc::new(crate::draw::text_style::EngineMetrics) })
 }
 
 /// A new project's first page: titled and numbered `1`.
@@ -704,16 +695,16 @@ impl Project {
         let parts = self.frame_parts(page);
         // Brief 045 (review of #84, 3): a page with PLC channel cells reads its addresses from the
         // kept PLC model, built on its first show.
-        if self.outputs.is_none() && crate::plc::page_has_cells(self.ledger.document(), page) {
+        if self.kept_outputs().is_none() && crate::plc::page_has_cells(self.ledger.document(), page) {
             self.outputs();
         }
-        let plc = self.outputs.as_ref().map(|o| &o.plc);
+        let plc = self.kept_outputs().map(|o| &o.plc);
         project_page_kept(self.ledger.document(), page, base, prev, &self.views, self.tolerance, &parts, self.show_hidden_text, plc)
     }
 
     /// The frame parts of `page`, from the kept copy when nothing it shows can have changed.
     fn frame_parts(&mut self, page: PageId) -> Arc<Vec<crate::frame::Part>> {
-        if let Some((p, _, parts)) = &self.frame
+        if let Some((p, parts)) = &self.frame
             && *p == page
             && !self.frame_stale
         {
@@ -721,44 +712,29 @@ impl Project {
         }
         // A BOM page's sheet count (and so every page's Total) needs the report models (brief 024);
         // once built they track their pages themselves.
-        if self.outputs.is_none() && crate::generated::has_bom_page(self.ledger.document()) {
+        if self.kept_outputs().is_none() && crate::generated::has_bom_page(self.ledger.document()) {
             self.outputs();
         }
         if !self.pending_known {
             self.refresh_pending();
         }
         let doc = self.ledger.document();
-        let (input, total) = crate::generated::input_of(doc, page, self.outputs.as_ref());
+        let (input, total) = crate::generated::input_of(doc, page, self.kept_outputs());
         let input = input.with_pending(doc, self.pending);
         self.frame_stale = false;
         let generated = crate::generated::kind_of(doc, page).is_some();
-        if let Some((p, old, parts)) = &self.frame
+        if let Some((p, parts)) = &self.frame
             && *p == page
-            && *old == input
+            && self.derived.frame().shown().is_some_and(|(q, old)| q == page && *old == input.0)
             && !generated
         {
             return parts.clone();
         }
         self.frame_builds += 1;
-        let parts = Arc::new(crate::generated::page_parts(doc, page, &input, self.outputs.as_ref(), total));
-        self.frame = Some((page, input, parts.clone()));
+        let parts = Arc::new(crate::generated::page_parts(doc, page, &input, self.kept_outputs(), total));
+        self.frame = Some((page, parts.clone()));
+        self.derived.frame_mut().show(page, input.0);
         parts
-    }
-
-    /// Mark the kept frame stale when `ops` (about to be committed) can change it.
-    pub(crate) fn note_frame_ops(&mut self, ops: &[Op]) {
-        if let Some((p, input, _)) = &self.frame
-            && crate::frame::touches(ops, *p, input)
-        {
-            self.frame_stale = true;
-        }
-        // A generated page's content (brief 024) has its own map.
-        if let Some((p, _, _)) = &self.frame
-            && let Some(kind) = crate::generated::kind_of(self.ledger.document(), *p)
-            && crate::generated::touches(ops, kind)
-        {
-            self.frame_stale = true;
-        }
     }
 
     /// The view `cable` is shown in.
@@ -976,131 +952,31 @@ impl Project {
         }
     }
 
-    /// The generated pages whose content the last transaction changed, from the generators' own
-    /// update maps: `outputs`, the pages drawn from the report models
-    /// ([`Project::update_outputs`]), and the cover, contents and revision pages
-    /// ([`crate::generated::touches`] on the transaction's ops). The page list is read only when
-    /// the ops can change such a page.
-    fn generated_touched(&mut self, outputs: BTreeSet<PageId>) -> BTreeSet<PageId> {
-        use crate::generated::GenKind;
-        let mut out = outputs;
-        let doc = self.ledger.document();
-        let ops = self.ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
-        let mut kinds: Vec<GenKind> = [GenKind::Contents, GenKind::Revisions].into_iter().filter(|k| crate::generated::touches(ops, *k)).collect();
-        // Brief 054b (design 054 §10.2): the cover's map reads the document after the commit
-        // (a definition's or the cables' count crossing zero).
-        let has_cover = doc.page_order.iter().any(|p| crate::generated::kind_of(doc, *p) == Some(GenKind::Cover));
-        // Brief 054b (design 054 §10.1): the wire categories in use, kept while there is a cover;
-        // the legend redraws only when a category's count crosses zero.
-        let wires = match (&mut self.cover_uses, has_cover) {
-            (Some(u), true) => u.update(doc, ops),
-            (None, true) => {
-                self.cover_uses = Some(crate::front::Uses::build(doc));
-                true
-            }
-            (_, false) => {
-                self.cover_uses = None;
-                false
-            }
-        };
-        let doc = self.ledger.document();
-        let cover = has_cover && (wires || crate::front::touches(doc, ops));
-        if cover {
-            kinds.push(GenKind::Cover);
-        }
-        if !kinds.is_empty() {
-            out.extend(doc.page_order.iter().copied().filter(|p| crate::generated::kind_of(doc, *p).is_some_and(|k| kinds.contains(&k))));
-        }
-        if cover
-            && let Some((p, _, _)) = &self.frame
-            && crate::generated::kind_of(doc, *p) == Some(GenKind::Cover)
-        {
-            self.frame_stale = true;
-        }
-        // Brief 054b: the cover's Checks rows follow the cover (a cover added or removed too).
-        let cover_page = |op: &Op| match op {
-            Op::AddPage { page, .. } | Op::RemovePage { page, .. } => page.kind.generated_kind() == Some(crate::generated::GenKind::Cover),
-            _ => false,
-        };
-        if cover || ops.iter().any(cover_page) {
-            let doc = self.ledger.document();
-            if let Some(c) = self.checks.as_mut() {
-                c.set_cover(doc);
-            }
-        }
-        out
+    /// The report models, built whole on their first show (design 024 §8.1) and kept after that
+    /// by the views' pipeline (`ecad_electrical::derived::OutputsView`).
+    pub fn outputs(&mut self) -> &crate::outputs::kept::Outputs {
+        self.derived.outputs(self.ledger.document())
     }
 
-    /// Bring the kept Checks list (if shown once) in line with the last transaction, from its
-    /// ops only (design 022 §11); `scope` was worked out before it.
-    fn update_checks(&mut self, scope: Option<crate::checks::Scope>) {
-        let (Some(scope), Some(mut checks)) = (scope, self.checks.take()) else { return };
-        let ledger = &self.ledger;
-        let ops = ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
-        checks.update(ledger.document(), ops, scope, self.tolerance);
-        self.checks = Some(checks);
+    /// The report models, if shown once.
+    pub fn kept_outputs(&self) -> Option<&crate::outputs::kept::Outputs> {
+        self.derived.kept_outputs()
     }
 
-    /// Bring the kept report models (if shown once) in line with the last transaction, from its
-    /// ops only (design 024 §9); `scope` was worked out before it. A change of a generated page's
-    /// sheet count marks the frame (its Total) stale. Returns the generated pages drawn from the
-    /// models whose content changed (overseer item O1: they join the commit's touched pages).
-    fn update_outputs(&mut self, scope: Option<crate::outputs::Scope>) -> BTreeSet<PageId> {
-        let (Some(scope), Some(mut o)) = (scope, self.outputs.take()) else { return BTreeSet::new() };
-        let ledger = &self.ledger;
-        let ops = ledger.log().last().map(|t| t.ops.as_slice()).unwrap_or_default();
-        // Brief 028: the terminal plan and cable schedule pages count their sheets from the strip
-        // and cable rows, so the book's Total is compared whenever such a page exists.
-        // Only the pages drawn from the models can change their sheet count here (review of PR
-        // #55, finding 1): the kept set, each counted from kept totals; none, no work.
-        let doc = ledger.document();
-        let sheets = |o: &crate::outputs::Outputs| -> usize {
-            o.generated_pages().iter().filter(|p| doc.pages.contains_key(p)).map(|p| crate::generated::sheets(doc, *p, Some(o))).sum()
-        };
-        let (before, revision) = (sheets(&o), o.revision);
-        o.update(doc, ops, scope);
-        // Brief 051 (review of #89, 3): the rack sheet prints each card's place.
-        let plc_places_moved = crate::plc::sheets::rack_places_touched(doc, &o.plc, ops);
-        if ecad_model::ledger::verify_mode()
-            && let Some(line) = o.verify_strips(doc)
-        {
-            self.events.record(EventKind::IndexRebuilt, None, ledger.head(), None, line);
-        }
-        // The shown generated page redraws only when what it shows changed (tester 028, defect
-        // 2): the BOM page on any row change (024), a terminal plan when a strip it shows changed,
-        // a cable schedule when a cable row changed.
-        // Every such page says whether it was rewritten (overseer item O1), from the kept set.
-        let rewritten = |p: PageId| match crate::generated::kind_of(doc, p) {
-            Some(crate::generated::GenKind::BomLocation) => o.revision != revision,
-            // Brief 046 (design 046 §9): either style, by its own kept change set.
-            Some(crate::generated::GenKind::Terminals) => crate::generated::terminals_rewritten(doc, p, &o),
-            Some(crate::generated::GenKind::Cables) => o.last_cables_changed,
-            // Brief 045c: the I/O list when a card's rows changed.
-            Some(crate::generated::GenKind::IoList) => !o.plc.rows_changed.is_empty(),
-            // Brief 051 (design 051 §9.3): the rack sheet when a card or rack changed.
-            Some(crate::generated::GenKind::PlcRack) => !o.plc.last_changed.is_empty() || !o.plc.rows_changed.is_empty() || plc_places_moved,
-            _ => false,
-        };
-        let changed: BTreeSet<PageId> = o.generated_pages().iter().copied().filter(|p| doc.pages.contains_key(p) && rewritten(*p)).collect();
-        let shown_changed = self.frame.as_ref().is_some_and(|(p, _, _)| rewritten(*p));
-        if sheets(&o) != before || shown_changed || o.numbers_moved {
-            self.frame_stale = true;
-        }
-        self.outputs = Some(o);
-        changed
+    /// Forget the report models: they are built again on their next show.
+    pub fn forget_outputs(&mut self) {
+        self.derived.forget_outputs();
     }
 
-    /// The report models, built whole on their first show (design 024 §8.1) and kept after that.
-    pub fn outputs(&mut self) -> &crate::outputs::Outputs {
-        let doc = self.ledger.document();
-        self.outputs.get_or_insert_with(|| crate::outputs::Outputs::build(doc))
+    /// The Checks list, built whole on its first show (design 022 §8) and kept after that by the
+    /// views' pipeline (`ecad_electrical::derived::ChecksView`).
+    pub fn checks(&mut self) -> &crate::checks::kept::Checks {
+        self.derived.checks(self.ledger.document(), self.tolerance)
     }
 
-    /// The Checks list, built whole on its first show (design 022 §8) and kept after that.
-    pub fn checks(&mut self) -> &crate::checks::Checks {
-        let doc = self.ledger.document();
-        let tol = self.tolerance;
-        self.checks.get_or_insert_with(|| crate::checks::Checks::build(doc, tol))
+    /// The Checks list, if shown once.
+    pub fn kept_checks(&self) -> Option<&crate::checks::kept::Checks> {
+        self.derived.kept_checks()
     }
 
     /// Restore the last projection of `page` after a refusal.
@@ -1172,242 +1048,4 @@ impl Project {
         }
         out
     }
-}
-
-/// Whether definition `id` is used by nothing once `ops` are applied to `doc`: every item and
-/// component using it now is removed or moved off it by `ops` (brief 048, FP8's removal of a
-/// superseded version in the update's own transaction).
-fn unused_after(doc: &ecad_model::Document, id: ecad_model::DefinitionId, ops: &[Op]) -> bool {
-    let items = doc.items_using(id);
-    let comps = doc.components_using(id);
-    let item_left = |i: &ecad_model::ItemId| {
-        !ops.iter().any(|o| match o {
-            Op::RemoveItem { id: x, .. } => x == i,
-            Op::ModifyItem { id: x, after, .. } => x == i && !matches!(&after.kind, ecad_model::ItemKind::Symbol(sym) if sym.definition == id),
-            _ => false,
-        })
-    };
-    let comp_left = |c: &ecad_model::DeviceId| {
-        !ops.iter().any(|o| match o {
-            Op::DeleteDevice { id: x, .. } => x == c,
-            Op::SetDeviceDefinition { id: x, after, .. } => x == c && *after != Some(id),
-            _ => false,
-        })
-    };
-    !items.iter().any(item_left) && !comps.iter().any(comp_left)
-}
-
-/// The pages whose drawing `ops` could change directly (their items and representations, and the
-/// pages a conductor whose ends they attach is routed on), worked out on the document before them;
-/// `None` when that could be any page (op kinds other than item, representation, attachment and
-/// new-object ops). Reference texts on other pages are [`crate::references::Snapshot`]'s part.
-/// Brief 045: `plc`, the kept PLC model when built, gives a rack's cards without a walk.
-pub(crate) fn pages_touched(doc: &ecad_model::Document, ops: &[Op], plc: Option<&crate::plc::kept::Plc>) -> Option<BTreeSet<PageId>> {
-    let mut out = BTreeSet::new();
-    for op in ops {
-        match op {
-            Op::AddItem { item, .. } | Op::RemoveItem { item, .. } => {
-                out.insert(item.page);
-            }
-            Op::ModifyItem { before, after, .. } => {
-                out.insert(before.page);
-                out.insert(after.page);
-            }
-            Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => {
-                out.insert(rep.page);
-            }
-            Op::ModifyRepresentation { before, after, .. } => {
-                out.insert(before.page);
-                out.insert(after.page);
-            }
-            // A route is drawn on its page; the wire labels its net's change move with the rewrite's
-            // own ops (`Project::numbered_pages`).
-            Op::AddRoute { route, .. } | Op::RemoveRoute { route, .. } => {
-                out.insert(route.page);
-            }
-            Op::ModifyRoute { before, after, .. } => {
-                out.insert(before.page);
-                out.insert(after.page);
-            }
-            // Brief 049 (design 049 §8.2): a continuation's partners list it on their pages; those
-            // pages come from the reference index's watch (`xref::Watch`), and its own pages from
-            // its representation ops. A location box's pages likewise (its label and the tag
-            // prefixes of the devices inside are drawn on its own pages only).
-            Op::CreateAid { .. } | Op::DeleteAid { .. } => {}
-            // A continuation renamed or captioned, a box's values changed: its own pages (design
-            // 072 §6.2).
-            Op::ModifyAid { id, .. } => {
-                out.extend(doc.representations_of(Subject::Aid(*id)).map(|(_, r)| r.page));
-            }
-            // A loose part is drawn on no page (design 072 §6.4).
-            Op::CreateLoosePart { .. } | Op::DeleteLoosePart { .. } | Op::ModifyLoosePart { .. } => {}
-            Op::CreateWire { id, .. } if !doc.wires.contains_key(id) => {}
-            // A deleted wire's labels are on the pages of the routes at its ends.
-            Op::DeleteWire { wire, .. } => out.extend(points_pages(doc, &wire.ends)),
-            Op::CreateDevice { id, .. } if !doc.devices.contains_key(id) => {}
-            Op::AddTerminal { id, .. } if !doc.terminals.contains_key(id) => {}
-            // Brief 028: a terminal relabelled (Remove + Add of one ID) is drawn by its device's
-            // symbols only: their pages.
-            Op::AddTerminal { terminal, .. } | Op::RemoveTerminal { terminal, .. } => {
-                out.extend(doc.representations_of(terminal.owner.subject()).map(|(_, r)| r.page));
-            }
-            Op::EmbedDefinition { id, .. } if !doc.definitions.contains_key(id) => {}
-            // A page's own properties show in its frame only (brief 019); the references they
-            // change on other pages are the reference snapshot's part.
-            // A folder move changes the book order (Next boxes, unnumbered pages) anywhere.
-            Op::ModifyPage { before, after, .. } if before.change(after).folder => {
-                return None;
-            }
-            Op::ModifyPage { id: p, before, after } => {
-                out.insert(*p);
-                // The page before it in book order shows its number in its Next box.
-                if before.change(after).number {
-                    let book = ecad_model::book::Book::of(doc);
-                    if let Some(prev) = book.position(*p).and_then(|i| i.checked_sub(2)).and_then(|i| book.order.get(i)) {
-                        out.insert(*prev);
-                    }
-                }
-            }
-            Op::SetProperty { object: ecad_model::ObjectRef::Page(p), .. } => {
-                out.insert(*p);
-            }
-            // A device's tag is drawn beside each of its symbols (brief 018): their pages.
-            Op::SetProperty { object: ecad_model::ObjectRef::Device(c), key, after, .. } => {
-                out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
-                // Brief 045 (design 045 §11.1): a rack's tag shows in its cards' captions, and a
-                // card's slot or size moves the addresses of the cards after it.
-                out.extend(crate::plc::pages_touched(doc, plc, *c, key, after.as_deref()));
-            }
-            Op::SetDeviceDefinition { id: c, .. } => {
-                out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
-            }
-            // Design 072: a device's typed fields (its tag, its type) show beside its symbols; a
-            // rack's tag also in its cards' captions. A PLC station's or module's fields (§3): its
-            // station's cards' pages (their captions and addresses read it).
-            Op::ModifyDevice { id: c, before, after } => {
-                out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
-                if before.tag != after.tag {
-                    out.extend(crate::plc::pages_touched(doc, plc, *c, ecad_model::tag::TAG_KEY, after.tag()));
-                }
-                if crate::plc::is_plc(before) || crate::plc::is_plc(after) {
-                    out.extend(crate::plc::pages_modified(doc, plc, *c, before, after));
-                }
-            }
-            // Brief 048 (FP8): a superseded version nothing shows after the transaction is drawn
-            // nowhere. Its last copies move off it in the same transaction (review of PR #86,
-            // finding 1), and their own ops name their pages; the document here is the one before.
-            Op::RemoveDefinition { id, .. } if unused_after(doc, *id, ops) => {}
-            // A conductor's label shows its properties (brief 022): its pages.
-            Op::SetProperty { object: ecad_model::ObjectRef::Wire(c), .. } | Op::ModifyWire { id: c, .. } => {
-                out.extend(crate::wires::wire_pages(doc, *c));
-            }
-            // Design 072 §4.5: a cable's fields (its tag, brief 026) are drawn by its slashes and its
-            // cores' lines (its references elsewhere are the reference snapshot's part); a change
-            // of its cores redraws every page, as the core ops did.
-            Op::ModifyCable { id, before, after } => {
-                if before.cores != after.cores {
-                    return None;
-                }
-                out.extend(doc.representations_of(Subject::Cable(*id)).map(|(_, r)| r.page));
-                for m in &after.cores {
-                    out.extend(crate::cables::member_pages(doc, m));
-                }
-            }
-            Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } if key.starts_with(ecad_model::tag::HIGH_RESET_PREFIX) => {}
-            // Brief 052 (design 052 §8.2a): a rename in the project's list redraws the pages of
-            // the devices, boxes and pages storing that entry (every page when it is the project's
-            // default); a description is drawn on no page.
-            Op::ModifyProject { before, after } => {
-                use crate::designations::{Aspect, changed_codes, default_key, page_key};
-                // Design 072 §5.3: the info and the revision rows are drawn in every page's frame,
-                // as the project properties they were.
-                if before.info != after.info || before.revisions != after.revisions {
-                    return None;
-                }
-                for a in Aspect::ALL {
-                    // A new default is drawn on every page that sets none.
-                    if default_key(before, a) != default_key(after, a) {
-                        return None;
-                    }
-                    for entry in changed_codes(before, after, a) {
-                        if default_key(after, a).as_deref() == Some(entry.as_str()) {
-                            return None;
-                        }
-                        for (c, x) in &doc.devices {
-                            if crate::designations::device_keys(x).iter().any(|(_, v)| *v == entry) {
-                                out.extend(doc.representations_of(Subject::Device(*c)).map(|(_, r)| r.page));
-                            }
-                        }
-                        out.extend(doc.pages.iter().filter(|(_, x)| page_key(x, a).as_deref() == Some(entry.as_str())).map(|(p, _)| *p));
-                    }
-                }
-            }
-            // Brief 044 (design 044 §11.1): a connector naming or description default is drawn by
-            // the connectors that inherit it: their pages. The maker's answers are drawn nowhere.
-            // Their pages come from the connector index after the commit (`Project::finish_watch`).
-            Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } if key.starts_with("connector.") => {}
-            // Brief 030: strip accessory defaults are drawn nowhere (the plan page is a generated
-            // page, kept by its own rule).
-            Op::SetProperty { object: ecad_model::ObjectRef::Project, key, .. } if crate::accessories::strip_key_of_project(key).is_some() => {}
-            // Brief 050a (design 050 §10): a style record marks the pages of its users (every page
-            // when the project's choice resolves to it); the standard's header none.
-            Op::SetStyle { .. } | Op::SetStandard { .. } => out.extend(crate::styles::pages_touched(doc, op)?),
-            // A standard's value acts like a project-level write of its key, and changes nothing on
-            // a page while the project holds its own value.
-            Op::SetProperty { object: ecad_model::ObjectRef::Standard, key, before, after } => {
-                let hidden = crate::defaults::find(key)
-                    .is_some_and(|e| crate::defaults::resolve(doc, e, crate::defaults::Scope::project()).from == crate::defaults::Source::Project);
-                if !hidden {
-                    let as_project =
-                        Op::SetProperty { object: ecad_model::ObjectRef::Project, key: key.clone(), before: before.clone(), after: after.clone() };
-                    out.extend(pages_touched(doc, std::slice::from_ref(&as_project), plc)?);
-                }
-            }
-            _ => return None,
-        }
-    }
-    // Brief 052 (design 052 §8.2): a device's location and function are stored, so a box or a
-    // page value changes the tag prefixes of that page only, and a moved symbol those of its own
-    // page; both pages are named by the ops above. #102's widening is gone.
-    Some(out)
-}
-
-/// The pages where the routes landing on connection points `points` are drawn (a wire's labels),
-/// through the index.
-pub(crate) fn points_pages(doc: &ecad_model::Document, points: &[TerminalId]) -> BTreeSet<PageId> {
-    points.iter().flat_map(|t| doc.routes_at(*t)).filter_map(|r| doc.routes.get(&r).map(|x| x.page)).collect()
-}
-
-/// The pages whose drawn objects `ops` add, change or remove (items and representations): where
-/// an undo or redo of them shows. Other ops (subjects, attachments, cables, properties) are drawn
-/// through those objects or nowhere, so they name no page.
-pub(crate) fn pages_named(ops: &[Op]) -> BTreeSet<PageId> {
-    let mut out = BTreeSet::new();
-    for op in ops {
-        match op {
-            Op::AddItem { item, .. } | Op::RemoveItem { item, .. } => {
-                out.insert(item.page);
-            }
-            Op::ModifyItem { before, after, .. } => {
-                out.insert(before.page);
-                out.insert(after.page);
-            }
-            Op::LinkRepresentation { rep, .. } | Op::UnlinkRepresentation { rep, .. } => {
-                out.insert(rep.page);
-            }
-            Op::ModifyRepresentation { before, after, .. } => {
-                out.insert(before.page);
-                out.insert(after.page);
-            }
-            _ => {}
-        }
-    }
-    out
-}
-
-/// `pages` and `refs` together; `None` (every page) when either is.
-fn touched(pages: Option<BTreeSet<PageId>>, refs: Option<BTreeSet<PageId>>) -> Option<BTreeSet<PageId>> {
-    let (mut a, b) = (pages?, refs?);
-    a.extend(b);
-    Some(a)
 }

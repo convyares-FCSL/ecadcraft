@@ -69,6 +69,7 @@ pub use ecad_electrical::bom;
 pub use ecad_electrical::cables;
 pub use ecad_electrical::connectors;
 pub use ecad_electrical::defaults;
+pub use ecad_electrical::derived;
 pub use ecad_electrical::designations;
 pub use ecad_electrical::frames;
 pub use ecad_electrical::kinds;
@@ -86,7 +87,7 @@ pub use ecad_electrical::terminal_types;
 pub use ecad_electrical::words;
 /// `ecad_electrical::checks` and its engine half, [`draw::checks`].
 pub mod checks {
-    pub use crate::draw::checks::{Checks, all, all_with, handles_of};
+    pub use crate::draw::checks::{all, all_with, handles_of};
     pub use ecad_electrical::checks::*;
 }
 /// `ecad_electrical::continuations` and its engine half, [`draw::continuations`].
@@ -111,7 +112,7 @@ pub mod front {
 }
 /// `ecad_electrical::generated` and its engine half, [`draw::generated`].
 pub mod generated {
-    pub use crate::draw::generated::{Draw, book_sheets, input_of, missing_mark, page_parts, parts_of, parts_of_pending, sheet_windows, sheets};
+    pub use crate::draw::generated::{Draw, input_of, missing_mark, page_parts, parts_of, parts_of_pending};
     pub use ecad_electrical::generated::*;
 }
 /// `ecad_electrical::locations` and its engine half, [`draw::locations`].
@@ -119,9 +120,8 @@ pub mod locations {
     pub use crate::draw::locations::*;
     pub use ecad_electrical::locations::*;
 }
-/// `ecad_electrical::outputs` and its engine half, [`draw::outputs`].
+/// `ecad_electrical::outputs`.
 pub mod outputs {
-    pub use crate::draw::outputs::Outputs;
     pub use ecad_electrical::outputs::*;
 }
 /// `ecad_electrical::plc` and its engine half, [`draw::plc`].

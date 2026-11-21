@@ -22,7 +22,7 @@ use std::collections::BTreeMap;
 use crate::common::{H, id, pts};
 use crate::common::{close_all, reopen};
 use ecad_cadcraft::locations::{self, Source};
-use ecad_cadcraft::outputs::{Cell, Group, Outputs, Table, csv};
+use ecad_cadcraft::outputs::{Cell, Group, Table, csv, kept::Outputs};
 use ecad_model::{AidId, DeviceId, Document, ItemId, ItemKind, PageId, Primitive, Pt, Subject};
 use serde_json::{Value, json};
 
@@ -98,7 +98,7 @@ fn verify(h: &mut H, what: &str) {
     let (kept, built, doc) = h.cfg(|p| {
         let kept = p.outputs().clone();
         let doc = p.ledger.document().clone();
-        (kept, Outputs::build(&doc), doc)
+        (kept, Outputs::build_with(&doc, &ecad_cadcraft::text_style::EngineMetrics), doc)
     });
     assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location), "{what}: BOM by location");
     assert_eq!(kept.bom_table(Group::Part), built.bom_table(Group::Part), "{what}: BOM by part");
@@ -124,8 +124,8 @@ fn verify(h: &mut H, what: &str) {
     for p in &doc.page_order {
         if ecad_cadcraft::generated::kind_of(&doc, *p).is_some() {
             assert_eq!(
-                ecad_cadcraft::generated::sheets(&doc, *p, Some(&kept)),
-                ecad_cadcraft::generated::sheets(&doc, *p, Some(&built)),
+                ecad_cadcraft::generated::sheets_of(&doc, *p, Some(&kept)),
+                ecad_cadcraft::generated::sheets_of(&doc, *p, Some(&built)),
                 "{what}: sheets of a generated page"
             );
         }
@@ -808,7 +808,7 @@ fn bom_page_overflow_counts_sheets_and_loses_no_row() {
     let n = |h: &mut H| {
         let doc = h.doc();
         let o = h.cfg(|p| p.outputs().clone());
-        (ecad_cadcraft::generated::sheets(&doc, bom, Some(&o)), ecad_cadcraft::generated::book_sheets(&doc, Some(&o)))
+        (ecad_cadcraft::generated::sheets_of(&doc, bom, Some(&o)), ecad_cadcraft::generated::book_sheets_of(&doc, Some(&o)))
     };
     assert_eq!(n(&mut h), (1, 2));
     place(&mut h, "coil", (20.0, 250.0));
@@ -826,7 +826,7 @@ fn bom_page_overflow_counts_sheets_and_loses_no_row() {
         assert!(t.iter().any(|x| x.split(", ").any(|y| y == tag)), "{tag} is on no sheet: {t:?}");
     }
     // The Total in the title block of an ordinary page counts the sheets.
-    let total = ecad_cadcraft::generated::book_sheets(&doc, Some(&Outputs::build(&doc)));
+    let total = ecad_cadcraft::generated::book_sheets_of(&doc, Some(&Outputs::build_with(&doc, &ecad_cadcraft::text_style::EngineMetrics)));
     assert!(texts(&doc, first).contains(&total.to_string()), "{total}: {:?}", texts(&doc, first));
     // Undo back to one sheet.
     h.run("u", Value::Null).unwrap();
@@ -851,8 +851,8 @@ fn a_continued_bom_sheet_keeps_its_rows_inside_the_drawing_area() {
         h.s.execute("place", &json!({"symbol": "coil", "at": at})).unwrap();
     }
     let doc = h.doc();
-    let o = Outputs::build(&doc);
-    assert_eq!(ecad_cadcraft::generated::sheets(&doc, bom, Some(&o)), 3);
+    let o = Outputs::build_with(&doc, &ecad_cadcraft::text_style::EngineMetrics);
+    assert_eq!(ecad_cadcraft::generated::sheets_of(&doc, bom, Some(&o)), 3);
     // Sheet 2 (x from 470 to 890 mm): the lowest content text's row must end inside the area.
     let bottom = ecad_cadcraft::generated::parts_of(&doc, bom, Some(&o))
         .into_iter()
@@ -898,8 +898,8 @@ fn contents_follow_pages_and_overflow() {
     }
     let doc = h.doc();
     assert_eq!(doc.page_order.len(), 46);
-    assert_eq!(ecad_cadcraft::generated::sheets(&doc, c, None), 2);
-    assert_eq!(ecad_cadcraft::generated::book_sheets(&doc, None), 47);
+    assert_eq!(ecad_cadcraft::generated::sheets_of(&doc, c, None), 2);
+    assert_eq!(ecad_cadcraft::generated::book_sheets_of(&doc, None), 47);
     let t = texts(&doc, c);
     assert!(t.iter().any(|x| x == "Contents (2/2)"), "{t:?}");
     assert!(t.iter().any(|x| x == "P42"), "the last page is listed: {t:?}");
@@ -938,7 +938,7 @@ fn revision_list_follows_issuerevision_and_undo() {
         h.run("issuerevision", json!({"rev": format!("R{i}"), "description": "d", "drawn": "CV"})).unwrap();
     }
     let doc = h.doc();
-    assert_eq!(ecad_cadcraft::generated::sheets(&doc, r, None), 2);
+    assert_eq!(ecad_cadcraft::generated::sheets_of(&doc, r, None), 2);
 }
 
 // ---------------------------------------------------------------- 5: files and branches

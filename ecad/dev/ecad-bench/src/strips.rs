@@ -123,7 +123,7 @@ fn hex<T: From<u128>>(v: &serde_json::Value, key: &str) -> Result<T, String> {
 }
 
 fn work(p: &ProjectHandle, s: &mut Session) -> usize {
-    p.read(s, |p, _| p.outputs.as_ref().map_or(0, |o| o.strips.last_work)).unwrap_or(0)
+    p.read(s, |p, _| p.kept_outputs().map_or(0, |o| o.strips.last_work)).unwrap_or(0)
 }
 
 /// Add the strips, bridges and cables to the open project (one transaction per strip, straight
@@ -254,7 +254,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
             build.push(project.configure(&mut s, |p| {
                 p.outputs();
                 let doc = p.ledger.document();
-                let Some(o) = p.outputs.as_ref() else { return 0.0 };
+                let Some(o) = p.kept_outputs() else { return 0.0 };
                 let t = Instant::now();
                 let cx = ecad_cadcraft::outputs::PageCx::of(doc);
                 let built = ecad_cadcraft::strips::Strips::build(doc, o, &cx);
@@ -273,7 +273,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
         out.spbuild_ms = median(&mut spbuild);
         let (page1, first_strip, strips, terminals, cables) = project.read(&mut s, |p, _| {
             let doc = p.ledger.document();
-            let o = p.outputs.as_ref();
+            let o = p.kept_outputs();
             let strips = o.map_or(0, |o| o.strips.len());
             let terminals = o.map_or(0, |o| o.strips.strips.values().map(|x| x.drawn).sum());
             let first = o.and_then(|o| o.strips.sorted().first().map(|x| x.component));
@@ -457,8 +457,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
                 p.outputs();
                 let doc = p.ledger.document();
                 let t = Instant::now();
-                let (input, total) = ecad_cadcraft::generated::input_of(doc, plan_page, p.outputs.as_ref());
-                std::hint::black_box(ecad_cadcraft::generated::page_parts(doc, plan_page, &input, p.outputs.as_ref(), total));
+                let (input, total) = ecad_cadcraft::generated::input_of(doc, plan_page, p.kept_outputs());
+                std::hint::black_box(ecad_cadcraft::generated::page_parts(doc, plan_page, &input, p.kept_outputs(), total));
                 ms(t)
             })?);
         }
@@ -472,8 +472,8 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
                 p.outputs();
                 let doc = p.ledger.document();
                 let t = Instant::now();
-                let (input, total) = ecad_cadcraft::generated::input_of(doc, sp_page, p.outputs.as_ref());
-                std::hint::black_box(ecad_cadcraft::generated::page_parts(doc, sp_page, &input, p.outputs.as_ref(), total));
+                let (input, total) = ecad_cadcraft::generated::input_of(doc, sp_page, p.kept_outputs());
+                std::hint::black_box(ecad_cadcraft::generated::page_parts(doc, sp_page, &input, p.kept_outputs(), total));
                 ms(t)
             })?);
         }
@@ -482,7 +482,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
         let (mine, other, cable) = project.read(&mut s, |p, _| {
             let doc = p.ledger.document();
             let wire_of = |c: DeviceId| doc.terminals_of(c).find_map(|(t, _)| doc.ends_at(t).into_iter().next().map(|(w, _)| w));
-            let other = p.outputs.as_ref().and_then(|o| o.strips.strips.keys().copied().find(|c| *c != strip && *c != lv));
+            let other = p.kept_outputs().and_then(|o| o.strips.strips.keys().copied().find(|c| *c != strip && *c != lv));
             let cable = wire_of(strip)
                 .and_then(|_| doc.terminals_of(strip).flat_map(|(t, _)| doc.ends_at(t)).find_map(|(w, _)| doc.cables_of(w).into_iter().next()));
             (wire_of(strip), other.and_then(wire_of), cable)
@@ -519,7 +519,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
                 v.push(ms(t));
                 out.spagetype_work = out
                     .spagetype_work
-                    .max(project.read(&mut s, |p, _| p.outputs.as_ref().map_or(0, |o| o.strip_pages.last_changed.len())).unwrap_or(0));
+                    .max(project.read(&mut s, |p, _| p.kept_outputs().map_or(0, |o| o.strip_pages.last_changed.len())).unwrap_or(0));
                 run(&mut s, "undo", json!({}))?;
             }
             out.spagetype_ms = median(&mut v);

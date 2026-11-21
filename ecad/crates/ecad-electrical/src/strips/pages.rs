@@ -8,13 +8,13 @@
 //! the strip) and `by_far` (far devices named in a cable box). It is built whole where the strips
 //! are; after that [`StripPages::update`] runs right after the strips' own update:
 //!
-//! | Op or change | Recomputed |
+//! | Effect or change | Recomputed |
 //! | --- | --- |
 //! | a strip in `Strips::last_changed` | that strip (sheet count, indexes) |
-//! | `ModifyCable k` | strips in `by_cable[k]` marked changed (box texts) |
-//! | `SetProperty(Device d, …)`, `d` in `by_far` | strips in `by_far[d]` marked changed |
-//! | `SetProperty(Project, strippage.*)`, the project's sheet | every strip (a layout setting) |
-//! | `SetProperty(Project, terminal.plan.style)` | nothing here; `style_changed` is set |
+//! | `Cable k` changed in place | strips in `by_cable[k]` marked changed (box texts) |
+//! | `Prop(Device d, …)` or `Device d` changed in place, `d` in `by_far` | strips in `by_far[d]` marked changed |
+//! | `Prop(Project, strippage.*)`, the project's sheet | every strip (a layout setting) |
+//! | `Prop(Project, terminal.plan.style)` | nothing here; `style_changed` is set |
 //! | anything else | nothing |
 //!
 //! A page's own style (`SetProperty(Page P, terminal.plan.style)`) is P's own property, which
@@ -22,8 +22,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use ecad_model::effect::{Effect, Effects};
 use ecad_model::sheet::{MARGIN_MM, SheetSpec};
-use ecad_model::{CableId, DeviceId, Document, ObjectRef, Op, PageId};
+use ecad_model::{CableId, DeviceId, Document, ObjectRef, PageId};
 
 use crate::accessories::Acc;
 use crate::defaults::strip_pages as entries;
@@ -225,6 +226,68 @@ impl Kept {
     }
 }
 
+/// What a transaction's effects name for the strip pages (the module's update map), before the
+/// kept indexes are read.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Named {
+    /// A layout setting (`strippage.*`) or the project's sheet changed.
+    pub layout: bool,
+    /// The project's `terminal.plan.style` changed.
+    pub style: bool,
+    /// Cables changed in place (their strips' box texts).
+    pub cables: BTreeSet<CableId>,
+    /// Devices changed in place or given a property (as far devices in a cable box).
+    pub devices: BTreeSet<DeviceId>,
+}
+
+impl Named {
+    /// What `effects` name.
+    pub fn of(effects: &Effects<'_>) -> Named {
+        let mut n = Named::default();
+        for effect in effects {
+            n.note(effect);
+        }
+        n
+    }
+
+    /// Note what one effect names.
+    pub fn note(&mut self, effect: &Effect<'_>) {
+        match effect {
+            Effect::Prop { object: ObjectRef::Project, key, .. } if entries::is_layout_key(key.raw) => self.layout = true,
+            Effect::Prop { object: ObjectRef::Project, key, .. } if key.raw == entries::STYLE.key => self.style = true,
+            Effect::Settings { before, after } if before.sheet != after.sheet => self.layout = true,
+            Effect::Cable { id, before: Some(_), after: Some(_) } => {
+                self.cables.insert(*id);
+            }
+            // A far device's tag or description (design 072: its fields) shows in the strip's rows.
+            Effect::Prop { object: ObjectRef::Device(d), .. } | Effect::Device { id: d, before: Some(_), after: Some(_) } => {
+                self.devices.insert(*d);
+            }
+            Effect::Prop { .. }
+            | Effect::Settings { .. }
+            | Effect::Cable { .. }
+            | Effect::Device { .. }
+            | Effect::Page { .. }
+            | Effect::Layer { .. }
+            | Effect::Item { .. }
+            | Effect::DeviceDefinition { .. }
+            | Effect::Terminal { .. }
+            | Effect::Rep { .. }
+            | Effect::Wire { .. }
+            | Effect::Route { .. }
+            | Effect::Definition { .. }
+            | Effect::Version { .. }
+            | Effect::Folder { .. }
+            | Effect::Style { .. }
+            | Effect::Standard { .. }
+            | Effect::Project { .. }
+            | Effect::Aid { .. }
+            | Effect::LoosePart { .. }
+            | Effect::DeviceLink { .. } => {}
+        }
+    }
+}
+
 /// The graphic pages' kept layout data (see the module's update map).
 #[derive(Debug, Clone, PartialEq)]
 pub struct StripPages {
@@ -307,30 +370,21 @@ impl StripPages {
         self.kept.insert(c, k);
     }
 
-    /// Bring the kept data in line with `strips` (just updated for `ops`) on `doc`, the state
-    /// after. See the module's update map; every op not listed does nothing.
-    pub fn update(&mut self, doc: &Document, ops: &[Op], strips: &Strips) {
+    /// Bring the kept data in line with `strips` (just updated for `effects`) on `doc`, the state
+    /// after. See the module's update map; every effect not listed does nothing.
+    /// `named` is what the effects named, noted before the kept indexes are read ([`Named::note`]).
+    pub fn update(&mut self, doc: &Document, named: Named, strips: &Strips) {
         self.last_changed.clear();
         self.last_work = 0;
         self.layout_changed = false;
-        self.style_changed = false;
-        let mut layout = false;
-        for op in ops {
-            match op {
-                Op::SetProperty { object: ObjectRef::Project, key, .. } if entries::is_layout_key(key) => layout = true,
-                Op::SetProperty { object: ObjectRef::Project, key, .. } if key == entries::STYLE.key => self.style_changed = true,
-                Op::SetProjectSettings { before, after } if before.sheet != after.sheet => layout = true,
-                Op::ModifyCable { id: k, .. } => {
-                    self.last_changed.extend(self.by_cable.get(k).into_iter().flatten().copied());
-                }
-                // A far device's tag or description (design 072: its fields) shows in the strip's rows.
-                Op::SetProperty { object: ObjectRef::Device(d), .. } | Op::ModifyDevice { id: d, .. } => {
-                    self.last_changed.extend(self.by_far.get(d).into_iter().flatten().copied());
-                }
-                _ => {}
-            }
+        self.style_changed = named.style;
+        for k in &named.cables {
+            self.last_changed.extend(self.by_cable.get(k).into_iter().flatten().copied());
         }
-        if layout {
+        for d in &named.devices {
+            self.last_changed.extend(self.by_far.get(d).into_iter().flatten().copied());
+        }
+        if named.layout {
             let geometry = Geometry::of(doc);
             let avail = geometry.available(&project_sheet(doc));
             if geometry != self.geometry || (avail - self.avail).abs() > 1e-9 {

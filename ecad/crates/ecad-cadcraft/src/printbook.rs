@@ -24,7 +24,7 @@ use ecad_model::book::{self, Book};
 use ecad_model::{CableId, Document, FolderId, PageId, Pt};
 use serde_json::{Value, json};
 
-use crate::outputs::Outputs;
+use crate::outputs::kept::Outputs;
 use crate::project::{HandleMap, base_drawing, project_page_framed};
 
 /// Most sheets in one PDF (CADCraft's `MAX_PAGES`).
@@ -95,7 +95,7 @@ pub fn resolve_with(doc: &Document, scope: &Scope, outputs: Option<&Outputs>) ->
                     keep.insert(i);
                     continue;
                 }
-                if let Some((owner, i)) = crate::generated::continuation_of(doc, &b, token, crate::draw::outputs::kept_of(outputs))
+                if let Some((owner, i)) = crate::generated::continuation_of(doc, &b, token, outputs)
                     && let Some(at) = b.position(owner).and_then(|n| n.checked_sub(1))
                 {
                     keep.insert(at);
@@ -228,7 +228,7 @@ pub fn build_in(
             e.handle = scratch.new_handle();
             store.push(e);
         }
-        let windows = crate::generated::sheet_windows(doc, *page, outputs);
+        let windows = crate::generated::sheet_windows_of(doc, *page, outputs);
         let mut right = x;
         for (lo, hi) in windows {
             let (paper, exact, landscape) = paper_for(hi.x - lo.x, hi.y - lo.y);
@@ -357,7 +357,7 @@ pub fn print(
     done.notes.extend(pending_note(doc, o.pending));
     let generated: BTreeSet<PageId> = pages.iter().copied().filter(|p| crate::generated::kind_of(doc, *p).is_some()).collect();
     done.generated = sheets.iter().filter(|s| generated.contains(&s.page)).count();
-    done.flagged = crate::generated::flagged(doc, &generated, crate::draw::outputs::kept_of(outputs));
+    done.flagged = crate::generated::flagged(doc, &generated, outputs);
     let mut noted = BTreeSet::new();
     for s in sheets.iter().filter(|s| !s.exact) {
         if noted.insert(s.page) {
@@ -420,7 +420,7 @@ pub fn notes(p: &mut crate::Project, scope: &Scope) -> Vec<String> {
     }
     p.refresh_pending();
     let doc = p.ledger.document();
-    let mut out = resolve_with(doc, scope, p.outputs.as_ref()).map(|r| r.notes).unwrap_or_default();
+    let mut out = resolve_with(doc, scope, p.kept_outputs()).map(|r| r.notes).unwrap_or_default();
     out.extend(pending_note(doc, p.pending));
     out
 }
@@ -432,10 +432,10 @@ pub fn count(p: &mut crate::Project, scope: &Scope) -> (usize, Vec<String>, usiz
         p.outputs();
     }
     let doc = p.ledger.document();
-    let Ok(r) = resolve_with(doc, scope, p.outputs.as_ref()) else { return (0, Vec::new(), 0) };
-    let sheets = r.pages.iter().map(|pg| crate::generated::sheets(doc, *pg, p.outputs.as_ref())).sum();
+    let Ok(r) = resolve_with(doc, scope, p.kept_outputs()) else { return (0, Vec::new(), 0) };
+    let sheets = r.pages.iter().map(|pg| crate::generated::sheets_of(doc, *pg, p.kept_outputs())).sum();
     let generated: BTreeSet<PageId> = r.pages.iter().copied().filter(|pg| crate::generated::kind_of(doc, *pg).is_some()).collect();
-    (sheets, r.unknown, crate::generated::flagged(doc, &generated, crate::draw::outputs::kept_of(p.outputs.as_ref())))
+    (sheets, r.unknown, crate::generated::flagged(doc, &generated, p.kept_outputs()))
 }
 
 /// Install CADCraft's file hooks (reading, writing and the PDF plotter) for an ECAD app, as
