@@ -1,8 +1,8 @@
 //! Checks as a column set (brief 039 step 2; design 022 §8's rows): severity, message, object,
 //! page (a go-to) and the fix buttons.
 //!
-//! **Update map.** The source is a copy of the project's kept checks list (`update_checks` keeps
-//! it from each transaction's ops) and the report models' checks. It is copied again only when
+//! **Update map.** The source is a copy of the project's kept checks list (its `ChecksView` keeps
+//! it from each transaction's effects) and the report models' checks. It is copied again only when
 //! their revision moved; the copy is compared with the last one by each row's identity, and only
 //! rows that appeared or went are patched in the table. Every other commit: nothing. Full rebuild
 //! only on first show, a new project or a changed Show filter.
