@@ -111,15 +111,10 @@ pub enum FileError {
     /// An object key longer than [`MAX_STRING`] bytes.
     #[error("a key longer than {MAX_STRING} bytes")]
     LongKey,
-    /// An op stored in a version newer than this build reads.
-    #[error("op {name} version {version} is newer than this build reads ({OP_VERSION})")]
-    OpNewer { name: String, version: u64 },
-    /// An op stored in an older version with no upcast.
-    #[error("op {name} version {version} has no upcast to version {OP_VERSION}")]
-    OpNoUpcast { name: String, version: u64 },
-    /// An op of an older version without a field its upcast needs.
-    #[error("{0}")]
-    OpUpcastShape(&'static str),
+    /// An op stored in a version other than [`OP_VERSION`], the only one this build reads (pre-v1:
+    /// no upcasts).
+    #[error("op {name} version {version} is not version {OP_VERSION}, the only one this build reads")]
+    OpVersion { name: String, version: u64 },
     /// A value without canonical form.
     #[error(transparent)]
     Canonical(#[from] CanonicalError),

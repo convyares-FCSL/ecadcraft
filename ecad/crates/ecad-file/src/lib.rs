@@ -5,8 +5,8 @@
 //!
 //! - **Records** ([`records`], [`record`]): the transaction records every file stores, schema
 //!   version 1, separate from `ecad-model` and converted explicitly, so a model change never
-//!   silently changes the format. Ops are written flat, `{"op": name, "v": n, …}`, and older op
-//!   versions are upcast after integrity checks.
+//!   silently changes the format. Ops are written flat, `{"op": name, "v": n, …}`; any op
+//!   version but the current one is refused (pre-v1: no upcasts).
 //! - **Integrity** ([`canonical`], [`chain`]): RFC 8785 canonical form (the bytes stored and
 //!   hashed), and an unkeyed SHA-256 history chain with domain-separated seeds for projects and
 //!   libraries. It detects accidental damage, reordering and divergence; it does not resist
