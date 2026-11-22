@@ -204,16 +204,6 @@ pub fn part_rows(
         .collect()
 }
 
-/// The byte a typed start names: `%Q4.0`, `Q4`, `IW64`, `4`; empty unpins.
-pub fn start_byte(text: &str) -> Option<Option<u32>> {
-    let t = text.trim();
-    if t.is_empty() {
-        return Some(None);
-    }
-    let digits: String = t.trim_start_matches(|c: char| !c.is_ascii_digit()).chars().take_while(char::is_ascii_digit).collect();
-    digits.parse().ok().map(Some)
-}
-
 /// What a field's commit runs, or `None` when nothing changed.
 pub fn field_line(c: DeviceId, key: &str, value: &str) -> Option<String> {
     let v = value.trim();
@@ -223,8 +213,8 @@ pub fn field_line(c: DeviceId, key: &str, value: &str) -> Option<String> {
     Some(match key {
         "tag" => format!("setprop {}", json!({"component": c.hex(), "key": "tag", "value": v, "conflict": "swap"})),
         "description" | "function" | "location" | "maker" | "part_number" => setprop(key),
-        "slot" => format!("plcslot {}", json!({"card": c.hex(), "slot": v.parse::<u32>().ok()?})),
-        "start" => format!("plcaddress {}", json!({"card": c.hex(), "start": start_byte(v)?})),
+        "slot" => format!("plcslot {}", json!({"card": c.hex(), "slot": ecad_electrical::input::plc_slot(v).ok()?})),
+        "start" => format!("plcaddress {}", json!({"card": c.hex(), "start": ecad_electrical::input::plc_start(v).ok()?})),
         _ => return None,
     })
 }

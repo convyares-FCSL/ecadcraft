@@ -63,7 +63,7 @@ pub(crate) const MAKE_TAGS: &str = "ecad.plc.maketags";
 /// A table row's height, px (039's table: a 30 px row; the header is one row too).
 const TABLE_ROW_PX: f32 = 30.0;
 /// The free channel's Tag placeholder.
-pub const FREE: &str = "free";
+pub const FREE: &str = ecad_electrical::plc::iolist::FREE;
 
 /// Element names (design 051 §3.8).
 pub const STRIP: &str = "ecad.plc.strip";
@@ -276,52 +276,16 @@ impl TableSource for IoSource {
 /// The `plcchannel` line an edit of `col` in row `r` writes (design 051 §3.7), or `None` when the
 /// column is not set here or nothing would change.
 pub fn edit_line(r: &Row, col: ColumnId, value: &str) -> Option<String> {
-    let v = value.trim();
-    let mut p = json!({"card": r.card.hex(), "channel": r.channel});
-    match col {
-        TEXT => p["text"] = if v.is_empty() { serde_json::Value::Null } else { json!(v) },
-        // Brief 056: the placeholder of a free channel is not a tag.
-        TAG if r.tag.is_none() && (v == FREE || v.is_empty()) => return None,
-        TAG => p["tag"] = if v.is_empty() { serde_json::Value::Null } else { json!(v) },
-        SAFE => {
-            // Inputs have no safe state.
-            r.safe_default.as_ref()?;
-            // The own value typed again changes nothing; the default's value typed sets it here.
-            if r.safe.as_deref().is_some_and(|s| signals::safe_words(s) == v) {
-                return None;
-            }
-            p["safe"] = if v.is_empty() { serde_json::Value::Null } else { json!(v) };
-        }
-        ADDRESS => {
-            // The `*` that marks a typed address is not part of it.
-            let v = v.strip_suffix('*').unwrap_or(v).trim();
-            p["address"] = if v.is_empty() { serde_json::Value::Null } else { json!(v) };
-        }
-        PINS => {
-            let mut pins = serde_json::Map::new();
-            match r.pins.as_slice() {
-                [(role, _)] => {
-                    pins.insert(ecad_model::Word::word(*role).to_string(), json!(v));
-                }
-                many => {
-                    // `+:1 -:5`: each part `role:pin`; a bare value is refused by the command.
-                    for part in v.split_whitespace() {
-                        let (role, pin) = part.split_once(':')?;
-                        if !many.iter().any(|(r, _)| ecad_model::ChannelRole::exact(role) == Some(*r)) {
-                            return None;
-                        }
-                        pins.insert(role.to_string(), json!(pin));
-                    }
-                }
-            }
-            if pins.is_empty() {
-                return None;
-            }
-            p["pins"] = serde_json::Value::Object(pins);
-        }
+    use ecad_electrical::plc::iolist::Field;
+    let field = match col {
+        TEXT => Field::Text,
+        TAG => Field::Tag,
+        SAFE => Field::Safe,
+        ADDRESS => Field::Address,
+        PINS => Field::Pins,
         _ => return None,
-    }
-    Some(format!("plcchannel {p}"))
+    };
+    r.edit_line(field, value)
 }
 
 /// The mark of a square.

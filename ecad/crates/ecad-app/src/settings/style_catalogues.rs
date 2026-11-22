@@ -365,7 +365,7 @@ pub(crate) fn show_detail(
                 let apply = editing && st.edit.trim() != f.current;
                 if ui.add_enabled(writable && apply, egui::Button::new("Apply").small()).widget_info_named(APPLY).clicked() {
                     let v = st.edit.trim();
-                    let value = if v.parse::<f64>().is_ok() { v.to_string() } else { quote(v) };
+                    let value = ecad_electrical::input::style_value(v).to_string();
                     out.push(DetailAction::Run(format!(
                         "setstyle {{\"catalogue\":\"{}\",\"id\":{id},\"layer\":\"{level}\",\"fields\":{{\"{}\":{value}}}}}",
                         cat.catalogue, f.key

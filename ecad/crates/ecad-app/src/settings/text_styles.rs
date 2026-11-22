@@ -89,11 +89,6 @@ fn number(v: &Value) -> String {
     v.as_f64().map(|x| format!("{x}")).unwrap_or_default()
 }
 
-/// Whether a height field's text is a valid height.
-fn valid_height(t: &str) -> Option<f64> {
-    t.trim().parse::<f64>().ok().filter(|h| h.is_finite() && (0.5..=10.0).contains(h))
-}
-
 impl TextSection {
     /// The section filled from `textstyle {}`'s result.
     pub fn from_json(v: &Value) -> Self {
@@ -144,7 +139,7 @@ impl TextSection {
 
     /// Why OK cannot write, if a field is invalid.
     pub fn error(&self) -> Option<&'static str> {
-        if self.rows.iter().any(|r| valid_height(&r.height).is_none()) {
+        if self.rows.iter().any(|r| ecad_electrical::input::text_height(&r.height).is_err()) {
             return Some(BAD_HEIGHT);
         }
         if self.rows.iter().any(|r| !r.font.trim().is_empty() && ecad_electrical::defaults::text::FONT.parse(&r.font).is_none()) {
@@ -185,7 +180,7 @@ impl TextSection {
                 k.insert("font".into(), if r.font.trim().is_empty() { Value::Null } else { json!(r.font.trim()) });
             }
             if r.height.trim() != r.height_orig {
-                let h = valid_height(&r.height).ok_or(BAD_HEIGHT)?;
+                let h = ecad_electrical::input::text_height(&r.height).map_err(|_| BAD_HEIGHT)?;
                 k.insert("height".into(), if r.height.trim() == r.builtin_height { Value::Null } else { json!(h) });
             }
             if r.bold != r.bold_orig {

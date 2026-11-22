@@ -28,6 +28,7 @@ pub mod continuations;
 pub mod defaults;
 pub mod devices;
 pub mod error;
+pub mod input;
 pub mod locations;
 pub mod merge;
 pub mod numbering;
