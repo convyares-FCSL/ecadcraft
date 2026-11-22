@@ -553,12 +553,6 @@ pub struct PotentialDef {
     pub name: String,
     pub prefix: String,
     pub numbered: bool,
-    /// Brief 050b (FP6): read from an older file and kept, never written by this build unless
-    /// the project still holds it. Empty counts as absent.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub colour: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cross_section: Option<String>,
 }
 
 /// Wiring settings (brief 022). `colour_style` is left out at its default; the label height, rule
@@ -605,17 +599,7 @@ impl From<&m::wiring::WiringSettings> for WiringSettings {
             },
             digits: w.digits,
             unclassified_prefix: w.unclassified_prefix.clone(),
-            potentials: w
-                .potentials
-                .iter()
-                .map(|p| PotentialDef {
-                    name: p.name.clone(),
-                    prefix: p.prefix.clone(),
-                    numbered: p.numbered,
-                    colour: p.legacy_colour.clone(),
-                    cross_section: p.legacy_cross_section.clone(),
-                })
-                .collect(),
+            potentials: w.potentials.iter().map(|p| PotentialDef { name: p.name.clone(), prefix: p.prefix.clone(), numbered: p.numbered }).collect(),
             colour_style: w.colour_style,
             label_height: w.label_height,
             label_rule: w.label_rule.clone(),
@@ -662,17 +646,7 @@ impl From<WiringSettings> for m::wiring::WiringSettings {
             },
             digits: w.digits,
             unclassified_prefix: w.unclassified_prefix,
-            potentials: w
-                .potentials
-                .into_iter()
-                .map(|p| m::wiring::PotentialDef {
-                    name: p.name,
-                    prefix: p.prefix,
-                    numbered: p.numbered,
-                    legacy_colour: p.colour.filter(|v| !v.trim().is_empty()),
-                    legacy_cross_section: p.cross_section.filter(|v| !v.trim().is_empty()),
-                })
-                .collect(),
+            potentials: w.potentials.into_iter().map(|p| m::wiring::PotentialDef { name: p.name, prefix: p.prefix, numbered: p.numbered }).collect(),
             colour_style: w.colour_style,
             label_height: w.label_height,
             label_rule: w.label_rule,

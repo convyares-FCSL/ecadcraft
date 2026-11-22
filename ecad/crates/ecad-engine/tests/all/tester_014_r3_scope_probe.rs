@@ -14,7 +14,6 @@
 //! - Every end attached on the other page is still attached: the M3 gate never detaches it.
 //! - Each drawn reference text reads `page-column-row` (or `/page.column`), or `/?` for an orphan.
 //! - The 010 note is echoed when a stub end leaving toward a reference is dropped on a terminal.
-#![cfg(not(target_arch = "wasm32"))]
 
 use crate::common;
 
@@ -127,8 +126,8 @@ fn well_formed(text: &str) -> bool {
 }
 
 #[test]
-#[ignore = "slow: random-edit oracle probe, about 4 min in a debug build"]
-fn tester_014_r3_random_edits_across_two_pages_match_the_oracle() {
+#[ignore = "slow: random-edit probe, about 4 min in a debug build"]
+fn tester_014_r3_random_edits_across_two_pages_keep_ends_and_references() {
     let seed = std::env::var("ECAD_R3_SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(0x14_3010_u64);
     let mut r = connected(seed);
     let mut rng = Rng(seed | 1);

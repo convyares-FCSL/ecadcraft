@@ -1,11 +1,9 @@
 //! Compression of stored rows and chunks (EEP-0005 §4): Zstandard when it makes them smaller, with
 //! a flag byte saying which. Hashes and chain values are always over the uncompressed bytes.
 //!
-//! Native builds compress and decompress with the `zstd` crate (libzstd, level 1); the wasm
-//! reader decodes with `ruzstd` (pure Rust, decode only), so a browser build needs no C
-//! toolchain (overseer, 2026-11-09). Both read the same standard Zstandard frames: the format does not depend on
-//! which wrote it. Decoding is capped, so a hostile file cannot make a reader allocate without
-//! bound.
+//! Rows compress and decompress with the `zstd` crate (libzstd, level 1): standard Zstandard
+//! frames, so the format does not depend on which encoder wrote them. Decoding is capped, so a
+//! hostile file cannot make a reader allocate without bound.
 
 use std::io::Read;
 
@@ -23,16 +21,8 @@ pub const MAX_BODY: usize = 64 << 20;
 pub const LEVEL: i32 = 1;
 
 /// A Zstandard frame of `bytes`.
-#[cfg(not(target_arch = "wasm32"))]
 fn compress(bytes: &[u8]) -> Option<Vec<u8>> {
     zstd::bulk::compress(bytes, LEVEL).ok()
-}
-
-/// The wasm build only reads (`ruzstd` decodes, and its encoder is never linked): anything it
-/// stores in its memory copy is stored as it is.
-#[cfg(target_arch = "wasm32")]
-fn compress(_bytes: &[u8]) -> Option<Vec<u8>> {
-    None
 }
 
 /// `bytes` as a stored body: the flag and the bytes, compressed when that is smaller.
@@ -56,17 +46,6 @@ fn read_capped(r: impl Read) -> Result<Vec<u8>, FileError> {
     Ok(out)
 }
 
-/// A Zstandard frame decoded with `ruzstd` (the wasm reader's decoder; also used natively by the
-/// test that keeps the two decoders in agreement).
-///
-/// # Errors
-/// A damaged frame, or more than [`MAX_BODY`] bytes.
-pub fn decode_ruzstd(body: &[u8]) -> Result<Vec<u8>, FileError> {
-    let d = ruzstd::decoding::StreamingDecoder::new(body).map_err(|e| FileError::Compressed(e.to_string()))?;
-    read_capped(d)
-}
-
-#[cfg(not(target_arch = "wasm32"))]
 thread_local! {
     /// One decompression context per thread, reused: making one per row costs more than the row
     /// (a history is read row by row).
@@ -74,7 +53,6 @@ thread_local! {
         const { std::cell::RefCell::new(None) };
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 fn decode(body: &[u8]) -> Result<Vec<u8>, FileError> {
     let damaged = |e: &dyn std::fmt::Display| FileError::Compressed(e.to_string());
     match zstd::zstd_safe::get_frame_content_size(body) {
@@ -103,11 +81,6 @@ fn decode(body: &[u8]) -> Result<Vec<u8>, FileError> {
         Ok(None) => read_capped(zstd::stream::read::Decoder::new(body).map_err(|e| damaged(&e))?),
         Err(_) => Err(damaged(&"not a Zstandard frame")),
     }
-}
-
-#[cfg(target_arch = "wasm32")]
-fn decode(body: &[u8]) -> Result<Vec<u8>, FileError> {
-    decode_ruzstd(body)
 }
 
 /// The uncompressed bytes of a stored body.
@@ -158,32 +131,5 @@ mod tests {
         }
         assert!(unpack(f, &body[..body.len() / 2]).is_err());
         assert!(unpack(7, b"x").is_err());
-    }
-
-    #[test]
-    fn the_wasm_decoder_reads_what_native_builds_write() {
-        // Rows and chunks of the kinds the container stores, from tiny to a few hundred KB.
-        let mut x = 7u64;
-        let mut samples: Vec<Vec<u8>> = vec![
-            br#"{"type":"tx","seq":1,"ops":[{"op":"AddPage","v":1}],"prev":"00"}"#.repeat(3),
-            br#"{"items":{},"page":{"title":"1"},"representations":{}}"#.repeat(40),
-        ];
-        let mut mixed = Vec::new();
-        for i in 0..200_000u32 {
-            x ^= x << 13;
-            x ^= x >> 7;
-            x ^= x << 17;
-            mixed.extend_from_slice(if x.is_multiple_of(3) { b"\"conductor\":" } else { b"[1.5,-2.25]," });
-            if i.is_multiple_of(97) {
-                mixed.push((x >> 40) as u8);
-            }
-        }
-        samples.push(mixed);
-        for s in samples {
-            let (flag, body) = pack(&s);
-            assert_eq!(flag, ZSTD, "{}", s.len());
-            assert_eq!(decode_ruzstd(&body).unwrap(), s, "ruzstd reads the native frame");
-            assert_eq!(unpack(flag, &body).unwrap(), s);
-        }
     }
 }

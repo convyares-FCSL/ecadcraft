@@ -1,24 +1,23 @@
 //! Branches in a version 2 file (brief 020a, EEP-0005 §3.3, §5): a branch forks from a point of
 //! its parent, owns its log, opens from its parent's state at the fork or its own snapshot, and
 //! the project reopens on the branch last shown (`meta.active`). Branch actions write at once;
-//! readers ignore unknown optional fields (forward compatibility).
-#![cfg(not(target_arch = "wasm32"))]
+//! readers refuse unknown fields in rows (pre-v1, no forward compatibility).
 
 use crate::common::*;
 use crate::container_v2::TempDir;
 use ecad_file::project::BranchError;
 use ecad_file::schema::{BranchId, BranchStatus, VersionKind};
-use ecad_file::{ProjectV2, Store};
+use ecad_file::{Project, Store};
 use ecad_model::*;
-use redb::{ReadableDatabase, ReadableTable};
+use redb::ReadableTable;
 
-fn create(path: &std::path::Path, ledger: &Ledger, every: u64) -> ProjectV2 {
+fn create(path: &std::path::Path, ledger: &Ledger, every: u64) -> Project {
     let store = Store::create(path).unwrap();
-    ProjectV2::create(store, PROJECT, ledger, Some(1), WRITER, every).unwrap().0
+    Project::create(store, PROJECT, ledger, Some(1), WRITER, every).unwrap().0
 }
 
-fn open(path: &std::path::Path) -> ecad_file::OpenedV2 {
-    ProjectV2::open(Store::open(path, true).unwrap(), SEED ^ 1, WRITER).unwrap()
+fn open(path: &std::path::Path) -> ecad_file::Opened {
+    Project::open(Store::open(path, true).unwrap(), SEED ^ 1, WRITER).unwrap()
 }
 
 /// One line on the fixture's page.
@@ -173,113 +172,55 @@ fn branch_names_and_states_follow_the_rules() {
     assert_eq!(ids.first(), Some(&main), "main is listed first");
 }
 
+/// Pre-v1 there is no forward compatibility in rows: an unknown field in a `branches` or
+/// `versions` row is refused (the strict reader), while an unknown `meta` name is still ignored.
 #[test]
-fn readers_ignore_unknown_optional_fields_in_meta_branch_and_version_rows() {
-    let dir = TempDir::new("forward");
+fn unknown_fields_in_branch_and_version_rows_are_refused() {
+    use ecad_file::schema::{BRANCHES, META, VERSIONS};
     let f = fixture();
-    let p = dir.path("p.ecad");
-    let proj = create(&p, &f.ledger, 2_000);
-    let main = proj.branch();
-    drop(proj);
-    {
-        // A newer build's additions, written straight into the tables.
-        let db = redb::Database::open(&p).unwrap();
+    let opens = |p: &std::path::Path| match Project::open(Store::open(p, true).unwrap(), SEED ^ 1, WRITER) {
+        Ok(o) => o.report.damage.is_none(),
+        Err(_) => false,
+    };
+    let fresh = |name: &str| {
+        let dir = TempDir::new(name);
+        let p = dir.path("p.ecad");
+        let proj = create(&p, &f.ledger, 2_000);
+        let main = proj.branch();
+        drop(proj);
+        (dir, p, main)
+    };
+    let edit = |p: &std::path::Path, f: &dyn Fn(&redb::WriteTransaction)| {
+        let db = redb::Database::open(p).unwrap();
         let w = db.begin_write().unwrap();
-        {
-            let mut meta = w.open_table(ecad_file::schema::META).unwrap();
-            meta.insert("future_name", br#"{"anything": 1}"#.as_slice()).unwrap();
-            let mut branches = w.open_table(ecad_file::schema::BRANCHES).unwrap();
-            let row = branches.get(main.0).unwrap().unwrap().value().to_vec();
-            let mut v: serde_json::Value = serde_json::from_slice(&row).unwrap();
-            v["future_field"] = serde_json::json!({"x": [1, 2]});
-            branches.insert(main.0, serde_json::to_vec(&v).unwrap().as_slice()).unwrap();
-            let mut versions = w.open_table(ecad_file::schema::VERSIONS).unwrap();
-            let rows: Vec<(Vec<u8>, Vec<u8>)> =
-                versions.iter().unwrap().map(|r| r.unwrap()).map(|(k, v)| (k.value().to_vec(), v.value().to_vec())).collect();
-            for (k, row) in rows {
-                let mut v: serde_json::Value = serde_json::from_slice(&row).unwrap();
-                v["future_field"] = serde_json::json!("later");
-                v["release_future"] = serde_json::json!(true);
-                versions.insert(k.as_slice(), serde_json::to_vec(&v).unwrap().as_slice()).unwrap();
-            }
-        }
+        f(&w);
         w.commit().unwrap();
-    }
-    let o = open(&p);
-    assert!(o.report.damage.is_none(), "{:?}", o.report);
-    assert_eq!(o.ledger.document(), f.ledger.document());
-    let v = ecad_file::verify::verify(o.project.store());
-    assert!(v.ok, "{:#?}", v.lines);
-}
-
-/// Put `field` into the JSON row `key` of `table` (a newer build's optional addition).
-fn add_field<K: redb::Key + 'static>(p: &std::path::Path, table: redb::TableDefinition<K, &[u8]>, key: K::SelfType<'_>, field: &str)
-where
-    for<'a> K::SelfType<'a>: Clone,
-{
-    let db = redb::Database::open(p).unwrap();
-    let w = db.begin_write().unwrap();
-    {
-        let mut t = w.open_table(table).unwrap();
-        let row = t.get(key.clone()).unwrap().unwrap().value().to_vec();
+    };
+    let (_d1, p1, _) = fresh("meta-name");
+    edit(&p1, &|w| {
+        w.open_table(META).unwrap().insert("future_name", br#"{"anything": 1}"#.as_slice()).unwrap();
+    });
+    assert!(opens(&p1), "an unknown meta name is ignored");
+    let (_d2, p2, main) = fresh("branch-field");
+    edit(&p2, &|w| {
+        let mut t = w.open_table(BRANCHES).unwrap();
+        let row = t.get(main.0).unwrap().unwrap().value().to_vec();
         let mut v: serde_json::Value = serde_json::from_slice(&row).unwrap();
-        v[field] = serde_json::json!({"kept": [1, 2]});
-        t.insert(key, serde_json::to_vec(&v).unwrap().as_slice()).unwrap();
-    }
-    w.commit().unwrap();
-}
-
-/// Whether row `key` of `table` still holds `field`.
-fn has_field<K: redb::Key + 'static>(p: &std::path::Path, table: redb::TableDefinition<K, &[u8]>, key: K::SelfType<'_>, field: &str) -> bool {
-    let db = redb::ReadOnlyDatabase::open(p).unwrap();
-    let r = db.begin_read().unwrap();
-    let t = r.open_table(table).unwrap();
-    let row = t.get(key).unwrap().unwrap().value().to_vec();
-    let v: serde_json::Value = serde_json::from_slice(&row).unwrap();
-    v.get(field) == Some(&serde_json::json!({"kept": [1, 2]}))
-}
-
-#[test]
-fn writers_keep_the_unknown_fields_a_newer_build_wrote_through_save_switch_and_rename() {
-    use ecad_file::schema::{BRANCHES, META, VERSIONS, version_key};
-    let dir = TempDir::new("preserve");
-    let mut f = fixture();
-    let p = dir.path("p.ecad");
-    let proj = create(&p, &f.ledger, 16);
-    let main = proj.branch();
-    let named = proj.store().reader().unwrap().versions(main, VersionKind::User).unwrap();
-    let vname = named.first().map(|v| v.name.clone()).unwrap();
-    drop(proj);
-    let vkey = version_key(main, VersionKind::User, &vname);
-    add_field(&p, BRANCHES, main.0, "future_main");
-    add_field(&p, META, "cache", "future_cache");
-    add_field(&p, VERSIONS, vkey.as_slice(), "future_version");
-    // This build: edits saved (an automatic snapshot rewrites meta.cache), a branch made, the
-    // future field put on it too, then switch, rename, switch back and save again.
-    let mut o = open(&p);
-    let base = o.ledger.head();
-    f.ledger = o.ledger;
-    for i in 0..20 {
-        line(&mut f.ledger, &mut f.ids, f.page, f.layer, 200.0 + f64::from(i));
-    }
-    o.project.save(&mut f.ledger).unwrap();
-    assert!(o.project.snapshot_seq() > base, "an automatic snapshot was written, so meta.cache was");
-    let (b, _) = o.project.create_branch("Next", main, f.ledger.head(), None, None).unwrap();
-    drop(o.project);
-    add_field(&p, BRANCHES, b.0, "future_branch");
-    let mut o = open(&p);
-    let (bl, _) = o.project.switch_to(&o.ledger, b, 3).unwrap();
-    o.project.rename_branch(b, "Later").unwrap();
-    let (mut ml, _) = o.project.switch_to(&bl, main, 4).unwrap();
-    line(&mut ml, &mut f.ids, f.page, f.layer, 300.0);
-    o.project.save(&mut ml).unwrap();
-    drop(o.project);
-    assert!(has_field(&p, BRANCHES, main.0, "future_main"), "main's row");
-    assert!(has_field(&p, BRANCHES, b.0, "future_branch"), "the renamed branch's row");
-    assert!(has_field(&p, META, "cache", "future_cache"), "meta.cache");
-    assert!(has_field(&p, VERSIONS, vkey.as_slice(), "future_version"), "the version row");
-    let v = ecad_file::verify::verify(&Store::open(&p, false).unwrap());
-    assert!(v.ok, "{:#?}", v.lines);
+        v["future_field"] = serde_json::json!(1);
+        t.insert(main.0, serde_json::to_vec(&v).unwrap().as_slice()).unwrap();
+    });
+    assert!(!opens(&p2), "an unknown branch field is refused");
+    let (_d3, p3, _) = fresh("version-field");
+    edit(&p3, &|w| {
+        let mut t = w.open_table(VERSIONS).unwrap();
+        let rows: Vec<(Vec<u8>, Vec<u8>)> = t.iter().unwrap().map(|r| r.unwrap()).map(|(k, v)| (k.value().to_vec(), v.value().to_vec())).collect();
+        for (k, row) in rows {
+            let mut v: serde_json::Value = serde_json::from_slice(&row).unwrap();
+            v["future_field"] = serde_json::json!("later");
+            t.insert(k.as_slice(), serde_json::to_vec(&v).unwrap().as_slice()).unwrap();
+        }
+    });
+    assert!(!opens(&p3), "an unknown version field is refused");
 }
 
 /// Showing a point costs its nearest snapshot plus a bounded replay, however long the history

@@ -348,7 +348,7 @@ fn terminal_plan_and_cable_schedule_pages() {
     let p = t.h.run("newpage", json!({"generated": "terminals", "strip": x1.hex()})).unwrap();
     let plan_page: PageId = id(&p, "page");
     let doc = t.h.doc();
-    assert_eq!(ecad_engine::generated::kind_of(&doc, plan_page), Some(ecad_engine::generated::GenKind::Terminals));
+    assert_eq!(ecad_engine::generated::kind_of(&doc, plan_page), Some(ecad_model::GenKind::Terminals));
     assert_eq!(ecad_engine::generated::strip_of(&doc, plan_page), Some(x1));
     let o = Outputs::build_with(&doc, &ecad_engine::text_style::EngineMetrics);
     assert_eq!(ecad_engine::generated::sheets_of(&doc, plan_page, Some(&o)), 1);

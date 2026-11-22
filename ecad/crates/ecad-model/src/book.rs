@@ -62,8 +62,7 @@ pub struct Book {
 }
 
 /// What book order depends on, and nothing else: the page order, each page's folder, the folders
-/// and their order. Light to copy, so the book order after a list of ops can be worked out
-/// without copying the document ([`Outline::apply_effect`], [`positions_changed_by`]).
+/// and their order.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Outline {
     pub page_order: Vec<PageId>,
@@ -82,78 +81,6 @@ impl Outline {
             page_folder: doc.page_order.iter().filter_map(|p| folder_of(doc, *p).map(|f| (*p, f))).collect(),
             folders: doc.folders.iter().map(|(id, f)| (*id, f.parent)).collect(),
             folder_order: doc.folder_order.clone(),
-        }
-    }
-
-    /// Apply what `effect` changes in the outline (page and folder effects, a page's `folder`): a
-    /// folded remove and add (a page or folder moved) applies the remove, then the add. Every
-    /// other effect changes nothing here.
-    pub fn apply_effect(&mut self, effect: &crate::effect::Effect<'_>) {
-        use crate::effect::Effect;
-        match effect {
-            Effect::Page { id, before, after, index_before, index_after } => {
-                if let (Some(_), Some(index)) = (before, index_before) {
-                    if self.page_order.get(*index) == Some(id) {
-                        self.page_order.remove(*index);
-                    }
-                    self.page_folder.remove(id);
-                }
-                let folder = match (after, index_before, index_after) {
-                    (Some(page), _, Some(index)) => {
-                        if *index <= self.page_order.len() {
-                            self.page_order.insert(*index, *id);
-                        }
-                        Some(page.folder)
-                    }
-                    // A change in place states no index.
-                    (Some(page), None, None) => Some(page.folder),
-                    _ => None,
-                };
-                match folder {
-                    Some(Some(f)) => {
-                        self.page_folder.insert(*id, f);
-                    }
-                    Some(None) => {
-                        self.page_folder.remove(id);
-                    }
-                    None => {}
-                }
-            }
-            Effect::Folder { id, before, after, index_before, index_after } => {
-                if let (Some(_), Some(index)) = (before, index_before) {
-                    if self.folder_order.get(*index) == Some(id) {
-                        self.folder_order.remove(*index);
-                    }
-                    self.folders.remove(id);
-                }
-                if let (Some(folder), Some(index)) = (after, index_after) {
-                    if *index <= self.folder_order.len() {
-                        self.folder_order.insert(*index, *id);
-                    }
-                    self.folders.insert(*id, folder.parent);
-                } else if let (Some(folder), None, None) = (after, index_before, index_after) {
-                    self.folders.insert(*id, folder.parent);
-                }
-            }
-            Effect::Layer { .. }
-            | Effect::Item { .. }
-            | Effect::Device { .. }
-            | Effect::DeviceDefinition { .. }
-            | Effect::DeviceLink { .. }
-            | Effect::Terminal { .. }
-            | Effect::Rep { .. }
-            | Effect::Wire { .. }
-            | Effect::Route { .. }
-            | Effect::Cable { .. }
-            | Effect::Prop { .. }
-            | Effect::Definition { .. }
-            | Effect::Settings { .. }
-            | Effect::Version { .. }
-            | Effect::Style { .. }
-            | Effect::Standard { .. }
-            | Effect::Aid { .. }
-            | Effect::LoosePart { .. }
-            | Effect::Project { .. } => {}
         }
     }
 
@@ -201,46 +128,28 @@ impl Outline {
     }
 }
 
-/// The pages of `doc` (before `effects`) whose book position `effects` change: a rename in place
-/// or an append changes no other page's position. O(pages + folders + effects); empty when `effects` cannot move a page.
-pub fn positions_changed_by(doc: &Document, effects: &crate::effect::Effects<'_>) -> BTreeSet<PageId> {
-    if !moves_pages_by(effects) {
-        return BTreeSet::new();
-    }
-    let mut outline = Outline::of(doc);
-    let before = outline.book();
-    for e in effects {
-        outline.apply_effect(e);
-    }
-    let after = outline.book();
-    before.positions.iter().filter(|(p, i)| after.positions.get(p) != Some(i)).map(|(p, _)| *p).collect()
-}
-
-/// [`positions_changed_by`] noted effect by effect: the outline of `doc` is taken at the first
-/// effect that can move a page ([`moves_pages_by_one`]) and follows that effect and every later
-/// one, so a commit that moves no page reads no outline.
+/// The pages whose book position a commit changes, found by comparing the book before with the
+/// book after (a full build each side, O(pages + folders); no update map since 0.2.3): the
+/// positions of the state before are kept at the first effect that can move a page
+/// ([`moves_pages_by_one`]), so a commit that moves no page reads no book.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PositionsNoted {
-    kept: Option<(Book, Outline)>,
+    before: Option<BTreeMap<PageId, usize>>,
 }
 
 impl PositionsNoted {
-    /// Note one effect, read on `doc`.
-    pub fn note(&mut self, doc: &Document, e: &crate::effect::Effect<'_>) {
-        if self.kept.is_none() && moves_pages_by_one(e) {
-            let outline = Outline::of(doc);
-            self.kept = Some((outline.book(), outline));
-        }
-        if let Some((_, outline)) = &mut self.kept {
-            outline.apply_effect(e);
+    /// Before phase: note one effect, read on `before` (the state before the commit).
+    pub fn note_before(&mut self, before: &Document, e: &crate::effect::Effect<'_>) {
+        if self.before.is_none() && moves_pages_by_one(e) {
+            self.before = Some(Book::of(before).positions);
         }
     }
 
-    /// The pages whose book position the noted effects change.
-    pub fn changed(&self) -> BTreeSet<PageId> {
-        let Some((before, outline)) = &self.kept else { return BTreeSet::new() };
-        let after = outline.book();
-        before.positions.iter().filter(|(p, i)| after.positions.get(p) != Some(i)).map(|(p, _)| *p).collect()
+    /// After phase: the pages of the state before whose book position differs in `after`.
+    pub fn changed(&self, after: &Document) -> BTreeSet<PageId> {
+        let Some(before) = &self.before else { return BTreeSet::new() };
+        let now = Book::of(after).positions;
+        before.iter().filter(|(p, i)| now.get(p) != Some(i)).map(|(p, _)| *p).collect()
     }
 }
 

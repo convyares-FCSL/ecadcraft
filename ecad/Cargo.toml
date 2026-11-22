@@ -31,10 +31,9 @@ strum = { version = "0.28", features = ["derive"] }
 # Container v2 (brief 021, EEP-0005 §2.3): the redb version is pinned exactly; changing it is a
 # deliberate change with its own review and tests, never a routine update.
 redb = "=4.5.0"
-# Zstandard (overseer, 2026-11-09): libzstd through `zstd` natively; `ruzstd` (pure Rust) decodes
-# in the wasm reader. Both pinned; a change is a deliberate change with its own review.
+# Zstandard (overseer, 2026-11-09): libzstd through `zstd`. Pinned; a change is a deliberate
+# change with its own review.
 zstd = "=0.13.4"
-ruzstd = "=0.9.1"
 # Per-chunk and per-page work in parallel, and the app's background pool (design 061, lane R11):
 # MIT OR Apache-2.0, the version CADCraft's `cadcraft-render` already links. Results come back in
 # input order; closures return `Result` and never panic.

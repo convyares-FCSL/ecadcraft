@@ -70,7 +70,7 @@ pub const MISSING: &str = "?";
 /// Refusal of `pageprops` changing the kind.
 pub const KIND_FIXED: &str = "A page's kind is set when it is made; add a new page instead.";
 
-pub use ecad_model::GenKind;
+use ecad_model::GenKind;
 
 /// The kind of `page`, if it is generated.
 pub fn kind_of(doc: &Document, page: PageId) -> Option<GenKind> {

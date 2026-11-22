@@ -71,7 +71,6 @@ pub fn specs() -> Vec<CommandSpec> {
     v.extend(crate::cmd::accessory::specs());
     v.extend(crate::cmd::release::specs());
     v.extend(crate::cmd::text::specs());
-    #[cfg(not(target_arch = "wasm32"))]
     v.extend(crate::agent_access::specs());
     v.extend(crate::cmd::level::specs());
     v.extend(crate::look::specs());
@@ -297,7 +296,6 @@ pub fn typed_commands() -> Vec<input::Typed> {
         crate::cmd::page::TYPED,
         crate::history::TYPED,
         crate::merging::TYPED,
-        #[cfg(not(target_arch = "wasm32"))]
         crate::agent_access::TYPED,
         crate::look::TYPED,
     ]

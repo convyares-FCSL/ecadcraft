@@ -3,7 +3,7 @@
 
 use crate::common::*;
 use crate::container_v2::TempDir;
-use ecad_file::{ProjectV2, Store};
+use ecad_file::{Project, Store};
 use ecad_model::*;
 
 #[test]
@@ -18,8 +18,8 @@ fn routes_come_back_from_the_snapshot_and_the_log() {
     let (lo, hi) = ecad_file::schema::SNAPSHOT_EVERY_RANGE;
     for (name, every) in [("snap.ecad", lo), ("log.ecad", hi)] {
         let p = dir.path(name);
-        ProjectV2::create(Store::create(&p).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, every).unwrap();
-        let opened = ProjectV2::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
+        Project::create(Store::create(&p).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, every).unwrap();
+        let opened = Project::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
         assert_eq!(opened.ledger.document().routes, f.ledger.document().routes, "{name}");
     }
 }
@@ -50,8 +50,8 @@ fn core_positions_come_back_from_the_snapshot_and_the_log() {
     let (lo, hi) = ecad_file::schema::SNAPSHOT_EVERY_RANGE;
     for (name, every) in [("snap.ecad", lo), ("log.ecad", hi)] {
         let p = dir.path(name);
-        ProjectV2::create(Store::create(&p).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, every).unwrap();
-        let opened = ProjectV2::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
+        Project::create(Store::create(&p).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, every).unwrap();
+        let opened = Project::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
         assert_eq!(opened.ledger.document().cables, f.ledger.document().cables, "{name}");
     }
 }
@@ -82,8 +82,8 @@ fn number_by_is_stored_as_a_word_and_comes_back_from_the_snapshot_and_the_log() 
     let (lo, hi) = ecad_file::schema::SNAPSHOT_EVERY_RANGE;
     for (name, every) in [("snap.ecad", lo), ("log.ecad", hi)] {
         let p = dir.path(name);
-        ProjectV2::create(Store::create(&p).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, every).unwrap();
-        let opened = ProjectV2::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
+        Project::create(Store::create(&p).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, every).unwrap();
+        let opened = Project::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
         assert_eq!(opened.ledger.document().settings.wiring.number_by, NumberBy::Conductor, "{name}");
     }
 }
@@ -102,8 +102,8 @@ fn accepts_comes_back_and_a_hostile_count_is_a_read_error() {
     let (lo, hi) = ecad_file::schema::SNAPSHOT_EVERY_RANGE;
     for (name, every) in [("snap.ecad", lo), ("log.ecad", hi)] {
         let p = dir.path(name);
-        ProjectV2::create(Store::create(&p).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, every).unwrap();
-        let opened = ProjectV2::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
+        Project::create(Store::create(&p).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, every).unwrap();
+        let opened = Project::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
         assert_eq!(opened.ledger.document().terminals.get(&t), Some(&bar), "{name}");
     }
     let mut v = serde_json::to_value(Rec::from(&bar)).unwrap();

@@ -295,11 +295,10 @@ fn l_registry_switches_change_the_texts() {
     assert!(texts(&mut h, di, |o| o == TextOf::Address).iter().all(|(_, shown)| !shown));
     h.run("setdefault", json!({"key": "plc.text.channel.rotation", "level": "project", "value": "0"})).unwrap();
     assert!(texts(&mut h, di, |o| o == TextOf::ChannelText { rotated: false }).contains(&("Pump 1 running".into(), true)));
-    // A project default reaches only the cards that inherit it.
-    let n = h.cfg(|p| p.outputs().plc.recomputed);
+    // An object value changes its card only.
     h.run("setdefault", json!({"key": "plc.channel.first", "level": "object", "component": di.hex(), "value": "1"})).unwrap();
-    let one = h.cfg(|p| p.outputs().plc.recomputed) - n;
-    assert!(one <= 2, "an object value recomputes its card only ({one})");
+    let changed = h.cfg(|p| p.outputs().plc.last_changed.clone());
+    assert!(changed.contains(&di) && changed.len() <= 2, "an object value changes its card only ({changed:?})");
     let nums = texts(&mut h, di, |o| o == TextOf::ChannelNo);
     assert!(nums.iter().any(|(v, _)| v == "1") && !nums.iter().any(|(v, _)| v == "0"), "{nums:?}");
     same_as_built(&mut h);

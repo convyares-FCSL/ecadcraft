@@ -109,7 +109,7 @@ fn hostile_values_are_refused() {
     assert_eq!(parse::cross_section("2.5 mm\u{b2}"), Some(2.5));
     assert_eq!(parse::cross_section("18 AWG"), None);
     assert_eq!(parse::ambient("95"), None);
-    assert_eq!(parse::bundling("3 bunched"), Some(parse::Bundling::Circuits(3)));
+    assert_eq!(parse::bundling("3 bunched"), Some(ecad_model::wire::Bundling::Circuits(3)));
     assert_eq!(parse::percent("25"), None);
     assert_eq!(ecad_engine::strips::notation_size("H07RN-F 4G1.5"), Some(1.5));
     assert_eq!(ecad_engine::strips::notation_size("3x2.5"), Some(2.5));
@@ -144,22 +144,22 @@ fn c15_a_table_reads_round_trips_and_refuses_bad_rows() {
 #[test]
 fn the_formulas_give_the_worked_numbers() {
     // §11 check 1: round2(√(30/40)) = 0.87; 27 × 0.87 × 0.80 = 18.792 → 18.8.
-    let k = rating::k_temp(70.0, 30.0, 40.0, true).unwrap();
+    let k = rating::circuit::k_temp(70.0, 30.0, 40.0, true).unwrap();
     assert_eq!(k, 0.87);
     assert!((27.0 * k * 0.80 - 18.792).abs() < 1e-9);
-    assert_eq!(rating::fmt_amps(27.0 * k * 0.80, Some(4.0)), "18.8");
+    assert_eq!(rating::circuit::fmt_amps(27.0 * k * 0.80, Some(4.0)), "18.8");
     // §11 check 9: the cap.
-    assert_eq!(rating::k_temp(70.0, 30.0, 25.0, true), Some(1.0));
-    assert_eq!(rating::k_temp(70.0, 30.0, 70.0, true), None);
+    assert_eq!(rating::circuit::k_temp(70.0, 30.0, 25.0, true), Some(1.0));
+    assert_eq!(rating::circuit::k_temp(70.0, 30.0, 70.0, true), None);
     // §11 check 4: 10.0 Ω/km, 4 A, 12 m, 400 V, ac3 → 0.9948 V, 0.249 %.
-    let (v, p) = rating::volt_drop(10.0, 70.0, true, 4.0, 12.0, 400.0).unwrap();
+    let (v, p) = rating::circuit::volt_drop(10.0, 70.0, true, 4.0, 12.0, 400.0).unwrap();
     assert!((v - 0.9948).abs() < 1e-3 && (p - 0.2487).abs() < 1e-3, "{v} {p}");
-    assert_eq!(rating::fmt_percent(p), "0.2");
+    assert_eq!(rating::circuit::fmt_percent(p), "0.2");
     // §11 check 5: 20.0 Ω/km, 0.5 A, 60 m, 24 V dc → 1.4358 V, 5.98 %.
-    let (v, p) = rating::volt_drop(20.0, 70.0, false, 0.5, 60.0, 24.0).unwrap();
+    let (v, p) = rating::circuit::volt_drop(20.0, 70.0, false, 0.5, 60.0, 24.0).unwrap();
     assert!((v - 1.4358).abs() < 1e-3 && (p - 5.98).abs() < 1e-2, "{v} {p}");
-    assert_eq!(rating::fmt_percent(p), "6.0");
-    assert_eq!(rating::fmt_amps(4.04, Some(4.0)), "4.04");
+    assert_eq!(rating::circuit::fmt_percent(p), "6.0");
+    assert_eq!(rating::circuit::fmt_amps(4.04, Some(4.0)), "4.04");
 }
 
 // ------------------------------------------------------------------------------- checks
@@ -535,7 +535,7 @@ fn f6_the_trace_bound_is_said_in_words() {
     let mut f = fixture();
     rate_category(&mut f.h);
     let doc = f.h.doc();
-    let mut r = rating::rating_of(&doc, rating::RatedSubject::Wire(f.l2));
+    let mut r = rating::circuit::rating_of(&doc, rating::RatedSubject::Wire(f.l2));
     r.issues = vec![rating::Issue::NoDevice(true)];
     let rows = rating::rows(&doc, &r);
     assert_eq!(rows.len(), 1);

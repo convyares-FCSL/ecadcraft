@@ -3,7 +3,7 @@
 //! `ratingtable` writes. The engine crate's shims read the files, commit the ops and answer in
 //! JSON.
 
-use crate::rating::Rating;
+use crate::rating::circuit::Rating;
 use ecad_model::style::{StyleLayer, StyleRecord, StyleRef, is_name};
 use ecad_model::units::{Amps, Celsius, Percent, Volts};
 use ecad_model::wire::{InstallMethod, SupplySystem};
@@ -11,8 +11,9 @@ use ecad_model::{CableId, Document, IdAllocator, Op, Wire, WireId, Word};
 use serde_json::{Value, json};
 
 use crate::error::CmdError;
-use crate::rating::{self, Basis, RatedSubject, dataset, parse};
+use crate::rating::{self, RatedSubject, dataset, parse};
 use crate::styles::{self, cable, ratingtable};
+use ecad_model::wire::Basis;
 
 /// Most subjects one `rating {many}` call sets.
 pub const MAX_MANY: usize = 500;
@@ -33,7 +34,7 @@ pub fn wires(doc: &Document, text: &str) -> Result<Vec<WireId>, CmdError> {
     }
     let conn = doc.connectivity();
     let mut out: Vec<WireId> = conn.nets_numbered(t).filter_map(|(n, _)| conn.net(n)).flat_map(|n| n.wires.iter().copied()).collect();
-    out.retain(|c| rating::is_panel_wire(doc, *c));
+    out.retain(|c| rating::circuit::is_panel_wire(doc, *c));
     out.sort();
     out.dedup();
     if out.is_empty() {
@@ -429,7 +430,7 @@ pub fn rating_json(doc: &Document, r: &Rating) -> Value {
     let device = r.device.as_ref().map(|d| json!({"tag": d.tag, "in": d.amps, "how": d.how.word()}));
     let load = r.load.map(|l| json!({"amps": l.amps, "from": if l.from == rating::load::LoadFrom::Typed { "typed" } else { "power" }}));
     let vd = r.voltdrop.as_ref().map(|v| {
-        json!({"volts": v.volts, "percent": v.percent, "shown": format!("{} %", rating::fmt_percent(v.percent)), "amps": v.amps, "why": v.why, "limit": v.limit})
+        json!({"volts": v.volts, "percent": v.percent, "shown": format!("{} %", rating::circuit::fmt_percent(v.percent)), "amps": v.amps, "why": v.why, "limit": v.limit})
     });
     let kinds: Vec<&str> = rating::rows(doc, r).iter().map(|c| c.kind.name()).collect();
     json!({
@@ -440,7 +441,7 @@ pub fn rating_json(doc: &Document, r: &Rating) -> Value {
         "table": r.table.as_ref().map(|(n, src)| json!({"name": n, "source": src})),
         "factors": factors,
         "iz": r.iz,
-        "iz_shown": r.iz.map(|x| format!("{} A", rating::fmt_amps(x, r.device.as_ref().and_then(|d| d.amps)))),
+        "iz_shown": r.iz.map(|x| format!("{} A", rating::circuit::fmt_amps(x, r.device.as_ref().and_then(|d| d.amps)))),
         "summary": r.summary(),
         "device": device,
         "load": load,

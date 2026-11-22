@@ -1,25 +1,20 @@
-//! The kept PLC model (design 045 §11.1, see [`super`]'s update map). The rules that measure text
+//! The kept PLC model (design 045 §11.1), built from scratch after every commit (see [`super`]). The rules that measure text
 //! (an address wider than its cell) take the sheet font metrics, [`TextMetrics`]; ecad-engine's
 //! `crate::plc::Plc` wraps this with today's signatures, passing CADCraft's fonts.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::effect::{Effect, Effects};
-use ecad_model::{DeviceId, Document, ObjectRef, Subject};
+use ecad_model::{DeviceId, Document, ObjectRef};
 use serde_json::{Value, json};
 
 use super::*;
 use crate::text_style::fonts::TextMetrics;
 
-/// What one commit's effects touch in the kept PLC model, noted effect by effect ([`Plc::note`]).
+/// What one commit's effects name for the I/O rows (a renamed target, a renumbered wire), noted
+/// effect by effect ([`Plc::note`]); the model itself is rebuilt.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Touch {
-    /// Devices named directly (before the project defaults, styles and racks are added).
-    devices: BTreeSet<DeviceId>,
-    /// Project `plc.*` keys set: the racks and cards inheriting them.
-    project_keys: BTreeSet<String>,
-    /// A text style or the standard changed: every card.
-    styles: bool,
     /// The cards whose I/O rows can change.
     rows: BTreeSet<DeviceId>,
 }
@@ -39,17 +34,13 @@ pub struct Plc {
     pub blocks: BTreeMap<DeviceId, address::Block>,
     /// Used channels without an address, by rack (the `no-address` count row).
     no_address: BTreeMap<Group, usize>,
-    /// The racks and cards the last update recomputed.
+    /// The racks and cards that read differently after the last update.
     pub last_changed: BTreeSet<DeviceId>,
     /// Brief 045c: the cards whose I/O rows the last update may have changed (their own data, a
     /// moved block, a target renamed, a wire renumbered): the I/O page and list patch these only.
     pub rows_changed: BTreeSet<DeviceId>,
     /// How many updates the model has had: a view that missed one rebuilds instead of patching.
     pub updates: u64,
-    /// How many racks and cards the last update recomputed (tests and bench).
-    pub last_work: usize,
-    /// How many racks and cards were recomputed in all (tests: an unrelated edit adds none).
-    pub recomputed: u64,
 }
 
 impl PartialEq for Plc {
@@ -77,44 +68,12 @@ impl Plc {
             p.set_checks(doc, g, m);
         }
         p.last_changed.clear();
-        p.last_work = 0;
         p
     }
 
-    /// Whether the kept model equals `other` (verify mode).
-    pub fn same_as(&self, other: &Plc) -> bool {
-        self == other
-    }
-
-    /// Recompute device `c` (a rack, a card, or neither now) and note the check groups it touches.
+    /// Add device `c` (a rack, a card, or neither) and note the check groups it touches.
     fn set(&mut self, doc: &Document, c: DeviceId, groups: &mut BTreeSet<Group>) {
         let ty = doc.devices.get(&c).and_then(|_| card_type_of(doc, c));
-        if ty.is_none() && !self.cards.contains_key(&c) && !self.racks.contains_key(&c) {
-            // Neither before nor now: nothing to do, and no work counted.
-            return;
-        }
-        self.recomputed += 1;
-        self.last_work += 1;
-        // Out with the old.
-        self.blocks.remove(&c);
-        if let Some(old) = self.cards.remove(&c) {
-            if let RackRef::Rack(r) | RackRef::Missing(r) = old.rack {
-                groups.insert(r);
-                if let Some(set) = self.naming.get_mut(&r) {
-                    set.remove(&c);
-                    if set.is_empty() {
-                        self.naming.remove(&r);
-                    }
-                }
-            }
-            self.unracked.remove(&c);
-            groups.insert(c);
-            self.last_changed.insert(c);
-        }
-        if self.racks.remove(&c).is_some() {
-            groups.insert(c);
-            self.last_changed.insert(c);
-        }
         let Some(ty) = ty else { return };
         let tag = crate::devices::tag_words(doc, c);
         let page = first_page(doc, c);
@@ -156,131 +115,6 @@ impl Plc {
                 first: channels::first_number(doc, c),
             },
         );
-    }
-
-    /// The devices `effects` (the transaction just committed on `doc`) touch, by design 045
-    /// §11.1's map; anything not listed touches nothing.
-    pub fn touched(&self, doc: &Document, effects: &Effects<'_>) -> BTreeSet<DeviceId> {
-        let mut t = Touch::default();
-        for effect in effects {
-            self.note_touched(doc, effect, &mut t);
-        }
-        self.touched_of(doc, &t)
-    }
-
-    /// Note what one effect of the transaction just committed on `doc` touches (the devices
-    /// part of [`Plc::touched`]). Reads the model as it was before the update.
-    fn note_touched(&self, doc: &Document, effect: &Effect<'_>, t: &mut Touch) {
-        match effect {
-            // Created or deleted; design 072: a device's tag, type, or a station's or module's
-            // own fields (§3) when changed in place.
-            Effect::Device { id, before, after } => {
-                t.devices.insert(*id);
-                if before.is_some() && after.is_some() {
-                    t.devices.extend(self.naming.get(id).into_iter().flatten().copied());
-                }
-            }
-            Effect::Prop { object: ObjectRef::Device(c), key, .. } => {
-                let key = key.raw;
-                if key.starts_with("plc.") || key == ecad_model::tag::TAG_KEY {
-                    if self.cards.contains_key(c) || self.racks.contains_key(c) || key.starts_with("plc.") {
-                        t.devices.insert(*c);
-                    }
-                    // A card naming this device as its rack reads its tag and slots.
-                    t.devices.extend(self.naming.get(c).into_iter().flatten().copied());
-                }
-            }
-            Effect::Prop { object: ObjectRef::Project, key, .. } if key.raw.starts_with("plc.") => {
-                t.project_keys.insert(key.raw.to_string());
-            }
-            // Linked or unlinked (a representation changed in place touches nothing here).
-            Effect::Rep { before: None, after: Some(rep), .. } | Effect::Rep { before: Some(rep), after: None, .. } => {
-                if let Subject::Device(c) = rep.subject {
-                    t.devices.insert(c);
-                }
-            }
-            // Brief 045b: a card's channel points, and the nets they are on (used or spare).
-            Effect::Terminal { before, after, .. } => {
-                t.devices.extend(before.iter().chain(after.iter()).filter_map(|t| t.device()));
-            }
-            // Design 072 §4.4: the commit's rewrite made, removed or moved a wire: the devices
-            // at its ends, and the cards on its net.
-            Effect::Wire { before, after, .. } => {
-                if let Some(wire) = after.or(*before) {
-                    for end in &wire.ends {
-                        if let Some(x) = doc.terminals.get(end) {
-                            t.devices.extend(x.device());
-                        }
-                    }
-                    for w in doc.wires_of_net(wire.net) {
-                        let ends = doc.wires.get(&w).map(|x| x.ends);
-                        t.devices.extend(
-                            ends.iter()
-                                .flatten()
-                                .filter_map(|t| doc.terminals.get(t))
-                                .filter_map(|x| x.device())
-                                .filter(|c| self.cards.contains_key(c)),
-                        );
-                    }
-                }
-            }
-            // Brief 051 (design 051 §9.1): a card's symbol moved (an item changed in place)
-            // changes its runs and their Checks rows.
-            Effect::Item { id, before: Some(_), after: Some(_) } => {
-                if let Some(Subject::Device(c)) = doc.representation_of_item(*id).map(|(_, r)| r.subject)
-                    && self.cards.contains_key(&c)
-                {
-                    t.devices.insert(c);
-                }
-            }
-            // A route on one of a card's points re-routed (design 072 §4.3).
-            Effect::Route { before, after, .. } => {
-                let points = before.iter().chain(after.iter()).flat_map(|r| r.points_landed());
-                t.devices.extend(points.filter_map(|t| doc.terminals.get(&t)).filter_map(|x| x.device()).filter(|c| self.cards.contains_key(c)));
-            }
-            // A text style or standard changed: the bands of every card (rare).
-            Effect::Style { .. } | Effect::Standard { .. } => t.styles = true,
-            Effect::Prop { object: ObjectRef::Project | ObjectRef::Standard, key, .. } if key.raw.starts_with("text.") => t.styles = true,
-            Effect::Prop { .. }
-            | Effect::Rep { .. }
-            | Effect::Item { .. }
-            | Effect::Page { .. }
-            | Effect::Layer { .. }
-            | Effect::DeviceDefinition { .. }
-            | Effect::Cable { .. }
-            | Effect::Definition { .. }
-            | Effect::Settings { .. }
-            | Effect::Version { .. }
-            | Effect::Folder { .. }
-            | Effect::Project { .. }
-            | Effect::Aid { .. }
-            | Effect::LoosePart { .. }
-            | Effect::DeviceLink { .. } => {}
-        }
-    }
-
-    /// The devices a noted [`Touch`] reaches (the end of [`Plc::touched`]).
-    fn touched_of(&self, doc: &Document, t: &Touch) -> BTreeSet<DeviceId> {
-        let mut out = t.devices.clone();
-        if t.styles {
-            out.extend(self.cards.keys().copied());
-        }
-        if !t.project_keys.is_empty() {
-            // A project default: only the racks and cards that inherit it (they have no own value
-            // of a `plc.` key read at object level; reading all of them is bounded by the model).
-            let keys = &t.project_keys;
-            let inherits = |c: &DeviceId| doc.devices.get(c).is_none_or(|x| keys.iter().any(|k| !x.properties.contains_key(k.as_str())));
-            out.extend(self.racks.keys().filter(|c| inherits(c)).copied());
-            out.extend(self.cards.keys().filter(|c| inherits(c)).copied());
-        }
-        // Only racks and cards, before or now (a device that is neither is not touched).
-        out.retain(|c| self.cards.contains_key(c) || self.racks.contains_key(c) || card_type_of(doc, *c).is_some());
-        // A rack's cards read its tag and slot range.
-        let racks: Vec<DeviceId> = out.iter().filter(|c| self.racks.contains_key(c)).copied().collect();
-        for r in racks {
-            out.extend(self.naming.get(&r).into_iter().flatten().copied());
-        }
-        out
     }
 
     /// Brief 045c (design 045 §11.1): the cards whose I/O rows `effects` (just committed; `doc`
@@ -348,15 +182,14 @@ impl Plc {
         }
     }
 
-    /// Note what one effect of the transaction just committed on `doc` (the state after) touches,
-    /// devices and I/O rows ([`Plc::touched`], [`Plc::rows_touched`]), reading the model as it is
-    /// before the update. Pair with [`Plc::update_touched`].
+    /// Note the I/O rows one effect of the transaction just committed on `doc` (the state after)
+    /// can change ([`Plc::rows_touched`]), reading the model as it is before the update. Pair with
+    /// [`Plc::update_touched`].
     pub fn note(&self, doc: &Document, effect: &Effect<'_>, t: &mut Touch) {
-        self.note_touched(doc, effect, t);
         self.note_rows(doc, effect, &mut t.rows);
     }
 
-    /// Bring the model in line with `effects` (just committed; `doc` is the state after). Returns
+    /// Build the model again after `effects` (just committed; `doc` is the state after). Returns
     /// whether anything changed.
     pub fn update_with(&mut self, doc: &Document, effects: &Effects<'_>, m: &dyn TextMetrics) -> bool {
         let mut t = Touch::default();
@@ -366,37 +199,26 @@ impl Plc {
         self.update_touched(doc, t, m)
     }
 
-    /// Bring the model in line with what was noted in `t` ([`Plc::note`]) on `doc`, the state
-    /// after. Returns whether anything changed.
+    /// Build the model again from scratch on `doc`, the state after, and work out what reads
+    /// differently from the model before; `t` names the I/O rows the effects reach besides
+    /// ([`Plc::note`]). Returns whether anything changed.
     pub fn update_touched(&mut self, doc: &Document, t: Touch, m: &dyn TextMetrics) -> bool {
-        self.last_changed.clear();
-        self.updates += 1;
-        self.last_work = 0;
-        let mut touched = self.touched_of(doc, &t);
-        self.rows_changed = t.rows;
-        touched.extend(self.rows_changed.iter().copied());
-        if touched.is_empty() {
-            return false;
-        }
-        let before: Vec<(DeviceId, Option<CardData>, Option<RackData>)> =
-            touched.iter().map(|c| (*c, self.cards.get(c).cloned(), self.racks.get(c).cloned())).collect();
-        let mut groups = BTreeSet::new();
-        for c in &touched {
-            self.set(doc, *c, &mut groups);
-        }
-        // Only what reads differently counts as changed.
-        for (c, card, rack) in before {
-            if self.cards.get(&c) == card.as_ref() && self.racks.get(&c) == rack.as_ref() {
-                self.last_changed.remove(&c);
-            }
-        }
-        let mut changed = !self.last_changed.is_empty();
-        for g in groups {
-            changed |= self.set_checks(doc, g, m);
-        }
-        let cards: Vec<DeviceId> = touched.iter().chain(self.last_changed.iter()).filter(|c| self.cards.contains_key(c)).copied().collect();
-        self.rows_changed.extend(cards);
-        changed || !self.rows_changed.is_empty()
+        let rebuilt = Plc::build_with(doc, m);
+        let ids: BTreeSet<DeviceId> =
+            self.cards.keys().chain(self.racks.keys()).chain(rebuilt.cards.keys()).chain(rebuilt.racks.keys()).copied().collect();
+        let last_changed: BTreeSet<DeviceId> = ids
+            .into_iter()
+            .filter(|c| {
+                self.cards.get(c) != rebuilt.cards.get(c) || self.racks.get(c) != rebuilt.racks.get(c) || self.blocks.get(c) != rebuilt.blocks.get(c)
+            })
+            .collect();
+        let checks_changed = self.checks != rebuilt.checks || self.no_address != rebuilt.no_address || self.unracked != rebuilt.unracked;
+        let mut rows_changed = t.rows;
+        rows_changed.extend(last_changed.iter().filter(|c| rebuilt.cards.contains_key(c)).copied());
+        let changed = !last_changed.is_empty() || checks_changed || !rows_changed.is_empty();
+        let updates = self.updates + 1;
+        *self = Plc { last_changed, rows_changed, updates, ..rebuilt };
+        changed
     }
 
     /// Work out group `g`'s Checks rows; returns whether they changed.

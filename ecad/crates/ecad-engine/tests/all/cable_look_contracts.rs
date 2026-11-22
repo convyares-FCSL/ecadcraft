@@ -7,7 +7,6 @@
 //! Fixture H (design §10): two drawn components with connection points at x = 0 and x = 120,
 //! y = 0, 5, 10, 15; four attached wires W1–W4 between them; the slash C1 from (58,-3) to (62,18),
 //! with designation `MOTOR M1` and type `4/C #10`.
-#![cfg(not(target_arch = "wasm32"))]
 
 use crate::common;
 

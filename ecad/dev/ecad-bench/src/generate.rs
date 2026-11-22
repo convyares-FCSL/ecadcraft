@@ -134,11 +134,11 @@ impl Generated {
     /// # Errors
     /// Encoding failed.
     pub fn file_bytes(&self) -> Result<Vec<u8>, String> {
-        use ecad_file::{ProjectV2, Store, schema::DEFAULT_SNAPSHOT_EVERY};
+        use ecad_file::{Project, Store, schema::DEFAULT_SNAPSHOT_EVERY};
         let backend = ecad_store::MemoryBackend::new();
         Store::with_backend(backend.clone())
             .map_err(|e| e.to_string())
-            .and_then(|store| ProjectV2::create(store, self.project, &self.ledger, None, WRITER, DEFAULT_SNAPSHOT_EVERY).map_err(|e| e.to_string()))
+            .and_then(|store| Project::create(store, self.project, &self.ledger, None, WRITER, DEFAULT_SNAPSHOT_EVERY).map_err(|e| e.to_string()))
             .map_err(|e| format!("writing the {} {} project: {e}", self.tier.name, self.variant.name()))?;
         Ok(backend.bytes())
     }

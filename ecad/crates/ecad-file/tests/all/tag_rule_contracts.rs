@@ -3,7 +3,6 @@
 //! without cable tags; it opens with the marks recomputed, Verify reports that as information, and
 //! a re-save writes the current rule. The rule is in the version row, which builds before 029 read
 //! (they ignore fields they do not know).
-#![cfg(not(target_arch = "wasm32"))]
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -13,7 +12,7 @@ use crate::container_v2::TempDir;
 use ecad_file::chain;
 use ecad_file::chunks::{META_KEY, ModelMeta};
 use ecad_file::schema::{self, BranchId, VersionKind};
-use ecad_file::{ProjectV2, Store, StoreError};
+use ecad_file::{Project, Store, StoreError};
 use ecad_model::tag::{HighWater, TAG_RULE, note_ops};
 use ecad_model::*;
 
@@ -40,7 +39,7 @@ fn history() -> Ledger {
 
 fn create(path: &Path, ledger: &Ledger) {
     let store = Store::create(path).unwrap();
-    ProjectV2::create(store, PROJECT, ledger, Some(1), WRITER, 16).unwrap();
+    Project::create(store, PROJECT, ledger, Some(1), WRITER, 16).unwrap();
 }
 
 /// The marks as a build before brief 026 counted them (rule 1): no cable tags, no resets.
@@ -129,14 +128,14 @@ fn a_rule_1_file_opens_with_its_cable_marks_recomputed() {
         assert_eq!((v.tag_rule, meta.tag_high.get("W")), (None, None), "the file now looks as before brief 026");
     }
     {
-        let o = ProjectV2::open(Store::open(&p, false).unwrap(), 1, WRITER).unwrap();
+        let o = Project::open(Store::open(&p, false).unwrap(), 1, WRITER).unwrap();
         assert!(o.report.damage.is_none(), "{:?}", o.report);
         assert!(o.report.snapshot_seq > 0, "opened from a snapshot");
         assert_eq!(o.project.base_tag_high().get("W"), Some(&2), "-W02 was deleted before the snapshot: its number stays used");
         assert_eq!(o.ledger.document(), l.document());
     }
     // A branch forked after the snapshot starts from the recomputed marks too.
-    let mut proj = ProjectV2::open(Store::open(&p, true).unwrap(), 1, WRITER).unwrap();
+    let mut proj = Project::open(Store::open(&p, true).unwrap(), 1, WRITER).unwrap();
     let main = proj.project.branch();
     let head = proj.ledger.head();
     let (b, _) = proj.project.create_branch("B", main, head, None, None).unwrap();
@@ -179,7 +178,7 @@ fn a_resave_writes_the_current_rule_and_verifies() {
     let l = history();
     create(&p, &l);
     make_rule_1(&p, &l);
-    let mut o = ProjectV2::open(Store::open(&p, true).unwrap(), 1, WRITER).unwrap();
+    let mut o = Project::open(Store::open(&p, true).unwrap(), 1, WRITER).unwrap();
     let at = o.ledger.head();
     o.ledger.commit(Author::User, "Version", vec![Op::NameVersion { name: "Again".into(), at, description: None }]).unwrap();
     o.project.save(&mut o.ledger).unwrap();
@@ -189,7 +188,7 @@ fn a_resave_writes_the_current_rule_and_verifies() {
     assert_eq!(again.1.tag_high.get("W"), Some(&2), "the new snapshot carries the recomputed marks");
     let v = ecad_file::verify::verify(&Store::open(&p, false).unwrap());
     assert!(v.ok, "{:#?}", v.lines);
-    let o = ProjectV2::open(Store::open(&p, false).unwrap(), 1, WRITER).unwrap();
+    let o = Project::open(Store::open(&p, false).unwrap(), 1, WRITER).unwrap();
     assert_eq!(o.project.base_tag_high().get("W"), Some(&2));
 }
 

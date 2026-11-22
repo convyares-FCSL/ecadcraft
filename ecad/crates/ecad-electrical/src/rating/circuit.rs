@@ -392,7 +392,7 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
     let mut rated = None;
     // Grouping input: a wire's bundling, a cable's grouped count.
     let bundling = if is_cable {
-        inp.grouped.map(|n| (parse::Bundling::Circuits(n), "set here".to_string()))
+        inp.grouped.map(|n| (ecad_model::wire::Bundling::Circuits(n), "set here".to_string()))
     } else {
         match inp.bundling {
             Some(b) => Some((b, "set here".to_string())),
@@ -408,12 +408,12 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
     let loaded: u8 = if system == "ac3" { 3 } else { 2 };
     let grouping_factor = |data: Option<&Dataset>, issues: &mut Vec<Issue>, factors: &mut Vec<Factor>| -> Option<f64> {
         match &bundling {
-            Some((parse::Bundling::Factor(f), from)) => {
+            Some((ecad_model::wire::Bundling::Factor(f), from)) => {
                 let k = round2(*f);
                 factors.push(Factor { name: if is_cable { "grouping" } else { "bundling" }, factor: k, input: fmt_factor(k), from: from.clone() });
                 Some(k)
             }
-            Some((parse::Bundling::Circuits(n), from)) => {
+            Some((ecad_model::wire::Bundling::Circuits(n), from)) => {
                 let Some(d) = data else {
                     issues.push(Issue::NoTable(format!("{n} circuits need a rating table's grouping factor; no rating table chosen")));
                     return None;

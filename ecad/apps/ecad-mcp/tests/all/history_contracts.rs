@@ -66,7 +66,7 @@ fn version_restore_and_branches_through_execute_record_the_agents_steps() {
     assert_eq!(rows.len(), 2);
     assert_eq!(rows[1]["name"], json!("Option B"));
     assert_eq!(rows[1]["current"], json!(true));
-    let created_by = c.s.with_session(|s, p| p.read(s, |p, _| p.file.v2().unwrap().branch_record().created_by.clone()).unwrap()).unwrap();
+    let created_by = c.s.with_session(|s, p| p.read(s, |p, _| p.file.project().unwrap().branch_record().created_by.clone()).unwrap()).unwrap();
     assert_eq!(created_by.as_deref(), Some(AGENT));
     // An edit on the branch; switching with it unsaved is refused, then saved and switched.
     c.wire_pp(json!({"points": [[0, 80], [60, 80]]}));

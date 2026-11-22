@@ -15,14 +15,8 @@ Part of the [quick start](../quick-start.md). The Standards screen of brief 042 
 | Settings ▸ Standards | The header says the standard (**Make a standard…**, **Rename**, **Copy from project…**, **Back to IEC**), each saying its consequence before anything is written. The strip reads **Defaults · Text styles · Location boxes · Frames**. A style row's detail shows each field's chain (Built-in → Standard → Project), an editor at Project or Standard level, Reset per level, **New style from this**, **Rename**, **Delete…** (with a replacement when it is used) and **Promote to standard**. **Used by** is filled for the selected row |
 | Inspector | A selected device shows a **Style** row per text kind (a list of the text styles); a location box shows **Box style**; with nothing selected, the page shows **Frame style**. **Reset** clears the object's or page's own choice. A choice naming a style that no longer exists reads `Not found: drawn as Tag` |
 | Status bar | `Standard: <name>` |
-| Checks | `style-unknown` (a choice naming no style), `ignored-old-setting` and `style-limits` (records past the bounds of a hostile file) |
+| Checks | `style-unknown` (a choice naming no style) and `style-limits` (records past the bounds of a hostile file) |
 | Prints | A style's colour prints in a colour print; a mono print is ink, as before |
-
-**Text sizes set before 050 go back to the built-ins** (FP4, no conversion): 031's project
-properties `text.<kind>.height`, `.weight` and `.font` are no longer read. Checks lists one
-`ignored-old-setting` row per kind of key ("Text heights set in an older build, now ignored: set
-them in Standards"); set them again in Settings ▸ Standards ▸ Text styles, then clear the old key
-with `projectprops {"props": {"text.tag.height": null}}` to remove the row.
 
 Known limits in 050a: a device's own text style changes the height, weight and colour of its
 texts; the font stays the kind's project style's. A wire's own `text.wire_label.style` is stored

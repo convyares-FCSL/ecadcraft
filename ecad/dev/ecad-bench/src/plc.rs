@@ -14,7 +14,8 @@
 //! - **plcstyle**: one rack's address style changed (`plcaddress`), committed and updated. < 16 ms.
 //! - **iolist**: every I/O row made (the models built). < 50 ms. **iolistupd**: one channel's
 //!   text set (`plcchannel`), committed, updated and its card's rows made again. < 5 ms.
-//! - **work**: how many racks and cards a slot move recomputed (never all of them).
+//! - **work**: how many racks and cards read differently after a slot move (the model itself is
+//!   rebuilt after every commit since 0.2.3).
 //!
 //! - Brief 056 (design 056 §12.4, without sync since the owner's change of 2026-11-14):
 //!   **plcimport**, a 5 000-tag generic CSV read, normalised and matched to the channels, dry run
@@ -186,7 +187,7 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredPlc, 
             let t = Instant::now();
             run(&mut s, "plcslot", json!({"card": card.hex(), "slot": 20}))?;
             moves.push(ms(t));
-            out.work = out.work.max(project.read(&mut s, |p, _| p.kept_outputs().map_or(0, |o| o.plc.last_work))?);
+            out.work = out.work.max(project.read(&mut s, |p, _| p.kept_outputs().map_or(0, |o| o.plc.last_changed.len()))?);
             run(&mut s, "undo", json!({}))?;
         }
         out.slotmove_ms = median(&mut moves);

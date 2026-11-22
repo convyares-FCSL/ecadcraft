@@ -268,7 +268,7 @@ impl HistoryPanel {
             history::default_branch_name(p),
             p.unsaved_transactions(),
             history::current_name(p),
-            p.file.v2().is_some(),
+            p.file.project().is_some(),
         );
         // A selection that no longer exists is dropped.
         if let Some(s) = &self.selected

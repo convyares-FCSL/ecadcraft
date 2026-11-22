@@ -871,7 +871,7 @@ fn group_halves<'a>(rows: impl Iterator<Item = &'a BomRow>, group: Group) -> Vec
 }
 
 fn needs_outputs(doc: &Document, page: PageId) -> bool {
-    doc.page_order.contains(&page) && crate::generated::kind_of(doc, page).is_some_and(crate::generated::GenKind::needs_outputs)
+    doc.page_order.contains(&page) && crate::generated::kind_of(doc, page).is_some_and(ecad_model::GenKind::needs_outputs)
 }
 
 /// A cable end as the schedule shows it: `+CP1 -X01` (design 028 §6.3).

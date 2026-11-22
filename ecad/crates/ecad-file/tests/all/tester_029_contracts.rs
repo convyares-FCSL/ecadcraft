@@ -7,7 +7,6 @@
 //! The reference (the Verify before 029: the full check after every transaction) is an
 //! independent copy here. With `ECAD_TESTER029_EXPORT=<folder>` the damaged files are also kept
 //! there, so a build of `dev` from before 029 can verify the same bytes (tester report).
-#![cfg(not(target_arch = "wasm32"))]
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -17,7 +16,7 @@ use crate::container_v2::TempDir;
 use ecad_file::chain::{self, Hash};
 use ecad_file::schema::{self, BranchId, VersionKind, VersionRecord};
 use ecad_file::verify::{verify, verify_chain};
-use ecad_file::{ProjectV2, Store};
+use ecad_file::{Project, Store};
 use ecad_model::*;
 use redb::ReadableTable;
 
@@ -51,7 +50,7 @@ fn build(name: &str) -> Fx {
     let dir = TempDir::new(&format!("t029-{name}"));
     let mut f = fixture();
     let path = dir.path("p.ecad");
-    let mut proj = ProjectV2::create(Store::create(&path).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, EVERY).unwrap().0;
+    let mut proj = Project::create(Store::create(&path).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, EVERY).unwrap().0;
     f.ledger.mark_persisted(f.ledger.head()).unwrap();
     for i in 0..40 {
         let op = line(&mut f.ids, f.page, f.layer, 10.0 + f64::from(i));
@@ -101,7 +100,7 @@ fn write(p: &Path, f: impl FnOnce(&redb::WriteTransaction)) {
 }
 
 fn log_of(p: &Path, b: BranchId) -> Vec<Transaction> {
-    let o = ProjectV2::open(store(p), 1, WRITER).unwrap();
+    let o = Project::open(store(p), 1, WRITER).unwrap();
     let last = o.project.store().reader().unwrap().last_seq(b).unwrap().unwrap();
     o.project.tx_display(b, 1, last).unwrap()
 }
@@ -377,7 +376,6 @@ fn merge_row(p: &Path, b: BranchId, source: BranchId, seq: u64) {
             ancestor: BranchPoint { branch: b.0, seq: 0, chain: [2; 32] },
         }),
         tag_rule: None,
-        extra: Default::default(),
     };
     write(p, |w| {
         let k = schema::version_key(b, VersionKind::Merge, &rec.name);
@@ -615,7 +613,7 @@ mod fp1 {
         let mut f = fixture();
         let (w1, w2): (CableId, CableId) = (f.ids.fresh(), f.ids.fresh());
         f.commit("Cables", vec![Op::CreateCable { id: w1, cable: cable("-W01") }, Op::CreateCable { id: w2, cable: cable("-W02") }]);
-        let mut proj = ProjectV2::create(Store::create(&path).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, EVERY).unwrap().0;
+        let mut proj = Project::create(Store::create(&path).unwrap(), PROJECT, &f.ledger, Some(1), WRITER, EVERY).unwrap().0;
         f.ledger.mark_persisted(f.ledger.head()).unwrap();
         let main = proj.branch();
         let at = f.ledger.head();
@@ -662,7 +660,7 @@ mod fp1 {
         let (_dir, path, b) = rule_1_branch_file("open");
         let snaps = snapshots_of(&path, b);
         assert!(!snaps.is_empty() && snaps.iter().all(|s| s.tag_rule.is_none()), "{snaps:#?}");
-        let mut o = ProjectV2::open(Store::open(&path, true).unwrap(), 1, WRITER).unwrap();
+        let mut o = Project::open(Store::open(&path, true).unwrap(), 1, WRITER).unwrap();
         let main_high = o.project.base_tag_high().get("W").copied();
         let (_, rep) = o.project.switch_to(&o.ledger, b, 99).unwrap();
         assert!(rep.damage.is_none(), "{rep:?}");
@@ -678,7 +676,7 @@ mod fp1 {
     #[test]
     fn a_resave_on_the_branch_writes_the_current_rule() {
         let (_dir, path, b) = rule_1_branch_file("resave");
-        let mut o = ProjectV2::open(Store::open(&path, true).unwrap(), 1, WRITER).unwrap();
+        let mut o = Project::open(Store::open(&path, true).unwrap(), 1, WRITER).unwrap();
         let (mut bl, _) = o.project.switch_to(&o.ledger, b, 98).unwrap();
         let at = bl.head();
         bl.commit(Author::User, "Version", vec![Op::NameVersion { name: "Branch again".into(), at, description: None }]).unwrap();

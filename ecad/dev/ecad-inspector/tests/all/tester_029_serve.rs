@@ -418,7 +418,7 @@ fn hostile_http_never_stops_the_server() {
 /// `ECAD_TESTER029_EXPORT=<folder>` the file is kept there as `escape.v2.ecad`.
 #[test]
 fn hostile_text_comes_back_as_plain_json_strings() {
-    use ecad_file::{ProjectV2, Store};
+    use ecad_file::{Project, Store};
     use ecad_model::*;
     const X: &str = "<img src=x onerror=alert(1)>";
     let dir = TempDir::new("t029-escape");
@@ -458,7 +458,7 @@ fn hostile_text_comes_back_as_plain_json_strings() {
     let at = l.head();
     l.commit(Author::User, "Version", vec![Op::NameVersion { name: X.into(), at, description: Some(X.into()) }]).unwrap();
     let path = dir.path("escape.v2.ecad");
-    let mut proj = ProjectV2::create(Store::create(&path).unwrap(), PROJECT, &l, Some(1), WRITER, 16).unwrap().0;
+    let mut proj = Project::create(Store::create(&path).unwrap(), PROJECT, &l, Some(1), WRITER, 16).unwrap().0;
     l.mark_persisted(l.head()).unwrap();
     let main = proj.branch();
     let _ = proj.create_branch(X, main, at, None, None).unwrap();

@@ -256,7 +256,7 @@ fn the_golden_project_opens() {
         std::fs::write(path, written(&mut f.ledger)).unwrap();
     }
     let golden = std::fs::read(path).expect("golden file (regenerate with ECAD_UPDATE_GOLDEN=1)");
-    let o = ecad_file::ProjectV2::open(ecad_file::Store::from_bytes(golden).unwrap(), SEED, WRITER).unwrap();
+    let o = ecad_file::Project::open(ecad_file::Store::from_bytes(golden).unwrap(), SEED, WRITER).unwrap();
     assert!(o.report.damage.is_none(), "{:?}", o.report);
     assert_eq!(o.project.project_id(), PROJECT);
     assert_eq!(o.ledger.full_log().unwrap(), f.ledger.full_log().unwrap());

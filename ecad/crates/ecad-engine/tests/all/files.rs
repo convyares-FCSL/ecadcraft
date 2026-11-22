@@ -1,6 +1,5 @@
 //! Project files on disk through the adapter (persistence stage 2a): Save As, Save, close and
 //! reopen keep connectivity, IDs and history; a second opener is read-only; paths are checked.
-#![cfg(not(target_arch = "wasm32"))]
 
 use crate::common;
 
@@ -74,7 +73,7 @@ fn save_close_and_reopen_keep_connectivity_ids_and_history() {
 
     // Closing the project lets go of the file: another session could now write it.
     close_all(&mut h.s);
-    let probe = ecad_file::disk::DiskProjectV2::open(std::path::Path::new(&path), 1, "probe").unwrap();
+    let probe = ecad_file::disk::DiskProject::open(std::path::Path::new(&path), 1, "probe").unwrap();
     assert!(probe.project.read_only().is_none(), "the writer lock was released on close");
     drop(probe);
 

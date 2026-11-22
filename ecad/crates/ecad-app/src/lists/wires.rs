@@ -17,7 +17,7 @@ use super::report::{From, ReportColumns, ReportRows};
 /// next epoch only the subjects the update re-checked are copied again (design 057 §10).
 #[derive(Debug, Default)]
 pub struct RatingCopy {
-    pub results: std::collections::BTreeMap<ecad_engine::rating::RatedSubject, ecad_engine::rating::Rating>,
+    pub results: std::collections::BTreeMap<ecad_engine::rating::RatedSubject, ecad_engine::rating::circuit::Rating>,
     seen: Option<(u64, u64)>,
     /// Full copies and patches (tests: the update map).
     pub copies: u64,
@@ -122,7 +122,7 @@ impl WiresSource {
     }
 
     /// Brief 057: row `k`'s rating result.
-    pub fn rating(&self, k: usize) -> Option<&ecad_engine::rating::Rating> {
+    pub fn rating(&self, k: usize) -> Option<&ecad_engine::rating::circuit::Rating> {
         self.ids.get(k).and_then(|c| self.rating.results.get(&ecad_engine::rating::RatedSubject::Wire(*c)))
     }
 }

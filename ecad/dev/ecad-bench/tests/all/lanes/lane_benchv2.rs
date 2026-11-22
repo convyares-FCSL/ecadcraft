@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use ecad_bench::generate::{Generated, Tier, Variant, generate};
-use ecad_file::disk::DiskProjectV2;
+use ecad_file::disk::DiskProject;
 use ecad_model::Document;
 
 const TINY: Tier = Tier { name: "tiny", pages: 3, devices: 9, wires: 18, cables: 6 };
@@ -28,7 +28,7 @@ fn dir(tag: &str) -> PathBuf {
 }
 
 fn shape(path: &Path) -> Shape {
-    let o = DiskProjectV2::open(path, 3, "lane_benchv2").unwrap();
+    let o = DiskProject::open(path, 3, "lane_benchv2").unwrap();
     assert!(o.report.damage.is_none(), "{:?}", o.report.damage);
     let doc = o.ledger.document().clone();
     Shape { pages: doc.pages.len(), devices: doc.devices.len(), wires: doc.wires.len(), history: o.ledger.head(), document: doc }
@@ -37,7 +37,7 @@ fn shape(path: &Path) -> Shape {
 /// Written straight to the project file, as the bench does.
 fn direct(g: &Generated, dir: &Path) -> PathBuf {
     let out = dir.join(format!("{}-{}.ecad", g.tier.name, g.variant.name()));
-    ecad_bench::v2::write(g, &out).unwrap();
+    ecad_bench::container::write(g, &out).unwrap();
     out
 }
 
@@ -60,7 +60,7 @@ fn every_transaction_written_straight_to_version_2_matches_the_generated_history
     let d = dir("tx");
     let g = generate(TINY, Variant::Churned).unwrap();
     let path = direct(&g, &d);
-    let o = DiskProjectV2::open(&path, 4, "lane_benchv2").unwrap();
+    let o = DiskProject::open(&path, 4, "lane_benchv2").unwrap();
     let history = o.ledger.history().unwrap();
     for tx in g.ledger.log() {
         assert_eq!(&history.transaction(tx.seq).unwrap(), tx, "transaction {}", tx.seq);
@@ -76,7 +76,7 @@ fn writing_over_a_stale_file_regenerates_it() {
     // Something else from an older build at the bench's file name.
     let g = generate(TINY, Variant::Lean).unwrap();
     std::fs::write(&path, b"{\"stale\": true}\n").unwrap();
-    ecad_bench::v2::write(&g, &path).unwrap();
+    ecad_bench::container::write(&g, &path).unwrap();
     assert!(ecad_file::disk::starts_like_project(&path).unwrap());
     assert_eq!(shape(&path).history, g.ledger.head());
     let _ = std::fs::remove_dir_all(&d);

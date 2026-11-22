@@ -56,24 +56,12 @@ pub(crate) struct SetpropParams {
     /// A device tag another device holds: make this the same device (as conflict merge).
     #[serde(default)]
     merge: Option<bool>,
-    /// With a null value: clear an older build's text setting on the project.
-    #[serde(default)]
-    project: Option<bool>,
 }
 
 impl Command for SetpropParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let key = self.key;
         let typed = self.value.flatten();
-        // Brief 050a (design 050 §3.4): an older build's text size, weight or font on the project is
-        // cleared here (its Checks row goes); it is never written.
-        if self.project == Some(true) && typed.is_none() && ecad_electrical::styles::checks::is_old_key(&key) {
-            return on_project(s, |p, pg, _| {
-                let Some(op) = rules::clear_old_key(p.ledger.document(), &key) else { return Ok(json!({"changed": false})) };
-                p.apply_edit(pg, "setprop", "Clear an older build's text setting", vec![op])?;
-                Ok(json!({"changed": true}))
-            });
-        }
         rules::reserved(&key).map_err(|e| err(e.to_string()))?;
         // Brief 052 (design 052 §5.9): a function or location (PROP_RULES' first row, which claims by
         // key alone) is stored as an entry key of the project's list, for all the devices at once.

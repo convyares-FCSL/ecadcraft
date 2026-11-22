@@ -9,7 +9,6 @@
 //!
 //! The JSON forms are driven through `Session::execute`, so the rows can move to brief 011's MCP
 //! harness unchanged (brief scope 7).
-#![cfg(not(target_arch = "wasm32"))]
 
 use crate::common;
 

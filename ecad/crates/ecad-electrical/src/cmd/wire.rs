@@ -629,9 +629,6 @@ pub fn wire_settings(before: &ProjectSettings, change: &WireSettingsChange) -> R
             rows.push(wiring::PotentialDef {
                 prefix: wiring::valid_text("prefix", Some(r.prefix.trim())).map_err(CmdError::refused)?.unwrap_or_default(),
                 numbered: r.numbered.unwrap_or(true),
-                // Writing the table clears an older build's colours (Checks' row goes).
-                legacy_colour: None,
-                legacy_cross_section: None,
                 name,
             });
         }

@@ -171,7 +171,7 @@ fn r1_type_cores_length_maker_and_part_come_from_the_type_and_are_overridden_per
     assert_eq!(cable_cmds::part_value(&doc, k, CableField::Maker), Some(("Synthmaker".into(), Source::Type)));
     assert_eq!(cable_cmds::part_value(&doc, k, CableField::PartNumber), Some(("SYN-0004".into(), Source::Type)));
     assert_eq!(cable_cmds::part_value(&doc, k, CableField::Description).map(|v| v.1), Some(Source::Type));
-    assert_eq!(cable_cmds::shield(&doc, k), Some((cable_cmds::Shield::Overall, Source::Type)));
+    assert_eq!(cable_cmds::shield(&doc, k), Some((ecad_model::style::cable::Shield::Overall, Source::Type)));
     assert_eq!(cable_cmds::read(&doc, k, CableField::Length).as_deref(), Some("12.5"));
     // Overridden per cable, in one transaction.
     h.run(

@@ -181,7 +181,7 @@ fn the_demo_locations_reports_generated_pages_and_print_book() {
     h.state_mut().reports = None;
 
     // 5. Generated pages: a cover and contents, the BOM page.
-    for k in [ecad_engine::generated::GenKind::Cover, ecad_engine::generated::GenKind::Contents] {
+    for k in [ecad_model::GenKind::Cover, ecad_model::GenKind::Contents] {
         h.state_mut().panel_action(project_panel::Action::NewGenerated(k));
         h.run_steps(3);
     }

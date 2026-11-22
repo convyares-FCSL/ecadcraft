@@ -16,7 +16,6 @@
 //! - AC6: edits of the fan (move, erase, copy, rotate, scale, mirror, stretch, grips, properties,
 //!   offset, explode, cut, mixed selections, new geometry on `ECAD-CABLES`) are refused with the
 //!   spec's message and leave the head and the drawing unchanged.
-#![cfg(not(target_arch = "wasm32"))]
 
 use crate::common;
 

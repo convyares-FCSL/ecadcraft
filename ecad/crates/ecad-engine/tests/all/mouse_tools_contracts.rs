@@ -12,7 +12,6 @@
 //! - Design §5 / owner answer Q2: the prompt names the default terminal name that is then used.
 //! - Owner answer Q3: loose ends are not red.
 //! - Save and reopen after building by prompts; the reopened project takes the forms again.
-#![cfg(not(target_arch = "wasm32"))]
 
 use crate::common;
 

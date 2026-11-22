@@ -64,9 +64,7 @@ fn poisoned() -> DbError {
 
 enum Db {
     Writable(redb::Database),
-    /// A file opened read-only. Only [`Database::open`] makes one, and wasm has no `open` (it
-    /// reads from bytes), so the variant is never built there.
-    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    /// A file opened read-only. Only [`Database::open`] makes one.
     ReadOnly(ReadOnlyDatabase),
 }
 
@@ -85,7 +83,6 @@ fn builder(flag: &Arc<AtomicBool>) -> Builder {
 
 /// redb's read-only open (`Builder::open_read_only`, which opens the file for reading and hands it
 /// to a `FileBackend`), on a file this crate opened.
-#[cfg(not(target_arch = "wasm32"))]
 fn open_read_only(b: &Builder, path: &std::path::Path) -> Result<ReadOnlyDatabase, redb::DatabaseError> {
     let file = crate::disk::FileMedium::open(path, false)?.into_file();
     b.open_read_only_with_backend(redb::backends::FileBackend::new(file)?)
@@ -116,7 +113,6 @@ impl Database {
     ///
     /// # Errors
     /// [`DbError::Exists`] when `path` exists; the file could not be created.
-    #[cfg(not(target_arch = "wasm32"))]
     pub fn create(path: &std::path::Path) -> Result<Self, DbError> {
         let file = crate::disk::FileMedium::create_new(path)
             .map(crate::disk::FileMedium::into_file)
@@ -136,7 +132,6 @@ impl Database {
     /// The writable open is redb's path-based `Builder::open`: redb 4.5 has no public
     /// open-existing over a backend, and `create_with_backend` would initialise an empty file as a
     /// new database where `open` refuses it.
-    #[cfg(not(target_arch = "wasm32"))]
     fn reopen_path(path: &std::path::Path, writable: bool) -> Reopen {
         let path = path.to_path_buf();
         Box::new(move || {
@@ -149,7 +144,6 @@ impl Database {
     ///
     /// # Errors
     /// The file could not be opened, is not a redb database, or [`DbError::Busy`].
-    #[cfg(not(target_arch = "wasm32"))]
     pub fn open(path: &std::path::Path, writable: bool) -> Result<Self, DbError> {
         let flag = Arc::new(AtomicBool::new(false));
         let b = builder(&flag);

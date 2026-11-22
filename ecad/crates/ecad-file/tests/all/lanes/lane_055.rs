@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use crate::common::{PROJECT, SEED, WRITER};
-use ecad_file::{ProjectV2, Store};
+use ecad_file::{Project, Store};
 use ecad_model::style::{FrameStyle, StyleBody};
 use ecad_model::style::{StyleLayer, StyleRecord, StyleRef};
 use ecad_model::title_block::{Binding, BlockItem, IfEmpty, Ink, Newest, Rect, Source, TextLook, TitleBlockLayout};
@@ -99,9 +99,9 @@ fn a_title_block_round_trips_through_a_project_file_and_its_snapshots() {
     for (name, every) in [("snap.ecad", 16), ("log.ecad", 1_000_000)] {
         let p = dir.path(name);
         let store = Store::create(&p).unwrap();
-        let proj = ProjectV2::create(store, PROJECT, &ledger, Some(1), WRITER, every).unwrap().0;
+        let proj = Project::create(store, PROJECT, &ledger, Some(1), WRITER, every).unwrap().0;
         drop(proj);
-        let o = ProjectV2::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
+        let o = Project::open(Store::open(&p, true).unwrap(), SEED ^ 1, WRITER).unwrap();
         assert_eq!(o.ledger.document(), ledger.document(), "{name}");
         assert_eq!(o.ledger.full_log().unwrap(), ledger.full_log().unwrap(), "{name}: the log reads back the same ops");
         let v = ecad_file::verify::verify(o.project.store());

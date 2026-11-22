@@ -15,7 +15,6 @@
 //! Oracles after each step: `RefIndex` equals `RefIndex::build`; every page whose drawn reference
 //! parts changed is named by `changes_since` (the update map, design 025 §6); the harness's
 //! projection checks; no command reports an internal error.
-#![cfg(not(target_arch = "wasm32"))]
 
 use std::collections::{BTreeMap, BTreeSet};
 

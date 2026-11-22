@@ -825,7 +825,7 @@ impl crate::checks::CheckSource for CoverRows {
 /// and again only after a change [`touches`] names (the cover is laid out once for it).
 pub fn check_rows(doc: &Document) -> Vec<crate::checks::Check> {
     use crate::checks::{Check, Kind, Object};
-    let cover_page = doc.page_order.iter().copied().find(|p| crate::generated::kind_of(doc, *p) == Some(crate::generated::GenKind::Cover));
+    let cover_page = doc.page_order.iter().copied().find(|p| crate::generated::kind_of(doc, *p) == Some(ecad_model::GenKind::Cover));
     let Some(page) = cover_page else { return Vec::new() };
     let mut out = Vec::new();
     if notes(doc).1 {

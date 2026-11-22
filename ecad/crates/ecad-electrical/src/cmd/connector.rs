@@ -10,11 +10,12 @@ use std::collections::BTreeSet;
 
 use ecad_model::{DeviceId, Document, IdAllocator, Ledger, Noun, Op, PageId, Placement, Pt, RouteId, Style, Terminal, TerminalId, WireId};
 
-use crate::connectors::{self as cn, Family, FamilyRules, Names, Shown};
+use crate::connectors::{self as cn, FamilyRules, Names, Shown};
 use crate::defaults::{self, Scope};
 use crate::devices::TagHigh;
 use crate::error::CmdError;
 use crate::symbols::{Side, Starter};
+use ecad_model::device::ConnectorFamily;
 
 /// The refusal of a `connector` call with nowhere to place.
 pub const NEEDS_AT: &str = "connector needs at for a row, or line or wire for pins.";
@@ -104,10 +105,11 @@ pub fn halves(doc: &Document, halves: Option<&str>) -> Result<Side, CmdError> {
 ///
 /// # Errors
 /// A word that names no family.
-pub fn family(doc: &Document, family: Option<&str>) -> Result<Family, CmdError> {
+pub fn family(doc: &Document, family: Option<&str>) -> Result<ConnectorFamily, CmdError> {
     match family {
-        None => Ok(Family::of_typed(defaults::resolve(doc, &defaults::connectors::MAKER_FAMILY, Scope::project()).word()).unwrap_or(Family::Plain)),
-        Some(w) => Family::of_typed(w).ok_or(CmdError::input("`family` is plain, dsub, m12, rj45, usba or usbb")),
+        None => Ok(ConnectorFamily::of_typed(defaults::resolve(doc, &defaults::connectors::MAKER_FAMILY, Scope::project()).word())
+            .unwrap_or(ConnectorFamily::Plain)),
+        Some(w) => ConnectorFamily::of_typed(w).ok_or(CmdError::input("`family` is plain, dsub, m12, rj45, usba or usbb")),
     }
 }
 
@@ -203,7 +205,7 @@ pub struct Connector {
     pub made: Made,
     /// The transaction's label.
     pub label: String,
-    pub family: Family,
+    pub family: ConnectorFamily,
     pub halves: Side,
     pub pins_layout: bool,
 }
@@ -339,7 +341,7 @@ pub fn join_names(doc: &Document, c: DeviceId, n: usize) -> Vec<String> {
 struct Row<'a> {
     device: Option<DeviceId>,
     halves: Side,
-    family: Family,
+    family: ConnectorFamily,
     pins: Option<usize>,
     names: &'a Names,
     at: Pt,

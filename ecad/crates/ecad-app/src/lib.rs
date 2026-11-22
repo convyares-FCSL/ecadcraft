@@ -818,7 +818,7 @@ impl App {
             .read(&mut self.cad.session, |p, _| {
                 use ecad_engine::history;
                 let file = p.path.as_deref().and_then(|x| std::path::Path::new(x).file_name()).map(|f| f.to_string_lossy().into_owned());
-                let Some(v) = p.file.v2() else {
+                let Some(v) = p.file.project() else {
                     return BranchInfo { name: "main".into(), count: 1, bar: None, parent: None, release_line: true, file };
                 };
                 let rec = v.branch_record().clone();
@@ -846,7 +846,7 @@ impl App {
     /// preview closes. One integer and one ID compared per frame otherwise.
     pub fn sync_branch(&mut self) {
         let Some(p) = self.project.clone() else { return };
-        let Ok(now) = p.read(&mut self.cad.session, |p, _| (p.branch_gen(), p.file.v2().map(|v| v.branch().hex()))) else { return };
+        let Ok(now) = p.read(&mut self.cad.session, |p, _| (p.branch_gen(), p.file.project().map(|v| v.branch().hex()))) else { return };
         let Some(seen) = self.branch_seen.replace(now.clone()) else { return };
         if seen == now {
             return;

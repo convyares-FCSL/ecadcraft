@@ -422,10 +422,10 @@ fn half_row_groups_are_kept_not_regrouped() {
     assert_eq!(count(&mut h), rebuilt);
 }
 
-/// Review of #81, 4 (design 044 §11.1, acceptance 8 and 11): the connector index is kept per
-/// commit, recomputes only the connectors an op names, and equals a rebuild.
+/// Review of #81, 4 (design 044 §11.1, acceptance 8 and 11): the connector index is built again
+/// after each commit (no update map since 0.2.3) and equals a rebuild.
 #[test]
-fn the_connector_index_is_kept_from_the_ops() {
+fn the_connector_index_equals_a_rebuild_after_each_commit() {
     let mut h = H::new(4422);
     let a: DeviceId = id(&row(&mut h, json!({})), "component");
     let b: DeviceId = id(&row(&mut h, json!({"at": [50, 150]})), "component");
@@ -434,9 +434,7 @@ fn the_connector_index_is_kept_from_the_ops() {
     let inh = h.p(|p| p.connectors().inheriting(key));
     assert!(inh.contains(&a) && !inh.contains(&b), "{inh:?}");
     h.wire_pp(&[(300.0, 300.0), (350.0, 300.0)]).unwrap();
-    assert_eq!(connectors::index_work(), 0, "an unrelated edit recomputes no connector");
     h.run("setprop", json!({"component": a.hex(), "key": "half.s.maker", "value": "ACME"})).unwrap();
-    assert_eq!(connectors::index_work(), 1, "an edit of one connector recomputes that one");
     // The project's side name: only the inheriting connector's half tag changes.
     h.run("setdefault", json!({"key": key, "value": "B"})).unwrap();
     let d = h.doc();

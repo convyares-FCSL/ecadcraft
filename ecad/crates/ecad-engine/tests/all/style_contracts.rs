@@ -223,29 +223,22 @@ fn a_location_style_restyles_boxes_and_a_page_frame_style_one_page() {
 }
 
 #[test]
-fn checks_report_unknown_styles_and_old_settings() {
+fn checks_report_unknown_styles() {
     let (mut h, _, k1) = fixture();
-    // An older build's text sizes: one row per kind of key, cleared by clearing the key.
     h.cfg(|p| {
-        let ops = vec![
-            Op::SetProperty { object: ObjectRef::Project, key: "text.tag.height".into(), before: None, after: Some("3".into()) },
-            Op::SetProperty { object: ObjectRef::Project, key: "text.grid.height".into(), before: None, after: Some("4".into()) },
-            Op::SetProperty { object: ObjectRef::Device(k1), key: "text.tag.style".into(), before: None, after: Some(format!("#{:032x}", 0xdead)) },
-        ];
+        let ops = vec![Op::SetProperty {
+            object: ObjectRef::Device(k1),
+            key: "text.tag.style".into(),
+            before: None,
+            after: Some(format!("#{:032x}", 0xdead)),
+        }];
         p.ledger.commit(ecad_model::Author::User, "old", ops).unwrap();
     });
     let doc = h.doc();
     let rows = ecad_engine::checks::all(&doc, 0.01);
-    let old: Vec<_> = rows.iter().filter(|c| c.kind == ecad_engine::checks::Kind::IgnoredOldSetting).collect();
-    assert_eq!(old.len(), 1, "one row for heights");
-    assert!(old[0].which.contains("Text heights set in an older build"), "{}", old[0].which);
     let unknown: Vec<_> = rows.iter().filter(|c| c.kind == ecad_engine::checks::Kind::StyleUnknown).collect();
     assert_eq!(unknown.len(), 1);
     assert!(unknown[0].which.contains("not found; drawn as Tag"), "{}", unknown[0].which);
-    assert_eq!(text_style(&doc, TextKind::Tag).height, 2.5, "the old value is ignored");
-    h.run("projectprops", json!({"props": {"text.tag.height": null, "text.grid.height": null}})).unwrap();
-    let rows = ecad_engine::checks::all(&h.doc(), 0.01);
-    assert!(!rows.iter().any(|c| c.kind == ecad_engine::checks::Kind::IgnoredOldSetting));
 }
 
 #[test]
@@ -412,7 +405,7 @@ fn choosing_a_category_sets_a_missing_potential_and_keeps_another() {
 }
 
 #[test]
-fn one_category_per_potential_and_old_potential_colours_are_refused() {
+fn one_category_per_potential_and_potential_colours_are_refused() {
     let (mut h, _, _) = fixture();
     let e = h.run("setstyle", json!({"catalogue": "wire", "id": "pe", "fields": {"potential": "24V"}})).unwrap_err();
     assert!(e.contains("24 V DC is already the default for 24V; clear it there first."), "{e}");
@@ -421,18 +414,6 @@ fn one_category_per_potential_and_old_potential_colours_are_refused() {
     pots[0]["colour"] = json!("RD");
     let e = h.run("wiresettings", json!({"potentials": pots.clone()})).unwrap_err();
     assert!(e.contains("set on wire categories now"), "{e}");
-    // An older file's potential colours: one Checks row, cleared by writing the table.
-    h.cfg(|p| {
-        let before = p.ledger.document().settings.clone();
-        let mut after = before.clone();
-        after.wiring.potentials[0].legacy_colour = Some("BN".into());
-        p.ledger.commit(ecad_model::Author::User, "old", vec![Op::SetProjectSettings { before, after }]).unwrap();
-    });
-    let rows = ecad_engine::checks::all(&h.doc(), 0.01);
-    assert!(rows.iter().any(|c| c.kind == ecad_engine::checks::Kind::IgnoredOldSetting && c.which.contains("Potential colours")));
-    let w = h.run("wiresettings", json!({})).unwrap();
-    h.run("wiresettings", json!({"potentials": w["potentials"].clone(), "digits": 3})).unwrap();
-    assert!(h.doc().settings.wiring.potentials.iter().all(|p| p.legacy_colour.is_none()));
 }
 
 #[test]

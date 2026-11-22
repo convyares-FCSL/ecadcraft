@@ -217,5 +217,5 @@ fn the_demo_locations_reports_and_generated_pages() {
     assert!(s01.rows.iter().any(|r| r[2].text == "-S01" && r[4].text == "?" && r[4].flag.is_some()), "-S01 has no maker");
     // The generated pages.
     let kinds: Vec<_> = doc.page_order.iter().filter_map(|p| ecad_engine::generated::kind_of(&doc, *p)).collect();
-    assert_eq!(kinds, [ecad_engine::generated::GenKind::Revisions, ecad_engine::generated::GenKind::BomLocation]);
+    assert_eq!(kinds, [ecad_model::GenKind::Revisions, ecad_model::GenKind::BomLocation]);
 }

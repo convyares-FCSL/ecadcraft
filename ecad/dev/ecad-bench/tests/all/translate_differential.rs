@@ -224,7 +224,7 @@ fn open_small(tag: &str) -> Opened {
     let dir = std::env::temp_dir().join(format!("ecad-014-{tag}-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let v2 = dir.join("small-lean.ecad");
-    ecad_bench::v2::write(&g, &v2).unwrap();
+    ecad_bench::container::write(&g, &v2).unwrap();
     let mut s = Session::empty();
     let (project, _) = ProjectHandle::open_file_in(&mut s, v2.to_str().unwrap(), 14, ecad_engine::views::Settings::none()).unwrap();
     Opened { dir, page: g.pages[0], project, s }
@@ -270,7 +270,7 @@ fn print_seed(seed: u64) {
 
 #[test]
 #[ignore = "slow: 1,200 random edits, about 110 s; runs at the QA gate"]
-fn randomised_edits_on_the_small_project_give_the_ops_of_the_old_translation() {
+fn randomised_edits_on_the_small_project_are_recorded_or_change_nothing() {
     let mut o = open_small("differential");
     let seed = seed();
     print_seed(seed);

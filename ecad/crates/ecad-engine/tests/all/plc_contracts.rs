@@ -39,7 +39,7 @@ pub(crate) fn same_as_built(h: &mut H) {
         let kept = p.outputs().plc.clone();
         (kept, Outputs::build_with(p.ledger.document(), &ecad_engine::text_style::EngineMetrics).plc.clone())
     });
-    assert!(kept.same_as(&built), "the kept PLC model differs from a rebuild");
+    assert!(kept == built, "the kept PLC model differs from a rebuild");
 }
 
 pub(crate) fn checks_of(h: &mut H, kind: &str) -> Vec<Value> {

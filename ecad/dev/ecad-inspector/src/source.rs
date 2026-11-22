@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime};
 
 use ecad_file::verify::{VerifyReport, verify_chain, verify_stoppable};
-use ecad_file::{ProjectV2, ReportV2, Store};
+use ecad_file::{Project, Report, Store};
 use ecad_model::Document;
 use serde_json::{Value, json};
 
@@ -43,7 +43,7 @@ pub struct SourceInfo {
 /// The project as the app opens it (model views).
 pub struct Opened {
     pub doc: Document,
-    pub report: ReportV2,
+    pub report: Report,
     /// The branch it opened on.
     pub branch: String,
 }
@@ -270,7 +270,7 @@ impl FileSource {
             return;
         }
         self.chain = Some(verify_chain(&first));
-        let store = match ProjectV2::open(first, 0x1A5_EC7, "ecadinspect") {
+        let store = match Project::open(first, 0x1A5_EC7, "ecadinspect") {
             Ok(o) => {
                 let branch = o.project.branch_record().name.clone();
                 self.opened = Ok(Opened { doc: o.ledger.document().clone(), report: o.report, branch });
