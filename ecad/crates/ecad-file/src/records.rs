@@ -218,7 +218,7 @@ pub struct Device {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Terminal {
+pub struct ConnectionPoint {
     pub owner: m::ConnectionPointOwner,
     pub label: Option<String>,
     pub key: Option<m::PointKey>,
@@ -405,7 +405,7 @@ pub struct Origin {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct TerminalDef {
+pub struct ConnectionPointDef {
     pub key: m::PointKey,
     pub label: Option<String>,
     pub at: Pt,
@@ -421,7 +421,7 @@ pub struct Definition {
     pub name: String,
     pub origin: Option<Origin>,
     pub graphics: Vec<Primitive>,
-    pub terminals: Vec<TerminalDef>,
+    pub terminals: Vec<ConnectionPointDef>,
     /// Groups of terminal keys joined inside the device (brief 022, FP5). Left out when empty, so
     /// a definition without bridges is written, and hashed, exactly as before.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -818,13 +818,13 @@ pub enum Op {
         before: Option<DefinitionId>,
         after: Option<DefinitionId>,
     },
-    AddTerminal {
+    AddConnectionPoint {
         id: ConnectionPointId,
-        terminal: Terminal,
+        terminal: ConnectionPoint,
     },
-    RemoveTerminal {
+    RemoveConnectionPoint {
         id: ConnectionPointId,
-        terminal: Terminal,
+        terminal: ConnectionPoint,
     },
     LinkRepresentation {
         id: RepresentationId,
@@ -1093,9 +1093,9 @@ impl From<&m::Device> for Device {
     }
 }
 
-impl From<&m::ConnectionPoint> for Terminal {
+impl From<&m::ConnectionPoint> for ConnectionPoint {
     fn from(t: &m::ConnectionPoint) -> Self {
-        Terminal { owner: t.owner, label: t.label.clone(), key: t.key.clone(), accepts: t.accepts }
+        ConnectionPoint { owner: t.owner, label: t.label.clone(), key: t.key.clone(), accepts: t.accepts }
     }
 }
 
@@ -1199,7 +1199,7 @@ impl From<&m::Definition> for Definition {
             terminals: d
                 .terminals
                 .iter()
-                .map(|t| TerminalDef { key: t.key.clone(), label: t.label.clone(), at: pt(t.at), accepts: t.accepts })
+                .map(|t| ConnectionPointDef { key: t.key.clone(), label: t.label.clone(), at: pt(t.at), accepts: t.accepts })
                 .collect(),
             bridges: d.bridges.clone(),
             texts: d.texts.iter().map(|t| TextSlot { text: t.text.clone(), at: pt(t.at), h: t.h, v: t.v, rotation: t.rotation }).collect(),
@@ -1312,8 +1312,8 @@ impl From<&m::Op> for Op {
             m::Op::DeleteDevice { id, device } => Op::DeleteDevice { id: *id, device: device.into() },
             m::Op::ModifyDevice { id, before, after } => Op::ModifyDevice { id: *id, before: before.into(), after: after.into() },
             m::Op::SetDeviceDefinition { id, before, after } => Op::SetDeviceDefinition { id: *id, before: *before, after: *after },
-            m::Op::AddConnectionPoint { id, terminal } => Op::AddTerminal { id: *id, terminal: terminal.into() },
-            m::Op::RemoveConnectionPoint { id, terminal } => Op::RemoveTerminal { id: *id, terminal: terminal.into() },
+            m::Op::AddConnectionPoint { id, terminal } => Op::AddConnectionPoint { id: *id, terminal: terminal.into() },
+            m::Op::RemoveConnectionPoint { id, terminal } => Op::RemoveConnectionPoint { id: *id, terminal: terminal.into() },
             m::Op::LinkRepresentation { id, rep } => Op::LinkRepresentation { id: *id, rep: rep.into() },
             m::Op::ModifyRepresentation { id, before, after } => Op::ModifyRepresentation { id: *id, before: before.into(), after: after.into() },
             m::Op::UnlinkRepresentation { id, rep } => Op::UnlinkRepresentation { id: *id, rep: rep.into() },
@@ -1487,8 +1487,8 @@ impl From<Device> for m::Device {
     }
 }
 
-impl From<Terminal> for m::ConnectionPoint {
-    fn from(t: Terminal) -> Self {
+impl From<ConnectionPoint> for m::ConnectionPoint {
+    fn from(t: ConnectionPoint) -> Self {
         m::ConnectionPoint { owner: t.owner, label: t.label, key: t.key, accepts: t.accepts }
     }
 }
@@ -1632,8 +1632,8 @@ impl TryFrom<Op> for m::Op {
             Op::DeleteDevice { id, device } => m::Op::DeleteDevice { id, device: a_device(device.into())? },
             Op::ModifyDevice { id, before, after } => m::Op::ModifyDevice { id, before: a_device(before.into())?, after: a_device(after.into())? },
             Op::SetDeviceDefinition { id, before, after } => m::Op::SetDeviceDefinition { id, before, after },
-            Op::AddTerminal { id, terminal } => m::Op::AddConnectionPoint { id, terminal: terminal.into() },
-            Op::RemoveTerminal { id, terminal } => m::Op::RemoveConnectionPoint { id, terminal: terminal.into() },
+            Op::AddConnectionPoint { id, terminal } => m::Op::AddConnectionPoint { id, terminal: terminal.into() },
+            Op::RemoveConnectionPoint { id, terminal } => m::Op::RemoveConnectionPoint { id, terminal: terminal.into() },
             Op::LinkRepresentation { id, rep } => m::Op::LinkRepresentation { id, rep: rep.into() },
             Op::ModifyRepresentation { id, before, after } => m::Op::ModifyRepresentation { id, before: before.into(), after: after.into() },
             Op::UnlinkRepresentation { id, rep } => m::Op::UnlinkRepresentation { id, rep: rep.into() },

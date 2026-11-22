@@ -415,6 +415,13 @@ pub fn builtin_coil() -> Definition {
     }
 }
 
+pub(crate) const LANES: &[(&str, fn() -> Vec<CommandSpec>)] = &[
+    // ("NNN", crate::<module>::specs), one line per lane, below this one.
+    ("054", crate::pages::commands::page_types::specs),
+    ("055", crate::title_blocks::commands::specs),
+    ("056", crate::plc::commands::exchange::specs),
+];
+
 #[cfg(test)]
 mod lane_tests {
     /// Lanes register in brief order, once each. A union merge of `lanes.rs` (see that module) can
@@ -436,10 +443,3 @@ mod lane_tests {
         assert!(twice.is_empty(), "registered more than once: {twice:?}");
     }
 }
-
-pub(crate) const LANES: &[(&str, fn() -> Vec<CommandSpec>)] = &[
-    // ("NNN", crate::<module>::specs), one line per lane, below this one.
-    ("054", crate::pages::commands::page_types::specs),
-    ("055", crate::title_blocks::commands::specs),
-    ("056", crate::plc::commands::exchange::specs),
-];

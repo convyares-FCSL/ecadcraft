@@ -15,6 +15,7 @@
 //!
 //! Excludes: the prompt itself (the command line and the prompt strip, `crate::interact`). This
 //! module reads and plans ops only.
+#![allow(clippy::wildcard_enum_match_arm)] // 0.2.3 move: outside its new parent's deny before the move
 
 use std::collections::BTreeSet;
 

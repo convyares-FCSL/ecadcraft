@@ -440,7 +440,7 @@ enum Parsed {
     Page(PageId, Box<PageChunk>),
     Layer(BTreeMap<LayerId, Layer>),
     Device(BTreeMap<DeviceId, Device>),
-    Terminal(BTreeMap<ConnectionPointId, ConnectionPoint>),
+    ConnectionPoint(BTreeMap<ConnectionPointId, ConnectionPoint>),
     Wire(BTreeMap<WireId, Wire>),
     Cable(BTreeMap<CableId, Cable>),
     Definition(BTreeMap<DefinitionId, Definition>),
@@ -504,7 +504,7 @@ fn parse_chunk(set: &ChunkSet, key: &str, body: &[u8]) -> Result<Parsed, FileErr
             }
             Parsed::Device(m)
         }
-        "terminal" => Parsed::Terminal(typed(body, key, b, count)?),
+        "terminal" => Parsed::ConnectionPoint(typed(body, key, b, count)?),
         "wire" => Parsed::Wire(typed(body, key, b, count)?),
         "cable" => Parsed::Cable(typed(body, key, b, count)?),
         "definition" => Parsed::Definition(typed(body, key, b, count)?),
@@ -577,7 +577,7 @@ fn merge_parsed(parsed: Vec<Result<Parsed, FileError>>) -> Result<(Document, Opt
             }
             Parsed::Layer(m) => merge(&mut doc.layers, m, "layer")?,
             Parsed::Device(m) => merge(&mut doc.devices, m, "device")?,
-            Parsed::Terminal(m) => merge(&mut doc.terminals, m, "terminal")?,
+            Parsed::ConnectionPoint(m) => merge(&mut doc.terminals, m, "terminal")?,
             Parsed::Wire(m) => merge(&mut doc.wires, m, "wire")?,
             Parsed::Cable(m) => merge(&mut doc.cables, m, "cable")?,
             Parsed::Definition(m) => merge(&mut doc.definitions, m, "definition")?,

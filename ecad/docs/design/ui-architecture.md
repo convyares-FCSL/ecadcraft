@@ -190,7 +190,7 @@ table and widgets cannot pick up native-only code. The ECAD app itself is native
   text_3, accent, accent_text, accent_soft, ok, warning, error, provisional, agent, cable,
   connect }`.
 - `sheet`: `PAPER: Sheet` and `DARK: Sheet`, each `{ sheet, ink, ink_2, grid, connection_point,
-  wire_end_attached, loose_end, cable, error, warning, provisional, terminal_link, selection,
+  wire_end_attached, loose_end, cable, error, warning, provisional, jumper_bar, selection,
   placement_preview, agent_write }`, plus whether each meaning prints (`prints(meaning)`), so the
   rule "ink prints, overlay never does" is data, not a convention.
 - `marker`: shape and screen size per meaning (8 px ring, 5 px dot, 7 px square …).

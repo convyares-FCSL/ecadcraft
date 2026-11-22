@@ -91,7 +91,7 @@ fn number_by_is_stored_as_a_word_and_comes_back_from_the_snapshot_and_the_log() 
 #[test]
 fn accepts_comes_back_and_a_hostile_count_is_a_read_error() {
     // Design 072 F38: a point's and a definition terminal's `accepts`, 1 to 64, left out at two.
-    use ecad_file::records::{Terminal as Rec, TerminalDef as DefRec};
+    use ecad_file::records::{ConnectionPoint as Rec, ConnectionPointDef as DefRec};
     let dir = TempDir::new("072d-accepts");
     let mut f = fixture();
     let (d, t): (DeviceId, ConnectionPointId) = (f.ids.fresh(), f.ids.fresh());

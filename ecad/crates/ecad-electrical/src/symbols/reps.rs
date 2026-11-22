@@ -17,6 +17,7 @@
 //!
 //! Excludes: locations (`crate::locations`), the reference rule's poles and texts
 //! (`crate::references::devices`), and anything stored. This module only reads.
+#![allow(clippy::wildcard_enum_match_arm)] // 0.2.3 move: outside its new parent's deny before the move
 
 use ecad_model::naming::numbering::{Order, Places};
 use ecad_model::{DeviceId, Document, Pt, Representation, RepresentationId, Subject};

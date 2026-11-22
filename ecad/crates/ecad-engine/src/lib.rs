@@ -63,11 +63,6 @@ pub mod terminal_strips;
 pub mod title_blocks;
 mod translate;
 pub mod wires;
-// Design 065 §3, cut 12: the agent gate, shared by ecad-mcp and the window's live bridge.
-/// A builder for the small projects tests start from (brief 062); enabled only by tests.
-// The electrical rules live in `ecad-electrical` (design 065 §5 step 6). Each module stays reachable under
-// its old name; a module with an engine half in `draw` is a facade over both halves.
-
 // The commands' paths before step 11 of lane 067, used outside the crate.
 
 // Brief 035: a per-user settings file and a window's port. Its

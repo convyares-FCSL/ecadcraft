@@ -130,7 +130,6 @@ pub struct Mismatch {
     pub terminal: ConnectionPointId,
     pub page: PageId,
     pub route_end: Pt,
-    #[serde(rename = "terminal_at")]
     pub connection_point_at: Pt,
 }
 

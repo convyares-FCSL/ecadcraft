@@ -45,7 +45,6 @@ pub enum Protection {
     /// A fuse.
     Fuse(Fuse),
     /// A fuse terminal: a fuse in a DIN-rail terminal housing, set by the `fuseterm` starter.
-    #[serde(rename = "fuse_terminal")]
     FuseTerminalBlock(Fuse),
     /// A miniature circuit breaker.
     Mcb(Breaker),

@@ -11,6 +11,7 @@
 //!   terminal and wire IDs are kept; a wired point that moves takes its wire end with it.
 //! - Not here: the builder's drawing, drafts and the review drawer (048b); "update available" in
 //!   Properties and Devices (048c); the page's selection and every JSON form.
+#![allow(clippy::wildcard_enum_match_arm)] // 0.2.3 move: outside its new parent's deny before the move
 
 use ecad_model::PointKey;
 use ecad_model::geometry::units::Radians;

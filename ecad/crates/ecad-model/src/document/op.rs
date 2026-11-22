@@ -114,12 +114,10 @@ pub enum Op {
         before: Option<DefinitionId>,
         after: Option<DefinitionId>,
     },
-    #[serde(rename = "AddTerminal")]
     AddConnectionPoint {
         id: ConnectionPointId,
         terminal: ConnectionPoint,
     },
-    #[serde(rename = "RemoveTerminal")]
     RemoveConnectionPoint {
         id: ConnectionPointId,
         terminal: ConnectionPoint,

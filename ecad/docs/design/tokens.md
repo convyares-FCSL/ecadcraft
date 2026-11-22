@@ -274,7 +274,7 @@ canvas switches to these in U4a.
 | `sheet.warning` | `#A86400` | `#F2B84B` | no | triangle |
 | `sheet.missing_data` | `#A86400` | `#F2B84B` | yes | triangle |
 | `sheet.provisional` | `#CF1F7A` | `#FF7AB8` | yes | dotted underline |
-| `sheet.terminal_link` | `#0A8F94` | `#45CFD3` | yes | dashed bar |
+| `sheet.jumper_bar` | `#0A8F94` | `#45CFD3` | yes | dashed bar |
 | `sheet.selection` | `#1F6FEB` | `#5B9BFF` | no | outline |
 | `sheet.placement_preview` | `#1F6FEB` | `#5B9BFF` | no | outline |
 | `sheet.agent_write` | `#5F8F00` | `#B9E34A` | no | dashed outline |
@@ -340,9 +340,9 @@ Canvas lines in mm on paper, scaling with zoom with a floor of `line.screen_floo
 | `line.mechanical_link_dash` | `1.2 mm` | Mechanical link dash |
 | `line.mechanical_link_gap` | `1 mm` | Mechanical link gap |
 | `line.cable_slash` | `0.5 mm` | Cable slash |
-| `line.terminal_link` | `0.6 mm` | Terminal link (jumper) bar |
-| `line.terminal_link_dash` | `1.8 mm` | Terminal link dash |
-| `line.terminal_link_gap` | `1.4 mm` | Terminal link gap |
+| `line.jumper_bar` | `0.6 mm` | Jumper bar |
+| `line.jumper_bar_dash` | `1.8 mm` | Jumper bar dash |
+| `line.jumper_bar_gap` | `1.4 mm` | Jumper bar gap |
 | `line.selection` | `0.5 mm` | Selection outline |
 | `line.agent_write` | `0.6 mm` | Agent's last write outline |
 
@@ -355,7 +355,7 @@ test. Where a row has a new token, U4a takes it:
 
 | `ecad.*` (until U4a) | New token |
 | --- | --- |
-| `ecad.terminal`, `ecad.link` | `sheet.connection_point`, `sheet.terminal_link` |
+| `ecad.terminal`, `ecad.link` | `sheet.connection_point`, `sheet.jumper_bar` |
 | `ecad.attached`, `ecad.attach-preview` | `sheet.wire_end_attached` |
 | `ecad.loose` | `sheet.loose_end` |
 | `ecad.cable`, `ecad.reference` | `sheet.cable` |

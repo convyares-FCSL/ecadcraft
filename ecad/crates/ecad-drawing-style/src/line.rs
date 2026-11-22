@@ -20,12 +20,12 @@ pub const MECHANICAL_LINK_DASH_MM: f32 = 1.2;
 pub const MECHANICAL_LINK_GAP_MM: f32 = 1.0;
 /// Cable slash, mm.
 pub const CABLE_SLASH_MM: f32 = 0.5;
-/// Terminal link (jumper) bar, mm.
-pub const TERMINAL_LINK_MM: f32 = 0.6;
-/// Terminal link dash on, mm.
-pub const TERMINAL_LINK_DASH_MM: f32 = 1.8;
-/// Terminal link gap, mm.
-pub const TERMINAL_LINK_GAP_MM: f32 = 1.4;
+/// ConnectionPoint link (jumper) bar, mm.
+pub const JUMPER_BAR_MM: f32 = 0.6;
+/// ConnectionPoint link dash on, mm.
+pub const JUMPER_BAR_DASH_MM: f32 = 1.8;
+/// ConnectionPoint link gap, mm.
+pub const JUMPER_BAR_GAP_MM: f32 = 1.4;
 /// Selection outline, mm.
 pub const SELECTION_MM: f32 = 0.5;
 /// Agent's last write outline, mm.
@@ -42,9 +42,9 @@ pub const MM: [(&str, f32); 14] = [
     ("line.mechanical_link_dash", MECHANICAL_LINK_DASH_MM),
     ("line.mechanical_link_gap", MECHANICAL_LINK_GAP_MM),
     ("line.cable_slash", CABLE_SLASH_MM),
-    ("line.terminal_link", TERMINAL_LINK_MM),
-    ("line.terminal_link_dash", TERMINAL_LINK_DASH_MM),
-    ("line.terminal_link_gap", TERMINAL_LINK_GAP_MM),
+    ("line.jumper_bar", JUMPER_BAR_MM),
+    ("line.jumper_bar_dash", JUMPER_BAR_DASH_MM),
+    ("line.jumper_bar_gap", JUMPER_BAR_GAP_MM),
     ("line.selection", SELECTION_MM),
     ("line.agent_write", AGENT_WRITE_MM),
 ];

@@ -9,7 +9,7 @@ use ecad_drawing_style::{Color, sheet_type};
 #[test]
 fn only_ink_meanings_print() {
     let printing: Vec<Meaning> = Meaning::ALL.into_iter().filter(|m| prints(*m)).collect();
-    assert_eq!(printing, vec![Meaning::Ink, Meaning::Ink2, Meaning::Cable, Meaning::MissingData, Meaning::Provisional, Meaning::TerminalLink]);
+    assert_eq!(printing, vec![Meaning::Ink, Meaning::Ink2, Meaning::Cable, Meaning::MissingData, Meaning::Provisional, Meaning::JumperBar]);
     assert!(!prints(Meaning::Warning), "only the missing-data warning prints");
 }
 
@@ -37,7 +37,7 @@ fn cap_height_gives_the_font_size() {
 fn both_sheets_cover_every_meaning() {
     for s in [PAPER, DARK] {
         assert_eq!(s.color(Meaning::MissingData), s.color(Meaning::Warning));
-        assert_eq!(s.color(Meaning::ConnectionPoint), s.color(Meaning::TerminalLink));
+        assert_eq!(s.color(Meaning::ConnectionPoint), s.color(Meaning::JumperBar));
         assert_eq!(s.selection_fill().a, Color::hex(0).at_percent(sheet::SELECTION_FILL_PERCENT).a);
     }
     // Ink reads on its sheet.

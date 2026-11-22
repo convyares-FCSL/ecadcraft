@@ -31,7 +31,7 @@ impl SheetText {
 pub const TAG: SheetText = SheetText { cap_mm: 2.5, weight: 600 };
 /// Pin label, wire label, reference, continuation.
 pub const LABEL: SheetText = SheetText { cap_mm: 1.6, weight: 400 };
-/// Terminal label, description.
+/// ConnectionPoint label, description.
 pub const CONNECTION_POINT_LABEL: SheetText = SheetText { cap_mm: 1.5, weight: 400 };
 /// Title block label.
 pub const TITLE_BLOCK_LABEL: SheetText = SheetText { cap_mm: 1.4, weight: 400 };

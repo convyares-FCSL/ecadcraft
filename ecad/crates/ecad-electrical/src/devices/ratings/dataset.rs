@@ -15,6 +15,7 @@
 //! # Bounds
 //! At most [`MAX_BYTES`] of text and [`MAX_ROWS`] rows (checked before any row is read), fields of
 //! at most [`MAX_FIELD`] characters, no indexing.
+#![allow(clippy::wildcard_enum_match_arm)] // 0.2.3 move: outside its new parent's deny before the move
 
 use crate::CmdError;
 use std::collections::BTreeMap;
