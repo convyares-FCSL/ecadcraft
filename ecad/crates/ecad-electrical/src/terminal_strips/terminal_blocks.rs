@@ -131,7 +131,7 @@ pub static TYPES: &[TermType] = &[
         pe_level: None,
     },
     TermType {
-        key: StarterKey::TerminalBlockPe,
+        key: StarterKey::Terminalpe,
         level_starters: &[],
         code: "pe",
         offer: "PE",

@@ -148,7 +148,7 @@ ecad_model::word_enum! {
         Motor1,
         Trafo,
         Terminal,
-        TerminalBlockPe,
+        Terminalpe,
         Di,
         Do,
         Continuation,
@@ -289,7 +289,7 @@ impl StarterKey {
             K::Heater | K::Valve | K::Valve2 => DeviceGroup::Load,
             K::Lamp => DeviceGroup::Indicator,
             K::Terminal
-            | K::TerminalBlockPe
+            | K::Terminalpe
             | K::Term2L1
             | K::Term2L2
             | K::Term2
@@ -386,7 +386,7 @@ impl StarterKey {
             | K::Motor1
             | K::Trafo
             | K::Terminal
-            | K::TerminalBlockPe
+            | K::Terminalpe
             | K::Di
             | K::Do
             | K::Continuation
@@ -825,7 +825,7 @@ pub const STARTERS: &[Starter] = &[
     st(K::Trafo, "Transformer", &["control transformer"], HEAD, def_id(15)),
     st(K::Terminal, "Terminal", &["terminal", "clamp"], Kind::Terminal, def_id(16)),
     // Brief 028 (design 028 §2): a protective-earth terminal; it joins a strip like `terminal`.
-    st(K::TerminalBlockPe, "PE terminal", &["pe terminal", "earth terminal"], Kind::Terminal, def_id(21)),
+    st(K::Terminalpe, "PE terminal", &["pe terminal", "earth terminal"], Kind::Terminal, def_id(21)),
     st(K::Di, "PLC digital input", &["plc", "input", "di"], Kind::Channel(crate::plc::rack::CardType::Di), def_id(17)),
     st(K::Do, "PLC digital output", &["plc", "output", "do"], Kind::Channel(crate::plc::rack::CardType::Dq), def_id(18)),
     st(K::Continuation, "Continuation", &["continuation", "arrow", "potential", "link"], Kind::Tagless, def_id(20)),
@@ -970,7 +970,7 @@ pub fn cell_shape(key: StarterKey) -> Option<(f64, &'static [(&'static str, f64)
         | K::Motor1
         | K::Trafo
         | K::Terminal
-        | K::TerminalBlockPe
+        | K::Terminalpe
         | K::Di
         | K::Do
         | K::Continuation
@@ -1123,7 +1123,7 @@ fn cell_graphics(key: StarterKey) -> Vec<Primitive> {
         | K::Motor1
         | K::Trafo
         | K::Terminal
-        | K::TerminalBlockPe
+        | K::Terminalpe
         | K::Di
         | K::Do
         | K::Continuation
@@ -1783,7 +1783,7 @@ pub fn anchors(s: &Starter) -> Vec<Anchor> {
         | K::Motor1
         | K::Trafo
         | K::Terminal
-        | K::TerminalBlockPe
+        | K::Terminalpe
         | K::Di
         | K::Do
         | K::Continuation
@@ -2028,7 +2028,7 @@ impl Connector {
             | K::Motor1
             | K::Trafo
             | K::Terminal
-            | K::TerminalBlockPe
+            | K::Terminalpe
             | K::Di
             | K::Do
             | K::Continuation
@@ -2349,7 +2349,7 @@ fn graphics(key: StarterKey) -> Vec<Primitive> {
         }
         K::Terminal => vec![circle((0.0, 0.0), 1.5)],
         // Our own earth mark to the right of the ring (design 028 §2).
-        K::TerminalBlockPe => {
+        K::Terminalpe => {
             vec![circle((0.0, 0.0), 1.5), line((2.5, -1.2), (2.5, 1.2)), line((3.2, -0.8), (3.2, 0.8)), line((3.9, -0.4), (3.9, 0.4))]
         }
         // An arrow pointing away from its wire (design 022 §3.2).
@@ -2552,7 +2552,7 @@ fn terminals(key: StarterKey) -> Vec<ConnectionPointDef> {
         K::Motor3 => vec![t("U1", -10.0, 15.0), t("V1", 0.0, 15.0), t("W1", 10.0, 15.0), t("PE", 20.0, 15.0)],
         K::Motor1 => vec![t("U1", -5.0, 15.0), t("U2", 5.0, 15.0), t("PE", 20.0, 15.0)],
         K::Trafo => vec![t("1U1", -5.0, 15.0), t("1U2", 5.0, 15.0), t("2U1", -5.0, -15.0), t("2U2", 5.0, -15.0)],
-        K::Terminal | K::TerminalBlockPe => vec![t("1", 0.0, 0.0)],
+        K::Terminal | K::Terminalpe => vec![t("1", 0.0, 0.0)],
         // No label: a continuation shows no connection point name.
         K::Continuation => vec![ConnectionPointDef { key: PointKey::def("1"), label: None, at: p(0.0, 0.0), accepts: Default::default() }],
         // Design 072 §3: a channel symbol's point is keyed by its role; the label is what it shows.

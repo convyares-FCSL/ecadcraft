@@ -69,7 +69,7 @@ pub const MAX_CORES: usize = 100;
 /// The green-yellow core of an IEC `G` cable.
 pub const GNYE: &str = "GNYE";
 /// The PE starter's key.
-pub const PE_KEY: crate::symbols::StarterKey = crate::symbols::StarterKey::TerminalBlockPe;
+pub const PE_KEY: crate::symbols::StarterKey = crate::symbols::StarterKey::Terminalpe;
 
 // ---------------------------------------------------------------- strips and terminals
 
