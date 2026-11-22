@@ -57,11 +57,20 @@ const FRESH_BUILDS: &[(&str, usize, &str)] = &[
 
 /// Every direct build inside a view's own module (not `Views`), how many, and why: each must be a
 /// view rebuilding itself or its parts, or a verify pass against a rebuild (design 064 §9 step 10c,
-/// checked by hand 2026-11-21). A count is exact, so a new build needs a reason here.
+/// checked by hand 2026-11-21, re-listed after decision 7's map deletions 2026-11-22). A count is
+/// exact, so a new build needs a reason here.
 const OWN_BUILDS: &[(&str, usize, &str)] = &[
     ("crates/ecad-electrical/src/front.rs", 1, "Uses rebuilds itself on a project-wide change (wire style, potentials)"),
-    ("crates/ecad-electrical/src/outputs/kept.rs", 5, "Outputs builds its strips and strip pages, and its verify pass compares them with a rebuild"),
-    ("crates/ecad-electrical/src/strips/pages.rs", 1, "StripPages rebuilds itself when the page geometry changes"),
+    (
+        "crates/ecad-electrical/src/outputs/kept.rs",
+        4,
+        "Outputs builds its strips and strip pages on first show; its verify pass compares the strips with a rebuild and the strip pages follow",
+    ),
+    (
+        "crates/ecad-electrical/src/strips/pages.rs",
+        1,
+        "StripPages builds itself again after every commit (no update map, decision 7: 0.5 ms on large)",
+    ),
     ("crates/ecad-electrical/src/xref.rs", 1, "RefIndex::verify compares the kept index with a rebuild"),
 ];
 
@@ -79,7 +88,6 @@ const KEY_PREFIXES: &[(&str, usize, &str)] = &[
     ("crates/ecad-electrical/src/derived/pages.rs", 1, "project connector keys reach the connector pages; no key table"),
     ("crates/ecad-electrical/src/front.rs", 1, "the cover's `front.cover.*` settings; no key table"),
     ("crates/ecad-electrical/src/outputs.rs", 3, "strip, terminal, connector and BOM settings pick the lists to redo; no key table"),
-    ("crates/ecad-electrical/src/plc/kept.rs", 4, "`plc.*` device and project keys, `text.*` styles; no key table"),
     ("crates/ecad-electrical/src/rating/mod.rs", 2, "`link.*`, `rating.*` and `wire.*` keys; no key table"),
 ];
 
