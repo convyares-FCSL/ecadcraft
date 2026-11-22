@@ -115,7 +115,7 @@ fn renumber_dialog_swap_provisional_checks_and_issue_by_element_name() {
     ok(&mut h, r#"wire {"points":[[150,20],[190,20]],"potential":"24V"}"#);
     ok(&mut h, "zoom e");
     h.run_steps(3);
-    assert!(doc(&mut h).devices.values().any(|c| c.tag().is_some_and(|t| t == "-K?1")));
+    assert!(doc(&mut h).devices.values().any(|c| c.tag_shown().as_deref() == Some("-K?1")));
     save_shot(&h, &deltas, "026-provisional.png");
     click(&mut h, panel::CHECKS_TAB);
     h.run_steps(3);

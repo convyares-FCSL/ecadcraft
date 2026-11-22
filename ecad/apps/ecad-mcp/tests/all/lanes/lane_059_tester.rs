@@ -137,7 +137,7 @@ fn t3_cable_manager_edits_undone_and_redone_save_reopen_and_replay_the_same() {
     assert!(replayed, "replay of the reopened ledger equals the document");
     // The not-drawn cable stays not drawn, the assigned one drawn, the removed one present (undone).
     let doc = r.doc();
-    let tags: Vec<String> = doc.cables.values().filter_map(|x| x.tag().map(str::to_string)).collect();
+    let tags: Vec<String> = doc.cables.values().filter_map(|x| x.tag_shown()).collect();
     assert_eq!(doc.cables.len(), 3, "{tags:?}");
     let ka = ecad_model::CableId::parse(&a).unwrap();
     // Design 072 §4.5: three cores placed, the type's fourth stored on no line.

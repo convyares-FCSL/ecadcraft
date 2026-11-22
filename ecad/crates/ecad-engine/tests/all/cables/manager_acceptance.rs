@@ -124,7 +124,7 @@ fn synth_type(h: &mut H, name: &str, fields: Value) -> String {
 }
 
 fn tag_of(doc: &Document, k: CableId) -> Option<String> {
-    doc.cables.get(&k).and_then(|c| c.tag().map(str::to_string))
+    doc.cables.get(&k).and_then(|c| c.tag_shown())
 }
 
 // ---------------------------------------------------------------- r1: cablenew

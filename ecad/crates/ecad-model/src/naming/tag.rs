@@ -106,6 +106,13 @@ impl Given {
         Given { text: text.into(), state }
     }
 
+    /// As a new object takes it (Place, a new cable): a typed real tag is automatic, not fixed
+    /// (brief 026: only `setprop tag` fixes), a provisional one stays provisional.
+    pub fn placed(self) -> Given {
+        let state = if self.state.is_provisional() { TagState::Provisional } else { TagState::Automatic };
+        Given { state, ..self }
+    }
+
     /// As drawn ([`shown`]).
     pub fn shown(&self) -> String {
         shown(&self.text, self.state)

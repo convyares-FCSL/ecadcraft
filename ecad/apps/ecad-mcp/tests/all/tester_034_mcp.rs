@@ -132,7 +132,7 @@ fn every_family_places_by_the_agent_then_refused_with_writes_off() {
             }
         }
         let (fb, rcbo) = (fb.unwrap(), rcbo.unwrap());
-        let fb_tag = c.doc().devices[&fb].tag().map(str::to_string).unwrap();
+        let fb_tag = c.doc().devices[&fb].tag_shown().unwrap();
 
         // §12 item 2: change-over join, each by the agent.
         let kv = c.exec("place", json!({"symbol": "coil", "at": [0, 2000]}));

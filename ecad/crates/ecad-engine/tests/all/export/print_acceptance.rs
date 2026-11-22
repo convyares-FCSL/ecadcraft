@@ -69,7 +69,7 @@ fn sets(ops: &[Op], key: &str) -> bool {
 }
 
 fn tag(h: &mut H, c: DeviceId) -> String {
-    h.doc().devices[&c].tag().map(str::to_string).unwrap_or_default()
+    h.doc().devices[&c].tag_shown().unwrap_or_default()
 }
 
 /// A refusal: `cmd` fails and the head does not move.
@@ -625,7 +625,7 @@ fn ac12_renumber_keeps_typed_letters() {
     for (c, t) in [(a, "k05"), (b, "k07")] {
         h.run("setprop", json!({"component": c.hex(), "key": "tag", "value": t})).unwrap();
         // Typed tags are fixed (026); free them for renumber.
-        let _ = h.run("setprop", json!({"component": c.hex(), "key": "tag_fixed", "value": null}));
+        let _ = h.run("setprop", json!({"component": c.hex(), "key": "tag_state", "value": null}));
     }
     assert_eq!([tag(&mut h, a), tag(&mut h, b)], ["k05", "k07"]);
     h.run("renumber", json!({"kind": "devices", "start": 1})).unwrap();

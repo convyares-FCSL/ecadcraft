@@ -649,7 +649,7 @@ fn a_tag_deleted_before_the_snapshot_is_not_given_again_after_reopening() {
     assert_eq!(h2.p(|p| ecad_engine::devices::draw::next_tag_preview(p, coil)).as_deref(), Some("-K06"));
     let placed = place(&mut h2, "coil", [400.0, 0.0]);
     let c: DeviceId = id(&placed, "component");
-    let tag = h2.p(|p| p.ledger.document().devices[&c].tag().map(str::to_string));
+    let tag = h2.p(|p| p.ledger.document().devices[&c].tag_shown());
     assert_eq!(tag.as_deref(), Some("-K06"));
     drop(h2);
     let _ = std::fs::remove_dir_all(&dir);

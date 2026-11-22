@@ -1592,7 +1592,7 @@ fn setprop_keeps_its_rule_words() {
     let rows: &[(Value, &str)] = &[
         (json!({"component": a, "key": "text.tag.show", "value": "off"}), ecad_electrical::styles::text_style::RESERVED_KEY),
         (json!({"devices": [a, b], "key": "tag", "value": "-K9"}), "Tags are one per device."),
-        (json!({"component": a, "key": "tag_fixed", "value": "maybe"}), "`tag_fixed` is \"yes\" or null, not \"maybe\""),
+        (json!({"component": a, "key": "tag_state", "value": "maybe"}), "`tag_state` is \"automatic\", \"fixed\" or null, not \"maybe\""),
         (
             json!({"component": a, "key": "tag", "value": tag_b, "conflict": "sideways"}),
             "`conflict` must be \"swap\", \"merge\" or \"next\", not \"sideways\"",
@@ -1621,11 +1621,11 @@ fn the_typed_setprop_still_works() {
     let many = h.run("setprop", json!({"devices": [a, b], "key": "note", "value": "y"})).unwrap_or_else(|e| json!(e));
     assert_eq!(many, json!({"changed": true, "devices": 2}), "{many}");
     let tag = h.run("setprop", json!({"component": a, "key": "tag", "value": "-K07"})).unwrap_or_else(|e| json!(e));
-    assert_eq!(tag, json!({"changed": true, "value": "-K07", "fixed": true}), "{tag}");
+    assert_eq!(tag, json!({"changed": true, "value": "-K07", "tag_state": "fixed"}), "{tag}");
     let swap = h.run("setprop", json!({"component": b, "key": "tag", "value": "-K07", "conflict": "swap"})).unwrap_or_else(|e| json!(e));
     assert_eq!((swap["swapped"].clone(), swap["other"].clone()), (json!(true), json!({"component": a})), "{swap}");
-    let release = h.run("setprop", json!({"component": b, "key": "tag_fixed", "value": null})).unwrap_or_else(|e| json!(e));
-    assert_eq!(release, json!({"changed": true, "fixed": false}), "{release}");
+    let release = h.run("setprop", json!({"component": b, "key": "tag_state", "value": null})).unwrap_or_else(|e| json!(e));
+    assert_eq!(release, json!({"changed": true, "tag_state": "automatic"}), "{release}");
     let loc = h.run("setprop", json!({"component": a, "key": "location", "value": "+CP1"})).unwrap_or_else(|e| json!(e));
     assert_eq!(loc["location"], json!("+CP1"), "{loc}");
 }
@@ -1648,7 +1648,7 @@ fn setprop_on_one_and_on_several_refuse_alike_for_each_rule() {
     let long = "x".repeat(400);
     // (row, the two devices, key, a value its rule refuses)
     let rows: &[(&str, [&Value; 2], &str, &str)] = &[
-        ("tag fixed (design 026)", [&coil, &coil2], "tag_fixed", "maybe"),
+        ("tag state (design 026, S6 #3)", [&coil, &coil2], "tag_state", "maybe"),
         ("device text fields (072 B)", [&coil, &coil2], "description", &long),
         ("wire, junction or continuation (briefs 022, 049)", [&coil, &coil2], "caption", "Up"),
         ("contacts (brief 025, 072 B)", [&coil, &coil2], "contacts", "??"),

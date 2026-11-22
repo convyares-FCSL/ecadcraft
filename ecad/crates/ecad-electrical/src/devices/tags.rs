@@ -67,7 +67,7 @@ impl TagHigh {
         self.catch_up(ledger);
         let doc = ledger.document();
         match typed {
-            Some(tag::Entry::Tag(g)) => Ok(g),
+            Some(tag::Entry::Tag(g)) => Ok(g.placed()),
             Some(tag::Entry::Next(p)) => Ok(tag::Given::new(self.next_provisional_in(doc, &p), tag::TagState::Provisional)),
             None => self.next_auto_in(doc, prefix),
         }
@@ -295,7 +295,7 @@ pub fn new_cable_tag(ledger: &Ledger, high: &mut TagHigh, typed: Option<&str>) -
                 let way = next.map_or_else(|| "Choose another tag.".to_string(), |n| format!("Choose another tag (the next free one is {n})."));
                 return Err(CmdError::refused(format!("Tag {} is already used by {}. {way}", given.shown(), holder_words_of(doc, h))));
             }
-            Ok(given)
+            Ok(given.placed())
         }
         None => high.next_auto_in(doc, &cable_prefix(doc)),
     }

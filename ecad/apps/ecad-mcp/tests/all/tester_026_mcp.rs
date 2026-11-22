@@ -23,13 +23,16 @@ fn place(c: &mut Client, symbol: &str, at: [f64; 2], tag: Option<&str>) -> Strin
 }
 
 fn tag_of(doc: &Document, comp: &str) -> Option<String> {
-    doc.devices.get(&DeviceId::parse(comp).unwrap()).and_then(|x| x.tag().map(str::to_string))
+    doc.devices.get(&DeviceId::parse(comp).unwrap()).and_then(|x| x.tag_shown())
 }
 
 fn assert_unique(doc: &Document, step: &str) {
     let mut seen = BTreeSet::new();
-    for t in doc.devices.values().filter_map(|c| c.tag()).chain(doc.cables.values().filter_map(|c| c.tag())) {
-        assert!(seen.insert(tag::key(t)), "{step}: duplicate tag {t}");
+    // A provisional -K1 and a real -K1 are different tags (S6, #3): the key carries the state.
+    for (k, t) in
+        doc.devices.values().filter_map(|c| c.tag_key().zip(c.tag_shown())).chain(doc.cables.values().filter_map(|c| c.tag_key().zip(c.tag_shown())))
+    {
+        assert!(seen.insert(k), "{step}: duplicate tag {t}");
     }
 }
 
@@ -295,7 +298,7 @@ fn a_merged_fixed_flag_on_a_provisional_tag_does_not_survive_finalise() {
     let dir = TempDir::new("t026-merge-fixed-prov");
     let (mut c, x) = merge_project(&dir, "fixedprov.ecad");
     c.exec("branch", json!({"name": "Option F"}));
-    c.exec("setprop", json!({"component": x, "key": "tag_fixed", "value": "yes"}));
+    c.exec("setprop", json!({"component": x, "key": "tag_state", "value": "fixed"}));
     c.exec("switchbranch", json!({"branch": "main", "save": true}));
     c.exec("numbering", json!({"provisional": true}));
     c.exec("setprop", json!({"component": x, "key": "tag", "value": "-K?"}));

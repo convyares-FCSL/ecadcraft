@@ -37,7 +37,7 @@ fn coil_at(c: &mut Client, col: u32, row: u32, tag: Option<&str>) -> String {
 
 fn tag_of(c: &mut Client, comp: &str) -> Option<String> {
     let id = DeviceId::parse(comp).unwrap();
-    c.doc().devices.get(&id).and_then(|x| x.tag().map(str::to_string))
+    c.doc().devices.get(&id).and_then(|x| x.tag_shown())
 }
 
 fn last_is_agents(c: &mut Client) {
@@ -124,9 +124,9 @@ fn setprop_tag_conflicts_and_tag_fixed_record_their_transactions() {
     assert!(!c.doc().devices.contains_key(&DeviceId::parse(&k2).unwrap()));
     // tag_fixed: released and fixed again, each one transaction.
     let n = c.log().len();
-    c.exec("setprop", json!({"component": k4, "key": "tag_fixed", "value": null}));
+    c.exec("setprop", json!({"component": k4, "key": "tag_state", "value": null}));
     assert_eq!(fixed(&mut c, &k4), None);
-    c.exec("setprop", json!({"component": k4, "key": "tag_fixed", "value": "yes"}));
+    c.exec("setprop", json!({"component": k4, "key": "tag_state", "value": "fixed"}));
     assert_eq!(c.log().len(), n + 2);
     last_is_agents(&mut c);
 }
@@ -139,7 +139,7 @@ fn cable_tags_share_the_namespace_and_swap() {
     }
     let w1 = c.exec("cableslash", json!({"from": [20, -3], "to": [20, 13]}))["cable"].as_str().unwrap().to_string();
     let w2 = c.exec("cableslash", json!({"from": [40, 17], "to": [40, 33]}))["cable"].as_str().unwrap().to_string();
-    let cable_tag = |c: &mut Client, k: &str| c.doc().cables[&ecad_model::CableId::parse(k).unwrap()].tag().map(str::to_string);
+    let cable_tag = |c: &mut Client, k: &str| c.doc().cables[&ecad_model::CableId::parse(k).unwrap()].tag_shown();
     assert_eq!((cable_tag(&mut c, &w1).as_deref(), cable_tag(&mut c, &w2).as_deref()), (Some("-W01"), Some("-W02")));
     // A device may not take a cable's tag, except by the next free one.
     let k = coil_at(&mut c, 3, 3, None);
@@ -208,7 +208,7 @@ fn writes_are_refused_with_writes_off_and_the_previews_read() {
         ("renumber", json!({})),
         ("finalise", json!({})),
         ("numbering", json!({"provisional": true})),
-        ("setprop", json!({"component": "00000000000000000000000000000001", "key": "tag_fixed", "value": "yes"})),
+        ("setprop", json!({"component": "00000000000000000000000000000001", "key": "tag_state", "value": "fixed"})),
         ("issuerevision", json!({"provisional": "issue"})),
     ] {
         let m = c.refused("execute", json!({"command": cmd, "params": params}));

@@ -59,7 +59,7 @@ fn fixture() -> N {
     h.activate(p2);
     let (b, d, e) = (cell(&mut h, p2, 1, 1), cell(&mut h, p2, 3, 1), cell(&mut h, p2, 4, 2));
     let k03 = coil(&mut h, b, Some("-K03"));
-    h.run("setprop", json!({"component": k03.hex(), "key": "tag_fixed", "value": "yes"})).unwrap();
+    h.run("setprop", json!({"component": k03.hex(), "key": "tag_state", "value": "fixed"})).unwrap();
     let k02 = coil(&mut h, d, Some("-K02"));
     let q01: DeviceId = id(&h.run("place", json!({"symbol": "mcb1", "at": e, "tag": "-Q01"})).unwrap(), "component");
     h.activate(p1);
@@ -199,7 +199,7 @@ fn l_hostile_requests_are_refused_without_writing() {
         assert_eq!(tag(&mut f.h, k), format!("-K?{i}"));
     }
     assert!(f.h.run("setprop", json!({"component": f.k07.hex(), "key": "tag", "value": "-K?"})).is_ok());
-    let e = f.h.run("setprop", json!({"component": f.k07.hex(), "key": "tag_fixed", "value": "yes"})).unwrap_err();
+    let e = f.h.run("setprop", json!({"component": f.k07.hex(), "key": "tag_state", "value": "fixed"})).unwrap_err();
     assert!(e.contains("provisional"), "{e}");
     f.h.check();
 }

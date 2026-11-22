@@ -71,7 +71,7 @@ fn a_standard_value_reaches_new_devices_and_undoes_back_to_iec() {
     assert_eq!(defaults::resolve(&doc, e, Scope::project()).from, Source::Standard);
     let r = h.run("place", json!({"symbol": "coil", "at": [150, 100]})).unwrap();
     let c: DeviceId = id(&r, "component");
-    let tag = h.p(|p| p.ledger.document().devices[&c].tag().map(str::to_string)).unwrap();
+    let tag = h.p(|p| p.ledger.document().devices[&c].tag_shown()).unwrap();
     assert!(tag.starts_with("-Q"), "{tag}");
     // Undo the place, the value and the standard: IEC (built in) again.
     for _ in 0..3 {
@@ -116,7 +116,7 @@ fn an_own_style_for_one_device_then_deleted_with_a_replacement() {
     let large = v["id"].as_str().unwrap().to_string();
     assert!(large.starts_with('#'));
     h.run("setdefault", json!({"key": "text.tag.style", "level": "object", "component": k1.hex(), "value": "Tag large"})).unwrap();
-    let tag_of = |h: &mut H, c: DeviceId| h.p(|p| p.ledger.document().devices[&c].tag().unwrap().to_string());
+    let tag_of = |h: &mut H, c: DeviceId| h.p(|p| p.ledger.document().devices[&c].tag_shown().unwrap());
     let (t1, t2) = (tag_of(&mut h, k1), tag_of(&mut h, k2));
     let tags = tag_texts(&mut h, page, "-K");
     let height = |t: &str, h: &mut H| tag_texts(h, page, t).first().map(|x| x.0);

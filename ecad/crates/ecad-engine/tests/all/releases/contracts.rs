@@ -521,7 +521,7 @@ fn with_finalise_the_errors_gate_reads_the_finalised_rows() {
     let c2: CableId = id(&f.h.run("cableslash", json!({"from": [88, 27], "to": [92, 38]})).unwrap(), "cable");
     not_used(&mut f.h, c2, &["1", "2"]);
     let c1 = f.c1;
-    // Both hold `-W?1`, as a hostile or older file could.
+    // Both hold the provisional `-W?1`, as a hostile file could.
     f.h.cfg(|p| {
         let doc = p.ledger.document();
         let ops: Vec<Op> = [c1, c2]
@@ -529,7 +529,8 @@ fn with_finalise_the_errors_gate_reads_the_finalised_rows() {
             .map(|k| {
                 let before = doc.cables[k].clone();
                 let mut after = before.clone();
-                after.tag = ecad_model::naming::tag::Tag::new("-W?1").ok();
+                after.tag = ecad_model::naming::tag::Tag::new("-W1").ok();
+                after.tag_state = ecad_model::naming::tag::TagState::Provisional;
                 Op::ModifyCable { id: *k, before, after }
             })
             .collect();

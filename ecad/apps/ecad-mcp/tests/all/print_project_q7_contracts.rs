@@ -178,7 +178,7 @@ fn ac10_revision_columns_and_custom_fields() {
 }
 
 fn tags(c: &mut Client) -> Vec<String> {
-    c.doc().devices.values().filter_map(|x| x.tag().map(str::to_string)).collect()
+    c.doc().devices.values().filter_map(|x| x.tag_shown()).collect()
 }
 
 #[test]
@@ -227,7 +227,7 @@ fn ac12_renumber_keeps_typed_letters() {
     c.exec("setprop", json!({"component": b["component"], "key": "tag", "value": "k7"}));
     // Typing fixed them; release them so renumber may change them.
     for x in [&a, &b] {
-        c.exec("setprop", json!({"component": x["component"], "key": "tag_fixed", "value": null}));
+        c.exec("setprop", json!({"component": x["component"], "key": "tag_state", "value": null}));
     }
     assert_eq!(tags(&mut c), ["-k05", "-k07"]);
     c.exec("renumber", json!({"kind": "devices"}));
