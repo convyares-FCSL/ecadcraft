@@ -254,7 +254,7 @@ impl Checks {
         // that had a row (a wire removed or recoloured there).
         let mut pages: BTreeSet<PageId> = self.by_key.keys().filter_map(|k| if let Key::Page(p) = k { Some(*p) } else { None }).collect();
         for c in &scope.wires {
-            pages.extend(crate::wires::wire_pages(doc, *c));
+            pages.extend(crate::wires::routes::wire_pages(doc, *c));
         }
         pages.extend(routes.iter().filter_map(|r| doc.routes.get(r)).map(|r| r.page));
         for page in pages {

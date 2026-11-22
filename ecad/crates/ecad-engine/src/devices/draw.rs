@@ -9,27 +9,27 @@ use ecad_model::{DeviceId, Document, PageId, Pt, RepresentationId};
 use crate::styles::draw::{DrawApply as _, EngineMetrics};
 use ecad_electrical::symbols::Starter;
 use {
-    ecad_electrical::devices::DerivedText, ecad_electrical::devices::PageText, ecad_electrical::devices::TAG_LAYER, ecad_electrical::devices::TextOf,
-    ecad_electrical::devices::kind_of, ecad_electrical::devices::prefix_for,
+    ecad_electrical::devices::TAG_LAYER, ecad_electrical::devices::prefix_for, ecad_electrical::devices::texts::DerivedText,
+    ecad_electrical::devices::texts::PageText, ecad_electrical::devices::texts::TextOf, ecad_electrical::devices::texts::kind_of,
 };
 
 /// [`all_texts_on_page`], reading PLC addresses from the kept model `plc` when there is one
 /// (brief 045, review of #84, 3); measured with CADCraft's fonts
-/// ([`ecad_electrical::devices::all_texts_measured`]).
+/// ([`ecad_electrical::devices::texts::all_texts_measured`]).
 pub fn all_texts_on_page_with(doc: &Document, page: PageId, plc: Option<&ecad_electrical::plc::kept::Plc>) -> Vec<PageText> {
-    ecad_electrical::devices::all_texts_measured(doc, page, plc, &EngineMetrics)
+    ecad_electrical::devices::texts::all_texts_measured(doc, page, plc, &EngineMetrics)
 }
 
 /// Every derived text shown on `page` (what the page draws and prints), measured with CADCraft's
-/// fonts ([`ecad_electrical::devices::texts_on_page_measured`]).
+/// fonts ([`ecad_electrical::devices::texts::texts_on_page_measured`]).
 pub fn texts_on_page(doc: &Document, page: PageId) -> Vec<DerivedText> {
-    ecad_electrical::devices::texts_on_page_measured(doc, page, &EngineMetrics)
+    ecad_electrical::devices::texts::texts_on_page_measured(doc, page, &EngineMetrics)
 }
 
 /// The lens of device `c` hovered through its representation `here` (design 018 §6.4), measured
-/// with CADCraft's fonts ([`ecad_electrical::devices::hover_lines_measured`]).
+/// with CADCraft's fonts ([`ecad_electrical::devices::hover::hover_lines_measured`]).
 pub fn hover_lines(doc: &Document, c: DeviceId, here: RepresentationId) -> Vec<String> {
-    ecad_electrical::devices::hover_lines_measured(doc, c, here, &EngineMetrics)
+    ecad_electrical::devices::hover::hover_lines_measured(doc, c, here, &EngineMetrics)
 }
 
 /// Every derived text on `page`, shown or hidden: for each symbol representation of a component,

@@ -42,7 +42,7 @@ pub use sensor::read_sensor;
 pub use switching::read_switching;
 
 /// Most characters of a typed rating (the note's bound).
-pub const MAX_CHARS: usize = ecad_model::objects::devices::RatingNote::MAX;
+pub(crate) const MAX_CHARS: usize = ecad_model::objects::devices::RatingNote::MAX;
 
 /// What a rating text reads as.
 #[derive(Debug, Clone, PartialEq)]
@@ -314,7 +314,7 @@ fn build(kind: ProtectionKind, mut f: Found) -> Result<Protection, Problem> {
 }
 
 /// Read `text` as one fuse of a bank.
-pub fn read_fuse(text: &str) -> Read<Fuse> {
+pub(crate) fn read_fuse(text: &str) -> Read<Fuse> {
     match read_protection(ProtectionKind::Fuse, text) {
         Read::Rating(Protection::Fuse(f)) => Read::Rating(f),
         Read::Rating(_) => Read::NotARating,
@@ -429,7 +429,7 @@ fn note_refusal(e: &ecad_model::naming::text::TextError) -> String {
 ///
 /// # Errors
 /// [`rated`]'s.
-pub fn with_rating(d: &Device, who: &str, text: Option<&str>) -> Result<Device, CmdError> {
+pub(crate) fn with_rating(d: &Device, who: &str, text: Option<&str>) -> Result<Device, CmdError> {
     use crate::devices::traits::DeviceKind;
     let (mut device_type, rating_note) = rated(&d.device_type, who, text)?;
     if let (Some(old), Some(new)) = (d.device_type.as_contacts(), device_type.as_contacts_mut()) {
@@ -446,7 +446,7 @@ pub fn with_rating(d: &Device, who: &str, text: Option<&str>) -> Result<Device, 
 ///
 /// # Errors
 /// Not a fuse bank, no such output, or text that does not read as a fuse's rating.
-pub fn with_output_rating(
+pub(crate) fn with_output_rating(
     d: &Device, who: &str, outputs: &std::collections::BTreeSet<String>, n: &str, text: Option<&str>,
 ) -> Result<Device, CmdError> {
     let shown: String = n.chars().take(12).collect();
@@ -489,11 +489,11 @@ pub fn with_output_rating(
 ///
 /// # Errors
 /// Not a terminal strip, not a fuse position, or text that does not read as a fuse's rating.
-pub fn with_position_rating(
+pub(crate) fn with_position_rating(
     d: &Device, who: &str, fuse_positions: &std::collections::BTreeSet<String>, p: &str, text: Option<&str>,
 ) -> Result<Device, CmdError> {
     // Capped before any lookup: only the first 12 characters are ever shown.
-    let max = crate::symbols::MAX_FUSE_LABEL;
+    let max = crate::symbols::rules::MAX_FUSE_LABEL;
     let shown: String = p.chars().take(max).collect();
     let more = if p.chars().nth(max).is_some() { "…" } else { "" };
     let DeviceType::TerminalStrip(strip) = &d.device_type else {

@@ -252,8 +252,8 @@ fn each_seeded_fault_appears_once_where_it_is() {
         let wire = ecad_model::Wire::new(p.ids.fresh(), p.ids.fresh(), o1, o2);
         p.ledger.commit(Author::User, "old", vec![Op::CreateWire { id: w, wire }]).unwrap();
         let doc = p.ledger.document();
-        let r = ecad_electrical::wires::route_of_wire_on(doc, fa, page).unwrap();
-        let (item, before, mut points) = ecad_electrical::wires::route_vertices(doc, r).unwrap();
+        let r = ecad_electrical::wires::routes::route_of_wire_on(doc, fa, page).unwrap();
+        let (item, before, mut points) = ecad_electrical::wires::routes::route_vertices(doc, r).unwrap();
         if let Some(last) = points.last_mut() {
             *last = ecad_model::Pt::new(805.0, 30.0);
         }
@@ -552,7 +552,7 @@ fn labels_are_small_and_never_touch() {
     assert!(labels.iter().all(|l| ecad_electrical::defaults::Value::Length(l.height) == builtin));
     for (i, x) in labels.iter().enumerate() {
         for y in labels.iter().skip(i + 1) {
-            let (p, q) = (ecad_electrical::wires::label_box(x), ecad_electrical::wires::label_box(y));
+            let (p, q) = (ecad_electrical::wires::labels::label_box(x), ecad_electrical::wires::labels::label_box(y));
             let meet = p.0.x < q.1.x && q.0.x < p.1.x && p.0.y < q.1.y && q.0.y < p.1.y;
             assert!(!meet, "{} and {} touch", x.text, y.text);
         }

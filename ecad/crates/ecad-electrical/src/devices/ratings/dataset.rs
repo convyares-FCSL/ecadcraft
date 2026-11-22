@@ -25,7 +25,7 @@ pub const MAX_BYTES: usize = 256 * 1024;
 /// The most rows a rating table holds.
 pub const MAX_ROWS: usize = 4_000;
 /// The longest field read.
-pub const MAX_FIELD: usize = 32;
+pub(crate) const MAX_FIELD: usize = 32;
 /// The most bad lines an import refusal lists.
 pub const MAX_LISTED: usize = 10;
 

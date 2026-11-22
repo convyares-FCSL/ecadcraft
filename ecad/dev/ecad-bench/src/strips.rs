@@ -137,7 +137,7 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
         for page in &pages {
             for i in 0..TERMINAL_BLOCKS {
                 let x = X0 + PITCH * i as f64;
-                let (_, _, add) = ecad_electrical::wires::add_route(
+                let (_, _, add) = ecad_electrical::wires::routes::add_route(
                     &mut p.ids,
                     *page,
                     style.clone(),
@@ -171,7 +171,7 @@ fn populate(project: &ProjectHandle, s: &mut Session) -> Result<(), String> {
                 let route = ecad_electrical::terminal_strips::commands::terminal_strips::staple(Pt::new(xa, 100.0), Pt::new(xb, 100.0));
                 // A route from terminal to terminal: the commit's rewrite makes its wire.
                 let (_, _, add) =
-                    ecad_electrical::wires::add_route(&mut p.ids, *page, style.clone(), route, [RouteEnd::Point(a.0), RouteEnd::Point(b.0)]);
+                    ecad_electrical::wires::routes::add_route(&mut p.ids, *page, style.clone(), route, [RouteEnd::Point(a.0), RouteEnd::Point(b.0)]);
                 ops.extend(add);
             }
             // Half the outside halves (the second halves) as two-core cables.

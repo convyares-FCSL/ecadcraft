@@ -554,7 +554,7 @@ fn layer_ops(doc: &Document, ids: &mut IdAllocator) -> (LayerId, Vec<Op>) {
 /// # Errors
 /// Empty, too long or a control character.
 pub fn location_value(doc: &Document, text: &str) -> Result<String, CmdError> {
-    crate::devices::property_value(doc, LOCATION_KEY, Some(text))?.ok_or(CmdError::refused("A location box needs a location, such as +CP1."))
+    crate::devices::json::property_value(doc, LOCATION_KEY, Some(text))?.ok_or(CmdError::refused("A location box needs a location, such as +CP1."))
 }
 
 /// Check an outline for a box.
@@ -672,7 +672,7 @@ pub fn plan_from_item_with(doc: &Document, ids: &mut IdAllocator, item: ItemId, 
     let it = doc.items.get(&item).ok_or(CmdError::refused("no such item"))?;
     if let Some((_, r)) = doc.representation_of_item(item) {
         let who = match r.subject {
-            Subject::Device(c) => crate::devices::tag_words(doc, c),
+            Subject::Device(c) => crate::devices::tags::tag_words(doc, c),
             Subject::Wire(_) | Subject::Route(_) => "a wire".into(),
             Subject::Cable(_) => "a cable".into(),
             Subject::Aid(a) => match doc.aids.get(&a).map(ecad_model::Aid::kind) {

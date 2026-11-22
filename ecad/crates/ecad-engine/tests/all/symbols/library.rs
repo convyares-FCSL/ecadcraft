@@ -7,7 +7,8 @@ use crate::common;
 
 use common::{H, id};
 use ecad_electrical::checks::Kind as CheckKind;
-use ecad_electrical::symbols::{self, Family, STARTER_LIBRARY, STARTERS};
+use ecad_electrical::symbols::catalogue::STARTERS;
+use ecad_electrical::symbols::{self, Family, STARTER_LIBRARY};
 use ecad_model::{ConnectionPointId, DeviceId, Op, Word};
 use serde_json::{Value, json};
 
@@ -279,7 +280,7 @@ fn a_card_body_takes_its_channels_as_one_device() {
     assert_eq!(labels(&join(&mut h, "di", a, [40.0, 0.0]).unwrap()), ["1"]);
     assert_eq!(labels(&join(&mut h, "di", a, [50.0, 0.0]).unwrap()), ["2"]);
     let doc = h.doc();
-    let all: std::collections::BTreeSet<String> = ecad_electrical::devices::labels_of(&doc, a);
+    let all: std::collections::BTreeSet<String> = ecad_electrical::devices::placing::labels_of(&doc, a);
     assert_eq!(all.into_iter().collect::<Vec<_>>(), ["1", "2", "L+", "M"]);
     // A card's supply points are quiet; a CPU's are not.
     assert!(ecad_electrical::checks::connection_point_checks(&doc, connection_point(&card, "L+")).is_empty());
@@ -384,14 +385,14 @@ fn save_close_and_reopen_keep_the_library_devices() {
     let doc = h2.doc();
     assert_eq!(doc, live, "devices, labels, ratings and embedded definitions");
     assert!(h2.p(|p| p.ledger.replay_matches().unwrap()));
-    let all: std::collections::BTreeSet<String> = ecad_electrical::devices::labels_of(&doc, k);
+    let all: std::collections::BTreeSet<String> = ecad_electrical::devices::placing::labels_of(&doc, k);
     assert_eq!(all.into_iter().collect::<Vec<_>>(), ["11", "12", "14", "23", "24", "A1", "A2"]);
     assert_eq!(doc.devices[&f].value("rating.3").as_deref(), Some("2 A"));
     assert_eq!(doc.devices[&q].value("rating").as_deref(), Some("curve C, 13 A, 30 mA"));
     // Every embedded definition is still the catalogue's, by origin and content hash.
     assert_eq!(doc.definitions.len(), 10);
     for d in doc.definitions.values() {
-        let s = symbols::of_definition(d).expect("a catalogue symbol");
+        let s = symbols::catalogue::of_definition(d).expect("a catalogue symbol");
         assert_eq!(d.origin, s.definition().unwrap().origin, "{}", s.key);
     }
     h2.check();

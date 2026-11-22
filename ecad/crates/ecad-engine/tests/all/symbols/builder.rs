@@ -3,7 +3,9 @@
 //! the impact and its clashes, updates that keep IDs and move wire ends, edited built-ins, saving
 //! unchanged content, `makesymbol` and promotion, superseded versions and hostile input.
 
-use ecad_electrical::symbols::{self, PROJECT_SYMBOLS};
+use ecad_electrical::symbols::{self};
+
+use ecad_electrical::symbols::project::PROJECT_SYMBOLS;
 use ecad_model::{ConnectionPointId, DefinitionId, DeviceId, Document, Op, PageId, RepresentationId, WireId};
 use serde_json::{Value, json};
 
@@ -70,7 +72,7 @@ fn row_1_symbolnew_embeds_version_1_in_one_transaction() {
     assert_eq!(ecad_file::definition_hash(&bare).unwrap(), o.content_hash);
     assert_eq!(definition.defaults.key.as_ref().map(|k| k.as_str()), Some("float1"));
     h.cmdline("u");
-    assert!(symbols::project_by_key(&h.doc(), "float1").is_none(), "u removes it");
+    assert!(symbols::project::project_by_key(&h.doc(), "float1").is_none(), "u removes it");
 }
 
 #[test]
@@ -196,8 +198,8 @@ fn row_5_impact_clashes_and_selected_updates() {
         assert_eq!(d.connection_points_of(*c).count(), 1, "point 2 removed");
     }
     assert_eq!(d.connection_points_of(copies[0].0).count(), 2, "the clashing copy is left");
-    assert!(ecad_electrical::symbols::update_available(&d, copies[0].1).is_some(), "update available");
-    assert!(ecad_electrical::symbols::update_available(&d, copies[1].1).is_none());
+    assert!(ecad_electrical::symbols::graphics::update_available(&d, copies[0].1).is_some(), "update available");
+    assert!(ecad_electrical::symbols::graphics::update_available(&d, copies[1].1).is_none());
     assert!(h.run("symbolupdate", json!({"copies": [copies[0].1.hex()]})).unwrap_err().contains("would clash"));
     h.check();
 }
@@ -264,7 +266,7 @@ fn row_8_editing_a_built_in_makes_a_project_copy() {
     let (def_id, coil_def) = d
         .definitions
         .iter()
-        .find(|(_, x)| symbols::of_definition(x).is_some_and(|s| s.key == ecad_electrical::symbols::StarterKey::Coil))
+        .find(|(_, x)| symbols::catalogue::of_definition(x).is_some_and(|s| s.key == ecad_electrical::symbols::StarterKey::Coil))
         .map(|(i, x)| (*i, x.clone()))
         .unwrap();
     let mut p = json!({"definition": def_id.hex(), "name": "Coil, mine", "key": "mycoil", "update": "all",
@@ -282,7 +284,7 @@ fn row_8_editing_a_built_in_makes_a_project_copy() {
     let item = d.representations[&rep].items[0];
     assert!(matches!(&d.items[&item].kind, ecad_model::ItemKind::Symbol(s) if s.definition == def_id), "the placed coil still shows the built-in");
     // The kind follows the starter (a coil, not a fixed device of its own).
-    assert_eq!(symbols::kind_of_definition(new), symbols::by_key("coil").map(|s| s.kind));
+    assert_eq!(symbols::catalogue::kind_of_definition(new), symbols::catalogue::by_key("coil").map(|s| s.kind));
 }
 
 #[test]
@@ -298,7 +300,7 @@ fn row_9_saving_unchanged_content_is_refused() {
     let v = h.run("symboledit", float(json!({"definition": def.hex(), "update": "new", "key": "float2"}))).unwrap();
     assert_eq!(v["version"], 1);
     assert_ne!(v["lineage"], json!(null));
-    assert_eq!(symbols::project_symbols(&h.doc()).len(), 2, "a second lineage");
+    assert_eq!(symbols::project::project_symbols(&h.doc()).len(), 2, "a second lineage");
 }
 
 #[test]
@@ -412,7 +414,7 @@ fn hostile_inputs_never_panic() {
     }
     // A cycle of derived_from is never followed: two hand-made versions naming each other's origin.
     let d = h.doc();
-    assert!(symbols::project_symbols(&d).len() == 1);
+    assert!(symbols::project::project_symbols(&d).len() == 1);
 }
 
 #[test]
@@ -450,11 +452,11 @@ fn makesymbol_refusal_names_the_wire_it_cannot_take() {
 #[test]
 fn a_copy_of_a_built_in_not_placed_yet_remembers_where_it_came_from() {
     let mut h = H::new(4817);
-    let coil = symbols::by_key("coil").unwrap();
-    assert!(symbols::embedded(&h.doc(), coil).is_none(), "coil is not placed in this project");
+    let coil = symbols::catalogue::by_key("coil").unwrap();
+    assert!(symbols::catalogue::embedded(&h.doc(), coil).is_none(), "coil is not placed in this project");
     h.run("symbolnew", float(json!({"key": "coil2", "from": coil.id.hex()}))).unwrap();
     let d = h.doc();
-    let v = symbols::project_by_key(&d, "coil2").unwrap();
+    let v = symbols::project::project_by_key(&d, "coil2").unwrap();
     let from = v.def.derived_from.clone().expect("derived_from");
     assert_eq!((from.library, from.definition), (symbols::STARTER_LIBRARY, coil.id));
 }

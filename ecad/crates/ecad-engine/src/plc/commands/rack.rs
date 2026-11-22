@@ -45,7 +45,7 @@ impl Command for PlcslotParams {
         let v = on_project(s, |p, pg, _| {
             let doc = p.ledger.document();
             let (card, ops) = rules::slot_plan(doc, &self.card, rack, slot, swap)?;
-            let who = ecad_electrical::devices::tag_words(doc, card);
+            let who = ecad_electrical::devices::tags::tag_words(doc, card);
             let was = place_words(doc, card);
             let before = ecad_electrical::plc::moved_blocks_before(doc, card);
             if ops.is_empty() {

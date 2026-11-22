@@ -526,7 +526,7 @@ fn connector_rows(doc: &ecad_model::Document, c: ecad_model::DeviceId, rep: Repr
     }
     // A pin symbol: its pin, and where its mate is.
     let Some(r) = doc.representations.get(&rep) else { return out };
-    if cn::rep_half(doc, r).is_some_and(cn::is_pin_starter) {
+    if ecad_electrical::symbols::reps::rep_type(doc, r) == ecad_model::PartRole::Pin {
         let t = r.connection_points.keys().next().copied();
         let name = t.and_then(|t| doc.connection_points.get(&t)).and_then(|x| x.label.clone()).unwrap_or_default();
         out.push(ConnectorRow {
@@ -708,7 +708,7 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
                 .get(&c)
                 .and_then(|c| c.definition)
                 .and_then(|d| doc.definitions.get(&d))
-                .and_then(ecad_electrical::symbols::of_definition);
+                .and_then(ecad_electrical::symbols::catalogue::of_definition);
             es.extend(starter.and_then(|s| defaults::symbols::prefix_entry(s.key)));
             (Scope::symbol(doc, rep), es, Some((Level::Object, Target::Symbol(rep))))
         }
@@ -766,7 +766,9 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
         _ => Vec::new(),
     };
     let update = match what {
-        What::Symbol(_, rep) => ecad_electrical::symbols::update_available(doc, rep).map(|(_, shown, newest)| SymbolUpdate { rep, shown, newest }),
+        What::Symbol(_, rep) => {
+            ecad_electrical::symbols::graphics::update_available(doc, rep).map(|(_, shown, newest)| SymbolUpdate { rep, shown, newest })
+        }
         _ => None,
     };
     // UI rev 3: the Device and Layout tabs' copy of one device.

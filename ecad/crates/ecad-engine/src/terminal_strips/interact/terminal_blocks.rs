@@ -31,7 +31,7 @@ pub(crate) fn terminal_blocks(s: &Session) -> R<Box<dyn Interactive>> {
             .as_ref()
             .map(|(_, c)| *c)
             .filter(|c| terminal_strips::strip_of(doc, *c).is_some())
-            .map(|c| (c, ecad_electrical::devices::tag_words(doc, c)));
+            .map(|c| (c, ecad_electrical::devices::tags::tag_words(doc, c)));
         let ty = p.last_placed.as_ref().and_then(|(k, _)| tt::of_starter(ecad_model::Word::parse(k)?)).map(|(t, _)| t);
         Ok((strip, ty))
     })
@@ -83,7 +83,7 @@ impl PlaceTerminalBlocks {
         } else {
             let found = read(s, |p, _| {
                 let doc = p.ledger.document();
-                Ok(ecad_electrical::devices::holder_of(doc, t, None).filter(|c| terminal_strips::strip_of(doc, *c).is_some()))
+                Ok(ecad_electrical::devices::tags::holder_of(doc, t, None).filter(|c| terminal_strips::strip_of(doc, *c).is_some()))
             })
             .ok()
             .flatten();

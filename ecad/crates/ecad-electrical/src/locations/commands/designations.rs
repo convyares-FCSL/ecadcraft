@@ -54,7 +54,7 @@ pub fn named_key_or_code(doc: &Document, a: Aspect, key: Option<&str>, code: Opt
 
 /// A description as typed: trimmed; empty clears it.
 fn description_value(doc: &Document, t: Option<&str>) -> Result<Option<ListDescription>, CmdError> {
-    crate::devices::property_value(doc, "description", t)?.map(|d| designations::list_description(&d)).transpose()
+    crate::devices::json::property_value(doc, "description", t)?.map(|d| designations::list_description(&d)).transpose()
 }
 
 /// The `ModifyProject` from `doc`'s project to `after`, if they differ.

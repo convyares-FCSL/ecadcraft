@@ -55,7 +55,7 @@ fn the_text_section_writes_one_textstyle_transaction() {
     let page = d.page_order[0];
     let tags: Vec<f64> = ecad_engine::devices::draw::texts_on_page(&d, page)
         .into_iter()
-        .filter(|t| t.of == ecad_electrical::devices::TextOf::Tag)
+        .filter(|t| t.of == ecad_electrical::devices::texts::TextOf::Tag)
         .map(|t| t.height)
         .collect();
     assert_eq!(tags, vec![3.0]);

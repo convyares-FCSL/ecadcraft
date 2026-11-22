@@ -48,7 +48,7 @@ fn fp1_make_them_one_re_points_the_cards_too() {
     // Make them one (026, a branch merge's tag clash) runs 018's `plan_merge`: the same ops.
     let (mut h, cpu, cards, k) = rack_and_contact(4582);
     let d = h.doc();
-    let ops = h.cfg(|p| ecad_electrical::devices::plan_merge(&d, &mut p.ids, cpu, k)).unwrap();
+    let ops = h.cfg(|p| ecad_electrical::devices::merge::plan_merge(&d, &mut p.ids, cpu, k)).unwrap();
     for c in &cards {
         let repointed = ops.iter().any(|op| {
             matches!(op, ecad_model::Op::ModifyDevice { id, after, .. }

@@ -88,7 +88,7 @@ impl Row {
 
 /// The place of a symbol representation, in the project's reference style.
 pub(crate) fn rep_place(doc: &Document, r: &ecad_model::Representation) -> (Option<String>, Option<Pt>) {
-    let at = crate::devices::rep_definition(doc, r).map(|(_, pl)| pl.origin).or_else(|| r.connection_points.values().next().copied());
+    let at = crate::devices::tags::rep_definition(doc, r).map(|(_, pl)| pl.origin).or_else(|| r.connection_points.values().next().copied());
     let place = at
         .and_then(|a| ecad_model::connectivity::wiring::place(doc, r.page, a))
         .map(|p| p.text(doc.settings.reference_style()))
@@ -147,7 +147,7 @@ pub fn rows_of(doc: &Document, plc: &Plc, card: &CardData) -> Vec<Row> {
                     continue;
                 }
                 // A junction or continuation is not a target.
-                let Some(device) = term.device().filter(|c| crate::devices::tag_of(doc, *c).is_some()) else {
+                let Some(device) = term.device().filter(|c| crate::devices::tags::tag_of(doc, *c).is_some()) else {
                     continue;
                 };
                 // Brief 056: pass-throughs and end devices are capped apart, so terminals never
@@ -160,7 +160,7 @@ pub fn rows_of(doc: &Document, plc: &Plc, card: &CardData) -> Vec<Row> {
                 let (place, at) = shown.map(|(_, r)| rep_place(doc, r)).unwrap_or((None, None));
                 let at = shown.and_then(|(_, r)| r.connection_points.get(o).copied()).or(at);
                 targets.push(Target {
-                    device: crate::devices::tag_words(doc, device),
+                    device: crate::devices::tags::tag_words(doc, device),
                     point: crate::terminal_strips::terminal_blocks::connection_point_name(doc, *o),
                     place: place.unwrap_or_default(),
                     through,

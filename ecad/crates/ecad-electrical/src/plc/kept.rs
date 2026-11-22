@@ -75,7 +75,7 @@ impl Plc {
     fn set(&mut self, doc: &Document, c: DeviceId, groups: &mut BTreeSet<Group>) {
         let ty = doc.devices.get(&c).and_then(|_| card_type_of(doc, c));
         let Some(ty) = ty else { return };
-        let tag = crate::devices::tag_words(doc, c);
+        let tag = crate::devices::tags::tag_words(doc, c);
         let page = first_page(doc, c);
         self.last_changed.insert(c);
         groups.insert(c);
@@ -359,7 +359,7 @@ impl Plc {
         let first = channels::first_number(doc, card.id);
         let place = |rid: ecad_model::RepresentationId| -> String {
             let Some(r) = doc.representations.get(&rid) else { return "?".into() };
-            let at = crate::devices::rep_definition(doc, r).map(|(_, pl)| pl.origin);
+            let at = crate::devices::tags::rep_definition(doc, r).map(|(_, pl)| pl.origin);
             at.and_then(|a| ecad_model::connectivity::wiring::place(doc, r.page, a))
                 .map_or_else(|| crate::references::cables::page_number_words(doc, r.page), |p| p.text(doc.settings.reference_style()))
         };

@@ -359,7 +359,7 @@ impl Touch {
             }
             Effect::Prop { object: ObjectRef::Device(c), key, .. } => {
                 let key = key.raw;
-                if crate::symbols::is_rating_key(key) || key == ecad_model::naming::tag::TAG_KEY {
+                if crate::symbols::rules::is_rating_key(key) || key == ecad_model::naming::tag::TAG_KEY {
                     self.devices.insert(*c);
                 } else if key.starts_with("jumper_bar.") {
                     for (t, _) in doc.connection_points_of(*c) {
@@ -1045,7 +1045,7 @@ pub fn summary_rows(doc: &Document, k: &Kept) -> Vec<Check> {
         row(CheckKind::RatingNoCurrent, format!("{} no load and no device; no volt drop", plural(t.no_current, "cable has", "cables have")), None);
     }
     for (c, text) in k.unread() {
-        let tag = crate::devices::tag_words(doc, c);
+        let tag = crate::devices::tags::tag_words(doc, c);
         let (page, at) =
             ecad_model::naming::numbering::rep_anchor(doc, ecad_model::Subject::Device(c)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
         out.push(Check {

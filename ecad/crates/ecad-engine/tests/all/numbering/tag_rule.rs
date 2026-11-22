@@ -7,7 +7,7 @@ use ecad_file::schema::{self, BranchId, VersionKind};
 use ecad_file::{Project, Store};
 use ecad_model::naming::tag::HighWater;
 use ecad_model::*;
-use {ecad_electrical::devices::TagHigh, ecad_electrical::devices::new_cable_tag};
+use {ecad_electrical::devices::tags::TagHigh, ecad_electrical::devices::tags::new_cable_tag};
 
 const PROJECT: ProjectId = ProjectId(0x0029_0000_0000_0000_0000_0000_0000_0007);
 

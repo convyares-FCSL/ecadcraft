@@ -829,23 +829,23 @@ fn near_segment(p: Pt, a: Pt, b: Pt) -> bool {
 
 /// Words for a net: its number, or its first device point.
 fn net_words(doc: &Document, net: &NetData) -> String {
-    wiring::net_number(doc, net).unwrap_or_else(|| wires::net_points(doc, net).first().cloned().unwrap_or_default())
+    wiring::net_number(doc, net).unwrap_or_else(|| wires::words::net_points(doc, net).first().cloned().unwrap_or_default())
 }
 
 /// Where a conductor is: the first page in book order of the routes drawing it
-/// ([`wires::routes_of_wire`]) and the midpoint of that route's longest segment, or where a given
+/// ([`wires::routes::routes_of_wire`]) and the midpoint of that route's longest segment, or where a given
 /// end is drawn.
 pub fn conductor_place(doc: &Document, c: WireId, end: Option<End>) -> (Option<PageId>, Option<Pt>) {
     let order: HashMap<PageId, usize> = doc.page_order.iter().enumerate().map(|(i, p)| (*p, i)).collect();
     let pos = |p: &PageId| order.get(p).copied().unwrap_or(usize::MAX);
     if let (Some(e), Some(w)) = (end, doc.wires.get(&c)) {
-        return wires::drawn_ends_at(doc, w.end(e)).into_iter().min_by_key(|(p, _)| pos(p)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
+        return wires::routes::drawn_ends_at(doc, w.end(e)).into_iter().min_by_key(|(p, _)| pos(p)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
     }
-    let routes: Vec<RouteId> = wires::routes_of_wire(doc, c);
+    let routes: Vec<RouteId> = wires::routes::routes_of_wire(doc, c);
     let Some(r) = routes.iter().filter_map(|r| doc.routes.get(r)).min_by_key(|r| pos(&r.page)) else {
         return (None, None);
     };
-    (Some(r.page), wires::longest_segment(&r.points).map(|(a, b)| Pt::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0)))
+    (Some(r.page), wires::labels::longest_segment(&r.points).map(|(a, b)| Pt::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0)))
 }
 
 /// Where a route is: its page and the midpoint of its longest segment, or a given end.
@@ -855,14 +855,14 @@ pub fn route_place(doc: &Document, r: RouteId, end: Option<End>) -> (Option<Page
     let at = match end {
         Some(End::A) => v.first().copied(),
         Some(End::B) => v.last().copied(),
-        None => wires::longest_segment(v).map(|(a, b)| Pt::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0)),
+        None => wires::labels::longest_segment(v).map(|(a, b)| Pt::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0)),
     };
     (Some(route.page), at)
 }
 
 /// A route's words: the words of the wire it stands for, else `a wire with no connection point`.
 fn route_words(doc: &Document, r: RouteId) -> String {
-    wires::wire_of_route(doc, r).map_or_else(|| "a wire with no connection point".into(), |w| conductor_words(doc, w))
+    wires::routes::wire_of_route(doc, r).map_or_else(|| "a wire with no connection point".into(), |w| conductor_words(doc, w))
 }
 
 /// Where a connection point is shown first (book order).
@@ -931,7 +931,7 @@ pub fn net_checks(doc: &Document, id: NetKey, net: &NetData) -> Vec<Check> {
                 page: p,
                 at: a,
                 object: Object::ConnectionPoint(t),
-                which: wires::point_words(doc, t),
+                which: wires::words::point_words(doc, t),
                 fix: None,
             });
         }
@@ -1073,13 +1073,13 @@ pub fn page_checks(doc: &Document, page: PageId) -> Vec<Check> {
 fn is_quiet_point(doc: &Document, t: ConnectionPointId) -> bool {
     let Some(c) = doc.connection_points.get(&t).and_then(|x| x.device()) else { return false };
     doc.representations_of(Subject::Device(c)).any(|(_, r)| {
-        let Some(s) = crate::devices::rep_starter(doc, r) else { return false };
-        let Some((def, _)) = crate::devices::rep_definition(doc, r) else { return false };
-        crate::devices::shown_connection_points(doc, c, r)
+        let Some(s) = crate::devices::tags::rep_starter(doc, r) else { return false };
+        let Some((def, _)) = crate::devices::tags::rep_definition(doc, r) else { return false };
+        crate::devices::merge::shown_connection_points(doc, c, r)
             .iter()
             .filter(|(x, _)| *x == t)
             .filter_map(|(_, at)| def.connection_points.iter().find(|td| td.at.near(*at, 1e-9)))
-            .any(|td| crate::symbols::is_quiet(s, &td.key.to_string()))
+            .any(|td| crate::symbols::rules::is_quiet(s, &td.key.to_string()))
     })
 }
 
@@ -1091,7 +1091,7 @@ pub fn connection_point_checks(doc: &Document, t: ConnectionPointId) -> Vec<Chec
     let (wired, takes) = (doc.ends_at(t).len(), ecad_model::connectivity::wire_order::accepts(doc, t));
     if wired > takes {
         let (page, at) = connection_point_place(doc, t);
-        let which = format!("{} takes {takes} conductors; {wired} are connected", wires::point_words(doc, t));
+        let which = format!("{} takes {takes} conductors; {wired} are connected", wires::words::point_words(doc, t));
         out.push(Check { kind: Kind::OverCount, page, at, object: Object::ConnectionPoint(t), which, fix: None });
     }
     if term.owner.aid().is_some() || doc.has_ends(t) || doc.routes_at(t).next().is_some() {
@@ -1106,7 +1106,7 @@ pub fn connection_point_checks(doc: &Document, t: ConnectionPointId) -> Vec<Chec
         return out;
     }
     let (page, at) = connection_point_place(doc, t);
-    out.push(Check { kind: Kind::Unconnected, page, at, object: Object::ConnectionPoint(t), which: wires::point_words(doc, t), fix: None });
+    out.push(Check { kind: Kind::Unconnected, page, at, object: Object::ConnectionPoint(t), which: wires::words::point_words(doc, t), fix: None });
     out
 }
 
@@ -1158,7 +1158,7 @@ pub fn component_checks_in(places: &mut Places<'_>, c: DeviceId, m: &dyn TextMet
     let mut out = Vec::new();
     designation_checks(places, c, &mut out);
     // Brief 026: a provisional tag, and a tag a cable holds too.
-    if let Some(t) = crate::devices::tag_of(doc, c)
+    if let Some(t) = crate::devices::tags::tag_of(doc, c)
         && (ecad_model::naming::tag::is_provisional(t) || !doc.cables_tagged(t).is_empty())
     {
         // Located only when there is a row to show (a build visits every device).
@@ -1186,7 +1186,7 @@ pub fn component_checks_in(places: &mut Places<'_>, c: DeviceId, m: &dyn TextMet
         && d.has_no_rating()
     {
         let (page, at) = crate::symbols::reps::goto_place_in(places, c).map_or((None, None), |(p, a)| (Some(p), a));
-        let tag = crate::devices::tag_words(doc, c);
+        let tag = crate::devices::tags::tag_words(doc, c);
         let which = match &d.rating_note {
             Some(n) => format!("{tag} has no rating ('{n}' is a note)"),
             None => format!("{tag} has no rating"),
@@ -1219,7 +1219,7 @@ fn designation_checks(places: &mut Places<'_>, c: DeviceId, out: &mut Vec<Check>
     if !crate::locations::is_device(doc, c) {
         return;
     }
-    let who = crate::devices::tag_words(doc, c);
+    let who = crate::devices::tags::tag_words(doc, c);
     let (page, at) = crate::symbols::reps::goto_place_in(places, c).map_or((None, None), |(p, a)| (Some(p), a));
     for (k, v) in d::device_keys(comp) {
         let Some(a) = Aspect::of_property(&k) else { continue };
@@ -1293,7 +1293,7 @@ fn designation_checks(places: &mut Places<'_>, c: DeviceId, out: &mut Vec<Check>
             page: Some(r.page),
             at: crate::references::devices::anchor(doc, r),
             object: Object::Device(c),
-            which: format!("{who} has two {}s ({})", crate::devices::head_noun(doc, *second), wheres.join(", ")),
+            which: format!("{who} has two {}s ({})", crate::devices::tags::head_noun(doc, *second), wheres.join(", ")),
             fix: None,
         });
     }
@@ -1380,7 +1380,7 @@ pub fn cable_checks_in(places: &mut Places<'_>, k: ecad_model::CableId) -> Vec<C
             });
         }
     }
-    let Some(t) = crate::devices::cable_tag_of(doc, k) else { return out };
+    let Some(t) = crate::devices::tags::cable_tag_of(doc, k) else { return out };
     if !ecad_model::naming::tag::is_provisional(t) && doc.cables_tagged(t).len() < 2 && doc.components_tagged(t).is_empty() {
         return out;
     }
@@ -1419,13 +1419,13 @@ fn core_place_checks(doc: &Document, k: ecad_model::CableId, out: &mut Vec<Check
             let now = match found {
                 ecad_model::CorePosition::Wire(_) => "its line now carries a wire".to_string(),
                 ecad_model::CorePosition::Route { landed: None, .. } => "its line has no end landed".to_string(),
-                ecad_model::CorePosition::Route { landed: Some(t), .. } => format!("its line is landed at {}", wires::point_words(doc, t)),
+                ecad_model::CorePosition::Route { landed: Some(t), .. } => format!("its line is landed at {}", wires::words::point_words(doc, t)),
                 ecad_model::CorePosition::Unplaced => "its line is gone".to_string(),
             };
             let which = format!("{name} core {core}: stored on a line, but {now}.");
             out.push(Check { kind: Kind::CorePlaceStale, page, at, object: Object::Cable(k), which, fix: None });
         } else if let Some(t) = landed {
-            let which = format!("{name} core {core} is landed at {} only.", wires::point_words(doc, t));
+            let which = format!("{name} core {core} is landed at {} only.", wires::words::point_words(doc, t));
             out.push(Check { kind: Kind::CoreOneEnd, page, at, object: Object::Cable(k), which, fix: None });
         }
     }

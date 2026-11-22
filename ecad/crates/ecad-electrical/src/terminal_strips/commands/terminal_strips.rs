@@ -16,11 +16,11 @@ use ecad_model::{
 };
 
 use crate::connectors::{Land, plan_land, plan_land_ends, strip_connection_point_at};
-use crate::devices::TagHigh;
+use crate::devices::tags::TagHigh;
 use crate::error::CmdError;
 use crate::terminal_strips::terminal_blocks as tt;
 use crate::terminal_strips::{self, connection_point_words};
-use crate::wires::OnRoute;
+use crate::wires::placing::OnRoute;
 
 /// Most wires one Place Terminals line lands on (design 028 §3.2).
 pub const MAX_FENCE: usize = 200;
@@ -32,11 +32,11 @@ pub const BRIDGE_STANDOFF: f64 = 4.0;
 /// # Errors
 /// The starter's definition could not be built.
 pub fn definition_for(doc: &Document, ids: &mut IdAllocator, s: &crate::symbols::Starter, ops: &mut Vec<Op>) -> Result<DefinitionId, CmdError> {
-    if let Some(d) = crate::symbols::embedded(doc, s) {
+    if let Some(d) = crate::symbols::catalogue::embedded(doc, s) {
         return Ok(d);
     }
     if let Some(d) = ops.iter().find_map(|o| match o {
-        Op::EmbedDefinition { id, definition } if crate::symbols::of_definition(definition).is_some_and(|x| x.key == s.key) => Some(*id),
+        Op::EmbedDefinition { id, definition } if crate::symbols::catalogue::of_definition(definition).is_some_and(|x| x.key == s.key) => Some(*id),
         _ => None,
     }) {
         return Ok(d);
@@ -123,7 +123,7 @@ pub fn plan_fence_typed(
         return Err(CmdError::refused(format!("That line crosses {} wires; at most {MAX_FENCE} at once. Draw a shorter line.", found.members.len())));
     }
     let legacy = kind.ty.legacy();
-    let starter = crate::symbols::starter(kind.ty.starter_key(kind.level));
+    let starter = crate::symbols::catalogue::starter(kind.ty.starter_key(kind.level));
     if let Some(c) = strip
         && terminal_strips::strip_of(doc, c).is_none()
     {
@@ -152,7 +152,7 @@ pub fn plan_fence_typed(
     let mut chooser = tt::Chooser::new(doc, strip);
     let existing = strip;
     let (strip, tag, mut next, mut first_main) = match strip {
-        Some(c) => (c, crate::devices::tag_words(doc, c), tt::highest_number(doc, c) + 1, false),
+        Some(c) => (c, crate::devices::tags::tag_words(doc, c), tt::highest_number(doc, c) + 1, false),
         None => {
             let c: DeviceId = ids.fresh();
             // Brief 026: a provisional `-X?n` when provisional tags are on, as Place gives.
@@ -174,7 +174,7 @@ pub fn plan_fence_typed(
     let mut named = kind.position.clone();
     let on_wire = |e: CmdError, c: ecad_model::CorePosition| CmdError::refused(format!("{e} ({})", crate::cables::slash::position_name(doc, c)));
     for m in crossings {
-        let on = crate::wires::on_route_of(doc, m.route, m.at).ok_or(CmdError::refused("A crossed wire has no route here."))?;
+        let on = crate::wires::placing::on_route_of(doc, m.route, m.at).ok_or(CmdError::refused("A crossed wire has no route here."))?;
         if legacy {
             let label = next.to_string();
             let t = terminal_block_symbol(
@@ -433,7 +433,7 @@ pub fn plan_bridge(
     let (wa, wb) = (connection_point_words(doc, a), connection_point_words(doc, b));
     let (sa, sb) = (terminal_strips::strip_of_connection_point(doc, a), terminal_strips::strip_of_connection_point(doc, b));
     let same = sa.is_some() && sa == sb;
-    if let Some(w) = crate::wires::wire_between(doc, a, b) {
+    if let Some(w) = crate::wires::routes::wire_between(doc, a, b) {
         return Ok(Bridge::Already { conductor: w, same, message: format!("{wa} and {wb} are already bridged.") });
     }
     let pos = |t: ConnectionPointId| {
@@ -446,7 +446,7 @@ pub fn plan_bridge(
         )));
     };
     let points = if same { staple(pa, pb) } else { vec![pa, pb] };
-    let (route, _, ops) = crate::wires::add_route(ids, page, style, points, [RouteEnd::Point(a), RouteEnd::Point(b)]);
+    let (route, _, ops) = crate::wires::routes::add_route(ids, page, style, points, [RouteEnd::Point(a), RouteEnd::Point(b)]);
     let label_b = tt::connection_point_name(doc, b);
     let label = if same { format!("Bridge {wa}\u{2013}{label_b}") } else { "Wire".to_string() };
     let message = if same {

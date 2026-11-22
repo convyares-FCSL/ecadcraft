@@ -59,7 +59,7 @@ pub struct Row {
 /// The rows for `query` (devices first, then symbols), how many more there are, and the "nothing"
 /// line when nothing matches.
 pub fn rows(doc: Option<&Document>, query: &str) -> (Vec<Row>, usize, Option<String>) {
-    let q: String = query.trim().chars().take(symbols::MAX_QUERY).collect();
+    let q: String = query.trim().chars().take(symbols::project::MAX_QUERY).collect();
     let mut out = Vec::new();
     if let Some(doc) = doc
         && !q.is_empty()
@@ -80,14 +80,14 @@ pub fn rows(doc: Option<&Document>, query: &str) -> (Vec<Row>, usize, Option<Str
     if let Some(doc) = doc
         && !q.is_empty()
     {
-        for c in ecad_electrical::devices::devices(doc, Some(&q)) {
-            let tag = ecad_electrical::devices::tag_words(doc, c);
+        for c in ecad_electrical::devices::json::devices(doc, Some(&q)) {
+            let tag = ecad_electrical::devices::tags::tag_words(doc, c);
             let n = doc.representations_of(Subject::Device(c)).count();
-            let pages = ecad_electrical::devices::pages_words(doc, c);
+            let pages = ecad_electrical::devices::tags::pages_words(doc, c);
             out.push(Row {
                 text: format!(
                     "{tag:<6} {:<26} {n} symbol{}, {pages}  (device)",
-                    clip(&ecad_electrical::devices::description(doc, c), 26),
+                    clip(&ecad_electrical::devices::tags::description(doc, c), 26),
                     if n == 1 { "" } else { "s" }
                 ),
                 pick: Pick::Device(tag),
@@ -97,7 +97,7 @@ pub fn rows(doc: Option<&Document>, query: &str) -> (Vec<Row>, usize, Option<Str
     // Brief 048: the project's own symbols, before the built-ins.
     if let Some(doc) = doc {
         let ql = q.to_lowercase();
-        for v in symbols::project_symbols(doc) {
+        for v in symbols::project::project_symbols(doc) {
             let Some(key) = v.key() else { continue };
             if !ql.is_empty() && !v.def.name.to_lowercase().contains(&ql) && !key.to_lowercase().contains(&ql) {
                 continue;
@@ -108,7 +108,7 @@ pub fn rows(doc: Option<&Document>, query: &str) -> (Vec<Row>, usize, Option<Str
             });
         }
     }
-    for s in symbols::search(&q) {
+    for s in symbols::project::search(&q) {
         let prefix = doc.map_or_else(|| s.prefix().to_string(), |d| ecad_electrical::devices::prefix_for(d, s));
         out.push(Row { text: format!("{:<6} {:<26} -{prefix:<3} {}  (symbol)", s.key, s.name, s.labels().join("/")), pick: Pick::Symbol(s.key) });
     }
@@ -143,21 +143,20 @@ pub fn choices(p: &ecad_engine::Project, pick: &Pick) -> Vec<Choice> {
     let none = std::collections::BTreeSet::new();
     match pick {
         Pick::Symbol(key) => {
-            let s = symbols::starter(*key);
+            let s = symbols::catalogue::starter(*key);
             let next = ecad_engine::devices::draw::next_tag_preview(p, s).unwrap_or_else(|| "new tag".into());
             let mut out = vec![Choice { text: format!("New device ({next})"), symbol: s.key, device: None }];
             let prefix = ecad_electrical::devices::prefix_for(doc, s);
-            let mut found: Vec<(u8, u8, DeviceId, String)> = ecad_electrical::devices::devices(doc, None)
+            let mut found: Vec<(u8, u8, DeviceId, String)> = ecad_electrical::devices::json::devices(doc, None)
                 .into_iter()
                 .filter_map(|c| {
-                    let labels = ecad_electrical::devices::join_labels(doc, c, s, &none).ok()?;
-                    let tag = ecad_electrical::devices::tag_words(doc, c);
+                    let labels = ecad_electrical::devices::placing::join_labels(doc, c, s, &none).ok()?;
+                    let tag = ecad_electrical::devices::tags::tag_words(doc, c);
                     let own = ecad_model::naming::tag::parse(&tag).is_some_and(|(px, _)| px == prefix);
                     let main = doc
                         .representations_of(Subject::Device(c))
-                        .filter_map(|(_, r)| ecad_electrical::devices::rep_starter(doc, r))
-                        .any(|x| matches!(x.kind, symbols::Kind::Fixed { exclusive: true }));
-                    let text = format!("{tag:<6} {:<26} {}", clip(&ecad_electrical::devices::description(doc, c), 26), labels.join("/"));
+                        .any(|(_, r)| ecad_electrical::symbols::reps::rep_type(doc, r) == ecad_model::PartRole::Head);
+                    let text = format!("{tag:<6} {:<26} {}", clip(&ecad_electrical::devices::tags::description(doc, c), 26), labels.join("/"));
                     Some((u8::from(!own), u8::from(!main), c, text))
                 })
                 .collect();
@@ -165,17 +164,17 @@ pub fn choices(p: &ecad_engine::Project, pick: &Pick) -> Vec<Choice> {
             out.extend(found.into_iter().take(MAX_CHOICES - 1).map(|(_, _, c, text)| Choice {
                 text,
                 symbol: s.key,
-                device: Some(ecad_electrical::devices::tag_words(doc, c)),
+                device: Some(ecad_electrical::devices::tags::tag_words(doc, c)),
             }));
             out
         }
         Pick::Device(tag) => {
-            let Some(c) = ecad_electrical::devices::holder_of(doc, tag, None) else { return Vec::new() };
+            let Some(c) = ecad_electrical::devices::tags::holder_of(doc, tag, None) else { return Vec::new() };
             let own = ecad_model::naming::tag::parse(tag).map(|(px, _)| px).unwrap_or_default();
-            let mut found: Vec<(u8, Choice)> = symbols::STARTERS
+            let mut found: Vec<(u8, Choice)> = symbols::catalogue::STARTERS
                 .iter()
                 .filter_map(|s| {
-                    let labels = ecad_electrical::devices::join_labels(doc, c, s, &none).ok()?;
+                    let labels = ecad_electrical::devices::placing::join_labels(doc, c, s, &none).ok()?;
                     let text = format!("{:<28} {}", s.name, labels.join("/"));
                     let rank = u8::from(ecad_electrical::devices::prefix_for(doc, s) != own);
                     Some((rank, Choice { text, symbol: s.key, device: Some(tag.clone()) }))
@@ -297,7 +296,7 @@ impl SymbolSearch {
         crate::shell::hosted(window, self.host).show(ctx, |ui| {
             if let Some(p) = &self.picked {
                 let what = match p {
-                    Pick::Symbol(k) => format!("Place {} as:", symbols::starter(*k).name),
+                    Pick::Symbol(k) => format!("Place {} as:", symbols::catalogue::starter(*k).name),
                     Pick::Device(t) => format!("Add to {t}:"),
                     Pick::Page(_) | Pick::Action(_) | Pick::Project(_) => String::new(),
                 };
@@ -321,7 +320,7 @@ impl SymbolSearch {
             let field = egui::TextEdit::singleline(&mut self.query)
                 .id_salt(FIELD_ID)
                 .hint_text("Find symbol or device…")
-                .char_limit(symbols::MAX_QUERY)
+                .char_limit(symbols::project::MAX_QUERY)
                 .font(egui::TextStyle::Monospace)
                 .desired_width(420.0);
             let r = ui.add(field).labelled_by(label.id);
@@ -389,7 +388,7 @@ mod tests {
     fn rows_without_a_project_list_symbols() {
         let (r, more, nothing) = rows(None, "");
         assert_eq!(r.len(), MAX_ROWS);
-        assert_eq!(more, symbols::STARTERS.len() - MAX_ROWS);
+        assert_eq!(more, symbols::catalogue::STARTERS.len() - MAX_ROWS);
         assert!(nothing.is_none());
         let (r, _, _) = rows(None, "-Q");
         assert_eq!(

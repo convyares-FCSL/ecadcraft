@@ -165,7 +165,7 @@ pub(crate) fn texts_on(h: &mut H, page: PageId, text: &str) -> Vec<std::sync::Ar
 }
 
 pub(crate) fn tag(h: &mut H, c: DeviceId) -> String {
-    ecad_electrical::devices::tag_words(&h.doc(), c)
+    ecad_electrical::devices::tags::tag_words(&h.doc(), c)
 }
 
 pub(crate) fn coil(h: &mut H, x: f64) -> DeviceId {

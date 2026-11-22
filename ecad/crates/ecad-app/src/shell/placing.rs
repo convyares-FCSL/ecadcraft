@@ -64,10 +64,10 @@ pub struct State {
 /// answer that matches several.
 pub fn typed_symbol(text: &str) -> Option<symbols::StarterKey> {
     let t = text.trim();
-    if let Some(s) = symbols::by_key(t) {
+    if let Some(s) = symbols::catalogue::by_key(t) {
         return Some(s.key);
     }
-    match symbols::search(t).as_slice() {
+    match symbols::project::search(t).as_slice() {
         [one] => Some(one.key),
         _ => None,
     }
@@ -128,7 +128,7 @@ impl App {
         let st = &mut self.shell.tools.placing;
         match asks_symbol {
             Some(p) => {
-                st.symbol = p.default.as_deref().and_then(symbols::by_key).map(|s| s.key);
+                st.symbol = p.default.as_deref().and_then(symbols::catalogue::by_key).map(|s| s.key);
                 st.typed = (!buffer.is_empty()).then_some(buffer);
             }
             None => {
@@ -155,7 +155,7 @@ impl App {
     /// The folded chip: the symbol, "as -K02", Change (P) and search. True when clicked.
     fn chip(&mut self, ui: &mut egui::Ui, at: egui::Pos2) -> bool {
         let s = ecad_widgets::SHELL;
-        let sym = self.shell.tools.placing.symbol.map(symbols::starter);
+        let sym = self.shell.tools.placing.symbol.map(symbols::catalogue::starter);
         let tag = self.cad.session.current_prompt().and_then(|p| tag_in(&p.message));
         let name = sym.map_or("Symbol", |x| x.name);
         let as_words = match &tag {
@@ -202,8 +202,8 @@ impl App {
     fn picker(&mut self, ui: &mut egui::Ui, at: egui::Pos2, canvas: Rect) {
         let s = ecad_widgets::SHELL;
         let q = self.shell.tools.placing.query.clone();
-        let found = symbols::search(q.trim());
-        let total = symbols::STARTERS.len();
+        let found = symbols::project::search(q.trim());
+        let total = symbols::catalogue::STARTERS.len();
         let chosen_key = self.shell.tools.placing.symbol;
         let choices = chosen_key.map(|k| self.picker_choices(k)).unwrap_or_default();
         let mut pick = None;
@@ -227,7 +227,7 @@ impl App {
                     let field = egui::TextEdit::singleline(query)
                         .id_salt("ecad.shell.placing.field")
                         .hint_text("Find a symbol, tag or family")
-                        .char_limit(symbols::MAX_QUERY)
+                        .char_limit(symbols::project::MAX_QUERY)
                         .desired_width(WIDTH - 2.0 * space::L - 72.0);
                     let r = ui.add(field);
                     r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, FIELD));
@@ -264,7 +264,7 @@ impl App {
                     browse = ui.add(prim::Button::new(BROWSE).small()).clicked();
                 });
                 // The second step: what the chosen symbol is placed as.
-                if let Some(sym) = chosen_key.map(symbols::starter)
+                if let Some(sym) = chosen_key.map(symbols::catalogue::starter)
                     && !choices.is_empty()
                 {
                     ui.separator();

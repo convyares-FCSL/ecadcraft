@@ -164,7 +164,7 @@ impl Project {
         let cables: BTreeSet<CableId> = doc.cables.keys().copied().collect();
         self.ledger = ledger;
         self.derived.rebuild(self.ledger.document());
-        self.tag_high = ecad_electrical::devices::TagHigh::starting_at(tag_high);
+        self.tag_high = ecad_electrical::devices::tags::TagHigh::starting_at(tag_high);
         self.catch_up_tags();
         self.designation_uses.reset();
         self.conflicts.clear();

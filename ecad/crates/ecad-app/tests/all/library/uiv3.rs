@@ -255,7 +255,7 @@ fn screenshots_of_section_f() {
         h.state_mut().close_builder(true);
         h.run_steps(2);
     }
-    let _ = symbols::STARTERS.len();
+    let _ = symbols::catalogue::STARTERS.len();
 
     // 4.01: Publish.
     h.state_mut().set_workspace(Workspace::Publish);

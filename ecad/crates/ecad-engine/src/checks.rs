@@ -25,8 +25,10 @@ pub fn handles_of(p: &crate::Project, page: PageId, object: Object) -> Vec<cadcr
     let subject = match object {
         // A wire's lines on the page: the routes drawing it (design 072 §4.3).
         Object::Wire(c) => {
-            let routes: Vec<_> =
-                ecad_electrical::wires::routes_of_wire(doc, c).into_iter().filter(|r| doc.routes.get(r).is_some_and(|x| x.page == page)).collect();
+            let routes: Vec<_> = ecad_electrical::wires::routes::routes_of_wire(doc, c)
+                .into_iter()
+                .filter(|r| doc.routes.get(r).is_some_and(|x| x.page == page))
+                .collect();
             return routes
                 .into_iter()
                 .flat_map(|r| {

@@ -11,62 +11,34 @@
 //! Not here: the builder's drawing, drafts and the review drawer (048b); "update available" in
 //! Properties and Devices (048c).
 
-use ecad_model::geometry::units::{Degrees, Radians};
-use std::collections::BTreeSet;
-
 use cadcraft_engine::doc::Handle;
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
-use ecad_electrical::symbols::commands::{self as rules, ContentInput, MakeAt, PointInput, SlotInput, Update};
+use ecad_electrical::symbols::commands::{self as rules, MakeAt};
 pub use ecad_electrical::symbols::commands::{
     Content, MAX_COPIES, MAX_EXTENT, MAX_NAME, MAX_POINTS, MAX_SHAPES, MAX_SLOTS, Rules, grid_origin, not_plain, problems, shifted,
 };
-use ecad_model::{DefinitionId, DeviceId, PageId, Placement, RepresentationId, TextHAlign, TextVAlign};
+use ecad_model::geometry::units::Radians;
+use ecad_model::{DeviceId, Placement};
 use schemars::JsonSchema;
 use serde::Deserialize;
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 
 use crate::commands::input::{Command, Typed};
 use crate::commands::{MAX_HANDLES, err, on_project, plain_style};
 use crate::project::Mapped;
 use ecad_electrical::commands::input::{Bounded, Point};
 use ecad_electrical::symbols;
-pub use ecad_electrical::symbols::POINT_GRID_MM;
-pub use ecad_electrical::symbols::update_available;
+pub use ecad_electrical::symbols::graphics::POINT_GRID_MM;
+pub use ecad_electrical::symbols::graphics::update_available;
 
 /// The commands of this module with a typed input.
-pub const TYPED: &[Typed] = &[
-    Typed::of::<NewParams>("symbolnew"),
-    Typed::of::<EditParams>("symboledit"),
-    Typed::of::<ImpactParams>("symbolimpact"),
-    Typed::of::<UpdateParams>("symbolupdate"),
-    Typed::of::<MakeParams>("makesymbol"),
-];
+pub const TYPED: &[Typed] = &[Typed::of::<MakeParams>("makesymbol")];
 
 /// The commands this module adds (registered in `lanes.rs`).
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("symbolnew", "New Symbol", crate::commands::input::typed::<NewParams>)
-            .params(
-                "{name, key, graphics: [{kind: line|polyline|arc|circle|text|point, …} as in the file record], points: [{key, label?, at: [x,y]}], \
-slots?: [{text: tag|description|rating|rating.<label>|part_number|maker|article_number|function|location, at: [x,y], h?: left|center|right, \
-v?: baseline|bottom|middle|top, rotation?: degrees}], defaults?: {prefix, description?, rating?, join?: device|part, aliases?, family?}, \
-bridges?: [[key…]], from?: definition id} (design 048 §9.1: embeds version 1 of a project symbol; one transaction)",
-            )
-            .noundo(),
-        CommandSpec::new("symboledit", "Edit Symbol", crate::commands::input::typed::<EditParams>)
-            .params(
-                "{definition: id of the version edited, …content as symbolnew…, update: all|selected|none|new, copies?: [representation id], \
-builtins?: bool} (design 048 §9.2: a new version, and the chosen placed copies updated, in one transaction)",
-            )
-            .noundo(),
-        CommandSpec::new("symbolimpact", "Symbol Impact", crate::commands::input::typed::<ImpactParams>).params(
-            "{definition: id, …content as symbolnew…, builtins?: bool} (read only: every placed copy with what an update changes there and \
-whether it clashes, design 048 §6.2)",
-        ),
-        CommandSpec::new("symbolupdate", "Update Symbol", crate::commands::input::typed::<UpdateParams>)
-            .params("{copies: [representation id] | lineage: id, to?: definition id (default: the newest)} (refused when a copy would clash)")
-            .noundo(),
+
         CommandSpec::new("makesymbol", "Make Symbol", crate::commands::input::typed::<MakeParams>)
             .params(
                 "{handles?: [hex] (default: the selection) | component: id, name, key, points?: [{key, label?, at: [x,y] on the page}], \
@@ -79,347 +51,7 @@ component promoted, keeping its IDs)",
 
 // ---------------------------------------------------------------- content (§3.5)
 
-/// The shapes of a symbol: file records (`{kind: line|polyline|arc|circle|text|point, …}`).
-type Shapes = Bounded<Map<String, Value>, 0, MAX_SHAPES>;
-/// The connection points of a symbol.
-type Points = Bounded<PointParam, 0, MAX_POINTS>;
-/// The text slots of a symbol.
-type Slots = Bounded<SlotParam, 0, MAX_SLOTS>;
-/// The bridges of a symbol: lists of point keys.
-type Bridges = Bounded<Bounded<String, 0, MAX_POINTS>, 0, MAX_POINTS>;
-/// Representation IDs of placed copies.
-type Copies = Bounded<RepresentationId, 0, MAX_COPIES>;
-
-/// A point's key: text, or a number read as its text.
-#[derive(Deserialize, JsonSchema)]
-#[serde(untagged)]
-enum PointKey {
-    Text(String),
-    Number(serde_json::Number),
-}
-
-/// A connection point of a symbol.
-#[derive(Deserialize, JsonSchema)]
-struct PointParam {
-    /// Its key, unique in the symbol.
-    #[serde(default)]
-    key: Option<PointKey>,
-    /// The label printed beside it.
-    #[serde(default)]
-    label: Option<String>,
-    /// Where it is.
-    #[serde(default)]
-    at: Option<Point>,
-}
-
-/// A slot's horizontal alignment.
-#[derive(Deserialize, JsonSchema, Clone, Copy)]
-#[serde(rename_all = "lowercase")]
-enum HParam {
-    Left,
-    Center,
-    Right,
-}
-
-/// A slot's vertical alignment.
-#[derive(Deserialize, JsonSchema, Clone, Copy)]
-#[serde(rename_all = "lowercase")]
-enum VParam {
-    Baseline,
-    Bottom,
-    Middle,
-    Top,
-}
-
-/// A text slot of a symbol.
-#[derive(Deserialize, JsonSchema)]
-struct SlotParam {
-    /// The device text it places: tag, description, rating, rating.<label>, part_number, maker,
-    /// article_number, function or location.
-    #[serde(default)]
-    text: Option<String>,
-    /// Where it is.
-    #[serde(default)]
-    at: Option<Point>,
-    /// Horizontal alignment (default left).
-    #[serde(default)]
-    h: Option<HParam>,
-    /// Vertical alignment (default baseline).
-    #[serde(default)]
-    v: Option<VParam>,
-    /// Degrees, counter-clockwise.
-    #[serde(default)]
-    rotation: Option<Degrees>,
-}
-
-/// The content fields every builder command takes, as read.
-struct ContentFields {
-    name: Option<String>,
-    key: Option<String>,
-    graphics: Option<Shapes>,
-    points: Option<Points>,
-    slots: Option<Slots>,
-    defaults: Option<std::collections::BTreeMap<String, String>>,
-    bridges: Option<Bridges>,
-}
-
-impl ContentFields {
-    /// The content they give.
-    ///
-    /// # Errors
-    /// A shape that is not a file record, or the rules of [`rules::content`].
-    fn content(self) -> Result<Content, CmdError> {
-        let mut graphics = Vec::new();
-        for m in self.graphics.map(|b| b.0).unwrap_or_default() {
-            let rec: ecad_file::records::Primitive =
-                serde_json::from_value(Value::Object(m)).map_err(|e| CmdError::input(format!("A shape could not be read: {e}")))?;
-            graphics.push(ecad_model::Primitive::from(rec));
-        }
-        let points = self.points.map(|b| b.0).unwrap_or_default().into_iter().map(|p| PointInput {
-            key: p.key.map(|k| match k {
-                PointKey::Text(t) => t,
-                PointKey::Number(n) => n.to_string(),
-            }),
-            label: p.label,
-            at: p.at.map(|a| a.0),
-        });
-        let slots = self.slots.map(|b| b.0).unwrap_or_default().into_iter().map(|s| SlotInput {
-            text: s.text,
-            at: s.at.map(|a| a.0),
-            h: match s.h {
-                None | Some(HParam::Left) => TextHAlign::Left,
-                Some(HParam::Center) => TextHAlign::Center,
-                Some(HParam::Right) => TextHAlign::Right,
-            },
-            v: match s.v {
-                None | Some(VParam::Baseline) => TextVAlign::Baseline,
-                Some(VParam::Bottom) => TextVAlign::Bottom,
-                Some(VParam::Middle) => TextVAlign::Middle,
-                Some(VParam::Top) => TextVAlign::Top,
-            },
-            rotation: s.rotation.map(Radians::from).unwrap_or_default(),
-        });
-        rules::content(ContentInput {
-            name: self.name,
-            key: self.key,
-            graphics,
-            points: points.collect(),
-            slots: slots.collect(),
-            defaults: self.defaults.unwrap_or_default(),
-            bridges: self.bridges.map(|b| b.0.into_iter().map(|g| g.0).collect()).unwrap_or_default(),
-        })
-    }
-}
-
-// ---------------------------------------------------------------- commands
-
-/// `symbolnew {name, key, graphics, points, slots?, defaults?, bridges?, from?}` (design 048
-/// §9.1): version 1 of a project symbol.
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct NewParams {
-    /// The symbol's name.
-    #[serde(default)]
-    name: Option<String>,
-    /// Its key: up to 32 letters, digits, - and _.
-    #[serde(default)]
-    key: Option<String>,
-    /// Its shapes, as in the file record.
-    #[serde(default)]
-    graphics: Option<Shapes>,
-    /// Its connection points.
-    #[serde(default)]
-    points: Option<Points>,
-    /// Where its device texts go.
-    #[serde(default)]
-    slots: Option<Slots>,
-    /// Its defaults: prefix, description, rating, join (device or part), aliases, family.
-    #[serde(default)]
-    defaults: Option<std::collections::BTreeMap<String, String>>,
-    /// Groups of point keys bridged inside the device.
-    #[serde(default)]
-    bridges: Option<Bridges>,
-    /// The definition it is copied from (a built-in).
-    #[serde(default)]
-    from: Option<DefinitionId>,
-}
-
-impl Command for NewParams {
-    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let fields = ContentFields {
-            name: self.name,
-            key: self.key,
-            graphics: self.graphics,
-            points: self.points,
-            slots: self.slots,
-            defaults: self.defaults,
-            bridges: self.bridges,
-        };
-        let content = fields.content().map_err(|e| err(e.to_string()))?;
-        on_project(s, |p, pg, _| {
-            let plan = rules::plan_new(p.ledger.document(), &mut p.ids, &content, self.from)?;
-            p.apply_edit(pg, "symbolnew", &plan.label, plan.ops)?;
-            Ok(rules::result(p.ledger.document(), plan.id))
-        })
-    }
-}
-
-/// `symbolimpact {definition, …content as symbolnew…, builtins?}` (read only, design 048 §6.2):
-/// every placed copy with what an update changes there and whether it clashes.
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct ImpactParams {
-    /// The version edited.
-    definition: DefinitionId,
-    /// The symbol's name.
-    #[serde(default)]
-    name: Option<String>,
-    /// Its key.
-    #[serde(default)]
-    key: Option<String>,
-    /// Its shapes, as in the file record.
-    #[serde(default)]
-    graphics: Option<Shapes>,
-    /// Its connection points.
-    #[serde(default)]
-    points: Option<Points>,
-    /// Where its device texts go.
-    #[serde(default)]
-    slots: Option<Slots>,
-    /// Its defaults.
-    #[serde(default)]
-    defaults: Option<std::collections::BTreeMap<String, String>>,
-    /// Groups of point keys bridged inside the device.
-    #[serde(default)]
-    bridges: Option<Bridges>,
-    /// Also the copies of an edited built-in.
-    #[serde(default)]
-    builtins: Option<bool>,
-}
-
-impl Command for ImpactParams {
-    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let fields = ContentFields {
-            name: self.name,
-            key: self.key,
-            graphics: self.graphics,
-            points: self.points,
-            slots: self.slots,
-            defaults: self.defaults,
-            bridges: self.bridges,
-        };
-        let content = fields.content().map_err(|e| err(e.to_string()))?;
-        let builtins = self.builtins.unwrap_or(false);
-        on_project(s, |p, _, _| {
-            let doc = p.ledger.document();
-            let i = rules::plan_impact(doc, &p.ids, self.definition, &content, builtins)?;
-            let pages: BTreeSet<PageId> = i.rows.iter().map(|r| r.page).collect();
-            let book = ecad_model::document::book::Book::of(doc);
-            let mut places = ecad_electrical::references::devices::Places::new(doc);
-            let rows_json: Vec<Value> = i.rows.iter().map(|r| rules::row_json(r, doc, &book, &mut places)).collect();
-            Ok(json!({
-                "name": content.name, "version": i.version, "builtin": i.builtin,
-                "copies": i.rows.len(), "pages": pages.len(), "clashes": i.rows.iter().filter(|r| r.clash.is_some()).count(),
-                "rows": rows_json,
-                "problems": i.problems,
-            }))
-        })
-    }
-}
-
-/// `symboledit {definition, …content as symbolnew…, update, copies?, builtins?}` (design 048
-/// §9.2): a new version, and the chosen placed copies updated, in one transaction.
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct EditParams {
-    /// The version edited.
-    definition: DefinitionId,
-    /// The symbol's name.
-    #[serde(default)]
-    name: Option<String>,
-    /// Its key.
-    #[serde(default)]
-    key: Option<String>,
-    /// Its shapes, as in the file record.
-    #[serde(default)]
-    graphics: Option<Shapes>,
-    /// Its connection points.
-    #[serde(default)]
-    points: Option<Points>,
-    /// Where its device texts go.
-    #[serde(default)]
-    slots: Option<Slots>,
-    /// Its defaults.
-    #[serde(default)]
-    defaults: Option<std::collections::BTreeMap<String, String>>,
-    /// Groups of point keys bridged inside the device.
-    #[serde(default)]
-    bridges: Option<Bridges>,
-    /// Which placed copies to update: all (default), selected, none, or new (a new symbol).
-    #[serde(default)]
-    update: Option<String>,
-    /// With `update: selected`: the copies (representation IDs).
-    #[serde(default)]
-    copies: Option<Copies>,
-    /// With `update: all`: also the copies of an edited built-in.
-    #[serde(default)]
-    builtins: Option<bool>,
-}
-
-impl Command for EditParams {
-    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let fields = ContentFields {
-            name: self.name,
-            key: self.key,
-            graphics: self.graphics,
-            points: self.points,
-            slots: self.slots,
-            defaults: self.defaults,
-            bridges: self.bridges,
-        };
-        let content = fields.content().map_err(|e| err(e.to_string()))?;
-        let update = Update::of_word(self.update.as_deref()).map_err(|e| err(e.to_string()))?;
-        let copies = self.copies.map(|c| c.0);
-        let builtins = self.builtins.unwrap_or(false);
-        on_project(s, |p, pg, _| {
-            let plan = rules::plan_edit(p.ledger.document(), &mut p.ids, self.definition, &content, update, copies, builtins)?;
-            p.apply_edit(pg, "symboledit", &plan.label, plan.ops)?;
-            let mut v = rules::result(p.ledger.document(), plan.id);
-            v["updated"] = json!(plan.updated);
-            v["left"] = json!(plan.left);
-            Ok(v)
-        })
-    }
-}
-
-/// `symbolupdate {copies | lineage, to?}`: placed copies moved to a version of their symbol
-/// (default: the newest); refused when a copy would clash.
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct UpdateParams {
-    /// The copies to update (representation IDs).
-    #[serde(default)]
-    copies: Option<Copies>,
-    /// Without `copies`: every copy of this symbol (its lineage ID).
-    #[serde(default)]
-    lineage: Option<DefinitionId>,
-    /// The version to move to (default: the newest).
-    #[serde(default)]
-    to: Option<DefinitionId>,
-}
-
-impl Command for UpdateParams {
-    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let copies = self.copies.map(|c| c.0);
-        on_project(s, |p, pg, _| {
-            let plan = rules::plan_update(p.ledger.document(), &mut p.ids, copies, self.lineage, self.to)?;
-            p.apply_edit(pg, "symbolupdate", &plan.label, plan.ops)?;
-            let mut v = rules::result(p.ledger.document(), plan.id);
-            v["updated"] = json!(plan.updated);
-            Ok(v)
-        })
-    }
-}
+use ecad_electrical::symbols::builder::{Bridges, ContentFields, Points, Shapes, Slots};
 
 // ---------------------------------------------------------------- make symbol (§4)
 
@@ -545,7 +177,7 @@ pub(crate) fn place_project_key(
     let key = key.to_string();
     on_project(s, |p, pg, page| {
         let doc = p.ledger.document();
-        let Some(v) = symbols::project_by_key(doc, &key) else { return Ok(None) };
+        let Some(v) = symbols::project::project_by_key(doc, &key) else { return Ok(None) };
         let (id, def) = (v.id, v.def.clone());
         // A typed tag a device already holds is that device (a tag is an identity), as `place`
         // does for built-in symbols; devices and cables share one namespace (brief 026).

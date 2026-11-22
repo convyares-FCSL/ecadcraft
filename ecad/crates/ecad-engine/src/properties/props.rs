@@ -43,7 +43,7 @@ fn pick(p: &Project, page: PageId, selection: &[Handle]) -> Picked {
             Some(Mapped::Item(i)) => doc.representation_of_item(i).map(|(id, _)| id),
             Some(Mapped::Marker(r, _) | Mapped::Tag(r) | Mapped::RefText(r) | Mapped::DeviceReference(r)) => Some(r),
             // Lane 072 D: a T's dot stands for the line that ends there.
-            Some(Mapped::Tee(r)) => ecad_electrical::wires::route_item(doc, r).map(|(rid, _, _)| rid),
+            Some(Mapped::Tee(r)) => ecad_electrical::wires::routes::route_item(doc, r).map(|(rid, _, _)| rid),
             // Brief 030: a link line shows its strip (Properties ▸ Link).
             Some(Mapped::JumperBar(c, n)) => {
                 out.jumper_bars.insert((c, n));
@@ -97,7 +97,7 @@ fn pick(p: &Project, page: PageId, selection: &[Handle]) -> Picked {
             }
             Subject::Aid(_) => {}
             // A drawn line stands for the wire it carries (design 072 §4.3).
-            Subject::Route(x) => match ecad_electrical::wires::wire_of_route(doc, x) {
+            Subject::Route(x) => match ecad_electrical::wires::routes::wire_of_route(doc, x) {
                 Some(w) => {
                     out.wires.insert(w);
                 }

@@ -272,7 +272,7 @@ pub fn caption(doc: &Document, c: DeviceId) -> Option<(String, bool)> {
     let pattern = crate::defaults::resolve(doc, &crate::defaults::plc::CAPTION, at).text();
     let shown = crate::defaults::resolve(doc, &crate::defaults::plc::CAPTION_SHOW, at).flag();
     let text = pattern
-        .replace("{rack}", &crate::devices::tag_words(doc, r))
+        .replace("{rack}", &crate::devices::tags::tag_words(doc, r))
         .replace("{slot:02}", &format!("{slot:02}"))
         .replace("{slot}", &slot.to_string());
     Some((text, shown))
@@ -282,24 +282,24 @@ pub fn caption(doc: &Document, c: DeviceId) -> Option<(String, bool)> {
 /// the card is in a slot.
 pub fn caption_text(
     doc: &Document, c: DeviceId, rep: ecad_model::RepresentationId, r: &ecad_model::Representation, pl: &ecad_model::Placement,
-) -> Option<crate::devices::PageText> {
-    let s = crate::devices::rep_starter(doc, r)?;
+) -> Option<crate::devices::texts::PageText> {
+    let s = crate::devices::tags::rep_starter(doc, r)?;
     let ty = CardType::of_symbol(s)?;
     if ty.is_rack() {
         return None;
     }
     let (value, shown) = caption(doc, c)?;
-    let anchor = crate::symbols::anchors(s).into_iter().find(|a| a.role == crate::symbols::TextRole::Caption)?;
+    let anchor = crate::symbols::anchors::anchors(s).into_iter().find(|a| a.role == crate::symbols::anchors::TextRole::Caption)?;
     let at = pl.apply(anchor.at);
     if !at.is_finite() {
         return None;
     }
     // Brief 066d: one kind for height and style, the one `TextOf::Caption` draws in.
-    let height = crate::styles::text_style::text_style(doc, crate::devices::kind_of(crate::devices::TextOf::Caption)).height;
-    Some(crate::devices::PageText {
-        text: crate::devices::DerivedText {
+    let height = crate::styles::text_style::text_style(doc, crate::devices::texts::kind_of(crate::devices::texts::TextOf::Caption)).height;
+    Some(crate::devices::texts::PageText {
+        text: crate::devices::texts::DerivedText {
             rep,
-            of: crate::devices::TextOf::Caption,
+            of: crate::devices::texts::TextOf::Caption,
             value,
             at,
             height,
@@ -345,10 +345,10 @@ pub fn props_rows(doc: &Document, c: DeviceId, rows: &mut Vec<crate::cables::wor
         ));
         return;
     }
-    let mut choices: Vec<String> = rack::racks(doc).into_iter().take(64).map(|r| crate::devices::tag_words(doc, r)).collect();
+    let mut choices: Vec<String> = rack::racks(doc).into_iter().take(64).map(|r| crate::devices::tags::tag_words(doc, r)).collect();
     choices.push("None".into());
     let rack_value = match rack::rack_ref(doc, c) {
-        RackRef::Rack(r) => crate::devices::tag_words(doc, r),
+        RackRef::Rack(r) => crate::devices::tags::tag_words(doc, r),
         RackRef::Missing(_) => "(missing rack)".into(),
         RackRef::None => "None".into(),
     };
@@ -402,7 +402,7 @@ pub fn channel_data(doc: &Document, c: DeviceId) -> BTreeMap<u32, ChannelData> {
         ch.used |= used;
         for (rid, r) in doc.representations_showing(t) {
             if !ch.cells.iter().any(|(x, _, _)| *x == rid) {
-                let ty = crate::devices::rep_starter(doc, r).and_then(channels::cell_type);
+                let ty = crate::devices::tags::rep_starter(doc, r).and_then(channels::cell_type);
                 ch.cells.push((rid, r.page, ty));
             }
         }
@@ -428,15 +428,15 @@ pub fn channel_data(doc: &Document, c: DeviceId) -> BTreeMap<u32, ChannelData> {
 pub fn channel_texts(
     doc: &Document, c: DeviceId, rid: ecad_model::RepresentationId, r: &ecad_model::Representation, pl: &ecad_model::Placement,
     kept: Option<&kept::Plc>, cache: &mut BTreeMap<DeviceId, BTreeMap<DeviceId, address::Block>>,
-) -> Vec<crate::devices::PageText> {
-    use crate::devices::{DerivedText, PageText, TextOf};
-    use crate::symbols::TextRole;
-    let Some(s) = crate::devices::rep_starter(doc, r) else { return Vec::new() };
+) -> Vec<crate::devices::texts::PageText> {
+    use crate::devices::texts::{DerivedText, PageText, TextOf};
+    use crate::symbols::anchors::TextRole;
+    let Some(s) = crate::devices::tags::rep_starter(doc, r) else { return Vec::new() };
     if channels::cell_type(s).is_none() {
         return Vec::new();
     }
     // The channel this symbol shows: its first point's.
-    let shown_points = crate::devices::shown_connection_points(doc, c, r);
+    let shown_points = crate::devices::merge::shown_connection_points(doc, c, r);
     let Some(i) = shown_points.iter().find_map(|(t, _)| channels::point_of(doc, *t)).map(|x| x.0) else { return Vec::new() };
     let at = crate::defaults::Scope { component: Some(c), ..crate::defaults::Scope::project() };
     let on = |e: &crate::defaults::Entry| crate::defaults::resolve(doc, e, at).flag();
@@ -455,7 +455,7 @@ pub fn channel_texts(
         (None, true) => None,
     };
     let rotated = crate::defaults::resolve(doc, &crate::defaults::plc::ROTATION, at).choice() == Some(crate::defaults::plc::CardRotation::Quarter);
-    let anchors = crate::symbols::anchors(s);
+    let anchors = crate::symbols::anchors::anchors(s);
     let label = crate::styles::text_style::text_style(doc, crate::styles::text_style::TextKind::PointLabel).height;
     // Brief 051 (design 051 §5): the two text styles of their own.
     let addr_h = crate::styles::text_style::text_style(doc, crate::styles::text_style::TextKind::Address).height;
@@ -478,26 +478,26 @@ pub fn channel_texts(
         } else if upside {
             // Turned with the cell, the anchor's sides swap: swap the alignment back.
             let h = match a.h {
-                crate::symbols::HAlign::Left => ecad_model::TextHAlign::Right,
-                crate::symbols::HAlign::Centre => ecad_model::TextHAlign::Center,
-                crate::symbols::HAlign::Right => ecad_model::TextHAlign::Left,
+                crate::symbols::anchors::HAlign::Left => ecad_model::TextHAlign::Right,
+                crate::symbols::anchors::HAlign::Centre => ecad_model::TextHAlign::Center,
+                crate::symbols::anchors::HAlign::Right => ecad_model::TextHAlign::Left,
             };
             let v = match a.v {
-                crate::symbols::VAlign::Bottom => ecad_model::TextVAlign::Top,
-                crate::symbols::VAlign::Middle => ecad_model::TextVAlign::Middle,
-                crate::symbols::VAlign::Top => ecad_model::TextVAlign::Bottom,
+                crate::symbols::anchors::VAlign::Bottom => ecad_model::TextVAlign::Top,
+                crate::symbols::anchors::VAlign::Middle => ecad_model::TextVAlign::Middle,
+                crate::symbols::anchors::VAlign::Top => ecad_model::TextVAlign::Bottom,
             };
             (h, v)
         } else {
             let h = match a.h {
-                crate::symbols::HAlign::Left => ecad_model::TextHAlign::Left,
-                crate::symbols::HAlign::Centre => ecad_model::TextHAlign::Center,
-                crate::symbols::HAlign::Right => ecad_model::TextHAlign::Right,
+                crate::symbols::anchors::HAlign::Left => ecad_model::TextHAlign::Left,
+                crate::symbols::anchors::HAlign::Centre => ecad_model::TextHAlign::Center,
+                crate::symbols::anchors::HAlign::Right => ecad_model::TextHAlign::Right,
             };
             let v = match a.v {
-                crate::symbols::VAlign::Bottom => ecad_model::TextVAlign::Bottom,
-                crate::symbols::VAlign::Middle => ecad_model::TextVAlign::Middle,
-                crate::symbols::VAlign::Top => ecad_model::TextVAlign::Top,
+                crate::symbols::anchors::VAlign::Bottom => ecad_model::TextVAlign::Bottom,
+                crate::symbols::anchors::VAlign::Middle => ecad_model::TextVAlign::Middle,
+                crate::symbols::anchors::VAlign::Top => ecad_model::TextVAlign::Top,
             };
             (h, v)
         };
@@ -540,10 +540,10 @@ pub fn channel_rows(
     doc: &Document, kept: Option<&kept::Plc>, c: DeviceId, symbol: Option<ecad_model::RepresentationId>, rows: &mut Vec<crate::cables::words::Row>,
 ) {
     let Some(r) = symbol.and_then(|s| doc.representations.get(&s)) else { return };
-    if crate::devices::rep_starter(doc, r).and_then(channels::cell_type).is_none() {
+    if crate::devices::tags::rep_starter(doc, r).and_then(channels::cell_type).is_none() {
         return;
     }
-    let shown = crate::devices::shown_connection_points(doc, c, r);
+    let shown = crate::devices::merge::shown_connection_points(doc, c, r);
     let Some(i) = shown.iter().find_map(|(t, _)| channels::point_of(doc, *t)).map(|x| x.0) else { return };
     let first = channels::first_number(doc, c);
     let row = |key: String, label: &str, value: String, editable: bool, inherited: bool| crate::cables::words::Row {
@@ -580,5 +580,5 @@ pub fn channel_rows(
 
 /// Whether `page` shows a PLC channel cell (its texts read addresses).
 pub fn page_has_cells(doc: &Document, page: PageId) -> bool {
-    doc.representations_on(page).any(|(_, r)| crate::devices::rep_starter(doc, r).and_then(channels::cell_type).is_some())
+    doc.representations_on(page).any(|(_, r)| crate::devices::tags::rep_starter(doc, r).and_then(channels::cell_type).is_some())
 }

@@ -248,18 +248,18 @@ pub fn family(doc: &Document, key: &str) -> Option<(String, Field)> {
     let rest = key.trim().strip_prefix("symbol.")?;
     let (symbol, field) = rest.rsplit_once('.')?;
     let field = Field::ALL.into_iter().find(|f| f.word() == field)?;
-    if let Some(s) = crate::symbols::by_key(symbol) {
+    if let Some(s) = crate::symbols::catalogue::by_key(symbol) {
         // A starter's prefix is its static entry; a starter has no `join`.
         return (field != Field::Join && field != Field::Prefix && s.kind != crate::symbols::Kind::Tagless).then(|| (s.key.to_string(), field));
     }
-    let v = crate::symbols::project_by_key(doc, symbol)?;
+    let v = crate::symbols::project::project_by_key(doc, symbol)?;
     Some((v.key()?.to_string(), field))
 }
 
 /// The family entries `defaults` lists: every field of every project symbol (newest version), by
 /// name; (symbol key, field).
 pub fn family_lines(doc: &Document) -> Vec<(String, Field)> {
-    crate::symbols::project_symbols(doc)
+    crate::symbols::project::project_symbols(doc)
         .into_iter()
         .filter_map(|v| v.key().map(str::to_string))
         .flat_map(|k| Field::ALL.into_iter().map(move |f| (k.clone(), f)))
@@ -311,7 +311,7 @@ pub fn project_value(doc: &Document, symbol: &str, field: Field) -> Option<Strin
 /// `field` of definition `d` itself (a project symbol's own default), if valid.
 pub fn definition_value(d: &ecad_model::Definition, field: Field) -> Option<String> {
     match field {
-        Field::Join => Some(crate::symbols::join_of(d).word().to_string()),
+        Field::Join => Some(crate::symbols::project::join_of(d).word().to_string()),
         Field::Prefix => d.defaults.prefix.as_ref().map(|t| t.as_str()).and_then(crate::devices::valid_prefix),
         Field::Description => d.defaults.description.as_ref().map(|t| t.as_str()).filter(|v| field.accepts(v)).map(|v| v.trim().to_string()),
         Field::Rating => d.defaults.rating.as_ref().map(|t| t.as_str()).filter(|v| field.accepts(v)).map(|v| v.trim().to_string()),
@@ -322,7 +322,7 @@ pub fn definition_value(d: &ecad_model::Definition, field: Field) -> Option<Stri
 /// project symbol's definition value.
 pub fn own_value(doc: &Document, symbol: &str, field: Field) -> Option<(String, crate::defaults::Source)> {
     let ok = |v: &str| field.accepts(v).then(|| v.trim().to_string());
-    if let Some(s) = crate::symbols::by_key(symbol) {
+    if let Some(s) = crate::symbols::catalogue::by_key(symbol) {
         return match field {
             Field::Prefix => {
                 prefix_entry(s.key).map(|e| (builtin_prefix(e).to_string(), crate::defaults::Source::Builtin)).filter(|(p, _)| !p.is_empty())
@@ -331,10 +331,10 @@ pub fn own_value(doc: &Document, symbol: &str, field: Field) -> Option<(String, 
             Field::Rating | Field::Join => None,
         };
     }
-    let v = crate::symbols::project_by_key(doc, symbol)?;
+    let v = crate::symbols::project::project_by_key(doc, symbol)?;
     let own = match field {
         Field::Prefix => v.def.defaults.prefix.as_ref().map(|t| t.as_str()).and_then(ok).and_then(|p| crate::devices::valid_prefix(&p)),
-        Field::Join => Some(crate::symbols::join_of(v.def).word().to_string()),
+        Field::Join => Some(crate::symbols::project::join_of(v.def).word().to_string()),
         Field::Description => v.def.defaults.description.as_ref().map(|t| t.as_str()).and_then(ok),
         Field::Rating => v.def.defaults.rating.as_ref().map(|t| t.as_str()).and_then(ok),
     };
@@ -369,7 +369,8 @@ pub fn builtin_prefix(entry: &Entry) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::symbols::{Kind as SymbolKind, STARTERS};
+    use crate::symbols::Kind as SymbolKind;
+    use crate::symbols::catalogue::STARTERS;
 
     #[test]
     fn every_tagged_symbol_has_one_prefix_entry_and_no_other() {
