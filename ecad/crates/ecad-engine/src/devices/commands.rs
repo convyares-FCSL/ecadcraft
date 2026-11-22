@@ -13,12 +13,12 @@ use std::collections::BTreeMap;
 use cadcraft_engine::doc::Handle;
 use cadcraft_engine::{EngineError, Session};
 use ecad_electrical::CmdError;
-use ecad_electrical::devices::commands::devices::{self as device_rules, Doomed};
+use ecad_electrical::devices::commands::devices as device_rules;
 use ecad_electrical::devices::commands::place as rules;
 use ecad_electrical::symbols::proposals::Mode;
 use ecad_model::{
-    CableId, Color, ConnectionPoint, ConnectionPointId, DefinitionId, Device, DeviceId, Form, Item, ItemId, ItemKind, Noun, Op, Placement,
-    Representation, RepresentationId, Style, Subject, SymbolInstance, WireId,
+    Color, ConnectionPoint, ConnectionPointId, DefinitionId, Device, DeviceId, Form, Item, ItemId, ItemKind, Op, Placement, Representation,
+    RepresentationId, Style, Subject, SymbolInstance,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -26,7 +26,7 @@ use serde_json::{Value, json};
 
 use crate::cables::views;
 use crate::commands::input::{Command, Typed};
-use crate::commands::{MAX_HANDLES, on_any_page, on_project, plain_style};
+use crate::commands::{MAX_HANDLES, on_project, plain_style};
 use crate::project::{Mapped, Project};
 use ecad_electrical::commands::input::{Bounded, Point, TextOrNumber, nullable};
 
@@ -41,12 +41,6 @@ fn style(p: &Project) -> Style {
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[
     Typed::of::<PlaceParams>("place"),
-    Typed::of::<SymbolsParams>("symbols"),
-    Typed::of::<DevicesParams>("devices"),
-    Typed::of::<DevicepropsParams>("deviceprops"),
-    Typed::of::<EcaddeleteParams>("ecaddelete"),
-    Typed::of::<DevicedeleteParams>("devicedelete"),
-    Typed::of::<TagsettingsParams>("tagsettings"),
     Typed::of::<ConvertcomponentParams>("convertcomponent"),
     Typed::of::<AddConnectionPointParams>("addconnectionpoint"),
 ];
@@ -314,150 +308,6 @@ fn place_definition(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Re
         p.apply_edit(pg, "place", "Place symbol", ops)?;
         Ok(json!({"component": c.hex(), "item": item.hex(), "definition": def_id.hex(), "connection_points": connection_points}))
     })
-}
-
-/// `symbols {query?}` (design 018 §8): the starter symbols and devices matching `query`; read only.
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct SymbolsParams {
-    /// What to look for (absent: everything).
-    #[serde(default)]
-    query: Option<String>,
-}
-
-impl Command for SymbolsParams {
-    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        on_any_page(s, |p, _| Ok(ecad_electrical::devices::symbols_json(p.ledger.document(), self.query.as_deref())))
-    }
-}
-
-/// `devices {tag?}` (design 018 §8): the devices whose tag starts with `tag`; read only.
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct DevicesParams {
-    /// The start of the tags to list (absent: every device).
-    #[serde(default)]
-    tag: Option<String>,
-}
-
-impl Command for DevicesParams {
-    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        on_any_page(s, |p, _| Ok(ecad_electrical::devices::devices_json(p.ledger.document(), self.tag.as_deref())))
-    }
-}
-
-/// `deviceprops {component}`: the device's properties (read only); its interactive form changes
-/// them.
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct DevicepropsParams {
-    /// The device.
-    component: DeviceId,
-}
-
-impl Command for DevicepropsParams {
-    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        on_any_page(s, |p, _| {
-            let doc = p.ledger.document();
-            if !doc.devices.contains_key(&self.component) {
-                return Err(CmdError::NotFound(Noun::Device));
-            }
-            Ok(ecad_electrical::devices::device_json(doc, self.component))
-        })
-    }
-}
-
-/// `ecaddelete {conductor} | {component} | {cable}`: the object with its drawings, in one
-/// transaction (a cable's wires stay).
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct EcaddeleteParams {
-    /// A wire.
-    #[serde(default)]
-    conductor: Option<WireId>,
-    /// A device (or any component).
-    #[serde(default)]
-    component: Option<DeviceId>,
-    /// A cable.
-    #[serde(default)]
-    cable: Option<CableId>,
-}
-
-impl Command for EcaddeleteParams {
-    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let doomed = match (self.conductor, self.component, self.cable) {
-            (Some(c), _, _) => Doomed::Wire(c),
-            (None, Some(c), _) => Doomed::Device(c),
-            (None, None, Some(k)) => Doomed::Cable(k),
-            (None, None, None) => return Err(err("`conductor`, `component` or `cable` (hex id) is required")),
-        };
-        delete(s, doomed)
-    }
-}
-
-/// Delete `doomed` in one transaction and answer as `ecaddelete` does.
-fn delete(s: &mut Session, doomed: Doomed) -> cadcraft_engine::Result<Value> {
-    on_project(s, |p, pg, _| {
-        let done = device_rules::plan_delete(p.ledger.document(), doomed)?;
-        p.apply_edit(pg, "ecaddelete", "Delete", done.ops)?;
-        Ok(match (done.kept, done.message) {
-            (Some(kept), Some(message)) => json!({"deleted": true, "kept": kept, "message": message}),
-            (None, Some(message)) => {
-                pg.echo(message.clone());
-                json!({"deleted": true, "released": done.released, "message": message})
-            }
-            _ => json!({"deleted": true}),
-        })
-    })
-}
-
-/// `devicedelete {component}`: the device and every symbol of it, as `ecaddelete` (design 018
-/// §6.3).
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct DevicedeleteParams {
-    /// The device.
-    component: DeviceId,
-}
-
-impl Command for DevicedeleteParams {
-    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let tag = on_any_page(s, |p, _| Ok(ecad_electrical::devices::tag_words(p.ledger.document(), self.component)))?;
-        let r = delete(s, Doomed::Device(self.component))?;
-        Ok(json!({"deleted": r.get("deleted").cloned().unwrap_or(Value::Bool(true)), "message": format!("Deleted {tag}.")}))
-    }
-}
-
-/// `tagsettings {padding?, prefixes?}` (brief 018, owner decision 2026-11-08): how many digits
-/// automatic tag numbers have, and the project's own prefix per starter symbol (`{"coil": "KA"}`;
-/// `null` goes back to the built-in one). One `SetProjectSettings` transaction; with nothing to
-/// change, or no parameters, it records nothing and reports the settings.
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct TagsettingsParams {
-    /// Digits of automatic tag numbers, 1 to 6.
-    #[serde(default)]
-    padding: Option<u64>,
-    /// Per starter symbol, the project's prefix (null: the built-in one).
-    #[serde(default)]
-    prefixes: Option<BTreeMap<String, Option<String>>>,
-}
-
-impl Command for TagsettingsParams {
-    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let settings = device_rules::tag_settings(self.padding, self.prefixes.unwrap_or_default()).map_err(|e| err(e.to_string()))?;
-        on_project(s, |p, pg, _| {
-            let before = p.ledger.document().settings.clone();
-            let mut after = before.clone();
-            device_rules::apply_tag_settings(&mut after, settings);
-            let changed = after != before;
-            if changed {
-                p.apply_edit(pg, "tagsettings", "Tag settings", vec![Op::SetProjectSettings { before, after: after.clone() }])?;
-            }
-            let doc = p.ledger.document();
-            Ok(json!({"changed": changed, "padding": ecad_electrical::devices::padding(doc), "prefixes": device_rules::prefixes_json(doc)}))
-        })
-    }
 }
 
 // ---------------------------------------------------------------- drawn components (experiments)

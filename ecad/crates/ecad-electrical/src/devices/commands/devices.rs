@@ -6,14 +6,17 @@
 //! Excludes: what a handle on the page is (the engine crate's page map), committing and the JSON
 //! answer (the engine crate's shims).
 
-use serde_json::Value;
+use schemars::JsonSchema;
+use serde::Deserialize;
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 use ecad_model::{
-    CableId, ConnectionPoint, ConnectionPointId, Device, DeviceId, Document, Form, IdAllocator, ItemId, Op, PageId, ProjectSettings, Pt,
+    CableId, ConnectionPoint, ConnectionPointId, Device, DeviceId, Document, Form, IdAllocator, ItemId, Noun, Op, PageId, ProjectSettings, Pt,
     Representation, RepresentationId, RouteEnd, RouteId, Subject, WireId,
 };
 
+use crate::commands::run::{Access, Cx, Generic, Outcome, Pages};
 use crate::devices;
 use crate::error::CmdError;
 
@@ -269,4 +272,175 @@ pub fn prefixes_json(doc: &ecad_model::Document) -> serde_json::Map<String, Valu
         .filter(|s| s.kind != crate::symbols::Kind::Tagless)
         .map(|s| (s.key.to_string(), Value::String(format!("-{}", devices::prefix_for(doc, s)))))
         .collect()
+}
+
+// ---------------------------------------------------------------- the commands (generic)
+
+/// `symbols {query?}` (design 018 §8): the starter symbols and devices matching `query`; read only.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SymbolsParams {
+    /// What to look for (absent: everything).
+    #[serde(default)]
+    query: Option<String>,
+}
+
+impl Generic for SymbolsParams {
+    const ID: &'static str = "symbols";
+    const TITLE: &'static str = "Find Symbol";
+    const HELP: &'static str = "{query?} (starter symbols and devices matching it; read only)";
+    const PAGES: Pages = Pages::Any;
+    const ACCESS: Access = Access::Reads;
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        Ok(Outcome::answer(devices::symbols_json(cx.doc, self.query.as_deref())))
+    }
+}
+
+/// `devices {tag?}` (design 018 §8): the devices whose tag starts with `tag`; read only.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DevicesParams {
+    /// The start of the tags to list (absent: every device).
+    #[serde(default)]
+    tag: Option<String>,
+}
+
+impl Generic for DevicesParams {
+    const ID: &'static str = "devices";
+    const TITLE: &'static str = "List Devices";
+    const HELP: &'static str = "{tag?} (devices whose tag starts with it; read only)";
+    const PAGES: Pages = Pages::Any;
+    const ACCESS: Access = Access::Reads;
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        Ok(Outcome::answer(devices::devices_json(cx.doc, self.tag.as_deref())))
+    }
+}
+
+/// `deviceprops {component}`: the device's properties (read only); its interactive form changes
+/// them.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DevicepropsParams {
+    /// The device.
+    component: DeviceId,
+}
+
+impl Generic for DevicepropsParams {
+    const ID: &'static str = "deviceprops";
+    const TITLE: &'static str = "Device Properties";
+    const HELP: &'static str = "{component: id} (a device's properties; read only; interactive: change them)";
+    const PAGES: Pages = Pages::Any;
+    const ACCESS: Access = Access::Reads;
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        if !cx.doc.devices.contains_key(&self.component) {
+            return Err(CmdError::NotFound(Noun::Device));
+        }
+        Ok(Outcome::answer(devices::device_json(cx.doc, self.component)))
+    }
+}
+
+/// `ecaddelete {conductor} | {component} | {cable}`: the object with its drawings, in one
+/// transaction (a cable's wires stay).
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct EcaddeleteParams {
+    /// A wire.
+    #[serde(default)]
+    conductor: Option<WireId>,
+    /// A device (or any component).
+    #[serde(default)]
+    component: Option<DeviceId>,
+    /// A cable.
+    #[serde(default)]
+    cable: Option<CableId>,
+}
+
+/// Delete `doomed` in one transaction and answer as `ecaddelete` does: the answer's message is
+/// also echoed when the delete released something; `answer` may replace the JSON.
+fn delete(doc: &Document, doomed: Doomed, answer: impl FnOnce(Value) -> Value) -> Result<Outcome, CmdError> {
+    let done = plan_delete(doc, doomed)?;
+    let (json, echo) = match (done.kept, done.message) {
+        (Some(kept), Some(message)) => (json!({"deleted": true, "kept": kept, "message": message}), None),
+        (None, Some(message)) => (json!({"deleted": true, "released": done.released, "message": message}), Some(message)),
+        _ => (json!({"deleted": true}), None),
+    };
+    Ok(Outcome::edit("Delete", done.ops, answer(json)).echo(echo))
+}
+
+impl Generic for EcaddeleteParams {
+    const ID: &'static str = "ecaddelete";
+    const TITLE: &'static str = "Delete Electrical Object";
+    const HELP: &'static str = "{conductor: id} | {component: id} | {cable: id}";
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let doomed = match (self.conductor, self.component, self.cable) {
+            (Some(c), _, _) => Doomed::Wire(c),
+            (None, Some(c), _) => Doomed::Device(c),
+            (None, None, Some(k)) => Doomed::Cable(k),
+            (None, None, None) => return Err(CmdError::refused("`conductor`, `component` or `cable` (hex id) is required")),
+        };
+        delete(cx.doc, doomed, |v| v)
+    }
+}
+
+/// `devicedelete {component}`: the device and every symbol of it, as `ecaddelete` (design 018
+/// §6.3).
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DevicedeleteParams {
+    /// The device.
+    component: DeviceId,
+}
+
+impl Generic for DevicedeleteParams {
+    const ID: &'static str = "devicedelete";
+    const TITLE: &'static str = "Delete Device";
+    const HELP: &'static str = "{component: id} (deletes the device with every symbol, as `ecaddelete`)";
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let tag = devices::tag_words(cx.doc, self.component);
+        delete(
+            cx.doc,
+            Doomed::Device(self.component),
+            move |r| json!({"deleted": r.get("deleted").cloned().unwrap_or(Value::Bool(true)), "message": format!("Deleted {tag}.")}),
+        )
+    }
+}
+
+/// `tagsettings {padding?, prefixes?}` (brief 018, owner decision 2026-11-08): how many digits
+/// automatic tag numbers have, and the project's own prefix per starter symbol (`{"coil": "KA"}`;
+/// `null` goes back to the built-in one). One `SetProjectSettings` transaction; with nothing to
+/// change, or no parameters, it records nothing and reports the settings.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TagsettingsParams {
+    /// Digits of automatic tag numbers, 1 to 6.
+    #[serde(default)]
+    padding: Option<u64>,
+    /// Per starter symbol, the project's prefix (null: the built-in one).
+    #[serde(default)]
+    prefixes: Option<BTreeMap<String, Option<String>>>,
+}
+
+impl Generic for TagsettingsParams {
+    const ID: &'static str = "tagsettings";
+    const TITLE: &'static str = "Tag Settings";
+    const HELP: &'static str = "{padding?: 1..6, prefixes?: {symbol: prefix|null}} (automatic tags: digits, and this project's prefix per starter symbol; no parameters lists them)";
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let settings = tag_settings(self.padding, self.prefixes.unwrap_or_default())?;
+        let before = cx.doc.settings.clone();
+        let mut after = before.clone();
+        apply_tag_settings(&mut after, settings);
+        let changed = after != before;
+        let ops = if changed { vec![Op::SetProjectSettings { before, after }] } else { Vec::new() };
+        Ok(Outcome::edit_then(
+            "Tag settings",
+            ops,
+            move |doc| json!({"changed": changed, "padding": devices::padding(doc), "prefixes": prefixes_json(doc)}),
+        ))
+    }
 }

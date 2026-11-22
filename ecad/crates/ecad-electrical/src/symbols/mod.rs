@@ -20,6 +20,7 @@
 
 #![deny(clippy::wildcard_enum_match_arm)]
 
+pub mod builder;
 pub mod commands;
 pub mod proposals;
 pub mod reps;
