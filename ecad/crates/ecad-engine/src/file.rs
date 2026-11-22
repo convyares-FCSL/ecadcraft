@@ -19,3 +19,15 @@ pub fn home() -> Option<std::path::PathBuf> {
 pub fn normalize(path: &str) -> Result<String, PathError> {
     normalize_with(path, home().as_deref())
 }
+
+/// The standard of the `.ecad` project at `path`, opened read-only (the file is never changed):
+/// `standard {from}` and the Standards page's preview.
+///
+/// # Errors
+/// A path or file that does not open as a project, or a project with no standard.
+pub fn read_standard(path: &str) -> Result<ecad_model::Standard, ecad_electrical::CmdError> {
+    let path = normalize(path)?;
+    let opened = Binding::open_read_only(&path, 0x050a, "ecad standard copy")?;
+    let doc = opened.ledger.document();
+    doc.standard.clone().ok_or(ecad_electrical::CmdError::refused(ecad_electrical::cmd::style::NOTHING_TO_COPY))
+}

@@ -12,7 +12,7 @@
 
 use std::collections::BTreeMap;
 
-use ecad_model::{Document, IdAllocator, Ledger, Op, PageId};
+use ecad_model::{Document, IdAllocator, Ledger, Op, PageId, Standard};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
@@ -21,6 +21,7 @@ use crate::derived::Views;
 use crate::designations::Uses;
 use crate::devices::TagHigh;
 use crate::proposals::Conflict;
+use crate::text_style::fonts::TextMetrics;
 
 /// What every generic command may read and change: the document, new ids and the state several
 /// commands share. The document changes only through the [`Edit`] it returns. State a few commands
@@ -41,9 +42,12 @@ pub struct Cx<'a> {
     pub designation_uses: &'a mut Uses,
     /// The derived views (report models are built on demand).
     pub derived: &'a mut Views,
-    /// The files the command declares ([`Generic::IO`]), read by the engine before it runs: each
-    /// read parameter's bytes, or why it could not be read. A parameter not given is absent.
-    pub read: &'a BTreeMap<&'static str, Result<Vec<u8>, Unread>>,
+    /// This machine's fonts, to measure text.
+    pub metrics: &'static dyn TextMetrics,
+    /// The files the command declares ([`Generic::IO`]), read by the engine before it runs: what
+    /// each read parameter's file gave, or why it could not be read. A parameter not given is
+    /// absent.
+    pub read: &'a BTreeMap<&'static str, Result<Got, Unread>>,
     /// The state the command declares ([`Generic::STATE`]).
     pub state: Slot<'a>,
 }
@@ -154,6 +158,11 @@ impl Outcome {
 
     /// As [`Outcome::edit_if_any`], answering from the document once the edit is committed.
     pub fn edit_then(label: impl Into<String>, ops: Vec<Op>, answer: impl FnOnce(&Document) -> Value + 'static) -> Outcome {
+        Outcome::edit_then_try(label, ops, move |doc| Ok(answer(doc)))
+    }
+
+    /// As [`Outcome::edit_then`], with an answer that may refuse (the edit stays committed).
+    pub fn edit_then_try(label: impl Into<String>, ops: Vec<Op>, answer: impl FnOnce(&Document) -> Result<Value, CmdError> + 'static) -> Outcome {
         let edit = (!ops.is_empty()).then(|| Edit { label: label.into(), ops });
         Outcome::new(edit, Answer::Committed(Box::new(answer)))
     }
@@ -163,8 +172,8 @@ impl Outcome {
 pub enum Answer {
     /// Known before the commit.
     Now(Value),
-    /// Read from the document once the edit is committed.
-    Committed(Box<dyn FnOnce(&Document) -> Value>),
+    /// Read from the document once the edit is committed (a refusal leaves the edit committed).
+    Committed(Box<dyn FnOnce(&Document) -> Result<Value, CmdError>>),
 }
 
 /// Which pages a command runs on.
@@ -191,8 +200,8 @@ pub enum Access {
 /// writes them (Core touches no disk); the agent gate refuses these parameters from an agent.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Io {
-    /// Parameters naming a file read before the command runs, with the most bytes read.
-    pub reads: &'static [(&'static str, usize)],
+    /// Parameters naming a file read before the command runs, and what is read from it.
+    pub reads: &'static [(&'static str, Read)],
     /// Parameters naming a file written after the commit ([`Outcome::writes`]).
     pub writes: &'static [&'static str],
 }
@@ -205,6 +214,24 @@ impl Io {
     pub fn keys(&self) -> impl Iterator<Item = &'static str> {
         self.reads.iter().map(|(k, _)| *k).chain(self.writes.iter().copied())
     }
+}
+
+/// What the engine reads from a declared file.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Read {
+    /// Its bytes, at most this many (one more says it is too large).
+    Bytes(usize),
+    /// The standard of the `.ecad` project it is, opened read-only (the file is never changed).
+    Standard,
+}
+
+/// What a declared file gave ([`Read`]).
+#[derive(Clone, Debug, PartialEq)]
+pub enum Got {
+    /// [`Read::Bytes`].
+    Bytes(Vec<u8>),
+    /// [`Read::Standard`]: the project's standard (one with none is not read).
+    Standard(Box<Standard>),
 }
 
 /// A generic command: its params struct, read from the JSON, and its run.

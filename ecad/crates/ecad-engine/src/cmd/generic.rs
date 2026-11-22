@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
 use ecad_electrical::cmd::input::{parse, schema};
-use ecad_electrical::cmd::run::{Answer, Cx, Echo, Generic, Outcome, Pages as Runs, Slot, State, Unread};
+use ecad_electrical::cmd::run::{Answer, Cx, Echo, Generic, Got, Outcome, Pages as Runs, Read as Reads, Slot, State, Unread};
 use ecad_electrical::proposals::Conflict;
 use ecad_model::PageId;
 use serde_json::Value;
@@ -35,8 +35,8 @@ pub(crate) const fn typed<P: Generic>() -> Typed {
     Typed { id: P::ID, run: run::<P>, schema: schema::<P>, access: Some(P::ACCESS), files: P::IO }
 }
 
-/// The bytes read for each read parameter of `P` that `params` gives.
-type Read = BTreeMap<&'static str, Result<Vec<u8>, Unread>>;
+/// What each read parameter of `P` that `params` gives read.
+type Read = BTreeMap<&'static str, Result<Got, Unread>>;
 
 /// The files a command returns to write: a write parameter and the bytes.
 type Writes = Vec<(&'static str, Vec<u8>)>;
@@ -56,7 +56,7 @@ enum Held {
 pub(crate) fn run<P: Generic>(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Value> {
     let p = parse::<P>(params).map_err(|e| err(e.to_string()))?;
     p.check().map_err(|e| err(e.to_string()))?;
-    let read: Read = P::IO.reads.iter().filter_map(|(k, max)| Some((*k, read_file(path(params, k)?, *max)))).collect();
+    let read: Read = P::IO.reads.iter().filter_map(|(k, what)| Some((*k, read_file(given(params, k)?, *what)))).collect();
     let (v, writes, echo) = match P::PAGES {
         Runs::Available => on_project(s, |proj, pg, page| commit::<P>(proj, pg, Some(page), &read, p, None))?,
         Runs::Any => on_any_page(s, |proj, pg| commit::<P>(proj, pg, None, &read, p, None))?,
@@ -85,16 +85,26 @@ pub(crate) fn run<P: Generic>(s: &mut Session, params: &Value) -> cadcraft_engin
 
 /// The path parameter `key` gives, when it gives one.
 fn path<'a>(params: &'a Value, key: &str) -> Option<&'a str> {
-    params.get(key).and_then(Value::as_str).map(str::trim).filter(|t| !t.is_empty())
+    given(params, key).filter(|t| !t.is_empty())
 }
 
-/// The bytes of the file at `path`, at most `max` (one more says it is too large), or why not.
-fn read_file(path: &str, max: usize) -> Result<Vec<u8>, Unread> {
+/// The text parameter `key` gives, trimmed (also when blank).
+fn given<'a>(params: &'a Value, key: &str) -> Option<&'a str> {
+    params.get(key).and_then(Value::as_str).map(str::trim)
+}
+
+/// What the file at `path` gives as `what` declares, or why it could not be read.
+fn read_file(path: &str, what: Reads) -> Result<Got, Unread> {
     use std::io::Read as _;
-    let mut buf = Vec::new();
-    let f = std::fs::File::open(path).map_err(|e| Unread(e.to_string()))?;
-    f.take(u64::try_from(max).unwrap_or(u64::MAX).saturating_add(1)).read_to_end(&mut buf).map_err(|e| Unread(e.to_string()))?;
-    Ok(buf)
+    match what {
+        Reads::Bytes(max) => {
+            let mut buf = Vec::new();
+            let f = std::fs::File::open(path).map_err(|e| Unread(e.to_string()))?;
+            f.take(u64::try_from(max).unwrap_or(u64::MAX).saturating_add(1)).read_to_end(&mut buf).map_err(|e| Unread(e.to_string()))?;
+            Ok(Got::Bytes(buf))
+        }
+        Reads::Standard => crate::file::read_standard(path).map(|s| Got::Standard(Box::new(s))).map_err(|e| Unread(e.to_string())),
+    }
 }
 
 /// Run `p` on the project, commit its edit, and answer with the files to write and the line to
@@ -122,6 +132,7 @@ fn commit<P: Generic>(
             tag_high: &mut proj.tag_high,
             designation_uses: &mut proj.designation_uses,
             derived: &mut proj.derived,
+            metrics: &crate::text_style::EngineMetrics,
             read,
             state,
         };
@@ -141,7 +152,7 @@ fn commit<P: Generic>(
     }
     let v = match answer {
         Answer::Now(v) => v,
-        Answer::Committed(f) => f(proj.ledger.document()),
+        Answer::Committed(f) => f(proj.ledger.document())?,
     };
     let echo = match echo {
         Echo::Nothing => None,

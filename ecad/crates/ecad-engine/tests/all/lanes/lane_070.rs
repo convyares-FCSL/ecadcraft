@@ -380,7 +380,7 @@ fn the_style_commands_refuse_input_uniformly() {
 /// Rule refusals of the style commands keep their words.
 #[test]
 fn the_style_commands_keep_their_rule_words() {
-    use ecad_engine::style_cmds::{BUILTIN_KEPT, NEEDS_NAME, STANDARD_FIRST, STYLE_NEEDS_NAME};
+    use ecad_electrical::cmd::style::{BUILTIN_KEPT, NEEDS_NAME, STANDARD_FIRST, STYLE_NEEDS_NAME};
     let rows: &[(&str, Value, &str)] = &[
         ("standard", json!({"name": "S"}), STANDARD_FIRST),
         ("standard", json!({"remove": true}), STANDARD_FIRST),

@@ -73,8 +73,6 @@ pub const READ_COMMANDS: &[&str] = &[
     "defaults",
     "pagetexts",
     "hiddentext",
-    // Brief 050a: the style catalogues' list reads the project.
-    "styles",
     // Brief 048: what an edit of a symbol would change on its placed copies reads the project.
     "symbolimpact",
     // Brief 045: the racks with their slots, and the I/O list, read the project.
@@ -84,8 +82,6 @@ pub const READ_COMMANDS: &[&str] = &[
     "ratings",
     // Brief 056: the tag table as text (no `path` from an agent); export changes nothing.
     "plcexport",
-    // Brief 055: the title blocks' list reads the project.
-    "titleblocks",
 ];
 
 /// Commands whose form with no fields only reads (brief 019): `pageprops {page?}` and
@@ -104,9 +100,9 @@ const READ_WITHOUT_FIELDS: &[(&str, &[&str])] = &[
     ("conflicts", &[]),
 ];
 
-/// Parameters that name a file for one command only (brief 050a: `standard {from}` reads another
-/// project file, which stays with the person who started the server).
-const COMMAND_FILE_KEYS: &[(&str, &str)] = &[("standard", "from"), ("ratingtable", "import"), ("ratingtable", "export")];
+/// Parameters that name a file for one session command only (a generic command declares its own:
+/// [`crate::cmd::declared_file_keys`]).
+const COMMAND_FILE_KEYS: &[(&str, &str)] = &[("ratingtable", "import"), ("ratingtable", "export")];
 
 /// Commands whose form with `preview: true` only reads (brief 020b: the merge preview; brief 026:
 /// the Renumber and Finalise previews).

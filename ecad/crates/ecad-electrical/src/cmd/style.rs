@@ -4,15 +4,18 @@
 //! the document and returns the ops to commit and what to report; reading another project's file
 //! for a copy is the engine crate's.
 
-use serde_json::{Map, Value, json};
+use schemars::JsonSchema;
+use serde::Deserialize;
+use serde_json::{Map, Number, Value, json};
 use std::collections::BTreeMap;
 
 use ecad_model::style::{BasedOn, MAX_STYLES_PER_CATALOGUE, StyleName, is_name};
 use ecad_model::{Document, IdAllocator, ObjectRef, Op, Standard, StandardHeader, StandardId, StyleLayer, StyleRef};
 
+use crate::cmd::run::{Access, Cx, Generic, Got, Io, Outcome, Pages, Read};
 use crate::defaults::{self, Entry, Kind};
 use crate::error::CmdError;
-use crate::styles::{self, Catalogue};
+use crate::styles::{self, Catalogue, Layer};
 
 /// Refusals, in words.
 pub const STANDARD_FIRST: &str = "This project uses IEC (built in). Make a standard first (`standard {new}`).";
@@ -747,5 +750,280 @@ pub fn value_json(r: &defaults::Resolved<'_>) -> Value {
         defaults::Value::Sheet(s) => json!(s.text()),
         defaults::Value::Margins(m) => json!(ecad_model::sheet::margins_text(&m)),
         defaults::Value::CoreColours(c) => json!(c.to_string()),
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The commands (generic: crate::cmd::run; design 050 §6)
+
+/// `styles {catalogue?, users?}` (read only): every style, catalogue by catalogue; records of
+/// catalogues this build does not know are listed apart (a newer file opens in an older build).
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct StylesParams {
+    /// Only this catalogue: text, location, frame, wire, …
+    #[serde(default)]
+    catalogue: Option<String>,
+    /// Also count each style's users.
+    #[serde(default)]
+    users: Option<bool>,
+}
+
+/// `standard {}` / `{new}` / `{name}` / `{from}` / `{remove, replace_with?}` (design 050 §6.1): no
+/// field reads the standard; the first given of `new`, `name`, `from` and `remove` is done.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct StandardParams {
+    /// Make a standard with this name, based on IEC.
+    #[serde(default)]
+    new: Option<String>,
+    /// Rename the standard.
+    #[serde(default)]
+    name: Option<String>,
+    /// Copy the standard of this .ecad file (opened read-only).
+    #[serde(default)]
+    from: Option<String>,
+    /// Back to IEC.
+    #[serde(default)]
+    remove: Option<bool>,
+    /// Back to IEC: the style each catalogue's users of a standard-only style move to,
+    /// {catalogue: style}.
+    #[serde(default)]
+    replace_with: Option<BTreeMap<String, String>>,
+}
+
+/// `setstyle {catalogue, id|name, new?, copy_of?, rename?, fields?, layer?}` (design 050 §6.2): a
+/// new style, or a style's fields and name, as one transaction.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SetstyleParams {
+    /// The catalogue: text, location, frame, wire, …
+    catalogue: String,
+    /// The style's ID (a built-in word or `#<32 hex>`).
+    #[serde(default)]
+    id: Option<String>,
+    /// The style's name (with `new`: the new style's).
+    #[serde(default)]
+    name: Option<String>,
+    /// Make a new style called `name`.
+    #[serde(default)]
+    new: Option<bool>,
+    /// The style a new one copies (default: the catalogue's first built-in).
+    #[serde(default)]
+    copy_of: Option<String>,
+    /// A new name.
+    #[serde(default)]
+    rename: Option<String>,
+    /// The fields to set: {key: value | null} (null: back to the inherited value).
+    #[serde(default)]
+    fields: Option<BTreeMap<String, Option<FieldParam>>>,
+    /// "project" (default) or "standard".
+    #[serde(default)]
+    layer: Option<String>,
+}
+
+/// `deletestyle {catalogue, id|name, replace_with?}` (design 050 §6.3): an own style deleted; its
+/// users move to `replace_with`.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DeletestyleParams {
+    /// The catalogue: text, location, frame, wire, …
+    catalogue: String,
+    /// The style's ID.
+    #[serde(default)]
+    id: Option<String>,
+    /// The style's name.
+    #[serde(default)]
+    name: Option<String>,
+    /// The style its users move to (its ID or name).
+    #[serde(default)]
+    replace_with: Option<String>,
+}
+
+/// `promote {catalogue, id|name}` or `promote {key}` (design 050 §6.4): a project-only style, or
+/// the project's own value of a default, moves to the standard.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PromoteParams {
+    /// A default's key: its project value moves to the standard.
+    #[serde(default)]
+    key: Option<String>,
+    /// The style's catalogue: text, location, frame, wire, …
+    #[serde(default)]
+    catalogue: Option<String>,
+    /// The style's ID.
+    #[serde(default)]
+    id: Option<String>,
+    /// The style's name.
+    #[serde(default)]
+    name: Option<String>,
+}
+
+/// A style field's value as typed: text or a number.
+#[derive(Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum FieldParam {
+    Text(String),
+    Number(Number),
+}
+
+/// The field inputs of `fields` (null clears a field).
+pub fn field_inputs(fields: Option<BTreeMap<String, Option<FieldParam>>>) -> Vec<(String, FieldInput)> {
+    let input = |v: Option<FieldParam>| match v {
+        None => FieldInput::Clear,
+        Some(FieldParam::Text(t)) => FieldInput::Value(t),
+        Some(FieldParam::Number(n)) => FieldInput::Value(n.to_string()),
+    };
+    fields.into_iter().flatten().map(|(k, v)| (k, input(v))).collect()
+}
+
+impl Generic for StylesParams {
+    const ID: &'static str = "styles";
+    const TITLE: &'static str = "Styles";
+    const HELP: &'static str = "{catalogue?, users?: bool} (read only)";
+    const PAGES: Pages = Pages::Any;
+    const ACCESS: Access = Access::Reads;
+
+    fn check(&self) -> Result<(), CmdError> {
+        self.catalogue.as_deref().map(catalogue).transpose().map(|_| ())
+    }
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let only = self.catalogue.as_deref().map(catalogue).transpose()?;
+        let users = self.users.unwrap_or(false);
+        let doc = cx.doc;
+        let mut out = Vec::new();
+        for cat in styles::CATALOGUES.iter().filter(|c| only.is_none_or(|o| o.catalogue == c.catalogue)) {
+            for row in styles::rows(doc, cat) {
+                out.push(style_json(doc, cat, &row, users));
+            }
+        }
+        Ok(Outcome::answer(json!({"styles": out})))
+    }
+}
+
+impl Generic for StandardParams {
+    const ID: &'static str = "standard";
+    const TITLE: &'static str = "Standard";
+    const HELP: &'static str = "{} (read) | {new: name} | {name: name} (rename) | {from: path to a .ecad} (copy its standard) | \
+{remove: true, replace_with?: {catalogue: style}} (back to IEC); one transaction";
+    const PAGES: Pages = Pages::ReadAnywhere;
+    const IO: Io = Io { reads: &[("from", Read::Standard)], writes: &[] };
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        if self.new.is_none() && self.name.is_none() && self.from.is_none() && self.remove.is_none() {
+            return Ok(Outcome::answer(standard_json(cx.doc)));
+        }
+        // The engine read the other project before this one was taken; that file is never changed.
+        let from = match self.from {
+            None => None,
+            Some(_) => match cx.read.get("from") {
+                Some(Ok(Got::Standard(s))) => Some(s.clone()),
+                Some(Err(e)) => return Err(CmdError::refused(e.0.clone())),
+                Some(Ok(Got::Bytes(_))) | None => return Err(CmdError::refused("`from` could not be read")),
+            },
+        };
+        let change = match (self.new, self.name, from) {
+            (Some(n), _, _) => StandardChange::New(n),
+            (None, Some(n), _) => StandardChange::Rename(n),
+            (None, None, Some(src)) => StandardChange::Copy(src),
+            (None, None, None) => StandardChange::Remove(self.replace_with.unwrap_or_default()),
+        };
+        let Some(plan) = plan_standard(cx.doc, cx.ids, change)? else {
+            return Ok(Outcome::answer(json!({"changed": false, "standard": standard_json(cx.doc)})));
+        };
+        let message = plan.message;
+        Ok(Outcome::edit_then(plan.label, plan.ops, move |doc| json!({"changed": true, "message": message, "standard": standard_json(doc)})))
+    }
+}
+
+impl Generic for SetstyleParams {
+    const ID: &'static str = "setstyle";
+    const TITLE: &'static str = "Set Style";
+    const HELP: &'static str = "{catalogue, id? | name?, new?: true, copy_of?: style, rename?: name, fields?: {key: value|null}, \
+layer?: \"project\"|\"standard\"} (one transaction)";
+
+    fn check(&self) -> Result<(), CmdError> {
+        catalogue(&self.catalogue).map(|_| ())
+    }
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let cat = catalogue(&self.catalogue)?;
+        let edit = StyleEdit {
+            new: self.new == Some(true),
+            id: self.id,
+            name: self.name,
+            copy_of: self.copy_of,
+            rename: self.rename,
+            fields: field_inputs(self.fields),
+            layer: self.layer,
+        };
+        let plan = plan_style(cx.doc, cx.ids, cat, edit)?;
+        let changed = !plan.ops.is_empty();
+        let id = plan.id;
+        Ok(Outcome::edit_then(plan.label, plan.ops, move |doc| {
+            let row = styles::rows(doc, cat).into_iter().find(|r| r.id == id).unwrap_or_else(|| styles::Row {
+                id: id.clone(),
+                name: styles::name(doc, cat.catalogue, &id),
+                layer: Layer::Project,
+                overridden: false,
+            });
+            let mut v = style_json(doc, cat, &row, false);
+            v["changed"] = json!(changed);
+            v
+        }))
+    }
+}
+
+impl Generic for DeletestyleParams {
+    const ID: &'static str = "deletestyle";
+    const TITLE: &'static str = "Delete Style";
+    const HELP: &'static str = "{catalogue, id | name, replace_with?: style} (own styles only; its users move to replace_with)";
+
+    fn check(&self) -> Result<(), CmdError> {
+        catalogue(&self.catalogue).map(|_| ())
+    }
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let cat = catalogue(&self.catalogue)?;
+        let doc = cx.doc;
+        let id = target(doc, cat, self.id.as_deref(), self.name.as_deref())?;
+        let plan = plan_delete(doc, cat, id, self.replace_with.as_deref())?;
+        let label = format!("Delete {} {}", cat.one.to_lowercase(), plan.name);
+        let answer = json!({"changed": true, "deleted": plan.id.text(), "moved": plan.moved, "message": format!("Deleted {}.", plan.name)});
+        Ok(Outcome::edit(label, plan.ops, answer))
+    }
+}
+
+impl Generic for PromoteParams {
+    const ID: &'static str = "promote";
+    const TITLE: &'static str = "Promote to Standard";
+    const HELP: &'static str = "{catalogue, id | name} (a project-only style moves to the standard) | {key} (a project value moves to the standard)";
+
+    fn check(&self) -> Result<(), CmdError> {
+        match self.key.as_deref().map(str::trim) {
+            Some(key) => promote_entry(key).map(|_| ()),
+            None => required_catalogue(self.catalogue.as_deref()).map(|_| ()),
+        }
+    }
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let doc = cx.doc;
+        if let Some(key) = self.key.as_deref().map(str::trim) {
+            let entry = promote_entry(key)?;
+            needs_standard(doc)?;
+            if !entry.allows(defaults::Level::Standard) {
+                return Err(CmdError::refused(super::default::level_refused(entry, defaults::Level::Standard)));
+            }
+            let (mut ops, text) = promote_value(doc, entry)?;
+            ops.extend(super::default::ops(doc, entry, defaults::Level::Project, super::default::Target::Project, None)?);
+            return Ok(Outcome::edit(format!("Promote {}", entry.label), ops, json!({"changed": true, "key": entry.key, "value": text})));
+        }
+        let cat = required_catalogue(self.catalogue.as_deref())?;
+        needs_standard(doc)?;
+        let id = target(doc, cat, self.id.as_deref(), self.name.as_deref())?;
+        let (ops, name) = plan_promote_style(doc, cat, &id)?;
+        let answer = json!({"changed": true, "id": id.text(), "message": format!("{name} is in the standard now.")});
+        Ok(Outcome::edit(format!("Promote {name}"), ops, answer))
     }
 }

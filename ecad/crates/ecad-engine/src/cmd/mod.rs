@@ -31,7 +31,6 @@ pub mod rating;
 pub(crate) mod reference;
 pub mod release;
 pub mod sheet;
-pub mod style;
 pub mod symbol;
 pub mod terminal;
 pub mod text;
@@ -48,7 +47,7 @@ use crate::access::{Pages, owner_of_active, try_lock};
 use crate::interact;
 use crate::project::Project;
 pub use crate::strips::core_label;
-use ecad_electrical::cmd::{cable, connect, continuation, default, designation, device_link, level, location, prop};
+use ecad_electrical::cmd::{cable, connect, continuation, default, designation, device_link, level, location, prop, style};
 
 /// The commands this crate adds. Lanes in flight register theirs in [`crate::lanes`], not here;
 /// their lines move here at the phase-end tidy-up.
@@ -72,7 +71,6 @@ pub fn specs() -> Vec<CommandSpec> {
     v.extend(crate::cmd::plc::specs());
     v.extend(crate::cmd::bom::specs());
     v.extend(crate::cmd::symbol::specs());
-    v.extend(crate::cmd::style::specs());
     v.extend(crate::cmd::plc::page::specs());
     for (_, lane) in crate::lanes::LANES {
         v.extend(lane());
@@ -104,6 +102,13 @@ fn generic_specs() -> Vec<CommandSpec> {
         generic::spec::<cable::CablenewParams>(),
         generic::spec::<cable::CableeditParams>(),
         generic::spec::<cable::CableremoveParams>(),
+        generic::spec::<style::StylesParams>(),
+        generic::spec::<style::StandardParams>(),
+        generic::spec::<style::SetstyleParams>(),
+        generic::spec::<style::DeletestyleParams>(),
+        generic::spec::<style::PromoteParams>(),
+        generic::spec::<ecad_electrical::cmd::title_block::TitleblocksParams>(),
+        generic::spec::<ecad_electrical::cmd::title_block::TitleblockParams>(),
     ]
 }
 
@@ -130,10 +135,21 @@ const GENERIC_TYPED: &[input::Typed] = &[
     generic::typed::<cable::CablenewParams>(),
     generic::typed::<cable::CableeditParams>(),
     generic::typed::<cable::CableremoveParams>(),
+    generic::typed::<style::StylesParams>(),
+    generic::typed::<style::StandardParams>(),
+    generic::typed::<style::SetstyleParams>(),
+    generic::typed::<style::DeletestyleParams>(),
+    generic::typed::<style::PromoteParams>(),
+    generic::typed::<ecad_electrical::cmd::title_block::TitleblocksParams>(),
+    generic::typed::<ecad_electrical::cmd::title_block::TitleblockParams>(),
 ];
 
 fn base_specs() -> Vec<CommandSpec> {
     vec![
+        // Brief 050b (design 050 §6.9).
+        CommandSpec::new("category", "Wire Category", crate::cmd::input::typed::<crate::cmd::wire::CategoryParams>)
+            .params("{conductor: id | net: id (a conductor of the net) | conductors: [id], value: category id or name | null} (one transaction)")
+            .noundo(),
         CommandSpec::new("convertcomponent", "Convert to Device", crate::cmd::input::typed::<crate::cmd::device::ConvertcomponentParams>)
             .params("{handles?: [hex]} (default: selection)")
             .interactive(interact::convert)
@@ -302,7 +318,6 @@ pub fn typed_commands() -> Vec<input::Typed> {
         crate::cmd::sheet::TYPED,
         crate::cmd::output::TYPED,
         crate::cmd::text::TYPED,
-        crate::cmd::style::TYPED,
         crate::cmd::symbol::TYPED,
         crate::cmd::xref::TYPED,
         crate::cmd::terminal::TYPED,

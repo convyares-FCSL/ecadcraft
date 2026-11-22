@@ -1,56 +1,25 @@
-//! Brief 055's commands (design 055 §9): `titleblocks`, `titleblock` and `titleblockimport`.
-//!
-//! # Semantics
-//! A title block is a `frame` style record (050a) with its block as the record's body (FP1).
-//! Every writing call is one transaction (`SetStyle`), undoable like any other, and refused with
-//! writes off (the MCP policy). Bodies are checked against design 055 §1.3 before anything is
-//! written; refusals say what is allowed. Choosing a frame stays `setdefault print.frame.style` /
-//! `setprop`; deleting stays `deletestyle` with a replacement.
-//!
-//! `titleblocks` and `titleblock` are thin shims (brief 070): their params structs read the JSON,
-//! the rules in [`ecad_electrical::cmd::title_block`] decide, and the shim lays out built-in blocks
-//! with this machine's fonts, commits the ops and answers in JSON. `titleblockimport` reads its
-//! input through [`TitleblockimportParams`] and runs the DXF reader's own
-//! ([`crate::title_block::dxf::run_import`]).
-
-use std::collections::BTreeMap;
+//! `titleblockimport` (brief 055, design 055 §9): a new frame from a DXF, or a logo into a title
+//! block's item. It reads the DXF with CADCraft's reader ([`crate::title_block::dxf`]), so it is the
+//! engine's; the other title block commands are generic ([`ecad_electrical::cmd::title_block`]).
 
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
-use ecad_electrical::cmd::title_block::{self as rules, FrameEdit, NewFrame};
+use ecad_electrical::cmd::title_block as rules;
 use ecad_model::Document;
 use ecad_model::style::StyleRef;
-use ecad_model::title_block::TitleBlockLayout;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 
+use crate::cmd::err;
 use crate::cmd::input::{Command, Typed};
-use crate::cmd::style::{FieldParam, field_inputs};
-use crate::cmd::{err, on_project};
-use crate::frame::FrameText;
 
-pub use rules::{BLANK_SIZE, BUILTIN_READ_ONLY, NOT_A_FRAME};
+/// The command of this module with a typed input.
+pub const TYPED: &[Typed] = &[Typed::of::<TitleblockimportParams>("titleblockimport")];
 
-/// The commands of this module with a typed input.
-pub const TYPED: &[Typed] = &[
-    Typed::of::<TitleblocksParams>("titleblocks"),
-    Typed::of::<TitleblockParams>("titleblock"),
-    Typed::of::<TitleblockimportParams>("titleblockimport"),
-];
-
-/// The commands of this module, registered through [`crate::lanes`].
+/// The command of this module.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("titleblocks", "Title Blocks", crate::cmd::input::typed::<TitleblocksParams>)
-            .params("{} (read only): every frame with its sheet, items, users and keys")
-            .noundo(),
-        CommandSpec::new("titleblock", "Title Block", crate::cmd::input::typed::<TitleblockParams>)
-            .params(
-                "{id | name, sheet?} (read) | {id | name, name?: new name, fields?: {key: value|null}, body?: layout} (write) | \
-{new: {from: id|\"blank\", sheet, name?, layer?}} (a new own frame); one transaction",
-            )
-            .noundo(),
         CommandSpec::new("titleblockimport", "Import Title Block", crate::cmd::input::typed::<TitleblockimportParams>)
             .params("{path | dxf, sheet, name?} (a new frame from a DXF) | {id | name, item, path | dxf} (a logo into item); one transaction")
             .noundo(),
@@ -61,141 +30,6 @@ pub fn specs() -> Vec<CommandSpec> {
 pub(crate) fn target(doc: &Document, params: &Value) -> Result<StyleRef, CmdError> {
     let text = |k: &str| params.get(k).and_then(Value::as_str);
     rules::frame(doc, text("id"), text("name"))
-}
-
-/// `titleblocks {}` (read only): every frame with its sheet, items, users and keys.
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-#[schemars(extend("properties" = {}))]
-pub(crate) struct TitleblocksParams {}
-
-impl Command for TitleblocksParams {
-    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        on_project(s, |p, _, _| {
-            let doc = p.ledger.document();
-            Ok(rules::titleblocks_json(doc, &FrameText::of(doc)))
-        })
-    }
-}
-
-/// A body from a call's `body`, checked against design 055 §1.3.
-///
-/// # Errors
-/// The body does not read, or breaks a bound, in words.
-pub fn body_param(v: &Value) -> Result<TitleBlockLayout, CmdError> {
-    let l: TitleBlockLayout =
-        serde_json::from_value(v.clone()).map_err(|e| CmdError::input(format!("The body does not read as a title block: {e}.")))?;
-    rules::check_body(l)
-}
-
-/// A new own frame (design 055 §4.6).
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct NewParams {
-    /// The frame it starts from (an id or a name), or "blank" (default "sheet").
-    #[serde(default)]
-    from: Option<String>,
-    /// The sheet it is drawn for (default the project's).
-    #[serde(default)]
-    sheet: Option<String>,
-    /// Its name (default from the sheet's size: "A3 title block").
-    #[serde(default)]
-    name: Option<String>,
-    /// project (the default) or standard.
-    #[serde(default)]
-    layer: Option<String>,
-}
-
-/// `titleblock {id | name, sheet?}` reads a frame; `{id | name, name? | rename?, fields?, body?}`
-/// writes one; `{new: {from, sheet, name?, layer?}}` makes a new own frame. One transaction.
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct TitleblockParams {
-    /// The frame (an id or a name).
-    #[serde(default)]
-    id: Option<String>,
-    /// With `id`: the frame's new name; without: the frame (a name or an id).
-    #[serde(default)]
-    name: Option<String>,
-    /// Without `id`: the frame's new name.
-    #[serde(default)]
-    rename: Option<String>,
-    /// The sheet the block is shown for (default the project's).
-    #[serde(default)]
-    sheet: Option<String>,
-    /// The fields to set: {key: value | null} (null: back to the inherited value).
-    #[serde(default)]
-    fields: Option<BTreeMap<String, Option<FieldParam>>>,
-    /// The block's layout (as `titleblock {id}` gives it).
-    #[serde(default)]
-    #[schemars(with = "Option<serde_json::Map<String, Value>>")]
-    body: Option<Value>,
-    /// A new own frame.
-    #[serde(default)]
-    new: Option<NewParams>,
-}
-
-impl Command for TitleblockParams {
-    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        if let Some(new) = self.new {
-            return run_new(s, new);
-        }
-        // With `id`, `name` renames (design 055 §9); without, it names the frame.
-        let (frame_name, rename) = match &self.id {
-            Some(_) => (None, self.name),
-            None => (self.name, self.rename),
-        };
-        let body = self.body.filter(|b| !b.is_null());
-        let writes = body.is_some() || self.fields.is_some() || rename.is_some();
-        let id_text = self.id;
-        let sheet_text = self.sheet;
-        let fields = self.fields;
-        on_project(s, |p, pg, _| {
-            let doc = p.ledger.document();
-            let id = rules::frame(doc, id_text.as_deref(), frame_name.as_deref())?;
-            if !writes {
-                let spec = rules::sheet(doc, sheet_text.as_deref())?;
-                return rules::block_json(doc, &id, &spec, &FrameText::of(doc));
-            }
-            // The body is read when the frame is known to be an own one, as before.
-            let body = match body {
-                Some(b) if !id.is_builtin() && rules::layer_of(doc, &id).is_some() => Some(body_param(&b)?),
-                _ => None,
-            };
-            let edit = FrameEdit { rename: rename.map(|n| n.trim().to_string()), fields: field_inputs(fields), body };
-            let plan = rules::plan_edit(doc, &id, edit)?;
-            let changed = !plan.ops.is_empty();
-            if changed {
-                p.apply_edit(pg, "titleblock", &plan.label, plan.ops)?;
-            }
-            let doc = p.ledger.document();
-            let spec = rules::sheet(doc, sheet_text.as_deref())?;
-            let mut v = rules::block_json(doc, &id, &spec, &FrameText::of(doc))?;
-            v["changed"] = json!(changed);
-            Ok(v)
-        })
-    }
-}
-
-/// `titleblock {new: {from, sheet, name?, layer?}}` (design 055 §4.6).
-fn run_new(s: &mut Session, new: NewParams) -> cadcraft_engine::Result<Value> {
-    on_project(s, |p, pg, _| {
-        let doc = p.ledger.document();
-        let spec = rules::sheet(doc, new.sheet.as_deref())?;
-        let layer = rules::new_layer(doc, new.layer.as_deref())?;
-        let source = rules::new_source(doc, new.from.as_deref())?;
-        // Own frames keep their block as made: items stay at their place from the bottom-right
-        // corner; built-ins are computed for the chosen sheet.
-        let layout = match &source {
-            Some(src) => rules::layout_of(doc, src, &spec, &FrameText::of(doc)),
-            None => TitleBlockLayout::blank(BLANK_SIZE.0, BLANK_SIZE.1),
-        };
-        let name = rules::new_name(doc, new.name.as_deref(), &spec)?;
-        let frame = NewFrame { name: name.clone(), spec, layer, layout, source: source.as_ref() };
-        let (ops, id) = rules::plan_new(doc, &mut p.ids, frame)?;
-        p.apply_edit(pg, "titleblock", &format!("New title block {name}"), ops)?;
-        Ok(json!({"changed": true, "id": id.text(), "name": name}))
-    })
 }
 
 /// `titleblockimport {path | dxf, sheet?, name?}` makes a new frame from a DXF drawing;
