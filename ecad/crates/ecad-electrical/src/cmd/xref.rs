@@ -2,8 +2,14 @@
 //! `refgoto` goes, and the `mirror` value `mirrormove` writes. The listings (`xrefs`,
 //! `contacts`) are [`crate::xref`]'s own; the engine crate's shims open pages and answer in JSON.
 
-use ecad_model::{DeviceId, Document, ItemId, Op, PageId, Pt, RepresentationId, Subject};
+use ecad_model::{CableId, DeviceId, Document, ItemId, Op, PageId, Pt, RepresentationId, Subject};
 
+use schemars::JsonSchema;
+use serde::Deserialize;
+use serde_json::json;
+
+use crate::cmd::input::Point;
+use crate::cmd::run::{Access, Cx, Generic, Outcome, Pages};
 use crate::error::CmdError;
 use crate::traits::DeviceKind;
 use crate::xref::{self, Placement, RefIndex};
@@ -146,4 +152,108 @@ pub fn plan_mirrormove(doc: &Document, c: DeviceId, at: Option<Pt>, placement: O
     let table = xref::table_of_typed(after.as_deref())?;
     let ops = vec![Op::ModifyDevice { id: c, before: comp.clone(), after: xref::with_table(comp, &who, table)? }];
     Ok(Mirrored { ops, mirror: after, message })
+}
+
+// ---------------------------------------------------------------------------------------------
+// The commands (generic: crate::cmd::run). `refgoto` opens a page, zooms and selects, and stays
+// the engine's.
+
+/// Rows one `xrefs` answers by default.
+pub const DEFAULT_LIMIT: usize = 200;
+/// Most rows one `xrefs` answers.
+pub const MAX_LIMIT: usize = 2000;
+
+/// `xrefs {component?, cable?, page?, limit?, after?}` (read only): cable and device references,
+/// a page at a time.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct XrefsParams {
+    /// Only this device's references.
+    #[serde(default)]
+    component: Option<DeviceId>,
+    /// Only this continuation arrow's other ends (design 072 §6.2).
+    #[serde(default)]
+    aid: Option<ecad_model::AidId>,
+    /// Only this cable's references.
+    #[serde(default)]
+    cable: Option<CableId>,
+    /// Only references on this page.
+    #[serde(default)]
+    page: Option<PageId>,
+    /// At most this many (default 200, at most 2000).
+    #[serde(default)]
+    limit: Option<u64>,
+    /// Skip this many (the `next` of the last call).
+    #[serde(default)]
+    after: Option<u64>,
+}
+
+/// `contacts {component}` (read only): the device's contact table: offer, head, placement, rows.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ContactsParams {
+    /// The device.
+    component: DeviceId,
+}
+
+/// `mirrormove {component, at? | placement?}`: where the device's contact table goes.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MirrormoveParams {
+    /// The device.
+    component: DeviceId,
+    /// A page point for the table.
+    #[serde(default)]
+    at: Option<Point>,
+    /// Or a placement: auto, below, right or off.
+    #[serde(default)]
+    placement: Option<String>,
+}
+
+impl Generic for XrefsParams {
+    const ID: &'static str = "xrefs";
+    const TITLE: &'static str = "List References";
+    const HELP: &'static str = "{component?: id, aid?: id, cable?: id, page?: id, limit?: n (200, max 2000), after?: n} (cable, device and continuation references; read only)";
+    const PAGES: Pages = Pages::Any;
+    const ACCESS: Access = Access::Reads;
+
+    fn check(&self) -> Result<(), CmdError> {
+        self.after.map_or(Ok(0), |n| usize::try_from(n).map_err(|_| CmdError::refused("`after` must be a number"))).map(|_| ())
+    }
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let limit = self.limit.map_or(DEFAULT_LIMIT, |n| usize::try_from(n).unwrap_or(MAX_LIMIT).clamp(1, MAX_LIMIT));
+        let after = self.after.map_or(Ok(0), |n| usize::try_from(n).map_err(|_| CmdError::refused("`after` must be a number")))?;
+        let doc = cx.doc;
+        let v = xref::xrefs_json(doc, cx.derived.refs(), self.component, self.aid, self.cable, self.page, limit, after)?;
+        Ok(Outcome::answer(v))
+    }
+}
+
+impl Generic for ContactsParams {
+    const ID: &'static str = "contacts";
+    const TITLE: &'static str = "Device Contacts";
+    const HELP: &'static str = "{component: id} (the device's contact table: offer, head, placement, rows; read only)";
+    const PAGES: Pages = Pages::Any;
+    const ACCESS: Access = Access::Reads;
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        Ok(Outcome::answer(xref::contacts_json_measured(cx.doc, self.component, cx.metrics)?))
+    }
+}
+
+impl Generic for MirrormoveParams {
+    const ID: &'static str = "mirrormove";
+    const TITLE: &'static str = "Move Mirror Table";
+    const HELP: &'static str =
+        "{component: id, at?: [x,y], placement?: \"auto\"|\"below\"|\"right\"|\"off\"} (where the device's contact table goes)";
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let at = self.at.map(|a| a.0);
+        let m = plan_mirrormove(cx.doc, self.component, at, self.placement.as_deref())?;
+        if m.ops.is_empty() {
+            return Ok(Outcome::answer(json!({"changed": false, "mirror": m.mirror})));
+        }
+        Ok(Outcome::edit("Move contact table", m.ops, json!({"changed": true, "mirror": m.mirror, "message": m.message})))
+    }
 }

@@ -115,6 +115,14 @@ fn generic_specs() -> Vec<CommandSpec> {
         generic::spec::<numbering::RenumberParams>(),
         generic::spec::<numbering::FinaliseParams>(),
         generic::spec::<numbering::NumberingParams>(),
+        generic::spec::<ecad_electrical::cmd::page_type::FolderpropsParams>(),
+        generic::spec::<ecad_electrical::cmd::page_type::RenumberpagesParams>(),
+        generic::spec::<ecad_electrical::cmd::xref::XrefsParams>(),
+        generic::spec::<ecad_electrical::cmd::xref::ContactsParams>(),
+        generic::spec::<ecad_electrical::cmd::xref::MirrormoveParams>().interactive(interact::mirrormove),
+        generic::spec::<ecad_electrical::cmd::reference::CablerefParams>().interactive(interact::cableref),
+        generic::spec::<ecad_electrical::cmd::reference::CablecontinueParams>().interactive(interact::cablecontinue),
+        generic::spec::<ecad_electrical::cmd::reference::CablerefsParams>(),
     ]
 }
 
@@ -159,6 +167,14 @@ const GENERIC_TYPED: &[input::Typed] = &[
     generic::typed::<numbering::RenumberParams>(),
     generic::typed::<numbering::FinaliseParams>(),
     generic::typed::<numbering::NumberingParams>(),
+    generic::typed::<ecad_electrical::cmd::page_type::FolderpropsParams>(),
+    generic::typed::<ecad_electrical::cmd::page_type::RenumberpagesParams>(),
+    generic::typed::<ecad_electrical::cmd::xref::XrefsParams>(),
+    generic::typed::<ecad_electrical::cmd::xref::ContactsParams>(),
+    generic::typed::<ecad_electrical::cmd::xref::MirrormoveParams>(),
+    generic::typed::<ecad_electrical::cmd::reference::CablerefParams>(),
+    generic::typed::<ecad_electrical::cmd::reference::CablecontinueParams>(),
+    generic::typed::<ecad_electrical::cmd::reference::CablerefsParams>(),
 ];
 
 fn base_specs() -> Vec<CommandSpec> {
@@ -204,20 +220,9 @@ end's spine; null: the middle)",
             )
             .interactive(interact::cablefan)
             .noundo(),
-        CommandSpec::new("cableref", "Cable Reference", crate::cmd::input::typed::<crate::cmd::reference::CablerefParams>)
-            .params("{cable: id, at: [x,y]} (a reference end of the cable on this page)")
-            .interactive(interact::cableref)
-            .noundo(),
-        CommandSpec::new("cablecontinue", "Continue Cable", crate::cmd::input::typed::<crate::cmd::reference::CablecontinueParams>)
-            .params("{cable: id, at: [x,y], toward: [x,y], members?: [conductor id]} (the cable's second drawing)")
-            .interactive(interact::cablecontinue)
-            .noundo(),
         CommandSpec::new("cablegoto", "Go to Reference", crate::cmd::input::typed::<crate::cmd::reference::CablegotoParams>)
             .params("{reference: id} (opens the other end's page; records nothing)")
             .interactive(interact::cablegoto)
-            .noundo(),
-        CommandSpec::new("cablerefs", "List Cable References", crate::cmd::input::typed::<crate::cmd::reference::CablerefsParams>)
-            .params("{cable?: id} (read only)")
             .noundo(),
         CommandSpec::new("ecaddelete", "Delete Electrical Object", crate::cmd::input::typed::<crate::cmd::device::EcaddeleteParams>)
             .params("{conductor: id} | {component: id} | {cable: id}")

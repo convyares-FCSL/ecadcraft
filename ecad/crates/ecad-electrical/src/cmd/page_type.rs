@@ -8,7 +8,12 @@ use std::collections::BTreeSet;
 
 use ecad_model::book::Book;
 use ecad_model::{Document, Folder, FolderId, Op, PageId, PageNo};
+use schemars::JsonSchema;
+use serde::Deserialize;
+use serde_json::{Value, json};
 
+use crate::cmd::input::nullable;
+use crate::cmd::run::{Cx, Generic, Outcome};
 use crate::error::{CmdError, msg};
 use crate::outputs::kept::Outputs;
 use crate::page_types::*;
@@ -171,4 +176,91 @@ pub fn plan_deletepage(doc: &Document, pages: &[PageId], active: PageId) -> Resu
         None
     };
     Ok(Deleted { ops, show, message: format!("Removed {}. Press u to bring it back.", words.join(", ")) })
+}
+
+// ---------------------------------------------------------------------------------------------
+// The commands (generic: crate::cmd::run). `deletepage` closes the page's view and stays the
+// engine's.
+
+/// `folderprops {folder, start?}`: a folder's start number (1 to 6 digits, leading zeros set the
+/// width); null or blank clears it; no `start` reads it.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FolderpropsParams {
+    /// The folder.
+    folder: FolderId,
+    /// The start number ("100"), or null to clear it.
+    #[serde(default, deserialize_with = "nullable")]
+    start: Option<Option<String>>,
+}
+
+/// `renumberpages {folder?}`: renumbers each folder from its start number, the rest from 1; with
+/// `folder`, that folder and its sub-folders only (one transaction).
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RenumberpagesParams {
+    /// Only this folder and its sub-folders.
+    #[serde(default)]
+    folder: Option<FolderId>,
+}
+
+impl Generic for FolderpropsParams {
+    const ID: &'static str = "folderprops";
+    const TITLE: &'static str = "Folder Properties";
+    const HELP: &'static str =
+        "{folder: id, start?: \"100\"|null} (a folder's start number: 1 to 6 digits, leading zeros set the width; null clears; no start: read only)";
+
+    fn check(&self) -> Result<(), CmdError> {
+        match &self.start {
+            Some(Some(t)) => start_value(t).map(|_| ()),
+            _ => Ok(()),
+        }
+    }
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let start = match self.start {
+            None => None,
+            Some(None) => Some(None),
+            Some(Some(t)) => Some(start_value(&t)?),
+        };
+        let folder = self.folder;
+        let planned = plan_folderprops(cx.doc, folder, start)?;
+        let name = planned.name;
+        let Some((after, ops)) = planned.write else {
+            return Ok(Outcome::answer(json!({"folder": folder.hex(), "name": name, "start": planned.before})));
+        };
+        if ops.is_empty() {
+            return Ok(Outcome::answer(json!({"folder": folder.hex(), "name": name, "start": after, "changed": false})));
+        }
+        let line = start_words(&name, after.as_deref());
+        let answer = json!({"folder": folder.hex(), "name": name, "start": after, "changed": true, "message": line});
+        Ok(Outcome::edit("Folder start number", ops, answer).echo(Some(line)))
+    }
+}
+
+impl Generic for RenumberpagesParams {
+    const ID: &'static str = "renumberpages";
+    const TITLE: &'static str = "Renumber Pages";
+    const HELP: &'static str = "{folder?: id} (renumbers each folder from its start number, the rest from 1; with folder, that folder and its sub-folders only; one transaction)";
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let doc = cx.doc;
+        let scope = folder_scope(doc, self.folder)?;
+        if crate::generated::has_bom_page(doc) {
+            cx.derived.outputs(doc);
+        }
+        let plan = plan_renumber(doc, cx.derived.kept_outputs(), scope);
+        if plan.ops.is_empty() {
+            let line = "Page numbers already in order.".to_string();
+            let answer = json!({"renumbered": 0, "message": line, "overlaps": plan.overlaps});
+            return Ok(Outcome::answer(answer).echo(Some(line)));
+        }
+        let count = plan.pages.len();
+        let pages: Vec<Value> = plan.pages.iter().map(|(pg, n)| json!({"page": pg.hex(), "number": n})).collect();
+        let line = format!("Renumbered {count} page{}.", if count == 1 { "" } else { "s" });
+        let answer = json!({"renumbered": count, "pages": pages, "message": line, "overlaps": plan.overlaps});
+        let mut lines = vec![line];
+        lines.extend(plan.overlaps);
+        Ok(Outcome::edit("Renumber pages", plan.ops, answer).echo_lines(lines))
+    }
 }

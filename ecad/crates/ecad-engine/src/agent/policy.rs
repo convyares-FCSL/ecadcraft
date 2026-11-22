@@ -26,9 +26,8 @@ pub const READ_COMMANDS: &[&str] = &[
     // Navigation between the project's pages: opens or shows a page, records nothing.
     "openpage",
     "document.switch",
-    // Cable references (brief 010): listing them reads the project; going to the other end opens
-    // or shows its page and selects it, and records nothing.
-    "cablerefs",
+    // Cable references (brief 010): going to the other end opens or shows its page and selects
+    // it, and records nothing.
     "cablegoto",
     // Devices and starter symbols (brief 018): finding and listing them, and one device's
     // properties, read the project only.
@@ -39,10 +38,8 @@ pub const READ_COMMANDS: &[&str] = &[
     "nets",
     "net",
     "checks",
-    // Cross-references (brief 025): listing references and a device's contacts reads the project;
-    // going to a reference opens or shows its page and records nothing.
-    "xrefs",
-    "contacts",
+    // Cross-references (brief 025): going to a reference opens or shows its page and records
+    // nothing.
     "refgoto",
     // Brief 019: an issued revision opened read-only is a session view; nothing is recorded.
     "openrevision",

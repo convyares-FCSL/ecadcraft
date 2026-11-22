@@ -12,7 +12,7 @@
 
 use std::collections::BTreeMap;
 
-use ecad_model::{Document, IdAllocator, Ledger, Op, PageId, Standard};
+use ecad_model::{Document, IdAllocator, Ledger, Op, PageId, Standard, Style};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
@@ -36,6 +36,10 @@ pub struct Cx<'a> {
     pub ids: &'a mut IdAllocator,
     /// The active page (none for a command that runs on any page, [`Pages::Any`]).
     pub page: Option<PageId>,
+    /// The style of new drawn items: the drawing's default layer, by layer.
+    pub plain: Style,
+    /// The drawing's snap tolerance.
+    pub tolerance: f64,
     /// The project's change count since it opened (a preview's `based_on`).
     pub change_count: u64,
     /// The highest tag numbers in use.
@@ -117,8 +121,8 @@ pub struct Outcome {
 pub enum Echo {
     /// Nothing.
     Nothing,
-    /// This line.
-    Line(String),
+    /// These lines, one after another.
+    Lines(Vec<String>),
     /// The answer's `message`, read once the edit is committed.
     Message,
 }
@@ -131,7 +135,14 @@ impl Outcome {
     /// This outcome, echoing `line` (none: nothing).
     #[must_use]
     pub fn echo(mut self, line: Option<impl Into<String>>) -> Outcome {
-        self.echo = line.map_or(Echo::Nothing, |l| Echo::Line(l.into()));
+        self.echo = line.map_or(Echo::Nothing, |l| Echo::Lines(vec![l.into()]));
+        self
+    }
+
+    /// This outcome, echoing `lines`, one after another.
+    #[must_use]
+    pub fn echo_lines(mut self, lines: Vec<String>) -> Outcome {
+        self.echo = Echo::Lines(lines);
         self
     }
 

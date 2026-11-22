@@ -57,7 +57,7 @@ pub(crate) fn run<P: Generic>(s: &mut Session, params: &Value) -> cadcraft_engin
     let p = parse::<P>(params).map_err(|e| err(e.to_string()))?;
     p.check().map_err(|e| err(e.to_string()))?;
     let read: Read = P::IO.reads.iter().filter_map(|(k, what)| Some((*k, read_file(given(params, k)?, *what)))).collect();
-    let (v, writes, echo) = match P::PAGES {
+    let (v, writes, lines) = match P::PAGES {
         Runs::Available => on_project(s, |proj, pg, page| commit::<P>(proj, pg, Some(page), &read, p, None))?,
         Runs::Any => on_any_page(s, |proj, pg| commit::<P>(proj, pg, None, &read, p, None))?,
         Runs::ReadAnywhere => {
@@ -77,7 +77,7 @@ pub(crate) fn run<P: Generic>(s: &mut Session, params: &Value) -> cadcraft_engin
         let target = target.ok_or_else(|| err(format!("`{key}` is not a file this command writes")))?;
         std::fs::write(target, bytes).map_err(|e| err(format!("Could not write {target}: {e}")))?;
     }
-    if let Some(line) = echo {
+    for line in lines {
         s.echo(line);
     }
     Ok(v)
@@ -107,13 +107,14 @@ fn read_file(path: &str, what: Reads) -> Result<Got, Unread> {
 /// refused with `no_edit` when given (the page is not one an edit runs on).
 fn commit<P: Generic>(
     proj: &mut Project, pg: &mut Pages<'_>, page: Option<PageId>, read: &Read, p: P, no_edit: Option<&'static str>,
-) -> Result<(Value, Writes, Option<String>), CmdError> {
+) -> Result<(Value, Writes, Vec<String>), CmdError> {
     let mut held = match P::STATE {
         State::None => Held::None,
         State::LastCaption => Held::LastCaption(proj.last_caption.clone()),
         State::Conflicts => Held::Conflicts(None),
     };
     let change_count = proj.change_count();
+    let plain = crate::cmd::plain_style(proj);
     let Outcome { edit, answer, writes, echo } = {
         let state = match &mut held {
             Held::None => Slot::None,
@@ -125,6 +126,8 @@ fn commit<P: Generic>(
             ledger: &proj.ledger,
             ids: &mut proj.ids,
             page,
+            plain,
+            tolerance: proj.tolerance,
             change_count,
             tag_high: &mut proj.tag_high,
             designation_uses: &mut proj.designation_uses,
@@ -152,9 +155,9 @@ fn commit<P: Generic>(
         Answer::Committed(f) => f(proj.ledger.document(), &mut proj.derived)?,
     };
     let echo = match echo {
-        Echo::Nothing => None,
-        Echo::Line(l) => Some(l),
-        Echo::Message => v.get("message").and_then(Value::as_str).map(str::to_string),
+        Echo::Nothing => Vec::new(),
+        Echo::Lines(l) => l,
+        Echo::Message => v.get("message").and_then(Value::as_str).map(str::to_string).into_iter().collect(),
     };
     Ok((v, writes, echo))
 }
