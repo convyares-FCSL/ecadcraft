@@ -121,7 +121,7 @@ pub const TOOLS: &[Tool] = &[
         id: "ecad.tool.jumper",
         group: "Components",
         label: "Jumper",
-        tooltip: "Click a terminal, then the next: a link through every position between (Skip: only those picked); Enter writes the link",
+        tooltip: "Click a terminal, then the next: a jumper bar through every position between (Skip: only those picked); Enter writes the jumper bar",
         kind: Kind::Start("jumper"),
     },
     Tool {

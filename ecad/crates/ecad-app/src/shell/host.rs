@@ -55,14 +55,14 @@ impl Default for Host {
 /// The program supplies `home` ([`Host::home`]); nothing is read from the environment here.
 ///
 /// # Errors
-/// The path starts with `~` and `home` is `None` ([`ecad_engine::HOME_UNKNOWN`]).
-pub(crate) fn resolve(typed: &str, home: Option<&Path>) -> Result<std::path::PathBuf, String> {
+/// The path starts with `~` and `home` is `None` ([`ecad_engine::file::PathError::HomeUnknown`]).
+pub(crate) fn resolve(typed: &str, home: Option<&Path>) -> Result<std::path::PathBuf, ecad_engine::file::PathError> {
     let rest = match typed.strip_prefix('~') {
         Some("") => "",
         Some(r) if r.starts_with(['/', '\\']) => r.trim_start_matches(['/', '\\']),
         _ => return Ok(std::path::PathBuf::from(typed)),
     };
-    let home = home.ok_or_else(|| ecad_engine::HOME_UNKNOWN.to_string())?;
+    let home = home.ok_or(ecad_engine::file::PathError::HomeUnknown)?;
     Ok(rest.split(['/', '\\']).filter(|c| !c.is_empty()).fold(home.to_path_buf(), |p, c| p.join(c)))
 }
 

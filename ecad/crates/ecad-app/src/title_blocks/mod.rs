@@ -503,7 +503,8 @@ impl App {
     /// The Logo tool (design 055 §4.5, §6): a DXF into the selected logo, or a new logo at `at`;
     /// the draft only (Save writes it).
     fn tb_logo(&mut self, at: Option<ecad_model::objects::title_block::Rect>, path: &str) {
-        let read = self.resolve(path).and_then(|p| ecad_engine::title_blocks::dxf::logo_from_file(&p).map_err(|e| e.to_string()));
+        let read =
+            self.resolve(path).map_err(|e| e.to_string()).and_then(|p| ecad_engine::title_blocks::dxf::logo_from_file(&p).map_err(|e| e.to_string()));
         let (name, r) = match read {
             Ok((name, p)) => (name, Ok(p)),
             Err(e) => (String::new(), Err(e)),

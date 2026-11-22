@@ -122,7 +122,10 @@ pub fn info(t: &mut App, i: usize) -> Option<Info> {
         let mut boxes = ecad_electrical::locations::BoxCache::default();
         let mut aspect = |a: ecad_electrical::locations::designations::Aspect, l: ecad_electrical::locations::Located| -> (String, &'static str) {
             match l.value.clone() {
-                Some(code) => (code, ecad_electrical::locations::stored_hint(doc, a, &symbols, &l, &mut boxes).words()),
+                Some(code) => {
+                    let hint: ecad_electrical::locations::Hint = ecad_electrical::locations::stored_hint(doc, a, &symbols, &l, &mut boxes);
+                    (code, hint.words())
+                }
                 None if l.missing() => ("?".to_string(), "not in the list"),
                 None => (String::new(), ""),
             }

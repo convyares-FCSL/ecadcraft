@@ -327,7 +327,7 @@ pub(crate) fn part_card(ui: &mut egui::Ui, p: &ecad_electrical::reports::bom::Pa
 }
 
 /// A row of "Where it is drawn"; returns the symbol to go to when clicked.
-fn drawn_row(ui: &mut egui::Ui, r: &crate::inspector::details::DrawnRow, i: usize) -> Option<ecad_model::RepresentationId> {
+fn drawn_row(ui: &mut egui::Ui, r: &crate::references::drawn::DrawnRow, i: usize) -> Option<ecad_model::RepresentationId> {
     let s = ecad_widgets::SHELL;
     let width = ui.available_width();
     let sense = if r.rep.is_some() { Sense::click() } else { Sense::hover() };

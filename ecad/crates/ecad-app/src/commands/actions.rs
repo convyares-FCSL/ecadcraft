@@ -526,7 +526,7 @@ pub const ACTIONS: &[Action] = &[
         1,
         &["terminals", "across", "row of terminals"],
     ),
-    tool("terminal_block.jumper_bar", "bridge", "Draw a link (bridge)", Icon::Connect, ToolGroup::TerminalBlock, 2, &["bridge", "link", "terminal"]),
+    tool("terminal_block.jumper_bar", "bridge", "Draw a jumper bar", Icon::Connect, ToolGroup::TerminalBlock, 2, &["bridge", "terminal"]),
     coming_tool("terminal_block.swap", "Swap top and bottom", Icon::Mirror, ToolGroup::TerminalBlock, 3),
     coming_tool("terminal_block.reorder", "Reorder the strip…", Icon::Move, ToolGroup::TerminalBlock, 4),
     group_app(

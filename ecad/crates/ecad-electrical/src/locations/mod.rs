@@ -436,7 +436,7 @@ pub fn stored_hint(doc: &Document, a: Aspect, reps: &[&Representation], stored: 
 }
 
 /// The context of aspect `a` of representation `r`.
-pub fn rep_context_in(doc: &Document, a: Aspect, r: &Representation, cache: &mut BoxCache) -> Located {
+pub(crate) fn rep_context_in(doc: &Document, a: Aspect, r: &Representation, cache: &mut BoxCache) -> Located {
     let at = anchor(doc, r);
     let boxes = cache.on(doc, r.page);
     context_in(doc, a, r.page, at, boxes)

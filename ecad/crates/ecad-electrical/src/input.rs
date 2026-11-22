@@ -170,7 +170,7 @@ pub fn plc_slot(text: &str) -> Result<u32, InputError> {
 ///
 /// # Errors
 /// [`InputError::PinPairs`] when a part has no colon or names a role the channel does not have.
-pub fn pin_pairs(text: &str, roles: &[ecad_model::ChannelRole]) -> Result<Vec<(String, String)>, InputError> {
+pub(crate) fn pin_pairs(text: &str, roles: &[ecad_model::ChannelRole]) -> Result<Vec<(String, String)>, InputError> {
     let mut out = Vec::new();
     for part in text.split_whitespace() {
         let (role, pin) = part.split_once(':').ok_or(InputError::PinPairs)?;

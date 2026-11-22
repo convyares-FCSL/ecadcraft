@@ -161,7 +161,7 @@ impl RenumberDialog {
             Which::Folder => json!({"folder": self.folders.get(self.folder).map(|f| f.0.hex()).unwrap_or_default()}),
         };
         if self.which != Which::Provisional || self.start.trim() != "next" {
-            let s = ecad_electrical::input::renumber_start(&self.start).map_err(|e| e.to_string())?;
+            let s = ecad_electrical::input::renumber_start(&self.start).map_err(|e: ecad_electrical::input::InputError| e.to_string())?;
             v["start"] = json!(s);
         }
         let d = ecad_electrical::input::renumber_digits(&self.digits).map_err(|e| e.to_string())?;

@@ -685,7 +685,7 @@ fn tile(ui: &mut egui::Ui, b: &mut Browser, e: &Entry, sheet: &ecad_drawing_styl
             }
             if let Some(px) = e.prefix {
                 ui.label(
-                    egui::RichText::new(format!("Tag letter {}", ecad_electrical::input::tag_prefix(&px))).color(c32(ecad_widgets::SHELL.text_2)),
+                    egui::RichText::new(format!("Tag letter {}", ecad_electrical::input::tag_prefix(px))).color(c32(ecad_widgets::SHELL.text_2)),
                 );
             }
         });
@@ -749,7 +749,7 @@ pub fn details(ui: &mut egui::Ui, b: &Browser, list: &Listing, writable: bool, p
         };
         kv(ui, "Category", &category);
         if let Some(px) = e.prefix {
-            kv(ui, "Tag letter", &ecad_electrical::input::tag_prefix(&px));
+            kv(ui, "Tag letter", &ecad_electrical::input::tag_prefix(px));
         }
         if !e.key.is_empty() {
             kv(ui, "Key", &e.key);

@@ -10,7 +10,7 @@ Start the trial with a project open, in Draw.
 
 1. **Flyouts.** Hover any group on the left strip (Draw to Location). The flyout shows the
    group's items; the last-used tool is lit.
-   - Terminal: Terminal, Terminals across wires, Draw a link (bridge), Swap top and bottom
+   - Terminal: Terminal, Terminals across wires, Draw a jumper bar, Swap top and bottom
      (greyed), Reorder the strip (greyed), Renumber…, and **Terminal manager** at the foot
      (Project ▸ Terminals).
    - PLC: Rack overview (Project ▸ PLC), Detail page…, Card…, Channel… (the card commands'

@@ -57,10 +57,10 @@ pub const REMOVE: &str = "Remove";
 pub(crate) const MOVE_TABLE: &str = "Move table…";
 /// Brief 033: open a page's number field (a continuation sheet took its number).
 pub(crate) const RENUMBER_PAGE: &str = "Renumber…";
-pub(crate) const SPLIT_LINK: &str = "Split link";
+pub(crate) const SPLIT_JUMPER_BAR: &str = "Split jumper bar";
 pub(crate) const REMOVE_PARTITION: &str = "Remove partition";
 pub(crate) const DROP_MISSING: &str = "Drop missing";
-pub(crate) const DELETE_LINK: &str = "Delete link";
+pub(crate) const DELETE_JUMPER_BAR: &str = "Delete jumper bar";
 /// Brief 036's fix buttons (design 036 §8).
 pub(crate) const MOVE_NEXT_FREE: &str = "Move to next free";
 pub(crate) const MOVE_NEW_POSITION: &str = "Move to new position";
@@ -78,9 +78,9 @@ pub(crate) const RAISE_SLOTS: &str = "Raise slots";
 pub fn pair(f: Fix) -> Option<[&'static str; 2]> {
     match f {
         Fix::AccessoryOrphan(..) => Some([MOVE_TO_END, REMOVE]),
-        Fix::JumperBarAcrossPartition(..) => Some([SPLIT_LINK, REMOVE_PARTITION]),
-        Fix::JumperBarOrphan(..) => Some([DROP_MISSING, DELETE_LINK]),
-        Fix::LevelMissing(..) => Some([DROP_MISSING_LEVELS, DELETE_LINK]),
+        Fix::JumperBarAcrossPartition(..) => Some([SPLIT_JUMPER_BAR, REMOVE_PARTITION]),
+        Fix::JumperBarOrphan(..) => Some([DROP_MISSING, DELETE_JUMPER_BAR]),
+        Fix::LevelMissing(..) => Some([DROP_MISSING_LEVELS, DELETE_JUMPER_BAR]),
         Fix::CoreOpen(..) => Some([TICK_NOT_USED, GO_TO_OPEN_END]),
         Fix::AssignCable(_) | Fix::UseDrawing(..) => crate::cables::manager::pair(f),
         Fix::Plc(_, ecad_electrical::plc::PlcFix::RackMissing) => Some([PUT_IN_RACK, TAKE_OUT_OF_RACK]),

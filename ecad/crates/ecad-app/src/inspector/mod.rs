@@ -39,7 +39,7 @@ pub(crate) mod placing_view;
 pub mod slash_picker;
 pub(crate) mod widgets;
 pub use checks_tab::{ELSEWHERE, SCOPE};
-pub use details::{ConnRow, DeviceDetails, DrawnRow};
+pub use details::{ConnRow, DeviceDetails};
 pub use device::{DRAWN_ROW, OWN_CHECKS};
 pub use layout_tab::{CONTACT_TABLE, ROTATION};
 pub use placing_view::CHANGES;

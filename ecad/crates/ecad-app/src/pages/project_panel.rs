@@ -218,7 +218,7 @@ pub enum Action {
     EditTitleBlock(PageId, u16),
     ClearPageSheet(PageId),
     /// Brief 030 Checks fixes (design 030 §8): the fix's button `0` or `1` (Move to end / Remove,
-    /// Split link / Remove partition, Drop missing positions / Delete link).
+    /// Split jumper bar / Remove partition, Drop missing positions / Delete jumper bar).
     AccessoryFix(ecad_electrical::checks::Fix, usize),
     /// Brief 044: Place ▸ Connector on this connector's lacking side, pin by pin.
     PlaceMates(ecad_model::DeviceId, ecad_electrical::symbols::Side),
