@@ -392,7 +392,11 @@ impl App {
     /// # Errors
     /// The project could not be created.
     pub fn new(snapshots: Option<PathBuf>) -> Result<Self, String> {
-        Self::start_in::<dyn StartMarks>(snapshots, None, None, true)
+        // Headless: the kept views' first builds run on the calling thread, as the tests that read
+        // them at once need (the desktop builds them on the background pool: `App::start`).
+        let mut t = Self::start::<dyn StartMarks>(snapshots, None, None)?;
+        t.warm.set_inline(true);
+        Ok(t)
     }
 
     /// A harness opening the project file at `path`. If it cannot be opened, a new project is
@@ -401,7 +405,9 @@ impl App {
     /// # Errors
     /// Neither the file nor a new project could be opened.
     pub fn with_file(snapshots: Option<PathBuf>, path: &str) -> Result<Self, String> {
-        Self::start_in::<dyn StartMarks>(snapshots, Some(path), None, true)
+        let mut t = Self::start::<dyn StartMarks>(snapshots, Some(path), None)?;
+        t.warm.set_inline(true);
+        Ok(t)
     }
 
     /// [`App::with_file`] when `project` is given, otherwise [`App::new`], marking
@@ -410,18 +416,8 @@ impl App {
     ///
     /// # Errors
     /// Neither the file (if any) nor a new project could be opened.
-    pub fn start<M: StartMarks + ?Sized>(snapshots: Option<PathBuf>, project: Option<&str>, timing: Option<&mut M>) -> Result<Self, String> {
-        Self::start_in(snapshots, project, timing, false)
-    }
-
-    /// [`App::start`]; `inline`: the kept views' first builds (Checks, report models) run on the
-    /// calling thread, as the headless harnesses that read them at once need (the desktop builds
-    /// them on the background pool and shows "Running…").
-    fn start_in<M: StartMarks + ?Sized>(
-        snapshots: Option<PathBuf>, project: Option<&str>, mut timing: Option<&mut M>, inline: bool,
-    ) -> Result<Self, String> {
+    pub fn start<M: StartMarks + ?Sized>(snapshots: Option<PathBuf>, project: Option<&str>, mut timing: Option<&mut M>) -> Result<Self, String> {
         let mut t = Self::empty(snapshots);
-        t.warm.set_inline(inline);
         if let Some(timing) = timing.as_deref_mut() {
             timing.shell_built();
         }

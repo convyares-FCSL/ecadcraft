@@ -27,8 +27,8 @@ use crate::project::Project;
 /// A view built off the thread, for the views' [`ecad_electrical::views::Views::epoch`] it was
 /// copied at.
 enum Built {
-    Reports(u64, ReportsView),
-    Checks(u64, ChecksView),
+    Reports(u64, Box<ReportsView>),
+    Checks(u64, Box<ChecksView>),
 }
 
 /// What [`Warm::pump`] started for which state, so a state is started once.
@@ -39,7 +39,7 @@ struct Asked {
 }
 
 /// The first builds the project panel started, and their results not yet taken.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Warm {
     jobs: Jobs<Built>,
     asked: Option<Asked>,
@@ -53,12 +53,6 @@ impl std::fmt::Debug for Built {
             Built::Reports(..) => "Built::Reports",
             Built::Checks(..) => "Built::Checks",
         })
-    }
-}
-
-impl Default for Warm {
-    fn default() -> Self {
-        Self { jobs: Jobs::default(), asked: None, inline: false }
     }
 }
 
@@ -86,10 +80,10 @@ impl Warm {
         for r in self.jobs.take(now) {
             match r {
                 Ok(Built::Reports(e, v)) => {
-                    p.derived.install_reports(e, v);
+                    p.derived.install_reports(e, *v);
                 }
                 Ok(Built::Checks(e, v)) => {
-                    p.derived.install_checks(e, v);
+                    p.derived.install_checks(e, *v);
                 }
                 Err(_) => {}
             }
@@ -107,11 +101,11 @@ impl Warm {
         let metrics = p.derived().metrics();
         if !have_reports {
             let (doc, metrics) = (doc.clone(), metrics.clone());
-            self.jobs.spawn(now, move || Built::Reports(epoch, ReportsView::build(&doc, &*metrics)));
+            self.jobs.spawn(now, move || Built::Reports(epoch, Box::new(ReportsView::build(&doc, &*metrics))));
         }
         if !have_checks {
             let tol = p.tolerance;
-            self.jobs.spawn(now, move || Built::Checks(epoch, ChecksView::build(&doc, tol, &*metrics)));
+            self.jobs.spawn(now, move || Built::Checks(epoch, Box::new(ChecksView::build(&doc, tol, &*metrics))));
         }
         false
     }

@@ -56,9 +56,24 @@ fn the_checks_tab_waits_for_its_first_build_and_drops_a_result_a_commit_overtook
 #[test]
 fn the_reports_window_waits_for_its_first_build_and_drops_a_result_a_commit_overtook() {
     let mut t = new_app();
+    let ctx = eframe::egui::Context::default();
     ok(&mut t, r#"place {"at":[50,0],"rotation":0}"#);
     t.open_reports();
-    drive(&mut t, &mut |t| t.refresh_reports(), &|t| t.reports.as_ref().is_some_and(|r| r.building));
+    let waiting = |t: &App| t.reports.as_ref().is_some_and(|r| r.building);
+    // The Checks tab's refresh starts the builds (a frame would also refresh the Reports window
+    // at once, and a build of this small project can already be done by then).
+    t.refresh_panel();
+    assert_eq!(t.warm.running(), 2, "the builds are running, nothing is applied");
+    ok(&mut t, r#"place {"at":[100,0],"rotation":90}"#);
+    assert!(t.warm.wait(WAIT));
+    // Two refreshes in one frame (Checks tab, Reports window): the second may already see the
+    // restarted builds done, so only what was dropped is asserted here.
+    frame(&mut t, &ctx);
+    assert_eq!(t.warm.dropped(), 2, "both builds of the old head were dropped, not applied");
+    assert!(t.warm.wait(WAIT));
+    frame(&mut t, &ctx);
+    assert!(!waiting(&t), "the builds started at the new head are applied");
+    assert_eq!(t.warm.dropped(), 2, "nothing more dropped");
 }
 
 #[test]

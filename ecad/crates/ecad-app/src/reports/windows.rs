@@ -53,7 +53,7 @@ impl App {
     /// Bring the Reports window's copy up to date with the project's kept models. Until the report
     /// models and the Checks list are built (on the background pool, first show) the window says
     /// "Running…" and nothing is read.
-    pub fn refresh_reports(&mut self) {
+    pub(crate) fn refresh_reports(&mut self) {
         let serial = self.project_serial;
         let writable = !self.header().read_only;
         if let (Some(r), Some(p)) = (&mut self.reports, self.project.clone()) {

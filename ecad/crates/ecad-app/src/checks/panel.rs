@@ -16,7 +16,7 @@ use {ecad_electrical::checks::Check, ecad_electrical::checks::Fix, ecad_electric
 use crate::pages::project_panel::Action;
 
 /// What the tab says while its first build runs on the background pool.
-pub const RUNNING: &str = "Running…";
+pub(crate) const RUNNING: &str = "Running…";
 /// Accessible label of the tab.
 pub const CHECKS_TAB: &str = "Checks";
 /// What an empty list says.
