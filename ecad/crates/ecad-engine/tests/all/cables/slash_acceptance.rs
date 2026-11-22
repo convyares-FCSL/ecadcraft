@@ -975,7 +975,8 @@ fn ac8_max_cable_members_is_the_cap() {
 /// cable, and then the members in member order before the representations.
 #[test]
 fn scope5_debugger_trail_slash_cable_conductors() {
-    use ecad_engine::dev::debug::{ObjectId, used_by};
+    use ecad_engine::dev::debug::ObjectId;
+    use ecad_engine::dev::objects::used_by;
     let mut f = fixture(SEED);
     let r = slash(&mut f.h, (32.0, 18.0), (28.0, -3.0)).unwrap();
     let k: CableId = id(&r, "cable");

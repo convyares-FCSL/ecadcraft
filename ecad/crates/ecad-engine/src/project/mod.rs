@@ -41,7 +41,8 @@ use changes::Path;
 pub use handle_map::{HandleMap, Mapped};
 pub use owner::{LISP_REFUSED, REFUSED_COMMANDS};
 pub use page_tree::{PageRow, PageView, TreeRow, tree_rows};
-pub use persistence::{ClipSnapshot, Faults, MemoryStore, Persistence, SAVE_UNAVAILABLE};
+pub use persistence::{ClipSnapshot, Faults, MemoryStore};
+pub use persistence::{Persistence, SAVE_UNAVAILABLE};
 
 /// An ECAD project attached to a CADCraft session.
 pub struct Project {
@@ -410,27 +411,13 @@ pub fn project_page_with(
 ///
 /// # Errors
 /// As [`project_page`].
-pub fn project_page_framed(
+pub(crate) fn project_page_framed(
     doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, frame: &[crate::pages::frame::Part],
 ) -> Result<(Drawing, HandleMap), String> {
     project_page_shown(doc, page, base, prev, fan, tol, frame, false)
 }
 
-/// [`project_page_with`] with Show Hidden Text (brief 031, design §5.7): `hidden_text` also draws
-/// every hidden derived text, dimmed, on [`crate::styles::draw::HIDDEN_LAYER`] (not plotted). A
-/// session display state: print and PDF project with it off.
-///
-/// # Errors
-/// As [`project_page`].
-#[allow(clippy::too_many_arguments)]
-pub fn project_page_with_hidden(
-    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool,
-    reports: Option<&ReportModels>,
-) -> Result<(Drawing, HandleMap), String> {
-    project_page_pending(doc, page, base, prev, fan, tol, hidden_text, false, reports)
-}
-
-/// [`project_page_with_hidden`] with the project's pending flag (brief 033, design 033 §6): the
+/// [`project_page_with`] with Show Hidden Text and the project's pending flag (brief 033, design 033 §6): the
 /// frame's Rev box and the cover show the pending marker as the project draws them.
 ///
 /// # Errors
@@ -444,12 +431,12 @@ pub fn project_page_pending(
     project_page_shown(doc, page, base, prev, fan, tol, &frame, hidden_text)
 }
 
-/// [`project_page_framed`] with Show Hidden Text (see [`project_page_with_hidden`]).
+/// [`project_page_framed`] with Show Hidden Text (see [`project_page_pending`]).
 ///
 /// # Errors
 /// As [`project_page`].
 #[allow(clippy::too_many_arguments)]
-pub fn project_page_shown(
+pub(crate) fn project_page_shown(
     doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, frame: &[crate::pages::frame::Part],
     hidden_text: bool,
 ) -> Result<(Drawing, HandleMap), String> {
@@ -461,7 +448,7 @@ pub fn project_page_shown(
 /// # Errors
 /// As [`project_page`].
 #[allow(clippy::too_many_arguments)]
-pub fn project_page_kept(
+pub(crate) fn project_page_kept(
     doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, frame: &[crate::pages::frame::Part],
     hidden_text: bool, plc: Option<&ecad_electrical::plc::kept::Plc>,
 ) -> Result<(Drawing, HandleMap), String> {

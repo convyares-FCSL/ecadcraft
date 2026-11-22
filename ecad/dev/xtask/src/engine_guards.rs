@@ -72,7 +72,8 @@ const ALLOWED: &[(&str, usize, &str)] = &[
     ("crates/ecad-engine/src/agent/tools.rs", 1, "the MCP tools' list paging"),
     // The dev tools stay (brief 074 "What stays").
     ("crates/ecad-engine/src/dev/snapshot.rs", 2, "the snapshot's readable labels and index (carved from ecad-inspect in 0.2.3; a dev view)"),
-    ("crates/ecad-engine/src/dev/debug.rs", 4, "the live debugger: replay to a sequence number and its read-only labels and counts"),
+    ("crates/ecad-engine/src/dev/checks.rs", 2, "the live debugger: replay to a sequence number"),
+    ("crates/ecad-engine/src/dev/objects.rs", 2, "the live debugger's read-only labels and counts"),
     ("crates/ecad-engine/src/dev/verify.rs", 3, "the projection check's point comparisons (a dev check)"),
     // Judgement calls that stay with the engine code they serve.
     ("crates/ecad-engine/src/title_blocks/layout.rs", 1, "a title block ink's ACI colour (CADCraft's colour index)"),

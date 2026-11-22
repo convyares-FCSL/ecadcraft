@@ -11,7 +11,7 @@ use crate::agent::gate::{self, Call, tx_summary};
 use ecad_file::history::logged_author_text;
 
 /// Names of the tools this module answers.
-pub const ECAD_TOOLS: &[&str] = &["ecad_project", "ecad_history", "ecad_inspect", "save", "ecad_connection", "screenshot"];
+pub(crate) const ECAD_TOOLS: &[&str] = &["ecad_project", "ecad_history", "ecad_inspect", "save", "ecad_connection", "screenshot"];
 
 /// Said by `screenshot` when no ECAD window is connected.
 pub const NO_WINDOW: &str = "No ECAD window is connected; use render.";

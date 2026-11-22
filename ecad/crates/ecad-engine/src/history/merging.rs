@@ -191,13 +191,13 @@ fn point_text(p: &Project, b: BranchId, seq: u64) -> String {
 ///
 /// # Errors
 /// The file could not be read.
-pub fn prepare(p: &Project, sides: Sides) -> Result<Prepared, String> {
+pub(crate) fn prepare(p: &Project, sides: Sides) -> Result<Prepared, String> {
     let cur = history::current(p);
     let (anc_branch, anc_seq) = ancestor(p, &sides)?;
     let source_head = head_of(p, sides.source)?;
     let target_head = head_of(p, sides.target)?;
     let doc_of = |b: BranchId, seq: u64| -> Result<Arc<Document>, String> {
-        let mut d = history::state_at(p, &Point { branch: b, seq, title: String::new(), kind: NodeKind::Fork })?;
+        let mut d = history::points::state_at(p, &Point { branch: b, seq, title: String::new(), kind: NodeKind::Fork })?;
         d.rebuild_index();
         Ok(Arc::new(d))
     };
@@ -426,7 +426,7 @@ pub fn prepared(p: &mut Project, sides: Sides) -> Result<Arc<Prepared>, String> 
 /// One conflict's choice as a command gives it: a word, or `{"value": text}`.
 #[derive(Debug, Clone, PartialEq, Deserialize, JsonSchema)]
 #[serde(untagged)]
-pub enum ChoiceParam {
+pub(crate) enum ChoiceParam {
     /// `main`, `branch`, `loose`, `bringback`, `renumber_branch`, `renumber_main` or `one`.
     Word(String),
     /// A value typed for the conflict.
@@ -436,7 +436,7 @@ pub enum ChoiceParam {
 /// A value typed for a conflict.
 #[derive(Debug, Clone, PartialEq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct TypedChoice {
+pub(crate) struct TypedChoice {
     /// The value.
     pub value: String,
 }
@@ -447,7 +447,7 @@ pub struct TypedChoice {
 ///
 /// # Errors
 /// A word that is not one of these, in words.
-pub fn parse_choices(s: &Sides, given: &BTreeMap<String, ChoiceParam>) -> Result<BTreeMap<String, Choice>, CmdError> {
+pub(crate) fn parse_choices(s: &Sides, given: &BTreeMap<String, ChoiceParam>) -> Result<BTreeMap<String, Choice>, CmdError> {
     let mut out = BTreeMap::new();
     let (parent, child) = if s.parent_is_target() { (Choice::Target, Choice::Source) } else { (Choice::Source, Choice::Target) };
     let (renumber_parent, renumber_child) =
@@ -478,7 +478,7 @@ pub fn parse_choices(s: &Sides, given: &BTreeMap<String, ChoiceParam>) -> Result
 }
 
 /// A choice as the command word for these sides.
-pub fn choice_word(s: &Sides, c: &Choice) -> Value {
+pub(crate) fn choice_word(s: &Sides, c: &Choice) -> Value {
     let pt = s.parent_is_target();
     match c {
         Choice::Target => json!(if pt { "main" } else { "branch" }),
@@ -663,7 +663,7 @@ impl Command for MergeParams {
 fn merge(
     p: &mut Project, pg: &mut Pages<'_>, from: &str, into: Option<&str>, given: &BTreeMap<String, ChoiceParam>, close: Option<bool>,
 ) -> Result<Value, CmdError> {
-    crate::history::branch_file(p).map_err(CmdError::refused)?;
+    crate::history::branches::branch_file(p).map_err(CmdError::refused)?;
     let sides = sides(p, from, into).map_err(CmdError::refused)?;
     let choices = parse_choices(&sides, given)?;
     let asked_close = close;
@@ -674,7 +674,7 @@ fn merge(
         let left = history::current_name(p);
         let was_unsaved = p.unsaved();
         p.save_pending(pg).map_err(CmdError::refused)?;
-        history::switch_to(p, pg, sides.target).map_err(CmdError::refused)?;
+        history::branches::switch_to(p, pg, sides.target).map_err(CmdError::refused)?;
         if was_unsaved {
             said = format!("\"{left}\" was saved; now on {}. ", sides.target_name);
         } else {
@@ -783,7 +783,7 @@ fn closed_by_top(p: &Project) -> Option<BranchId> {
 
 /// The question `u` asks before undoing a merge (design §4.3), or `None` when the last step is
 /// not a merge.
-pub fn undo_question(p: &Project) -> Option<String> {
+pub(crate) fn undo_question(p: &Project) -> Option<String> {
     if !top_is_merge(p) {
         return None;
     }

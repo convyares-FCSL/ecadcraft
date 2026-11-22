@@ -28,11 +28,11 @@ use crate::project::{HandleMap, base_drawing, project_page_framed};
 use ecad_electrical::reports::kept::ReportModels;
 
 /// Most sheets in one PDF (CADCraft's `MAX_PAGES`).
-pub const MAX_SHEETS: usize = 256;
+pub(crate) const MAX_SHEETS: usize = 256;
 /// Gap between pages on the scratch drawing, in millimetres.
 const GAP: f64 = 50.0;
 /// Said when no plotter is installed.
-pub const NO_PLOTTER: &str = "Printing is not available in this build (no PDF plotter is installed).";
+pub(crate) const NO_PLOTTER: &str = "Printing is not available in this build (no PDF plotter is installed).";
 
 /// What to print.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -121,7 +121,7 @@ pub fn resolve_with(doc: &Document, scope: &Scope, reports: Option<&ReportModels
 }
 
 /// The ISO A paper a `w` x `h` mm sheet prints on, whether it fits exactly, and landscape.
-pub fn paper_for(w: f64, h: f64) -> (&'static str, bool, bool) {
+pub(crate) fn paper_for(w: f64, h: f64) -> (&'static str, bool, bool) {
     let (long, short) = (w.max(h), w.min(h));
     let papers = [("A4", 297.0, 210.0), ("A3", 420.0, 297.0), ("A2", 594.0, 420.0), ("A1", 841.0, 594.0), ("A0", 1189.0, 841.0)];
     for (name, l, s) in papers {
@@ -245,7 +245,7 @@ pub fn build_in(
 }
 
 /// Volumes of at most [`MAX_SHEETS`] sheets, breaking between pages where possible.
-pub fn volumes(sheets: &[Sheet]) -> Vec<&[Sheet]> {
+pub(crate) fn volumes(sheets: &[Sheet]) -> Vec<&[Sheet]> {
     let mut out = Vec::new();
     let mut start = 0;
     while start < sheets.len() {
@@ -301,7 +301,7 @@ pub fn plot(scratch: &Drawing, sheets: &[Sheet], o: Options) -> Result<Vec<u8>, 
 }
 
 /// The file of volume `i` (0-based) of `path`: `demo.pdf`, `demo-2.pdf`, …
-pub fn volume_path(path: &str, i: usize) -> String {
+pub(crate) fn volume_path(path: &str, i: usize) -> String {
     if i == 0 {
         return path.to_string();
     }

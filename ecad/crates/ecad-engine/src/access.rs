@@ -160,11 +160,11 @@ impl ProjectHandle {
     }
 
     /// Copies of the document and of every open page's drawing and handle map, for
-    /// [`crate::dev::debug::verify_projection`] (which then runs with the project unlocked).
+    /// [`crate::dev::checks::verify_projection`] (which then runs with the project unlocked).
     ///
     /// # Errors
     /// [`BUSY`] or [`NOT_ATTACHED`].
-    pub fn debug_projection_inputs(&self, s: &mut Session) -> Result<crate::dev::debug::ProjectionInputs, String> {
+    pub fn debug_projection_inputs(&self, s: &mut Session) -> Result<crate::dev::checks::ProjectionInputs, String> {
         let p = self.lock(s)?;
         Ok(p.projection_inputs(&PagesRef(s)))
     }
