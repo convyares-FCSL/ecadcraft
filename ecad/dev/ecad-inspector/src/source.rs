@@ -90,7 +90,8 @@ const HEAD: usize = 4_096;
 
 /// The meta names this build reads, and what it reads (`summary`).
 const CONTAINER_VERSION: u64 = 2;
-const SCHEMA_VERSION: u64 = 1;
+/// The format number of `ecad_file::SCHEMA_VERSION` this reads (raw rows are shown for any other).
+const SCHEMA_VERSION: u64 = 2;
 const CODEC: &str = "json/1";
 
 /// A `.ecad` file, read-only.
@@ -181,11 +182,11 @@ fn classify_meta(store: &Store) -> Option<Problem> {
     }
     let sv = meta(store, "schema_version").and_then(|v| v.as_u64()).unwrap_or(0);
     let codec = meta(store, "codec");
-    if sv == 0 || sv > SCHEMA_VERSION || codec.as_ref().and_then(Value::as_str) != Some(CODEC) {
+    if sv != SCHEMA_VERSION || codec.as_ref().and_then(Value::as_str) != Some(CODEC) {
         let c = codec.as_ref().and_then(Value::as_str).unwrap_or("none");
         return Some(Problem::new(
             "schema-version",
-            format!("Written by a newer ECAD (schema {sv}, codec {c}): rows shown raw, model not opened."),
+            format!("Written by another ECAD version (schema {sv}, this reads {SCHEMA_VERSION}; codec {c}): rows shown raw, model not opened."),
             format!("Run the `ecadinspect` from the ECAD version that wrote it (writer: `{writer}`)."),
         ));
     }

@@ -409,7 +409,7 @@ fn wiring_settings_and_bridges_survive_chunks() {
 }
 
 /// A project of `n` edits written to `p`, and the reference ledger.
-fn deep(dir: &TempDir, n: usize) -> (PathBuf, Ledger) {
+pub(crate) fn deep(dir: &TempDir, n: usize) -> (PathBuf, Ledger) {
     let mut f = fixture();
     for i in 0..n {
         f.commit("Property", vec![Op::SetProperty { object: ObjectRef::Project, key: format!("k{i}"), before: None, after: Some("v".into()) }]);
@@ -420,7 +420,7 @@ fn deep(dir: &TempDir, n: usize) -> (PathBuf, Ledger) {
 }
 
 /// Rewrite the head snapshot's version row of the file at `p` with `edit`.
-fn craft_head_record(p: &std::path::Path, head: u64, edit: impl FnOnce(&mut schema::VersionRecord)) {
+pub(crate) fn craft_head_record(p: &std::path::Path, head: u64, edit: impl FnOnce(&mut schema::VersionRecord)) {
     let store = Store::open(p, true).unwrap();
     let branch = BranchId::main_of(PROJECT.0);
     let r = store.reader().unwrap();

@@ -266,6 +266,8 @@ pub struct App {
     ecad_style_again: bool,
     /// The read-only debugger panel (closed until opened from ECAD Dev).
     pub debugger: Debugger,
+    /// The kept views' first builds, on the background pool (issue 48).
+    pub warm: ecad_engine::warm::Warm,
     /// The Project panel (brief 016).
     pub panel: ProjectPanel,
     /// The read-only preview of another page (brief 016), when open.
@@ -390,7 +392,7 @@ impl App {
     /// # Errors
     /// The project could not be created.
     pub fn new(snapshots: Option<PathBuf>) -> Result<Self, String> {
-        Self::start::<dyn StartMarks>(snapshots, None, None)
+        Self::start_in::<dyn StartMarks>(snapshots, None, None, true)
     }
 
     /// A harness opening the project file at `path`. If it cannot be opened, a new project is
@@ -399,7 +401,7 @@ impl App {
     /// # Errors
     /// Neither the file nor a new project could be opened.
     pub fn with_file(snapshots: Option<PathBuf>, path: &str) -> Result<Self, String> {
-        Self::start::<dyn StartMarks>(snapshots, Some(path), None)
+        Self::start_in::<dyn StartMarks>(snapshots, Some(path), None, true)
     }
 
     /// [`App::with_file`] when `project` is given, otherwise [`App::new`], marking
@@ -408,8 +410,18 @@ impl App {
     ///
     /// # Errors
     /// Neither the file (if any) nor a new project could be opened.
-    pub fn start<M: StartMarks + ?Sized>(snapshots: Option<PathBuf>, project: Option<&str>, mut timing: Option<&mut M>) -> Result<Self, String> {
+    pub fn start<M: StartMarks + ?Sized>(snapshots: Option<PathBuf>, project: Option<&str>, timing: Option<&mut M>) -> Result<Self, String> {
+        Self::start_in(snapshots, project, timing, false)
+    }
+
+    /// [`App::start`]; `inline`: the kept views' first builds (Checks, report models) run on the
+    /// calling thread, as the headless harnesses that read them at once need (the desktop builds
+    /// them on the background pool and shows "Running…").
+    fn start_in<M: StartMarks + ?Sized>(
+        snapshots: Option<PathBuf>, project: Option<&str>, mut timing: Option<&mut M>, inline: bool,
+    ) -> Result<Self, String> {
         let mut t = Self::empty(snapshots);
+        t.warm.set_inline(inline);
         if let Some(timing) = timing.as_deref_mut() {
             timing.shell_built();
         }
@@ -457,6 +469,7 @@ impl App {
             ecad_style: None,
             ecad_style_again: false,
             debugger: Debugger::default(),
+            warm: ecad_engine::warm::Warm::default(),
             panel: ProjectPanel::default(),
             preview: None,
             project_serial: 0,
@@ -759,8 +772,13 @@ impl App {
         // project builds its list on the first show and keeps it from each change; the copy
         // follows its revision.
         {
-            let checks = &mut self.panel.checks;
-            let _ = p.configure(&mut self.cad.session, |p| checks.sync(serial, p));
+            let (checks, warm) = (&mut self.panel.checks, &mut self.warm);
+            let _ = p.configure(&mut self.cad.session, |p| {
+                checks.building = !warm.pump(p);
+                if !checks.building {
+                    checks.sync(serial, p);
+                }
+            });
         }
         self.panel.previewed = self.preview.as_ref().map(|v| v.page);
     }

@@ -23,8 +23,12 @@ use super::store::{Store, StoreError};
 /// Why a project cannot be saved to its own file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReadOnly {
-    /// Damage was found on open; the file is preserved as it is (see the open report).
+    /// Damage was found on open at the build's own format version; the file is preserved as it
+    /// is (see the open report).
     Damaged,
+    /// The file is of another format version: `file` is its `schema_version`, `build` this
+    /// build's. Read-only whatever replay found; not damage.
+    OtherFormat { file: u64, build: u64 },
     /// Another session is editing the file (it holds the writer lock).
     Locked {
         /// What that session recorded about itself; always `None` where the system cannot show
@@ -54,6 +58,10 @@ impl std::fmt::Display for ReadOnly {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ReadOnly::Damaged => f.write_str("the file is damaged and is kept exactly as it is"),
+            ReadOnly::OtherFormat { file, .. } => {
+                f.write_str(&crate::project::format_note(*file).unwrap_or_else(|| "another format version".to_string()))?;
+                f.write_str(", and is kept exactly as it is")
+            }
             ReadOnly::Locked { holder } => {
                 write!(f, "another session is editing it{}; {JUST_ENDED}", holder_text(holder.as_deref()))
             }
@@ -210,7 +218,10 @@ impl DiskProject {
             }
         };
         let Opened { mut project, ledger, report, unknown_words } = Project::open(store, seed, writer).map_err(|e| open_err(e.to_string()))?;
-        if report.damage.is_some() {
+        // The version first: an older or newer file is never "damaged", and never writable.
+        if report.schema_version != crate::SCHEMA_VERSION {
+            read_only = read_only.or(Some(ReadOnly::OtherFormat { file: report.schema_version, build: crate::SCHEMA_VERSION }));
+        } else if report.damage.is_some() {
             read_only = read_only.or(Some(ReadOnly::Damaged));
         }
         if !unknown_words.is_empty() {

@@ -15,6 +15,8 @@ use {ecad_electrical::checks::Check, ecad_electrical::checks::Fix, ecad_electric
 
 use crate::pages::project_panel::Action;
 
+/// What the tab says while its first build runs on the background pool.
+pub const RUNNING: &str = "Running…";
 /// Accessible label of the tab.
 pub const CHECKS_TAB: &str = "Checks";
 /// What an empty list says.
@@ -127,6 +129,9 @@ pub struct ChecksPanel {
     pub rows_drawn: usize,
     /// The project cannot be written: no fix buttons.
     pub read_only: bool,
+    /// The first build of the Checks list and the report models is still running (issue 48): the
+    /// tab says so instead of the rows.
+    pub building: bool,
     /// Brief 039: the rows as a table source, and the table.
     pub source: crate::checks::list::ChecksSource,
     pub table: ecad_widgets::table::Table<crate::checks::list::CheckKey>,
@@ -148,6 +153,7 @@ impl Default for ChecksPanel {
             copies: 0,
             rows_drawn: 0,
             read_only: false,
+            building: false,
             source: Default::default(),
             table,
             last_change: None,
@@ -182,7 +188,9 @@ impl ChecksPanel {
     pub fn sync(&mut self, serial: u64, p: &mut ecad_engine::Project) {
         let hidden = self.hidden.clone();
         // Brief 024: the location rows come from the report models, kept the same way.
-        let revision = p.checks().revision.wrapping_mul(1_000_003).wrapping_add(p.reports().revision);
+        // Both are kept by now (the caller waits for the background build); never built here.
+        let (Some(checks), Some(reports)) = (p.kept_checks(), p.kept_reports()) else { return };
+        let revision = checks.revision.wrapping_mul(1_000_003).wrapping_add(reports.revision);
         if self.seen.as_ref().is_some_and(|(s, r, h)| *s == serial && *r == revision && *h == hidden) {
             return;
         }
@@ -295,6 +303,10 @@ impl ChecksPanel {
     pub fn show(&mut self, ui: &mut egui::Ui, writable: bool) -> Vec<Action> {
         use ecad_widgets::table::TableEvent;
         let mut out = Vec::new();
+        if self.building {
+            ecad_widgets::prim::note(ui, RUNNING, ecad_widgets::prim::Tone::Neutral);
+            return out;
+        }
         let dim = ecad_widgets::color(ecad_widgets::SHELL.text_2);
         ui.horizontal(|ui| {
             let label = if self.hidden.is_empty() { "All kinds" } else { "Some kinds" };
