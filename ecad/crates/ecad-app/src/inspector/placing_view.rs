@@ -90,7 +90,7 @@ pub fn of(t: &App) -> Option<Placing> {
 pub fn show(ui: &mut egui::Ui, cx: &mut crate::inspector::Cx<'_>, p: &Placing, standard: &str) {
     let full = cx.full;
     // The page's Function and Location, which the new device takes.
-    let page = cx.sh.view.sections.iter().find(|s| s.kind == "page");
+    let page = cx.sh.view.sections.iter().find(|s| s.kind == ecad_electrical::properties::SectionKind::Page);
     let from_page = |key: &str| {
         page.and_then(|s| s.rows.iter().find(|r| r.key == key)).map(|r| (r.value.clone(), if r.inherited { "from project" } else { "from page" }))
     };

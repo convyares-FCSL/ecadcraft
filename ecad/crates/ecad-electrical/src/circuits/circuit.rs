@@ -62,8 +62,58 @@ pub struct Factor {
     pub factor: f64,
     /// `40 °C`, `3 on tray`, `0.80`.
     pub input: String,
-    /// `location +CAB1`, `project default`, `set here`, `computed`, `table`.
-    pub from: String,
+    pub from: FactorSource,
+}
+
+impl Factor {
+    /// Whether the input is a plain factor (`0.80`), not a count (`3 bunched`).
+    pub fn is_plain_number(&self) -> bool {
+        self.input.trim().parse::<f64>().is_ok()
+    }
+}
+
+/// Where a factor's input came from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FactorSource {
+    /// Set on the wire or cable itself.
+    SetHere,
+    /// The standard's value.
+    Standard,
+    /// The project's own value.
+    Project,
+    /// The project default, whichever level gave it.
+    ProjectDefault,
+    /// A location box (its code).
+    Location(String),
+    /// A rating table.
+    Table,
+    /// Computed from the input, which came from the source inside when it is not set here.
+    Computed(Option<Box<FactorSource>>),
+    /// Not set: the factor is assumed to be 1.
+    NotSet,
+}
+
+impl FactorSource {
+    /// The words the rating's tooltips and notes show: `location +CAB1`, `project default`,
+    /// `set here`, `computed`, `table`.
+    pub fn words(&self) -> String {
+        match self {
+            FactorSource::SetHere => "set here".into(),
+            FactorSource::Standard => "standard".into(),
+            FactorSource::Project => "project".into(),
+            FactorSource::ProjectDefault => "project default".into(),
+            FactorSource::Location(l) => format!("location {l}"),
+            FactorSource::Table => "table".into(),
+            FactorSource::Computed(None) => "computed".into(),
+            FactorSource::Computed(Some(b)) => format!("{}, computed", b.words()),
+            FactorSource::NotSet => "not set: \u{d7} 1.00 assumed".into(),
+        }
+    }
+
+    /// Whether the factor was computed rather than read from a table.
+    pub fn is_computed(&self) -> bool {
+        matches!(self, FactorSource::Computed(_))
+    }
 }
 
 /// A cable's volt drop.
@@ -242,6 +292,15 @@ pub(super) fn project_word(doc: &Document, e: &defaults::Entry) -> &'static str 
     defaults::resolve(doc, e, Scope::project()).word()
 }
 
+/// A project default's source.
+pub(super) fn default_source(doc: &Document, e: &defaults::Entry) -> FactorSource {
+    match defaults::resolve(doc, e, Scope::project()).from {
+        defaults::Source::Standard => FactorSource::Standard,
+        defaults::Source::Project => FactorSource::Project,
+        _ => FactorSource::ProjectDefault,
+    }
+}
+
 /// A project default's source in words.
 pub(super) fn default_from(doc: &Document, e: &defaults::Entry) -> &'static str {
     match defaults::resolve(doc, e, Scope::project()).from {
@@ -299,14 +358,14 @@ pub(crate) fn cable_is_rated(doc: &Document, ctx: &Context, k: CableId) -> bool 
 
 /// The panel temperature of a wire (design 057 §4.4): the hottest of its ends' locations, else
 /// the project's; with where it came from.
-pub fn panel_temperature(doc: &Document, ctx: &mut Context, c: WireId) -> (f64, String) {
+pub fn panel_temperature(doc: &Document, ctx: &mut Context, c: WireId) -> (f64, FactorSource) {
     let (t, from, _) = panel_temperature_at(doc, ctx, c);
     (t, from)
 }
 
 /// [`panel_temperature`], and the locations of the wire's ends (the one used first).
-pub(super) fn panel_temperature_at(doc: &Document, ctx: &mut Context, c: WireId) -> (f64, String, Vec<String>) {
-    let mut best: Option<(f64, String)> = None;
+pub(super) fn panel_temperature_at(doc: &Document, ctx: &mut Context, c: WireId) -> (f64, FactorSource, Vec<String>) {
+    let mut best: Option<(f64, FactorSource)> = None;
     let mut locations: Vec<String> = Vec::new();
     if let Some(x) = doc.wires.get(&c) {
         for t in &x.ends {
@@ -317,7 +376,7 @@ pub(super) fn panel_temperature_at(doc: &Document, ctx: &mut Context, c: WireId)
             if let Some(temp) = ctx.temps.get(&loc).copied()
                 && best.as_ref().is_none_or(|(b, _)| temp > *b)
             {
-                best = Some((temp, format!("location {}", location_code(doc, &loc))));
+                best = Some((temp, FactorSource::Location(location_code(doc, &loc))));
                 locations.retain(|l| *l != loc);
                 locations.insert(0, loc.clone());
             }
@@ -328,11 +387,7 @@ pub(super) fn panel_temperature_at(doc: &Document, ctx: &mut Context, c: WireId)
     }
     match best {
         Some((t, from)) => (t, from, locations),
-        None => (
-            project_number(doc, &defaults::rating::PANEL_TEMPERATURE),
-            default_from(doc, &defaults::rating::PANEL_TEMPERATURE).to_string(),
-            locations,
-        ),
+        None => (project_number(doc, &defaults::rating::PANEL_TEMPERATURE), default_source(doc, &defaults::rating::PANEL_TEMPERATURE), locations),
     }
 }
 
@@ -380,12 +435,15 @@ pub(crate) fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found
         RatedSubject::Wire(c) => {
             let (t, from, at) = panel_temperature_at(doc, ctx, c);
             locations = at;
-            let place = from.strip_prefix("location ").map_or_else(|| "The panel".to_string(), str::to_string);
+            let place = match &from {
+                FactorSource::Location(l) => l.clone(),
+                _ => "The panel".to_string(),
+            };
             (t, from, place)
         }
         RatedSubject::Cable(_) => match inp.ambient.map(|c| c.0) {
-            Some(t) => (t, "set here".to_string(), s.words(doc)),
-            None => (project_number(doc, &defaults::rating::AMBIENT), default_from(doc, &defaults::rating::AMBIENT).to_string(), s.words(doc)),
+            Some(t) => (t, FactorSource::SetHere, s.words(doc)),
+            None => (project_number(doc, &defaults::rating::AMBIENT), default_source(doc, &defaults::rating::AMBIENT), s.words(doc)),
         },
     };
     let temp_name = if is_cable { "ambient" } else { "panel" };
@@ -394,13 +452,13 @@ pub(crate) fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found
     let mut rated = None;
     // Grouping input: a wire's bundling, a cable's grouped count.
     let bundling = if is_cable {
-        inp.grouped.map(|n| (ecad_model::objects::wire::Bundling::Circuits(n), "set here".to_string()))
+        inp.grouped.map(|n| (ecad_model::objects::wire::Bundling::Circuits(n), FactorSource::SetHere))
     } else {
         match inp.bundling {
-            Some(b) => Some((b, "set here".to_string())),
+            Some(b) => Some((b, FactorSource::SetHere)),
             None => {
                 let r = defaults::resolve(doc, &defaults::rating::BUNDLING, Scope::project());
-                crate::devices::ratings::parse::bundling(&r.text()).map(|b| (b, default_from(doc, &defaults::rating::BUNDLING).to_string()))
+                crate::devices::ratings::parse::bundling(&r.text()).map(|b| (b, default_source(doc, &defaults::rating::BUNDLING)))
             }
         }
     };
@@ -436,7 +494,7 @@ pub(crate) fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found
             }
             None if !is_cable => {
                 issues.push(Issue::BundlingUnset);
-                factors.push(Factor { name: "bundling", factor: 1.0, input: "1.00".into(), from: "not set: \u{d7} 1.00 assumed".into() });
+                factors.push(Factor { name: "bundling", factor: 1.0, input: "1.00".into(), from: FactorSource::NotSet });
                 Some(1.0)
             }
             None => Some(1.0),
@@ -525,7 +583,7 @@ pub(crate) fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found
                             table_value = Some((cap, sz, method));
                             let k_amb = if t.data.has_ambient(ins) {
                                 match t.data.ambient(ins, theta) {
-                                    Some((f, _)) => Some((round2(f), "table".to_string())),
+                                    Some((f, _)) => Some((round2(f), false)),
                                     None => {
                                         issues.push(Issue::NoTable(format!(
                                             "{named} has no ambient factor at {} \u{b0}C, {}",
@@ -537,22 +595,20 @@ pub(crate) fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found
                                 }
                             } else {
                                 match k_temp(sh.max, 30.0, theta, false) {
-                                    Some(k) => Some((k, "computed".to_string())),
+                                    Some(k) => Some((k, true)),
                                     None => {
                                         issues.push(Issue::TooHot { place: place.clone(), temp: theta, max: sh.max });
-                                        Some((0.0, "computed".to_string()))
+                                        Some((0.0, true))
                                     }
                                 }
                             };
                             match k_amb {
                                 None => None,
-                                Some((k, how)) => {
-                                    let from = if how == "computed" && theta_from != "set here" {
-                                        format!("{theta_from}, computed")
-                                    } else if how == "computed" {
-                                        "computed".into()
-                                    } else {
-                                        theta_from.clone()
+                                Some((k, computed)) => {
+                                    let from = match (computed, &theta_from) {
+                                        (true, FactorSource::SetHere) => FactorSource::Computed(None),
+                                        (true, base) => FactorSource::Computed(Some(Box::new(base.clone()))),
+                                        (false, base) => base.clone(),
                                     };
                                     factors.push(Factor {
                                         name: temp_name,

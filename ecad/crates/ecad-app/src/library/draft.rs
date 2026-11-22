@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 use ecad_electrical::symbols::commands::{self as symbol_rules, Content};
 use ecad_electrical::symbols::graphics::POINT_GRID_MM;
 use ecad_electrical::symbols::offers::{Offer, offers_for, on_point_grid, same};
-use ecad_model::{ConnectionPointDef, Document, PointKey, Primitive, Pt, TextHAlign, TextSlot, TextVAlign};
+use ecad_model::{ConnectionPointDef, DefinitionId, Document, PointKey, Primitive, Pt, TextHAlign, TextSlot, TextVAlign};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -39,12 +39,12 @@ pub enum Source {
     New,
     /// Edit symbol on a version (hex IDs): Save opens the review, then `symboledit`.
     Edit {
-        definition: String,
+        definition: DefinitionId,
         version: u64,
         /// The edited symbol is a built-in starter: Save makes a project copy.
         builtin: bool,
         /// The placed copy the builder was opened from, if any (its page is where Back goes).
-        rep: Option<String>,
+        rep: Option<ecad_model::RepresentationId>,
     },
     /// Make symbol from plain geometry on a page (design 048 §4.1): Save is `makesymbol`.
     Make {

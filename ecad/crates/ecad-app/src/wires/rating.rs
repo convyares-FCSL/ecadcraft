@@ -67,16 +67,19 @@ fn rows(r: &Rating) -> Vec<Row> {
     let temp_row = |v: &mut Vec<Row>, name: &'static str, label: &'static str| {
         if let Some(f) = factor(r, name) {
             let mut x = row(label, format!("\u{d7} {}", circuits::circuit::fmt_factor(f.factor)), f.input.clone());
-            x.tip = format!("{} \u{b7} {}", f.input, f.from);
+            x.tip = format!("{} \u{b7} {}", f.input, f.from.words());
             if cable {
                 x.edit = Some("ambient");
             } else {
                 // Tester F1: the panel temperature is set here, on the wire's location (else the
                 // project default).
                 x.edit = Some("panel");
-                x.loc = f.from.strip_prefix("location ").map(str::to_string).or_else(|| r.locations.first().cloned());
+                x.loc = match &f.from {
+                    circuits::circuit::FactorSource::Location(l) => Some(l.clone()),
+                    _ => r.locations.first().cloned(),
+                };
             }
-            if f.from.contains("computed") {
+            if f.from.is_computed() {
                 x.note = format!("{} \u{b7} computed", f.input);
             }
             v.push(x);
@@ -86,17 +89,19 @@ fn rows(r: &Rating) -> Vec<Row> {
         let (name, label, key) = if cable { ("grouping", "Grouping", "grouped") } else { ("bundling", "Bundled", "bundling") };
         if let Some(f) = factor(r, name) {
             let mut x = row(label, format!("\u{d7} {}", circuits::circuit::fmt_factor(f.factor)), f.input.clone());
-            if f.from.starts_with("not set") {
-                x.note = f.from.clone();
-                x.tone = Some(Tone::Warning);
-            } else if f.from == "set here" {
-                if f.input.trim().parse::<f64>().is_ok() {
-                    x.note = "set here".into();
+            match &f.from {
+                circuits::circuit::FactorSource::NotSet => {
+                    x.note = f.from.words();
+                    x.tone = Some(Tone::Warning);
                 }
-            } else {
-                x.note = format!("{} \u{b7} {}", f.input, f.from);
+                circuits::circuit::FactorSource::SetHere => {
+                    if f.is_plain_number() {
+                        x.note = f.from.words();
+                    }
+                }
+                from => x.note = format!("{} \u{b7} {}", f.input, from.words()),
             }
-            x.tip = f.from.clone();
+            x.tip = f.from.words();
             x.edit = Some(key);
             v.push(x);
         } else if cable {

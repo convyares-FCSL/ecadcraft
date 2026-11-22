@@ -4,7 +4,6 @@
 use crate::commands::run::with_param;
 use crate::shell;
 use crate::shell::app::*;
-use ecad_model::PageId;
 use ecad_widgets::dialog::{Dialog, action};
 use ecad_widgets::prim::{self, Kind, Tone};
 use eframe::egui::{self};
@@ -127,8 +126,7 @@ impl App {
                 }
             },
             Some(crate::devices::renumber_dialog::Out::Goto(page, at)) => {
-                if let Some(page) = u128::from_str_radix(&page, 16).ok().map(PageId)
-                    && self.show_page(page).is_ok()
+                if self.show_page(page).is_ok()
                     && let Ok(st) = self.cad.session.state_mut()
                 {
                     let height = st.view().height.clamp(GOTO_MIN_HEIGHT, GOTO_MAX_HEIGHT);

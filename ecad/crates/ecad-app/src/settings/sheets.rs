@@ -974,9 +974,9 @@ fn draw(ui: &mut egui::Ui, sh: &mut PropsShared) {
     let view = std::mem::take(&mut sh.view);
     for s in &view.sections {
         ui.add_space(space::XS);
-        prim::body(ui, &s.title, false).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, format!("ecad.props.{}", s.kind)));
+        prim::body(ui, &s.title, false).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, format!("ecad.props.{}", s.kind.word())));
         for row in &s.rows {
-            prop_row(ui, sh, &s.target, s.kind, row);
+            prop_row(ui, sh, &s.target, s.kind.word(), row);
         }
         if let Some(n) = &s.note {
             prim::note(ui, n, Tone::Neutral);

@@ -354,13 +354,7 @@ impl crate::shell::app::App {
                 let t = target.ok_or("no wire")?;
                 let w = t.conductor.ok_or("no wire")?;
                 let v = self.cad.run("net", json!({"conductor": w.hex()}))?;
-                let wires: Vec<ecad_model::WireId> = v
-                    .get("conductors")
-                    .and_then(Value::as_array)
-                    .map(|a| {
-                        a.iter().filter_map(Value::as_str).filter_map(|h| u128::from_str_radix(h, 16).ok()).map(ecad_model::WireId::from).collect()
-                    })
-                    .unwrap_or_default();
+                let wires: Vec<ecad_model::WireId> = ecad_engine::commands::reply::ids(&v, "conductors");
                 if let (Some(pg), Some(p)) = (page, self.project.clone()) {
                     let handles = p.read(&mut self.cad.session, |p, _| {
                         wires

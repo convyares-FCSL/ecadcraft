@@ -101,18 +101,15 @@ pub struct WiresSource {
     pub rows: ReportRows,
     /// Brief 057: each row's conductor, and the rating results.
     pub ids: Vec<ecad_model::WireId>,
+    /// Each row's page (its number as shown), from the row's place; empty without one.
+    pub pages: Vec<String>,
     pub rating: RatingCopy,
 }
 
 impl Default for WiresSource {
     fn default() -> Self {
-        Self { cols: columns(), rows: ReportRows::default(), ids: Vec::new(), rating: RatingCopy::default() }
+        Self { cols: columns(), rows: ReportRows::default(), ids: Vec::new(), pages: Vec::new(), rating: RatingCopy::default() }
     }
-}
-
-/// The page part of a place (`2/C1` → `2`; `108-B-2` → `108`).
-pub fn page_of(place: &str) -> String {
-    place.split(['/', '.', '-']).find(|s| !s.is_empty()).unwrap_or(place).to_string()
 }
 
 impl WiresSource {
@@ -150,7 +147,7 @@ impl ReportColumns for WiresSource {
         match col {
             WIRE if self.provisional(k) => Cell::Provisional(self.rows.text(k, "Wire number")),
             WIRE => self.rows.cell(k, "Wire number"),
-            ON_PAGE => Cell::Text(page_of(&self.rows.text(k, "Page"))),
+            ON_PAGE => Cell::Text(self.pages.get(k).cloned().unwrap_or_default()),
             // Brief 057 (design 057 §2.1): the worst rating row in words.
             STATUS if let Some((w, fails)) = self.rating(k).and_then(|r| r.status().map(|w| (w, r.fails()))) => {
                 Cell::Badge(w, if fails { Tone::Error } else { Tone::Warning })
@@ -216,6 +213,7 @@ impl WiresView {
         self.source.rows.take(o.wire_table());
         self.gos = o.wires().iter().map(|w| w.go).collect();
         self.source.ids = o.wires().iter().map(|w| w.conductor).collect();
+        self.source.pages = o.wires().iter().map(|w| w.page.as_ref().map(|p| p.page.clone()).unwrap_or_default()).collect();
         self.own = o.wires().iter().map(|w| (w.colour_own, w.cross_section_own)).collect();
         self.copies += 1;
         self.table.update(&self.source, Changed::All);

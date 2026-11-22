@@ -722,7 +722,7 @@ impl App {
         let info = p
             .read(&mut self.cad.session, |p, _| {
                 use ecad_engine::history;
-                let file = p.path.as_deref().and_then(|x| std::path::Path::new(x).file_name()).map(|f| f.to_string_lossy().into_owned());
+                let file = p.file_status().display_name;
                 let Some(v) = p.file.project() else {
                     return BranchInfo { name: "main".into(), count: 1, bar: None, parent: None, release_line: true, file };
                 };

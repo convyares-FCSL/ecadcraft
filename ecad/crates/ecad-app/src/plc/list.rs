@@ -337,31 +337,6 @@ fn mark_of(s: Square) -> Mark {
 /// The legend under the strip (design 051 §3.4).
 pub(crate) const LEGEND: [(Mark, &str); 4] = [(Mark::On, "in use"), (Mark::Off, "free"), (Mark::Soft, "reserved"), (Mark::Alert, "has a check")];
 
-/// `pages 106, 107`; more than three: `pages 106–112 (5)`.
-fn pages_words(numbers: &[String]) -> Vec<String> {
-    match numbers {
-        [] => Vec::new(),
-        [one] => vec![format!("page {one}")],
-        many if many.len() <= 3 => {
-            // `pages 106, 107`: each number its own link, the comma with the one before.
-            let last = many.len() - 1;
-            many.iter()
-                .enumerate()
-                .map(|(k, n)| {
-                    let comma = if k < last { "," } else { "" };
-                    if k == 0 { format!("pages {n}{comma}") } else { format!("{n}{comma}") }
-                })
-                .collect()
-        }
-        many => vec![format!(
-            "pages {}\u{2013}{} ({})",
-            many.first().map(String::as_str).unwrap_or_default(),
-            many.last().map(String::as_str).unwrap_or_default(),
-            many.len()
-        )],
-    }
-}
-
 /// What a tile's link part does.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum TileLink {
@@ -379,7 +354,7 @@ fn strip_tile(t: &Tile, numbers: &[String], writable: bool, doc: &Document) -> (
     let mut acts = Vec::new();
     let page_links = |out: &mut Vec<Link>, acts: &mut Vec<TileLink>| {
         // Brief 056 (board 2.03): `page 5 →`.
-        let mut words = pages_words(numbers);
+        let mut words = ecad_electrical::plc::pages_words(numbers);
         if let Some(last) = words.last_mut() {
             last.push_str(" \u{2192}");
         }

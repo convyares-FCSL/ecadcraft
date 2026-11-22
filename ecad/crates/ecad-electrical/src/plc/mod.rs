@@ -326,6 +326,7 @@ pub(crate) fn props_rows(doc: &Document, c: DeviceId, rows: &mut Vec<crate::cabl
     let props = doc.devices.get(&c).map(|x| &x.properties);
     let own = |k: &str| props.and_then(|p| p.get(k)).cloned();
     let row = |key: &str, label: &str, value: String, inherited: bool, choices: Vec<String>| crate::cables::words::Row {
+        kind: crate::cables::words::RowKind::Value,
         key: key.into(),
         label: label.into(),
         value,
@@ -549,6 +550,7 @@ pub(crate) fn channel_rows(
     let Some(i) = shown.iter().find_map(|(t, _)| channels::point_of(doc, *t)).map(|x| x.0) else { return };
     let first = channels::first_number(doc, c);
     let row = |key: String, label: &str, value: String, editable: bool, inherited: bool| crate::cables::words::Row {
+        kind: crate::cables::words::RowKind::Value,
         key,
         label: label.into(),
         value,
@@ -583,4 +585,29 @@ pub(crate) fn channel_rows(
 /// Whether `page` shows a PLC channel cell (its texts read addresses).
 pub fn page_has_cells(doc: &Document, page: PageId) -> bool {
     doc.representations_on(page).any(|(_, r)| crate::devices::tags::rep_starter(doc, r).and_then(channels::cell_type).is_some())
+}
+
+/// `pages 106, 107`; more than three: `pages 106–112 (5)`.
+pub fn pages_words(numbers: &[String]) -> Vec<String> {
+    match numbers {
+        [] => Vec::new(),
+        [one] => vec![format!("page {one}")],
+        many if many.len() <= 3 => {
+            // `pages 106, 107`: each number its own link, the comma with the one before.
+            let last = many.len() - 1;
+            many.iter()
+                .enumerate()
+                .map(|(k, n)| {
+                    let comma = if k < last { "," } else { "" };
+                    if k == 0 { format!("pages {n}{comma}") } else { format!("{n}{comma}") }
+                })
+                .collect()
+        }
+        many => vec![format!(
+            "pages {}\u{2013}{} ({})",
+            many.first().map(String::as_str).unwrap_or_default(),
+            many.last().map(String::as_str).unwrap_or_default(),
+            many.len()
+        )],
+    }
 }

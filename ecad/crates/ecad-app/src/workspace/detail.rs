@@ -461,15 +461,14 @@ fn cable(t: &App, k: usize) -> Option<Detail> {
     };
     // Brief 057 (owner rule): each open core, as an error, with its two fixes.
     let mut core_fixes = Vec::new();
-    for (i, label) in v.source.open.get(k).into_iter().flatten().enumerate() {
-        checks.push((format!("Core {label} is open at an end: connect it, or tick Not used."), Tone::Error));
+    for (i, open) in v.source.open.get(k).into_iter().flatten().enumerate() {
+        checks.push((open.message(), Tone::Error));
         if let Some(cable) = v.ids.get(k) {
             core_fixes.push(ecad_electrical::checks::Fix::CoreOpen(*cable, u16::try_from(i).unwrap_or(u16::MAX)));
         }
     }
-    let spare = rows.text(k, "Spare");
-    if spare.parse::<u32>().is_ok_and(|n| n > 0) {
-        checks.push((format!("{spare} spare core{}.", if spare == "1" { "" } else { "s" }), Tone::Neutral));
+    if let Some(n) = v.source.spare(k).filter(|n| *n > 0) {
+        checks.push((format!("{}.", ecad_electrical::terminal_strips::cores::spare_core_words(n)), Tone::Neutral));
     }
     // Brief 059 (design 059 §6): a cable not drawn says so (Info), with no core rows.
     let drawn = v.source.drawn(k);

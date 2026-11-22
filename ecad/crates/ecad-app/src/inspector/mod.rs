@@ -356,13 +356,14 @@ pub fn shows_word(t: &mut App) -> &'static str {
         return "Page";
     }
     let kind = t.props.lock().ok().and_then(|sh| sh.view.sections.first().map(|s| s.kind));
+    use ecad_electrical::properties::SectionKind;
     match kind {
-        None | Some("page") => "Page",
-        Some("wire") => "Wire",
-        Some("cable" | "reference") => "Cable",
-        Some("box") => "Box",
-        Some("link") => "Link",
-        Some("objects") => "Objects",
+        None | Some(SectionKind::Page) => "Page",
+        Some(SectionKind::Wire) => "Wire",
+        Some(SectionKind::Cable | SectionKind::Reference) => "Cable",
+        Some(SectionKind::Box) => "Box",
+        Some(SectionKind::JumperBar) => "Jumper bar",
+        Some(SectionKind::Objects) => "Objects",
         Some(_) => RightTab::Device.label(),
     }
 }

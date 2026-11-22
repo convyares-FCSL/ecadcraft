@@ -434,7 +434,8 @@ pub(crate) fn rating_json(doc: &Document, r: &Rating) -> Value {
         RatedSubject::Wire(c) => json!({"wire": r.subject.words(doc), "conductor": c.hex()}),
         RatedSubject::Cable(k) => json!({"cable": r.subject.words(doc), "id": k.hex()}),
     };
-    let factors: Vec<Value> = r.factors.iter().map(|f| json!({"name": f.name, "factor": f.factor, "input": f.input, "from": f.from})).collect();
+    let factors: Vec<Value> =
+        r.factors.iter().map(|f| json!({"name": f.name, "factor": f.factor, "input": f.input, "from": f.from.words()})).collect();
     let device = r.device.as_ref().map(|d| json!({"tag": d.tag, "in": d.amps, "how": d.how.word()}));
     let load = r.load.map(|l| json!({"amps": l.amps, "from": if l.from == circuits::load::LoadFrom::Typed { "typed" } else { "power" }}));
     let vd = r.voltdrop.as_ref().map(|v| {

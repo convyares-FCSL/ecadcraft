@@ -8,7 +8,7 @@ use crate::canvas::mouse_acceptance::{doc, harness_with, ok};
 
 fn row(h: &mut egui_kittest::Harness<'static, ecad_app::shell::app::App>, key: &str) -> Option<String> {
     let props = h.state().props.lock().unwrap();
-    let s = props.view.sections.iter().find(|s| s.kind == "continuation")?;
+    let s = props.view.sections.iter().find(|s| s.kind == ecad_electrical::properties::SectionKind::Continuation)?;
     s.rows.iter().find(|r| r.key == key).map(|r| r.value.clone())
 }
 
@@ -35,7 +35,7 @@ fn renaming_or_captioning_a_shown_arrow_refreshes_its_section() {
 
 fn box_row(h: &mut egui_kittest::Harness<'static, ecad_app::shell::app::App>, key: &str) -> Option<String> {
     let props = h.state().props.lock().unwrap();
-    let s = props.view.sections.iter().find(|s| s.kind == "box")?;
+    let s = props.view.sections.iter().find(|s| s.kind == ecad_electrical::properties::SectionKind::Box)?;
     s.rows.iter().find(|r| r.key == key).map(|r| r.value.clone())
 }
 
@@ -73,7 +73,7 @@ fn a_shown_boxs_panel_temperature_and_style_rows_refresh() {
     h.run_steps(4);
     let editable = |h: &mut egui_kittest::Harness<'static, ecad_app::shell::app::App>, key: &str| {
         let props = h.state().props.lock().unwrap();
-        let s = props.view.sections.iter().find(|s| s.kind == "box").expect("the box section");
+        let s = props.view.sections.iter().find(|s| s.kind == ecad_electrical::properties::SectionKind::Box).expect("the box section");
         s.rows.iter().find(|r| r.key == key).map(|r| (r.editable, r.inherited, r.label.clone()))
     };
     let (rw, inherited, label) = editable(&mut h, "panel_temperature").expect("a Panel temperature row");

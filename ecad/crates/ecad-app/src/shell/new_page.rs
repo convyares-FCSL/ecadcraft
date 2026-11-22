@@ -159,13 +159,14 @@ impl App {
         let after_number = pk.after.and_then(|a| self.panel.rows().iter().find(|x| x.id == a).map(|x| x.number.clone()));
         match self.run_value("newpage", v) {
             Ok(res) => {
-                let number = res.get("number").and_then(serde_json::Value::as_str).unwrap_or_default().to_string();
+                let reply = ecad_engine::commands::reply::new_page(&res);
+                let number = reply.as_ref().map(|r| r.number.clone()).unwrap_or_default();
                 let line = match after_number {
                     Some(n) => format!("Added page {number} ({}) after {n}.", r.name),
                     None => format!("Added page {number} ({}).", r.name),
                 };
                 self.cad.session.echo(line);
-                let page = res.get("page").and_then(serde_json::Value::as_str).and_then(|t| u128::from_str_radix(t, 16).ok()).map(PageId::from);
+                let page = reply.map(|r| r.page);
                 if let Some(page) = page {
                     self.refresh_panel();
                     self.panel.start_rename(page);

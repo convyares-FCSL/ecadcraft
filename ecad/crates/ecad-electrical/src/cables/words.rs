@@ -334,12 +334,32 @@ pub struct Row {
     /// symbol's context: the code, and where it comes from (`From the box on 105`). Shown as a
     /// **Use +CP1** link that sets it.
     pub proposal: Option<(String, String)>,
+    /// What the row is: a plain value, or the visibility of one kind of text.
+    pub kind: RowKind,
+}
+
+/// What a Properties row is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RowKind {
+    Value,
+    /// The visibility of one kind of text (the Texts group), shown on the Layout tab.
+    Text(crate::styles::text_style::TextKind),
 }
 
 impl Row {
     /// A read-only row.
     pub fn ro(key: &str, label: &str, value: String) -> Row {
-        Row { key: key.into(), label: label.into(), value, editable: false, inherited: false, varies: false, choices: Vec::new(), proposal: None }
+        Row {
+            key: key.into(),
+            label: label.into(),
+            value,
+            editable: false,
+            inherited: false,
+            varies: false,
+            choices: Vec::new(),
+            proposal: None,
+            kind: RowKind::Value,
+        }
     }
     /// An editable row.
     pub fn rw(key: &str, label: &str, value: String) -> Row {

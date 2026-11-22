@@ -43,7 +43,7 @@ impl Choice {
 /// One placed copy's row.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Row {
-    pub rep: String,
+    pub rep: ecad_model::RepresentationId,
     pub tag: String,
     pub page_number: String,
     pub changes: Vec<String>,
@@ -96,11 +96,12 @@ impl Review {
             .and_then(Value::as_array)
             .into_iter()
             .flatten()
-            .map(|r| {
+            .filter_map(|r| {
+                let rep = ecad_engine::commands::reply::id::<ecad_model::RepresentationId>(r, "rep")?;
                 let clash = r.get("clash").and_then(Value::as_str).map(str::to_string);
                 let builtin = r.get("builtin").and_then(Value::as_bool).unwrap_or(false);
-                Row {
-                    rep: s(r, "rep"),
+                Some(Row {
+                    rep,
                     tag: s(r, "tag"),
                     // The copy's place (page and zone) when it can be located, else its page.
                     page_number: Some(s(r, "place")).filter(|p| !p.is_empty() && !p.contains('?')).unwrap_or_else(|| s(r, "page_number")),
@@ -109,7 +110,7 @@ impl Review {
                     description: String::new(),
                     clash,
                     builtin,
-                }
+                })
             })
             .collect();
         let clashes = rows.iter().any(|r| r.clash.is_some());
@@ -130,8 +131,7 @@ impl Review {
     /// Fill each row's device description from `doc`.
     pub fn describe(&mut self, doc: &ecad_model::Document) {
         for r in &mut self.rows {
-            let rep = u128::from_str_radix(&r.rep, 16).ok().map(ecad_model::RepresentationId::from);
-            if let Some(ecad_model::Subject::Device(c)) = rep.and_then(|x| doc.representations.get(&x)).map(|x| x.subject) {
+            if let Some(ecad_model::Subject::Device(c)) = doc.representations.get(&r.rep).map(|x| x.subject) {
                 r.description = ecad_electrical::devices::tags::description(doc, c);
             }
         }
@@ -139,8 +139,7 @@ impl Review {
 
     /// Keep only copy `rep`'s row (Compare).
     pub fn only(&mut self, rep: ecad_model::RepresentationId) {
-        let h = rep.hex();
-        self.rows.retain(|r| r.rep == h);
+        self.rows.retain(|r| r.rep == rep);
     }
 
     pub fn clashes(&self) -> usize {
@@ -202,7 +201,7 @@ impl Review {
         let mut p = self.params.clone();
         p["update"] = json!(self.choice.word());
         if self.choice == Choice::Selected {
-            p["copies"] = json!(self.rows.iter().filter(|r| r.checked && r.clash.is_none()).map(|r| r.rep.clone()).collect::<Vec<_>>());
+            p["copies"] = json!(self.rows.iter().filter(|r| r.checked && r.clash.is_none()).map(|r| r.rep.hex()).collect::<Vec<_>>());
         }
         p["builtins"] = json!(self.builtins);
         p
@@ -216,9 +215,9 @@ pub enum Act {
     /// Back to the drawing (the review closes, the draft stays).
     Back,
     /// Go to that copy (Back returns).
-    GoTo(String),
+    GoTo(ecad_model::RepresentationId),
     /// Compare: update this copy.
-    Update(String),
+    Update(ecad_model::RepresentationId),
     Close,
 }
 
@@ -272,7 +271,7 @@ pub fn show(ui: &mut egui::Ui, r: &mut Review, writable: bool) -> Vec<Act> {
             }
             ui.end_row();
             for (i, row) in rows {
-                let name = format!("{BODY}.row.{}", row.rep);
+                let name = format!("{BODY}.row.{}", row.rep.hex());
                 if r.compare {
                     ui.label("");
                 } else {
@@ -293,7 +292,7 @@ pub fn show(ui: &mut egui::Ui, r: &mut Review, writable: bool) -> Vec<Act> {
                 let tag = ui.add(egui::Label::new(RichText::new(shown).strong()).sense(egui::Sense::click()));
                 tag.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Link, true, &name));
                 if tag.clicked() {
-                    acts.push(Act::GoTo(row.rep.clone()));
+                    acts.push(Act::GoTo(row.rep));
                 }
                 ui.label(RichText::new(&row.page_number).small());
                 ui.horizontal(|ui| {
@@ -313,7 +312,7 @@ pub fn show(ui: &mut egui::Ui, r: &mut Review, writable: bool) -> Vec<Act> {
                     let u = ui.add(ecad_widgets::prim::Button::new("Update").small());
                     u.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, UPDATE));
                     if u.clicked() {
-                        acts.push(Act::Update(row.rep.clone()));
+                        acts.push(Act::Update(row.rep));
                     }
                 }
                 ui.end_row();
@@ -376,9 +375,9 @@ mod tests {
 
     fn impact() -> Value {
         json!({"name": "Coil", "version": 4, "copies": 3, "pages": 2, "clashes": 1, "rows": [
-            {"rep": "a", "tag": "-K01", "page_number": "2", "changes": ["Point 3 added"], "clash": null, "builtin": false},
-            {"rep": "b", "tag": "-K02", "page_number": "2", "changes": [], "clash": null, "builtin": false},
-            {"rep": "c", "tag": "-K03", "page_number": "4", "changes": [], "clash": "Point 2 is removed; wire 105 is attached to it.", "builtin": false},
+            {"rep": "00000000000000000000000000000001", "tag": "-K01", "page_number": "2", "changes": ["Point 3 added"], "clash": null, "builtin": false},
+            {"rep": "00000000000000000000000000000002", "tag": "-K02", "page_number": "2", "changes": [], "clash": null, "builtin": false},
+            {"rep": "00000000000000000000000000000003", "tag": "-K03", "page_number": "4", "changes": [], "clash": "Point 2 is removed; wire 105 is attached to it.", "builtin": false},
         ]})
     }
 
@@ -390,7 +389,7 @@ mod tests {
         assert!(r.save_refusal().is_none());
         let p = r.edit_params();
         assert_eq!(p["update"], "selected");
-        assert_eq!(p["copies"], json!(["a", "b"]));
+        assert_eq!(p["copies"], json!(["00000000000000000000000000000001", "00000000000000000000000000000002"]));
         let mut all = r.clone();
         all.choice = Choice::All;
         assert!(all.save_refusal().is_some(), "Update all is off while a row clashes");

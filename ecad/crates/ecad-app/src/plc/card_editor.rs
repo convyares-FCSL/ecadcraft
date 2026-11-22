@@ -121,18 +121,8 @@ pub fn info(t: &mut App, i: usize) -> Option<Info> {
         let symbols: Vec<_> = doc.representations_of(ecad_model::Subject::Device(c)).map(|(_, r)| r).take(MAX_SYMBOLS).collect();
         let mut boxes = ecad_electrical::locations::BoxCache::default();
         let mut aspect = |a: ecad_electrical::locations::designations::Aspect, l: ecad_electrical::locations::Located| -> (String, &'static str) {
-            let mut hint = "set here";
-            for r in &symbols {
-                let x = ecad_electrical::locations::rep_context_in(doc, a, r, &mut boxes);
-                if x.key.is_some() && x.key == l.key {
-                    let h = source_hint(Some(&x.source));
-                    if h == "from box" || hint == "set here" || (h == "from page" && hint == "from project") {
-                        hint = h;
-                    }
-                }
-            }
-            match l.value {
-                Some(code) => (code, hint),
+            match l.value.clone() {
+                Some(code) => (code, ecad_electrical::locations::stored_hint(doc, a, &symbols, &l, &mut boxes).words()),
                 None if l.missing() => ("?".to_string(), "not in the list"),
                 None => (String::new(), ""),
             }
@@ -185,17 +175,6 @@ pub fn info(t: &mut App, i: usize) -> Option<Info> {
     })
     .ok()
     .flatten()
-}
-
-/// The source hint of a stored function or location whose code is also the context's there.
-fn source_hint(source: Option<&ecad_electrical::locations::Source>) -> &'static str {
-    use ecad_electrical::locations::Source;
-    match source {
-        Some(Source::Box { .. }) => "from box",
-        Some(Source::Page(_)) => "from page",
-        Some(Source::Project) => "from project",
-        _ => "set here",
-    }
 }
 
 /// The Parts rows as board 2.03 shows them: the card's main part (named for what the card is, its

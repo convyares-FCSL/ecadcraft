@@ -63,10 +63,6 @@ impl Library {
     }
 }
 
-fn hex_of<T: From<u128>>(h: &str) -> Option<T> {
-    u128::from_str_radix(h, 16).ok().map(T::from)
-}
-
 impl App {
     /// Whether the builder is open.
     pub fn builder_open(&self) -> bool {
@@ -124,7 +120,7 @@ impl App {
             Some((Content::of(d), d.origin.as_ref().map_or(0, |o| o.library_seq), symbols::project::is_project_symbol(d), newer))
         })?;
         let (content, seq, project, newer) = found.ok_or("No such symbol.")?;
-        let source = Source::Edit { definition: def.hex(), version: seq, builtin: !project, rep: rep.map(|r| r.hex()) };
+        let source = Source::Edit { definition: def, version: seq, builtin: !project, rep };
         let mut draft = Draft::of_content(&content, source);
         if !project {
             // A built-in edited: a project copy, which needs a key of its own (design 048 §6.3).
@@ -308,7 +304,7 @@ impl App {
                 self.cad.run("symbolnew", params)
             }
             Source::Edit { definition, builtin, .. } => {
-                params["definition"] = json!(definition);
+                params["definition"] = json!(definition.hex());
                 if as_new {
                     params["update"] = json!("new");
                     self.cad.run("symboledit", params)
@@ -357,7 +353,7 @@ impl App {
     fn saved(&mut self, r: Result<Value, String>) {
         match r {
             Ok(v) => {
-                let lineage = v.get("lineage").and_then(Value::as_str).and_then(hex_of::<DefinitionId>);
+                let lineage = ecad_engine::commands::reply::id::<DefinitionId>(&v, "lineage");
                 let name = self.library.builder.as_ref().map(|b| b.draft.shown_name().to_string()).unwrap_or_default();
                 self.close_builder(true);
                 self.library.browser.selected = lineage.map(browser::Tile::Project);

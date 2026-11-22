@@ -49,7 +49,7 @@ pub fn show(ui: &mut egui::Ui, cx: &mut Cx<'_>, out: &mut Vec<InspectorAction>) 
         return;
     };
     let view = std::mem::take(&mut cx.sh.view);
-    let section = view.sections.first().filter(|s| s.kind == "device");
+    let section = view.sections.first().filter(|s| s.kind == ecad_electrical::properties::SectionKind::Device);
     let mut folded = std::mem::take(&mut cx.insp.folded);
     // Placement.
     w::section(ui, &mut folded, full, "placement", "Placement", &d.place, false, |ui| {
@@ -111,7 +111,7 @@ pub fn show(ui: &mut egui::Ui, cx: &mut Cx<'_>, out: &mut Vec<InspectorAction>) 
                 let mut inner: std::collections::BTreeSet<String> = ui.data(|m| m.get_temp(id)).unwrap_or_default();
                 w::section(ui, &mut inner, full, "texts-all", &format!("Every symbol of {}", d.tag), &summary, true, |ui| {
                     for row in device_texts {
-                        fields::prop(ui, cx.sh, &s.target, s.kind, row, &crate::inspector::device::text_label(&row.label), "");
+                        fields::prop(ui, cx.sh, &s.target, s.kind.word(), row, &crate::inspector::device::text_label(row), "");
                     }
                 });
                 ui.data_mut(|m| m.insert_temp(id, inner));

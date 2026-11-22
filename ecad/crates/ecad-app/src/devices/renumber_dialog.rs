@@ -60,8 +60,8 @@ pub enum Out {
     Preview(&'static str, Value),
     /// Apply with these parameters.
     Apply(&'static str, Value),
-    /// Show this row's anchor (page hex, point); the dialog stays open.
-    Goto(String, [f64; 2]),
+    /// Show this row's anchor (page, point); the dialog stays open.
+    Goto(ecad_model::PageId, [f64; 2]),
     /// Close without writing.
     Cancel,
 }
@@ -77,7 +77,7 @@ pub struct RenumberDialog {
     pub potentials: Vec<String>,
     pub prefix: String,
     /// `(folder hex, path)`.
-    pub folders: Vec<(String, String)>,
+    pub folders: Vec<(ecad_model::FolderId, String)>,
     pub folder: usize,
     /// The selection's devices, cables and wires (hex IDs), when opened.
     pub selection: Vec<String>,
@@ -102,7 +102,7 @@ impl RenumberDialog {
             prefixes: choices.prefixes.clone(),
             potentials: choices.potentials.clone(),
             prefix: choices.prefixes.first().cloned().unwrap_or_else(|| "-K".into()),
-            folders: choices.folders.iter().map(|(f, p)| (f.hex(), p.clone())).collect(),
+            folders: choices.folders.clone(),
             folder: 0,
             selection,
             provisional: choices.provisional,
@@ -127,8 +127,8 @@ impl RenumberDialog {
     }
 
     /// Opened from a folder row: Folder chosen.
-    pub fn for_folder(mut self, folder: &str) -> Self {
-        if let Some(i) = self.folders.iter().position(|(f, _)| f == folder) {
+    pub fn for_folder(mut self, folder: ecad_model::FolderId) -> Self {
+        if let Some(i) = self.folders.iter().position(|(f, _)| *f == folder) {
             self.which = Which::Folder;
             self.folder = i;
         }
@@ -158,7 +158,7 @@ impl RenumberDialog {
                 json!("selection")
             }
             Which::Prefix => json!({"prefix": self.prefix}),
-            Which::Folder => json!({"folder": self.folders.get(self.folder).map(|f| f.0.clone()).unwrap_or_default()}),
+            Which::Folder => json!({"folder": self.folders.get(self.folder).map(|f| f.0.hex()).unwrap_or_default()}),
         };
         if self.which != Which::Provisional || self.start.trim() != "next" {
             let s = self.start.trim().parse::<u64>().ok().filter(|n| (1..=999_999_999).contains(n)).ok_or("Start is a whole number from 1.")?;
@@ -345,11 +345,11 @@ impl RenumberDialog {
                     let resp = ui.add(egui::Label::new(mono(text, ink)).sense(egui::Sense::click()));
                     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("ecad.renumber.row.{i}")));
                     if resp.clicked()
-                        && let (Some(page), Some(pt)) = (r["page"].as_str(), r["point"].as_array())
+                        && let (Some(page), Some(pt)) = (ecad_engine::commands::reply::id::<ecad_model::PageId>(r, "page"), r["point"].as_array())
                     {
                         let x = pt.first().and_then(Value::as_f64).unwrap_or(0.0);
                         let y = pt.get(1).and_then(Value::as_f64).unwrap_or(0.0);
-                        out = Some(Out::Goto(page.to_string(), [x, y]));
+                        out = Some(Out::Goto(page, [x, y]));
                     }
                 }
             },

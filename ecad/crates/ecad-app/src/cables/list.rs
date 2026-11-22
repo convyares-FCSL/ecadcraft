@@ -11,6 +11,7 @@
 //! cable is selected.
 
 use ecad_electrical::reports::kept::ReportModels;
+use ecad_electrical::terminal_strips::cores::CoreState;
 use ecad_model::CableId;
 use ecad_widgets::prim::Tone;
 use ecad_widgets::table::{Cell, Changed, Column, ColumnId, Table, TableEvent, TableSource, Width};
@@ -57,7 +58,7 @@ pub struct CablesSource {
     pub ids: Vec<CableId>,
     pub rating: crate::wires::list::RatingCopy,
     /// Brief 057 (owner rule): each row's open cores, read with the copy.
-    pub open: Vec<Vec<String>>,
+    pub open: Vec<Vec<ecad_electrical::styles::cable::OpenCore>>,
     /// Brief 059: each row's drawn state and planned ends, from the cable rows.
     pub info: Vec<RowInfo>,
 }
@@ -69,6 +70,8 @@ pub struct RowInfo {
     /// Each end's plan (`=PUMP +CAB1`), from, to.
     pub planned: [Option<String>; 2],
     pub glands: [Option<String>; 2],
+    /// The offered cores no member uses; `None` when no offer is known.
+    pub spare: Option<usize>,
 }
 
 /// Brief 059 (design 059 §7): the empty list's words.
@@ -88,6 +91,11 @@ impl CablesSource {
     /// Brief 057: row `k`'s rating result.
     pub fn rating(&self, k: usize) -> Option<&ecad_electrical::circuits::circuit::Rating> {
         self.ids.get(k).and_then(|c| self.rating.results.get(&ecad_electrical::circuits::RatedSubject::Cable(*c)))
+    }
+
+    /// Row `k`'s spare core count, when its offer is known.
+    pub fn spare(&self, k: usize) -> Option<usize> {
+        self.info.get(k).and_then(|i| i.spare)
     }
 
     /// Brief 059: whether row `k`'s cable is drawn (unknown rows count as drawn).
@@ -137,7 +145,6 @@ impl ReportColumns for CablesSource {
             },
             USED => Cell::Text(format!("{} of {}", r.text(k, "Used"), r.text(k, "Cores"))),
             CHECKS => {
-                let spare = r.text(k, "Spare");
                 // Brief 057 (owner rule): open cores are errors, first.
                 if let Some(n) = self.open.get(k).map(Vec::len).filter(|n| *n > 0) {
                     return Cell::Badge(format!("{n} error{}", ecad_widgets::plural(n)), Tone::Error);
@@ -150,8 +157,8 @@ impl ReportColumns for CablesSource {
                 }
                 match r.flag(k) {
                     Some(_) => Cell::Badge("check".into(), Tone::Warning),
-                    None if spare.parse::<u32>().is_ok_and(|n| n > 0) => {
-                        Cell::Read { text: format!("{spare} spare core{}", if spare == "1" { "" } else { "s" }), go: false }
+                    None if let Some(n) = self.spare(k).filter(|n| *n > 0) => {
+                        Cell::Read { text: ecad_electrical::terminal_strips::cores::spare_core_words(n), go: false }
                     }
                     None => Cell::Badge("ok".into(), Tone::Ok),
                 }
@@ -202,6 +209,8 @@ pub struct CoresSource {
     pub size: String,
     pub field_wires: Vec<String>,
     pub unused: std::collections::BTreeSet<String>,
+    /// Each row's state against the cable's offer.
+    pub states: Vec<ecad_electrical::terminal_strips::cores::CoreState>,
     /// Brief 059: whether the selected cable is drawn.
     pub drawn: bool,
 }
@@ -212,6 +221,11 @@ impl CoresSource {
         crate::cables::view::core_colour(&self.rows.text(k, "Core"), k, &self.colours)
     }
 
+    /// Row `k`'s state against the offer.
+    pub fn state(&self, k: usize) -> Option<CoreState> {
+        self.states.get(k).copied()
+    }
+
     /// Whether row `k`'s core is ticked Not used.
     pub fn is_unused(&self, k: usize) -> bool {
         self.unused.contains(&self.rows.text(k, "Core"))
@@ -220,8 +234,7 @@ impl CoresSource {
     /// Whether row `k`'s core is open (owner rule): not connected at both ends, not ticked.
     pub fn is_open(&self, k: usize) -> bool {
         let r = &self.rows;
-        let spare = r.text(k, "State") == "spare";
-        !self.is_unused(k) && (spare || r.text(k, "From").is_empty() || r.text(k, "To").is_empty())
+        !self.is_unused(k) && (self.state(k) == Some(CoreState::Spare) || r.text(k, "From").is_empty() || r.text(k, "To").is_empty())
     }
 }
 
@@ -244,6 +257,7 @@ impl Default for CoresSource {
             size: String::new(),
             field_wires: Vec::new(),
             unused: Default::default(),
+            states: Vec::new(),
             drawn: true,
         }
     }
@@ -263,23 +277,24 @@ impl ReportColumns for CoresSource {
     }
     fn derived(&self, k: usize, col: ColumnId) -> Cell {
         let dash = || Cell::read(crate::reports::report::DASH);
-        match (col, self.rows.text(k, "State").as_str()) {
+        match (col, self.state(k)) {
             // Board 2.06: the colour's bar, then its code.
             (COLOUR, _) => self.colour(k).map_or_else(dash, |c| Cell::Colour(crate::cables::view::bars(&c), c)),
             (SIZE, _) if self.size.is_empty() => dash(),
             (SIZE, _) => Cell::Text(format!("{} mm\u{b2}", self.size)),
             // An unwired offered core has no cabinet end (owner rule: it is open, not "spare").
-            (CABINET, "spare") => Cell::Empty,
+            (CABINET, Some(CoreState::Spare)) => Cell::Empty,
             (CABINET, _) => Cell::Text(self.rows.text(k, "From")),
             (FIELD_WIRE, _) => self.field_wires.get(k).filter(|w| !w.is_empty()).map_or(Cell::Empty, |w| Cell::Text(w.clone())),
             (STATUS, _) if self.is_unused(k) => Cell::read("not used"),
             // Brief 059 (design 059 §5.5): an unwired core is "not assigned": read on a cable not
             // drawn, an error on a drawn one (057's owner rule).
-            (STATUS, "spare") if !self.drawn => Cell::read("not assigned"),
-            (STATUS, "spare") => Cell::Badge("not assigned".into(), Tone::Error),
+            (STATUS, Some(CoreState::Spare)) if !self.drawn => Cell::read("not assigned"),
+            (STATUS, Some(CoreState::Spare)) => Cell::Badge("not assigned".into(), Tone::Error),
             (STATUS, _) if self.is_open(k) => Cell::Badge("open end".into(), Tone::Error),
-            (STATUS, "used") => Cell::Badge("connected".into(), Tone::Ok),
-            (STATUS, other) => Cell::Badge(other.to_string(), Tone::Warning),
+            (STATUS, Some(CoreState::Used)) => Cell::Badge("connected".into(), Tone::Ok),
+            (STATUS, Some(state)) => Cell::Badge(state.word().to_string(), Tone::Warning),
+            (STATUS, None) => Cell::Empty,
             (UNUSED, _) => Cell::Toggle(self.is_unused(k)),
             _ => Cell::Empty,
         }
@@ -379,7 +394,10 @@ impl CablesView {
             self.ids = rows.iter().map(|r| r.cable).collect();
             self.source.ids = self.ids.clone();
             self.gos = rows.iter().map(|r| r.go).collect();
-            self.source.info = rows.iter().map(|r| RowInfo { drawn: r.drawn, planned: r.planned.clone(), glands: r.glands.clone() }).collect();
+            self.source.info = rows
+                .iter()
+                .map(|r| RowInfo { drawn: r.drawn, planned: r.planned.clone(), glands: r.glands.clone(), spare: r.count.spare_count() })
+                .collect();
             // Brief 059: + Cable's menu lists the cables not drawn (`-W03  H07RN-F 4G1.5 · +CAB1 → +FIELD`).
             self.undrawn = rows.iter().filter(|r| !r.drawn).map(|r| (r.cable, undrawn_line(r))).collect();
             self.undrawn.sort_by(|a, b| a.1.cmp(&b.1));
@@ -404,8 +422,15 @@ impl CablesView {
         if want != self.cores_of {
             self.cores_of = want;
             match selected {
-                Some(c) => self.cores.rows.take(o.core_table(c)),
-                None => self.cores.rows = ReportRows::default(),
+                Some(c) => {
+                    let (table, states) = o.core_rows(c);
+                    self.cores.rows.take(table);
+                    self.cores.states = states;
+                }
+                None => {
+                    self.cores.rows = ReportRows::default();
+                    self.cores.states = Vec::new();
+                }
             }
             self.core_table.update(&self.cores, Changed::All);
         }
@@ -447,17 +472,8 @@ impl CablesView {
         c.colours = selected.map(|k| cable::core_colours(doc, k)).unwrap_or_default();
         // Each cable's open cores, read when the project changed (as the cable copy is).
         // Brief 059: a cable not drawn has no open cores.
-        let open: Vec<Vec<String>> = self
-            .ids
-            .iter()
-            .map(|k| {
-                if ecad_electrical::cables::is_drawn(doc, *k) {
-                    cable::open_cores(doc, *k).into_iter().map(|o| o.label).collect()
-                } else {
-                    Vec::new()
-                }
-            })
-            .collect();
+        let open: Vec<Vec<ecad_electrical::styles::cable::OpenCore>> =
+            self.ids.iter().map(|k| if ecad_electrical::cables::is_drawn(doc, *k) { cable::open_cores(doc, *k) } else { Vec::new() }).collect();
         if open != self.source.open {
             self.source.open = open;
             self.table.update(&self.source, Changed::All);
@@ -469,7 +485,7 @@ impl CablesView {
         }
         let c = &mut self.cores;
         c.drawn = selected.is_none_or(|k| ecad_electrical::cables::is_drawn(doc, k));
-        c.size = selected.and_then(|k| cable_size(doc, k)).unwrap_or_default();
+        c.size = selected.and_then(|k| cable::size(doc, k)).unwrap_or_default();
         c.unused = selected
             .and_then(|k| doc.cables.get(&k))
             .map(|x| {
@@ -524,7 +540,7 @@ impl CablesView {
                 label: c.text(*i, "Core"),
                 colour: self.cores.colour(*i),
                 wire: c.text(*i, "Wire number"),
-                from: if c.text(*i, "State") == "spare" { String::new() } else { c.text(*i, "From") },
+                from: if self.cores.state(*i) == Some(CoreState::Spare) { String::new() } else { c.text(*i, "From") },
                 to: c.text(*i, "To"),
                 field_wire: self.cores.field_wires.get(*i).cloned().unwrap_or_default(),
                 unused: self.cores.is_unused(*i),
@@ -674,17 +690,6 @@ pub(crate) fn undrawn_line(r: &ecad_electrical::reports::CableRow) -> String {
         Some(k) => format!("{tag}  {k} \u{b7} {ends}"),
         None => format!("{tag}  {ends}"),
     }
-}
-
-/// A cable's core size: its cable type's cross-section, else its type notation's (`4G1.5` → 1.5).
-fn cable_size(doc: &ecad_model::Document, k: CableId) -> Option<String> {
-    use ecad_electrical::styles::{self, cable};
-    let from_type = cable::of(doc, k)
-        .and_then(|id| styles::field_of(doc, ecad_model::StyleCatalogue::Cable, &id, "size", None))
-        .and_then(|r| ecad_electrical::devices::ratings::parse::cross_section(&r.text()));
-    from_type
-        .or_else(|| doc.cables.get(&k).and_then(|x| x.properties.get("type")).and_then(|t| ecad_electrical::terminal_strips::cores::notation_size(t)))
-        .map(ecad_electrical::devices::ratings::dataset::fmt_num)
 }
 
 /// The wire beyond point `at` (`-M01:U1`): the number of a wire there that is not one of cable

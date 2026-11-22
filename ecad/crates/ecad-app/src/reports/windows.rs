@@ -38,10 +38,10 @@ impl App {
         let folders = p
             .read(&mut self.cad.session, |p, _| {
                 let doc = p.ledger.document();
-                doc.folders.keys().map(|f| (f.hex(), ecad_electrical::releases::revisions::folder_path(doc, Some(*f)))).collect::<Vec<_>>()
+                doc.folders.keys().map(|f| (*f, ecad_electrical::releases::revisions::folder_path(doc, Some(*f)))).collect::<Vec<_>>()
             })
             .unwrap_or_default();
-        let chosen = folder.and_then(|f| folders.iter().position(|(h, _)| *h == f.hex()));
+        let chosen = folder.and_then(|f| folders.iter().position(|(h, _)| *h == f));
         let path = format!("{}.pdf", self.report_stem());
         self.print_book = Some(crate::reports::panel::PrintBook {
             scope: if chosen.is_some() { crate::reports::panel::ScopeKind::Folder } else { crate::reports::panel::ScopeKind::All },
@@ -316,7 +316,7 @@ impl App {
         let Some(d) = self.print_book.as_ref().filter(|d| !d.hidden) else { return };
         let scope = match d.scope {
             crate::reports::panel::ScopeKind::All => ecad_engine::export::printbook::Scope::All,
-            crate::reports::panel::ScopeKind::Folder => match d.folders.get(d.folder).and_then(|f| ecad_model::FolderId::parse(&f.0)) {
+            crate::reports::panel::ScopeKind::Folder => match d.folders.get(d.folder).map(|f| f.0) {
                 Some(f) => ecad_engine::export::printbook::Scope::Folder(f),
                 None => ecad_engine::export::printbook::Scope::All,
             },
