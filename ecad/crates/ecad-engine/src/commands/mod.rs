@@ -16,6 +16,7 @@
 //! (lane 067 step 11; `cmd/plc/` has the PLC commands).
 
 pub mod input;
+pub mod reply;
 
 use cadcraft_engine::{CommandSpec, EngineError, Session};
 use ecad_electrical::CmdError;

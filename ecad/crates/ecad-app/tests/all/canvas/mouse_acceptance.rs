@@ -21,7 +21,7 @@ use eframe::egui::{self, Event, Key, Modifiers, Pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::json;
-use {ecad_app::App, ecad_app::commands::tools};
+use {ecad_app::commands::tools, ecad_app::shell::app::App};
 
 /// Texture updates in order: `Some(image)` sets, `None` frees.
 pub(crate) type Deltas = Arc<Mutex<Vec<(egui::TextureId, Option<egui::epaint::ImageDelta>)>>>;

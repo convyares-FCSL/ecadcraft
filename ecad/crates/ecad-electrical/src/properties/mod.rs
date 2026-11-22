@@ -36,17 +36,55 @@ pub enum Target {
     Cable(CableId),
 }
 
+/// What a section is about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SectionKind {
+    Page,
+    Box,
+    Device,
+    Continuation,
+    Wire,
+    Cable,
+    Reference,
+    JumperBar,
+    /// The objects selected on the page, by element name.
+    Objects,
+}
+
+impl SectionKind {
+    /// The word that names the section in ids and in the agent's reads.
+    pub fn word(self) -> &'static str {
+        match self {
+            SectionKind::Page => "page",
+            SectionKind::Box => "box",
+            SectionKind::Device => "device",
+            SectionKind::Continuation => "continuation",
+            SectionKind::Wire => "wire",
+            SectionKind::Cable => "cable",
+            SectionKind::Reference => "reference",
+            SectionKind::JumperBar => "jumper_bar",
+            SectionKind::Objects => "objects",
+        }
+    }
+}
+
 /// One section: `ECAD · PAGE 105`, its rows, a note and the buttons it offers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Section {
     pub title: String,
-    /// `page`, `project`, `device`, `wire`, `cable`, `reference`, `objects` (element names).
-    pub kind: &'static str,
+    pub kind: SectionKind,
     pub target: Option<Target>,
     pub rows: Vec<Row>,
     pub note: Option<String>,
     /// `goto:<reference hex>` (a reference).
     pub buttons: Vec<String>,
+}
+
+impl Section {
+    /// The title without the `ECAD · ` that marks it in the host's Properties palette.
+    pub fn shown_title(&self) -> &str {
+        self.title.trim_start_matches("ECAD \u{b7} ")
+    }
 }
 
 /// The whole ECAD section for one selection.
@@ -102,7 +140,14 @@ pub fn page_section(doc: &Document, page: PageId) -> Section {
     rows.push(sheet);
     // Brief 031 (design §5.6): the page's Texts group.
     text_rows(doc, TextsAt::Page(page), &mut rows);
-    Section { title: format!("ECAD · PAGE {number}"), kind: "page", target: Some(Target::Page(page)), rows, note: None, buttons: Vec::new() }
+    Section {
+        title: format!("ECAD · PAGE {number}"),
+        kind: SectionKind::Page,
+        target: Some(Target::Page(page)),
+        rows,
+        note: None,
+        buttons: Vec::new(),
+    }
 }
 
 /// The codes of `key`'s aspect in the project's list, offered as completions (design 052 §9.1).
@@ -138,7 +183,7 @@ pub fn box_section(doc: &Document, b: ecad_model::AidId) -> Section {
     }
     Section {
         title: format!("ECAD · LOCATION BOX {location}"),
-        kind: "box",
+        kind: SectionKind::Box,
         target: Some(Target::Aids(vec![b])),
         rows,
         note: None,
@@ -272,7 +317,7 @@ pub fn device_section(
     }
     Section {
         title,
-        kind: "device",
+        kind: SectionKind::Device,
         target: Some(Target::Devices(devices.iter().copied().collect())),
         rows,
         note: if one { None } else { Some("Tags are one per device.".into()) },
@@ -390,7 +435,7 @@ pub fn continuation_section(doc: &Document, arrows: &BTreeSet<ecad_model::AidId>
     continuation_rows(doc, arrows, symbol, &mut rows, &mut buttons);
     Section {
         title: format!("ECAD · CONTINUATION {}", one_name.unwrap_or_else(|| format!("({})", arrows.len()))),
-        kind: "continuation",
+        kind: SectionKind::Continuation,
         target: Some(Target::Aids(arrows.iter().copied().collect())),
         rows,
         note: None,
@@ -605,7 +650,7 @@ pub fn wire_section(doc: &Document, w: WireId) -> Section {
     rows.push(Row::ro("cables", "Cables", if cables.is_empty() { "none".into() } else { cables.join(", ") }));
     rows.extend(free_rows(props, &[]));
     rows.extend(net);
-    Section { title: "ECAD · WIRE".into(), kind: "wire", target: Some(Target::Wire(w)), rows, note: None, buttons: Vec::new() }
+    Section { title: "ECAD · WIRE".into(), kind: SectionKind::Wire, target: Some(Target::Wire(w)), rows, note: None, buttons: Vec::new() }
 }
 
 pub fn cable_section(doc: &Document, k: CableId) -> Section {
@@ -640,7 +685,7 @@ pub fn cable_section(doc: &Document, k: CableId) -> Section {
     rows.push(Row::ro("usedspare", "Used / Spare", used));
     Section {
         title: format!("ECAD · CABLE {}", crate::cables::cable_title(doc, k)),
-        kind: "cable",
+        kind: SectionKind::Cable,
         target: Some(Target::Cable(k)),
         rows,
         note: None,
@@ -658,7 +703,7 @@ pub fn reference_section(doc: &Document, r: ecad_model::RepresentationId) -> Sec
     let Some(Subject::Cable(k)) = doc.representations.get(&r).map(|x| x.subject) else {
         return Section {
             title: "ECAD · CABLE REFERENCE".into(),
-            kind: "reference",
+            kind: SectionKind::Reference,
             target: None,
             rows: Vec::new(),
             note: None,
@@ -673,7 +718,14 @@ pub fn reference_section(doc: &Document, r: ecad_model::RepresentationId) -> Sec
         Row::ro("this", "This end", this.map_or_else(|| "?".into(), |x| x.locator())),
         Row::ro("others", "Other ends", if others.is_empty() { "none".into() } else { others.join(", ") }),
     ];
-    Section { title: "ECAD · CABLE REFERENCE".into(), kind: "reference", target: None, rows, note: None, buttons: vec![format!("goto:{}", r.hex())] }
+    Section {
+        title: "ECAD · CABLE REFERENCE".into(),
+        kind: SectionKind::Reference,
+        target: None,
+        rows,
+        note: None,
+        buttons: vec![format!("goto:{}", r.hex())],
+    }
 }
 
 // ---------------------------------------------------------------- Texts (brief 031, design §5.6)
@@ -728,6 +780,7 @@ fn text_rows(doc: &Document, at: TextsAt, rows: &mut Vec<Row>) {
         let value = own.as_deref().map_or_else(|| default.clone(), |w| shown_words(w).to_string());
         let label = format!("{group}: {}", crate::styles::text_style::kind_words(*kind));
         let mut r = Row::rw(&key, &label, value);
+        r.kind = crate::cables::words::RowKind::Text(*kind);
         r.inherited = own.is_none();
         r.choices = vec![default, "Shown".into(), "Hidden".into()];
         if *kind == TextKind::Tag {
@@ -840,8 +893,8 @@ pub fn jumper_bar_section(doc: &Document, c: DeviceId, n: u32, bars: Option<usiz
         Row::ro("jumper_bar.bars", "Bars", bars.map_or_else(String::new, |b| b.to_string())),
     ];
     Section {
-        title: format!("ECAD \u{b7} JUMPER BAR {} {}", crate::devices::tags::tag_words(doc, c), get(&key)),
-        kind: "jumper_bar",
+        title: format!("ECAD \u{b7} LINK {} {}", crate::devices::tags::tag_words(doc, c), get(&key)),
+        kind: SectionKind::JumperBar,
         target: Some(Target::Devices(vec![c])),
         rows,
         note: None,

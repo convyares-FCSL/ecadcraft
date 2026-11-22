@@ -20,7 +20,7 @@ use ecad_widgets::prim::{self, Tone};
 use ecad_widgets::tokens::space;
 use eframe::egui::{self, Rect};
 
-use crate::App;
+use crate::shell::app::App;
 use crate::shell::wheel::Refusal;
 
 /// The strip's height.

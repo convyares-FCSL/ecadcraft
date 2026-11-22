@@ -12,7 +12,7 @@ mod hover_and_marks {
     use egui_kittest::Harness;
     use egui_kittest::kittest::Queryable;
     use serde_json::json;
-    use {ecad_app::App, ecad_app::commands::tools};
+    use {ecad_app::commands::tools, ecad_app::shell::app::App};
 
     fn harness() -> Harness<'static, App> {
         ecad_engine::install();
@@ -311,7 +311,7 @@ mod layout_refusals {
     use egui_kittest::Harness;
     use egui_kittest::kittest::Queryable;
     use serde_json::json;
-    use {ecad_app::App, ecad_app::commands::tools};
+    use {ecad_app::commands::tools, ecad_app::shell::app::App};
 
     const REFUSAL: &str = "Switch to the Model tab to draw ECAD objects.";
 

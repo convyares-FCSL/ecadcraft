@@ -5,7 +5,7 @@
 use eframe::egui::{self, Pos2, Stroke};
 
 /// How long the line shows, seconds.
-pub const SECONDS: f64 = 1.0;
+pub(crate) const SECONDS: f64 = 1.0;
 
 /// A leader line from the companion side to the object.
 #[derive(Debug, Clone, Copy, PartialEq)]

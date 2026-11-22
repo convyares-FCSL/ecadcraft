@@ -35,7 +35,7 @@ pub fn single(f: Fix) -> &'static str {
     }
 }
 
-impl crate::App {
+impl crate::shell::app::App {
     /// Button `k` of a 059 fix.
     pub(crate) fn cable_fix(&mut self, f: Fix, k: usize) {
         match (f, k) {

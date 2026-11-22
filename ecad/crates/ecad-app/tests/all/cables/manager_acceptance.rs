@@ -3,9 +3,9 @@
 //! cable writes nothing and offers a Go to that shows its page; the slash picker lists New cable,
 //! then not-drawn cables, then drawn ones. Headless on the demo project.
 
-use ecad_app::App;
 use ecad_app::cables::editor::Ask;
 use ecad_app::shell::ListsView;
+use ecad_app::shell::app::App;
 use ecad_app::shell::state::Workspace;
 use ecad_electrical::cables::CableField;
 use ecad_model::{CableId, Document};

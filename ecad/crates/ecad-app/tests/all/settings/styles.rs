@@ -13,7 +13,7 @@ use egui_kittest::kittest::{NodeT, Queryable};
 
 use crate::canvas::mouse_acceptance::{doc, harness_with, head, ok};
 
-type H = Harness<'static, ecad_app::App>;
+type H = Harness<'static, ecad_app::shell::app::App>;
 
 fn click(h: &mut H, label: &str) {
     h.get_by_label(label).click();

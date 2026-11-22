@@ -16,7 +16,7 @@ use eframe::egui::{self, Stroke, pos2, vec2};
 use serde_json::{Value, json};
 
 /// Element names (design 057 §9).
-pub const SECTION: &str = "ecad.project.detail.rating";
+pub(crate) const SECTION: &str = "ecad.project.detail.rating";
 
 /// What the section shows.
 #[derive(Debug, Clone, PartialEq)]
@@ -67,16 +67,19 @@ fn rows(r: &Rating) -> Vec<Row> {
     let temp_row = |v: &mut Vec<Row>, name: &'static str, label: &'static str| {
         if let Some(f) = factor(r, name) {
             let mut x = row(label, format!("\u{d7} {}", circuits::circuit::fmt_factor(f.factor)), f.input.clone());
-            x.tip = format!("{} \u{b7} {}", f.input, f.from);
+            x.tip = format!("{} \u{b7} {}", f.input, f.from.words());
             if cable {
                 x.edit = Some("ambient");
             } else {
                 // Tester F1: the panel temperature is set here, on the wire's location (else the
                 // project default).
                 x.edit = Some("panel");
-                x.loc = f.from.strip_prefix("location ").map(str::to_string).or_else(|| r.locations.first().cloned());
+                x.loc = match &f.from {
+                    circuits::circuit::FactorSource::Location(l) => Some(l.clone()),
+                    _ => r.locations.first().cloned(),
+                };
             }
-            if f.from.contains("computed") {
+            if f.from.is_computed() {
                 x.note = format!("{} \u{b7} computed", f.input);
             }
             v.push(x);
@@ -86,17 +89,19 @@ fn rows(r: &Rating) -> Vec<Row> {
         let (name, label, key) = if cable { ("grouping", "Grouping", "grouped") } else { ("bundling", "Bundled", "bundling") };
         if let Some(f) = factor(r, name) {
             let mut x = row(label, format!("\u{d7} {}", circuits::circuit::fmt_factor(f.factor)), f.input.clone());
-            if f.from.starts_with("not set") {
-                x.note = f.from.clone();
-                x.tone = Some(Tone::Warning);
-            } else if f.from == "set here" {
-                if f.input.trim().parse::<f64>().is_ok() {
-                    x.note = "set here".into();
+            match &f.from {
+                circuits::circuit::FactorSource::NotSet => {
+                    x.note = f.from.words();
+                    x.tone = Some(Tone::Warning);
                 }
-            } else {
-                x.note = format!("{} \u{b7} {}", f.input, f.from);
+                circuits::circuit::FactorSource::SetHere => {
+                    if f.is_plain_number() {
+                        x.note = f.from.words();
+                    }
+                }
+                from => x.note = format!("{} \u{b7} {}", f.input, from.words()),
             }
-            x.tip = f.from.clone();
+            x.tip = f.from.words();
             x.edit = Some(key);
             v.push(x);
         } else if cable {
@@ -108,7 +113,7 @@ fn rows(r: &Rating) -> Vec<Row> {
     match r.basis {
         Basis::Datasheet => {
             if let Some((a, at)) = r.rated {
-                v.push(row("Rated", format!("{} A", dataset::fmt_num(a)), format!("at {} \u{b0}C", dataset::fmt_num(at))));
+                v.push(row("Rated", dataset::amps_text(a), format!("at {}", dataset::celsius_text(at))));
                 temp_row(&mut v, if cable { "ambient" } else { "panel" }, if cable { "Ambient" } else { "Panel" });
                 group_row(&mut v);
             }
@@ -116,8 +121,7 @@ fn rows(r: &Rating) -> Vec<Row> {
         Basis::Table => {
             if let Some((a, size, method)) = r.table_value {
                 let name = r.table.as_ref().map(|(n, _)| n.clone()).unwrap_or_default();
-                let mut x =
-                    row("Table", format!("{} A", dataset::fmt_num(a)), format!("{} mm\u{b2} \u{b7} {method} \u{b7} {name}", dataset::fmt_num(size)));
+                let mut x = row("Table", dataset::amps_text(a), format!("{} \u{b7} {method} \u{b7} {name}", dataset::area_text(size)));
                 x.tip = r
                     .table
                     .as_ref()
@@ -132,7 +136,7 @@ fn rows(r: &Rating) -> Vec<Row> {
             }
         }
         Basis::Manual => {
-            let mut x = row("Carries", r.iz.map(|x| format!("{} A", dataset::fmt_num(x))).unwrap_or_else(|| "\u{2014}".into()), "set by hand");
+            let mut x = row("Carries", r.iz.map(dataset::amps_text).unwrap_or_else(|| "\u{2014}".into()), "set by hand");
             x.edit = Some("manual");
             v.push(x);
         }
@@ -180,8 +184,7 @@ fn after(r: &Rating) -> Vec<Row> {
     }
     let cable = matches!(r.subject, RatedSubject::Cable(_));
     if let Some(l) = r.load {
-        let mut x =
-            row("Load", format!("{} A", dataset::fmt_num(l.amps)), if l.from == circuits::load::LoadFrom::Typed { "typed" } else { "from Power" });
+        let mut x = row("Load", dataset::amps_text(l.amps), if l.from == circuits::load::LoadFrom::Typed { "typed" } else { "from Power" });
         x.edit = Some("load");
         v.push(x);
     } else if cable {
@@ -267,7 +270,7 @@ pub fn show(ui: &mut egui::Ui, p: &Panel) -> Vec<(&'static str, Value)> {
     out
 }
 
-impl crate::App {
+impl crate::shell::app::App {
     /// Act on a rating row's fix (design 057 §7).
     pub(crate) fn rating_fix(&mut self, f: ecad_electrical::checks::Fix) {
         use ecad_electrical::checks::Fix;
@@ -329,7 +332,7 @@ impl crate::App {
 /// Cable types with nothing focused: New. Returns whether it drew the detail (else the shared
 /// style detail is drawn).
 pub(crate) fn catalogue_ui(
-    t: &mut crate::App, ui: &mut egui::Ui, writable: bool, word: ecad_model::StyleCatalogue, focus: Option<ecad_model::StyleRef>,
+    t: &mut crate::shell::app::App, ui: &mut egui::Ui, writable: bool, word: ecad_model::StyleCatalogue, focus: Option<ecad_model::StyleRef>,
 ) -> bool {
     use ecad_electrical::styles::ratingtable;
     let s = ecad_widgets::SHELL;
@@ -395,7 +398,7 @@ pub(crate) fn catalogue_ui(
         egui::RichText::new(format!(
             "{} row{} \u{b7} source: {}",
             table.data.rows.len(),
-            if table.data.rows.len() == 1 { "" } else { "s" },
+            ecad_widgets::plural(table.data.rows.len()),
             if table.source.is_empty() { "not given" } else { table.source.as_str() }
         ))
         .size(ui_type::SMALL.size)

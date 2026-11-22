@@ -131,6 +131,24 @@ impl RowKey {
     }
 }
 
+/// `16 A`: a current with its unit, as the rating rows show it.
+#[must_use]
+pub fn amps_text(a: f64) -> String {
+    format!("{} A", fmt_num(a))
+}
+
+/// `2.5 mm²`: a conductor cross-section with its unit.
+#[must_use]
+pub fn area_text(mm2: f64) -> String {
+    format!("{} mm\u{b2}", fmt_num(mm2))
+}
+
+/// `40 °C`: a temperature with its unit.
+#[must_use]
+pub fn celsius_text(c: f64) -> String {
+    format!("{} \u{b0}C", fmt_num(c))
+}
+
 /// A number as a person writes it: no trailing zeros (`1.5`, `20`, `0.94`).
 pub fn fmt_num(x: f64) -> String {
     let s = format!("{x:.4}");

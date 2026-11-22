@@ -34,11 +34,11 @@ use serde::{Deserialize, Serialize};
 
 pub use selection::{Related, related};
 
-use crate::App;
+use crate::shell::app::App;
 
 /// The `ui.sheet` command (Text panel ▸ Commands): `ui.sheet paper|follow|dark`, or alone to
 /// switch between paper and dark.
-pub const SHEET_COMMAND: &str = "ui.sheet";
+pub(crate) const SHEET_COMMAND: &str = "ui.sheet";
 
 /// Which sheet the page is drawn on (UI rev 3, "Sheet colour and full dark"): a viewing
 /// preference of the person, kept with the shell state (eframe storage), never in the project.
@@ -262,7 +262,7 @@ pub fn register_sheet_faces() -> bool {
 }
 
 /// Whether `line` is the `ui.sheet` command.
-pub fn is_sheet_command(line: &str) -> bool {
+pub(crate) fn is_sheet_command(line: &str) -> bool {
     line.split_whitespace().next().is_some_and(|w| w.eq_ignore_ascii_case(SHEET_COMMAND))
 }
 

@@ -4,8 +4,8 @@
 //!
 //! **Every rating value here is synthetic** (made up for the test; none is from a standard).
 
-use ecad_app::App;
 use ecad_app::shell::ListsView;
+use ecad_app::shell::app::App;
 use ecad_app::shell::state::Workspace;
 use eframe::egui::{self, vec2};
 use egui_kittest::Harness;

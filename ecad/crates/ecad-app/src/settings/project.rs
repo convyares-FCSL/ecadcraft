@@ -14,20 +14,20 @@
 use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Rect, pos2, vec2};
 
-use crate::App;
 use crate::settings::sheets::{Out, Part, Popout};
 use crate::settings::{card, dashed_rect, later_row, row};
+use crate::shell::app::App;
 use crate::shell::bar;
 
 /// Pages and sheets' two tabs.
 pub const TABS: [&str; 2] = ["Page types", "Text styles"];
 /// Said where a project is needed.
-pub const NO_PROJECT: &str = "No project is open.";
+pub(crate) const NO_PROJECT: &str = "No project is open.";
 /// Save and Cancel (042's popout names).
 pub const OK: &str = "ecad.projectprops.ok";
 pub const CANCEL: &str = "ecad.projectprops.cancel";
 /// The title block preview (board 5.01).
-pub const TITLE_BLOCK: &str = "settings.project.title_block";
+pub(crate) const TITLE_BLOCK: &str = "settings.project.title_block";
 
 fn grey(text: &str) -> egui::RichText {
     egui::RichText::new(text).color(ecad_widgets::color(ecad_widgets::SHELL.text_2))

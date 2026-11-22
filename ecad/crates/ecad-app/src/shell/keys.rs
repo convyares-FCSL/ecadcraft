@@ -12,11 +12,11 @@
 use crate::commands::actions::{self, Key as ActionKey};
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers};
 
-use crate::App;
+use crate::shell::app::App;
 use crate::shell::{Slots, Workspace};
 
 /// The egui key and modifiers of an action key.
-pub fn shortcut(k: ActionKey) -> (Modifiers, Key) {
+pub(crate) fn shortcut(k: ActionKey) -> (Modifiers, Key) {
     match k {
         ActionKey::Delete => (Modifiers::NONE, Key::Delete),
         ActionKey::F2 => (Modifiers::NONE, Key::F2),
@@ -159,7 +159,7 @@ fn action_keys(t: &mut App, ctx: &egui::Context, over_main: bool, prompting: boo
 /// egui's `consume_shortcut` matches logically: it ignores an extra Shift, so Ctrl+Z would also
 /// take Ctrl+Shift+Z (redo), Ctrl+C CADCraft's Ctrl+Shift+C (copy with base point) and R a
 /// Shift+R. This check keeps those chords for what they are (review of #79).
-pub fn take_exact(ctx: &egui::Context, m: Modifiers, k: Key) -> bool {
+pub(crate) fn take_exact(ctx: &egui::Context, m: Modifiers, k: Key) -> bool {
     ctx.input_mut(|i| {
         let Some(at) = i.events.iter().position(|e| {
             matches!(e, egui::Event::Key { key, pressed: true, modifiers, .. }

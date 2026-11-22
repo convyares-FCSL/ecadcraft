@@ -1,6 +1,9 @@
 //! The read-only preview of another page (brief 016) and of a revision's page.
 
-use crate::*;
+use crate::pages::preview::Preview;
+use crate::shell::app::*;
+use ecad_model::PageId;
+use eframe::egui::{self};
 
 impl App {
     /// Preview `page` of the revision opened read-only (design 019 §7.3).

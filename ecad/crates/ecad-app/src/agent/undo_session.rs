@@ -19,7 +19,7 @@ use ecad_engine::agent::gate::{self, OwnedSteps};
 use eframe::egui;
 use serde_json::json;
 
-use crate::App;
+use crate::shell::app::App;
 
 /// The confirmation's element names.
 pub const CONFIRM: &str = "agent.undo.confirm";

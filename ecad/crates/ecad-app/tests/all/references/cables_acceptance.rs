@@ -22,7 +22,7 @@ use eframe::egui::{self, Key, Pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::json;
-use {ecad_app::App, ecad_app::commands::tools};
+use {ecad_app::commands::tools, ecad_app::shell::app::App};
 
 /// A new-project harness whose views are remembered in `settings`.
 fn harness(settings: &Tmp, deltas: Option<Deltas>) -> Harness<'static, App> {

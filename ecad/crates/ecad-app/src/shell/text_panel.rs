@@ -9,11 +9,11 @@
 use ecad_widgets::tokens::{Icon, size, space};
 use eframe::egui::{self, Rect, pos2, vec2};
 
-use crate::App;
 use crate::developer;
+use crate::shell::app::App;
 
 /// Accessible labels.
-pub const COMMANDS_TAB: &str = "Commands";
+pub(crate) const COMMANDS_TAB: &str = "Commands";
 pub const CLOSE: &str = "Close the Text panel";
 
 /// Draw the Text panel in `rect`.
@@ -70,7 +70,7 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
 }
 
 /// Whether `line` is the `ui.cadchrome` command.
-pub fn is_cad_chrome(line: &str) -> bool {
+pub(crate) fn is_cad_chrome(line: &str) -> bool {
     line.split_whitespace().next().is_some_and(|w| w.eq_ignore_ascii_case(crate::shell::CAD_CHROME_COMMAND))
 }
 

@@ -387,8 +387,50 @@ pub fn rep_context(doc: &Document, r: &Representation, cache: &mut BoxCache) -> 
     rep_context_in(doc, Aspect::Location, r, cache)
 }
 
+/// Where a stored function or location's code is also the context's: the hint beside its box.
+/// A later variant wins over an earlier one when several symbols give different answers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Hint {
+    /// No symbol's context gives the stored code: it is set on the device.
+    SetHere,
+    FromProject,
+    FromPage,
+    FromBox,
+}
+
+impl Hint {
+    /// The words beside the value.
+    pub fn words(self) -> &'static str {
+        match self {
+            Hint::SetHere => "set here",
+            Hint::FromProject => "from project",
+            Hint::FromPage => "from page",
+            Hint::FromBox => "from box",
+        }
+    }
+}
+
+/// The [`Hint`] of the stored value `stored` of aspect `a`, over the device's symbols `reps`: the
+/// strongest source among the symbols whose context gives the same entry (a box first).
+pub fn stored_hint(doc: &Document, a: Aspect, reps: &[&Representation], stored: &Located, cache: &mut BoxCache) -> Hint {
+    let mut hint = Hint::SetHere;
+    for r in reps {
+        let x = rep_context_in(doc, a, r, cache);
+        if x.key.is_some() && x.key == stored.key {
+            let h = match x.source {
+                Source::Box { .. } => Hint::FromBox,
+                Source::Page(_) => Hint::FromPage,
+                Source::Project => Hint::FromProject,
+                _ => Hint::SetHere,
+            };
+            hint = hint.max(h);
+        }
+    }
+    hint
+}
+
 /// The context of aspect `a` of representation `r`.
-pub fn rep_context_in(doc: &Document, a: Aspect, r: &Representation, cache: &mut BoxCache) -> Located {
+pub(crate) fn rep_context_in(doc: &Document, a: Aspect, r: &Representation, cache: &mut BoxCache) -> Located {
     let at = anchor(doc, r);
     let boxes = cache.on(doc, r.page);
     context_in(doc, a, r.page, at, boxes)

@@ -25,7 +25,7 @@ use eframe::egui::{self, Key, Pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::{Value, json};
-use {ecad_app::App, ecad_app::commands::tools};
+use {ecad_app::commands::tools, ecad_app::shell::app::App};
 
 fn build(t: App, deltas: Option<Deltas>) -> Harness<'static, App> {
     common::harness(Opts::new().app(t).deltas(deltas))

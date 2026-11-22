@@ -24,7 +24,7 @@ pub use builder::{Builder, Tool};
 pub use draft::{Draft, Drafts, Source};
 pub use review::Review;
 
-use crate::App;
+use crate::shell::app::App;
 
 /// The Library workspace's state.
 #[derive(Debug, Default)]
@@ -61,10 +61,6 @@ impl Library {
             s
         })
     }
-}
-
-fn hex_of<T: From<u128>>(h: &str) -> Option<T> {
-    u128::from_str_radix(h, 16).ok().map(T::from)
 }
 
 impl App {
@@ -124,7 +120,7 @@ impl App {
             Some((Content::of(d), d.origin.as_ref().map_or(0, |o| o.library_seq), symbols::project::is_project_symbol(d), newer))
         })?;
         let (content, seq, project, newer) = found.ok_or("No such symbol.")?;
-        let source = Source::Edit { definition: def.hex(), version: seq, builtin: !project, rep: rep.map(|r| r.hex()) };
+        let source = Source::Edit { definition: def, version: seq, builtin: !project, rep };
         let mut draft = Draft::of_content(&content, source);
         if !project {
             // A built-in edited: a project copy, which needs a key of its own (design 048 §6.3).
@@ -220,7 +216,10 @@ impl App {
             let (graphics, points, tag, at) = found.ok_or("That device has no drawing to make a symbol of.")?;
             let content = Content { graphics, points, ..Content::default() };
             let mut draft = Draft::of_content(&content, Source::Promote { component: c.hex(), tag: tag.clone(), at });
-            draft.shape.offers = draft::offers_for(&draft.shape.graphics).into_iter().filter(|o| matches!(o, draft::Offer::Slot { .. })).collect();
+            draft.shape.offers = ecad_electrical::symbols::offers::offers_for(&draft.shape.graphics)
+                .into_iter()
+                .filter(|o| matches!(o, ecad_electrical::symbols::offers::Offer::Slot { .. }))
+                .collect();
             draft.mark_start();
             self.library.back_to_page = true;
             self.open_builder(draft);
@@ -305,7 +304,7 @@ impl App {
                 self.cad.run("symbolnew", params)
             }
             Source::Edit { definition, builtin, .. } => {
-                params["definition"] = json!(definition);
+                params["definition"] = json!(definition.hex());
                 if as_new {
                     params["update"] = json!("new");
                     self.cad.run("symboledit", params)
@@ -354,7 +353,7 @@ impl App {
     fn saved(&mut self, r: Result<Value, String>) {
         match r {
             Ok(v) => {
-                let lineage = v.get("lineage").and_then(Value::as_str).and_then(hex_of::<DefinitionId>);
+                let lineage = ecad_engine::commands::reply::id::<DefinitionId>(&v, "lineage");
                 let name = self.library.builder.as_ref().map(|b| b.draft.shown_name().to_string()).unwrap_or_default();
                 self.close_builder(true);
                 self.library.browser.selected = lineage.map(browser::Tile::Project);

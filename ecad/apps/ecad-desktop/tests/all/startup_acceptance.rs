@@ -3,7 +3,7 @@
 
 use std::time::{Instant, SystemTime};
 
-use ecad_app::App;
+use ecad_app::shell::app::App;
 use ecad_desktop::startup::{StartupTiming, Step};
 
 fn quiet() -> StartupTiming {

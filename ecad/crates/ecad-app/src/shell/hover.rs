@@ -1,6 +1,8 @@
 //! The hover tooltip naming the ECAD object under the pointer (design 008 §4.3).
 
-use crate::*;
+use crate::shell;
+use crate::shell::app::*;
+use eframe::egui::{self, RichText};
 
 impl App {
     /// The terminal within the capture aperture (APERTURE pixels) of screen point `at` on the

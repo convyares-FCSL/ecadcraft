@@ -32,7 +32,7 @@ use eframe::egui::{self, RichText};
 use {ecad_widgets::Icon, ecad_widgets::SHELL, ecad_widgets::color};
 
 /// The ECAD Dev Debugger button's hover text.
-pub const HOVER: &str = "Read-only developer debugger: selection → ECAD IDs → model → transactions → saved records";
+pub(crate) const HOVER: &str = "Read-only developer debugger: selection → ECAD IDs → model → transactions → saved records";
 
 /// Rows per page in long lists.
 pub const PAGE: usize = 100;
@@ -194,7 +194,7 @@ impl Default for Debugger {
 }
 
 fn now() -> String {
-    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    let secs = (crate::shell::host::host().now_ms)() / 1000;
     ecad_file::utc(secs)
 }
 
@@ -852,17 +852,13 @@ impl Debugger {
         });
         let running = self.jobs.running();
         if running > 0 {
-            prim::note(ui, &format!("Running {running} check{}…", if running == 1 { "" } else { "s" }), Tone::Neutral);
+            prim::note(ui, &format!("Running {running} check{}…", ecad_widgets::plural(running)), Tone::Neutral);
             // The result arrives on the background pool's channel: look again shortly.
             ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
         }
         let dropped = self.jobs.dropped();
         if dropped > 0 {
-            prim::body(
-                ui,
-                &format!("{dropped} result{} dropped: the project changed while the check ran.", if dropped == 1 { "" } else { "s" }),
-                true,
-            );
+            prim::body(ui, &format!("{dropped} result{} dropped: the project changed while the check ran.", ecad_widgets::plural(dropped)), true);
         }
         for r in self.checks.iter().rev() {
             let head = format!("{} {} at seq {}, {}", if r.check.ok { "PASS" } else { "FAIL" }, r.check.what, r.check.at_seq, r.time);

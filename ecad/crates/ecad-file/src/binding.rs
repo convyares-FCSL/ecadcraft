@@ -79,6 +79,8 @@ pub enum BindingError {
 pub struct FileStatus {
     /// The bound file.
     pub path: Option<String>,
+    /// The bound file's name without its folder, as the window title shows it.
+    pub display_name: Option<String>,
     /// Why the project cannot be saved to that file (damaged, or another session is editing it).
     pub read_only: Option<String>,
     /// The last Save As replaced its target, but durability was not confirmed; Save confirms it.
@@ -285,7 +287,12 @@ impl Binding {
     /// Where the file stands.
     pub fn status(&self) -> FileStatus {
         let Some(d) = &self.disk else { return FileStatus::default() };
-        FileStatus { path: Some(d.path().display().to_string()), read_only: d.read_only().map(ToString::to_string), unconfirmed: d.unconfirmed() }
+        FileStatus {
+            path: Some(d.path().display().to_string()),
+            display_name: d.path().file_name().map(|f| f.to_string_lossy().into_owned()),
+            read_only: d.read_only().map(ToString::to_string),
+            unconfirmed: d.unconfirmed(),
+        }
     }
 
     /// Save to the bound file.

@@ -5,9 +5,9 @@
 
 use crate::common::{self, Opts};
 use crate::pages::project_panel::{doc, rev3_app as new_app};
-use ecad_app::App;
 use ecad_app::commands::actions::ToolGroup;
 use ecad_app::inspector as right;
+use ecad_app::shell::app::App;
 use ecad_app::shell::state::{LeftTab, RightTab, ShellState, Workspace};
 use ecad_app::shell::{layout, status_bar, tool_strip, top_bar};
 use eframe::egui::{Rect, pos2, vec2};

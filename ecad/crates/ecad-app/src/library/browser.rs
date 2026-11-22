@@ -19,26 +19,26 @@ use eframe::egui::{self, Align2, Color32, Pos2, Rect, Sense, Stroke, pos2, vec2}
 use crate::shell::bar;
 
 /// Element names (design 048 §8.1).
-pub const BROWSER: &str = "library.browser";
+pub(crate) const BROWSER: &str = "library.browser";
 pub const NEW: &str = "library.browser.new";
 pub const SEARCH: &str = "library.browser.search";
 pub const PLACE: &str = "library.browser.place";
-pub const EDIT: &str = "library.browser.edit";
-pub const RESUME: &str = "library.browser.resume";
-pub const FORGET: &str = "library.browser.forget";
+pub(crate) const EDIT: &str = "library.browser.edit";
+pub(crate) const RESUME: &str = "library.browser.resume";
+pub(crate) const FORGET: &str = "library.browser.forget";
 pub const PLACED_NEXT: &str = "library.browser.placed-next";
 /// The Library's tabs: `library.tab.<word>`.
 pub const TAB: &str = "library.tab";
 /// A tile is `library.browser.tile.<lineage hex>` (a project symbol) or `.<key>` (a built-in).
 pub const TILE: &str = "library.browser.tile";
 /// The tree's width inside the main view (board 3.01).
-pub const TREE_W: f32 = 236.0;
+pub(crate) const TREE_W: f32 = 236.0;
 /// A tile's size (board 3.01).
 pub const TILE_W: f32 = 164.0;
 pub const TILE_H: f32 = 150.0;
 /// The tab row's and the filter row's heights.
-pub const TABS_H: f32 = 44.0;
-pub const FILTERS_H: f32 = 40.0;
+pub(crate) const TABS_H: f32 = 44.0;
+pub(crate) const FILTERS_H: f32 = 40.0;
 
 /// The Library's tabs (rev 3). Only Symbols has data today.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -295,7 +295,7 @@ fn c32(c: ecad_widgets::tokens::Color) -> Color32 {
 }
 
 /// Draw definition `d` fitted in `rect` in `ink`; `marks`: its points and slots too (hover).
-pub fn paint_symbol(p: &egui::Painter, rect: Rect, d: &Definition, ink: Color32, marks: Option<(Color32, Color32)>) {
+pub(crate) fn paint_symbol(p: &egui::Painter, rect: Rect, d: &Definition, ink: Color32, marks: Option<(Color32, Color32)>) {
     let (lo, hi) = symbols::graphics::bounds(d);
     let (w, h) = ((hi.x - lo.x).max(5.0), (hi.y - lo.y).max(5.0));
     let s = ((rect.width() as f64) / w).min((rect.height() as f64) / h).min(8.0);
@@ -684,7 +684,9 @@ fn tile(ui: &mut egui::Ui, b: &mut Browser, e: &Entry, sheet: &ecad_drawing_styl
                 ui.label(format!("{} text {}: {}", slots.len(), if slots.len() == 1 { "slot" } else { "slots" }, slots.join(", ")));
             }
             if let Some(px) = e.prefix {
-                ui.label(egui::RichText::new(format!("Tag letter {}", px.trim_start_matches('-'))).color(c32(ecad_widgets::SHELL.text_2)));
+                ui.label(
+                    egui::RichText::new(format!("Tag letter {}", ecad_electrical::input::tag_prefix(px))).color(c32(ecad_widgets::SHELL.text_2)),
+                );
             }
         });
     }
@@ -747,7 +749,7 @@ pub fn details(ui: &mut egui::Ui, b: &Browser, list: &Listing, writable: bool, p
         };
         kv(ui, "Category", &category);
         if let Some(px) = e.prefix {
-            kv(ui, "Tag letter", px.trim_start_matches('-'));
+            kv(ui, "Tag letter", &ecad_electrical::input::tag_prefix(px));
         }
         if !e.key.is_empty() {
             kv(ui, "Key", &e.key);

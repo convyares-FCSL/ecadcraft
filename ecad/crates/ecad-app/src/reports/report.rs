@@ -9,7 +9,7 @@
 //! whole table (`Changed::All`): the models do not say which rows a change touched.
 
 use ecad_widgets::prim::Tone;
-use ecad_widgets::table::{Cell, Column, ColumnId};
+use ecad_widgets::table::{Cell, ColumnId};
 
 /// What a column shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,16 +68,15 @@ impl ReportRows {
 }
 
 /// The table source: the columns, each with what it shows.
-pub trait ReportColumns {
+pub(crate) trait ReportColumns {
     fn rows(&self) -> &ReportRows;
-    fn cols(&self) -> &[Column];
     fn from(&self, col: ColumnId) -> From;
     /// A [`From::Derived`] column's cell.
     fn derived(&self, k: usize, col: ColumnId) -> Cell;
 }
 
 /// A report table's cell for column `col`.
-pub fn cell<S: ReportColumns + ?Sized>(s: &S, k: usize, col: ColumnId) -> Cell {
+pub(crate) fn cell<S: ReportColumns + ?Sized>(s: &S, k: usize, col: ColumnId) -> Cell {
     match s.from(col) {
         From::Header(h) => s.rows().cell(k, h),
         From::Placeholder => Cell::read(DASH),

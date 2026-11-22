@@ -2,8 +2,8 @@
 //! Details pane and Remove (design 059 §5), headless on the demo project. With `ECAD_TESTER_SHOTS`
 //! set, writes `059-list.png`, `059-undrawn-details.png` and `059-remove-refused.png`.
 
-use ecad_app::App;
 use ecad_app::shell::ListsView;
+use ecad_app::shell::app::App;
 use ecad_app::shell::state::Workspace;
 use eframe::egui::{self, Key, vec2};
 use egui_kittest::Harness;

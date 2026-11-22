@@ -1,6 +1,9 @@
 //! The page name box (New Page and Rename Page).
 
-use crate::*;
+use crate::shell::app::*;
+use ecad_model::PageId;
+use eframe::egui::{self};
+use serde_json::json;
 
 impl App {
     pub fn open_new_page_box(&mut self) {

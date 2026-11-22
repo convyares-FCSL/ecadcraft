@@ -321,6 +321,13 @@ pub struct OpenCore {
     pub label: String,
 }
 
+impl OpenCore {
+    /// The check's message: `Core 3 is open at an end: connect it, or tick Not used.`
+    pub fn message(&self) -> String {
+        format!("Core {} is open at an end: connect it, or tick Not used.", self.label)
+    }
+}
+
 /// The open cores of cable `k` (owner rule): its stored in-use cores on no line, in core order.
 /// Read as stored (design 072 §4.5); bounded by the cable's member bound.
 pub fn open_cores(doc: &Document, k: CableId) -> Vec<OpenCore> {
@@ -331,6 +338,16 @@ pub fn open_cores(doc: &Document, k: CableId) -> Vec<OpenCore> {
         .filter(|m| m.position == ecad_model::CorePosition::Unplaced && !m.is_spare())
         .filter_map(|m| m.label_str().map(|l| OpenCore { label: l.to_string() }))
         .collect()
+}
+
+/// A cable's core size: its cable type's cross-section, else its type notation's (`4G1.5` → 1.5).
+pub fn size(doc: &Document, k: CableId) -> Option<String> {
+    let from_type = of(doc, k)
+        .and_then(|id| crate::styles::field_of(doc, ecad_model::StyleCatalogue::Cable, &id, "size", None))
+        .and_then(|r| crate::devices::ratings::parse::cross_section(&r.text()));
+    from_type
+        .or_else(|| doc.cables.get(&k).and_then(|x| x.properties.get("type")).and_then(|t| crate::terminal_strips::cores::notation_size(t)))
+        .map(crate::devices::ratings::dataset::fmt_num)
 }
 
 /// The cables that name cable type `id`, through the style-choice index.

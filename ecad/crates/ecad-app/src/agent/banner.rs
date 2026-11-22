@@ -3,9 +3,9 @@
 //! ([`show_line`]).
 //!
 //! # Semantics
-//! - [`AgentBanner`] is the one value the app keeps up to date ([`crate::App::agent_banner`]);
+//! - [`AgentBanner`] is the one value the app keeps up to date ([`crate::shell::app::App::agent_banner`]);
 //!   the shell places it in its 32 px banner slot (spec §2) and styles it ([`show`]), keeping these
-//!   fields, the controls ([`BannerAction`], through [`crate::App::agent_action`]) and the
+//!   fields, the controls ([`BannerAction`], through [`crate::shell::app::App::agent_action`]) and the
 //!   element names ([`ELEMENT`] and the `agent.banner.*` names).
 //! - **Update map** (design §7.5): the banner changes only on `ecad.hello`, an accepted or refused
 //!   agent call, the write flash running out, hold start and end, Pause/Resume, Disconnect,
@@ -33,9 +33,9 @@ pub const PAUSE: &str = "agent.banner.pause";
 pub const DISCONNECT: &str = "agent.banner.disconnect";
 pub const DISMISS: &str = "agent.banner.dismiss";
 /// The Undo session button's tooltip when nothing is left to undo.
-pub const NOTHING_TO_UNDO: &str = "Nothing of this session is left to undo";
+pub(crate) const NOTHING_TO_UNDO: &str = "Nothing of this session is left to undo";
 /// The Undo session button's reason while the person is in the middle of a command.
-pub const FINISH_FIRST: &str = "Finish the command first";
+pub(crate) const FINISH_FIRST: &str = "Finish the command first";
 /// The banner's ground: its state's colour at this opacity, %, over the panel.
 const GROUND_PERCENT: u8 = 8;
 
@@ -191,8 +191,7 @@ fn held_what(said: &str) -> String {
 
 /// `HH:MM:SS` local time of `ms` since the epoch.
 fn clock(ms: u64) -> String {
-    use chrono::{Local, TimeZone};
-    i64::try_from(ms).ok().and_then(|ms| Local.timestamp_millis_opt(ms).single()).map_or_else(String::new, |t| t.format("%H:%M:%S").to_string())
+    (crate::shell::host::host().local_time)(ms, true)
 }
 
 fn named(r: &egui::Response, role: egui::Role, name: &str) {
@@ -202,7 +201,7 @@ fn named(r: &egui::Response, role: egui::Role, name: &str) {
 /// The colour of a shown state (spec §2, design 035 §7.2): `agent` while it works, `warning`
 /// while a write waits or writes are paused, `text_2` when reading only or finished, `error` when
 /// access stopped.
-pub fn state_color(state: BannerState) -> Color {
+pub(crate) fn state_color(state: BannerState) -> Color {
     let s = ecad_widgets::SHELL;
     match state {
         BannerState::Connected | BannerState::Writing => s.agent,
@@ -223,13 +222,13 @@ pub fn state_tone(state: BannerState) -> Tone {
 }
 
 /// `connected since 14:02` from the wall clock of the hello (ms since the epoch).
-pub fn since_text(since_ms: u64) -> String {
+pub(crate) fn since_text(since_ms: u64) -> String {
     let t = clock(since_ms);
     format!("connected since {}", t.get(..5).unwrap_or(&t))
 }
 
 /// The Undo session button's text: `Undo session (12)`.
-pub fn undo_text(steps: usize) -> String {
+pub(crate) fn undo_text(steps: usize) -> String {
     format!("Undo session ({steps})")
 }
 
@@ -243,7 +242,7 @@ pub fn hidden(ctx: &egui::Context, session: &str) -> bool {
 }
 
 /// Hide the banner of `session`, or show it again.
-pub fn toggle_hidden(ctx: &egui::Context, session: &str) {
+pub(crate) fn toggle_hidden(ctx: &egui::Context, session: &str) {
     let now = hidden(ctx, session);
     ctx.data_mut(|d| {
         if now {
@@ -351,7 +350,7 @@ pub fn show(ui: &mut egui::Ui, banner: &AgentBanner, busy: bool, since_ms: Optio
 /// fallback; the shell draws [`show`]): the controls first, so they never move when the text changes, then
 /// the agent, its state, the last change (a link to History) and the rest. Returns the control
 /// clicked.
-pub fn show_line(ui: &mut egui::Ui, banner: &AgentBanner, busy: bool) -> Option<BannerAction> {
+pub(crate) fn show_line(ui: &mut egui::Ui, banner: &AgentBanner, busy: bool) -> Option<BannerAction> {
     let now = Instant::now();
     let state = banner.shown_state(now);
     let mut out = None;

@@ -292,3 +292,30 @@ fn a_justified_text_saves_and_reopens_aligned() {
     });
     assert!(centred, "drawn centred after reopening");
 }
+
+#[test]
+fn save_project_as_refuses_another_existing_file_unless_replace_and_saves_the_own_file() {
+    use ecad_engine::file::{SaveAsError, SaveAsRefused};
+    let d = TempDir::new("saveprojectas");
+    let (mut h, ..) = small_project(32);
+    h.cfg(|p| p.persistence = Persistence::File);
+    let other = d.0.join("other.ecad");
+    std::fs::write(&other, b"not the project").unwrap();
+
+    // Another file is there: refused, and it is left as it was.
+    let e = ecad_engine::save_project_as(&mut h.s, &other, None, false).unwrap_err();
+    assert_eq!(e, SaveAsError::Refused(SaveAsRefused::Exists(other.clone())));
+    assert_eq!(std::fs::read(&other).unwrap(), b"not the project");
+
+    // `replace` overwrites it, and the project is now bound to it.
+    ecad_engine::save_project_as(&mut h.s, &other, None, true).unwrap();
+    assert_ne!(std::fs::read(&other).unwrap(), b"not the project");
+
+    // The project's own file saves again without `replace`.
+    ecad_engine::save_project_as(&mut h.s, &other, Some(&other), false).unwrap();
+
+    // A path with nothing there saves too.
+    let fresh = d.0.join("fresh.ecad");
+    ecad_engine::save_project_as(&mut h.s, &fresh, Some(&other), false).unwrap();
+    assert!(fresh.exists());
+}

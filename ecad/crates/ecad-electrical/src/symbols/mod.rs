@@ -26,6 +26,7 @@ pub mod catalogue;
 pub mod cells;
 pub mod commands;
 pub mod graphics;
+pub mod offers;
 pub mod project;
 pub mod proposals;
 pub mod reps;

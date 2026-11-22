@@ -15,7 +15,7 @@ use {ecad_app::checks::panel, ecad_app::pages::project_panel};
 use crate::canvas::mouse_acceptance::{Deltas, doc, harness_with, ok, screen, shot};
 use crate::common::pointer_to;
 
-type H = Harness<'static, ecad_app::App>;
+type H = Harness<'static, ecad_app::shell::app::App>;
 
 fn out() -> Option<PathBuf> {
     let dir = std::env::var_os("ECAD_TESTER_SHOTS").map(PathBuf::from)?;
@@ -31,18 +31,58 @@ fn save(h: &H, deltas: &Deltas, name: &str) {
     }
 }
 
-/// The demo project (`cargo xtask demo`), written to `dir` through the MCP `execute` tool.
+/// The demo project (`cargo xtask demo`), written to `dir`: the checked-in command list run through the
+/// app's own command path, recorded as the agent `ecad-demo` like the MCP build does.
 pub(crate) fn demo_file(dir: &std::path::Path) -> String {
+    use serde_json::{Map, Value, json};
+    const COMMANDS: &str = include_str!("../../../../../examples/demo/commands.jsonl");
     let path = dir.join("demo.ecad").to_string_lossy().into_owned();
     let _ = std::fs::remove_file(&path);
-    let mut mcp = ecad_mcp::EcadMcp::create(&path, ecad_mcp::Options { write: true, agent: Some(ecad_mcp::demo::AUTHOR.into()) }).unwrap();
-    ecad_mcp::demo::run(&mut mcp, ecad_mcp::demo::COMMANDS).unwrap();
-    let saved = mcp
-        .handle(serde_json::json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-            "params": {"name": "save", "arguments": {}}}))
-        .unwrap();
-    assert_ne!(saved["result"]["isError"], serde_json::json!(true), "{saved}");
-    drop(mcp);
+    ecad_engine::install();
+    ecad_engine::cables::views::isolate_for_tests();
+    let mut t = ecad_app::shell::app::App::new(None).unwrap();
+    let p = t.project().unwrap().clone();
+    p.configure(&mut t.cad.session, |p| p.author = ecad_model::Author::Agent("ecad-demo".into())).unwrap();
+    let page1 = p.read(&mut t.cad.session, |p, _| p.ledger.document().page_order.first().map(|x| x.hex())).unwrap().unwrap();
+    let mut vars: Map<String, Value> = Map::new();
+    vars.insert("page1".into(), Value::String(page1));
+    fn lookup(s: &str, vars: &Map<String, Value>) -> Value {
+        let mut parts = s.trim_start_matches('$').split('.');
+        let name = parts.next().unwrap_or_default();
+        let mut v = vars.get(name).unwrap_or_else(|| panic!("unknown {s}"));
+        if name != "page1" {
+            for part in parts {
+                v = match part.parse::<usize>() {
+                    Ok(i) => v.get(i),
+                    Err(_) => v.get(part),
+                }
+                .unwrap_or_else(|| panic!("{s}: no `{part}`"));
+            }
+        }
+        v.clone()
+    }
+    fn substitute(v: Value, vars: &Map<String, Value>) -> Value {
+        match v {
+            Value::String(s) if s.starts_with('$') => lookup(&s, vars),
+            Value::Array(a) => Value::Array(a.into_iter().map(|x| substitute(x, vars)).collect()),
+            Value::Object(o) => Value::Object(o.into_iter().map(|(k, x)| (k, substitute(x, vars))).collect()),
+            other => other,
+        }
+    }
+    for (n, line) in COMMANDS.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with("//") {
+            continue;
+        }
+        let step: Value = serde_json::from_str(line).unwrap();
+        let command = step["command"].as_str().unwrap();
+        let params = substitute(step.get("params").cloned().unwrap_or(json!({})), &vars);
+        let reply = t.cad.run(command, params).unwrap_or_else(|e| panic!("line {}: {command}: {e}", n + 1));
+        if let Some(name) = step.get("as").and_then(Value::as_str) {
+            vars.insert(name.to_string(), reply);
+        }
+    }
+    t.save_as(&path).unwrap();
     path
 }
 

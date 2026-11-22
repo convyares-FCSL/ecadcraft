@@ -391,10 +391,18 @@ impl ReportModels {
     /// One cable's core list (design 028 §6.3): core, wire number, from, to, state; spare cores
     /// show `spare` in From.
     pub fn core_table(&self, k: CableId) -> Table {
+        self.core_rows(k).0
+    }
+
+    /// [`ReportModels::core_table`] with each row's [`CoreState`](crate::terminal_strips::cores::CoreState),
+    /// in row order.
+    pub fn core_rows(&self, k: CableId) -> (Table, Vec<crate::terminal_strips::cores::CoreState>) {
+        use crate::terminal_strips::cores::CoreState;
         let mut t = Table { headers: vec!["Core", "Wire number", "From", "To", "State"], rows: Vec::new() };
-        let Some(r) = self.cables.get(&k) else { return t };
+        let mut states = Vec::new();
+        let Some(r) = self.cables.get(&k) else { return (t, states) };
         let style = self.style;
-        let member = |i: usize, label: Option<String>, state: &str| {
+        let member = |i: usize, label: Option<String>, state: CoreState| {
             let w = r.members.get(i).and_then(|w| self.wires.get(w));
             let (from, to) = self.chain_ends(r, i, style);
             vec![
@@ -402,27 +410,41 @@ impl ReportModels {
                 Cell::ok(w.and_then(|w| w.wire_number.clone()).unwrap_or_default()),
                 Cell::ok(from.unwrap_or_default()),
                 Cell::ok(to.unwrap_or_default()),
-                Cell::ok(state),
+                Cell::ok(state.word()),
             ]
         };
         match &r.count.offer {
             Some(offer) => {
                 for label in offer {
                     match r.count.matched.iter().position(|m| m.as_deref() == Some(label.as_str())) {
-                        Some(i) => t.rows.push(member(i, Some(label.clone()), "used")),
-                        None => t.rows.push(vec![Cell::ok(label.clone()), Cell::default(), Cell::ok("spare"), Cell::default(), Cell::ok("spare")]),
+                        Some(i) => {
+                            t.rows.push(member(i, Some(label.clone()), CoreState::Used));
+                            states.push(CoreState::Used);
+                        }
+                        None => {
+                            t.rows.push(vec![
+                                Cell::ok(label.clone()),
+                                Cell::default(),
+                                Cell::ok(CoreState::Spare.word()),
+                                Cell::default(),
+                                Cell::ok(CoreState::Spare.word()),
+                            ]);
+                            states.push(CoreState::Spare);
+                        }
                     }
                 }
                 for i in &r.count.over {
-                    t.rows.push(member(*i, r.member_cores.get(*i).cloned().flatten(), "over"));
+                    t.rows.push(member(*i, r.member_cores.get(*i).cloned().flatten(), CoreState::Over));
+                    states.push(CoreState::Over);
                 }
             }
             None => {
                 for i in 0..r.members.len() {
-                    t.rows.push(member(i, r.member_cores.get(i).cloned().flatten(), "used"));
+                    t.rows.push(member(i, r.member_cores.get(i).cloned().flatten(), CoreState::Used));
+                    states.push(CoreState::Used);
                 }
             }
         }
-        t
+        (t, states)
     }
 }

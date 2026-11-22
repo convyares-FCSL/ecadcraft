@@ -337,6 +337,16 @@ pub struct Row {
     /// A tag row's state (S6, #3): what its tag is, `None` without a tag or on other rows. Not a
     /// setprop key: the tag is one value, set through the `tag` key.
     pub tag_state: Option<ecad_model::naming::tag::TagState>,
+    /// What the row is: a plain value, or the visibility of one kind of text.
+    pub kind: RowKind,
+}
+
+/// What a Properties row is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RowKind {
+    Value,
+    /// The visibility of one kind of text (the Texts group), shown on the Layout tab.
+    Text(crate::styles::text_style::TextKind),
 }
 
 impl Row {
@@ -352,6 +362,7 @@ impl Row {
             choices: Vec::new(),
             proposal: None,
             tag_state: None,
+            kind: RowKind::Value,
         }
     }
     /// An editable row.

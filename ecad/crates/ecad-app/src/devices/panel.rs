@@ -26,11 +26,11 @@ pub const FILTER: &str = "Filter Devices";
 /// The merge offer's button.
 pub const MERGE: &str = "Make it the same device";
 /// Brief 026: the clash box's first button, and the header's Renumber.
-pub const SWAP: &str = "Swap";
-pub const RENUMBER: &str = "Renumber…";
+pub(crate) const SWAP: &str = "Swap";
+pub(crate) const RENUMBER: &str = "Renumber…";
 
 /// The accessible label of a device row: `Device -K01: Contactor / relay coil`.
-pub fn device_label(e: &DeviceEntry) -> String {
+pub(crate) fn device_label(e: &DeviceEntry) -> String {
     format!("Device {}: {}", e.shown().as_deref().unwrap_or("(no tag)"), e.description)
 }
 
@@ -42,14 +42,14 @@ pub const FIND: &str = "Find a device or tag";
 /// Under "Not on a page yet": placing a listed device has no command yet, so the rows offer no
 /// drag (the board's "Drag one onto the sheet" waits for that command).
 pub const PLACE_LATER: &str = "Placing from this list is not available yet.";
-pub const FOOTER: &str = "Click goes to it. Edit many at once in Project.";
+pub(crate) const FOOTER: &str = "Click goes to it. Edit many at once in Project.";
 pub const PROJECT: &str = "Project →";
 const NO_LOCATION: &str = "No location";
 /// A device's function is read from the device only (no page or box gives one yet), so the group
 /// says where the value is missing.
 const NO_FUNCTION: &str = "Function not set on the device";
 /// A list row's height, and how many devices a group shows before "n more".
-pub const DEVICE_ROW_H: f32 = 27.0;
+pub(crate) const DEVICE_ROW_H: f32 = 27.0;
 const GROUP_CAP: usize = 8;
 
 /// How the devices are grouped (board 1.03).

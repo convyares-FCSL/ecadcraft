@@ -5,8 +5,8 @@
 //! every control; the Book's Renumber pages and a folder's Start number are named. Written from the
 //! brief and design before the implementation; only the element names and words of the design.
 
-use ecad_app::App;
 use ecad_app::settings::Section;
+use ecad_app::shell::app::App;
 use eframe::egui::{Key, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT, Queryable};

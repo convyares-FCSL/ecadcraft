@@ -49,7 +49,7 @@ use ecad_electrical::releases::release::{
 use ecad_electrical::releases::release::{errors_refusal, finalising, over_budget, stopped};
 
 /// The manifest's file name.
-pub const MANIFEST: &str = "release.json";
+pub(crate) const MANIFEST: &str = "release.json";
 /// The manifest's version (`ecad_release`); a breaking change bumps it.
 pub(crate) const MANIFEST_VERSION: u64 = 1;
 /// The folder that holds release folders, beside the project file.
@@ -213,6 +213,12 @@ pub fn recorded(p: &Project, folder: &Path) -> String {
         return rel.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect::<Vec<_>>().join("/");
     }
     folder.to_string_lossy().into_owned()
+}
+
+/// Whether `folder` still holds the manifest a release wrote (the Revisions list's "open folder" is offered only then).
+#[must_use]
+pub fn has_manifest(folder: &Path) -> bool {
+    folder.join(MANIFEST).exists()
 }
 
 /// FP1's value read back as a folder, only when it is safe to write there again (review of

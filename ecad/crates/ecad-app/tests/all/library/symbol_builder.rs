@@ -5,12 +5,12 @@
 //! screenshots (written only when `ECAD_TESTER_SHOTS` names a folder).
 
 use cadcraft_engine::doc::Handle;
-use ecad_app::App;
 use ecad_app::commands::actions::{self, ObjectKind, Slot};
 use ecad_app::library::builder::{self, Tool};
 use ecad_app::library::draft::Picked;
 use ecad_app::library::{browser, details, review};
 use ecad_app::shell::Workspace;
+use ecad_app::shell::app::App;
 use ecad_electrical::symbols;
 use ecad_model::{DeviceId, Pt, RepresentationId, Subject};
 use eframe::egui::{Event, Key, Modifiers, PointerButton, Pos2, vec2};

@@ -4,8 +4,8 @@
 
 use eframe::egui;
 
-use crate::App;
 use crate::developer;
+use crate::shell::app::App;
 
 /// Draw the section.
 pub fn show(t: &mut App, ui: &mut egui::Ui) {

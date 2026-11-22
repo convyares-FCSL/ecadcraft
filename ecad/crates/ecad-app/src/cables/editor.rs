@@ -367,7 +367,7 @@ pub fn show(
     out
 }
 
-impl crate::App {
+impl crate::shell::app::App {
     /// Run what the cable editor asked for, on cable `k`.
     pub fn cable_ask(&mut self, k: CableId, a: Ask) {
         match a {
@@ -405,7 +405,7 @@ impl crate::App {
     /// focus in its Tag box. No dialog.
     pub(crate) fn new_cable(&mut self) {
         let Ok(v) = self.run_value("cablenew", json!({})) else { return };
-        let Some(k) = v["cable"].as_str().and_then(CableId::parse) else { return };
+        let Some(k) = ecad_engine::commands::reply::id::<CableId>(&v, "cable") else { return };
         if let Some(r) = self.reports.as_mut() {
             r.cables.pending_select = Some(k);
             r.cables.details = true;

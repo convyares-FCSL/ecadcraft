@@ -47,8 +47,6 @@ pub const YOU: &str = "You";
 
 /// Accessible label of the tab.
 pub const HISTORY_TAB: &str = "History";
-/// Width of one lane of the graph.
-pub const LANE_W: f32 = 12.0;
 
 /// What the History tab asks the app to do.
 #[derive(Debug, Clone, PartialEq)]
@@ -76,18 +74,18 @@ pub struct AgentCard {
 }
 
 /// Board 1.04's texts.
-pub const FOOTER: &str = "Selecting a change marks it on the page. Compare opens the full view with clouds.";
-pub const NEW_BRANCH: &str = "New branch";
+pub(crate) const FOOTER: &str = "Selecting a change marks it on the page. Compare opens the full view with clouds.";
+pub(crate) const NEW_BRANCH: &str = "New branch";
 pub const NAME_THIS: &str = "Name this one";
 pub const EARLIER: &str = "Show earlier changes";
 pub const OLDER: &str = "Show older versions";
 /// How many changes the panel shows before "Show n earlier changes" (board 1.04 shows about 8, so
 /// Versions stays in view).
 pub const FIRST_CHANGES: usize = 8;
-pub const AGENT_DISCONNECT: &str = "Disconnect the agent";
+pub(crate) const AGENT_DISCONNECT: &str = "Disconnect the agent";
 /// The placeholders' reasons.
-pub const COMPARE_LATER: &str = "Compare is not available yet";
-pub const FILTER_LATER: &str = "Filtering the changes is not available yet";
+pub(crate) const COMPARE_LATER: &str = "Compare is not available yet";
+pub(crate) const FILTER_LATER: &str = "Filtering the changes is not available yet";
 
 /// A selected row: a node of the graph, or a step of the Steps list.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -154,7 +152,7 @@ pub enum Dialog {
 
 /// One step row of the Steps list.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StepRow {
+pub(crate) struct StepRow {
     pub seq: u64,
     pub label: String,
     pub author: String,
@@ -165,7 +163,7 @@ pub struct StepRow {
 
 /// The author chip's text: "You" for the person, the agent's name otherwise (owner, Q1 of brief
 /// 043: no name is stored for a person).
-pub fn author_chip(agent: Option<&str>) -> &str {
+pub(crate) fn author_chip(agent: Option<&str>) -> &str {
     agent.unwrap_or(YOU)
 }
 
@@ -193,7 +191,7 @@ pub struct HistoryPanel {
     step_txs: Vec<ecad_model::Transaction>,
     /// Session groups shown expanded, by their newest step.
     pub expanded: std::collections::BTreeSet<u64>,
-    /// The live agent session, kept from the banner ([`crate::App::history_agent_sync`]).
+    /// The live agent session, kept from the banner ([`crate::shell::app::App::history_agent_sync`]).
     pub live: Option<LiveSession>,
     /// Undo session was clicked on a group (run on the next frame).
     pub undo_session: bool,
@@ -340,7 +338,7 @@ impl HistoryPanel {
         }
         let limit = STEPS_PAGE * (self.steps_more + 1);
         let rows = history::steps(p, sel.branch, Some(sel.seq + 1), limit).unwrap_or_default();
-        let today = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_millis() as u64);
+        let today = Some((crate::shell::host::host().now_ms)());
         self.steps = rows
             .iter()
             .map(|t| StepRow {
@@ -436,7 +434,7 @@ impl HistoryPanel {
             let verdict = match checks {
                 None => "Checks run at release".to_string(),
                 Some((0, 0)) => "No problems: ready to release".to_string(),
-                Some((0, w)) => format!("{w} warning{} to look at", if *w == 1 { "" } else { "s" }),
+                Some((0, w)) => format!("{w} warning{} to look at", ecad_widgets::plural(*w)),
                 Some((e, _)) => format!("{e} error{} a full release", if *e == 1 { " stops" } else { "s stop" }),
             };
             ui.label(RichText::new(verdict).small().color(c(s.text_2)));
@@ -473,7 +471,7 @@ impl HistoryPanel {
                         ui.label(RichText::new("on branch ").small().color(c(s.text_2)));
                         ui.label(RichText::new(cur_name).small().color(lime));
                         let n = a.steps;
-                        ui.label(RichText::new(format!(" \u{b7} {n} change{}", if n == 1 { "" } else { "s" })).small().color(c(s.text_2)));
+                        ui.label(RichText::new(format!(" \u{b7} {n} change{}", ecad_widgets::plural(n))).small().color(c(s.text_2)));
                     });
                 });
             });
@@ -720,7 +718,7 @@ impl HistoryPanel {
         // Show the rows already read first; past them, read the next page.
         let more_to_read = self.steps.len() as u64 >= STEPS_PAGE * (self.steps_more + 1);
         if hidden > 0 || more_to_read {
-            let text = if hidden > 0 { format!("Show {hidden} earlier change{}", if hidden == 1 { "" } else { "s" }) } else { EARLIER.to_string() };
+            let text = if hidden > 0 { format!("Show {hidden} earlier change{}", ecad_widgets::plural(hidden)) } else { EARLIER.to_string() };
             ui.horizontal(|ui| {
                 ui.add_space(20.0);
                 let b =
@@ -1030,7 +1028,7 @@ impl HistoryPanel {
             Dialog::Switch { .. } => ("Switch branch", "ecad.switchbranch", "Save and switch"),
             Dialog::SwitchReadOnly => ("Switch branch", "ecad.switchbranch", "Save As\u{2026}"),
         };
-        let changes = |n: u64| format!("{n} unsaved change{}", if n == 1 { "" } else { "s" });
+        let changes = |n: u64| format!("{n} unsaved change{}", ecad_widgets::plural(n));
         let archive_shown = match &d {
             Dialog::Archive { branch, .. } => self.graph.branches.iter().any(|b| b.current && b.id.hex() == *branch),
             _ => false,
@@ -1214,7 +1212,7 @@ fn group_row(ui: &mut egui::Ui, g: &SessionGroup, open: bool, live: bool) -> (bo
     (click.clicked() && !undo, undo)
 }
 
-impl crate::App {
+impl crate::shell::app::App {
     /// History's side of the agent (brief 043), once per frame: run an Undo session clicked on a
     /// group (the banner's own plan and confirmation), and keep the live session for the groups
     /// (copied only when the banner's session, steps or last change moved).
@@ -1258,5 +1256,5 @@ fn chip(ui: &mut egui::Ui, text: &str, fill: Color32, ink: Color32) {
 
 /// Now, in milliseconds since 1970 (for the short times).
 fn now_ms() -> Option<u64> {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_millis() as u64)
+    Some((crate::shell::host::host().now_ms)())
 }

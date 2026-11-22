@@ -121,7 +121,7 @@ pub const TOOLS: &[Tool] = &[
         id: "ecad.tool.jumper",
         group: "Components",
         label: "Jumper",
-        tooltip: "Click a terminal, then the next: a link through every position between (Skip: only those picked); Enter writes the link",
+        tooltip: "Click a terminal, then the next: a jumper bar through every position between (Skip: only those picked); Enter writes the jumper bar",
         kind: Kind::Start("jumper"),
     },
     Tool {
@@ -344,7 +344,7 @@ pub fn tab() -> ExtraToolTab {
 
 /// The command a button reaches (brief 041): its own for Start and Run, the template's, the
 /// symbol search's, or the dialog's. `None` for the developer tools.
-pub fn command_of(t: &Tool) -> Option<&'static str> {
+pub(crate) fn command_of(t: &Tool) -> Option<&'static str> {
     Some(match t.kind {
         Kind::Start(c) => c,
         Kind::Run(line) => line.split_whitespace().next()?,

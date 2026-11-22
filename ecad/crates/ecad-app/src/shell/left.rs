@@ -9,8 +9,8 @@
 use ecad_widgets::tokens::{Icon, size, space};
 use eframe::egui::{self, Color32, Rect, pos2, vec2};
 
-use crate::App;
 use crate::pages::project_panel::Tab;
+use crate::shell::app::App;
 use crate::shell::state::BookView;
 use crate::shell::{LeftTab, Slots};
 
@@ -81,10 +81,10 @@ pub const CLOSE: &str = "Close the panel";
 /// Accessible label of the header's pin (UI rev 3: pinned docks, unpinned floats).
 pub const PIN: &str = "Pin the panel";
 /// Brief 054: the Book header's Renumber pages (design 054 §4.4).
-pub const RENUMBER: &str = "ecad.book.renumber";
+pub(crate) const RENUMBER: &str = "ecad.book.renumber";
 /// Book's view switch (board 1.02).
 pub const BOOK_LIST: &str = "Show the pages as a list";
-pub const BOOK_THUMBS: &str = "Show the pages with thumbnails";
+pub(crate) const BOOK_THUMBS: &str = "Show the pages with thumbnails";
 /// A header button's side.
 const HEAD_BTN: f32 = 26.0;
 
@@ -99,7 +99,7 @@ impl App {
 
 /// Close an unpinned panel when drawing starts: a press on the canvas outside it (UI rev 3,
 /// "Unpinned: … closes when you start drawing"). Read before the canvas takes the press.
-pub fn close_on_draw(t: &mut App, ctx: &egui::Context, slots: &Slots) {
+pub(crate) fn close_on_draw(t: &mut App, ctx: &egui::Context, slots: &Slots) {
     let (Some(panel), true) = (slots.panel, slots.panel_floats) else { return };
     let pressed = ctx.input(|i| if i.pointer.primary_pressed() || i.pointer.secondary_pressed() { i.pointer.interact_pos() } else { None });
     if let Some(at) = pressed

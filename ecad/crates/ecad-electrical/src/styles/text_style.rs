@@ -1011,6 +1011,17 @@ fn runs_along(members: &[Placed], all: &[Placed], axis: Axis, align: f64, gap: f
     out
 }
 
+/// A kind's name as the Properties panel's Texts rows show it: `Tag`, `Pin labels`…
+pub fn shown_name(kind: TextKind) -> String {
+    match kind {
+        TextKind::PointLabel => "Pin labels".to_string(),
+        k => {
+            let mut c = kind_words(k).chars();
+            c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
+        }
+    }
+}
+
 /// Words for a kind in labels and echoes: `tag`, `connection point labels`…
 pub fn kind_words(kind: TextKind) -> &'static str {
     match kind {

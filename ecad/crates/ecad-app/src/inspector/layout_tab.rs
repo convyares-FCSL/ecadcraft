@@ -15,10 +15,10 @@ use crate::inspector::{Cx, InspectorAction, fields};
 
 /// Accessible names.
 pub const ROTATION: &str = "ecad.inspector.layout.rotation";
-pub const MIRROR: &str = "ecad.inspector.layout.mirror";
+pub(crate) const MIRROR: &str = "ecad.inspector.layout.mirror";
 pub const CONTACT_TABLE: &str = "ecad.inspector.layout.contacts";
-pub const CONTACT_ROWS: &str = "ecad.inspector.layout.contact-rows";
-pub const RESET_TEXTS: &str = "Reset to standard";
+pub(crate) const CONTACT_ROWS: &str = "ecad.inspector.layout.contact-rows";
+pub(crate) const RESET_TEXTS: &str = "Reset to standard";
 
 /// A slot's name on the sheet.
 fn slot_words(k: TextKind) -> &'static str {
@@ -49,7 +49,7 @@ pub fn show(ui: &mut egui::Ui, cx: &mut Cx<'_>, out: &mut Vec<InspectorAction>) 
         return;
     };
     let view = std::mem::take(&mut cx.sh.view);
-    let section = view.sections.first().filter(|s| s.kind == "device");
+    let section = view.sections.first().filter(|s| s.kind == ecad_electrical::properties::SectionKind::Device);
     let mut folded = std::mem::take(&mut cx.insp.folded);
     // Placement.
     w::section(ui, &mut folded, full, "placement", "Placement", &d.place, false, |ui| {
@@ -111,7 +111,7 @@ pub fn show(ui: &mut egui::Ui, cx: &mut Cx<'_>, out: &mut Vec<InspectorAction>) 
                 let mut inner: std::collections::BTreeSet<String> = ui.data(|m| m.get_temp(id)).unwrap_or_default();
                 w::section(ui, &mut inner, full, "texts-all", &format!("Every symbol of {}", d.tag), &summary, true, |ui| {
                     for row in device_texts {
-                        fields::prop(ui, cx.sh, &s.target, s.kind, row, &crate::inspector::device::text_label(&row.label), "");
+                        fields::prop(ui, cx.sh, &s.target, s.kind.word(), row, &crate::inspector::device::text_label(row), "");
                     }
                 });
                 ui.data_mut(|m| m.insert_temp(id, inner));

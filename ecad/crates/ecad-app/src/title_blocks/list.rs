@@ -15,15 +15,15 @@ use crate::title_blocks::{Act, DxfAsk, Editor, Tool};
 /// Element names (design 055 §5).
 pub const NEW: &str = "library.tb.list.new";
 pub const IMPORT: &str = "library.tb.list.import";
-pub const IMPORT_PATH: &str = "library.tb.list.import.path";
-pub const IMPORT_GO: &str = "library.tb.list.import.go";
+pub(crate) const IMPORT_PATH: &str = "library.tb.list.import.path";
+pub(crate) const IMPORT_GO: &str = "library.tb.list.import.go";
 /// The left column's width.
-pub const LIST_W: f32 = 300.0;
+pub(crate) const LIST_W: f32 = 300.0;
 /// A row's height.
 pub const ROW_H: f32 = 56.0;
 /// Default sizes of dropped items (mm).
-pub const FIELD_SIZE: (f64, f64) = (40.0, 8.0);
-pub const TABLE_SIZE: (f64, f64) = (120.0, 25.0);
+pub(crate) const FIELD_SIZE: (f64, f64) = (40.0, 8.0);
+pub(crate) const TABLE_SIZE: (f64, f64) = (120.0, 25.0);
 
 fn c32(c: ecad_widgets::tokens::Color) -> Color32 {
     ecad_widgets::color(c)
@@ -384,7 +384,7 @@ fn row_menu(ui: &mut egui::Ui, r: &crate::title_blocks::Row, writable: bool, act
 }
 
 /// A thumbnail of `l`: the block's lines and boxes, fitted.
-pub fn paint_thumb(ui: &egui::Ui, rect: Rect, l: &TitleBlockLayout) {
+pub(crate) fn paint_thumb(ui: &egui::Ui, rect: Rect, l: &TitleBlockLayout) {
     let s = ecad_widgets::SHELL;
     let p = ui.painter();
     p.rect(rect, 2.0, ecad_widgets::color(ecad_drawing_style::sheet::PAPER.sheet), Stroke::new(1.0, c32(s.line)), egui::StrokeKind::Inside);

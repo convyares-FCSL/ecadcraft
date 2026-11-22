@@ -170,7 +170,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         let total = k.devices.len() + k.aids.len() + k.boxes.len() + k.wires.len() + k.cables.len() + k.references.len();
         v.sections.push(Section {
             title: format!("ECAD · {total} OBJECTS"),
-            kind: "objects",
+            kind: ecad_electrical::properties::SectionKind::Objects,
             target: None,
             rows: Vec::new(),
             note: Some(format!("{}. Select one kind to edit.", words.join(", "))),
@@ -205,7 +205,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
             [b] => v.sections.push(box_section(doc, *b)),
             many => v.sections.push(Section {
                 title: format!("ECAD · {} LOCATION BOXES", many.len()),
-                kind: "objects",
+                kind: ecad_electrical::properties::SectionKind::Objects,
                 target: None,
                 rows: Vec::new(),
                 note: Some("Select one location box to edit.".into()),
@@ -255,7 +255,7 @@ pub fn view(p: &Project, page: Option<PageId>, selection: &[Handle]) -> PropsVie
         let n = k.wires.len() + k.cables.len() + k.references.len();
         v.sections.push(Section {
             title: format!("ECAD · {n} OBJECTS"),
-            kind: "objects",
+            kind: ecad_electrical::properties::SectionKind::Objects,
             target: None,
             rows: Vec::new(),
             note: Some("Select one wire, cable or reference to see its properties.".into()),

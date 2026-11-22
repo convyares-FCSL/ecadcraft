@@ -232,7 +232,7 @@ pub fn provisional_tag_handles(p: &crate::Project, page: PageId) -> Vec<cadcraft
 
 /// A text style's colour as drawn on `sheet` (brief 050a): its own colour, or its colour code's
 /// first colour on that sheet, as [`colour_rgb`] draws the stored value.
-pub fn text_colour_rgb(
+pub(crate) fn text_colour_rgb(
     c: ecad_electrical::styles::text_style::TextColour, sheet: &ecad_drawing_style::Sheet,
 ) -> Option<cadcraft_engine::doc::color::Rgb> {
     match c {

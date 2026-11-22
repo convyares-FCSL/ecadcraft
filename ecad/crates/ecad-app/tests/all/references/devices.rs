@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 
 use crate::canvas::mouse_acceptance::{Deltas, harness_with, shot};
 
-type H = Harness<'static, ecad_app::App>;
+type H = Harness<'static, ecad_app::shell::app::App>;
 
 fn out() -> Option<PathBuf> {
     let dir = std::env::var_os("ECAD_TESTER_SHOTS").map(PathBuf::from)?;

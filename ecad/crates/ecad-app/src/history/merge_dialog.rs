@@ -19,9 +19,9 @@ use eframe::egui;
 use serde_json::{Value, json};
 
 /// Changes listed before Show all.
-pub const CHANGES_SHOWN: usize = 20;
+pub(crate) const CHANGES_SHOWN: usize = 20;
 /// The undo-merge question's window id.
-pub const UNDO_MERGE_ID: &str = "ecad.undomerge";
+pub(crate) const UNDO_MERGE_ID: &str = "ecad.undomerge";
 
 /// What the dialog asks the app to do.
 #[derive(Debug, Clone, PartialEq)]
@@ -102,7 +102,7 @@ impl MergeDialog {
         } else if unanswered > 0 {
             Some(format!(
                 "Choose for {unanswered} conflict{} first, or use Keep {main_word} for all / Keep {branch_word} for all.",
-                if unanswered == 1 { "" } else { "s" }
+                ecad_widgets::plural(unanswered)
             ))
         } else {
             None

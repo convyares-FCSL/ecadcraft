@@ -16,27 +16,27 @@ use crate::title_blocks::{Act, Editor};
 pub const SOURCE: &str = "library.tb.inspector.value.source";
 pub const IFEMPTY: &str = "library.tb.inspector.value.ifempty";
 pub const LABEL: &str = "library.tb.inspector.draw.label";
-pub const LABEL_TEXT: &str = "library.tb.inspector.draw.label_text";
+pub(crate) const LABEL_TEXT: &str = "library.tb.inspector.draw.label_text";
 pub const SIZE: &str = "library.tb.inspector.draw.size";
 pub const BOLD: &str = "library.tb.inspector.draw.bold";
 pub const ALIGN: &str = "library.tb.inspector.draw.align";
 pub const COLOUR: &str = "library.tb.inspector.draw.colour";
 pub const TEXT: &str = "library.tb.inspector.draw.text";
 /// The "If empty" text (Text…).
-pub const IFEMPTY_TEXT: &str = "library.tb.inspector.value.ifempty_text";
+pub(crate) const IFEMPTY_TEXT: &str = "library.tb.inspector.value.ifempty_text";
 pub const BOX: [&str; 4] = ["library.tb.inspector.box.x", "library.tb.inspector.box.y", "library.tb.inspector.box.w", "library.tb.inspector.box.h"];
 pub const ROWS: &str = "library.tb.inspector.box.rows";
 pub const HEADER: &str = "library.tb.inspector.box.header";
-pub const NEWEST: &str = "library.tb.inspector.box.newest";
-pub const WEIGHT: &str = "library.tb.inspector.box.weight";
-pub const MAKE_FIELD: &str = "library.tb.inspector.make_field";
+pub(crate) const NEWEST: &str = "library.tb.inspector.box.newest";
+pub(crate) const WEIGHT: &str = "library.tb.inspector.box.weight";
+pub(crate) const MAKE_FIELD: &str = "library.tb.inspector.make_field";
 pub const NAME: &str = "library.tb.block.name";
-pub const BLOCK_SIZE: &str = "library.tb.block.size";
+pub(crate) const BLOCK_SIZE: &str = "library.tb.block.size";
 pub const LAYER: &str = "library.tb.block.layer";
 pub const SAVE: &str = "library.tb.block.save";
 pub const DISCARD: &str = "library.tb.block.discard";
 pub const DUPLICATE: &str = "library.tb.block.duplicate";
-pub const DELETE: &str = "library.tb.block.delete";
+pub(crate) const DELETE: &str = "library.tb.block.delete";
 pub const CONSEQUENCE: &str = "library.tb.block.consequence";
 
 fn c32(c: ecad_widgets::tokens::Color) -> Color32 {
@@ -467,7 +467,7 @@ fn set_draw(d: &mut Draft, sel: &[usize], f: impl Fn(&mut TextDraw)) {
 
 /// Make field (design 055 §4.6): a text becomes a field that keeps its box and style; its text
 /// becomes the label and the binding a project field named after it.
-pub fn make_field(d: &mut Draft, i: usize) {
+pub(crate) fn make_field(d: &mut Draft, i: usize) {
     let Some(BlockItem::Text { at, text, draw }) = d.now.layout.items.get(i).cloned() else { return };
     d.step();
     let key: String = text
@@ -596,7 +596,7 @@ fn block_panel(
             }
         }
     });
-    grey(ui, &format!("Used by {pages} page{}", if pages == 1 { "" } else { "s" }));
+    grey(ui, &format!("Used by {pages} page{}", ecad_widgets::plural(pages)));
     ui.add_space(space::M);
     ui.horizontal_wrapped(|ui| {
         ui.label(RichText::new("Duplicate for").small());

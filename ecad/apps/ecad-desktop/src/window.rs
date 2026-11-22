@@ -113,7 +113,7 @@ pub fn restores_window() -> bool {
 pub fn options(restoring: bool) -> eframe::NativeOptions {
     eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title(ecad_app::TITLE)
+            .with_title(ecad_app::shell::app::TITLE)
             .with_inner_size(DEFAULT_SIZE)
             .with_min_inner_size(MIN_SIZE)
             .with_app_id(APP_ID),

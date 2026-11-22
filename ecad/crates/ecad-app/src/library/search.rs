@@ -18,11 +18,11 @@ use ecad_model::{DeviceId, Document, Subject};
 use eframe::egui;
 
 /// The text field's element name (design 018 §5.1).
-pub const FIELD_ID: &str = "ecad.symbolsearch";
+pub(crate) const FIELD_ID: &str = "ecad.symbolsearch";
 /// The results list's element name.
-pub const RESULTS_ID: &str = "ecad.symbolresults";
+pub(crate) const RESULTS_ID: &str = "ecad.symbolresults";
 /// The second step's list (design 018 §5.1, owner's trial of 2026-11-08).
-pub const CHOICES_ID: &str = "ecad.symbolchoices";
+pub(crate) const CHOICES_ID: &str = "ecad.symbolchoices";
 /// The field's visible label (headless tests find it by this).
 pub const FIELD_LABEL: &str = "Find symbol or device";
 /// The window's title.
@@ -47,7 +47,7 @@ pub enum Pick {
 
 /// Most pages and most actions Ctrl+K lists before the symbols.
 pub const MAX_PAGES: usize = 3;
-pub const MAX_ACTIONS: usize = 4;
+pub(crate) const MAX_ACTIONS: usize = 4;
 
 /// One result row.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,7 +88,7 @@ pub fn rows(doc: Option<&Document>, query: &str) -> (Vec<Row>, usize, Option<Str
                 text: format!(
                     "{tag:<6} {:<26} {n} symbol{}, {pages}  (device)",
                     clip(&ecad_electrical::devices::tags::description(doc, c), 26),
-                    if n == 1 { "" } else { "s" }
+                    ecad_widgets::plural(n)
                 ),
                 pick: Pick::Device(tag),
             });

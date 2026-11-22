@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use crate::canvas::mouse_acceptance::{doc, harness_with, ok};
 use crate::checks::ui::demo_file;
 
-type H = Harness<'static, ecad_app::App>;
+type H = Harness<'static, ecad_app::shell::app::App>;
 
 fn click(h: &mut H, label: &str) {
     // UI rev 3: the panels' tabs are reached through the strip and the inspector.

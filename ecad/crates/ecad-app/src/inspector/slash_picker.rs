@@ -11,7 +11,7 @@ use ecad_electrical::cables::commands::cables::PickItem;
 use ecad_widgets::control::{self, Select};
 use eframe::egui;
 
-use crate::App;
+use crate::shell::app::App;
 
 /// The picker's accessible name (design 059 §5.7).
 pub const NAME: &str = "ecad.draw.slash.cable";

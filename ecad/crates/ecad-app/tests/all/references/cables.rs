@@ -6,8 +6,8 @@
 use crate::common::{self, Opts};
 use cadcraft_engine::Input;
 use cadcraft_engine::geom::Vec2;
-use ecad_app::App;
 use ecad_app::commands::tools;
+use ecad_app::shell::app::App;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 

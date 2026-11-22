@@ -32,8 +32,6 @@ serde = { workspace = true }
 cadcraft-mcp = { path = "../../../crates/mcp" }
 egui = { version = "0.37", default-features = false }
 log = "0.4"
-# The banner's clock (house rule: time goes through chrono).
-chrono = { version = "0.4.45", default-features = false, features = ["std", "clock"] }
 
 [dev-dependencies]
 # Every test run checks invariants in full as well (verify mode, brief 013).
@@ -44,10 +42,5 @@ ecad-store = { workspace = true }
 ecad-engine = { path = "../../crates/ecad-engine", features = ["test-ops", "fault-injection"] }
 # The same version CADCraft's UI tests use, to click the Tool Sets panel headless.
 egui_kittest = "=0.37.0"
-# The bridge and Checks tests run the MCP server (`ecad_mcp::EcadMcp`) against the window.
-ecad-mcp = { path = "../../apps/ecad-mcp" }
-# The tests that drive the command line and start-up timing reach them in ecad-desktop (design
-# 065 §2.2); a dev-dependency only, so the library never depends on the program.
-ecad-desktop = { path = "../../apps/ecad-desktop" }
 # The tests name engine types beyond `ecad_engine::cad` (design 065 §3, cut 11); the library does not.
 cadcraft-engine = { path = "../../../crates/engine" }

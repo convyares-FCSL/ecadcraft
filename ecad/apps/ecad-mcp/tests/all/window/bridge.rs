@@ -10,8 +10,8 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::{Duration, Instant};
 
-use ecad_app::App;
 use ecad_app::agent::{self, BannerState};
+use ecad_app::shell::app::App;
 use ecad_mcp::bridge::Mode;
 use ecad_mcp::{EcadMcp, Options};
 use ecad_model::Author;

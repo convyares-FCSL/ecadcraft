@@ -10,7 +10,7 @@ use ecad_widgets::prim::Button;
 use ecad_widgets::tokens::{line, space, ui_type};
 use eframe::egui::{self, Rect, pos2, vec2};
 
-use crate::App;
+use crate::shell::app::App;
 use crate::shell::{Slots, bar};
 
 /// The header's Close compare button.
