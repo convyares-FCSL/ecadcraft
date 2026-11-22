@@ -250,11 +250,6 @@ pub(crate) fn tag_holder(doc: &Document, k: &tag::Key, except: Option<ecad_model
         .find(|h| Some(h.object()) != except)
 }
 
-/// A cable's tag as stored.
-pub fn cable_tag_of(doc: &Document, k: ecad_model::CableId) -> Option<&str> {
-    doc.cables.get(&k)?.tag()
-}
-
 /// A cable's tag as drawn.
 pub fn cable_tag_shown_of(doc: &Document, k: ecad_model::CableId) -> Option<String> {
     doc.cables.get(&k)?.tag_shown()

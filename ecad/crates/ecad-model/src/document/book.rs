@@ -29,9 +29,9 @@ pub const FUNCTION_KEY: &str = "function";
 /// Page and project property: the `+` location.
 pub const LOCATION_KEY: &str = "location";
 /// `setprop` key of a device's [`crate::Device::location_state`] (`unset`, `by_hand`, `proposed`).
-pub const LOCATION_STATE_KEY: &str = "location_state";
+pub(crate) const LOCATION_STATE_KEY: &str = "location_state";
 /// `setprop` key of a device's [`crate::Device::function_state`] (`unset`, `by_hand`, `proposed`).
-pub const FUNCTION_STATE_KEY: &str = "function_state";
+pub(crate) const FUNCTION_STATE_KEY: &str = "function_state";
 
 crate::word_enum! {
     /// How a device's location or function came to be (S6, #3). Stored beside the value, never

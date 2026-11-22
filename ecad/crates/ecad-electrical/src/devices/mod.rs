@@ -47,7 +47,7 @@ use ecad_model::{DeviceType, Noun, PointKey, TextHAlign as HAlign, TextVAlign as
 ///
 /// # Errors
 /// [`tag::BAD_TAG`]'s words.
-pub fn stored_tag(t: &str) -> Result<tag::Tag, CmdError> {
+pub(crate) fn stored_tag(t: &str) -> Result<tag::Tag, CmdError> {
     tag::Tag::new(t).map_err(|_| CmdError::refused(tag::BAD_TAG))
 }
 
