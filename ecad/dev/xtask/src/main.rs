@@ -37,6 +37,7 @@ use serde_json::Value;
 
 mod clean;
 mod engine_guards;
+mod starter_guards;
 mod types_guards;
 mod views_guards;
 
@@ -1218,6 +1219,7 @@ fn layers() -> Result<(), String> {
     v.extend(types_guards::violations(&meta)?);
     v.extend(views_guards::violations(&meta)?);
     v.extend(engine_guards::violations(&meta)?);
+    v.extend(starter_guards::violations(&meta)?);
     if v.is_empty() {
         println!("layers: OK");
         Ok(())
