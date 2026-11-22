@@ -8,8 +8,8 @@ use serde::Deserialize;
 
 use crate::commands::input::Command;
 use crate::commands::on_project;
-use ecad_electrical::plc::address::*;
 use ecad_electrical::commands::input::{TextOrNumber, nullable};
+use ecad_electrical::plc::address::*;
 use serde_json::{Value, json};
 
 /// `plcaddress {rack | card, style?, input_start?, output_start?, start?, size?, fix?, clear?}`

@@ -3,9 +3,9 @@
 //! `toposition`, the plan, the BOM per type and the update maps. Driven through the commands'
 //! JSON forms on a small fixture of loose vertical wires.
 
-use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
-use ecad_model::{DeviceId, ConnectionPointId, WireId};
+use ecad_model::{ConnectionPointId, DeviceId, WireId};
 use serde_json::{Value, json};
+use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
 
 use crate::common::{H, id};
 
@@ -274,7 +274,10 @@ fn renumber_keeps_028_strips_and_numbers_colliding_keys_by_their_own_symbol() {
         let before = doc.terminals[&ts[1]].clone();
         let mut after = before.clone();
         after.key = Some("1".parse().unwrap());
-        let ops = vec![ecad_model::Op::RemoveConnectionPoint { id: ts[1], terminal: before }, ecad_model::Op::AddConnectionPoint { id: ts[1], terminal: after }];
+        let ops = vec![
+            ecad_model::Op::RemoveConnectionPoint { id: ts[1], terminal: before },
+            ecad_model::Op::AddConnectionPoint { id: ts[1], terminal: after },
+        ];
         p.ledger.commit(ecad_model::Author::User, "collide", ops).unwrap();
     });
     // The page is not reprojected after that direct commit, so the session runs the command
@@ -328,7 +331,9 @@ fn relabel_moves_every_position_keyed_property() {
     let f = fence(&mut h, None, "FUSE", "1", 20.0);
     let x1: DeviceId = id(&f, "strip");
     let t2 = terminals(&f)[1];
-    let suffix = |prefix: &str, p: &str| if prefix == ecad_electrical::terminal_strips::terminal_blocks::LABEL_PREFIX { format!("{p}.1") } else { p.to_string() };
+    let suffix = |prefix: &str, p: &str| {
+        if prefix == ecad_electrical::terminal_strips::terminal_blocks::LABEL_PREFIX { format!("{p}.1") } else { p.to_string() }
+    };
     let value = |prefix: &str| {
         if prefix == ecad_electrical::terminal_strips::accessories::AFTER_PREFIX {
             "partition"

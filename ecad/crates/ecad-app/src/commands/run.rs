@@ -405,10 +405,9 @@ impl App {
                 }
             }
             A::GoToDevice(c) => {
-                let rep = self
-                    .project
-                    .clone()
-                    .and_then(|p| p.read(&mut self.cad.session, |p, _| ecad_electrical::symbols::reps::goto(p.ledger.document(), c, None)).ok().flatten());
+                let rep = self.project.clone().and_then(|p| {
+                    p.read(&mut self.cad.session, |p, _| ecad_electrical::symbols::reps::goto(p.ledger.document(), c, None)).ok().flatten()
+                });
                 if let Some(rep) = rep {
                     let _ = self.goto_symbol(rep);
                 }
@@ -727,7 +726,8 @@ impl App {
         };
         let read = p.read(&mut self.cad.session, |p, _| {
             let doc = p.ledger.document();
-            let objects = uid.and_then(|u| p.page_of(u)).map(|pg| ecad_engine::properties::props::selected_objects(p, pg, &handles)).unwrap_or_default();
+            let objects =
+                uid.and_then(|u| p.page_of(u)).map(|pg| ecad_engine::properties::props::selected_objects(p, pg, &handles)).unwrap_or_default();
             (
                 ecad_electrical::numbering::commands::choices(doc),
                 objects,

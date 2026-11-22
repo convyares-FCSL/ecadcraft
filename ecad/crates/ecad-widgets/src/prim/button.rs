@@ -1,7 +1,7 @@
 //! Button and icon button.
 
-use {crate::tokens::Icon, crate::tokens::line, crate::tokens::radius, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type};
 use egui::{Response, Role, Sense, Stroke, StrokeKind, Ui, Widget, WidgetInfo, vec2};
+use {crate::tokens::Icon, crate::tokens::line, crate::tokens::radius, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type};
 
 use crate::prim::{Look, accessible, galley};
 use crate::style::corner;

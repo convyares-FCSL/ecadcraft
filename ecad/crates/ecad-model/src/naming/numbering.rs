@@ -29,15 +29,15 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use crate::document::book::Book;
+use crate::connectivity::wiring;
 use crate::connectivity::{NetData, NetKey, split_number};
+use crate::document::book::Book;
 use crate::document::doc::{Document, ItemKind, Primitive, Representation, Subject};
-use crate::geometry::geom::Pt;
-use crate::naming::id::{CableId, DeviceId, FolderId, PageId, ConnectionPointId, WireId};
 use crate::document::op::{ObjectRef, Op};
 use crate::document::sheet::Grid;
+use crate::geometry::geom::Pt;
+use crate::naming::id::{CableId, ConnectionPointId, DeviceId, FolderId, PageId, WireId};
 use crate::naming::tag::{self, FIXED_KEY, HIGH_RESET_PREFIX, HighWater, TAG_KEY};
-use crate::connectivity::wiring;
 
 /// The kind of item a row numbers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -736,7 +736,9 @@ fn plan_tags(
 }
 
 /// Brief 028: number each strip's terminals in drawing order (module docs).
-fn plan_terminal_blocks(doc: &Document, req: &Request, places: &mut Places<'_>, pages: Option<&BTreeSet<PageId>>, rows: &mut Vec<Row>, ops: &mut Vec<Op>) {
+fn plan_terminal_blocks(
+    doc: &Document, req: &Request, places: &mut Places<'_>, pages: Option<&BTreeSet<PageId>>, rows: &mut Vec<Row>, ops: &mut Vec<Op>,
+) {
     let start = req.start.unwrap_or(1);
     for strip in &req.strips {
         let Some(comp) = doc.devices.get(strip) else { continue };
@@ -747,12 +749,13 @@ fn plan_terminal_blocks(doc: &Document, req: &Request, places: &mut Places<'_>, 
         for (_, r) in doc.representations_of(Subject::Device(*strip)) {
             let Some(at) = places.rep_point(r) else { continue };
             let shown: Vec<ConnectionPointId> = if r.connection_points.is_empty() {
-                let keys: BTreeSet<&crate::geometry::point::PointKey> = match doc.items.get(r.items.first().unwrap_or(&crate::naming::id::ItemId(0))).map(|i| &i.kind) {
-                    Some(ItemKind::Symbol(s)) => {
-                        doc.definitions.get(&s.definition).map(|d| d.terminals.iter().map(|t| &t.key).collect()).unwrap_or_default()
-                    }
-                    _ => BTreeSet::new(),
-                };
+                let keys: BTreeSet<&crate::geometry::point::PointKey> =
+                    match doc.items.get(r.items.first().unwrap_or(&crate::naming::id::ItemId(0))).map(|i| &i.kind) {
+                        Some(ItemKind::Symbol(s)) => {
+                            doc.definitions.get(&s.definition).map(|d| d.terminals.iter().map(|t| &t.key).collect()).unwrap_or_default()
+                        }
+                        _ => BTreeSet::new(),
+                    };
                 // One terminal per definition key, as the symbol shows it (brief 036 §10.3): a
                 // terminal no other symbol shows first (a joined terminal's key can equal the
                 // definition key, review M1 2.1), else the first.

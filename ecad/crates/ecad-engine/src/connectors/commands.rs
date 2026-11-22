@@ -17,16 +17,16 @@ use std::collections::BTreeSet;
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::CmdError;
 use ecad_electrical::connectors::commands::{self as rules, ConnectorInput, Made, NamesInput, Pinlabel, PinlabelInput};
-use ecad_model::{PageId, Placement, Pt, ConnectionPointId, WireId};
+use ecad_model::{ConnectionPointId, PageId, Placement, Pt, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::commands::input::{Command, Typed};
 use crate::commands::{err, on_project, plain_style};
+use ecad_electrical::commands::input::{Bounded, Point};
 use ecad_electrical::connectors::{self as cn, Names};
 use ecad_electrical::symbols::Starter;
-use ecad_electrical::commands::input::{Bounded, Point};
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[Typed::of::<ConnectorParams>("connector"), Typed::of::<PinlabelParams>("pinlabel")];

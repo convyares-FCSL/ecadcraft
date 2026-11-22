@@ -13,8 +13,8 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use ecad_electrical::properties::{PropsView, Target};
 use ecad_electrical::cables::words::Row;
+use ecad_electrical::properties::{PropsView, Target};
 use ecad_model::SheetSpec;
 use ecad_widgets::control::{self, Decor, Select, TextEntry};
 use ecad_widgets::dialog::{Dialog, action};
@@ -180,8 +180,11 @@ impl ProjectProps {
         });
         let mirror = v.get("contact_mirror").and_then(Value::as_str).unwrap_or("auto").to_string();
         let padding = v.get("tag_padding").and_then(Value::as_u64).unwrap_or(2).to_string();
-        let tag_case =
-            v.get("tag_case").and_then(Value::as_str).and_then(<ecad_model::naming::tag::Case as ecad_model::naming::words::Word>::parse).unwrap_or_default();
+        let tag_case = v
+            .get("tag_case")
+            .and_then(Value::as_str)
+            .and_then(<ecad_model::naming::tag::Case as ecad_model::naming::words::Word>::parse)
+            .unwrap_or_default();
         let colour_style = v.get("colour_style").and_then(Value::as_str).unwrap_or("code2").to_string();
         let label_height = v.get("label_height").and_then(Value::as_f64).map_or_else(String::new, |h| h.to_string());
         let prefixes: Vec<(String, String)> = v
@@ -550,8 +553,8 @@ impl ProjectProps {
                 g.row("", |ui| Checkbox::new(&mut self.tag_dash, "Leading - on tags").show(ui).accessible_name("ecad.project.props.tag_dash"));
                 let case = self.tag_case;
                 let pad = self.padding.trim().parse::<u8>().unwrap_or(2);
-                let example =
-                    ecad_model::naming::tag::normalise("k5", ecad_model::naming::tag::Style { padding: pad, dash: self.tag_dash, case }).unwrap_or_default();
+                let example = ecad_model::naming::tag::normalise("k5", ecad_model::naming::tag::Style { padding: pad, dash: self.tag_dash, case })
+                    .unwrap_or_default();
                 g.row("Example", |ui| {
                     control::read_text(ui, &format!("k5 is written {example}"), Decor::default(), "ecad.project.props.tag_example")
                 });

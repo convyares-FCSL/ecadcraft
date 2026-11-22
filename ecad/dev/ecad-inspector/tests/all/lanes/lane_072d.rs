@@ -5,10 +5,10 @@
 use std::time::Duration;
 
 use ecad_inspector::source::{FileSource, Source, VerifyState};
-use ecad_model::naming::text::Text;
 use ecad_model::geometry::units::Amps;
+use ecad_model::naming::text::Text;
 use ecad_model::objects::wire::{Basis, Colours, WireNumber, WireSize};
-use ecad_model::{Author, ConductorId, Device, DeviceId, IdAllocator, NetId, Op, ConnectionPoint, ConnectionPointId, Wire, WireId};
+use ecad_model::{Author, ConductorId, ConnectionPoint, ConnectionPointId, Device, DeviceId, IdAllocator, NetId, Op, Wire, WireId};
 
 use crate::common::*;
 
@@ -213,9 +213,14 @@ fn accepts_is_shown_raw_readable_and_on_the_device_row() {
     let mut l = history();
     let mut ids = IdAllocator::seeded(74);
     let (d, t): (DeviceId, ConnectionPointId) = (ids.fresh(), ids.fresh());
-    let bar =
-        ConnectionPoint { owner: d.into(), label: Some("PE".into()), key: Some("PE".parse().unwrap()), accepts: ecad_model::Accepts::new(12).unwrap() };
-    l.commit(Author::User, "bar", vec![Op::CreateDevice { id: d, device: Device::default() }, Op::AddConnectionPoint { id: t, terminal: bar }]).unwrap();
+    let bar = ConnectionPoint {
+        owner: d.into(),
+        label: Some("PE".into()),
+        key: Some("PE".parse().unwrap()),
+        accepts: ecad_model::Accepts::new(12).unwrap(),
+    };
+    l.commit(Author::User, "bar", vec![Op::CreateDevice { id: d, device: Device::default() }, Op::AddConnectionPoint { id: t, terminal: bar }])
+        .unwrap();
     let path = written(&dir, &l);
     let f = FileSource::from_path(&path);
     assert!(matches!(f.wait_verified(Duration::from_secs(60)), VerifyState::Done { .. }));
@@ -337,13 +342,19 @@ fn a_cable_with_two_slashes_and_one_wire_per_core_is_shown_raw_and_readable() {
     let p2: PageId = ids.fresh();
     let (x01, x05): (DeviceId, DeviceId) = (ids.fresh(), ids.fresh());
     let (a1, a2): (ecad_model::AidId, ecad_model::AidId) = (ids.fresh(), ids.fresh());
-    let (t01, t05, ta1, ta2): (ConnectionPointId, ConnectionPointId, ConnectionPointId, ConnectionPointId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
+    let (t01, t05, ta1, ta2): (ConnectionPointId, ConnectionPointId, ConnectionPointId, ConnectionPointId) =
+        (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
     let (w, net, conductor): (WireId, NetId, ConductorId) = (ids.fresh(), ids.fresh(), ids.fresh());
     let k: CableId = ids.fresh();
     let (i1, i2, r1, r2): (ItemId, ItemId, RepresentationId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
     let layer = *l.document().layers.keys().next().unwrap();
     let style = Style { layer, color: ecad_model::Color::ByLayer, linetype: "ByLayer".into(), lineweight: -1 };
-    let point = |owner: ecad_model::ConnectionPointOwner, label: &str| ConnectionPoint { owner, label: Some(label.into()), key: None, accepts: Default::default() };
+    let point = |owner: ecad_model::ConnectionPointOwner, label: &str| ConnectionPoint {
+        owner,
+        label: Some(label.into()),
+        key: None,
+        accepts: Default::default(),
+    };
     // Design 072 §6.2: a continuation is a drawing aid.
     let arrow = || ecad_model::Aid::Continuation { name: Some(ecad_model::objects::aid::ContinuationName::new("A1").unwrap()), caption: None };
     let slash = |id: ItemId, page: PageId| Op::AddItem {

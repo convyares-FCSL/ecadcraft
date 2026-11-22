@@ -37,9 +37,9 @@ use ecad_model::document::effect::{AreaSet, Effect};
 use ecad_model::document::view::{DerivedView, NoteCx, Outcome, PageSet, Phase, ViewScope};
 use ecad_model::{Document, Op};
 
-use crate::views::Inputs;
-use crate::styles::text_style::fonts::TextMetrics;
 use crate::references::devices::{RefIndex, Shown, Watch};
+use crate::styles::text_style::fonts::TextMetrics;
+use crate::views::Inputs;
 
 /// The references view: the kept index and what the last commit derived.
 #[derive(Debug, Default)]

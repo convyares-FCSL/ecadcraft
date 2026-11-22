@@ -6,9 +6,12 @@
 //! was fixed (all three are fixed and run now).
 
 use ecad_engine::Persistence;
-use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
-use {ecad_model::CableId, ecad_model::DeviceId, ecad_model::Document, ecad_model::PageId, ecad_model::ConnectionPointId, ecad_model::WireId, ecad_model::naming::tag};
 use serde_json::{Value, json};
+use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
+use {
+    ecad_model::CableId, ecad_model::ConnectionPointId, ecad_model::DeviceId, ecad_model::Document, ecad_model::PageId, ecad_model::WireId,
+    ecad_model::naming::tag,
+};
 
 use crate::common::{H, id};
 use crate::common::{place, reopen, tmp_dir};

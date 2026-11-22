@@ -11,8 +11,8 @@
 use std::collections::BTreeMap;
 
 use ecad_electrical::cables::{self, CableField, Side, Source};
-use ecad_model::objects::styles::cable::Shield;
 use ecad_model::naming::words::Word;
+use ecad_model::objects::styles::cable::Shield;
 use ecad_model::{CableId, Document, PageId};
 use ecad_widgets::control::{self, Select, TextEntry};
 use ecad_widgets::panel;

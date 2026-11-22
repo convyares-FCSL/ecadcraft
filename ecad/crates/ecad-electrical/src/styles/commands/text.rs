@@ -10,8 +10,8 @@ use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
-    DeviceId, Document, Form, Noun, ObjectRef, Op, PageId, Pt, RepresentationId, StyleLayer, StyleRef, Subject, ConnectionPointId, TextHAlign, TextVAlign,
-    WireId,
+    ConnectionPointId, DeviceId, Document, Form, Noun, ObjectRef, Op, PageId, Pt, RepresentationId, StyleLayer, StyleRef, Subject, TextHAlign,
+    TextVAlign, WireId,
 };
 
 use crate::defaults::{self, Scope};

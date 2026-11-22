@@ -166,7 +166,9 @@ pub fn selected_reference(p: &Project, uid: u64, handles: &[cadcraft_engine::doc
     let doc = p.ledger.document();
     handles.iter().find_map(|h| match map.get(*h)? {
         crate::project::Mapped::RefText(r) => Some(r),
-        crate::project::Mapped::Item(i) => doc.representation_of_item(i).filter(|(_, r)| ecad_electrical::references::cables::is_reference(r)).map(|(id, _)| id),
+        crate::project::Mapped::Item(i) => {
+            doc.representation_of_item(i).filter(|(_, r)| ecad_electrical::references::cables::is_reference(r)).map(|(id, _)| id)
+        }
         _ => None,
     })
 }

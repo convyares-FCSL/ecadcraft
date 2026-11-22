@@ -662,7 +662,9 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
             // The head: the name, where it is, the go-to.
             ui.horizontal(|ui| {
                 let title_ink = if d.provisional { s.provisional } else { s.text };
-                ui.label(egui::RichText::new(&d.title).font(ecad_widgets::fonts::font(ui.ctx(), ui_type::OBJECT)).color(ecad_widgets::color(title_ink)));
+                ui.label(
+                    egui::RichText::new(&d.title).font(ecad_widgets::fonts::font(ui.ctx(), ui_type::OBJECT)).color(ecad_widgets::color(title_ink)),
+                );
                 if let Some((words, go)) = &d.go {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui.add(prim::Button::new(&format!("\u{2192} {words}")).small()).clicked() {

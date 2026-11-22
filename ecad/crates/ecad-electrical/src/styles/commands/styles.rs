@@ -1016,7 +1016,13 @@ impl Generic for PromoteParams {
                 return Err(CmdError::refused(crate::styles::commands::defaults::level_refused(entry, defaults::Level::Standard)));
             }
             let (mut ops, text) = promote_value(doc, entry)?;
-            ops.extend(crate::styles::commands::defaults::ops(doc, entry, defaults::Level::Project, crate::styles::commands::defaults::Target::Project, None)?);
+            ops.extend(crate::styles::commands::defaults::ops(
+                doc,
+                entry,
+                defaults::Level::Project,
+                crate::styles::commands::defaults::Target::Project,
+                None,
+            )?);
             return Ok(Outcome::edit(format!("Promote {}", entry.label), ops, json!({"changed": true, "key": entry.key, "value": text})));
         }
         let cat = required_catalogue(self.catalogue.as_deref())?;

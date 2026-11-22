@@ -1,7 +1,7 @@
 //! The egui style from the tokens: both themes alike, the Graphite colours, the shadow.
 
-use ecad_widgets::tokens::GRAPHITE;
 use ecad_widgets::color;
+use ecad_widgets::tokens::GRAPHITE;
 use egui::Theme;
 
 #[test]

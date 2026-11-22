@@ -29,8 +29,8 @@ use std::sync::OnceLock;
 
 use crate::CmdError;
 use ecad_model::{
-    Definition, DefinitionId, DeviceGroup, DeviceType, Document, LibraryId, ObjectRef, Op, Origin, PartRole, PointKey, Primitive, Pt, Subject,
-    ConnectionPointDef, Word,
+    ConnectionPointDef, Definition, DefinitionId, DeviceGroup, DeviceType, Document, LibraryId, ObjectRef, Op, Origin, PartRole, PointKey, Primitive,
+    Pt, Subject, Word,
 };
 
 /// The library ID of the starter symbols.
@@ -2349,7 +2349,9 @@ fn graphics(key: StarterKey) -> Vec<Primitive> {
         }
         K::Terminal => vec![circle((0.0, 0.0), 1.5)],
         // Our own earth mark to the right of the ring (design 028 §2).
-        K::TerminalBlockPe => vec![circle((0.0, 0.0), 1.5), line((2.5, -1.2), (2.5, 1.2)), line((3.2, -0.8), (3.2, 0.8)), line((3.9, -0.4), (3.9, 0.4))],
+        K::TerminalBlockPe => {
+            vec![circle((0.0, 0.0), 1.5), line((2.5, -1.2), (2.5, 1.2)), line((3.2, -0.8), (3.2, 0.8)), line((3.9, -0.4), (3.9, 0.4))]
+        }
         // An arrow pointing away from its wire (design 022 §3.2).
         K::Continuation => vec![line((0.0, 0.0), (0.0, -5.0)), poly(&[(-1.5, -3.5), (0.0, -5.0), (1.5, -3.5)], false)],
         K::Di => vec![rect((-7.5, -2.5), (7.5, 2.5)), text((-2.5, -1.25), 2.5, "DI"), line((0.0, 2.5), (0.0, 10.0))],
@@ -2915,7 +2917,8 @@ mod tests {
             ("continuation", "7289a1f63b563b3f0ceb6959fd7fb34763daf4c1c6e56bb2366e01129ae7afaf"),
         ];
         // Brief 036's starters are new; the hashes pinned here are the earlier basic ones.
-        let basic: Vec<_> = STARTERS.iter().filter(|s| s.family == Family::Basic && !crate::terminal_strips::terminal_blocks::is_level_starter(s.key)).collect();
+        let basic: Vec<_> =
+            STARTERS.iter().filter(|s| s.family == Family::Basic && !crate::terminal_strips::terminal_blocks::is_level_starter(s.key)).collect();
         assert_eq!(basic.len(), want.len());
         for (key, hash) in want {
             let o = by_key(key).unwrap().definition().unwrap().origin.clone().unwrap();

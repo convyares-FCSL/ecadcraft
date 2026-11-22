@@ -2,13 +2,13 @@
 
 use ecad_electrical::checks::Fix;
 use ecad_electrical::devices::TextOf;
-use ecad_electrical::reports::accessory_fix_commands;
 use ecad_electrical::plc::PlcFix;
-use ecad_model::{Author, DeviceId, Op, Subject, ConnectionPoint, ConnectionPointId};
+use ecad_electrical::reports::accessory_fix_commands;
+use ecad_model::{Author, ConnectionPoint, ConnectionPointId, DeviceId, Op, Subject};
 use serde_json::{Value, json};
 
-use crate::plc::contracts::{checks_of, place, placed, prop, same_as_built};
 use crate::common::{H, id, pts};
+use crate::plc::contracts::{checks_of, place, placed, prop, same_as_built};
 
 /// Fixture P, reduced (design 045 §13): a CPU `-A01` with DI `-A02` (slot 1), DI `-A03` (2), AI
 /// `-A04` (3), IOL `-A05` (4) and DQ `-A06` (5), and eight vertical drops 10 mm apart.
@@ -337,7 +337,11 @@ fn m_channel_and_address_rows_have_working_fixes() {
     let after = ConnectionPoint { key: Some(".0.in".parse().unwrap()), ..term.clone() };
     h.cfg(|p| {
         p.ledger
-            .commit(Author::User, "hand-made", vec![Op::RemoveConnectionPoint { id: t1, terminal: term }, Op::AddConnectionPoint { id: t1, terminal: after }])
+            .commit(
+                Author::User,
+                "hand-made",
+                vec![Op::RemoveConnectionPoint { id: t1, terminal: term }, Op::AddConnectionPoint { id: t1, terminal: after }],
+            )
             .map(|_| ())
             .unwrap()
     });

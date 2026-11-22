@@ -37,14 +37,14 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::document::diff;
 use crate::document::doc::{
-    Cable, Core, CorePosition, Device, Document, End, Folder, Form, Item, ItemKind, Page, Properties, Representation, Subject, ConnectionPoint, Wire,
+    Cable, ConnectionPoint, Core, CorePosition, Device, Document, End, Folder, Form, Item, ItemKind, Page, Properties, Representation, Subject, Wire,
 };
-use crate::naming::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
 use crate::document::invariant::Touched;
 use crate::document::op::{ObjectRef, Op};
+use crate::naming::id::{CableId, ConnectionPointId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, WireId};
+use crate::naming::tag::{self, HighWater};
 use crate::objects::route::{Route, RouteEnd};
 use crate::objects::styles::{Standard, StyleCatalogues, StyleLayer, StyleRecord, StyleRef};
-use crate::naming::tag::{self, HighWater};
 
 /// An object a merge compares.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -1000,8 +1000,9 @@ fn merge_objects(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &[Obj]) {
             }
             Obj::Terminal(id) => {
                 let v = object(ctx, obj, &what, a.terminals.get(&id), t.terminals.get(&id), s.terminals.get(&id), |ctx, a, t, s| {
-                    let show =
-                        |x: &ConnectionPoint| x.label.clone().or_else(|| x.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| "(no label)".into());
+                    let show = |x: &ConnectionPoint| {
+                        x.label.clone().or_else(|| x.key.as_ref().map(ToString::to_string)).unwrap_or_else(|| "(no label)".into())
+                    };
                     field(ctx, obj, "record", format!("{what} · changed on both"), a, t, s, &show)
                 });
                 set(&mut m.terminals, id, v);
@@ -1965,7 +1966,9 @@ fn resolve_page_numbers(ctx: &mut Ctx<'_, '_>, m: &mut Document, objects: &BTree
         if crate::document::book::stored_number(t, p) == Some(num.as_str()) {
             continue;
         }
-        let Some(other) = m.pages.keys().copied().find(|q| *q != p && crate::document::book::stored_number(m, *q) == Some(num.as_str())) else { continue };
+        let Some(other) = m.pages.keys().copied().find(|q| *q != p && crate::document::book::stored_number(m, *q) == Some(num.as_str())) else {
+            continue;
+        };
         let fresh = next_number(&num, &taken, step);
         let c = Conflict {
             id: format!("rule/page/{num}"),
@@ -2590,8 +2593,10 @@ mod tests {
     fn device(d: &mut Document, c: u128, tag_text: &str, terminals: &[u128]) {
         d.devices.insert(DeviceId(c), Device::default().with_tag(Some(tag_text)));
         for t in terminals {
-            d.terminals
-                .insert(ConnectionPointId(*t), ConnectionPoint { owner: DeviceId(c).into(), label: Some(format!("A{t}")), key: None, accepts: Default::default() });
+            d.terminals.insert(
+                ConnectionPointId(*t),
+                ConnectionPoint { owner: DeviceId(c).into(), label: Some(format!("A{t}")), key: None, accepts: Default::default() },
+            );
         }
     }
 

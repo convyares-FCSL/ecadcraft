@@ -26,8 +26,8 @@ use cadcraft_engine::doc::{Entity, EntityKind, Handle};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Input, Session};
 use common::{H, id};
-use ecad_engine::interact::{hover_lines, overlay_marks};
 use ecad_engine::cables::views::{self, FAN_REFUSED, Settings};
+use ecad_engine::interact::{hover_lines, overlay_marks};
 use ecad_engine::{Persistence, Project, ProjectHandle};
 use ecad_model::{CableId, ItemId, PageId, Pt, Transaction, WireId};
 use serde_json::{Value, json};
@@ -1443,7 +1443,8 @@ fn round2_m5_selection_with_a_failure_carries_on() {
     let slash_handles = |h: &mut H| -> Vec<Handle> {
         let doc = h.doc();
         let page = h.first_page();
-        let items: Vec<ItemId> = cables.iter().flat_map(|k| ecad_electrical::cables::slash::slashes_of(&doc, page, *k).into_iter().map(|x| x.0)).collect();
+        let items: Vec<ItemId> =
+            cables.iter().flat_map(|k| ecad_electrical::cables::slash::slashes_of(&doc, page, *k).into_iter().map(|x| x.0)).collect();
         items.into_iter().filter_map(|i| h.p(|p| p.pages[&page].map.item(i))).collect()
     };
     let before = snap(&mut g.h);

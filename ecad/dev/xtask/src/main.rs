@@ -7,7 +7,7 @@
 //!   Developer tools (`ecad/dev/`) are kept apart from product code (design 029 §12.3): no product
 //!   crate depends on one except through its own `dev` feature, dev features are read only in a
 //!   crate's `dev` module, and no product source reads a file under `dev/`. ECAD's interface kit
-//!   (class UiKit) uses egui, `ecad-tokens` and the drawing style only, and ECAD UI sources do not
+//!   (class UiKit) uses egui and the drawing style only, and ECAD UI sources do not
 //!   style locally (design `ui-architecture.md` §2–§3.2, brief 037). Literal sizes in ECAD UI
 //!   sources are ratcheted: their allowlisted counts only fall. Core crates other than
 //!   `ecad-store` reach no OS (file system, environment, processes, network, clock; design 065
@@ -76,12 +76,10 @@ const TABLE: &[(&str, Class)] = &[
     ("ecad-file", Class::Core),
     ("ecad-drawing-style", Class::Core),
     ("ecad-engine", Class::Engine),
-    ("ecad-inspect", Class::Core),
     // The electrical rules (design 065; created by the split lane, step 6).
     ("ecad-electrical", Class::Core),
     // The screen tokens (design 065 §1.1); the drawing style is `ecad-drawing-style`.
-    ("ecad-tokens", Class::UiKit),
-    ("ecad-ui", Class::UiKit),
+    ("ecad-widgets", Class::UiKit),
     ("ecad-bench", Class::Dev),
     ("ecad-cli", Class::Programs),
     // The application, and the desktop program that runs it (design 065 §2.2, split step 9).
@@ -109,7 +107,7 @@ fn layer_name(class: Class) -> &'static str {
 
 /// The order inside Core (design 065 §1; owner, 2026-11-15): a Core crate depends only on Core
 /// crates before it, so no cycle (such as `ecad-file` → `ecad-electrical`) can be written.
-const CORE_ORDER: &[&str] = &["ecad-model", "ecad-drawing-style", "ecad-store", "ecad-file", "ecad-inspect", "ecad-electrical"];
+const CORE_ORDER: &[&str] = &["ecad-model", "ecad-drawing-style", "ecad-store", "ecad-file", "ecad-electrical"];
 
 /// Dependencies that break the layer rules for now, each with the step of the crate split (design
 /// 065 §5) that removes it. An entry no longer needed fails `layers`.
@@ -127,7 +125,7 @@ const DEV_FEATURES: &[&str] = &["dev", "verify-invariants", "fault-injection", "
 /// needs it fails `layers`, and a new place is a violation.
 const DEV_FEATURE_ALLOWLIST: &[(&str, &str)] = &[
     ("crates/ecad-engine/src/access.rs", "dev tree, part 2 (after 026, 027, 028)"),
-    ("crates/ecad-engine/src/interact/forms.rs", "dev tree, part 2 (after 026, 027, 028)"),
+    ("crates/ecad-engine/src/properties/forms.rs", "dev tree, part 2 (after 026, 027, 028)"),
     ("crates/ecad-engine/src/lib.rs", "dev tree, part 2 (after 026, 027, 028)"),
     ("crates/ecad-engine/src/project/changes.rs", "dev tree, part 2 (after 026, 027, 028)"),
     ("crates/ecad-engine/src/project/owner.rs", "dev tree, part 2 (after 026, 027, 028)"),
@@ -135,7 +133,7 @@ const DEV_FEATURE_ALLOWLIST: &[(&str, &str)] = &[
 ];
 
 /// Styling written in place, which ECAD UI code may no longer use (design `ui-architecture.md`
-/// §3.2, brief 037): colours, sizes and fonts come from `ecad-tokens` through `ecad-ui`.
+/// §3.2, brief 037): colours, sizes and fonts come from the tokens of `ecad-widgets`.
 /// `Tokens::get` reads CADCraft's theme colours directly; `from_rgba` covers every RGBA
 /// constructor (`Color32::from_rgba_unmultiplied`, `Rgba::from_rgba_premultiplied`, …).
 const LOCAL_STYLE: &[&str] = &[
@@ -160,15 +158,19 @@ const LOCAL_STYLE: &[&str] = &[
 /// fewer fail too until the count is lowered (an entry at none is removed), and a file not listed
 /// that styles locally is a violation.
 const STYLE_ALLOWLIST: &[(&str, usize, &str)] = &[
-    ("crates/ecad-app/src/library/builder.rs", 2, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
-    ("crates/ecad-app/src/library/title_blocks/canvas.rs", 2, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
-    ("crates/ecad-app/src/library/title_blocks/list.rs", 1, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
-    ("crates/ecad-app/src/preview.rs", 6, "restyled with the page view (U4a)"),
-    ("crates/ecad-app/src/project_panel.rs", 1, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
-    ("crates/ecad-app/src/publish.rs", 5, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
-    ("crates/ecad-app/src/shell/bar.rs", 1, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
-    ("crates/ecad-app/src/shell/glyphs.rs", 1, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
-    ("crates/ecad-app/src/shell/right/layout_tab.rs", 1, "named egui colour (brief 060): take it from ecad-tokens with UI kit round 2 (R3)"),
+    ("crates/ecad-app/src/library/builder.rs", 2, "named egui colour (brief 060): take it from the ecad-widgets tokens with UI kit round 2 (R3)"),
+    ("crates/ecad-app/src/title_blocks/canvas.rs", 2, "named egui colour (brief 060): take it from the ecad-widgets tokens with UI kit round 2 (R3)"),
+    ("crates/ecad-app/src/title_blocks/list.rs", 1, "named egui colour (brief 060): take it from the ecad-widgets tokens with UI kit round 2 (R3)"),
+    ("crates/ecad-app/src/pages/preview.rs", 6, "restyled with the page view (U4a)"),
+    ("crates/ecad-app/src/pages/project_panel.rs", 1, "named egui colour (brief 060): take it from the ecad-widgets tokens with UI kit round 2 (R3)"),
+    ("crates/ecad-app/src/publish/mod.rs", 5, "named egui colour (brief 060): take it from the ecad-widgets tokens with UI kit round 2 (R3)"),
+    ("crates/ecad-app/src/shell/bar.rs", 1, "named egui colour (brief 060): take it from the ecad-widgets tokens with UI kit round 2 (R3)"),
+    ("crates/ecad-app/src/shell/glyphs.rs", 1, "named egui colour (brief 060): take it from the ecad-widgets tokens with UI kit round 2 (R3)"),
+    (
+        "crates/ecad-app/src/inspector/layout_tab.rs",
+        1,
+        "named egui colour (brief 060): take it from the ecad-widgets tokens with UI kit round 2 (R3)",
+    ),
 ];
 
 /// Raw egui value controls (design `docs/design/components.md`): panels and dialogs use
@@ -180,23 +182,23 @@ const RAW_CONTROL: &[&str] = &["TextEdit::", "ComboBox::"];
 /// that do, and why. Like [`STYLE_ALLOWLIST`], the counts only fall, and a file not listed that
 /// uses one is a violation.
 const RAW_CONTROL_ALLOWLIST: &[(&str, usize, &str)] = &[
-    ("crates/ecad-app/src/developer.rs", 5, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("crates/ecad-app/src/library/builder.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("crates/ecad-app/src/library/details.rs", 2, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("crates/ecad-app/src/lists/style_catalogues.rs", 3, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("crates/ecad-app/src/project_panel.rs", 6, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("crates/ecad-app/src/publish.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("crates/ecad-app/src/search.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("crates/ecad-app/src/settings/project.rs", 4, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("crates/ecad-app/src/settings/standards.rs", 3, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("crates/ecad-app/src/shell/placing.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("crates/ecad-app/src/shell/right/layout_tab.rs", 1, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("crates/ecad-app/src/shell/right.rs", 4, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
-    ("crates/ecad-app/src/text_ui.rs", 4, "hand-rolled before the component set (#113): convert to ecad_ui::control"),
+    ("crates/ecad-app/src/developer/mod.rs", 5, "hand-rolled before the component set (#113): convert to ecad_widgets::control"),
+    ("crates/ecad-app/src/library/builder.rs", 1, "hand-rolled before the component set (#113): convert to ecad_widgets::control"),
+    ("crates/ecad-app/src/library/details.rs", 2, "hand-rolled before the component set (#113): convert to ecad_widgets::control"),
+    ("crates/ecad-app/src/settings/style_catalogues.rs", 3, "hand-rolled before the component set (#113): convert to ecad_widgets::control"),
+    ("crates/ecad-app/src/pages/project_panel.rs", 6, "hand-rolled before the component set (#113): convert to ecad_widgets::control"),
+    ("crates/ecad-app/src/publish/mod.rs", 1, "hand-rolled before the component set (#113): convert to ecad_widgets::control"),
+    ("crates/ecad-app/src/library/search.rs", 1, "hand-rolled before the component set (#113): convert to ecad_widgets::control"),
+    ("crates/ecad-app/src/settings/project.rs", 4, "hand-rolled before the component set (#113): convert to ecad_widgets::control"),
+    ("crates/ecad-app/src/settings/standards.rs", 3, "hand-rolled before the component set (#113): convert to ecad_widgets::control"),
+    ("crates/ecad-app/src/shell/placing.rs", 1, "hand-rolled before the component set (#113): convert to ecad_widgets::control"),
+    ("crates/ecad-app/src/inspector/layout_tab.rs", 1, "hand-rolled before the component set (#113): convert to ecad_widgets::control"),
+    ("crates/ecad-app/src/inspector/mod.rs", 4, "hand-rolled before the component set (#113): convert to ecad_widgets::control"),
+    ("crates/ecad-app/src/settings/text_styles.rs", 4, "hand-rolled before the component set (#113): convert to ecad_widgets::control"),
 ];
 
 /// Sizes written as literals in ECAD UI code (brief 060; review 2026-11, finding 8): a stroke width,
-/// a space or a size that starts with a digit, where `ecad-tokens` has (or will have) a token
+/// a space or a size that starts with a digit, where `ecad-widgets::tokens` has (or will have) a token
 /// (`line::HAIRLINE_PX`, `space::XS`, …). Matched as the call followed directly by a digit.
 const LITERAL_SIZE: &[&str] = &["Stroke::new(", "add_space(", "vec2("];
 
@@ -207,20 +209,20 @@ const LITERAL_SIZE_ALLOWLIST: &[(&str, usize)] = &[
     ("crates/ecad-app/src/agent/last_write.rs", 1),
     ("crates/ecad-app/src/canvas/leader.rs", 1),
     ("crates/ecad-app/src/canvas/markers.rs", 5),
-    ("crates/ecad-app/src/devices_panel.rs", 9),
-    ("crates/ecad-app/src/history_panel.rs", 23),
+    ("crates/ecad-app/src/devices/panel.rs", 9),
+    ("crates/ecad-app/src/history/panel.rs", 23),
     ("crates/ecad-app/src/library/browser.rs", 7),
     ("crates/ecad-app/src/library/builder.rs", 18),
     ("crates/ecad-app/src/library/details.rs", 6),
     ("crates/ecad-app/src/library/review.rs", 1),
-    ("crates/ecad-app/src/library/title_blocks/canvas.rs", 25),
-    ("crates/ecad-app/src/library/title_blocks/frame_popover.rs", 3),
-    ("crates/ecad-app/src/library/title_blocks/list.rs", 7),
-    ("crates/ecad-app/src/lists/cable_view.rs", 7),
-    ("crates/ecad-app/src/lists/workspace.rs", 1),
-    ("crates/ecad-app/src/preview.rs", 5),
-    ("crates/ecad-app/src/project_panel.rs", 20),
-    ("crates/ecad-app/src/publish.rs", 11),
+    ("crates/ecad-app/src/title_blocks/canvas.rs", 25),
+    ("crates/ecad-app/src/title_blocks/frame_popover.rs", 3),
+    ("crates/ecad-app/src/title_blocks/list.rs", 7),
+    ("crates/ecad-app/src/cables/view.rs", 7),
+    ("crates/ecad-app/src/workspace/frame.rs", 1),
+    ("crates/ecad-app/src/pages/preview.rs", 5),
+    ("crates/ecad-app/src/pages/project_panel.rs", 20),
+    ("crates/ecad-app/src/publish/mod.rs", 11),
     ("crates/ecad-app/src/settings/mod.rs", 7),
     ("crates/ecad-app/src/settings/pages.rs", 16),
     ("crates/ecad-app/src/settings/project.rs", 1),
@@ -232,12 +234,12 @@ const LITERAL_SIZE_ALLOWLIST: &[(&str, usize)] = &[
     ("crates/ecad-app/src/shell/left.rs", 1),
     ("crates/ecad-app/src/shell/new_page.rs", 3),
     ("crates/ecad-app/src/shell/placing.rs", 2),
-    ("crates/ecad-app/src/shell/right.rs", 1),
-    ("crates/ecad-app/src/shell/right/checks_tab.rs", 5),
-    ("crates/ecad-app/src/shell/right/device.rs", 1),
-    ("crates/ecad-app/src/shell/right/layout_tab.rs", 8),
-    ("crates/ecad-app/src/shell/right/placing_view.rs", 4),
-    ("crates/ecad-app/src/shell/right/widgets.rs", 10),
+    ("crates/ecad-app/src/inspector/mod.rs", 1),
+    ("crates/ecad-app/src/inspector/checks_tab.rs", 5),
+    ("crates/ecad-app/src/inspector/device.rs", 1),
+    ("crates/ecad-app/src/inspector/layout_tab.rs", 8),
+    ("crates/ecad-app/src/inspector/placing_view.rs", 4),
+    ("crates/ecad-app/src/inspector/widgets.rs", 10),
     ("crates/ecad-app/src/shell/status_bar.rs", 14),
     ("crates/ecad-app/src/shell/table_editor.rs", 1),
     ("crates/ecad-app/src/shell/tool_strip.rs", 2),
@@ -300,7 +302,7 @@ const RAYON_OK: &[&str] = &["ecad-model", "ecad-file", "ecad-electrical", "ecad-
 /// UI toolkits and ECAD's own UI kit: Core and Engine crates may depend on none of them (the
 /// kit too, so the document and engine crates never draw; design `ui-architecture.md` §2).
 const UI_CRATES: &[&str] =
-    &["cadcraft-ui-egui", "craft-ui", "egui", "epaint", "egui_extras", "eframe", "egui-wgpu", "wgpu", "winit", "rfd", "ecad-ui"];
+    &["cadcraft-ui-egui", "craft-ui", "egui", "epaint", "egui_extras", "eframe", "egui-wgpu", "wgpu", "winit", "rfd", "ecad-widgets"];
 
 /// The sections of a crate's README, in order, after its `# <crate name>` title (design 065 §6).
 const README_SECTIONS: &[&str] = &["## Purpose", "## Contents", "## Must not depend on", "## Key types", "## How to test"];
@@ -312,7 +314,7 @@ const README_SECTIONS: &[&str] = &["## Purpose", "## Contents", "## Must not dep
 const README_ALLOWLIST: &[&str] = &[];
 
 /// What a UiKit crate may depend on, besides dev-dependencies (design §2).
-const UIKIT_ALLOWED: &[&str] = &["egui", "epaint", "egui_extras", "ecad-tokens", "ecad-drawing-style"];
+const UIKIT_ALLOWED: &[&str] = &["egui", "epaint", "egui_extras", "ecad-drawing-style"];
 
 fn ecad_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).parent().and_then(Path::parent).map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."))
@@ -542,6 +544,25 @@ fn core_os_violations(meta: &Value) -> Result<Vec<String>, String> {
 /// font and colour come from its `TextKind`'s style. A hard zero.
 const DRAWN_TEXT_CRATES: &[&str] = &["ecad-engine", "ecad-electrical"];
 
+/// The engine's session command files and folders, for the `CmdError` ratchet.
+const ENGINE_COMMAND_FILES: &[&str] = &[
+    "crates/ecad-engine/src/cables/commands.rs",
+    "crates/ecad-engine/src/commands",
+    "crates/ecad-engine/src/connectors/commands.rs",
+    "crates/ecad-engine/src/devices/commands.rs",
+    "crates/ecad-engine/src/pages/commands",
+    "crates/ecad-engine/src/plc/commands",
+    "crates/ecad-engine/src/references/commands",
+    "crates/ecad-engine/src/releases/commands.rs",
+    "crates/ecad-engine/src/reports/commands.rs",
+    "crates/ecad-engine/src/styles/commands.rs",
+    "crates/ecad-engine/src/symbols/commands.rs",
+    "crates/ecad-engine/src/terminal_strips/commands.rs",
+    "crates/ecad-engine/src/title_blocks/commands.rs",
+    "crates/ecad-engine/src/wires/commands.rs",
+    "crates/ecad-engine/src/generic.rs",
+];
+
 /// Paths (fragments of a file's path under the workspace) where literal text styling is allowed,
 /// each with why: the styles, their engine half (fonts and CADCraft styles) and their data define
 /// the sizes; symbol definitions and builders draw
@@ -551,13 +572,55 @@ const DRAWN_TEXT_CRATES: &[&str] = &["ecad-engine", "ecad-electrical"];
 const DRAWN_TEXT_EXEMPT: &[&str] = &[
     "/styles/",
     "/defaults/",
-    "ecad-electrical/src/text_style",
-    "ecad-engine/src/draw/text_style.rs",
+    "ecad-electrical/src/styles/text_style",
+    "ecad-engine/src/styles/draw.rs",
     "ecad-electrical/src/symbols",
-    "ecad-engine/src/interact/",
-    "ecad-engine/src/draw/title_block/dxf.rs",
-    "ecad-engine/src/cmd/",
-    "ecad-electrical/src/cmd/",
+    "ecad-engine/src/interact.rs",
+    "ecad-engine/src/pointer/",
+    "ecad-engine/src/properties/forms.rs",
+    "ecad-engine/src/connectors/interact.rs",
+    "ecad-engine/src/continuations/interact.rs",
+    "ecad-engine/src/devices/interact.rs",
+    "ecad-engine/src/locations/interact.rs",
+    "ecad-engine/src/references/interact/",
+    "ecad-engine/src/reports/interact.rs",
+    "ecad-engine/src/styles/interact.rs",
+    "ecad-engine/src/terminal_strips/interact/",
+    "ecad-engine/src/wires/interact.rs",
+    "ecad-engine/src/title_blocks/dxf.rs",
+    "ecad-engine/src/cables/commands.rs",
+    "ecad-engine/src/commands/",
+    "ecad-engine/src/connectors/commands.rs",
+    "ecad-engine/src/devices/commands.rs",
+    "ecad-engine/src/pages/commands/",
+    "ecad-engine/src/plc/commands/",
+    "ecad-engine/src/references/commands/",
+    "ecad-engine/src/releases/commands.rs",
+    "ecad-engine/src/reports/commands.rs",
+    "ecad-engine/src/styles/commands.rs",
+    "ecad-engine/src/symbols/commands.rs",
+    "ecad-engine/src/terminal_strips/commands.rs",
+    "ecad-engine/src/title_blocks/commands.rs",
+    "ecad-engine/src/wires/commands.rs",
+    "ecad-engine/src/generic.rs",
+    "ecad-electrical/src/cables/commands/",
+    "ecad-electrical/src/circuits/commands.rs",
+    "ecad-electrical/src/commands/",
+    "ecad-electrical/src/connectors/commands.rs",
+    "ecad-electrical/src/continuations/commands.rs",
+    "ecad-electrical/src/devices/commands/",
+    "ecad-electrical/src/locations/commands/",
+    "ecad-electrical/src/numbering/commands.rs",
+    "ecad-electrical/src/pages/commands/",
+    "ecad-electrical/src/plc/commands.rs",
+    "ecad-electrical/src/properties/commands/",
+    "ecad-electrical/src/references/commands/",
+    "ecad-electrical/src/reports/commands/",
+    "ecad-electrical/src/styles/commands/",
+    "ecad-electrical/src/symbols/commands.rs",
+    "ecad-electrical/src/terminal_strips/commands/",
+    "ecad-electrical/src/title_blocks/commands.rs",
+    "ecad-electrical/src/wires/commands/",
 ];
 
 /// The lines of one source file (`rel`) that style drawn text literally, before its test module,
@@ -706,8 +769,20 @@ fn string_error_violations(meta: &Value) -> Result<Vec<String>, String> {
         Ok(sum)
     };
     const FIX: &str = "return CmdError (brief 070)";
-    let cmd = "crates/ecad-engine/src/cmd";
-    let (r, e) = count_in(&root.join(cmd), &string_error_counts)?;
+    // The engine's session command files (0.2.3: each in its feature folder, plus `commands/`).
+    let cmd = "ecad-engine commands";
+    let (mut r, mut e) = (0, 0);
+    for p in ENGINE_COMMAND_FILES {
+        let path = root.join(p);
+        let (a, b) = if path.is_file() {
+            let text = std::fs::read_to_string(&path).map_err(|err| format!("{}: {err}", path.display()))?;
+            string_error_counts(&text)
+        } else {
+            count_in(&path, &string_error_counts)?
+        };
+        r += a;
+        e += b;
+    }
     out.extend(ratchet_problem(cmd, r, CMD_STRING_ERRORS.0, "lines with `Result<_, String>`", FIX));
     out.extend(ratchet_problem(cmd, e, CMD_STRING_ERRORS.1, "lines with `Err(format!(`", FIX));
     let bridges = |t: &str| {
@@ -900,7 +975,7 @@ fn places_matching(rel: &str, text: &str, patterns: &[&str]) -> Vec<String> {
 fn style_count_problem(path: &str, found: usize, allowed: usize, brief: &str) -> Option<String> {
     match found.cmp(&allowed) {
         std::cmp::Ordering::Greater => {
-            Some(format!("{path}: {found} locally styled lines, the allowlist allows {allowed} ({brief}); take the new ones from ecad-ui"))
+            Some(format!("{path}: {found} locally styled lines, the allowlist allows {allowed} ({brief}); take the new ones from ecad-widgets"))
         }
         std::cmp::Ordering::Less if found == 0 => Some(format!("{path}: no longer styles locally; remove its allowlist entry ({brief})")),
         std::cmp::Ordering::Less => Some(format!("{path}: {found} locally styled lines, fewer than the allowlist's {allowed}; lower the count")),
@@ -913,7 +988,7 @@ fn style_count_problem(path: &str, found: usize, allowed: usize, brief: &str) ->
 fn raw_count_problem(path: &str, found: usize, allowed: usize, why: &str) -> Option<String> {
     match found.cmp(&allowed) {
         std::cmp::Ordering::Greater => {
-            Some(format!("{path}: {found} raw egui value controls, the allowlist allows {allowed} ({why}); use ecad_ui::control"))
+            Some(format!("{path}: {found} raw egui value controls, the allowlist allows {allowed} ({why}); use ecad_widgets::control"))
         }
         std::cmp::Ordering::Less if found == 0 => Some(format!("{path}: no longer uses raw egui value controls; remove its allowlist entry")),
         std::cmp::Ordering::Less => Some(format!("{path}: {found} raw egui value controls, fewer than the allowlist's {allowed}; lower the count")),
@@ -1075,7 +1150,7 @@ fn source_violations(meta: &Value) -> Result<Vec<String>, String> {
                         style_seen.insert(path);
                         out.extend(style_count_problem(path, places.len(), *allowed, brief));
                     }
-                    None => out.extend(places.into_iter().map(|p| format!("{p} (no local styling: take it from ecad-tokens through ecad-ui)"))),
+                    None => out.extend(places.into_iter().map(|p| format!("{p} (no local styling: take it from the ecad-widgets tokens)"))),
                 }
                 let places = raw_control_places(&rel, &text);
                 match RAW_CONTROL_ALLOWLIST.iter().find(|(path, _, _)| *path == rel) {
@@ -1083,15 +1158,21 @@ fn source_violations(meta: &Value) -> Result<Vec<String>, String> {
                         raw_seen.insert(path);
                         out.extend(raw_count_problem(path, places.len(), *allowed, why));
                     }
-                    None => out.extend(places.into_iter().map(|p| format!("{p} (no raw egui value controls: use ecad_ui::control)"))),
+                    None => out.extend(places.into_iter().map(|p| format!("{p} (no raw egui value controls: use ecad_widgets::control)"))),
                 }
                 let places = literal_size_places(&rel, &text);
                 match LITERAL_SIZE_ALLOWLIST.iter().find(|(path, _)| *path == rel) {
                     Some((path, allowed)) => {
                         size_seen.insert(path);
-                        out.extend(ratchet_problem(path, places.len(), *allowed, "lines with literal sizes", "take the size from ecad-tokens"));
+                        out.extend(ratchet_problem(
+                            path,
+                            places.len(),
+                            *allowed,
+                            "lines with literal sizes",
+                            "take the size from the ecad-widgets tokens",
+                        ));
                     }
-                    None => out.extend(places.into_iter().map(|p| format!("{p} (no literal sizes: take them from ecad-tokens)"))),
+                    None => out.extend(places.into_iter().map(|p| format!("{p} (no literal sizes: take them from the ecad-widgets tokens)"))),
                 }
             }
         }
@@ -1681,7 +1762,6 @@ mod tests {
                 "ecad-electrical",
                 "ecad-engine",
                 "ecad-file",
-                "ecad-inspect",
                 "ecad-inspector",
                 "ecad-mcp",
                 "ecad-model"
@@ -1708,14 +1788,14 @@ mod tests {
     }
 
     /// Design §2 (brief 037 criterion 3): the UiKit crate may use egui, epaint, egui_extras and
-    /// ecad-tokens only (dev-dependencies aside); a `cadcraft-*` crate or another ECAD crate is a
+    /// ecad-drawing-style only (dev-dependencies aside); a `cadcraft-*` crate or another ECAD crate is a
     /// violation.
     #[test]
     fn the_ui_kit_uses_egui_and_the_tokens_only() {
-        let kit = |deps: Value| serde_json::json!({"packages": [{"name": "ecad-ui", "dependencies": deps}], "workspace_root": ""});
+        let kit = |deps: Value| serde_json::json!({"packages": [{"name": "ecad-widgets", "dependencies": deps}], "workspace_root": ""});
         let rows: &[(Value, usize, &str)] = &[
             (
-                serde_json::json!([{"name": "egui", "kind": null}, {"name": "ecad-tokens", "kind": null}, {"name": "egui_extras", "kind": null}]),
+                serde_json::json!([{"name": "egui", "kind": null}, {"name": "ecad-drawing-style", "kind": null}, {"name": "egui_extras", "kind": null}]),
                 0,
                 "allowed",
             ),
@@ -1750,7 +1830,7 @@ let f = FontId::new(12.0, FontFamily::Proportional);",
             ("let c = theme::Tokens::get().text;", 1),
             (
                 "// Color32::from_rgb(1, 2, 3) in a comment
-let c = ecad_ui::color(SHELL.text);",
+let c = ecad_widgets::color(SHELL.text);",
                 0,
             ),
             ("let c = theme::tokens().text; // not Color32::from_rgb", 0),
@@ -1909,7 +1989,7 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
         let long_title = format!("# ecad-model: the model\nLayer: Core\n{sections}");
         let no_layer = format!("# ecad-model\n{sections}");
         let fenced = format!("# ecad-model\nLayer: Core\n## Purpose\n```sh\n{sections}```\n");
-        let kit = format!("# ecad-tokens\nLayer: UI kit\n{sections}");
+        let kit = format!("# ecad-widgets\nLayer: UI kit\n{sections}");
         let xtask = format!("# ecad-xtask\nLayer: Dev\n{sections}");
         let rows: &[(&str, Class, Option<&str>, bool, &str)] = &[
             ("ecad-model", Class::Core, Some(&good), true, "the template"),
@@ -1942,7 +2022,7 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
                 "extra headings between",
             ),
             ("ecad-model", Class::Core, Some(&fenced), false, "sections only in a code block"),
-            ("ecad-tokens", Class::UiKit, Some(&kit), true, "the UI kit"),
+            ("ecad-widgets", Class::UiKit, Some(&kit), true, "the UI kit"),
             ("ecad-xtask", Class::Exempt, Some(&xtask), true, "xtask is Dev"),
         ];
         for (krate, class, text, ok, what) in rows {
@@ -2014,7 +2094,11 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
         )
         .unwrap();
         std::fs::write(
-            src.join("preview.rs"),
+            {
+                let d = src.join("pages");
+                std::fs::create_dir_all(&d).unwrap();
+                d.join("preview.rs")
+            },
             "fn f() -> egui::Color32 { egui::Color32::from_gray(7) }
 ",
         )
@@ -2037,7 +2121,15 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
         let src = root.join("crates").join("ecad-app").join("src");
         std::fs::create_dir_all(&src).unwrap();
         std::fs::write(src.join("new_panel.rs"), "fn f(ui: &mut egui::Ui, s: &mut String) { ui.add(egui::TextEdit::singleline(s)); }\n").unwrap();
-        std::fs::write(src.join("search.rs"), "fn f(ui: &mut egui::Ui, s: &mut String) { ui.add(egui::TextEdit::singleline(s)); }\n").unwrap();
+        std::fs::write(
+            {
+                let d = src.join("library");
+                std::fs::create_dir_all(&d).unwrap();
+                d.join("search.rs")
+            },
+            "fn f(ui: &mut egui::Ui, s: &mut String) { ui.add(egui::TextEdit::singleline(s)); }\n",
+        )
+        .unwrap();
         let meta = serde_json::json!({
             "workspace_root": root.to_string_lossy(),
             "packages": [{"name": "ecad-app", "manifest_path": root.join("crates").join("ecad-app").join("Cargo.toml").to_string_lossy(), "dependencies": []}],
@@ -2047,7 +2139,7 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
         assert!(v.iter().any(|m| m.starts_with("crates/ecad-app/src/new_panel.rs:1:") && m.contains("no raw egui value controls")), "{v:?}");
         assert!(!v.iter().any(|m| m.contains("search.rs") && m.contains("raw egui value controls")), "allowlisted: {v:?}");
         assert_eq!(
-            raw_control_places("x.rs", "// egui::ComboBox::from_id_salt(1)\nlet c = ecad_ui::control::Select::new(&mut i, &o, \"n\");").len(),
+            raw_control_places("x.rs", "// egui::ComboBox::from_id_salt(1)\nlet c = ecad_widgets::control::Select::new(&mut i, &o, \"n\");").len(),
             0
         );
     }
@@ -2056,19 +2148,19 @@ fn c() -> std::result::Result<Vec<u8>,String> { Ok(vec![]) }
     #[test]
     fn core_and_engine_crates_may_not_use_the_ui_kit() {
         let rows: &[(&str, &str, usize)] = &[
-            ("ecad-model", "ecad-ui", 1),
-            ("ecad-engine", "ecad-ui", 1),
+            ("ecad-model", "ecad-widgets", 1),
+            ("ecad-engine", "ecad-widgets", 1),
             ("ecad-engine", "epaint", 1),
             ("ecad-mcp", "egui_extras", 0),
-            ("ecad-model", "ecad-tokens", 1),
+            ("ecad-model", "ecad-widgets", 1),
             // The Core order (design 065 §1): forward edges only.
             ("ecad-file", "ecad-store", 0),
             ("ecad-electrical", "ecad-file", 0),
             ("ecad-file", "ecad-electrical", 1),
             ("ecad-model", "ecad-store", 1),
-            ("ecad-engine", "ecad-tokens", 1),
-            ("ecad-app", "ecad-ui", 0),
-            ("ecad-desktop", "ecad-ui", 0),
+            ("ecad-engine", "ecad-widgets", 1),
+            ("ecad-app", "ecad-widgets", 0),
+            ("ecad-desktop", "ecad-widgets", 0),
         ];
         for (krate, dep, n) in rows {
             let meta = serde_json::json!({"packages": [{"name": krate, "manifest_path": if *krate == "ecad-xtask" { "/dev/xtask/Cargo.toml" } else { "" }, "dependencies": [{"name": dep, "kind": null}]}], "workspace_root": ""});

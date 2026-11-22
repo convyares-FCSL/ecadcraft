@@ -7,8 +7,8 @@
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::objects::styles::StyleRef;
 use crate::document::sheet::{PROJECT_SHEET, SheetSpec};
+use crate::objects::styles::StyleRef;
 
 crate::word_enum! {
     /// Which generated kinds a type's pages may be.

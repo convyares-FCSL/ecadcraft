@@ -17,13 +17,13 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::locations::commands::locations::{self, MAX_DEVICES};
+use crate::cables::words::MAX_HANDLES;
 use crate::commands::input::{Bounded, OrNull, nullable};
 use crate::commands::run::{Cx, Generic, Outcome, State};
-use crate::locations::designations::Aspect;
 use crate::devices::{Holder, TagHigh};
 use crate::error::CmdError;
-use crate::cables::words::MAX_HANDLES;
+use crate::locations::commands::locations::{self, MAX_DEVICES};
+use crate::locations::designations::Aspect;
 
 /// The refusal of `tag` on several devices at once.
 pub const ONE_TAG_PER_DEVICE: &str = "Tags are one per device.";
@@ -392,8 +392,10 @@ pub fn plan_device(
         && let Some(holder) = crate::devices::holder_of(doc, t, Some(c))
     {
         if !merge {
-            let next =
-                crate::devices::tag_of(doc, c).and_then(tag::parse).or_else(|| tag::parse(t)).and_then(|(prefix, _)| tag_high.peek(doc, &prefix).ok());
+            let next = crate::devices::tag_of(doc, c)
+                .and_then(tag::parse)
+                .or_else(|| tag::parse(t))
+                .and_then(|(prefix, _)| tag_high.peek(doc, &prefix).ok());
             let way = match next {
                 Some(n) => format!("Set `merge` to true to make this the same device, or choose another tag (the next free one is {n})."),
                 None => "Set `merge` to true to make this the same device, or choose another tag.".into(),
@@ -458,9 +460,8 @@ pub fn conflict(word: Option<&str>, merge: bool) -> Result<Option<Conflict>, Cmd
 fn tag_of(doc: &Document, o: ObjectRef) -> Option<(Option<String>, bool)> {
     match o {
         ObjectRef::Device(c) => doc.devices.get(&c).map(|d| (d.tag().map(str::to_string), d.tag_fixed)),
-        ObjectRef::Cable(_) => {
-            props_of(doc, o).map(|p| (p.get(TAG_KEY).cloned(), ecad_model::naming::keys::PropsExt::flag(p, ecad_model::naming::keys::TAG_FIXED) == Some(true)))
-        }
+        ObjectRef::Cable(_) => props_of(doc, o)
+            .map(|p| (p.get(TAG_KEY).cloned(), ecad_model::naming::keys::PropsExt::flag(p, ecad_model::naming::keys::TAG_FIXED) == Some(true))),
         _ => None,
     }
 }

@@ -21,10 +21,10 @@ use ecad_model::Device;
 
 use crate::error::CmdError;
 use ecad_model::Word;
+use ecad_model::geometry::units::{Amps, KiloAmps, MilliAmps};
 use ecad_model::objects::devices::protection::{MAX_AMPS, MAX_BREAKING_KA, MAX_RESIDUAL_MA};
 use ecad_model::objects::devices::{Breaker, Fuse, FuseClass, Poles, Protection, ProtectionKind, Rcbo, Rcd, TripCurve};
 use ecad_model::objects::devices::{DeviceType, Load, RatingNote};
-use ecad_model::geometry::units::{Amps, KiloAmps, MilliAmps};
 
 pub mod dataset;
 pub(crate) mod indicator;

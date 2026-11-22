@@ -14,10 +14,10 @@ use serde_json::{Value, json};
 
 use crate::commands::input::{Command, Typed};
 use crate::commands::{err, on_any_page, on_project};
-use {ecad_electrical::reports::Group, ecad_electrical::reports::Table};
 use crate::export::printbook::{self, Options, Scope};
 use crate::project::Project;
 use ecad_electrical::commands::input::{Bounded, Point};
+use {ecad_electrical::reports::Group, ecad_electrical::reports::Table};
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[
@@ -89,7 +89,8 @@ pub(crate) struct LocationboxParams {
     page: Option<PageId>,
     /// What the box does to the devices inside: "propose" (default), "move" or "keep".
     #[serde(default)]
-    proposal: Option<String>}
+    proposal: Option<String>,
+}
 
 impl Command for LocationboxParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
@@ -122,7 +123,8 @@ pub(crate) struct FunctionboxParams {
     page: Option<PageId>,
     /// What the box does to the devices inside: "propose" (default), "move" or "keep".
     #[serde(default)]
-    proposal: Option<String>}
+    proposal: Option<String>,
+}
 
 impl Command for FunctionboxParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
@@ -137,7 +139,8 @@ struct BoxInput {
     location: Option<String>,
     corners: Option<Bounded<Point, 2, 2>>,
     points: Option<Bounded<Point, 0, { ecad_electrical::locations::MAX_VERTICES }>>,
-    item: Option<ItemId>}
+    item: Option<ItemId>,
+}
 
 impl BoxInput {
     /// A box (design 024 §7, design 052 §5.6, §5.8): its values, outline, and the proposal it
@@ -146,7 +149,8 @@ impl BoxInput {
         let mode = ecad_electrical::pages::commands::sheets::proposal_mode(proposal.as_deref()).map_err(|e| err(e.to_string()))?;
         let corners = self.corners.and_then(|c| match c.0.as_slice() {
             [a, b] => Some((a.0, b.0)),
-            _ => None});
+            _ => None,
+        });
         let points = self.points.map(|v| v.0.into_iter().map(|p| p.0).collect());
         let shape = rules::Shape::one_of(corners, points, self.item).map_err(|e| err(e.to_string()))?;
         let (function, location) = (self.function, self.location);
@@ -195,7 +199,8 @@ enum Lines {
     /// One row per part.
     Flat,
     /// A kit's parts under its row.
-    Nested}
+    Nested,
+}
 
 /// `bom {group?, columns?, lines?, path?, excel_safe?, limit?, after?}` (read only): the bill of
 /// materials, a page at a time, or written to a CSV file.
@@ -222,7 +227,8 @@ pub(crate) struct BomParams {
     limit: Option<u64>,
     /// Skip this many rows (the `next` a previous call gave).
     #[serde(default)]
-    after: Option<u64>}
+    after: Option<u64>,
+}
 
 impl Command for BomParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
@@ -258,7 +264,8 @@ pub(crate) struct WirelistParams {
     limit: Option<u64>,
     /// Skip this many rows (the `next` a previous call gave).
     #[serde(default)]
-    after: Option<u64>}
+    after: Option<u64>,
+}
 
 impl Command for WirelistParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
@@ -290,7 +297,8 @@ pub(crate) struct CablelistParams {
     after: Option<u64>,
     /// Also the cables not drawn (default true; brief 059).
     #[serde(default)]
-    include_not_drawn: Option<bool>}
+    include_not_drawn: Option<bool>,
+}
 
 impl Command for CablelistParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
@@ -320,7 +328,9 @@ enum ScopeParam {
         folder: Option<FolderId>,
         /// Page numbers and ranges.
         #[serde(default)]
-        pages: Option<String>}}
+        pages: Option<String>,
+    },
+}
 
 /// The scope `printbook` prints.
 fn scope_of(v: Option<ScopeParam>) -> Result<Scope, CmdError> {
@@ -330,7 +340,8 @@ fn scope_of(v: Option<ScopeParam>) -> Result<Scope, CmdError> {
         Some(ScopeParam::Word(t)) if t.trim() == "all" => Ok(Scope::All),
         Some(ScopeParam::Pick { folder: Some(f), .. }) => Ok(Scope::Folder(f)),
         Some(ScopeParam::Pick { folder: None, pages: Some(t) }) => Ok(Scope::Pages(t)),
-        Some(_) => Err(CmdError::refused(WORDS))}
+        Some(_) => Err(CmdError::refused(WORDS)),
+    }
 }
 
 /// Print `scope` of `p` (design 024 §4): the printed result as JSON.
@@ -369,7 +380,8 @@ pub fn print_project(
             done.generated,
             many.len(),
             many.iter().map(|(p, _)| p.as_str()).collect::<Vec<_>>().join(", ")
-        )};
+        ),
+    };
     Ok(json!({
         "files": files, "sheets": done.sheets, "generated": done.generated, "flagged": done.flagged,
         "unknown": resolved.unknown, "notes": resolved.notes.iter().chain(done.notes.iter()).collect::<Vec<_>>(), "message": message}))
@@ -391,7 +403,8 @@ pub(crate) struct PrintbookParams {
     colour: Option<String>,
     /// Print lineweights (default true).
     #[serde(default)]
-    lineweights: Option<bool>}
+    lineweights: Option<bool>,
+}
 
 impl Command for PrintbookParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {

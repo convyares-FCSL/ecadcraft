@@ -5,11 +5,11 @@
 
 use std::sync::Arc;
 
-use {ecad_app::App, ecad_app::pages::project_panel};
 use ecad_model::{DeviceId, PageId};
 use eframe::egui::vec2;
 use egui_kittest::Harness;
 use serde_json::{Value, json};
+use {ecad_app::App, ecad_app::pages::project_panel};
 
 use crate::pages::project_panel::{doc, new_app, shots};
 

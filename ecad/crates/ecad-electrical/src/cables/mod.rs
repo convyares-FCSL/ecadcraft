@@ -12,9 +12,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{CableId, Document, ItemKind, PageId, Primitive, StyleRef, Subject};
 
+use crate::cables::slash::MAX_CABLE_MEMBERS;
 use crate::checks::{Check, Fix, Kind, Object};
 use crate::locations::designations::{self, Aspect};
-use crate::cables::slash::MAX_CABLE_MEMBERS;
 use crate::styles::{self, cable};
 
 /// The pages a cable core is drawn on: its wire's pages, or its line's page while it has no wire.
@@ -346,8 +346,9 @@ pub fn drawn_pages(doc: &Document, k: CableId) -> Vec<(PageId, String)> {
             ItemKind::Primitive(Primitive::Polyline { vertices, .. }) => vertices.first().copied(),
             _ => None,
         });
-        let words =
-            at.and_then(|a| ecad_model::connectivity::wiring::place(doc, r.page, a)).map_or_else(|| crate::references::cables::page_number(doc, r.page), |p| p.text(style));
+        let words = at
+            .and_then(|a| ecad_model::connectivity::wiring::place(doc, r.page, a))
+            .map_or_else(|| crate::references::cables::page_number(doc, r.page), |p| p.text(style));
         out.entry(r.page).or_insert(words);
     }
     if out.is_empty()

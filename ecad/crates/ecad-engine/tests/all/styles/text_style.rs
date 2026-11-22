@@ -4,9 +4,12 @@
 use crate::common::{H, id};
 
 use cadcraft_engine::doc::{Entity, EntityKind, Lineweight};
-use {ecad_electrical::styles::text_style::STYLE_BOLD, ecad_electrical::styles::text_style::STYLE_REGULAR, ecad_electrical::styles::text_style::TextKind};
 use ecad_model::{DeviceId, PageId};
 use serde_json::json;
+use {
+    ecad_electrical::styles::text_style::STYLE_BOLD, ecad_electrical::styles::text_style::STYLE_REGULAR,
+    ecad_electrical::styles::text_style::TextKind,
+};
 
 const SEED: u64 = 31;
 
@@ -16,7 +19,8 @@ fn drawn(h: &mut H, page: PageId, value: &str) -> Vec<(f64, String, Lineweight)>
         .iter()
         .filter_map(|e| match &e.kind {
             EntityKind::Text(t) if t.value == value => Some((t.height, t.style.clone(), e.common.lineweight)),
-            _ => None})
+            _ => None,
+        })
         .collect()
 }
 
@@ -121,7 +125,8 @@ fn text_with_justify_is_recorded_with_its_alignment() {
             ecad_model::ItemKind::Primitive(ecad_model::Primitive::Text { value, halign, valign, at, .. }) if value == "X" => {
                 Some((*halign, *valign, *at))
             }
-            _ => None})
+            _ => None,
+        })
         .expect("the text item");
     assert_eq!(item, (ecad_model::TextHAlign::Center, ecad_model::TextVAlign::Middle, ecad_model::Pt::new(100.0, 100.0)));
     let e = texts(&mut h, page).into_iter().find(|e| matches!(&e.kind, EntityKind::Text(t) if t.value == "X")).unwrap();

@@ -206,9 +206,9 @@ impl App {
             Some(list) => ecad_engine::export::printbook::Scope::Pages(list.clone()),
             None => ecad_engine::export::printbook::Scope::All,
         };
-        if let Ok(((sheets, unknown, flagged), notes)) =
-            p.configure(&mut self.cad.session, |p| (ecad_engine::export::printbook::count(p, &scope), ecad_engine::export::printbook::notes(p, &scope)))
-            && let Some(d) = &mut self.print_book
+        if let Ok(((sheets, unknown, flagged), notes)) = p.configure(&mut self.cad.session, |p| {
+            (ecad_engine::export::printbook::count(p, &scope), ecad_engine::export::printbook::notes(p, &scope))
+        }) && let Some(d) = &mut self.print_book
         {
             d.sheets = sheets;
             d.unknown = unknown;
@@ -325,7 +325,9 @@ impl App {
         let foot = Rect::from_min_max(pos2(sets.left(), sets.bottom() - 96.0), sets.max);
         ui.painter().hline(foot.x_range(), foot.top() + 0.5, line);
         let pending = if open {
-            self.project.clone().and_then(|p| p.read(&mut self.cad.session, |p, _| ecad_electrical::releases::revisions::pending_rev(p.ledger.document())).ok())
+            self.project
+                .clone()
+                .and_then(|p| p.read(&mut self.cad.session, |p, _| ecad_electrical::releases::revisions::pending_rev(p.ledger.document())).ok())
         } else {
             None
         };
@@ -514,8 +516,10 @@ impl App {
                 });
             });
         });
-        let pending =
-            self.project.clone().and_then(|p| p.read(&mut self.cad.session, |p, _| ecad_electrical::releases::revisions::pending_rev(p.ledger.document())).ok());
+        let pending = self
+            .project
+            .clone()
+            .and_then(|p| p.read(&mut self.cad.session, |p, _| ecad_electrical::releases::revisions::pending_rev(p.ledger.document())).ok());
         let preview = self.publish.preview;
         let preview_words = preview.and_then(|p| self.panel.rows().iter().find(|r| r.id == p)).map(|r| format!("page {:0>2}", r.number));
         let foot_h = 84.0;

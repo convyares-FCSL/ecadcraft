@@ -10,17 +10,19 @@ use crate::document::index::{Index, referrers};
 use serde::{Deserialize, Serialize};
 
 use crate::document::book::PageNo;
-use crate::objects::devices::DeviceType;
+use crate::document::page::{PageKind, PageTitle};
+use crate::document::sheet::SheetSpec;
 use crate::error::{ModelError, Result};
 use crate::geometry::geom::{Placement, Pt};
-use crate::naming::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
-use crate::document::page::{PageKind, PageTitle};
 use crate::geometry::point::PointKey;
-use crate::objects::role::{PartRole, Role};
-use crate::document::sheet::SheetSpec;
-use crate::objects::styles::StyleRef;
-use crate::naming::text::Text;
 use crate::geometry::units::Radians;
+use crate::naming::id::{
+    CableId, ConnectionPointId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, RouteId, WireId,
+};
+use crate::naming::text::Text;
+use crate::objects::devices::DeviceType;
+use crate::objects::role::{PartRole, Role};
+use crate::objects::styles::StyleRef;
 pub use crate::objects::wire::{End, Wire};
 
 /// Optional, free-form properties. A missing key is `Unset` (principle P7); an empty string is a

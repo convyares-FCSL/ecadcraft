@@ -1,8 +1,8 @@
 //! Field: the one input look (spec §5, "What you set and what is read"). A value set here looks
 //! like this; a value read from the drawing is [`crate::prim::read_value`] instead.
 
-use {crate::tokens::Icon, crate::tokens::line, crate::tokens::radius, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type};
 use egui::{Align2, Frame, Rect, Response, RichText, Role, Sense, Shape, Stroke, StrokeKind, TextEdit, Ui, WidgetInfo, pos2, vec2};
+use {crate::tokens::Icon, crate::tokens::line, crate::tokens::radius, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type};
 
 use crate::prim::{Look, accessible};
 use crate::style::corner;

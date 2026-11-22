@@ -6,8 +6,8 @@
 use ecad_widgets::tokens::space;
 use eframe::egui::{self, Rect, pos2, vec2};
 
-use crate::shell::Slots;
 use crate::App;
+use crate::shell::Slots;
 
 /// Draw the drawer, while a review or Compare is shown.
 pub fn show(t: &mut App, ui: &mut egui::Ui, slots: &Slots) {

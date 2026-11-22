@@ -13,7 +13,7 @@ use cadcraft_engine::doc::{Drawing, EntityKind, EntityStore, Space};
 use cadcraft_engine::geom::{Bounds2, Mat3, Vec2};
 use ecad_electrical::reports::kept::ReportModels;
 use ecad_engine::export::printbook::{self, Sheet};
-use {ecad_engine::pages::frame};
+use ecad_engine::pages::frame;
 use ecad_model::{DeviceId, Document, Op, PageId};
 use serde_json::{Value, json};
 
@@ -32,7 +32,8 @@ fn frame_texts(h: &mut H, page: PageId) -> Vec<String> {
         .iter()
         .filter_map(|e| match &e.kind {
             EntityKind::Text(t) => Some(t.value.clone()),
-            _ => None})
+            _ => None,
+        })
         .collect()
 }
 
@@ -43,7 +44,8 @@ fn page_texts(h: &mut H, page: PageId) -> Vec<String> {
     all.iter()
         .filter_map(|e| match &e.kind {
             EntityKind::Text(t) => Some(t.value.clone()),
-            _ => None})
+            _ => None,
+        })
         .collect()
 }
 
@@ -53,7 +55,8 @@ fn gen_texts(doc: &Document, page: PageId) -> Vec<String> {
         .iter()
         .filter_map(|p| match &p.kind {
             EntityKind::Text(t) => Some(t.value.clone()),
-            _ => None})
+            _ => None,
+        })
         .collect()
 }
 
@@ -215,7 +218,8 @@ fn ac4_a_missing_value_is_boxed_and_prints_black() {
     let marks: Vec<_> = parts.iter().filter(|p| matches!(&p.kind, EntityKind::Text(t) if t.value == "?")).collect();
     assert!(!marks.is_empty(), "the BOM shows missing values");
     assert!(marks.iter().all(|p| p.aci == Some(ecad_electrical::pages::generated::FLAGGED_ACI)), "`?` is yellow on screen");
-    let boxes = parts.iter().filter(|p| p.aci == Some(ecad_electrical::pages::generated::FLAGGED_ACI) && !matches!(p.kind, EntityKind::Text(_))).count();
+    let boxes =
+        parts.iter().filter(|p| p.aci == Some(ecad_electrical::pages::generated::FLAGGED_ACI) && !matches!(p.kind, EntityKind::Text(_))).count();
     assert!(boxes >= marks.len(), "each `?` has its box ({boxes} boxes for {} marks)", marks.len());
     // Print Book's scratch drawing: every flagged part is ACI 7, nothing else recoloured.
     let (d, _) = scratch(&mut h, &[bom]);
@@ -225,7 +229,10 @@ fn ac4_a_missing_value_is_boxed_and_prints_black() {
     for e in &printed_marks {
         assert_eq!(e.common.color, cadcraft_engine::doc::color::Color::Index(7), "`?` printed black");
     }
-    assert!(gen_parts.iter().all(|e| e.common.color != cadcraft_engine::doc::color::Color::Index(ecad_electrical::pages::generated::FLAGGED_ACI)), "no yellow left in print");
+    assert!(
+        gen_parts.iter().all(|e| e.common.color != cadcraft_engine::doc::color::Color::Index(ecad_electrical::pages::generated::FLAGGED_ACI)),
+        "no yellow left in print"
+    );
     // On screen still yellow (the page's own drawing).
     h.activate(bom);
     let shown = h.pv(|p, pg| pg.entities_of(p, bom));
@@ -263,7 +270,8 @@ fn table_box(h: &mut H, page: PageId, coil: DeviceId) -> (f64, f64, f64, f64) {
     for part in ecad_engine::references::draw::devices::parts_on_page(&doc, page).into_iter().filter(|p| p.rep == head) {
         let ps = match part.shape {
             ecad_electrical::references::devices::Shape::Line(a, c) => vec![a, c],
-            ecad_electrical::references::devices::Shape::Text { at, .. } => vec![at]};
+            ecad_electrical::references::devices::Shape::Text { at, .. } => vec![at],
+        };
         for p in ps {
             b = (b.0.min(p.x), b.1.min(p.y), b.2.max(p.x), b.3.max(p.y));
         }
@@ -298,8 +306,14 @@ fn ac5_an_automatic_table_clears_the_title_block() {
     let v = h.run("contacts", json!({"component": k1.hex()})).unwrap();
     let shown = v["table"]["shown"].as_str().unwrap_or_default().to_string();
     assert!(shown != "right" && shown != "lifted", "{v}");
-    let top =
-        h.p(|p| ecad_engine::references::draw::devices::table(p.ledger.document(), &mut ecad_electrical::references::devices::Places::new(p.ledger.document()), &ecad_electrical::references::devices::device(p.ledger.document(), k1)).map(|t| t.top));
+    let top = h.p(|p| {
+        ecad_engine::references::draw::devices::table(
+            p.ledger.document(),
+            &mut ecad_electrical::references::devices::Places::new(p.ledger.document()),
+            &ecad_electrical::references::devices::device(p.ledger.document(), k1),
+        )
+        .map(|t| t.top)
+    });
     assert_eq!(top.map(|t| t.x), Some(100.0), "under the coil as today");
     let _ = table_box(&mut h, p1, k1);
     // Moving the low coil's head up: the table follows and goes back under it.
@@ -341,7 +355,8 @@ fn long_plan(h: &mut H, number: &str) -> (PageId, usize) {
     h.run("setprop", json!({"component": strip.hex(), "key": "terminals", "value": "120"})).unwrap();
     let page: PageId = id(&h.run("newpage", json!({"generated": "terminals", "number": number})).unwrap(), "page");
     let doc = h.doc();
-    let n = ecad_electrical::pages::generated::sheets_of(&doc, page, Some(&ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics)));
+    let n =
+        ecad_electrical::pages::generated::sheets_of(&doc, page, Some(&ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics)));
     assert!(n >= 3, "120 terminals run to three sheets or more ({n})");
     (page, n)
 }
@@ -416,7 +431,9 @@ fn ac8_continuation_numbers_are_taken_and_a_clash_is_a_warning() {
     h.run("setprop", json!({"component": strip.hex(), "key": "terminals", "value": "200"})).unwrap();
     let checks = h.run("checks", json!({})).unwrap().to_string();
     let doc = h.doc();
-    let last = 400 + ecad_electrical::pages::generated::sheets_of(&doc, plan, Some(&ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics))) - 1;
+    let last = 400
+        + ecad_electrical::pages::generated::sheets_of(&doc, plan, Some(&ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics)))
+        - 1;
     let want = format!("Page 400 ({title}) now runs to {last}, and page {next} has that number.");
     assert!(checks.contains(&want), "{want}: {checks}");
     // The book still prints.
@@ -484,7 +501,8 @@ fn ac9_the_pending_marker_follows_the_undo_stack() {
         .iter()
         .filter_map(|e| match &e.kind {
             EntityKind::Text(t) => Some(t.value.clone()),
-            _ => None})
+            _ => None,
+        })
         .collect();
     assert!(texts.iter().any(|t| t == "A*"), "reopened: {texts:?}");
     // Issue B: no marker.

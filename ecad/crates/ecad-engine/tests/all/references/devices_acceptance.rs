@@ -22,9 +22,9 @@ use crate::common::{H, id, pts};
 
 use crate::common::close_all;
 use cadcraft_engine::Session;
-use {ecad_electrical::references::devices::RefIndex};
-use ecad_engine::{Persistence, ProjectHandle};
+use ecad_electrical::references::devices::RefIndex;
 use ecad_engine::history::event_log::EventKind;
+use ecad_engine::{Persistence, ProjectHandle};
 use ecad_model::{DeviceId, PageId, RepresentationId, WireId};
 use serde_json::{Value, json};
 
@@ -49,7 +49,8 @@ struct X {
     pages: Vec<PageId>,
     k1: DeviceId,
     coil: RepresentationId,
-    a2: WireId}
+    a2: WireId,
+}
 
 fn rep(v: &Value) -> RepresentationId {
     id(v, "representation")
@@ -424,7 +425,9 @@ fn tester_025_save_reopen_keeps_index_and_texts() {
     // (`auto`) is left out of the settings. (A qsave always writes a new session record, so the
     // file bytes are not compared.)
     let doc = h2.doc();
-    assert!(doc.devices.keys().all(|c| ecad_electrical::references::devices::offer_of(&doc, *c).is_none() && !ecad_electrical::references::devices::placement_of(&doc, *c).1));
+    assert!(doc.devices.keys().all(
+        |c| ecad_electrical::references::devices::offer_of(&doc, *c).is_none() && !ecad_electrical::references::devices::placement_of(&doc, *c).1
+    ));
     let settings = serde_json::to_value(&doc.settings).unwrap();
     assert!(settings.get("contact_mirror").is_none(), "{settings}");
     // With an offer, a moved table and a project default, a second round trip keeps them all.
@@ -487,8 +490,10 @@ fn rows(h: &mut H, c: DeviceId) -> Vec<(String, String, String)> {
 /// Probe 3a: the offer grammar's IEC labels and the join labels that follow from them.
 #[test]
 fn tester_025_offer_labels() {
-    let labels =
-        |t: &str| ecad_electrical::references::devices::parse_offer(t).map(|v| v.iter().map(|o| format!("{}/{}{}", o.labels[0], o.labels[1], o.kind.upper())).collect::<Vec<_>>());
+    let labels = |t: &str| {
+        ecad_electrical::references::devices::parse_offer(t)
+            .map(|v| v.iter().map(|o| format!("{}/{}{}", o.labels[0], o.labels[1], o.kind.upper())).collect::<Vec<_>>())
+    };
     assert_eq!(labels("3P+2NO+1NC").unwrap(), ["1/2NO", "3/4NO", "5/6NO", "13/14NO", "23/24NO", "31/32NC"]);
     assert_eq!(labels(" 3p , 1no + 1nc ").unwrap(), ["1/2NO", "3/4NO", "5/6NO", "13/14NO", "21/22NC"]);
     assert_eq!(labels("1P+1PNC").unwrap(), ["1/2NO", "3/4NC"]);
@@ -548,7 +553,11 @@ fn tester_025_counts_orphans_and_duplicate_tags() {
     let _ = x.h.run("setprop", json!({"component": k2c.hex(), "key": "tag", "value": tag}));
     index_is_a_rebuild(&mut x.h, "duplicate tag");
     let groups: Vec<_> = x.h.p(|p| p.xref().groups().collect());
-    assert!(groups.contains(&ecad_electrical::references::devices::Group::Device(x.k1)) && groups.contains(&ecad_electrical::references::devices::Group::Device(k2c)), "{groups:?}");
+    assert!(
+        groups.contains(&ecad_electrical::references::devices::Group::Device(x.k1))
+            && groups.contains(&ecad_electrical::references::devices::Group::Device(k2c)),
+        "{groups:?}"
+    );
 }
 
 // ------------------------------------------------------------------ translate.rs
@@ -611,10 +620,14 @@ fn tester_025_parts_follow_their_owner_and_are_refused_alone() {
     x.h.run("move", json!({"handles": sel, "delta": [10, 0]})).unwrap();
     let at1 = parts(&mut x.h)[&p105].iter().find(|p| p.rep == no).map(|p| p.shape.clone());
     match (at0, at1) {
-        (Some(ecad_electrical::references::devices::Shape::Text { at: a, .. }), Some(ecad_electrical::references::devices::Shape::Text { at: b, .. })) => {
+        (
+            Some(ecad_electrical::references::devices::Shape::Text { at: a, .. }),
+            Some(ecad_electrical::references::devices::Shape::Text { at: b, .. }),
+        ) => {
             assert!((b.x - a.x - 10.0).abs() < 1e-9 && (b.y - a.y).abs() < 1e-9)
         }
-        o => panic!("{o:?}")}
+        o => panic!("{o:?}"),
+    }
     index_is_a_rebuild(&mut x.h, "contact move");
 }
 

@@ -17,7 +17,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::{DeviceId, Document, NetKey, Node, Subject, ConnectionPointId};
+use ecad_model::{ConnectionPointId, DeviceId, Document, NetKey, Node, Subject};
 
 use crate::circuits::RatedSubject;
 use ecad_model::objects::devices::ProtectionKind;
@@ -302,7 +302,8 @@ pub fn cleared_words(doc: &Document, c: DeviceId) -> Option<String> {
 /// The rating of a device (or its fuse) as shown: its typed rating, else its note (design 072
 /// §2.2); a strip's fuse position: its typed fuse rating.
 pub fn rating_text(doc: &Document, c: DeviceId, fuse: Option<&str>) -> String {
-    let key = fuse.map_or_else(|| ecad_model::objects::devices::RATING_KEY.to_string(), |f| format!("{}{f}", ecad_model::objects::devices::RATING_OF_PREFIX));
+    let key = fuse
+        .map_or_else(|| ecad_model::objects::devices::RATING_KEY.to_string(), |f| format!("{}{f}", ecad_model::objects::devices::RATING_OF_PREFIX));
     doc.devices.get(&c).and_then(|d| d.value(&key)).map(|v| v.chars().take(64).collect()).unwrap_or_default()
 }
 

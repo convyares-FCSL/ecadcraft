@@ -53,8 +53,11 @@ fn the_text_section_writes_one_textstyle_transaction() {
     let rec = d.styles.get(&ecad_model::StyleCatalogue::Text).and_then(|m| m.get(&ecad_model::StyleRef::Builtin("tag".into())));
     assert_eq!(rec.and_then(|r| r.body.entry("height")).as_deref(), Some("3"));
     let page = d.page_order[0];
-    let tags: Vec<f64> =
-        ecad_engine::devices::draw::texts_on_page(&d, page).into_iter().filter(|t| t.of == ecad_electrical::devices::TextOf::Tag).map(|t| t.height).collect();
+    let tags: Vec<f64> = ecad_engine::devices::draw::texts_on_page(&d, page)
+        .into_iter()
+        .filter(|t| t.of == ecad_electrical::devices::TextOf::Tag)
+        .map(|t| t.height)
+        .collect();
     assert_eq!(tags, vec![3.0]);
     ok(&mut h, "u");
     assert!(!doc(&mut h).display.contains_key("text.tag.height"));

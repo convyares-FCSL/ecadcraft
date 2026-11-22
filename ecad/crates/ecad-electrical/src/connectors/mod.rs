@@ -22,8 +22,8 @@ pub(crate) mod view;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
-    DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Placement, Pt, Representation,
-    RepresentationId, RouteEnd, RouteId, Style, Subject, SymbolInstance, ConnectionPoint, ConnectionPointId,
+    ConnectionPoint, ConnectionPointId, DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId,
+    Placement, Pt, Representation, RepresentationId, RouteEnd, RouteId, Style, Subject, SymbolInstance,
 };
 
 use ecad_model::Noun;
@@ -34,8 +34,8 @@ use crate::CmdError;
 use crate::checks::{Check, Fix, Kind as CheckKind, Object};
 use crate::defaults::{self, Scope};
 use crate::locations::{BoxCache, Located};
-use crate::terminal_strips::{self, connection_point_words};
 use crate::symbols::{self, Kind, PLUG_KEY, Side, Starter, StarterKey};
+use crate::terminal_strips::{self, connection_point_words};
 use crate::wires::{ON_WIRE, OnRoute};
 
 /// Most pins a connector has (design 044 §2.3): a guard, not a preference.
@@ -298,7 +298,8 @@ pub fn resolve(doc: &Document, text: &str) -> Option<Result<(DeviceId, Option<Si
     let (c, side) = found?;
     let Some(pin) = pin else { return Some(Ok((c, side, None))) };
     let pin = pin.trim().to_string();
-    let with = |want: Side| doc.connection_points_of(c).find(|(_, x)| x.label.as_deref() == Some(pin.as_str()) && x.key == want.key()).map(|(t, _)| t);
+    let with =
+        |want: Side| doc.connection_points_of(c).find(|(_, x)| x.label.as_deref() == Some(pin.as_str()) && x.key == want.key()).map(|(t, _)| t);
     Some(match side {
         Some(s) => with(s).map(|t| (c, Some(s), Some(t))).ok_or_else(|| CmdError::refused(format!("{} has no pin {pin}.", half_tag(doc, c, s)))),
         None => match (with(Side::Socket), with(Side::Plug)) {
@@ -649,7 +650,10 @@ pub fn symbol_ops(
         let name = if pin { names.first() } else { names.get(i) }.ok_or(CmdError::refused("Not enough pin names for this symbol."))?;
         let t: ConnectionPointId = ids.fresh();
         let key = side.key().ok_or(CmdError::refused("A connector symbol's point has no side."))?;
-        ops.push(Op::AddConnectionPoint { id: t, terminal: ConnectionPoint { owner: c.into(), label: Some(name.clone()), key: Some(key), accepts: td.accepts } });
+        ops.push(Op::AddConnectionPoint {
+            id: t,
+            terminal: ConnectionPoint { owner: c.into(), label: Some(name.clone()), key: Some(key), accepts: td.accepts },
+        });
         cps.insert(t, td.at);
         shown.push(Shown { side, name: name.clone(), terminal: t, local: td.at });
     }
@@ -1135,7 +1139,9 @@ pub fn ref_classes(doc: &Document, c: DeviceId) -> Vec<(RepresentationId, crate:
 
 /// The edges between connector `c`'s members (design 044 §7): each half's whole-half symbol shows
 /// the other half's, and a pin whose mate is drawn only on other pages shows those.
-pub fn ref_edges(doc: &Document, c: DeviceId, list: &[(RepresentationId, crate::references::devices::Class)]) -> Vec<(RepresentationId, RepresentationId)> {
+pub fn ref_edges(
+    doc: &Document, c: DeviceId, list: &[(RepresentationId, crate::references::devices::Class)],
+) -> Vec<(RepresentationId, RepresentationId)> {
     use crate::references::devices::Class;
     let mut out = Vec::new();
     let half = |want: Side| list.iter().find(|(_, k)| *k == Class::Half(want)).map(|(r, _)| *r);

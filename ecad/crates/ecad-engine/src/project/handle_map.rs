@@ -283,7 +283,10 @@ impl HandleMap {
             && self.dashes.values().all(|h| matches!(self.by_handle.get(h), Some(Mapped::Label(_))))
             && self.links.iter().all(|((c, n, _), h)| self.by_handle.get(h) == Some(&Mapped::Link(*c, *n)))
             && self.device_reference_parts.len() == self.xrefs.len()
-            && self.xrefs.iter().all(|(k, h)| self.by_handle.get(h) == Some(&Mapped::DeviceReference(k.0)) && self.device_reference_parts.get(h) == Some(k))
+            && self
+                .xrefs
+                .iter()
+                .all(|(k, h)| self.by_handle.get(h) == Some(&Mapped::DeviceReference(k.0)) && self.device_reference_parts.get(h) == Some(k))
             && self.items.iter().all(|(id, h)| self.by_handle.get(h) == Some(&Mapped::Item(*id)))
             && self.markers.iter().all(|((r, t), h)| self.by_handle.get(h) == Some(&Mapped::Marker(*r, *t)))
             && self.fans.iter().all(|((k, _), h)| self.by_handle.get(h) == Some(&Mapped::Fan(*k)))

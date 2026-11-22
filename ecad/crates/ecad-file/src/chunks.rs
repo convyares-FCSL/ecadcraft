@@ -18,9 +18,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
-    Cable, CableId, Definition, DefinitionId, Device, DeviceId, Document, Folder, FolderId, Item, ItemId, Layer, LayerId, ObjectRef, Op, Page,
-    PageId, Project, ProjectSettings, Representation, RepresentationId, Route, RouteId, Standard, StyleCatalogues, ConnectionPoint, ConnectionPointId, Touched,
-    Wire, WireId,
+    Cable, CableId, ConnectionPoint, ConnectionPointId, Definition, DefinitionId, Device, DeviceId, Document, Folder, FolderId, Item, ItemId, Layer,
+    LayerId, ObjectRef, Op, Page, PageId, Project, ProjectSettings, Representation, RepresentationId, Route, RouteId, Standard, StyleCatalogues,
+    Touched, Wire, WireId,
 };
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};

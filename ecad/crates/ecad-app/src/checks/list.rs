@@ -10,9 +10,9 @@
 use std::collections::{BTreeSet, HashMap};
 use std::hash::{Hash, Hasher};
 
-use {ecad_electrical::checks::Fix, ecad_electrical::checks::Kind, ecad_electrical::checks::Severity};
 use ecad_widgets::prim::Tone;
 use ecad_widgets::table::{Align, Cell, Changed, Column, ColumnId, TableSource, Width};
+use {ecad_electrical::checks::Fix, ecad_electrical::checks::Kind, ecad_electrical::checks::Severity};
 
 use crate::checks::panel::{self as cp, Row};
 

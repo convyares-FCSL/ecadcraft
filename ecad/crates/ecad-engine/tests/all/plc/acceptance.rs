@@ -15,7 +15,7 @@
 use std::collections::BTreeMap;
 
 use ecad_engine::Persistence;
-use ecad_model::{Author, DeviceId, Document, ObjectRef, Op, PageId, ConnectionPointId};
+use ecad_model::{Author, ConnectionPointId, DeviceId, Document, ObjectRef, Op, PageId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};

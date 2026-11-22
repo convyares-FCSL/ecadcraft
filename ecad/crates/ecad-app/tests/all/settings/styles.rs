@@ -4,8 +4,8 @@
 //! one transaction, patching one row (no rebuild); the inspector's Style row lists the text styles
 //! and chooses one for the device; the status bar names the standard.
 
-use ecad_app::settings::style_catalogues as sc;
 use ecad_app::settings::standards;
+use ecad_app::settings::style_catalogues as sc;
 use ecad_electrical::defaults::Source;
 use ecad_model::StyleRef;
 use egui_kittest::Harness;
@@ -180,7 +180,12 @@ fn look_check_screenshots() {
         p.read(&mut t.cad.session, |p, _| {
             let doc = p.ledger.document();
             let page = doc.page_order[0];
-            let w = doc.wires.keys().find(|c| ecad_model::connectivity::wiring::label(doc, **c).is_some_and(|l| l.text.starts_with("24V"))).copied().unwrap();
+            let w = doc
+                .wires
+                .keys()
+                .find(|c| ecad_model::connectivity::wiring::label(doc, **c).is_some_and(|l| l.text.starts_with("24V")))
+                .copied()
+                .unwrap();
             let (item, _) = ecad_model::connectivity::derive::route_on_page(doc, w, page).unwrap();
             p.pages[&page].map.item(item).unwrap()
         })

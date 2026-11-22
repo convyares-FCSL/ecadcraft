@@ -76,7 +76,9 @@ impl App {
             }
             Some(crate::reports::panel::Out::GotoAt(page, at)) => self.goto_place(page, at),
             // Brief 028: double-clicking a cable shows its cores.
-            Some(crate::reports::panel::Out::Select(crate::reports::panel::Tab::Cables, i)) if self.reports.as_ref().is_some_and(|r| r.cores_of.is_none()) => {
+            Some(crate::reports::panel::Out::Select(crate::reports::panel::Tab::Cables, i))
+                if self.reports.as_ref().is_some_and(|r| r.cores_of.is_none()) =>
+            {
                 self.show_cores_of_row(i)
             }
             Some(crate::reports::panel::Out::Goto(tab, i) | crate::reports::panel::Out::Select(tab, i)) => self.goto_report_row(tab, i),
@@ -177,7 +179,10 @@ impl App {
     /// The Release badge: counted again only when the kept Checks or report models change.
     pub(crate) fn release_badge(&mut self) -> Option<(String, Option<(usize, usize)>)> {
         let p = self.project.clone()?;
-        p.read(&mut self.cad.session, |p, _| (ecad_electrical::releases::revisions::pending_rev(p.ledger.document()), crate::history::release_dialog::badge(p))).ok()
+        p.read(&mut self.cad.session, |p, _| {
+            (ecad_electrical::releases::revisions::pending_rev(p.ledger.document()), crate::history::release_dialog::badge(p))
+        })
+        .ok()
     }
 
     /// Open the Release dialog (design 027 §5.1): the pending revision, or `rev` written again.

@@ -15,9 +15,9 @@
 
 use std::sync::OnceLock;
 
-use crate::geometry::colour::ColourWords;
 use crate::document::doc::ReferenceStyle;
 use crate::document::sheet::SheetSpec;
+use crate::geometry::colour::ColourWords;
 use crate::naming::words::Word as _;
 
 /// The embedded data file.
@@ -104,7 +104,9 @@ pub fn load(text: &str) -> Builtins {
         tag_dash: word(crate::naming::tag::DASH_KEY, crate::naming::tag::DASH_WORDS).unwrap_or(crate::naming::tag::DASH_WORDS[0]),
         tag_case: word(crate::naming::tag::CASE_KEY, crate::naming::tag::CASE_WORDS).unwrap_or(crate::naming::tag::CASE_WORDS[0]),
         wire_digits: small(WIRE_DIGITS, crate::connectivity::wiring::MAX_DIGITS),
-        colour_style: word(COLOUR_STYLE, crate::connectivity::wiring::COLOUR_STYLE_WORDS).and_then(<ColourWords as crate::naming::words::Word>::parse).unwrap_or_default(),
+        colour_style: word(COLOUR_STYLE, crate::connectivity::wiring::COLOUR_STYLE_WORDS)
+            .and_then(<ColourWords as crate::naming::words::Word>::parse)
+            .unwrap_or_default(),
         page_number_step: int(PAGE_NUMBER_STEP, 1, i64::from(MAX_PAGE_NUMBER_STEP)).and_then(|n| u32::try_from(n).ok()).unwrap_or(1),
         sheet: get(SHEET).and_then(toml::Value::as_str).and_then(|s| SheetSpec::parse(s).ok()).unwrap_or_default(),
         reference_style: word(REFERENCE_STYLE, ReferenceStyle::WORDS).and_then(ReferenceStyle::parse).unwrap_or(ReferenceStyle::PageZone),

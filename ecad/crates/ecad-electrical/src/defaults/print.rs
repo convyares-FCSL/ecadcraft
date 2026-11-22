@@ -4,8 +4,8 @@
 //! The tag style's defaults are `pub const` in `ecad_model::naming::tag` (overseer ruling 2), which
 //! `ecad-model`'s numbering and merge read without the registry; these entries name them.
 
-use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot};
 use crate::CmdError;
+use crate::defaults::{Entry, Kind, Level, ProjectSource, Slot};
 
 ecad_model::word_enum! {
     /// How continuation sheets are numbered.

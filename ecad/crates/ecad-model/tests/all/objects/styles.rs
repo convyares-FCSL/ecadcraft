@@ -6,8 +6,8 @@ use std::collections::BTreeMap;
 
 use ecad_model::document::diff::ops_between;
 use ecad_model::merge::{self, Choice, Inputs, Scope};
-use ecad_model::objects::styles::{StandardHeader, StyleLayer, StyleRecord, StyleRef};
 use ecad_model::naming::tag::HighWater;
+use ecad_model::objects::styles::{StandardHeader, StyleLayer, StyleRecord, StyleRef};
 use ecad_model::{Author, Device, DeviceId, Document, Ledger, ObjectRef, Op, StandardId};
 
 fn header(name: &str) -> StandardHeader {

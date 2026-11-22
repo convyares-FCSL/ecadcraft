@@ -50,7 +50,8 @@ fn multi_level_terminal_commands_through_execute() {
     let (label, ops) = last_by_agent(&mut c);
     assert_eq!(label, "Place terminal level");
     assert!(
-        ops.iter().any(|o| matches!(o, Op::AddConnectionPoint { terminal, .. } if terminal.key.as_ref().map(ToString::to_string).as_deref() == Some(".2"))),
+        ops.iter()
+            .any(|o| matches!(o, Op::AddConnectionPoint { terminal, .. } if terminal.key.as_ref().map(ToString::to_string).as_deref() == Some(".2"))),
         "level keys .n"
     );
     // A level starter placed on its own joins the strip at the next free position.

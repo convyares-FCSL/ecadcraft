@@ -26,8 +26,8 @@ use ecad_widgets::tokens::ui_type::TypeStyle;
 use ecad_widgets::tokens::{Icon, line, size, space};
 use eframe::egui::{self, Key, Rect, pos2, vec2};
 
-use crate::shell::{LeftTab, bar};
 use crate::App;
+use crate::shell::{LeftTab, bar};
 
 /// A tool group as the strip shows it.
 #[derive(Debug, Clone, Copy)]
@@ -511,8 +511,12 @@ fn flyout(ui: &mut egui::Ui, g: &Group, tools: &[&'static Action], last: usize, 
             let link_w = link.map_or(0.0, |a| bar::text_width(ui, a.label, body) + 2.0 * space::L + space::M);
             let text_rect =
                 Rect::from_min_max(pos2(rect.left() + space::L, top + space::M), pos2(rect.right() - space::L - link_w, rect.bottom() - space::M));
-            let galley =
-                ui.painter().layout(n.to_string(), bar::font(ui, ecad_widgets::tokens::ui_type::SMALL), ecad_widgets::color(s.text_2), text_rect.width());
+            let galley = ui.painter().layout(
+                n.to_string(),
+                bar::font(ui, ecad_widgets::tokens::ui_type::SMALL),
+                ecad_widgets::color(s.text_2),
+                text_rect.width(),
+            );
             ui.painter().galley(pos2(text_rect.left(), text_rect.center().y - galley.size().y / 2.0), galley, ecad_widgets::color(s.text_2));
             if let Some(a) = link {
                 let r = Rect::from_min_size(

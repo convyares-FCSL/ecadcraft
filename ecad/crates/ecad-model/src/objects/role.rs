@@ -165,7 +165,8 @@ impl serde::Serialize for Role {
 impl<'de> serde::Deserialize<'de> for Role {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let text = String::deserialize(d)?;
-        Role::parse(&text).ok_or_else(|| <D::Error as serde::de::Error>::custom(crate::naming::words::unknown_word_message(&text, "Role", Role::WORDS)))
+        Role::parse(&text)
+            .ok_or_else(|| <D::Error as serde::de::Error>::custom(crate::naming::words::unknown_word_message(&text, "Role", Role::WORDS)))
     }
 }
 

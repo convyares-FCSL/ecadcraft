@@ -3,11 +3,11 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::objects::aid::ContinuationName;
 use ecad_model::connectivity::wiring::{self, Scheme};
+use ecad_model::objects::aid::ContinuationName;
 use ecad_model::{
-    Aid, AidId, Author, Connectivity, Definition, DefinitionId, Device, DeviceId, Document, IdAllocator, Ledger, ObjectRef, Op, Page, PageId,
-    ConnectionPoint, ConnectionPointDef, ConnectionPointId, Wire, WireId,
+    Aid, AidId, Author, ConnectionPoint, ConnectionPointDef, ConnectionPointId, Connectivity, Definition, DefinitionId, Device, DeviceId, Document,
+    IdAllocator, Ledger, ObjectRef, Op, Page, PageId, Wire, WireId,
 };
 
 /// A small project driven through the ledger, with the numbering pass as ECAD commits run it.

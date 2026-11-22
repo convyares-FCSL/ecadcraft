@@ -1,13 +1,13 @@
 //! Tag rule (brief 029, FP1): a cable tag deleted before a snapshot written by a build before brief
 //! 026 (whose cached marks did not count cable tags) is not handed out again after opening.
 
-use {ecad_electrical::devices::TagHigh, ecad_electrical::devices::new_cable_tag};
 use ecad_file::chain;
 use ecad_file::chunks::{META_KEY, ModelMeta};
 use ecad_file::schema::{self, BranchId, VersionKind};
 use ecad_file::{Project, Store};
 use ecad_model::naming::tag::HighWater;
 use ecad_model::*;
+use {ecad_electrical::devices::TagHigh, ecad_electrical::devices::new_cable_tag};
 
 const PROJECT: ProjectId = ProjectId(0x0029_0000_0000_0000_0000_0000_0000_0007);
 

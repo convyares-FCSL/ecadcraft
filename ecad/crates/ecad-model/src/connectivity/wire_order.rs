@@ -30,9 +30,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::document::doc::{Cable, Core, CorePosition, Document, Wire};
-use crate::geometry::geom::Pt;
-use crate::naming::id::{ConductorId, IdAllocator, NetId, RouteId, ConnectionPointId, WireId};
 use crate::document::op::Op;
+use crate::geometry::geom::Pt;
+use crate::naming::id::{ConductorId, ConnectionPointId, IdAllocator, NetId, RouteId, WireId};
 use crate::objects::route::RouteEnd;
 
 /// How a new point joins its net.
@@ -792,16 +792,19 @@ impl<'a> Rewrite<'a> {
             return false;
         };
         let path: Vec<(Pt, Pt)> = route.points.windows(2).map(|w| (w[0], w[1])).collect();
-        doc.representations_of(crate::document::doc::Subject::Cable(cable)).filter(|(_, r)| r.page == route.page).flat_map(|(_, r)| r.items.iter()).any(|i| {
-            let segs: Vec<(Pt, Pt)> = match doc.items.get(i).map(|x| &x.kind) {
-                Some(crate::document::doc::ItemKind::Primitive(crate::document::doc::Primitive::Line { a, b })) => vec![(*a, *b)],
-                Some(crate::document::doc::ItemKind::Primitive(crate::document::doc::Primitive::Polyline { vertices, .. })) => {
-                    vertices.windows(2).map(|w| (w[0], w[1])).collect()
-                }
-                _ => Vec::new(),
-            };
-            segs.iter().any(|s| path.iter().any(|p| segments_meet(*s, *p)))
-        })
+        doc.representations_of(crate::document::doc::Subject::Cable(cable))
+            .filter(|(_, r)| r.page == route.page)
+            .flat_map(|(_, r)| r.items.iter())
+            .any(|i| {
+                let segs: Vec<(Pt, Pt)> = match doc.items.get(i).map(|x| &x.kind) {
+                    Some(crate::document::doc::ItemKind::Primitive(crate::document::doc::Primitive::Line { a, b })) => vec![(*a, *b)],
+                    Some(crate::document::doc::ItemKind::Primitive(crate::document::doc::Primitive::Polyline { vertices, .. })) => {
+                        vertices.windows(2).map(|w| (w[0], w[1])).collect()
+                    }
+                    _ => Vec::new(),
+                };
+                segs.iter().any(|s| path.iter().any(|p| segments_meet(*s, *p)))
+            })
     }
 
     /// The loose line that carried a wire between `ends` (its route now has a free end): one still

@@ -4,18 +4,18 @@
 //! JSON.
 
 use crate::circuits::circuit::Rating;
-use ecad_model::objects::styles::{StyleLayer, StyleRecord, StyleRef, is_name};
 use ecad_model::geometry::units::{Amps, Celsius, Percent, Volts};
+use ecad_model::objects::styles::{StyleLayer, StyleRecord, StyleRef, is_name};
 use ecad_model::objects::wire::{InstallMethod, SupplySystem};
 use ecad_model::{CableId, Document, IdAllocator, Op, Wire, WireId, Word};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::circuits::{self, RatedSubject};
 use crate::commands::input::{Bounded, TextOrNumber, nullable};
 use crate::commands::run::{Access, Cx, Generic, Got, Io, Outcome, Pages, Read};
 use crate::error::CmdError;
-use crate::circuits::{self, RatedSubject};
 use crate::styles::{self, cable, ratingtable};
 use ecad_model::objects::wire::Basis;
 
@@ -271,7 +271,9 @@ pub struct PanelTemperature {
 /// # Errors
 /// Outside −40 to 90 °C.
 pub fn panel_temperature(text: &str) -> Result<ecad_model::geometry::units::Celsius, CmdError> {
-    crate::devices::ratings::parse::ambient(text.trim()).map(ecad_model::geometry::units::Celsius).ok_or(CmdError::refused("temperature is \u{2212}40 to 90 \u{b0}C."))
+    crate::devices::ratings::parse::ambient(text.trim())
+        .map(ecad_model::geometry::units::Celsius)
+        .ok_or(CmdError::refused("temperature is \u{2212}40 to 90 \u{b0}C."))
 }
 
 /// Check a panel temperature (°C) and give the text stored.
@@ -302,7 +304,9 @@ pub fn plan_temperature(doc: &Document, typed: &str, after: Option<&str>) -> Res
             .aids
             .iter()
             .filter(|(_, x)| {
-                x.as_box().and_then(|b| crate::locations::designations::box_key(b, crate::locations::designations::Aspect::Location)).is_some_and(|l| l == e.key)
+                x.as_box()
+                    .and_then(|b| crate::locations::designations::box_key(b, crate::locations::designations::Aspect::Location))
+                    .is_some_and(|l| l == e.key)
             })
             .map(|(a, _)| *a)
             .collect(),

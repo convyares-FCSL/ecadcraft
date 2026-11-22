@@ -23,9 +23,9 @@ use ecad_model::document::effect::{Effect, Effects};
 use ecad_model::document::sheet::{MARGIN_MM, SheetSpec};
 use ecad_model::{CableId, DeviceId, Document, ObjectRef, PageId};
 
-use crate::terminal_strips::accessories::Acc;
 use crate::defaults::strip_pages as entries;
 use crate::reports::kept::ReportModels;
+use crate::terminal_strips::accessories::Acc;
 use crate::terminal_strips::{PlanItem, StripData, Strips, TermRow};
 
 /// Gap between the tag box and the first column.

@@ -4,8 +4,8 @@
 use cadcraft_engine::doc::Handle;
 use ecad_model::{PageId, Pt, RepresentationId};
 
-use ecad_electrical::devices::device_list::kept;
 use crate::project::Project;
+use ecad_electrical::devices::device_list::kept;
 
 /// For a "go to" from the list: representation `rep`'s page, a point to centre on, and its drawn
 /// handles on that page (empty unless that page is the one shown).

@@ -7,12 +7,12 @@ use crate::common::{self, Opts, click, pointer_to};
 use cadcraft_engine::doc::EntityKind;
 use cadcraft_engine::ext::MarkShape;
 use cadcraft_engine::geom::Vec2;
-use {ecad_app::App, ecad_app::commands::tools};
 use ecad_model::Document;
 use eframe::egui::{Event, Key, Pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::json;
+use {ecad_app::App, ecad_app::commands::tools};
 
 fn harness() -> Harness<'static, App> {
     common::harness(Opts::new())

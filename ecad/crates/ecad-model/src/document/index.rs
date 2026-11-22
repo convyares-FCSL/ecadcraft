@@ -20,9 +20,11 @@
 
 use std::collections::BTreeMap;
 
-use crate::document::doc::{Cable, Core, Device, Document, End, Folder, Item, ItemKind, Page, Representation, Subject, ConnectionPoint, Wire};
-use crate::naming::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, NetId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
+use crate::document::doc::{Cable, ConnectionPoint, Core, Device, Document, End, Folder, Item, ItemKind, Page, Representation, Subject, Wire};
 use crate::document::op::ObjectRef;
+use crate::naming::id::{
+    CableId, ConnectionPointId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, NetId, PageId, RepresentationId, RouteId, WireId,
+};
 
 /// Whether a reference is being added or removed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

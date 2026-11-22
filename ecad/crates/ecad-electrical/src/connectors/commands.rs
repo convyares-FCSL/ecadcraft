@@ -8,7 +8,9 @@ use ecad_model::geometry::units::{Degrees, Radians};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
-use ecad_model::{DeviceId, Document, IdAllocator, Ledger, Noun, Op, PageId, Placement, Pt, RouteId, Style, ConnectionPoint, ConnectionPointId, WireId};
+use ecad_model::{
+    ConnectionPoint, ConnectionPointId, DeviceId, Document, IdAllocator, Ledger, Noun, Op, PageId, Placement, Pt, RouteId, Style, WireId,
+};
 
 use crate::connectors::{self as cn, FamilyRules, Names, Shown};
 use crate::defaults::{self, Scope};

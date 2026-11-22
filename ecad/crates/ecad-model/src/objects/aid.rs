@@ -14,10 +14,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::naming::id::{FunctionId, LocationId};
-use crate::objects::styles::StyleRef;
-use crate::naming::text::Text;
 use crate::geometry::units::Celsius;
+use crate::naming::id::{FunctionId, LocationId};
+use crate::naming::text::Text;
+use crate::objects::styles::StyleRef;
 
 /// Most characters of a continuation name.
 pub const MAX_NAME: usize = 16;

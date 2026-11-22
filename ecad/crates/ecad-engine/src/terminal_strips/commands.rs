@@ -15,20 +15,20 @@ pub use ecad_electrical::terminal_strips::commands::terminal_strips::{
     BRIDGE_STANDOFF, Fence, FenceKind, MAX_FENCE, definition_for, land_level, level_symbol, plan_fence, plan_fence_typed, staple,
 };
 use ecad_model::geometry::units::{Degrees, Radians};
-use ecad_model::{CableId, DeviceId, Document, Noun, Op, PageId, Placement, Pt, RouteEnd, RouteId, Style, ConnectionPointId, WireId};
+use ecad_model::{CableId, ConnectionPointId, DeviceId, Document, Noun, Op, PageId, Placement, Pt, RouteEnd, RouteId, Style, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::commands::input::{Command, Typed};
 use crate::commands::{err, on_any_page, on_project, plain_style};
+use ecad_electrical::commands::input::Point;
 pub use ecad_electrical::connectors::strip_connection_point_at;
 pub use ecad_electrical::connectors::{Land, plan_land};
 use ecad_electrical::terminal_strips::StripData;
 pub use ecad_electrical::terminal_strips::connection_point_words;
 use ecad_electrical::terminal_strips::terminal_blocks as tt;
 use {ecad_electrical::wires::ON_WIRE, ecad_electrical::wires::OnRoute};
-use ecad_electrical::commands::input::Point;
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[
@@ -229,7 +229,8 @@ fn route_words(doc: &Document, r: RouteId) -> String {
 /// (or the strip tagged `tag`, or a new strip) at the next position of its type that lacks its
 /// level, or at `position`; on a wire it lands there. One transaction.
 pub(crate) fn place_level(
-    s: &mut Session, params: &crate::devices::commands::PlaceParams, starter: &'static ecad_electrical::symbols::Starter, at: Pt, degrees: Degrees, mirror: bool,
+    s: &mut Session, params: &crate::devices::commands::PlaceParams, starter: &'static ecad_electrical::symbols::Starter, at: Pt, degrees: Degrees,
+    mirror: bool,
 ) -> cadcraft_engine::Result<Value> {
     let (ty, level) = tt::of_starter(starter.key).ok_or_else(|| err("That symbol is not a terminal level."))?;
     let device = params.device_id()?;
@@ -383,8 +384,10 @@ pub(crate) struct StripplanParams {
 
 impl Command for StripplanParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
-        let limit =
-            self.limit.map_or(ecad_electrical::reports::DEFAULT_LIMIT, |n| usize::try_from(n).unwrap_or(usize::MAX)).clamp(1, ecad_electrical::reports::MAX_LIMIT);
+        let limit = self
+            .limit
+            .map_or(ecad_electrical::reports::DEFAULT_LIMIT, |n| usize::try_from(n).unwrap_or(usize::MAX))
+            .clamp(1, ecad_electrical::reports::MAX_LIMIT);
         let after = self.after.map_or(0, |n| usize::try_from(n).unwrap_or(usize::MAX));
         let accessories = self.accessories.unwrap_or(true);
         let strip = self.strip;

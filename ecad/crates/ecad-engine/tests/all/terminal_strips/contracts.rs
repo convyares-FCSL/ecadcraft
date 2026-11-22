@@ -2,11 +2,11 @@
 //! cores, the terminal plan and cable schedule, the BOM per terminal type, the Checks rows, and
 //! the update maps. Driven through the commands' JSON forms on fixture T.
 
+use ecad_electrical::terminal_strips::Strips;
+use ecad_model::{Author, CableId, ConnectionPointId, DeviceId, Op, PageId, RouteEnd, RouteId, WireId};
+use serde_json::{Value, json};
 use {ecad_electrical::checks::Fix, ecad_electrical::checks::Kind};
 use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
-use ecad_electrical::terminal_strips::Strips;
-use ecad_model::{Author, CableId, DeviceId, Op, PageId, RouteEnd, RouteId, ConnectionPointId, WireId};
-use serde_json::{Value, json};
 
 use crate::common::place;
 use crate::common::{H, id, pts};
@@ -334,7 +334,11 @@ fn core_rows_of_the_checks_list() {
     t.h.run("setprop", json!({"cable": t.cable.hex(), "key": "cores", "value": "5X"})).unwrap();
     assert_eq!(ecad_electrical::terminal_strips::next_free_label(&t.h.doc(), t.cable).as_deref(), Some("4"));
     t.h.run("setprop", json!({"cable": t.cable.hex(), "key": "cores", "value": "4X"})).unwrap();
-    assert_eq!(ecad_electrical::terminal_strips::next_free_label(&t.h.doc(), t.cable).as_deref(), Some("4"), "core 5 went with the offer; 4 is still free");
+    assert_eq!(
+        ecad_electrical::terminal_strips::next_free_label(&t.h.doc(), t.cable).as_deref(),
+        Some("4"),
+        "core 5 went with the offer; 4 is still free"
+    );
     let e = t.h.run("setprop", json!({"cable": t.cable.hex(), "key": "cores", "value": "7Q"})).unwrap_err();
     assert!(e.contains("Write 7, 7G, 5X, 4x2x0.25 (pairs), or BN,BK,GY,BU,GNYE."), "{e}");
 }
@@ -428,7 +432,8 @@ fn relabelling_wired_terminals_by_remove_and_add_needs_no_new_op() {
     let d = t.h.doc();
     assert_eq!(d.terminals[&t3].label.as_deref(), Some("9"));
     assert_eq!(d.ends_at(t3), doc.ends_at(t3));
-    let built = Strips::build(&d, &ReportModels::build_with(&d, &ecad_engine::styles::draw::EngineMetrics), &ecad_electrical::reports::PageCx::of(&d));
+    let built =
+        Strips::build(&d, &ReportModels::build_with(&d, &ecad_engine::styles::draw::EngineMetrics), &ecad_electrical::reports::PageCx::of(&d));
     assert!(built.get(id(&v, "strip")).is_some());
 }
 

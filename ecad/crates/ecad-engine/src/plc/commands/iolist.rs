@@ -59,8 +59,10 @@ pub(crate) struct IolistParams {
 impl Command for IolistParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
         let state = self.state.map(StateParam::word);
-        let limit =
-            self.limit.map_or(ecad_electrical::reports::DEFAULT_LIMIT, |n| usize::try_from(n).unwrap_or(usize::MAX)).clamp(1, ecad_electrical::reports::MAX_LIMIT);
+        let limit = self
+            .limit
+            .map_or(ecad_electrical::reports::DEFAULT_LIMIT, |n| usize::try_from(n).unwrap_or(usize::MAX))
+            .clamp(1, ecad_electrical::reports::MAX_LIMIT);
         let after = self.after.map_or(0, |n| usize::try_from(n).unwrap_or(usize::MAX));
         on_any_page(s, |p, _| {
             p.outputs();

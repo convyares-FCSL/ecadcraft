@@ -4,8 +4,8 @@
 //! desktop app does it when CADCraft's theme or language changes, until U2's `style` switch keeps
 //! CADCraft from touching the style at all).
 
-use {crate::tokens::line, crate::tokens::radius, crate::tokens::shadow, crate::tokens::space, crate::tokens::ui_type};
 use egui::{CornerRadius, FontFamily, FontId, Shadow, Stroke, TextStyle, Theme, Visuals, style::WidgetVisuals};
+use {crate::tokens::line, crate::tokens::radius, crate::tokens::shadow, crate::tokens::space, crate::tokens::ui_type};
 
 use {crate::SHELL, crate::color, crate::fonts};
 

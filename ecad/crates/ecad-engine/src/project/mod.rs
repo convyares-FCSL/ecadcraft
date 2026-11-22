@@ -14,20 +14,20 @@ use cadcraft_engine::ext::{Commit, DocumentOwner, OwnerRef, Start, Verdict};
 use cadcraft_engine::{EngineError, Session};
 
 use crate::access::{Pages, PagesRef, ProjectHandle};
-use ecad_electrical::CmdError;
 use crate::dev::snapshot::{LiveFacts, PageInfo};
 use crate::history::event_log::{EventKind, EventLog};
+use ecad_electrical::CmdError;
 use ecad_model::{
-    Author, CableId, DeviceId, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger, LengthUnit, Op, Page, PageId, ProjectId,
-    ProjectSettings, Pt, RepresentationId, Subject, ConnectionPointId, WireId,
+    Author, CableId, ConnectionPointId, DeviceId, Document, End, Form, IdAllocator, ItemKind, Layer, LayerId, Ledger, LengthUnit, Op, Page, PageId,
+    ProjectId, ProjectSettings, Pt, RepresentationId, Subject, WireId,
 };
 use ecad_store::MemoryBackend;
 use serde_json::{Value, json};
 
-use crate::convert::{ECAD_PREFIX, MARKER_LAYER, block_name, entity_for, kind_for_primitive, marker_entity};
-use ecad_electrical::reports::kept::ReportModels;
-use crate::translate;
 pub use crate::cables::views::View;
+use crate::convert::{ECAD_PREFIX, MARKER_LAYER, block_name, entity_for, kind_for_primitive, marker_entity};
+use crate::translate;
+use ecad_electrical::reports::kept::ReportModels;
 
 mod changes;
 mod handle_map;
@@ -239,8 +239,8 @@ fn cables_layer() -> CLayer {
 /// height and style from `look` (brief 031): a reference end's text is a reference, every other
 /// one cable text.
 pub(crate) fn part_entity(look: &crate::styles::draw::Look, part: &ecad_electrical::cables::layout::Part, handle: Handle) -> Entity {
-    use ecad_electrical::styles::text_style::TextKind;
     use ecad_electrical::cables::layout::{Role, Shape, Weight};
+    use ecad_electrical::styles::text_style::TextKind;
     let text_kind = if part.role == Role::ReferenceText { TextKind::Reference } else { TextKind::CableText };
     use ecad_model::Primitive;
     let kind = match &part.shape {
@@ -337,8 +337,11 @@ pub(crate) fn base_drawing() -> Drawing {
     }
     // The starter symbols' terminals lie on a 5 mm grid (design 018 §4, `ecad.symbol-grid`): snap
     // and grid spacing of an ECAD page follow it.
-    let grid =
-        cadcraft_engine::doc::HVal::Point(cadcraft_engine::geom::Vec3::new(ecad_electrical::symbols::SYMBOL_GRID_MM, ecad_electrical::symbols::SYMBOL_GRID_MM, 0.0));
+    let grid = cadcraft_engine::doc::HVal::Point(cadcraft_engine::geom::Vec3::new(
+        ecad_electrical::symbols::SYMBOL_GRID_MM,
+        ecad_electrical::symbols::SYMBOL_GRID_MM,
+        0.0,
+    ));
     d.header.set("SNAPUNIT", grid.clone());
     d.header.set("GRIDUNIT", grid);
     d
@@ -419,7 +422,8 @@ pub fn project_page_framed(
 /// As [`project_page`].
 #[allow(clippy::too_many_arguments)]
 pub fn project_page_with_hidden(
-    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool, outputs: Option<&ReportModels>,
+    doc: &Document, page: PageId, base: &Drawing, prev: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool,
+    outputs: Option<&ReportModels>,
 ) -> Result<(Drawing, HandleMap), String> {
     project_page_pending(doc, page, base, prev, fan, tol, hidden_text, false, outputs)
 }

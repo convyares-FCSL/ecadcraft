@@ -11,8 +11,8 @@
 
 use ecad_model::Document;
 
-use crate::styles::text_style::{TextKind, TextStyle, Weight, default_family, kind_font, text_style};
 use crate::defaults::{self, Scope, text as d};
+use crate::styles::text_style::{TextKind, TextStyle, Weight, default_family, kind_font, text_style};
 
 /// What the drawing engine knows about fonts on this machine: whether a font is found, and the
 /// width of a text drawn in it.
@@ -153,7 +153,12 @@ impl Look {
     /// The style of `kind`.
     pub fn style(&self, kind: TextKind) -> TextStyle {
         let i = TextKind::ALL.iter().position(|k| *k == kind).unwrap_or(0);
-        self.styles.get(i).copied().unwrap_or(TextStyle { height: 1.0, weight: Weight::Regular, style_name: crate::styles::text_style::STYLE_REGULAR, colour: None })
+        self.styles.get(i).copied().unwrap_or(TextStyle {
+            height: 1.0,
+            weight: Weight::Regular,
+            style_name: crate::styles::text_style::STYLE_REGULAR,
+            colour: None,
+        })
     }
 
     /// The width of `value` in `kind`'s font and `s` (a style derived from `kind`'s).

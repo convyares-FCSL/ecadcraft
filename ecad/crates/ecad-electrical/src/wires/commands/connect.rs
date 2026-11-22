@@ -4,7 +4,7 @@
 //!
 //! Excludes: the interactive forms and the JSON.
 
-use ecad_model::{Document, End, Op, PageId, RouteEnd, RouteId, ConnectionPointId};
+use ecad_model::{ConnectionPointId, Document, End, Op, PageId, RouteEnd, RouteId};
 
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -27,7 +27,8 @@ pub fn connect(doc: &Document, r: RouteId, end: End, t: ConnectionPointId) -> Re
     if !doc.terminals.contains_key(&t) {
         return Err(CmdError::refused("no such connection point"));
     }
-    let at = ecad_model::connectivity::derive::connection_point_position(doc, page, t).ok_or(CmdError::refused("the connection point is not shown on this page"))?;
+    let at = ecad_model::connectivity::derive::connection_point_position(doc, page, t)
+        .ok_or(CmdError::refused("the connection point is not shown on this page"))?;
     let mut edits = RouteEdits::new(doc);
     let route = edits.get(r).ok_or(CmdError::refused(NO_ROUTE))?;
     let slot = match end {

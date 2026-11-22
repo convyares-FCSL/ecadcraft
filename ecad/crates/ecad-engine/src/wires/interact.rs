@@ -7,8 +7,8 @@ use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
 use ecad_model::{Pt, WireId};
 use serde_json::{Value, json};
 
-use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
 use crate::interact::{ATTACHED_ACI, OUT_OF_RANGE, can_start, in_range, pick_radius, preview_entity, pt, read};
+use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
 
 /// The wire under a click (within the pick radius), and its number.
 fn wire_under(s: &Session, p: Vec2) -> R<(WireId, Pt, String)> {

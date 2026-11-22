@@ -20,7 +20,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::connectivity::jumper_bars::{level_of_key, natural_key};
-use ecad_model::{DeviceId, Document, LevelIo, PointKey, Primitive, Pt, Subject, ConnectionPointDef, ConnectionPointId};
+use ecad_model::{ConnectionPointDef, ConnectionPointId, DeviceId, Document, LevelIo, PointKey, Primitive, Pt, Subject};
 
 use crate::CmdError;
 use crate::symbols::StarterKey;
@@ -36,7 +36,8 @@ pub const RATING_PREFIX: &str = ecad_model::objects::devices::RATING_OF_PREFIX;
 /// and `acc.on.` are brief 030's placements, `term_label.` this brief's; `link.` values name
 /// positions inside and are rewritten, not moved ([`crate::terminal_strips::accessories::renumber_ops`]). A fuse
 /// position's rating is the strip's field and moves with [`moved_fuses`].
-pub const POSITION_KEYED: &[&str] = &[crate::terminal_strips::accessories::AFTER_PREFIX, crate::terminal_strips::accessories::ON_PREFIX, LABEL_PREFIX];
+pub const POSITION_KEYED: &[&str] =
+    &[crate::terminal_strips::accessories::AFTER_PREFIX, crate::terminal_strips::accessories::ON_PREFIX, LABEL_PREFIX];
 
 /// Most characters of a position label (`termlabel {position}`).
 pub const MAX_POSITION_CHARS: usize = 16;
@@ -697,7 +698,10 @@ pub fn parse_counts(text: &str) -> Result<Counts, CmdError> {
         return Err(CmdError::refused("A strip offers at least 1 position. Write 12, 12+2PE or 12+4x3; empty clears it."));
     }
     if total > crate::terminal_strips::MAX_POSITIONS {
-        return Err(CmdError::refused(format!("A strip offers at most {} positions, of every type together.", crate::terminal_strips::MAX_POSITIONS)));
+        return Err(CmdError::refused(format!(
+            "A strip offers at most {} positions, of every type together.",
+            crate::terminal_strips::MAX_POSITIONS
+        )));
     }
     Ok(counts)
 }

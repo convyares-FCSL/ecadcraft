@@ -54,7 +54,7 @@ use std::time::Instant;
 
 use cadcraft_engine::Session;
 use ecad_engine::ProjectHandle;
-use ecad_model::{Author, CableId, Core, CorePosition, DeviceId, ObjectRef, Op, PageId, Pt, RouteEnd, RouteId, Subject, ConnectionPointId};
+use ecad_model::{Author, CableId, ConnectionPointId, Core, CorePosition, DeviceId, ObjectRef, Op, PageId, Pt, RouteEnd, RouteId, Subject};
 use serde_json::json;
 
 use crate::measure::{median, path_text, remove};
@@ -483,8 +483,9 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredStrip
             let doc = p.ledger.document();
             let wire_of = |c: DeviceId| doc.connection_points_of(c).find_map(|(t, _)| doc.ends_at(t).into_iter().next().map(|(w, _)| w));
             let other = p.kept_reports().and_then(|o| o.strips.strips.keys().copied().find(|c| *c != strip && *c != lv));
-            let cable = wire_of(strip)
-                .and_then(|_| doc.connection_points_of(strip).flat_map(|(t, _)| doc.ends_at(t)).find_map(|(w, _)| doc.cables_of(w).into_iter().next()));
+            let cable = wire_of(strip).and_then(|_| {
+                doc.connection_points_of(strip).flat_map(|(t, _)| doc.ends_at(t)).find_map(|(w, _)| doc.cables_of(w).into_iter().next())
+            });
             (wire_of(strip), other.and_then(wire_of), cable)
         })?;
         run(&mut s, "openpage", json!({"page": sp_page.hex()}))?;

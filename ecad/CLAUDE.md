@@ -142,9 +142,9 @@ cargo xtask patches               # only when files outside ecad/ changed
   root workspace (in its own `target`), and the tester runs the affected
   CADCraft crates' tests.
 - **Layers (design 065, `docs/design/crates.md` §1 and §4).** **Core** (what a project is and
-  means): `ecad-model`, `ecad-drawing-style`, `ecad-store`, `ecad-file`, `ecad-inspect`,
-  `ecad-electrical`. **Engine** (the link to CADCraft): `ecad-engine`. **UI kit**: `ecad-ui`,
-  `ecad-tokens`. **App**: `ecad-app`. **Programs** (one `main` each): `ecad-desktop`, `ecad-cli`,
+  means): `ecad-model`, `ecad-drawing-style`, `ecad-store`, `ecad-file`,
+  `ecad-electrical`. **Engine** (the link to CADCraft): `ecad-engine`. **UI kit**: `ecad-widgets`
+  (with its `tokens` module). **App**: `ecad-app`. **Programs** (one `main` each): `ecad-desktop`, `ecad-cli`,
   `ecad-mcp`. **Dev** (never shipped): `ecad-bench`, `ecad-inspector` and `xtask` under `dev/`.
   A crate uses only layers above it; `cargo xtask layers` enforces the table.
 - No Core crate depends on a `cadcraft-*` crate. Only `ecad-engine` touches the engine; App and
@@ -179,7 +179,7 @@ cargo xtask patches               # only when files outside ecad/ changed
 - Style: `rustfmt` at 120 columns; crate `//!` docs say what the crate excludes; public items
   document `# Semantics`, `# Errors`, `# Example` where useful; contract tests are table-driven in
   `tests/all/<area>_contracts.rs`.
-- **Components (owner, 2026-11-15).** Panels and dialogs use only `ecad_ui` components for values
+- **Components (owner, 2026-11-15).** Panels and dialogs use only `ecad_widgets` components for values
   (`docs/design/components.md`): `control::TextEntry` (text, or a number with its unit),
   `control::Select`, `prim::Segmented`, `control::Toggle`, `control::ValueBox` (a value with its
   hint), `control::read_text` / `prim::read_value` (read from the drawing), `control::link`,
@@ -187,7 +187,7 @@ cargo xtask patches               # only when files outside ecad/ changed
   inputs for values. Anything the person can change looks editable at a glance; a read value never
   looks like an input. `cargo xtask layers` fails on a new raw `egui::TextEdit` or `ComboBox` in an
   ECAD UI crate; the files that still have them are allowlisted with counts that only fall. A
-  missing component is added to `ecad_ui` and its gallery (`showcase::components`), not drawn in the
+  missing component is added to `ecad_widgets` and its gallery (`showcase::components`), not drawn in the
   panel.
 - Versions: product `0.3.0-dev` (`dev` carries the next release with `-dev`; the QA gate drops
   the suffix and the tag follows), release tags `ecad-v…`, CADCraft commit in `UPSTREAM.md`, format

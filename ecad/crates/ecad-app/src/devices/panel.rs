@@ -13,8 +13,8 @@
 
 use std::collections::BTreeSet;
 
-use ecad_electrical::devices::device_list::DeviceEntry;
 use ecad_electrical::devices::PROPERTIES;
+use ecad_electrical::devices::device_list::DeviceEntry;
 use ecad_model::DeviceId;
 use eframe::egui::{self, Rect, RichText, Stroke, pos2, vec2};
 
@@ -403,8 +403,14 @@ impl DevicesPanel {
         if self.laid_out.as_ref() == Some(&key) {
             return;
         }
-        let shown: Vec<usize> =
-            self.list.entries.iter().enumerate().filter(|(_, e)| ecad_electrical::devices::device_list::matches(e, &self.filter)).map(|(i, _)| i).collect();
+        let shown: Vec<usize> = self
+            .list
+            .entries
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| ecad_electrical::devices::device_list::matches(e, &self.filter))
+            .map(|(i, _)| i)
+            .collect();
         let (unplaced, placed): (Vec<usize>, Vec<usize>) =
             shown.into_iter().partition(|i| self.list.entries.get(*i).is_some_and(|e| e.symbols.is_empty()));
         let mut lines = Vec::new();

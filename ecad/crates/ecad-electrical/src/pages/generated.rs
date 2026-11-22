@@ -596,7 +596,11 @@ fn terminal_rows(doc: &Document, page: PageId, o: &ReportModels) -> Vec<TRow> {
                 // a mark across Terminal, the part in Place.
                 crate::terminal_strips::PlanItem::Gap { gap, acc } => {
                     let mut cells = vec![String::new(); TERMINAL_BLOCK_COLUMNS.len()];
-                    let words = if acc == crate::terminal_strips::accessories::Acc::StripLabel { format!("strip label {}", s.tag) } else { acc.words().to_string() };
+                    let words = if acc == crate::terminal_strips::accessories::Acc::StripLabel {
+                        format!("strip label {}", s.tag)
+                    } else {
+                        acc.words().to_string()
+                    };
                     let mark = match acc {
                         crate::terminal_strips::accessories::Acc::EndStop => "||",
                         crate::terminal_strips::accessories::Acc::EndPlate => "|",

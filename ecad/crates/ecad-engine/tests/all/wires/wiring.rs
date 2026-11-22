@@ -2,10 +2,10 @@
 //! list and its incremental upkeep. Driven through the commands' JSON forms.
 
 use ecad_electrical::checks::kept::Checks;
-use {ecad_electrical::checks::Fix, ecad_electrical::checks::Kind};
-use {ecad_electrical::wires::LABEL_LAYER};
+use ecad_electrical::wires::LABEL_LAYER;
 use ecad_model::{Author, Document, ObjectRef, Op, PageId, WireId};
 use serde_json::{Value, json};
+use {ecad_electrical::checks::Fix, ecad_electrical::checks::Kind};
 
 use crate::common::{H, id, pts};
 
@@ -18,7 +18,8 @@ fn number(doc: &Document, c: WireId) -> Option<String> {
 fn wire(h: &mut H, points: &[(f64, f64)], extra: Value) -> WireId {
     let doc = h.doc();
     let page = h.p(|p| p.active_page()).unwrap_or(doc.page_order[0]);
-    let shown: Vec<ecad_model::Pt> = ecad_model::connectivity::derive::connection_point_positions(&doc, page).into_iter().map(|(_, _, at)| at).collect();
+    let shown: Vec<ecad_model::Pt> =
+        ecad_model::connectivity::derive::connection_point_positions(&doc, page).into_iter().map(|(_, _, at)| at).collect();
     let ends: Vec<(f64, f64)> = [points.first(), points.last()]
         .into_iter()
         .flatten()

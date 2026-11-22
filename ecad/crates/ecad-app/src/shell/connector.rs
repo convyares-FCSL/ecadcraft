@@ -300,7 +300,9 @@ fn row(ui: &mut egui::Ui, label: &str, value: &str) {
         ui.add_sized(
             vec2(80.0, 22.0),
             egui::Label::new(
-                egui::RichText::new(label).font(ecad_widgets::fonts::font(ui.ctx(), ui_type::SMALL)).color(ecad_widgets::color(ecad_widgets::SHELL.text_2)),
+                egui::RichText::new(label)
+                    .font(ecad_widgets::fonts::font(ui.ctx(), ui_type::SMALL))
+                    .color(ecad_widgets::color(ecad_widgets::SHELL.text_2)),
             ),
         );
         prim::read_value(ui, value);

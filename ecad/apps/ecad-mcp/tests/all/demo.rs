@@ -55,7 +55,8 @@ fn the_demo_nets_and_wire_numbers() {
     // Every conductor's label, by page, as the pages show them.
     let mut shown: Vec<String> = Vec::new();
     for (i, page) in doc.page_order.iter().enumerate() {
-        let mut labels: Vec<String> = ecad_engine::wires::draw::labels_on_page(&doc, *page).into_iter().map(|l| format!("{}: {}", i + 1, l.text)).collect();
+        let mut labels: Vec<String> =
+            ecad_engine::wires::draw::labels_on_page(&doc, *page).into_iter().map(|l| format!("{}: {}", i + 1, l.text)).collect();
         labels.sort();
         labels.dedup();
         shown.extend(labels);
@@ -195,7 +196,8 @@ fn the_demo_locations_reports_and_generated_pages() {
     let doc = read(&mut mcp);
     // -K01 (=PUMP, +CP1): its NC contact on page 3 (+FIELD) reads =PUMP+CP1-K01; its coil on page
     // 2 =PUMP-K01 (no page or project function).
-    let texts = |i: usize| -> Vec<String> { ecad_engine::devices::draw::texts_on_page(&doc, doc.page_order[i]).into_iter().map(|t| t.value).collect() };
+    let texts =
+        |i: usize| -> Vec<String> { ecad_engine::devices::draw::texts_on_page(&doc, doc.page_order[i]).into_iter().map(|t| t.value).collect() };
     assert!(texts(2).contains(&"=PUMP+CP1-K01".to_string()), "{:?}", texts(2));
     assert!(texts(1).contains(&"=PUMP-K01".to_string()), "{:?}", texts(1));
     // Reports: no wire on the BOM; the cable row.

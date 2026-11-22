@@ -37,7 +37,9 @@ fn cross_reference_commands_through_execute() {
     assert!(last_by_agent(&mut c).iter().any(|o| matches!(o, Op::AddConnectionPoint { terminal, .. } if terminal.label.as_deref() == Some("13"))));
     // The table's placement, by `setprop` and by Move Mirror Table.
     c.exec("setprop", json!({"component": k1, "key": "mirror", "value": "below"}));
-    assert!(matches!(&last_by_agent(&mut c)[..], [Op::ModifyDevice { after, .. }] if table(after) == Some(ecad_model::objects::devices::ContactTable::Below)));
+    assert!(
+        matches!(&last_by_agent(&mut c)[..], [Op::ModifyDevice { after, .. }] if table(after) == Some(ecad_model::objects::devices::ContactTable::Below))
+    );
     let m = c.exec("mirrormove", json!({"component": k1, "at": [90, 150]}));
     assert_eq!(m["mirror"], json!("at 15,-30"), "{m}");
     let last = c.log().last().cloned().unwrap();

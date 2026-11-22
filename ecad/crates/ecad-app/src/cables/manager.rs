@@ -5,9 +5,9 @@
 //! the command and its parameters, and moves the view.
 
 use ecad_electrical::cables::{self, Side};
-use {ecad_electrical::checks::Check, ecad_electrical::checks::Fix, ecad_electrical::checks::Kind, ecad_electrical::checks::Object};
 use ecad_electrical::locations::designations::Aspect;
 use serde_json::json;
+use {ecad_electrical::checks::Check, ecad_electrical::checks::Fix, ecad_electrical::checks::Kind, ecad_electrical::checks::Object};
 
 /// **Assign in the drawing…** (the `cable-not-drawn` fix's first button).
 pub const ASSIGN_IN_DRAWING: &str = "Assign in the drawing\u{2026}";
@@ -62,8 +62,9 @@ impl crate::App {
             }
             (Fix::UseDrawing(cable, _), _) => {
                 let Some(p) = self.project.clone() else { return };
-                let at =
-                    p.read(&mut self.cad.session, |p, _| ecad_model::naming::numbering::rep_anchor(p.ledger.document(), ecad_model::Subject::Cable(cable)));
+                let at = p.read(&mut self.cad.session, |p, _| {
+                    ecad_model::naming::numbering::rep_anchor(p.ledger.document(), ecad_model::Subject::Cable(cable))
+                });
                 let (page, at) = at.ok().flatten().map_or((None, None), |(p, a)| (Some(p), Some(a)));
                 let check = Check { kind: Kind::CableEndOffPlan, page, at, object: Object::Cable(cable), which: String::new(), fix: None };
                 self.panel_action(crate::pages::project_panel::Action::GotoCheck(Box::new(check)));

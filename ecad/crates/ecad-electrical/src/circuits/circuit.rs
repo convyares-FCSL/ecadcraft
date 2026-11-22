@@ -112,7 +112,9 @@ impl Rating {
     /// volt drop.
     pub fn summary(&self) -> String {
         let mut s = match (self.iz, self.device.as_ref().and_then(|d| d.amps)) {
-            (Some(iz), Some(i)) => format!("{} A {} {} A", fmt_amps(iz, Some(i)), if iz >= i { "\u{2265}" } else { "<" }, crate::devices::ratings::dataset::fmt_num(i)),
+            (Some(iz), Some(i)) => {
+                format!("{} A {} {} A", fmt_amps(iz, Some(i)), if iz >= i { "\u{2265}" } else { "<" }, crate::devices::ratings::dataset::fmt_num(i))
+            }
             (Some(iz), None) => format!("{} A", fmt_amps(iz, None)),
             (None, _) => "no data".into(),
         };
@@ -503,7 +505,10 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
                         None
                     }
                     (Some(sz), None) => {
-                        issues.push(Issue::NoTable(format!("No rating table column for a {} \u{b0}C conductor", crate::devices::ratings::dataset::fmt_num(sh.max))));
+                        issues.push(Issue::NoTable(format!(
+                            "No rating table column for a {} \u{b0}C conductor",
+                            crate::devices::ratings::dataset::fmt_num(sh.max)
+                        )));
                         let _ = sz;
                         None
                     }
@@ -549,7 +554,12 @@ pub fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found: &Foun
                                     } else {
                                         theta_from.clone()
                                     };
-                                    factors.push(Factor { name: temp_name, factor: k, input: format!("{} \u{b0}C", crate::devices::ratings::dataset::fmt_num(theta)), from });
+                                    factors.push(Factor {
+                                        name: temp_name,
+                                        factor: k,
+                                        input: format!("{} \u{b0}C", crate::devices::ratings::dataset::fmt_num(theta)),
+                                        from,
+                                    });
                                     grouping_factor(Some(&t.data), &mut issues, &mut factors).map(|g| cap * k * g)
                                 }
                             }

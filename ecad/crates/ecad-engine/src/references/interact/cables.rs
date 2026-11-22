@@ -13,9 +13,11 @@ use ecad_model::connectivity::derive::CableReference;
 use ecad_model::{CableId, Document, Op, PageId, Pt, RepresentationId};
 use serde_json::{Value, json};
 
-use crate::properties::forms::{NOTHING_THERE, R, Safe, cable_named, commit, not_a_point, other, paper_guard, safely};
-use crate::interact::{OUT_OF_RANGE, can_start, in_range, line_kind, pick, pick_radius, pixel, preview_entity, preview_text, pt, read, ring_kind, v2};
+use crate::interact::{
+    OUT_OF_RANGE, can_start, in_range, line_kind, pick, pick_radius, pixel, preview_entity, preview_text, pt, read, ring_kind, v2,
+};
 use crate::project::{Mapped, Project};
+use crate::properties::forms::{NOTHING_THERE, R, Safe, cable_named, commit, not_a_point, other, paper_guard, safely};
 use {ecad_electrical::references::cables::ORPHAN_ACI, ecad_electrical::references::cables::REFERENCE_ACI};
 
 /// The ring of a reference in a preview, in screen pixels (`ecad.ref-size`).
@@ -48,7 +50,8 @@ fn reference_named(p: &Project, m: Mapped) -> Option<RepresentationId> {
     match m {
         Mapped::RefText(r) => Some(r),
         Mapped::Item(i) => doc.representation_of_item(i).filter(|(_, r)| ecad_electrical::references::cables::is_reference(r)).map(|(id, _)| id),
-        _ => None}
+        _ => None,
+    }
 }
 
 /// The ring and text a reference preview shows at `at`.
@@ -68,7 +71,8 @@ fn ring_and_text(s: &Session, at: Pt, text: &str, orphan: bool, left: bool) -> V
 fn next_text(doc: &Document, cable: CableId) -> (String, bool) {
     match ecad_electrical::references::cables::all(doc).into_iter().find(|r| r.cable == cable) {
         Some(r) => (r.locator(), false),
-        None => ("/?".into(), true)}
+        None => ("/?".into(), true),
+    }
 }
 
 // ---------------------------------------------------------------- Cable Reference (§4.1)
@@ -83,7 +87,8 @@ pub(crate) fn cableref(s: &Session) -> R<Box<dyn Interactive>> {
 struct CableRef {
     cable: Option<CableId>,
     /// Step 1 was shown (so `U` goes back to it).
-    asked: bool}
+    asked: bool,
+}
 
 impl CableRef {
     fn choose(s: &Session, k: CableId) -> Result<(), String> {
@@ -95,7 +100,11 @@ impl CableRef {
         let orphan = r.get("orphan").and_then(Value::as_bool).unwrap_or(true);
         let line = read(s, |p, page| {
             let doc = p.ledger.document();
-            Ok(format!("Reference for cable {} placed on {}.", ecad_electrical::cables::cable_title(doc, k), ecad_electrical::references::cables::page_number_words(doc, page)))
+            Ok(format!(
+                "Reference for cable {} placed on {}.",
+                ecad_electrical::cables::cable_title(doc, k),
+                ecad_electrical::references::cables::page_number_words(doc, page)
+            ))
         })
         .unwrap_or_else(|_| "Reference placed.".into());
         s.echo(line);
@@ -126,7 +135,8 @@ impl CableRef {
             }
             (Input::Enter, _) => Ok(Step::Done),
             (Input::Text(t), _) => Err(not_a_point(&t)),
-            _ => Ok(Step::Continue)}
+            _ => Ok(Step::Continue),
+        }
     }
 }
 
@@ -145,8 +155,10 @@ impl Interactive for CableRef {
                         self.cable = Some(*k);
                         self.asked = false;
                     }
-                    Err(e) => s.echo(e)},
-                _ => s.echo("Select one cable only.")}
+                    Err(e) => s.echo(e),
+                },
+                _ => s.echo("Select one cable only."),
+            }
             Ok(Step::Continue)
         })
     }
@@ -154,7 +166,8 @@ impl Interactive for CableRef {
         match self.cable {
             None => Prompt::new("Select a cable to reference", Accept::POINT),
             Some(_) if self.asked => Prompt::new("Specify reference point", Accept::POINT).kw(&["Undo"]),
-            Some(_) => Prompt::new("Specify reference point", Accept::POINT)}
+            Some(_) => Prompt::new("Specify reference point", Accept::POINT),
+        }
     }
     fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
         paper_guard(s, &i)?;
@@ -185,7 +198,8 @@ struct Continue {
     /// The cable of the orphan reference made most recently, with its name.
     default: Option<(CableId, String)>,
     cable: Option<CableId>,
-    at: Option<Pt>}
+    at: Option<Pt>,
+}
 
 /// The cable of the orphan reference linked most recently (design 010 §4.2 step 1, Q12): the
 /// latest transaction in the history that linked a reference which is an orphan now.
@@ -199,11 +213,13 @@ fn latest_orphan(p: &Project) -> Option<(CableId, String)> {
     let latest = p.ledger.log().iter().rev().find_map(|tx| {
         tx.ops.iter().rev().find_map(|op| match op {
             Op::LinkRepresentation { id, .. } if ids.contains(id) => Some(*id),
-            _ => None})
+            _ => None,
+        })
     });
     let r = match latest {
         Some(id) => orphans.iter().find(|r| r.reference == id),
-        None => orphans.last()}?;
+        None => orphans.last(),
+    }?;
     Some((r.cable, ecad_electrical::cables::cable_title(doc, r.cable)))
 }
 
@@ -229,12 +245,15 @@ fn cable_typed(doc: &Document, typed: &str) -> Result<CableId, String> {
     match found.as_slice() {
         [] => Err(format!("No cable named \"{t}\".")),
         [k] => Ok(*k),
-        many => Err(format!("\"{t}\" names {} cables; type more of it.", many.len()))}
+        many => Err(format!("\"{t}\" names {} cables; type more of it.", many.len())),
+    }
 }
 
 /// The checks of step 1 (R2, R4 to R6) for `cable` on `page`, without any geometry.
 fn check_continue(doc: &Document, page: PageId, cable: CableId) -> Result<(), String> {
-    ecad_electrical::references::cables::plan_continue(doc, page, cable, None, Pt::new(0.0, 0.0), Pt::new(1.0, 0.0), 0.0).map(|_| ()).map_err(String::from)
+    ecad_electrical::references::cables::plan_continue(doc, page, cable, None, Pt::new(0.0, 0.0), Pt::new(1.0, 0.0), 0.0)
+        .map(|_| ())
+        .map_err(String::from)
 }
 
 impl Continue {
@@ -309,7 +328,8 @@ impl Continue {
                     let k = read(s, |p, _| cable_typed(p.ledger.document(), &t)).map_err(other)?;
                     self.pick_cable(s, k)
                 }
-                _ => Ok(Step::Continue)},
+                _ => Ok(Step::Continue),
+            },
             (Some(_), None) => match i {
                 Input::Point(p) if !in_range(p) => Err(other(OUT_OF_RANGE)),
                 Input::Point(p) => {
@@ -318,7 +338,8 @@ impl Continue {
                 }
                 Input::Enter => Ok(Step::Done),
                 Input::Text(t) => Err(not_a_point(&t)),
-                _ => Ok(Step::Continue)},
+                _ => Ok(Step::Continue),
+            },
             (Some(k), Some(at)) => match i {
                 Input::Point(p) if !in_range(p) => Err(other(OUT_OF_RANGE)),
                 Input::Point(p) if pt(p).near(at, Self::tolerance(s)) => Ok(Step::Continue),
@@ -329,12 +350,16 @@ impl Continue {
                 }
                 Input::Enter => Ok(Step::Done),
                 Input::Text(t) => Err(not_a_point(&t)),
-                _ => Ok(Step::Continue)}}
+                _ => Ok(Step::Continue),
+            },
+        }
     }
 
     /// The plan a click at `toward` would commit (the JSON form's own planning).
     fn plan(s: &Session, k: CableId, at: Pt, toward: Pt) -> Option<ecad_electrical::references::cables::Plan> {
-        read(s, |p, page| Ok(ecad_electrical::references::cables::plan_continue(p.ledger.document(), page, k, None, at, toward, p.tolerance).ok())).ok().flatten()
+        read(s, |p, page| Ok(ecad_electrical::references::cables::plan_continue(p.ledger.document(), page, k, None, at, toward, p.tolerance).ok()))
+            .ok()
+            .flatten()
     }
 }
 
@@ -348,10 +373,12 @@ impl Interactive for Continue {
                 let p = Prompt::new("Enter cable to continue", Accept::TEXT).kw(&["List"]);
                 match &self.default {
                     Some((_, name)) => p.default(name.clone()),
-                    None => p}
+                    None => p,
+                }
             }
             (Some(_), None) => Prompt::new("Specify reference point", Accept::POINT),
-            (Some(_), Some(at)) => Prompt::new("Specify direction and length of the wires", Accept::POINT).kw(&["Undo"]).base(v2(at))}
+            (Some(_), Some(at)) => Prompt::new("Specify direction and length of the wires", Accept::POINT).kw(&["Undo"]).base(v2(at)),
+        }
     }
     fn input(&mut self, s: &mut Session, i: Input) -> R<Step> {
         paper_guard(s, &i)?;
@@ -390,7 +417,8 @@ impl Interactive for Continue {
                         }
                         w
                     }
-                    None => "->".to_string()};
+                    None => "->".to_string(),
+                };
                 // Above the cursor, clear of CADCraft's dynamic-input box below and right of it.
                 out.push(preview_text(s, Pt::new(cursor.x + 10.0 * px, cursor.y + 28.0 * px), px, words, PREVIEW_ACI));
                 out
@@ -415,7 +443,8 @@ enum Found {
     /// A cable reference end, and whether it is an orphan.
     Cable(RepresentationId, bool),
     /// A device reference source (a contact, its text, a coil, a table row) and the row's contact.
-    Device(RepresentationId, Option<RepresentationId>)}
+    Device(RepresentationId, Option<RepresentationId>),
+}
 
 const NOT_A_REFERENCE: &str = "That is not a reference: click a cable reference, a contact, a coil or a contact table row.";
 const NOTHING_TO_GO: &str = "Nothing there. Click a cable reference, a contact or a coil.";
@@ -441,7 +470,8 @@ impl Goto {
         match f {
             Found::Cable(_, true) => Err(other(ORPHAN)),
             Found::Cable(r, false) => Self::jump(s, r),
-            Found::Device(r, t) => crate::references::interact::devices::jump(s, r, t)}
+            Found::Device(r, t) => crate::references::interact::devices::jump(s, r, t),
+        }
     }
 
     fn jump(s: &mut Session, r: RepresentationId) -> R<Step> {
@@ -480,7 +510,8 @@ impl Goto {
             }
             Input::Enter => Ok(Step::Done),
             Input::Text(t) => Err(not_a_point(&t)),
-            _ => Ok(Step::Continue)}
+            _ => Ok(Step::Continue),
+        }
     }
 }
 
@@ -500,7 +531,8 @@ impl Interactive for Goto {
                     Ok(Step::Continue)
                 }
                 Some(f @ Found::Device(..)) if found.len() == 1 => Self::go(s, *f),
-                _ => Ok(Step::Continue)}
+                _ => Ok(Step::Continue),
+            }
         })
     }
     fn prompt(&self, _s: &Session) -> Prompt {

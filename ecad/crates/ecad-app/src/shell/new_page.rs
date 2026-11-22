@@ -87,7 +87,8 @@ fn kind_rows(holds: Holds, doc: &ecad_model::Document, book: &Book) -> Vec<KindR
                 .filter(|p| ecad_electrical::pages::generated::kind_of(doc, **p) == Some(*k))
                 .filter(|p| {
                     *k != GenKind::Terminals
-                        || (ecad_engine::terminal_strips::draw::style_of(doc, **p) == ecad_engine::terminal_strips::draw::Style::Graphic) == style.is_some()
+                        || (ecad_engine::terminal_strips::draw::style_of(doc, **p) == ecad_engine::terminal_strips::draw::Style::Graphic)
+                            == style.is_some()
                 })
                 .map(|p| book.number(doc, *p))
                 .collect()
@@ -122,8 +123,9 @@ impl App {
                 .collect();
             // The open page's type from the page well, the group's from a group row (its last
             // page's), Schematic otherwise.
-            let like =
-                after.or_else(|| folder.and_then(|f| book.order.iter().rev().find(|p| ecad_model::document::book::folder_of(doc, **p) == Some(f)).copied()));
+            let like = after.or_else(|| {
+                folder.and_then(|f| book.order.iter().rev().find(|p| ecad_model::document::book::folder_of(doc, **p) == Some(f)).copied())
+            });
             let want = like.map_or(StyleRef::Builtin(ptype::SCHEMATIC.into()), |pg| ptype::type_of(doc, pg));
             let hi = rows
                 .iter()

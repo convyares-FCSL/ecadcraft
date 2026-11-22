@@ -73,7 +73,8 @@ fn every_command_leaves_the_project_consistent() {
     println!("{md}");
     assert!(
         ours.iter()
-            .all(|o| cadcraft_engine::find_command(o).is_some_and(|c| ecad_engine::commands::specs().iter().any(|s| s.id == c.id && s.label == c.label))),
+            .all(|o| cadcraft_engine::find_command(o)
+                .is_some_and(|c| ecad_engine::commands::specs().iter().any(|s| s.id == c.id && s.label == c.label))),
         "an ECAD command id is shadowed by a built-in"
     );
     assert!(broken.is_empty(), "checks failed after: {broken:?}");

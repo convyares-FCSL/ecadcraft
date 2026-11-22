@@ -529,7 +529,10 @@ fn block_panel(
         ui.label(RichText::new(&consequence).color(c32(s.text))).widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, CONSEQUENCE));
     }
     ui.horizontal(|ui| {
-        let save = ui.add(crate::title_blocks::list::gate(ecad_widgets::prim::Button::new("Save").kind(ecad_widgets::prim::Kind::Primary).small(), writable && changed));
+        let save = ui.add(crate::title_blocks::list::gate(
+            ecad_widgets::prim::Button::new("Save").kind(ecad_widgets::prim::Kind::Primary).small(),
+            writable && changed,
+        ));
         save.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, writable && changed, SAVE));
         if save.clicked() && writable && changed {
             acts.push(Act::Save);

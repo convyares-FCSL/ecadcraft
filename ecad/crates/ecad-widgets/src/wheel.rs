@@ -18,9 +18,9 @@
 
 use std::f32::consts::TAU;
 
-use {crate::tokens::Icon, crate::tokens::radius, crate::tokens::space, crate::tokens::ui_type, crate::tokens::wheel};
 use egui::epaint::{Mesh, Vertex, WHITE_UV};
 use egui::{Color32, Context, Id, Order, Pos2, Rect, Sense, Shape, Stroke, WidgetInfo, pos2, vec2};
+use {crate::tokens::Icon, crate::tokens::radius, crate::tokens::space, crate::tokens::ui_type, crate::tokens::wheel};
 
 /// Most rows a slot's list shows.
 pub const MAX_LIST: usize = 8;

@@ -19,8 +19,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::objects::devices::switching::motor_power;
 use crate::geometry::units::{Amps, Percent, Watts};
+use crate::objects::devices::switching::motor_power;
 
 /// The largest rated power of a motor, in watts (100 MW).
 pub const MAX_POWER_WATTS: f64 = 100_000_000.0;

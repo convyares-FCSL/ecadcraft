@@ -9,7 +9,7 @@
 use cadcraft_engine::{CommandSpec, Session};
 use ecad_electrical::styles::commands::text::{self as rules, KindRow, ShowLevel, ShowTarget, TextStyleInput};
 use ecad_model::Word;
-use ecad_model::{DeviceId, Document, PageId, RepresentationId, ConnectionPointId, WireId};
+use ecad_model::{ConnectionPointId, DeviceId, Document, PageId, RepresentationId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -17,11 +17,13 @@ use serde_json::{Value, json};
 use crate::commands::err;
 use crate::commands::input::{Command, Typed};
 use crate::commands::{on_any_page, on_project};
+use ecad_electrical::commands::input::{Bounded, Point, nullable};
 use ecad_electrical::defaults::{self};
+pub use ecad_electrical::styles::commands::text::{
+    BAD_FONT, BAD_HEIGHT, BAD_JUSTIFY, BAD_POINT, BAD_SHOW, BAD_WEIGHT, NEEDS_CONNECTION_POINT, NEEDS_KIND,
+};
 pub use ecad_electrical::styles::text_style::kind_words;
 use {crate::styles::draw::Fonts, ecad_electrical::styles::text_style::TextKind};
-use ecad_electrical::commands::input::{Bounded, Point, nullable};
-pub use ecad_electrical::styles::commands::text::{BAD_FONT, BAD_HEIGHT, BAD_JUSTIFY, BAD_POINT, BAD_SHOW, BAD_WEIGHT, NEEDS_KIND, NEEDS_CONNECTION_POINT};
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[
@@ -308,7 +310,10 @@ impl Command for PagetextsParams {
 
 /// The rows of `pagetexts` for `page`.
 pub fn pagetexts_json(doc: &Document, page: PageId) -> Value {
-    use {ecad_electrical::styles::text_style::TextStyle, ecad_electrical::styles::text_style::Weight, ecad_electrical::styles::text_style::justify_code, ecad_electrical::styles::text_style::text_box, crate::styles::draw::width_in};
+    use {
+        crate::styles::draw::width_in, ecad_electrical::styles::text_style::TextStyle, ecad_electrical::styles::text_style::Weight,
+        ecad_electrical::styles::text_style::justify_code, ecad_electrical::styles::text_style::text_box,
+    };
     let look = crate::styles::draw::Look::new(doc);
     let all = crate::devices::draw::all_texts_on_page(doc, page);
     let more = all.len().saturating_sub(MAX_TEXT_ROWS);

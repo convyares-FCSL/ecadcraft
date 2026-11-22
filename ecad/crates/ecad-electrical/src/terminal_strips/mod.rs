@@ -49,7 +49,7 @@ pub mod terminal_blocks;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::connectivity::derive::Place;
-use ecad_model::{CableId, Core, DeviceId, Document, End, PageId, Pt, RepresentationId, Subject, ConnectionPointId, WireId};
+use ecad_model::{CableId, ConnectionPointId, Core, DeviceId, Document, End, PageId, Pt, RepresentationId, Subject, WireId};
 
 use crate::CmdError;
 use crate::reports::PageCx;
@@ -1242,7 +1242,8 @@ fn strip_data(doc: &Document, c: DeviceId, o: &ReportModels, cx: &PageCx) -> Str
         cables: BTreeSet::new(),
     };
     let drawn = drawn_at(doc, c);
-    let shown_at: BTreeMap<ConnectionPointId, (RepresentationId, bool, Option<Pt>)> = drawn.iter().map(|(t, rid, pe, at)| (*t, (*rid, *pe, *at))).collect();
+    let shown_at: BTreeMap<ConnectionPointId, (RepresentationId, bool, Option<Pt>)> =
+        drawn.iter().map(|(t, rid, pe, at)| (*t, (*rid, *pe, *at))).collect();
     let mine: BTreeSet<ConnectionPointId> = doc.connection_points_of(c).map(|(t, _)| t).collect();
     let mut grids: BTreeMap<PageId, ecad_model::document::sheet::Grid> = BTreeMap::new();
     let mut rows: Vec<TermRow> = Vec::new();
@@ -1581,8 +1582,11 @@ fn type_parts(
     let part_number = get("part_number");
     let maker = get("maker");
     // Brief 047 (design 047 §5): a strip's own part number never shows the project's article number.
-    let article_number =
-        if own_part || part_number.is_none() { clean(strip.get(&type_key(ty, crate::reports::bom::ARTICLE_KEY))) } else { get(crate::reports::bom::ARTICLE_KEY) };
+    let article_number = if own_part || part_number.is_none() {
+        clean(strip.get(&type_key(ty, crate::reports::bom::ARTICLE_KEY)))
+    } else {
+        get(crate::reports::bom::ARTICLE_KEY)
+    };
     let own_description = get("description").or_else(|| if ty.code == "ft" { clean(strip.description.as_ref()) } else { None });
     let description = own_description.unwrap_or_else(|| {
         let e = crate::defaults::terminals::description_entry(ty.code);
@@ -1641,7 +1645,11 @@ pub fn connection_point_hover(doc: &Document, c: DeviceId, here: RepresentationI
         // Brief 036: the type, and the level of a multi-level position.
         let ty = crate::terminal_strips::terminal_blocks::type_of_connection_point(doc, t);
         let kind = if ty.multi() {
-            format!("{} level {}", ty.word, crate::terminal_strips::terminal_blocks::level_name(doc, c, ty, crate::terminal_strips::terminal_blocks::level_of(doc, t).0))
+            format!(
+                "{} level {}",
+                ty.word,
+                crate::terminal_strips::terminal_blocks::level_name(doc, c, ty, crate::terminal_strips::terminal_blocks::level_of(doc, t).0)
+            )
         } else if pe {
             "PE".to_string()
         } else {

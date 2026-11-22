@@ -20,7 +20,8 @@ use ecad_electrical::CmdError;
 use ecad_model::document::sheet::{FRAME_CATALOGUE, SheetSpec};
 use ecad_model::objects::styles::{StyleLayer, StyleRecord, StyleRef};
 use ecad_model::objects::title_block::{
-    Align, BlockItem, LineWeight, MAX_BODY_PRIMS, MAX_ITEMS, MAX_LOGO_PRIMS, MAX_TEXT_MM, MIN_TEXT_MM, Rect, TextDraw, TitleBlockLayout, logo_words};
+    Align, BlockItem, LineWeight, MAX_BODY_PRIMS, MAX_ITEMS, MAX_LOGO_PRIMS, MAX_TEXT_MM, MIN_TEXT_MM, Rect, TextDraw, TitleBlockLayout, logo_words,
+};
 use ecad_model::{Op, Primitive, Pt};
 use serde_json::{Value, json};
 
@@ -41,7 +42,8 @@ pub struct Read {
     pub prims: Vec<Primitive>,
     pub skipped: usize,
     /// More shapes than [`MAX_READ`]: reading stopped.
-    pub over: bool}
+    pub over: bool,
+}
 
 /// The refusal for a file that does not read.
 pub fn unreadable(reason: &str) -> String {
@@ -94,7 +96,8 @@ fn walk(d: &Drawing, ents: &[&Entity], m: Mat3, depth: usize, out: &mut Read) {
         match &kind {
             EntityKind::Line(_) | EntityKind::Arc(_) | EntityKind::Circle(_) | EntityKind::Text(_) => match crate::convert::primitive_from(&kind) {
                 Some(p) => push(out, p),
-                None => out.skipped += 1},
+                None => out.skipped += 1,
+            },
             EntityKind::LwPolyline(p) if p.vertices.iter().all(|v| v.bulge == 0.0) => {
                 push(out, Primitive::Polyline { vertices: p.vertices.iter().map(|v| Pt::new(v.p.x, v.p.y)).collect(), closed: p.closed });
             }
@@ -110,7 +113,8 @@ fn walk(d: &Drawing, ents: &[&Entity], m: Mat3, depth: usize, out: &mut Read) {
                                 Primitive::Arc { center: Pt::new(arc.center.x, arc.center.y), radius: arc.radius, start: arc.start, end: arc.end },
                             );
                         }
-                        _ => out.skipped += 1}
+                        _ => out.skipped += 1,
+                    }
                 }
             }
             EntityKind::Solid(s) | EntityKind::Trace(s) => {
@@ -119,7 +123,8 @@ fn walk(d: &Drawing, ents: &[&Entity], m: Mat3, depth: usize, out: &mut Read) {
                 let v: Vec<Pt> = order.iter().filter_map(|i| s.corners.get(*i)).map(|c| Pt::new(c.x, c.y)).collect();
                 push(out, Primitive::Polyline { vertices: v, closed: true });
             }
-            _ => out.skipped += 1}
+            _ => out.skipped += 1,
+        }
     }
 }
 
@@ -194,16 +199,19 @@ pub fn block(bytes: &[u8], spec: &SheetSpec, margins: &ecad_model::document::she
                 let (x, align) = match halign {
                     ecad_model::TextHAlign::Left => (x - 1.0, Align::Left),
                     ecad_model::TextHAlign::Center => (x - tw / 2.0, Align::Centre),
-                    ecad_model::TextHAlign::Right => (x - tw + 1.0, Align::Right)};
+                    ecad_model::TextHAlign::Right => (x - tw + 1.0, Align::Right),
+                };
                 let x = x.max(0.0);
                 let rect = Rect::new(x, (y - size * 0.4).max(0.0), tw.max(1.0), size * 1.8);
                 items.push(BlockItem::Text {
                     at: rect,
                     text: value.chars().take(ecad_model::objects::title_block::MAX_BODY_TEXT).collect(),
-                    look: TextDraw { size, align, ..TextDraw::default() }});
+                    look: TextDraw { size, align, ..TextDraw::default() },
+                });
             }
             Primitive::Text { .. } => {}
-            _ => curves.push(p.clone())}
+            _ => curves.push(p.clone()),
+        }
     }
     if !curves.is_empty() {
         if curves.len() > MAX_BODY_PRIMS {
@@ -270,7 +278,8 @@ pub fn run_import(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
                 let count = prims.len();
                 match usize::try_from(n).ok().and_then(|i| layout.items.get_mut(i)) {
                     Some(BlockItem::Logo { prims: slot, .. }) => *slot = prims,
-                    _ => return Err(format!("Item {n} is not a logo."))}
+                    _ => return Err(format!("Item {n} is not a logo.")),
+                }
                 layout.check()?;
                 if let ecad_model::objects::styles::StyleBody::Frame(f) = &mut after.body {
                     f.title_block = Some(layout);
@@ -288,7 +297,8 @@ pub fn run_import(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
             let doc = p.ledger.document();
             let spec = match params.get("sheet").and_then(Value::as_str) {
                 Some(t) => SheetSpec::parse(t)?,
-                None => doc.settings.sheet()};
+                None => doc.settings.sheet(),
+            };
             let margins = ecad_model::document::sheet::Margins::default();
             let (layout, skipped) = block(&bytes, &spec, &margins)?;
             let items = layout.items.len();
@@ -297,8 +307,10 @@ pub fn run_import(s: &mut Session, params: &Value) -> cadcraft_engine::Result<Va
                 Some(n) if ecad_model::objects::styles::is_name(n) => n.to_string(),
                 Some(_) => return Err(ecad_electrical::styles::commands::styles::STYLE_NEEDS_NAME.into()),
                 None => {
-                    let taken: Vec<String> =
-                        ecad_electrical::styles::rows(doc, &ecad_electrical::styles::frame::CATALOGUE).into_iter().map(|r| r.name.to_lowercase()).collect();
+                    let taken: Vec<String> = ecad_electrical::styles::rows(doc, &ecad_electrical::styles::frame::CATALOGUE)
+                        .into_iter()
+                        .map(|r| r.name.to_lowercase())
+                        .collect();
                     (1..10_000)
                         .map(|i| if i == 1 { base.clone() } else { format!("{base} {i}") })
                         .find(|n| !taken.contains(&n.to_lowercase()))

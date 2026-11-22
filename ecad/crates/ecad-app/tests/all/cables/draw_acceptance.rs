@@ -13,15 +13,15 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::common::{self, Opts, Tmp, click, pointer_to};
 use crate::canvas::mouse_acceptance::Deltas;
+use crate::common::{self, Opts, Tmp, click, pointer_to};
 use cadcraft_engine::geom::Vec2;
-use {ecad_app::App, ecad_app::commands::tools};
 use ecad_engine::cables::views::{self};
 use eframe::egui::{self, Key, Pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::{Value, json};
+use {ecad_app::App, ecad_app::commands::tools};
 
 /// A new-project harness whose views are remembered in `settings`.
 fn harness(settings: &Tmp, deltas: Option<Deltas>) -> Harness<'static, App> {

@@ -3,7 +3,7 @@
 
 use crate::common::{H, id};
 
-use {ecad_electrical::checks::Kind};
+use ecad_electrical::checks::Kind;
 use ecad_electrical::locations::designations::{self, Aspect};
 use ecad_model::{DeviceId, Document, PageId};
 use serde_json::{Value, json};

@@ -123,7 +123,8 @@ fn hostile_stored_places_draw_the_automatic_place() {
             object: ecad_model::ObjectRef::Device(c),
             key: key.clone(),
             before: h.doc().devices[&c].properties.get(&key).cloned(),
-            after: Some(bad.to_string())};
+            after: Some(bad.to_string()),
+        };
         h.project.apply_ops(&mut h.s, "hostile", vec![op]).unwrap();
         let row = tag_row(&mut h, page, r);
         assert_eq!((row["moved"].as_bool(), &row["at"]), (Some(false), &auto["at"]), "{bad:.20}");
@@ -144,7 +145,8 @@ fn a_tag_stays_upright_when_its_symbol_rotates() {
         let hd = h.handle_of(page, item);
         let origin = match &h.doc().items[&item].kind {
             ecad_model::ItemKind::Symbol(s) => s.placement.origin,
-            _ => unreachable!()};
+            _ => unreachable!(),
+        };
         h.run("rotate", json!({"handles": [hd.hex()], "base": [origin.x, origin.y], "angle": 90})).unwrap();
     }
     let tags: Vec<(String, f64)> = h
@@ -154,7 +156,8 @@ fn a_tag_stays_upright_when_its_symbol_rotates() {
             cadcraft_engine::doc::EntityKind::Text(t) if e.common.layer == ecad_electrical::devices::TAG_LAYER && t.value.starts_with('-') => {
                 Some((t.value.clone(), t.rotation))
             }
-            _ => None})
+            _ => None,
+        })
         .collect();
     assert_eq!(tags.len(), 2, "{tags:?}");
     assert!(tags.iter().all(|(_, rot)| *rot == 0.0), "upright: {tags:?}");
@@ -197,7 +200,7 @@ fn a_moved_tag_survives_save_and_reopen() {
 #[test]
 fn apply_styles_an_entity_like_the_page_does() {
     use cadcraft_engine::doc::{Entity, EntityKind, HAlign, Handle, Lineweight, VAlign};
-    use {ecad_electrical::styles::text_style::TextKind};
+    use ecad_electrical::styles::text_style::TextKind;
     let mut doc = ecad_model::Document::default();
     let mut e: Entity = ecad_engine::devices::draw::text_entity_with("X", Pt::new(0.0, 0.0), 9.0, HAlign::Left, VAlign::Top, Handle(1), "0");
     ecad_engine::styles::draw::apply(&doc, &mut e, TextKind::Tag);

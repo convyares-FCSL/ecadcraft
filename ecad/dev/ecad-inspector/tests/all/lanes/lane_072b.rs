@@ -166,8 +166,8 @@ fn contacts_and_the_contact_table_are_shown_raw_and_readable() {
 /// log.
 #[test]
 fn a_protective_rating_is_shown() {
-    use ecad_model::objects::devices::{Breaker, Protection, RatingNote, TripCurve};
     use ecad_model::geometry::units::Amps;
+    use ecad_model::objects::devices::{Breaker, Protection, RatingNote, TripCurve};
     let dir = TempDir::new("072b-rating");
     let mut l = history();
     let mut ids = IdAllocator::seeded(76);
@@ -192,8 +192,8 @@ fn a_protective_rating_is_shown() {
 /// log and the Readable row view, and the Raw view is the stored bytes.
 #[test]
 fn a_switching_rating_is_shown_raw_and_readable() {
-    use ecad_model::objects::devices::{Control, Operator, OperatorKind, Switching};
     use ecad_model::geometry::units::{Amps, Current, RatedVoltage, Volts};
+    use ecad_model::objects::devices::{Control, Operator, OperatorKind, Switching};
     let before = Device { device_type: DeviceType::Switching(OperatorKind::Coil.empty()), ..Device::default() };
     let k = Switching {
         operator: Operator::Coil(Control { voltage: Some(RatedVoltage { volts: Volts(24.0), current: Current::Dc }), power: None }),
@@ -209,8 +209,8 @@ fn a_switching_rating_is_shown_raw_and_readable() {
 /// Readable row view, and the Raw view is the stored bytes.
 #[test]
 fn a_sensor_rating_is_shown_raw_and_readable() {
-    use ecad_model::objects::devices::{Output, Sensing, Sensor};
     use ecad_model::geometry::units::{Current, RatedVoltage, Volts};
+    use ecad_model::objects::devices::{Output, Sensing, Sensor};
     let before = Device { device_type: DeviceType::Sensor(Sensor::empty(Sensing::Proximity, Output::Pnp)), ..Device::default() };
     let b = Sensor { supply: Some(RatedVoltage { volts: Volts(24.0), current: Current::Dc }), ..Sensor::empty(Sensing::Proximity, Output::Pnp) };
     let after = Device { device_type: DeviceType::Sensor(b), ..before.clone() };
@@ -221,8 +221,8 @@ fn a_sensor_rating_is_shown_raw_and_readable() {
 /// and the Readable row view, and the Raw view is the stored bytes.
 #[test]
 fn a_strip_fuse_position_rating_is_shown_raw_and_readable() {
-    use ecad_model::objects::devices::{Fuse, PositionLabel, TerminalStrip};
     use ecad_model::geometry::units::Amps;
+    use ecad_model::objects::devices::{Fuse, PositionLabel, TerminalStrip};
     let before = Device { device_type: DeviceType::TerminalStrip(TerminalStrip::default()), ..Device::default() };
     let fuse = Fuse { rated_current: Some(Amps(4.0)), ..Fuse::default() };
     let s = TerminalStrip { fuses: [(PositionLabel::new("3").unwrap(), fuse)].into() };
@@ -234,8 +234,8 @@ fn a_strip_fuse_position_rating_is_shown_raw_and_readable() {
 /// Readable row view, and the Raw view is the stored bytes.
 #[test]
 fn a_motor_rating_is_shown_raw_and_readable() {
-    use ecad_model::objects::devices::{Motor, Phases, Starting};
     use ecad_model::geometry::units::Watts;
+    use ecad_model::objects::devices::{Motor, Phases, Starting};
     let before = Device { device_type: DeviceType::Motor(Motor::empty(Phases::Three)), ..Device::default() };
     let m = Motor { rated_power: Some(Watts(7500.0)), starting: Some(Starting::StarDelta), ..Motor::empty(Phases::Three) };
     let after = Device { device_type: DeviceType::Motor(m), ..before.clone() };
@@ -246,8 +246,8 @@ fn a_motor_rating_is_shown_raw_and_readable() {
 /// and the Raw view is the stored bytes.
 #[test]
 fn a_load_rating_is_shown_raw_and_readable() {
-    use ecad_model::objects::devices::Load;
     use ecad_model::geometry::units::Watts;
+    use ecad_model::objects::devices::Load;
     let before = Device { device_type: DeviceType::Load(Load::default()), ..Device::default() };
     let after = Device { device_type: DeviceType::Load(Load { rated_power: Some(Watts(3000.0)) }), ..before.clone() };
     shown_raw_and_readable("072b-load", 80, before, after, &["load", "rated_power"], "rated_power");
@@ -257,8 +257,8 @@ fn a_load_rating_is_shown_raw_and_readable() {
 /// log and the Readable row view, and the Raw view is the stored bytes.
 #[test]
 fn an_indicator_rating_is_shown_raw_and_readable() {
-    use ecad_model::objects::devices::{Indicator, IndicatorColour, SignalType};
     use ecad_model::geometry::units::{Current, RatedVoltage, Volts};
+    use ecad_model::objects::devices::{Indicator, IndicatorColour, SignalType};
     let before = Device { device_type: DeviceType::Indicator(Indicator::empty(SignalType::Steady)), ..Device::default() };
     let i = Indicator {
         colour: Some(IndicatorColour::Red),
@@ -273,8 +273,8 @@ fn an_indicator_rating_is_shown_raw_and_readable() {
 /// Readable row view, and the Raw view is the stored bytes.
 #[test]
 fn a_power_supply_rating_is_shown_raw_and_readable() {
-    use ecad_model::objects::devices::{PowerSupply, Transformer};
     use ecad_model::geometry::units::{Current, RatedVoltage, VoltAmps, Volts};
+    use ecad_model::objects::devices::{PowerSupply, Transformer};
     let before = Device { device_type: DeviceType::PowerSupply(PowerSupply::Transformer(Transformer::default())), ..Device::default() };
     let ac = |v| Some(RatedVoltage { volts: Volts(v), current: Current::Ac });
     let t = Transformer { input: ac(400.0), output: ac(24.0), rated_power: Some(VoltAmps(250.0)) };

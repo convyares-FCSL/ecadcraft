@@ -12,8 +12,8 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::{Value, json};
 
-use crate::checks::ui::demo_file;
 use crate::canvas::mouse_acceptance::{doc, harness_with, ok};
+use crate::checks::ui::demo_file;
 
 type H = Harness<'static, ecad_app::App>;
 

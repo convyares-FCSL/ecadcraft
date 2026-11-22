@@ -22,8 +22,8 @@ use ecad_model::{FolderId, PageId};
 use ecad_widgets::tokens::{Icon, size, space, ui_type};
 use eframe::egui::{self, Rect, pos2, vec2};
 
-use crate::shell::{Workspace, bar};
 use crate::App;
+use crate::shell::{Workspace, bar};
 
 /// Accessible labels.
 pub const SAVE_STATE: &str = "Save state";
@@ -572,7 +572,12 @@ fn draw_item(
         }
         Item::Folded(gi, name, count) => {
             let r = Rect::from_min_size(pos2(x + space::XS, y - BTN / 2.0), vec2(item_w(i) - space::M, BTN));
-            ui.painter().rect_stroke(r, ecad_widgets::tokens::radius::FIELD, egui::Stroke::new(1.0, ecad_widgets::color(s.line)), egui::StrokeKind::Inside);
+            ui.painter().rect_stroke(
+                r,
+                ecad_widgets::tokens::radius::FIELD,
+                egui::Stroke::new(1.0, ecad_widgets::color(s.line)),
+                egui::StrokeKind::Inside,
+            );
             let resp = bar::hit(ui, r, &format!("Group {name}"), false, false, true).on_hover_text(name);
             let icon = Rect::from_center_size(pos2(r.left() + 12.0, y), vec2(12.0, 12.0));
             ecad_widgets::icons::paint(ui.painter(), icon, Icon::Folder, ecad_widgets::color(s.text_3));

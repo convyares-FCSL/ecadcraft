@@ -17,11 +17,11 @@ use cadcraft_engine::doc::color::{Color, Rgb};
 use cadcraft_engine::doc::{EntityKind, Lineweight};
 use ecad_drawing_style::sheet::PAPER;
 use ecad_electrical::defaults::{self, Kind, Level, Scope, Source};
-use {ecad_electrical::styles::text_style::TextKind};
-use {ecad_engine::Persistence, ecad_engine::export::printbook};
+use ecad_electrical::styles::text_style::TextKind;
 use ecad_model::Word;
 use ecad_model::{Author, DeviceId, ObjectRef, Op, PageId, Transaction};
 use serde_json::{Value, json};
+use {ecad_engine::Persistence, ecad_engine::export::printbook};
 
 use crate::common::{H, id, pts};
 use crate::common::{reopen, tmp_dir};
@@ -32,7 +32,8 @@ pub(crate) fn s(v: &Value) -> String {
     match v {
         Value::String(x) => x.clone(),
         Value::Null => String::new(),
-        other => other.to_string()}
+        other => other.to_string(),
+    }
 }
 
 pub(crate) fn num(v: &Value) -> Option<f64> {
@@ -47,7 +48,8 @@ pub(crate) fn styles(h: &mut H, catalogue: &str) -> Vec<Value> {
 pub(crate) fn rows_of(v: Value) -> Vec<Value> {
     match v {
         Value::Array(a) => a,
-        other => other["styles"].as_array().cloned().unwrap_or_else(|| panic!("no style rows in {other}"))}
+        other => other["styles"].as_array().cloned().unwrap_or_else(|| panic!("no style rows in {other}")),
+    }
 }
 
 /// One row of `styles` by ID or by name.
@@ -136,7 +138,8 @@ pub(crate) fn reproject(h: &mut H) {
     let page = h.first_page();
     let other = match h.doc().page_order.get(1).copied() {
         Some(p) => p,
-        None => id(&h.run("newpage", json!({"title": "Other"})).unwrap(), "page")};
+        None => id(&h.run("newpage", json!({"title": "Other"})).unwrap(), "page"),
+    };
     h.activate(other);
     h.activate(page);
     h.check();
@@ -239,7 +242,8 @@ pub(crate) fn find_obj_mut<'a>(v: &'a mut Value, k: &str) -> Option<&'a mut serd
     match v {
         Value::Object(m) => m.values_mut().find_map(|x| find_obj_mut(x, k)),
         Value::Array(a) => a.iter_mut().find_map(|x| find_obj_mut(x, k)),
-        _ => None}
+        _ => None,
+    }
 }
 
 /// The 031/040 built-in text sizes (cap height, weight) of every kind, from `dev` before 050a
@@ -774,7 +778,15 @@ fn a05_promote_a_style_and_a_value() {
     assert_eq!(s(&r["layer"]), "standard");
     assert!(near(field_num(&r, "height"), 5.0) && field(&r, "height").1 == "standard");
     let page = h.first_page();
-    assert!(near(ecad_electrical::styles::text_style::text_style_at(&h.doc(), TextKind::Tag, Scope { page: Some(page), component: Some(k), ..Scope::project() }).height, 5.0));
+    assert!(near(
+        ecad_electrical::styles::text_style::text_style_at(
+            &h.doc(),
+            TextKind::Tag,
+            Scope { page: Some(page), component: Some(k), ..Scope::project() }
+        )
+        .height,
+        5.0
+    ));
     // A built-in or a standard style cannot be promoted.
     refused(&mut h, "promote", json!({"catalogue": "text", "id": large}));
     refused(&mut h, "promote", json!({"catalogue": "text", "id": "tag"}));
@@ -907,7 +919,8 @@ fn a07_box_style_changes_every_box_and_a_page_frame_style_one_page() {
     assert_eq!(op_names(&tx), ["SetStyle"]);
     for p in [p1, p2] {
         h.activate(p);
-        let boxes: Vec<_> = h.pv(|pr, pg| pg.entities_of(pr, p)).into_iter().filter(|e| e.common.layer == ecad_electrical::locations::LAYER).collect();
+        let boxes: Vec<_> =
+            h.pv(|pr, pg| pg.entities_of(pr, p)).into_iter().filter(|e| e.common.layer == ecad_electrical::locations::LAYER).collect();
         assert!(!boxes.is_empty() && boxes.iter().all(|e| !e.common.linetype.eq_ignore_ascii_case("DASHED")), "page {p}: continuous");
         assert!(boxes.iter().any(|e| e.common.lineweight == Lineweight::Mm100(50)), "page {p}: 0.5 mm");
     }
@@ -995,7 +1008,8 @@ fn fp3_a_standard_layer_record_without_a_standard_is_refused_by_apply() {
     let remove = first.ops.iter().find(|o| o.name() == "SetStandard").unwrap().inverse();
     match remove.apply(&mut d) {
         Ok(()) => assert!(d.check().is_ok() && d.standard.is_none(), "removed with everything it held"),
-        Err(_) => assert!(header.is_some(), "or refused while it holds records")}
+        Err(_) => assert!(header.is_some(), "or refused while it holds records"),
+    }
 }
 
 /// §12.8: save, close and reopen keep the standard, the records and every choice; undo and redo
@@ -1076,7 +1090,8 @@ fn a08_a_hostile_style_file_opens_draws_and_reports() {
         object: ObjectRef::Device(k),
         key: "text.tag.style".into(),
         before: None,
-        after: Some(format!("#{}", "c".repeat(32)))});
+        after: Some(format!("#{}", "c".repeat(32))),
+    });
     inject(&mut h, ops);
     let rows = styles(&mut h, "text");
     assert!(rows.len() <= 20 + 1000 + 5, "MAX_STYLES_PER_CATALOGUE bounds the listing: {}", rows.len());

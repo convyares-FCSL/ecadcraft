@@ -8,13 +8,13 @@
 //! None of it is an entity: it is painted over CADCraft's drawing and never reaches a plot.
 
 use cadcraft_ui_egui::canvas::Xf;
+use ecad_engine::cables::draw::Painted;
 use ecad_engine::cad::Handle;
 use ecad_engine::cad::Vec2;
-use ecad_engine::cables::draw::Painted;
 use eframe::egui::{self, Pos2, Rect, Stroke, pos2, vec2};
 
-use crate::canvas::PageData;
 use crate::App;
+use crate::canvas::PageData;
 
 /// The error disc's and warning triangle's size on screen, px.
 pub const MARKER_PX: f32 = 12.0;

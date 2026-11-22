@@ -511,8 +511,11 @@ pub fn preview_json(prep: &Prepared, plan: &Plan) -> Value {
     let s = &prep.sides;
     let pt = s.parent_is_target();
     let docs = [&*prep.source_doc, &*prep.ancestor_doc];
-    let pages: Vec<String> =
-        plan.pages.iter().map(|p| ecad_model::document::book::stored_number(&prep.source_doc, *p).map_or_else(|| p.short(), str::to_string)).collect();
+    let pages: Vec<String> = plan
+        .pages
+        .iter()
+        .map(|p| ecad_model::document::book::stored_number(&prep.source_doc, *p).map_or_else(|| p.short(), str::to_string))
+        .collect();
     let n = plan.changes.len();
     let mut counts =
         format!("{n} change{} from {}", if n == 1 { "" } else { "s" }, if s.update { s.source_name.clone() } else { "the branch".into() });

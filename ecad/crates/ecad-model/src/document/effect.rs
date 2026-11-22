@@ -12,11 +12,11 @@
 //! document lookups.
 #![deny(clippy::wildcard_enum_match_arm)]
 
-use crate::document::doc::{Cable, Definition, Device, Folder, Item, Layer, Page, ProjectSettings, Representation, ConnectionPoint, Wire};
-use crate::naming::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
-use crate::naming::keys::{Area, area_of};
+use crate::document::doc::{Cable, ConnectionPoint, Definition, Device, Folder, Item, Layer, Page, ProjectSettings, Representation, Wire};
 use crate::document::op::{ObjectRef, Op};
 use crate::document::project::Project;
+use crate::naming::id::{CableId, ConnectionPointId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, WireId};
+use crate::naming::keys::{Area, area_of};
 use crate::objects::route::Route;
 use crate::objects::styles::{StandardHeader, StyleCatalogue, StyleLayer, StyleRecord, StyleRef};
 

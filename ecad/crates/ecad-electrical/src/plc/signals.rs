@@ -23,11 +23,11 @@ use std::collections::BTreeSet;
 use ecad_model::{DeviceId, Document, Op};
 use serde_json::{Value, json};
 
+use crate::defaults::plc::SafeState;
+use crate::defaults::{self, Scope};
 use crate::plc::channels::first_number;
 use crate::plc::iolist::Target;
 use crate::plc::rack::{self, CardType, RackRef};
-use crate::defaults::plc::SafeState;
-use crate::defaults::{self, Scope};
 
 /// The field names of a channel's tag and safe state (`plc.ch.<i>.tag`, `plc.ch.<i>.safe`).
 pub const TAG: &str = "tag";

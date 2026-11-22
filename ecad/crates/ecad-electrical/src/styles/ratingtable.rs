@@ -15,10 +15,10 @@ use ecad_model::{Document, StyleRef};
 
 use ecad_model::objects::styles::{RatingTable, StyleBody};
 
-use crate::styles::{Catalogue, Field};
 use crate::CmdError;
 use crate::defaults::{Kind, Scope, Slot, Value};
 use crate::devices::ratings::dataset::{self, Dataset};
+use crate::styles::{Catalogue, Field};
 
 /// The field holding the CSV rows.
 pub const ROWS: &str = "rows";

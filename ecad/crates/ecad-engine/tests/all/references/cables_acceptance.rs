@@ -23,14 +23,17 @@ use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Input, Session};
 use common::{H, id};
 use ecad_engine::interact::{hover_lines, overlay_marks};
-use {ecad_electrical::references::cables::diagnostics, ecad_electrical::references::cables::markers_on_page, ecad_electrical::references::cables::plan_continue};
 use ecad_engine::{HandleMap, Persistence, ProjectHandle, project_page};
 use ecad_model::connectivity::derive::{cable_references, nets};
 use ecad_model::{
-    CableId, Core, Document, Form, Item, ItemId, ItemKind, Op, Page, PageId, Primitive, Pt, Representation, RepresentationId, Subject, ConnectionPointId,
-    WireId,
+    CableId, ConnectionPointId, Core, Document, Form, Item, ItemId, ItemKind, Op, Page, PageId, Primitive, Pt, Representation, RepresentationId,
+    Subject, WireId,
 };
 use serde_json::{Value, json};
+use {
+    ecad_electrical::references::cables::diagnostics, ecad_electrical::references::cables::markers_on_page,
+    ecad_electrical::references::cables::plan_continue,
+};
 
 /// `wire` point to point (design 072: a wire runs between two connection points): a connection
 /// point at each end that has none first ([`H::wire_pp`]).

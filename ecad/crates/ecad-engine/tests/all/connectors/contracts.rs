@@ -4,7 +4,7 @@
 
 use ecad_electrical::connectors;
 use ecad_electrical::symbols::{self, Side};
-use ecad_model::{DeviceId, Document, PageId, ConnectionPointId, WireId};
+use ecad_model::{ConnectionPointId, DeviceId, Document, PageId, WireId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id};

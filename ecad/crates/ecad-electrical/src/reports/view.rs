@@ -26,11 +26,11 @@ use ecad_model::document::effect::{AreaSet, Effect};
 use ecad_model::document::view::{DerivedView, NoteCx, Outcome, PageSet, Phase, ViewScope};
 use ecad_model::{Document, PageId};
 
-use crate::views::Inputs;
 use crate::pages::generated;
-use crate::reports::kept::{Noted, ReportModels};
 use crate::plc::sheets::RackPlaces;
+use crate::reports::kept::{Noted, ReportModels};
 use crate::styles::text_style::fonts::TextMetrics;
+use crate::views::Inputs;
 use ecad_model::GenKind;
 
 /// The kept report models.

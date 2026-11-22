@@ -20,13 +20,13 @@ use ecad_model::geometry::units::Radians;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
-    ChannelRole, DefinitionId, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Placement, PointKey, Pt, Representation,
-    RepresentationId, Style, Subject, SymbolInstance, ConnectionPoint, ConnectionPointId,
+    ChannelRole, ConnectionPoint, ConnectionPointId, DefinitionId, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId,
+    Placement, PointKey, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance,
 };
 
+use crate::defaults::{self, Scope};
 use crate::plc::card_type_of;
 use crate::plc::rack::{CardType, MAX_CHANNELS, channel_count};
-use crate::defaults::{self, Scope};
 use crate::symbols::{Kind, Starter};
 
 /// The property prefix of a channel's own data (`plc.ch.<i>.text`, `plc.ch.<i>.address`; FP3).

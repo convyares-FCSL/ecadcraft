@@ -11,15 +11,15 @@ use cadcraft_engine::{Accept, EngineError, Input, Interactive, Prompt, Session, 
 use ecad_model::{CableId, DeviceId, End, Primitive, Pt, RouteId, Subject, WireId};
 use serde_json::{Value, json};
 
-use crate::interact::{
-    ATTACHED_ACI, LOOSE_ACI, NO_OUTLINE, OUT_OF_RANGE, REFUSE_ACI, RING_PX, CONNECTION_POINT_ACI, CONNECTION_POINT_RING_PX, can_start, capture_at, capture_preview,
-    drawn_component, from_cursor, in_range, line_kind, next_connection_point_name, pick, pixel, preview_entity, preview_text, pt, read, ring_kind,
-    connection_point_for, connection_point_name, v2, valid_name,
-};
+use crate::cables::views::View;
 use crate::commands::{MAX_HANDLES, MAX_WIRE_POINTS, on_project};
+use crate::interact::{
+    ATTACHED_ACI, CONNECTION_POINT_ACI, CONNECTION_POINT_RING_PX, LOOSE_ACI, NO_OUTLINE, OUT_OF_RANGE, REFUSE_ACI, RING_PX, can_start, capture_at,
+    capture_preview, connection_point_for, connection_point_name, drawn_component, from_cursor, in_range, line_kind, next_connection_point_name,
+    pick, pixel, preview_entity, preview_text, pt, read, ring_kind, v2, valid_name,
+};
 use crate::project::Mapped;
 use ecad_electrical::cables::slash;
-use crate::cables::views::View;
 
 pub(crate) type R<T> = cadcraft_engine::Result<T>;
 
@@ -320,7 +320,9 @@ impl Wire {
     /// The open end of another wire within the pick radius of `p` (design 032 §2.4).
     fn open_end(&self, s: &Session, p: Vec2) -> Option<Pt> {
         let tol = crate::interact::pick_radius(s).unwrap_or(ecad_electrical::wires::ON_WIRE).max(ecad_electrical::wires::ON_WIRE);
-        read(s, |proj, page| Ok(ecad_electrical::wires::open_end_near(proj.ledger.document(), page, pt(p), tol, &quiet_on(proj, page)))).ok().flatten()
+        read(s, |proj, page| Ok(ecad_electrical::wires::open_end_near(proj.ledger.document(), page, pt(p), tol, &quiet_on(proj, page))))
+            .ok()
+            .flatten()
     }
 
     fn finish(&mut self, s: &mut Session) -> R<Step> {
@@ -396,9 +398,11 @@ impl Wire {
                 s.echo("New wires: category auto (from their potential).");
                 return Ok(Step::Continue);
             }
-            let id = read(s, |p, _| ecad_electrical::styles::find(p.ledger.document(), ecad_model::StyleCatalogue::Wire, &choice).map_err(String::from))
-                .map_err(other)?;
-            let name = read(s, |p, _| Ok(ecad_electrical::styles::name(p.ledger.document(), ecad_model::StyleCatalogue::Wire, &id))).unwrap_or_default();
+            let id =
+                read(s, |p, _| ecad_electrical::styles::find(p.ledger.document(), ecad_model::StyleCatalogue::Wire, &choice).map_err(String::from))
+                    .map_err(other)?;
+            let name =
+                read(s, |p, _| Ok(ecad_electrical::styles::name(p.ledger.document(), ecad_model::StyleCatalogue::Wire, &id))).unwrap_or_default();
             self.category = Some(id.text());
             s.echo(format!("New wires: category {name}."));
             return Ok(Step::Continue);
@@ -919,7 +923,9 @@ impl CableSlash {
                         Err(e) => (format!("-> refused: {e}"), true),
                     }
                 }
-                Some(k) if !refused && doc.cables.contains_key(&k) => (format!("{text}, continuing {}", ecad_electrical::cables::cable_title(doc, k)), false),
+                Some(k) if !refused && doc.cables.contains_key(&k) => {
+                    (format!("{text}, continuing {}", ecad_electrical::cables::cable_title(doc, k)), false)
+                }
                 _ => (text, refused),
             };
             let (mut join, mut block) = (Vec::new(), Vec::new());
@@ -1116,7 +1122,10 @@ pub(crate) const NOT_A_CABLE: &str = "That is not a cable or a wire in a cable."
 /// The wire a clicked line stands for when picking cable members: the first wire it carries that
 /// is in a cable, else the wire it stands for ([`ecad_electrical::wires::wire_of_route`]).
 fn cabled_wire(doc: &ecad_model::Document, r: ecad_model::RouteId) -> Option<WireId> {
-    ecad_electrical::wires::wires_of_route(doc, r).into_iter().find(|w| !doc.cables_of(*w).is_empty()).or_else(|| ecad_electrical::wires::wire_of_route(doc, r))
+    ecad_electrical::wires::wires_of_route(doc, r)
+        .into_iter()
+        .find(|w| !doc.cables_of(*w).is_empty())
+        .or_else(|| ecad_electrical::wires::wire_of_route(doc, r))
 }
 
 pub(crate) fn cable_named(doc: &ecad_model::Document, m: Mapped) -> Result<CableId, &'static str> {

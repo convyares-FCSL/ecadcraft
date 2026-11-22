@@ -8,10 +8,10 @@ use std::collections::BTreeSet;
 use crate::pages::project_panel::{active, click, doc, head, new_app, ok};
 use ecad_app::shell::state::{Companion, LeftTab, PageView, ShellState, Views, Workspace};
 use ecad_app::shell::{layout, layout::Slots, tool_strip, top_bar};
-use {ecad_app::App, ecad_app::developer, ecad_app::pages::project_panel, ecad_app::commands::tools};
 use eframe::egui::{Event, Key, Modifiers, Rect, pos2, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
+use {ecad_app::App, ecad_app::commands::tools, ecad_app::developer, ecad_app::pages::project_panel};
 
 fn window(w: f32, h: f32) -> Rect {
     Rect::from_min_size(pos2(0.0, 0.0), vec2(w, h))

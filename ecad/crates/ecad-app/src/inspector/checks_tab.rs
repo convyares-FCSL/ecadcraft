@@ -8,8 +8,8 @@ use ecad_model::PageId;
 use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Rect, Sense, pos2, vec2};
 
-use crate::inspector::widgets as w;
 use crate::checks::panel::{ChecksPanel, Row};
+use crate::inspector::widgets as w;
 use crate::pages::project_panel::Action;
 
 /// Accessible names.
@@ -100,7 +100,11 @@ pub fn card(ui: &mut egui::Ui, r: &Row, writable: bool, out: &mut Vec<Action>) {
         let (rect, go) = ui.allocate_exact_size(vec2(28.0, 24.0), Sense::click());
         go.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, GO_TO));
         if go.hovered() {
-            ui.painter().rect_filled(rect, ecad_widgets::style::corner(ecad_widgets::tokens::radius::ROW), ecad_widgets::color(ecad_widgets::SHELL.hover));
+            ui.painter().rect_filled(
+                rect,
+                ecad_widgets::style::corner(ecad_widgets::tokens::radius::ROW),
+                ecad_widgets::color(ecad_widgets::SHELL.hover),
+            );
         }
         ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, "\u{2192}", w::font(ui, ui_type::TITLE), w::text_2());
         if go.on_hover_text("Go to it").clicked() {

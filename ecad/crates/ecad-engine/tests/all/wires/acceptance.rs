@@ -6,11 +6,11 @@
 
 use cadcraft_engine::Input;
 use cadcraft_engine::geom::Vec2;
-use ecad_engine::Persistence;
 use ecad_electrical::checks::Kind;
 use ecad_electrical::reports::kept::ReportModels;
-use {ecad_electrical::wires::LABEL_LAYER};
-use ecad_model::{CableId, DeviceId, Document, Op, PageId, Pt, RouteEnd, RouteId, Subject, ConnectionPointId, WireId};
+use ecad_electrical::wires::LABEL_LAYER;
+use ecad_engine::Persistence;
+use ecad_model::{CableId, ConnectionPointId, DeviceId, Document, Op, PageId, Pt, RouteEnd, RouteId, Subject, WireId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -408,7 +408,8 @@ struct W04 {
     cable: CableId,
     /// The cable's three cores: each one wire from `-X0n` on page 1 to `-X5n` on page 2, through
     /// the continuation pair An (design 072 §4.4, F5).
-    w: Vec<WireId>}
+    w: Vec<WireId>,
+}
 
 /// Design §3.1, as design 072 §4.4 (F5) has it: page 1 `-X1…3` → arrows A1…A3, slashed `-W04`
 /// (the lines carry no wire yet, the cores sit on them); page 2 arrows A1…A3 → `-X51…53`, which

@@ -17,17 +17,17 @@ use ecad_electrical::devices::commands::devices::{self as device_rules, Doomed};
 use ecad_electrical::devices::commands::place as rules;
 use ecad_electrical::symbols::proposals::Mode;
 use ecad_model::{
-    CableId, Color, DefinitionId, Device, DeviceId, Form, Item, ItemId, ItemKind, Noun, Op, Placement, Representation, RepresentationId, Style,
-    Subject, SymbolInstance, ConnectionPoint, ConnectionPointId, WireId,
+    CableId, Color, ConnectionPoint, ConnectionPointId, DefinitionId, Device, DeviceId, Form, Item, ItemId, ItemKind, Noun, Op, Placement,
+    Representation, RepresentationId, Style, Subject, SymbolInstance, WireId,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::cables::views;
 use crate::commands::input::{Command, Typed};
 use crate::commands::{MAX_HANDLES, on_any_page, on_project, plain_style};
 use crate::project::{Mapped, Project};
-use crate::cables::views;
 use ecad_electrical::commands::input::{Bounded, Point, TextOrNumber, nullable};
 
 fn err(m: impl Into<String>) -> EngineError {
@@ -181,7 +181,9 @@ fn place_symbol(s: &mut Session, params: PlaceParams) -> cadcraft_engine::Result
         let doc = p.ledger.document();
         let target = rules::device_target(doc, device, tag.as_deref())?;
         // Brief 028 (design 028 §3.1): a terminal clicked on a wire lands on it, splitting it.
-        let landing = (starter.kind == ecad_electrical::symbols::Kind::Terminal).then(|| crate::terminal_strips::commands::landing_point(doc, page, at)).flatten();
+        let landing = (starter.kind == ecad_electrical::symbols::Kind::Terminal)
+            .then(|| crate::terminal_strips::commands::landing_point(doc, page, at))
+            .flatten();
         let origin = landing.map_or(at, |on| on.at);
         let placement = Placement { origin, rotation: Radians::from(degrees), mirror, scale: 1.0 };
         let style = style(p);

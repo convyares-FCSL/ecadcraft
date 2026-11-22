@@ -54,13 +54,13 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::document::doc::{Cable, Definition, Device, Document, Form, Item, ItemKind, Primitive, Representation, Subject, ConnectionPoint, Wire};
+use crate::document::doc::{Cable, ConnectionPoint, Definition, Device, Document, Form, Item, ItemKind, Primitive, Representation, Subject, Wire};
 use crate::document::effect::{Effect, Effects};
-use crate::error::{ModelError, Result};
-use crate::naming::id::{CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
 use crate::document::index::referrers;
 use crate::document::op::{ObjectRef, Op};
+use crate::error::{ModelError, Result};
 use crate::geometry::point::PointKey;
+use crate::naming::id::{CableId, ConnectionPointId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, PageId, RepresentationId, RouteId, WireId};
 
 /// What a transaction created, modified or removed: the input of [`Document::check_touched`].
 ///
@@ -517,7 +517,10 @@ impl Document {
     /// I20.
     fn check_folder(&self, id: FolderId) -> Result<()> {
         if crate::document::book::folder_depth(self, id).is_none() {
-            return bad(format!("folder {id} has a missing parent, is inside itself or nests more than {} deep", crate::document::book::MAX_FOLDER_DEPTH));
+            return bad(format!(
+                "folder {id} has a missing parent, is inside itself or nests more than {} deep",
+                crate::document::book::MAX_FOLDER_DEPTH
+            ));
         }
         Ok(())
     }

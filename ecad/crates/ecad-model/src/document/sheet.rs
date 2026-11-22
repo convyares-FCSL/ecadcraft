@@ -500,7 +500,9 @@ pub fn page_type_exists(doc: &Document, id: &crate::StyleRef) -> bool {
 
 /// The record `layer` holds for page type `id`, within the style bound
 /// ([`crate::objects::styles::MAX_STYLES_PER_CATALOGUE`] in ID order, as `ecad-engine` reads them).
-fn type_record<'a>(doc: &'a Document, layer: crate::objects::styles::StyleLayer, id: &crate::StyleRef) -> Option<&'a crate::objects::styles::StyleRecord> {
+fn type_record<'a>(
+    doc: &'a Document, layer: crate::objects::styles::StyleLayer, id: &crate::StyleRef,
+) -> Option<&'a crate::objects::styles::StyleRecord> {
     use crate::objects::styles::MAX_STYLES_PER_CATALOGUE;
     let map = crate::objects::styles::layer_of(doc, layer)?.get(&PAGE_CATALOGUE)?;
     let r = map.get(id)?;

@@ -25,10 +25,10 @@ use serde_json::{Map, Value, json};
 use crate::commands::input::{Command, Typed};
 use crate::commands::{err, on_any_page, on_project};
 use crate::project::Project;
-pub use ecad_electrical::releases::revisions::folder_path;
-use ecad_electrical::releases::revisions::{self, FIELDS};
 use ecad_electrical::commands::input::nullable;
 pub use ecad_electrical::pages::commands::sheets::{IssuePlan, MAX_FOLDER_NAME, MAX_KEY_CHARS, MAX_STEP, PROJECT_KEYS};
+pub use ecad_electrical::releases::revisions::folder_path;
+use ecad_electrical::releases::revisions::{self, FIELDS};
 
 /// A revision opened read-only (design 019 §7.3): the project as it was when the revision was
 /// issued, built once on request. Session only; dropped by `closerevision`.
@@ -367,7 +367,10 @@ pub const STATUS_SUGGESTIONS: [&str; 4] = ["Draft", "For review", "For construct
 
 /// Brief 054 (FP4): the cover's notes, a project property of newline-separated notes, at most
 /// [`MAX_COVER_NOTES`] of [`MAX_COVER_NOTE_CHARS`] characters (design 054 §6.4).
-pub use {ecad_electrical::pages::front::MAX_NOTE_CHARS as MAX_COVER_NOTE_CHARS, ecad_electrical::pages::front::MAX_NOTES as MAX_COVER_NOTES, ecad_electrical::pages::front::NOTES_KEY as COVER_NOTES, ecad_electrical::pages::front::NOTES_TOO_LONG as COVER_NOTES_TOO_LONG};
+pub use {
+    ecad_electrical::pages::front::MAX_NOTE_CHARS as MAX_COVER_NOTE_CHARS, ecad_electrical::pages::front::MAX_NOTES as MAX_COVER_NOTES,
+    ecad_electrical::pages::front::NOTES_KEY as COVER_NOTES, ecad_electrical::pages::front::NOTES_TOO_LONG as COVER_NOTES_TOO_LONG,
+};
 
 /// How cross-references are written.
 #[derive(Deserialize, JsonSchema, Clone, Copy)]

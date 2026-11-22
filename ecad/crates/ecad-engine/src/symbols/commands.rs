@@ -29,10 +29,10 @@ use serde_json::{Map, Value, json};
 use crate::commands::input::{Command, Typed};
 use crate::commands::{MAX_HANDLES, err, on_project, plain_style};
 use crate::project::Mapped;
+use ecad_electrical::commands::input::{Bounded, Point};
 use ecad_electrical::symbols;
 pub use ecad_electrical::symbols::POINT_GRID_MM;
 pub use ecad_electrical::symbols::update_available;
-use ecad_electrical::commands::input::{Bounded, Point};
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[
@@ -528,7 +528,9 @@ impl Command for MakeParams {
 
 /// `place {symbol: <project key>, at, rotation?, mirror?, device?, tag?}` (design 048 §5.1): the
 /// newest version of that project symbol. `None` when `key` names no project symbol.
-pub(crate) fn place_project_key(s: &mut Session, params: &crate::devices::commands::PlaceParams, key: &str) -> cadcraft_engine::Result<Option<Value>> {
+pub(crate) fn place_project_key(
+    s: &mut Session, params: &crate::devices::commands::PlaceParams, key: &str,
+) -> cadcraft_engine::Result<Option<Value>> {
     let at = params.at.0;
     if !(at.x.abs() <= crate::interact::MAX_COORD && at.y.abs() <= crate::interact::MAX_COORD) {
         return Err(err(crate::interact::OUT_OF_RANGE));
@@ -557,7 +559,8 @@ pub(crate) fn place_project_key(s: &mut Session, params: &crate::devices::comman
         plan.ops.extend(proposed.ops.iter().cloned());
         p.apply_edit(pg, "place", &label, plan.ops)?;
         let doc = p.ledger.document();
-        let terminals: Vec<Value> = doc.connection_points_of(plan.component).map(|(t, x)| json!({"id": t.hex(), "key": x.key, "label": x.label})).collect();
+        let terminals: Vec<Value> =
+            doc.connection_points_of(plan.component).map(|(t, x)| json!({"id": t.hex(), "key": x.key, "label": x.label})).collect();
         let mut v = json!({
             "component": plan.component.hex(), "representation": plan.representation.hex(), "definition": id.hex(),
             "tag": plan.tag, "joined": device.is_some(), "terminals": terminals,

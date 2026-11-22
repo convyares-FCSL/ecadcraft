@@ -90,7 +90,9 @@ pub fn measure(path: &Path, runs: usize, scratch: &Path) -> Result<MeasuredRatin
                 p.ledger.document().devices.get(&dev).is_some_and(|x| {
                     matches!(
                         x.device_type,
-                        ecad_model::DeviceType::Protection(ecad_model::objects::devices::Protection::Mcb(_) | ecad_model::objects::devices::Protection::Rcbo(_))
+                        ecad_model::DeviceType::Protection(
+                            ecad_model::objects::devices::Protection::Mcb(_) | ecad_model::objects::devices::Protection::Rcbo(_)
+                        )
                     )
                 })
             })?;

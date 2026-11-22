@@ -6,7 +6,7 @@
 use std::collections::BTreeSet;
 
 use ecad_electrical::styles::text_style::TextKind;
-use ecad_model::{DeviceId, Document, ObjectRef, PageId, RepresentationId, Subject, ConnectionPointId};
+use ecad_model::{ConnectionPointId, DeviceId, Document, ObjectRef, PageId, RepresentationId, Subject};
 
 /// At most this many rows in "Where it is drawn" and "Connections" (hostile files can hold
 /// thousands; the full lists are in Project).
@@ -109,7 +109,9 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
     d.standard = doc.standard.as_ref().map_or_else(|| "IEC".to_string(), |s| s.header.name.to_string());
     let dev = ecad_electrical::references::devices::device(doc, c);
     let mut places = ecad_electrical::references::devices::Places::new(doc);
-    let place_of = |places: &mut ecad_electrical::references::devices::Places<'_>, r: &ecad_model::Representation| places.text(r.page, ecad_electrical::references::devices::anchor(doc, r));
+    let place_of = |places: &mut ecad_electrical::references::devices::Places<'_>, r: &ecad_model::Representation| {
+        places.text(r.page, ecad_electrical::references::devices::anchor(doc, r))
+    };
     if let Some(r) = doc.representations.get(&rep) {
         deps.insert(ObjectRef::Page(r.page));
         d.symbol_name = ecad_electrical::devices::rep_starter(doc, r).map_or_else(|| "Drawn symbol".to_string(), |s| s.name.to_string());
@@ -154,7 +156,8 @@ pub fn build(doc: &Document, c: DeviceId, rep: RepresentationId, kinds: &[TextKi
     }
     if dev.head.is_some() {
         let offer = ecad_electrical::references::devices::offer_of(doc, c);
-        for row in ecad_electrical::references::devices::rows(&mut places, &dev, offer.as_ref().map(|(_, o)| o.as_slice())).into_iter().take(MAX_ROWS) {
+        for row in ecad_electrical::references::devices::rows(&mut places, &dev, offer.as_ref().map(|(_, o)| o.as_slice())).into_iter().take(MAX_ROWS)
+        {
             let kind = if row.power { format!("main, {}", row.kind.upper()) } else { row.kind.upper().to_string() };
             let (what, place) = match row.state {
                 ecad_electrical::references::devices::State::Drawn => (kind, row.place.clone()),

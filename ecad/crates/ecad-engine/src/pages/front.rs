@@ -141,7 +141,8 @@ fn symbol(d: &mut Draw, doc: &Document, def: DefinitionId, cell: R) {
                 let c = map(center);
                 Primitive::Circle { center: d.p(c.x, c.y), radius: radius.abs() * k * d.k }
             }
-            _ => continue};
+            _ => continue,
+        };
         d.out.push(Part { kind: kind_for_primitive(&mapped), weight: Some(crate::pages::frame::THIN_WEIGHT), aci: None, layer: LAYER });
     }
 }
@@ -196,7 +197,8 @@ pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendF
         legend_h,
         cell: (cw, ch, row_h),
         take,
-        fit} = layout(doc, input, cover_draw.mm);
+        fit,
+    } = layout(doc, input, cover_draw.mm);
     let cover = look(TextKind::Cover);
     let sized = |key: &str| TextDraw { mm: cover.mm * cover_factor(key) * s, ..cover };
     let heading_draw = sized("front.cover.block_title");
@@ -207,13 +209,15 @@ pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendF
 
     // Heading and customer line, centred.
     let title_text = prop(ecad_electrical::pages::frames::TITLE).unwrap_or_default();
-    let heading = ecad_electrical::defaults::resolve(doc, &ecad_electrical::defaults::pages::HEADING, ecad_electrical::defaults::Scope::project()).text();
+    let heading =
+        ecad_electrical::defaults::resolve(doc, &ecad_electrical::defaults::pages::HEADING, ecad_electrical::defaults::Scope::project()).text();
     let heading = heading.trim();
     let heading = if heading.eq_ignore_ascii_case(ecad_electrical::defaults::pages::NO_HEADING) { "" } else { heading };
     let line = match (title_text.is_empty(), heading.is_empty()) {
         (false, false) => format!("{title_text} · {heading}"),
         (false, true) => title_text,
-        (true, _) => heading.to_string()};
+        (true, _) => heading.to_string(),
+    };
     let mid = (l + r) / 2.0;
     d.text((mid, heading_y), cover_draw, &line, HAlign::Center, None, Some(r - l));
     if on(Block::CustomerSite) {
@@ -273,7 +277,8 @@ pub fn cover(doc: &Document, input: &FrameInput, x0: f64) -> (Vec<Part>, LegendF
             let cell = (cx, cy - ch / 2.0, cx + cw, cy + ch / 2.0);
             match c {
                 Cell::Symbol(id, _) => symbol(&mut d, doc, *id, cell),
-                m => mark(&mut d, m, cell)}
+                m => mark(&mut d, m, cell),
+            }
             let name = legend.get(i).map_or_else(|| c.name().to_string(), |(_, r)| r.label.clone());
             d.text((cx + cw + 4.0 * s, cy), small, &name, HAlign::Left, None, Some(col_w - cw - 6.0 * s));
         }

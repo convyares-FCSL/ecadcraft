@@ -6,7 +6,7 @@ use cadcraft_engine::doc::{Common, Entity, EntityKind, HAlign, Handle, Text, VAl
 use cadcraft_engine::geom::Vec3;
 use ecad_model::{Document, Form, ItemId, PageId, Pt, Subject};
 
-use crate::styles::draw::{EngineMetrics, DrawApply as _};
+use crate::styles::draw::{DrawApply as _, EngineMetrics};
 use {ecad_electrical::wires::DASH_LAYER, ecad_electrical::wires::LABEL_LAYER, ecad_electrical::wires::WireLabel};
 
 /// [`labels_on_page`] without the routes whose items are `hidden` (a cable drawn as a fan: its
@@ -96,7 +96,8 @@ pub(crate) fn route_dashes(r: &crate::cables::draw::ColouredRoute, route: &Commo
         .map(|(a, b)| Entity {
             handle: Handle::default(),
             common: common.clone(),
-            kind: EntityKind::Line(cadcraft_engine::doc::Line { a: Vec3::new(a.x, a.y, 0.0), b: Vec3::new(b.x, b.y, 0.0) })})
+            kind: EntityKind::Line(cadcraft_engine::doc::Line { a: Vec3::new(a.x, a.y, 0.0), b: Vec3::new(b.x, b.y, 0.0) }),
+        })
         .collect()
 }
 
@@ -131,10 +132,13 @@ pub fn label_entity(look: &crate::styles::draw::Look, l: &WireLabel, handle: Han
             oblique: 0.0,
             style: ecad_electrical::styles::text_style::PLACEHOLDER_STYLE.into(),
             halign: HAlign::Center,
-            valign: VAlign::Bottom})};
+            valign: VAlign::Bottom,
+        }),
+    };
     match &l.own {
         Some(o) => look.apply_own(&mut e, ecad_electrical::styles::text_style::TextKind::WireLabel, o),
-        None => look.apply(&mut e, ecad_electrical::styles::text_style::TextKind::WireLabel)}
+        None => look.apply(&mut e, ecad_electrical::styles::text_style::TextKind::WireLabel),
+    }
     // Brief 050a: an error or provisional label keeps its own colour over the style's.
     if l.error || l.provisional {
         e.common.color = color;

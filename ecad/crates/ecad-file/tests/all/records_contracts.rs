@@ -125,7 +125,9 @@ fn tag_settings_are_written_only_when_set_and_round_trip() {
     let before = f.ledger.document().settings.clone();
     let mut after = before.clone();
     after.tag_padding = Some(3);
-    after.tag_prefixes.insert(ecad_model::naming::prefix::PrefixOf::Starter("coil".into()), ecad_model::naming::prefix::TagPrefix::typed("KA").unwrap());
+    after
+        .tag_prefixes
+        .insert(ecad_model::naming::prefix::PrefixOf::Starter("coil".into()), ecad_model::naming::prefix::TagPrefix::typed("KA").unwrap());
     let op = Op::SetProjectSettings { before, after: after.clone() };
     let line = ecad_file::record::op_value(&op).unwrap().to_string();
     assert!(line.contains("\"tag_padding\":3") && line.contains("\"starter:coil\":\"KA\""), "{line}");
@@ -171,7 +173,12 @@ fn wiring_settings_and_bridges_are_written_only_when_set_and_round_trip() {
     // Brief 044 (FP2, invariant I7): a bridge names keys the definition has terminals for.
     let points = ["1", "2"]
         .iter()
-        .map(|k| ecad_model::ConnectionPointDef { key: k.parse().unwrap(), label: None, at: ecad_model::Pt::new(0.0, 0.0), accepts: Default::default() })
+        .map(|k| ecad_model::ConnectionPointDef {
+            key: k.parse().unwrap(),
+            label: None,
+            at: ecad_model::Pt::new(0.0, 0.0),
+            accepts: Default::default(),
+        })
         .collect();
     let bridged = ecad_model::Definition { terminals: points, bridges: vec![vec!["1".parse().unwrap(), "2".parse().unwrap()]], ..bare.clone() };
     let bare_line = serde_json::to_string(&ecad_file::records::Definition::from(&bare)).unwrap();

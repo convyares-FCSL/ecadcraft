@@ -8,9 +8,9 @@ use cadcraft_engine::doc::color::{Color, Rgb};
 use cadcraft_engine::ext::MarkShape;
 use ecad_drawing_style::sheet::PAPER;
 use ecad_electrical::checks::Kind;
-use ecad_engine::interact::overlay_marks;
 use ecad_engine::cables::draw::{self, Painted};
 use ecad_engine::export::printbook;
+use ecad_engine::interact::overlay_marks;
 use ecad_model::{Pt, WireId};
 use serde_json::json;
 
@@ -52,7 +52,11 @@ fn colour_codes_are_one_or_two_colours() {
         draw::wire_colours(&ecad_model::objects::wire::Colours::parse("BU").unwrap(), &PAPER).map(|w| w.solid),
         Some(ecad_drawing_style::wire::DC_24V.paper.solid)
     );
-    assert_eq!(draw::wire_colours(&ecad_model::objects::wire::Colours::parse("BK").unwrap(), &PAPER).map(|w| w.solid), Some(PAPER.ink), "black is ink");
+    assert_eq!(
+        draw::wire_colours(&ecad_model::objects::wire::Colours::parse("BK").unwrap(), &PAPER).map(|w| w.solid),
+        Some(PAPER.ink),
+        "black is ink"
+    );
 }
 
 #[test]

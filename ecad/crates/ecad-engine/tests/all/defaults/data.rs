@@ -197,8 +197,8 @@ fn a_tested_build_reports_no_damaged_defaults() {
 
 // ---------------------------------------------------------------- 066b: the saved-file rule (F2)
 
-use ecad_engine::Persistence;
 use ecad_electrical::defaults::{Scope, resolve};
+use ecad_engine::Persistence;
 use ecad_model::Document;
 use serde_json::json;
 
@@ -351,7 +351,9 @@ fn every_built_in_lives_in_exactly_one_place() {
 /// Rows per sheet are computed from the row and header heights: 44 on A3, as before.
 #[test]
 fn rows_per_sheet_are_computed_and_unchanged() {
-    use {ecad_electrical::pages::generated::header_mm, ecad_electrical::pages::generated::row_mm, ecad_electrical::pages::generated::rows_per_sheet};
+    use {
+        ecad_electrical::pages::generated::header_mm, ecad_electrical::pages::generated::row_mm, ecad_electrical::pages::generated::rows_per_sheet,
+    };
     assert_eq!((row_mm(), header_mm(), rows_per_sheet()), (5.0, 7.0, 44));
 }
 
@@ -424,7 +426,9 @@ fn contact_cross_references_follow_the_reference_style() {
         ecad_engine::references::draw::devices::parts_on_page(&doc, p2)
             .into_iter()
             .filter_map(|p| match p.shape {
-                ecad_electrical::references::devices::Shape::Text { kind: ecad_electrical::styles::text_style::TextKind::Reference, height, .. } => Some(height),
+                ecad_electrical::references::devices::Shape::Text {
+                    kind: ecad_electrical::styles::text_style::TextKind::Reference, height, ..
+                } => Some(height),
                 _ => None,
             })
             .collect()

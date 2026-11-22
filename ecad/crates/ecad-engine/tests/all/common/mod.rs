@@ -7,7 +7,7 @@ use cadcraft_engine::Session;
 use cadcraft_engine::doc::{EntityKind, Handle, Space};
 use ecad_engine::{Mapped, PagesRef, Project, ProjectHandle};
 use ecad_model::connectivity::derive::mismatches;
-use ecad_model::{DeviceId, Document, ItemKind, PageId, Pt, ConnectionPointId, WireId};
+use ecad_model::{ConnectionPointId, DeviceId, Document, ItemKind, PageId, Pt, WireId};
 use serde_json::{Value, json};
 use std::path::PathBuf;
 
@@ -216,7 +216,11 @@ impl H {
     }
 
     pub fn connection_point_pos(&mut self, page: PageId, t: ConnectionPointId) -> Pt {
-        ecad_model::connectivity::derive::connection_point_positions(&self.doc(), page).into_iter().find(|(x, _, _)| *x == t).map(|(_, _, p)| p).expect("terminal shown")
+        ecad_model::connectivity::derive::connection_point_positions(&self.doc(), page)
+            .into_iter()
+            .find(|(x, _, _)| *x == t)
+            .map(|(_, _, p)| p)
+            .expect("terminal shown")
     }
 
     pub fn lines_on(&mut self, page: PageId) -> Vec<Handle> {
@@ -339,7 +343,7 @@ impl H {
     /// connection points): one drawn device holding one point per place, committed straight to the
     /// ledger. Returns the points, in the order given.
     pub fn points_at(&mut self, at: &[(f64, f64)]) -> Vec<ConnectionPointId> {
-        use ecad_model::{Author, Device, Form, Op, Representation, Subject, ConnectionPoint};
+        use ecad_model::{Author, ConnectionPoint, Device, Form, Op, Representation, Subject};
         self.cfg(|p| {
             let page = p.active_page().unwrap_or(p.ledger.document().page_order[0]);
             let device: DeviceId = p.ids.fresh();
@@ -465,7 +469,7 @@ pub fn small_project(seed: u64) -> (H, DeviceId, DeviceId, WireId) {
 pub fn wired_lines(
     ids: &mut ecad_model::IdAllocator, page: PageId, style: ecad_model::Style, n: usize, line: impl Fn(usize) -> (Pt, Pt),
 ) -> (Vec<ecad_model::Op>, Vec<(WireId, ecad_model::RouteId, ecad_model::ItemId)>) {
-    use ecad_model::{Device, Form, Op, Representation, RouteEnd, Subject, ConnectionPoint, Wire};
+    use ecad_model::{ConnectionPoint, Device, Form, Op, Representation, RouteEnd, Subject, Wire};
     let device: DeviceId = ids.fresh();
     let mut ops = vec![Op::CreateDevice { id: device, device: Device::default() }];
     let mut cps = std::collections::BTreeMap::new();

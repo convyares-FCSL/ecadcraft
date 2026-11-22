@@ -13,8 +13,8 @@
 //! catalogue ([`crate::settings::style_catalogues`]) with the shared style detail on the right. A
 //! later catalogue (050b's wire categories) adds one line there.
 
-use ecad_electrical::styles::commands::defaults::{self as default_cmds, Target};
 use ecad_electrical::defaults::{self, Entry, Level, Scope, Source};
+use ecad_electrical::styles::commands::defaults::{self as default_cmds, Target};
 use ecad_widgets::table::{Changed, Table, TableEvent};
 use eframe::egui::{self, RichText};
 

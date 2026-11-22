@@ -63,7 +63,10 @@ impl<'de> Deserialize<'de> for TagPrefix {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let text = String::deserialize(d)?;
         TagPrefix::stored(&text).ok_or_else(|| {
-            serde::de::Error::custom(format!("tag prefix `{}` is not 1 to {MAX_PREFIX_LETTERS} upper-case letters", crate::naming::text::clip(&text, 24)))
+            serde::de::Error::custom(format!(
+                "tag prefix `{}` is not 1 to {MAX_PREFIX_LETTERS} upper-case letters",
+                crate::naming::text::clip(&text, 24)
+            ))
         })
     }
 }
@@ -136,8 +139,9 @@ impl Serialize for PrefixOf {
 impl<'de> Deserialize<'de> for PrefixOf {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let text = String::deserialize(d)?;
-        PrefixOf::parse(&text)
-            .ok_or_else(|| serde::de::Error::custom(format!("prefix key `{}` is not starter:<word> or project:<key>", crate::naming::text::clip(&text, 40))))
+        PrefixOf::parse(&text).ok_or_else(|| {
+            serde::de::Error::custom(format!("prefix key `{}` is not starter:<word> or project:<key>", crate::naming::text::clip(&text, 40)))
+        })
     }
 }
 

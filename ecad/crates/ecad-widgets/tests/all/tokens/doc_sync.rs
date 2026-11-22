@@ -5,7 +5,10 @@
 
 use std::collections::BTreeMap;
 
-use {ecad_widgets::tokens::Icon, ecad_widgets::tokens::line, ecad_widgets::tokens::radius, ecad_widgets::tokens::shadow, ecad_widgets::tokens::size, ecad_widgets::tokens::space, ecad_widgets::tokens::ui_type, ecad_widgets::tokens::wheel};
+use {
+    ecad_widgets::tokens::Icon, ecad_widgets::tokens::line, ecad_widgets::tokens::radius, ecad_widgets::tokens::shadow, ecad_widgets::tokens::size,
+    ecad_widgets::tokens::space, ecad_widgets::tokens::ui_type, ecad_widgets::tokens::wheel,
+};
 
 const DOC: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/design/tokens.md"));
 

@@ -17,22 +17,32 @@ use std::path::PathBuf;
 use serde_json::Value;
 
 /// The view types whose `::build(` is counted (design 064 §5.2's inventory).
-const VIEW_TYPES: &[&str] = &["Outputs", "Checks", "RefIndex", "connectors::Index", "Uses", "Plc", "Strips", "StripPages"];
+const VIEW_TYPES: &[&str] = &["ReportModels", "Checks", "RefIndex", "connectors::Index", "Uses", "Plc", "Strips", "StripPages"];
 
 /// The modules where a view builds itself or its parts (design 064 §5.2: "inside the view: fine"),
 /// and `Views`. A path ending in `/` is a folder.
 const OWN_MODULES: &[&str] = &[
-    "crates/ecad-electrical/src/derived/",
-    "crates/ecad-electrical/src/outputs/",
-    "crates/ecad-electrical/src/outputs.rs",
-    "crates/ecad-electrical/src/strips/",
-    "crates/ecad-electrical/src/strips.rs",
+    "crates/ecad-electrical/src/views/",
+    "crates/ecad-electrical/src/checks/view.rs",
+    "crates/ecad-electrical/src/connectors/view.rs",
+    "crates/ecad-electrical/src/devices/view.rs",
+    "crates/ecad-electrical/src/pages/frame_view.rs",
+    "crates/ecad-electrical/src/pages/generated_view.rs",
+    "crates/ecad-electrical/src/pages/tree_view.rs",
+    "crates/ecad-electrical/src/pages/view.rs",
+    "crates/ecad-electrical/src/properties/view.rs",
+    "crates/ecad-electrical/src/references/view.rs",
+    "crates/ecad-electrical/src/reports/view.rs",
+    "crates/ecad-electrical/src/reports/kept.rs",
+    "crates/ecad-electrical/src/reports/mod.rs",
+    "crates/ecad-electrical/src/terminal_strips/pages.rs",
+    "crates/ecad-electrical/src/terminal_strips/mod.rs",
     "crates/ecad-electrical/src/plc/",
     "crates/ecad-electrical/src/checks/",
-    "crates/ecad-electrical/src/checks.rs",
-    "crates/ecad-electrical/src/xref.rs",
-    "crates/ecad-electrical/src/connectors.rs",
-    "crates/ecad-electrical/src/front.rs",
+    "crates/ecad-electrical/src/checks/mod.rs",
+    "crates/ecad-electrical/src/references/devices.rs",
+    "crates/ecad-electrical/src/connectors/mod.rs",
+    "crates/ecad-electrical/src/pages/front.rs",
 ];
 
 /// The count on `refactor/0.2.3` at 3e54b06a; lower it as the view steps land.
@@ -46,12 +56,12 @@ const FRESH_CALLS: &[&str] = &[".detached(", ".report_models("];
 /// project does not keep, or a check that must not trust the kept views (design 064 §5.2). A
 /// file not listed may not; a listed count is exact, so it only falls.
 const FRESH_BUILDS: &[(&str, usize, &str)] = &[
-    ("crates/ecad-engine/src/debug.rs", 1, "debugger projection check, on a copy, must not trust the kept models"),
-    ("crates/ecad-engine/src/draw/checks.rs", 1, "the `checks` command's from-scratch pass, on request"),
-    ("crates/ecad-engine/src/preview.rs", 2, "previews: a page outside its window, and an issued revision's state"),
+    ("crates/ecad-engine/src/dev/debug.rs", 1, "debugger projection check, on a copy, must not trust the kept models"),
+    ("crates/ecad-engine/src/checks.rs", 1, "the `checks` command's from-scratch pass, on request"),
+    ("crates/ecad-engine/src/pages/preview.rs", 2, "previews: a page outside its window, and an issued revision's state"),
     ("crates/ecad-engine/src/project/changes.rs", 1, "recovery check of a rebuilt page, must not trust the kept models"),
     ("crates/ecad-engine/src/project/mod.rs", 1, "live facts: an open page against a fresh projection"),
-    ("crates/ecad-engine/src/release.rs", 3, "release: the issued and the finalised states, not kept"),
+    ("crates/ecad-engine/src/releases/release.rs", 3, "release: the issued and the finalised states, not kept"),
     ("dev/ecad-bench/src/bom.rs", 1, "bench verify mode: the kept BOM model against a rebuild"),
 ];
 
@@ -60,22 +70,39 @@ const FRESH_BUILDS: &[(&str, usize, &str)] = &[
 /// checked by hand 2026-11-21, re-listed after decision 7's map deletions 2026-11-22). A count is
 /// exact, so a new build needs a reason here.
 const OWN_BUILDS: &[(&str, usize, &str)] = &[
-    ("crates/ecad-electrical/src/front.rs", 1, "Uses rebuilds itself on a project-wide change (wire style, potentials)"),
+    ("crates/ecad-electrical/src/pages/front.rs", 1, "Uses rebuilds itself on a project-wide change (wire style, potentials)"),
     (
-        "crates/ecad-electrical/src/outputs/kept.rs",
+        "crates/ecad-electrical/src/reports/kept.rs",
         4,
         "Outputs builds its strips and strip pages on first show; its verify pass compares the strips with a rebuild and the strip pages follow",
     ),
     (
-        "crates/ecad-electrical/src/strips/pages.rs",
+        "crates/ecad-electrical/src/terminal_strips/pages.rs",
         1,
         "StripPages builds itself again after every commit (no update map, decision 7: 0.5 ms on large)",
     ),
-    ("crates/ecad-electrical/src/xref.rs", 1, "RefIndex::verify compares the kept index with a rebuild"),
+    ("crates/ecad-electrical/src/references/devices.rs", 1, "RefIndex::verify compares the kept index with a rebuild"),
 ];
 
-/// The folder of `Views`: all of it counts as view notes for [`KEY_PREFIXES`].
-const DERIVED: &str = "crates/ecad-electrical/src/derived/";
+/// `Views` and every feature's view module: all of them count as view notes for [`KEY_PREFIXES`].
+const DERIVED: &[&str] = &[
+    "crates/ecad-electrical/src/views/",
+    "crates/ecad-electrical/src/checks/view.rs",
+    "crates/ecad-electrical/src/connectors/view.rs",
+    "crates/ecad-electrical/src/devices/view.rs",
+    "crates/ecad-electrical/src/pages/frame_view.rs",
+    "crates/ecad-electrical/src/pages/generated_view.rs",
+    "crates/ecad-electrical/src/pages/tree_view.rs",
+    "crates/ecad-electrical/src/pages/view.rs",
+    "crates/ecad-electrical/src/properties/view.rs",
+    "crates/ecad-electrical/src/references/view.rs",
+    "crates/ecad-electrical/src/reports/view.rs",
+];
+
+/// Whether `rel` is `Views` or a feature's view module.
+fn is_view_module(rel: &str) -> bool {
+    DERIVED.iter().any(|m| if m.ends_with('/') { rel.starts_with(m) } else { rel == *m })
+}
 
 /// The crate whose matches over effects and view notes are checked.
 const EFFECT_CRATE: &str = "crates/ecad-electrical/src/";
@@ -84,11 +111,11 @@ const EFFECT_CRATE: &str = "crates/ecad-electrical/src/";
 /// property key by its prefix (`.starts_with("`), how many, and why (overseer ruling 2026-11-21).
 /// A key's meaning belongs in data (its definition), not its spelling; the count only falls.
 const KEY_PREFIXES: &[(&str, usize, &str)] = &[
-    ("crates/ecad-electrical/src/derived/connectors.rs", 1, "connector naming keys: the connector defaults have no key table"),
-    ("crates/ecad-electrical/src/derived/pages.rs", 1, "project connector keys reach the connector pages; no key table"),
-    ("crates/ecad-electrical/src/front.rs", 1, "the cover's `front.cover.*` settings; no key table"),
-    ("crates/ecad-electrical/src/outputs.rs", 3, "strip, terminal, connector and BOM settings pick the lists to redo; no key table"),
-    ("crates/ecad-electrical/src/rating/mod.rs", 2, "`link.*`, `rating.*` and `wire.*` keys; no key table"),
+    ("crates/ecad-electrical/src/connectors/view.rs", 1, "connector naming keys: the connector defaults have no key table"),
+    ("crates/ecad-electrical/src/pages/view.rs", 1, "project connector keys reach the connector pages; no key table"),
+    ("crates/ecad-electrical/src/pages/front.rs", 1, "the cover's `front.cover.*` settings; no key table"),
+    ("crates/ecad-electrical/src/reports/mod.rs", 3, "strip, terminal, connector and BOM settings pick the lists to redo; no key table"),
+    ("crates/ecad-electrical/src/circuits/mod.rs", 2, "`link.*`, `rating.*` and `wire.*` keys; no key table"),
 ];
 
 /// Whether `rel` is a view's own module, or `Views`.
@@ -279,7 +306,7 @@ pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
             let rel = f.strip_prefix(&root).unwrap_or(&f).to_string_lossy().replace('\\', "/");
             let text = std::fs::read_to_string(&f).map_err(|e| format!("{}: {e}", f.display()))?;
             if rel.starts_with(EFFECT_CRATE) {
-                let (wild, prefix) = effect_routing(&rel, &text, rel.starts_with(DERIVED));
+                let (wild, prefix) = effect_routing(&rel, &text, is_view_module(&rel));
                 if !wild.is_empty() {
                     wild_found.push((rel.clone(), wild));
                 }
@@ -289,7 +316,7 @@ pub fn violations(meta: &Value) -> Result<Vec<String>, String> {
             }
             if is_own_module(&rel) {
                 let own = places(&rel, &text);
-                if !rel.starts_with(DERIVED) && !own.is_empty() {
+                if !is_view_module(&rel) && !own.is_empty() {
                     own_found.push((rel, own));
                 }
                 continue;
@@ -334,11 +361,11 @@ mod tests {
     #[test]
     fn direct_builds_are_found() {
         let rows: &[(&str, usize)] = &[
-            ("let o = Outputs::build(&doc);", 1),
+            ("let o = ReportModels::build(&doc);", 1),
             ("let i = crate::connectors::Index::build(doc);", 1),
             ("let i = ecad_model::index::Index::build(doc);", 0),
-            ("let o = MyOutputs::build(&doc);", 0),
-            ("// Outputs::build(&doc) in a comment", 0),
+            ("let o = MyReportModels::build(&doc);", 0),
+            ("// ReportModels::build(&doc) in a comment", 0),
             ("let s = Strips::build(doc, &o, &cx); let p = StripPages::build(doc, &s);", 1),
         ];
         for (text, want) in rows {
@@ -399,12 +426,12 @@ mod tests {
     #[test]
     fn a_views_own_module_may_build_it() {
         let rows: &[(&str, bool)] = &[
-            ("crates/ecad-electrical/src/outputs/kept.rs", true),
-            ("crates/ecad-electrical/src/xref.rs", true),
-            ("crates/ecad-electrical/src/derived/mod.rs", true),
-            ("crates/ecad-electrical/src/generated.rs", false),
+            ("crates/ecad-electrical/src/reports/kept.rs", true),
+            ("crates/ecad-electrical/src/references/devices.rs", true),
+            ("crates/ecad-electrical/src/views/mod.rs", true),
+            ("crates/ecad-electrical/src/pages/generated.rs", false),
             ("crates/ecad-electrical/src/xref_extra.rs", false),
-            ("crates/ecad-engine/src/release.rs", false),
+            ("crates/ecad-engine/src/releases/release.rs", false),
         ];
         for (rel, want) in rows {
             assert_eq!(is_own_module(rel), *want, "{rel}");

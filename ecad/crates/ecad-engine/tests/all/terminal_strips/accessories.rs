@@ -2,9 +2,9 @@
 //! strip and the project, the plan, BOM and Checks rows, renumbering, links made and edited with
 //! `jumper`, and the update maps. Driven through the commands' JSON forms.
 
-use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
-use ecad_model::{DeviceId, ConnectionPointId};
+use ecad_model::{ConnectionPointId, DeviceId};
 use serde_json::{Value, json};
+use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
 
 use crate::common::{H, id, pts};
 
@@ -71,7 +71,8 @@ impl F {
     }
 
     fn same_as_built(&mut self) {
-        let (kept, built) = self.h.cfg(|p| (p.outputs().clone(), ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics)));
+        let (kept, built) =
+            self.h.cfg(|p| (p.outputs().clone(), ReportModels::build_with(p.ledger.document(), &ecad_engine::styles::draw::EngineMetrics)));
         assert!(kept.strips.same_as(&built.strips), "strips differ:\nkept {:#?}\nbuilt {:#?}", kept.strips.strips, built.strips.strips);
         assert_eq!(kept.bom_table(Group::Location), built.bom_table(Group::Location));
         assert_eq!(kept.terminal_table(None), built.terminal_table(None));
@@ -408,7 +409,10 @@ fn renumbering_onto_a_spare_position_in_a_link() {
         p.ledger.commit(
             ecad_model::Author::User,
             "label 5",
-            vec![ecad_model::Op::RemoveConnectionPoint { id: terms[2], terminal: before }, ecad_model::Op::AddConnectionPoint { id: terms[2], terminal: after }],
+            vec![
+                ecad_model::Op::RemoveConnectionPoint { id: terms[2], terminal: before },
+                ecad_model::Op::AddConnectionPoint { id: terms[2], terminal: after },
+            ],
         )
     })
     .unwrap();

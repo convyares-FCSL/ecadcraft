@@ -14,9 +14,9 @@
 use ecad_model::{DeviceId, Document, PageId, Subject};
 use serde_json::{Value, json};
 
+use crate::checks::{Fix, Object};
 use crate::plc::rack::{CardType, RackRef};
 use crate::plc::{CardData, PlcFix, RackData, kept::Plc};
-use crate::checks::{Fix, Object};
 
 /// Most tiles one rack shows (the free tile included): a rack is at most [`crate::plc::rack::MAX_SLOT`]
 /// slots, but a rack tile per slot of a hostile `plc.slots 999` with one card in slot 999 is still

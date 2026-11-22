@@ -15,9 +15,9 @@
 //! This module excludes the protection reader (its parent) and the calculations from the rating.
 #![deny(clippy::wildcard_enum_match_arm)]
 
+use ecad_model::geometry::units::{Amps, Percent, Watts};
 use ecad_model::objects::devices::motor::{MAX_CURRENT_AMPS, MAX_POWER_WATTS};
 use ecad_model::objects::devices::{Motor, Starting};
-use ecad_model::geometry::units::{Amps, Percent, Watts};
 
 use crate::devices::ratings::{MAX_CHARS, Read};
 

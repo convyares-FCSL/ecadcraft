@@ -4,8 +4,8 @@
 
 use ecad_model::{Document, PageId, Subject};
 
-use {ecad_electrical::checks::Check, ecad_electrical::checks::Object};
 use crate::styles::draw::EngineMetrics;
+use {ecad_electrical::checks::Check, ecad_electrical::checks::Object};
 
 /// Every check of the project, worked out from scratch (the `checks` command reads on request).
 pub fn all(doc: &Document, tol: f64) -> Vec<Check> {

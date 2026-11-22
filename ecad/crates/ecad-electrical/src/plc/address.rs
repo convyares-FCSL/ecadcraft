@@ -17,8 +17,8 @@ use std::collections::BTreeMap;
 
 use ecad_model::{DeviceId, Document};
 
-use crate::plc::rack::{self, CardType, Direction, RackRef};
 use crate::defaults::{self, Scope};
+use crate::plc::rack::{self, CardType, Direction, RackRef};
 
 /// The `setprop` name of a module's pinned start byte (FP3).
 pub const START_KEY: &str = "plc.addr.start";

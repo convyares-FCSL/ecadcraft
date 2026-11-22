@@ -27,8 +27,8 @@ use serde_json::{Value, json};
 
 use crate::commands::input::{Command, typed};
 use crate::commands::{on_any_page, plain_style};
-use ecad_electrical::plc::channels::first_number;
 use ecad_electrical::commands::input::TextOrNumber;
+use ecad_electrical::plc::channels::first_number;
 
 /// Brief 051's commands: `plcpage`.
 pub fn specs() -> Vec<CommandSpec> {
@@ -109,7 +109,9 @@ pub(crate) fn rack_page_ops(p: &mut crate::project::Project, ops: &[ecad_model::
                 _ => None,
             })
         });
-        def.and_then(ecad_electrical::symbols::of_definition).and_then(ecad_electrical::plc::rack::CardType::of_symbol).is_some_and(ecad_electrical::plc::rack::CardType::is_rack)
+        def.and_then(ecad_electrical::symbols::of_definition)
+            .and_then(ecad_electrical::plc::rack::CardType::of_symbol)
+            .is_some_and(ecad_electrical::plc::rack::CardType::is_rack)
     };
     let places_rack = ops.iter().any(|op| match op {
         Op::AddItem { item, .. } => matches!(&item.kind, ItemKind::Symbol(s) if is_rack_def(s.definition)),

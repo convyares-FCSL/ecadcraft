@@ -5,13 +5,13 @@
 //! key but its tag and fixed flag (the tag rows' conflicts) builds one `ModifyCable`.
 
 use ecad_model::naming::tag::{FIXED_KEY, TAG_KEY};
-use ecad_model::objects::wire::{Colours, WireSize};
 use ecad_model::naming::words::Word;
+use ecad_model::objects::wire::{Colours, WireSize};
 use ecad_model::{Document, ObjectRef, Op, Wire, WireId};
 
-use crate::properties::commands::{Build, PropRule};
 use crate::defaults::{self, Level};
 use crate::error::{CmdError, msg};
+use crate::properties::commands::{Build, PropRule};
 
 /// The `setprop` key of a wire's size.
 pub const SIZE: &str = "size";
@@ -114,7 +114,9 @@ fn is_wire(o: ObjectRef) -> bool {
 }
 
 fn is_net_key(k: &str) -> bool {
-    k == ecad_model::connectivity::wiring::WIRE_NUMBER_KEY || k == ecad_model::connectivity::WIRE_NUMBER_FIXED || k == ecad_model::connectivity::wiring::POTENTIAL_KEY
+    k == ecad_model::connectivity::wiring::WIRE_NUMBER_KEY
+        || k == ecad_model::connectivity::WIRE_NUMBER_FIXED
+        || k == ecad_model::connectivity::wiring::POTENTIAL_KEY
 }
 
 fn net_key(_: &Document, _: ObjectRef, key: &str, _: Option<&str>) -> Result<Option<String>, CmdError> {

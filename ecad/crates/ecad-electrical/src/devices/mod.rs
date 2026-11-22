@@ -30,8 +30,8 @@ use ecad_model::Word;
 use ecad_model::connectivity::derive::connection_point_positions;
 use ecad_model::naming::tag::{self, TAG_KEY};
 use ecad_model::{
-    Definition, DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Placement, Pt,
-    Representation, RepresentationId, Style, Subject, SymbolInstance, ConnectionPoint, ConnectionPointId,
+    ConnectionPoint, ConnectionPointId, Definition, DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op,
+    PageId, Placement, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance,
 };
 use ecad_model::{DeviceType, Noun, PointKey, TextHAlign as HAlign, TextVAlign as VAlign};
 
@@ -122,8 +122,8 @@ pub fn retype(c: DeviceId, device: &Device, definition: DefinitionId, declared: 
 }
 use serde_json::{Value, json};
 
-use crate::symbols::{self, Kind, STARTERS, Starter, StarterKey as K};
 use crate::styles::text_style::fonts::TextMetrics;
+use crate::symbols::{self, Kind, STARTERS, Starter, StarterKey as K};
 
 /// Reserved layer of tag texts and terminal labels (design 018 §2.4).
 pub const TAG_LAYER: &str = "ECAD-TAGS";
@@ -265,7 +265,11 @@ impl TagHigh {
     /// # Errors
     /// As [`TagHigh::next`].
     pub fn peek_auto(&self, doc: &Document, prefix: &str) -> Result<String, CmdError> {
-        if ecad_model::naming::numbering::provisional_on(doc) { Ok(ecad_model::naming::numbering::next_provisional(doc, prefix)) } else { self.peek(doc, prefix) }
+        if ecad_model::naming::numbering::provisional_on(doc) {
+            Ok(ecad_model::naming::numbering::next_provisional(doc, prefix))
+        } else {
+            self.peek(doc, prefix)
+        }
     }
 
     /// The next automatic tag for `prefix`: its highest number + 1, skipping (boundedly) any tag a
@@ -648,7 +652,12 @@ pub fn plan_place(
                 let tid: ConnectionPointId = ids.fresh();
                 ops.push(Op::AddConnectionPoint {
                     id: tid,
-                    terminal: ConnectionPoint { owner: c.into(), label: Some(label.clone()), key: Some(PointKey::Def(label.clone())), accepts: td.accepts },
+                    terminal: ConnectionPoint {
+                        owner: c.into(),
+                        label: Some(label.clone()),
+                        key: Some(PointKey::Def(label.clone())),
+                        accepts: td.accepts,
+                    },
                 });
                 cps.insert(tid, td.at);
                 terminals.push((td.key.clone(), label.clone(), tid));
@@ -1321,7 +1330,9 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
         let sized: Vec<&(TextOf, String, f64, bool, Option<u8>)> = lines.iter().filter(|l| l.3 || !any).collect();
         let w = sized
             .iter()
-            .map(|l| width_in(look.fonts_for(kind_of(l.0)), crate::styles::text_style::TextStyle { height: l.2, ..text_style(doc, kind_of(l.0)) }, &l.1, m))
+            .map(|l| {
+                width_in(look.fonts_for(kind_of(l.0)), crate::styles::text_style::TextStyle { height: l.2, ..text_style(doc, kind_of(l.0)) }, &l.1, m)
+            })
             .fold(0.0, f64::max);
         // Line tops are `text.line_pitch` × each line's height apart.
         let h = sized.iter().map(|l| pitch * l.2).sum::<f64>() - sized.last().map_or(0.0, |l| (pitch - 1.0) * l.2);
@@ -1371,8 +1382,8 @@ pub fn all_texts_measured(doc: &Document, page: PageId, plc: Option<&crate::plc:
 #[allow(clippy::too_many_arguments)]
 fn slot_texts(
     doc: &Document, c: DeviceId, rid: RepresentationId, r: &Representation, def: &Definition, pl: &Placement, sizes: TagSizes,
-    shown: &dyn Fn(crate::styles::text_style::TextKind) -> bool, boxes: &mut crate::locations::BoxCache, look: &crate::styles::text_style::fonts::Look,
-    m: &dyn TextMetrics, fixed: &mut Vec<(Pt, Pt)>,
+    shown: &dyn Fn(crate::styles::text_style::TextKind) -> bool, boxes: &mut crate::locations::BoxCache,
+    look: &crate::styles::text_style::fonts::Look, m: &dyn TextMetrics, fixed: &mut Vec<(Pt, Pt)>,
 ) -> Vec<PageText> {
     use crate::styles::text_style::fonts::width_in;
     use crate::styles::text_style::{TextKind, text_style};
@@ -1400,7 +1411,8 @@ fn slot_texts(
         let Some(value) = value else { continue };
         let style = text_style(doc, kind);
         // Brief 050a: the device's own text style of this kind, font included.
-        let own = doc.devices.get(&c).and_then(|x| crate::styles::text_style::own_style(doc, kind, crate::defaults::Scope::component(c), &x.properties));
+        let own =
+            doc.devices.get(&c).and_then(|x| crate::styles::text_style::own_style(doc, kind, crate::defaults::Scope::component(c), &x.properties));
         let height = match &own {
             Some(o) => o.style.height,
             None if of == TextOf::Tag => sizes.tag,

@@ -18,13 +18,13 @@ use cadcraft_engine::doc::color::Color as CColor;
 use cadcraft_engine::ext::MarkShape;
 use cadcraft_engine::geom::Vec2;
 use common::{H, id};
-use ecad_engine::interact::{hover_lines, overlay_marks};
 use ecad_electrical::references::cables::markers_on_page;
+use ecad_engine::interact::{hover_lines, overlay_marks};
 use ecad_engine::{Mapped, ProjectHandle};
 use ecad_model::connectivity::derive::{cable_references, nets};
 use ecad_model::{
-    Cable, CableId, Color, Core, Document, Form, Item, ItemId, ItemKind, Layer, LayerId, Op, Page, PageId, Primitive, Pt, Representation,
-    RepresentationId, Style, Subject, ConnectionPointId, WireId,
+    Cable, CableId, Color, ConnectionPointId, Core, Document, Form, Item, ItemId, ItemKind, Layer, LayerId, Op, Page, PageId, Primitive, Pt,
+    Representation, RepresentationId, Style, Subject, WireId,
 };
 use serde_json::{Value, json};
 

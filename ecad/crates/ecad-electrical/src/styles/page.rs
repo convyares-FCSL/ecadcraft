@@ -23,9 +23,9 @@ use ecad_model::objects::styles::PageType;
 use ecad_model::objects::styles::page::{TypeBlock, TypeFrame, TypeSheet};
 use ecad_model::{Document, PageId, StyleRef, Word};
 
-use crate::styles::{Builtin, Catalogue, Field};
 use crate::CmdError;
 use crate::defaults::{Kind, Slot, Value};
+use crate::styles::{Builtin, Catalogue, Field};
 use ecad_model::GenKind;
 
 fn is_sheet(s: &str) -> bool {

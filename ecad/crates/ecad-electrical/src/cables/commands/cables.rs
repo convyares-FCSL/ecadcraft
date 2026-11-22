@@ -24,9 +24,9 @@ use serde_json::json;
 
 use crate::commands::input::{TextOrNumber, nullable};
 use crate::commands::run::{Cx, Generic, Outcome};
-use crate::locations::designations::{self, Aspect};
 use crate::devices::TagHigh;
 use crate::error::CmdError;
+use crate::locations::designations::{self, Aspect};
 use crate::styles::{self, cable};
 use ecad_model::objects::styles::cable::Shield;
 

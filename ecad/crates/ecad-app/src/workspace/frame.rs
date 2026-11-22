@@ -92,7 +92,12 @@ fn tab_strip(ui: &mut egui::Ui, shown: ListsView, counts: &[(ListsView, Option<u
     let w: f32 = items.iter().map(|(_, g)| g.size().x + 2.0 * pad).sum::<f32>() + gap * (TABS.len() as f32 - 1.0) + dividers + 2.0 * space::XS;
     let (frame, _) = ui.allocate_exact_size(vec2(w, TAB_H + 2.0 * space::XS), Sense::hover());
     let p = ui.painter().clone();
-    p.rect_stroke(frame, ecad_widgets::style::corner(radius::BUTTON), Stroke::new(line::HAIRLINE_PX, ecad_widgets::color(s.line)), StrokeKind::Inside);
+    p.rect_stroke(
+        frame,
+        ecad_widgets::style::corner(radius::BUTTON),
+        Stroke::new(line::HAIRLINE_PX, ecad_widgets::color(s.line)),
+        StrokeKind::Inside,
+    );
     let mut x = frame.left() + space::XS;
     for (v, g) in items {
         let r = Rect::from_min_size(pos2(x, frame.top() + space::XS), vec2(g.size().x + 2.0 * pad, TAB_H));
@@ -144,8 +149,19 @@ fn foot(ui: &mut egui::Ui, legend: bool, read: &str, counts: &[(String, prim::To
             let (r, _) = ui.allocate_exact_size(vec2(44.0, 20.0), Sense::hover());
             let p = ui.painter();
             p.rect_filled(r, ecad_widgets::style::corner(radius::CHIP), ecad_widgets::color(s.raised));
-            p.rect_stroke(r, ecad_widgets::style::corner(radius::CHIP), Stroke::new(line::HAIRLINE_PX, ecad_widgets::color(s.line_strong)), StrokeKind::Inside);
-            p.text(r.center(), egui::Align2::CENTER_CENTER, "input", ecad_widgets::fonts::font(ui.ctx(), ui_type::SMALL), ecad_widgets::color(s.text));
+            p.rect_stroke(
+                r,
+                ecad_widgets::style::corner(radius::CHIP),
+                Stroke::new(line::HAIRLINE_PX, ecad_widgets::color(s.line_strong)),
+                StrokeKind::Inside,
+            );
+            p.text(
+                r.center(),
+                egui::Align2::CENTER_CENTER,
+                "input",
+                ecad_widgets::fonts::font(ui.ctx(), ui_type::SMALL),
+                ecad_widgets::color(s.text),
+            );
             ui.label(egui::RichText::new(LEGEND_INPUT).size(ui_type::SMALL.size).color(ecad_widgets::color(s.text_2)));
             ui.add_space(space::L);
         }

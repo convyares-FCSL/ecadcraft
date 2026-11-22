@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::document::book::Book;
 use crate::document::doc::{Document, End, Form, ItemKind, Primitive, ReferenceStyle, Representation, Subject};
-use crate::geometry::geom::Pt;
-use crate::naming::id::{CableId, ItemId, PageId, RepresentationId, RouteId, ConnectionPointId, WireId};
 use crate::document::sheet::Grid;
+use crate::geometry::geom::Pt;
+use crate::naming::id::{CableId, ConnectionPointId, ItemId, PageId, RepresentationId, RouteId, WireId};
 
 /// Where each terminal sits on one page, from drawn connection points and symbol placements.
 ///

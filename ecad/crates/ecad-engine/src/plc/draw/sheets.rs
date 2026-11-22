@@ -6,11 +6,11 @@ use cadcraft_engine::doc::HAlign;
 use ecad_model::{Document, LengthUnit};
 
 use crate::pages::frame::{LABEL_ACI, THIN_WEIGHT, TextDraw};
-use {crate::pages::generated::Draw, ecad_electrical::pages::generated::row_mm};
 use ecad_electrical::plc::overview::{self, Square, Tile, TileKind};
 use ecad_electrical::plc::sheets::*;
-use {ecad_electrical::plc::iolist, ecad_electrical::plc::kept::Plc};
+use {crate::pages::generated::Draw, ecad_electrical::pages::generated::row_mm};
 use {crate::styles::draw::Look, ecad_electrical::styles::text_style::TextKind};
+use {ecad_electrical::plc::iolist, ecad_electrical::plc::kept::Plc};
 
 /// Sheet `i` of the I/O list page.
 pub(crate) fn io_sheet(doc: &Document, plc: Option<&Plc>, d: &mut Draw, looks: &Look, unit: LengthUnit, a: Area, i: usize) {
@@ -23,7 +23,8 @@ pub(crate) fn io_sheet(doc: &Document, plc: Option<&Plc>, d: &mut Draw, looks: &
     };
     let sheets = io_pack(plc);
     let Some(segs) = sheets.get(i) else { return };
-    let spare = ecad_electrical::defaults::resolve(doc, &ecad_electrical::defaults::plc::SPARE_TEXT, ecad_electrical::defaults::Scope::project()).text();
+    let spare =
+        ecad_electrical::defaults::resolve(doc, &ecad_electrical::defaults::plc::SPARE_TEXT, ecad_electrical::defaults::Scope::project()).text();
     let widths: Vec<f64> = IO_COLUMNS.iter().map(|(_, w)| w * a.scale).collect();
     let total: f64 = widths.iter().sum();
     let mut y = a.t;

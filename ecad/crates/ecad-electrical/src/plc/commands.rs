@@ -12,7 +12,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::document::book::Book;
 use ecad_model::{
-    ChannelRole, DeviceId, Document, IdAllocator, Ledger, ObjectRef, Op, PageId, Placement, Pt, Style, Subject, ConnectionPoint, ConnectionPointId, Word,
+    ChannelRole, ConnectionPoint, ConnectionPointId, DeviceId, Document, IdAllocator, Ledger, ObjectRef, Op, PageId, Placement, Pt, Style, Subject,
+    Word,
 };
 
 use crate::defaults;

@@ -163,7 +163,9 @@ fn page_input(doc: &Document, book: &Book, base: &FrameInput, page: PageId) -> F
     // Brief 052: stored as entry keys of the project's list; shown as codes.
     // Design 072 §5.3: the page's own id, else the project's.
     let shown = |a: crate::locations::designations::Aspect| {
-        crate::locations::designations::inherited_key(doc, page, a).map(|k| crate::locations::designations::display(doc, a.property(), &k)).unwrap_or_default()
+        crate::locations::designations::inherited_key(doc, page, a)
+            .map(|k| crate::locations::designations::display(doc, a.property(), &k))
+            .unwrap_or_default()
     };
     inp.function = shown(crate::locations::designations::Aspect::Function);
     inp.location = shown(crate::locations::designations::Aspect::Location);
@@ -202,7 +204,9 @@ fn cut_rows(doc: &Document) -> Vec<Check> {
         inp.total = base.total.clone();
         for i in cut_fields(&inp) {
             let name = match inp.block.layout.items.get(i) {
-                Some(BlockItem::Field { bind, label, .. }) => label.clone().filter(|l| !l.is_empty()).unwrap_or_else(|| crate::title_blocks::bind::name(bind)),
+                Some(BlockItem::Field { bind, label, .. }) => {
+                    label.clone().filter(|l| !l.is_empty()).unwrap_or_else(|| crate::title_blocks::bind::name(bind))
+                }
                 _ => continue,
             };
             let e = cut.entry((id.text(), i)).or_insert((*page, 0, name));

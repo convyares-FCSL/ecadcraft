@@ -19,16 +19,16 @@
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
+use ecad_model::geometry::units::{Amps, Celsius, Metres, Mm};
 use ecad_model::objects::styles::wire::{ConductorRating, Insulation, LineColour, WireType};
 pub use ecad_model::objects::styles::wire::{LineType, RouteLabels};
-use ecad_model::geometry::units::{Amps, Celsius, Metres, Mm};
 use ecad_model::objects::wire::{Colours, WireSize};
 use ecad_model::{Document, StyleRef, WireId, Word};
 use serde::Deserialize;
 
-use crate::styles::{Builtin, Catalogue, Field};
 use crate::CmdError;
 use crate::defaults::{Kind, Resolved, Scope, Slot, Source, Value};
+use crate::styles::{Builtin, Catalogue, Field};
 
 /// The registry's built-in type choice: no type.
 pub const NONE: &str = "none";

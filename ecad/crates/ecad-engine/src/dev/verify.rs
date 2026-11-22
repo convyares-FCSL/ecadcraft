@@ -23,8 +23,8 @@ use cadcraft_engine::doc::{Drawing, Entity, EntityKind, Handle};
 use ecad_model::{CableId, Document, End, Form, ItemId, ItemKind, PageId, Pt, Subject};
 
 use crate::convert::{ECAD_PREFIX, block_name, item_from, kind_for_primitive, marker_position};
-use ecad_electrical::reports::kept::ReportModels;
 use crate::project::{HandleMap, Mapped, part_entity};
+use ecad_electrical::reports::kept::ReportModels;
 
 /// What [`verify_page`] compared and what disagreed.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -106,7 +106,8 @@ pub fn verify_page_with(
 /// with it on, the hidden derived texts are expected too, dimmed.
 #[allow(clippy::too_many_arguments)]
 pub fn verify_page_shown(
-    doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool, outputs: Option<&ReportModels>,
+    doc: &Document, page: PageId, drawing: &Drawing, map: &HandleMap, fan: &BTreeSet<CableId>, tol: f64, hidden_text: bool,
+    outputs: Option<&ReportModels>,
 ) -> Verification {
     verify_page_pending(doc, page, drawing, map, fan, tol, hidden_text, false, outputs)
 }
@@ -332,8 +333,11 @@ pub fn verify_page_pending(
                     problems.push(format!("symbol of representation {rid} is not an insert of its definition's block"));
                     continue;
                 }
-                let want: Vec<Pt> =
-                    ecad_model::connectivity::derive::connection_point_positions(doc, page).into_iter().filter(|(_, rep, _)| rep == rid).map(|(_, _, p)| p).collect();
+                let want: Vec<Pt> = ecad_model::connectivity::derive::connection_point_positions(doc, page)
+                    .into_iter()
+                    .filter(|(_, rep, _)| rep == rid)
+                    .map(|(_, _, p)| p)
+                    .collect();
                 let got = block_terminals(drawing, e);
                 v.terminals += want.len();
                 // The block shows every terminal of the definition; the component may use a subset.

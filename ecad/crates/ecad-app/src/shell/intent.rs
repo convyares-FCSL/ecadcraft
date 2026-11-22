@@ -20,8 +20,8 @@ use ecad_widgets::prim::{self, Tone};
 use ecad_widgets::tokens::space;
 use eframe::egui::{self, Rect};
 
-use crate::shell::wheel::Refusal;
 use crate::App;
+use crate::shell::wheel::Refusal;
 
 /// The strip's height.
 pub const HEIGHT: f32 = 28.0;

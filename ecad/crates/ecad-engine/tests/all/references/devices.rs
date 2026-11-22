@@ -11,10 +11,10 @@ use crate::common::close_all;
 use cadcraft_engine::Session;
 use common::{H, id, pts};
 use ecad_engine::project::Mapped;
-use {ecad_electrical::references::devices::Group, ecad_electrical::references::devices::RefIndex};
 use ecad_engine::{Persistence, ProjectHandle};
 use ecad_model::{DeviceId, ObjectRef, Op, PageId, RepresentationId};
 use serde_json::{Value, json};
+use {ecad_electrical::references::devices::Group, ecad_electrical::references::devices::RefIndex};
 
 const SEED: u64 = 25;
 
@@ -29,7 +29,8 @@ struct X {
     nc: RepresentationId,
     q1: DeviceId,
     mcb: RepresentationId,
-    q_nc: RepresentationId}
+    q_nc: RepresentationId,
+}
 
 fn rep(v: &Value) -> RepresentationId {
     id(v, "representation")
@@ -62,7 +63,8 @@ fn drawn(h: &mut H, page: PageId) -> Vec<(RepresentationId, u32, String)> {
             .into_iter()
             .filter_map(|part| match part.shape {
                 ecad_electrical::references::devices::Shape::Text { value, .. } => Some((part.rep, part.index, value)),
-                ecad_electrical::references::devices::Shape::Line(..) => None})
+                ecad_electrical::references::devices::Shape::Line(..) => None,
+            })
             .collect()
     })
 }
@@ -208,7 +210,12 @@ fn d_moving_hiding_and_following_the_table() {
     assert!(matches!(x.h.p(|p| p.ledger.log().last().unwrap().ops.clone()).as_slice(), [Op::ModifyDevice { id, .. }] if *id == x.k1));
     let top = |h: &mut H| {
         h.p(|p| {
-            ecad_engine::references::draw::devices::table(p.ledger.document(), &mut ecad_electrical::references::devices::Places::new(p.ledger.document()), &ecad_electrical::references::devices::device(p.ledger.document(), x.k1)).map(|t| t.top)
+            ecad_engine::references::draw::devices::table(
+                p.ledger.document(),
+                &mut ecad_electrical::references::devices::Places::new(p.ledger.document()),
+                &ecad_electrical::references::devices::device(p.ledger.document(), x.k1),
+            )
+            .map(|t| t.top)
         })
     };
     assert_eq!(top(&mut x.h), Some(ecad_model::Pt::new(60.0, 120.0)));
@@ -241,7 +248,8 @@ fn f_parent_and_child_mcb_with_an_auxiliary_contact() {
     let mut x = fixture();
     let mcb_place = x.h.p(|p| {
         let doc = p.ledger.document();
-        ecad_electrical::references::devices::Places::new(doc).text(x.p105, ecad_electrical::references::devices::anchor(doc, &doc.representations[&x.mcb]))
+        ecad_electrical::references::devices::Places::new(doc)
+            .text(x.p105, ecad_electrical::references::devices::anchor(doc, &doc.representations[&x.mcb]))
     });
     assert_eq!(contact_text(&mut x.h, x.p105, x.q_nc), Some(mcb_place));
     let r = rows(&mut x.h, x.q1);

@@ -20,9 +20,9 @@ use ecad_widgets::prim;
 use ecad_widgets::tokens::{Icon, line, radius, space, ui_type};
 use eframe::egui::{self, Rect, pos2, vec2};
 
-use crate::shell::bar;
 use crate::App;
 use crate::library::search::{Choice, Pick};
+use crate::shell::bar;
 
 /// Accessible labels.
 pub const PICKER: &str = "Symbol picker";
@@ -174,9 +174,15 @@ impl App {
                     ui.vertical(|ui| {
                         ui.spacing_mut().item_spacing.y = 0.0;
                         ui.label(
-                            egui::RichText::new(name).font(ecad_widgets::fonts::font(ui.ctx(), ui_type::BODY_EMPHASIS)).color(ecad_widgets::color(s.text)),
+                            egui::RichText::new(name)
+                                .font(ecad_widgets::fonts::font(ui.ctx(), ui_type::BODY_EMPHASIS))
+                                .color(ecad_widgets::color(s.text)),
                         );
-                        ui.label(egui::RichText::new(&as_words).font(ecad_widgets::fonts::font(ui.ctx(), ui_type::SMALL)).color(ecad_widgets::color(s.text_2)));
+                        ui.label(
+                            egui::RichText::new(&as_words)
+                                .font(ecad_widgets::fonts::font(ui.ctx(), ui_type::SMALL))
+                                .color(ecad_widgets::color(s.text_2)),
+                        );
                     });
                     ui.separator();
                     let change = ui.add(prim::Button::new("Change").kind(prim::Kind::Quiet).small());
@@ -264,7 +270,9 @@ impl App {
                     ui.separator();
                     ui.horizontal(|ui| {
                         ui.label(
-                            egui::RichText::new(sym.name).font(ecad_widgets::fonts::font(ui.ctx(), ui_type::BODY_EMPHASIS)).color(ecad_widgets::color(s.text)),
+                            egui::RichText::new(sym.name)
+                                .font(ecad_widgets::fonts::font(ui.ctx(), ui_type::BODY_EMPHASIS))
+                                .color(ecad_widgets::color(s.text)),
                         );
                         prim::read_value(ui, &format!("tag letter {} · {}", sym.prefix(), sym.labels().join(", ")));
                     });

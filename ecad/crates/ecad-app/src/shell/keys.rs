@@ -12,8 +12,8 @@
 use crate::commands::actions::{self, Key as ActionKey};
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers};
 
-use crate::shell::{Slots, Workspace};
 use crate::App;
+use crate::shell::{Slots, Workspace};
 
 /// The egui key and modifiers of an action key.
 pub fn shortcut(k: ActionKey) -> (Modifiers, Key) {

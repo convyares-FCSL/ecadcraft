@@ -28,10 +28,10 @@
 use std::collections::BTreeMap;
 
 use ecad_model::{
-    Author, Cable, CableId, Color, ConductorId, Core, Definition, DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId,
-    ItemKind, Layer, LayerId, Ledger, LengthUnit, NetId, Op, Page, PageId, Placement, Primitive, ProjectId, ProjectSettings, Pt, Representation,
-    RepresentationId, Route, RouteEnd, RouteId, Style, Subject, SymbolInstance, ConnectionPoint, ConnectionPointDef, ConnectionPointId, Transaction, TxId, TxKind, Wire,
-    WireId,
+    Author, Cable, CableId, Color, ConductorId, ConnectionPoint, ConnectionPointDef, ConnectionPointId, Core, Definition, DefinitionId, Device,
+    DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Layer, LayerId, Ledger, LengthUnit, NetId, Op, Page, PageId, Placement, Primitive,
+    ProjectId, ProjectSettings, Pt, Representation, RepresentationId, Route, RouteEnd, RouteId, Style, Subject, SymbolInstance, Transaction, TxId,
+    TxKind, Wire, WireId,
 };
 
 /// The role brief 010 gives a cable reference end: its own constant, so the generated references
@@ -154,8 +154,18 @@ fn coil() -> Definition {
         origin: None,
         graphics: vec![Primitive::Polyline { vertices: r.iter().map(|(x, y)| Pt::new(*x, *y)).collect(), closed: true }],
         terminals: vec![
-            ConnectionPointDef { key: ecad_model::PointKey::def("A1"), label: Some("A1".into()), at: Pt::new(0.0, 10.0), accepts: Default::default() },
-            ConnectionPointDef { key: ecad_model::PointKey::def("A2"), label: Some("A2".into()), at: Pt::new(0.0, -10.0), accepts: Default::default() },
+            ConnectionPointDef {
+                key: ecad_model::PointKey::def("A1"),
+                label: Some("A1".into()),
+                at: Pt::new(0.0, 10.0),
+                accepts: Default::default(),
+            },
+            ConnectionPointDef {
+                key: ecad_model::PointKey::def("A2"),
+                label: Some("A2".into()),
+                at: Pt::new(0.0, -10.0),
+                accepts: Default::default(),
+            },
         ],
         ..Default::default()
     }
@@ -226,7 +236,8 @@ fn named_wire(net: NetId, conductor: ConductorId, order: u16, ends: [ConnectionP
 
 /// The op renaming wire `w` (value `wire`, named `name`) to `<name>X` (the rename step of a wire).
 fn renamed_wire(w: WireId, wire: &Wire, name: &str) -> Op {
-    let number = ecad_model::naming::text::Text::new(&format!("{name}X")).ok().map(|text| ecad_model::objects::wire::WireNumber { text, fixed: false });
+    let number =
+        ecad_model::naming::text::Text::new(&format!("{name}X")).ok().map(|text| ecad_model::objects::wire::WireNumber { text, fixed: false });
     Op::ModifyWire { id: w, before: wire.clone(), after: Wire { number, ..wire.clone() } }
 }
 

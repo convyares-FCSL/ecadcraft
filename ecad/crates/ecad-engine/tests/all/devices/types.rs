@@ -185,7 +185,8 @@ fn connector_fields_are_written_as_modify_device() {
     let c: DeviceId = id(&crate::common::place(&mut h, "dsub9s", (100.0, 100.0)), "component");
     let family = |h: &mut H| match &h.doc().devices[&c].device_type {
         DeviceType::Connector(x) => Some(x.family),
-        _ => None};
+        _ => None,
+    };
     assert_eq!(family(&mut h), Some(ConnectorFamily::Dsub), "the symbol's family is stored");
     for (key, value) in
         [("pins", "8"), ("pin_names", "A,B,C"), ("half.s.maker", "Acme"), ("half.p.part_number", "PLG-9"), ("ignore.connector-size", "yes")]
@@ -257,13 +258,14 @@ fn a_rating_is_read_into_typed_fields() {
 #[test]
 fn a_switching_rating_is_read_into_typed_fields() {
     use ecad_model::Op;
-    use ecad_model::objects::devices::{DeviceType, OperatorKind};
     use ecad_model::geometry::units::Current;
+    use ecad_model::objects::devices::{DeviceType, OperatorKind};
     let mut h = H::new(7206);
     let k: DeviceId = id(&crate::common::place(&mut h, "coil", (100.0, 100.0)), "component");
     let kind = |h: &mut H, c: DeviceId| match &h.doc().devices[&c].device_type {
         DeviceType::Switching(s) => Some(s.operator_kind()),
-        _ => None};
+        _ => None,
+    };
     assert_eq!(kind(&mut h, k), Some(OperatorKind::Coil));
     // An unrated coil has the Checks row `no-rating`; a rated one does not.
     let no_rating = |h: &mut H| h.run("checks", json!({})).unwrap().to_string().contains("no-rating");
@@ -304,12 +306,13 @@ fn a_switching_rating_is_read_into_typed_fields() {
 #[test]
 fn a_sensor_rating_is_read_into_typed_fields() {
     use ecad_model::Op;
-    use ecad_model::objects::devices::{DeviceType, Output, Sensing};
     use ecad_model::geometry::units::Current;
+    use ecad_model::objects::devices::{DeviceType, Output, Sensing};
     let mut h = H::new(7207);
     let kind = |h: &mut H, c: DeviceId| match &h.doc().devices[&c].device_type {
         DeviceType::Sensor(s) => Some((s.sensing, s.output)),
-        _ => None};
+        _ => None,
+    };
     for (symbol, want) in [
         ("prox3", (Sensing::Proximity, Output::Pnp)),
         ("floatno", (Sensing::Float, Output::Contact)),
@@ -402,12 +405,13 @@ fn a_strip_fuse_position_rating_is_typed() {
 #[test]
 fn a_motor_rating_is_read_into_typed_fields() {
     use ecad_model::Op;
-    use ecad_model::objects::devices::{DeviceType, Phases, Starting};
     use ecad_model::geometry::units::{Amps, Watts};
+    use ecad_model::objects::devices::{DeviceType, Phases, Starting};
     let mut h = H::new(7209);
     let phases = |h: &mut H, c: DeviceId| match &h.doc().devices[&c].device_type {
         DeviceType::Motor(m) => Some(m.phases),
-        _ => None};
+        _ => None,
+    };
     let no_rating = |h: &mut H| h.run("checks", json!({})).unwrap().to_string().contains("no-rating");
     let m1: DeviceId = id(&crate::common::place(&mut h, "motor1", (200.0, 100.0)), "component");
     assert_eq!(phases(&mut h, m1), Some(Phases::Single));
@@ -442,8 +446,8 @@ fn a_motor_rating_is_read_into_typed_fields() {
 #[test]
 fn a_load_rating_is_read_into_typed_fields() {
     use ecad_model::Op;
-    use ecad_model::objects::devices::{DeviceType, Load};
     use ecad_model::geometry::units::Watts;
+    use ecad_model::objects::devices::{DeviceType, Load};
     let mut h = H::new(7210);
     let no_rating = |h: &mut H| h.run("checks", json!({})).unwrap().to_string().contains("no-rating");
     let v: DeviceId = id(&crate::common::place(&mut h, "valve", (200.0, 100.0)), "component");
@@ -478,8 +482,8 @@ fn a_load_rating_is_read_into_typed_fields() {
 #[test]
 fn an_indicator_rating_is_read_into_typed_fields() {
     use ecad_model::Op;
-    use ecad_model::objects::devices::{DeviceType, Indicator, IndicatorColour, SignalType};
     use ecad_model::geometry::units::{Current, RatedVoltage, Volts, Watts};
+    use ecad_model::objects::devices::{DeviceType, Indicator, IndicatorColour, SignalType};
     let mut h = H::new(7211);
     let no_rating = |h: &mut H| h.run("checks", json!({})).unwrap().to_string().contains("no-rating");
     let p: DeviceId = id(&crate::common::place(&mut h, "lamp", (100.0, 100.0)), "component");
@@ -519,8 +523,8 @@ fn an_indicator_rating_is_read_into_typed_fields() {
 #[test]
 fn a_power_supply_rating_is_read_into_typed_fields() {
     use ecad_model::Op;
-    use ecad_model::objects::devices::{DeviceType, PowerSupply, Psu, Transformer};
     use ecad_model::geometry::units::{Amps, Current, RatedVoltage, VoltAmps, Volts};
+    use ecad_model::objects::devices::{DeviceType, PowerSupply, Psu, Transformer};
     let mut h = H::new(7212);
     let no_rating = |h: &mut H| h.run("checks", json!({})).unwrap().to_string().contains("no-rating");
     let p: DeviceId = id(&crate::common::place(&mut h, "psu", (100.0, 100.0)), "component");

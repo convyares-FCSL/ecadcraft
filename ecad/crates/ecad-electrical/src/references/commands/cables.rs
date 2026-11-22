@@ -9,8 +9,8 @@
 use std::collections::BTreeMap;
 
 use ecad_model::{
-    CableId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId, RouteEnd,
-    RouteId, Style, Subject, ConnectionPointId, WireId,
+    CableId, ConnectionPointId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation,
+    RepresentationId, RouteEnd, RouteId, Style, Subject, WireId,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;

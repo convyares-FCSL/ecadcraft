@@ -67,11 +67,21 @@ impl Fixture {
             Op::CreateDevice { id: c, device: Device { definition: Some(def), ..Device::default() } },
             Op::AddConnectionPoint {
                 id: t1,
-                terminal: ConnectionPoint { owner: c.into(), label: Some("A1".into()), key: Some("A1".parse().unwrap()), accepts: Default::default() },
+                terminal: ConnectionPoint {
+                    owner: c.into(),
+                    label: Some("A1".into()),
+                    key: Some("A1".parse().unwrap()),
+                    accepts: Default::default(),
+                },
             },
             Op::AddConnectionPoint {
                 id: t2,
-                terminal: ConnectionPoint { owner: c.into(), label: Some("A2".into()), key: Some("A2".parse().unwrap()), accepts: Default::default() },
+                terminal: ConnectionPoint {
+                    owner: c.into(),
+                    label: Some("A2".into()),
+                    key: Some("A2".parse().unwrap()),
+                    accepts: Default::default(),
+                },
             },
             Op::AddItem {
                 id: item,

@@ -9,9 +9,9 @@
 use cadcraft_engine::Session;
 use ecad_electrical::CmdError;
 use ecad_electrical::wires::commands::wires::{self as rules, Conflict, NetChoice, Numbered, PotentialRow, WireSettingsChange, Wires};
-use ecad_model::geometry::units::{Degrees, Radians};
 use ecad_model::connectivity::wiring;
-use ecad_model::{PageId, Placement, Pt, ConnectionPointId, WireId};
+use ecad_model::geometry::units::{Degrees, Radians};
+use ecad_model::{ConnectionPointId, PageId, Placement, Pt, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -19,8 +19,8 @@ use serde_json::{Value, json};
 use crate::commands::input::{Command, Typed};
 use crate::commands::{MAX_HANDLES, MAX_WIRE_POINTS, err, on_any_page, on_project, plain_style};
 use crate::project::Project;
-use ecad_electrical::symbols::Starter;
 use ecad_electrical::commands::input::{Bounded, Point, nullable};
+use ecad_electrical::symbols::Starter;
 
 /// The commands of this module with a typed input.
 pub const TYPED: &[Typed] = &[
@@ -583,8 +583,8 @@ pub(crate) fn place_tagless(
     s: &mut Session, params: &crate::devices::commands::PlaceParams, starter: &'static Starter, at: Pt, degrees: Degrees, mirror: bool,
 ) -> cadcraft_engine::Result<Value> {
     let joins = params.device.is_some() || params.tag.is_some();
-    let (name, caption) =
-        ecad_electrical::devices::commands::place::tagless(starter, joins, params.name.as_deref(), params.caption.as_deref()).map_err(|e| err(e.to_string()))?;
+    let (name, caption) = ecad_electrical::devices::commands::place::tagless(starter, joins, params.name.as_deref(), params.caption.as_deref())
+        .map_err(|e| err(e.to_string()))?;
     on_project(s, |p, pg, page| {
         let style = plain_style(p);
         let doc = p.ledger.document();

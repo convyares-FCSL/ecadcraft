@@ -59,7 +59,8 @@ pub(crate) struct TitleblockimportParams {
     id: Option<String>,
     /// A logo: the logo item's number (from 0).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    item: Option<u64>}
+    item: Option<u64>,
+}
 
 impl Command for TitleblockimportParams {
     fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {

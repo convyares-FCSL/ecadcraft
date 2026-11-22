@@ -19,22 +19,21 @@ pub mod input;
 
 use cadcraft_engine::{CommandSpec, EngineError, Session};
 use ecad_electrical::CmdError;
-use ecad_model::{Color, Definition, PageId, Primitive, Pt, Style, ConnectionPointDef};
+use ecad_model::{Color, ConnectionPointDef, Definition, PageId, Primitive, Pt, Style};
 use serde_json::Value;
 
 use crate::access::{Pages, owner_of_active, try_lock};
 use crate::interact;
 use crate::project::Project;
-pub use ecad_electrical::terminal_strips::core_label;
 use ecad_electrical::circuits::commands as rating;
 use ecad_electrical::continuations::commands as continuation;
 use ecad_electrical::numbering::commands as numbering;
 use ecad_electrical::properties::commands as prop;
+pub use ecad_electrical::terminal_strips::core_label;
 use ecad_electrical::{
-    cables::commands::cables as cable, devices::commands::device_links as device_link,
-    locations::commands::designations as designation, locations::commands::locations as location, reports::commands::bom,
-    styles::commands::defaults as default, styles::commands::styles as style, terminal_strips::commands::accessories as accessory,
-    terminal_strips::commands::levels as level, wires::commands::connect,
+    cables::commands::cables as cable, devices::commands::device_links as device_link, locations::commands::designations as designation,
+    locations::commands::locations as location, reports::commands::bom, styles::commands::defaults as default, styles::commands::styles as style,
+    terminal_strips::commands::accessories as accessory, terminal_strips::commands::levels as level, wires::commands::connect,
 };
 
 /// The commands this crate adds. Lanes in flight register theirs in [`LANES`], not here;
@@ -376,7 +375,8 @@ pub const UNAVAILABLE: &str = "this page is unavailable (its drawing could not b
 pub(crate) fn opt_typed<'a, T>(p: &'a Value, key: &str, what: &str, get: impl Fn(&'a Value) -> Option<T>) -> Result<Option<T>, CmdError> {
     match p.get(key) {
         None | Some(Value::Null) => Ok(None),
-        Some(v) => get(v).map(Some).ok_or_else(|| CmdError::input(format!("`{key}` must be {what}")))}
+        Some(v) => get(v).map(Some).ok_or_else(|| CmdError::input(format!("`{key}` must be {what}"))),
+    }
 }
 
 /// Most points one WIRE accepts: a route's own bound (design 072 §4.3).
@@ -398,8 +398,18 @@ pub fn builtin_coil() -> Definition {
         origin: None,
         graphics: vec![Primitive::Polyline { vertices: r.iter().map(|(x, y)| Pt::new(*x, *y)).collect(), closed: true }],
         terminals: vec![
-            ConnectionPointDef { key: ecad_model::PointKey::def("A1"), label: Some("A1".into()), at: Pt::new(0.0, 10.0), accepts: Default::default() },
-            ConnectionPointDef { key: ecad_model::PointKey::def("A2"), label: Some("A2".into()), at: Pt::new(0.0, -10.0), accepts: Default::default() },
+            ConnectionPointDef {
+                key: ecad_model::PointKey::def("A1"),
+                label: Some("A1".into()),
+                at: Pt::new(0.0, 10.0),
+                accepts: Default::default(),
+            },
+            ConnectionPointDef {
+                key: ecad_model::PointKey::def("A2"),
+                label: Some("A2".into()),
+                at: Pt::new(0.0, -10.0),
+                accepts: Default::default(),
+            },
         ],
         ..Default::default()
     }

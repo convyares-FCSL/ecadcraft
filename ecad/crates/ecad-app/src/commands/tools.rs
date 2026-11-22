@@ -26,7 +26,7 @@ use std::collections::{BTreeSet, HashMap};
 use cadcraft_ui_egui::palettes::{ExtraTool, ExtraToolGroup, ExtraToolTab};
 use ecad_engine::cad::Handle;
 use ecad_engine::{Mapped, Project};
-use ecad_model::{CableId, DeviceId, ItemId, PageId, Subject, ConnectionPointId, WireId};
+use ecad_model::{CableId, ConnectionPointId, DeviceId, ItemId, PageId, Subject, WireId};
 
 /// The tab's name in the Tool Sets panel.
 pub const TAB: &str = "ECAD";

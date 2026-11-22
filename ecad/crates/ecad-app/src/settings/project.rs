@@ -14,9 +14,9 @@
 use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Rect, pos2, vec2};
 
-use crate::settings::{card, dashed_rect, later_row, row};
 use crate::App;
 use crate::settings::sheets::{Out, Part, Popout};
+use crate::settings::{card, dashed_rect, later_row, row};
 use crate::shell::bar;
 
 /// Pages and sheets' two tabs.
@@ -171,7 +171,9 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
                     row(ui, "Current", |ui| ui.label(grey(revision.trim_start_matches("Current: "))));
                     later_row(ui, "Revision letters", "A, B, C · 01, 02, 03 · P1, P2 then A");
                     ui.label(
-                        egui::RichText::new("The pending mark is set in Pages and sheets.").small().color(ecad_widgets::color(ecad_widgets::SHELL.text_3)),
+                        egui::RichText::new("The pending mark is set in Pages and sheets.")
+                            .small()
+                            .color(ecad_widgets::color(ecad_widgets::SHELL.text_3)),
                     );
                 },
             );
@@ -319,7 +321,8 @@ impl App {
                 if popout == Popout::Settings {
                     // Brief 031: the Text section reads `textstyle {}`; brief 032 §4.4: the wire
                     // label rows read `wiresettings {}` (reads only).
-                    d.text = self.run_value("textstyle", serde_json::json!({})).ok().map(|t| crate::settings::text_styles::TextSection::from_json(&t));
+                    d.text =
+                        self.run_value("textstyle", serde_json::json!({})).ok().map(|t| crate::settings::text_styles::TextSection::from_json(&t));
                     d.labels = self.run_value("wiresettings", serde_json::json!({})).ok().map(|w| crate::settings::sheets::WireLabels::from_json(&w));
                 }
                 self.project_props = Some(d);

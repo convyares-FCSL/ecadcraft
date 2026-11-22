@@ -10,8 +10,8 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 
 use ecad_model::{
-    CableId, Device, DeviceId, Document, Form, IdAllocator, ItemId, Op, PageId, ProjectSettings, Pt, Representation, RepresentationId, RouteEnd,
-    RouteId, Subject, ConnectionPoint, ConnectionPointId, WireId,
+    CableId, ConnectionPoint, ConnectionPointId, Device, DeviceId, Document, Form, IdAllocator, ItemId, Op, PageId, ProjectSettings, Pt,
+    Representation, RepresentationId, RouteEnd, RouteId, Subject, WireId,
 };
 
 use crate::devices;

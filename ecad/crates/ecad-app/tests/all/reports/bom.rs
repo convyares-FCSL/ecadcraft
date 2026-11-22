@@ -7,8 +7,8 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use ecad_app::reports::panel;
 use ecad_app::pages::project_panel;
+use ecad_app::reports::panel;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 

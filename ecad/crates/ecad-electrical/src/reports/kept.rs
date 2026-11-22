@@ -7,7 +7,7 @@ use ecad_model::document::effect::Effect;
 use ecad_model::naming::keys::PropsExt;
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::{CableId, DeviceId, Document, End, LoosePartId, ObjectRef, PageId, Pt, Subject, ConnectionPointId, WireId};
+use ecad_model::{CableId, ConnectionPointId, DeviceId, Document, End, LoosePartId, ObjectRef, PageId, Pt, Subject, WireId};
 
 use crate::reports::*;
 use crate::styles::text_style::fonts::TextMetrics;
@@ -725,7 +725,10 @@ impl ReportModels {
         self.remove_entries(Owner::Device(c));
         // Review of PR #57, 4: a link key on a device that is not a strip.
         let misplaced = crate::terminal_strips::strip_of(doc, c).is_none()
-            && doc.devices.get(&c).is_some_and(|x| x.properties.keys().any(|k| ecad_model::connectivity::jumper_bars::jumper_bar_number(k).is_some()));
+            && doc
+                .devices
+                .get(&c)
+                .is_some_and(|x| x.properties.keys().any(|k| ecad_model::connectivity::jumper_bars::jumper_bar_number(k).is_some()));
         if misplaced {
             let keys = doc
                 .devices
@@ -746,7 +749,8 @@ impl ReportModels {
         }
         let Some(comp) = doc.devices.get(&c) else { return };
         let location = locations::resolve_with(doc, c, cache);
-        let goto = crate::symbols::reps::goto(doc, c, None).and_then(|rid| doc.representations.get(&rid).map(|r| (rid, r.page, locations::anchor(doc, r))));
+        let goto =
+            crate::symbols::reps::goto(doc, c, None).and_then(|rid| doc.representations.get(&rid).map(|r| (rid, r.page, locations::anchor(doc, r))));
         let row = DeviceRow {
             component: c,
             tag: comp.tag().unwrap_or_default().to_string(),
@@ -1966,8 +1970,11 @@ impl ReportModels {
                     crate::terminal_strips::PlanItem::Term(i, r) => (i, r),
                     crate::terminal_strips::PlanItem::Gap { gap, acc } => {
                         let pe_before = gap_pe(s, gap);
-                        let words =
-                            if acc == crate::terminal_strips::accessories::Acc::StripLabel { format!("strip label {}", s.tag) } else { acc.words().to_string() };
+                        let words = if acc == crate::terminal_strips::accessories::Acc::StripLabel {
+                            format!("strip label {}", s.tag)
+                        } else {
+                            acc.words().to_string()
+                        };
                         let mut row = vec![Cell::ok(s.tag.clone()), Cell::ok(words), Cell::default(), Cell::ok(acc.mark())];
                         row.extend(std::iter::repeat_n(Cell::default(), 5));
                         row.push(Cell::opt(&s.acc.gap_part(acc, pe_before).cloned(), || "No part number for this accessory.".into()));
@@ -1991,7 +1998,9 @@ impl ReportModels {
                 let lines = r.inside.len().max(r.outside.len()).max(1);
                 for i in 0..lines {
                     let (inside, outside) = (r.inside.get(i), r.outside.get(i));
-                    let side = |c: Option<&crate::terminal_strips::SideCell>, f: fn(&crate::terminal_strips::SideCell) -> Option<String>, why: &str| match c {
+                    let side = |c: Option<&crate::terminal_strips::SideCell>,
+                                f: fn(&crate::terminal_strips::SideCell) -> Option<String>,
+                                why: &str| match c {
                         None => Cell::default(),
                         Some(c) => Cell::opt(&f(c), || why.to_string()),
                     };

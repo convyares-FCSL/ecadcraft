@@ -2,8 +2,8 @@
 //! the shell colours and the type ramp, for screenshots beside the spec's Tokens board. The desktop app
 //! hosts it as a hidden developer page, `ui.primitives`.
 
-use {crate::tokens::Icon, crate::tokens::space, crate::tokens::ui_type};
 use egui::{Rect, RichText, ScrollArea, Sense, Ui, vec2};
+use {crate::tokens::Icon, crate::tokens::space, crate::tokens::ui_type};
 
 use crate::prim::{
     Button, Chip, Field, FieldKind, IconButton, Kind, Look, RowKind, RowSpec, Segmented, Tone, badge, keycap, pill, provisional, read_value, row,

@@ -372,7 +372,7 @@ pub const RAIL_WIRES: usize = 25_000;
 /// own points, built and numbered once (not timed); per run one leaf conductor is deleted (timed:
 /// the commit with the numbering pass and the Checks update) and the deletion undone (not timed).
 fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
-    use ecad_model::{ConductorId, Device, DeviceId, Ledger, NetId, Op, Page, PageId, ConnectionPoint, ConnectionPointId, Wire, WireId};
+    use ecad_model::{ConductorId, ConnectionPoint, ConnectionPointId, Device, DeviceId, Ledger, NetId, Op, Page, PageId, Wire, WireId};
     let mut ids = IdAllocator::seeded(EDIT_SEED ^ 0x0FA1);
     let mut ledger = Ledger::new(7);
     let page: PageId = ids.fresh();
@@ -387,7 +387,10 @@ fn rail_cut(runs: usize, wires: usize) -> Result<Vec<f64>, String> {
     let net: NetId = ids.fresh();
     for i in 0..wires {
         let (t, c, k): (ConnectionPointId, WireId, ConductorId) = (ids.fresh(), ids.fresh(), ids.fresh());
-        ops.push(Op::AddConnectionPoint { id: t, terminal: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default() } });
+        ops.push(Op::AddConnectionPoint {
+            id: t,
+            terminal: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default() },
+        });
         let order = u16::try_from(i + 1).unwrap_or(u16::MAX);
         let wire = Wire { potential: ecad_model::naming::text::Text::new("0V").ok(), net_order: order, ..Wire::new(net, k, hub, t) };
         ops.push(Op::CreateWire { id: c, wire });
@@ -557,7 +560,8 @@ fn draw_edits(path: &Path, copy: &Path, runs: usize) -> Result<DrawTimes, String
     let result = (|| {
         ecad_engine::install();
         let mut s = cadcraft_engine::Session::empty();
-        let (project, _) = ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
+        let (project, _) =
+            ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
         let one_tx = |before: u64, after: u64, what: &str| {
             if after == before + 1 { Ok(()) } else { Err(format!("the {what} was not recorded as one transaction (head {before} → {after})")) }
         };
@@ -614,7 +618,8 @@ fn device_edits(path: &Path, copy: &Path, runs: usize) -> Result<DrawTimes, Stri
     let result = (|| {
         ecad_engine::install();
         let mut s = cadcraft_engine::Session::empty();
-        let (project, _) = ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
+        let (project, _) =
+            ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
         let head = |s: &mut cadcraft_engine::Session| project.read(s, |p, _| p.ledger.head());
         let timed = |s: &mut cadcraft_engine::Session, cmd: &str, params: serde_json::Value| {
             let before = head(s)?;
@@ -660,7 +665,8 @@ fn numbering_edits(path: &Path, copy: &Path, runs: usize) -> Result<NumberingTim
     let result = (|| {
         ecad_engine::install();
         let mut s = cadcraft_engine::Session::empty();
-        let (project, _) = ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
+        let (project, _) =
+            ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
         let head = |s: &mut cadcraft_engine::Session| project.read(s, |p, _| p.ledger.head());
         let run = |s: &mut cadcraft_engine::Session, cmd: &str, params: serde_json::Value| -> Result<(f64, serde_json::Value), String> {
             let before = head(s)?;
@@ -769,7 +775,8 @@ fn device_reference_edits(path: &Path, copy: &Path, runs: usize) -> Result<Devic
         release_lock_file(copy);
         ecad_engine::install();
         let mut s = cadcraft_engine::Session::empty();
-        let (project, _) = ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
+        let (project, _) =
+            ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
         let head = |s: &mut cadcraft_engine::Session| project.read(s, |p, _| p.ledger.head());
         let mut out = DeviceReferenceTimes::default();
         for _ in 0..runs {
@@ -829,8 +836,8 @@ fn device_reference_edits(path: &Path, copy: &Path, runs: usize) -> Result<Devic
 /// The coils of [`device_reference_edits`], committed to `ledger` one placement at a time: their head
 /// representations and the page order.
 fn add_coils(ledger: &mut ecad_model::Ledger) -> Result<(Vec<ecad_model::RepresentationId>, Vec<ecad_model::PageId>), String> {
-    use {ecad_electrical::devices::TagHigh, ecad_electrical::devices::Target, ecad_electrical::devices::plan_place};
     use ecad_model::{Color, Op, Placement, Pt, Style};
+    use {ecad_electrical::devices::TagHigh, ecad_electrical::devices::Target, ecad_electrical::devices::plan_place};
     let order = ledger.document().page_order.clone();
     let n = order.len();
     if n == 0 {
@@ -844,7 +851,8 @@ fn add_coils(ledger: &mut ecad_model::Ledger) -> Result<(Vec<ecad_model::Represe
     let mut ids = IdAllocator::seeded(EDIT_SEED ^ 0x025);
     let mut high = TagHigh::default();
     let starter = |k: &str| ecad_electrical::symbols::by_key(k).ok_or_else(|| format!("no starter {k}"));
-    let place = |pt: (f64, f64)| Placement { origin: Pt::new(pt.0, pt.1), rotation: ecad_model::geometry::units::Radians(0.0), mirror: false, scale: 1.0 };
+    let place =
+        |pt: (f64, f64)| Placement { origin: Pt::new(pt.0, pt.1), rotation: ecad_model::geometry::units::Radians(0.0), mirror: false, scale: 1.0 };
     let mut coils = Vec::with_capacity(wanted);
     for i in 0..wanted {
         let ka = match i {
@@ -866,7 +874,8 @@ fn add_coils(ledger: &mut ecad_model::Ledger) -> Result<(Vec<ecad_model::Represe
         step(ledger, b, "nc", (x + 10.0, 60.0), Target::Join(c))?;
         if i % 2 == 0 {
             let before = ledger.document().devices.get(&c).cloned().ok_or("the bench coil is missing")?;
-            let after = ecad_electrical::references::devices::with_contacts(&before, "the bench coil", Some("3P+1NO+1NC")).map_err(|e| e.to_string())?;
+            let after =
+                ecad_electrical::references::devices::with_contacts(&before, "the bench coil", Some("3P+1NO+1NC")).map_err(|e| e.to_string())?;
             let op = Op::ModifyDevice { id: c, before, after };
             ledger.commit(Author::User, "Bench coils", vec![op]).map_err(|e| e.to_string())?;
         }
@@ -894,7 +903,8 @@ fn sheet_edits(path: &Path, copy: &Path, runs: usize) -> Result<SheetTimes, Stri
     let result = (|| {
         ecad_engine::install();
         let mut s = cadcraft_engine::Session::empty();
-        let (project, _) = ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
+        let (project, _) =
+            ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
         let run = |s: &mut cadcraft_engine::Session, cmd: &str, params: serde_json::Value| {
             let t = Instant::now();
             s.execute(cmd, &params).map_err(|e| format!("{cmd}: {e}"))?;
@@ -960,7 +970,8 @@ fn switch_pages(path: &Path, copy: &Path) -> Result<Switches, String> {
     let result = (|| {
         ecad_engine::install();
         let mut s = cadcraft_engine::Session::empty();
-        let (project, _) = ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
+        let (project, _) =
+            ecad_engine::ProjectHandle::open_file_in(&mut s, path_text(copy)?, OPEN_SEED, ecad_engine::cables::views::Settings::none())?;
         let order = project.read(&mut s, |p, _| p.ledger.document().page_order.clone())?;
         let first = *order.first().ok_or("the project has no pages")?;
         let pages = spread(&order);

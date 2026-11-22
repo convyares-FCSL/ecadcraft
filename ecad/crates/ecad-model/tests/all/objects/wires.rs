@@ -3,10 +3,10 @@
 //! changes a wire's values, is its own inverse and never moves its ends, and every edit of the
 //! routes rewrites the wires of the nets whose points changed, in the same transaction.
 
-use ecad_model::naming::text::Text;
 use ecad_model::geometry::units::Amps;
+use ecad_model::naming::text::Text;
 use ecad_model::objects::wire::{Basis, Bundling, CircuitInputs, Colours, InstallMethod, SupplySystem, WireNumber, WireSize};
-use ecad_model::{Author, ConductorId, IdAllocator, Ledger, NetId, Op, ConnectionPointId, Wire, WireId, Word};
+use ecad_model::{Author, ConductorId, ConnectionPointId, IdAllocator, Ledger, NetId, Op, Wire, WireId, Word};
 
 #[test]
 fn sizes_read_typed_and_store_one_form() {
@@ -150,9 +150,10 @@ fn modify_wire_changes_values_undoes_and_never_moves_the_ends() {
 
 /// A page with a device of two connection points: the page, and the two points.
 fn page_with_points(l: &mut Ledger, ids: &mut IdAllocator) -> (ecad_model::PageId, ConnectionPointId, ConnectionPointId) {
-    use ecad_model::{Device, DeviceId, Page, PageId, ConnectionPoint};
+    use ecad_model::{ConnectionPoint, Device, DeviceId, Page, PageId};
     let (p, d, a, b): (PageId, DeviceId, ConnectionPointId, ConnectionPointId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
-    let t = |label: &str| ConnectionPoint { owner: d.into(), label: Some(label.into()), key: Some(label.parse().unwrap()), accepts: Default::default() };
+    let t =
+        |label: &str| ConnectionPoint { owner: d.into(), label: Some(label.into()), key: Some(label.parse().unwrap()), accepts: Default::default() };
     l.commit(
         Author::User,
         "setup",
@@ -337,7 +338,8 @@ fn joining_two_nets_keeps_the_bigger_ones_id_and_splitting_gives_the_smaller_a_n
     let (_, c, d) = page_with_points(&mut l, &mut ids);
     let (_, e, _) = page_with_points(&mut l, &mut ids);
     let r: Vec<RouteId> = (0..4).map(|_| ids.fresh()).collect();
-    let line = |x: f64, from: ConnectionPointId, to: ConnectionPointId| route(p, &[(x, 0.0), (x + 10.0, 0.0)], RouteEnd::Point(from), RouteEnd::Point(to));
+    let line =
+        |x: f64, from: ConnectionPointId, to: ConnectionPointId| route(p, &[(x, 0.0), (x + 10.0, 0.0)], RouteEnd::Point(from), RouteEnd::Point(to));
     // Net 1: A–B–C (two wires); net 2: D–E (one wire).
     l.commit(Author::User, "abc", vec![Op::AddRoute { id: r[0], route: line(0.0, a, b) }, Op::AddRoute { id: r[1], route: line(10.0, b, c) }])
         .unwrap();
@@ -565,7 +567,7 @@ fn accepts_is_one_to_sixty_four_and_anything_else_is_a_read_error() {
 
 /// A page with a device of two points, the first accepting `n` conductors.
 fn page_with_bar(l: &mut Ledger, ids: &mut IdAllocator, n: u64) -> (ecad_model::PageId, ConnectionPointId, ConnectionPointId) {
-    use ecad_model::{Accepts, Device, DeviceId, Page, PageId, ConnectionPoint};
+    use ecad_model::{Accepts, ConnectionPoint, Device, DeviceId, Page, PageId};
     let (p, d, a, b): (PageId, DeviceId, ConnectionPointId, ConnectionPointId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
     let t = |label: &str, accepts| ConnectionPoint { owner: d.into(), label: Some(label.into()), key: Some(label.parse().unwrap()), accepts };
     l.commit(

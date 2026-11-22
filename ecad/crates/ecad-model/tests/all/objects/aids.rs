@@ -2,8 +2,8 @@
 //! `CreateAid`, `ModifyAid` and `DeleteAid` change them, undo inverts them, a representation may
 //! draw one, and a stored aid in any other form is a read error.
 
-use ecad_model::objects::aid::{Aid, Caption, ContinuationName, LocationBox};
 use ecad_model::geometry::units::Celsius;
+use ecad_model::objects::aid::{Aid, Caption, ContinuationName, LocationBox};
 use ecad_model::{AidId, Author, Form, IdAllocator, Ledger, Op, Page, PageId, Representation, RepresentationId, Role, Subject};
 
 fn arrow(name: &str) -> Aid {

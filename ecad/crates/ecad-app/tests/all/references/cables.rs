@@ -106,7 +106,10 @@ fn the_page_menu_renames_in_a_name_box_and_adds_a_page() {
     {
         // Brief 041: the slot inside the wheel (the Pages tab has a New page button too).
         let c = h.state().shell.tools.wheel.as_ref().map(|w| w.widget.center).expect("the row's wheel");
-        h.get_all_by_label("New page").find(|n| (n.rect().center() - c).length() <= ecad_widgets::tokens::wheel::OUTER_RADIUS).expect("its slot").click();
+        h.get_all_by_label("New page")
+            .find(|n| (n.rect().center() - c).length() <= ecad_widgets::tokens::wheel::OUTER_RADIUS)
+            .expect("its slot")
+            .click();
     }
     h.run_steps(3);
     assert_eq!(h.state().name_box.as_ref().map(|b| b.text.as_str()), Some("2"));

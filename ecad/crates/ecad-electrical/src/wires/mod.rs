@@ -38,13 +38,13 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use ecad_model::{
-    Aid, AidId, ConductorId, DefinitionId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, NetId, Op, PageId, Placement, Primitive, Pt,
-    Representation, RepresentationId, Route, RouteEnd, RouteId, Style, Subject, SymbolInstance, ConnectionPoint, ConnectionPointId, Wire, WireId,
+    Aid, AidId, ConductorId, ConnectionPoint, ConnectionPointId, DefinitionId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, NetId, Op,
+    PageId, Placement, Primitive, Pt, Representation, RepresentationId, Route, RouteEnd, RouteId, Style, Subject, SymbolInstance, Wire, WireId,
 };
 
 use crate::devices::{DerivedText, TextOf};
-use crate::symbols::{self, Starter};
 use crate::styles::text_style::fonts::TextMetrics;
+use crate::symbols::{self, Starter};
 
 /// The reserved layer of conductor labels (derived, plotted), like 009's `ECAD-CABLES`.
 pub const LABEL_LAYER: &str = "ECAD-WIRE-LABELS";
@@ -295,11 +295,14 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
         if look.label_rule == "none" {
             continue;
         }
-        let Some(label) = ecad_model::connectivity::wiring::label_with(doc, *c, look.cross_section.map(|x| x.0), look.colour.map(|x| x.0.to_string())) else {
+        let Some(label) =
+            ecad_model::connectivity::wiring::label_with(doc, *c, look.cross_section.map(|x| x.0), look.colour.map(|x| x.0.to_string()))
+        else {
             continue;
         };
         let target = crate::styles::text_style::TextTarget::conductor(*c, Some(page));
-        if crate::styles::text_style::text_shown(doc, target, crate::styles::text_style::TextKind::WireLabel) == crate::styles::text_style::Shown::Off {
+        if crate::styles::text_style::text_shown(doc, target, crate::styles::text_style::TextKind::WireLabel) == crate::styles::text_style::Shown::Off
+        {
             continue;
         }
         routes_in.push(LabelCandidate { rep: *rid, conductor: *c, net: conn.net_of_conductor(*c), text: label.text.clone(), longest: a.dist(b) });
@@ -338,7 +341,10 @@ pub fn labels_measured(doc: &Document, page: PageId, hidden: &std::collections::
         }
         let w = match &own {
             Some(o) => {
-                let f = o.family.as_ref().map_or_else(|| fonts.clone(), |fam| crate::styles::text_style::fonts::Fonts::for_family_with(doc, fam.clone(), m));
+                let f = o
+                    .family
+                    .as_ref()
+                    .map_or_else(|| fonts.clone(), |fam| crate::styles::text_style::fonts::Fonts::for_family_with(doc, fam.clone(), m));
                 crate::styles::text_style::fonts::width_in(&f, o.style, &label.text, m)
             }
             None => crate::styles::text_style::fonts::width_in(&fonts, style, &label.text, m),
@@ -748,7 +754,8 @@ pub fn plan_tagless(
             d
         }
     };
-    let (id, terminal, item, representation): (AidId, ConnectionPointId, ItemId, RepresentationId) = (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
+    let (id, terminal, item, representation): (AidId, ConnectionPointId, ItemId, RepresentationId) =
+        (ids.fresh(), ids.fresh(), ids.fresh(), ids.fresh());
     ops.push(Op::CreateAid { id, aid });
     ops.push(Op::AddConnectionPoint {
         id: terminal,
@@ -1139,7 +1146,10 @@ pub fn join_sense(doc: &Document, a: RouteId, b: RouteId) -> Result<(), CmdError
         return Err(CmdError::refused(format!("That wire carries {px} and this one {py}; joining them would short them. {JOIN_WAY_OUT}")));
     }
     if ecad_model::connectivity::wiring::net_fixed(x) && ecad_model::connectivity::wiring::net_fixed(y) {
-        let (fx, fy) = (ecad_model::connectivity::wiring::net_number(doc, x).unwrap_or_default(), ecad_model::connectivity::wiring::net_number(doc, y).unwrap_or_default());
+        let (fx, fy) = (
+            ecad_model::connectivity::wiring::net_number(doc, x).unwrap_or_default(),
+            ecad_model::connectivity::wiring::net_number(doc, y).unwrap_or_default(),
+        );
         if fx != fy {
             return Err(CmdError::refused(format!("Both wires have fixed numbers of their own ({fx} and {fy}). {JOIN_WAY_OUT}")));
         }

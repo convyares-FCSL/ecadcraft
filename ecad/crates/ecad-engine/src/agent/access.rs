@@ -23,10 +23,10 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::cables::views::Settings;
 use crate::commands::input::{Command, Typed, typed};
 use crate::commands::{err, on_any_page};
 use crate::project::Project;
-use crate::cables::views::Settings;
 
 /// The preference file's name in the settings folder.
 pub const FILE_NAME: &str = "agent-access.json";

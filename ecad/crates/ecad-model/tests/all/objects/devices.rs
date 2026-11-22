@@ -3,8 +3,8 @@
 
 use ecad_model::connectivity::derive::connection_point_positions;
 use ecad_model::{
-    Author, Color, Definition, DefinitionId, Device, DeviceId, IdAllocator, Item, ItemId, ItemKind, Layer, Ledger, Op, Page, PageId, Placement,
-    Primitive, Pt, Representation, Style, Subject, SymbolInstance, ConnectionPoint, ConnectionPointDef, ConnectionPointId,
+    Author, Color, ConnectionPoint, ConnectionPointDef, ConnectionPointId, Definition, DefinitionId, Device, DeviceId, IdAllocator, Item, ItemId,
+    ItemKind, Layer, Ledger, Op, Page, PageId, Placement, Primitive, Pt, Representation, Style, Subject, SymbolInstance,
 };
 
 struct Fx {
@@ -140,7 +140,10 @@ fn connection_points_must_name_the_components_own_terminals() {
         "other",
         vec![
             Op::CreateDevice { id: other, device: Device::default() },
-            Op::AddConnectionPoint { id: foreign, terminal: ConnectionPoint { owner: other.into(), label: None, key: None, accepts: Default::default() } },
+            Op::AddConnectionPoint {
+                id: foreign,
+                terminal: ConnectionPoint { owner: other.into(), label: None, key: None, accepts: Default::default() },
+            },
         ],
     )
     .unwrap();

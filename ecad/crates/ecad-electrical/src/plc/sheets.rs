@@ -12,9 +12,9 @@
 
 use ecad_model::{Document, PageId};
 
+use crate::pages::generated::rows_per_sheet;
 use crate::plc::overview::{self, Square, Tile, TileKind};
 use crate::plc::{CardData, iolist, kept::Plc};
-use crate::pages::generated::rows_per_sheet;
 
 /// A sheet's drawing area in paper millimetres, and the A3 column scale.
 #[derive(Debug, Clone, Copy, PartialEq)]

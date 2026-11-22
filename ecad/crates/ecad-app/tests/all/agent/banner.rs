@@ -224,8 +224,10 @@ fn screenshots_of_the_banner_history_and_outline() {
     let mut t = App::new(None).unwrap();
     let port = crate::agent::bridge::free_port();
     t.agent.control_flag(port);
-    let mut h =
-        Harness::builder().with_size(eframe::egui::vec2(1920.0, 1080.0)).renderer(crate::canvas::mouse_acceptance::Collect(deltas.clone())).build_ui_state(
+    let mut h = Harness::builder()
+        .with_size(eframe::egui::vec2(1920.0, 1080.0))
+        .renderer(crate::canvas::mouse_acceptance::Collect(deltas.clone()))
+        .build_ui_state(
             |ui, t: &mut App| {
                 t.logic(&ui.ctx().clone());
                 t.ui(ui);

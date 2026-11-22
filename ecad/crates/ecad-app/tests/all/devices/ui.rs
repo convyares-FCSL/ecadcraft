@@ -7,14 +7,14 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use {ecad_app::library::search, ecad_app::commands::tools};
 use ecad_model::{DeviceId, Subject};
 use eframe::egui::{self, Event};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
+use {ecad_app::commands::tools, ecad_app::library::search};
 
-use crate::common::pointer_to;
 use crate::canvas::mouse_acceptance::{Deltas, button, doc, harness_with, ok, prompt, screen, shot, type_enter};
+use crate::common::pointer_to;
 
 type H = Harness<'static, ecad_app::App>;
 

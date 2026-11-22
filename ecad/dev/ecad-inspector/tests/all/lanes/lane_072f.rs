@@ -4,8 +4,8 @@
 use std::time::Duration;
 
 use ecad_inspector::source::{FileSource, Source, VerifyState};
-use ecad_model::objects::aid::{Caption, ContinuationName};
 use ecad_model::geometry::units::Celsius;
+use ecad_model::objects::aid::{Caption, ContinuationName};
 use ecad_model::{Aid, AidId, Author, IdAllocator, LocationBox, Op};
 
 use crate::common::*;
@@ -51,7 +51,7 @@ fn aids_and_their_ops_are_shown_raw_and_readable() {
 /// Lane F F1b: a connection point says what owns it, a device or a drawing aid, in both views.
 #[test]
 fn a_points_owner_is_shown_raw_and_readable() {
-    use ecad_model::{Device, DeviceId, ConnectionPoint, ConnectionPointId};
+    use ecad_model::{ConnectionPoint, ConnectionPointId, Device, DeviceId};
     let dir = TempDir::new("072f-owner");
     let mut l = history();
     let mut ids = IdAllocator::seeded(0x72f1);
@@ -93,7 +93,9 @@ fn a_points_owner_is_shown_raw_and_readable() {
 /// `ModifyAid`; both read in the Raw and Readable views.
 #[test]
 fn a_continuation_aid_and_its_rename_are_shown_raw_and_readable() {
-    use ecad_model::{Form, Item, ItemId, ItemKind, Primitive, Pt, Representation, RepresentationId, Style, Subject, ConnectionPoint, ConnectionPointId};
+    use ecad_model::{
+        ConnectionPoint, ConnectionPointId, Form, Item, ItemId, ItemKind, Primitive, Pt, Representation, RepresentationId, Style, Subject,
+    };
     let dir = TempDir::new("072f-rename");
     let mut l = history();
     let mut ids = IdAllocator::seeded(0x72f2);

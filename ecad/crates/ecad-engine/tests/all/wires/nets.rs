@@ -2,9 +2,9 @@
 //! out (`join: false`), `joinwires`, a cable continued across pages, and the wire label rule.
 //! Driven through the commands' JSON forms.
 
-use {ecad_electrical::checks::Fix, ecad_electrical::checks::Kind};
 use ecad_model::{PageId, Pt, RouteEnd, RouteId, WireId};
 use serde_json::{Value, json};
+use {ecad_electrical::checks::Fix, ecad_electrical::checks::Kind};
 
 use crate::common::{H, id, pts};
 

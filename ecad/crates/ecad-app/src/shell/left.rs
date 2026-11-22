@@ -9,10 +9,10 @@
 use ecad_widgets::tokens::{Icon, size, space};
 use eframe::egui::{self, Color32, Rect, pos2, vec2};
 
-use crate::shell::state::BookView;
-use crate::shell::{LeftTab, Slots};
 use crate::App;
 use crate::pages::project_panel::Tab;
+use crate::shell::state::BookView;
+use crate::shell::{LeftTab, Slots};
 
 /// The colours the moved panels draw with, from the shell's tokens (they used CADCraft's theme
 /// before brief 038). Named as the CADCraft tokens they replace, so their code reads the same.
@@ -155,7 +155,14 @@ fn panel(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
     ui.painter().vline(rect.right() - 0.5, rect.y_range(), egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)));
     let header = Rect::from_min_size(rect.min, vec2(rect.width(), size::PANEL_HEADER));
     let tab = t.shell.state.left.tab;
-    crate::shell::bar::text_at(ui, header.left() + space::L, header.center().y, tab.label(), ecad_widgets::tokens::ui_type::TITLE, ecad_widgets::color(s.text));
+    crate::shell::bar::text_at(
+        ui,
+        header.left() + space::L,
+        header.center().y,
+        tab.label(),
+        ecad_widgets::tokens::ui_type::TITLE,
+        ecad_widgets::color(s.text),
+    );
     let y = header.center().y;
     let mut x = header.right() - space::S - HEAD_BTN;
     let at = |x: f32| Rect::from_center_size(pos2(x + HEAD_BTN / 2.0, y), vec2(HEAD_BTN, HEAD_BTN));
@@ -171,7 +178,10 @@ fn panel(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
         // Brief 054 (design 054 §4.4): Renumber pages, each folder from its start number.
         x -= HEAD_BTN + space::XS;
         let can = t.project_open() && !t.header().read_only;
-        if crate::shell::bar::icon_button(ui, at(x), Icon::Number, RENUMBER, 14.0, can).on_hover_text(crate::pages::project_panel::RENUMBER_PAGES).clicked() {
+        if crate::shell::bar::icon_button(ui, at(x), Icon::Number, RENUMBER, 14.0, can)
+            .on_hover_text(crate::pages::project_panel::RENUMBER_PAGES)
+            .clicked()
+        {
             t.panel_action(crate::pages::project_panel::Action::RenumberPages(None));
         }
         let view = t.shell.state.left.book_view;

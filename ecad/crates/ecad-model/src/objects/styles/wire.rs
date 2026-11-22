@@ -13,8 +13,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::geometry::colour::ConductorColour;
-use crate::naming::text::Text;
 use crate::geometry::units::{Amps, Celsius, Metres, Mm};
+use crate::naming::text::Text;
 use crate::objects::wire::{Colours, WireSize};
 
 crate::word_enum! {

@@ -17,8 +17,8 @@ use ecad_model::objects::plc::{
     SystemModule,
 };
 
-use crate::plc::rack::CardType;
 use crate::defaults::{self, Scope};
+use crate::plc::rack::CardType;
 use crate::symbols::StarterKey as K;
 
 /// The built-in count of a new module's channels, before the project's registry value.

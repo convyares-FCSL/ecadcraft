@@ -10,8 +10,10 @@ use cadcraft_engine::Session;
 use common::{H, id};
 use ecad_engine::{Persistence, ProjectHandle};
 use ecad_model::document::sheet::Grid;
-use {ecad_model::Author, ecad_model::CableId, ecad_model::DeviceId, ecad_model::ObjectRef, ecad_model::Op, ecad_model::PageId, ecad_model::naming::tag};
 use serde_json::{Value, json};
+use {
+    ecad_model::Author, ecad_model::CableId, ecad_model::DeviceId, ecad_model::ObjectRef, ecad_model::Op, ecad_model::PageId, ecad_model::naming::tag,
+};
 
 fn cell(h: &mut H, page: PageId, col: u32, row: u32) -> [f64; 2] {
     h.p(|p| {

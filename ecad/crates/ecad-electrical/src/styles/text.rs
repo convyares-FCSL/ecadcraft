@@ -8,13 +8,13 @@
 //! The wire label's height stays where 031 put it, `settings.wiring.label_height`, read as the
 //! project field of the `wire_label` style (`project_field`).
 
-use ecad_model::objects::styles::text::{Font, StyleColour, TextStyle};
 use ecad_model::geometry::units::Mm;
+use ecad_model::objects::styles::text::{Font, StyleColour, TextStyle};
 use ecad_model::{Document, StyleRef, Word};
 
-use crate::styles::{Builtin, Catalogue, Field};
 use crate::CmdError;
 use crate::defaults::{Kind, Slot, Value};
+use crate::styles::{Builtin, Catalogue, Field};
 
 /// A font field's value meaning "the project font" (`text.font`).
 pub const PROJECT_FONT: &str = "project";

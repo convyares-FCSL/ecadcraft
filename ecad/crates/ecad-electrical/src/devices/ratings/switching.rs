@@ -11,9 +11,9 @@
 //! This module excludes the protection reader (its parent) and the contacts a device offers.
 #![deny(clippy::wildcard_enum_match_arm)]
 
+use ecad_model::geometry::units::{Amps, Current, RatedVoltage, Volts, Watts};
 use ecad_model::objects::devices::switching::{MAX_AC3_AMPS, MAX_AC3_WATTS, MAX_CONTROL_VOLTS, MAX_CONTROL_WATTS};
 use ecad_model::objects::devices::{Control, Operator, OperatorKind, Switching};
-use ecad_model::geometry::units::{Amps, Current, RatedVoltage, Volts, Watts};
 
 use crate::devices::ratings::{MAX_CHARS, Read};
 

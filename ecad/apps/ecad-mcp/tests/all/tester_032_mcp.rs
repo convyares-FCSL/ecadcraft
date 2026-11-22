@@ -21,7 +21,9 @@ fn place_connection_point(c: &mut Client, at: (f64, f64), tag: &str) -> (f64, f6
     let pos = d
         .page_order
         .iter()
-        .find_map(|pg| ecad_model::connectivity::derive::connection_point_positions(&d, *pg).into_iter().find(|(x, _, _)| *x == tid).map(|(_, _, p)| p))
+        .find_map(|pg| {
+            ecad_model::connectivity::derive::connection_point_positions(&d, *pg).into_iter().find(|(x, _, _)| *x == tid).map(|(_, _, p)| p)
+        })
         .unwrap();
     (pos.x, pos.y)
 }

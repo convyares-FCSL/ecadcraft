@@ -714,7 +714,8 @@ impl HistoryPanel {
         let bottom = ui.cursor().top();
         if bottom > top {
             let x = ui.max_rect().left() + 10.0;
-            ui.painter().line_segment([pos2(x, top), pos2(x, bottom)], Stroke::new(2.0, ecad_widgets::color(ecad_widgets::SHELL.accent).gamma_multiply(0.7)));
+            ui.painter()
+                .line_segment([pos2(x, top), pos2(x, bottom)], Stroke::new(2.0, ecad_widgets::color(ecad_widgets::SHELL.accent).gamma_multiply(0.7)));
         }
         // Show the rows already read first; past them, read the next page.
         let more_to_read = self.steps.len() as u64 >= STEPS_PAGE * (self.steps_more + 1);
@@ -722,7 +723,8 @@ impl HistoryPanel {
             let text = if hidden > 0 { format!("Show {hidden} earlier change{}", if hidden == 1 { "" } else { "s" }) } else { EARLIER.to_string() };
             ui.horizontal(|ui| {
                 ui.add_space(20.0);
-                let b = ui.add(egui::Label::new(RichText::new(text).color(ecad_widgets::color(ecad_widgets::SHELL.accent_text))).sense(Sense::click()));
+                let b =
+                    ui.add(egui::Label::new(RichText::new(text).color(ecad_widgets::color(ecad_widgets::SHELL.accent_text))).sense(Sense::click()));
                 b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, EARLIER));
                 if b.clicked() {
                     if hidden > 0 {
@@ -910,7 +912,8 @@ impl HistoryPanel {
             {
                 out.push(Action::History(Do::AskRestore(sel.params())));
             }
-            if closed && writable && ui.add(ecad_widgets::prim::Button::new("Reopen branch").small()).accessible_name("ecad.history.reopen").clicked() {
+            if closed && writable && ui.add(ecad_widgets::prim::Button::new("Reopen branch").small()).accessible_name("ecad.history.reopen").clicked()
+            {
                 let name = branch_row.as_ref().map(|b| b.name.clone()).unwrap_or_default();
                 match self.free_name(sel.branch, &name) {
                     // Another open branch has its name: offer the next free one (never a dead end).

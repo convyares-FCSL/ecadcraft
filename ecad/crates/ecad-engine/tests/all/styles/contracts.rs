@@ -8,10 +8,10 @@ use cadcraft_engine::doc::EntityKind;
 use cadcraft_engine::doc::color::Color;
 use ecad_electrical::defaults::{self, Scope, Source};
 use ecad_electrical::styles;
-use {ecad_electrical::styles::text_style::TextKind, ecad_electrical::styles::text_style::text_style};
 use ecad_model::objects::styles::{StyleLayer, StyleRecord, StyleRef};
 use ecad_model::{DeviceId, ObjectRef, Op, PageId};
 use serde_json::json;
+use {ecad_electrical::styles::text_style::TextKind, ecad_electrical::styles::text_style::text_style};
 
 const SEED: u64 = 50;
 
@@ -254,7 +254,10 @@ fn a_style_change_marks_only_the_pages_of_its_users() {
         before: None,
         after: Some(StyleRecord::new(
             "",
-            ecad_model::objects::styles::StyleBody::Text(ecad_model::objects::styles::TextStyle { height: Some(ecad_model::geometry::units::Mm(4.0)), ..Default::default() }),
+            ecad_model::objects::styles::StyleBody::Text(ecad_model::objects::styles::TextStyle {
+                height: Some(ecad_model::geometry::units::Mm(4.0)),
+                ..Default::default()
+            }),
         )),
     };
     // Nobody uses it: no page.

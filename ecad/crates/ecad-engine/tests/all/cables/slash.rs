@@ -12,9 +12,9 @@ use cadcraft_engine::doc::color::Color as CColor;
 use cadcraft_engine::ext::MarkShape;
 use cadcraft_engine::geom::Vec2;
 use common::{H, id};
+use ecad_electrical::cables::slash::MAX_CABLE_MEMBERS;
 use ecad_engine::dev::debug::{ObjectId, used_by};
 use ecad_engine::interact::{hover_lines, overlay_marks};
-use ecad_electrical::cables::slash::MAX_CABLE_MEMBERS;
 use ecad_model::{
     Author, CableId, Color, CorePosition, Form, ItemId, ItemKind, Op, PageId, Primitive, Pt, RepresentationId, Style, Subject, Transaction, WireId,
 };

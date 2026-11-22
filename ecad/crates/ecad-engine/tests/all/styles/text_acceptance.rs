@@ -16,7 +16,7 @@ use cadcraft_engine::Input;
 use cadcraft_engine::doc::{Common, EntityKind, HAlign, Lineweight, Text, VAlign};
 use cadcraft_engine::geom::Vec2;
 use ecad_engine::Persistence;
-use ecad_model::{Author, DeviceId, Document, ItemId, ObjectRef, Op, PageId, RepresentationId, Subject, ConnectionPointId};
+use ecad_model::{Author, ConnectionPointId, DeviceId, Document, ItemId, ObjectRef, Op, PageId, RepresentationId, Subject};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, pts};
@@ -205,7 +205,11 @@ fn strip_at(h: &mut H, xs: &[f64], y: f64, strip: Option<DeviceId>) -> (DeviceId
 /// The symbol representation of strip terminal `t` on `page`.
 fn rep_of_connection_point(h: &mut H, page: PageId, t: ConnectionPointId) -> RepresentationId {
     let doc = h.doc();
-    ecad_model::connectivity::derive::connection_point_positions(&doc, page).into_iter().find(|(x, _, _)| *x == t).map(|(_, r, _)| r).expect("terminal drawn")
+    ecad_model::connectivity::derive::connection_point_positions(&doc, page)
+        .into_iter()
+        .find(|(x, _, _)| *x == t)
+        .map(|(_, r, _)| r)
+        .expect("terminal drawn")
 }
 
 fn click(h: &mut H, at: (f64, f64)) -> cadcraft_engine::Result<()> {

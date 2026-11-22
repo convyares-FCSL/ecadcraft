@@ -9,12 +9,12 @@
 //! Tokens (design 051 §8, `ecad.plc.*` used generically here): tile width [`TILE_WIDTH`], mark
 //! [`MARK`], gap [`MARK_GAP`].
 
-use {crate::tokens::line, crate::tokens::radius, crate::tokens::space, crate::tokens::ui_type};
 use egui::{Id, Rect, Role, Sense, Stroke, StrokeKind, Ui, WidgetInfo, pos2, vec2};
+use {crate::tokens::line, crate::tokens::radius, crate::tokens::space, crate::tokens::ui_type};
 
-use crate::table::cells;
 use crate::color;
 use crate::style::corner;
+use crate::table::cells;
 
 /// `ecad.plc.tile_width`: a tile's width, px (UI rev 3, board 2.03: a card per slot at the
 /// board's scale; was 112).

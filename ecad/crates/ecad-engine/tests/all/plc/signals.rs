@@ -3,8 +3,8 @@
 //! table, Import an I/O list, Export tags, the card type, the rack page in the book, Checks, and
 //! hostile files.
 
-use ecad_electrical::reports::kept::ReportModels;
 use ecad_electrical::plc::tagtable::{self, Caps, TagFormat};
+use ecad_electrical::reports::kept::ReportModels;
 use ecad_model::DeviceId;
 use serde_json::{Value, json};
 

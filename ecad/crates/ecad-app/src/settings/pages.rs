@@ -156,7 +156,8 @@ fn head(t: &mut App) -> Option<u64> {
 /// for network, a tree for single-line, plate and door for panel, a ruled table for report. An own
 /// type takes the glyph of what it holds.
 pub fn thumbnail(p: &egui::Painter, r: Rect, id: &StyleRef, holds: Holds) {
-    let (paper, ink) = (ecad_widgets::color(ecad_drawing_style::sheet::THUMBNAIL_PAPER), ecad_widgets::color(ecad_drawing_style::sheet::THUMBNAIL_INK));
+    let (paper, ink) =
+        (ecad_widgets::color(ecad_drawing_style::sheet::THUMBNAIL_PAPER), ecad_widgets::color(ecad_drawing_style::sheet::THUMBNAIL_INK));
     p.rect_filled(r, 2.0, paper);
     let st = egui::Stroke::new(1.0, ink);
     let i = r.shrink2(vec2(r.width() * 0.12, r.height() * 0.16));
@@ -664,7 +665,8 @@ fn panel(t: &mut App, ui: &mut egui::Ui, snap: &Snapshot, row: &TypeRow, writabl
                         *v = Some((row.id.clone(), row.name.clone()));
                     }
                     if let Some((_, text)) = v {
-                        let r = ui.add_enabled_ui(writable, |ui| ecad_widgets::control::TextEntry::new(text, "ecad.settings.pages.name").show(ui)).inner;
+                        let r =
+                            ui.add_enabled_ui(writable, |ui| ecad_widgets::control::TextEntry::new(text, "ecad.settings.pages.name").show(ui)).inner;
                         if r.lost_focus() && text.trim() != row.name && !text.trim().is_empty() {
                             todo.push(Do::Rename(row.id.clone(), text.trim().to_string()));
                         }

@@ -14,8 +14,8 @@ use ecad_model::document::effect::{AreaSet, Effect};
 use ecad_model::document::view::{DerivedView, NoteCx, Outcome, PageSet, Phase, ViewScope};
 use ecad_model::{Document, ObjectRef};
 
-use crate::views::Inputs;
 use crate::connectors::Index;
+use crate::views::Inputs;
 
 /// The connector index view.
 #[derive(Debug, Default)]

@@ -330,7 +330,13 @@ pub fn paint_symbol(p: &egui::Painter, rect: Rect, d: &Definition, ink: Color32,
     if let Some((ring, slot)) = marks {
         for t in &d.terminals {
             p.circle_stroke(at(t.at), 3.5, Stroke::new(1.25, ring));
-            p.text(at(t.at) + vec2(5.0, -5.0), Align2::LEFT_BOTTOM, &t.key, ecad_widgets::style::ui_font(ecad_widgets::tokens::ui_type::MICRO.size), ring);
+            p.text(
+                at(t.at) + vec2(5.0, -5.0),
+                Align2::LEFT_BOTTOM,
+                &t.key,
+                ecad_widgets::style::ui_font(ecad_widgets::tokens::ui_type::MICRO.size),
+                ring,
+            );
         }
         for sl in &d.texts {
             p.circle_filled(at(sl.at), 2.0, slot);

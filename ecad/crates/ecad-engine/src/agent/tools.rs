@@ -1,7 +1,7 @@
 //! The ECAD tools: `ecad_project`, `ecad_history` and `ecad_inspect` (read), and `save` (write).
 
-use {ecad_model::Author, ecad_model::connectivity::derive};
 use serde_json::{Map, Value, json};
+use {ecad_model::Author, ecad_model::connectivity::derive};
 
 use crate::ProjectHandle;
 use crate::cad::Session;

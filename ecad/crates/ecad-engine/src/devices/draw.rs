@@ -6,9 +6,12 @@ use cadcraft_engine::doc::{Common, Entity, EntityKind, HAlign as EHAlign, Handle
 use cadcraft_engine::geom::Vec3;
 use ecad_model::{DeviceId, Document, PageId, Pt, RepresentationId};
 
-use {ecad_electrical::devices::DerivedText, ecad_electrical::devices::PageText, ecad_electrical::devices::TAG_LAYER, ecad_electrical::devices::TextOf, ecad_electrical::devices::kind_of, ecad_electrical::devices::prefix_for};
-use crate::styles::draw::{EngineMetrics, DrawApply as _};
+use crate::styles::draw::{DrawApply as _, EngineMetrics};
 use ecad_electrical::symbols::Starter;
+use {
+    ecad_electrical::devices::DerivedText, ecad_electrical::devices::PageText, ecad_electrical::devices::TAG_LAYER, ecad_electrical::devices::TextOf,
+    ecad_electrical::devices::kind_of, ecad_electrical::devices::prefix_for,
+};
 
 /// [`all_texts_on_page`], reading PLC addresses from the kept model `plc` when there is one
 /// (brief 045, review of #84, 3); measured with CADCraft's fonts
@@ -53,7 +56,8 @@ pub fn text_entity(look: &crate::styles::draw::Look, t: &DerivedText, handle: Ha
     match &t.own {
         // Brief 050a: the device's own text style (its height is already the text's).
         Some(s) => look.apply_own(&mut e, kind_of(t.of), s),
-        None => look.apply(&mut e, kind_of(t.of))}
+        None => look.apply(&mut e, kind_of(t.of)),
+    }
     // Brief 045 (design 045 §7.1): a channel description reads upwards under its cell.
     if let (TextOf::ChannelText { rotated: true }, EntityKind::Text(x)) = (t.of, &mut e.kind) {
         x.rotation = std::f64::consts::FRAC_PI_2;
@@ -81,7 +85,9 @@ pub fn text_entity_with(value: &str, at: Pt, height: f64, halign: EHAlign, valig
             oblique: 0.0,
             style: ecad_electrical::styles::text_style::PLACEHOLDER_STYLE.into(),
             halign,
-            valign})}
+            valign,
+        }),
+    }
 }
 
 /// The tag the next new device of symbol `s` would get in project `p`, without using it up (for

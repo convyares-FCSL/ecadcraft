@@ -20,9 +20,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::document::doc::{Document, Properties, Wire};
-use crate::naming::id::{FolderId, PageId};
 use crate::document::invariant::Touched;
 use crate::document::op::{ObjectRef, Op};
+use crate::naming::id::{FolderId, PageId};
 use crate::objects::styles::{StyleCatalogue, StyleCatalogues, StyleLayer, StyleRef};
 
 /// `SetProperty` ops turning `a` into `b` on `object`, for the keys `keep` accepts.

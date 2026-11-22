@@ -12,10 +12,12 @@ use ecad_model::geometry::units::{Degrees, Radians};
 use ecad_model::{DeviceId, Placement, Subject};
 use serde_json::{Value, json};
 
-use crate::properties::forms::{R, Safe, commit, other, paper_guard, safely};
-use crate::interact::{OUT_OF_RANGE, CONNECTION_POINT_ACI, CONNECTION_POINT_RING_PX, can_start, in_range, pick, pixel, preview_entity, pt, read, ring_kind};
-use {ecad_electrical::devices::TextOf};
+use crate::interact::{
+    CONNECTION_POINT_ACI, CONNECTION_POINT_RING_PX, OUT_OF_RANGE, can_start, in_range, pick, pixel, preview_entity, pt, read, ring_kind,
+};
 use crate::project::Mapped;
+use crate::properties::forms::{R, Safe, commit, other, paper_guard, safely};
+use ecad_electrical::devices::TextOf;
 use ecad_electrical::symbols::{self, Starter};
 
 /// A prompt that takes a typed text or a click.
@@ -39,7 +41,8 @@ fn yes(i: &Input) -> Option<bool> {
                 None
             }
         }
-        _ => None}
+        _ => None,
+    }
 }
 
 // ---------------------------------------------------------------- Place Symbol (§5.3)
@@ -62,7 +65,8 @@ pub(crate) fn place(s: &Session) -> R<Box<dyn Interactive>> {
         last: None,
         rack: None,
         slot: None,
-        project: None})))
+        project: None,
+    })))
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -84,7 +88,8 @@ enum Stage {
     /// Brief 045 (design 045 §2.4): which rack a new card goes in.
     Rack,
     /// Which slot of that rack.
-    Slot}
+    Slot,
+}
 
 struct Place {
     stage: Stage,
@@ -105,7 +110,8 @@ struct Place {
     slot: Option<u32>,
     /// Brief 048: a project symbol typed by its key (its newest version), placed instead of a
     /// starter: `place {symbol: key}` resolves it the same way.
-    project: Option<ProjectPick>}
+    project: Option<ProjectPick>,
+}
 
 /// Why a project symbol is not added to a device by hand (its `join` default says how it joins).
 const PROJECT_JOINS: &str = "A project symbol joins devices as its own Join setting says; place it as a new device.";
@@ -115,7 +121,8 @@ const PROJECT_JOINS: &str = "A project symbol joins devices as its own Join sett
 struct ProjectPick {
     key: String,
     name: String,
-    def: ecad_model::Definition}
+    def: ecad_model::Definition,
+}
 
 impl Place {
     fn symbol(&self) -> &'static Starter {
@@ -132,7 +139,8 @@ impl Place {
     fn definition(&self) -> Option<&ecad_model::Definition> {
         match &self.project {
             Some(p) => Some(&p.def),
-            None => self.symbol().definition().ok()}
+            None => self.symbol().definition().ok(),
+        }
     }
 
     /// Brief 045 (design 045 §2.4): whether the next placement is a new card that still needs its
@@ -161,11 +169,13 @@ impl Place {
                 let slot = self.slot.or_else(|| ecad_electrical::plc::rack::next_free_slot(doc, r, None));
                 Ok(match slot {
                     Some(n) => format!(" in {} slot {n}", ecad_electrical::devices::tag_words(doc, r)),
-                    None => format!(" in {}", ecad_electrical::devices::tag_words(doc, r))})
+                    None => format!(" in {}", ecad_electrical::devices::tag_words(doc, r)),
+                })
             })
             .unwrap_or_default(),
             Some(None) => " in no rack".into(),
-            None => String::new()}
+            None => String::new(),
+        }
     }
 
     /// Go on to the insertion point, asking Rack and Slot first for a new card.
@@ -180,7 +190,8 @@ impl Place {
             let last = self.last.or_else(|| p.last_placed.as_ref().map(|(_, c)| *c));
             let of_last = last.and_then(|c| match ecad_electrical::plc::rack::rack_ref(doc, c) {
                 ecad_electrical::plc::rack::RackRef::Rack(r) => Some(r),
-                _ => None});
+                _ => None,
+            });
             Ok(of_last.or_else(|| ecad_electrical::plc::rack::default_rack(doc, None).ok()))
         })
         .ok()
@@ -209,7 +220,8 @@ impl Place {
                 None => {
                     let t = match &self.tag {
                         Some(t) => t.clone(),
-                        None => p.tag_high.peek(doc, &ecad_electrical::devices::prefix_for(doc, sym))?};
+                        None => p.tag_high.peek(doc, &ecad_electrical::devices::prefix_for(doc, sym))?,
+                    };
                     Ok((format!("new device {t}"), t, sym.labels()))
                 }
             }
@@ -247,7 +259,8 @@ impl Place {
         }
         let found = match symbols::by_key(t) {
             Some(exact) => vec![exact],
-            None => symbols::search(t)};
+            None => symbols::search(t),
+        };
         match found.as_slice() {
             [one] => {
                 self.symbol = Some(one);
@@ -258,7 +271,8 @@ impl Place {
                     self.stage = Stage::DeviceSymbol(c);
                     Ok(Step::Continue)
                 }
-                None => Err(other(format!("No symbol \"{t}\". Type List to see them.")))},
+                None => Err(other(format!("No symbol \"{t}\". Type List to see them."))),
+            },
             many => {
                 let keys: Vec<&str> = many.iter().map(|s| ecad_model::Word::word(s.key)).collect();
                 s.echo(format!("\"{t}\" matches {} symbols: {}.", many.len(), keys.join(", ")));
@@ -351,7 +365,8 @@ impl Place {
             Stage::Symbol | Stage::DeviceSymbol(_) => {
                 let device = match &self.stage {
                     Stage::DeviceSymbol(c) => Some(*c),
-                    _ => None};
+                    _ => None,
+                };
                 match i {
                     Input::Keyword(k) if k == "List" => {
                         Self::list(s);
@@ -383,7 +398,8 @@ impl Place {
                                     return Err(other(PROJECT_JOINS));
                                 }
                                 read(s, |p, _| {
-                                    ecad_electrical::devices::join_labels(p.ledger.document(), c, self.symbol(), &Default::default()).map_err(String::from)
+                                    ecad_electrical::devices::join_labels(p.ledger.document(), c, self.symbol(), &Default::default())
+                                        .map_err(String::from)
                                 })
                                 .map_err(other)?;
                                 self.join = Some(c);
@@ -398,7 +414,8 @@ impl Place {
                         self.go_to_point(s);
                         self.place_at(s, p)
                     }
-                    _ => Ok(Step::Continue)}
+                    _ => Ok(Step::Continue),
+                }
             }
             Stage::Point => match i {
                 Input::Keyword(k) if k == "Rotate" => {
@@ -427,7 +444,8 @@ impl Place {
                 Input::Point(p) => self.place_at(s, p),
                 Input::Enter => Ok(Step::Done),
                 Input::Text(t) => Err(crate::properties::forms::not_a_point(&t)),
-                _ => Ok(Step::Continue)},
+                _ => Ok(Step::Continue),
+            },
             Stage::Device => match i {
                 Input::Keyword(k) if k == "New" => {
                     self.join = None;
@@ -458,10 +476,12 @@ impl Place {
                             self.join = Some(c);
                             self.go_to_point(s);
                         }
-                        None => self.stage = Stage::ConfirmNew(normal)}
+                        None => self.stage = Stage::ConfirmNew(normal),
+                    }
                     Ok(Step::Continue)
                 }
-                _ => Ok(Step::Continue)},
+                _ => Ok(Step::Continue),
+            },
             Stage::Tag => match i {
                 Input::Enter => {
                     self.go_to_point(s);
@@ -484,15 +504,17 @@ impl Place {
                     }
                     Ok(Step::Continue)
                 }
-                _ => Ok(Step::Continue)},
+                _ => Ok(Step::Continue),
+            },
             Stage::ConfirmJoin(c, _) => match (yes(&i), &i) {
                 (Some(true), _) | (None, Input::Enter) => {
-                    read(s, |p, _| ecad_electrical::devices::join_labels(p.ledger.document(), c, self.symbol(), &Default::default()).map_err(String::from)).map_err(
-                        |e| {
-                            self.stage = Stage::Tag;
-                            other(e)
-                        },
-                    )?;
+                    read(s, |p, _| {
+                        ecad_electrical::devices::join_labels(p.ledger.document(), c, self.symbol(), &Default::default()).map_err(String::from)
+                    })
+                    .map_err(|e| {
+                        self.stage = Stage::Tag;
+                        other(e)
+                    })?;
                     self.join = Some(c);
                     self.tag = None;
                     self.go_to_point(s);
@@ -502,7 +524,8 @@ impl Place {
                     self.stage = Stage::Tag;
                     Ok(Step::Continue)
                 }
-                _ => Ok(Step::Continue)},
+                _ => Ok(Step::Continue),
+            },
             Stage::ConfirmNew(t) => match (yes(&i), &i) {
                 (Some(true), _) | (None, Input::Enter) => {
                     self.tag = Some(t);
@@ -514,16 +537,19 @@ impl Place {
                     self.stage = Stage::Device;
                     Ok(Step::Continue)
                 }
-                _ => Ok(Step::Continue)},
+                _ => Ok(Step::Continue),
+            },
             Stage::Rack => {
                 let answer = match i {
                     Input::Enter => Some(self.default_rack(s)),
                     Input::Keyword(k) | Input::Text(k) if k.trim().eq_ignore_ascii_case("none") => Some(None),
                     Input::Keyword(k) | Input::Text(k) => {
-                        let r = read(s, |p, _| ecad_electrical::plc::rack::rack_named(p.ledger.document(), &k).map_err(String::from)).map_err(other)?;
+                        let r =
+                            read(s, |p, _| ecad_electrical::plc::rack::rack_named(p.ledger.document(), &k).map_err(String::from)).map_err(other)?;
                         Some(Some(r))
                     }
-                    _ => None};
+                    _ => None,
+                };
                 if let Some(a) = answer {
                     self.rack = Some(a);
                     self.slot = None;
@@ -535,15 +561,18 @@ impl Place {
                 let typed = match i {
                     Input::Enter => None,
                     Input::Text(t) | Input::Keyword(t) => Some(t),
-                    _ => return Ok(Step::Continue)};
+                    _ => return Ok(Step::Continue),
+                };
                 let Some(Some(r)) = self.rack else {
                     self.stage = Stage::Point;
                     return Ok(Step::Continue);
                 };
                 let rack = r.hex();
                 let slot = typed.as_deref().map(str::trim);
-                let at = read(s, |p, _| ecad_electrical::plc::rack::place_target(p.ledger.document(), Some(Some(&rack)), slot, None).map_err(String::from))
-                    .map_err(other)?;
+                let at = read(s, |p, _| {
+                    ecad_electrical::plc::rack::place_target(p.ledger.document(), Some(Some(&rack)), slot, None).map_err(String::from)
+                })
+                .map_err(other)?;
                 self.slot = at.map(|(_, n)| n);
                 self.stage = Stage::Point;
                 Ok(Step::Continue)
@@ -567,7 +596,8 @@ impl Interactive for Place {
                 let rot = format!("rotation {}{}", self.rotation, if self.mirror { ", mirrored" } else { "" });
                 let what = match self.outcome(s) {
                     Some((w, _, _)) => format!("{w}{}, {rot}", self.slot_words(s)),
-                    None => rot};
+                    None => rot,
+                };
                 let keywords: &[&str] =
                     if self.is_card() { &["Rotate", "Mirror", "Device", "Tag", "Rack"] } else { &["Rotate", "Mirror", "Device", "Tag"] };
                 prompt(format!("Specify insertion point ({what})"), Accept::POINT, keywords, None)
@@ -611,7 +641,8 @@ impl Interactive for Place {
             Stage::Slot => {
                 let next = match self.rack {
                     Some(Some(r)) => read(s, |p, _| Ok(ecad_electrical::plc::rack::next_free_slot(p.ledger.document(), r, None))).ok().flatten(),
-                    _ => None};
+                    _ => None,
+                };
                 prompt("Slot", Accept::TEXT, &[], next.map(|n| n.to_string()))
             }
         }
@@ -666,10 +697,12 @@ fn device_of(s: &Session, h: cadcraft_engine::doc::Handle) -> Result<DeviceId, S
         let rep = match map.get(h) {
             Some(Mapped::Item(i)) => doc.representation_of_item(i).map(|(_, r)| r),
             Some(Mapped::Tag(r) | Mapped::Marker(r, _)) => doc.representations.get(&r),
-            _ => None};
+            _ => None,
+        };
         match rep.map(|r| r.subject) {
             Some(Subject::Device(c)) => Ok(c),
-            _ => Err(NOT_A_DEVICE.into())}
+            _ => Err(NOT_A_DEVICE.into()),
+        }
     })
 }
 
@@ -677,9 +710,11 @@ fn picked(s: &Session, i: &Input) -> Option<Result<DeviceId, String>> {
     match i {
         Input::Point(p) => Some(match pick(s, *p) {
             Some(h) => device_of(s, h),
-            None => Err(NOTHING_THERE.into())}),
+            None => Err(NOTHING_THERE.into()),
+        }),
         Input::Pick(hs) => Some(hs.first().map_or_else(|| Err(NOTHING_THERE.into()), |h| device_of(s, *h))),
-        _ => None}
+        _ => None,
+    }
 }
 
 fn from_selection(s: &Session) -> Option<DeviceId> {
@@ -702,7 +737,8 @@ struct Props {
     /// The property being changed.
     key: Option<&'static str>,
     /// A typed tag another device holds: (that device, the tag), waiting for Yes / Choose another.
-    merge: Option<(DeviceId, String)>}
+    merge: Option<(DeviceId, String)>,
+}
 
 const KEYWORDS: [(&str, &str); 6] =
     [("Tag", "tag"), ("Description", "description"), ("Maker", "maker"), ("Part", "part_number"), ("Location", "location"), ("Function", "function")];
@@ -712,7 +748,10 @@ impl Props {
         let lines = read(s, |p, _| {
             let doc = p.ledger.document();
             let d = doc.devices.get(&c).cloned().unwrap_or_default();
-            Ok(ecad_electrical::devices::PROPERTIES.iter().map(|(k, label)| format!("{label}: {}", d.value(k).unwrap_or_else(|| "?".into()))).collect::<Vec<_>>())
+            Ok(ecad_electrical::devices::PROPERTIES
+                .iter()
+                .map(|(k, label)| format!("{label}: {}", d.value(k).unwrap_or_else(|| "?".into())))
+                .collect::<Vec<_>>())
         })
         .unwrap_or_default();
         for l in lines {
@@ -770,7 +809,8 @@ impl Props {
                     Ok(Step::Continue)
                 }
                 None if i == Input::Enter => Ok(Step::Done),
-                None => Ok(Step::Continue)};
+                None => Ok(Step::Continue),
+            };
         };
         if let Some((holder, t)) = self.merge.clone() {
             return match (yes(&i), &i) {
@@ -792,7 +832,8 @@ impl Props {
                     Ok(Step::Continue)
                 }
                 Input::Enter => Ok(Step::Done),
-                _ => Ok(Step::Continue)},
+                _ => Ok(Step::Continue),
+            },
             Some(key) => match i {
                 Input::Enter => {
                     self.key = None;
@@ -813,7 +854,9 @@ impl Props {
                     }
                     self.set(s, c, key, &t, false)
                 }
-                _ => Ok(Step::Continue)}}
+                _ => Ok(Step::Continue),
+            },
+        }
     }
 }
 
@@ -864,7 +907,8 @@ pub(crate) fn devicedelete(s: &Session) -> R<Box<dyn Interactive>> {
 }
 
 struct Delete {
-    device: Option<DeviceId>}
+    device: Option<DeviceId>,
+}
 
 impl Interactive for Delete {
     fn name(&self) -> &'static str {
@@ -878,7 +922,11 @@ impl Interactive for Delete {
         let Some(c) = self.device else { return Prompt::new("Select a device", Accept::SELECT) };
         let (tag, n, pages) = read(s, |p, _| {
             let doc = p.ledger.document();
-            Ok((ecad_electrical::devices::tag_words(doc, c), doc.representations_of(Subject::Device(c)).count(), ecad_electrical::devices::pages_words(doc, c)))
+            Ok((
+                ecad_electrical::devices::tag_words(doc, c),
+                doc.representations_of(Subject::Device(c)).count(),
+                ecad_electrical::devices::pages_words(doc, c),
+            ))
         })
         .unwrap_or_default();
         prompt(
@@ -902,7 +950,8 @@ impl Interactive for Delete {
                         Ok(Step::Continue)
                     }
                     None if i == Input::Enter => Ok(Step::Done),
-                    None => Ok(Step::Continue)};
+                    None => Ok(Step::Continue),
+                };
             };
             if yes(&i) == Some(true) {
                 let r = commit(s, "devicedelete", &json!({"component": c.hex()}))?;

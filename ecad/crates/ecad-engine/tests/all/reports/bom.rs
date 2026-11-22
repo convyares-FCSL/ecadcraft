@@ -8,10 +8,10 @@ use std::path::PathBuf;
 use crate::common::{H, id};
 
 use cadcraft_engine::Session;
-use {ecad_electrical::reports::BomView, ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
 use ecad_engine::{Persistence, ProjectHandle};
 use ecad_model::DeviceId;
 use serde_json::{Value, json};
+use {ecad_electrical::reports::BomView, ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
 
 /// The fixture of design 047 §12: contactors -K03…-K06, an 8-way fuse bank -F01, a strip -X05
 /// with six positions (fuse positions 1, 5 and 6), project location +CP1, every device set to +CP1.

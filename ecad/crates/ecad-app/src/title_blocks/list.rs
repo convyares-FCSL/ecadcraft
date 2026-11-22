@@ -8,9 +8,9 @@ use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Align2, Color32, Rect, Sense, Stroke, pos2, vec2};
 use serde_json::json;
 
-use crate::title_blocks::{Act, DxfAsk, Editor, Tool};
 use crate::library::browser::{self, Browser, Listing};
 use crate::shell::bar;
+use crate::title_blocks::{Act, DxfAsk, Editor, Tool};
 
 /// Element names (design 055 §5).
 pub const NEW: &str = "library.tb.list.new";
@@ -323,7 +323,8 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, drafts_key: &str, wr
             let mut ok = false;
             let mut cancel = false;
             ui.horizontal(|ui| {
-                let f = ecad_widgets::control::TextEntry::new(key, "library.tb.palette.project_field.key").placeholder("job_no").width(140.0).show(ui);
+                let f =
+                    ecad_widgets::control::TextEntry::new(key, "library.tb.palette.project_field.key").placeholder("job_no").width(140.0).show(ui);
                 ok = ui.small_button("Add").clicked() || (f.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
                 cancel = ui.small_button("Cancel").clicked();
             });

@@ -15,8 +15,8 @@ use serde_json::{Value, json};
 use crate::commands::input::nullable;
 use crate::commands::run::{Cx, Generic, Outcome};
 use crate::error::{CmdError, msg};
-use crate::reports::kept::ReportModels;
 use crate::pages::page_types::*;
+use crate::reports::kept::ReportModels;
 
 /// Most pages one `deletepage` names.
 pub const MAX_PAGES: usize = 1_000;

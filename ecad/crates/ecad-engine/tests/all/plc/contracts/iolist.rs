@@ -4,8 +4,8 @@
 use ecad_model::{DeviceId, PageId};
 use serde_json::{Value, json};
 
-use crate::plc::contracts::{placed, prop};
 use crate::common::{H, id};
+use crate::plc::contracts::{placed, prop};
 
 /// A CPU, a DI card wired to eight lamps through a fence, an AI card and a DQ card.
 struct F {

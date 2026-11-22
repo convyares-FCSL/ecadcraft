@@ -13,9 +13,9 @@ use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
 use ecad_model::{ItemId, ItemKind, Primitive, Pt, Subject};
 use serde_json::json;
 
-use crate::properties::forms::{R, Safe, commit, other, paper_guard, safely};
-use crate::interact::{ATTACHED_ACI, OUT_OF_RANGE, can_start, in_range, pick_radius, preview_entity, pt, read};
 use crate::convert::kind_for_primitive;
+use crate::interact::{ATTACHED_ACI, OUT_OF_RANGE, can_start, in_range, pick_radius, preview_entity, pt, read};
+use crate::properties::forms::{R, Safe, commit, other, paper_guard, safely};
 
 /// The drawing mode kept for the session (rectangle unless Polyline was chosen).
 static POLYLINE: AtomicBool = AtomicBool::new(false);

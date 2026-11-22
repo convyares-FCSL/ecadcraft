@@ -19,7 +19,7 @@ use cadcraft_engine::ext::MarkShape;
 use cadcraft_engine::geom::Vec2;
 use common::{H, id};
 use ecad_engine::interact::{self, NOT_OWNED, OUT_OF_RANGE};
-use ecad_model::{DeviceId, Document, PageId, RouteEnd, RouteId, ConnectionPointId, Transaction, WireId};
+use ecad_model::{ConnectionPointId, DeviceId, Document, PageId, RouteEnd, RouteId, Transaction, WireId};
 use serde_json::{Value, json};
 
 const SEED: u64 = 8;

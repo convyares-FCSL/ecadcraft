@@ -332,7 +332,9 @@ pub fn touched_by(effect: &ecad_model::document::effect::Effect<'_>, page: PageI
         // set), and the revision settings (brief 033, design 033 §9.1); any other key redraws
         // nothing.
         Effect::Prop { object: ObjectRef::Project, key, .. } => {
-            shown.project.contains_key(key.raw) || key.raw == crate::releases::revisions::COLUMNS_KEY || key.raw == crate::releases::revisions::PENDING_KEY
+            shown.project.contains_key(key.raw)
+                || key.raw == crate::releases::revisions::COLUMNS_KEY
+                || key.raw == crate::releases::revisions::PENDING_KEY
         }
         Effect::Prop { object: ObjectRef::Page(p), .. } => *p == page,
         // Design 072 §5.1: a page changed in place; a folder move changes the book order (Next,

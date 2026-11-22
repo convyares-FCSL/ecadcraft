@@ -17,11 +17,11 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::CmdError;
-use crate::views::Views;
-use crate::locations::designations::Uses;
 use crate::devices::TagHigh;
-use crate::symbols::proposals::Conflict;
+use crate::locations::designations::Uses;
 use crate::styles::text_style::fonts::TextMetrics;
+use crate::symbols::proposals::Conflict;
+use crate::views::Views;
 
 /// What every generic command may read and change: the document, new ids and the state several
 /// commands share. The document changes only through the [`Edit`] it returns. State a few commands

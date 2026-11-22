@@ -2,7 +2,7 @@
 //! line and the checks say so; reading never works a core's place out, so a stored place the line
 //! no longer gives (a file made elsewhere) is reported, not changed.
 
-use ecad_model::{Author, CableId, Core, CorePosition, Op, Purpose, RouteId, ConnectionPointId};
+use ecad_model::{Author, CableId, ConnectionPointId, Core, CorePosition, Op, Purpose, RouteId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id};

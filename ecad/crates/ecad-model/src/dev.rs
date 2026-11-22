@@ -15,8 +15,8 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::document::doc::Document;
-use crate::error::Result;
 use crate::document::ledger::{Ledger, Transaction};
+use crate::error::Result;
 
 /// The run-time switch, set by the program ([`set_verify_invariants`]).
 static SWITCH: AtomicBool = AtomicBool::new(false);

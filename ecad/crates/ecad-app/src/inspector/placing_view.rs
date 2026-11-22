@@ -7,8 +7,8 @@ use ecad_electrical::symbols;
 use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Sense, Stroke, pos2, vec2};
 
-use crate::inspector::widgets as w;
 use crate::App;
+use crate::inspector::widgets as w;
 use crate::shell::placing::{Shown, tag_in};
 
 /// Accessible names.

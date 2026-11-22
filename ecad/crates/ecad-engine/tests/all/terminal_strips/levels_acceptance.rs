@@ -12,9 +12,9 @@
 use std::collections::BTreeMap;
 
 use ecad_engine::Persistence;
-use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
-use ecad_model::{Author, DeviceId, Document, Op, PageId, Subject, ConnectionPointId};
+use ecad_model::{Author, ConnectionPointId, DeviceId, Document, Op, PageId, Subject};
 use serde_json::{Value, json};
+use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
 
 use crate::common::{H, id};
 use crate::common::{reopen, tmp_dir};
@@ -848,7 +848,11 @@ fn relabel_raw(h: &mut H, t: ConnectionPointId, new_label: Option<&str>, new_key
         after.key = k.parse().ok();
     }
     h.cfg(|p| {
-        p.ledger.commit(Author::User, "hand-made", vec![Op::RemoveConnectionPoint { id: t, terminal: before }, Op::AddConnectionPoint { id: t, terminal: after }])
+        p.ledger.commit(
+            Author::User,
+            "hand-made",
+            vec![Op::RemoveConnectionPoint { id: t, terminal: before }, Op::AddConnectionPoint { id: t, terminal: after }],
+        )
     })
     .unwrap();
 }

@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 /// The one file where the word rules may be written out (design 072 §9.1).
-const WORDS_FILE: &str = "crates/ecad-model/src/words.rs";
+const WORDS_FILE: &str = "crates/ecad-model/src/naming/words.rs";
 
 /// The boolean words G2 looks for, as string literals.
 const BOOL_LITERALS: &[&str] = &["\"yes\"", "\"no\"", "\"true\"", "\"false\"", "\"on\"", "\"off\"", "\"y\"", "\"n\""];
@@ -61,7 +61,7 @@ fn g3(rel: &str, line: &str) -> bool {
 }
 
 /// The one file where angles change unit (design 072 §9.3, F6/F7).
-const UNITS_FILE: &str = "crates/ecad-model/src/units.rs";
+const UNITS_FILE: &str = "crates/ecad-model/src/geometry/units.rs";
 
 fn g7(rel: &str, line: &str) -> bool {
     rel != UNITS_FILE && (line.contains(".to_radians()") || line.contains(".to_degrees()"))
@@ -93,7 +93,7 @@ fn g10(_: &str, line: &str) -> bool {
 }
 
 /// The files where the hidden-character rule may appear: the rule and the text types built on it.
-const HIDDEN_RULE_FILES: &[&str] = &[WORDS_FILE, "crates/ecad-model/src/text.rs"];
+const HIDDEN_RULE_FILES: &[&str] = &[WORDS_FILE, "crates/ecad-model/src/naming/text.rs"];
 
 /// Hand-written members of the hidden set (G14): a few of its code points, as hex or escapes.
 const HIDDEN_MARKS: &[&str] = &["is_hidden", "0x200B", "0x202A", "0x2066"];

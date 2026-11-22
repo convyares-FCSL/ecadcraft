@@ -5,9 +5,9 @@
 //! `ECAD_TESTER_SHOTS` names a folder.
 
 use ecad_app::App;
-use ecad_app::workspace::ListAction;
 use ecad_app::plc::list::{self, IoView};
 use ecad_app::shell::{ListsView, Workspace};
+use ecad_app::workspace::ListAction;
 use ecad_model::DeviceId;
 use ecad_widgets::table::TableSource;
 use eframe::egui;

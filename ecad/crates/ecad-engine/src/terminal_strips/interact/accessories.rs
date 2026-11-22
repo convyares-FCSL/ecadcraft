@@ -5,11 +5,11 @@
 use cadcraft_engine::doc::EntityKind;
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
-use ecad_model::{DeviceId, Pt, ConnectionPointId};
+use ecad_model::{ConnectionPointId, DeviceId, Pt};
 use serde_json::{Value, json};
 
+use crate::interact::{OUT_OF_RANGE, can_start, connection_point_for, in_range, line_kind, pt, read, v2};
 use crate::properties::forms::{R, Safe, commit, other, paper_guard, safely};
-use crate::interact::{OUT_OF_RANGE, can_start, in_range, line_kind, pt, read, connection_point_for, v2};
 use crate::terminal_strips::commands;
 use ecad_electrical::terminal_strips;
 
@@ -208,7 +208,10 @@ impl Jumper {
                             let tag = ecad_electrical::devices::tag_words(doc, c);
                             let order = ecad_electrical::terminal_strips::accessories::positions(doc, c);
                             let n = doc.devices.get(&c).and_then(|x| {
-                                ecad_model::connectivity::jumper_bars::of(&x.properties).into_iter().find(|(_, p)| p.select(&order).contains(&&label)).map(|(n, _)| n)
+                                ecad_model::connectivity::jumper_bars::of(&x.properties)
+                                    .into_iter()
+                                    .find(|(_, p)| p.select(&order).contains(&&label))
+                                    .map(|(n, _)| n)
                             });
                             Ok((tag, n))
                         })

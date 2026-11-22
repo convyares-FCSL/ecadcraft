@@ -167,7 +167,8 @@ fn bug_4_tables_of_coils_drawn_close_together_do_not_overlap() {
     assert_eq!(boxes.len(), 4, "one table per coil");
     // The `contacts` reply reports each table where it is drawn (review of #92, 2).
     for k in &coils {
-        let top = h.p(|p| ecad_engine::references::draw::devices::contacts_json(p.ledger.document(), *k)).unwrap()["table"]["top"][0].as_f64().unwrap();
+        let top =
+            h.p(|p| ecad_engine::references::draw::devices::contacts_json(p.ledger.document(), *k)).unwrap()["table"]["top"][0].as_f64().unwrap();
         assert!(boxes.iter().any(|b| (b.0.x - (top - 10.0)).abs() < 1e-6), "reply top {top} matches no drawn table: {boxes:?}");
     }
     for (i, a) in boxes.iter().enumerate() {
@@ -246,7 +247,8 @@ fn bug_5_a_card_drawn_in_several_calls_has_one_frame() {
     assert_eq!(runs.first().map(|r| (r.first, r.last)), Some((Some(0), Some(3))));
     // The placed cell's point is on the wire, on the line of the others.
     let d = h.doc();
-    let ch2 = d.connection_points_of(card).find(|(_, t)| t.key.as_ref().map(ToString::to_string).as_deref() == Some(".2.in")).map(|(t, _)| t).unwrap();
+    let ch2 =
+        d.connection_points_of(card).find(|(_, t)| t.key.as_ref().map(ToString::to_string).as_deref() == Some(".2.in")).map(|(t, _)| t).unwrap();
     let at = h.connection_point_pos(page, ch2);
     assert!((at.y - 200.0).abs() < 1e-6 && (at.x - 140.0).abs() < 1e-6, "{at:?}");
     assert!(!h.doc().ends_at(ch2).is_empty(), "channel 2 lands on its wire");

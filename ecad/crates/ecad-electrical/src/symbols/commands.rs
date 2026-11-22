@@ -18,9 +18,9 @@ use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
 use ecad_model::{
-    Definition, DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Noun, Op, Origin, PageId, Placement,
-    Primitive, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance, ConnectionPoint, ConnectionPointDef, ConnectionPointId, TextHAlign, TextSlot,
-    TextVAlign, WireId,
+    ConnectionPoint, ConnectionPointDef, ConnectionPointId, Definition, DefinitionId, Device, DeviceId, Document, Form, IdAllocator, Item, ItemId,
+    ItemKind, Ledger, Noun, Op, Origin, PageId, Placement, Primitive, Pt, Representation, RepresentationId, Style, Subject, SymbolInstance,
+    TextHAlign, TextSlot, TextVAlign, WireId,
 };
 
 use crate::defaults::symbols::Field;
@@ -447,7 +447,10 @@ fn row(doc: &Document, item: ItemId, rid: RepresentationId, old_id: DefinitionId
                             // Rule 2: onto another point or wire end of the page.
                             let to = placement.apply(nd.at);
                             let spots = page_spots.get_or_insert_with(|| {
-                                ecad_model::connectivity::derive::connection_point_positions(doc, r.page).into_iter().map(|(t, _, p)| (t, p)).collect()
+                                ecad_model::connectivity::derive::connection_point_positions(doc, r.page)
+                                    .into_iter()
+                                    .map(|(t, _, p)| (t, p))
+                                    .collect()
                             });
                             let ends = crate::wires::loose_ends_at(doc, r.page, to, TOL);
                             if spots.iter().any(|(o, p)| *o != t && p.near(to, TOL)) || !ends.is_empty() {
@@ -519,7 +522,11 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
     let mut moved_routes = crate::wires::RouteEdits::new(doc);
     for row in rows {
         if let Some(clash) = &row.clash {
-            return Err(CmdError::refused(format!("{} (p. {}) would clash: {clash}", row.tag, crate::references::cables::page_number(doc, row.page))));
+            return Err(CmdError::refused(format!(
+                "{} (p. {}) would clash: {clash}",
+                row.tag,
+                crate::references::cables::page_number(doc, row.page)
+            )));
         }
         let item = doc.items.get(&row.item).ok_or(CmdError::refused(GONE))?;
         let ItemKind::Symbol(inst) = &item.kind else { continue };
@@ -563,7 +570,10 @@ fn update_ops(doc: &Document, ids: &mut IdAllocator, rows: &[&Row], new_id: Defi
         for nd in new.terminals.iter().filter(|nd| !old.terminals.iter().any(|td| td.key == nd.key)) {
             let t: ConnectionPointId = ids.fresh();
             let key = if r.connection_points.is_empty() { nd.key.clone() } else { nd.label.clone().map_or_else(|| nd.key.clone(), PointKey::Def) };
-            ops.push(Op::AddConnectionPoint { id: t, terminal: ConnectionPoint { owner: c.into(), label: nd.label.clone(), key: Some(key), accepts: nd.accepts } });
+            ops.push(Op::AddConnectionPoint {
+                id: t,
+                terminal: ConnectionPoint { owner: c.into(), label: nd.label.clone(), key: Some(key), accepts: nd.accepts },
+            });
             if !r.connection_points.is_empty() {
                 cps.insert(t, nd.at);
             }
@@ -1037,7 +1047,12 @@ pub fn plan_promote(doc: &Document, ids: &mut IdAllocator, c: DeviceId, mut cont
         if term.key.as_ref() != Some(&key) {
             rekey.push((*t, key.clone()));
         }
-        points.push(ConnectionPointDef { key, label: term.label.clone(), at: Pt::new(at.x - origin.x, at.y - origin.y), accepts: Default::default() });
+        points.push(ConnectionPointDef {
+            key,
+            label: term.label.clone(),
+            at: Pt::new(at.x - origin.x, at.y - origin.y),
+            accepts: Default::default(),
+        });
     }
     content.points = points;
     for sl in &mut content.slots {

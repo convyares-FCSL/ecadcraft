@@ -21,7 +21,7 @@ use cadcraft_engine::doc::Handle;
 use common::{H, id};
 use ecad_electrical::references::cables::markers_on_page;
 use ecad_model::connectivity::derive::{cable_references, connection_point_positions};
-use ecad_model::{CableId, PageId, Pt, ConnectionPointId, WireId};
+use ecad_model::{CableId, ConnectionPointId, PageId, Pt, WireId};
 use serde_json::json;
 
 struct Rng(u64);

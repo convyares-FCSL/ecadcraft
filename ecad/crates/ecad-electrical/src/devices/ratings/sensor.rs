@@ -11,9 +11,9 @@
 //! PLC channel.
 #![deny(clippy::wildcard_enum_match_arm)]
 
+use ecad_model::geometry::units::{Current, RatedVoltage, Volts};
 use ecad_model::objects::devices::Sensor;
 use ecad_model::objects::devices::sensor::MAX_SUPPLY_VOLTS;
-use ecad_model::geometry::units::{Current, RatedVoltage, Volts};
 
 use crate::devices::ratings::{MAX_CHARS, Read};
 

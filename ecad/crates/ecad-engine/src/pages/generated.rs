@@ -17,7 +17,8 @@ use {crate::styles::draw::Look, ecad_electrical::styles::text_style::TextKind};
 pub struct Draw {
     pub k: f64,
     pub x0: f64,
-    pub out: Vec<Part>}
+    pub out: Vec<Part>,
+}
 
 impl Draw {
     pub fn p(&self, x: f64, y: f64) -> Pt {
@@ -64,7 +65,8 @@ impl Draw {
             oblique: 0.0,
             style: look.style.into(),
             halign: h,
-            valign: VAlign::Middle});
+            valign: VAlign::Middle,
+        });
         self.out.push(Part { kind, weight: look.weight, aci, layer: LAYER });
     }
 }
@@ -77,7 +79,9 @@ pub fn missing_mark(doc: &Document, lo: Pt, hi: Pt, k: f64, look: TextDraw) -> V
     if !(k.is_finite() && k > 0.0) || !lo.is_finite() || !hi.is_finite() {
         return Vec::new();
     }
-    let inset_mm = ecad_electrical::defaults::resolve(doc, &ecad_electrical::defaults::print::MISSING_BOX_INSET, ecad_electrical::defaults::Scope::project()).number();
+    let inset_mm =
+        ecad_electrical::defaults::resolve(doc, &ecad_electrical::defaults::print::MISSING_BOX_INSET, ecad_electrical::defaults::Scope::project())
+            .number();
     let mut d = Draw { k, x0: 0.0, out: Vec::new() };
     let (x0, y0, x1, y1) = (lo.x.min(hi.x) / k, lo.y.min(hi.y) / k, lo.x.max(hi.x) / k, lo.y.max(hi.y) / k);
     let inset = inset_mm.max(0.0).min((x1 - x0) / 4.0).min((y1 - y0) / 4.0);
@@ -103,7 +107,9 @@ fn content(
         return crate::pages::front::cover(doc, input, x0).0;
     }
     // Brief 046: a graphic terminal plan draws its strip sheet.
-    if kind == GenKind::Terminals && ecad_electrical::terminal_strips::pages::style_of(doc, page) == ecad_electrical::terminal_strips::pages::Style::Graphic {
+    if kind == GenKind::Terminals
+        && ecad_electrical::terminal_strips::pages::style_of(doc, page) == ecad_electrical::terminal_strips::pages::Style::Graphic
+    {
         return outputs.map_or_else(Vec::new, |o| crate::terminal_strips::draw::content(doc, page, input, i, x0, o));
     }
     // Brief 051 (design 051 §4): the I/O list as ruled tables per card, the rack overview as tiles.
@@ -219,7 +225,8 @@ pub fn page_parts(doc: &Document, page: PageId, input: &FrameInput, outputs: Opt
     let n = sheets_of(doc, page, outputs);
     let width = f64::from(input.sheet.width) + SHEET_GAP;
     // Brief 046 (design 046 §6.3): a graphic page titles each sheet by its strip.
-    let graphic = (kind == GenKind::Terminals && ecad_electrical::terminal_strips::pages::style_of(doc, page) == ecad_electrical::terminal_strips::pages::Style::Graphic)
+    let graphic = (kind == GenKind::Terminals
+        && ecad_electrical::terminal_strips::pages::style_of(doc, page) == ecad_electrical::terminal_strips::pages::Style::Graphic)
         .then_some(outputs)
         .flatten();
     let mut out = Vec::new();

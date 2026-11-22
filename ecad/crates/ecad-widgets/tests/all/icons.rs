@@ -1,7 +1,7 @@
 //! Every icon paints inside its rect with 1.5 px strokes (brief 037, acceptance criterion 2).
 
-use {ecad_widgets::tokens::Icon, ecad_widgets::tokens::line};
 use egui::{Color32, Rect, Shape, pos2, vec2};
+use {ecad_widgets::tokens::Icon, ecad_widgets::tokens::line};
 
 /// The stroke widths of `shape`'s outlines (none for a filled dot).
 fn widths(shape: &Shape, out: &mut Vec<f32>) {

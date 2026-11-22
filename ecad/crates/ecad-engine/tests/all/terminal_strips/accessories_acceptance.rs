@@ -13,9 +13,9 @@ use cadcraft_engine::Input;
 use cadcraft_engine::doc::EntityKind;
 use cadcraft_engine::geom::Vec2;
 use ecad_engine::Persistence;
-use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
-use ecad_model::{DeviceId, Document, PageId, ConnectionPointId};
+use ecad_model::{ConnectionPointId, DeviceId, Document, PageId};
 use serde_json::{Value, json};
+use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
 
 use crate::common::{H, id, pts};
 use crate::common::{place, reopen, tmp_dir};

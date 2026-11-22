@@ -33,9 +33,9 @@ use ecad_model::naming::numbering::Places;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use ecad_model::connectivity::name_key;
-use ecad_model::document::effect::Effect;
 use ecad_model::connectivity::wiring;
-use ecad_model::{CableId, DeviceId, Document, End, NetData, NetKey, ObjectRef, PageId, Pt, RouteEnd, RouteId, Subject, ConnectionPointId, WireId};
+use ecad_model::document::effect::Effect;
+use ecad_model::{CableId, ConnectionPointId, DeviceId, Document, End, NetData, NetKey, ObjectRef, PageId, Pt, RouteEnd, RouteId, Subject, WireId};
 use serde_json::{Value, json};
 
 use crate::styles::text_style::fonts::TextMetrics;

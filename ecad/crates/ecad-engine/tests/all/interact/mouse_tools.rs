@@ -19,7 +19,7 @@ use cadcraft_engine::Input;
 use cadcraft_engine::doc::{EntityKind, Handle};
 use cadcraft_engine::geom::Vec2;
 use common::H;
-use ecad_model::{DeviceId, Document, PageId, ConnectionPointId, Transaction};
+use ecad_model::{ConnectionPointId, DeviceId, Document, PageId, Transaction};
 use serde_json::json;
 
 const SEED: u64 = 80_08;

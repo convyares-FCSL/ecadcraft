@@ -11,11 +11,11 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::reports::bom::*;
 use crate::commands::input::{Bounded, OrNull, TextOrNumber, nullable};
 use crate::commands::run::{Cx, Generic, Outcome};
-use crate::locations::designations::{Aspect, Pending};
 use crate::error::CmdError;
+use crate::locations::designations::{Aspect, Pending};
+use crate::reports::bom::*;
 use ecad_model::naming::text::TextError;
 
 // ---------------------------------------------------------------------------------------------

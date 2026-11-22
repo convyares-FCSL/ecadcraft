@@ -34,7 +34,10 @@ pub fn colour(doc: &Document, part: &Part, e: &mut cadcraft_engine::doc::Entity)
 mod tests {
     use ecad_model::{Pt, RepresentationId};
 
-    use {ecad_electrical::references::devices::HAlign, ecad_electrical::references::devices::Part, ecad_electrical::references::devices::Shape, ecad_electrical::references::devices::VAlign};
+    use {
+        ecad_electrical::references::devices::HAlign, ecad_electrical::references::devices::Part, ecad_electrical::references::devices::Shape,
+        ecad_electrical::references::devices::VAlign,
+    };
 
     /// FP3 (overseer ruling, 2026-11-13): an unrotated reference part draws byte-identically to
     /// the entity drawn before `rotation` existed.
@@ -50,10 +53,12 @@ mod tests {
                 height: 2.5,
                 halign: HAlign::Left,
                 valign: VAlign::Top,
-                rotation: 0.0},
+                rotation: 0.0,
+            },
             aci: None,
             row: None,
-            bar: false};
+            bar: false,
+        };
         let h = cadcraft_engine::doc::Handle(0x42);
         let look = crate::styles::draw::Look::new(&ecad_model::Document::default());
         let mut before = crate::devices::draw::text_entity_with(

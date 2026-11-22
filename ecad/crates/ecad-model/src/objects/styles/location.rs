@@ -4,10 +4,10 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::geometry::units::Mm;
 use crate::objects::styles::StyleRef;
 use crate::objects::styles::text::StyleColour;
 use crate::objects::styles::wire::LineType;
-use crate::geometry::units::Mm;
 
 /// A location box style: what a standard or a project says about one. `None` inherits.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

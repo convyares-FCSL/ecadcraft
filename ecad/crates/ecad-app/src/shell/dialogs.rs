@@ -1,8 +1,8 @@
 //! The app's modal questions: the close question, the file dialog, the issue question, Renumber,
 //! merge, and the symbol search window.
 
-use crate::shell::files::in_default_folder;
 use crate::commands::run::with_param;
+use crate::shell::files::in_default_folder;
 use crate::*;
 use ecad_widgets::dialog::{Dialog, action};
 use ecad_widgets::prim::{self, Kind, Tone};

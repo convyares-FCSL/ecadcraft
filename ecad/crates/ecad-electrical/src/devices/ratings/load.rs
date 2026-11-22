@@ -10,9 +10,9 @@
 //! This module excludes the protection reader (its parent) and the demand calculation.
 #![deny(clippy::wildcard_enum_match_arm)]
 
+use ecad_model::geometry::units::Watts;
 use ecad_model::objects::devices::Load;
 use ecad_model::objects::devices::load::MAX_POWER_WATTS;
-use ecad_model::geometry::units::Watts;
 
 use crate::devices::ratings::{MAX_CHARS, Read};
 

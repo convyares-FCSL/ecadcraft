@@ -12,9 +12,9 @@ use ecad_model::{
     RepresentationId, Style, Subject, WireId,
 };
 
+use crate::cables::slash::{self, Crossings, MAX_CABLE_MEMBERS};
 use crate::devices::TagHigh;
 use crate::error::CmdError;
-use crate::cables::slash::{self, Crossings, MAX_CABLE_MEMBERS};
 
 /// No conductor with the ID given.
 const NO_CONDUCTOR: &str = "no such conductor";

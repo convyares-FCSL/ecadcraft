@@ -6,12 +6,12 @@ use ecad_electrical::symbols;
 use ecad_model::DefinitionId;
 use eframe::egui::{self, Rect};
 
+use crate::App;
 use crate::library::browser::{self, Listing, Tile};
 use crate::library::builder::{self, Act as BuilderAct};
 use crate::library::details::{self, Info};
 use crate::library::draft::Source;
 use crate::library::review;
-use crate::App;
 use crate::shell::Workspace;
 
 impl App {
@@ -108,7 +108,11 @@ impl App {
     pub(crate) fn library_panel(&mut self, ui: &mut egui::Ui, rect: Rect) {
         let s = ecad_widgets::SHELL;
         ui.painter().rect_filled(rect, 0.0, ecad_widgets::color(s.panel));
-        ui.painter().vline(rect.left() + 0.5, rect.y_range(), egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)));
+        ui.painter().vline(
+            rect.left() + 0.5,
+            rect.y_range(),
+            egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)),
+        );
         let body = rect.shrink2(egui::vec2(ecad_widgets::tokens::space::L, ecad_widgets::tokens::space::L));
         crate::shell::in_rect(ui, body, details::DETAILS, |ui| {
             egui::ScrollArea::vertical().id_salt("library.details.scroll").auto_shrink([false, false]).show(ui, |ui| self.library_right(ui));

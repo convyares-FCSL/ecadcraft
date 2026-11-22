@@ -32,11 +32,11 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::geometry::colour::ColourWords;
 use crate::connectivity::{self, NetData, NetKey, Node, split_number};
 use crate::document::doc::Document;
-use crate::naming::id::{PageId, WireId};
 use crate::document::op::{ObjectRef, Op};
+use crate::geometry::colour::ColourWords;
+use crate::naming::id::{PageId, WireId};
 use crate::naming::text::Text;
 use crate::objects::wire::{Colours, WireNumber};
 
@@ -550,7 +550,9 @@ pub fn nets_touched(doc: &Document, ops: &[Op]) -> (BTreeSet<NetKey>, BTreeSet<N
             }
             // Brief 030 (FP7): a link edit touches the nets of its old and new terminals, so the
             // numbering pass merges or splits their numbers in the same transaction.
-            Op::SetProperty { object: ObjectRef::Device(c), key, before, after } if crate::connectivity::jumper_bars::jumper_bar_number(key).is_some() => {
+            Op::SetProperty { object: ObjectRef::Device(c), key, before, after }
+                if crate::connectivity::jumper_bars::jumper_bar_number(key).is_some() =>
+            {
                 for v in [before, after] {
                     for t in crate::connectivity::jumper_bars::terminals_named(doc, *c, v.as_deref()) {
                         add(Node::Terminal(t), &mut nets);

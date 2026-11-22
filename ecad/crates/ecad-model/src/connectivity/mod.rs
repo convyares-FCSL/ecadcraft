@@ -43,9 +43,9 @@ pub mod wiring;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
 use crate::document::doc::{Document, Wire};
-use crate::naming::id::{RouteId, ConnectionPointId, WireId};
 use crate::document::op::{ObjectRef, Op};
 use crate::geometry::point::PointKey;
+use crate::naming::id::{ConnectionPointId, RouteId, WireId};
 
 /// Wire property: the wire number its net carries (design 022 §5.1).
 pub const WIRE_NUMBER: &str = "wire_number";
@@ -313,7 +313,9 @@ fn neighbors_base(doc: &Document, node: &Node) -> Vec<Node> {
                     match e {
                         crate::objects::route::RouteEnd::Point(t) if doc.terminals.contains_key(&t) => out.push(Node::Terminal(t)),
                         crate::objects::route::RouteEnd::On { route: o, .. } if doc.routes.contains_key(&o) => out.push(Node::Route(o)),
-                        crate::objects::route::RouteEnd::Point(_) | crate::objects::route::RouteEnd::On { .. } | crate::objects::route::RouteEnd::Free => {}
+                        crate::objects::route::RouteEnd::Point(_)
+                        | crate::objects::route::RouteEnd::On { .. }
+                        | crate::objects::route::RouteEnd::Free => {}
                     }
                 }
             }
@@ -339,7 +341,8 @@ impl Connectivity {
         for (id, comp) in &doc.devices {
             for (_, p) in crate::connectivity::jumper_bars::of(&comp.properties) {
                 let m = crate::connectivity::jumper_bars::Matcher::of(&p);
-                let members: Vec<ConnectionPointId> = doc.connection_points_of(*id).filter(|(_, x)| m.matches_connection_point(x)).map(|(t, _)| t).collect();
+                let members: Vec<ConnectionPointId> =
+                    doc.connection_points_of(*id).filter(|(_, x)| m.matches_connection_point(x)).map(|(t, _)| t).collect();
                 for w in members.windows(2) {
                     if let (Some(a), Some(b)) = (w.first(), w.get(1)) {
                         link_edges.entry(*a).or_default().push(*b);
@@ -689,7 +692,9 @@ impl Connectivity {
                 }
             }
             // Brief 030: the terminals a link joined are on the sides of a cut.
-            Op::SetProperty { object: ObjectRef::Device(id), key, before, .. } if crate::connectivity::jumper_bars::jumper_bar_number(key).is_some() => {
+            Op::SetProperty { object: ObjectRef::Device(id), key, before, .. }
+                if crate::connectivity::jumper_bars::jumper_bar_number(key).is_some() =>
+            {
                 for t in crate::connectivity::jumper_bars::terminals_named(doc, *id, before.as_deref()) {
                     self.cut(&Node::Terminal(t));
                 }
@@ -754,7 +759,9 @@ impl Connectivity {
                     }
                 }
             }
-            Op::SetProperty { object: ObjectRef::Device(id), key, after, .. } if crate::connectivity::jumper_bars::jumper_bar_number(key).is_some() => {
+            Op::SetProperty { object: ObjectRef::Device(id), key, after, .. }
+                if crate::connectivity::jumper_bars::jumper_bar_number(key).is_some() =>
+            {
                 for t in crate::connectivity::jumper_bars::terminals_named(doc, *id, after.as_deref()) {
                     self.ensure(doc, Node::Terminal(t));
                 }

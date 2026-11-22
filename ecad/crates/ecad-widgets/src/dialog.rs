@@ -6,8 +6,8 @@
 //! Esc and the cross close it; a click on the dimmed page does not, so a stray click never loses
 //! what was typed. The dialog's accessible role is `Dialog`, named by the caller.
 
-use {crate::tokens::Icon, crate::tokens::line, crate::tokens::radius, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type};
 use egui::{Align, Context, Frame, Id, Key, Layout, Margin, Modifiers, Stroke, Ui, vec2};
+use {crate::tokens::Icon, crate::tokens::line, crate::tokens::radius, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type};
 
 use crate::prim::Kind;
 use crate::style::{corner, shadow};

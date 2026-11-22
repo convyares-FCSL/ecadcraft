@@ -2,7 +2,6 @@
 //! its label; a disabled button reports its reason; a field shows the 2 px `accent_text` focus
 //! ring; `read_value` has no frame and is clickable.
 
-use {ecad_widgets::tokens::GRAPHITE, ecad_widgets::tokens::Icon, ecad_widgets::tokens::line};
 use ecad_widgets::color;
 use ecad_widgets::prim::{
     Button, Chip, Field, FieldKind, IconButton, Kind, Look, RowKind, RowSpec, Segmented, Tone, badge, keycap, pill, provisional, read_value, row,
@@ -10,6 +9,7 @@ use ecad_widgets::prim::{
 use ecad_widgets::showcase::{self, Showcase};
 use egui::accesskit::{Role, Toggled};
 use egui_kittest::kittest::{NodeT, Queryable};
+use {ecad_widgets::tokens::GRAPHITE, ecad_widgets::tokens::Icon, ecad_widgets::tokens::line};
 
 use crate::common::{harness, strokes_in};
 

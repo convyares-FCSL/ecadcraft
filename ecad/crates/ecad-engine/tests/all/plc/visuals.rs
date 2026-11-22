@@ -7,8 +7,8 @@ use ecad_electrical::plc::sheets::{self, Seg};
 use ecad_model::{DeviceId, PageId};
 use serde_json::{Value, json};
 
-use crate::plc::contracts::placed;
 use crate::common::{H, id, pts};
+use crate::plc::contracts::placed;
 
 /// A CPU with a DI card in slot 1 wired to eight lamps through a fence, an AI card in slot 2 and a
 /// DQ card in slot 3, none of the AI's or DQ's channels drawn (045's I/O fixture).
@@ -397,7 +397,10 @@ fn h_i_text_styles_and_name_block_lines() {
     let F { mut h, di, .. } = fixture(5123);
     let d = h.doc();
     let ts = |k| ecad_electrical::styles::text_style::text_style(&d, k).height;
-    assert_eq!((ts(ecad_electrical::styles::text_style::TextKind::ChannelText), ts(ecad_electrical::styles::text_style::TextKind::Address)), (2.5, 2.0));
+    assert_eq!(
+        (ts(ecad_electrical::styles::text_style::TextKind::ChannelText), ts(ecad_electrical::styles::text_style::TextKind::Address)),
+        (2.5, 2.0)
+    );
     let page = h.first_page();
     h.run("setprop", json!({"component": di.hex(), "key": "maker", "value": "Maker A"})).unwrap();
     h.run("setprop", json!({"component": di.hex(), "key": "part_number", "value": "DI-16"})).unwrap();
@@ -468,7 +471,10 @@ fn review_3_the_rack_sheet_follows_a_moved_card_and_a_renumbered_page() {
     let renumber = vec![renumbered(first, "7")];
     assert!(ecad_electrical::plc::sheets::rack_places_touched(&d, &plc, &ecad_model::document::effect::Effects::of(&renumber)));
     let empty = vec![renumbered(sheet, "9")];
-    assert!(!ecad_electrical::plc::sheets::rack_places_touched(&d, &plc, &ecad_model::document::effect::Effects::of(&empty)), "a page with no PLC symbol");
+    assert!(
+        !ecad_electrical::plc::sheets::rack_places_touched(&d, &plc, &ecad_model::document::effect::Effects::of(&empty)),
+        "a page with no PLC symbol"
+    );
     let item = h.symbol_item(ai);
     let it = d.items[&item].clone();
     let moved = vec![ecad_model::Op::ModifyItem { id: item, before: it.clone(), after: it }];

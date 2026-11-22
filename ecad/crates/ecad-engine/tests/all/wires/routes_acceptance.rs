@@ -4,7 +4,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::{NetId, ConnectionPointId};
+use ecad_model::{ConnectionPointId, NetId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id, tmp_dir};

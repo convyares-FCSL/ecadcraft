@@ -14,9 +14,9 @@
 #![deny(clippy::wildcard_enum_match_arm)]
 
 use ecad_model::geometry::colour::ConductorColour;
+use ecad_model::geometry::units::{Current, RatedVoltage, Volts, Watts};
 use ecad_model::objects::devices::indicator::{MAX_POWER_WATTS, MAX_VOLTS};
 use ecad_model::objects::devices::{Indicator, IndicatorColour, SignalType};
-use ecad_model::geometry::units::{Current, RatedVoltage, Volts, Watts};
 
 use crate::devices::ratings::load::pieces;
 use crate::devices::ratings::{MAX_CHARS, Read};

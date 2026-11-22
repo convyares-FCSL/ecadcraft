@@ -13,15 +13,15 @@
 
 use std::sync::Arc;
 
-use crate::common::{self, Opts, click, pointer_to};
 use crate::canvas::mouse_acceptance::Deltas;
+use crate::common::{self, Opts, click, pointer_to};
 use cadcraft_engine::geom::Vec2;
-use {ecad_app::App, ecad_app::commands::tools};
 use ecad_model::Document;
 use eframe::egui::{self, Key, Pos2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use serde_json::json;
+use {ecad_app::App, ecad_app::commands::tools};
 
 /// Texture updates in order: `Some(image)` sets, `None` frees.
 /// Keeps every texture delta so a frame can be rendered later (see `shot`).

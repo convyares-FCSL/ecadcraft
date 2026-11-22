@@ -39,9 +39,9 @@ use ecad_model::document::effect::{Effect, Effects};
 use ecad_model::{CableId, DeviceId, Document, LoosePartId, ObjectRef, Op, PageId, Pt, RepresentationId, Subject, WireId};
 use serde_json::{Value, json};
 
-use crate::reports::bom::Qty;
 use crate::checks::{Check, Fix, Kind, Object};
 use crate::locations::{self, BoxCache, Located};
+use crate::reports::bom::Qty;
 
 pub mod bom;
 pub mod commands;
@@ -669,9 +669,10 @@ impl Scope {
                 }
             }
             Effect::Settings { before, after } => {
-                let rows = |w: &ecad_model::connectivity::wiring::WiringSettings| -> BTreeMap<String, ecad_model::connectivity::wiring::PotentialDef> {
-                    w.potentials.iter().map(|p| (p.name.trim().to_lowercase(), p.clone())).collect()
-                };
+                let rows =
+                    |w: &ecad_model::connectivity::wiring::WiringSettings| -> BTreeMap<String, ecad_model::connectivity::wiring::PotentialDef> {
+                        w.potentials.iter().map(|p| (p.name.trim().to_lowercase(), p.clone())).collect()
+                    };
                 let (a, b) = (rows(&before.wiring), rows(&after.wiring));
                 for k in a.keys().chain(b.keys()) {
                     if a.get(k) != b.get(k) {

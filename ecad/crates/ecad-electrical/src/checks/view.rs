@@ -15,10 +15,10 @@ use ecad_model::Document;
 use ecad_model::document::effect::{AreaSet, Effect};
 use ecad_model::document::view::{DerivedView, NoteCx, Outcome, ViewScope};
 
-use crate::views::Inputs;
 use crate::checks::Scope;
 use crate::checks::kept::Checks;
 use crate::styles::text_style::fonts::TextMetrics;
+use crate::views::Inputs;
 
 /// The kept Checks list, with the tolerance it was built with.
 #[derive(Debug)]

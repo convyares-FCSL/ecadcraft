@@ -18,13 +18,13 @@ use cadcraft_engine::geom::Vec3;
 use ecad_model::document::sheet::unit_scale;
 use ecad_model::{CableId, DeviceId, Document, PageId, Primitive, Pt};
 
-use ecad_electrical::terminal_strips::accessories::Acc;
 use crate::convert::kind_for_primitive;
 use crate::pages::frame::{FrameInput, Part, THIN_WEIGHT, TextDraw};
-use {ecad_electrical::pages::generated::LAYER, ecad_electrical::pages::generated::MISSING};
 use ecad_electrical::reports::kept::ReportModels;
+use ecad_electrical::terminal_strips::accessories::Acc;
 use ecad_electrical::terminal_strips::{SideCell, StripData};
 use {crate::styles::draw::Look, ecad_electrical::styles::text_style::TextKind};
+use {ecad_electrical::pages::generated::LAYER, ecad_electrical::pages::generated::MISSING};
 
 /// Guard (design 046 §4.1): at most this many cable bar lanes; further cables share the last.
 pub const MAX_CABLE_LANES: usize = 8;
@@ -524,7 +524,8 @@ fn bridges(pen: &mut Pen, placed: &[Placed<'_>], g: &Geometry, yc: f64, lk: &Loo
 /// maker, and an arrow to the far devices.
 #[allow(clippy::too_many_arguments)]
 fn cables(
-    doc: &Document, pen: &mut Pen, cols: &[(Col<'_>, f64)], c0: usize, leads: &[(f64, &SideCell)], g: &Geometry, fr: &Frame, lk: &Looks, o: &ReportModels,
+    doc: &Document, pen: &mut Pen, cols: &[(Col<'_>, f64)], c0: usize, leads: &[(f64, &SideCell)], g: &Geometry, fr: &Frame, lk: &Looks,
+    o: &ReportModels,
 ) {
     // Per cable on this sheet: first and last lead x, its far devices.
     let mut bars: BTreeMap<CableId, (f64, f64, Option<String>, BTreeSet<DeviceId>)> = BTreeMap::new();

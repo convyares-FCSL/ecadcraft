@@ -1110,7 +1110,11 @@ mod tests {
     #[test]
     fn project_values_and_inch_projects() {
         let mut doc = Document::default();
-        let body = ecad_model::objects::styles::TextStyle { height: Some(ecad_model::geometry::units::Mm(3.0)), weight: Some(Weight::Regular), ..Default::default() };
+        let body = ecad_model::objects::styles::TextStyle {
+            height: Some(ecad_model::geometry::units::Mm(3.0)),
+            weight: Some(Weight::Regular),
+            ..Default::default()
+        };
         let rec = ecad_model::StyleRecord::new("", ecad_model::objects::styles::StyleBody::Text(body));
         doc.styles.entry(ecad_model::StyleCatalogue::Text).or_default().insert(TextKind::Tag.builtin_style(), rec);
         assert_eq!(text_style(&doc, TextKind::Tag), TextStyle { height: 3.0, weight: Weight::Regular, style_name: STYLE_REGULAR, colour: None });

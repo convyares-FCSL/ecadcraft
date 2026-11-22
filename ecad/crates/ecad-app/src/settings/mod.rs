@@ -232,7 +232,11 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
         let _ = ui.interact(rect, egui::Id::unique("ecad.settings.ground"), egui::Sense::click_and_drag());
         let list = Rect::from_min_size(rect.min, vec2(LIST_W, rect.height()));
         ui.painter().rect_filled(list, 0.0, ecad_widgets::color(s.panel));
-        ui.painter().vline(list.right() - 0.5, list.y_range(), egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)));
+        ui.painter().vline(
+            list.right() - 0.5,
+            list.y_range(),
+            egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)),
+        );
         let (chosen, back_clicked) = list_ui(t, ui, list, &back);
         close |= back_clicked;
         if let Some(sec) = chosen {
@@ -264,7 +268,11 @@ pub fn show(t: &mut App, ui: &mut egui::Ui) {
             bar::font(ui, ui_type::BODY),
             ecad_widgets::color(s.text_2),
         );
-        ui.painter().hline(head.x_range(), head.bottom() - 0.5, egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)));
+        ui.painter().hline(
+            head.x_range(),
+            head.bottom() - 0.5,
+            egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)),
+        );
         // Standards lays out its own columns edge to edge; the others sit in a padded body.
         let body = if sec == Section::Standards {
             Rect::from_min_max(pos2(head.left(), head.bottom()), rect.max)
@@ -317,7 +325,12 @@ fn list_ui(t: &App, ui: &mut egui::Ui, list: Rect, back: &str) -> (Option<Sectio
     );
     bar::text_at(ui, list.left() + space::L + 20.0, y, back, ui_type::BODY, ecad_widgets::color(s.text));
     let cap = Rect::from_min_size(pos2(list.right() - space::L - 28.0, y - 9.0), vec2(28.0, 18.0));
-    ui.painter().rect_stroke(cap, ecad_widgets::style::corner(3.0), egui::Stroke::new(1.0, ecad_widgets::color(s.line_strong)), egui::StrokeKind::Inside);
+    ui.painter().rect_stroke(
+        cap,
+        ecad_widgets::style::corner(3.0),
+        egui::Stroke::new(1.0, ecad_widgets::color(s.line_strong)),
+        egui::StrokeKind::Inside,
+    );
     ui.painter().text(cap.center(), egui::Align2::CENTER_CENTER, "Esc", bar::font(ui, ui_type::CAPTION), ecad_widgets::color(s.text_2));
     let mut yy = back_r.bottom() + space::S;
     ui.painter().hline(list.x_range(), yy - 0.5, line);
@@ -394,7 +407,11 @@ pub(crate) fn card<R>(ui: &mut egui::Ui, title: &str, right: impl FnOnce(&mut eg
                     right(ui);
                 });
             });
-            ui.painter().hline(ui.max_rect().x_range(), top + 40.0, egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)));
+            ui.painter().hline(
+                ui.max_rect().x_range(),
+                top + 40.0,
+                egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)),
+            );
             ui.add_space(space::M);
             egui::Frame::new()
                 .inner_margin(egui::Margin { left: space::L as i8, right: space::L as i8, top: 0, bottom: space::L as i8 })
@@ -412,7 +429,13 @@ pub(crate) fn row<R>(ui: &mut egui::Ui, label: &str, add: impl FnOnce(&mut egui:
     let s = ecad_widgets::SHELL;
     ui.horizontal(|ui| {
         let (r, _) = ui.allocate_exact_size(vec2(118.0, 28.0), egui::Sense::hover());
-        ui.painter().text(pos2(r.left(), r.center().y), egui::Align2::LEFT_CENTER, label, bar::font(ui, ui_type::SMALL), ecad_widgets::color(s.text_2));
+        ui.painter().text(
+            pos2(r.left(), r.center().y),
+            egui::Align2::LEFT_CENTER,
+            label,
+            bar::font(ui, ui_type::SMALL),
+            ecad_widgets::color(s.text_2),
+        );
         add(ui)
     })
     .inner

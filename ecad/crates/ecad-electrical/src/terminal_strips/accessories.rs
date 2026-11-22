@@ -309,7 +309,9 @@ pub fn project_rule(doc: &Document, key: &str, value: Option<&str>) -> Option<Re
 /// Whether `key` is a strip's own terminal type article number, `article_number.<code>` (design
 /// 047 §5; feed-through's `article_number` is 047's own key, checked by [`crate::reports::bom::setprop_rule`]).
 fn is_type_article_key(key: &str) -> bool {
-    key.strip_prefix(crate::reports::bom::ARTICLE_KEY).and_then(|r| r.strip_prefix('.')).is_some_and(|code| crate::terminal_strips::terminal_blocks::by_code(code).is_some())
+    key.strip_prefix(crate::reports::bom::ARTICLE_KEY)
+        .and_then(|r| r.strip_prefix('.'))
+        .is_some_and(|code| crate::terminal_strips::terminal_blocks::by_code(code).is_some())
 }
 
 /// Whether `key` is a project terminal type article number, `strip_<code>_article_number`.
@@ -321,8 +323,10 @@ fn is_type_article_project_key(key: &str) -> bool {
 
 /// Every position label of strip `c` in plan order: drawn labels and the offer's positions.
 pub fn positions(doc: &Document, c: DeviceId) -> Vec<String> {
-    let mut labels: BTreeSet<String> =
-        crate::terminal_strips::drawn_connection_points(doc, c).into_iter().map(|(t, _, _)| crate::terminal_strips::terminal_blocks::position_label(doc, t)).collect();
+    let mut labels: BTreeSet<String> = crate::terminal_strips::drawn_connection_points(doc, c)
+        .into_iter()
+        .map(|(t, _, _)| crate::terminal_strips::terminal_blocks::position_label(doc, t))
+        .collect();
     if let Some(o) = crate::terminal_strips::offer_of(doc, c) {
         labels.extend((1..=o.positions).map(|n| n.to_string()));
     }
@@ -998,8 +1002,10 @@ fn renumber_strip(
     new_order.dedup();
     // Spare positions a relabelled terminal now takes (review of PR #57, 1): a link naming
     // one would silently join that terminal's net, so the position leaves the link.
-    let drawn_before: BTreeSet<String> =
-        crate::terminal_strips::drawn_connection_points(doc, c).into_iter().map(|(t, _, _)| crate::terminal_strips::terminal_blocks::position_label(doc, t)).collect();
+    let drawn_before: BTreeSet<String> = crate::terminal_strips::drawn_connection_points(doc, c)
+        .into_iter()
+        .map(|(t, _, _)| crate::terminal_strips::terminal_blocks::position_label(doc, t))
+        .collect();
     let taken: BTreeSet<&String> = map.values().filter(|l| !drawn_before.contains(*l)).collect();
     for (n, p) in jumper_bars::of(props) {
         let key = jumper_bars::key(n);

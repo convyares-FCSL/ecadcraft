@@ -6,9 +6,9 @@
 use crate::common;
 
 use common::{H, id};
-use {ecad_electrical::checks::Kind as CheckKind};
+use ecad_electrical::checks::Kind as CheckKind;
 use ecad_electrical::symbols::{self, Family, STARTER_LIBRARY, STARTERS};
-use ecad_model::{DeviceId, Op, ConnectionPointId, Word};
+use ecad_model::{ConnectionPointId, DeviceId, Op, Word};
 use serde_json::{Value, json};
 
 const SEED: u64 = 34;
@@ -81,7 +81,8 @@ fn every_new_symbol_places_with_its_prefix_labels_and_description() {
             .iter()
             .find_map(|o| match o {
                 Op::EmbedDefinition { definition, .. } => Some(definition.clone()),
-                _ => None})
+                _ => None,
+            })
             .unwrap();
         let o = d.origin.unwrap();
         assert_eq!((o.library, o.definition), (STARTER_LIBRARY, s.id), "{}", s.key);

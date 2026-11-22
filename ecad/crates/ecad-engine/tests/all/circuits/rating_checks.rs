@@ -4,8 +4,8 @@
 //! arithmetic; none is a value from a standard (owner, Q11). The expected numbers follow from them
 //! by the formulas of design 057 §3.
 
-use ecad_electrical::devices::ratings::dataset::{self, Insulation};
 use ecad_electrical::circuits;
+use ecad_electrical::devices::ratings::dataset::{self, Insulation};
 use ecad_electrical::devices::ratings::parse;
 use ecad_model::{CableId, DeviceId, WireId};
 use serde_json::{Value, json};

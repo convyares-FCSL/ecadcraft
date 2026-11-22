@@ -87,7 +87,7 @@ impl Client {
     /// connection points): one drawn device holding one point per place, committed straight to
     /// the ledger by the person. Returns the points, in the order given.
     pub(crate) fn points_at(&mut self, at: &[(f64, f64)]) -> Vec<ecad_model::ConnectionPointId> {
-        use ecad_model::{Device, DeviceId, Form, Op, Pt, Representation, RepresentationId, Subject, ConnectionPoint, ConnectionPointId};
+        use ecad_model::{ConnectionPoint, ConnectionPointId, Device, DeviceId, Form, Op, Pt, Representation, RepresentationId, Subject};
         let at = at.to_vec();
         self.s
             .with_session(|s, p| {
@@ -101,7 +101,12 @@ impl Client {
                         let t: ConnectionPointId = p.ids.fresh();
                         ops.push(Op::AddConnectionPoint {
                             id: t,
-                            terminal: ConnectionPoint { owner: device.into(), label: Some((i + 1).to_string()), key: None, accepts: Default::default() },
+                            terminal: ConnectionPoint {
+                                owner: device.into(),
+                                label: Some((i + 1).to_string()),
+                                key: None,
+                                accepts: Default::default(),
+                            },
                         });
                         cps.insert(t, Pt::new(*x, *y));
                         out.push(t);
@@ -132,7 +137,8 @@ impl Client {
         let pts: Vec<(f64, f64)> = params["points"].as_array().unwrap().iter().map(|p| (p[0].as_f64().unwrap(), p[1].as_f64().unwrap())).collect();
         let doc = self.doc();
         let page = self.s.with_session(|s, p| p.read(s, |p, _| p.active_page()).unwrap()).unwrap().unwrap_or(doc.page_order[0]);
-        let shown: Vec<ecad_model::Pt> = ecad_model::connectivity::derive::connection_point_positions(&doc, page).into_iter().map(|(_, _, at)| at).collect();
+        let shown: Vec<ecad_model::Pt> =
+            ecad_model::connectivity::derive::connection_point_positions(&doc, page).into_iter().map(|(_, _, at)| at).collect();
         let ends: Vec<(f64, f64)> = [pts.first(), pts.last()]
             .into_iter()
             .flatten()

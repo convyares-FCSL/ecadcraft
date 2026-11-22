@@ -6,8 +6,8 @@
 use ecad_widgets::tokens::space;
 use eframe::egui;
 
-use crate::settings::{card, later_box, row};
 use crate::App;
+use crate::settings::{card, later_box, row};
 
 /// Accessible names.
 pub const REVISIONS: &str = "settings.versions.revisions";
@@ -74,7 +74,8 @@ pub fn versions(t: &mut App, ui: &mut egui::Ui) {
         |_| {},
         |ui| {
             ui.label(
-                egui::RichText::new("Released revisions and the pending one. Release lives in History.").color(ecad_widgets::color(ecad_widgets::SHELL.text_2)),
+                egui::RichText::new("Released revisions and the pending one. Release lives in History.")
+                    .color(ecad_widgets::color(ecad_widgets::SHELL.text_2)),
             );
             ui.add_space(space::S);
             let b = ui.add_enabled(open, ecad_widgets::prim::Button::new("Revisions…").small());

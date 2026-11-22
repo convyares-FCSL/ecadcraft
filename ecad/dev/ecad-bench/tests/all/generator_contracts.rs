@@ -130,7 +130,8 @@ fn a_generated_project_opens_in_a_session_and_shows_every_page() {
     assert_eq!(m.transactions, g.ledger.head());
     assert_eq!(&doc, g.ledger.document());
     let mut s = cadcraft_engine::Session::empty();
-    let (project, _) = ecad_engine::ProjectHandle::open_file_in(&mut s, v2.to_str().unwrap(), 9, ecad_engine::cables::views::Settings::none()).unwrap();
+    let (project, _) =
+        ecad_engine::ProjectHandle::open_file_in(&mut s, v2.to_str().unwrap(), 9, ecad_engine::cables::views::Settings::none()).unwrap();
     for page in &g.pages {
         project.open_page(&mut s, *page).unwrap();
         assert_eq!(project.read(&mut s, |p, _| p.active_page()).unwrap(), Some(*page));

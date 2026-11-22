@@ -22,9 +22,9 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::objects::devices::PartText;
 use crate::document::doc::Device;
 use crate::naming::id::{FunctionId, LocationId};
+use crate::objects::devices::PartText;
 
 /// The most characters a loose part's description has (design 072 §6.4).
 pub const MAX_DESCRIPTION: usize = 200;

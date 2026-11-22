@@ -58,7 +58,10 @@ pub static WIRING_LABEL_MIN_LENGTH: Entry = Entry {
     label: "Shortest labelled wire",
     group: "Wire labels",
     brief: "032",
-    kind: Kind::Length { min: *ecad_model::connectivity::wiring::LABEL_MIN_LENGTHS.start(), max: *ecad_model::connectivity::wiring::LABEL_MIN_LENGTHS.end() },
+    kind: Kind::Length {
+        min: *ecad_model::connectivity::wiring::LABEL_MIN_LENGTHS.start(),
+        max: *ecad_model::connectivity::wiring::LABEL_MIN_LENGTHS.end(),
+    },
     slot: Slot::new(),
     levels: SP,
     project: ProjectSource::Settings(label_min_length_setting),

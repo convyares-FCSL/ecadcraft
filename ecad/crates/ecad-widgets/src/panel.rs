@@ -13,8 +13,8 @@
 //! Every row is [`size::CONTROL`] high and its box [`size::CONTROL_SMALL`], centred, so rows of
 //! either panel share one pitch.
 
-use {crate::tokens::Icon, crate::tokens::line, crate::tokens::radius, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type};
 use egui::{Rangef, Rect, Response, Sense, Stroke, Ui, pos2, vec2};
+use {crate::tokens::Icon, crate::tokens::line, crate::tokens::radius, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type};
 
 use crate::prim::Tone;
 use crate::style::corner;

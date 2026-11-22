@@ -118,8 +118,8 @@ impl Project {
     }
 
     pub(super) fn record_change(
-        &mut self, pages: Option<BTreeSet<PageId>>, devices: ecad_electrical::devices::device_list::DeviceTouch, props: Option<BTreeSet<ecad_model::ObjectRef>>,
-        tree: bool,
+        &mut self, pages: Option<BTreeSet<PageId>>, devices: ecad_electrical::devices::device_list::DeviceTouch,
+        props: Option<BTreeSet<ecad_model::ObjectRef>>, tree: bool,
     ) {
         self.goto_ring = None;
         self.refresh_pending();

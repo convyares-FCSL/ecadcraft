@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 use ecad_model::naming::numbering::{self, Kind, Mark, Plan, Request, Scope};
 use ecad_model::naming::tag;
 use ecad_model::naming::tag::PROVISIONAL_SETTING;
-use ecad_model::{CableId, DeviceId, Document, FolderId, Ledger, Noun, ObjectRef, Op, PageId, ConnectionPointId, WireId};
+use ecad_model::{CableId, ConnectionPointId, DeviceId, Document, FolderId, Ledger, Noun, ObjectRef, Op, PageId, WireId};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -279,7 +279,10 @@ pub fn desc(doc: &Document, o: ObjectRef) -> String {
         }
         ObjectRef::Wire(w) => {
             let conn = doc.connectivity();
-            conn.net_of_conductor(w).and_then(|id| conn.net(id)).and_then(|n| ecad_model::connectivity::wiring::net_potential(doc, n).name).unwrap_or_default()
+            conn.net_of_conductor(w)
+                .and_then(|id| conn.net(id))
+                .and_then(|n| ecad_model::connectivity::wiring::net_potential(doc, n).name)
+                .unwrap_or_default()
         }
         _ => String::new(),
     }

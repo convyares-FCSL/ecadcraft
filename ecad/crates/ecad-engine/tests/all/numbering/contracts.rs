@@ -7,11 +7,11 @@ use crate::common;
 
 use cadcraft_engine::Session;
 use common::{H, id};
-use {ecad_electrical::devices::PROVISIONAL_ACI, ecad_electrical::devices::TextOf};
 use ecad_engine::{Persistence, ProjectHandle};
 use ecad_model::document::sheet::Grid;
 use ecad_model::{DeviceId, PageId};
 use serde_json::{Value, json};
+use {ecad_electrical::devices::PROVISIONAL_ACI, ecad_electrical::devices::TextOf};
 
 const SEED: u64 = 26;
 
@@ -45,7 +45,8 @@ struct N {
     k03: DeviceId,
     k02: DeviceId,
     q01: DeviceId,
-    folder: String}
+    folder: String,
+}
 
 fn fixture() -> N {
     let mut h = H::new(SEED);

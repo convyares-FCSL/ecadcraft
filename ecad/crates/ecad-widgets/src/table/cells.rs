@@ -1,13 +1,13 @@
 //! Drawing one cell from its [`Cell`]: set values look like fields, read values are grey text
 //! (a go-to when they have a target), provisional values use the provisional look (spec §5).
 
-use {crate::tokens::line, crate::tokens::radius, crate::tokens::space, crate::tokens::ui_type};
 use egui::text::{LayoutJob, TextFormat, TextWrapping};
 use egui::{Color32, Galley, Rect, Stroke, StrokeKind, Ui, pos2, vec2};
 use std::sync::Arc;
+use {crate::tokens::line, crate::tokens::radius, crate::tokens::space, crate::tokens::ui_type};
 
-use crate::table::source::{Align, Cell, LaneCell};
 use crate::style::corner;
+use crate::table::source::{Align, Cell, LaneCell};
 use {crate::color, crate::fonts, crate::prim};
 
 /// Distance between two link lanes.

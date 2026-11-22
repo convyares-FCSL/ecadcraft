@@ -4,10 +4,13 @@ use std::collections::BTreeSet;
 
 use cadcraft_engine::doc::EntityKind;
 use cadcraft_engine::doc::color::Color;
-use {ecad_electrical::pages::generated::FLAGGED_ACI, ecad_electrical::pages::generated::FLAGGED_PRINT_ACI, ecad_electrical::pages::generated::LAYER, ecad_electrical::pages::generated::MISSING};
 use ecad_electrical::reports::kept::ReportModels;
 use ecad_model::PageId;
 use serde_json::json;
+use {
+    ecad_electrical::pages::generated::FLAGGED_ACI, ecad_electrical::pages::generated::FLAGGED_PRINT_ACI, ecad_electrical::pages::generated::LAYER,
+    ecad_electrical::pages::generated::MISSING,
+};
 
 use crate::common::{H, id};
 

@@ -10,8 +10,8 @@ use serde_json::json;
 
 use crate::commands::input::Point;
 use crate::commands::run::{Access, Cx, Generic, Outcome, Pages};
-use crate::error::CmdError;
 use crate::devices::traits::DeviceKind;
+use crate::error::CmdError;
 use crate::references::devices::{self, Placement, RefIndex};
 
 /// Where `refgoto` goes: the page, the point to centre, the item to select, and the words.

@@ -36,8 +36,8 @@ use serde_json::{Value, json};
 
 use crate::access::Pages;
 use crate::commands::input::{Command, Typed, typed};
-use crate::pages::commands::sheets::{RevisionView, next_view_id};
 use crate::commands::{on_any_page, on_project};
+use crate::pages::commands::sheets::{RevisionView, next_view_id};
 use crate::project::Project;
 use ecad_electrical::releases::revisions;
 

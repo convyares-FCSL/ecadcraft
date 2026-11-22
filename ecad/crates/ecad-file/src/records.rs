@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 use ecad_model as m;
 use ecad_model::{
-    CableId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, RouteId, ConnectionPointId, TxId, WireId,
+    CableId, ConnectionPointId, DefinitionId, DeviceId, FolderId, ItemId, LayerId, LibraryId, PageId, RepresentationId, RouteId, TxId, WireId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -646,7 +646,11 @@ impl From<WiringSettings> for m::connectivity::wiring::WiringSettings {
             },
             digits: w.digits,
             unclassified_prefix: w.unclassified_prefix,
-            potentials: w.potentials.into_iter().map(|p| m::connectivity::wiring::PotentialDef { name: p.name, prefix: p.prefix, numbered: p.numbered }).collect(),
+            potentials: w
+                .potentials
+                .into_iter()
+                .map(|p| m::connectivity::wiring::PotentialDef { name: p.name, prefix: p.prefix, numbered: p.numbered })
+                .collect(),
             colour_style: w.colour_style,
             label_height: w.label_height,
             label_rule: w.label_rule,
@@ -1558,7 +1562,11 @@ impl From<Definition> for m::Definition {
             name: d.name,
             origin: d.origin.map(morigin),
             graphics: d.graphics.into_iter().map(Into::into).collect(),
-            terminals: d.terminals.into_iter().map(|t| m::ConnectionPointDef { key: t.key, label: t.label, at: mpt(t.at), accepts: t.accepts }).collect(),
+            terminals: d
+                .terminals
+                .into_iter()
+                .map(|t| m::ConnectionPointDef { key: t.key, label: t.label, at: mpt(t.at), accepts: t.accepts })
+                .collect(),
             bridges: d.bridges,
             texts: d.texts.into_iter().map(|t| m::TextSlot { text: t.text, at: mpt(t.at), h: t.h, v: t.v, rotation: t.rotation }).collect(),
             defaults: d.defaults,

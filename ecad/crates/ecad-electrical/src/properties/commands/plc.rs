@@ -19,9 +19,9 @@
 use ecad_model::objects::plc::{NetAddress, PlcModule, PlcRack, Protocol, RackHead, Signal};
 use ecad_model::{DeviceId, Document, ObjectRef, Op, Word};
 
-use crate::properties::commands::{Build, PropRule};
 use crate::error::CmdError;
 use crate::plc::{address, channels, edit, rack};
+use crate::properties::commands::{Build, PropRule};
 
 /// The `setprop` key of a module's signal.
 pub const SIGNAL: &str = "plc.signal";

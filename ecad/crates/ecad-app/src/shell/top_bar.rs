@@ -13,9 +13,9 @@
 use ecad_widgets::tokens::{Icon, size, space, ui_type};
 use eframe::egui::{self, Rect, pos2, vec2};
 
-use crate::shell::{Workspace, bar};
 use crate::App;
 use crate::pages::project_panel::Action;
+use crate::shell::{Workspace, bar};
 
 /// Accessible labels.
 pub const PROJECT_MENU: &str = "Project menu";
@@ -127,7 +127,10 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, rect: Rect) {
     let search = Rect::from_center_size(pos2(rect.center().x, y), vec2(SEARCH_W, size::SEARCH_FIELD));
     let search_was = t.search.query.clone();
     crate::shell::in_rect(ui, search, "ecad.shell.topbar.search", |ui| {
-        ecad_widgets::prim::Field::new(&mut t.search.query, ecad_widgets::prim::FieldKind::Search, SEARCH).placeholder(SEARCH_HINT).width(SEARCH_W).show(ui);
+        ecad_widgets::prim::Field::new(&mut t.search.query, ecad_widgets::prim::FieldKind::Search, SEARCH)
+            .placeholder(SEARCH_HINT)
+            .width(SEARCH_W)
+            .show(ui);
     });
     keycap(ui, search, "Ctrl K");
 

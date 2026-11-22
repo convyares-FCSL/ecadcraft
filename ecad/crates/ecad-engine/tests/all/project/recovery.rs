@@ -14,8 +14,8 @@ use std::sync::Arc;
 use cadcraft_engine::doc::{Drawing, EntityKind, Space};
 use common::{H, small_project};
 use ecad_engine::dev::verify::verify_page;
-use ecad_engine::{HandleMap, project_page};
 use ecad_engine::history::event_log::EventKind;
+use ecad_engine::{HandleMap, project_page};
 use ecad_model::{Document, PageId};
 use serde_json::{Value, json};
 

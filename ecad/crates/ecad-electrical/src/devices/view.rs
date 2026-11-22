@@ -30,9 +30,9 @@ use ecad_model::document::effect::{AreaSet, Effect};
 use ecad_model::document::view::{DerivedView, NoteCx, Outcome, Phase, ViewScope};
 use ecad_model::{DeviceId, Document, ObjectRef, PageId, Subject};
 
-use crate::views::Inputs;
 use crate::devices::device_list::DeviceTouch;
 use crate::title_blocks::{Reach, frame_reach_of};
+use crate::views::Inputs;
 
 /// The Devices feed.
 #[derive(Debug, Default)]

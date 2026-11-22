@@ -10,9 +10,9 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::objects::styles::wire::ConductorRating;
-use crate::naming::text::Text;
 use crate::geometry::units::Mm;
+use crate::naming::text::Text;
+use crate::objects::styles::wire::ConductorRating;
 use crate::objects::wire::{Colours, WireSize};
 
 crate::word_enum! {

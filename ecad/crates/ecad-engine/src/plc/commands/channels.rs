@@ -10,11 +10,11 @@ use serde::Deserialize;
 
 use crate::commands::input::Command;
 use crate::commands::{err, on_project, plain_style};
+use ecad_electrical::commands::input::{Point, TextOrNumber, nullable};
 use ecad_electrical::plc::channels::*;
 use ecad_electrical::plc::rack::channel_count;
 use ecad_electrical::symbols::Starter;
-use ecad_electrical::commands::input::{Point, TextOrNumber, nullable};
-use ecad_model::{Placement, Pt, ConnectionPointId};
+use ecad_model::{ConnectionPointId, Placement, Pt};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -262,11 +262,15 @@ impl Command for PlcchannelParams {
         if channel.is_none() && index.is_none() {
             return Err(err("`channel` (a number as shown) is required"));
         }
-        let values: Vec<(&'static str, Option<String>)> =
-            [("text", self.text), ("address", self.address), (ecad_electrical::plc::signals::TAG, self.tag), (ecad_electrical::plc::signals::SAFE, self.safe)]
-                .into_iter()
-                .filter_map(|(what, v)| v.map(|v| (what, v)))
-                .collect();
+        let values: Vec<(&'static str, Option<String>)> = [
+            ("text", self.text),
+            ("address", self.address),
+            (ecad_electrical::plc::signals::TAG, self.tag),
+            (ecad_electrical::plc::signals::SAFE, self.safe),
+        ]
+        .into_iter()
+        .filter_map(|(what, v)| v.map(|v| (what, v)))
+        .collect();
         let input = rules::ChannelInput {
             channel,
             index,

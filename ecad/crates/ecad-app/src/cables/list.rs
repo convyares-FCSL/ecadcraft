@@ -424,8 +424,13 @@ impl CablesView {
             None => self.table.update(&self.source, Changed::All),
             Some(v) if v.is_empty() => {}
             Some(v) => {
-                let rows: Vec<usize> =
-                    self.ids.iter().enumerate().filter(|(_, c)| v.contains(&ecad_electrical::circuits::RatedSubject::Cable(**c))).map(|(k, _)| k).collect();
+                let rows: Vec<usize> = self
+                    .ids
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, c)| v.contains(&ecad_electrical::circuits::RatedSubject::Cable(**c)))
+                    .map(|(k, _)| k)
+                    .collect();
                 if !rows.is_empty() {
                     self.table.update(&self.source, Changed::Keys(rows));
                 }

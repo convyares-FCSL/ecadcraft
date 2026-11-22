@@ -2,8 +2,8 @@
 //! §3.3, §3.5; brief AC 1 and AC 7). Written from the design before the implementation existed.
 
 use ecad_electrical::defaults::{self, Scope};
-use {ecad_electrical::styles::text_style::TextKind, ecad_electrical::styles::text_style::TextStyle, ecad_electrical::styles::text_style::Weight};
 use ecad_model::{Author, Document, ObjectRef, Op};
+use {ecad_electrical::styles::text_style::TextKind, ecad_electrical::styles::text_style::TextStyle, ecad_electrical::styles::text_style::Weight};
 
 use crate::common::H;
 
@@ -41,7 +41,8 @@ fn doc_with(props: &[(&str, &str)]) -> Document {
                     let _ = ecad_electrical::styles::text::set(t, field, Some(v));
                 }
             }
-            None => ops.push(Op::SetProperty { object: ObjectRef::Project, key: (*k).into(), before: None, after: Some((*v).into()) })}
+            None => ops.push(Op::SetProperty { object: ObjectRef::Project, key: (*k).into(), before: None, after: Some((*v).into()) }),
+        }
     }
     for (kind, r) in records {
         ops.push(Op::SetStyle {
@@ -49,7 +50,8 @@ fn doc_with(props: &[(&str, &str)]) -> Document {
             catalogue: ecad_model::StyleCatalogue::Text,
             id: ecad_model::StyleRef::Builtin(kind),
             before: None,
-            after: Some(r)});
+            after: Some(r),
+        });
     }
     if !ops.is_empty() {
         h.cfg(|p| p.ledger.commit(Author::User, "t", ops)).unwrap();

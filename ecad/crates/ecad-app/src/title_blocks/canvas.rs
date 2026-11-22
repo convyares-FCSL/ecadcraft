@@ -9,11 +9,11 @@ use ecad_model::{Primitive, Pt};
 use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Align2, Color32, Pos2, Rect, Sense, Shape, Stroke, pos2, vec2};
 
+use crate::library::browser;
+use crate::shell::bar;
 use crate::title_blocks::draft::{self, Draft};
 use crate::title_blocks::list::{Drops, PALETTE};
 use crate::title_blocks::{Act, DxfAsk, Editor, Sample, Tool};
-use crate::library::browser;
-use crate::shell::bar;
 
 /// Element names.
 pub const LOGO_PATH: &str = "library.tb.logo.path";
@@ -470,7 +470,13 @@ pub fn show(ui: &mut egui::Ui, main: Rect, ed: &mut Editor, sheet: &ecad_drawing
     for x in [w * 0.15, w * 0.55] {
         p.line_segment([v.at(x, -4.0), v.at(x + 6.0, -4.0)], Stroke::new(1.0, c32(sheet.ink_2)));
     }
-    p.text(pos2(paper.center().x, paper.bottom() + 14.0), Align2::CENTER_CENTER, crate::title_blocks::CAPTION, bar::font(ui, ui_type::SMALL), c32(s.text_3));
+    p.text(
+        pos2(paper.center().x, paper.bottom() + 14.0),
+        Align2::CENTER_CENTER,
+        crate::title_blocks::CAPTION,
+        bar::font(ui, ui_type::SMALL),
+        c32(s.text_3),
+    );
     paint_items(ui, v, d, sample_data.as_ref(), ed.sample, sheet, true);
     if d.now.layout.items.is_empty() {
         p.text(v.at(w / 2.0, h / 2.0), Align2::CENTER_CENTER, crate::title_blocks::EMPTY_HINT, bar::font(ui, ui_type::BODY), c32(s.text_3));

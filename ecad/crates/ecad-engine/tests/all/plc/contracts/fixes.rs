@@ -5,8 +5,8 @@
 use ecad_model::{DeviceId, PageId, Subject};
 use serde_json::{Value, json};
 
-use crate::plc::contracts::{placed, prop};
 use crate::common::{H, id};
+use crate::plc::contracts::{placed, prop};
 
 fn rack_of(h: &mut H, c: DeviceId) -> Option<String> {
     prop(h, c, "plc.rack")
@@ -175,8 +175,10 @@ fn review_3_the_io_sheet_count_comes_from_kept_row_counts() {
             let o = p.kept_reports().unwrap();
             // Brief 051 (design 051 §4.1): the packing of the rows as made.
             let d = p.ledger.document();
-            let made: Vec<usize> =
-                ecad_electrical::plc::iolist::cards_in_order(&o.plc).iter().map(|c| ecad_electrical::plc::iolist::rows_of(d, &o.plc, c).len()).collect();
+            let made: Vec<usize> = ecad_electrical::plc::iolist::cards_in_order(&o.plc)
+                .iter()
+                .map(|c| ecad_electrical::plc::iolist::rows_of(d, &o.plc, c).len())
+                .collect();
             let per = ecad_electrical::pages::generated::rows_per_sheet();
             (o.plc.iolist_sheets(per), ecad_electrical::plc::sheets::pack(&made, 2.0, 1.0, 1.0, per as f64).len())
         });

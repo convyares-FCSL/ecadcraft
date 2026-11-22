@@ -98,8 +98,9 @@ pub fn with_field(project: &Project, n: u32, field: &str, value: Option<&str>) -
     if field == ISSUED {
         row.issued = value.map(text).transpose()?;
     } else if field == RELEASED {
-        row.released =
-            value.map(|v| ecad_model::naming::text::Text::new(v).map_err(|e| CmdError::refused(format!("That folder is refused: {e}.")))).transpose()?;
+        row.released = value
+            .map(|v| ecad_model::naming::text::Text::new(v).map_err(|e| CmdError::refused(format!("That folder is refused: {e}."))))
+            .transpose()?;
     } else if field == "rev" {
         row.rev = value.map(|v| ecad_model::Rev::new(v).map_err(|e| CmdError::refused(format!("\"{v}\" is not a rev: {e}.")))).transpose()?;
     } else if let Some(f) = RevField::parse(field) {

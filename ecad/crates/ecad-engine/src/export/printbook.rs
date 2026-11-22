@@ -24,8 +24,8 @@ use ecad_model::document::book::{self, Book};
 use ecad_model::{CableId, Document, FolderId, PageId, Pt};
 use serde_json::{Value, json};
 
-use ecad_electrical::reports::kept::ReportModels;
 use crate::project::{HandleMap, base_drawing, project_page_framed};
+use ecad_electrical::reports::kept::ReportModels;
 
 /// Most sheets in one PDF (CADCraft's `MAX_PAGES`).
 pub const MAX_SHEETS: usize = 256;
@@ -215,13 +215,16 @@ pub fn build_in(
             let mut e = (**e).clone();
             e.kind.transform(&m);
             // Design 033 §3.1: a missing value prints black in either colour mode.
-            if e.common.layer == ecad_electrical::pages::generated::LAYER && e.common.color == Color::Index(ecad_electrical::pages::generated::FLAGGED_ACI) {
+            if e.common.layer == ecad_electrical::pages::generated::LAYER
+                && e.common.color == Color::Index(ecad_electrical::pages::generated::FLAGGED_ACI)
+            {
                 e.common.color = Color::Index(ecad_electrical::pages::generated::FLAGGED_PRINT_ACI);
             }
             // Colour: everything but the wire colours prints in ink. Mono: the wires print in ink.
             // Brief 050a: a style's colour (text, location box, frame; set as a true colour by
             // the projection) prints like a wire colour: in a colour print only.
-            let wire_colour = e.common.layer == ecad_electrical::wires::DASH_LAYER || map.is_coloured(e.handle) || matches!(e.common.color, Color::True(_));
+            let wire_colour =
+                e.common.layer == ecad_electrical::wires::DASH_LAYER || map.is_coloured(e.handle) || matches!(e.common.color, Color::True(_));
             if colour != wire_colour {
                 e.common.color = Color::Index(7);
             }

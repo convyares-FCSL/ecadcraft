@@ -12,12 +12,12 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::cables::words::MAX_HANDLES;
 use crate::commands::input::{Bounded, OrNull, nullable};
 use crate::commands::run::{Cx, Generic, Outcome, Pages, Slot, State};
-use crate::locations::designations::{self, Aspect};
 use crate::error::CmdError;
+use crate::locations::designations::{self, Aspect};
 use crate::symbols::proposals::{self, Conflict};
-use crate::cables::words::MAX_HANDLES;
 
 /// Most components one `setlocation` names (tester 052: a list over it is refused before any
 /// work).

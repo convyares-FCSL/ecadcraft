@@ -5,17 +5,21 @@ use std::collections::BTreeSet;
 
 use crate::common::{H, id};
 use cadcraft_engine::doc::EntityKind;
-use {ecad_electrical::continuations::CAPTION_KEY, ecad_electrical::continuations::CAPTION_RULE, ecad_electrical::continuations::TEXT_DERIVED};
 use ecad_engine::project::Mapped;
-use {ecad_electrical::references::devices::Group, ecad_electrical::references::devices::HAlign, ecad_electrical::references::devices::Places, ecad_electrical::references::devices::RefIndex, ecad_electrical::references::devices::Shape};
 use ecad_model::{AidId, DeviceId, ObjectRef, PageId, Pt, RepresentationId, Subject};
 use serde_json::{Value, json};
+use {ecad_electrical::continuations::CAPTION_KEY, ecad_electrical::continuations::CAPTION_RULE, ecad_electrical::continuations::TEXT_DERIVED};
+use {
+    ecad_electrical::references::devices::Group, ecad_electrical::references::devices::HAlign, ecad_electrical::references::devices::Places,
+    ecad_electrical::references::devices::RefIndex, ecad_electrical::references::devices::Shape,
+};
 
 struct F {
     h: H,
     pages: [PageId; 3],
     /// The `24V` arrows on 101, 102 and 103: component and symbol.
-    arrows: [(AidId, RepresentationId); 3]}
+    arrows: [(AidId, RepresentationId); 3],
+}
 
 fn arrow(h: &mut H, at: (f64, f64), name: &str) -> (AidId, RepresentationId) {
     let v = h.run("place", json!({"symbol": "continuation", "at": [at.0, at.1], "name": name})).unwrap();
@@ -58,7 +62,8 @@ fn parts(h: &mut H, page: PageId) -> Vec<(RepresentationId, u32, Shape)> {
 fn text_of(h: &mut H, page: PageId, r: RepresentationId) -> Option<String> {
     parts(h, page).into_iter().find_map(|(x, i, s)| match s {
         Shape::Text { value, .. } if x == r && i == 0 => Some(value),
-        _ => None})
+        _ => None,
+    })
 }
 
 /// The cross-reference texts as drawn on `page` (the drawing, not a fresh derivation).
@@ -71,7 +76,8 @@ fn drawn(h: &mut H, page: PageId) -> Vec<String> {
             .filter_map(|hd| d.model.iter().find(|e| e.handle == hd))
             .filter_map(|e| match &e.kind {
                 EntityKind::Text(t) => Some(t.value.clone()),
-                _ => None})
+                _ => None,
+            })
             .collect()
     })
 }
@@ -242,7 +248,8 @@ fn captions_group_adjacent_arrows_under_one_bracket() {
             .into_iter()
             .filter_map(|(_, i, s)| match s {
                 Shape::Text { value, rotation, .. } if i >= 4 => Some((value, rotation)),
-                _ => None})
+                _ => None,
+            })
             .collect::<Vec<_>>()
     };
     assert_eq!(brackets(&mut f.h), 1);
@@ -296,7 +303,8 @@ fn caption_rules_and_wrapping() {
         .into_iter()
         .filter_map(|(_, i, s)| match s {
             Shape::Text { value, .. } if i >= 4 => Some(value),
-            _ => None})
+            _ => None,
+        })
         .collect();
     assert!((2..=3).contains(&lines.len()), "{lines:?}");
     let pc: AidId = id(&v, "aid");

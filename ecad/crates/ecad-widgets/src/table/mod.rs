@@ -28,8 +28,8 @@ pub use source::{Align, Cell, Changed, Column, ColumnId, ColumnKind, Editor, Lan
 pub use tint::{TINT_SECONDS, TintMap};
 pub use view_model::{Dir, Row, ViewModel, natural_cmp};
 
-use {crate::tokens::Icon, crate::tokens::line, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type};
 use egui::{Id, Key, Modifiers, Rect, Response, Role, Sense, Stroke, Ui, WidgetInfo, pos2, vec2};
+use {crate::tokens::Icon, crate::tokens::line, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type};
 
 use crate::prim::{self, Chip, Field, FieldKind, Kind};
 use {crate::color, crate::icons};

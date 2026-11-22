@@ -7,7 +7,7 @@
 
 use std::collections::BTreeSet;
 
-use ecad_model::{DeviceId, RouteEnd, RouteId, ConnectionPointId};
+use ecad_model::{ConnectionPointId, DeviceId, RouteEnd, RouteId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id};

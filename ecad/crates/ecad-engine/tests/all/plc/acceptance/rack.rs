@@ -5,8 +5,8 @@ use cadcraft_engine::Input;
 use ecad_model::{DeviceId, Op};
 use serde_json::json;
 
-use crate::plc::acceptance::*;
 use crate::common::id;
+use crate::plc::acceptance::*;
 
 // ------------------------------------------------------------------------------- A (AC 1)
 

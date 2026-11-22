@@ -3,11 +3,11 @@
 //! one-line summary. With anything other than one device selected (nothing: the page; a wire, a
 //! cable…) it shows that object's properties in the same folding sections.
 
-use ecad_electrical::properties::Section;
 use ecad_electrical::cables::words::Row;
-use {ecad_electrical::checks::Object, ecad_electrical::checks::Severity};
+use ecad_electrical::properties::Section;
 use ecad_widgets::tokens::{radius, space, ui_type};
 use eframe::egui::{self, Rect, Sense, pos2, vec2};
+use {ecad_electrical::checks::Object, ecad_electrical::checks::Severity};
 
 use crate::inspector::widgets as w;
 use crate::inspector::{Cx, InspectorAction, fields};

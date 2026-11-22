@@ -21,11 +21,11 @@
 #![deny(clippy::wildcard_enum_match_arm)]
 
 use ecad_model::DeviceType;
+use ecad_model::geometry::units::{Amps, Current, RatedVoltage, Watts};
 use ecad_model::objects::devices::{
     Breaker, ContactSet, ContactTable, Indicator, IndicatorColour, Motor, Output, Phases, PowerSupply, Protection, ProtectionKind, Rcbo, Rcd,
     Sensing, Sensor, SignalType, Switching,
 };
-use ecad_model::geometry::units::{Amps, Current, RatedVoltage, Watts};
 
 /// A device that supplies a circuit: a power supply or a transformer.
 pub trait Supply {
@@ -379,8 +379,8 @@ impl Signals for Indicator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ecad_model::objects::devices::{Control, Operator, Psu, Transformer};
     use ecad_model::geometry::units::{Percent, VoltAmps, Volts};
+    use ecad_model::objects::devices::{Control, Operator, Psu, Transformer};
 
     fn v(volts: f64, current: Current) -> RatedVoltage {
         RatedVoltage { volts: Volts(volts), current }

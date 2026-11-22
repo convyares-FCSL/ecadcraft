@@ -39,7 +39,6 @@ pub(crate) mod placing_view;
 pub mod slash_picker;
 pub(crate) mod widgets;
 /// Brief 054b: the Page tab on a generated page.
-
 pub use checks_tab::{ELSEWHERE, GO_TO, SCOPE};
 pub use details::{ConnRow, DeviceDetails, DrawnRow};
 pub use device::{CONNECTION_ROW, DRAWN_ROW, OWN_CHECKS};
@@ -49,17 +48,17 @@ pub use widgets::section_name;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_electrical::styles::commands::defaults::{self as default_cmds, Target};
 use ecad_electrical::defaults::{self, Entry, Kind, Level, Scope, Source};
-use ecad_engine::project::Mapped;
+use ecad_electrical::styles::commands::defaults::{self as default_cmds, Target};
 use ecad_electrical::styles::text_style::TextKind;
+use ecad_engine::project::Mapped;
 use ecad_model::{ObjectRef, PageId, RepresentationId, Subject};
 use ecad_widgets::tokens::{Icon, size, space, ui_type};
 use eframe::egui::{self, Rect, RichText, pos2, vec2};
 
+use crate::App;
 use crate::shell::Slots;
 use crate::shell::state::RightTab;
-use crate::App;
 
 /// Accessible labels.
 pub const COLLAPSE: &str = "Collapse the details panel";
@@ -139,7 +138,11 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, slots: &Slots) {
     let s = ecad_widgets::SHELL;
     // The rail, always shown at the right edge (the strip's mirror).
     crate::shell::fill(ui, slots.rail, s.panel);
-    ui.painter().vline(slots.rail.left() + 0.5, slots.rail.y_range(), egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)));
+    ui.painter().vline(
+        slots.rail.left() + 0.5,
+        slots.rail.y_range(),
+        egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)),
+    );
     rail(t, ui, slots.rail, !slots.right_rail);
     if slots.right_rail {
         return;
@@ -156,7 +159,9 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, slots: &Slots) {
         let head = Rect::from_min_size(rect.min, vec2(rect.width(), size::PANEL_HEADER));
         let collapse = crate::shell::in_rect(ui, head.shrink2(vec2(space::L, space::XS)), "ecad.shell.right.head", |ui| {
             ui.horizontal_centered(|ui| {
-                ui.label(egui::RichText::new(LIBRARY_TITLE).font(ecad_widgets::fonts::font(ui.ctx(), ui_type::TITLE)).color(ecad_widgets::color(s.text)));
+                ui.label(
+                    egui::RichText::new(LIBRARY_TITLE).font(ecad_widgets::fonts::font(ui.ctx(), ui_type::TITLE)).color(ecad_widgets::color(s.text)),
+                );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.add(ecad_widgets::prim::IconButton::new(Icon::Collapse, COLLAPSE)).on_hover_text("Collapse (])").clicked()
                 })
@@ -232,8 +237,9 @@ pub fn show(t: &mut App, ui: &mut egui::Ui, slots: &Slots) {
         },
     };
     let accent = placing.is_some();
-    let (collapse, row) =
-        crate::shell::in_rect(ui, head.shrink2(vec2(space::L, space::S)), "ecad.shell.right.head", |ui| header(ui, &title, &sub, device.is_some(), accent));
+    let (collapse, row) = crate::shell::in_rect(ui, head.shrink2(vec2(space::L, space::S)), "ecad.shell.right.head", |ui| {
+        header(ui, &title, &sub, device.is_some(), accent)
+    });
     ui.painter().hline(rect.x_range(), head.bottom() - 0.5, egui::Stroke::new(ecad_widgets::tokens::line::HAIRLINE_PX, ecad_widgets::color(s.line)));
     let body = Rect::from_min_max(pos2(rect.left() + space::L, head.bottom()), pos2(rect.right() - space::L, rect.bottom()));
     let full = rect.x_range();
@@ -697,8 +703,12 @@ fn rows_for(doc: &ecad_model::Document, what: What) -> Built {
                 es.push(k.style_entry());
                 es.extend(k.show_entry());
             }
-            let starter =
-                doc.devices.get(&c).and_then(|c| c.definition).and_then(|d| doc.definitions.get(&d)).and_then(ecad_electrical::symbols::of_definition);
+            let starter = doc
+                .devices
+                .get(&c)
+                .and_then(|c| c.definition)
+                .and_then(|d| doc.definitions.get(&d))
+                .and_then(ecad_electrical::symbols::of_definition);
             es.extend(starter.and_then(|s| defaults::symbols::prefix_entry(s.key)));
             (Scope::symbol(doc, rep), es, Some((Level::Object, Target::Symbol(rep))))
         }
@@ -884,8 +894,11 @@ impl Inspector {
                             out.push(InspectorAction::Run(row.key, default_cmds::line(row.key, level, target, None)));
                         }
                     }
-                    let badge =
-                        ecad_widgets::prim::badge(ui, crate::settings::standards_list::source_word(row.from), crate::settings::standards_list::source_tone(row.from));
+                    let badge = ecad_widgets::prim::badge(
+                        ui,
+                        crate::settings::standards_list::source_word(row.from),
+                        crate::settings::standards_list::source_tone(row.from),
+                    );
                     let b = ui.interact(badge.rect, egui::Id::unique(("ecad.origin", row.key)), egui::Sense::click());
                     b.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("ecad.origin.{}", row.key)));
                     if b.on_hover_text("Where this value comes from: open Standards").clicked() {

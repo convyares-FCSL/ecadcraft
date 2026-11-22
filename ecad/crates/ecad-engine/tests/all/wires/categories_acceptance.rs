@@ -12,14 +12,15 @@
 use cadcraft_engine::doc::color::Color;
 use cadcraft_engine::doc::{EntityKind, Lineweight};
 use ecad_drawing_style::sheet::PAPER;
-use {ecad_engine::cables::draw, ecad_engine::export::printbook};
 use ecad_model::{Op, PageId, WireId};
 use serde_json::{Value, json};
+use {ecad_engine::cables::draw, ecad_engine::export::printbook};
 
+use crate::common::{H, id, pts, tmp_dir};
 use crate::styles::acceptance::{
     checks_all, checks_of, code_colour, decoded_ops, field, field_num, field_text, find_obj_mut, inject, inverses_restore, last_tx_json, num, one_tx,
-    op_names, own_id, records_round_trip, redo, refused, rows_of, s, save_and_reopen, style_row, styles, undo};
-use crate::common::{H, id, pts, tmp_dir};
+    op_names, own_id, records_round_trip, redo, refused, rows_of, s, save_and_reopen, style_row, styles, undo,
+};
 
 // ------------------------------------------------------------------------------- helpers
 

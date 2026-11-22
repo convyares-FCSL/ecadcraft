@@ -73,24 +73,23 @@ pub mod title_blocks;
 pub mod wires;
 pub mod workspace;
 
-
 pub use crate::folder::{BANNER, DEFAULT_FOLDER};
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use cadcraft_ui_egui::closing::{Choice, Closing};
-use cadcraft_ui_egui::{CadApp, Services};
 use crate::developer::debugger::Debugger;
-use ecad_engine::cad::Handle;
-use ecad_engine::cad::Session;
-use ecad_engine::{FileStatus, Persistence, Project, ProjectHandle, session_seed};
-use ecad_engine::history::event_log::EventKind;
-use ecad_model::PageId;
-use eframe::egui::{self, RichText};
 use crate::pages::preview::Preview;
 use crate::pages::project_panel::{Header, ProjectPanel};
+use cadcraft_ui_egui::closing::{Choice, Closing};
+use cadcraft_ui_egui::{CadApp, Services};
+use ecad_engine::cad::Handle;
+use ecad_engine::cad::Session;
+use ecad_engine::history::event_log::EventKind;
+use ecad_engine::{FileStatus, Persistence, Project, ProjectHandle, session_seed};
+use ecad_model::PageId;
+use eframe::egui::{self, RichText};
 use serde_json::json;
 
 /// The start-up marks [`App::start`] sets as it goes; ecad-desktop's start-up timing implements
@@ -740,7 +739,8 @@ impl App {
             if panel.starts_at != Some(p.change_count()) {
                 let doc = p.ledger.document();
                 panel.starts = ecad_electrical::pages::page_types::starts(doc);
-                panel.generated = doc.page_order.iter().copied().filter(|pg| ecad_electrical::pages::generated::kind_of(doc, *pg).is_some()).collect();
+                panel.generated =
+                    doc.page_order.iter().copied().filter(|pg| ecad_electrical::pages::generated::kind_of(doc, *pg).is_some()).collect();
                 panel.starts_at = Some(p.change_count());
             }
             // The Devices tab's copy, only while it is shown: rebuilt once, then refreshed only for

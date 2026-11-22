@@ -11,15 +11,15 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 use ecad_model::{
-    DefinitionId, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Noun, Op, PageId, Placement, Pt, Representation,
-    RepresentationId, RouteEnd, RouteId, Style, Subject, SymbolInstance, ConnectionPoint, ConnectionPointId, WireId,
+    ConnectionPoint, ConnectionPointId, DefinitionId, DeviceId, Document, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Noun, Op, PageId,
+    Placement, Pt, Representation, RepresentationId, RouteEnd, RouteId, Style, Subject, SymbolInstance, WireId,
 };
 
 use crate::connectors::{Land, plan_land, plan_land_ends, strip_connection_point_at};
 use crate::devices::TagHigh;
 use crate::error::CmdError;
-use crate::terminal_strips::{self, connection_point_words};
 use crate::terminal_strips::terminal_blocks as tt;
+use crate::terminal_strips::{self, connection_point_words};
 use crate::wires::OnRoute;
 
 /// Most wires one Place Terminals line lands on (design 028 §3.2).
@@ -416,7 +416,9 @@ pub enum Bridge {
 ///
 /// # Errors
 /// No such terminal, the same terminal twice, or one not on this page.
-pub fn plan_bridge(doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, a: ConnectionPointId, b: ConnectionPointId) -> Result<Bridge, CmdError> {
+pub fn plan_bridge(
+    doc: &Document, ids: &mut IdAllocator, page: PageId, style: Style, a: ConnectionPointId, b: ConnectionPointId,
+) -> Result<Bridge, CmdError> {
     if !doc.terminals.contains_key(&a) || !doc.terminals.contains_key(&b) {
         return Err(CmdError::NotFound(Noun::TerminalDevice));
     }
@@ -603,8 +605,12 @@ pub fn strip_json(s: &StripData, style: ecad_model::ReferenceStyle, first: usize
                 if accessories {
                     v["kind"] = json!("terminal");
                     v["marker"] = json!(s.acc.markers.contains(&r.label));
-                    let links: Vec<Value> =
-                        s.jumper_bars_at(*i).iter().filter(|(_, on)| *on).map(|(l, _)| json!({"link": l.n, "lane": l.lane, "level": l.level})).collect();
+                    let links: Vec<Value> = s
+                        .jumper_bars_at(*i)
+                        .iter()
+                        .filter(|(_, on)| *on)
+                        .map(|(l, _)| json!({"link": l.n, "lane": l.lane, "level": l.level}))
+                        .collect();
                     v["links"] = Value::Array(links);
                 }
                 v

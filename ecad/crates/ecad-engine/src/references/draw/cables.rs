@@ -32,7 +32,8 @@ pub(crate) fn run_slash_continue(
     let style = crate::commands::plain_style(p);
     ops.push(Op::AddItem {
         id: item,
-        item: ecad_model::Item { page, style, kind: ecad_model::ItemKind::Primitive(ecad_model::Primitive::Line { a: from, b: to }) }});
+        item: ecad_model::Item { page, style, kind: ecad_model::ItemKind::Primitive(ecad_model::Primitive::Line { a: from, b: to }) },
+    });
     ops.push(Op::LinkRepresentation {
         id: rep,
         rep: Representation {
@@ -41,7 +42,9 @@ pub(crate) fn run_slash_continue(
             form: ecad_model::Form::Drawn,
             role: ecad_model::Role::Slash,
             items: vec![item],
-            connection_points: BTreeMap::new()}});
+            connection_points: BTreeMap::new(),
+        },
+    });
     p.apply_edit(pg, "cableslash", "Cable slash", ops)?;
     Ok(serde_json::json!({
         "cable": cable.hex(),

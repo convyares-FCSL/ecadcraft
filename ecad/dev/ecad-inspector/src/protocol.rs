@@ -20,7 +20,7 @@ use ecad_file::Store;
 use ecad_file::schema::VersionKind;
 use ecad_file::store::TABLES as TABLES_ORDER;
 use ecad_file::verify::VerifyReport;
-use ecad_model::{DeviceId, Document, Subject, ConnectionPointId, WireId};
+use ecad_model::{ConnectionPointId, DeviceId, Document, Subject, WireId};
 use serde_json::{Map, Value, json};
 
 use crate::source::{Opened, Problem, Source, VerifyState, size_text};

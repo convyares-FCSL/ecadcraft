@@ -59,7 +59,8 @@ fn layout() -> TitleBlockLayout {
 
 fn ledger() -> Ledger {
     let mut l = Ledger::new(SEED);
-    let style = FrameStyle { sheet: ecad_model::objects::styles::frame::FrameSheet::parse("A3"), title_block: Some(layout()), ..FrameStyle::default() };
+    let style =
+        FrameStyle { sheet: ecad_model::objects::styles::frame::FrameSheet::parse("A3"), title_block: Some(layout()), ..FrameStyle::default() };
     let rec = StyleRecord::new("A3 Northfield", StyleBody::Frame(style));
     l.commit(
         Author::Agent("tester".into()),

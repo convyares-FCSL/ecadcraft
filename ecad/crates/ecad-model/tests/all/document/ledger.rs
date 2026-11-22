@@ -1,8 +1,8 @@
 //! Contract tests for the ledger: TX-01..TX-04, UNDO-01..UNDO-03, SAVE-01/02, DOC-05..DOC-07.
 
 use ecad_model::{
-    Author, Color, Core, Device, Document, IdAllocator, Item, ItemKind, Layer, Ledger, ModelError, Op, Page, PageId, Primitive, Pt, Representation,
-    Style, Subject, ConnectionPoint, TxKind, Wire,
+    Author, Color, ConnectionPoint, Core, Device, Document, IdAllocator, Item, ItemKind, Layer, Ledger, ModelError, Op, Page, PageId, Primitive, Pt,
+    Representation, Style, Subject, TxKind, Wire,
 };
 
 struct Fixture {

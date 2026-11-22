@@ -10,11 +10,11 @@
 use crate::pages::project_panel::{Deltas, active, build, click, doc, fixture_p, head, new_app, ok, take};
 
 use ecad_app::pages::project_panel::{self, Action};
-use {ecad_app::App, ecad_app::settings::sheets};
 use ecad_model::{FolderId, Op};
 use eframe::egui::{self, Key};
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
+use {ecad_app::App, ecad_app::settings::sheets};
 
 fn enter(h: &mut Harness<'static, App>) {
     h.key_press(Key::Enter);

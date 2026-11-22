@@ -7,10 +7,10 @@ use ecad_model::Word;
 use ecad_model::{DeviceId, Form, PageId, RepresentationId, Subject};
 use serde_json::json;
 
-use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
 use crate::interact::{OUT_OF_RANGE, can_start, in_range, pick, read};
-use ecad_electrical::devices::TextOf;
 use crate::project::Mapped;
+use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
+use ecad_electrical::devices::TextOf;
 use ecad_electrical::styles::text_style::TextKind;
 
 const PICK_A_TEXT: &str = "Pick a tag, a label or a symbol.";
@@ -139,7 +139,9 @@ fn echo(doc: &ecad_model::Document, v: &serde_json::Value, kind: TextKind, show:
         (Some(t), TextKind::Tag) => format!("{what} {t}"),
         _ => what,
     };
-    let done = if <ecad_electrical::styles::text_style::Shown as ecad_model::Word>::parse(show).unwrap_or_default() == ecad_electrical::styles::text_style::Shown::Off {
+    let done = if <ecad_electrical::styles::text_style::Shown as ecad_model::Word>::parse(show).unwrap_or_default()
+        == ecad_electrical::styles::text_style::Shown::Off
+    {
         "hidden"
     } else {
         "shown"

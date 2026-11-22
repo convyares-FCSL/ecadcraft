@@ -7,17 +7,17 @@
 use std::collections::BTreeSet;
 
 use ecad_model::connectivity::jumper_bars::{self, Positions};
-use ecad_model::{DeviceId, Document, Noun, ObjectRef, Op, ConnectionPointId};
+use ecad_model::{ConnectionPointId, DeviceId, Document, Noun, ObjectRef, Op};
 
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::terminal_strips::accessories::{self as acc, Acc, Spot};
 use crate::commands::input::{Bounded, nullable};
 use crate::commands::run::{Cx, Generic, Outcome};
-use crate::views::Views;
 use crate::error::CmdError;
+use crate::terminal_strips::accessories::{self as acc, Acc, Spot};
+use crate::views::Views;
 
 /// Most places one `accessory` call writes.
 pub const MAX_AT: usize = 999;

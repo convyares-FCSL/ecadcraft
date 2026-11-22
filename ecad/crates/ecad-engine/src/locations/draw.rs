@@ -9,8 +9,8 @@ use {ecad_electrical::locations::LAYER, ecad_electrical::locations::LINETYPE, ec
 /// A box label as an entity on [`LAYER`], top-left aligned, in the location label style of `look`
 /// (design 031 §3.2).
 pub fn label_entity(look: &crate::styles::draw::Look, value: &str, at: Pt, handle: cadcraft_engine::doc::Handle) -> cadcraft_engine::doc::Entity {
-    use ecad_electrical::styles::text_style::TextKind;
     use cadcraft_engine::doc::{HAlign, VAlign};
+    use ecad_electrical::styles::text_style::TextKind;
     let h = look.style(TextKind::LocationLabel).height;
     let mut e = crate::devices::draw::text_entity_with(value, at, h, HAlign::Left, VAlign::Top, handle, LAYER);
     look.apply(&mut e, TextKind::LocationLabel);
@@ -26,7 +26,8 @@ pub fn styled_label_entity(
     let mut e = label_entity(look, value, at, handle);
     let Some(c) = doc.representations.get(&rep).and_then(|r| match r.subject {
         Subject::Aid(a) => Some(a),
-        _ => None}) else {
+        _ => None,
+    }) else {
         return e;
     };
     let label = ecad_electrical::styles::location::box_draw(doc, c).label_style;
@@ -48,7 +49,8 @@ pub fn styled_label_entity(
 pub fn label_family(doc: &Document, rep: RepresentationId) -> Option<String> {
     let c = doc.representations.get(&rep).and_then(|r| match r.subject {
         Subject::Aid(a) => Some(a),
-        _ => None})?;
+        _ => None,
+    })?;
     let label = ecad_electrical::styles::location::box_draw(doc, c).label_style;
     ecad_electrical::styles::text_style::own_style_of(doc, &label).family
 }

@@ -6,9 +6,9 @@ use crate::common;
 use cadcraft_engine::Input;
 use cadcraft_engine::geom::Vec2;
 use common::{H, id};
-use {ecad_electrical::devices::TextOf};
+use ecad_electrical::devices::TextOf;
 use ecad_electrical::symbols::{self, STARTERS};
-use ecad_model::{DeviceId, ItemId, Op, PageId, Subject, ConnectionPointId};
+use ecad_model::{ConnectionPointId, DeviceId, ItemId, Op, PageId, Subject};
 use serde_json::{Value, json};
 
 const SEED: u64 = 18;
@@ -37,7 +37,9 @@ fn tag(h: &mut H, c: DeviceId) -> String {
 
 /// The derived tag texts drawn on `page` (as the projection draws them).
 fn tag_texts(h: &mut H, page: PageId) -> Vec<String> {
-    h.p(|p| ecad_engine::devices::draw::texts_on_page(p.ledger.document(), page).into_iter().filter(|t| t.of == TextOf::Tag).map(|t| t.value).collect())
+    h.p(|p| {
+        ecad_engine::devices::draw::texts_on_page(p.ledger.document(), page).into_iter().filter(|t| t.of == TextOf::Tag).map(|t| t.value).collect()
+    })
 }
 
 fn new_page(h: &mut H, title: &str) -> PageId {
@@ -68,7 +70,8 @@ struct K1 {
     p2: PageId,
     k1: DeviceId,
     no: Value,
-    nc: Value}
+    nc: Value,
+}
 
 fn k1() -> K1 {
     let mut h = new_h();
@@ -139,7 +142,11 @@ fn a_every_starter_symbol_gets_its_prefix_and_the_next_number() {
     let doc = h.doc();
     let devices: Vec<_> = STARTERS
         .iter()
-        .filter(|s| s.kind != symbols::Kind::Tagless && s.family == symbols::Family::Basic && !ecad_electrical::terminal_strips::terminal_blocks::is_level_starter(s.key))
+        .filter(|s| {
+            s.kind != symbols::Kind::Tagless
+                && s.family == symbols::Family::Basic
+                && !ecad_electrical::terminal_strips::terminal_blocks::is_level_starter(s.key)
+        })
         .collect();
     assert_eq!(doc.definitions.len(), devices.len());
     for s in devices.iter().copied() {
@@ -375,7 +382,9 @@ fn g_typed_search_then_device_then_click_records_the_json_join() {
     // Rotated: the tag sits above the contact, centred.
     let page = h.first_page();
     let above = h.p(|p| {
-        ecad_engine::devices::draw::texts_on_page(p.ledger.document(), page).into_iter().any(|t| t.of == TextOf::Tag && t.halign == ecad_model::TextHAlign::Center)
+        ecad_engine::devices::draw::texts_on_page(p.ledger.document(), page)
+            .into_iter()
+            .any(|t| t.of == TextOf::Tag && t.halign == ecad_model::TextHAlign::Center)
     });
     assert!(above);
 }
@@ -424,7 +433,8 @@ fn g_device_properties_renames_and_asks_before_merging() {
         let doc = f.h.doc();
         match &doc.items[&sym].kind {
             ecad_model::ItemKind::Symbol(s) => s.placement.origin,
-            _ => unreachable!()}
+            _ => unreachable!(),
+        }
     };
     let h = f.h.handle_of(f.p1, sym);
     f.h.s.input(Input::Pick(vec![h])).unwrap();

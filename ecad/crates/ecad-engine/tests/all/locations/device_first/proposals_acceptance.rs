@@ -5,7 +5,7 @@
 
 use crate::common::{H, id};
 
-use {ecad_electrical::checks::Kind};
+use ecad_electrical::checks::Kind;
 use ecad_model::{DeviceId, Document, PageId};
 use serde_json::{Value, json};
 
@@ -318,7 +318,8 @@ fn the_title_block_shows_codes_and_follows_a_rename() {
             .into_iter()
             .filter_map(|p| match p.kind {
                 EntityKind::Text(t) => Some(t.value),
-                _ => None})
+                _ => None,
+            })
             .collect()
     };
     let mut h = H::new(0x52_d00a);

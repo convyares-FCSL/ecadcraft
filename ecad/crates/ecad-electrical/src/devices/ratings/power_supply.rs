@@ -20,9 +20,9 @@
 //! This module excludes the protection reader (its parent) and the supply calculations.
 #![deny(clippy::wildcard_enum_match_arm)]
 
+use ecad_model::geometry::units::{Amps, Current, RatedVoltage, VoltAmps, Volts, Watts};
 use ecad_model::objects::devices::power_supply::{MAX_AMPS, MAX_POWER_WATTS, MAX_VOLT_AMPS, MAX_VOLTS};
 use ecad_model::objects::devices::{PowerSupply, Psu, Transformer};
-use ecad_model::geometry::units::{Amps, Current, RatedVoltage, VoltAmps, Volts, Watts};
 
 use crate::devices::ratings::load::pieces;
 use crate::devices::ratings::{MAX_CHARS, Read};

@@ -22,8 +22,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::objects::devices::load::load_power;
 use crate::geometry::units::{Amps, Current, RatedVoltage, VoltAmps, Watts};
+use crate::objects::devices::load::load_power;
 
 /// The largest input or output voltage, in volts (low voltage).
 pub const MAX_VOLTS: f64 = 1000.0;

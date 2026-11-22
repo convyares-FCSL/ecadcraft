@@ -324,7 +324,9 @@ pub fn own_value(doc: &Document, symbol: &str, field: Field) -> Option<(String, 
     let ok = |v: &str| field.accepts(v).then(|| v.trim().to_string());
     if let Some(s) = crate::symbols::by_key(symbol) {
         return match field {
-            Field::Prefix => prefix_entry(s.key).map(|e| (builtin_prefix(e).to_string(), crate::defaults::Source::Builtin)).filter(|(p, _)| !p.is_empty()),
+            Field::Prefix => {
+                prefix_entry(s.key).map(|e| (builtin_prefix(e).to_string(), crate::defaults::Source::Builtin)).filter(|(p, _)| !p.is_empty())
+            }
             Field::Description => Some((s.name.to_string(), crate::defaults::Source::Builtin)),
             Field::Rating | Field::Join => None,
         };

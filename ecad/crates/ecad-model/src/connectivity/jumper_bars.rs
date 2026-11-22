@@ -23,8 +23,8 @@ use std::cmp::Ordering;
 
 use crate::document::doc::{Document, Properties};
 use crate::error::{ParseError, Parsed};
-use crate::naming::id::{DeviceId, ConnectionPointId};
 use crate::geometry::point::{LevelIo, PointKey};
+use crate::naming::id::{ConnectionPointId, DeviceId};
 
 /// What every link key starts with.
 pub const PREFIX: &str = "link.";

@@ -97,7 +97,11 @@ fn accepts_comes_back_and_a_hostile_count_is_a_read_error() {
     let (d, t): (DeviceId, ConnectionPointId) = (f.ids.fresh(), f.ids.fresh());
     let bar = ConnectionPoint { owner: d.into(), label: Some("PE".into()), key: Some("PE".parse().unwrap()), accepts: Accepts::new(12).unwrap() };
     f.ledger
-        .commit(Author::User, "bar", vec![Op::CreateDevice { id: d, device: Device::default() }, Op::AddConnectionPoint { id: t, terminal: bar.clone() }])
+        .commit(
+            Author::User,
+            "bar",
+            vec![Op::CreateDevice { id: d, device: Device::default() }, Op::AddConnectionPoint { id: t, terminal: bar.clone() }],
+        )
         .unwrap();
     let (lo, hi) = ecad_file::schema::SNAPSHOT_EVERY_RANGE;
     for (name, every) in [("snap.ecad", lo), ("log.ecad", hi)] {

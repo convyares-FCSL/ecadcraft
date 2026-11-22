@@ -20,13 +20,16 @@ use cadcraft_engine::doc::{Drawing, Entity, Handle};
 use cadcraft_engine::ext::{Provenance, Source};
 use ecad_model::connectivity::derive::{connection_point_position, connection_point_positions};
 use ecad_model::{
-    Device, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Primitive, Pt, Representation, RepresentationId,
-    Route, RouteEnd, RouteId, Subject, ConnectionPoint, ConnectionPointId,
+    ConnectionPoint, ConnectionPointId, Device, DeviceId, Document, End, Form, IdAllocator, Item, ItemId, ItemKind, Ledger, Op, PageId, Primitive,
+    Pt, Representation, RepresentationId, Route, RouteEnd, RouteId, Subject,
 };
 
 use crate::convert::{ECAD_PREFIX, MARKER_LAYER, item_from, marker_entity, marker_position};
 use crate::project::{ClipSnapshot, HandleMap, Mapped};
-use {ecad_electrical::wires::ON_WIRE, ecad_electrical::wires::ShownOnce, ecad_electrical::wires::first_near, ecad_electrical::wires::on_route_of, ecad_electrical::wires::path_vertices, ecad_electrical::wires::route_at, ecad_electrical::wires::route_item};
+use {
+    ecad_electrical::wires::ON_WIRE, ecad_electrical::wires::ShownOnce, ecad_electrical::wires::first_near, ecad_electrical::wires::on_route_of,
+    ecad_electrical::wires::path_vertices, ecad_electrical::wires::route_at, ecad_electrical::wires::route_item,
+};
 
 /// Everything the translation reads. The ledger is borrowed mutably only to preview proposed
 /// ops in place ([`Ledger::with_applied`]); the translation never changes it.
@@ -606,7 +609,9 @@ pub(crate) fn route_edit(doc: &Document, id: ItemId, item: &Item) -> Result<Opti
 /// A cable reference's named points follow its point (design 072 §4.4, F4): when item `id` is a
 /// reference's point moved from `old` to `item`, that reference and its connection points moved
 /// by the same distance (as the document has them, so a moved marker of one of them agrees).
-pub(crate) fn reference_points_follow(doc: &Document, id: ItemId, old: &Item, item: &Item) -> Option<(RepresentationId, BTreeMap<ConnectionPointId, Pt>)> {
+pub(crate) fn reference_points_follow(
+    doc: &Document, id: ItemId, old: &Item, item: &Item,
+) -> Option<(RepresentationId, BTreeMap<ConnectionPointId, Pt>)> {
     let (rid, rep) = doc.representation_of_item(id)?;
     if !matches!(rep.subject, Subject::Cable(_)) || rep.connection_points.is_empty() {
         return None;

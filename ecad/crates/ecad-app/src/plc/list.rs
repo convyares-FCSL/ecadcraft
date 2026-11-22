@@ -20,10 +20,10 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use ecad_electrical::reports::kept::ReportModels;
 use ecad_electrical::plc::iolist::{self, Row};
 use ecad_electrical::plc::overview::{self, Chip, Square, Tile, TileKind};
 use ecad_electrical::plc::signals;
+use ecad_electrical::reports::kept::ReportModels;
 use ecad_model::{DeviceId, Document, PageId};
 use ecad_widgets::table::strip::{self, Link, Mark, StripEvent, Tone};
 use ecad_widgets::table::{Cell, Changed, Column, ColumnId, Table, TableEvent, TableSource, Width};
@@ -937,7 +937,8 @@ impl IoView {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add_space(ecad_widgets::tokens::space::M);
                 let add = ui.push_id(ADD_RACK, |ui| {
-                    ui.add_enabled_ui(self.source.writable, |ui| ecad_widgets::prim::button(ui, "Add a rack", ecad_widgets::prim::Kind::Secondary)).inner
+                    ui.add_enabled_ui(self.source.writable, |ui| ecad_widgets::prim::button(ui, "Add a rack", ecad_widgets::prim::Kind::Secondary))
+                        .inner
                 });
                 if add.inner.on_disabled_hover_text(WRITES_OFF).clicked() {
                     out.push(ListAction::AddRack);
@@ -1003,8 +1004,9 @@ impl IoView {
                     ui.add_space(ecad_widgets::tokens::space::M);
                     let Some(h) = self.head.clone() else { return };
                     if let Some((pg, n)) = &h.page {
-                        let go =
-                            ui.push_id(GO_PAGE, |ui| ecad_widgets::prim::button(ui, &format!("\u{2192} Page {n}"), ecad_widgets::prim::Kind::Secondary)).inner;
+                        let go = ui
+                            .push_id(GO_PAGE, |ui| ecad_widgets::prim::button(ui, &format!("\u{2192} Page {n}"), ecad_widgets::prim::Kind::Secondary))
+                            .inner;
                         if go.clicked() {
                             out.push(ListAction::GoToCard(*pg, h.card));
                         }
@@ -1056,7 +1058,9 @@ impl IoView {
                         ecad_widgets::prim::button(ui, "Export", ecad_widgets::prim::Kind::Primary).clicked()
                     }
                 };
-                if ecad_widgets::prim::button(ui, "Cancel", ecad_widgets::prim::Kind::Quiet).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                if ecad_widgets::prim::button(ui, "Cancel", ecad_widgets::prim::Kind::Quiet).clicked()
+                    || ui.input(|i| i.key_pressed(egui::Key::Escape))
+                {
                     close = true;
                 }
                 if ok && !row.path.trim().is_empty() {
@@ -1119,7 +1123,9 @@ impl IoView {
                 ui.add_space(ecad_widgets::tokens::space::M);
                 let words = if folded == 1 { "1 more free channel.".to_string() } else { format!("{folded} more free channels.") };
                 let r = ui.push_id(MORE_FREE, |ui| {
-                    ui.add(egui::Label::new(egui::RichText::new(words).size(ty.size).color(ecad_widgets::color(s.text_3))).sense(egui::Sense::click()))
+                    ui.add(
+                        egui::Label::new(egui::RichText::new(words).size(ty.size).color(ecad_widgets::color(s.text_3))).sense(egui::Sense::click()),
+                    )
                 });
                 if r.inner.clicked() {
                     out.push(ListAction::Unfold);

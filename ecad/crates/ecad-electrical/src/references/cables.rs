@@ -22,12 +22,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::CmdError;
-use serde_json::{Value, json};
 use ecad_model::connectivity::derive::{CableReference, cable_references, cable_references_of};
 use ecad_model::{
-    CableId, CorePosition, Document, End, ItemId, LengthUnit, Op, PageId, Pt, Representation, RepresentationId, RouteEnd, RouteId, Subject,
-    ConnectionPointId, WireId,
+    CableId, ConnectionPointId, CorePosition, Document, End, ItemId, LengthUnit, Op, PageId, Pt, Representation, RepresentationId, RouteEnd, RouteId,
+    Subject, WireId,
 };
+use serde_json::{Value, json};
 
 pub use ecad_model::connectivity::derive::MAX_REFERENCES_PER_CABLE;
 
@@ -62,7 +62,10 @@ pub fn sizes(doc: &Document) -> Sizes {
         LengthUnit::Inch => 1.0 / 25.4,
     };
     // Brief 066d: reference text is the `Reference` text style, already in drawing units.
-    Sizes { text_height: crate::styles::text_style::text_style(doc, crate::styles::text_style::TextKind::Reference).height, spacing: STUB_SPACING_MM * k }
+    Sizes {
+        text_height: crate::styles::text_style::text_style(doc, crate::styles::text_style::TextKind::Reference).height,
+        spacing: STUB_SPACING_MM * k,
+    }
 }
 
 /// Whether `r` is a cable reference end.

@@ -12,8 +12,8 @@
 //! - **Disabled** (inside a disabled `Ui`, `add_enabled_ui(false, …)`): drawn as read-only and
 //!   faded by egui's disabled opacity.
 
-use {crate::tokens::line, crate::tokens::radius, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type};
 use egui::{Rect, Response, Role, Sense, Stroke, StrokeKind, Ui, Widget, WidgetInfo, pos2, vec2};
+use {crate::tokens::line, crate::tokens::radius, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type};
 
 use crate::prim::{Look, accessible, galley};
 use crate::style::corner;

@@ -4,8 +4,8 @@
 //! under a coil, and Line and colour (folded). For anything else it shows the defaults that apply
 //! to what is selected (brief 042), folded the same way.
 
-use ecad_electrical::styles::commands::defaults as default_cmds;
 use ecad_electrical::defaults::Source;
+use ecad_electrical::styles::commands::defaults as default_cmds;
 use ecad_electrical::styles::text_style::TextKind;
 use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui::{self, Sense, pos2, vec2};
@@ -68,7 +68,10 @@ pub fn show(ui: &mut egui::Ui, cx: &mut Cx<'_>, out: &mut Vec<InspectorAction>) 
         w::read(ui, "Variant", &d.symbol_name, "ecad.inspector.layout.variant").on_hover_text("Other variants: not available yet");
         w::row(ui, "Lock", |ui| {
             let mut locked = false;
-            ecad_widgets::control::Toggle::new(&mut locked, "ecad.inspector.layout.lock").read_only(true).show(ui).on_hover_text(crate::inspector::device::NOT_YET);
+            ecad_widgets::control::Toggle::new(&mut locked, "ecad.inspector.layout.lock")
+                .read_only(true)
+                .show(ui)
+                .on_hover_text(crate::inspector::device::NOT_YET);
             ui.label(w::rich(ui, "can be moved and joined", ui_type::SMALL, w::text_2()));
         });
     });
@@ -164,7 +167,9 @@ pub fn show(ui: &mut egui::Ui, cx: &mut Cx<'_>, out: &mut Vec<InspectorAction>) 
             {
                 cx.sh.edits.push((t.clone(), row.key.clone(), None));
             }
-            w::row(ui, "Rows", |ui| w::segmented(ui, &["Used only", "All contacts"], Some(1), false, CONTACT_ROWS, crate::inspector::device::NOT_YET));
+            w::row(ui, "Rows", |ui| {
+                w::segmented(ui, &["Used only", "All contacts"], Some(1), false, CONTACT_ROWS, crate::inspector::device::NOT_YET)
+            });
             ui.add(
                 egui::Label::new(w::rich(
                     ui,

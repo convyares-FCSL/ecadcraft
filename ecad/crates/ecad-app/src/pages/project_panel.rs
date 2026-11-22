@@ -884,7 +884,12 @@ impl ProjectPanel {
         let s = ecad_widgets::SHELL;
         let chev = Rect::from_min_size(pos2(x, y - 5.0), vec2(10.0, 10.0));
         let folded = self.folded.contains(&id);
-        ecad_widgets::icons::paint(&p, chev, if folded { ecad_widgets::tokens::Icon::ChevronRight } else { ecad_widgets::tokens::Icon::ChevronDown }, ink(s.text_3));
+        ecad_widgets::icons::paint(
+            &p,
+            chev,
+            if folded { ecad_widgets::tokens::Icon::ChevronRight } else { ecad_widgets::tokens::Icon::ChevronDown },
+            ink(s.text_3),
+        );
         // UI rev 3 (board 1.02): a group is a folder icon, its name, its page count and a +.
         let folder = Rect::from_min_size(pos2(chev.right() + 6.0, y - 7.0), vec2(14.0, 14.0));
         ecad_widgets::icons::paint(&p, folder, ecad_widgets::tokens::Icon::Folder, ink(s.text_3));
@@ -1049,7 +1054,14 @@ impl ProjectPanel {
         let y = rect.center().y;
         // The checkbox: ticks the page for the footer's actions.
         let check = Rect::from_center_size(pos2(rect.left() + 10.0, y), vec2(14.0, 14.0));
-        crate::shell::glyphs::checkbox(&p, check, picked, t.accent, ecad_widgets::color(s.line_strong), ecad_widgets::color(s.text_3).gamma_multiply(0.6));
+        crate::shell::glyphs::checkbox(
+            &p,
+            check,
+            picked,
+            t.accent,
+            ecad_widgets::color(s.line_strong),
+            ecad_widgets::color(s.text_3).gamma_multiply(0.6),
+        );
         let mut x = check.right() + 8.0;
         if self.thumbnails {
             let thumb = Rect::from_min_size(pos2(x, y - 13.0), vec2(38.0, 26.0));

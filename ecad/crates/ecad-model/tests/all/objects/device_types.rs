@@ -256,8 +256,8 @@ fn a_connector_s_mating_is_stored() {
 /// per kind, shown from them; the note is separate; a bad value or a rating in a bag is refused.
 #[test]
 fn a_protective_device_s_rating_is_typed() {
-    use ecad_model::objects::devices::{Breaker, Fuse, FuseBank, Protection, RatingNote, TripCurve};
     use ecad_model::geometry::units::{Amps, KiloAmps};
+    use ecad_model::objects::devices::{Breaker, Fuse, FuseBank, Protection, RatingNote, TripCurve};
     let mcb = Protection::Mcb(Breaker {
         rated_current: Some(Amps(16.0)),
         curve: Some(TripCurve::B),
@@ -316,8 +316,8 @@ fn a_protective_device_s_rating_is_typed() {
 /// rating; a bad value is refused.
 #[test]
 fn a_switching_device_s_rating_is_typed() {
-    use ecad_model::objects::devices::{Control, Operator, OperatorKind, RatingNote, Switching};
     use ecad_model::geometry::units::{Amps, Current, RatedVoltage, Volts, Watts};
+    use ecad_model::objects::devices::{Control, Operator, OperatorKind, RatingNote, Switching};
     let k = Switching {
         operator: Operator::Coil(Control { voltage: Some(RatedVoltage { volts: Volts(24.0), current: Current::Dc }), power: Some(Watts(3.0)) }),
         ac3_current: Some(Amps(9.0)),
@@ -368,8 +368,8 @@ fn a_switching_device_s_rating_is_typed() {
 /// rating; a supply on a contact, or out of range, is refused.
 #[test]
 fn a_sensor_s_rating_is_typed() {
-    use ecad_model::objects::devices::{Output, RatingNote, Sensing, Sensor};
     use ecad_model::geometry::units::{Current, RatedVoltage, Volts};
+    use ecad_model::objects::devices::{Output, RatingNote, Sensing, Sensor};
     let v24 = RatedVoltage { volts: Volts(24.0), current: Current::Dc };
     let b = Sensor { sensing: Sensing::Proximity, output: Output::Pnp, supply: Some(v24), ..Sensor::default() };
     let d = Device { device_type: DeviceType::Sensor(b), ..Device::default() };
@@ -419,8 +419,8 @@ fn a_sensor_s_rating_is_typed() {
 /// out of range, or a `rating.<p>` left in the strip's properties is refused.
 #[test]
 fn a_strip_s_fuse_position_ratings_are_typed() {
-    use ecad_model::objects::devices::{Fuse, FuseClass, PositionLabel, TerminalStrip};
     use ecad_model::geometry::units::Amps;
+    use ecad_model::objects::devices::{Fuse, FuseClass, PositionLabel, TerminalStrip};
     let mut s = TerminalStrip::default();
     s.fuses.insert(PositionLabel::new("3").unwrap(), Fuse { rated_current: Some(Amps(6.3)), class: Some(FuseClass::T), breaking: None });
     let d = Device { device_type: DeviceType::TerminalStrip(s.clone()), ..Device::default() };
@@ -458,8 +458,8 @@ fn a_strip_s_fuse_position_ratings_are_typed() {
 /// refused.
 #[test]
 fn a_motor_s_rating_is_typed() {
-    use ecad_model::objects::devices::{Motor, Phases, RatingNote, Starting};
     use ecad_model::geometry::units::{Amps, Percent, Watts};
+    use ecad_model::objects::devices::{Motor, Phases, RatingNote, Starting};
     let m = Motor {
         rated_power: Some(Watts(7500.0)),
         rated_current: Some(Amps(15.2)),
@@ -513,8 +513,8 @@ fn a_motor_s_rating_is_typed() {
 /// from it; a load without it has no rating; a power out of range is refused.
 #[test]
 fn a_load_s_rating_is_typed() {
-    use ecad_model::objects::devices::{Load, RatingNote};
     use ecad_model::geometry::units::Watts;
+    use ecad_model::objects::devices::{Load, RatingNote};
     let d = Device { device_type: DeviceType::Load(Load { rated_power: Some(Watts(3000.0)) }), ..Device::default() };
     let json = serde_json::to_value(&d.device_type).unwrap();
     assert_eq!(json, serde_json::json!({"load": {"rated_power": 3000.0}}));
@@ -547,8 +547,8 @@ fn a_load_s_rating_is_typed() {
 /// them has no rating; a value out of range is refused.
 #[test]
 fn an_indicator_s_rating_is_typed() {
-    use ecad_model::objects::devices::{Indicator, IndicatorColour, RatingNote, SignalType};
     use ecad_model::geometry::units::{Current, RatedVoltage, Volts, Watts};
+    use ecad_model::objects::devices::{Indicator, IndicatorColour, RatingNote, SignalType};
     let i = Indicator {
         colour: Some(IndicatorColour::Red),
         rated_voltage: Some(RatedVoltage { volts: Volts(24.0), current: Current::Dc }),
@@ -601,8 +601,8 @@ fn an_indicator_s_rating_is_typed() {
 /// one with none of them has no rating; a value out of range is refused.
 #[test]
 fn a_power_supply_s_rating_is_typed() {
-    use ecad_model::objects::devices::{PowerSupply, Psu, RatingNote, Transformer};
     use ecad_model::geometry::units::{Amps, Current, RatedVoltage, VoltAmps, Volts, Watts};
+    use ecad_model::objects::devices::{PowerSupply, Psu, RatingNote, Transformer};
     let v = |volts, current| Some(RatedVoltage { volts: Volts(volts), current });
     let psu = Psu { input: v(230.0, Current::Ac), output: v(24.0, Current::Dc), output_current: Some(Amps(5.0)), output_power: Some(Watts(120.0)) };
     let d = Device { device_type: DeviceType::PowerSupply(PowerSupply::Psu(psu)), ..Device::default() };

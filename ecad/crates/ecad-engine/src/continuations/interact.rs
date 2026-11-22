@@ -9,9 +9,9 @@ use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
 use ecad_model::{AidId, Subject};
 use serde_json::json;
 
-use crate::properties::forms::{R, Safe, commit, other, paper_guard, safely};
 use crate::interact::{OUT_OF_RANGE, can_start, in_range, pick, read};
 use crate::project::Mapped;
+use crate::properties::forms::{R, Safe, commit, other, paper_guard, safely};
 
 const NONE_SELECTED: &str = "No continuation arrows selected.";
 

@@ -13,8 +13,8 @@ use cadcraft_engine::ext::MarkShape;
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Input, Session};
 use common::{H, id};
-use ecad_engine::interact::{hover_lines, overlay_marks};
 use ecad_engine::cables::views::{self, FAN_REFUSED, FanOnPage, Settings, View};
+use ecad_engine::interact::{hover_lines, overlay_marks};
 use ecad_engine::{Mapped, Persistence, ProjectHandle};
 use ecad_model::{CableId, ItemId, PageId, Pt, Transaction, WireId};
 use serde_json::{Value, json};
@@ -347,7 +347,9 @@ fn moving_equipment_beside_a_fan_moves_the_hidden_routes() {
         .keys()
         .copied()
         .find(|c| {
-            ecad_model::connectivity::derive::connection_point_positions(&doc, g.page).iter().any(|(t, _, at)| doc.terminals[t].device().unwrap() == *c && at.x > 30.0)
+            ecad_model::connectivity::derive::connection_point_positions(&doc, g.page)
+                .iter()
+                .any(|(t, _, at)| doc.terminals[t].device().unwrap() == *c && at.x > 30.0)
         })
         .unwrap();
     let handles = g.h.rep_handles(g.page, right);

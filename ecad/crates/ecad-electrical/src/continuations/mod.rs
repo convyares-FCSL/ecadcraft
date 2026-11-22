@@ -34,9 +34,9 @@ use ecad_model::connectivity::continuation_key;
 use ecad_model::{Aid, AidId, Document, Form, Op, PageId, Placement, Pt, Representation, RepresentationId, Subject};
 
 use crate::defaults::{self, Scope};
+use crate::references::devices::{Group, HAlign, Part, Places, RefIndex, Shape, VAlign};
 use crate::styles::text_style::fonts::TextMetrics;
 use crate::styles::text_style::{TextKind, TextTarget, text_shown, text_style};
-use crate::references::devices::{Group, HAlign, Part, Places, RefIndex, Shape, VAlign};
 
 /// The `setprop` key of a continuation's name (design 072 §6.2).
 pub const NAME_KEY: &str = "name";

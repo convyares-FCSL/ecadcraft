@@ -4,8 +4,8 @@
 use ecad_model::naming::text::TextError;
 use ecad_model::{Device, DeviceId, Document, ObjectRef, Op, TextField};
 
-use crate::properties::commands::{Build, NO_SUCH_OBJECT, PropRule};
 use crate::error::CmdError;
+use crate::properties::commands::{Build, NO_SUCH_OBJECT, PropRule};
 
 /// This lane's rows, asked before [`crate::properties::commands::PROP_RULES`].
 pub static RULES: &[PropRule] = &[

@@ -7,8 +7,8 @@
 //! - [`Checkbox`] and [`Radio`]: a choice ticked in a box, one of a few in circles.
 //! - [`SearchField`]: the search box with its lens.
 
-use {crate::tokens::line, crate::tokens::radius, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type};
 use egui::{Rect, Response, Role, Sense, Stroke, StrokeKind, Ui, WidgetInfo, pos2, vec2};
+use {crate::tokens::line, crate::tokens::radius, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type};
 
 use crate::prim::{Field, FieldKind, Look, RowKind, RowSpec, Tone, accessible, galley};
 use crate::style::corner;

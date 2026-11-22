@@ -2,9 +2,9 @@
 //! body of their own catalogue. A wire type reads and writes its typed fields, refuses an unknown
 //! field or a value in a form it does not store, and cannot be filed under another catalogue.
 
+use ecad_model::geometry::units::Mm;
 use ecad_model::objects::styles::wire::{Insulation, LineColour};
 use ecad_model::objects::styles::{StyleBody, WireType};
-use ecad_model::geometry::units::Mm;
 use ecad_model::objects::wire::{Colours, WireSize};
 use ecad_model::{Author, Ledger, Op, StyleCatalogue, StyleLayer, StyleRecord, StyleRef};
 
@@ -121,8 +121,8 @@ fn a_location_style_reads_its_typed_fields_only() {
 /// Rating tables (design 072 §8): the source is one line, the rows validated text; strict read.
 #[test]
 fn a_rating_table_reads_its_typed_fields_only() {
-    use ecad_model::objects::styles::RatingTable;
     use ecad_model::naming::text::{LongText, Text};
+    use ecad_model::objects::styles::RatingTable;
     let t = RatingTable { source: Text::new("made up").ok(), rows: LongText::new("kind,a\ncapacity,1").ok() };
     let v = serde_json::to_value(StyleRecord::new("T1", StyleBody::RatingTable(t.clone()))).unwrap();
     assert_eq!(serde_json::from_value::<StyleRecord>(v.clone()).unwrap().body, StyleBody::RatingTable(t));

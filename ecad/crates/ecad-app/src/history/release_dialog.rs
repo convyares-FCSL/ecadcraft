@@ -9,7 +9,6 @@
 use std::collections::BTreeSet;
 
 use ecad_electrical::releases::release::Group;
-use {ecad_electrical::checks::Check, ecad_electrical::checks::Severity};
 use ecad_engine::releases::release::View;
 use ecad_widgets::control::TextEntry;
 use ecad_widgets::dialog::action;
@@ -17,6 +16,7 @@ use ecad_widgets::prim::{self, Button, Kind, Tone};
 use ecad_widgets::tokens::{size, space};
 use eframe::egui::{self, RichText};
 use serde_json::{Map, Value, json};
+use {ecad_electrical::checks::Check, ecad_electrical::checks::Severity};
 
 /// The window's id and accessible name.
 pub const RELEASE_ID: &str = "ecad.release";
@@ -168,8 +168,10 @@ impl ReleaseDialog {
             // each on leaving it); an issued row's, read only.
             let editable = self.rev.is_none() && !self.read_only;
             prim::PropertyGrid::new().show(ui, |g| {
-                for (i, (f, label)) in
-                    ecad_electrical::releases::revisions::FIELDS.iter().zip(["Rev", "Date", "Description", "Drawn", "Checked", "Approved"]).enumerate()
+                for (i, (f, label)) in ecad_electrical::releases::revisions::FIELDS
+                    .iter()
+                    .zip(["Rev", "Date", "Description", "Drawn", "Checked", "Approved"])
+                    .enumerate()
                 {
                     let Some(val) = self.fields.get_mut(i) else { continue };
                     let name = format!("ecad.release.{f}");

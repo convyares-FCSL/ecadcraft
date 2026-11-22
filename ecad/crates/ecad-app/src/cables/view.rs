@@ -74,7 +74,10 @@ fn pin(of: &str) -> &str {
 /// true (paper) colour on either sheet, so black stays black; [`core_line`] gives a dark core an
 /// outline that keeps it readable on the dark sheet (owner look check).
 fn colours(code: Option<&str>) -> (Color32, Option<Color32>) {
-    match code.and_then(ecad_model::objects::wire::Colours::parse).and_then(|c| ecad_engine::cables::draw::wire_colours(&c, &ecad_drawing_style::sheet::PAPER)) {
+    match code
+        .and_then(ecad_model::objects::wire::Colours::parse)
+        .and_then(|c| ecad_engine::cables::draw::wire_colours(&c, &ecad_drawing_style::sheet::PAPER))
+    {
         Some(w) => (ecad_widgets::color(w.solid), w.dashes.map(ecad_widgets::color)),
         None => (ecad_widgets::color(ecad_widgets::SHELL.text_2), None),
     }
@@ -82,7 +85,8 @@ fn colours(code: Option<&str>) -> (Color32, Option<Color32>) {
 
 /// The bars of colour code `code` (one, or two for a two-colour code), in its true colours.
 pub fn bars(code: &str) -> Vec<ecad_widgets::tokens::Color> {
-    match ecad_model::objects::wire::Colours::parse(code).and_then(|c| ecad_engine::cables::draw::wire_colours(&c, &ecad_drawing_style::sheet::PAPER)) {
+    match ecad_model::objects::wire::Colours::parse(code).and_then(|c| ecad_engine::cables::draw::wire_colours(&c, &ecad_drawing_style::sheet::PAPER))
+    {
         Some(w) => std::iter::once(w.solid).chain(w.dashes).collect(),
         None => Vec::new(),
     }
@@ -162,7 +166,12 @@ pub fn show(ui: &mut egui::Ui, d: &Drawing, swapped: bool) {
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Image, true, &info));
     let area = area.shrink2(vec2(space::L, space::XS));
     let p = ui.painter().clone();
-    p.rect_stroke(area, ecad_widgets::style::corner(radius::CARD), Stroke::new(line::HAIRLINE_PX, ecad_widgets::color(s.line)), egui::StrokeKind::Inside);
+    p.rect_stroke(
+        area,
+        ecad_widgets::style::corner(radius::CARD),
+        Stroke::new(line::HAIRLINE_PX, ecad_widgets::color(s.line)),
+        egui::StrokeKind::Inside,
+    );
     let small = ecad_widgets::fonts::font(ui.ctx(), ui_type::SMALL);
     let body = ecad_widgets::fonts::font(ui.ctx(), ui_type::BODY);
     let emph = ecad_widgets::fonts::font(ui.ctx(), ui_type::BODY_EMPHASIS);
@@ -180,7 +189,12 @@ pub fn show(ui: &mut egui::Ui, d: &Drawing, swapped: bool) {
     // The two end boxes.
     for (r, title, sub) in [(left, l_title, l_sub), (right, r_title, r_sub)] {
         p.rect_filled(r, ecad_widgets::style::corner(radius::CARD), ecad_widgets::color(s.panel));
-        p.rect_stroke(r, ecad_widgets::style::corner(radius::CARD), Stroke::new(line::HAIRLINE_PX, ecad_widgets::color(s.line)), egui::StrokeKind::Inside);
+        p.rect_stroke(
+            r,
+            ecad_widgets::style::corner(radius::CARD),
+            Stroke::new(line::HAIRLINE_PX, ecad_widgets::color(s.line)),
+            egui::StrokeKind::Inside,
+        );
         let title = if title.is_empty() { "\u{2014}".to_string() } else { title.replace(' ', " \u{b7} ").replace("\u{b7} (planned)", "(planned)") };
         let ink = if d.not_drawn { s.text_3 } else { s.text };
         p.text(r.left_top() + vec2(space::L, space::M), egui::Align2::LEFT_TOP, title, emph.clone(), ecad_widgets::color(ink));

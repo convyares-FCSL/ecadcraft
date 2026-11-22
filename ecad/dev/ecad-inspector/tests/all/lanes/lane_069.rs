@@ -9,9 +9,9 @@ use std::time::Duration;
 
 use ecad_inspector::source::{FileSource, Source, VerifyState};
 use ecad_model::{
-    Author, Cable, Color, Core, Definition, Device, Folder, Form, IdAllocator, Item, ItemKind, Layer, LayerId, Ledger, LengthUnit, ObjectRef, Op,
-    Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation, StandardHeader, Style, StyleLayer, StyleRecord, StyleRef, Subject,
-    SymbolInstance, ConnectionPoint, ConnectionPointDef, Wire,
+    Author, Cable, Color, ConnectionPoint, ConnectionPointDef, Core, Definition, Device, Folder, Form, IdAllocator, Item, ItemKind, Layer, LayerId,
+    Ledger, LengthUnit, ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation, StandardHeader, Style, StyleLayer,
+    StyleRecord, StyleRef, Subject, SymbolInstance, Wire,
 };
 use serde_json::{Value, json};
 
@@ -91,7 +91,8 @@ fn every_op_ledger() -> Ledger {
     let term: ecad_model::ConnectionPointId = ids.fresh();
     let term_v = ConnectionPoint { owner: comp.into(), label: Some("1".into()), key: Some("1".parse().unwrap()), accepts: Default::default() };
     // More connection points of the device, for the wires' other ends.
-    let (term2, term3, term4): (ecad_model::ConnectionPointId, ecad_model::ConnectionPointId, ecad_model::ConnectionPointId) = (ids.fresh(), ids.fresh(), ids.fresh());
+    let (term2, term3, term4): (ecad_model::ConnectionPointId, ecad_model::ConnectionPointId, ecad_model::ConnectionPointId) =
+        (ids.fresh(), ids.fresh(), ids.fresh());
     let point = |label: &str| ConnectionPoint { owner: comp.into(), label: Some(label.into()), key: None, accepts: Default::default() };
     let sym: ecad_model::ItemId = ids.fresh();
     let sym_v = Item { page, style: style(layer), kind: ItemKind::Symbol(SymbolInstance { definition: def, placement: Placement::default() }) };
@@ -208,14 +209,21 @@ fn every_op_ledger() -> Ledger {
             before: comp_v.clone(),
             after: Device { device_type: ecad_model::DeviceType::of_group(ecad_model::DeviceGroup::Motor), ..comp_v.clone() },
         },
-        Op::AddConnectionPoint { id: ids.fresh(), terminal: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default() } },
+        Op::AddConnectionPoint {
+            id: ids.fresh(),
+            terminal: ConnectionPoint { owner: comp.into(), label: None, key: None, accepts: Default::default() },
+        },
         Op::RemoveConnectionPoint { id: term, terminal: term_v.clone() },
         Op::LinkRepresentation { id: ids.fresh(), rep: rep_wire_v.clone() },
         Op::ModifyRepresentation { id: rep_wire, before: rep_wire_v.clone(), after: rep_after },
         Op::UnlinkRepresentation { id: rep_sym, rep: rep_sym_v.clone() },
         Op::CreateWire { id: ids.fresh(), wire: Wire::new(ids.fresh(), ids.fresh(), term, term3) },
         Op::DeleteWire { id: wire, wire: wire_v.clone() },
-        Op::ModifyWire { id: wire2, before: wire2_v.clone(), after: Wire { size: ecad_model::objects::wire::WireSize::parse("2.5"), ..wire2_v.clone() } },
+        Op::ModifyWire {
+            id: wire2,
+            before: wire2_v.clone(),
+            after: Wire { size: ecad_model::objects::wire::WireSize::parse("2.5"), ..wire2_v.clone() },
+        },
         Op::AddRoute { id: ids.fresh(), route: ecad_model::Route { ends: [ecad_model::RouteEnd::Free; 2], ..route_v.clone() } },
         Op::ModifyRoute {
             id: route,
@@ -267,7 +275,10 @@ fn every_op_ledger() -> Ledger {
         Op::ModifyAid {
             id: aid,
             before: ecad_model::Aid::Box(ecad_model::LocationBox::default()),
-            after: ecad_model::Aid::Box(ecad_model::LocationBox { panel_temperature: Some(ecad_model::geometry::units::Celsius(40.0)), ..Default::default() }),
+            after: ecad_model::Aid::Box(ecad_model::LocationBox {
+                panel_temperature: Some(ecad_model::geometry::units::Celsius(40.0)),
+                ..Default::default()
+            }),
         },
         Op::DeleteAid { id: aid, aid: ecad_model::Aid::Box(ecad_model::LocationBox::default()) },
         // Lane 072 F2a (A15): a loose part made, changed and removed.

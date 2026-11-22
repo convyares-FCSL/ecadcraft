@@ -21,8 +21,11 @@
 //! Every box is [`size::CONTROL_SMALL`] high, centred in a [`size::CONTROL`] row, so rows of
 //! mixed components line up.
 
-use {crate::tokens::Color, crate::tokens::Icon, crate::tokens::line, crate::tokens::radius, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type};
 use egui::{CursorIcon, Rect, Response, RichText, Role, Sense, Stroke, StrokeKind, TextEdit, Ui, WidgetInfo, pos2, vec2};
+use {
+    crate::tokens::Color, crate::tokens::Icon, crate::tokens::line, crate::tokens::radius, crate::tokens::size, crate::tokens::space,
+    crate::tokens::ui_type,
+};
 
 use crate::prim::{Look, accessible};
 use crate::style::corner;

@@ -4,9 +4,9 @@
 use std::collections::BTreeSet;
 
 use ecad_model::{
-    Author, Cable, Color, Core, Definition, Device, Document, End, Folder, Form, IdAllocator, Item, ItemKind, Layer, LayerId, Ledger, LengthUnit,
-    ModelError, ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation, StandardHeader, Style, StyleLayer,
-    StyleRecord, StyleRef, Subject, SymbolInstance, ConnectionPoint, ConnectionPointDef, Touched, Wire,
+    Author, Cable, Color, ConnectionPoint, ConnectionPointDef, Core, Definition, Device, Document, End, Folder, Form, IdAllocator, Item, ItemKind,
+    Layer, LayerId, Ledger, LengthUnit, ModelError, ObjectRef, Op, Page, PageId, Placement, Primitive, ProjectSettings, Pt, Representation,
+    StandardHeader, Style, StyleLayer, StyleRecord, StyleRef, Subject, SymbolInstance, Touched, Wire,
 };
 
 /// Every `Op` variant's name, read from `Op` itself (brief 060): serde's derived `Deserialize`
@@ -291,7 +291,10 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
             before: b.comp_v.clone(),
             after: Device { device_type: ecad_model::DeviceType::of_group(ecad_model::DeviceGroup::Motor), ..b.comp_v.clone() },
         },
-        Op::AddConnectionPoint { id: b.ids.fresh(), terminal: ConnectionPoint { owner: b.comp.into(), label: None, key: None, accepts: Default::default() } },
+        Op::AddConnectionPoint {
+            id: b.ids.fresh(),
+            terminal: ConnectionPoint { owner: b.comp.into(), label: None, key: None, accepts: Default::default() },
+        },
         Op::RemoveConnectionPoint { id: b.term, terminal: b.term_v.clone() },
         Op::LinkRepresentation { id: b.ids.fresh(), rep: b.rep_wire_v.clone() },
         Op::ModifyRepresentation { id: b.rep_wire, before: b.rep_wire_v.clone(), after: rep_after },
@@ -346,7 +349,10 @@ pub(crate) fn applicable(b: &mut Base) -> Vec<Op> {
         Op::ModifyAid {
             id: b.aid,
             before: b.aid_v.clone(),
-            after: ecad_model::Aid::Box(ecad_model::LocationBox { panel_temperature: Some(ecad_model::geometry::units::Celsius(40.0)), ..Default::default() }),
+            after: ecad_model::Aid::Box(ecad_model::LocationBox {
+                panel_temperature: Some(ecad_model::geometry::units::Celsius(40.0)),
+                ..Default::default()
+            }),
         },
         Op::DeleteAid { id: b.aid, aid: b.aid_v.clone() },
         Op::CreateLoosePart { id: b.ids.fresh(), part: loose_part(1) },
@@ -597,8 +603,10 @@ fn a_transaction_failing_the_end_check_is_rolled_back() {
     let before = bytes(b.ledger.document());
     // Every op applies, but the terminal removed takes its wire with it (design 072 §4.4) while a
     // cable still lists the wire and the route still lands on the terminal.
-    let ops =
-        vec![Op::AddItem { id: b.ids.fresh(), item: line(b.page, b.layer, 3.0) }, Op::RemoveConnectionPoint { id: b.term, terminal: b.term_v.clone() }];
+    let ops = vec![
+        Op::AddItem { id: b.ids.fresh(), item: line(b.page, b.layer, 3.0) },
+        Op::RemoveConnectionPoint { id: b.term, terminal: b.term_v.clone() },
+    ];
     let r = b.ledger.commit(Author::User, "dangling", ops);
     let Err(ModelError::Invariant(m)) = r else { panic!("{r:?}") };
     assert!(m.contains("missing"), "{m}");
@@ -651,7 +659,10 @@ fn a_damaged_history_opens_at_its_last_good_transaction() {
     let mut log = b.ledger.full_log().unwrap();
     let mut bad = log[1].clone();
     bad.seq = 3;
-    bad.ops = vec![Op::AddLayer { id: LayerId(1), layer: Layer { name: "a".into() } }, Op::RemoveConnectionPoint { id: b.term, terminal: b.term_v.clone() }];
+    bad.ops = vec![
+        Op::AddLayer { id: LayerId(1), layer: Layer { name: "a".into() } },
+        Op::RemoveConnectionPoint { id: b.term, terminal: b.term_v.clone() },
+    ];
     log.push(bad);
     let (ledger, failure) = Ledger::replay_prefix(log, 0);
     assert_eq!(ledger.head(), 2);

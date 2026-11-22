@@ -487,7 +487,10 @@ impl CoverNote {
             Effect::Project { before, after } => {
                 before.revisions != after.revisions
                     || before.info != after.info
-                    || (codes_on() && crate::locations::designations::Aspect::ALL.into_iter().any(|a| crate::locations::designations::shown_changed(before, after, a)))
+                    || (codes_on()
+                        && crate::locations::designations::Aspect::ALL
+                            .into_iter()
+                            .any(|a| crate::locations::designations::shown_changed(before, after, a)))
             }
             Effect::Page { before: Some(b), after: Some(a), index_before: None, index_after: None, .. } => {
                 let ch = b.change(a);

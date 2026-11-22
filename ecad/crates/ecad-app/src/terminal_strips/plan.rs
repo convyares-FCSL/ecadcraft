@@ -113,7 +113,11 @@ fn plan_rows(s: &StripData, accessories: bool, style: ecad_model::ReferenceStyle
     for item in s.plan(accessories) {
         match item {
             PlanItem::Gap { acc, .. } => {
-                let words = if acc == ecad_electrical::terminal_strips::accessories::Acc::StripLabel { format!("strip label {}", s.tag) } else { acc.words().to_string() };
+                let words = if acc == ecad_electrical::terminal_strips::accessories::Acc::StripLabel {
+                    format!("strip label {}", s.tag)
+                } else {
+                    acc.words().to_string()
+                };
                 out.push(PlanRow::Gap { tag: s.tag.clone(), mark: acc.mark().to_string(), words });
             }
             PlanItem::Term(i, r) => {

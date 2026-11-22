@@ -3,11 +3,11 @@
 
 use ecad_model::Word;
 use ecad_model::naming::keys::{Holder, is_reserved_on};
+use ecad_model::naming::text::Text;
 use ecad_model::objects::plc::{
     AddressStyle, Channel, ChannelGroup, CommLink, CommRole, Communication, IoLinkMaster, ModuleFunction, NetAddress, PlcModule, PlcRack, Protocol,
     RackHead, SafeState, Signal,
 };
-use ecad_model::naming::text::Text;
 use ecad_model::{DeviceId, DeviceType};
 
 fn round_trip(t: &DeviceType) {
@@ -89,7 +89,8 @@ fn channels_number_across_groups() {
     assert_eq!(m.channels().into_iter().map(|(i, _)| i).collect::<Vec<_>>(), [5]);
     assert!(m.edit_channel(5, |c| c.text = None));
     assert!(m.channels().is_empty());
-    let mut none = PlcModule::new(ModuleFunction::Drive(ecad_model::objects::plc::Drive { kind: ecad_model::objects::plc::DriveKind::Servo, axes: 2 }));
+    let mut none =
+        PlcModule::new(ModuleFunction::Drive(ecad_model::objects::plc::Drive { kind: ecad_model::objects::plc::DriveKind::Servo, axes: 2 }));
     assert!(!none.edit_channel(0, |c| c.text = Text::new("x").ok()));
 }
 
@@ -118,7 +119,7 @@ fn network_addresses_read_strictly() {
 /// the last good transaction). Nothing reads a channel out of its text.
 #[test]
 fn an_old_channel_key_on_a_module_is_a_read_error() {
-    use ecad_model::{Author, Device, Ledger, Op, ConnectionPoint, ConnectionPointId, Transaction, TxKind};
+    use ecad_model::{Author, ConnectionPoint, ConnectionPointId, Device, Ledger, Op, Transaction, TxKind};
     let mut l = Ledger::new(0x0007_2cf2);
     let c: DeviceId = DeviceId::from(0x072c_0001u128);
     let good: ConnectionPointId = ConnectionPointId::from(0x072c_0002u128);
@@ -127,7 +128,8 @@ fn an_old_channel_key_on_a_module_is_a_read_error() {
         ..Device::default()
     };
     let point = |k: &str| ConnectionPoint { owner: c.into(), label: Some("1".into()), key: Some(k.parse().unwrap()), accepts: Default::default() };
-    l.commit(Author::User, "card", vec![Op::CreateDevice { id: c, device: module }, Op::AddConnectionPoint { id: good, terminal: point(".0.in") }]).unwrap();
+    l.commit(Author::User, "card", vec![Op::CreateDevice { id: c, device: module }, Op::AddConnectionPoint { id: good, terminal: point(".0.in") }])
+        .unwrap();
     for old in ["I1.3", "Q0.0", "L+"] {
         let t: ConnectionPointId = ConnectionPointId::from(0x072c_0100u128);
         let e = l.commit(Author::User, "old key", vec![Op::AddConnectionPoint { id: t, terminal: point(old) }]).unwrap_err().to_string();

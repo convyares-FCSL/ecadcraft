@@ -24,9 +24,9 @@ use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Input, Session};
 use common::{H, id};
 use ecad_electrical::cables::layout::{self, MarkerEnd, Role, Shape};
-use ecad_engine::interact::{hover_lines, overlay_marks};
 use ecad_engine::cables::draw;
 use ecad_engine::cables::views::{self, FanOnPage, Settings};
+use ecad_engine::interact::{hover_lines, overlay_marks};
 use ecad_engine::{Persistence, Project, ProjectHandle};
 use ecad_model::{
     CableId, Color, Core, Form, Item, ItemId, ItemKind, Op, PageId, Primitive, Pt, Representation, RepresentationId, Style, Subject, Transaction,

@@ -9,9 +9,9 @@ use std::collections::BTreeSet;
 use ecad_model::{Document, IdAllocator, ItemId, Op, PageId, Pt};
 use serde_json::{Value, json};
 
-use crate::locations::designations::{Aspect, Pending};
 use crate::error::CmdError;
 use crate::locations;
+use crate::locations::designations::{Aspect, Pending};
 use crate::reports::kept::ReportModels;
 use crate::reports::{self, Group, Table};
 use crate::symbols::proposals::{self, Mode};

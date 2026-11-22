@@ -15,13 +15,13 @@ use ecad_model::{
 };
 
 use crate::defaults::strip_pages;
-use crate::locations::designations::{self, Aspect, Pending};
 use crate::error::{CmdError, msg};
+use crate::locations::designations::{self, Aspect, Pending};
 use crate::pages::frames::{CUSTOMER, DRAWING_NUMBER, STATUS, TITLE};
-use crate::reports::kept::ReportModels;
 use crate::pages::page_types::MAX_NUMBER_CHARS;
-use crate::symbols::proposals::{self, Mode, Planned};
 use crate::releases::revisions::{self, FIELDS, Revision};
+use crate::reports::kept::ReportModels;
+use crate::symbols::proposals::{self, Mode, Planned};
 use ecad_model::GenKind;
 
 /// Most characters of a folder name.
@@ -841,7 +841,12 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
     }
     // Brief 026 (design §5.1): Provisional tags until Finalise, as `numbering` writes it.
     if let Some(on) = change.provisional {
-        ops.extend(set(ObjectRef::Project, Some(&doc.display), tag::PROVISIONAL_SETTING, on.then(|| ecad_model::naming::words::flag_word(true).to_string())));
+        ops.extend(set(
+            ObjectRef::Project,
+            Some(&doc.display),
+            tag::PROVISIONAL_SETTING,
+            on.then(|| ecad_model::naming::words::flag_word(true).to_string()),
+        ));
     }
     let mut settings = doc.settings.clone();
     if let Some(t) = &change.sheet {
@@ -862,9 +867,10 @@ pub fn project_props(doc: &Document, ids: &mut IdAllocator, change: &ProjectChan
     tag_settings(&mut settings, "tag_padding", change.tag_padding, &change.tag_prefixes)?;
     // Brief 022 fix round: how label colours are written, and the label height.
     if let Some(w) = &change.colour_style {
-        settings.wiring.colour_style = Some(<ecad_model::geometry::colour::ColourWords as ecad_model::naming::words::Word>::parse(w).ok_or(CmdError::refused(
-            "`colour_style` must be \"code2\" (BN, BU, GN/YE), \"code3\" (BRN, BLU, GRN/YEL) or \"name\" (Brown, Blue, Green/Yellow)",
-        ))?);
+        settings.wiring.colour_style =
+            Some(<ecad_model::geometry::colour::ColourWords as ecad_model::naming::words::Word>::parse(w).ok_or(CmdError::refused(
+                "`colour_style` must be \"code2\" (BN, BU, GN/YE), \"code3\" (BRN, BLU, GRN/YEL) or \"name\" (Brown, Blue, Green/Yellow)",
+            ))?);
     }
     if let Some(h) = change.label_height {
         settings.wiring.label_height = Some(

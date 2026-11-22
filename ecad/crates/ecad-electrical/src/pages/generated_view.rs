@@ -24,9 +24,9 @@ use ecad_model::document::effect::{AreaSet, Effect};
 use ecad_model::document::view::{DerivedView, NoteCx, Outcome, PageSet, Phase, ViewScope};
 use ecad_model::{Document, GenKind, PageId};
 
-use crate::views::Inputs;
 use crate::pages::front::{CoverNote, Uses, UsesNote};
 use crate::pages::generated::{kind_of, touched_by};
+use crate::views::Inputs;
 
 /// The generated pages' view.
 #[derive(Debug, Default)]

@@ -15,8 +15,8 @@ pub mod review;
 pub mod search;
 pub mod view;
 
-use ecad_electrical::symbols::commands::Content;
 use ecad_electrical::symbols;
+use ecad_electrical::symbols::commands::Content;
 use ecad_model::{DefinitionId, Form, ItemKind, Subject};
 use serde_json::{Value, json};
 

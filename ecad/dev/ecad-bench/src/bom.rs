@@ -14,11 +14,11 @@
 use std::time::Instant;
 
 use cadcraft_engine::Session;
-use ecad_engine::ProjectHandle;
 use ecad_electrical::reports::kept::ReportModels;
-use {ecad_electrical::reports::BomView, ecad_electrical::reports::Group};
+use ecad_engine::ProjectHandle;
 use ecad_model::{DeviceId, PageId};
 use serde_json::json;
+use {ecad_electrical::reports::BomView, ecad_electrical::reports::Group};
 
 use crate::measure::median;
 

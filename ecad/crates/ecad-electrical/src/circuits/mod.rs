@@ -52,8 +52,8 @@ use ecad_model::objects::wire::CircuitInputs;
 use ecad_model::{CableId, DeviceId, Document, NetKey, ObjectRef, Op, StyleRef, WireId, Word};
 
 use crate::defaults::{self, Scope};
-use crate::styles::{self, cable, ratingtable, wire};
 use crate::devices::ratings::dataset::{Dataset, Insulation};
+use crate::styles::{self, cable, ratingtable, wire};
 use load::{Load, LoadFrom, LoadSource, TypedLoads};
 use trace::{Found, How};
 
@@ -121,7 +121,13 @@ pub fn check_style(catalogue: ecad_model::StyleCatalogue, r: &ecad_model::object
         _ => return None,
     };
     let (at, max) = (rating.rated_at.map_or(30.0, |c| c.0), rating.max_temperature.map_or(70.0, |c| c.0));
-    (at >= max).then(|| format!("Rated at {} \u{b0}C is not below the conductor's {} \u{b0}C.", crate::devices::ratings::dataset::fmt_num(at), crate::devices::ratings::dataset::fmt_num(max)))
+    (at >= max).then(|| {
+        format!(
+            "Rated at {} \u{b0}C is not below the conductor's {} \u{b0}C.",
+            crate::devices::ratings::dataset::fmt_num(at),
+            crate::devices::ratings::dataset::fmt_num(max)
+        )
+    })
 }
 
 /// A panel wire or a field cable.
@@ -407,7 +413,9 @@ impl Touch {
             // Design 072 §6.2: a box's temperature reaches the wires at its location; its new
             // location the wires at both locations and those of the devices on its pages.
             Effect::Aid { id, before, after } => {
-                let loc = |a: &ecad_model::Aid| a.as_box().and_then(|b| crate::locations::designations::box_key(b, crate::locations::designations::Aspect::Location));
+                let loc = |a: &ecad_model::Aid| {
+                    a.as_box().and_then(|b| crate::locations::designations::box_key(b, crate::locations::designations::Aspect::Location))
+                };
                 if before.iter().chain(after.iter()).any(|a| a.as_box().is_some()) {
                     self.boxes.insert(*id);
                     let (b, a) = (before.and_then(loc), after.and_then(loc));
@@ -837,8 +845,10 @@ fn table_issues(ctx: &Context) -> Vec<Issue> {
 
 impl Touch {
     fn box_locations(&mut self, doc: &Document, a: ecad_model::AidId) {
-        self.locations
-            .extend(crate::locations::box_values(doc, a).and_then(|x| crate::locations::designations::box_key(x, crate::locations::designations::Aspect::Location)));
+        self.locations.extend(
+            crate::locations::box_values(doc, a)
+                .and_then(|x| crate::locations::designations::box_key(x, crate::locations::designations::Aspect::Location)),
+        );
     }
 
     fn box_pages(&mut self, doc: &Document, a: ecad_model::AidId) {
@@ -878,7 +888,8 @@ fn place(doc: &Document, s: RatedSubject) -> (Option<ecad_model::PageId>, Option
             (p, a, Object::Wire(c))
         }
         RatedSubject::Cable(k) => {
-            let (p, a) = ecad_model::naming::numbering::rep_anchor(doc, ecad_model::Subject::Cable(k)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
+            let (p, a) =
+                ecad_model::naming::numbering::rep_anchor(doc, ecad_model::Subject::Cable(k)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
             (p, a, Object::Cable(k))
         }
     }
@@ -903,25 +914,40 @@ pub fn rows(doc: &Document, r: &Rating) -> Vec<Check> {
                     (Some(sz), RatedSubject::Cable(k)) => Some(Fix::PickCableType(k, *sz)),
                     _ => show,
                 };
-                row(CheckKind::RatingUnder, format!("{who} carries {} A; {} is {} A", fmt_amps(iz, Some(a)), d.tag, crate::devices::ratings::dataset::fmt_num(a)), fix);
+                row(
+                    CheckKind::RatingUnder,
+                    format!("{who} carries {} A; {} is {} A", fmt_amps(iz, Some(a)), d.tag, crate::devices::ratings::dataset::fmt_num(a)),
+                    fix,
+                );
             }
             Issue::TooHot { place, temp, max } => row(
                 CheckKind::RatingTooHot,
-                format!("{place} at {} \u{b0}C is not below {who}'s {} \u{b0}C", crate::devices::ratings::dataset::fmt_num(*temp), crate::devices::ratings::dataset::fmt_num(*max)),
+                format!(
+                    "{place} at {} \u{b0}C is not below {who}'s {} \u{b0}C",
+                    crate::devices::ratings::dataset::fmt_num(*temp),
+                    crate::devices::ratings::dataset::fmt_num(*max)
+                ),
                 show,
             ),
             Issue::LoadOver => {
                 let (Some(l), Some(d), Some(a)) = (r.load.as_ref(), dev, i_n) else { continue };
                 row(
                     CheckKind::RatingLoadOver,
-                    format!("{who} load {} A is above {}'s {} A", crate::devices::ratings::dataset::fmt_num(l.amps), d.tag, crate::devices::ratings::dataset::fmt_num(a)),
+                    format!(
+                        "{who} load {} A is above {}'s {} A",
+                        crate::devices::ratings::dataset::fmt_num(l.amps),
+                        d.tag,
+                        crate::devices::ratings::dataset::fmt_num(a)
+                    ),
                     show,
                 );
             }
             Issue::VoltDropOver => {
                 let Some(v) = &r.voltdrop else { continue };
-                let larger =
-                    v.larger.map(|(sz, p)| format!(" ({} mm\u{b2} would drop {} %)", crate::devices::ratings::dataset::fmt_num(sz), fmt_percent(p))).unwrap_or_default();
+                let larger = v
+                    .larger
+                    .map(|(sz, p)| format!(" ({} mm\u{b2} would drop {} %)", crate::devices::ratings::dataset::fmt_num(sz), fmt_percent(p)))
+                    .unwrap_or_default();
                 row(
                     CheckKind::VoltdropOver,
                     format!(
@@ -1020,7 +1046,8 @@ pub fn summary_rows(doc: &Document, k: &Kept) -> Vec<Check> {
     }
     for (c, text) in k.unread() {
         let tag = crate::devices::tag_words(doc, c);
-        let (page, at) = ecad_model::naming::numbering::rep_anchor(doc, ecad_model::Subject::Device(c)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
+        let (page, at) =
+            ecad_model::naming::numbering::rep_anchor(doc, ecad_model::Subject::Device(c)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
         out.push(Check {
             kind: CheckKind::RatingDeviceUnread,
             page,
@@ -1033,7 +1060,8 @@ pub fn summary_rows(doc: &Document, k: &Kept) -> Vec<Check> {
     for (c, loc, v) in k.bad_boxes() {
         // Brief 052: the box stores an entry key; the row names the entry's code.
         let loc = if loc.is_empty() { String::new() } else { location_code(doc, loc) };
-        let (page, at) = ecad_model::naming::numbering::rep_anchor(doc, ecad_model::Subject::Aid(c)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
+        let (page, at) =
+            ecad_model::naming::numbering::rep_anchor(doc, ecad_model::Subject::Aid(c)).map_or((None, None), |(p, a)| (Some(p), Some(a)));
         out.push(Check {
             kind: CheckKind::RatingBadValue,
             page,

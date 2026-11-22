@@ -10,7 +10,7 @@
 
 use cadcraft_engine::Session;
 use cadcraft_engine::geom::Vec2;
-use ecad_model::{Document, PageId, Subject, ConnectionPointId};
+use ecad_model::{ConnectionPointId, Document, PageId, Subject};
 
 use crate::interact::{capture, pick, pixel, read, route_ends};
 use crate::project::{Mapped, Project};
@@ -45,7 +45,8 @@ pub fn sentence(p: &Project, uid: u64, command: &str, cursor: Vec2, aperture: f6
                 let Some(Mapped::Item(i)) = p.pages.get(&page)?.map.get(h) else { return None };
                 match doc.representation_of_item(i)?.1.subject {
                     Subject::Route(r) => {
-                        let words = ecad_electrical::wires::wire_of_route(doc, r).map_or_else(|| "the wire line".into(), |w| crate::pointer::kind::wire_words(doc, w));
+                        let words = ecad_electrical::wires::wire_of_route(doc, r)
+                            .map_or_else(|| "the wire line".into(), |w| crate::pointer::kind::wire_words(doc, w));
                         Some(format!("joins {words} (a T)"))
                     }
                     _ => None,

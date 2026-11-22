@@ -14,7 +14,10 @@ pub(crate) fn bomitem(s: &Session) -> R<Box<dyn Interactive>> {
     let (metres, location) = crate::interact::read(s, |p, _| {
         let doc = p.ledger.document();
         let stored = ecad_electrical::locations::designations::default_key(&doc.project, ecad_electrical::locations::designations::Aspect::Location);
-        Ok((ecad_electrical::reports::bom::item_unit_metres(doc), ecad_electrical::locations::designations::shown(doc, ecad_electrical::locations::designations::Aspect::Location, stored.as_deref())))
+        Ok((
+            ecad_electrical::reports::bom::item_unit_metres(doc),
+            ecad_electrical::locations::designations::shown(doc, ecad_electrical::locations::designations::Aspect::Location, stored.as_deref()),
+        ))
     })
     .unwrap_or((false, None));
     Ok(Box::new(Safe(BomItem { step: 0, fields: Map::new(), metres, location })))

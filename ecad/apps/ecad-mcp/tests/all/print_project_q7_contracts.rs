@@ -80,7 +80,9 @@ fn ac9_the_pending_marker_follows_the_undo_stack() {
     let p = c.exec("printbook", json!({}));
     assert!(p["notes"].as_array().unwrap().iter().any(|n| n == "The drawing has changed since Rev A; the title block shows A*."), "{p}");
     // The dialog shows the same note before printing.
-    let notes = c.s.with_session(|s, h| h.configure(s, |p| ecad_engine::export::printbook::notes(p, &ecad_engine::export::printbook::Scope::All)).unwrap()).unwrap();
+    let notes =
+        c.s.with_session(|s, h| h.configure(s, |p| ecad_engine::export::printbook::notes(p, &ecad_engine::export::printbook::Scope::All)).unwrap())
+            .unwrap();
     assert_eq!(notes, ["The drawing has changed since Rev A; the title block shows A*."]);
     // The cover says so too.
     let cover = c.exec("newpage", json!({"generated": "cover"}));

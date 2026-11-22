@@ -3,7 +3,7 @@
 //! line (`CorePosition::Route`), and the wire forms, with the core moving onto it, when the line's
 //! other end lands on a connection point. Driven through the commands' JSON forms.
 
-use ecad_model::{CableId, CorePosition, PageId, RouteId, ConnectionPointId, WireId};
+use ecad_model::{CableId, ConnectionPointId, CorePosition, PageId, RouteId, WireId};
 use serde_json::{Value, json};
 
 use crate::common::{H, id};
@@ -105,7 +105,8 @@ struct Continued {
     cable: CableId,
     line: RouteId,
     a: ConnectionPointId,
-    v: Value}
+    v: Value,
+}
 
 fn continued(seed: u64) -> Continued {
     let mut h = H::new(seed);
@@ -204,7 +205,7 @@ fn a_point_with_more_wires_than_it_accepts_is_an_error() {
 /// rebuild after each step (the update map).
 #[test]
 fn a_fixed_device_in_a_box_of_another_location_is_tied_to_multiple_locations() {
-    use {ecad_electrical::checks::Kind};
+    use ecad_electrical::checks::Kind;
     let mut h = H::new(SEED + 30);
     let p105 = h.first_page();
     let k = id::<ecad_model::DeviceId>(&h.run("place", json!({"symbol": "coil", "at": [75, 180], "tag": "-K01"})).unwrap(), "component");
@@ -212,7 +213,8 @@ fn a_fixed_device_in_a_box_of_another_location_is_tied_to_multiple_locations() {
     h.run("place", json!({"symbol": "no", "at": [100, 150], "device": k.hex()})).unwrap();
     let tied = |h: &mut H| {
         let doc = h.doc();
-        let fresh: Vec<ecad_electrical::checks::Check> = ecad_engine::checks::all(&doc, 1e-6).into_iter().filter(|r| r.kind == Kind::TiedLocations).collect();
+        let fresh: Vec<ecad_electrical::checks::Check> =
+            ecad_engine::checks::all(&doc, 1e-6).into_iter().filter(|r| r.kind == Kind::TiedLocations).collect();
         let kept: Vec<ecad_electrical::checks::Check> = h.cfg(|p| {
             let doc = p.ledger.document().clone();
             p.checks().sorted(&doc).into_iter().filter(|r| r.kind == Kind::TiedLocations).collect()
@@ -284,7 +286,10 @@ fn a_wire_runs_through_a_continuation_pair_from_device_point_to_device_point() {
     assert_eq!(doc.named_points(t2).map(|g| g.len()), Some(2), "the pair's two points");
     assert!(doc.ends_at(t2).is_empty(), "no wire ends at a continuation");
     let w: WireId = *doc.wires.keys().next().unwrap();
-    assert!(ecad_model::connectivity::derive::route_on_page(&doc, w, p1).is_some() && ecad_model::connectivity::derive::route_on_page(&doc, w, p2).is_some());
+    assert!(
+        ecad_model::connectivity::derive::route_on_page(&doc, w, p1).is_some()
+            && ecad_model::connectivity::derive::route_on_page(&doc, w, p2).is_some()
+    );
     h.check();
 }
 

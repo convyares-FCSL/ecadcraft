@@ -25,17 +25,17 @@ use ecad_model::document::effect::{Effect, Effects};
 use ecad_model::document::view::{DerivedView, NoteCx, Outcome, Phase};
 use ecad_model::{Document, Op};
 
-pub use changes::Changes;
 pub use crate::checks::view::{ChecksScope, ChecksView};
 pub use crate::connectors::view::{ConnectorsScope, ConnectorsView};
 pub use crate::devices::view::{DevicesFeed, DevicesScope};
 pub use crate::pages::frame_view::{FrameScope, FrameView};
 pub use crate::pages::generated_view::{GeneratedScope, GeneratedView};
-pub use crate::reports::view::{ReportsScope, ReportsView};
+pub use crate::pages::tree_view::{TreeFeed, TreeScope};
 pub use crate::pages::view::{PagesScope, PagesView, points_pages};
 pub use crate::properties::view::{PropsFeed, PropsScope};
 pub use crate::references::view::{RefsScope, RefsView};
-pub use crate::pages::tree_view::{TreeFeed, TreeScope};
+pub use crate::reports::view::{ReportsScope, ReportsView};
+pub use changes::Changes;
 
 use crate::styles::text_style::fonts::TextMetrics;
 

@@ -24,8 +24,8 @@ use std::fmt;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::DeviceId;
-use crate::naming::text::Text;
 use crate::geometry::units::RatedVoltage;
+use crate::naming::text::Text;
 
 /// The highest slot number.
 pub const MAX_SLOT: u16 = 999;

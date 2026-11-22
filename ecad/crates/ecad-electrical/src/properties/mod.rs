@@ -475,7 +475,10 @@ fn placed_words(props: Option<&ecad_model::Properties>) -> String {
     let Some(props) = props else { return String::new() };
     let mut parts = Vec::new();
     let mut markers = 0;
-    for (k, v) in props.range(crate::terminal_strips::accessories::ACC_PREFIX.to_string()..).take_while(|(k, _)| k.starts_with(crate::terminal_strips::accessories::ACC_PREFIX)) {
+    for (k, v) in props
+        .range(crate::terminal_strips::accessories::ACC_PREFIX.to_string()..)
+        .take_while(|(k, _)| k.starts_with(crate::terminal_strips::accessories::ACC_PREFIX))
+    {
         match crate::terminal_strips::accessories::spot_of(k) {
             Some(crate::terminal_strips::accessories::Spot::On(_)) => markers += 1,
             Some(s) => {
@@ -545,7 +548,8 @@ fn wiring_rows(doc: &Document, w: WireId) -> (Vec<Row>, Vec<Row>) {
         let shown = |v: &str| if key == crate::properties::commands::wires::COLOURS { doc.settings.wiring.colour(v) } else { v.to_string() };
         let mut row = Row::rw(key, label, stored.clone().unwrap_or_default());
         if key == crate::properties::commands::wires::COLOURS {
-            row.choices = ecad_model::geometry::colour::ConductorColour::ALL.iter().map(|c| c.shown(doc.settings.wiring.colour_style()).to_string()).collect();
+            row.choices =
+                ecad_model::geometry::colour::ConductorColour::ALL.iter().map(|c| c.shown(doc.settings.wiring.colour_style()).to_string()).collect();
         }
         if stored.is_none()
             && let (Some(d), Some(n)) = (default, &cat_name)
@@ -610,7 +614,10 @@ pub fn cable_section(doc: &Document, k: CableId) -> Section {
     let props = cable.map(|c| &c.properties);
     let mut rows = vec![Row::rw("tag", "Tag", props.and_then(|p| p.text(ecad_model::naming::keys::TAG)).unwrap_or_default().to_string())];
     // Brief 026: Fixed beside Tag.
-    rows.push(fixed_row(props.and_then(|p| p.get(ecad_model::naming::tag::TAG_KEY)).map(String::as_str), props.is_some_and(ecad_model::naming::numbering::is_fixed)));
+    rows.push(fixed_row(
+        props.and_then(|p| p.get(ecad_model::naming::tag::TAG_KEY)).map(String::as_str),
+        props.is_some_and(ecad_model::naming::numbering::is_fixed),
+    ));
     rows.extend(free_rows(props, &["tag", ecad_model::naming::tag::FIXED_KEY, crate::terminal_strips::CORES_KEY]));
     // Brief 028 (design 028 §7.2): Cores (its own, else read from the type, shown faint) and the
     // read-only Used / Spare with Show cores.
@@ -788,12 +795,18 @@ pub fn edit_line(target: &Target, key: &str, value: Option<&str>) -> String {
         j["conflict"] = way.into();
         return format!("setprop {j}");
     }
-    let v = if key == ecad_model::naming::tag::FIXED_KEY && value.and_then(ecad_model::naming::words::flag) == Some(false) { serde_json::Value::Null } else { v };
+    let v = if key == ecad_model::naming::tag::FIXED_KEY && value.and_then(ecad_model::naming::words::flag) == Some(false) {
+        serde_json::Value::Null
+    } else {
+        v
+    };
     let j = match target {
         Target::Page(p) => {
             let mut m = serde_json::Map::new();
             m.insert("page".into(), p.hex().into());
-            let v = if key == ecad_model::document::sheet::SHEET_KEY && value.is_some_and(|s| s.starts_with("Project (") || s.eq_ignore_ascii_case("project")) {
+            let v = if key == ecad_model::document::sheet::SHEET_KEY
+                && value.is_some_and(|s| s.starts_with("Project (") || s.eq_ignore_ascii_case("project"))
+            {
                 serde_json::Value::Null
             } else {
                 v
@@ -810,7 +823,9 @@ pub fn edit_line(target: &Target, key: &str, value: Option<&str>) -> String {
         Target::Devices(cs) => ("setprop", serde_json::json!({"devices": cs.iter().map(|c| c.hex()).collect::<Vec<_>>(), "key": key, "value": v})),
         Target::Aids(cs) => ("setprop", serde_json::json!({"aids": cs.iter().map(|c| c.hex()).collect::<Vec<_>>(), "key": key, "value": v})),
         // Brief 022: the number and the potential belong to the whole net.
-        Target::Wire(w) if key == ecad_model::connectivity::wiring::WIRE_NUMBER_KEY => ("wirenumber", serde_json::json!({"conductor": w.hex(), "value": v})),
+        Target::Wire(w) if key == ecad_model::connectivity::wiring::WIRE_NUMBER_KEY => {
+            ("wirenumber", serde_json::json!({"conductor": w.hex(), "value": v}))
+        }
         Target::Wire(w) if key == ecad_model::connectivity::WIRE_NUMBER_FIXED => {
             let fixed = value.and_then(ecad_model::naming::words::flag) == Some(true);
             ("wirenumber", serde_json::json!({"conductor": w.hex(), "fixed": fixed}))

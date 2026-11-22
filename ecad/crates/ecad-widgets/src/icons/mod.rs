@@ -11,8 +11,8 @@ pub mod shell;
 pub mod tools;
 pub mod workspaces;
 
-use {crate::tokens::Icon, crate::tokens::line, crate::tokens::size};
 use egui::{Color32, Painter, Pos2, Rect, Shape, Stroke, pos2};
+use {crate::tokens::Icon, crate::tokens::line, crate::tokens::size};
 
 /// Paint `icon` in `rect` (any size; the 16 px grid is scaled to the shorter side and centred).
 pub fn paint(painter: &Painter, rect: Rect, icon: Icon, ink: Color32) {

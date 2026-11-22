@@ -2,11 +2,11 @@
 
 use std::collections::BTreeSet;
 
-use {ecad_electrical::connectors, ecad_electrical::defaults};
 use ecad_model::Word;
-use ecad_model::naming::keys::{self, Area};
 use ecad_model::document::view::PageSet;
+use ecad_model::naming::keys::{self, Area};
 use ecad_model::{DeviceId, Document, ObjectRef, Op, PageId};
+use {ecad_electrical::connectors, ecad_electrical::defaults};
 
 /// C3: every fixed key and every defaults entry classifies to an area other than `Free`, and the
 /// registry's area words, in order, are the 17 written out before design 064.
@@ -225,7 +225,8 @@ fn the_props_feed_follows_its_update_map() {
 #[test]
 fn the_props_feed_reads_the_extension() {
     use crate::common::{applied, props_touched};
-    let b = ecad_engine::dev::test_support::ProjectBuilder::new(644).page().coil("K1", (20.0, 20.0)).coil("K2", (80.0, 20.0)).wire("K1", "K2").build();
+    let b =
+        ecad_engine::dev::test_support::ProjectBuilder::new(644).page().coil("K1", (20.0, 20.0)).coil("K2", (80.0, 20.0)).wire("K1", "K2").build();
     let page = b.added_pages[0];
     let (k1, k2) = (b.device("K1"), b.device("K2"));
     let mut h = crate::common::H::from_built(b);
@@ -375,8 +376,8 @@ fn a_view_out_of_step_is_reported_and_rebuilt() {
 /// of three pages stale, through `Views::begin` and `finish`; with no frame shown, none does.
 #[test]
 fn the_frame_view_follows_its_update_map() {
-    use ecad_electrical::views::{EngineInputs, Views};
     use ecad_electrical::pages::frames::{FrameInput, FrameText};
+    use ecad_electrical::views::{EngineInputs, Views};
     use ecad_model::{Page, PageTitle};
     let b = ecad_engine::dev::test_support::ProjectBuilder::new(644).page().page().page().coil("K1", (20.0, 20.0)).build();
     let (first, second, third) = (b.added_pages[0], b.added_pages[1], b.added_pages[2]);
@@ -428,8 +429,8 @@ fn the_frame_view_follows_its_update_map() {
 
 /// Whether `ops` make the frame of `page` (as `doc` shows it) stale, through `Views`.
 fn frame_stale_after(doc: &Document, page: PageId, ops: &[Op]) -> bool {
-    use ecad_electrical::views::{EngineInputs, Views};
     use ecad_electrical::pages::frames::{FrameInput, FrameText};
+    use ecad_electrical::views::{EngineInputs, Views};
     let metrics = ecad_electrical::styles::text_style::fonts::FixedWidth;
     let input = FrameInput::with(doc, page, &ecad_model::document::book::Book::of(doc), FrameText::with(doc, &metrics));
     let mut views = Views::new(EngineInputs { metrics: std::sync::Arc::new(metrics) });
@@ -491,8 +492,8 @@ fn the_frame_view_follows_the_rest_of_its_map() {
 /// nothing into the next commit; nothing is set before `finish`.
 #[test]
 fn a_dropped_pending_leaves_the_frame_alone() {
-    use ecad_electrical::views::{EngineInputs, Views};
     use ecad_electrical::pages::frames::{FrameInput, FrameText};
+    use ecad_electrical::views::{EngineInputs, Views};
     let b = ecad_engine::dev::test_support::ProjectBuilder::new(646).page().build();
     let page = b.added_pages[0];
     let mut h = crate::common::H::from_built(b);

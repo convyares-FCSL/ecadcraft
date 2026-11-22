@@ -1,13 +1,13 @@
 //! Brief 045a (design 045 §2, §3, §9 a-rows, §11, §13 A–E, M, T): racks, slots and cards.
 
-use {ecad_electrical::checks::Fix, ecad_electrical::checks::Kind};
 use ecad_electrical::reports::accessory_fix_commands;
 use ecad_engine::{Persistence, ProjectHandle};
 use ecad_model::{Author, DeviceId, Op};
 use serde_json::{Value, json};
+use {ecad_electrical::checks::Fix, ecad_electrical::checks::Kind};
 
-use crate::plc::contracts::{checks_of, place, placed, prop, same_as_built, tag};
 use crate::common::{H, id};
+use crate::plc::contracts::{checks_of, place, placed, prop, same_as_built, tag};
 
 /// A CPU and six cards (fixture P's rack, design 045 §13 A): `plccm`, `plcdi`, `plcdi`, `plcai`,
 /// `plciol`, `plcdq`, each placed with Enter's defaults.

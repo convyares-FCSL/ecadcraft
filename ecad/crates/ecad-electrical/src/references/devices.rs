@@ -49,16 +49,16 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::CmdError;
 use crate::devices::traits::DeviceKind;
-use ecad_model::objects::devices::{ContactEntry, ContactLabel, ContactPoles, ContactSet, ContactTable};
 use ecad_model::document::effect::{Effect, Effects};
+use ecad_model::objects::devices::{ContactEntry, ContactLabel, ContactPoles, ContactSet, ContactTable};
 use ecad_model::{
     CableId, ContactMirror, Device as StoredDevice, DeviceId, DeviceType, Document, Form, LengthUnit, ObjectRef, Op, PageId, Pt, Representation,
     RepresentationId, Subject,
 };
 use serde_json::{Value, json};
 
-use crate::symbols::{Kind, Starter, StarterKey as K};
 use crate::styles::text_style::fonts::TextMetrics;
+use crate::symbols::{Kind, Starter, StarterKey as K};
 
 /// The text style of a contact's or a connector member's reference (brief 066d).
 const REF: crate::styles::text_style::TextKind = crate::styles::text_style::TextKind::Reference;
@@ -488,8 +488,9 @@ pub fn connection_point_points(doc: &Document, c: DeviceId, r: &Representation) 
 /// Device `c` as the reference rule sees it: O(its representations).
 pub fn device(doc: &Document, c: DeviceId) -> Device {
     // Brief 054 (design 054 §3.4): the first head on a page with checks and references on.
-    let head =
-        crate::symbols::reps::heads(doc, c).into_iter().find(|h| doc.representations.get(h).is_some_and(|r| ecad_model::document::sheet::page_checks(doc, r.page)));
+    let head = crate::symbols::reps::heads(doc, c)
+        .into_iter()
+        .find(|h| doc.representations.get(h).is_some_and(|r| ecad_model::document::sheet::page_checks(doc, r.page)));
     let mut children = Vec::new();
     let mut poles = Vec::new();
     for (rid, r) in doc.representations_of(Subject::Device(c)) {
@@ -910,7 +911,10 @@ impl TableShown {
 pub fn table_box(doc: &Document, top: Pt, rows: &[Row], m: &dyn TextMetrics) -> (Pt, Pt) {
     let k = unit(doc);
     // The widest place text in the font and size it is drawn with (drawing units).
-    let widest = rows.iter().map(|r| crate::styles::text_style::fonts::text_width(doc, crate::styles::text_style::TextKind::Table, &r.place, m)).fold(0.0, f64::max);
+    let widest = rows
+        .iter()
+        .map(|r| crate::styles::text_style::fonts::text_width(doc, crate::styles::text_style::TextKind::Table, &r.place, m))
+        .fold(0.0, f64::max);
     let gap = rows.windows(2).any(|w| w.first().is_some_and(|a| a.power) && w.get(1).is_some_and(|b| !b.power));
     let height = 3.0 + ROW_PITCH_MM * rows.len() as f64 + if gap { GROUP_GAP_MM } else { 0.0 };
     (Pt::new(top.x - 10.0 * k, top.y - height * k), Pt::new(top.x + 12.0 * k + widest, top.y))
@@ -1755,7 +1759,8 @@ impl Scope {
             }
             // Brief 050a: a change of the text style the table text uses (its height, weight).
             Effect::Style { catalogue: ecad_model::StyleCatalogue::Text, id, .. }
-                if **id == crate::styles::text_style::style_of(doc, crate::styles::text_style::TextKind::Table, crate::defaults::Scope::project()) =>
+                if **id
+                    == crate::styles::text_style::style_of(doc, crate::styles::text_style::TextKind::Table, crate::defaults::Scope::project()) =>
             {
                 self.wide = true;
             }
@@ -2289,7 +2294,9 @@ fn head_noun(t: &ecad_model::DeviceType) -> &'static str {
         },
         T::Protection(p) => match p.kind() {
             ProtectionKind::Mcb => "MCB",
-            ProtectionKind::Fuse | ProtectionKind::FuseTerminalBlock | ProtectionKind::Rcd | ProtectionKind::Rcbo | ProtectionKind::FuseBank => "Head",
+            ProtectionKind::Fuse | ProtectionKind::FuseTerminalBlock | ProtectionKind::Rcd | ProtectionKind::Rcbo | ProtectionKind::FuseBank => {
+                "Head"
+            }
         },
         T::PowerSupply(_)
         | T::Sensor(_)

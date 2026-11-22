@@ -4,7 +4,7 @@
 use crate::common::{H, id};
 
 use cadcraft_engine::doc::EntityKind;
-use {ecad_electrical::devices::TextOf};
+use ecad_electrical::devices::TextOf;
 use ecad_model::{DeviceId, PageId, RepresentationId, Subject};
 use serde_json::{Value, json};
 
@@ -32,7 +32,8 @@ fn strip_row(h: &mut H, x0: f64, y: f64, n: usize, step: f64, strip: Option<Devi
         .filter_map(|(rid, r)| {
             let at = r.items.first().and_then(|i| doc.items.get(i)).and_then(|i| match &i.kind {
                 ecad_model::ItemKind::Symbol(s) => Some(s.placement.origin),
-                _ => None})?;
+                _ => None,
+            })?;
             Some((at.y, at.x, rid))
         })
         .collect();
@@ -43,7 +44,11 @@ fn strip_row(h: &mut H, x0: f64, y: f64, n: usize, step: f64, strip: Option<Devi
 /// Tag texts on `page`: (representation, shown).
 fn tags(h: &mut H, page: PageId) -> Vec<(RepresentationId, bool)> {
     let doc = h.doc();
-    ecad_engine::devices::draw::all_texts_on_page(&doc, page).into_iter().filter(|t| t.text.of == TextOf::Tag).map(|t| (t.text.rep, t.shown)).collect()
+    ecad_engine::devices::draw::all_texts_on_page(&doc, page)
+        .into_iter()
+        .filter(|t| t.text.of == TextOf::Tag)
+        .map(|t| (t.text.rep, t.shown))
+        .collect()
 }
 
 fn shown_tags(h: &mut H, page: PageId, c: DeviceId) -> Vec<RepresentationId> {
@@ -150,7 +155,8 @@ fn hidden_texts_are_still_data_and_show_hidden_text_draws_them_dimmed() {
             .iter()
             .filter_map(|e| match &e.kind {
                 EntityKind::Text(t) if t.value == tag => Some((e.common.layer.clone(), format!("{:?}", e.common.color))),
-                _ => None})
+                _ => None,
+            })
             .collect()
     };
     assert!(texts(&mut h).is_empty(), "hidden: not drawn");
@@ -244,7 +250,10 @@ fn a_copied_symbol_carries_its_own_keys_under_the_new_representation() {
     let coil = reps
         .iter()
         .copied()
-        .find(|r| ecad_electrical::devices::rep_starter(&h.doc(), &h.doc().representations[r]).is_some_and(|s| s.key == ecad_electrical::symbols::StarterKey::Coil))
+        .find(|r| {
+            ecad_electrical::devices::rep_starter(&h.doc(), &h.doc().representations[r])
+                .is_some_and(|s| s.key == ecad_electrical::symbols::StarterKey::Coil)
+        })
         .unwrap();
     let other = reps.iter().copied().find(|r| *r != coil).unwrap();
     h.run("showtext", json!({"kind": "tag", "show": "off", "representation": coil.hex()})).unwrap();
@@ -261,7 +270,8 @@ fn a_copied_symbol_carries_its_own_keys_under_the_new_representation() {
         .iter()
         .find_map(|(r, x)| match x.subject {
             Subject::Device(n) if n != c => Some((n, *r)),
-            _ => None})
+            _ => None,
+        })
         .expect("the copy");
     let props = &doc.devices[&new_c].properties;
     let keys: Vec<&String> = props.keys().filter(|k| k.starts_with("text.")).collect();

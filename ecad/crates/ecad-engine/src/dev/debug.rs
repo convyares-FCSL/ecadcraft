@@ -31,11 +31,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::Arc;
 
-use cadcraft_engine::doc::{Drawing, Handle};
 use crate::history::event_log::Event;
+use cadcraft_engine::doc::{Drawing, Handle};
 use ecad_model::{
-    CableId, DefinitionId, DeviceId, Document, ItemId, ItemKind, LayerId, Ledger, Op, PageId, ProjectId, RepresentationId, RouteId, Subject,
-    ConnectionPointId, Transaction, TxId, WireId,
+    CableId, ConnectionPointId, DefinitionId, DeviceId, Document, ItemId, ItemKind, LayerId, Ledger, Op, PageId, ProjectId, RepresentationId,
+    RouteId, Subject, Transaction, TxId, WireId,
 };
 use serde_json::{Value, json};
 
@@ -1278,10 +1278,11 @@ pub fn object_label(doc: &Document, id: ObjectId) -> String {
         // A member of a cable shows its core (design 009 §8): `W3 · core 1`.
         ObjectId::Wire(c) => {
             let core = doc.cables_of(c).first().and_then(|k| doc.cables.get(k)).and_then(|k| {
-                k.cores
-                    .iter()
-                    .find(|m| m.wire() == Some(c))
-                    .and_then(|m| m.label_str().filter(|x| !x.trim().is_empty()).map(|x| ecad_electrical::cables::words::shorten(x, ecad_electrical::cables::words::MAX_CORE_CHARS)))
+                k.cores.iter().find(|m| m.wire() == Some(c)).and_then(|m| {
+                    m.label_str()
+                        .filter(|x| !x.trim().is_empty())
+                        .map(|x| ecad_electrical::cables::words::shorten(x, ecad_electrical::cables::words::MAX_CORE_CHARS))
+                })
             });
             match core {
                 Some(core) => format!("{} · core {core}", subject_label(doc, Subject::Wire(c))),

@@ -20,8 +20,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::objects::devices::load::load_power;
 use crate::geometry::units::{RatedVoltage, Watts};
+use crate::objects::devices::load::load_power;
 
 /// The largest power of an indicator, in watts.
 pub const MAX_POWER_WATTS: f64 = 10_000.0;

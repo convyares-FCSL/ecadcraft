@@ -1,8 +1,8 @@
 //! Brief 060 (tidy-up guards, R0): `setprop` on several components walks the same rules as on one.
 
-use {ecad_electrical::checks::Kind, ecad_electrical::checks::Severity};
 use ecad_model::DeviceId;
 use serde_json::{Value, json};
+use {ecad_electrical::checks::Kind, ecad_electrical::checks::Severity};
 
 use crate::common::{H, id};
 

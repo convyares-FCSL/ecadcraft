@@ -10,17 +10,17 @@
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
+use ecad_model::geometry::units::{Amps, Celsius, Mm};
 use ecad_model::objects::styles::cable::{CoreColours, CoreScheme};
 use ecad_model::objects::styles::{CableType, StyleLayer};
-use ecad_model::geometry::units::{Amps, Celsius, Mm};
 use ecad_model::objects::wire::{Colours, WireSize};
 use ecad_model::{CableId, Document, StyleRef, Word};
 use serde::Deserialize;
 
-use crate::styles::{Catalogue, Field};
 use crate::CmdError;
-use crate::defaults::{Kind, Slot, Value};
 use crate::circuits::fields;
+use crate::defaults::{Kind, Slot, Value};
+use crate::styles::{Catalogue, Field};
 
 /// The input word (and style-choice index key) naming a cable's cable type (FP2); stored in
 /// [`ecad_model::Cable::cable_type`], never as a property.
@@ -130,7 +130,10 @@ pub fn of(doc: &Document, k: CableId) -> Option<StyleRef> {
 
 /// The text of cable type `id`'s field `key`, when set (empty counts as unset).
 pub fn type_text(doc: &Document, id: &StyleRef, key: &str) -> Option<String> {
-    crate::styles::field_of(doc, ecad_model::StyleCatalogue::Cable, id, key, None).map(|r| r.text()).map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
+    crate::styles::field_of(doc, ecad_model::StyleCatalogue::Cable, id, key, None)
+        .map(|r| r.text())
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
 }
 
 /// Brief 059 (design 059 §2.2): cable `k`'s core offer and where it comes from: its own `cores`,

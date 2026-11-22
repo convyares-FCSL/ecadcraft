@@ -1,11 +1,11 @@
 //! Brief 024 acceptance (design 024 §13): device locations and location boxes, the location
 //! prefix, the reports, generated pages and Print Book. Driven through the commands' JSON forms.
 
-use {ecad_electrical::checks::Fix, ecad_electrical::checks::Kind};
-use {ecad_electrical::locations::Source};
-use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
+use ecad_electrical::locations::Source;
 use ecad_model::{DeviceId, Document, PageId, WireId};
 use serde_json::{Value, json};
+use {ecad_electrical::checks::Fix, ecad_electrical::checks::Kind};
+use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
 
 use crate::common::{H, id, pts};
 
@@ -309,13 +309,21 @@ fn generated_pages_follow_the_project_and_print() {
     let hexes: Vec<String> = coils.iter().map(|c| c.hex()).collect();
     h.run("setlocation", json!({"devices": hexes, "value": "+CP1"})).unwrap();
     let doc = h.doc();
-    assert_eq!(ecad_electrical::pages::generated::sheets_of(&doc, bom_page, Some(&ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics))), 2);
+    assert_eq!(
+        ecad_electrical::pages::generated::sheets_of(
+            &doc,
+            bom_page,
+            Some(&ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics))
+        ),
+        2
+    );
     let parts = ecad_engine::pages::generated::parts_of(&doc, bom_page, ecad_engine::project::engine_views().report_models(&doc).as_ref());
     let texts: Vec<String> = parts
         .iter()
         .filter_map(|p| match &p.kind {
             cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value.clone()),
-            _ => None})
+            _ => None,
+        })
         .collect();
     assert!(texts.iter().any(|t| t == "BOM by location (2/2)"), "{texts:?}");
     assert!(texts.iter().any(|t| t == "+CP1 (continued)"), "{texts:?}");
@@ -349,7 +357,8 @@ fn cover_contents_and_revision_list_show_the_project() {
             .into_iter()
             .filter_map(|p| match p.kind {
                 cadcraft_engine::doc::EntityKind::Text(t) => Some(t.value),
-                _ => None})
+                _ => None,
+            })
             .collect()
     };
     let c = text(cover);

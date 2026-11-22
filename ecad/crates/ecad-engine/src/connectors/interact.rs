@@ -8,10 +8,10 @@ use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
 use ecad_model::{DeviceId, Pt, Word};
 use serde_json::{Value, json};
 
-use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
 use crate::interact::{
     ATTACHED_ACI, OUT_OF_RANGE, REFUSE_ACI, RING_PX, can_start, in_range, line_kind, pixel, preview_entity, preview_text, pt, read, ring_kind, v2,
 };
+use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
 use ecad_electrical::connectors::{self as cn, FamilyRules};
 use ecad_electrical::defaults::{self, Scope};
 use ecad_electrical::symbols::Side;
@@ -35,7 +35,10 @@ pub(crate) fn connector(s: &Session) -> R<Box<dyn Interactive>> {
         let names = defaults::resolve(doc, &defaults::connectors::MAKER_NAMES, Scope::project()).word().to_string();
         let pins_layout =
             defaults::resolve(doc, &defaults::connectors::MAKER_LAYOUT, Scope::project()).choice() == Some(defaults::connectors::MakerLayout::Pins);
-        let next = p.tag_high.peek_auto(doc, &ecad_electrical::devices::prefix_for(doc, ecad_electrical::devices::starter("socket4")?)).unwrap_or_else(|_| "-X?".into());
+        let next = p
+            .tag_high
+            .peek_auto(doc, &ecad_electrical::devices::prefix_for(doc, ecad_electrical::devices::starter("socket4")?))
+            .unwrap_or_else(|_| "-X?".into());
         Ok((halves, family, pins, names, pins_layout, next))
     })
     .map_err(other)?;
@@ -244,7 +247,8 @@ impl PlaceConnector {
         if a.near(b, 1e-9) {
             let w = read(s, |p, page| {
                 let doc = p.ledger.document();
-                Ok(ecad_electrical::wires::route_at(doc, page, a, ecad_electrical::wires::ON_WIRE, None).and_then(|o| ecad_electrical::wires::wire_of_route(doc, o.route)))
+                Ok(ecad_electrical::wires::route_at(doc, page, a, ecad_electrical::wires::ON_WIRE, None)
+                    .and_then(|o| ecad_electrical::wires::wire_of_route(doc, o.route)))
             })
             .map_err(other)?
             .ok_or_else(|| other("Click on a wire, or draw a line across the wires."))?;

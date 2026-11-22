@@ -18,13 +18,13 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::geometry::colour::{ColourWords, ConductorColour};
 use crate::document::doc::Properties;
-use crate::naming::id::{ConductorId, DeviceId, NetId, ConnectionPointId};
-use crate::objects::styles::StyleRef;
-use crate::naming::text::Text;
+use crate::geometry::colour::{ColourWords, ConductorColour};
 use crate::geometry::units::{Amps, Celsius, Mm2, Percent, Volts};
+use crate::naming::id::{ConductorId, ConnectionPointId, DeviceId, NetId};
+use crate::naming::text::Text;
 use crate::naming::words::{is_digits, uint};
+use crate::objects::styles::StyleRef;
 
 /// Most characters of a wire number, a potential, a size or a colour list as typed.
 pub const MAX_VALUE_CHARS: usize = 24;

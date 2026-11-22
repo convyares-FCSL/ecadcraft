@@ -7,12 +7,12 @@ mod hover_and_marks {
     //! priority, paper-space marks and layout switching while a form runs.
 
     use cadcraft_engine::geom::Vec2;
-    use {ecad_app::App, ecad_app::commands::tools};
     use ecad_model::Document;
     use eframe::egui::{self, Event, Key, Modifiers, PointerButton, Pos2};
     use egui_kittest::Harness;
     use egui_kittest::kittest::Queryable;
     use serde_json::json;
+    use {ecad_app::App, ecad_app::commands::tools};
 
     fn harness() -> Harness<'static, App> {
         ecad_engine::install();
@@ -306,12 +306,12 @@ mod layout_refusals {
     //! points and picks without a crash; Esc and undo stay clean afterwards.
 
     use cadcraft_engine::geom::Vec2;
-    use {ecad_app::App, ecad_app::commands::tools};
     use ecad_model::Document;
     use eframe::egui::{self, Event, Key, Modifiers, PointerButton, Pos2};
     use egui_kittest::Harness;
     use egui_kittest::kittest::Queryable;
     use serde_json::json;
+    use {ecad_app::App, ecad_app::commands::tools};
 
     const REFUSAL: &str = "Switch to the Model tab to draw ECAD objects.";
 
@@ -458,8 +458,17 @@ mod layout_refusals {
             }
             esc(&mut h);
         }
-        let all: Vec<_> =
-            h.state().cad.session.doc().unwrap().model.iter().filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER).map(|e| e.handle).collect();
+        let all: Vec<_> = h
+            .state()
+            .cad
+            .session
+            .doc()
+            .unwrap()
+            .model
+            .iter()
+            .filter(|e| e.common.layer != ecad_engine::pages::frame::LAYER)
+            .map(|e| e.handle)
+            .collect();
         h.state_mut().cad.session.set_selection(all);
         button(&mut h, "Convert to Device");
         assert!(wrong.is_empty(), "{}", wrong.join("\n"));

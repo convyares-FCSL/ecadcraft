@@ -19,8 +19,8 @@ use ecad_widgets::tokens::{space, ui_type};
 use eframe::egui;
 use serde_json::json;
 
-use crate::inspector::widgets;
 use crate::App;
+use crate::inspector::widgets;
 
 /// Accessible names (design 054 §8).
 pub const NOTES: &str = "ecad.page.notes";
@@ -114,8 +114,16 @@ fn read(t: &mut App, page: PageId) -> Option<PageView> {
             title_block: crate::settings::pages::title_block_words(&sheet),
             blocks: Block::ALL.iter().map(|b| (*b, b.on(doc))).collect(),
             notes: ecad_electrical::pages::frames::project_text(doc, ecad_electrical::pages::front::NOTES_KEY).unwrap_or_default(),
-            wire_rows: if kind == GenKind::Cover { ecad_electrical::pages::front::wire_rows(doc).into_iter().map(|(_, r)| r).collect() } else { Vec::new() },
-            legend_rows: if kind == GenKind::Cover { ecad_electrical::pages::front::legend_rows(doc).into_iter().map(|(_, r)| r).collect() } else { Vec::new() },
+            wire_rows: if kind == GenKind::Cover {
+                ecad_electrical::pages::front::wire_rows(doc).into_iter().map(|(_, r)| r).collect()
+            } else {
+                Vec::new()
+            },
+            legend_rows: if kind == GenKind::Cover {
+                ecad_electrical::pages::front::legend_rows(doc).into_iter().map(|(_, r)| r).collect()
+            } else {
+                Vec::new()
+            },
             revisions: ecad_electrical::releases::revisions::issued(doc)
                 .iter()
                 .rev()
@@ -363,9 +371,9 @@ fn act(t: &mut App, v: &PageView, d: Do) {
             }
             r
         }
-        Do::Block(b, on) => {
-            t.run_value("setdefault", json!({"key": b.entry().key, "level": "project", "value": ecad_model::naming::words::flag_word(on)})).map(|_| ())
-        }
+        Do::Block(b, on) => t
+            .run_value("setdefault", json!({"key": b.entry().key, "level": "project", "value": ecad_model::naming::words::flag_word(on)}))
+            .map(|_| ()),
         Do::Notes(text) => {
             let value = if text.trim().is_empty() { serde_json::Value::Null } else { serde_json::Value::String(text) };
             let r = t.run_value("projectprops", json!({"props": {ecad_electrical::pages::front::NOTES_KEY: value}})).map(|_| ());

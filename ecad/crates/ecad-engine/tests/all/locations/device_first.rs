@@ -4,8 +4,8 @@
 
 use crate::common::{H, id};
 
+use ecad_electrical::connectors;
 use ecad_electrical::symbols::reps::{self, PartRole, View};
-use {ecad_electrical::connectors};
 use ecad_model::{DeviceId, Document, PageId, RepresentationId, Role, Subject};
 use serde_json::{Value, json};
 
@@ -23,7 +23,8 @@ fn contact_text(h: &mut H, page: PageId, r: RepresentationId) -> Option<String> 
     h.p(|p| {
         ecad_engine::references::draw::devices::parts_on_page(p.ledger.document(), page).into_iter().find_map(|part| match part.shape {
             ecad_electrical::references::devices::Shape::Text { value, .. } if part.rep == r && part.index == 0 => Some(value),
-            _ => None})
+            _ => None,
+        })
     })
 }
 

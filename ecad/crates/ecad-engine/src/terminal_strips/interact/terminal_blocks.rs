@@ -6,14 +6,14 @@
 use cadcraft_engine::doc::{Entity, EntityKind};
 use cadcraft_engine::geom::Vec2;
 use cadcraft_engine::{Accept, Input, Interactive, Prompt, Session, Step};
-use ecad_model::{DeviceId, Pt, ConnectionPointId};
+use ecad_model::{ConnectionPointId, DeviceId, Pt};
 use serde_json::{Value, json};
 
-use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
 use crate::interact::{
-    ATTACHED_ACI, OUT_OF_RANGE, REFUSE_ACI, RING_PX, can_start, in_range, line_kind, pixel, preview_entity, preview_text, pt, read, ring_kind,
-    connection_point_for, v2,
+    ATTACHED_ACI, OUT_OF_RANGE, REFUSE_ACI, RING_PX, can_start, connection_point_for, in_range, line_kind, pixel, preview_entity, preview_text, pt,
+    read, ring_kind, v2,
 };
+use crate::properties::forms::{R, Safe, commit, not_a_point, other, paper_guard, safely};
 use crate::terminal_strips::commands::{self, MAX_FENCE};
 use ecad_electrical::terminal_strips;
 use ecad_electrical::terminal_strips::terminal_blocks as tt;
@@ -26,8 +26,12 @@ pub(crate) fn terminals(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
     let (last, last_type) = read(s, |p, _| {
         let doc = p.ledger.document();
-        let strip =
-            p.last_placed.as_ref().map(|(_, c)| *c).filter(|c| terminal_strips::strip_of(doc, *c).is_some()).map(|c| (c, ecad_electrical::devices::tag_words(doc, c)));
+        let strip = p
+            .last_placed
+            .as_ref()
+            .map(|(_, c)| *c)
+            .filter(|c| terminal_strips::strip_of(doc, *c).is_some())
+            .map(|c| (c, ecad_electrical::devices::tag_words(doc, c)));
         let ty = p.last_placed.as_ref().and_then(|(k, _)| tt::of_starter(ecad_model::Word::parse(k)?)).map(|(t, _)| t);
         Ok((strip, ty))
     })

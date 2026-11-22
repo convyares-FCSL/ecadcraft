@@ -9,11 +9,11 @@
 //! Live while open: no refresh button. Rows are virtualised.
 
 use crate::shell::Hosted;
-use {ecad_electrical::reports::BomView, ecad_electrical::reports::Group, ecad_electrical::reports::Table};
 use ecad_widgets::control::{Select, TextEntry, Toggle};
 use ecad_widgets::prim::{self, Button, Checkbox, Kind, Radio, SearchField, Tone};
 use ecad_widgets::tokens::{size, space};
 use eframe::egui::{self, Sense, pos2, vec2};
+use {ecad_electrical::reports::BomView, ecad_electrical::reports::Group, ecad_electrical::reports::Table};
 
 /// The tabs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

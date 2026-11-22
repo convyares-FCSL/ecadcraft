@@ -38,7 +38,8 @@ pub fn property(col: ColumnId) -> Option<&'static str> {
     match col {
         TAG => Some("tag"),
         DESCRIPTION => Some("description"),
-        _ => None}
+        _ => None,
+    }
 }
 
 /// The column a property is shown in.
@@ -46,7 +47,8 @@ pub fn column_of(key: &str) -> Option<ColumnId> {
     match key {
         "tag" => Some(TAG),
         "description" => Some(DESCRIPTION),
-        _ => None}
+        _ => None,
+    }
 }
 
 /// The columns, in UI rev 3's order (board 2.01). The state (provisional, not on a page yet,
@@ -77,7 +79,8 @@ pub struct DeviceRow {
     /// `+CP1`, `+CP1 (from box on 105)`, `?`.
     pub location: String,
     /// UI rev 3: its part set's lines (`ecad_electrical::reports::bom::part_set`).
-    pub parts: usize}
+    pub parts: usize,
+}
 
 /// The devices as a table source, in the Devices list's order.
 #[derive(Debug)]
@@ -86,7 +89,8 @@ pub struct DevicesSource {
     keys: Vec<DeviceId>,
     rows: HashMap<DeviceId, DeviceRow>,
     /// The search matches as the Devices filter does (`k1` finds `-K01`).
-    pub search: bool}
+    pub search: bool,
+}
 
 impl Default for DevicesSource {
     fn default() -> Self {
@@ -164,7 +168,8 @@ impl TableSource for DevicesSource {
             TAG => match e.tag.as_deref() {
                 Some(t) if ecad_model::naming::tag::is_provisional(t) => Cell::Provisional(t.to_string()),
                 Some(t) => Cell::Input(t.to_string()),
-                None => Cell::Input(String::new())},
+                None => Cell::Input(String::new()),
+            },
             DESCRIPTION => Cell::Input(prop(1)),
             FUNCTION => Cell::read(prop(5)),
             LOCATION => Cell::read(r.location.clone()),
@@ -200,7 +205,8 @@ impl TableSource for DevicesSource {
                     Cell::Empty
                 }
             }
-            _ => Cell::Empty}
+            _ => Cell::Empty,
+        }
     }
 
     fn row_label(&self, key: DeviceId) -> String {
@@ -216,7 +222,8 @@ impl TableSource for DevicesSource {
         match chip {
             0 => e.tag.as_deref().is_some_and(ecad_model::naming::tag::is_provisional),
             1 => e.symbols.is_empty(),
-            _ => true}
+            _ => true,
+        }
     }
 
     fn matches(&self, key: DeviceId, query: &str) -> Option<bool> {

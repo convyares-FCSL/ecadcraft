@@ -10,8 +10,8 @@
 
 use std::collections::BTreeSet;
 
-use {ecad_electrical::checks::Check, ecad_electrical::checks::Fix, ecad_electrical::checks::Kind, ecad_electrical::checks::Severity};
 use eframe::egui::{self, RichText};
+use {ecad_electrical::checks::Check, ecad_electrical::checks::Fix, ecad_electrical::checks::Kind, ecad_electrical::checks::Severity};
 
 use crate::pages::project_panel::Action;
 

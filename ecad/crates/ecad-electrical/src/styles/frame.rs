@@ -9,15 +9,15 @@
 //! The title block's texts keep their own text-style choices.
 
 use ecad_model::document::sheet::{Margins, parse_frame_sheet, parse_margins};
+use ecad_model::geometry::units::Mm;
 use ecad_model::objects::styles::FrameStyle;
 use ecad_model::objects::styles::frame::{FrameMargins, FrameSheet};
 use ecad_model::objects::styles::text::StyleColour;
-use ecad_model::geometry::units::Mm;
 use ecad_model::{Document, PageId, StyleRef, Word};
 
-use crate::styles::{Builtin, Catalogue, Field};
 use crate::CmdError;
 use crate::defaults::{Kind, Slot, Value};
+use crate::styles::{Builtin, Catalogue, Field};
 
 /// The `sheet` field's word for "the page's own sheet".
 pub const PAGE_SHEET: &str = "page";
@@ -33,7 +33,13 @@ fn margins_ok(s: &str) -> bool {
 static FIELDS: [Field; 8] = [
     Field { key: "border_weight", label: "Border weight", kind: Kind::Length { min: 0.13, max: 2.11 }, slot: Slot::new(), over: None },
     Field { key: "inner_weight", label: "Inner line weight", kind: Kind::Length { min: 0.13, max: 2.11 }, slot: Slot::new(), over: None },
-    Field { key: "line_colour", label: "Line colour", kind: Kind::Parsed { max_chars: 16, parse: crate::styles::is_colour }, slot: Slot::new(), over: None },
+    Field {
+        key: "line_colour",
+        label: "Line colour",
+        kind: Kind::Parsed { max_chars: 16, parse: crate::styles::is_colour },
+        slot: Slot::new(),
+        over: None,
+    },
     Field { key: "grid_labels", label: "Grid labels", kind: Kind::Flag, slot: Slot::new(), over: None },
     // Brief 055 (FP2): the sheet the frame is drawn for (`page`: the page's own), its margins,
     // its centre marks and where its block sits. 050a's `title_block` choice is retired (FP3): a

@@ -204,7 +204,7 @@ pub fn snapshot(name: &str, ledger: &Ledger, at: Option<u64>, events: &EventLog,
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use ecad_model::{Author, ConductorId, Device, DeviceId, IdAllocator, NetId, Op, ConnectionPoint, ConnectionPointId, Wire, WireId};
+    use ecad_model::{Author, ConductorId, ConnectionPoint, ConnectionPointId, Device, DeviceId, IdAllocator, NetId, Op, Wire, WireId};
 
     /// Design 072 §4.2: a wire's net and conductor have labels in the snapshot's index, the net
     /// named after the wire first in its order.

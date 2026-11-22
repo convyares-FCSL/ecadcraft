@@ -26,8 +26,8 @@ use ecad_model::{Author, Document, ProjectId, Transaction};
 use ecad_widgets::control::{Select, TextEntry};
 use ecad_widgets::prim::{self, Button, IconButton, Kind, ListRow, SectionHeader, Tone};
 use ecad_widgets::tokens::{radius, size, space};
-use {ecad_widgets::Icon, ecad_widgets::SHELL, ecad_widgets::color};
 use eframe::egui::{self, RichText};
+use {ecad_widgets::Icon, ecad_widgets::SHELL, ecad_widgets::color};
 
 /// The ECAD Dev Debugger button's hover text.
 pub const HOVER: &str = "Read-only developer debugger: selection → ECAD IDs → model → transactions → saved records";

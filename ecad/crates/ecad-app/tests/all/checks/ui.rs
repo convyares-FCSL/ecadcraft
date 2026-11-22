@@ -6,14 +6,14 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use {ecad_app::checks::panel, ecad_app::pages::project_panel};
 use ecad_electrical::checks::Kind;
 use ecad_model::PageId;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
+use {ecad_app::checks::panel, ecad_app::pages::project_panel};
 
-use crate::common::pointer_to;
 use crate::canvas::mouse_acceptance::{Deltas, doc, harness_with, ok, screen, shot};
+use crate::common::pointer_to;
 
 type H = Harness<'static, ecad_app::App>;
 

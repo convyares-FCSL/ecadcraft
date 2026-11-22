@@ -11,12 +11,12 @@ use crate::common::{H, id};
 use crate::common::close_all;
 use cadcraft_engine::Session;
 use cadcraft_engine::doc::EntityKind;
-use {ecad_electrical::checks::Kind};
+use ecad_electrical::checks::Kind;
 use ecad_electrical::locations::designations::{self, Aspect};
-use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
 use ecad_engine::{Persistence, ProjectHandle};
 use ecad_model::{AidId, Author, DeviceId, Document, Op, PageId};
 use serde_json::{Value, json};
+use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
 
 struct TempDir(PathBuf);
 
@@ -135,7 +135,8 @@ fn old_project(dir: &TempDir) -> (H, DeviceId, DeviceId, AidId, PageId, Document
                 after: ecad_model::Aid::Box(ecad_model::LocationBox {
                     location: Some(ecad_model::LocationId(OLD_FIELD)),
                     ..d.aids[&bx].as_box().cloned().unwrap()
-                })},
+                }),
+            },
         ];
         p.ledger.commit(Author::User, "as v0.2.0 wrote it", ops).unwrap();
     });
@@ -198,7 +199,8 @@ struct Users {
     bx: AidId,
     p1: PageId,
     p2: PageId,
-    p3: PageId}
+    p3: PageId,
+}
 
 fn users(seed: u64) -> Users {
     let mut h = H::new(seed);
@@ -337,7 +339,8 @@ fn a_rename_redraws_its_users_pages_and_no_other() {
             .into_iter()
             .filter_map(|x| match x.kind {
                 EntityKind::Text(t) => Some(t.value),
-                _ => None})
+                _ => None,
+            })
             .collect()
     });
     assert!(texts.iter().any(|t| t == "+CP10"), "{texts:?}");
@@ -543,11 +546,13 @@ fn the_bom_page_flags_its_question_mark_heading() {
     let bom: PageId = id(&h.run("newpage", json!({"generated": "bom-location"})).unwrap(), "page");
     let doc = h.doc();
     let parts = ecad_engine::pages::generated::parts_of(&doc, bom, Some(&ReportModels::build_with(&doc, &ecad_engine::styles::draw::EngineMetrics)));
-    let qs: Vec<_> = parts.iter().filter(|p| matches!(&p.kind, EntityKind::Text(t) if t.value == ecad_electrical::pages::generated::MISSING)).collect();
+    let qs: Vec<_> =
+        parts.iter().filter(|p| matches!(&p.kind, EntityKind::Text(t) if t.value == ecad_electrical::pages::generated::MISSING)).collect();
     // The heading `?`, the maker `?` and the part number `?`.
     assert!(qs.len() >= 3, "{} `?` texts", qs.len());
     let plain: Vec<_> = qs.iter().filter(|p| p.aci != Some(ecad_electrical::pages::generated::FLAGGED_ACI)).collect();
     assert!(plain.is_empty(), "{} `?` drawn unflagged (the `?` location heading)", plain.len());
-    let boxes = parts.iter().filter(|p| p.aci == Some(ecad_electrical::pages::generated::FLAGGED_ACI) && !matches!(p.kind, EntityKind::Text(_))).count();
+    let boxes =
+        parts.iter().filter(|p| p.aci == Some(ecad_electrical::pages::generated::FLAGGED_ACI) && !matches!(p.kind, EntityKind::Text(_))).count();
     assert!(boxes >= qs.len(), "each `?` has its box ({boxes} boxes for {} marks)", qs.len());
 }

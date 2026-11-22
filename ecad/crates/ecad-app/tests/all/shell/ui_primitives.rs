@@ -93,9 +93,12 @@ fn the_component_gallery_shows_every_component_in_both_themes() {
                 }
                 ecad_widgets::set_theme(theme);
                 ecad_widgets::style::apply(ui.ctx());
-                egui::Frame::NONE.fill(ecad_widgets::color(ecad_widgets::SHELL.panel)).inner_margin(ecad_widgets::tokens::space::PANEL_PADDING).show(ui, |ui| {
-                    ecad_widgets::showcase::components(ui, s);
-                });
+                egui::Frame::NONE.fill(ecad_widgets::color(ecad_widgets::SHELL.panel)).inner_margin(ecad_widgets::tokens::space::PANEL_PADDING).show(
+                    ui,
+                    |ui| {
+                        ecad_widgets::showcase::components(ui, s);
+                    },
+                );
             },
             ecad_widgets::showcase::Showcase::default(),
         );

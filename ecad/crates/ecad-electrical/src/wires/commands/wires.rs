@@ -6,11 +6,11 @@ use ecad_model::geometry::units::Radians;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
-use ecad_model::naming::text::Text;
 use ecad_model::connectivity::wiring::{self, Scheme};
+use ecad_model::naming::text::Text;
 use ecad_model::{
-    Document, End, IdAllocator, Ledger, NetData, NetKey, Noun, ObjectRef, Op, PageId, Placement, ProjectSettings, Pt, RouteEnd, RouteId, Style,
-    StyleRef, ConnectionPointId, Wire, WireId,
+    ConnectionPointId, Document, End, IdAllocator, Ledger, NetData, NetKey, Noun, ObjectRef, Op, PageId, Placement, ProjectSettings, Pt, RouteEnd,
+    RouteId, Style, StyleRef, Wire, WireId,
 };
 
 use crate::error::{CmdError, msg};

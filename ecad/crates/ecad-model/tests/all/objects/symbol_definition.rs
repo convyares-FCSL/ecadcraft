@@ -5,13 +5,19 @@ use std::collections::BTreeMap;
 
 use ecad_model::merge::{self, Inputs, Scope};
 use ecad_model::{
-    Author, ContentHash, Definition, DefinitionId, Device, DeviceId, Document, Ledger, LibraryId, ObjectRef, Op, Origin, Pt, ConnectionPointDef, TextSlot,
+    Author, ConnectionPointDef, ContentHash, Definition, DefinitionId, Device, DeviceId, Document, Ledger, LibraryId, ObjectRef, Op, Origin, Pt,
+    TextSlot,
 };
 
 fn def(name: &str) -> Definition {
     Definition {
         name: name.into(),
-        terminals: vec![ConnectionPointDef { key: "1".parse().unwrap(), label: Some("1".into()), at: Pt::new(0.0, 0.0), accepts: Default::default() }],
+        terminals: vec![ConnectionPointDef {
+            key: "1".parse().unwrap(),
+            label: Some("1".into()),
+            at: Pt::new(0.0, 0.0),
+            accepts: Default::default(),
+        }],
         ..Default::default()
     }
 }

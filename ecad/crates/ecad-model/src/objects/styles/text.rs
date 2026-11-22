@@ -11,8 +11,8 @@ use std::fmt;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::geometry::colour::{ConductorColour, Rgb};
-use crate::naming::text::Text;
 use crate::geometry::units::Mm;
+use crate::naming::text::Text;
 
 crate::word_enum! {
     /// A text weight.

@@ -25,9 +25,9 @@ pub mod list;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use ecad_electrical::styles::{self, Layer};
 use ecad_electrical::title_blocks::commands::{layout_of, pages_using};
 use ecad_engine::pages::frame::{FrameInput, FrameText};
-use ecad_electrical::styles::{self, Layer};
 use ecad_model::document::book::Book;
 use ecad_model::document::sheet;
 use ecad_model::objects::title_block::{Binding, BlockItem, TitleBlockLayout};
@@ -64,7 +64,8 @@ pub enum Tool {
     Line,
     Text,
     Field,
-    Logo}
+    Logo,
+}
 
 impl Tool {
     pub const ALL: [Tool; 5] = [Tool::Select, Tool::Line, Tool::Text, Tool::Field, Tool::Logo];
@@ -75,7 +76,8 @@ impl Tool {
             Tool::Line => "Line",
             Tool::Text => "Text",
             Tool::Field => "Field",
-            Tool::Logo => "Logo"}
+            Tool::Logo => "Logo",
+        }
     }
 
     pub fn key(self) -> egui::Key {
@@ -84,7 +86,8 @@ impl Tool {
             Tool::Line => egui::Key::L,
             Tool::Text => egui::Key::T,
             Tool::Field => egui::Key::F,
-            Tool::Logo => egui::Key::G}
+            Tool::Logo => egui::Key::G,
+        }
     }
 
     /// Its element name (`library.tb.tool.select`).
@@ -103,7 +106,8 @@ pub struct Row {
     pub line: String,
     pub pages: usize,
     pub layout: Arc<TitleBlockLayout>,
-    pub state: State}
+    pub state: State,
+}
 
 /// What the sample page shows (design 055 §4.5, Sample).
 #[derive(Debug, Clone)]
@@ -112,7 +116,8 @@ pub struct Sample {
     pub props: BTreeMap<String, String>,
     pub newest: BTreeMap<String, String>,
     /// `on page 2`.
-    pub page: String}
+    pub page: String,
+}
 
 impl Sample {
     /// The value binding `b` shows on the sample page.
@@ -123,7 +128,8 @@ impl Sample {
             Binding::Project(k) => self.props.get(k.as_str()).cloned().unwrap_or_default(),
             Binding::Revision(RevisionColumn::Field(RevField::Rev)) => ecad_electrical::title_blocks::bind::value(&self.input, b),
             Binding::Revision(c) => self.newest.get(c.word()).cloned().unwrap_or_default(),
-            Binding::Page(_) | Binding::Print(_) => ecad_electrical::title_blocks::bind::value(&self.input, b)}
+            Binding::Page(_) | Binding::Print(_) => ecad_electrical::title_blocks::bind::value(&self.input, b),
+        }
     }
 }
 
@@ -134,7 +140,8 @@ pub struct DxfAsk {
     pub sheet: String,
     /// The Logo tool's box (block mm), else a whole-block import.
     pub logo_at: Option<ecad_model::objects::title_block::Rect>,
-    pub error: Option<String>}
+    pub error: Option<String>,
+}
 
 /// The editor's state.
 #[derive(Debug)]
@@ -163,7 +170,8 @@ pub struct Editor {
     /// Project field…: the key being typed.
     pub project_key: Option<String>,
     /// A Checks row's item to select once its frame opens.
-    pub pending_select: Option<usize>}
+    pub pending_select: Option<usize>,
+}
 
 impl Default for Editor {
     fn default() -> Self {
@@ -186,7 +194,8 @@ impl Default for Editor {
             new_menu: false,
             dxf: None,
             project_key: None,
-            pending_select: None}
+            pending_select: None,
+        }
     }
 }
 
@@ -218,7 +227,8 @@ fn row_line(sheet_text: &str, pages: usize) -> String {
     let used = match pages {
         0 => "not used yet".to_string(),
         1 => "used by 1 page".to_string(),
-        n => format!("used by {n} pages")};
+        n => format!("used by {n} pages"),
+    };
     format!("{sheet_text} · zones · {used}")
 }
 
@@ -241,7 +251,8 @@ pub fn read_rows(doc: &ecad_model::Document) -> Vec<Row> {
             let pages = pages_using(doc, &r.id).len();
             let sheet_text = match spec {
                 Some(s) => format!("{} landscape", ecad_electrical::title_blocks::sheet_name(&s)),
-                None => "Any sheet".to_string()};
+                None => "Any sheet".to_string(),
+            };
             let state = State { name: r.name.clone(), fields: fields_of(doc, &r.id), layout: layout.clone() };
             Row { id: r.id.text(), name: r.name, layer: r.layer, line: row_line(&sheet_text, pages), pages, layout: Arc::new(layout), state }
         })
@@ -348,7 +359,8 @@ impl App {
         let builtin = row.layer == Layer::Builtin;
         let mut d = match ed.drafts.get(&key, id) {
             Some(kept) if kept.base == row.state => kept.clone(),
-            _ => Draft::new(id, builtin, row.state.clone())};
+            _ => Draft::new(id, builtin, row.state.clone()),
+        };
         d.selected.clear();
         ed.draft = Some(d);
         ed.open = Some(id.to_string());
@@ -404,7 +416,8 @@ impl App {
                 self.library.tb.notice = None;
                 self.tb_refresh();
             }
-            Err(e) => self.library.tb.notice = Some(e)}
+            Err(e) => self.library.tb.notice = Some(e),
+        }
     }
 
     /// Discard the draft: back to the project's frame.
@@ -435,7 +448,8 @@ impl App {
                     self.tb_open(&id);
                 }
             }
-            Err(e) => self.library.tb.notice = Some(e)}
+            Err(e) => self.library.tb.notice = Some(e),
+        }
     }
 
     /// The title blocks' main view (design 055 §4.1).
@@ -481,7 +495,8 @@ impl App {
                 Act::Discard => self.tb_discard(),
                 Act::Resample => self.tb_sample(),
                 Act::Run(c, p) => self.tb_run(&c, p),
-                Act::Logo { at, path } => self.tb_logo(at, &path)}
+                Act::Logo { at, path } => self.tb_logo(at, &path),
+            }
         }
     }
 
@@ -534,7 +549,9 @@ pub enum Act {
     /// A DXF logo into the selected logo, or a new one at `at`.
     Logo {
         at: Option<ecad_model::objects::title_block::Rect>,
-        path: String}}
+        path: String,
+    },
+}
 
 /// Whether `id` is a built-in frame.
 pub fn is_builtin(id: &str) -> bool {

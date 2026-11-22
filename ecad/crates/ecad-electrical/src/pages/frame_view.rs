@@ -20,8 +20,8 @@ use ecad_model::document::effect::{AreaSet, Effect};
 use ecad_model::document::view::{DerivedView, NoteCx, Outcome, Phase, ViewScope};
 use ecad_model::{Document, PageId};
 
-use crate::views::Inputs;
 use crate::pages::frames::FrameInput;
+use crate::views::Inputs;
 
 /// The kept frame's view.
 #[derive(Debug, Default)]

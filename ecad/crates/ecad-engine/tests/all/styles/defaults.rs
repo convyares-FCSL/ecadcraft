@@ -6,8 +6,8 @@
 
 use crate::common::{H, id};
 
-use ecad_electrical::styles::commands::defaults::{self as default_cmds, Target};
 use ecad_electrical::defaults::{self, Entry, Kind, Level, Scope, Source};
+use ecad_electrical::styles::commands::defaults::{self as default_cmds, Target};
 use ecad_model::{DeviceId, PageId, RepresentationId};
 use serde_json::{Value, json};
 

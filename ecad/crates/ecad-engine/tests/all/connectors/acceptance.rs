@@ -14,9 +14,9 @@
 use std::collections::BTreeMap;
 
 use ecad_engine::Persistence;
-use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
-use ecad_model::{Author, DefinitionId, DeviceId, Document, Op, PageId, Pt, RepresentationId, Subject, ConnectionPointId, WireId};
+use ecad_model::{Author, ConnectionPointId, DefinitionId, DeviceId, Document, Op, PageId, Pt, RepresentationId, Subject, WireId};
 use serde_json::{Value, json};
+use {ecad_electrical::reports::Group, ecad_electrical::reports::kept::ReportModels};
 
 use crate::common::{H, id, pts};
 use crate::common::{reopen, tmp_dir};
@@ -47,7 +47,9 @@ fn conn_of(v: &Value) -> DeviceId {
 
 /// A connector's terminals by (side key, pin label).
 fn pins(d: &Document, c: DeviceId) -> BTreeMap<(String, String), ConnectionPointId> {
-    d.connection_points_of(c).map(|(t, x)| ((x.key.as_ref().map(ToString::to_string).unwrap_or_default(), x.label.clone().unwrap_or_default()), t)).collect()
+    d.connection_points_of(c)
+        .map(|(t, x)| ((x.key.as_ref().map(ToString::to_string).unwrap_or_default(), x.label.clone().unwrap_or_default()), t))
+        .collect()
 }
 
 fn pin(d: &Document, c: DeviceId, side: &str, label: &str) -> ConnectionPointId {
@@ -769,7 +771,11 @@ fn r05_pin_twice_in_a_hand_made_file() {
     let mut after = before.clone();
     after.label = Some("3".into());
     c.h.cfg(|p| {
-        p.ledger.commit(Author::User, "hand-made", vec![Op::RemoveConnectionPoint { id: t, terminal: before }, Op::AddConnectionPoint { id: t, terminal: after }])
+        p.ledger.commit(
+            Author::User,
+            "hand-made",
+            vec![Op::RemoveConnectionPoint { id: t, terminal: before }, Op::AddConnectionPoint { id: t, terminal: after }],
+        )
     })
     .unwrap();
     let (mut h, _) = reload(c.h, "twice", 0x7044_0043);
@@ -882,7 +888,11 @@ fn fp6_a_connector_pin_never_shows_a_strip_level_label() {
         for ((k, l), t) in pins(&d, x) {
             let side = if k == ".s" { "S" } else { "P" };
             let want = format!("{tg}.{side}:{l}");
-            assert_eq!(ecad_electrical::terminal_strips::terminal_blocks::shown_label(&d, t).as_deref(), Some(want.as_str()), "shown_label of {want}");
+            assert_eq!(
+                ecad_electrical::terminal_strips::terminal_blocks::shown_label(&d, t).as_deref(),
+                Some(want.as_str()),
+                "shown_label of {want}"
+            );
             assert_eq!(ecad_engine::interact::connection_point_name(&d, t), want);
         }
         assert!(ecad_electrical::terminal_strips::strip_of(&d, x).is_none(), "{tg} is not a strip");
@@ -1109,7 +1119,8 @@ fn r09_cross_references_between_the_halves() {
     let from_s = refs.iter().find(|r| s(&r["source"]) == srep.hex()).unwrap_or_else(|| panic!("socket half reference: {v}"));
     assert_eq!(s(&from_s["target_page"]), n102, "{from_s}");
     // 025's style, as the project writes it (design 044 §7: `/102.C4`, or `102-C-4` per project).
-    let want = ecad_electrical::references::devices::Places::new(&d).text(c.p102, ecad_electrical::references::devices::anchor(&d, &d.representations[&prep]));
+    let want = ecad_electrical::references::devices::Places::new(&d)
+        .text(c.p102, ecad_electrical::references::devices::anchor(&d, &d.representations[&prep]));
     assert_eq!(s(&from_s["text"]), want, "025's style: {from_s}");
     let from_p = refs.iter().find(|r| s(&r["source"]) == prep.hex()).unwrap_or_else(|| panic!("plug half reference: {v}"));
     assert_eq!(s(&from_p["target_page"]), n101, "{from_p}");

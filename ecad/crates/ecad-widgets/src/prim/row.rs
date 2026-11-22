@@ -1,11 +1,11 @@
 //! Row, and the set-versus-read pair: [`read_value`] for a value read from the drawing,
 //! [`provisional`] for a provisional value.
 
-use {crate::tokens::line, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type};
 use egui::{CursorIcon, InnerResponse, Layout, Rect, Response, Role, Sense, Stroke, Ui, UiBuilder, WidgetInfo, pos2, vec2};
+use {crate::tokens::line, crate::tokens::size, crate::tokens::space, crate::tokens::ui_type};
 
-use crate::prim::{Look, accessible, galley};
 use crate::color;
+use crate::prim::{Look, accessible, galley};
 
 /// The kind of a row, which sets its height.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

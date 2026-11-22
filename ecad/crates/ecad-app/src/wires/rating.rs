@@ -141,7 +141,8 @@ fn rows(r: &Rating) -> Vec<Row> {
 }
 
 fn carries(r: &Rating) -> Row {
-    let iz = r.iz.map(|x| format!("{} A", circuits::circuit::fmt_amps(x, r.device.as_ref().and_then(|d| d.amps)))).unwrap_or_else(|| "\u{2014}".into());
+    let iz =
+        r.iz.map(|x| format!("{} A", circuits::circuit::fmt_amps(x, r.device.as_ref().and_then(|d| d.amps)))).unwrap_or_else(|| "\u{2014}".into());
     let mut x = row("Carries", iz, "no protective device");
     x.strong = true;
     if let Some(d) = &r.device {
@@ -228,7 +229,10 @@ pub fn show(ui: &mut egui::Ui, p: &Panel) -> Vec<(&'static str, Value)> {
         let options: Vec<&str> = words.iter().map(String::as_str).collect();
         let mut chosen = p.methods.iter().position(|m| *m == current).unwrap_or(usize::MAX);
         ecad_widgets::control::row(ui, "Method", |ui| {
-            if ecad_widgets::control::Select::new(&mut chosen, &options, "ecad.project.detail.rating.method").read_only(!p.writable).show(ui).changed()
+            if ecad_widgets::control::Select::new(&mut chosen, &options, "ecad.project.detail.rating.method")
+                .read_only(!p.writable)
+                .show(ui)
+                .changed()
                 && let Some(m) = p.methods.get(chosen).filter(|m| **m != current)
             {
                 out.push(("rating", json!({what: id, "method": m})));
@@ -536,9 +540,10 @@ fn value_row(ui: &mut egui::Ui, x: &Row, id: &str, what: &'static str, writable:
                     let v = if clear { Value::Null } else { json!(t) };
                     call = Some(match (key, &x.loc) {
                         // A typed °C goes to the location, or to the project when the wire has none.
-                        ("panel", Some(loc)) => {
-                            ("rating", json!({"location": loc, "temperature": ecad_electrical::devices::ratings::parse::ambient(t).map_or(v, |n| json!(n))}))
-                        }
+                        ("panel", Some(loc)) => (
+                            "rating",
+                            json!({"location": loc, "temperature": ecad_electrical::devices::ratings::parse::ambient(t).map_or(v, |n| json!(n))}),
+                        ),
                         ("panel", None) if clear => ("setdefault", json!({"key": "rating.panel_temperature", "level": "project", "reset": true})),
                         ("panel", None) => (
                             "setdefault",

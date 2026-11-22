@@ -8,7 +8,7 @@ use common::{H, hex, id, pts};
 use ecad_engine::ProjectHandle;
 use ecad_engine::history::event_log::EventKind;
 use ecad_model::connectivity::derive::nets;
-use ecad_model::{DeviceId, Document, PageId, Pt, RouteEnd, RouteId, Subject, ConnectionPointId, WireId};
+use ecad_model::{ConnectionPointId, DeviceId, Document, PageId, Pt, RouteEnd, RouteId, Subject, WireId};
 use serde_json::{Value, json};
 
 #[test]
