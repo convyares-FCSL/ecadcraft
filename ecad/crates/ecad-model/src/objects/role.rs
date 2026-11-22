@@ -73,7 +73,7 @@ pub enum Role {
     LocationBox,
     /// A cable's hidden fan anchor (`fan-anchor`).
     FanAnchor,
-    /// A terminal level's fuse (`termfuse`).
+    /// A terminal level's fuse (`terminalblockfuse`).
     FuseTerm,
     /// A converted drawing (`drawn`).
     Drawn,
@@ -127,7 +127,7 @@ impl Word for Role {
         "reference",
         "box",
         "fan-anchor",
-        "termfuse",
+        "terminalblockfuse",
         "drawn",
     ];
 
@@ -139,7 +139,7 @@ impl Word for Role {
             Role::Reference => "reference",
             Role::LocationBox => "box",
             Role::FanAnchor => "fan-anchor",
-            Role::FuseTerm => "termfuse",
+            Role::FuseTerm => "terminalblockfuse",
             Role::Drawn => "drawn",
         }
     }

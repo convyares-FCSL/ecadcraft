@@ -1,5 +1,5 @@
 //! Brief 036, MCP contract (the ECAD rule of brief 011, design 036 §13 M): `connection_points` with a
-//! type and level, `place` of a level starter, `termlabel`, `toposition`, `jumper` with levels,
+//! type and level, `place` of a level starter, `terminalblocklabel`, `toposition`, `jumper` with levels,
 //! `setprop` of `term_label.*`, `rating.*`, `part_number.lnpe`, `connection_points` with type codes, and
 //! `projectprops strip_lnpe_part_number` through `execute` record the agent's transaction and are
 //! refused with writes off; `stripplan`, `bom`, `checks` and `defaults {group: "Terminals"}` work
@@ -60,9 +60,9 @@ fn multi_level_terminal_block_commands_through_execute() {
     assert_eq!(last_by_agent(&mut c).0, "Place terminal level");
     // Labels.
     let t = hex(&l["connection_points"][0], "connection_point");
-    c.exec("termlabel", json!({"connection_point": t, "text": "1L"}));
+    c.exec("terminalblocklabel", json!({"connection_point": t, "text": "1L"}));
     assert_eq!(set(&last_by_agent(&mut c).1, "term_label.1.1").as_deref(), Some("1L"));
-    c.exec("termlabel", json!({"connection_point": t, "position": "10"}));
+    c.exec("terminalblocklabel", json!({"connection_point": t, "position": "10"}));
     let (label, ops) = last_by_agent(&mut c);
     assert_eq!(label, "Relabel position");
     assert_eq!(set(&ops, "term_label.10.1").as_deref(), Some("1L"), "the level's label moves with its position");
@@ -95,7 +95,7 @@ fn multi_level_terminal_block_commands_through_execute() {
     let fpos = f["connection_points"][0]["position"].as_str().unwrap().to_string();
     c.exec("setprop", json!({"component": strip, "key": format!("rating.{fpos}"), "value": "2A"}));
     assert_eq!(set(&last_by_agent(&mut c).1, &format!("rating.{fpos}")).as_deref(), Some("2 A"));
-    let dev = c.exec("place", json!({"symbol": "fuseterm", "at": [250, 300]}));
+    let dev = c.exec("place", json!({"symbol": "fuseterminalblock", "at": [250, 300]}));
     let dev = hex(&dev, "component");
     c.exec("toposition", json!({"device": dev, "strip": strip}));
     let (label, ops) = last_by_agent(&mut c);
@@ -122,7 +122,7 @@ fn with_writes_off_the_level_writes_are_refused_and_the_reads_work() {
     for (cmd, params) in [
         ("terminalblocks", json!({"type": "LNPE", "level": "L", "from": [0, 0], "to": [10, 0]})),
         ("place", json!({"symbol": "termlnpe.2", "at": [0, 0]})),
-        ("termlabel", json!({"connection_point": "1", "text": "1L"})),
+        ("terminalblocklabel", json!({"connection_point": "1", "text": "1L"})),
         ("toposition", json!({"device": "1"})),
         ("jumper", json!({"connection_points": ["1", "2"]})),
         ("setprop", json!({"component": "1", "key": "term_label.1.1", "value": "x"})),

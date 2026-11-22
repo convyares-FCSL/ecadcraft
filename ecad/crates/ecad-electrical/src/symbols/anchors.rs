@@ -153,7 +153,7 @@ pub fn anchors(s: &Starter) -> Vec<Anchor> {
         | K::Power4
         | K::Ssrin
         | K::Ssrout
-        | K::Fuseterm
+        | K::Fuseterminalblock
         | K::Fusebank4
         | K::Fusebank6
         | K::Fusebank8
@@ -189,7 +189,7 @@ pub fn anchors(s: &Starter) -> Vec<Anchor> {
         | K::TermsensorL3
         | K::Termsensor
         | K::Termdisc
-        | K::Termfuse => vec![tag, description, rating],
+        | K::Terminalblockfuse => vec![tag, description, rating],
     };
     if is_fuse_bank(s) {
         for (t, key) in d.connection_points.iter().filter_map(|t| Some((t, t.key.as_def().filter(|k| ecad_model::naming::words::is_digits(k))?))) {

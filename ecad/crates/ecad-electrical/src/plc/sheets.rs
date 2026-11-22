@@ -171,7 +171,7 @@ pub fn rack_pack(plc: &Plc, width: f64, height: f64) -> (Vec<(Option<ecad_model:
 }
 
 /// How many sheets the `plcrack` page `page` needs, from kept counts.
-pub fn rack_sheets(doc: &Document, page: PageId, plc: &Plc) -> usize {
+pub(crate) fn rack_sheets(doc: &Document, page: PageId, plc: &Plc) -> usize {
     let (l, b, r, t) = page_area(doc, page);
     rack_pack(plc, r - l, t - b).1.len().max(1)
 }
@@ -205,7 +205,7 @@ pub fn rack_places_touched(doc: &Document, plc: &Plc, effects: &ecad_model::docu
 /// by effect ([`RackPlaces::note`]) and read against the PLC model after its update
 /// ([`RackPlaces::touched`]).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct RackPlaces {
+pub(crate) struct RackPlaces {
     /// Items changed in place (a symbol moved).
     items: Vec<ecad_model::ItemId>,
     /// Pages changed in place whose number, sheet or folder changed.
@@ -269,7 +269,7 @@ impl RackPlaces {
 // The release's PLC racks list (design 051 §4.2: in the release like the I/O list): one row per
 /// tile, racks by tag and then the cards in no rack. `None` when the project has no PLC racks or
 /// cards; the release then names [`NO_RACKS`].
-pub fn rack_csv(doc: &Document, plc: &Plc) -> Option<crate::reports::Table> {
+pub(crate) fn rack_csv(doc: &Document, plc: &Plc) -> Option<crate::reports::Table> {
     use crate::reports::{Cell, Table};
     if plc.racks.is_empty() && plc.cards.is_empty() {
         return None;

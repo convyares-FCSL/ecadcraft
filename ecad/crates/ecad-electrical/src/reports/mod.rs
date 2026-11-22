@@ -300,7 +300,7 @@ pub struct CableRow {
     pub designation: Option<String>,
     pub go: Option<(PageId, Pt)>,
     /// Brief 028: how its members meet its core offer (design 028 §6.2).
-    pub count: crate::terminal_strips::CoreCount,
+    pub count: crate::terminal_strips::cores::CoreCount,
     /// The first member of each core chain (design 032 §3.2; one member per chain without
     /// continuations), in member order, for the over and twice go-tos.
     pub members: Vec<WireId>,
@@ -963,7 +963,7 @@ pub(crate) fn rows_json(t: &Table, keys: &[&str], ids: &[Value]) -> Vec<Value> {
 }
 
 /// Whether the position before gap `gap` of strip `s` is PE (the end gap: the last position).
-pub(crate) fn gap_pe(s: &crate::terminal_strips::StripData, gap: &str) -> bool {
+pub(crate) fn gap_pe(s: &crate::terminal_strips::strip_model::StripData, gap: &str) -> bool {
     match gap {
         "start" => false,
         "end" => s.rows.last().is_some_and(|r| r.pe),
@@ -974,11 +974,12 @@ pub(crate) fn gap_pe(s: &crate::terminal_strips::StripData, gap: &str) -> bool {
 /// Brief 030's Checks rows of one strip (design 030 §8): orphan places, links across partitions,
 /// links naming missing positions. The go-to is the strip's last terminal, or the link's first
 /// drawn terminal.
-pub(crate) fn accessory_checks(s: &crate::terminal_strips::StripData) -> Vec<Check> {
+pub(crate) fn accessory_checks(s: &crate::terminal_strips::strip_model::StripData) -> Vec<Check> {
     let mut out = Vec::new();
     let last = s.highest().and_then(|r| r.go);
-    let obj =
-        |r: Option<&crate::terminal_strips::TermRow>| r.and_then(|r| r.connection_point).map_or(Object::Device(s.component), Object::ConnectionPoint);
+    let obj = |r: Option<&crate::terminal_strips::strip_model::TermRow>| {
+        r.and_then(|r| r.connection_point).map_or(Object::Device(s.component), Object::ConnectionPoint)
+    };
     for (i, (key, items)) in s.acc.orphans.iter().enumerate() {
         let spot = crate::terminal_strips::accessories::spot_of(key);
         let label = spot.as_ref().and_then(|x| x.label()).unwrap_or("?");
@@ -1056,8 +1057,12 @@ pub fn accessory_fix_commands(o: &kept::ReportModels, fix: Fix) -> Vec<(String, 
             ("Delete link".to_string(), "jumper", json!({"jumper_bar": {"strip": c.hex(), "n": n}, "delete": true})),
         ],
         // Brief 036 (design 036 §8).
-        Fix::MoveToNextFree(t) => vec![("Move to next free".to_string(), "termlabel", json!({"connection_point": t.hex(), "move_to": "next"}))],
-        Fix::MoveToNewPosition(t) => vec![("Move to new position".to_string(), "termlabel", json!({"connection_point": t.hex(), "move_to": "new"}))],
+        Fix::MoveToNextFree(t) => {
+            vec![("Move to next free".to_string(), "terminalblocklabel", json!({"connection_point": t.hex(), "move_to": "next"}))]
+        }
+        Fix::MoveToNewPosition(t) => {
+            vec![("Move to new position".to_string(), "terminalblocklabel", json!({"connection_point": t.hex(), "move_to": "new"}))]
+        }
         Fix::LevelMissing(c, n) => {
             let Some(s) = o.strips.get(c) else { return Vec::new() };
             let key = ecad_model::connectivity::jumper_bars::key(u32::from(n));

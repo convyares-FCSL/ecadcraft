@@ -294,7 +294,7 @@ pub(crate) fn cable_is_rated(doc: &Document, ctx: &Context, k: CableId) -> bool 
     if !x.rating.is_empty() || x.load.is_some() || x.protected_by().is_some() || cable::of(doc, k).is_some() {
         return true;
     }
-    ctx.table.is_some() && x.type_text().and_then(crate::terminal_strips::notation_size).is_some()
+    ctx.table.is_some() && x.type_text().and_then(crate::terminal_strips::cores::notation_size).is_some()
 }
 
 /// The panel temperature of a wire (design 057 §4.4): the hottest of its ends' locations, else
@@ -362,7 +362,7 @@ pub(crate) fn evaluate(doc: &Document, ctx: &mut Context, s: RatedSubject, found
                 .as_ref()
                 .and_then(|id| styles::field_of(doc, ecad_model::StyleCatalogue::Cable, id, "size", None))
                 .and_then(|r| crate::devices::ratings::parse::cross_section(&r.text()));
-            let size = from_type.or_else(|| circuit.and_then(|c| c.type_text()).and_then(crate::terminal_strips::notation_size));
+            let size = from_type.or_else(|| circuit.and_then(|c| c.type_text()).and_then(crate::terminal_strips::cores::notation_size));
             (sh, size, ty.is_none())
         }
     };

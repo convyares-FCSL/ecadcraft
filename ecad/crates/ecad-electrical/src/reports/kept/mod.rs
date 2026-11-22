@@ -154,7 +154,7 @@ pub struct ReportModels {
     /// Brief 052: devices with no function (one count row when some device has one).
     no_function: usize,
     /// Brief 028: the terminal strips (design 028 §11.1).
-    pub strips: crate::terminal_strips::Strips,
+    pub strips: crate::terminal_strips::strip_model::Strips,
     /// Brief 045: the PLC racks and cards (design 045 §11.1).
     pub plc: crate::plc::kept::Plc,
     /// Brief 046: the graphic strip pages' kept layout and indexes (design 046 §9).
@@ -261,7 +261,7 @@ impl ReportModels {
         for p in &doc.page_order {
             o.set_box_checks(doc, *p);
         }
-        o.strips = crate::terminal_strips::Strips::build(doc, &o, &cx);
+        o.strips = crate::terminal_strips::strip_model::Strips::build(doc, &o, &cx);
         o.plc = crate::plc::kept::Plc::build_with(doc, m);
         o.strip_pages = crate::terminal_strips::pages::StripPages::build(doc, &o.strips);
         o.generated = doc.page_order.iter().copied().filter(|p| needs_reports(doc, *p)).collect();
@@ -389,7 +389,7 @@ impl ReportModels {
     }
 
     /// The strips sorted by tag (counted in [`ReportModels::sorts`]).
-    pub fn sorted_strips(&self) -> Vec<&crate::terminal_strips::StripData> {
+    pub fn sorted_strips(&self) -> Vec<&crate::terminal_strips::strip_model::StripData> {
         self.sorts.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.strips.sorted()
     }

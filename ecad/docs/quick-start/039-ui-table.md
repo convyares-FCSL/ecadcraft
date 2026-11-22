@@ -40,7 +40,7 @@ Until the new shell (U2) gives Lists its place, the tables sit where the old lis
    right. Sort by Severity or Page; type in the search field to filter.
 4. **Terminals.** Reports ▸ Terminals. Inside conductors are on the left (right-aligned), the
    strip in the middle, outside on the right. Position, Label and Rating (on a fuse position) are
-   fields: select a row, Enter on Label, type, Enter: `termlabel` runs as one transaction and the
+   fields: select a row, Enter on Label, type, Enter: `terminalblocklabel` runs as one transaction and the
    plan page follows. Links are drawn as lanes beside the terminals.
 
 ## Not yet

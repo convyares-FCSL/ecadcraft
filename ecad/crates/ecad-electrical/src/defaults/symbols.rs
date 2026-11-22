@@ -92,7 +92,7 @@ prefixes! {
     RCD4 = Rcd4 "rcd4", "RCD, 4-pole";
     SSRIN = Ssrin "ssrin", "SSR input";
     SSROUT = Ssrout "ssrout", "SSR output";
-    FUSETERM = Fuseterm "fuseterm", "Fuse terminal";
+    FUSETERMINALBLOCK = Fuseterminalblock "fuseterminalblock", "Fuse terminal";
     FUSEBANK4 = Fusebank4 "fusebank4", "Fuse bank, 4-way";
     FUSEBANK6 = Fusebank6 "fusebank6", "Fuse bank, 6-way";
     FUSEBANK8 = Fusebank8 "fusebank8", "Fuse bank, 8-way";

@@ -66,7 +66,7 @@ impl ReportModels {
 
     /// A strip's BOM rows (design 028 §9.1, Q13; brief 036 §7.2): one row per terminal type, Qty
     /// in positions (a three-level terminal is one part), in catalogue order.
-    pub(super) fn strip_bom(&self, s: &crate::terminal_strips::StripData, location: Option<String>) -> Vec<BomRow> {
+    pub(super) fn strip_bom(&self, s: &crate::terminal_strips::strip_model::StripData, location: Option<String>) -> Vec<BomRow> {
         let mut out = Vec::new();
         for t in &s.types {
             if t.qty() == 0 {

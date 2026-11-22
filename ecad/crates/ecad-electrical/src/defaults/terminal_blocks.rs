@@ -132,7 +132,7 @@ prefixes! {
     TERMSENSOR_3 = TermsensorL3 "termsensor.3", "Sensor terminal, level -";
     TERMSENSOR = Termsensor "termsensor", "Sensor terminal";
     TERMDISC = Termdisc "termdisc", "Disconnect terminal";
-    TERMFUSE = Termfuse "termfuse", "Fuse terminal (strip position)";
+    TERMINALBLOCKFUSE = Terminalblockfuse "terminalblockfuse", "Fuse terminal (strip position)";
 }
 
 macro_rules! levels {
@@ -196,7 +196,7 @@ macro_rules! descriptions {
             &SEPARATOR, &LEVELS_X2, &LEVELS_X2B, &LEVELS_X3, &LEVELS_LNPE, &LEVELS_SEN, $(&$name,)*
             &TERM2_1, &TERM2_2, &TERM2, &TERM2B_1, &TERM2B_2, &TERM2B, &TERM3_1, &TERM3_2, &TERM3_3, &TERM3,
             &TERMLNPE_1, &TERMLNPE_2, &TERMLNPE_3, &TERMLNPE, &TERMSENSOR_1, &TERMSENSOR_2, &TERMSENSOR_3, &TERMSENSOR,
-            &TERMDISC, &TERMFUSE,
+            &TERMDISC, &TERMINALBLOCKFUSE,
         ];
     };
 }

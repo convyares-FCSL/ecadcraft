@@ -754,7 +754,7 @@ fn strip_slots(props: &Properties) -> Vec<(String, String, String, Option<String
     let mut v: Vec<(String, String, String, Option<String>)> = crate::terminal_strips::terminal_blocks::TYPES
         .iter()
         .map(|t| {
-            let k = |f: &str| crate::terminal_strips::type_key(t, f);
+            let k = |f: &str| crate::terminal_strips::strip_model::type_key(t, f);
             (k("part_number"), k("maker"), k(ARTICLE_KEY), Some(format!("strip_{}_maker", t.code)))
         })
         .collect();

@@ -57,9 +57,6 @@ pub const READ_COMMANDS: &[&str] = &[
     // base64 data); `reports` only asks the desktop app to open its window.
     "printbook",
     "reports",
-    // Brief 028: the terminal plan and a cable's cores read the project and record nothing.
-    "stripplan",
-    "cablecores",
     // Brief 027: the pre-release check reads the project and records nothing.
     "prerelease",
     // Brief 031: the defaults registry's list and a page's derived texts read the project; Show
@@ -69,11 +66,6 @@ pub const READ_COMMANDS: &[&str] = &[
     "hiddentext",
     // Brief 048: what an edit of a symbol would change on its placed copies reads the project.
     "symbolimpact",
-    // Brief 045: the racks with their slots, and the I/O list, read the project.
-    "plcracks",
-    "iolist",
-    // Brief 056: the tag table as text (no `path` from an agent); export changes nothing.
-    "plcexport",
 ];
 
 /// Commands whose form with no fields only reads (brief 019): `pageprops {page?}` and

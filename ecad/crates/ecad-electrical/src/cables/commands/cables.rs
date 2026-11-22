@@ -196,7 +196,7 @@ fn checked(
             }
             Ok(Some(t))
         }
-        CableField::Cores => crate::terminal_strips::cores_value(Some(&t)).map_err(|e| bad(BadReason::BadOffer(e.to_string()))),
+        CableField::Cores => crate::terminal_strips::cores::cores_value(Some(&t)).map_err(|e| bad(BadReason::BadOffer(e.to_string()))),
         CableField::CableType => {
             styles::find(doc, ecad_model::StyleCatalogue::Cable, &t).map(|id| Some(id.text())).map_err(|_| bad(BadReason::UnknownEntry))
         }
@@ -239,7 +239,10 @@ fn check_offer(doc: &Document, k: CableId, next: &ecad_model::Cable) -> Result<(
     // Counted as the offer's write would leave the cores (unlabelled ones take free labels).
     let mut synced = next.clone();
     cable::sync_offered_cores(doc, cab, &mut synced);
-    let count = crate::terminal_strips::count_cores(Some((offer.clone(), crate::terminal_strips::OfferSource::Cores, text.clone())), &synced.cores);
+    let count = crate::terminal_strips::cores::count_cores(
+        Some((offer.clone(), crate::terminal_strips::cores::OfferSource::Cores, text.clone())),
+        &synced.cores,
+    );
     if count.over.is_empty() {
         return Ok(());
     }
@@ -454,7 +457,7 @@ pub(crate) fn check_remove(doc: &Document, k: CableId) -> Result<(), CmdError> {
 /// # Errors
 /// No such cable, or the offer has fewer free cores than `n` (Q6).
 pub fn assign_cores(doc: &Document, k: CableId, n: usize) -> Result<Vec<Option<String>>, CmdError> {
-    let Some(count) = crate::terminal_strips::cable_cores(doc, k) else { return Err(no_cable(&k.hex())) };
+    let Some(count) = crate::terminal_strips::cores::cable_cores(doc, k) else { return Err(no_cable(&k.hex())) };
     if count.offer.is_none() {
         let start = doc.cables.get(&k).map_or(0, |c| c.cores.len());
         return Ok((0..n).map(|i| Some((start + i + 1).to_string())).collect());

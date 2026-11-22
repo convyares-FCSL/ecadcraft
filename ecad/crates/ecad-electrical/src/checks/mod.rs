@@ -434,9 +434,9 @@ pub enum Fix {
     /// Brief 033 (design 033 §5.3): **Renumber…** opens this page's number field.
     RenumberPage(PageId),
     /// Brief 036: **Move to next free** (the level drawn twice, to the next position of its type
-    /// with that level free; `termlabel {terminal, move_to: "next"}`).
+    /// with that level free; `terminalblocklabel {terminal, move_to: "next"}`).
     MoveToNextFree(ConnectionPointId),
-    /// Brief 036: **Move to new position** (the other type's levels; `termlabel {terminal,
+    /// Brief 036: **Move to new position** (the other type's levels; `terminalblocklabel {terminal,
     /// move_to: "new"}`).
     MoveToNewPosition(ConnectionPointId),
     /// Brief 036: link `n` names missing levels: **Drop missing levels** or **Delete link**.

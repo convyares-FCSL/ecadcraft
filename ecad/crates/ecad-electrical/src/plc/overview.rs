@@ -141,7 +141,7 @@ pub fn pages_of(doc: &Document, c: DeviceId) -> Vec<PageId> {
 }
 
 /// The place of `c`'s first drawing in book order (its body or a cell), as `108-B-2`.
-pub fn first_place(doc: &Document, c: DeviceId) -> Option<String> {
+pub(crate) fn first_place(doc: &Document, c: DeviceId) -> Option<String> {
     let first = pages_of(doc, c).into_iter().next()?;
     let r = doc.representations_of(Subject::Device(c)).map(|(_, r)| r).find(|r| r.page == first)?;
     crate::plc::iolist::rep_place(doc, r).0
@@ -169,7 +169,7 @@ pub fn checks_of(plc: &Plc, card: DeviceId) -> (usize, Vec<u32>) {
 }
 
 /// The square of each channel `0..channels` of `card`.
-pub fn squares_of(card: &CardData, checked: &[u32]) -> Vec<Square> {
+pub(crate) fn squares_of(card: &CardData, checked: &[u32]) -> Vec<Square> {
     (0..card.channels)
         .map(|i| {
             if checked.contains(&i) {
@@ -204,7 +204,7 @@ pub fn spans(doc: &Document, plc: &Plc, card: &CardData) -> (Option<String>, Opt
 
 /// `I0.0–I1.7` (inputs, then outputs for IO-Link: `IW12–IW18 / QW0–QW6`); `—` when the card has no
 /// automatic addresses.
-pub fn range_words(doc: &Document, plc: &Plc, card: &CardData) -> String {
+pub(crate) fn range_words(doc: &Document, plc: &Plc, card: &CardData) -> String {
     match spans(doc, plc, card) {
         (Some(i), Some(o)) => format!("{i} / {o}"),
         (Some(x), None) | (None, Some(x)) => x,
@@ -274,7 +274,7 @@ pub fn description(doc: &Document, card: &CardData) -> Option<String> {
 }
 
 /// `DQ 16`, or the card's description when it has one.
-pub fn what_words(doc: &Document, card: &CardData) -> String {
+pub(crate) fn what_words(doc: &Document, card: &CardData) -> String {
     // The body's own name, which placing a card writes as its description, is not the user's.
     let builtin = card.ty.body().map(crate::symbols::catalogue::starter).map(|s| s.name);
     let desc = doc.devices.get(&card.id).and_then(|x| x.description.as_ref()).map(|v| v.as_str()).filter(|v| !v.is_empty() && Some(*v) != builtin);
@@ -325,7 +325,7 @@ fn free_tile(slot: u32) -> Tile {
 }
 
 /// `32 slots, 6 used`.
-pub fn rack_words(plc: &Plc, rack: &RackData) -> String {
+pub(crate) fn rack_words(plc: &Plc, rack: &RackData) -> String {
     let last = rack.first.saturating_add(rack.slots).saturating_sub(1);
     let used: std::collections::BTreeSet<u32> =
         plc.cards_of(rack.id).into_iter().filter_map(|c| c.slot).filter(|s| (rack.first..=last).contains(s)).collect();
@@ -377,7 +377,7 @@ pub fn layout(plc: &Plc, rack: &RackData) -> Vec<(String, Option<u32>, Option<De
 }
 
 /// How many tiles rack `rack` shows (its own included), without making them.
-pub fn tile_count(plc: &Plc, rack: &RackData) -> usize {
+pub(crate) fn tile_count(plc: &Plc, rack: &RackData) -> usize {
     1 + layout(plc, rack).len()
 }
 

@@ -1,22 +1,22 @@
 //! `plcaddress` (brief 045, design 045 §5): a rack's address style and starts, a card's pinned
-//! start. The rules are [`ecad_electrical::plc::address`] and [`ecad_electrical::plc::commands::plan_address`].
+//! start. The rules are [`crate::plc::address`] and [`super::plan_address`]; the command is
+//! generic ([`crate::commands::run`]).
 
-use cadcraft_engine::Session;
-use ecad_electrical::plc::commands::{self as rules, AddressInput};
 use schemars::JsonSchema;
 use serde::Deserialize;
+use serde_json::json;
 
-use crate::commands::input::Command;
-use crate::commands::on_project;
-use ecad_electrical::commands::input::{TextOrNumber, nullable};
-use ecad_electrical::plc::address::*;
-use serde_json::{Value, json};
+use super::{AddressInput, plan_address};
+use crate::commands::input::{TextOrNumber, nullable};
+use crate::commands::run::{Cx, Generic, Outcome};
+use crate::error::CmdError;
+use crate::plc::address::*;
 
 /// `plcaddress {rack | card, style?, input_start?, output_start?, start?, size?, fix?, clear?}`
 /// (design 045 §5.3). One transaction.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct PlcaddressParams {
+pub struct PlcaddressParams {
     /// The rack: an ID or a tag.
     #[serde(default)]
     rack: Option<String>,
@@ -46,8 +46,12 @@ pub(crate) struct PlcaddressParams {
     clear: Option<bool>,
 }
 
-impl Command for PlcaddressParams {
-    fn run(self, s: &mut Session) -> cadcraft_engine::Result<Value> {
+impl Generic for PlcaddressParams {
+    const ID: &'static str = "plcaddress";
+    const TITLE: &'static str = "PLC Addresses";
+    const HELP: &'static str = "{rack: id or tag, style?: byte.bit|iec|percent|slot|none, input_start?: byte, output_start?: byte, fix?: bool (pin every card at its current start), clear?: bool (unpin every card)} or {card: id or tag, start?: byte (null unpins), size?: bytes (null: by type)}";
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
         let text = |v: Option<Option<TextOrNumber>>| v.map(|v| v.map(|t| t.text()));
         let input = AddressInput {
             rack: self.rack,
@@ -60,29 +64,26 @@ impl Command for PlcaddressParams {
             fix: self.fix.unwrap_or(false),
             clear: self.clear.unwrap_or(false),
         };
-        let v = on_project(s, |p, pg, _| {
-            let doc = p.ledger.document();
-            let plan = rules::plan_address(doc, &input)?;
-            let who = plan.who;
-            if plan.ops.is_empty() {
-                return Ok(json!({"changed": false, "message": format!("{who}: nothing to change.")}));
-            }
-            let before = plan.rack.map(|r| snapshot(doc, r)).unwrap_or_default();
-            p.apply_edit(pg, "plcaddress", "Addresses", plan.ops)?;
-            let doc = p.ledger.document();
-            let after = plan.rack.map(|r| snapshot(doc, r)).unwrap_or_default();
+        let doc = cx.doc;
+        let plan = plan_address(doc, &input)?;
+        let who = plan.who;
+        if plan.ops.is_empty() {
+            return Ok(Outcome::answer(json!({"changed": false, "message": format!("{who}: nothing to change.")})).echo_message());
+        }
+        let rack = plan.rack;
+        let before = rack.map(|r| snapshot(doc, r)).unwrap_or_default();
+        let tail = plan.tail;
+        Ok(Outcome::edit_then("Addresses", plan.ops, move |doc| {
+            let after = rack.map(|r| snapshot(doc, r)).unwrap_or_default();
             let moved = after.iter().filter(|(c, b)| before.get(c).is_some_and(|x| x.input != b.input || x.output != b.output)).count();
             let mut parts = Vec::new();
-            if !plan.tail.is_empty() {
-                parts.push(plan.tail);
+            if !tail.is_empty() {
+                parts.push(tail);
             }
             parts.push(format!("addresses of {moved} card{} change", if moved == 1 { "" } else { "s" }));
             let message = format!("{who}: {}.", parts.join("; "));
-            Ok(json!({"changed": true, "moved": moved, "message": message}))
-        })?;
-        if let Some(m) = v.get("message").and_then(Value::as_str) {
-            s.echo(m.to_string());
-        }
-        Ok(v)
+            json!({"changed": true, "moved": moved, "message": message})
+        })
+        .echo_message())
     }
 }

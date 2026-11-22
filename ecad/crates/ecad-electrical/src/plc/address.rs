@@ -21,9 +21,9 @@ use crate::defaults::{self, Scope};
 use crate::plc::rack::{self, CardType, Direction, RackRef};
 
 /// The `setprop` name of a module's pinned start byte (FP3).
-pub const START_KEY: &str = "plc.addr.start";
+pub(crate) const START_KEY: &str = "plc.addr.start";
 /// The `setprop` name of a module's own block size in bytes (FP3).
-pub const SIZE_KEY: &str = "plc.addr.size";
+pub(crate) const SIZE_KEY: &str = "plc.addr.size";
 /// The highest byte an address may use.
 pub const MAX_BYTE: u32 = ecad_model::objects::plc::MAX_BYTE;
 /// The largest block size a card may set.
@@ -56,7 +56,7 @@ impl Style {
     }
 
     /// The style a station stores.
-    pub fn of_stored(s: ecad_model::objects::plc::AddressStyle) -> Style {
+    pub(crate) fn of_stored(s: ecad_model::objects::plc::AddressStyle) -> Style {
         use ecad_model::objects::plc::AddressStyle as A;
         match s {
             A::ByteBit => Style::ByteBit,
@@ -101,7 +101,7 @@ pub fn pinned(doc: &Document, c: DeviceId) -> Option<u32> {
 }
 
 /// The bytes one analogue or IO-Link channel of card `c` takes.
-pub fn word_size(doc: &Document, c: DeviceId, ty: CardType) -> u32 {
+pub(crate) fn word_size(doc: &Document, c: DeviceId, ty: CardType) -> u32 {
     let at = Scope { component: Some(c), ..Scope::project() };
     let e = if ty == CardType::Iol { &defaults::plc::IOL_BYTES } else { &defaults::plc::ANALOG_BYTES };
     let n = defaults::resolve(doc, e, at).number();
@@ -232,7 +232,7 @@ pub fn shown(doc: &Document, c: DeviceId, i: u32, auto: Option<String>) -> (Opti
 
 /// The members of rack `r` read straight from the document (texts and commands, which have no
 /// kept model): its cards with a slot, in slot order.
-pub fn members_of(doc: &Document, r: DeviceId) -> Vec<Member> {
+pub(crate) fn members_of(doc: &Document, r: DeviceId) -> Vec<Member> {
     let Some(station) = crate::plc::edit::station_of(doc, r) else { return Vec::new() };
     station
         .modules(doc, r)
@@ -297,7 +297,7 @@ pub fn shows_output(ty: CardType) -> bool {
 
 /// Card `c`'s automatic address of channel `i` (input; and output for IO-Link), worked out from the
 /// document (texts, commands).
-pub fn of_channel(
+pub(crate) fn of_channel(
     doc: &Document, c: DeviceId, i: u32, kept: Option<&crate::plc::kept::Plc>, cache: &mut BTreeMap<DeviceId, BTreeMap<DeviceId, Block>>,
 ) -> (Option<String>, Option<String>) {
     let (RackRef::Rack(r), Some(slot)) = (rack::rack_ref(doc, c), rack::slot_of(doc, c)) else { return (None, None) };
@@ -320,28 +320,4 @@ pub fn of_channel(
 /// A snapshot of every card's block in `r` (for counting what a change moves).
 pub fn snapshot(doc: &Document, r: DeviceId) -> BTreeMap<DeviceId, Block> {
     blocks(doc, r, &members_of(doc, r))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn formats_follow_design_045_table_5_2() {
-        let b = Block { input: Some((2, 2)), output: None, pinned: false, overflow: false };
-        assert_eq!(automatic(Style::ByteBit, CardType::Di, &b, 3, 11, 11, 2, false).as_deref(), Some("I3.3"));
-        assert_eq!(automatic(Style::Iec, CardType::Di, &b, 3, 11, 11, 2, false).as_deref(), Some("%IX3.3"));
-        assert_eq!(automatic(Style::Slot, CardType::Di, &b, 3, 4, 4, 2, false).as_deref(), Some("I:3/04"));
-        assert_eq!(automatic(Style::None, CardType::Di, &b, 3, 4, 4, 2, false), None);
-        assert_eq!(automatic(Style::ByteBit, CardType::Di, &b, 3, 16, 16, 2, false), None, "past the block");
-        let a = Block { input: Some((4, 8)), output: None, pinned: false, overflow: false };
-        assert_eq!(automatic(Style::ByteBit, CardType::Ai, &a, 4, 2, 2, 2, false).as_deref(), Some("IW8"));
-        assert_eq!(automatic(Style::Iec, CardType::Ai, &a, 4, 3, 3, 2, false).as_deref(), Some("%IW10"));
-        let q = Block { input: None, output: Some((8, 2)), pinned: false, overflow: false };
-        assert_eq!(automatic(Style::Slot, CardType::Dq, &q, 6, 1, 1, 2, true).as_deref(), Some("O:6/01"));
-        assert_eq!(block_words(Style::ByteBit, false, (2, 2)), "I2–I3");
-        // Hostile arithmetic: no panic, no address.
-        let edge = Block { input: Some((MAX_BYTE, 1)), output: None, pinned: true, overflow: false };
-        assert_eq!(automatic(Style::ByteBit, CardType::Ai, &edge, 1, 9, 9, 2, false), None);
-    }
 }

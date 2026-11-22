@@ -126,7 +126,7 @@ impl ReportModels {
         let mut strips = std::mem::take(&mut self.strips);
         let which = strips.touched(
             doc,
-            &crate::terminal_strips::StripScope {
+            &crate::terminal_strips::strip_model::StripScope {
                 devices: &scope.devices,
                 wires: &scope.wires,
                 cables: &scope.cables,
@@ -163,7 +163,7 @@ impl ReportModels {
     /// Verify mode (brief 028, design 028 §11.4): the kept strips against a rebuild on `doc`; a
     /// difference is put right and described (a bug, for the event log).
     pub fn verify_strips_with(&mut self, doc: &Document) -> Option<String> {
-        let built = crate::terminal_strips::Strips::build(doc, self, &PageCx::of(doc));
+        let built = crate::terminal_strips::strip_model::Strips::build(doc, self, &PageCx::of(doc));
         // Brief 046: the graphic pages' kept data is built from the kept strips after every
         // commit (no update map), so it follows them.
         if self.strips.same_as(&built) {
@@ -309,15 +309,15 @@ impl ReportModels {
         // its first drawn half), with that half's tag and location.
         let halves = crate::connectors::half_rows(doc, c, &mut BoxCache::default());
         // Sub-items only where `for` can name some or fuses can be uncovered.
-        let fuseterm = crate::terminal_strips::fuse_terminal_block_of(doc, c).is_some();
-        let subs = if fuseterm { bom::Subs::None } else { bom::sub_items(doc, c) };
+        let fuseterminalblock = crate::terminal_strips::fuse_terminal_block_of(doc, c).is_some();
+        let subs = if fuseterminalblock { bom::Subs::None } else { bom::sub_items(doc, c) };
         let mut covered: BTreeSet<&str> = BTreeSet::new();
         let mut inserts = 0;
         let mut entries = Vec::new();
         for l in &lines {
             let (have, missing): (Vec<String>, Vec<String>) = l.subs.iter().cloned().partition(|s| subs_has(&subs, s));
             covered.extend(l.subs.iter().map(String::as_str));
-            inserts += usize::from(l.for_text.is_some() || fuseterm);
+            inserts += usize::from(l.for_text.is_some() || fuseterminalblock);
             let half = halves.iter().find(|h| Some(h.side) == l.half).or(halves.first());
             entries.push(Entry {
                 owner: Owner::Device(c),
@@ -335,7 +335,7 @@ impl ReportModels {
                 missing,
             });
         }
-        let gaps = if fuseterm {
+        let gaps = if fuseterminalblock {
             usize::from(!lines.iter().any(|l| l.for_text.is_none()))
         } else {
             subs.fuses().iter().filter(|f| !covered.contains(f.as_str())).count()
@@ -684,7 +684,7 @@ impl ReportModels {
                 designation: p("designation"),
                 go,
                 // The chains' heads, then the stored cores with no wire (spare or on a loose line).
-                count: crate::terminal_strips::count_cores(
+                count: crate::terminal_strips::cores::count_cores(
                     crate::styles::cable::offer(doc, k),
                     &heads.iter().cloned().chain(cab.cores.iter().filter(|m| m.wire().is_none()).cloned()).collect::<Vec<_>>(),
                 ),

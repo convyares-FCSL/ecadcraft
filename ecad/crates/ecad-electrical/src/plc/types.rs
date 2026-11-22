@@ -79,7 +79,7 @@ fn card_of_starter(key: K) -> Option<CardType> {
 }
 
 /// What a device starter `key` begins is, with its data (design 072 §2.3, §3).
-pub fn starter_type(key: K) -> DeviceType {
+pub(crate) fn starter_type(key: K) -> DeviceType {
     match card_of_starter(key) {
         Some(t) => of_card(t),
         None => DeviceType::of_group(key.device_group()),
@@ -88,7 +88,7 @@ pub fn starter_type(key: K) -> DeviceType {
 
 /// The type a new device declared `declared` is made with in `doc`: a module's channel count is
 /// the project's `plc.<type>.channels` (design 045 §2.3).
-pub fn new_type(doc: &ecad_model::Document, declared: &DeviceType) -> DeviceType {
+pub(crate) fn new_type(doc: &ecad_model::Document, declared: &DeviceType) -> DeviceType {
     let mut t = declared.clone();
     let Some(card) = CardType::of_type(&t) else { return t };
     let Some(entry) = card.channels_entry() else { return t };
@@ -105,7 +105,7 @@ pub fn new_type(doc: &ecad_model::Document, declared: &DeviceType) -> DeviceType
 
 impl CardType {
     /// The card type a stored type reads as; `None` for a device that is not a station or module.
-    pub fn of_type(t: &DeviceType) -> Option<CardType> {
+    pub(crate) fn of_type(t: &DeviceType) -> Option<CardType> {
         match t {
             DeviceType::PlcRack(r) => Some(match r.head {
                 RackHead::Cpu { .. } => CardType::Cpu,

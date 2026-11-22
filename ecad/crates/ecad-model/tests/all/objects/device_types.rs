@@ -724,7 +724,7 @@ fn roles_are_stored_as_words_and_an_unknown_word_is_refused() {
         (Role::Reference, "\"reference\""),
         (Role::LocationBox, "\"box\""),
         (Role::FanAnchor, "\"fan-anchor\""),
-        (Role::FuseTerm, "\"termfuse\""),
+        (Role::FuseTerm, "\"terminalblockfuse\""),
         (Role::Drawn, "\"drawn\""),
     ];
     for (role, json) in table {

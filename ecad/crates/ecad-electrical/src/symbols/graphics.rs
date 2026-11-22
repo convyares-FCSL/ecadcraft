@@ -196,7 +196,7 @@ impl Connector {
             | K::Rcd4
             | K::Ssrin
             | K::Ssrout
-            | K::Fuseterm
+            | K::Fuseterminalblock
             | K::Fusebank4
             | K::Fusebank6
             | K::Fusebank8
@@ -243,7 +243,7 @@ impl Connector {
             | K::TermsensorL3
             | K::Termsensor
             | K::Termdisc
-            | K::Termfuse
+            | K::Terminalblockfuse
             | K::Plcim
             | K::Plcpm
             | K::Plccm
@@ -423,7 +423,7 @@ fn motor(phase: &str, leads: &[((f64, f64), (f64, f64))]) -> Vec<Primitive> {
     g
 }
 
-/// The graphics of starter `key` (brief 036: `termfuse` draws `fuseterm`'s).
+/// The graphics of starter `key` (brief 036: `terminalblockfuse` draws `fuseterminalblock`'s).
 pub(crate) fn graphics_of(key: StarterKey) -> Vec<Primitive> {
     graphics(key)
 }
@@ -556,7 +556,7 @@ pub(super) fn graphics(key: StarterKey) -> Vec<Primitive> {
             g.push(poly(&[(2.0, -1.5), (5.0, -1.5), (3.5, 1.5)], true));
             g
         }
-        K::Fuseterm => vec![rect((-2.0, -5.0), (2.0, 5.0)), line((0.0, 10.0), (0.0, -10.0)), rect((-3.5, -7.5), (3.5, 7.5))],
+        K::Fuseterminalblock => vec![rect((-2.0, -5.0), (2.0, 5.0)), line((0.0, 10.0), (0.0, -10.0)), rect((-3.5, -7.5), (3.5, 7.5))],
         // ---- Brief 034 stage 2 (design 034 §4).
         K::Prox3 => vec![
             rect((-10.0, -5.0), (10.0, 5.0)),
@@ -687,7 +687,7 @@ pub(super) fn graphics(key: StarterKey) -> Vec<Primitive> {
         | K::TermsensorL3
         | K::Termsensor
         | K::Termdisc
-        | K::Termfuse => crate::terminal_strips::terminal_blocks::graphics(key).unwrap_or_else(|| sized_graphics(key)),
+        | K::Terminalblockfuse => crate::terminal_strips::terminal_blocks::graphics(key).unwrap_or_else(|| sized_graphics(key)),
     }
 }
 
@@ -748,7 +748,7 @@ pub(super) fn connection_points(key: StarterKey) -> Vec<ConnectionPointDef> {
             t("N2", 30.0, -10.0),
         ],
         K::Ssrin => vec![t("A1", 0.0, 10.0), t("A2", 0.0, -10.0)],
-        K::Ssrout | K::Fuseterm | K::Heater => vec![t("1", 0.0, 10.0), t("2", 0.0, -10.0)],
+        K::Ssrout | K::Fuseterminalblock | K::Heater => vec![t("1", 0.0, 10.0), t("2", 0.0, -10.0)],
         // ---- Brief 034 stage 2: IEC 60947-5-2's numbers (1 supply +, 3 supply −, 4 output).
         K::Prox3 => vec![t("1", -5.0, 10.0), t("3", -5.0, -10.0), t("4", 5.0, -10.0)],
         K::Valve => vec![t("A1", 0.0, 10.0), t("A2", 0.0, -10.0)],
@@ -832,7 +832,7 @@ pub(super) fn connection_points(key: StarterKey) -> Vec<ConnectionPointDef> {
         | K::TermsensorL3
         | K::Termsensor
         | K::Termdisc
-        | K::Termfuse => crate::terminal_strips::terminal_blocks::connection_points(key).unwrap_or_else(|| sized_connection_points(key, &t)),
+        | K::Terminalblockfuse => crate::terminal_strips::terminal_blocks::connection_points(key).unwrap_or_else(|| sized_connection_points(key, &t)),
     }
 }
 

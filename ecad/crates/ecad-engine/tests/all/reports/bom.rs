@@ -38,8 +38,8 @@ fn fixture(seed: u64) -> F {
         k.push(c);
     }
     let f01 = place(&mut h, json!({"symbol": "fusebank8", "at": [100, 60], "tag": "F01"}));
-    let x05 = place(&mut h, json!({"symbol": "termfuse", "at": [250, 200], "tag": "X05"}));
-    for (i, sym) in ["terminal_block", "terminal_block", "terminal_block", "termfuse", "termfuse"].iter().enumerate() {
+    let x05 = place(&mut h, json!({"symbol": "terminalblockfuse", "at": [250, 200], "tag": "X05"}));
+    for (i, sym) in ["terminal_block", "terminal_block", "terminal_block", "terminalblockfuse", "terminalblockfuse"].iter().enumerate() {
         place(&mut h, json!({"symbol": sym, "at": [270.0 + 20.0 * i as f64, 200], "device": x05.hex()}));
     }
     // Brief 052: the project's location only proposes; the devices store +CP1.

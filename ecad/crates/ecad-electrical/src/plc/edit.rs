@@ -102,7 +102,7 @@ pub fn station(doc: &Document, ops: &mut Vec<Op>, c: DeviceId, f: impl FnOnce(&m
 }
 
 /// Device `c`'s module data, if it is a module.
-pub fn module_of(doc: &Document, c: DeviceId) -> Option<&PlcModule> {
+pub(crate) fn module_of(doc: &Document, c: DeviceId) -> Option<&PlcModule> {
     match &doc.devices.get(&c)?.device_type {
         DeviceType::PlcModule(m) => Some(m),
         _ => None,

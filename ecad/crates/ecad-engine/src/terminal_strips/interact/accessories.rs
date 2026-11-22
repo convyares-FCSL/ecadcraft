@@ -144,7 +144,7 @@ impl Interactive for StripAccessory {
 
 // ---------------------------------------------------------------- Jumper (§5.4)
 
-/// `jumper`: a terminal (one already in a link extends it), then the next terminals; ranges
+/// `jumper`: a terminal (one already in a jumper bar extends it), then the next terminals; ranges
 /// between picks unless Skip; Enter writes one transaction, Esc nothing.
 pub(crate) fn jumper(s: &Session) -> R<Box<dyn Interactive>> {
     can_start(s)?;
@@ -153,7 +153,7 @@ pub(crate) fn jumper(s: &Session) -> R<Box<dyn Interactive>> {
 
 struct Jumper {
     strip: Option<(DeviceId, String)>,
-    /// The link the first pick extends.
+    /// The jumper bar the first pick extends.
     extend: Option<u32>,
     picks: Vec<(ConnectionPointId, String, Pt)>,
     /// Labels typed at the prompt (positions on other pages).
@@ -222,7 +222,7 @@ impl Jumper {
                     Some((sc, tag)) if *sc != c => {
                         let w = read(s, |p, _| Ok(commands::connection_point_words(p.ledger.document(), t))).unwrap_or_default();
                         return Err(other(format!(
-                            "{w} is on another strip; a link stays on one strip. Pick a terminal of {tag}, or Enter to finish."
+                            "{w} is on another strip; a jumper bar stays on one strip. Pick a terminal of {tag}, or Enter to finish."
                         )));
                     }
                     Some(_) => {}
@@ -282,7 +282,7 @@ impl Interactive for Jumper {
         paper_guard(s, &i)?;
         safely(s, "jumper", |s| self.step(s, i))
     }
-    /// The link as picked so far, and a rubber band to the terminal under the cursor (else the
+    /// The jumper bar as picked so far, and a rubber band to the terminal under the cursor (else the
     /// cursor).
     fn preview(&self, s: &Session, cursor: Vec2) -> Vec<EntityKind> {
         let Some((_, _, last)) = self.picks.last() else { return Vec::new() };

@@ -194,15 +194,15 @@ impl ReportModels {
             rows: Vec::new(),
         };
         let mut go = Vec::new();
-        let strips: Vec<&crate::terminal_strips::StripData> = match strip {
+        let strips: Vec<&crate::terminal_strips::strip_model::StripData> = match strip {
             Some(c) => self.strips.get(c).into_iter().collect(),
             None => self.strips.sorted(),
         };
         for s in strips {
             for item in s.plan(accessories) {
                 let (ri, r) = match item {
-                    crate::terminal_strips::PlanItem::Term(i, r) => (i, r),
-                    crate::terminal_strips::PlanItem::Gap { gap, acc } => {
+                    crate::terminal_strips::strip_model::PlanItem::Term(i, r) => (i, r),
+                    crate::terminal_strips::strip_model::PlanItem::Gap { gap, acc } => {
                         let pe_before = gap_pe(s, gap);
                         let words = if acc == crate::terminal_strips::accessories::Acc::StripLabel {
                             format!("strip label {}", s.tag)
@@ -232,8 +232,8 @@ impl ReportModels {
                 let lines = r.inside.len().max(r.outside.len()).max(1);
                 for i in 0..lines {
                     let (inside, outside) = (r.inside.get(i), r.outside.get(i));
-                    let side = |c: Option<&crate::terminal_strips::SideCell>,
-                                f: fn(&crate::terminal_strips::SideCell) -> Option<String>,
+                    let side = |c: Option<&crate::terminal_strips::strip_model::SideCell>,
+                                f: fn(&crate::terminal_strips::strip_model::SideCell) -> Option<String>,
                                 why: &str| match c {
                         None => Cell::default(),
                         Some(c) => Cell::opt(&f(c), || why.to_string()),
@@ -296,8 +296,8 @@ impl ReportModels {
         for s in self.strips.sorted() {
             for item in s.plan(true) {
                 let r = match item {
-                    crate::terminal_strips::PlanItem::Term(_, r) => r,
-                    crate::terminal_strips::PlanItem::Gap { gap, acc } => {
+                    crate::terminal_strips::strip_model::PlanItem::Term(_, r) => r,
+                    crate::terminal_strips::strip_model::PlanItem::Gap { gap, acc } => {
                         let mut row =
                             vec![Cell::ok(s.tag.clone()), opt(s.location.as_ref()), Cell::ok(s.offer.map(|o| o.text()).unwrap_or_default())];
                         row.extend([Cell::default(), Cell::default(), Cell::ok("accessory")]);

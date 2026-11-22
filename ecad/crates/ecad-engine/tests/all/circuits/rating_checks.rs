@@ -469,7 +469,7 @@ fn f6_the_trace_bound_is_said_in_words() {
 #[test]
 fn a_strip_fuse_position_protects_its_out_point_only() {
     let mut h = H::new(570);
-    let x = place(&mut h, "termfuse", [100.0, 100.0], "-X05");
+    let x = place(&mut h, "terminalblockfuse", [100.0, 100.0], "-X05");
     let doc = h.doc();
     let page = h.first_page();
     let mut points: Vec<(char, ecad_model::Pt)> = Vec::new();
