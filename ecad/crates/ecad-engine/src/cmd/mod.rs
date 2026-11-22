@@ -15,8 +15,6 @@
 //! This module is the registry and the shared helpers; each area's commands are in `cmd/<area>`
 //! (lane 067 step 11; `cmd/plc/` has the PLC commands).
 
-pub mod accessory;
-pub mod bom;
 pub(crate) mod cable_draw;
 pub mod connector;
 pub(crate) mod device;
@@ -47,7 +45,7 @@ use crate::access::{Pages, owner_of_active, try_lock};
 use crate::interact;
 use crate::project::Project;
 pub use crate::strips::core_label;
-use ecad_electrical::cmd::{cable, connect, continuation, default, designation, device_link, level, location, prop, style};
+use ecad_electrical::cmd::{accessory, bom, cable, connect, continuation, default, designation, device_link, level, location, prop, style};
 
 /// The commands this crate adds. Lanes in flight register theirs in [`crate::lanes`], not here;
 /// their lines move here at the phase-end tidy-up.
@@ -61,7 +59,6 @@ pub fn specs() -> Vec<CommandSpec> {
     v.extend(crate::cmd::xref::specs());
     v.extend(crate::cmd::output::specs());
     v.extend(crate::cmd::terminal::specs());
-    v.extend(crate::cmd::accessory::specs());
     v.extend(crate::cmd::release::specs());
     v.extend(crate::cmd::text::specs());
     #[cfg(not(target_arch = "wasm32"))]
@@ -69,7 +66,6 @@ pub fn specs() -> Vec<CommandSpec> {
     v.extend(crate::look::specs());
     v.extend(crate::cmd::connector::specs());
     v.extend(crate::cmd::plc::specs());
-    v.extend(crate::cmd::bom::specs());
     v.extend(crate::cmd::symbol::specs());
     v.extend(crate::cmd::plc::page::specs());
     for (_, lane) in crate::lanes::LANES {
@@ -109,6 +105,11 @@ fn generic_specs() -> Vec<CommandSpec> {
         generic::spec::<style::PromoteParams>(),
         generic::spec::<ecad_electrical::cmd::title_block::TitleblocksParams>(),
         generic::spec::<ecad_electrical::cmd::title_block::TitleblockParams>(),
+        generic::spec::<bom::PartlineParams>(),
+        generic::spec::<bom::BomitemParams>().interactive(interact::bomitem),
+        generic::spec::<bom::ArticleParams>(),
+        generic::spec::<accessory::AccessoryParams>().interactive(interact::accessory),
+        generic::spec::<accessory::JumperParams>().interactive(interact::jumper),
     ]
 }
 
@@ -142,6 +143,11 @@ const GENERIC_TYPED: &[input::Typed] = &[
     generic::typed::<style::PromoteParams>(),
     generic::typed::<ecad_electrical::cmd::title_block::TitleblocksParams>(),
     generic::typed::<ecad_electrical::cmd::title_block::TitleblockParams>(),
+    generic::typed::<bom::PartlineParams>(),
+    generic::typed::<bom::BomitemParams>(),
+    generic::typed::<bom::ArticleParams>(),
+    generic::typed::<accessory::AccessoryParams>(),
+    generic::typed::<accessory::JumperParams>(),
 ];
 
 fn base_specs() -> Vec<CommandSpec> {
@@ -324,11 +330,9 @@ pub fn typed_commands() -> Vec<input::Typed> {
         crate::cmd::plc::TYPED,
         crate::cmd::numbering::TYPED,
         crate::cmd::rating::TYPED,
-        crate::cmd::bom::TYPED,
         crate::cmd::title_block::TYPED,
         crate::cmd::page_type::TYPED,
         crate::cmd::connector::TYPED,
-        crate::cmd::accessory::TYPED,
         crate::cmd::release::TYPED,
         crate::cmd::device::TYPED,
         crate::cmd::cable_draw::TYPED,

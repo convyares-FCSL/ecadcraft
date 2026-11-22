@@ -9,7 +9,14 @@ use std::collections::BTreeSet;
 use ecad_model::links::{self, Positions};
 use ecad_model::{DeviceId, Document, Noun, ObjectRef, Op, TerminalId};
 
+use schemars::JsonSchema;
+use serde::Deserialize;
+use serde_json::{Value, json};
+
 use crate::accessories::{self as acc, Acc, Spot};
+use crate::cmd::input::{Bounded, nullable};
+use crate::cmd::run::{Cx, Generic, Outcome};
+use crate::derived::Views;
 use crate::error::CmdError;
 
 /// Most places one `accessory` call writes.
@@ -588,4 +595,171 @@ pub fn plan_jumper(doc: &Document, input: JumperInput) -> Result<Jumper, CmdErro
         (None, _) => format!("Linked {tag} {shown}."),
     };
     Ok(Jumper { strip: c, n, ops, label: tx_label, message, split: extra_text })
+}
+
+// ---------------------------------------------------------------------------------------------
+// The commands (generic: crate::cmd::run)
+
+/// Words written as one text or as a list.
+#[derive(Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum WordsParam {
+    /// A list.
+    List(Vec<String>),
+    /// One text (items and positions: comma-separated).
+    Text(String),
+}
+
+/// `accessory {strip | terminal, at, on?, items? | add? | remove?, clear?}` (design 030 §2.2):
+/// one `SetProperty` per place, all in one transaction.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AccessoryParams {
+    /// The strip.
+    #[serde(default)]
+    strip: Option<DeviceId>,
+    /// A terminal of the strip (its position is the place when `at` is absent).
+    #[serde(default)]
+    terminal: Option<TerminalId>,
+    /// "start", "end", "all", a position label, or a list of them (at most 999).
+    #[serde(default)]
+    at: Option<WordsParam>,
+    /// Markers on positions.
+    #[serde(default)]
+    on: Option<bool>,
+    /// The items to put there (replace; null: none): end_stop, end_plate, partition, strip_label;
+    /// with `on`: marker.
+    #[serde(default, deserialize_with = "nullable")]
+    items: Option<Option<WordsParam>>,
+    /// Items to add.
+    #[serde(default, deserialize_with = "nullable")]
+    add: Option<Option<WordsParam>>,
+    /// Items to remove.
+    #[serde(default, deserialize_with = "nullable")]
+    remove: Option<Option<WordsParam>>,
+    /// Placement keys (acc.…) emptied in the same transaction.
+    #[serde(default)]
+    clear: Option<Vec<String>>,
+}
+
+/// The link a `jumper` edit names.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LinkParam {
+    /// The strip.
+    #[serde(default)]
+    strip: Option<DeviceId>,
+    /// The link's number, 1 to 999.
+    #[serde(default)]
+    n: Option<u64>,
+}
+
+/// `jumper` (design 030 §10): make a link (`{strip | terminals, positions?, skip?}`), or edit one
+/// (`{link: {strip, n}, add?, remove?, positions?, split_at?, drop_missing?, delete?}`).
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct JumperParams {
+    /// Edit: the link.
+    #[serde(default)]
+    link: Option<LinkParam>,
+    /// Make: the strip.
+    #[serde(default)]
+    strip: Option<DeviceId>,
+    /// Make: the picked terminals (at most 999).
+    #[serde(default)]
+    terminals: Option<Bounded<TerminalId, 0, MAX_PICKS>>,
+    /// Make: no ranges between consecutive picks.
+    #[serde(default)]
+    skip: Option<bool>,
+    /// The positions: text like "1-4, 7" or a list of labels.
+    #[serde(default)]
+    positions: Option<WordsParam>,
+    /// Edit: positions to add ("5,6" or a list).
+    #[serde(default)]
+    add: Option<WordsParam>,
+    /// Edit: positions to remove ("5" or a list).
+    #[serde(default)]
+    remove: Option<WordsParam>,
+    /// Edit: split the link after this position.
+    #[serde(default)]
+    split_at: Option<String>,
+    /// Edit: drop the positions the strip lacks.
+    #[serde(default)]
+    drop_missing: Option<bool>,
+    /// Edit: delete the link.
+    #[serde(default)]
+    delete: Option<bool>,
+}
+
+impl WordsParam {
+    fn words(self) -> Words {
+        match self {
+            WordsParam::List(v) => Words::List(v),
+            WordsParam::Text(t) => Words::Text(t),
+        }
+    }
+}
+
+impl Generic for AccessoryParams {
+    const ID: &'static str = "accessory";
+    const TITLE: &'static str = "Strip Accessory";
+    const HELP: &'static str = "{strip?: id, terminal?: id, at: \"start\"|\"end\"|\"all\"|label|[label…] (at most 999), on?: bool (markers on positions), \
+items?: [item…]|null (replace), add?: [item…], remove?: [item…], clear?: [acc.… key]} items: end_stop, end_plate, partition, strip_label; on: marker";
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let words = |w: Option<Option<WordsParam>>| w.map(|w| w.map(WordsParam::words));
+        let input = AccessoryInput {
+            strip: self.strip,
+            terminal: self.terminal,
+            at: self.at.map(WordsParam::words),
+            on: self.on.unwrap_or(false),
+            items: words(self.items),
+            add: words(self.add),
+            remove: words(self.remove),
+            clear: self.clear,
+        };
+        let done = plan_accessory(cx.doc, input)?;
+        let changed = !done.ops.is_empty();
+        let keys: Vec<Value> =
+            done.keys.iter().map(|(k, list)| json!({"key": k, "items": list.iter().map(|a| a.key()).collect::<Vec<_>>()})).collect();
+        let answer = json!({"strip": done.strip.hex(), "keys": keys, "changed": changed, "message": done.message});
+        Ok(Outcome::edit_if_any(done.label, done.ops, answer).echo_message())
+    }
+}
+
+impl Generic for JumperParams {
+    const ID: &'static str = "jumper";
+    const TITLE: &'static str = "Jumper";
+    const HELP: &'static str = "make: {strip?: id, terminals?: [id…], positions?: \"1-4, 7\", skip?: bool} (ranges between consecutive picks unless skip); \
+edit: {link: {strip: id, n}, add?: \"5,6\", remove?: \"5\", positions?: text, split_at?: label, drop_missing?: true, delete?: true}";
+
+    fn run(self, cx: &mut Cx<'_>) -> Result<Outcome, CmdError> {
+        let text = |w: Option<WordsParam>| w.map(|w| w.words().text());
+        let input = JumperInput {
+            link: self.link.map(|l| LinkRef { strip: l.strip, n: l.n }),
+            strip: self.strip,
+            terminals: self.terminals.map(|t| t.0).unwrap_or_default(),
+            skip: self.skip.unwrap_or(false),
+            positions: text(self.positions),
+            add: text(self.add),
+            remove: text(self.remove),
+            split_at: self.split_at,
+            drop_missing: self.drop_missing.unwrap_or(false),
+            delete: self.delete.unwrap_or(false),
+        };
+        let done = plan_jumper(cx.doc, input)?;
+        let (c, n) = (done.strip, done.n);
+        let changed = !done.ops.is_empty();
+        let (message, split) = (done.message, done.split);
+        let answer = move |doc: &Document, views: &mut Views| {
+            let positions = doc.devices.get(&c).and_then(|x| x.properties.get(&links::key(n))).cloned();
+            let bars = views.outputs(doc).strips.get(c).and_then(|d| d.acc.links.iter().find(|l| l.n == n)).map_or(0, |l| l.bars);
+            let mut v = json!({"strip": c.hex(), "link": n, "positions": positions, "bars": bars, "changed": changed, "message": message});
+            if let Some((m, t)) = split {
+                v["split"] = json!({"link": m, "positions": t});
+            }
+            v
+        };
+        Ok(Outcome::edit_then_derived(done.label, done.ops, answer).echo_message())
+    }
 }

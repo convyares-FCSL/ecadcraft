@@ -164,7 +164,13 @@ impl Outcome {
     /// As [`Outcome::edit_then`], with an answer that may refuse (the edit stays committed).
     pub fn edit_then_try(label: impl Into<String>, ops: Vec<Op>, answer: impl FnOnce(&Document) -> Result<Value, CmdError> + 'static) -> Outcome {
         let edit = (!ops.is_empty()).then(|| Edit { label: label.into(), ops });
-        Outcome::new(edit, Answer::Committed(Box::new(answer)))
+        Outcome::new(edit, Answer::Committed(Box::new(move |doc, _| answer(doc))))
+    }
+
+    /// As [`Outcome::edit_then`], answering from the document and its derived views.
+    pub fn edit_then_derived(label: impl Into<String>, ops: Vec<Op>, answer: impl FnOnce(&Document, &mut Views) -> Value + 'static) -> Outcome {
+        let edit = (!ops.is_empty()).then(|| Edit { label: label.into(), ops });
+        Outcome::new(edit, Answer::Committed(Box::new(move |doc, views| Ok(answer(doc, views)))))
     }
 }
 
@@ -173,7 +179,7 @@ pub enum Answer {
     /// Known before the commit.
     Now(Value),
     /// Read from the document once the edit is committed (a refusal leaves the edit committed).
-    Committed(Box<dyn FnOnce(&Document) -> Result<Value, CmdError>>),
+    Committed(Box<dyn FnOnce(&Document, &mut Views) -> Result<Value, CmdError>>),
 }
 
 /// Which pages a command runs on.

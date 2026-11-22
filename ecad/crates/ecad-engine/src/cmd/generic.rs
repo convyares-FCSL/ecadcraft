@@ -152,7 +152,7 @@ fn commit<P: Generic>(
     }
     let v = match answer {
         Answer::Now(v) => v,
-        Answer::Committed(f) => f(proj.ledger.document())?,
+        Answer::Committed(f) => f(proj.ledger.document(), &mut proj.derived)?,
     };
     let echo = match echo {
         Echo::Nothing => None,
